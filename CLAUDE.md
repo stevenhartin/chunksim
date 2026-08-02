@@ -76,5 +76,8 @@ and target the `yay` repo instead.
 
 ## Permissions
 
-Permission rules belong in `.claude/settings.json`, not in this file — settings written here are
-prose, not configuration, and are not enforced by the harness.
+`.claude/settings.json` (committed) pre-approves `Edit`/`Write` and `Bash` for `git`, `python`,
+`python3`, `mypy`, `pip` and `pip3`, so those run without prompting.
+
+Permission rules only take effect from that file — rules written as prose in this file are
+documentation, not configuration, and the harness does not enforce them.
