@@ -9,6 +9,9 @@ description = "Offline tooling for source-chunk map state"
 requires-python = ">=3.14"
 dependencies = []
 
+[project.optional-dependencies]
+dev = ["pytest"]
+
 [project.scripts]
 fray = "fray_claude.cli:main"
 

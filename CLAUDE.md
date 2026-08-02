@@ -27,13 +27,51 @@ adjacency/neighbour data isn't there; it's `chunkpicker-chunkinfo-export.json` i
 **Chunk** — a fixed square block of tiles; the unit source-chunk unlocks.
 **Tile** — the smallest interactable square; the avatar occupies one at a time.
 
+Top-level keys of a map payload, for reference while `cache/` is empty: `activeSubTabs`,
+`chunkOrder`, `chunkinfo`, `chunks`, `manualPrimary`, `recentFancyRollTime`, `recentLoginTime`,
+`rules`, `settings`, `topbarSelection`, `uid`. `chunkOrder` is a partial log with repeating
+timestamps — fewer entries than there are unlocked chunks — not an authoritative unlock order.
+
+## Architecture
+
+One responsibility per module, so the planned simulation work has a pure layer to build on:
+
+- `api.py` — the only module that touches the network; raises `FetchError`. An unknown map comes back
+  as HTTP 200 with a bare `null` rather than a 404, so that is the only "no such map" signal.
+- `cache.py` — the only module that touches disk; raises `CacheMissError`. Stores the payload in an
+  envelope (`map_id`/`fetched_at`/`source`/`data`), so readers go through the `data` key. Finds
+  `cache/` by walking up to the nearest `pyproject.toml`, letting the CLI run from any subdirectory.
+- `summary.py` — pure, I/O-free reductions over a raw payload; extend this layer, not `cli.py`.
+  Firebase omits empty containers rather than storing them, so every lookup must tolerate a missing
+  branch — `_mapping` exists for that; reuse it.
+- `cli.py` — argparse subcommands only. `main()` funnels `FetchError` and `CacheMissError` into a
+  stderr message and exit 1; a new subcommand keeps its logic in a pure module.
+
 ## Toolchain
 
-Python 3.14.6, mypy, pip (no uv). Run `mypy .` before each commit.
+Python 3.14.6, mypy, pip (no uv). Run `mypy` before each commit.
+
+## Commands
+
+```
+pip install -e ".[dev]"    # editable install into .venv; provides the `fray` script
+fray fetch [--map ID]      # GET live state -> cache/<map>.json (default map: fray)
+fray show  [--map ID]      # summarise the cached copy; no network
+python -m fray_claude ...  # same CLI without the console script
+mypy                       # strict; resolves src/ from the config, no venv needed
+pytest                     # whole suite
+pytest tests/test_summary.py::test_summarise_counts_unlocked_chunks   # single test
+```
+
+`cache/` is gitignored, so a fresh clone has no data and `fray show` fails until `fray fetch` runs.
 
 ## Conventions
 
 - PEP 8, type hints on all functions
 - Commit after completing a change
+- Tests are pytest, in `tests/`, named after the module under test (`tests/test_summary.py`). Favour
+  the pure layer; `cache.py`'s `root` parameter takes a `tmp_path` so disk tests stay out of the real
+  `cache/`. When `tests/` first lands, widen mypy's `files` to `["src", "tests"]` — it is `["src"]`
+  only because mypy fails outright on a listed directory that does not exist.
 - No custom `User-Agent` on requests — the endpoint is public and unauthenticated, so there's nothing
   to disguise
