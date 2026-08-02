@@ -20,6 +20,10 @@ the set of chosen chunks, tracks goals for the active chunk, and randomly select
 unlock from the allowed neighbours. Reproducing that selection and the neighbour-eligibility rules is
 the core of this tool — read the upstream source for them rather than inferring from observed output.
 
+`?fray` is a map ID, not page state — the real backend is a public Firebase Realtime Database, read
+with a plain unauthenticated GET: `https://chunkpicker.firebaseio.com/maps/<map_id>.json`. Chunk
+adjacency/neighbour data isn't there; it's `chunkpicker-chunkinfo-export.json` in the upstream repo.
+
 **Chunk** — a fixed square block of tiles; the unit source-chunk unlocks.
 **Tile** — the smallest interactable square; the avatar occupies one at a time.
 
@@ -31,3 +35,5 @@ Python 3.14.6, mypy, pip (no uv). Run `mypy .` before each commit.
 
 - PEP 8, type hints on all functions
 - Commit after completing a change
+- No custom `User-Agent` on requests — the endpoint is public and unauthenticated, so there's nothing
+  to disguise
