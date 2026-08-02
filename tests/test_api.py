@@ -14,7 +14,16 @@ from typing import Any
 
 import pytest
 
-from fray_claude.api import DEFAULT_TIMEOUT, FetchError, fetch_map, map_url
+from fray_claude.api import (
+    CHUNKINFO_URL,
+    DEFAULT_TIMEOUT,
+    TASKS_MAP_URL,
+    FetchError,
+    fetch_chunkinfo,
+    fetch_map,
+    fetch_tasks_map,
+    map_url,
+)
 
 
 def _patch_urlopen(
@@ -108,3 +117,39 @@ def test_fetch_map_reports_a_network_error(monkeypatch: pytest.MonkeyPatch) -> N
 
     with pytest.raises(FetchError, match="network error.*name resolution failed"):
         fetch_map("fray")
+
+
+def test_fetch_chunkinfo_requests_the_gh_pages_export(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _patch_urlopen(monkeypatch, _responds(b'{"chunks": {}}'))
+
+    payload = fetch_chunkinfo(timeout=5.0)
+
+    assert payload == {"chunks": {}}
+    assert calls == [(CHUNKINFO_URL, 5.0)]
+    assert "gh-pages" in CHUNKINFO_URL
+
+
+def test_fetch_tasks_map_requests_the_gh_pages_tasks_map(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _patch_urlopen(monkeypatch, _responds(b'{"Obtain a whip": "t_1"}'))
+
+    payload = fetch_tasks_map(timeout=5.0)
+
+    assert payload == {"Obtain a whip": "t_1"}
+    assert calls == [(TASKS_MAP_URL, 5.0)]
+
+
+def test_fetch_chunkinfo_rejects_a_non_object_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_urlopen(monkeypatch, _responds(b"[1, 2]"))
+
+    with pytest.raises(FetchError, match="expected an object.*got list"):
+        fetch_chunkinfo()
+
+
+def test_fetch_chunkinfo_reports_the_http_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    error = urllib.error.HTTPError(CHUNKINFO_URL, 503, "Service Unavailable", Message(), None)
+    _patch_urlopen(monkeypatch, _raises(error))
+
+    with pytest.raises(FetchError, match="HTTP 503"):
+        fetch_chunkinfo()

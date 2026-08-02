@@ -14,6 +14,12 @@ from typing import Any
 
 MAP_URL = "https://chunkpicker.firebaseio.com/maps/{map_id}.json"
 
+# gh-pages is upstream's default branch and where the live site is served
+# from; `main` 404s.
+_UPSTREAM_RAW = "https://raw.githubusercontent.com/source-chunk/chunk-picker-v2/gh-pages/{path}"
+CHUNKINFO_URL = _UPSTREAM_RAW.format(path="chunkpicker-chunkinfo-export.json")
+TASKS_MAP_URL = _UPSTREAM_RAW.format(path="tasksMap.json")
+
 DEFAULT_TIMEOUT = 30.0
 
 
@@ -53,4 +59,32 @@ def fetch_map(map_id: str, timeout: float = DEFAULT_TIMEOUT) -> dict[str, Any]:
         raise FetchError(
             f"expected an object for map {map_id!r}, got {type(payload).__name__}"
         )
+    return payload
+
+
+def fetch_chunkinfo(timeout: float = DEFAULT_TIMEOUT) -> dict[str, Any]:
+    """Return upstream's chunk/section/challenge reference data (~7MB, static)."""
+    return _fetch_json_object(CHUNKINFO_URL, timeout, what="chunkinfo export")
+
+
+def fetch_tasks_map(timeout: float = DEFAULT_TIMEOUT) -> dict[str, Any]:
+    """Return upstream's task-name <-> `t_N` id interning table."""
+    return _fetch_json_object(TASKS_MAP_URL, timeout, what="tasks map")
+
+
+def _fetch_json_object(url: str, timeout: float, *, what: str) -> dict[str, Any]:
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            payload: Any = json.load(response)
+    except urllib.error.HTTPError as exc:
+        raise FetchError(f"HTTP {exc.code} fetching {what}") from exc
+    except TimeoutError as exc:
+        raise FetchError(f"timed out after {timeout:g}s fetching {what}") from exc
+    except urllib.error.URLError as exc:
+        raise FetchError(f"network error fetching {what}: {exc.reason}") from exc
+    except json.JSONDecodeError as exc:
+        raise FetchError(f"malformed JSON for {what}: {exc}") from exc
+
+    if not isinstance(payload, dict):
+        raise FetchError(f"expected an object for {what}, got {type(payload).__name__}")
     return payload
