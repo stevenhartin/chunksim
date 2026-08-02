@@ -21,6 +21,9 @@ where = ["src"]
 [tool.mypy]
 python_version = "3.14"
 strict = true
-files = ["src"]
+files = ["src", "tests"]
 # Lets the system mypy resolve intra-package imports without an install.
 mypy_path = "src"
+# pytest is a dev extra in .venv, not a system package, so point the system
+# mypy at the venv's interpreter to find its stubs.
+python_executable = ".venv/bin/python"

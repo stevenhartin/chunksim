@@ -58,10 +58,13 @@ pip install -e ".[dev]"    # editable install into .venv; provides the `fray` sc
 fray fetch [--map ID]      # GET live state -> cache/<map>.json (default map: fray)
 fray show  [--map ID]      # summarise the cached copy; no network
 python -m fray_claude ...  # same CLI without the console script
-mypy                       # strict; resolves src/ from the config, no venv needed
+mypy                       # strict, over src/ and tests/; run from the repo root
 pytest                     # whole suite
 pytest tests/test_summary.py::test_summarise_counts_unlocked_chunks   # single test
 ```
+
+The system mypy is configured with `python_executable = ".venv/bin/python"` so it can see pytest's
+stubs, which is why it must run from the repo root and needs the venv to exist.
 
 `cache/` is gitignored, so a fresh clone has no data and `fray show` fails until `fray fetch` runs.
 
@@ -69,9 +72,8 @@ pytest tests/test_summary.py::test_summarise_counts_unlocked_chunks   # single t
 
 - PEP 8, type hints on all functions
 - Commit after completing a change
-- Tests are pytest, in `tests/`, named after the module under test (`tests/test_summary.py`). Favour
-  the pure layer; `cache.py`'s `root` parameter takes a `tmp_path` so disk tests stay out of the real
-  `cache/`. When `tests/` first lands, widen mypy's `files` to `["src", "tests"]` — it is `["src"]`
-  only because mypy fails outright on a listed directory that does not exist.
+- Tests are pytest, in `tests/`, named after the module under test (`tests/test_summary.py`). No test
+  touches the network or the real `cache/`: pass `cache.py`'s `root` a `tmp_path`, and monkeypatch
+  `urllib.request.urlopen` (`tests/test_api.py`) or `fray_claude.cli.fetch_map` (`tests/test_cli.py`)
 - No custom `User-Agent` on requests — the endpoint is public and unauthenticated, so there's nothing
   to disguise
