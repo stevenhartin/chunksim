@@ -13,6 +13,7 @@ DATA: dict[str, Any] = {
     "challenges": {"Cooking": {"Cook a shrimp": {"Level": 1}}},
     "drops": {"Chef": {"Chef hat": {"1": "1/128"}}},
     "codeItems": {"boostItems": {"Cooking": {}}},
+    "shopItems": {"General Store": {"Pot": True}},
     "rollingChunks": {"bank": ["4912"]},
     "walkableChunks": ["3883", "3884"],
     "walkableChunksF2P": ["3883"],
@@ -28,6 +29,7 @@ def test_accessors_return_the_matching_branch() -> None:
     assert info.challenges == DATA["challenges"]
     assert info.drops == DATA["drops"]
     assert info.code_items == DATA["codeItems"]
+    assert info.shop_items == DATA["shopItems"]
     assert info.rolling_chunks == DATA["rollingChunks"]
     assert info.walkable_chunks == ["3883", "3884"]
     assert info.walkable_chunks_f2p == ["3883"]
@@ -54,6 +56,7 @@ def test_accessors_tolerate_an_empty_export() -> None:
     assert info.challenges == {}
     assert info.drops == {}
     assert info.code_items == {}
+    assert info.shop_items == {}
     assert info.rolling_chunks == {}
     assert info.walkable_chunks == []
     assert info.walkable_chunks_f2p == []

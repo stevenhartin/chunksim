@@ -187,3 +187,58 @@ def test_sections_export_json_to_a_file_also_prints_the_summary(
     out = capsys.readouterr().out
     assert "reachable sections 1" in out
     assert json.loads(destination.read_text(encoding="utf-8"))["unlocked_chunks"] == 2
+
+
+def test_sources_reports_availability_counts(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {
+        "chunks": {"100": {"Monster": {"Goblin": True}, "Object": {"Anvil": True}}},
+        "drops": {"Goblin": {"Bones": {"1": "Always"}}},
+    }
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["sources"]) == 0
+
+    out = capsys.readouterr().out
+    assert "items      1" in out
+    assert "objects    1" in out
+    assert "monsters   1" in out
+
+
+def test_sources_without_a_cached_map_exits_one(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["sources"]) == 1
+    assert "no cached data for map 'fray'" in capsys.readouterr().err
+
+
+def test_sources_export_json_to_stdout_replaces_the_summary(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {
+        "chunks": {"100": {"Monster": {"Goblin": True}}},
+        "drops": {"Goblin": {"Bones": {"1": "Always"}}},
+    }
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["sources", "--export-json", "-"]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["monsters"] == {"Goblin": {"100": True}}
+    assert result["items"] == {"Bones": {"Goblin": "primary-drop"}}
+
+
+def test_sources_reports_the_key_item_bosses_gap_as_an_error(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}, "rules": {"KeyItem Bosses": True}}
+    _cache_map_and_chunkinfo(monkeypatch, payload, {})
+    capsys.readouterr()
+
+    assert main(["sources"]) == 1
+    assert "KeyItem Bosses" in capsys.readouterr().err

@@ -49,6 +49,10 @@ class ChunkInfo:
         return _mapping(self.data, "codeItems")
 
     @property
+    def shop_items(self) -> dict[str, Any]:
+        return _mapping(self.data, "shopItems")
+
+    @property
     def rolling_chunks(self) -> dict[str, Any]:
         return _mapping(self.data, "rollingChunks")
 

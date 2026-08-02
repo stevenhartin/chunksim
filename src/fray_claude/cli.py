@@ -29,7 +29,8 @@ from fray_claude.cache import (
 )
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.firebase import decode_payload
-from fray_claude.sections import unlocked_sections
+from fray_claude.sections import expand_chunk_areas, unlocked_sections
+from fray_claude.sources import gather_chunks_info
 from fray_claude.summary import _mapping, summarise
 
 DEFAULT_MAP = "fray"
@@ -134,6 +135,54 @@ def _cmd_sections(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_sources(args: argparse.Namespace) -> int:
+    envelope = read_cache(args.map_id)
+    payload = envelope["data"]
+    info = ChunkInfo(read_chunkinfo(override=args.chunkinfo))
+    chunkinfo_branch = _mapping(payload, "chunkinfo")
+
+    # None of these branches reference `t_N` task ids (they hold chunk,
+    # item, monster, and rule names), so decoding with no tasks map is safe
+    # - see `firebase.decode_payload`.
+    unlocked = decode_payload(_mapping(_mapping(payload, "chunks"), "unlocked"))
+    manual_sections = decode_payload(_mapping(chunkinfo_branch, "manualSections"))
+    manual_monsters = decode_payload(_mapping(chunkinfo_branch, "manualMonsters"))
+    manual_equipment = decode_payload(_mapping(chunkinfo_branch, "manualEquipment"))
+    backlogged_sources = decode_payload(_mapping(chunkinfo_branch, "backloggedSources"))
+    rules = decode_payload(_mapping(payload, "rules"))
+    settings = _mapping(payload, "settings")
+
+    reachable = unlocked_sections(
+        unlocked,
+        info,
+        manual_sections=manual_sections,
+        opt_out_sections=settings.get("optOutSections") is True,
+        opt_out_sections_water=settings.get("optOutSectionsWater") is True,
+    )
+    expanded = expand_chunk_areas(unlocked)
+    index = gather_chunks_info(
+        expanded,
+        reachable,
+        info,
+        rules=rules,
+        backlogged_sources=backlogged_sources,
+        manual_monsters=manual_monsters,
+        manual_equipment=manual_equipment,
+    )
+
+    if args.export_json != "-":
+        print(f"map        {args.map_id}")
+        print(f"items      {len(index.items)}")
+        print(f"objects    {len(index.objects)}")
+        print(f"monsters   {len(index.monsters)}")
+        print(f"npcs       {len(index.npcs)}")
+        print(f"shops      {len(index.shops)}")
+
+    if args.export_json is not None:
+        _emit_json({"map_id": args.map_id, **index.as_dict()}, args.export_json)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="fray", description="Offline tooling for source-chunk map state."
@@ -189,6 +238,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sections.set_defaults(func=_cmd_sections)
 
+    sources = subcommands.add_parser(
+        "sources", help="items/objects/monsters/npcs/shops the cached map's unlocked chunks give"
+    )
+    sources.add_argument(
+        "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"
+    )
+    sources.add_argument(
+        "--chunkinfo",
+        type=Path,
+        default=None,
+        help="path to a chunkinfo export, overriding the cache and FRAY_CHUNKINFO",
+    )
+    sources.add_argument(
+        "--export-json",
+        metavar="PATH",
+        default=None,
+        help="write the full result as JSON to PATH, or to stdout if PATH is '-'",
+    )
+    sources.set_defaults(func=_cmd_sources)
+
     return parser
 
 
@@ -197,7 +266,7 @@ def main(argv: list[str] | None = None) -> int:
     handler: Any = args.func
     try:
         return int(handler(args))
-    except (FetchError, CacheMissError) as exc:
+    except (FetchError, CacheMissError, NotImplementedError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 

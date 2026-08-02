@@ -67,6 +67,20 @@ One responsibility per module, so the planned simulation work has a pure layer t
   code (a filter predicate with no `return`, always falsy), so only the `manualAreas` override is
   reproduced. `sectionsLimits` deliberately isn't used here: it gates *rollable-neighbour* eligibility,
   not the connectivity of chunks already unlocked, so it belongs with the future roll simulation.
+- `rates.py` — pure; OSRS drop-rate string parsing/formatting (`parse_ratio`, `find_fraction`,
+  `looks_non_numeric`). Centralises what upstream re-parses inline at every use site; `find_fraction`'s
+  output string is embedded verbatim in synthesized task names (stage 3), so its half-away-from-zero
+  rounding and no-trailing-zero formatting deliberately match JS's `Math.round`/`Number.toString`
+  rather than Python's.
+- `sources.py` — pure; what the unlocked chunks make available (`gather_chunks_info` ->
+  `SourceIndex`: items/objects/monsters/npcs/shops). Port of `gatherChunksInfo`, including the
+  drop-rate threshold (`Rare Drop Amount`) and primary/secondary classification (`Secondary Primary
+  Amount`) that decide whether/how an item appears — both feed ordinary challenge validity, unlike
+  the quantity-keyed `dropTablesGlobal` side table (upstream's `calcedQuantity`), which only the
+  dynamic "Every Drop"/"All Droptables" challenge synthesis in `calcChallengesWork` consumes and so
+  belongs with `challenges.py` instead. The `KeyItem Bosses` rate-boosting pass is unported; a map
+  with that rule on makes `gather_chunks_info` raise `NotImplementedError` rather than silently
+  producing an incomplete index.
 - `summary.py` — pure, I/O-free reductions over a raw payload; extend this layer, not `cli.py`.
   Firebase omits empty containers rather than storing them, so every lookup must tolerate a missing
   branch — `_mapping` exists for that; reuse it (`chunkinfo.py` does too, over the export instead of a
@@ -89,6 +103,7 @@ fray fetch [--map ID]       # GET live state -> cache/<map>.json (default map: f
 fray show  [--map ID]       # summarise the cached copy; no network
 fray chunkinfo              # GET upstream's chunk/challenge reference data -> cache/{chunkinfo,tasks_map}.json
 fray sections [--map ID]    # reachable sections for the cached map's unlocked chunks
+fray sources  [--map ID]    # items/objects/monsters/npcs/shops the cached map's unlocked chunks give
 python -m fray_claude ...   # same CLI without the console script
 mypy                        # strict, over src/ and tests/; run from the repo root
 pytest                      # whole suite
