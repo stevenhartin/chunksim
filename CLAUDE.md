@@ -70,10 +70,6 @@ artefacts (`__pycache__`, venvs, `.mypy_cache`) are already covered.
 
 Commit after completing a change, and run the type checker before each commit.
 
-This directory sits inside `/home/steven/Documents/repos`, which is itself an unrelated AUR clone of
-`yay`. That only matters if the nested `.git` here is ever removed — git would then silently walk up
-and target the `yay` repo instead.
-
 ## Permissions
 
 `.claude/settings.json` (committed) pre-approves `Edit`/`Write` and `Bash` for `git`, `python`,
