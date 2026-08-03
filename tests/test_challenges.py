@@ -571,3 +571,62 @@ def test_bis_is_never_computed_even_if_present_and_trivially_valid() -> None:
     result = calc_challenges({}, {}, _EMPTY, info, rules={})
 
     assert "BiS" not in result.valid
+
+
+def test_challenge_output_naming_a_skill_items_activity_yields_its_items() -> None:
+    # Upstream's link (worker.js:2848): a challenge's `Output` doubles as the
+    # activity key into `skillItems[skill]`. `Master wand` is real-world only
+    # reachable this way, via `~|Pizazz points|~*` -> `Pizazz points loot`.
+    info = _chunk_info(
+        challenges={"Nonskill": {"Earn pizazz points": {"Output": "Pizazz points loot"}}},
+        skillItems={"Nonskill": {"Pizazz points loot": {"Master wand": {"1": "Always"}}}},
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert "Master wand" in result.available_items
+    assert "Pizazz points loot" in result.available_items
+
+
+def test_backlogged_items_are_excluded_from_output_seeding() -> None:
+    # A backlogged source means "I will not do this", so it must not sneak
+    # back in as a prerequisite - real case: a backlogged `Uncut onyx` was
+    # re-entering through a skillItems activity and dragging a whole
+    # crafting chain with it.
+    info = _chunk_info(
+        challenges={"Nonskill": {"Open the bag": {"Output": "Bag loot"}}},
+        skillItems={
+            "Nonskill": {"Bag loot": {"Uncut onyx": {"1": "1/100000000"}, "Coal": {"1": "1/2"}}}
+        },
+    )
+
+    result = calc_challenges(
+        {}, {}, _EMPTY, info, rules={}, backlogged_sources={"items": {"Uncut onyx": True}}
+    )
+
+    assert "Uncut onyx" not in result.available_items
+    assert "Coal" in result.available_items
+
+
+def test_a_backlogged_direct_output_is_excluded_too() -> None:
+    info = _chunk_info(challenges={"Smithing": {"Smelt a bar": {"Output": "Iron bar"}}})
+
+    result = calc_challenges(
+        {}, {}, _EMPTY, info, rules={}, backlogged_sources={"items": {"Iron bar": True}}
+    )
+
+    assert "Iron bar" not in result.available_items
+
+
+def test_boss_log_activities_are_gated_by_the_boss_rule() -> None:
+    info = _chunk_info(
+        challenges={"Nonskill": {"Loot the chest": {"Output": "Monumental chest"}}},
+        skillItems={"Nonskill": {"Monumental chest": {"Rare thing": {"1": "1/50"}}}},
+        codeItems={"bossLogs": {"Monumental chest": True}},
+    )
+
+    off = calc_challenges({}, {}, _EMPTY, info, rules={})
+    on = calc_challenges({}, {}, _EMPTY, info, rules={"Boss": True})
+
+    assert "Rare thing" not in off.available_items
+    assert "Rare thing" in on.available_items

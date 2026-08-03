@@ -103,7 +103,13 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
             max_skill=state.max_skill,
         )
         challenges = calc_challenges(
-            expanded, reachable, index, state.chunk_info, rules=state.rules, max_skill=state.max_skill
+            expanded,
+            reachable,
+            index,
+            state.chunk_info,
+            rules=state.rules,
+            max_skill=state.max_skill,
+            backlogged_sources=state.backlogged_sources,
         )
         new_areas = unlockable_areas(
             challenges.valid,

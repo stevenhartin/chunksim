@@ -11,6 +11,7 @@ import pytest
 
 from fray_claude.bis import (
     article_for,
+    bis_task_name,
     build_ammo_index,
     compute_bis,
     format_equip,
@@ -407,35 +408,47 @@ def test_as_dict_shape() -> None:
 
 
 @pytest.mark.skipif(not _REAL_CHUNKINFO, reason="set FRAY_CHUNKINFO to a real export to run this")
-def test_melee_bis_weapon_matches_the_live_oracle() -> None:
-    """Opt-in oracle: the cached `fray` map's `chunkinfo.activeTasks.BiS`
-    records upstream's own last-computed Melee BiS weapon as `Abyssal whip`
-    (via `Slayer/Abyssal demon`, whose chunk is unlocked on this map) - the
-    one entry of that snapshot independently verified still consistent with
-    the currently-unlocked chunk set (the other five reference monsters in
-    chunks that are locked right now, so aren't used as an oracle here; see
-    CLAUDE.md/the stage-5 plan for how that was established).
+def test_every_bis_pick_matches_the_live_oracle() -> None:
+    """Opt-in oracle: `chunkinfo.activeTasks.BiS` is upstream's *own* last
+    computed BiS pick per (style, slot), so every entry must reproduce
+    exactly. All six do.
+
+    Getting here found four real bugs, each of which showed up as a
+    mismatch on exactly one entry: named-area unlocks were unported
+    (`dragon boots`, `granite gloves`), challenge `Output` items never
+    reached BiS (`granite ring (i)`), `skillItems` activities keyed off a
+    challenge's `Output` were unported (`master wand`), and
+    `backloggedSources` wasn't honoured when seeding those (a backlogged
+    `Uncut onyx` re-entered and displaced `granite gloves`).
+
+    An earlier version of this test asserted only the one entry that
+    happened to pass, and dismissed the other five as a stale snapshot.
+    They were not stale - the tool was wrong. Assert all six.
     """
     assert _REAL_CHUNKINFO is not None
-    from fray_claude.cache import project_root, read_cache
+    from fray_claude.cache import project_root, read_blob, read_cache
+    from fray_claude.firebase import decode_challenge_keyed, reverse_tasks_map
     from fray_claude.pipeline import derive, load_map_state
 
     data = json.loads(Path(_REAL_CHUNKINFO).read_text(encoding="utf-8"))
     info = ChunkInfo(data)
-    envelope = read_cache("fray", project_root())
-    state, unlocked = load_map_state(envelope["data"], info)
+    root = project_root()
+    envelope = read_cache("fray", root)
+    tasks_map = reverse_tasks_map(read_blob("tasks_map", root)["data"])
+    state, unlocked = load_map_state(envelope["data"], info, tasks_map)
     derived = derive(state, unlocked)
 
-    result = compute_bis(
-        info,
-        derived.source_index.items,
-        derived.challenges.valid,
-        rules=state.rules,
-        max_skill=state.max_skill,
-        passive_skill=state.passive_skill,
-    )
+    oracle = decode_challenge_keyed(
+        envelope["data"]["chunkinfo"].get("activeTasks"), tasks_map
+    ).get("BiS", {})
+    assert oracle, "no cached BiS picks to compare against"
 
-    assert result.picks["Melee-weapon"] == "Abyssal whip"
+    equipment = info.data["equipment"]
+    for task_name, label in oracle.items():
+        style, _, slot = label.partition(" BiS ")
+        ours = derived.bis.picks.get(f"{style.replace(' ', '_')}-{slot}")
+        assert ours is not None, f"no pick for {label}"
+        assert bis_task_name(ours, equipment.get(ours, {})) == task_name, label
 
 
 @pytest.mark.skipif(not _REAL_CHUNKINFO, reason="set FRAY_CHUNKINFO to a real export to run this")

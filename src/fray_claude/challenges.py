@@ -529,19 +529,74 @@ def _seed_items_with_outputs(
     base_items: Mapping[str, Mapping[str, str]],
     valid: Mapping[str, Mapping[str, Any]],
     challenges: Mapping[str, Mapping[str, Any]],
+    chunk_info: ChunkInfo,
+    rules: Mapping[str, Any],
+    backlogged_sources: Mapping[str, Any],
 ) -> dict[str, dict[str, str]]:
-    """A valid challenge with an `Output` becomes a new item source for the
-    next pass. This is this module's own design for the feedback loop
-    upstream's fixed point relies on - see the module docstring.
+    """A valid challenge's `Output` becomes a new item source for the next
+    pass - and, when that `Output` names an activity in
+    `skillItems[<that skill>]`, so does every item that activity yields.
+
+    The second half is what makes non-Slayer `skillItems` reachable at all.
+    Upstream's link (worker.js:2848, index.js:8603) is exactly this: a
+    challenge's `Output` doubles as the *activity key* into `skillItems`.
+    `Master wand`, for instance, exists only in
+    `skillItems.Nonskill['Pizazz points loot']`, reached because the
+    `~|Pizazz points|~*` challenge has `Output: 'Pizazz points loot'` -
+    without this it is unobtainable, and BiS picks a worse Magic weapon.
+    Note the activity key is *not* an entity name, which is why
+    `sources.py`'s chunk-presence route can't find these (it handles the
+    other `skillItems` path: a Slayer monster physically in an unlocked
+    chunk - see `_slayer_skill_items_for`).
+
+    Upstream accumulates these in an `outputs` map tagged
+    `'<primary|secondary>-' + the challenge's own Source` before merging
+    into the item index (worker.js:2894, 3037). Simplified here: everything
+    is tagged `primary-`, since upstream's primary/secondary split is a
+    drop-rate comparison against `Secondary Primary Amount` that this
+    module doesn't compute, and the `Rare Drop Amount` rate filter on the
+    activity's items isn't applied either (both admit everything on the map
+    this was built against). The `bossLogs` gate *is* applied - it excludes
+    8 real activities and is live whenever the `Boss` rule is off.
+
+    `backloggedSources['items']` is honoured, matching upstream's own gate
+    on this merge (worker.js:3030) and `sources.py`'s handling of the
+    ordinary routes. It is *not* cosmetic: a user backlogs a source to say
+    "I will not do this", so leaving it in silently readmits it as a
+    prerequisite. Real example - `Uncut onyx` is backlogged on the map this
+    was built against, and without this gate it re-entered through
+    `skillItems.Nonskill['Bag full of gems loot']` at a 1/100,000,000 rate,
+    dragged in the whole onyx -> onyx bracelet -> `Regen bracelet` crafting
+    chain, and displaced the correct Melee-hands BiS pick.
     """
     items: dict[str, dict[str, str]] = {item: dict(sources) for item, sources in base_items.items()}
+    skill_items = chunk_info.skill_items
+    boss_logs = _mapping(chunk_info.code_items, "bossLogs")
+    allow_boss = rules.get("Boss") is True
+    backlogged_items = _mapping(backlogged_sources, "items")
+
     for skill, names in valid.items():
         skill_challenges = challenges.get(skill, {})
+        activities = skill_items.get(skill)
+        activities = activities if isinstance(activities, dict) else {}
         for name in names:
             challenge = skill_challenges.get(name)
-            output = challenge.get("Output") if isinstance(challenge, dict) else None
-            if isinstance(output, str):
+            if not isinstance(challenge, dict):
+                continue
+            output = challenge.get("Output")
+            if not isinstance(output, str):
+                continue
+            if backlogged_items.get(output) is not True:
                 items.setdefault(output, {})[name] = f"primary-{skill}"
+
+            table = activities.get(output)
+            if not isinstance(table, dict) or (not allow_boss and output in boss_logs):
+                continue
+            source = challenge.get("Source")
+            tag = f"primary-{source}" if isinstance(source, str) and source else f"primary-{skill}"
+            for item in table:
+                if isinstance(item, str) and backlogged_items.get(item) is not True:
+                    items.setdefault(item, {}).setdefault(name, tag)
     return items
 
 
@@ -609,6 +664,7 @@ def calc_challenges(
     *,
     rules: Mapping[str, Any],
     max_skill: Mapping[str, int] | None = None,
+    backlogged_sources: Mapping[str, Any] | None = None,
     max_iterations: int = 15,
 ) -> ChallengeResult:
     """Port of `calcChallenges`/`calcChallengesWork`'s core fixed point - see
@@ -659,7 +715,9 @@ def calc_challenges(
         if new_valid == valid:
             break
         valid = new_valid
-        items = _seed_items_with_outputs(source_index.items, valid, challenges)
+        items = _seed_items_with_outputs(
+            source_index.items, valid, challenges, chunk_info, rules, backlogged_sources or {}
+        )
 
     grouped = _group_processing_skill_challenges(valid, challenges, items, rules)
     return ChallengeResult(

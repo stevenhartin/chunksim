@@ -144,9 +144,17 @@ One responsibility per module, so the planned simulation work has a pure layer t
   matching plain presence checking with no grouping needed. Only ~42 challenges remain genuinely
   unsupported on that map — the `QuestPointsNeeded`/`CombatPointsNeeded`/`KudosNeeded`/
   `TotalLevelNeeded`/`CombatLevelNeeded` gates, which need state (quest points, kudos, ...) this module
-  doesn't derive. The output-feedback fixed point (`_seed_items_with_outputs`) is this module's own
-  design, not a located port — upstream's exact mechanism for it wasn't found despite an extensive
-  search of `calcChallengesWork`.
+  doesn't derive. `_seed_items_with_outputs` is the output-feedback half of the fixed point, and **is**
+  a located port after all (worker.js:2848/2894/3030 — an earlier stage recorded it as this module's
+  own invention because the mechanism wasn't found): a valid challenge's `Output` becomes an item,
+  *and* doubles as the activity key into `skillItems[<that skill>]`, admitting everything that
+  activity yields. That second half is the only route to non-Slayer `skillItems` — `Master wand`
+  exists solely in `skillItems.Nonskill['Pizazz points loot']`, reached via the `~|Pizazz points|~*`
+  challenge's `Output` (`sources.py` handles the *other* skillItems route, a Slayer monster physically
+  present in a chunk). `backloggedSources['items']` is honoured here as upstream does — not cosmetic:
+  a backlogged `Uncut onyx` otherwise re-enters at a 1/100,000,000 rate and drags an entire crafting
+  chain with it. Simplified: everything is tagged `primary-` rather than split by drop rate, and the
+  `Rare Drop Amount` filter on an activity's items isn't applied; the `bossLogs` gate is.
 - `bis.py` — pure; best-in-slot equipment per (combat style, slot) (`compute_bis` -> `BisResult`).
   Port of `calcBIS` (worker.js, ~3,150 lines — mostly 19 hand-written copies of one scoring block,
   collapsed here into a `StyleSpec` data table). For each active style (Melee/Ranged/Magic always;
@@ -161,7 +169,11 @@ One responsibility per module, so the planned simulation work has a pure layer t
   `'/' + U+200B` (zero-width space) separator. Verified against a real, load-bearing oracle: the cached
   map's `chunkinfo.activeTasks.BiS` records upstream's own last-computed Melee BiS weapon as
   `Abyssal whip` (via the `sources.py` Slayer route above), reproduced exactly — see
-  `tests/test_bis.py`'s opt-in oracle test. **Deliberately not ported**, documented in the module
+  `tests/test_bis.py`'s opt-in oracle test, which asserts **all six** of the map's recorded picks.
+  Every one of those six started out mismatched, and each mismatch was a distinct real bug (unported
+  area unlocks, challenge `Output` items not reaching BiS, unported `skillItems`-via-`Output`,
+  and unhonoured `backloggedSources`) — treat a mismatch there as a defect, not as oracle staleness,
+  which is how an earlier stage wrongly explained five of them away. **Deliberately not ported**, documented in the module
   docstring: the set-effect DPS override chain (Void/Obsidian/Inquisitor/Verac's/Crystal/Karil's,
   ~1,738 of upstream's lines), ties-as-alternates and the greedy set-cover dedup pass, and the
   `Show Best in Slot 1H and 2H` rule's dual weapon/2h emission. BiS is inherently **non-monotonic**
