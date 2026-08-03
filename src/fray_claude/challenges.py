@@ -112,6 +112,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from fray_claude import boosts
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.sources import SourceIndex
 from fray_claude.summary import _mapping
@@ -477,13 +478,19 @@ def _has_primary_task(
     chunk_info: ChunkInfo,
     passive_skill: Mapping[str, int],
     backlog: Mapping[str, Mapping[str, Any]],
+    rules: Mapping[str, Any],
+    items: Mapping[str, Any],
+    source_index: SourceIndex,
 ) -> bool:
     """`Primary[+]`: a valid challenge flagged `Primary`, not backlogged, at
-    a level actually attainable - `Level == 1`, or covered by
-    `passiveSkill`. Upstream additionally allows a `skillQuestXp` floor and
-    shifts the level by the best applicable boost; neither is modelled (no
-    quest-XP or boost-ownership state exists here), so this is the
-    conservative subset.
+    a level actually attainable - `Level == 1`, or within
+    `passiveSkill[skill] + bestBoost` (worker.js:5114).
+
+    The boost term is upstream's, and it widens the gate: a boost item the
+    chunks provide lets a challenge above the passive floor still count as a
+    training method, which can flip a whole skill from untrainable to
+    trainable. Upstream additionally allows a `skillQuestXp` floor, which is
+    not modelled - no quest-XP state exists anywhere in this codebase.
     """
     challenges = chunk_info.challenges.get(skill) or {}
     backlogged = backlog.get(skill) or {}
@@ -497,8 +504,19 @@ def _has_primary_task(
         level = challenge.get("Level")
         if not isinstance(level, (int, float)) or level == 1:
             return True
-        if isinstance(passive, (int, float)) and passive > 1 and level <= passive:
-            return True
+        if isinstance(passive, (int, float)) and passive > 1:
+            best, saw = boosts.best_boost(
+                skill,
+                name,
+                challenge,
+                float(level),
+                rules=rules,
+                chunk_info=chunk_info,
+                items=items,
+                source_index=source_index,
+            )
+            if level <= passive + best + saw:
+                return True
     return False
 
 
@@ -511,6 +529,8 @@ def _check_primary_method(
     passive_skill: Mapping[str, int],
     backlog: Mapping[str, Mapping[str, Any]],
     manual_tasks: Mapping[str, Mapping[str, Any]],
+    rules: Mapping[str, Any] | None = None,
+    items: Mapping[str, Any] | None = None,
     _seen: frozenset[str] = frozenset(),
 ) -> bool:
     """Port of `checkPrimaryMethod` (worker.js:5077-5220): can `skill`
@@ -531,13 +551,19 @@ def _check_primary_method(
     secondary/processing-source filtering inside `Ranged[+]`, and the
     `Smithing by Smelting` anvil caveat on the `manualTasks` override.
     """
+    rules = rules or {}
+    # Upstream's `baseChunkData['items']` is the seeded index; falling back
+    # to the narrow one only loses boosts, never invents them.
+    items = source_index.items if items is None else items
     lines = _UNIVERSAL_PRIMARY.get(skill)
     if lines is None:
         return True  # upstream: `!universalPrimary[skill] && (tempValid = true)`
 
     for line in lines:
         if line == "Primary[+]":
-            if _has_primary_task(skill, valid, chunk_info, passive_skill, backlog):
+            if _has_primary_task(
+                skill, valid, chunk_info, passive_skill, backlog, rules, items, source_index
+            ):
                 return True
         elif line == "Monster[+]":
             if source_index.monsters:
@@ -558,6 +584,8 @@ def _check_primary_method(
                     passive_skill=passive_skill,
                     backlog=backlog,
                     manual_tasks=manual_tasks,
+                    rules=rules,
+                    items=items,
                     _seen=_seen | {skill},
                 )
                 for other in sorted(_COMBAT_SKILLS)
@@ -836,13 +864,16 @@ def _group_processing_skill_challenges(
     challenges: Mapping[str, Mapping[str, Any]],
     items: Mapping[str, Mapping[str, str]],
     rules: Mapping[str, Any],
+    chunk_info: ChunkInfo,
+    source_index: SourceIndex,
 ) -> dict[str, dict[str, int | str | bool]]:
     """Port of the "Highest Level" grouping fork (worker.js:4413-4680), run
     once after `calc_challenges`'s fixed point converges.
 
     When `rules['Highest Level']` is off, a `_PROCESSING_SKILLS` challenge
     that consumes an available ingredient is valid only if it is the
-    lowest-`Level` consumer of at least one such ingredient - ties keep
+    lowest-*boosted*-`Level` consumer (upstream's `tempLevel`,
+    worker.js:4590) of at least one such ingredient - ties keep
     whichever consumer is seen first, in `chunk_info.challenges`' own key
     order (upstream's further `Priority`/`Primary`/`Secondary` tie-break
     isn't modelled - see the module docstring). When the rule is on, every
@@ -875,9 +906,21 @@ def _group_processing_skill_challenges(
                 if ingredient in items:
                     groups.setdefault(ingredient, []).append(name)
 
-        def _level(name: str) -> float:
-            level = skill_challenges.get(name, {}).get("Level")
-            return level if isinstance(level, (int, float)) else float("inf")
+        def _level(name: str, skill: str = skill) -> float:
+            challenge = skill_challenges.get(name, {})
+            level = challenge.get("Level")
+            if not isinstance(level, (int, float)):
+                return float("inf")
+            return boosts.real_level(
+                skill,
+                name,
+                challenge,
+                float(level),
+                rules=rules,
+                chunk_info=chunk_info,
+                items=items,
+                source_index=source_index,
+            )
 
         for names in groups.values():
             winner = min(names, key=_level)
@@ -929,6 +972,8 @@ def calc_challenges(
                 passive_skill=passive_skill,
                 backlog=backlog,
                 manual_tasks=manual_tasks,
+                rules=rules,
+                items=items,
             )
             for skill in _UNIVERSAL_PRIMARY
         }
@@ -976,7 +1021,9 @@ def calc_challenges(
             source_index.items, valid, challenges, chunk_info, rules, backlogged_sources or {}
         )
 
-    grouped = _group_processing_skill_challenges(valid, challenges, items, rules)
+    grouped = _group_processing_skill_challenges(
+        valid, challenges, items, rules, chunk_info, source_index
+    )
     return ChallengeResult(
         valid=grouped,
         unsupported=frozenset(unsupported),

@@ -370,9 +370,11 @@ def test_active_slayer_task_matches_the_live_oracle() -> None:
     Level 45 passive floor could ever be picked and `Slay an Infernal Mage`
     (45) won instead of the Level 92 araxyte.
 
-    The stored value is `"92{5}"` - Level 92 less a 5-point `Wild pie` boost.
-    Only the *name* is asserted: boosting isn't modelled (see the module
-    docstring), and this challenge wins on raw level regardless.
+    The stored value is `"92{5}"` - Level 92 less a 5-point `Wild pie` boost -
+    and both halves are asserted: the name, and the boost `boosts.py` computes
+    for it. The boost is independent confirmation, since nothing about
+    reproducing the *name* depends on getting the boost table, the
+    availability lookup or the arithmetic right.
     """
     assert _REAL_CHUNKINFO is not None
     from fray_claude.cache import project_root, read_blob, read_cache
@@ -394,3 +396,20 @@ def test_active_slayer_task_matches_the_live_oracle() -> None:
 
     assert recorded is not None, "the map no longer records an active Slayer task"
     assert derived.task_classification.skills["Slayer"].active == recorded
+
+    from fray_claude import boosts
+
+    challenge = data["challenges"]["Slayer"][recorded]
+    best, saw = boosts.best_boost(
+        "Slayer",
+        recorded,
+        challenge,
+        float(challenge["Level"]),
+        rules=state.rules,
+        chunk_info=info,
+        items=derived.challenges.available_items,
+        source_index=derived.source_index,
+    )
+    # `"92{5}"` -> the trailing `{N}` is the boost upstream applied.
+    expected_boost = int(oracle[recorded].split("{")[1].rstrip("}"))
+    assert best + saw == expected_boost

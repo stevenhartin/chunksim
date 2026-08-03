@@ -60,19 +60,15 @@ Scoped to *selection*: the ceiling is not fed back as an implied skill level
 into `challenges.py`'s `Level` gate, which would change what is `valid` and
 cascade well beyond this module.
 
+Every level this module compares is a *boosted* level (`boosts.py`): the
+ceiling uses `boosts.completed_ceiling`, each candidate `boosts.real_level`,
+and `_is_eligible`'s `level == 1` test therefore fires on the boosted value
+too, exactly as upstream's `realLevel === 1` does. That last one is not a
+technicality - it is how a skill `checkPrimaryMethod` calls untrainable can
+still have an active task: on the real map `Clean a ~|grimy guam leaf|~`
+(Level 3) boosts to 1 via `Greenman's ale(m)` and becomes `Herblore`'s pick.
+
 Not ported, documented rather than silently wrong:
-- **Boosting's level adjustment** (worker.js:8394-8430/8440-8466). `rules
-  ['Boosting']` is on for real maps, and upstream compares a *boosted*
-  `realLevel = Level - bestBoost` on both sides of the ceiling test, taking
-  the best `codeItems.boostItems[skill]` entry the player can reach (plus a
-  `+3` Construction Crystal saw case, `codeItems.boostTaskBans` exclusions,
-  and `"N%+M"` proportional boosts), skipping any challenge flagged
-  `NoBoost`. Nothing here models boost *ownership*, so comparisons use the
-  raw `Level`. The consequence: a pick can be off whenever two candidates
-  are within one boost of each other. It does not affect the oracle case -
-  `activeTasks.Slayer` records `Slay an araxyte#Level 96` as `"92{5}"`, i.e.
-  Level 92 less a 5-point `Wild pie` boost, and that challenge wins on raw
-  level too - but it is the largest remaining gap in this module.
 - The `tempAlwaysGlobal` backlog-alternate promotion: upstream, when the
   winning candidate is backlogged, promotes a same-item alternate recorded
   by the "Highest Level"-off grouping path. This module doesn't track that
@@ -91,6 +87,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from fray_claude import boosts
 from fray_claude.challenges import _SKILL_NAMES, _check_primary_method
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.sources import SourceIndex
@@ -202,22 +199,44 @@ def _never_show(
 
 
 def _completed_level_ceiling(
-    completed: Mapping[str, Any], skill_challenges: Mapping[str, Any]
+    skill: str,
+    completed: Mapping[str, Any],
+    skill_challenges: Mapping[str, Any],
+    *,
+    rules: Mapping[str, Any],
+    chunk_info: ChunkInfo,
+    items: Mapping[str, Any],
+    source_index: SourceIndex,
 ) -> float | None:
-    """The highest `Level` among this skill's already-completed challenges,
-    or `None` if none of them carries one.
+    """Upstream's `highestChallengeLevelArr[skill]` (worker.js:8392-8430):
+    the highest *boost-adjusted* level among this skill's already-completed
+    challenges, or `None` if none of them carries a `Level`.
 
-    Completing a task proves the level it needs, so anything easier is
-    settled - see `_classify_skill` for why that has to gate candidacy.
-    Reads the whole `completed` ledger, not just its currently-*valid*
-    intersection: a completed task is evidence regardless of whether the
-    present chunk set still makes it reachable. Entries with no `Level`, or
-    none in the export at all (real data files diary tasks under a skill:
-    `Woodcutting`'s completed set holds `~|Wilderness Diary#Medium|~ Task
-    2`), contribute nothing rather than defaulting to a level.
+    Completing a task proves the level it needs, so anything no harder is
+    settled - see `_classify_skill` for why that gates candidacy. Reads the
+    whole `completed` ledger, not just its currently-*valid* intersection: a
+    completed task is evidence regardless of whether the present chunk set
+    still makes it reachable. Entries with no `Level`, or none in the export
+    at all (real data files diary tasks under a skill: `Woodcutting`'s
+    completed set holds `~|Wilderness Diary#Medium|~ Task 2`), contribute
+    nothing rather than defaulting to a level.
+
+    Uses `boosts.completed_ceiling`, not `boosts.real_level` - the two clamp
+    differently upstream and this is the completed side. Boosting *lowers*
+    the ceiling: a task you only managed with a Wild pie proves less than
+    its face level.
     """
     levels = [
-        float(level)
+        boosts.completed_ceiling(
+            skill,
+            name,
+            challenge,
+            float(level),
+            rules=rules,
+            chunk_info=chunk_info,
+            items=items,
+            source_index=source_index,
+        )
         for name in completed
         if isinstance(challenge := skill_challenges.get(name), dict)
         and isinstance(level := challenge.get("Level"), (int, float))
@@ -236,12 +255,23 @@ def _classify_skill(
     passive_skill: Mapping[str, int],
     skill_is_primary: bool,
     rules: Mapping[str, Any],
+    chunk_info: ChunkInfo,
+    items: Mapping[str, Any],
+    source_index: SourceIndex,
 ) -> SkillClassification:
     completed_names = {name for name in valid_names if name in completed}
     remaining = [name for name in valid_names if name not in completed_names]
     # A task no harder than one already completed is settled - see the module
     # docstring.
-    ceiling = _completed_level_ceiling(completed, skill_challenges)
+    ceiling = _completed_level_ceiling(
+        skill,
+        completed,
+        skill_challenges,
+        rules=rules,
+        chunk_info=chunk_info,
+        items=items,
+        source_index=source_index,
+    )
 
     winner: str | None = None
     winner_level = float("-inf")
@@ -252,8 +282,20 @@ def _classify_skill(
             continue
         if _never_show(skill, name, challenge, rules):
             continue
-        level = challenge.get("Level")
-        level = float(level) if isinstance(level, (int, float)) else 1.0
+        raw_level = challenge.get("Level")
+        raw_level = float(raw_level) if isinstance(raw_level, (int, float)) else 1.0
+        # Every comparison from here down is against the *boosted* level,
+        # exactly as upstream's `realLevel` is (worker.js:8436-8466).
+        level = boosts.real_level(
+            skill,
+            name,
+            challenge,
+            raw_level,
+            rules=rules,
+            chunk_info=chunk_info,
+            items=items,
+            source_index=source_index,
+        )
         if ceiling is not None and level <= ceiling:
             continue
         if not _is_eligible(
@@ -295,6 +337,7 @@ def classify_tasks(
     passive_skill: Mapping[str, int],
     source_index: SourceIndex | None = None,
     rules: Mapping[str, Any] | None = None,
+    available_items: Mapping[str, Any] | None = None,
 ) -> TaskClassification:
     """Classify every `challenges._SKILL_NAMES` category present in `valid`.
 
@@ -307,6 +350,9 @@ def classify_tasks(
     challenges = chunk_info.challenges
     index = source_index if source_index is not None else _EMPTY_SOURCE_INDEX
     rules = rules or {}
+    # `ChallengeResult.available_items`, not `SourceIndex.items` - boosts are
+    # often crafted (`Wild pie`). See `boosts._available`.
+    available_items = index.items if available_items is None else available_items
     skills: dict[str, SkillClassification] = {}
     for skill, valid_names in valid.items():
         if skill not in _SKILL_NAMES or not valid_names:
@@ -320,6 +366,9 @@ def classify_tasks(
             manual_tasks=manual_tasks,
             passive_skill=passive_skill,
             rules=rules,
+            chunk_info=chunk_info,
+            items=available_items,
+            source_index=index,
             skill_is_primary=_check_primary_method(
                 skill,
                 valid,
@@ -328,6 +377,8 @@ def classify_tasks(
                 passive_skill=passive_skill,
                 backlog=backlog,
                 manual_tasks=manual_tasks,
+                rules=rules,
+                items=available_items,
             ),
         )
     return TaskClassification(skills=skills)

@@ -173,6 +173,7 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
         passive_skill=state.passive_skill,
         source_index=index,
         rules=state.rules,
+        available_items=challenges.available_items,
     )
     return Derived(
         reachable_sections=reachable,

@@ -271,13 +271,11 @@ One responsibility per module, so the planned simulation work has a pure layer t
   built against), which is the honest answer. `completedChallenges` is read
   directly, never re-derived - verified upstream never marks a lower tier "obsolete" in any stored
   field (`grep -i "obsolete\|supersed"` across index.js/worker.js: zero hits); "only show the highest"
-  is a pure per-recompute display choice. **Boosting is the largest remaining gap**: `rules['Boosting']`
-  is on for real maps and upstream compares a *boosted* `realLevel = Level - bestBoost` on both sides
-  of the ceiling test (best reachable `codeItems.boostItems[skill]`, plus a `+3` Construction Crystal
-  saw case, `boostTaskBans` exclusions, `"N%+M"` proportional boosts, skipping `NoBoost` challenges);
-  nothing here models boost ownership, so a pick can be wrong whenever two candidates sit within one
-  boost of each other. The backlog-alternate promotion and sub-skill `Skills`-requirement
-  cross-propagation are likewise not modelled. Scope
+  is a pure per-recompute display choice. Every level compared here is **boost-adjusted** (see
+  `boosts.py`) — the ceiling via `completed_ceiling`, candidates via `real_level`, and hence
+  `_is_eligible`'s `level == 1` test too, which is how an untrainable skill can still have a pick
+  (`Clean a grimy guam leaf`, Level 3, boosts to 1 and becomes Herblore's active task). The
+  backlog-alternate promotion and sub-skill `Skills`-requirement cross-propagation remain unmodelled. Scope
   (only real skill categories, not Quest/Diary/Extra/Nonskill/BiS) and the oracle-comparison approach
   were explicit user decisions - see the module docstring for the full reasoning. `activeTasks[skill]`
   is a real oracle for the computed `active` pick when present. Only `BiS`/`Diary`/`Extra`/`Slayer`
@@ -286,6 +284,20 @@ One responsibility per module, so the planned simulation work has a pure layer t
   `{'Slay an ~|araxyte#Level 96|~': '92{5}'}` (Level 92 less a 5-point `Wild pie` boost), it was
   failing, and fixing it is what surfaced the `checkPrimaryMethod` bug above. Asserted by
   `tests/test_active_tasks.py`'s opt-in oracle test; treat a mismatch there as a defect, not staleness.
+- `boosts.py` — pure; temporary skill boosts (`best_boost`, `real_level`, `completed_ceiling`). Port
+  of the block upstream repeats verbatim at a dozen sites; with `rules['Boosting']` on, **every level
+  comparison upstream makes is against a boosted level**, so this is a dependency of `active_tasks.py`
+  and `challenges.py` rather than a feature of its own. `codeItems.boostItems[skill]` maps a boost to
+  a flat amount or a `"N%+M"` proportional string; a `~` in the key names the `SourceIndex` category
+  (`Oldak~npcs`); `codeItems.boostTaskBans` excludes per challenge (only Thieving's sq'irkjuice, which
+  you'd need the boost to obtain); `Crystal saw` is Construction-only, `+3`, and applies solely to
+  challenges whose `Items` include `Saw[+]`; a `NoBoost` challenge is exempt. **Availability is read
+  from `ChallengeResult.available_items`, not `SourceIndex.items`** — the same trap `bis.py` hit: the
+  oracle's own `Wild pie` is baked, not dropped, so the narrow index silently yields no boost at all.
+  Two upstream quirks are reproduced rather than corrected, both tested: a `"4%"`-style value with no
+  `+` contributes nothing (JS coerces it to `NaN`), and the two clamps differ — `real_level` floors at
+  1 while `completed_ceiling` rewrites the boost to `Level - 1` and recomputes, yielding `-2` for a
+  Construction `Saw[+]` challenge. `skillQuestXp` and the `Kill X` rule's own copy are unported.
 - `pipeline.py` — pure; bundles the per-map inputs (`MapState`) and runs `unlocked_sections` ->
   `gather_chunks_info` -> `calc_challenges` -> `compute_bis` -> `classify_tasks` for a given
   unlocked-chunk-id set (`derive` -> `Derived`, carrying `bis`/`task_classification` alongside
