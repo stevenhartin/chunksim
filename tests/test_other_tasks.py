@@ -326,3 +326,102 @@ def test_active_totals_match_the_live_oracle(category: str) -> None:
 
     assert oracle, f"the map no longer records active {category} tasks"
     assert derived.other_tasks.categories[category].active_total == len(oracle)
+
+
+def _arrav_info() -> ChunkInfo:
+    """The Shield of Arrav shape: one chain that forks into routes 2a and 2b
+    and rejoins at step 3 via a `[+]` family naming each route's last step."""
+    steps: dict[str, Any] = {
+        "~|Arrav|~ 1": {"BaseQuest": "Arrav", "Description": "Talk to Reldo"},
+        "~|Arrav|~ 3": {
+            "BaseQuest": "Arrav",
+            "Description": "Take the shield half to the curator",
+            "Tasks": {"Arrav2Final[+]": "Quest"},
+        },
+    }
+    for route in ("a", "b"):
+        previous = "~|Arrav|~ 1"
+        for n in (1, 2):
+            name = f"~|Arrav|~ 2{route}{n}"
+            steps[name] = {
+                "BaseQuest": "Arrav",
+                "Description": f"Route {route} step {n}",
+                "Tasks": {previous: "Quest"},
+            }
+            previous = name
+    return ChunkInfo(
+        {
+            "challenges": {"Quest": steps},
+            "codeItems": {"tasksPlus": {"Arrav2Final[+]": ["~|Arrav|~ 2a2", "~|Arrav|~ 2b2"]}},
+        }
+    )
+
+
+def test_a_reachable_later_step_supersedes_everything_before_it() -> None:
+    """`markSubTasks(..., false)` (worker.js:485/1486): being able to do a
+    step means its prerequisites are behind you, recorded or not, so only the
+    furthest reachable step of a quest shows.
+    """
+    info = _arrav_info()
+    names = info.challenges["Quest"]
+
+    result = _classify({"Quest": dict.fromkeys(names, True)}, info)
+
+    quest = result.categories["Quest"]
+    assert quest.active_total == 1
+    assert quest.groups[0].active == ("~|Arrav|~ 3",)
+
+
+def test_a_plus_family_supersedes_every_route(  ) -> None:
+    """Upstream marks *all* members of the family, not one: reaching step 3
+    means whichever route you took is behind you, and it cannot tell which.
+    """
+    info = _arrav_info()
+    names = info.challenges["Quest"]
+
+    result = _classify({"Quest": dict.fromkeys(names, True)}, info)
+
+    active = result.categories["Quest"].groups[0].active
+    assert not [n for n in active if "2a" in n or "2b" in n]
+
+
+def test_supersession_walks_through_steps_that_are_not_reachable() -> None:
+    """Route A's later steps being unreachable must not strand its first one:
+    upstream recurses whether or not the step it passes through is valid."""
+    info = _arrav_info()
+    valid = {
+        "Quest": {
+            "~|Arrav|~ 1": True,
+            "~|Arrav|~ 2a1": True,  # route A stops here
+            "~|Arrav|~ 2b1": True,
+            "~|Arrav|~ 2b2": True,
+            "~|Arrav|~ 3": True,
+        }
+    }
+
+    result = _classify(valid, info)
+
+    assert result.categories["Quest"].groups[0].active == ("~|Arrav|~ 3",)
+
+
+def test_supersession_does_not_cross_into_another_quest() -> None:
+    """Upstream guards every mark with a `BaseQuest` match, so a dependency
+    on an unrelated quest does not drag that quest's steps in."""
+    info = ChunkInfo(
+        {
+            "challenges": {
+                "Quest": {
+                    "~|Other|~ 1": {"BaseQuest": "Other", "Description": "Elsewhere"},
+                    "~|Arrav|~ 1": {
+                        "BaseQuest": "Arrav",
+                        "Description": "Needs another quest",
+                        "Tasks": {"~|Other|~ 1": "Quest"},
+                    },
+                }
+            }
+        }
+    )
+
+    result = _classify({"Quest": {"~|Other|~ 1": True, "~|Arrav|~ 1": True}}, info)
+
+    assert result.categories["Quest"].active_total == 2

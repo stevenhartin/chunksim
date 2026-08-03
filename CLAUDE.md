@@ -353,12 +353,20 @@ One responsibility per module, so the planned simulation work has a pure layer t
   `Collection Log`, `Permanent Unlockables`, `Untracked Uniques`, plus `Fill POH`/`Fill Stashes`/
   `BIS Skilling`/`Stuffables` when their rules are on (`challenges._category_gate_met` already
   decides which). `Extra` is the export's key and stays the key in `--export-json`; **`Other` is the
-  display name**, and both are accepted by `fray tasks`. **`Quest` completions close
-  transitively** (`_implied_completions`): a quest is a step chain, and ticking it off records only
-  `~|X|~ Complete the quest`, so every prerequisite it reaches through `Tasks` counts as done too —
-  without it a finished quest kept showing all seven of its steps (Quest active 94 -> 7 on the real
-  map). Scoped to `Quest` and to edges staying inside it: elsewhere a `Tasks` entry is an ordinary
-  requirement, and inferring completion across one would be inventing history rather than reading it.
+  display name**, and both are accepted by `fray tasks`. **`Quest` gets two extra passes**, both because a quest is a step
+  chain: `_implied_completions` closes the *recorded* completions transitively (ticking a quest off
+  stores only `~|X|~ Complete the quest`), and `_superseded` ports upstream's `markSubTasks(...,
+  false)` (worker.js:485/1486) — being able to *reach* a step means its prerequisites are behind you
+  whether or not anything recorded them, so only the furthest reachable step of a quest shows.
+  Together they took Quest active 94 -> 7 -> 0 on the real map, and 0 is right: only 13 quests are
+  fully reachable there and all 13 are done. `[+]` families expand to **every** member
+  (worker.js:498/512) — `~|Shield of Arrav|~ 3` needs `ShieldOfArrav2Final[+]`, the last step of
+  either route, and reaching it means whichever route you took is done; upstream can't tell which
+  either. Note the family key is `name.split('[+]x')[0].replace('[+]','') + '[+]'` — the existing
+  `[+]` comes *off* before one is appended, or `X[+]` looks up as `X[+][+]` and silently finds
+  nothing. Both passes are guarded on a matching `BaseQuest`, and `_superseded` is kept as a set
+  rather than written into `ChallengeResult.valid`, whose values mean "requirements met" everywhere
+  else and which `unlock.py`/`simulate.py` diff.
 - `pipeline.py` — pure; bundles the per-map inputs (`MapState`) and runs `unlocked_sections` ->
   `gather_chunks_info` -> `calc_challenges` -> `compute_bis` -> `classify_tasks` for a given
   unlocked-chunk-id set (`derive` -> `Derived`, carrying `bis`/`task_classification` alongside

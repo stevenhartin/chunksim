@@ -22,10 +22,24 @@ Two details of that guard matter, and both were wrong here before:
   same rule `active_tasks.py` follows: a requirement added by a later game
   update must not erase the fact that the task was done.
 
-`Quest` additionally closes its completions transitively
-(`_implied_completions`): a quest is a step chain and ticking it off records
-only `~|X|~ Complete the quest`, so every prerequisite reachable through
-`Tasks` counts as done as well.
+`Quest` gets two extra passes, both about the same fact - a quest is a step
+chain, so progress at one point settles everything before it:
+
+- `_implied_completions` closes the *recorded* completions transitively.
+  Ticking a quest off stores only `~|X|~ Complete the quest`, so every
+  prerequisite it reaches counts as done too.
+- `_superseded` is a port of upstream's `markSubTasks(..., false)`
+  (worker.js:485, called at :1486 for every fully-valid challenge). Being
+  able to *reach* a step means its prerequisites are behind you whether or
+  not anything recorded them; upstream writes `false` into the step's valid
+  value and the panel's `&& globalValids['Quest'][challenge]` guard hides it.
+  Only the furthest reachable step of a quest shows. It is kept as a set here
+  rather than written into `ChallengeResult.valid`, whose values mean
+  "requirements met" everywhere else and which `unlock.py`/`simulate.py` diff.
+  `[+]` families expand to **every** member (worker.js:498/512): `~|Shield of
+  Arrav|~ 3` needs `ShieldOfArrav2Final[+]`, the last step of either route,
+  and reaching it means whichever route you took is done - upstream cannot
+  tell which either. Both passes are guarded on a matching `BaseQuest`.
 
 Grouping mirrors the panel's own: `Quest` by `BaseQuest`; `Diary` by the
 diary and tier encoded in the name (`~|Morytania Diary#Elite|~ Task 5` ->
@@ -188,6 +202,86 @@ def _implied_completions(
     return frozenset(implied)
 
 
+def _plus_members(chunk_info: ChunkInfo, name: str) -> tuple[str, ...] | None:
+    """`codeItems.tasksPlus` members of a `[+]` / `[+]xN` family name."""
+    if "[+]" not in name:
+        return None
+    # `subTask.split('[+]x')[0].replaceAll('[+]', '') + '[+]'` - the existing
+    # `[+]` has to come off before one is appended, or a plain `X[+]` name
+    # looks up as `X[+][+]` and silently finds nothing.
+    family = name.split("[+]x")[0].replace("[+]", "") + "[+]"
+    members = (chunk_info.code_items.get("tasksPlus") or {}).get(family)
+    return tuple(m for m in members if isinstance(m, str)) if isinstance(members, list) else None
+
+
+def _prerequisites(
+    category: str,
+    name: str,
+    challenges: Mapping[str, Any],
+    chunk_info: ChunkInfo,
+    base_quest: Any,
+) -> list[str]:
+    """The same-quest steps `name` depends on, `[+]` families expanded.
+
+    Upstream marks *every* member of a family, not one (worker.js:498/512) -
+    `~|Shield of Arrav|~ 3` needs `ShieldOfArrav2Final[+]`, i.e. the last step
+    of either route, and reaching it means whichever route you took is behind
+    you. The `BaseQuest` match is upstream's own guard against a dependency
+    on an unrelated quest dragging that quest's steps in with it.
+    """
+    challenge = challenges.get(name)
+    tasks = challenge.get("Tasks") if isinstance(challenge, dict) else None
+    if not isinstance(tasks, dict):
+        return []
+    found: list[str] = []
+    for raw, task_category in tasks.items():
+        if task_category != category:
+            continue
+        members = _plus_members(chunk_info, raw)
+        for candidate in members if members is not None else (raw,):
+            step = candidate.split("--")[0]
+            other = challenges.get(step)
+            if isinstance(other, dict) and other.get("BaseQuest") == base_quest:
+                found.append(step)
+    return found
+
+
+def _superseded(
+    category: str,
+    valid_names: Mapping[str, Any],
+    challenges: Mapping[str, Any],
+    chunk_info: ChunkInfo,
+) -> frozenset[str]:
+    """Steps a *reachable* later step has left behind - port of
+    `markSubTasks(..., false)` (worker.js:485, called at :1486 for every
+    fully-valid challenge).
+
+    Being able to do step 4 means steps 1-3 are behind you whether or not
+    anything recorded them, so upstream sets each prerequisite's valid value
+    to `false` and the panel's `&& globalValids['Quest'][challenge]` guard
+    then hides it. Only the furthest reachable step of a quest shows.
+
+    Computed as a set here rather than by writing `false` into
+    `ChallengeResult.valid`: validity means "requirements met" everywhere
+    else in this project, and `unlock.py`/`simulate.py` diff that mapping.
+    """
+    if category not in _CHAINED_CATEGORIES:
+        return frozenset()
+    superseded: set[str] = set()
+    pending = list(valid_names)
+    while pending:
+        name = pending.pop()
+        challenge = challenges.get(name)
+        base_quest = challenge.get("BaseQuest") if isinstance(challenge, dict) else None
+        if base_quest is None:
+            continue
+        for step in _prerequisites(category, name, challenges, chunk_info, base_quest):
+            if step not in superseded:
+                superseded.add(step)
+                pending.append(step)
+    return frozenset(superseded)
+
+
 def _committed(
     completed: Mapping[str, Any], checked: Mapping[str, Any]
 ) -> frozenset[str]:
@@ -201,6 +295,7 @@ def _classify_category(
     category: str,
     valid_names: Mapping[str, Any],
     challenges: Mapping[str, Any],
+    chunk_info: ChunkInfo,
     *,
     completed: Mapping[str, Any],
     checked: Mapping[str, Any],
@@ -208,10 +303,13 @@ def _classify_category(
 ) -> CategoryTasks:
     implied = _implied_completions(category, completed, challenges)
     committed = _committed(completed, checked) | implied
+    superseded = _superseded(category, valid_names, challenges, chunk_info)
     active = [
         name
         for name in valid_names
-        if not _recorded(name, committed) and not _recorded(name, backlog)
+        if name not in superseded
+        and not _recorded(name, committed)
+        and not _recorded(name, backlog)
     ]
     completed_names = [*completed, *sorted(implied)]
 
@@ -267,6 +365,7 @@ def classify_other_tasks(
             category,
             valid.get(category) or {},
             challenges.get(category) or {},
+            chunk_info,
             completed=completed_challenges.get(category) or {},
             checked=checked_challenges.get(category) or {},
             backlog=backlog.get(category) or {},
