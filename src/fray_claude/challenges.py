@@ -859,6 +859,64 @@ def _seed_items_with_outputs(
     return items
 
 
+def _drop_superseded_backups(
+    new_valid: dict[str, dict[str, int | str | bool]],
+    prev_valid: Mapping[str, Mapping[str, Any]],
+    challenges: Mapping[str, Mapping[str, Any]],
+    backlog: Mapping[str, Mapping[str, Any]],
+) -> None:
+    """Delete every challenge whose `BackupParent` is satisfied, in place.
+
+    Port of worker.js:1679-1690 (repeated at 1445). A `BackupParent` names
+    the *proper* way to do the same thing, and the challenge carrying it is
+    only offered while that proper way is out of reach: once the parent is
+    valid - or has been backlogged, which upstream counts the same way,
+    since backlogging is a deliberate "not this one" - the backup is deleted
+    outright rather than merely deprioritised. `ManualValid` exempts a
+    challenge from this (no export entry uses it, but it costs nothing to
+    honour). The backlog lookup also tries the `#` -> `/` spelling, as
+    upstream does everywhere it reads that branch.
+
+    All 17 real uses are `Hunter`'s barehanded catches: `Barehanded catch a
+    wandering ~|lucky impling|~` (Level 99) exists for players with no
+    butterfly net, and must vanish the moment `Catch a wandering ~|lucky
+    impling|~` (Level 89, needs the net) becomes possible. Without this it
+    outranked its own parent on `Level` and was reported as the active
+    Hunter task - the reported bug.
+
+    **This is the one requirement in this module that is an *absence* check**,
+    so `ChallengeResult.valid` no longer only grows: an unlock that supplies
+    a butterfly net removes 11 challenges on the real map. `unlock.py`'s
+    attribution partition is documented against that.
+    """
+    for skill, names in new_valid.items():
+        skill_challenges = challenges.get(skill)
+        if not isinstance(skill_challenges, dict):
+            continue
+        skill_backlog = backlog.get(skill) or {}
+        previous = prev_valid.get(skill) or {}
+        for name in list(names):
+            challenge = skill_challenges.get(name)
+            if not isinstance(challenge, dict):
+                continue
+            parent = challenge.get("BackupParent")
+            if not isinstance(parent, str) or challenge.get("ManualValid"):
+                continue
+            if (
+                parent in names
+                or parent in previous
+                or parent in skill_backlog
+                or parent.replace("#", "/") in skill_backlog
+            ):
+                del names[name]
+    # `new_valid` is only ever created via `setdefault` when something is
+    # added, so a skill key implies at least one valid challenge. Deleting
+    # the last one has to preserve that, or `valid` starts carrying empty
+    # branches that never otherwise occur.
+    for skill in [skill for skill, names in new_valid.items() if not names]:
+        del new_valid[skill]
+
+
 def _group_processing_skill_challenges(
     valid: Mapping[str, Mapping[str, int | str | bool]],
     challenges: Mapping[str, Mapping[str, Any]],
@@ -1014,6 +1072,7 @@ def calc_challenges(
                     continue
                 if result is not None:
                     new_valid.setdefault(skill, {})[name] = result
+        _drop_superseded_backups(new_valid, valid, challenges, backlog)
         if new_valid == valid:
             break
         valid = new_valid

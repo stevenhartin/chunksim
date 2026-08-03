@@ -413,3 +413,78 @@ def test_active_slayer_task_matches_the_live_oracle() -> None:
     # `"92{5}"` -> the trailing `{N}` is the boost upstream applied.
     expected_boost = int(oracle[recorded].split("{")[1].rstrip("}"))
     assert best + saw == expected_boost
+
+
+#: A Level 1 `Primary` route so `checkPrimaryMethod` reports the skill
+#: trainable; without one nothing above the passive floor is eligible and
+#: every tie-break below would collapse to "no active task".
+_STARTER = {"Level": 1, "Primary": True}
+
+
+def _tie_info(a: dict[str, Any], b: dict[str, Any]) -> ChunkInfo:
+    return _chunk_info(
+        challenges={"Mining": {"Mine a pebble": _STARTER, "Route A": a, "Route B": b}}
+    )
+
+
+def _tie_winner(a: dict[str, Any], b: dict[str, Any]) -> str | None:
+    valid = {
+        "Mining": {
+            "Mine a pebble": 1,
+            "Route A": a.get("Level", 1),
+            "Route B": b.get("Level", 1),
+        }
+    }
+    result = classify_tasks(
+        valid,
+        _tie_info(a, b),
+        completed_challenges={},
+        manual_tasks={},
+        backlog={},
+        passive_skill={},
+    )
+    return result.skills["Mining"].active
+
+
+def test_at_equal_level_the_lower_priority_wins() -> None:
+    winner = _tie_winner(
+        {"Level": 50, "Primary": True, "Priority": 5},
+        {"Level": 50, "Primary": True, "Priority": 2},
+    )
+
+    assert winner == "Route B"
+
+
+def test_at_equal_level_a_challenger_beats_an_incumbent_with_no_priority() -> None:
+    """Branch A: `!incumbent['Priority']` alone hands it over, whatever the
+    challenger's own priority is."""
+    winner = _tie_winner(
+        {"Level": 50, "Primary": True},
+        {"Level": 50, "Primary": True, "Priority": 9},
+    )
+
+    assert winner == "Route B"
+
+
+def test_a_primary_challenger_with_no_priority_beats_one_that_has_it() -> None:
+    """Branch B, which branch A alone would never allow: the challenger has
+    no `Priority` key and the incumbent has a real one, so A's tests both
+    fail - only `Primary` gets it through.
+    """
+    winner = _tie_winner(
+        {"Level": 50, "Primary": True, "Priority": 3},
+        {"Level": 50, "Primary": True},
+    )
+
+    assert winner == "Route B"
+
+
+def test_a_non_primary_challenger_with_no_priority_does_not_displace() -> None:
+    """The same shape as above without the `Primary` flag stays put - which
+    is what makes that flag a tie-breaker in its own right."""
+    winner = _tie_winner(
+        {"Level": 50, "Primary": True, "Priority": 3},
+        {"Level": 50},
+    )
+
+    assert winner == "Route A"

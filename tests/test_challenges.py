@@ -736,3 +736,100 @@ def test_strip_task_markup_leaves_the_variant_separator_and_secondary_marker() -
     than being guessed at."""
     assert strip_task_markup("Build a ~|wooden hull#Raft|~") == "Build a wooden hull#Raft"
     assert strip_task_markup("Kill a runite golem*") == "Kill a runite golem*"
+
+
+def test_a_backup_challenge_is_dropped_once_its_parent_is_valid() -> None:
+    """`BackupParent` names the proper way to do the same thing; the backup
+    exists only while that is out of reach. The reported bug: `Barehanded
+    catch a wandering lucky impling` (Level 99) outranked its own parent and
+    became the active Hunter task despite the account owning a net.
+    """
+    info = _chunk_info(
+        challenges={
+            "Hunter": {
+                "Catch a wandering lucky impling": {"Level": 89, "Items": ["Butterfly net"]},
+                "Barehanded catch a wandering lucky impling": {
+                    "Level": 99,
+                    "BackupParent": "Catch a wandering lucky impling",
+                },
+            }
+        }
+    )
+    with_net = SourceIndex(
+        items={"Butterfly net": {"100": "shop"}},
+        objects={},
+        monsters={},
+        npcs={},
+        shops={},
+        drop_rates={},
+    )
+
+    barehanded_only = calc_challenges({}, {}, _EMPTY, info, rules={})
+    with_the_net = calc_challenges({}, {}, with_net, info, rules={})
+
+    # No net: the parent can't be done, so the backup stands.
+    assert barehanded_only.valid == {"Hunter": {"Barehanded catch a wandering lucky impling": 99}}
+    # Net: the parent is possible, so the backup is deleted outright.
+    assert with_the_net.valid == {"Hunter": {"Catch a wandering lucky impling": 89}}
+
+
+def test_a_backlogged_parent_also_drops_the_backup() -> None:
+    """Upstream counts a backlogged parent the same as a valid one -
+    backlogging is a deliberate "not this one", not a reason to offer the
+    fallback instead."""
+    info = _chunk_info(
+        challenges={
+            "Hunter": {
+                "Catch a wandering lucky impling": {"Level": 89, "Items": ["Butterfly net"]},
+                "Barehanded catch a wandering lucky impling": {
+                    "Level": 99,
+                    "BackupParent": "Catch a wandering lucky impling",
+                },
+            }
+        }
+    )
+
+    result = calc_challenges(
+        {}, {}, _EMPTY, info, rules={}, backlog={"Hunter": {"Catch a wandering lucky impling": ""}}
+    )
+
+    assert result.valid == {}
+
+
+def test_manual_valid_exempts_a_backup_from_being_dropped() -> None:
+    info = _chunk_info(
+        challenges={
+            "Hunter": {
+                "Catch a wandering lucky impling": {"Level": 89},
+                "Barehanded catch a wandering lucky impling": {
+                    "Level": 99,
+                    "BackupParent": "Catch a wandering lucky impling",
+                    "ManualValid": True,
+                },
+            }
+        }
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert set(result.valid["Hunter"]) == {
+        "Catch a wandering lucky impling",
+        "Barehanded catch a wandering lucky impling",
+    }
+
+
+def test_a_backup_whose_parent_is_unknown_is_left_alone() -> None:
+    info = _chunk_info(
+        challenges={
+            "Hunter": {
+                "Barehanded catch a wandering lucky impling": {
+                    "Level": 99,
+                    "BackupParent": "Catch a wandering lucky impling",
+                }
+            }
+        }
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert result.valid == {"Hunter": {"Barehanded catch a wandering lucky impling": 99}}

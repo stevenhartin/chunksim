@@ -157,7 +157,14 @@ One responsibility per module, so the planned simulation work has a pure layer t
   matching plain presence checking with no grouping needed. Only ~42 challenges remain genuinely
   unsupported on that map — the `QuestPointsNeeded`/`CombatPointsNeeded`/`KudosNeeded`/
   `TotalLevelNeeded`/`CombatLevelNeeded` gates, which need state (quest points, kudos, ...) this module
-  doesn't derive. `chunkinfo.constructionLocked` is honoured (worker.js:3758): when set — real data
+  doesn't derive. `BackupParent` is honoured (worker.js:1679): a challenge naming one is deleted once
+  that parent is valid *or backlogged*, unless it carries `ManualValid`. All 17 real uses are
+  `Hunter`'s barehanded catches — `Barehanded catch a wandering lucky impling` (Level 99) exists for
+  players with no butterfly net and must vanish once the Level 89 net version is possible, which it
+  wasn't doing (a reported bug: it outranked its own parent and became the active Hunter task).
+  **This is the one *absence* check in the module**, so `valid` no longer strictly grows — 11
+  challenges disappear on the real map once a net is reachable; see `unlock.py` for what that costs
+  the attribution partition. `chunkinfo.constructionLocked` is honoured (worker.js:3758): when set — real data
   has `{'chunk': '10547'}` — every challenge whose name contains `contract for ~|Mahogany Homes|~` is
   invalid outright, since Mahogany Homes is gated behind a chunk the account hasn't taken. Missing
   this was a real reported bug (`fray tasks` proposed an expert contract as the Construction goal).
@@ -323,8 +330,9 @@ One responsibility per module, so the planned simulation work has a pure layer t
   rather than re-deriving the same pipeline themselves.
 - `unlock.py` — pure; what a single candidate chunk unlock adds (`tasks_added_by` -> `UnlockDelta`),
   by running `pipeline.derive` for the unlocked set and for that set plus the candidate, then diffing.
-  This is the module the project's attribution rule lives in: because `ChallengeResult.valid` only
-  ever grows (every requirement `challenges.py` checks is a presence check, never an absence check),
+  This is the module the project's attribution rule lives in: because `ChallengeResult.valid` almost
+  only ever grows (nearly every requirement `challenges.py` checks is a presence check — the sole
+  exception is `BackupParent`, above, which can *remove* a task a later unlock supersedes),
   the diff partitions cleanly — each task belongs to exactly the one unlock that first made it valid,
   and a later unlock can never retroactively change an earlier delta. Diffing the *panel*'s
   active-task selection instead (`calcCurrentChallenges2`, now ported in `active_tasks.py`) would

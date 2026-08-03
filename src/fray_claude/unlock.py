@@ -1,13 +1,24 @@
 """What a single chunk unlock adds, attributed to the unlock that caused it.
 
-`ChallengeResult.valid` (`challenges.py`) only ever grows as chunks are
-added: every requirement this project checks is a *presence* check (an
-item/object/monster/npc/chunk/prerequisite-task existing), never an
-absence check, so a larger unlocked set can only add sources, never remove
-them. That makes `derive(unlocked ∪ {chunk_id}).valid` minus
-`derive(unlocked).valid` a clean partition - each task is attributed to
-exactly the one unlock that first made it valid, and a later unlock can
-never retroactively change an earlier one's recorded delta.
+`ChallengeResult.valid` (`challenges.py`) very nearly only grows as chunks
+are added: almost every requirement this project checks is a *presence*
+check (an item/object/monster/npc/chunk/prerequisite-task existing), so a
+larger unlocked set can only add sources, never remove them. That makes
+`derive(unlocked ∪ {chunk_id}).valid` minus `derive(unlocked).valid` a clean
+partition - each task is attributed to exactly the one unlock that first
+made it valid, and a later unlock can never retroactively change an earlier
+one's recorded delta.
+
+**One exception, `BackupParent`** (`challenges._drop_superseded_backups`):
+a barehanded-catch challenge is deleted once the proper method it backs up
+becomes valid, so an unlock that supplies a butterfly net *removes* 11
+challenges on the real map. The diff is a set difference and simply won't
+list them, so nothing breaks mechanically - but a task attributed to an
+earlier unlock can later stop being valid, and that record is not revisited.
+The alternative, re-diffing every prior record on each roll, would trade a
+rare stale credit for a ledger that changes under you retroactively; the
+project's semantics already prefer the former (see `bis.py`'s note below).
+17 challenges in the whole export carry `BackupParent`, all `Hunter`.
 
 The *panel*'s active-task selection (`calcCurrentChallenges2`, now ported in
 `active_tasks.py`) would still be the wrong thing to diff for attribution,

@@ -31,8 +31,16 @@ Verified against upstream and real map data before porting:
   independent ledger, not something this module could reproduce from chunk
   state - it must be read from `MapState.completed_challenges`.
 - `Primary` (32% of real challenges) and `Priority` (30%) are real fields
-  this eligibility gate and tie-break need; getting them wrong changes which
-  challenge "wins" for a meaningful fraction of skills.
+  the tie-break needs; getting them wrong changes which challenge "wins" for
+  a meaningful fraction of skills. Note `Primary` is **not** the eligibility
+  gate (that is the skill-wide `checkPrimaryMethod` - see `_is_eligible`); it
+  is a tie-breaker, via `_wins_tie`'s second branch.
+- `ForcedSecondary` plays no part in this selection at all. Its only three
+  upstream uses (worker.js:2971/2976/3008) are in the `skillItems` drop-rate
+  classification, deciding whether an activity's item counts as a primary or
+  secondary source - a distinction `challenges._seed_items_with_outputs`
+  deliberately flattens. A `ForcedSecondary` challenge is superseded here by
+  the ordinary `BackupParent`/`Priority`/ceiling machinery, not by the flag.
 
 The completed-level ceiling (`_completed_level_ceiling`) is upstream's
 `highestChallengeLevelArr` (worker.js:8392): the highest `Level` among the
@@ -168,6 +176,47 @@ def _is_eligible(
     return name in manual_tasks.get(skill, {})
 
 
+def _lower_priority(challenger: Any, incumbent: Any) -> bool:
+    """`challenger['Priority'] < incumbent['Priority']`, numeric only."""
+    return (
+        isinstance(challenger, (int, float))
+        and isinstance(incumbent, (int, float))
+        and challenger < incumbent
+    )
+
+
+def _wins_tie(challenger: Mapping[str, Any], incumbent: Mapping[str, Any]) -> bool:
+    """Does `challenger` displace `incumbent` at equal boosted level?
+
+    Upstream tries two branches in turn (worker.js:8469, then 8493 when the
+    first fails), and they are not the same test:
+
+    - **A**: the incumbent has no *truthy* `Priority`, or the challenger has
+      a truthy one that is lower. (`Priority: 0` reads as "none" here, since
+      JS tests it for truthiness.)
+    - **B**: failing that, a challenger flagged `Primary` still wins if
+      *either* side simply has no `Priority` **key**, or its own is lower.
+
+    B is what makes `Primary` a tie-breaker in its own right: a `Primary`
+    challenge carrying no `Priority` at all displaces an incumbent that has
+    one, which branch A alone would never allow. Only the per-challenge flag
+    is meant here - the *skill*-wide `checkPrimaryMethod` boolean is a
+    different thing entirely and gates eligibility, not this (see
+    `_is_eligible`).
+    """
+    challenger_priority = challenger.get("Priority")
+    incumbent_priority = incumbent.get("Priority")
+    if not incumbent_priority:
+        return True
+    if challenger_priority and _lower_priority(challenger_priority, incumbent_priority):
+        return True
+    if not challenger.get("Primary"):
+        return False
+    if "Priority" not in challenger or "Priority" not in incumbent:
+        return True
+    return _lower_priority(challenger_priority, incumbent_priority)
+
+
 def _never_show(
     skill: str, name: str, challenge: Mapping[str, Any], rules: Mapping[str, Any]
 ) -> bool:
@@ -275,7 +324,7 @@ def _classify_skill(
 
     winner: str | None = None
     winner_level = float("-inf")
-    winner_priority: float | None = None
+    winner_challenge: Mapping[str, Any] = {}
     for name in remaining:
         challenge = skill_challenges.get(name)
         if not isinstance(challenge, dict) or name in backlog:
@@ -307,21 +356,14 @@ def _classify_skill(
             manual_tasks=manual_tasks,
         ):
             continue
-        if winner is None or level > winner_level:
-            winner, winner_level, winner_priority = name, level, challenge.get("Priority")
-        elif level == winner_level:
-            priority = challenge.get("Priority")
-            if (
-                isinstance(priority, (int, float))
-                and isinstance(winner_priority, (int, float))
-                and priority < winner_priority
-            ):
-                winner, winner_priority = name, priority
+        if winner is None or level > winner_level or (
+            level == winner_level and _wins_tie(challenge, winner_challenge)
+        ):
+            winner, winner_level, winner_challenge = name, level, challenge
 
-    if winner is not None:
-        winner_challenge = skill_challenges.get(winner, {})
-        if winner_level <= 1 and winner_challenge.get("Primary") is not True:
-            winner = None
+    if winner is not None and winner_level <= 1 and winner_challenge.get("Primary") is not True:
+        # `realLevel <= 1 && !Primary` -> discarded entirely (worker.js:8521).
+        winner = None
 
     obsolete = frozenset(name for name in remaining if name != winner)
     return SkillClassification(active=winner, obsolete=obsolete, completed=frozenset(completed_names))
