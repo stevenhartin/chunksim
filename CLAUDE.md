@@ -169,7 +169,16 @@ One responsibility per module, so the planned simulation work has a pure layer t
   matching plain presence checking with no grouping needed. Only ~42 challenges remain genuinely
   unsupported on that map — the `QuestPointsNeeded`/`CombatPointsNeeded`/`KudosNeeded`/
   `TotalLevelNeeded`/`CombatLevelNeeded` gates, which need state (quest points, kudos, ...) this module
-  doesn't derive. **Untrainable skills are pruned** (`_prune_untrainable_skills`, worker.js:1521):
+  doesn't derive. **The fixed point runs in two phases.** The first converges with *no* pruning, so
+  trainability is decided from a fully seeded item index — deciding it earlier prunes a skill whose
+  own `Output` chain would have made it trainable, which broke `Magic` and with it the BiS oracle's
+  `Master wand`. From the second outer pass the prunes join the loop and the item index is re-seeded
+  from the pruned `valid` each time. Both halves are load-bearing: pruning only *after* convergence
+  leaves a removed challenge's `Output` on the shelf (a locked `Herblore` still supplied
+  `Blamish oil`, which kept `Make an oily fishing rod` valid and a Wilderness diary task active — 57
+  items were keyed to challenges no longer valid), while pruning inside the loop from the start
+  starves the seeding. Pruning only ever removes, so it terminates.
+  **Untrainable skills are pruned** (`_prune_untrainable_skills`, worker.js:1521):
   when `checkPrimaryMethod` reports a skill untrainable and no `passiveSkill` floor covers it, every
   one of its challenges above `Level 1` is discarded. This is how upstream locks a skill behind a
   quest — `Herblore` is gated on `Unlock ~|Herblore|~ after Druidic Ritual`, and while that quest is
@@ -195,7 +204,7 @@ One responsibility per module, so the planned simulation work has a pure layer t
   branch, having no per-skill winner to pick — a challenge is dropped when its `Skills` names a
   sub-skill that is untrainable *and* uncovered by a boosted `passiveSkill` floor, or whose
   requirement exceeds `maxSkill`; `manualTasks` entries are exempt. Runs in the same
-  post-convergence slot as `_prune_untrainable_skills`, for the same reason. It changes nothing on
+  slot as `_prune_untrainable_skills`. It changes nothing on
   the map this was built against (every sub-skill named there is trainable and within `maxSkill`).
   `BackupParent` is honoured (worker.js:1679): a challenge naming one is deleted once
   that parent is valid *or backlogged*, unless it carries `ManualValid`. All 17 real uses are

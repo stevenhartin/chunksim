@@ -1279,97 +1279,145 @@ def calc_challenges(
     items: Mapping[str, Mapping[str, str]] = source_index.items
     valid: dict[str, dict[str, int | str | bool]] = {}
     unsupported: set[str] = set()
+    #: The first outer pass converges *without* pruning, so trainability is
+    #: decided from a fully seeded index - deciding it earlier prunes a skill
+    #: whose own `Output` chain would have made it trainable, which broke
+    #: `Magic` and with it the BiS oracle's `Master wand`.
+    pruning = False
 
+    # Outer pass: the post-convergence prunes below *remove* challenges, and a
+    # removed challenge's `Output` must stop being an available item - otherwise
+    # a locked skill still feeds the rest of the derivation. `Herblore` being
+    # locked behind Druidic Ritual left `Blamish oil` on the shelf, which kept
+    # `Make an oily fishing rod` valid, which kept a Wilderness diary task
+    # active. Re-seed from the pruned `valid` and re-derive until nothing moves;
+    # pruning only ever removes, so this terminates.
     for _ in range(max_iterations):
-        # Trainability depends on the *previous* pass's validity, so compute
-        # it once per pass rather than per challenge (`_check_primary_method`
-        # walks every valid challenge in a skill).
-        trainable = {
-            skill: _check_primary_method(
-                skill,
-                valid,
-                source_index,
-                chunk_info,
-                passive_skill=passive_skill,
-                backlog=backlog,
-                manual_tasks=manual_tasks,
-                rules=rules,
-                items=items,
+        settled = {skill: dict(names) for skill, names in valid.items()}
+        for _ in range(max_iterations):
+            # Trainability depends on the *previous* pass's validity, so compute
+            # it once per pass rather than per challenge (`_check_primary_method`
+            # walks every valid challenge in a skill).
+            trainable = {
+                skill: _check_primary_method(
+                    skill,
+                    valid,
+                    source_index,
+                    chunk_info,
+                    passive_skill=passive_skill,
+                    backlog=backlog,
+                    manual_tasks=manual_tasks,
+                    rules=rules,
+                    items=items,
+                )
+                for skill in _UNIVERSAL_PRIMARY
+            }
+            new_valid: dict[str, dict[str, int | str | bool]] = {}
+            for skill, skill_challenges in challenges.items():
+                if skill in UNSUPPORTED_CATEGORIES or not isinstance(skill_challenges, dict):
+                    continue
+                for name, challenge in skill_challenges.items():
+                    if not isinstance(challenge, dict):
+                        continue
+                    try:
+                        result = _evaluate_challenge(
+                            skill,
+                            name,
+                            challenge,
+                            chunk_ids=chunk_ids,
+                            reachable_sections=reachable_sections,
+                            items=items,
+                            objects=source_index.objects,
+                            monsters=source_index.monsters,
+                            npcs=source_index.npcs,
+                            valid=new_valid,
+                            chunk_info=chunk_info,
+                            rules=rules,
+                            max_skill=max_skill,
+                            secondary_primary_amount=secondary_primary_amount,
+                            trainable=trainable,
+                            prev_valid=valid,
+                            construction_locked=construction_locked,
+                        )
+                    except NotImplementedError:
+                        # A single challenge using a mechanic this module doesn't
+                        # implement - in practice always one of
+                        # `_LEVEL_GATES_NOT_SUPPORTED`, the only raise inside this
+                        # call path - must not abort every other, evaluable
+                        # challenge. See `ChallengeResult.unsupported`.
+                        unsupported.add(f"{skill}/{name}")
+                        continue
+                    if result is not None:
+                        new_valid.setdefault(skill, {})[name] = result
+            _inject_manual_tasks(new_valid, challenges, manual_tasks)
+            _drop_superseded_backups(new_valid, valid, challenges, backlog, manual_tasks)
+            if pruning:
+                # Second outer pass onward the index is fully seeded, so the
+                # prunes can join the fixed point - and must, or each pass
+                # re-derives the very skills the last one pruned and re-seeds
+                # their `Output`s with them.
+                _prune_untrainable_skills(
+                    new_valid,
+                    chunk_info,
+                    source_index,
+                    rules=rules,
+                    passive_skill=passive_skill,
+                    backlog=backlog,
+                    manual_tasks=manual_tasks,
+                    items=items,
+                )
+                _drop_unreachable_subskills(
+                    new_valid,
+                    chunk_info,
+                    source_index,
+                    rules=rules,
+                    max_skill=max_skill,
+                    passive_skill=passive_skill,
+                    backlog=backlog,
+                    manual_tasks=manual_tasks,
+                    items=items,
+                )
+            if new_valid == valid:
+                break
+            valid = new_valid
+            items = _seed_items_with_outputs(
+                source_index.items, valid, challenges, chunk_info, rules, backlogged_sources or {}
             )
-            for skill in _UNIVERSAL_PRIMARY
-        }
-        new_valid: dict[str, dict[str, int | str | bool]] = {}
-        for skill, skill_challenges in challenges.items():
-            if skill in UNSUPPORTED_CATEGORIES or not isinstance(skill_challenges, dict):
-                continue
-            for name, challenge in skill_challenges.items():
-                if not isinstance(challenge, dict):
-                    continue
-                try:
-                    result = _evaluate_challenge(
-                        skill,
-                        name,
-                        challenge,
-                        chunk_ids=chunk_ids,
-                        reachable_sections=reachable_sections,
-                        items=items,
-                        objects=source_index.objects,
-                        monsters=source_index.monsters,
-                        npcs=source_index.npcs,
-                        valid=new_valid,
-                        chunk_info=chunk_info,
-                        rules=rules,
-                        max_skill=max_skill,
-                        secondary_primary_amount=secondary_primary_amount,
-                        trainable=trainable,
-                        prev_valid=valid,
-                        construction_locked=construction_locked,
-                    )
-                except NotImplementedError:
-                    # A single challenge using a mechanic this module doesn't
-                    # implement - in practice always one of
-                    # `_LEVEL_GATES_NOT_SUPPORTED`, the only raise inside this
-                    # call path - must not abort every other, evaluable
-                    # challenge. See `ChallengeResult.unsupported`.
-                    unsupported.add(f"{skill}/{name}")
-                    continue
-                if result is not None:
-                    new_valid.setdefault(skill, {})[name] = result
-        _inject_manual_tasks(new_valid, challenges, manual_tasks)
-        _drop_superseded_backups(new_valid, valid, challenges, backlog, manual_tasks)
-        if new_valid == valid:
-            break
-        valid = new_valid
-        items = _seed_items_with_outputs(
+
+        # Run once, after convergence, not per pass: deciding trainability from a
+        # half-seeded item index prunes a skill whose own `Output` chain would
+        # have made it trainable, and because that prune then starves the next
+        # pass of those items the loop settles on the wrong fixed point (it broke
+        # `Magic`, and with it the BiS oracle's `Master wand`).
+        _prune_untrainable_skills(
+            valid,
+            chunk_info,
+            source_index,
+            rules=rules,
+            passive_skill=passive_skill,
+            backlog=backlog,
+            manual_tasks=manual_tasks,
+            items=items,
+        )
+        _drop_unreachable_subskills(
+            valid,
+            chunk_info,
+            source_index,
+            rules=rules,
+            max_skill=max_skill,
+            passive_skill=passive_skill,
+            backlog=backlog,
+            manual_tasks=manual_tasks,
+            items=items,
+        )
+        reseeded = _seed_items_with_outputs(
             source_index.items, valid, challenges, chunk_info, rules, backlogged_sources or {}
         )
+        if reseeded == items and valid == settled:
+            break
+        items = reseeded
+        pruning = True
 
-    # Run once, after convergence, not per pass: deciding trainability from a
-    # half-seeded item index prunes a skill whose own `Output` chain would
-    # have made it trainable, and because that prune then starves the next
-    # pass of those items the loop settles on the wrong fixed point (it broke
-    # `Magic`, and with it the BiS oracle's `Master wand`).
-    _prune_untrainable_skills(
-        valid,
-        chunk_info,
-        source_index,
-        rules=rules,
-        passive_skill=passive_skill,
-        backlog=backlog,
-        manual_tasks=manual_tasks,
-        items=items,
-    )
-    _drop_unreachable_subskills(
-        valid,
-        chunk_info,
-        source_index,
-        rules=rules,
-        max_skill=max_skill,
-        passive_skill=passive_skill,
-        backlog=backlog,
-        manual_tasks=manual_tasks,
-        items=items,
-    )
     grouped = _group_processing_skill_challenges(
         valid, challenges, items, rules, chunk_info, source_index
     )

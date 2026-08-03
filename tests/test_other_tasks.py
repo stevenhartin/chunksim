@@ -387,21 +387,13 @@ _REAL_CHUNKINFO = os.environ.get("FRAY_CHUNKINFO")
 _REAL_MAP = os.environ.get("FRAY_MAP_CACHE")
 
 
-#: The entries our derivation and the map's own `activeTasks` still disagree
-#: on, pinned exactly so the test fails the moment anything moves - including
-#: when the underlying cause is fixed, at which point these come out.
-#:
-#: `Extra` is exact. The one `Diary` entry is an ours-only over-inclusion whose
-#: every requirement checks out - chunk, object, both items, `Fishing: 53`
-#: against a trainable Fishing with Level 1 routes valid - and which survives
-#: both the non-skill `Skills` filter and the tier-completion implication.
-#: No further gate has been found for it.
-_KNOWN_ORACLE_DELTA = {
-    "Diary": frozenset(
-        {
-            "~|Wilderness Diary#Hard|~ Task 10",
-        }
-    ),
+#: Both categories now reproduce the map's own `activeTasks` exactly, so this
+#: is empty. It stays as a named, asserted-against constant rather than being
+#: deleted: an earlier version of this test compared *totals* and passed on
+#: `Extra` at 37 == 37 while seven entries were wrong in each direction, and
+#: pinning the set is what stops that recurring.
+_KNOWN_ORACLE_DELTA: dict[str, frozenset[str]] = {
+    "Diary": frozenset(),
     "Extra": frozenset(),
 }
 

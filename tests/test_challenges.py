@@ -466,7 +466,10 @@ def test_tasks_requirement_resolves_across_category_iteration_order() -> None:
     info = _chunk_info(
         challenges={
             "Nonskill": {"Needs slayer": {"Tasks": {"Do slayer": "Slayer"}}},
-            "Slayer": {"Do slayer": {}},
+            # Level 1 + Primary keeps Slayer trainable; an untrainable skill
+            # is pruned to its Level 1 challenges *inside* the fixed point,
+            # which would collapse the dependency under test.
+            "Slayer": {"Do slayer": {"Level": 1, "Primary": True}},
         }
     )
 
@@ -479,7 +482,7 @@ def test_tasks_family_requirement_needs_one_valid_member() -> None:
     info = _chunk_info(
         challenges={
             "Nonskill": {"Needs a master": {"Tasks": {"Masters[+]x1": "Slayer"}}},
-            "Slayer": {"Ask Vannaka": {}},
+            "Slayer": {"Ask Vannaka": {"Level": 1, "Primary": True}},
         },
         codeItems={"tasksPlus": {"Masters[+]": ["Ask Duradel", "Ask Vannaka"]}},
     )
