@@ -175,6 +175,117 @@ def test_every_category_is_present_even_when_empty() -> None:
     assert all(tasks.active_total == 0 for tasks in result.categories.values())
 
 
+def test_completing_a_quest_implies_its_whole_chain() -> None:
+    """A quest is a step chain and ticking it off records only the final
+    entry, so `~|Gertrude's Cat|~ Complete the quest` has to carry steps 1-7
+    with it - otherwise a finished quest keeps showing every step as active.
+    """
+    steps: dict[str, Any] = {"~|Cat|~ 1": {"BaseQuest": "Cat", "Description": "One"}}
+    for n in range(2, 5):
+        steps[f"~|Cat|~ {n}"] = {
+            "BaseQuest": "Cat",
+            "Description": f"Step {n}",
+            "Tasks": {f"~|Cat|~ {n - 1}": "Quest"},
+        }
+    steps["~|Cat|~ Complete the quest"] = {
+        "BaseQuest": "Cat",
+        "Tasks": {"~|Cat|~ 4": "Quest"},
+    }
+    info = _chunk_info(challenges={"Quest": steps})
+
+    result = _classify(
+        {"Quest": dict.fromkeys(steps, True)},
+        info,
+        completed={"Quest": {"~|Cat|~ Complete the quest": True}},
+    )
+
+    quest = result.categories["Quest"]
+    assert quest.active_total == 0
+    assert quest.completed_total == 5
+
+
+def test_a_partly_done_quest_keeps_its_later_steps_active() -> None:
+    steps: dict[str, Any] = {
+        "~|Cat|~ 1": {"BaseQuest": "Cat", "Description": "One"},
+        "~|Cat|~ 2": {"BaseQuest": "Cat", "Description": "Two", "Tasks": {"~|Cat|~ 1": "Quest"}},
+        "~|Cat|~ 3": {"BaseQuest": "Cat", "Description": "Three", "Tasks": {"~|Cat|~ 2": "Quest"}},
+    }
+    info = _chunk_info(challenges={"Quest": steps})
+
+    result = _classify(
+        {"Quest": dict.fromkeys(steps, True)},
+        info,
+        completed={"Quest": {"~|Cat|~ 2": True}},
+    )
+
+    quest = result.categories["Quest"]
+    assert quest.active_total == 1
+    assert quest.groups[0].active == ("~|Cat|~ 3",)
+    assert quest.completed_total == 2
+
+
+def test_the_chain_rule_does_not_apply_to_other_categories() -> None:
+    """Outside `Quest` a `Tasks` entry is an ordinary requirement, not a step
+    chain, so completing one says nothing about the other."""
+    info = _chunk_info(
+        challenges={
+            "Diary": {
+                "~|Varrock Diary#Easy|~ Task 1": {"Description": "One"},
+                "~|Varrock Diary#Easy|~ Task 2": {
+                    "Description": "Two",
+                    "Tasks": {"~|Varrock Diary#Easy|~ Task 1": "Diary"},
+                },
+            }
+        }
+    )
+
+    result = _classify(
+        {"Diary": {"~|Varrock Diary#Easy|~ Task 1": True, "~|Varrock Diary#Easy|~ Task 2": True}},
+        info,
+        completed={"Diary": {"~|Varrock Diary#Easy|~ Task 2": True}},
+    )
+
+    assert result.categories["Diary"].active_total == 1
+
+
+def test_a_quest_step_does_not_imply_a_dependency_in_another_category() -> None:
+    info = _chunk_info(
+        challenges={
+            "Quest": {
+                "~|Cat|~ 1": {"BaseQuest": "Cat", "Tasks": {"Some diary task": "Diary"}},
+            },
+            "Diary": {"Some diary task": {"Description": "A diary task"}},
+        }
+    )
+
+    result = _classify(
+        {"Quest": {"~|Cat|~ 1": True}, "Diary": {"Some diary task": True}},
+        info,
+        completed={"Quest": {"~|Cat|~ 1": True}},
+    )
+
+    assert result.categories["Diary"].active_total == 1
+
+
+def test_a_cyclic_chain_terminates() -> None:
+    info = _chunk_info(
+        challenges={
+            "Quest": {
+                "~|Cat|~ 1": {"BaseQuest": "Cat", "Tasks": {"~|Cat|~ 2": "Quest"}},
+                "~|Cat|~ 2": {"BaseQuest": "Cat", "Tasks": {"~|Cat|~ 1": "Quest"}},
+            }
+        }
+    )
+
+    result = _classify(
+        {"Quest": {"~|Cat|~ 1": True, "~|Cat|~ 2": True}},
+        info,
+        completed={"Quest": {"~|Cat|~ 1": True}},
+    )
+
+    assert result.categories["Quest"].active_total == 0
+
+
 _REAL_CHUNKINFO = os.environ.get("FRAY_CHUNKINFO")
 _REAL_MAP = os.environ.get("FRAY_MAP_CACHE")
 

@@ -22,6 +22,11 @@ Two details of that guard matter, and both were wrong here before:
   same rule `active_tasks.py` follows: a requirement added by a later game
   update must not erase the fact that the task was done.
 
+`Quest` additionally closes its completions transitively
+(`_implied_completions`): a quest is a step chain and ticking it off records
+only `~|X|~ Complete the quest`, so every prerequisite reachable through
+`Tasks` counts as done as well.
+
 Grouping mirrors the panel's own: `Quest` by `BaseQuest`; `Diary` by the
 diary and tier encoded in the name (`~|Morytania Diary#Elite|~ Task 5` ->
 *Morytania Diary - Elite*); `Extra` by its `Label` field, whose values are
@@ -142,6 +147,47 @@ class OtherTasks:
         return {name: tasks.as_dict() for name, tasks in self.categories.items()}
 
 
+#: Categories whose `Tasks` edges form a *step chain* rather than general
+#: requirements, so completing a later step proves every earlier one.
+_CHAINED_CATEGORIES = frozenset({"Quest"})
+
+
+def _implied_completions(
+    category: str, completed: Mapping[str, Any], challenges: Mapping[str, Any]
+) -> frozenset[str]:
+    """Prerequisite steps a recorded completion implies, transitively.
+
+    A quest is a chain: `~|Gertrude's Cat|~ Complete the quest` requires step
+    7, which requires 6, and so on to 1. Ticking a quest off records only the
+    final entry, so all seven steps stayed "active" here while the quest was
+    demonstrably finished - the bulk of the Quest category's noise.
+
+    Only `Quest` gets this (`_CHAINED_CATEGORIES`), and only along edges that
+    stay inside the category. Elsewhere a `Tasks` entry is an ordinary
+    requirement - a `Diary` task needing a quest done says nothing about the
+    diary task itself - and inferring completion across that would be
+    inventing history rather than reading it.
+    """
+    if category not in _CHAINED_CATEGORIES:
+        return frozenset()
+    implied: set[str] = set()
+    pending = [name for name in completed]
+    while pending:
+        name = pending.pop()
+        challenge = challenges.get(name)
+        if not isinstance(challenge, dict):
+            continue
+        tasks = challenge.get("Tasks")
+        if not isinstance(tasks, dict):
+            continue
+        for prerequisite, task_category in tasks.items():
+            if task_category != category or prerequisite in completed or prerequisite in implied:
+                continue
+            implied.add(prerequisite)
+            pending.append(prerequisite)
+    return frozenset(implied)
+
+
 def _committed(
     completed: Mapping[str, Any], checked: Mapping[str, Any]
 ) -> frozenset[str]:
@@ -160,12 +206,14 @@ def _classify_category(
     checked: Mapping[str, Any],
     backlog: Mapping[str, Any],
 ) -> CategoryTasks:
-    committed = _committed(completed, checked)
+    implied = _implied_completions(category, completed, challenges)
+    committed = _committed(completed, checked) | implied
     active = [
         name
         for name in valid_names
         if not _recorded(name, committed) and not _recorded(name, backlog)
     ]
+    completed_names = [*completed, *sorted(implied)]
 
     grouped: dict[str, tuple[list[str], list[str]]] = {}
 
@@ -176,7 +224,7 @@ def _classify_category(
 
     for name in active:
         bucket(name)[0].append(name)
-    for name in completed:
+    for name in completed_names:
         bucket(name)[1].append(name)
 
     def sort_key(name: str) -> str:
@@ -195,7 +243,7 @@ def _classify_category(
         category=category,
         groups=groups,
         active_total=len(active),
-        completed_total=len(completed),
+        completed_total=len(completed_names),
     )
 
 

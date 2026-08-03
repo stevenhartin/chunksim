@@ -353,7 +353,12 @@ One responsibility per module, so the planned simulation work has a pure layer t
   `Collection Log`, `Permanent Unlockables`, `Untracked Uniques`, plus `Fill POH`/`Fill Stashes`/
   `BIS Skilling`/`Stuffables` when their rules are on (`challenges._category_gate_met` already
   decides which). `Extra` is the export's key and stays the key in `--export-json`; **`Other` is the
-  display name**, and both are accepted by `fray tasks`.
+  display name**, and both are accepted by `fray tasks`. **`Quest` completions close
+  transitively** (`_implied_completions`): a quest is a step chain, and ticking it off records only
+  `~|X|~ Complete the quest`, so every prerequisite it reaches through `Tasks` counts as done too —
+  without it a finished quest kept showing all seven of its steps (Quest active 94 -> 7 on the real
+  map). Scoped to `Quest` and to edges staying inside it: elsewhere a `Tasks` entry is an ordinary
+  requirement, and inferring completion across one would be inventing history rather than reading it.
 - `pipeline.py` — pure; bundles the per-map inputs (`MapState`) and runs `unlocked_sections` ->
   `gather_chunks_info` -> `calc_challenges` -> `compute_bis` -> `classify_tasks` for a given
   unlocked-chunk-id set (`derive` -> `Derived`, carrying `bis`/`task_classification` alongside
