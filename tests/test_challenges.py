@@ -721,6 +721,15 @@ def test_strip_task_markup_handles_several_marked_spans() -> None:
     assert strip_task_markup("Use ~|bones|~ on the ~|altar|~") == "Use bones on the altar"
 
 
+def test_strip_task_markup_repairs_the_malformed_canoe_names() -> None:
+    """Four real export names put the opening `|` several characters late.
+    Removing the delimiter characters renders them correctly; removing
+    `~|`/`|~` pairs would leave `Carve a ~log |canoe`.
+    """
+    assert strip_task_markup("Carve a ~log |canoe|~") == "Carve a log canoe"
+    assert strip_task_markup("Carve a ~stable dugout |canoe|~") == "Carve a stable dugout canoe"
+
+
 def test_strip_task_markup_leaves_the_variant_separator_and_secondary_marker() -> None:
     """Both are real parts of the stored name, and how upstream renders them
     isn't something this project has located - so they pass through rather

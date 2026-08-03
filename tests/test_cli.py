@@ -728,6 +728,24 @@ def test_search_strips_markup_from_task_names_and_task_routes(
     assert "~|" not in out
 
 
+def test_search_leaves_a_non_task_name_that_really_uses_tildes_alone(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`~ Uglug's stuffsies ~` is a real shop name, not markup - stripping
+    is scoped to task names precisely so this survives."""
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {
+        "chunks": {"100": {"Shop": {"~ Uglug's stuffsies ~": True}}},
+        "shopItems": {"~ Uglug's stuffsies ~": {"Rope": {}}},
+    }
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["search", "uglug"]) == 0
+
+    assert "~ Uglug's stuffsies ~" in capsys.readouterr().out
+
+
 def test_search_type_filters_results(
     project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

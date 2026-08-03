@@ -105,6 +105,7 @@ except where noted as a silent, documented approximation instead:
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -136,19 +137,35 @@ _SKILL_NAMES = frozenset(
 )
 _COMBAT_SKILLS = frozenset({"Attack", "Strength", "Defence", "Hitpoints", "Ranged", "Magic", "Prayer"})
 
+_TASK_MARKUP = re.compile(r"[~|]")
+
+
 def strip_task_markup(task_name: str) -> str:
     """Drop the `~|...|~` delimiters a task name wraps its subject in,
     preserving the text (and its casing) between them.
 
     The markers exist so the web app can style the item/monster a task
-    names; nothing downstream of a terminal wants them. Deliberately does
-    *not* touch the `#` variant separator (`~|wooden hull#Raft|~`) or the
-    trailing `*` secondary marker: both are real parts of the stored name,
-    and rendering them is upstream behaviour this project hasn't located.
-    Unlike `search.normalise`, this is for *display*, so it neither
-    lowercases nor collapses anything that matching would.
+    names; nothing downstream of a terminal wants them. Removes the
+    delimiter *characters* rather than the `~|`/`|~` pairs, because four
+    real names are malformed - `Carve a ~log |canoe|~` has the opening
+    `|` four characters late, and pair-stripping leaves the visible
+    wreckage `Carve a ~log |canoe`. Character-stripping renders those as
+    `Carve a log canoe` and is byte-identical to pair-stripping on all
+    14,688 well-formed names in the export, where no `|` and no `~` ever
+    appears outside this markup.
+
+    **Only ever call this on a challenge/task name.** Names from other
+    branches can use these characters for real (the shop `~ Uglug's
+    stuffsies ~`), which is why `cli.py`'s `search` output applies it to
+    task hits and `task:` routes rather than to every hit.
+
+    Deliberately does *not* touch the `#` variant separator
+    (`~|wooden hull#Raft|~`) or the trailing `*` secondary marker: both are
+    real parts of the stored name, and rendering them is upstream behaviour
+    this project hasn't located. Unlike `search.normalise`, this is for
+    *display*, so it neither lowercases nor collapses anything.
     """
-    return task_name.replace("~|", "").replace("|~", "")
+    return _TASK_MARKUP.sub("", task_name)
 
 
 _LEVEL_GATES_NOT_SUPPORTED = (

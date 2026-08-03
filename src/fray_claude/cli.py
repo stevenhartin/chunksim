@@ -346,14 +346,18 @@ def _cmd_search(args: argparse.Namespace) -> int:
         print(f"hits  {len(hits)}")
         for hit in hits:
             status = "available" if hit.available else "locked"
-            # A no-op for every type but `task`, whose names carry the same
-            # `~|...|~` markup - as do the challenge names behind a
-            # `task:<category>` item route.
-            print(f"{hit.type.upper():8} {strip_task_markup(hit.name)}  [{status}]")
+            # Task names, and the challenge behind a `task:<category>` item
+            # route, carry `~|...|~`. Nothing else does - and a shop really
+            # is named `~ Uglug's stuffsies ~` - so this stays type-scoped
+            # rather than blanket-applied. See `strip_task_markup`.
+            name = strip_task_markup(hit.name) if hit.type == "task" else hit.name
+            print(f"{hit.type.upper():8} {name}  [{status}]")
             if hit.type == "item":
                 for source in hit.detail["sources"]:
                     source_status = "available" if source["available"] else "locked"
-                    source_name = strip_task_markup(source["name"])
+                    source_name = source["name"]
+                    if str(source["route"]).startswith("task:"):
+                        source_name = strip_task_markup(source_name)
                     print(f"  {source['route']}: {source_name}  [{source_status}]")
                     locs = source["locations"]
                     if locs:

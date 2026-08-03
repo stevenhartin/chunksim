@@ -171,7 +171,13 @@ One responsibility per module, so the planned simulation work has a pure layer t
   `strip_task_markup` lives here too — the display-side counterpart to `search.normalise`, dropping a
   task name's `~|...|~` delimiters without lowercasing or collapsing anything. It is *only* for
   output: the raw names stay the keys everywhere (`valid`, `completedChallenges` lookups,
-  `--export-json`), since those must match what upstream stores. It deliberately leaves the `#`
+  `--export-json`), since those must match what upstream stores. It removes the delimiter
+  **characters**, not the `~|`/`|~` pairs: four real names are malformed (`Carve a ~log |canoe|~` has
+  its opening `|` four characters late), and pair-stripping left the visible wreckage `Carve a ~log
+  |canoe`. Character-stripping renders those correctly and is byte-identical on all 14,688 well-formed
+  names, where neither `~` nor `|` ever occurs outside this markup. **Only call it on a challenge/task
+  name** — other branches use those characters for real (the shop `~ Uglug's stuffsies ~`), which is
+  why `cli.py`'s `search` applies it per hit type rather than blanket. It deliberately leaves the `#`
   variant separator (`~|wooden hull#Raft|~`) and trailing `*` secondary marker alone — both are real
   parts of the stored name and how upstream renders them isn't something this project has located.
 - `bis.py` — pure; best-in-slot equipment per (combat style, slot) (`compute_bis` -> `BisResult`).
@@ -343,9 +349,10 @@ One responsibility per module, so the planned simulation work has a pure layer t
   (`derived.task_classification.skills`) shows **active -> completed -> obsolete** sections plus an
   opportunistic comparison against `state.active_tasks[skill]` ("not cached" when absent, the common
   case - see `active_tasks.py`); everything else keeps the flat valid listing. Every one of those
-  paths (and `search`'s task hits / `task:<category>` item routes) renders through `_display_tasks` ->
-  `challenges.strip_task_markup`, which **sorts on the stripped form** so the visible order matches
-  the screen — sorting raw would file every marked-up name under `~`. The bare `fray tasks` overview
+  paths renders through `_display_tasks` -> `challenges.strip_task_markup`, which **sorts on the
+  stripped form** so the visible order matches the screen — sorting raw would file every marked-up
+  name under `~`. `search` strips per hit type (task hits and `task:` routes only), never blanket, so
+  a genuinely tilde-named shop survives. The bare `fray tasks` overview
   prints totals and the active/completed/obsolete split only: the per-category `valid` enumeration it
   used to carry is mostly tasks a higher tier has already superseded, and `--export-json` still has
   the full mapping for anyone who wants it. `fray unlock`/`fray simulate` print BiS upgrades alongside
