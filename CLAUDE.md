@@ -290,6 +290,15 @@ One responsibility per module, so the planned simulation work has a pure layer t
   ledger rather than its currently-valid intersection, since completion is evidence regardless of
   present reachability, and gates *selection only* — feeding it back as an implied skill level into
   `challenges.py`'s `Level` gate would change what is `valid` and cascade far beyond this module.
+  **A recorded completion is treated as proof, whatever the export says now** — a deliberate
+  divergence, twice over: `completed` lists every entry in the skill's ledger rather than only those
+  still `valid` (a requirement added by a later game update must not erase the fact that the task was
+  done), and `_level_proven_elsewhere` credits a completion the skill's own table doesn't carry with
+  whatever `Skills: {<skill>: N}` its definition states in *whatever* category it lives in. Real data
+  needs both: `completedChallenges.Thieving` holds `~|Wilderness Diary#Elite|~ Task 5`, defined in
+  `challenges.Diary` as "Steal from the Chest (Rogues' Castle)" with `Skills: {Thieving: 84}`, which
+  upstream's `challenges[skill][name]['Level']`-only ceiling loop cannot see — it was reporting two of
+  the map's three Thieving completions and proposing an equal-level Rogues' Castle task as the goal.
   `_never_show` recomputes upstream's `NeverShow` flag (set dynamically in `calcChallengesWork`, never
   present statically in the export) from the `Shortcut Task`/`Combat and Teleport Spells`/`Cleaning
   Herbs` rules. Expect many maxed skills to report no active pick at all (18 -> 4 on the map this was

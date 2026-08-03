@@ -68,6 +68,23 @@ Scoped to *selection*: the ceiling is not fed back as an implied skill level
 into `challenges.py`'s `Level` gate, which would change what is `valid` and
 cascade well beyond this module.
 
+**A recorded completion is proof, whatever the export says now.** Two
+divergences from upstream follow from that, both requested deliberately after
+a real mismatch:
+- `completed` lists every entry in the skill's ledger, not just those still
+  in `valid`. A requirement added by a later game update must not erase the
+  fact that the task was done - and the map recorded three `Thieving`
+  completions while this reported two.
+- `_level_proven_elsewhere`: a completion the skill's own challenge table
+  doesn't carry still proves whatever `Skills: {<skill>: N}` its definition
+  states, wherever that definition lives. Real data files a task under the
+  skill it exercises: `completedChallenges.Thieving` holds `~|Wilderness
+  Diary#Elite|~ Task 5`, defined in `challenges.Diary` as "Steal from the
+  Chest (Rogues' Castle)" with `Skills: {Thieving: 84}`. Upstream's ceiling
+  loop reads only `challenges[skill][name]['Level']` and so sees nothing;
+  counting it settles the equal-level `Loot a ~|chest (Rogues' Castle)|~
+  without the diary`, which was being proposed as the active task.
+
 Every level this module compares is a *boosted* level (`boosts.py`): the
 ceiling uses `boosts.completed_ceiling`, each candidate `boosts.real_level`,
 and `_is_eligible`'s `level == 1` test therefore fires on the boosted value
@@ -285,10 +302,41 @@ def _never_show(
     )
 
 
+def _level_proven_elsewhere(
+    skill: str, name: str, all_challenges: Mapping[str, Mapping[str, Any]]
+) -> float | None:
+    """The level in `skill` that completing `name` proves, when `name` isn't
+    one of that skill's own challenges.
+
+    Real data files a task under the skill it exercises while defining it in
+    another category: `completedChallenges.Thieving` holds `~|Wilderness
+    Diary#Elite|~ Task 5`, which lives in `challenges.Diary` as "Steal from
+    the Chest (Rogues' Castle)" with `Skills: {Thieving: 84}`. Upstream's
+    ceiling loop only looks in `challenges[skill]` and only reads `Level`, so
+    it sees nothing here - **this is a deliberate divergence**, per the
+    project's rule that a recorded completion is proof the requirements were
+    met at the time, whatever the export says now.
+
+    Taken raw rather than boost-adjusted: what a requirement states is what
+    completing it evidences, and the challenge sits in a category whose
+    `NoBoost` flags and boost table belong to a different skill anyway.
+    """
+    for category, entries in all_challenges.items():
+        challenge = entries.get(name) if isinstance(entries, dict) else None
+        if not isinstance(challenge, dict):
+            continue
+        needed = challenge.get("Skills")
+        level = needed.get(skill) if isinstance(needed, dict) else None
+        if isinstance(level, (int, float)) and not isinstance(level, bool):
+            return float(level)
+    return None
+
+
 def _completed_level_ceiling(
     skill: str,
     completed: Mapping[str, Any],
     skill_challenges: Mapping[str, Any],
+    all_challenges: Mapping[str, Mapping[str, Any]],
     *,
     rules: Mapping[str, Any],
     chunk_info: ChunkInfo,
@@ -313,21 +361,27 @@ def _completed_level_ceiling(
     the ceiling: a task you only managed with a Wild pie proves less than
     its face level.
     """
-    levels = [
-        boosts.completed_ceiling(
-            skill,
-            name,
-            challenge,
-            float(level),
-            rules=rules,
-            chunk_info=chunk_info,
-            items=items,
-            source_index=source_index,
-        )
-        for name in completed
-        if isinstance(challenge := skill_challenges.get(name), dict)
-        and isinstance(level := challenge.get("Level"), (int, float))
-    ]
+    levels: list[float] = []
+    for name in completed:
+        challenge = skill_challenges.get(name)
+        level = challenge.get("Level") if isinstance(challenge, dict) else None
+        if isinstance(challenge, dict) and isinstance(level, (int, float)):
+            levels.append(
+                boosts.completed_ceiling(
+                    skill,
+                    name,
+                    challenge,
+                    float(level),
+                    rules=rules,
+                    chunk_info=chunk_info,
+                    items=items,
+                    source_index=source_index,
+                )
+            )
+            continue
+        elsewhere = _level_proven_elsewhere(skill, name, all_challenges)
+        if elsewhere is not None:
+            levels.append(elsewhere)
     return max(levels) if levels else None
 
 
@@ -345,15 +399,27 @@ def _classify_skill(
     chunk_info: ChunkInfo,
     items: Mapping[str, Any],
     source_index: SourceIndex,
+    all_challenges: Mapping[str, Mapping[str, Any]],
 ) -> SkillClassification:
-    completed_names = {name for name in valid_names if _recorded(name, completed)}
-    remaining = [name for name in valid_names if name not in completed_names]
+    # Every recorded completion for this skill, not just the ones still
+    # valid: a requirement added by a later game update must not erase the
+    # fact that the task was done. `~|Wilderness Diary#Elite|~ Task 5` is
+    # filed under `Thieving` but defined in `challenges.Diary`, and was
+    # simply invisible before.
+    matched = {name for name in valid_names if _recorded(name, completed)}
+    # A ledger key that *is* one of those (under either spelling) is already
+    # represented by the canonical challenge name; anything left over is a
+    # completion whose challenge this skill no longer carries.
+    aliases = {spelling for name in matched for spelling in (name, name.replace("#", "/"))}
+    completed_names = matched | {name for name in completed if name not in aliases}
+    remaining = [name for name in valid_names if not _recorded(name, completed)]
     # A task no harder than one already completed is settled - see the module
     # docstring.
     ceiling = _completed_level_ceiling(
         skill,
         completed,
         skill_challenges,
+        all_challenges,
         rules=rules,
         chunk_info=chunk_info,
         items=items,
@@ -449,6 +515,7 @@ def classify_tasks(
             chunk_info=chunk_info,
             items=available_items,
             source_index=index,
+            all_challenges=challenges,
             skill_is_primary=_check_primary_method(
                 skill,
                 valid,

@@ -318,9 +318,10 @@ def test_a_completed_task_still_wins_the_ceiling_when_it_is_no_longer_valid() ->
     )
 
     assert result.skills["Mining"].active is None
-    # Not currently valid, so it isn't reported as completed either - the
-    # ledger entry only ever fed the ceiling.
-    assert result.skills["Mining"].completed == frozenset()
+    # And it *is* reported as completed, even though the skill no longer
+    # carries it as a valid challenge - a recorded completion is proof the
+    # requirements were met at the time.
+    assert result.skills["Mining"].completed == frozenset({"Buy the Mining cape"})
 
 
 def test_a_completed_entry_with_no_level_sets_no_ceiling() -> None:
@@ -515,6 +516,7 @@ def test_a_completed_task_recorded_with_a_slash_variant_still_counts() -> None:
     )
 
     classification = result.skills["Woodcutting"]
+    # The canonical `#` spelling, once - not both forms.
     assert classification.completed == frozenset({"~|Morytania Diary#Easy|~ Task 3"})
     # The Level 1 `Primary` route still wins: upstream's *ceiling* loop does a
     # plain lookup with no `/` variant (worker.js:8393), so a slash-spelled
@@ -547,3 +549,68 @@ def test_combat_is_not_classified_as_a_display_skill() -> None:
 
     assert "Combat" not in result.skills
     assert "Slayer" in result.skills
+
+
+def test_a_completion_defined_in_another_category_proves_its_skill_level() -> None:
+    """The reported `Thieving` case. `~|Wilderness Diary#Elite|~ Task 5` is
+    recorded under `Thieving` but *defined* in `challenges.Diary`, as "Steal
+    from the Chest (Rogues' Castle)" with `Skills: {Thieving: 84}`. Upstream's
+    ceiling loop only looks in `challenges[skill]` and only reads `Level`, so
+    it misses this; here a recorded completion counts as proof of the level it
+    required, which settles the equal-level Rogues' Castle task.
+    """
+    info = _chunk_info(
+        challenges={
+            "Thieving": {
+                "Pickpocket a man": {"Level": 1, "Primary": True},
+                "Loot a chest (Rogues' Castle) without the diary": {"Level": 84, "Primary": True},
+            },
+            "Diary": {
+                "Wilderness Diary Elite Task 5": {"Skills": {"Thieving": 84}},
+            },
+        }
+    )
+    valid = {
+        "Thieving": {
+            "Pickpocket a man": 1,
+            "Loot a chest (Rogues' Castle) without the diary": 84,
+        }
+    }
+
+    result = classify_tasks(
+        valid,
+        info,
+        completed_challenges={"Thieving": {"Wilderness Diary Elite Task 5": True}},
+        manual_tasks={},
+        backlog={},
+        passive_skill={},
+    )
+
+    classification = result.skills["Thieving"]
+    assert classification.active is None
+    assert "Wilderness Diary Elite Task 5" in classification.completed
+    assert "Loot a chest (Rogues' Castle) without the diary" in classification.obsolete
+
+
+def test_a_completion_with_no_level_anywhere_proves_nothing() -> None:
+    info = _chunk_info(
+        challenges={
+            "Thieving": {
+                "Pickpocket a man": {"Level": 1, "Primary": True},
+                "Pickpocket a guard": {"Level": 40, "Primary": True},
+            },
+            "Diary": {"Some diary task": {"Objects": ["Chest"]}},
+        }
+    )
+    valid = {"Thieving": {"Pickpocket a man": 1, "Pickpocket a guard": 40}}
+
+    result = classify_tasks(
+        valid,
+        info,
+        completed_challenges={"Thieving": {"Some diary task": True}},
+        manual_tasks={},
+        backlog={},
+        passive_skill={},
+    )
+
+    assert result.skills["Thieving"].active == "Pickpocket a guard"
