@@ -14,7 +14,7 @@ Two details of that guard matter, and both were wrong here before:
   set (index.js:6663). A terminal has no checkbox, so this module
   **deliberately diverges**: a ticked task is reported as *completed*, sorted
   to the front of its group and of the category, and marked
-  `CURRENT_CHUNK_SUFFIX` - the same treatment `bis.py` gives its own
+  `challenges.CURRENT_CHUNK_SUFFIX` - the same treatment `bis.py` gives its own
   current-chunk acquisitions. `CategoryTasks.current_chunk` names them, so the
   panel's own count is still recoverable as `active_total + len(current_chunk)`
   and the opt-in oracle test compares against that.
@@ -59,7 +59,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fray_claude.active_tasks import _recorded
-from fray_claude.challenges import strip_task_markup
+from fray_claude.challenges import CURRENT_CHUNK_SUFFIX, strip_task_markup
 from fray_claude.chunkinfo import ChunkInfo
 
 #: The categories this module owns, in the order the CLI prints them.
@@ -290,12 +290,6 @@ def _superseded(
                 superseded.add(step)
                 pending.append(step)
     return frozenset(superseded)
-
-
-#: Appended to a task ticked off during the chunk in play - one still sitting
-#: in `checkedChallenges`, not yet migrated into `completedChallenges` by the
-#: next roll. `bis.py` marks its own the same way.
-CURRENT_CHUNK_SUFFIX = "(Active)"
 
 
 def _classify_category(

@@ -753,7 +753,7 @@ def test_tasks_bis_lists_this_chunks_completions_first(
 
     completed = capsys.readouterr().out.split("completed ", 1)[1].splitlines()[1:3]
     assert completed == [
-        "  [weapon] Obtain a rune scimitar (Active Task)",
+        "  [weapon] Obtain a rune scimitar (Active)",
         "  [cape] Obtain a black cape",
     ]
 

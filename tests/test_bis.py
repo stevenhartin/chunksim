@@ -431,7 +431,7 @@ def test_display_name_omits_the_prefix_without_a_slot() -> None:
 
 def test_display_name_marks_a_pick_obtained_this_chunk() -> None:
     assert bis_display_name(_WHIP_TASK, "weapon", current_chunk=True) == (
-        "[weapon] Obtain an abyssal whip (Active Task)"
+        "[weapon] Obtain an abyssal whip (Active)"
     )
 
 
@@ -461,7 +461,7 @@ def test_a_checked_pick_is_completed_and_flagged_as_this_chunks() -> None:
     assert result.completed == {_WHIP_TASK: "Melee/​Ranged/​Magic BiS weapon"}
     assert result.active == {}
     assert result.current_chunk == frozenset({_WHIP_TASK})
-    assert result.display_name(_WHIP_TASK) == "[weapon] Obtain an abyssal whip (Active Task)"
+    assert result.display_name(_WHIP_TASK) == "[weapon] Obtain an abyssal whip (Active)"
 
 
 def test_a_pick_completed_in_an_earlier_chunk_is_not_flagged() -> None:
@@ -516,7 +516,7 @@ def test_display_sorted_puts_this_chunks_acquisitions_first() -> None:
     )
 
     assert result.display_sorted(result.completed) == [
-        "[body] Obtain a zamorak monk top (Active Task)",
+        "[body] Obtain a zamorak monk top (Active)",
         "[head] Obtain an ahrim's hood",
     ]
 

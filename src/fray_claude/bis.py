@@ -61,7 +61,12 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from fray_claude.challenges import _PROCESSING_SKILLS, _has_any_valid, strip_task_markup
+from fray_claude.challenges import (
+    CURRENT_CHUNK_SUFFIX,
+    _PROCESSING_SKILLS,
+    _has_any_valid,
+    strip_task_markup,
+)
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.summary import _mapping
 
@@ -548,12 +553,6 @@ def bis_task_name(item_name: str, equip: Mapping[str, Any]) -> str:
 
 
 _TASK_ITEM_PATTERN = re.compile(r"~\|(.+?)\|~")
-
-#: Appended to a display name for a pick obtained during the *current*
-#: chunk - one still sitting in `checkedChallenges`, not yet migrated into
-#: `completedChallenges` by the next roll. See `BisResult.current_chunk`.
-CURRENT_CHUNK_SUFFIX = "(Active Task)"
-
 
 def bis_display_name(task_name: str, slot: str | None = None, *, current_chunk: bool = False) -> str:
     """Render a BiS task for a terminal: `Obtain a ~|granite ring (i)|~`

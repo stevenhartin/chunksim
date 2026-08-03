@@ -152,6 +152,13 @@ _COMBAT_SKILLS = frozenset({"Attack", "Strength", "Defence", "Hitpoints", "Range
 _TASK_MARKUP = re.compile(r"[~|]")
 
 
+#: Appended to a task obtained during the chunk in play - one still sitting
+#: in `checkedChallenges`, not yet migrated into `completedChallenges` by the
+#: next roll. Shared by `bis.py` and `other_tasks.py` so the two panels mark
+#: the same thing the same way.
+CURRENT_CHUNK_SUFFIX = "(Active)"
+
+
 def strip_task_markup(task_name: str) -> str:
     """Drop the `~|...|~` delimiters a task name wraps its subject in,
     preserving the text (and its casing) between them.

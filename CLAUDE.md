@@ -251,7 +251,7 @@ One responsibility per module, so the planned simulation work has a pure layer t
   `outdated` alike, since `picks`' packed `"{style}-{slot}"` keys can't be reached from a task name)
   and `current_chunk` — the subset of `completed`/`outdated` still sitting in `checkedChallenges`,
   i.e. banked during the chunk in play rather than an earlier one. `bis_display_name` renders the pair
-  as `[<slot>] Obtain a granite ring (i)` + a ` (Active Task)` suffix for the current chunk, and
+  as `[<slot>] Obtain a granite ring (i)` + a ` (Active)` suffix for the current chunk, and
   `display_sorted` floats those to the top, over `challenges.strip_task_markup`. `current_chunk`
   is intersected with what the result actually shows, so a checked entry naming neither a current pick
   nor a resolvable outdated one is left out rather than sitting unmatched. Candidates are iterated already-obtained-first
@@ -459,7 +459,7 @@ One responsibility per module, so the planned simulation work has a pure layer t
   `state.chunk_info.challenges` at all - see `challenges.py`), rendered through
   `BisResult.display_sorted`/`display_name` rather than as raw task names, so lines read
   `[<slot>] Obtain a granite ring (i)` with this chunk's completions floated to the top and suffixed
-  ` (Active Task)`; the raw `~|...|~` names stay the keys in `--export-json`; a real skill category
+  ` (Active)`; the raw `~|...|~` names stay the keys in `--export-json`; a real skill category
   (`derived.task_classification.skills`) shows **active -> completed -> obsolete** sections plus an
   opportunistic comparison against `state.active_tasks[skill]` ("not cached" when absent, the common
   case - see `active_tasks.py`); everything else keeps the flat valid listing. Every one of those
