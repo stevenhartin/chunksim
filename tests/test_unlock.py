@@ -6,7 +6,7 @@ from typing import Any
 
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.pipeline import MapState
-from fray_claude.unlock import diff_reachable_sections, diff_valid_tasks, tasks_added_by
+from fray_claude.unlock import diff_bis_picks, diff_reachable_sections, diff_valid_tasks, tasks_added_by
 
 
 def _chunk_info(**data: Any) -> ChunkInfo:
@@ -23,6 +23,7 @@ def _state(**overrides: Any) -> MapState:
         "manual_equipment": {},
         "backlogged_sources": {},
         "max_skill": {},
+        "passive_skill": {},
     }
     defaults.update(overrides)
     return MapState(**defaults)
@@ -140,3 +141,44 @@ def test_tasks_added_by_reports_newly_reachable_sections() -> None:
     delta = tasks_added_by(state, {"100": True}, "200")
 
     assert delta.new_sections == {"100": {"1": True}}
+
+
+def test_diff_bis_picks_reports_new_and_changed_slots() -> None:
+    before = {"Melee-weapon": "Bronze sword"}
+    after = {"Melee-weapon": "Rune scimitar", "Melee-shield": "Rune kiteshield"}
+
+    assert diff_bis_picks(before, after) == {
+        "Melee-weapon": ("Bronze sword", "Rune scimitar"),
+        "Melee-shield": (None, "Rune kiteshield"),
+    }
+
+
+def test_diff_bis_picks_ignores_unchanged_slots() -> None:
+    same = {"Melee-weapon": "Rune scimitar"}
+
+    assert diff_bis_picks(same, same) == {}
+
+
+def test_tasks_added_by_reports_a_new_bis_upgrade() -> None:
+    info = _chunk_info(
+        chunks={"100": {"Monster": {"Goblin": True}}},
+        drops={"Goblin": {"Rune scimitar": {"1": "Always"}}},
+        equipment={
+            "Rune scimitar": {
+                "slot": "weapon",
+                "attack_speed": 4,
+                "attack_slash": 45,
+                "melee_strength": 44,
+            }
+        },
+    )
+    state = _state(chunk_info=info)
+
+    delta = tasks_added_by(state, {}, "100")
+
+    # The sole weapon candidate wins every active style by default.
+    assert delta.bis_upgrades == {
+        "Melee-weapon": (None, "Rune scimitar"),
+        "Ranged-weapon": (None, "Rune scimitar"),
+        "Magic-weapon": (None, "Rune scimitar"),
+    }

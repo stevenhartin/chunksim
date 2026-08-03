@@ -15,6 +15,14 @@ re-picks BiS as better items appear, so a later chunk genuinely does change
 what an earlier one would display - unsuitable for attribution, which is
 exactly why this project's simulation ledger (`simulate.py`) is built on
 `calc_challenges`'s `valid`, not the panel.
+
+`bis.py`'s output is exactly that non-monotonic panel-like case, deliberately
+exempted from the partition argument above: a later unlock can make a
+*better* item available for a slot an earlier unlock already filled, so
+`UnlockDelta.bis_upgrades` records which (style, slot) picks changed between
+`before`/`after` - not "new" tasks attributed to one unlock, but a per-unlock
+snapshot of what improved, as agreed with the project's BiS semantics
+(recompute the best achievable set fresh per state, per chunk roll).
 """
 
 from __future__ import annotations
@@ -34,6 +42,7 @@ class UnlockDelta:
     new_sections: dict[str, dict[str, bool]]
     new_tasks: dict[str, dict[str, int | str | bool]]
     new_unsupported: frozenset[str]
+    bis_upgrades: dict[str, tuple[str | None, str]]
 
     @property
     def task_count(self) -> int:
@@ -45,6 +54,10 @@ class UnlockDelta:
             "new_sections": self.new_sections,
             "new_tasks": self.new_tasks,
             "new_unsupported": sorted(self.new_unsupported),
+            "bis_upgrades": {
+                key: {"previous": previous, "new": new}
+                for key, (previous, new) in self.bis_upgrades.items()
+            },
         }
 
 
@@ -74,6 +87,20 @@ def diff_valid_tasks(
     return diff
 
 
+def diff_bis_picks(
+    before: Mapping[str, str], after: Mapping[str, str]
+) -> dict[str, tuple[str | None, str]]:
+    """`(style, slot)` picks that appeared or changed in `after` versus
+    `before` - a slot with no prior pick has `previous=None`.
+    """
+    diff: dict[str, tuple[str | None, str]] = {}
+    for key, item in after.items():
+        previous = before.get(key)
+        if previous != item:
+            diff[key] = (previous, item)
+    return diff
+
+
 def delta_from(before: Derived, after: Derived, chunk_id: str) -> UnlockDelta:
     """Build the `UnlockDelta` between two already-derived pipeline runs."""
     return UnlockDelta(
@@ -81,6 +108,7 @@ def delta_from(before: Derived, after: Derived, chunk_id: str) -> UnlockDelta:
         new_sections=diff_reachable_sections(before.reachable_sections, after.reachable_sections),
         new_tasks=diff_valid_tasks(before.challenges.valid, after.challenges.valid),
         new_unsupported=frozenset(after.challenges.unsupported - before.challenges.unsupported),
+        bis_upgrades=diff_bis_picks(before.bis.picks, after.bis.picks),
     )
 
 

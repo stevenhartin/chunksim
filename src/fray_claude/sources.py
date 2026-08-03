@@ -7,6 +7,18 @@ shops/monsters directly present, the items obtainable from monster drops
 and the `Rare Drop Amount`/`Secondary Primary Amount` thresholds), and items
 buyable from an accessible shop.
 
+A monster with no `drops` entry falls back to its `skillItems.Slayer` entry
+(e.g. `Abyssal demon` has no `drops` table - `Abyssal whip` only exists via
+`skillItems.Slayer.'Abyssal demon'`), gated by a simplified Slayer-level
+check rather than upstream's full `isSlayerValid` - see
+`_slayer_skill_items_for`'s docstring for why the full version (which needs
+challenge-validity state) can't be expressed in this one-directional
+pipeline. Non-Slayer `skillItems` categories (Mining, Fishing, Thieving, ...)
+are not ported: upstream resolves those the same lazy, per-queried-item way
+inside `calcChallengesWork` rather than in `gatherChunksInfo` itself, and
+only Slayer's is needed for `Items` requirements and `bis.py`'s equipment
+candidates seen so far.
+
 Two pieces of upstream `gatherChunksInfo` are deliberately not ported here,
 each guarded so an affected map raises loudly instead of silently producing
 an incomplete index:
@@ -330,6 +342,36 @@ def _resolve_monster_drop(
         )
 
 
+def _slayer_skill_items_for(
+    monster: str,
+    skill_items_slayer: Mapping[str, Any],
+    slayer_monsters: Mapping[str, Any],
+    max_skill: Mapping[str, int],
+) -> Mapping[str, Any] | None:
+    """Port of the `skillItems['Slayer']` fallback used when a monster has no
+    `drops` entry (e.g. worker.js:986-999: `Abyssal demon` has no `drops`
+    table, only `skillItems.Slayer.'Abyssal demon'`, which is where
+    `Abyssal whip` comes from).
+
+    Simplified vs. upstream's `isSlayerValid`: gated only on the monster's
+    required Slayer level (`slayerMonsters`) against `max_skill['Slayer']`,
+    when both are present. Upstream additionally requires `checkPrimaryMethod`
+    ("is Slayer trainable at all") and, for a slayer-locked monster, a live
+    slayer assignment (`slayerLocked`) plus that monster's own Slayer task
+    already being valid - a genuine circularity (item availability depending
+    on challenge validity) that this project's one-directional
+    sources -> challenges pipeline can't express, so it isn't modelled here.
+    """
+    table = skill_items_slayer.get(monster)
+    if not isinstance(table, dict):
+        return None
+    required_level = slayer_monsters.get(monster)
+    if isinstance(required_level, (int, float)) and "Slayer" in max_skill:
+        if required_level > max_skill["Slayer"]:
+            return None
+    return table
+
+
 def _resolve_monster(
     *,
     monster: str,
@@ -343,15 +385,23 @@ def _resolve_monster(
     rules: Mapping[str, Any],
     boss_monsters: Mapping[str, Any],
     backlogged: Mapping[str, Any],
+    skill_items_slayer: Mapping[str, Any],
+    slayer_monsters: Mapping[str, Any],
+    max_skill: Mapping[str, int],
 ) -> None:
     """Record `monster` as present at `source`, and (unless `Skiller` is on,
     it's backlogged, or it has no known drops) resolve every drop it can
-    yield into `items`.
+    yield into `items`. A monster absent from `drops` falls back to its
+    `skillItems.Slayer` entry, if any - see `_slayer_skill_items_for`.
     """
     if not _is_backlogged(backlogged, "monsters", monster):
         monsters.setdefault(monster, {})[source] = True
 
     monster_drops = drops.get(monster)
+    if not isinstance(monster_drops, dict):
+        monster_drops = _slayer_skill_items_for(
+            monster, skill_items_slayer, slayer_monsters, max_skill
+        )
     if (
         rules.get("Skiller") is True
         or not isinstance(monster_drops, dict)
@@ -406,6 +456,7 @@ def gather_chunks_info(
     backlogged_sources: Mapping[str, Any] | None = None,
     manual_monsters: Mapping[str, Any] | None = None,
     manual_equipment: Mapping[str, Any] | None = None,
+    max_skill: Mapping[str, int] | None = None,
 ) -> SourceIndex:
     """Port of `gatherChunksInfo`: what the unlocked chunks make available.
 
@@ -420,12 +471,15 @@ def gather_chunks_info(
 
     backlogged = backlogged_sources or {}
     manual_monsters = manual_monsters or {}
+    max_skill = max_skill or {}
     settings = _settings(rules)
     boss_monsters = _mapping(chunk_info.code_items, "bossMonsters")
     minigame_shops = _mapping(chunk_info.code_items, "minigameShops")
     shop_items = chunk_info.shop_items
     drop_tables = _mapping(chunk_info.code_items, "dropTables")
     drops = _apply_drop_rate_overrides(chunk_info.drops, chunk_info, chunk_ids, reachable_sections)
+    skill_items_slayer = _mapping(chunk_info.skill_items, "Slayer")
+    slayer_monsters = chunk_info.slayer_monsters
 
     items: dict[str, dict[str, str]] = {}
     objects: dict[str, dict[str, bool]] = {}
@@ -462,6 +516,9 @@ def gather_chunks_info(
                         rules=rules,
                         boss_monsters=boss_monsters,
                         backlogged=backlogged,
+                        skill_items_slayer=skill_items_slayer,
+                        slayer_monsters=slayer_monsters,
+                        max_skill=max_skill,
                     )
                 for shop in _mapping(section_entry, "Shop"):
                     _add_shop_items(
@@ -498,6 +555,9 @@ def gather_chunks_info(
                 rules=rules,
                 boss_monsters=boss_monsters,
                 backlogged=backlogged,
+                skill_items_slayer=skill_items_slayer,
+                slayer_monsters=slayer_monsters,
+                max_skill=max_skill,
             )
         for shop in _mapping(entry, "Shop"):
             _add_shop_items(
@@ -543,6 +603,9 @@ def gather_chunks_info(
                 rules=rules,
                 boss_monsters=boss_monsters,
                 backlogged=backlogged,
+                skill_items_slayer=skill_items_slayer,
+                slayer_monsters=slayer_monsters,
+                max_skill=max_skill,
             )
 
     manual_npcs = manual_monsters.get("NPCs")

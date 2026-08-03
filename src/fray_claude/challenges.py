@@ -1,52 +1,47 @@
 """Which challenges (tasks) are valid, given the unlocked chunks' sources.
 
 Port of the core of `calcChallenges`/`calcChallengesWork` (worker.js): a
-fixed point over 28 of the 29 challenge categories - all but `BiS`, which
-this module does not compute at all (see below). Each challenge's `Chunks`/
-`Items`/`Objects`/`Monsters`/`NPCs`/`Skills`/`Tasks` requirements are checked
-against the source index (`sources.py`) and the running set of already-valid
-challenges; a valid challenge with an `Output` feeds back as a new item
-source, so another pass may unlock further challenges - repeating until
-nothing changes.
+fixed point over 28 of the 29 challenge categories - all but `BiS`. Each
+challenge's `Chunks`/`Items`/`Objects`/`Monsters`/`NPCs`/`Skills`/`Tasks`
+requirements are checked against the source index (`sources.py`) and the
+running set of already-valid challenges; a valid challenge with an `Output`
+feeds back as a new item source, so another pass may unlock further
+challenges - repeating until nothing changes.
 
-**`BiS` is entirely unsupported, not merely reduced-scope.** Unlike the
-other 28 categories, `BiS` challenges have no static definition anywhere in
-`chunkinfo.json` - `challenges.BiS` doesn't exist in the export at all.
-Upstream's `calcBIS` (worker.js, ~3,000 lines) synthesizes them at runtime
-by comparing the `equipment` table's combat stats (attack/defence per style,
-`ranged_strength`, `magic_damage`, ...) across weapon/armour slots for each
-combat style (Melee/Ranged/Magic, plus several rule-gated Tank/Flinch/
-Weight/Prayer variants), including weapon-ammo pairing and dynamic
-"Obtain a/an X" task-name generation. It shares no structure with the
-requirement-checking this module does for every other category, so it was
-not ported here: `calc_challenges` simply never populates `valid['BiS']`,
-which callers must not read as "no BiS tasks are currently valid" - it
-means BiS was never evaluated.
+**`BiS` is never evaluated *here*, but it is computed - by `bis.py`, not
+this module.** Unlike the other 28 categories, `BiS` challenges have no
+static definition anywhere in `chunkinfo.json` - `challenges.BiS` doesn't
+exist in the export at all, so it shares no structure with the
+requirement-checking this module does for every other category (upstream's
+`calcBIS` compares the `equipment` table's combat stats across weapon/armour
+slots per combat style instead - see `bis.py`'s module docstring for the
+full port). `UNSUPPORTED_CATEGORIES` and the `skill in UNSUPPORTED_CATEGORIES`
+skip below exist only to guard against a hypothetical/malformed export that
+*does* carry a literal `challenges.BiS` branch: presence-checking it with
+this module's generic engine would produce nonsense (real BiS validity isn't
+a presence check at all), so it's skipped rather than silently mis-evaluated.
+Callers wanting BiS should read `pipeline.Derived.bis`, not
+`ChallengeResult.valid['BiS']`, which this module never populates.
 
-Scope: BASIC. `calcChallengesWork` is ~1,500 extremely dense lines with deep
-special-casing (item-family `[+]` matching combined with a `*` secondary/
-primary reclassification, tool-level gating, an entire "Multi Step
-Processing" rule chain, elemental-staff rune substitution, dynamic Max
-Cape/Quest Point Cape challenge injection, Slayer-lock and Mahogany Homes
-gates, and a "Highest Level" grouping pass). Porting all of it is out of
-scope for this increment; what's implemented, and what isn't, below.
+Scope: `calcChallengesWork` is ~1,500 extremely dense lines. What's implemented, and what isn't,
+below.
 
 Implemented:
 - `Chunks`/`Objects`/`Monsters`/`NPCs`/`Mix` requirements: full presence
   checking, including `[+]` family matching (`objectsPlus`-style groups,
   ported via `chunkinfo.json`'s `codeItems`) and `[+]xN` "at least N of"
-  counting for `Chunks`. These have no secondary/primary reclassification
-  nuance upstream, so presence checking is faithful here, not a
-  simplification.
-- `Items` requirements: basic presence only (`item in source_index.items`,
-  with `AllowedSources`/`NonShop` filtering). A requirement item containing
-  `[+]` (a family) or `*` (the secondary marker) - the overwhelming majority
-  of `Items` entries in practice - is not evaluable, since those carry the
-  reclassification logic this module does not implement. Rather than abort
-  the whole computation, `calc_challenges` catches this *per challenge*: an
-  unsupported challenge is simply never valid, and its `skill/name` is
-  collected in `ChallengeResult.unsupported` so the gap stays visible
-  instead of silently reading as "checked and invalid".
+  counting for `Chunks`.
+- `Items` requirements: presence checking, including `[+]`/`[+]xN` family
+  matching via `codeItems.itemsPlus`, and `AllowedSources`/`NonShop`
+  filtering. The `*` secondary marker is stripped and otherwise ignored -
+  verified against upstream (worker.js:4046,4064) it does **not** gate
+  validity, only a `Secondary` flag feeding `checkPrimaryMethod` (not ported)
+  and a `forcedPrimary` gate with zero real-export uses, so it isn't
+  threaded through here; see `_items_requirement_met`'s docstring. For
+  combat skills and challenges whose `Category` includes `BIS Skilling`, an
+  item sourced *only* from another skill's crafted output is additionally
+  rejected unless `Not Equip`/`Wield Crafted Items`/a Slayer source/the
+  requiring skill being Magic excuses it - see `_source_quality_ok`.
 - `Skills` requirements (a challenge needing another skill category to
   already have a valid entry): checked via `_has_any_valid`, a simplified
   stand-in for upstream's `checkPrimaryMethod` - "the skill has *a* valid
@@ -57,21 +52,33 @@ Implemented:
   gate (a `Category` naming a rule that's off invalidates the challenge,
   unless the category is in `maybePrimary` or is the `Secondary Primary`
   special case) plus the `InsidePOH Primary` category's hard block.
+- The `processingSkill` categories' (Runecraft, Magic, Herblore, Cooking,
+  Firemaking, Fletching, Smithing, Crafting, Construction) "Highest Level"
+  grouping (`_group_processing_skill_challenges`, worker.js:4413-4680):
+  **when `rules['Highest Level']` is off**, a challenge that consumes an
+  available ingredient is valid only if it is the *lowest*-`Level`-consumer
+  of at least one such ingredient (e.g. smelting a bronze bar lets you smith
+  a bronze dagger, not simultaneously every higher-tier bronze item) - not
+  "surface only the highest", the docstring here previously had this
+  backwards. **When the rule is on** (true of the map this was built
+  against), every consumer is valid, matching the plain per-challenge
+  checking above with no grouping needed.
 
 Not implemented - each raises `NotImplementedError` naming the mechanic,
 except where noted as a silent, documented approximation instead:
 - `QuestPointsNeeded`/`CombatPointsNeeded`/`KudosNeeded`/`TotalLevelNeeded`/
   `CombatLevelNeeded` gates: correctly computing those aggregates needs
   state (quest points earned, kudos, etc.) this module does not derive.
-  Rare in the export (single digits to low tens of challenges).
-- **Silent approximation, not a raise**: `processingSkill` categories
-  (Runecraft, Magic, Herblore, Cooking, Firemaking, Fletching, Smithing,
-  Crafting, Construction) get the same basic `Items` check as everything
-  else, not upstream's "Highest Level" grouping/multi-step-chain pass - so
-  several level tiers of the same task may show valid simultaneously where
-  upstream, with the `Highest Level` rule *off*, would surface only the
-  highest. (With that rule *on* - true of the map this was built against -
-  upstream itself marks every tier valid, so this happens to match.) The
+  Rare in the export (single digits to low tens of challenges; 42 on the
+  map this was built against, all of them one of these five gates).
+- **Silent approximation, not a raise**: the "Highest Level" grouping above
+  doesn't model upstream's `tools`/`ManualNonProcessing`/Quest-Diary-sub-task
+  direct-add escapes, its `Boosting` level-shift, its multi-pass re-pick
+  after `Tasks`/`Skills` pruning, or the `nonskill` chain-flattening that
+  lets a group's own `Items` re-expand mid-walk. It also runs once, after
+  the fixed point converges, rather than feeding grouped-out challenges'
+  `Output` back out of `_seed_items_with_outputs` - so item-seeding can be
+  mildly over-inclusive relative to the final grouped `valid`. The
   `Multi Step Processing` rule's chain-of-crafted-items requirement is not
   checked at all, which can over-include processing-skill tasks when that
   rule is on.
@@ -106,6 +113,18 @@ UNSUPPORTED_CATEGORIES = frozenset({"BiS"})
 _PROCESSING_SKILLS = frozenset(
     {"Runecraft", "Magic", "Herblore", "Cooking", "Firemaking", "Fletching", "Smithing", "Crafting", "Construction"}
 )
+
+#: index.js's `skillNames`/`combatSkills` - every real skill category, and
+#: the 7 combat ones. Used by `_source_quality_ok`'s source-tag check.
+_SKILL_NAMES = frozenset(
+    {
+        "Slayer", "Thieving", "Attack", "Defence", "Strength", "Hitpoints", "Ranged",
+        "Prayer", "Magic", "Farming", "Herblore", "Hunter", "Cooking", "Woodcutting",
+        "Firemaking", "Fletching", "Fishing", "Mining", "Runecraft", "Sailing",
+        "Smithing", "Crafting", "Agility", "Construction", "Combat",
+    }
+)
+_COMBAT_SKILLS = frozenset({"Attack", "Strength", "Defence", "Hitpoints", "Ranged", "Magic", "Prayer"})
 
 _LEVEL_GATES_NOT_SUPPORTED = (
     "QuestPointsNeeded",
@@ -255,9 +274,81 @@ def _mix_requirement_met(
     return True
 
 
-def _items_requirement_met(
-    challenge: Mapping[str, Any], items: Mapping[str, Mapping[str, str]]
+def _item_source_ok(
+    sources: Mapping[str, str] | None, non_shop: bool, allowed_sources: Any
 ) -> bool:
+    if sources is None:
+        return False
+    if non_shop and only_shop(sources):
+        return False
+    return has_allowed_source(sources, allowed_sources)
+
+
+def _source_quality_ok(
+    sources: Mapping[str, str], *, skill: str, challenge: Mapping[str, Any], rules: Mapping[str, Any]
+) -> bool:
+    """Port of the combat/`BIS Skilling` source-quality gate
+    (worker.js:4067-4082): for combat skills and challenges whose `Category`
+    includes `BIS Skilling`, an item only counts if at least one of its
+    sources is *not* a plain skill-training output (a `primary-<Skill>` /
+    `secondary-<Skill>` tag where `<Skill>` is a real skill name, i.e. an
+    output fed back by `_seed_items_with_outputs`) - don't require training a
+    skill just to wield its product - unless `Not Equip` is set,
+    `rules['Wield Crafted Items']` is on, the training skill is Slayer, or
+    the requiring skill is Magic. Upstream's escape hatch for a matching
+    Quest/Diary `Tasks` sub-task (the `'--'`-joined naming convention) is not
+    ported - it has no real-export uses worth the complexity.
+    """
+    if skill not in _COMBAT_SKILLS:
+        categories = challenge.get("Category")
+        if not (isinstance(categories, list) and "BIS Skilling" in categories):
+            return True
+    for tag in sources.values():
+        source_skill = tag.partition("-")[2]
+        if (
+            "-" not in tag
+            or source_skill not in _SKILL_NAMES
+            or challenge.get("Not Equip") is True
+            or rules.get("Wield Crafted Items") is True
+            or source_skill == "Slayer"
+            or skill == "Magic"
+        ):
+            return True
+    return False
+
+
+def _item_usable(
+    sources: Mapping[str, str] | None,
+    *,
+    non_shop: bool,
+    allowed_sources: Any,
+    skill: str,
+    challenge: Mapping[str, Any],
+    rules: Mapping[str, Any],
+) -> bool:
+    if not _item_source_ok(sources, non_shop, allowed_sources):
+        return False
+    assert sources is not None  # narrowed by _item_source_ok
+    return _source_quality_ok(sources, skill=skill, challenge=challenge, rules=rules)
+
+
+def _items_requirement_met(
+    challenge: Mapping[str, Any],
+    items: Mapping[str, Mapping[str, str]],
+    chunk_info: ChunkInfo,
+    *,
+    skill: str,
+    rules: Mapping[str, Any],
+) -> bool:
+    """Port of the `Items` block (worker.js:3899-4121). The `*` secondary
+    marker is stripped and otherwise ignored here: verified against upstream
+    (worker.js:4046,4064), it does **not** gate validity - it only sets a
+    per-challenge `Secondary` flag that feeds `checkPrimaryMethod` (not
+    ported; see `_has_any_valid`'s docstring) and a `forcedPrimary` gate that
+    has zero real-export uses, so it isn't threaded through here. `[+]`
+    resolves through `codeItems.itemsPlus`, the same shape `_plus_family`
+    already handles for `Chunks`/`Objects`/`Monsters`/`NPCs`/`Mix`.
+    """
     item_refs = challenge.get("Items")
     if not isinstance(item_refs, list):
         return True
@@ -266,16 +357,36 @@ def _items_requirement_met(
     for item_ref in item_refs:
         if not isinstance(item_ref, str):
             continue
-        if "[+]" in item_ref or "*" in item_ref:
-            raise NotImplementedError(
-                f"item-family/secondary matching for {item_ref!r} is not supported"
+        name = item_ref.replace("*", "")
+        if "[+]" in name:
+            base_name, marker, count_str = name.partition("[+]x")
+            family_name = f"{base_name}[+]" if marker else name
+            family = _plus_family(chunk_info, "itemsPlus", family_name)
+            if family is None:
+                return False
+            needed = int(count_str) if marker else 1
+            matches = sum(
+                1
+                for member in family
+                if _item_usable(
+                    items.get(member),
+                    non_shop=non_shop,
+                    allowed_sources=allowed_sources,
+                    skill=skill,
+                    challenge=challenge,
+                    rules=rules,
+                )
             )
-        sources = items.get(item_ref)
-        if sources is None:
-            return False
-        if non_shop and only_shop(sources):
-            return False
-        if not has_allowed_source(sources, allowed_sources):
+            if matches < needed:
+                return False
+        elif not _item_usable(
+            items.get(name),
+            non_shop=non_shop,
+            allowed_sources=allowed_sources,
+            skill=skill,
+            challenge=challenge,
+            rules=rules,
+        ):
             return False
     return True
 
@@ -395,7 +506,7 @@ def _evaluate_challenge(
         return None
     if not _mix_requirement_met(challenge, monsters, npcs, chunk_info):
         return None
-    if not _items_requirement_met(challenge, items):
+    if not _items_requirement_met(challenge, items, chunk_info, skill=skill, rules=rules):
         return None
     if not _skills_requirement_met(challenge, max_skill, valid):
         return None
@@ -422,6 +533,62 @@ def _seed_items_with_outputs(
             if isinstance(output, str):
                 items.setdefault(output, {})[name] = f"primary-{skill}"
     return items
+
+
+def _group_processing_skill_challenges(
+    valid: Mapping[str, Mapping[str, int | str | bool]],
+    challenges: Mapping[str, Mapping[str, Any]],
+    items: Mapping[str, Mapping[str, str]],
+    rules: Mapping[str, Any],
+) -> dict[str, dict[str, int | str | bool]]:
+    """Port of the "Highest Level" grouping fork (worker.js:4413-4680), run
+    once after `calc_challenges`'s fixed point converges.
+
+    When `rules['Highest Level']` is off, a `_PROCESSING_SKILLS` challenge
+    that consumes an available ingredient is valid only if it is the
+    lowest-`Level` consumer of at least one such ingredient - ties keep
+    whichever consumer is seen first, in `chunk_info.challenges`' own key
+    order (upstream's further `Priority`/`Primary`/`Secondary` tie-break
+    isn't modelled - see the module docstring). When the rule is on, every
+    consumer of an available ingredient is valid, which is exactly what the
+    per-challenge checking already produced, so this is a no-op.
+    """
+    if rules.get("Highest Level") is True:
+        return {skill: dict(names) for skill, names in valid.items()}
+
+    result: dict[str, dict[str, int | str | bool]] = {
+        skill: dict(names) for skill, names in valid.items() if skill not in _PROCESSING_SKILLS
+    }
+    for skill in _PROCESSING_SKILLS:
+        skill_valid = valid.get(skill)
+        if not skill_valid:
+            continue
+        skill_challenges = challenges.get(skill, {})
+        groups: dict[str, list[str]] = {}
+        winners: dict[str, int | str | bool] = {}
+        for name in skill_valid:
+            challenge = skill_challenges.get(name)
+            item_refs = challenge.get("Items") if isinstance(challenge, dict) else None
+            if not isinstance(item_refs, list) or not item_refs:
+                winners[name] = skill_valid[name]
+                continue
+            for item_ref in item_refs:
+                if not isinstance(item_ref, str):
+                    continue
+                ingredient = item_ref.replace("*", "").split("[+]x")[0]
+                if ingredient in items:
+                    groups.setdefault(ingredient, []).append(name)
+
+        def _level(name: str) -> float:
+            level = skill_challenges.get(name, {}).get("Level")
+            return level if isinstance(level, (int, float)) else float("inf")
+
+        for names in groups.values():
+            winner = min(names, key=_level)
+            winners[winner] = skill_valid[winner]
+        if winners:
+            result[skill] = winners
+    return result
 
 
 def calc_challenges(
@@ -484,4 +651,5 @@ def calc_challenges(
         valid = new_valid
         items = _seed_items_with_outputs(source_index.items, valid, challenges)
 
-    return ChallengeResult(valid=valid, unsupported=frozenset(unsupported))
+    grouped = _group_processing_skill_challenges(valid, challenges, items, rules)
+    return ChallengeResult(valid=grouped, unsupported=frozenset(unsupported))

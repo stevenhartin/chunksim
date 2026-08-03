@@ -22,6 +22,7 @@ def _state(**overrides: Any) -> MapState:
         "manual_equipment": {},
         "backlogged_sources": {},
         "max_skill": {},
+        "passive_skill": {},
     }
     defaults.update(overrides)
     return MapState(**defaults)

@@ -27,7 +27,6 @@ from fray_claude.cache import (
     write_blob,
     write_cache,
 )
-from fray_claude.challenges import UNSUPPORTED_CATEGORIES
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.pipeline import MapState, derive, load_map_state
 from fray_claude.search import TYPES, build_world_index, search
@@ -211,7 +210,8 @@ def _cmd_sources(args: argparse.Namespace) -> int:
 
 def _cmd_tasks(args: argparse.Namespace) -> int:
     state, unlocked = _load_state(args)
-    result = derive(state, unlocked).challenges
+    derived = derive(state, unlocked)
+    result = derived.challenges
 
     if args.category is None:
         total_valid = sum(len(names) for names in result.valid.values())
@@ -220,35 +220,41 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
             print(f"valid tasks  {total_valid}")
             for skill, skill_tasks in sorted(result.valid.items()):
                 print(f"  {skill:<12} {len(skill_tasks)}")
+            print(f"  {'BiS':<12} {len(derived.bis.tasks)}")
             print(f"unsupported  {len(result.unsupported)} individual tasks (see CLAUDE.md)")
-            print(
-                f"not computed {', '.join(sorted(UNSUPPORTED_CATEGORIES))} "
-                "(whole categories - absence isn't 'none valid', see CLAUDE.md)"
-            )
         if args.export_json is not None:
-            _emit_json({"map_id": args.map_id, **result.as_dict()}, args.export_json)
+            _emit_json(
+                {"map_id": args.map_id, **result.as_dict(), "bis": derived.bis.as_dict()},
+                args.export_json,
+            )
         return 0
 
-    if args.category not in state.chunk_info.challenges and args.category not in UNSUPPORTED_CATEGORIES:
+    if args.category == "BiS":
+        names = sorted(derived.bis.tasks)
+        if args.export_json != "-":
+            print(f"map      {args.map_id}")
+            print("category BiS")
+            print(f"valid    {len(names)}")
+            _print_capped(names, args.limit)
+        if args.export_json is not None:
+            _emit_json(
+                {"map_id": args.map_id, "category": "BiS", "valid": derived.bis.tasks},
+                args.export_json,
+            )
+        return 0
+
+    if args.category not in state.chunk_info.challenges:
         return _error(f"unknown task category: {args.category!r}")
 
     names = sorted(result.valid.get(args.category, {}))
     if args.export_json != "-":
         print(f"map      {args.map_id}")
         print(f"category {args.category}")
-        if args.category in UNSUPPORTED_CATEGORIES:
-            print("valid    not computed (see CLAUDE.md)")
-        else:
-            print(f"valid    {len(names)}")
-            _print_capped(names, args.limit)
+        print(f"valid    {len(names)}")
+        _print_capped(names, args.limit)
     if args.export_json is not None:
         _emit_json(
-            {
-                "map_id": args.map_id,
-                "category": args.category,
-                "not_computed": args.category in UNSUPPORTED_CATEGORIES,
-                "valid": names,
-            },
+            {"map_id": args.map_id, "category": args.category, "valid": names},
             args.export_json,
         )
     return 0
@@ -308,6 +314,10 @@ def _cmd_unlock(args: argparse.Namespace) -> int:
         for skill, names in sorted(delta.new_tasks.items()):
             print(f"  {skill:<12} {len(names)}")
         print(f"new sections {sum(len(s) for s in delta.new_sections.values())}")
+        if delta.bis_upgrades:
+            print(f"bis upgrades {len(delta.bis_upgrades)}")
+            for key, (previous, new) in sorted(delta.bis_upgrades.items()):
+                print(f"  {key:<20} {previous or '(none)'} -> {new}")
         if delta.new_unsupported:
             print(f"new unsupported {len(delta.new_unsupported)} (see CLAUDE.md)")
 
@@ -320,6 +330,7 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
     state, unlocked = _load_state(args)
     ledger = simulate_rolls(state, unlocked, rolls=args.rolls, seed=args.seed)
     total_tasks = sum(len(names) for record in ledger for names in record.new_tasks.values())
+    total_bis = sum(len(record.bis_upgrades) for record in ledger)
 
     if args.export_json != "-":
         seed_note = f" (seed {args.seed})" if args.seed is not None else ""
@@ -328,8 +339,14 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
         for record in ledger:
             task_count = sum(len(names) for names in record.new_tasks.values())
             section_count = sum(len(s) for s in record.new_sections.values())
-            print(f"  {record.order:>3} {record.chunk_id:<8} tasks+{task_count} sections+{section_count}")
+            bis_count = len(record.bis_upgrades)
+            print(
+                f"  {record.order:>3} {record.chunk_id:<8} tasks+{task_count} "
+                f"sections+{section_count} bis+{bis_count}"
+            )
         print(f"total new tasks {total_tasks}")
+        if total_bis:
+            print(f"total bis upgrades {total_bis}")
 
     if args.export_json is not None:
         _emit_json(

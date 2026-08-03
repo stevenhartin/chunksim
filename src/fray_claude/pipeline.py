@@ -5,8 +5,8 @@ invocation (the chunkinfo export, decoded rules/settings, manual overrides);
 `derive` runs the pipeline for a given *set of unlocked chunk ids*, so
 `unlock.py` and `simulate.py` can call it twice - once for the current
 state, once for a candidate chunk added - without duplicating the
-`unlocked_sections` -> `gather_chunks_info` -> `calc_challenges` wiring that
-`cli.py`'s `sections`/`sources`/`tasks` subcommands also share.
+`unlocked_sections` -> `gather_chunks_info` -> `calc_challenges` -> `compute_bis`
+wiring that `cli.py`'s `sections`/`sources`/`tasks` subcommands also share.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from fray_claude.bis import BisResult, compute_bis
 from fray_claude.challenges import ChallengeResult, calc_challenges
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.firebase import decode_payload
@@ -37,6 +38,7 @@ class MapState:
     manual_equipment: Mapping[str, Any]
     backlogged_sources: Mapping[str, Any]
     max_skill: Mapping[str, int]
+    passive_skill: Mapping[str, int]
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,7 @@ class Derived:
     reachable_sections: dict[str, dict[str, bool]]
     source_index: SourceIndex
     challenges: ChallengeResult
+    bis: BisResult
 
 
 def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
@@ -66,11 +69,20 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
         backlogged_sources=state.backlogged_sources,
         manual_monsters=state.manual_monsters,
         manual_equipment=state.manual_equipment,
+        max_skill=state.max_skill,
     )
     challenges = calc_challenges(
         expanded, reachable, index, state.chunk_info, rules=state.rules, max_skill=state.max_skill
     )
-    return Derived(reachable_sections=reachable, source_index=index, challenges=challenges)
+    bis = compute_bis(
+        state.chunk_info,
+        index.items,
+        challenges.valid,
+        rules=state.rules,
+        max_skill=state.max_skill,
+        passive_skill=state.passive_skill,
+    )
+    return Derived(reachable_sections=reachable, source_index=index, challenges=challenges, bis=bis)
 
 
 def load_map_state(payload: Mapping[str, Any], chunk_info: ChunkInfo) -> tuple[MapState, dict[str, bool]]:
@@ -90,5 +102,6 @@ def load_map_state(payload: Mapping[str, Any], chunk_info: ChunkInfo) -> tuple[M
         manual_equipment=decode_payload(_mapping(chunkinfo_branch, "manualEquipment")),
         backlogged_sources=decode_payload(_mapping(chunkinfo_branch, "backloggedSources")),
         max_skill=decode_payload(_mapping(chunkinfo_branch, "maxSkill")),
+        passive_skill=decode_payload(_mapping(chunkinfo_branch, "passiveSkill")),
     )
     return state, unlocked

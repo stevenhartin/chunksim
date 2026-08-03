@@ -222,27 +222,140 @@ def test_items_requirement_respects_allowed_sources() -> None:
     }
 
 
-def test_item_family_and_secondary_marker_are_reported_unsupported() -> None:
+def test_item_family_requirement_needs_a_member_present() -> None:
     info = _chunk_info(
-        challenges={
-            "Nonskill": {
-                "Family": {"Items": ["Axe[+]"]},
-                "Secondary": {"Items": ["Coins*"]},
-            }
-        }
+        challenges={"Nonskill": {"Chop it": {"Items": ["Axe[+]"]}}},
+        codeItems={"itemsPlus": {"Axe[+]": ["Bronze axe", "Iron axe"]}},
     )
+    index = SourceIndex(
+        items={"Iron axe": {"General Store": "shop"}},
+        objects={},
+        monsters={},
+        npcs={},
+        shops={},
+        drop_rates={},
+    )
+
+    assert calc_challenges({}, {}, _EMPTY, info, rules={}).valid == {}
+    assert calc_challenges({}, {}, index, info, rules={}).valid == {"Nonskill": {"Chop it": True}}
+
+
+def test_item_family_count_requirement() -> None:
+    info = _chunk_info(
+        challenges={"Nonskill": {"Chop lots": {"Items": ["Axe[+]x2"]}}},
+        codeItems={"itemsPlus": {"Axe[+]": ["Bronze axe", "Iron axe", "Steel axe"]}},
+    )
+    one = SourceIndex(
+        items={"Iron axe": {"Store": "shop"}}, objects={}, monsters={}, npcs={}, shops={}, drop_rates={}
+    )
+    two = SourceIndex(
+        items={"Iron axe": {"Store": "shop"}, "Steel axe": {"Store": "shop"}},
+        objects={},
+        monsters={},
+        npcs={},
+        shops={},
+        drop_rates={},
+    )
+
+    assert calc_challenges({}, {}, one, info, rules={}).valid == {}
+    assert calc_challenges({}, {}, two, info, rules={}).valid == {"Nonskill": {"Chop lots": True}}
+
+
+def test_unknown_item_family_is_invalid_not_unsupported() -> None:
+    info = _chunk_info(challenges={"Nonskill": {"Chop it": {"Items": ["Axe[+]"]}}})
 
     result = calc_challenges({}, {}, _EMPTY, info, rules={})
 
     assert result.valid == {}
-    assert result.unsupported == frozenset({"Nonskill/Family", "Nonskill/Secondary"})
+    assert result.unsupported == frozenset()
+
+
+def test_secondary_marker_is_stripped_and_does_not_block_validity() -> None:
+    info = _chunk_info(challenges={"Nonskill": {"Use coins": {"Items": ["Coins*"]}}})
+    index = SourceIndex(
+        items={"Coins": {"Goblin": "secondary-drop"}},
+        objects={},
+        monsters={},
+        npcs={},
+        shops={},
+        drop_rates={},
+    )
+
+    result = calc_challenges({}, {}, index, info, rules={})
+
+    assert result.valid == {"Nonskill": {"Use coins": True}}
+    assert result.unsupported == frozenset()
+
+
+def test_source_quality_gate_rejects_a_combat_items_only_source_is_crafted() -> None:
+    info = _chunk_info(challenges={"Attack": {"Wield it": {"Items": ["Rune scimitar"]}}})
+    only_crafted = SourceIndex(
+        items={"Rune scimitar": {"Smith a rune scimitar": "primary-Smithing"}},
+        objects={},
+        monsters={},
+        npcs={},
+        shops={},
+        drop_rates={},
+    )
+    also_dropped = SourceIndex(
+        items={
+            "Rune scimitar": {
+                "Smith a rune scimitar": "primary-Smithing",
+                "Goblin": "secondary-drop",
+            }
+        },
+        objects={},
+        monsters={},
+        npcs={},
+        shops={},
+        drop_rates={},
+    )
+
+    assert calc_challenges({}, {}, only_crafted, info, rules={}).valid == {}
+    assert calc_challenges({}, {}, also_dropped, info, rules={}).valid == {
+        "Attack": {"Wield it": True}
+    }
+
+
+def test_source_quality_gate_ignores_non_combat_non_bis_skilling_skills() -> None:
+    info = _chunk_info(challenges={"Nonskill": {"Use it": {"Items": ["Rune scimitar"]}}})
+    only_crafted = SourceIndex(
+        items={"Rune scimitar": {"Smith a rune scimitar": "primary-Smithing"}},
+        objects={},
+        monsters={},
+        npcs={},
+        shops={},
+        drop_rates={},
+    )
+
+    assert calc_challenges({}, {}, only_crafted, info, rules={}).valid == {
+        "Nonskill": {"Use it": True}
+    }
+
+
+def test_source_quality_gate_allows_wield_crafted_items_rule() -> None:
+    info = _chunk_info(challenges={"Attack": {"Wield it": {"Items": ["Rune scimitar"]}}})
+    only_crafted = SourceIndex(
+        items={"Rune scimitar": {"Smith a rune scimitar": "primary-Smithing"}},
+        objects={},
+        monsters={},
+        npcs={},
+        shops={},
+        drop_rates={},
+    )
+
+    result = calc_challenges(
+        {}, {}, only_crafted, info, rules={"Wield Crafted Items": True}
+    )
+
+    assert result.valid == {"Attack": {"Wield it": True}}
 
 
 def test_unsupported_challenges_do_not_block_evaluable_ones() -> None:
     info = _chunk_info(
         challenges={
             "Nonskill": {
-                "Family": {"Items": ["Axe[+]"]},
+                "Points": {"QuestPointsNeeded": 5},
                 "Simple": {},
             }
         }
@@ -251,7 +364,7 @@ def test_unsupported_challenges_do_not_block_evaluable_ones() -> None:
     result = calc_challenges({}, {}, _EMPTY, info, rules={})
 
     assert result.valid == {"Nonskill": {"Simple": True}}
-    assert result.unsupported == frozenset({"Nonskill/Family"})
+    assert result.unsupported == frozenset({"Nonskill/Points"})
 
 
 def test_tasks_requirement_needs_the_prerequisite_valid() -> None:
@@ -387,6 +500,65 @@ def test_calc_challenges_tolerates_an_empty_export() -> None:
     assert result.valid == {}
     assert result.unsupported == frozenset()
     assert result.as_dict() == {"valid": {}, "unsupported": []}
+
+
+def test_highest_level_grouping_picks_the_lowest_level_consumer_when_off() -> None:
+    info = _chunk_info(
+        challenges={
+            "Smithing": {
+                "Smith a bronze dagger": {"Level": 1, "Items": ["Bronze bar*"]},
+                "Smith a bronze axe": {"Level": 1, "Items": ["Bronze bar*"]},
+                "Smith a bronze med helm": {"Level": 3, "Items": ["Bronze bar*"]},
+            }
+        }
+    )
+    index = SourceIndex(
+        items={"Bronze bar": {"Smelt a bronze bar": "primary-Smithing"}},
+        objects={},
+        monsters={},
+        npcs={},
+        shops={},
+        drop_rates={},
+    )
+
+    result = calc_challenges({}, {}, index, info, rules={"Highest Level": False})
+
+    # Both level-1 challenges tie; the first one in `challenges`' key order
+    # wins (upstream's first-seen-wins tie-break, `_group_processing_skill_challenges`).
+    assert result.valid == {"Smithing": {"Smith a bronze dagger": 1}}
+
+
+def test_highest_level_grouping_keeps_every_consumer_when_on() -> None:
+    info = _chunk_info(
+        challenges={
+            "Smithing": {
+                "Smith a bronze dagger": {"Level": 1, "Items": ["Bronze bar*"]},
+                "Smith a bronze med helm": {"Level": 3, "Items": ["Bronze bar*"]},
+            }
+        }
+    )
+    index = SourceIndex(
+        items={"Bronze bar": {"Smelt a bronze bar": "primary-Smithing"}},
+        objects={},
+        monsters={},
+        npcs={},
+        shops={},
+        drop_rates={},
+    )
+
+    result = calc_challenges({}, {}, index, info, rules={"Highest Level": True})
+
+    assert result.valid == {
+        "Smithing": {"Smith a bronze dagger": 1, "Smith a bronze med helm": 3}
+    }
+
+
+def test_highest_level_grouping_leaves_non_processing_skills_alone() -> None:
+    info = _chunk_info(challenges={"Woodcutting": {"Chop a tree": {"Level": 15}}})
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={"Highest Level": False})
+
+    assert result.valid == {"Woodcutting": {"Chop a tree": 15}}
 
 
 def test_bis_is_never_computed_even_if_present_and_trivially_valid() -> None:

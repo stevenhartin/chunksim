@@ -53,6 +53,14 @@ class ChunkInfo:
         return _mapping(self.data, "shopItems")
 
     @property
+    def skill_items(self) -> dict[str, Any]:
+        return _mapping(self.data, "skillItems")
+
+    @property
+    def slayer_monsters(self) -> dict[str, Any]:
+        return _mapping(self.data, "slayerMonsters")
+
+    @property
     def rolling_chunks(self) -> dict[str, Any]:
         return _mapping(self.data, "rollingChunks")
 

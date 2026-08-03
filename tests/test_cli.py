@@ -262,7 +262,7 @@ def test_tasks_reports_valid_counts_per_skill(
     assert "valid tasks  1" in out
     assert "Nonskill     1" in out
     assert "unsupported  0 individual tasks" in out
-    assert "not computed BiS" in out
+    assert "BiS          0" in out
 
 
 def test_tasks_without_a_cached_map_exits_one(
@@ -280,7 +280,10 @@ def test_tasks_export_json_to_stdout_replaces_the_summary(
         "chunks": {"100": {"Monster": {"Goblin": True}}},
         "drops": {"Goblin": {"Bones": {"1": "Always"}}},
         "challenges": {
-            "Nonskill": {"Use bones": {"Items": ["Bones"]}, "Wield a whip*": {"Items": ["Whip*"]}}
+            "Nonskill": {
+                "Use bones": {"Items": ["Bones"]},
+                "Earn points": {"QuestPointsNeeded": 5},
+            }
         },
     }
     _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
@@ -290,7 +293,7 @@ def test_tasks_export_json_to_stdout_replaces_the_summary(
 
     result = json.loads(capsys.readouterr().out)
     assert result["valid"]["Nonskill"] == {"Use bones": True}
-    assert result["unsupported"] == ["Nonskill/Wield a whip*"]
+    assert result["unsupported"] == ["Nonskill/Earn points"]
 
 
 def test_unlock_reports_new_tasks_and_sections(
@@ -519,15 +522,30 @@ def test_tasks_unknown_category_exits_one(
     assert "unknown task category" in capsys.readouterr().err
 
 
-def test_tasks_bis_category_reports_not_computed_rather_than_zero(
+def test_tasks_bis_category_reports_computed_gear(
     project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    payload: dict[str, Any] = {"chunks": {"unlocked": {}}}
-    _cache_map_and_chunkinfo(monkeypatch, payload, {})
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {
+        "chunks": {"100": {"Monster": {"Goblin": True}}},
+        "drops": {"Goblin": {"Rune scimitar": {"1": "Always"}}},
+        "equipment": {
+            "Rune scimitar": {
+                "slot": "weapon",
+                "attack_speed": 4,
+                "attack_slash": 45,
+                "melee_strength": 44,
+            }
+        },
+    }
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
     capsys.readouterr()
 
     assert main(["tasks", "BiS"]) == 0
-    assert "not computed" in capsys.readouterr().out
+
+    out = capsys.readouterr().out
+    assert "category BiS" in out
+    assert "Obtain a ~|rune scimitar|~" in out
 
 
 def test_search_reports_hits(

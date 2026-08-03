@@ -69,6 +69,7 @@ class UnlockRecord:
     new_sections: dict[str, dict[str, bool]]
     new_tasks: dict[str, dict[str, int | str | bool]]
     new_unsupported: frozenset[str]
+    bis_upgrades: dict[str, tuple[str | None, str]]
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -77,6 +78,10 @@ class UnlockRecord:
             "new_sections": self.new_sections,
             "new_tasks": self.new_tasks,
             "new_unsupported": sorted(self.new_unsupported),
+            "bis_upgrades": {
+                key: {"previous": previous, "new": new}
+                for key, (previous, new) in self.bis_upgrades.items()
+            },
         }
 
 
@@ -222,6 +227,7 @@ def simulate_rolls(
                 new_sections=delta.new_sections,
                 new_tasks=delta.new_tasks,
                 new_unsupported=delta.new_unsupported,
+                bis_upgrades=delta.bis_upgrades,
             )
         )
         before = after

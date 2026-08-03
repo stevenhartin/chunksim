@@ -8,9 +8,10 @@ fray-claude is a CLI that reads state from the source-chunk web app, caches it l
 offline operations on that cache. source-chunk is upstream and read-only from here.
 
 Landed: derive reachable sections/available sources/valid tasks from a cached map, per-chunk unlock
-deltas, multi-roll simulation (`fray unlock`/`fray simulate`), category listings, and world-wide fuzzy
-search (`fray search`) — see `challenges.py`'s docstring for what's deliberately unsupported before
-trusting the numbers.
+deltas, multi-roll simulation (`fray unlock`/`fray simulate`), category listings, world-wide fuzzy
+search (`fray search`), and best-in-slot equipment synthesis (`bis.py`, surfaced via `fray tasks BiS`
+and as upgrade deltas in `fray unlock`/`fray simulate`) — see `challenges.py`'s and `bis.py`'s
+docstrings for what's deliberately unsupported before trusting the numbers.
 Planned: render a world-map image for a simulated state, generate heatmaps of likely rolls over N
 attempts, estimate time to complete all goals (needs a task-duration source; the export has none).
 
@@ -84,32 +85,66 @@ One responsibility per module, so the planned simulation work has a pure layer t
   dynamic "Every Drop"/"All Droptables" challenge synthesis in `calcChallengesWork` consumes and so
   belongs with `challenges.py` instead. The `KeyItem Bosses` rate-boosting pass is unported; a map
   with that rule on makes `gather_chunks_info` raise `NotImplementedError` rather than silently
-  producing an incomplete index.
+  producing an incomplete index. A monster with no `drops` entry falls back to its `skillItems.Slayer`
+  entry (e.g. `Abyssal demon` -> `Abyssal whip`, gated by a simplified Slayer-level check rather than
+  upstream's full `isSlayerValid`, which needs challenge-validity state this one-directional pipeline
+  doesn't have — see `_slayer_skill_items_for`'s docstring); this was added as a prerequisite for
+  `bis.py`, whose equipment candidates draw on the same item index.
 - `challenges.py` — pure; which challenges are valid given the source index (`calc_challenges` ->
   `ChallengeResult`), a fixed point over 28 of the 29 categories. `BiS` (`UNSUPPORTED_CATEGORIES`) is
-  not computed at all, not reduced-scope: unlike every other category, `BiS` challenges have no static
-  definition anywhere in `chunkinfo.json` — upstream's `calcBIS` (~3,000 lines) synthesizes them at
-  runtime by comparing the `equipment` table's combat stats across slots per combat style, with
-  weapon-ammo pairing and dynamic "Obtain a/an X" task-name generation. It shares no structure with
-  requirement-checking, so `valid['BiS']` is simply never populated — its absence means "not
-  evaluated", not "nothing valid". Port of the core of `calcChallenges`/`calcChallengesWork`
-  (~1,500 dense lines) for the other 28 — **deliberately partial, read the module docstring before
-  trusting output**. In short: `Chunks`/`Objects`/`Monsters`/`NPCs`/`Mix` requirements (incl. `[+]`
-  families) are exact. `Items` requirements are basic presence only — a `[+]` family or `*`
-  secondary-marker item is not evaluable, and since those are the overwhelming majority of real
-  `Items` entries, `calc_challenges` catches that failure *per challenge* rather than aborting the
-  whole computation, collecting affected `skill/name` pairs in `ChallengeResult.unsupported` so the
-  gap stays visible rather than reading as "checked and invalid". `processingSkill` categories
-  (Runecraft/Magic/Herblore/Cooking/Firemaking/Fletching/Smithing/Crafting/Construction) get plain
-  presence checking too, not upstream's "Highest Level" grouping — a real, silent accuracy gap for
-  those 9 categories, not a raise, documented in the module docstring. The output-feedback fixed point
-  (`_seed_items_with_outputs`) is this module's own design, not a located port — upstream's exact
-  mechanism for it wasn't found despite an extensive search of `calcChallengesWork`.
+  never evaluated *here*, but it is computed — by `bis.py`, not this module (see below): unlike every
+  other category, `BiS` challenges have no static definition anywhere in `chunkinfo.json`, so
+  presence-checking a literal `challenges.BiS` branch with this module's generic engine would produce
+  nonsense; `UNSUPPORTED_CATEGORIES` just guards against a hypothetical export that has one. Callers
+  wanting BiS read `pipeline.Derived.bis`, not `ChallengeResult.valid['BiS']`, which stays unpopulated.
+  Port of the core of `calcChallenges`/`calcChallengesWork` (~1,500 dense lines) for the other 28 —
+  **still partial, read the module docstring before trusting output**. In short: `Chunks`/`Objects`/
+  `Monsters`/`NPCs`/`Mix`/`Items` requirements (incl. `[+]`/`[+]xN` family matching via
+  `codeItems.itemsPlus`) are exact. The `*` secondary marker is stripped and does **not** gate
+  validity (verified against upstream, worker.js:4046/4064 — a docstring correction from an earlier
+  stage, which had this backwards) — it only feeds a `Secondary` flag this module doesn't thread
+  through, since its sole consumer (`checkPrimaryMethod`, not ported) and the `forcedPrimary` gate it
+  feeds have zero real-export uses. Combat skills and `BIS Skilling`-category challenges additionally
+  reject an item sourced *only* from another skill's crafted output (`_source_quality_ok`) unless
+  `Not Equip`/`Wield Crafted Items`/a Slayer source/the requiring skill being Magic excuses it — the
+  same mechanic `bis.py`'s `_source_reachable` implements for equipment candidates. `processingSkill`
+  categories (Runecraft/Magic/Herblore/Cooking/Firemaking/Fletching/Smithing/Crafting/Construction) get
+  the "Highest Level" grouping (`_group_processing_skill_challenges`): **rule off** (upstream's
+  default) keeps only the *lowest*-`Level` consumer per available ingredient (e.g. smelting a bronze
+  bar lets you smith a dagger, not every higher tier at once) — an earlier stage of this project had
+  this backwards too; **rule on** (true of the map this was built against) keeps every consumer,
+  matching plain presence checking with no grouping needed. Only ~42 challenges remain genuinely
+  unsupported on that map — the `QuestPointsNeeded`/`CombatPointsNeeded`/`KudosNeeded`/
+  `TotalLevelNeeded`/`CombatLevelNeeded` gates, which need state (quest points, kudos, ...) this module
+  doesn't derive. The output-feedback fixed point (`_seed_items_with_outputs`) is this module's own
+  design, not a located port — upstream's exact mechanism for it wasn't found despite an extensive
+  search of `calcChallengesWork`.
+- `bis.py` — pure; best-in-slot equipment per (combat style, slot) (`compute_bis` -> `BisResult`).
+  Port of `calcBIS` (worker.js, ~3,150 lines — mostly 19 hand-written copies of one scoring block,
+  collapsed here into a `StyleSpec` data table). For each active style (Melee/Ranged/Magic always;
+  Prayer/Tank/Flinch/Weight/Stab-Slash-Crush variants gated by `rules['Show Best in Slot ...']`),
+  argmaxes a style-specific stat over reachable (`SourceIndex.items`) and wearable
+  (`_requirements_ok`/`_task_unlocks_ok`/`_consumable_ok`/`_source_reachable`) equipment, first-seen-
+  wins on ties, resolves 2H-vs-(1H+shield) (ties to 1H+shield), and emits an "Obtain a/an X" task
+  name/label per winner, joining multiple styles that pick the same item with upstream's literal
+  `'/' + U+200B` (zero-width space) separator. Verified against a real, load-bearing oracle: the cached
+  map's `chunkinfo.activeTasks.BiS` records upstream's own last-computed Melee BiS weapon as
+  `Abyssal whip` (via the `sources.py` Slayer route above), reproduced exactly — see
+  `tests/test_bis.py`'s opt-in oracle test. **Deliberately not ported**, documented in the module
+  docstring: the set-effect DPS override chain (Void/Obsidian/Inquisitor/Verac's/Crystal/Karil's,
+  ~1,738 of upstream's lines), ties-as-alternates and the greedy set-cover dedup pass, and the
+  `Show Best in Slot 1H and 2H` rule's dual weapon/2h emission. BiS is inherently **non-monotonic**
+  (a later chunk can surface a *better* item for a slot already filled) — per the project's agreed
+  semantics, `compute_bis` recomputes the best-achievable set fresh per state rather than accumulating
+  history; `unlock.py`/`simulate.py` diff two calls to report which (style, slot) picks improved,
+  exempted from `unlock.py`'s monotonic task-partition guarantee (see its docstring).
 - `pipeline.py` — pure; bundles the per-map inputs (`MapState`) and runs `unlocked_sections` ->
-  `gather_chunks_info` -> `calc_challenges` for a given unlocked-chunk-id set (`derive`).
-  `load_map_state` decodes a raw cached-map payload into a `MapState` once; `unlock.py`/`simulate.py`
-  (and `cli.py`'s `sections`/`sources`/`tasks` subcommands) all call `derive` rather than re-deriving
-  the same pipeline themselves.
+  `gather_chunks_info` -> `calc_challenges` -> `compute_bis` for a given unlocked-chunk-id set
+  (`derive` -> `Derived`, now carrying `bis` alongside `reachable_sections`/`source_index`/
+  `challenges`). `load_map_state` decodes a raw cached-map payload into a `MapState` once (including
+  `passive_skill`, added for `bis.py`'s skill-requirement gate); `unlock.py`/`simulate.py` (and
+  `cli.py`'s `sections`/`sources`/`tasks` subcommands) all call `derive` rather than re-deriving the
+  same pipeline themselves.
 - `unlock.py` — pure; what a single candidate chunk unlock adds (`tasks_added_by` -> `UnlockDelta`),
   by running `pipeline.derive` for the unlocked set and for that set plus the candidate, then diffing.
   This is the module the project's attribution rule lives in: because `ChallengeResult.valid` only
@@ -117,19 +152,24 @@ One responsibility per module, so the planned simulation work has a pure layer t
   the diff partitions cleanly — each task belongs to exactly the one unlock that first made it valid,
   and a later unlock can never retroactively change an earlier delta. Diffing the *panel*
   (`calcCurrentChallenges2`, not ported) instead would be wrong: it shows only the highest challenge
-  per skill and re-picks BiS as better items appear, so it is not monotonic.
-- `simulate.py` — pure; simulates chunk rolls and accumulates the tasks/sections they unlock
-  (`simulate_rolls` -> `list[UnlockRecord]`), each record built via `unlock.delta_from` and never
-  revisited by a later roll. Two roll mechanisms, ported from index.js: a "random start" bootstrap
-  pool (`walkableChunks`/`walkableChunksF2P` filtered by `settings.rollingChunksOptions`) used only
-  when nothing is unlocked yet, and an ongoing neighbour pool (port of `selectAllNeighborsCanvas`) —
-  every chunk orthogonally grid-adjacent (`±1`, `±256`; the grid is 256 chunks tall) to an unlocked
-  chunk, expanded through `chunkinfo.json`'s `sections` connectivity graph and gated by
-  `sectionsLimits`' task requirements (this is `sectionsLimits`' actual purpose — see `sections.py`).
-  A seeded `random.Random` picks uniformly from whichever pool applies, over a *sorted* candidate list
-  so the same seed reproduces the same run regardless of set/dict iteration order. Not modelled: manual
-  chunk selection/blacklisting, `roll2`/`roll5` bonus rerolls, and the `chunkNeighboursOptions` UI
-  conveniences — all user-interaction features orthogonal to a pure roll simulation.
+  per skill and re-picks BiS as better items appear, so it is not monotonic. `UnlockDelta.bis_upgrades`
+  (`diff_bis_picks`) is exactly that non-monotonic case, deliberately exempted from the partition
+  guarantee above: a later unlock can surface a *better* item for a slot already filled, so it records
+  which `(style, slot)` picks changed, not tasks attributed to one unlock.
+- `simulate.py` — pure; simulates chunk rolls and accumulates the tasks/sections/BiS upgrades they
+  unlock (`simulate_rolls` -> `list[UnlockRecord]`), each record built via `unlock.delta_from` and
+  never revisited by a later roll (`bis_upgrades` included — a later roll's improvement doesn't get
+  folded back into an earlier record). Two roll mechanisms, ported from index.js: a "random start"
+  bootstrap pool (`walkableChunks`/`walkableChunksF2P` filtered by `settings.rollingChunksOptions`)
+  used only when nothing is unlocked yet, and an ongoing neighbour pool (port of
+  `selectAllNeighborsCanvas`) — every chunk orthogonally grid-adjacent (`±1`, `±256`; the grid is 256
+  chunks tall) to an unlocked chunk, expanded through `chunkinfo.json`'s `sections` connectivity graph
+  and gated by `sectionsLimits`' task requirements (this is `sectionsLimits`' actual purpose — see
+  `sections.py`). A seeded `random.Random` picks uniformly from whichever pool applies, over a *sorted*
+  candidate list so the same seed reproduces the same run regardless of set/dict iteration order. Not
+  modelled: manual chunk selection/blacklisting, `roll2`/`roll5` bonus rerolls, and the
+  `chunkNeighboursOptions` UI conveniences — all user-interaction features orthogonal to a pure roll
+  simulation.
 - `search.py` — pure; world-wide fuzzy search (`build_world_index` -> `WorldIndex`, `search`) across
   items/monsters/npcs/objects/shops/tasks. Deliberately **not** built on `SourceIndex`: that only
   knows chunks you've already unlocked, so it can't answer "where would I get this". Instead it
@@ -157,7 +197,10 @@ One responsibility per module, so the planned simulation work has a pure layer t
   interleaving with it, so piping stays clean. `sections`/`sources`/`tasks` take an optional
   positional (`list`/a chunk id; one of `sources.CATEGORIES`; a challenge category) to list that
   branch's contents instead of just its counts, each capped by `--limit` (full output by default,
-  since piping to `grep`/`less` should just work without a flag).
+  since piping to `grep`/`less` should just work without a flag). `fray tasks BiS` lists
+  `derived.bis.tasks` rather than `derived.challenges.valid.get("BiS")`, since `BiS` isn't a category
+  in `state.chunk_info.challenges` at all (see `challenges.py`); `fray unlock`/`fray simulate` print
+  BiS upgrades alongside new tasks/sections when there are any.
 
 ## Toolchain
 
@@ -172,7 +215,7 @@ fray show  [--map ID]       # summarise the cached copy; no network
 fray chunkinfo              # GET upstream's chunk/challenge reference data -> cache/{chunkinfo,tasks_map}.json
 fray sections [list|CHUNK] [--limit N]   # reachable sections; list/drill down with a positional
 fray sources  [CATEGORY]   [--limit N]   # items/objects/monsters/npcs/shops; list one with a positional
-fray tasks    [CATEGORY]   [--limit N]   # which challenges are valid (partial - see challenges.py)
+fray tasks    [CATEGORY]   [--limit N]   # which challenges are valid, incl. BiS (partial - see challenges.py/bis.py)
 fray unlock   --chunk ID    # tasks/sections one candidate chunk would add on top of the cached map
 fray simulate --rolls N [--seed S]   # simulate N chunk rolls and accumulate their tasks/sections
 fray search   QUERY [--type T ...] [--limit N]   # fuzzy search item/monster/npc/object/shop/task
@@ -213,6 +256,12 @@ a silent no-op ("already seems to be installed") — it will not pick up new cod
 - A test that needs the real (~7MB) chunkinfo export is opt-in, not run by default: build fixtures by
   hand for the normal suite, and gate the real-export check on `FRAY_CHUNKINFO` with
   `pytest.mark.skipif`, so a fresh clone stays green
-  (`tests/test_sections.py::test_manual_sections_match_a_real_export` is the existing example)
+  (`tests/test_sections.py::test_manual_sections_match_a_real_export` and
+  `tests/test_bis.py::test_melee_bis_weapon_matches_the_live_oracle` are the existing examples).
+  `FRAY_CHUNKINFO` must point at a *raw* export file, not this project's own envelope-wrapped
+  `cache/chunkinfo.json` (`fray chunkinfo`'s output) — `cache.read_chunkinfo`'s override path reads it
+  directly with no `["data"]` unwrapping, so pointing it at the envelope silently produces wrong or
+  incomplete results rather than an error. Extract the raw export first if working from the cache
+  (`json.load(open("cache/chunkinfo.json"))["data"]`).
 - No custom `User-Agent` on requests — the endpoint is public and unauthenticated, so there's nothing
   to disguise
