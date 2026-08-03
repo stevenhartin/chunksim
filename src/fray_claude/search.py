@@ -60,6 +60,7 @@ _MARKUP = re.compile(r"~\||\|~")
 _SEPARATORS = re.compile(r"[#_]")
 _WHITESPACE = re.compile(r"\s+")
 _MIN_FUZZY_RATIO = 0.6
+_EXACT_SCORE = 3.0
 
 _ENTITY_CATEGORIES = ("Monster", "NPC", "Object", "Shop", "Spawn")
 _ENTITY_TYPES = {"monster": "Monster", "npc": "NPC", "object": "Object", "shop": "Shop"}
@@ -210,7 +211,7 @@ def build_world_index(chunk_info: ChunkInfo) -> WorldIndex:
 def _score(normalised_query: str, candidate: str) -> float:
     normalised_candidate = normalise(candidate)
     if normalised_candidate == normalised_query:
-        return 3.0
+        return _EXACT_SCORE
     if normalised_candidate.startswith(normalised_query):
         return 2.0
     if normalised_query in normalised_candidate:
@@ -388,6 +389,11 @@ def search(
     `pipeline.derive` output) to mark results available/locked against that
     state; omit both for a purely static lookup, where every hit reports
     unavailable.
+
+    If `query` is an exact name match (case-insensitive, markup-normalised)
+    for something in any requested type, only exact matches are returned -
+    e.g. querying "Abyssal whip" suppresses fuzzy neighbours like "Abyssal
+    whip ornament kit" that would otherwise also survive.
     """
     wanted = frozenset(types) if types is not None else frozenset(TYPES)
     unlocked = unlocked or {}
@@ -416,6 +422,8 @@ def search(
         )
 
     survivors = [(score, type_name, name) for score, type_name, name in candidates if score > 0]
+    if any(score == _EXACT_SCORE for score, _, _ in survivors):
+        survivors = [triple for triple in survivors if triple[0] == _EXACT_SCORE]
     survivors.sort(key=lambda triple: (-triple[0], triple[1], triple[2]))
 
     hits: list[SearchHit] = []

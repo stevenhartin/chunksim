@@ -243,6 +243,39 @@ def test_search_respects_the_limit_across_types() -> None:
     assert len(hits) == 2
 
 
+def test_search_exact_name_match_suppresses_fuzzy_neighbours() -> None:
+    info = _chunk_info(
+        chunks={"100": {"Monster": {"Abyssal whipper": True}}},
+        drops={
+            "Abyssal demon": {
+                "Abyssal whip": {"1": "1/512"},
+                "Abyssal whip ornament kit": {"1": "1/1000"},
+            }
+        },
+    )
+    world = build_world_index(info)
+
+    hits = search(world, "Abyssal whip", limit=10)
+
+    assert [hit.name for hit in hits] == ["Abyssal whip"]
+
+
+def test_search_exact_name_match_is_case_insensitive() -> None:
+    info = _chunk_info(
+        drops={
+            "Abyssal demon": {
+                "Abyssal whip": {"1": "1/512"},
+                "Abyssal whip ornament kit": {"1": "1/1000"},
+            }
+        }
+    )
+    world = build_world_index(info)
+
+    hits = search(world, "ABYSSAL WHIP", types=["item"], limit=10)
+
+    assert [hit.name for hit in hits] == ["Abyssal whip"]
+
+
 def test_search_empty_query_returns_nothing() -> None:
     info = _chunk_info(chunks={"100": {"Monster": {"Goblin": True}}})
     world = build_world_index(info)
