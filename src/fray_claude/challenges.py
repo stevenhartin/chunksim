@@ -30,7 +30,16 @@ Implemented:
 - `Chunks`/`Objects`/`Monsters`/`NPCs`/`Mix` requirements: full presence
   checking, including `[+]` family matching (`objectsPlus`-style groups,
   ported via `chunkinfo.json`'s `codeItems`) and `[+]xN` "at least N of"
-  counting for `Chunks`.
+  counting for `Chunks`. `Monster[+]` has no family table and is a
+  **wildcard** meaning "any monster at all" (`_ANY_MEMBER_FAMILIES`,
+  worker.js:4306) - treating it as an ordinary family made `Cast ~|wind
+  strike|~`, Magic's only Level 1 `Primary` route, permanently invalid.
+- **Untrainable skills are pruned to their `Level 1` challenges**
+  (`_prune_untrainable_skills`, worker.js:1521): if `checkPrimaryMethod` says
+  a skill can't be trained here and no `passiveSkill` floor covers it, every
+  challenge above Level 1 is discarded. This is how upstream locks a skill
+  behind a quest - `Herblore` needs `Unlock ~|Herblore|~ after Druidic
+  Ritual`, and while that quest is out of reach the skill keeps nothing.
 - `Items` requirements: presence checking, including `[+]`/`[+]xN` family
   matching via `codeItems.itemsPlus`, and `AllowedSources`/`NonShop`
   filtering. The `*` secondary marker is stripped and otherwise ignored -
@@ -178,6 +187,11 @@ def strip_task_markup(task_name: str) -> str:
 #: substring against the *raw* (markup-carrying) name, exactly as upstream does.
 _MAHOGANY_HOMES_CONTRACT = "contract for ~|Mahogany Homes|~"
 
+#: `[+]` names upstream treats as "any member of the index will do" when the
+#: `codeItems` family table has no entry for them, rather than as an
+#: unsatisfiable requirement. Only `Monster[+]` gets this in worker.js.
+_ANY_MEMBER_FAMILIES = frozenset({"Monster[+]"})
+
 _LEVEL_GATES_NOT_SUPPORTED = (
     "QuestPointsNeeded",
     "CombatPointsNeeded",
@@ -308,7 +322,17 @@ def _presence_requirement_met(
             continue
         if "[+]" in name:
             family = _plus_family(chunk_info, plus_key, name)
-            if family is None or not any(member in index for member in family):
+            if family is None:
+                # A `[+]` name with no family table is normally a dead
+                # requirement, except `Monster[+]`, which upstream reads as
+                # the wildcard "any monster at all" (worker.js:4306-4317).
+                # Missing this made `Cast ~|wind strike|~` - Magic's only
+                # Level 1 `Primary` route on the real map - permanently
+                # invalid, so `checkPrimaryMethod` called Magic untrainable.
+                if name in _ANY_MEMBER_FAMILIES and index:
+                    continue
+                return False
+            if not any(member in index for member in family):
                 return False
         elif name not in index:
             return False
@@ -859,6 +883,68 @@ def _seed_items_with_outputs(
     return items
 
 
+def _prune_untrainable_skills(
+    new_valid: dict[str, dict[str, int | str | bool]],
+    chunk_info: ChunkInfo,
+    source_index: SourceIndex,
+    *,
+    rules: Mapping[str, Any],
+    passive_skill: Mapping[str, int],
+    backlog: Mapping[str, Mapping[str, Any]],
+    manual_tasks: Mapping[str, Mapping[str, Any]],
+    items: Mapping[str, Mapping[str, str]],
+) -> None:
+    """Strip a skill that cannot be trained here back to its `Level 1`
+    challenges, in place. Port of worker.js:1521-1529.
+
+    This is how upstream locks a skill behind a quest. `Herblore` is the
+    worked example: its only `Level == 1` `Primary` route is `Unlock
+    ~|Herblore|~ after Druidic Ritual`, which needs that quest to be
+    completable. While it isn't, `checkPrimaryMethod('Herblore')` is false,
+    and *every* Herblore challenge above `Level 1` is discarded - not merely
+    deprioritised. Without this the skill kept 56 valid challenges and
+    `active_tasks.py` went on to propose one of them.
+
+    The `Level 1` survivors are upstream's `newValids[skill][task] === 1`,
+    a **strict** comparison against the stored valid value. That value is the
+    challenge's `Level` for a skill category and `True` for Quest/Diary/etc,
+    and JS `true === 1` is false - so the bool has to be excluded explicitly
+    here, where `True == 1` would otherwise be true.
+
+    Applies to every category but `BiS`; the non-skill ones are unaffected in
+    practice because `_check_primary_method` reports any skill absent from
+    `_UNIVERSAL_PRIMARY` as trainable, exactly as upstream's
+    `!universalPrimary[skill] && (tempValid = true)` does.
+    """
+    for skill in list(new_valid):
+        if skill in UNSUPPORTED_CATEGORIES:
+            continue
+        if _check_primary_method(
+            skill,
+            new_valid,
+            source_index,
+            chunk_info,
+            passive_skill=passive_skill,
+            backlog=backlog,
+            manual_tasks=manual_tasks,
+            rules=rules,
+            items=items,
+        ):
+            continue
+        passive = passive_skill.get(skill)
+        if isinstance(passive, (int, float)) and not isinstance(passive, bool) and passive > 1:
+            continue
+        kept: dict[str, int | str | bool] = {
+            name: value
+            for name, value in new_valid[skill].items()
+            if not isinstance(value, bool) and value == 1
+        }
+        if kept:
+            new_valid[skill] = kept
+        else:
+            del new_valid[skill]
+
+
 def _drop_superseded_backups(
     new_valid: dict[str, dict[str, int | str | bool]],
     prev_valid: Mapping[str, Mapping[str, Any]],
@@ -1080,6 +1166,21 @@ def calc_challenges(
             source_index.items, valid, challenges, chunk_info, rules, backlogged_sources or {}
         )
 
+    # Run once, after convergence, not per pass: deciding trainability from a
+    # half-seeded item index prunes a skill whose own `Output` chain would
+    # have made it trainable, and because that prune then starves the next
+    # pass of those items the loop settles on the wrong fixed point (it broke
+    # `Magic`, and with it the BiS oracle's `Master wand`).
+    _prune_untrainable_skills(
+        valid,
+        chunk_info,
+        source_index,
+        rules=rules,
+        passive_skill=passive_skill,
+        backlog=backlog,
+        manual_tasks=manual_tasks,
+        items=items,
+    )
     grouped = _group_processing_skill_challenges(
         valid, challenges, items, rules, chunk_info, source_index
     )

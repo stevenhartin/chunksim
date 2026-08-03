@@ -71,11 +71,20 @@ def test_quest_and_diary_challenges_are_valued_true_not_by_level() -> None:
 
 
 def test_a_skill_challenge_is_valued_by_its_level() -> None:
-    info = _chunk_info(challenges={"Woodcutting": {"Chop a tree": {"Level": 15}}})
+    # The Level 1 `Primary` entry keeps `Woodcutting` trainable; without one
+    # `_prune_untrainable_skills` strips everything above Level 1.
+    info = _chunk_info(
+        challenges={
+            "Woodcutting": {
+                "Chop a sapling": {"Level": 1, "Primary": True},
+                "Chop a tree": {"Level": 15},
+            }
+        }
+    )
 
     result = calc_challenges({}, {}, _EMPTY, info, rules={})
 
-    assert result.valid == {"Woodcutting": {"Chop a tree": 15}}
+    assert result.valid == {"Woodcutting": {"Chop a sapling": 1, "Chop a tree": 15}}
 
 
 def test_chunks_requirement_needs_the_chunk_unlocked() -> None:
@@ -306,7 +315,9 @@ def test_source_quality_gate_rejects_a_combat_items_only_source_is_crafted() -> 
             }
         },
         objects={},
-        monsters={},
+        # `Attack`'s `universalPrimary` line is `Monster[+]`, so something to
+        # hit is what makes the skill trainable at all.
+        monsters={"Goblin": {"100": True}},
         npcs={},
         shops={},
         drop_rates={},
@@ -339,7 +350,9 @@ def test_source_quality_gate_allows_wield_crafted_items_rule() -> None:
     only_crafted = SourceIndex(
         items={"Rune scimitar": {"Smith a rune scimitar": "primary-Smithing"}},
         objects={},
-        monsters={},
+        # `Attack` trains on monsters (`universalPrimary`), so one has to be
+        # present or the whole skill is pruned before the gate is reached.
+        monsters={"Goblin": {"100": True}},
         npcs={},
         shops={},
         drop_rates={},
@@ -560,14 +573,17 @@ def test_unsupported_level_gates_raise_are_caught_and_reported() -> None:
 def test_a_valid_challenges_output_feeds_the_next_pass_as_a_new_item() -> None:
     info = _chunk_info(
         challenges={
-            "Smithing": {"Smelt a bar": {"Output": "Iron bar"}},
+            "Smithing": {
+                "Smelt a bronze bar": {"Level": 1, "Primary": True},
+                "Smelt a bar": {"Output": "Iron bar"},
+            },
             "Nonskill": {"Use the bar": {"Items": ["Iron bar"]}},
         }
     )
 
     result = calc_challenges({}, {}, _EMPTY, info, rules={})
 
-    assert result.valid["Smithing"] == {"Smelt a bar": True}
+    assert result.valid["Smithing"] == {"Smelt a bronze bar": 1, "Smelt a bar": True}
     assert result.valid["Nonskill"] == {"Use the bar": True}
 
 
@@ -609,7 +625,7 @@ def test_highest_level_grouping_keeps_every_consumer_when_on() -> None:
     info = _chunk_info(
         challenges={
             "Smithing": {
-                "Smith a bronze dagger": {"Level": 1, "Items": ["Bronze bar*"]},
+                "Smith a bronze dagger": {"Level": 1, "Primary": True, "Items": ["Bronze bar*"]},
                 "Smith a bronze med helm": {"Level": 3, "Items": ["Bronze bar*"]},
             }
         }
@@ -631,11 +647,18 @@ def test_highest_level_grouping_keeps_every_consumer_when_on() -> None:
 
 
 def test_highest_level_grouping_leaves_non_processing_skills_alone() -> None:
-    info = _chunk_info(challenges={"Woodcutting": {"Chop a tree": {"Level": 15}}})
+    info = _chunk_info(
+        challenges={
+            "Woodcutting": {
+                "Chop a sapling": {"Level": 1, "Primary": True},
+                "Chop a tree": {"Level": 15},
+            }
+        }
+    )
 
     result = calc_challenges({}, {}, _EMPTY, info, rules={"Highest Level": False})
 
-    assert result.valid == {"Woodcutting": {"Chop a tree": 15}}
+    assert result.valid == {"Woodcutting": {"Chop a sapling": 1, "Chop a tree": 15}}
 
 
 def test_bis_is_never_computed_even_if_present_and_trivially_valid() -> None:
@@ -747,6 +770,7 @@ def test_a_backup_challenge_is_dropped_once_its_parent_is_valid() -> None:
     info = _chunk_info(
         challenges={
             "Hunter": {
+                "Catch a butterfly": {"Level": 1, "Primary": True},
                 "Catch a wandering lucky impling": {"Level": 89, "Items": ["Butterfly net"]},
                 "Barehanded catch a wandering lucky impling": {
                     "Level": 99,
@@ -768,9 +792,13 @@ def test_a_backup_challenge_is_dropped_once_its_parent_is_valid() -> None:
     with_the_net = calc_challenges({}, {}, with_net, info, rules={})
 
     # No net: the parent can't be done, so the backup stands.
-    assert barehanded_only.valid == {"Hunter": {"Barehanded catch a wandering lucky impling": 99}}
+    assert barehanded_only.valid == {
+        "Hunter": {"Catch a butterfly": 1, "Barehanded catch a wandering lucky impling": 99}
+    }
     # Net: the parent is possible, so the backup is deleted outright.
-    assert with_the_net.valid == {"Hunter": {"Catch a wandering lucky impling": 89}}
+    assert with_the_net.valid == {
+        "Hunter": {"Catch a butterfly": 1, "Catch a wandering lucky impling": 89}
+    }
 
 
 def test_a_backlogged_parent_also_drops_the_backup() -> None:
@@ -780,6 +808,7 @@ def test_a_backlogged_parent_also_drops_the_backup() -> None:
     info = _chunk_info(
         challenges={
             "Hunter": {
+                "Catch a butterfly": {"Level": 1, "Primary": True},
                 "Catch a wandering lucky impling": {"Level": 89, "Items": ["Butterfly net"]},
                 "Barehanded catch a wandering lucky impling": {
                     "Level": 99,
@@ -793,13 +822,14 @@ def test_a_backlogged_parent_also_drops_the_backup() -> None:
         {}, {}, _EMPTY, info, rules={}, backlog={"Hunter": {"Catch a wandering lucky impling": ""}}
     )
 
-    assert result.valid == {}
+    assert result.valid == {"Hunter": {"Catch a butterfly": 1}}
 
 
 def test_manual_valid_exempts_a_backup_from_being_dropped() -> None:
     info = _chunk_info(
         challenges={
             "Hunter": {
+                "Catch a butterfly": {"Level": 1, "Primary": True},
                 "Catch a wandering lucky impling": {"Level": 89},
                 "Barehanded catch a wandering lucky impling": {
                     "Level": 99,
@@ -813,6 +843,7 @@ def test_manual_valid_exempts_a_backup_from_being_dropped() -> None:
     result = calc_challenges({}, {}, _EMPTY, info, rules={})
 
     assert set(result.valid["Hunter"]) == {
+        "Catch a butterfly",
         "Catch a wandering lucky impling",
         "Barehanded catch a wandering lucky impling",
     }
@@ -822,14 +853,95 @@ def test_a_backup_whose_parent_is_unknown_is_left_alone() -> None:
     info = _chunk_info(
         challenges={
             "Hunter": {
+                "Catch a butterfly": {"Level": 1, "Primary": True},
                 "Barehanded catch a wandering lucky impling": {
                     "Level": 99,
                     "BackupParent": "Catch a wandering lucky impling",
-                }
+                },
             }
         }
     )
 
     result = calc_challenges({}, {}, _EMPTY, info, rules={})
 
-    assert result.valid == {"Hunter": {"Barehanded catch a wandering lucky impling": 99}}
+    assert result.valid == {
+        "Hunter": {"Catch a butterfly": 1, "Barehanded catch a wandering lucky impling": 99}
+    }
+
+
+def test_an_untrainable_skill_keeps_only_its_level_one_challenges() -> None:
+    """How upstream locks a skill behind a quest. `Herblore`'s only Level 1
+    `Primary` route is `Unlock ~|Herblore|~ after Druidic Ritual`; while that
+    quest is out of reach the skill is untrainable and everything above
+    Level 1 is discarded outright, not merely deprioritised.
+    """
+    info = _chunk_info(
+        challenges={
+            "Herblore": {
+                "Unlock Herblore after Druidic Ritual": {
+                    "Level": 1,
+                    "Primary": True,
+                    "Tasks": {"Druidic Ritual": "Quest"},
+                },
+                "Clean a grimy guam leaf": {"Level": 3, "Primary": True},
+                "Mix a super combat potion": {"Level": 90, "Primary": True},
+            },
+            "Quest": {"Druidic Ritual": {"Chunks": ["100"]}},
+        }
+    )
+
+    locked = calc_challenges({}, {}, _EMPTY, info, rules={})
+    unlocked = calc_challenges({"100": True}, {}, _EMPTY, info, rules={})
+
+    # Quest out of reach -> the unlock is invalid -> only Level 1 survives,
+    # and the unlock itself is Level 1 but invalid, so nothing does.
+    assert "Herblore" not in locked.valid
+    # Quest reachable -> the unlock is valid -> the skill trains normally.
+    assert set(unlocked.valid["Herblore"]) == {
+        "Unlock Herblore after Druidic Ritual",
+        "Clean a grimy guam leaf",
+        "Mix a super combat potion",
+    }
+
+
+def test_an_untrainable_skill_with_a_passive_floor_is_left_alone() -> None:
+    info = _chunk_info(challenges={"Herblore": {"Mix a potion": {"Level": 40}}})
+
+    pruned = calc_challenges({}, {}, _EMPTY, info, rules={})
+    spared = calc_challenges({}, {}, _EMPTY, info, rules={}, passive_skill={"Herblore": 55})
+
+    assert pruned.valid == {}
+    assert spared.valid == {"Herblore": {"Mix a potion": 40}}
+
+
+def test_monster_plus_is_a_wildcard_for_any_monster() -> None:
+    """`Monster[+]` has no `monstersPlus` entry; upstream reads it as "any
+    monster at all" rather than an unsatisfiable family (worker.js:4306).
+    Getting this wrong made `Cast ~|wind strike|~` - Magic's only Level 1
+    `Primary` route on the real map - permanently invalid, which in turn
+    reported the whole skill untrainable.
+    """
+    info = _chunk_info(
+        challenges={"Magic": {"Cast wind strike": {"Level": 1, "Primary": True, "Monsters": ["Monster[+]"]}}}
+    )
+    with_monster = SourceIndex(
+        items={}, objects={}, monsters={"Goblin": {"100": True}}, npcs={}, shops={}, drop_rates={}
+    )
+
+    assert calc_challenges({}, {}, _EMPTY, info, rules={}).valid == {}
+    assert calc_challenges({}, {}, with_monster, info, rules={}).valid == {
+        "Magic": {"Cast wind strike": 1}
+    }
+
+
+def test_an_unknown_plus_family_is_still_unsatisfiable() -> None:
+    """Only `Monster[+]` gets the wildcard treatment - a `[+]` name with no
+    family table stays a dead requirement otherwise."""
+    info = _chunk_info(
+        challenges={"Magic": {"Cast it": {"Level": 1, "Primary": True, "Monsters": ["Dragon[+]"]}}}
+    )
+    with_monster = SourceIndex(
+        items={}, objects={}, monsters={"Goblin": {"100": True}}, npcs={}, shops={}, drop_rates={}
+    )
+
+    assert calc_challenges({}, {}, with_monster, info, rules={}).valid == {}

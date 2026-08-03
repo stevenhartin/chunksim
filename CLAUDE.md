@@ -157,7 +157,18 @@ One responsibility per module, so the planned simulation work has a pure layer t
   matching plain presence checking with no grouping needed. Only ~42 challenges remain genuinely
   unsupported on that map — the `QuestPointsNeeded`/`CombatPointsNeeded`/`KudosNeeded`/
   `TotalLevelNeeded`/`CombatLevelNeeded` gates, which need state (quest points, kudos, ...) this module
-  doesn't derive. `BackupParent` is honoured (worker.js:1679): a challenge naming one is deleted once
+  doesn't derive. **Untrainable skills are pruned** (`_prune_untrainable_skills`, worker.js:1521):
+  when `checkPrimaryMethod` reports a skill untrainable and no `passiveSkill` floor covers it, every
+  one of its challenges above `Level 1` is discarded. This is how upstream locks a skill behind a
+  quest — `Herblore` is gated on `Unlock ~|Herblore|~ after Druidic Ritual`, and while that quest is
+  out of reach the skill keeps nothing; missing it left 56 valid Herblore challenges and a proposed
+  active task. It runs **once, after the fixed point converges**, not per pass: deciding trainability
+  from a half-seeded item index prunes a skill whose own `Output` chain would have made it trainable,
+  and the starved next pass then settles on the wrong fixed point (it broke `Magic`, and with it the
+  BiS oracle's `Master wand`). `Monster[+]` is also a **wildcard** ("any monster at all",
+  worker.js:4306) rather than a `monstersPlus` family — treating it as one made `Cast ~|wind strike|~`,
+  Magic's only Level 1 `Primary` route, permanently invalid and so the whole skill untrainable.
+  `BackupParent` is honoured (worker.js:1679): a challenge naming one is deleted once
   that parent is valid *or backlogged*, unless it carries `ManualValid`. All 17 real uses are
   `Hunter`'s barehanded catches — `Barehanded catch a wandering lucky impling` (Level 99) exists for
   players with no butterfly net and must vanish once the Level 89 net version is possible, which it
