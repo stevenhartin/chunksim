@@ -25,6 +25,7 @@ simulation instead.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from fray_claude.chunkinfo import ChunkInfo
@@ -167,3 +168,56 @@ def _any_static_connect_open(
         if name in chunk_ids and chunk_ids[name] is not False:
             return True
     return False
+
+
+@dataclass(frozen=True)
+class ChunkSections:
+    """One unlocked chunk's reachable and locked sections, for `fray sections
+    list`/`fray sections <chunk-id>`. Section `0` is a chunk's implicit
+    "whole thing" section - always reachable once the chunk is unlocked, and
+    never itself tracked in `unlocked_sections`'s output - so it's always
+    included in `reachable` here rather than left for callers to add back.
+    """
+
+    chunk_id: str
+    name: str | None
+    reachable: list[str]
+    locked: list[str]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "chunk_id": self.chunk_id,
+            "name": self.name,
+            "reachable": self.reachable,
+            "locked": self.locked,
+        }
+
+
+def _sort_key(chunk_id: str) -> tuple[int, object]:
+    return (0, int(chunk_id)) if chunk_id.isdigit() else (1, chunk_id)
+
+
+def describe_sections(
+    chunk_ids: Mapping[str, bool],
+    reachable: Mapping[str, Mapping[str, bool]],
+    chunk_info: ChunkInfo,
+) -> list[ChunkSections]:
+    """One `ChunkSections` per id in `chunk_ids` (already `expand_chunk_areas`d),
+    sorted numerically where chunk ids allow.
+    """
+    entries = []
+    for chunk_id in sorted(chunk_ids, key=_sort_key):
+        computed = sorted(reachable.get(chunk_id, {}))
+        defined = chunk_info.sections.get(chunk_id, {})
+        all_sections = set(defined) - {"0"} if isinstance(defined, dict) else set()
+        locked = sorted(all_sections - set(computed))
+
+        entry = chunk_info.chunk(chunk_id)
+        name = entry.get("Nickname")
+        if not isinstance(name, str):
+            name = entry.get("Name") if isinstance(entry.get("Name"), str) else None
+
+        entries.append(
+            ChunkSections(chunk_id=chunk_id, name=name, reachable=["0", *computed], locked=locked)
+        )
+    return entries

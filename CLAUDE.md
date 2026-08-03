@@ -8,8 +8,9 @@ fray-claude is a CLI that reads state from the source-chunk web app, caches it l
 offline operations on that cache. source-chunk is upstream and read-only from here.
 
 Landed: derive reachable sections/available sources/valid tasks from a cached map, per-chunk unlock
-deltas, and multi-roll simulation (`fray unlock`/`fray simulate`) — see `challenges.py`'s docstring
-for what's deliberately unsupported before trusting the numbers.
+deltas, multi-roll simulation (`fray unlock`/`fray simulate`), category listings, and world-wide fuzzy
+search (`fray search`) — see `challenges.py`'s docstring for what's deliberately unsupported before
+trusting the numbers.
 Planned: render a world-map image for a simulated state, generate heatmaps of likely rolls over N
 attempts, estimate time to complete all goals (needs a task-duration source; the export has none).
 
@@ -129,6 +130,21 @@ One responsibility per module, so the planned simulation work has a pure layer t
   so the same seed reproduces the same run regardless of set/dict iteration order. Not modelled: manual
   chunk selection/blacklisting, `roll2`/`roll5` bonus rerolls, and the `chunkNeighboursOptions` UI
   conveniences — all user-interaction features orthogonal to a pure roll simulation.
+- `search.py` — pure; world-wide fuzzy search (`build_world_index` -> `WorldIndex`, `search`) across
+  items/monsters/npcs/objects/shops/tasks. Deliberately **not** built on `SourceIndex`: that only
+  knows chunks you've already unlocked, so it can't answer "where would I get this". Instead it
+  indexes the raw chunkinfo export directly, covering all five of an item's acquisition routes
+  (verified against the real export — `drops` 1,640 distinct items, `skillItems` +882 unreachable any
+  other way, `shopItems` 1,385, chunk `Spawn` blocks 357, challenge `Output` +2,347 unreachable any
+  other way — union 5,962). Concretely: "Abyssal whip" is a `skillItems.Slayer` drop and appears
+  nowhere in `drops`, so `sources.py`'s three-route index can never surface it, while `search.py` does
+  — this means **`search`'s availability marking is a strict superset of `fray sources`'s**: a query
+  can report an item "available" that `fray sources` would never list, since `sources.py` only covers
+  3 of the 5 routes. `skillItems`' activity key is *not* reliably a monster (Mining: rocks, Fishing:
+  fishing spots, Slayer: usually monsters), so resolving its location tries Monster/NPC/Object in turn
+  rather than assuming one category. Fuzzy matching is a small stdlib ladder (exact/prefix/substring/
+  `difflib.SequenceMatcher`) — no new dependency — over names with challenge-style `~|...|~`/`#`
+  markup stripped first (`normalise`), since most challenge names carry it.
 - `summary.py` — pure, I/O-free reductions over a raw payload; extend this layer, not `cli.py`.
   Firebase omits empty containers rather than storing them, so every lookup must tolerate a missing
   branch — `_mapping` exists for that; reuse it (`chunkinfo.py` does too, over the export instead of a
@@ -138,7 +154,10 @@ One responsibility per module, so the planned simulation work has a pure layer t
   module (`_load_state` -> `pipeline.load_map_state` handles the common cache-read + decode step).
   `--export-json PATH` (where supported) writes a subcommand's full result as JSON to `PATH`, or to
   stdout if `PATH` is `-` — in which case it replaces the human-readable summary on stdout rather than
-  interleaving with it, so piping stays clean.
+  interleaving with it, so piping stays clean. `sections`/`sources`/`tasks` take an optional
+  positional (`list`/a chunk id; one of `sources.CATEGORIES`; a challenge category) to list that
+  branch's contents instead of just its counts, each capped by `--limit` (full output by default,
+  since piping to `grep`/`less` should just work without a flag).
 
 ## Toolchain
 
@@ -151,11 +170,12 @@ pip install -e ".[dev]"     # editable install into .venv; provides the `fray` s
 fray fetch [--map ID]       # GET live state -> cache/<map>.json (default map: fray)
 fray show  [--map ID]       # summarise the cached copy; no network
 fray chunkinfo              # GET upstream's chunk/challenge reference data -> cache/{chunkinfo,tasks_map}.json
-fray sections [--map ID]    # reachable sections for the cached map's unlocked chunks
-fray sources  [--map ID]    # items/objects/monsters/npcs/shops the cached map's unlocked chunks give
-fray tasks    [--map ID]    # which challenges are currently valid (partial - see challenges.py)
+fray sections [list|CHUNK] [--limit N]   # reachable sections; list/drill down with a positional
+fray sources  [CATEGORY]   [--limit N]   # items/objects/monsters/npcs/shops; list one with a positional
+fray tasks    [CATEGORY]   [--limit N]   # which challenges are valid (partial - see challenges.py)
 fray unlock   --chunk ID    # tasks/sections one candidate chunk would add on top of the cached map
 fray simulate --rolls N [--seed S]   # simulate N chunk rolls and accumulate their tasks/sections
+fray search   QUERY [--type T ...] [--limit N]   # fuzzy search item/monster/npc/object/shop/task
 python -m fray_claude ...   # same CLI without the console script
 mypy                        # strict, over src/ and tests/; run from the repo root
 pytest                      # whole suite

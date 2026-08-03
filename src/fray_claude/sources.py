@@ -72,6 +72,16 @@ class SourceIndex:
             "drop_rates": self.drop_rates,
         }
 
+    def category(self, name: str) -> dict[str, dict[str, Any]]:
+        """One of `CATEGORIES` by name, for `fray sources <category>`."""
+        if name not in CATEGORIES:
+            raise ValueError(f"unknown source category: {name!r} (expected one of {CATEGORIES})")
+        return dict(getattr(self, name))
+
+
+#: The listable branches of a `SourceIndex`, in the order `fray sources` reports them.
+CATEGORIES = ("items", "objects", "monsters", "npcs", "shops")
+
 
 def _apply_drop_rate_overrides(
     drops: Mapping[str, Any],

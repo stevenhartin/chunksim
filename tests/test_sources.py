@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.sources import gather_chunks_info
+from fray_claude.sources import CATEGORIES, gather_chunks_info
 
 
 def _chunk_info(**data: Any) -> ChunkInfo:
@@ -270,3 +270,22 @@ def test_gather_chunks_info_tolerates_an_empty_export() -> None:
         "shops": {},
         "drop_rates": {},
     }
+
+
+def test_category_returns_the_matching_branch() -> None:
+    info = _chunk_info(chunks={"100": {"Shop": {"General Store": True}}})
+
+    index = gather_chunks_info({"100": True}, {}, info, rules={})
+
+    assert index.category("shops") == {"General Store": {"100": True}}
+
+
+def test_category_rejects_an_unknown_name() -> None:
+    index = gather_chunks_info({}, {}, _chunk_info(), rules={})
+
+    with pytest.raises(ValueError, match="unknown source category"):
+        index.category("bogus")
+
+
+def test_categories_matches_the_source_index_fields() -> None:
+    assert CATEGORIES == ("items", "objects", "monsters", "npcs", "shops")

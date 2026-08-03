@@ -12,7 +12,12 @@ from typing import Any
 import pytest
 
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.sections import expand_chunk_areas, unlocked_sections
+from fray_claude.sections import (
+    ChunkSections,
+    describe_sections,
+    expand_chunk_areas,
+    unlocked_sections,
+)
 
 _REAL_CHUNKINFO = os.environ.get("FRAY_CHUNKINFO")
 
@@ -171,3 +176,56 @@ def test_manual_sections_match_a_real_export() -> None:
     assert reachable.get("13878") == {"1": True}
     assert reachable.get("6705") == {"1": True}
     assert reachable.get("8748", {}).get("1") is True
+
+
+def test_describe_sections_reports_section_0_for_an_unsectioned_chunk() -> None:
+    info = _chunk_info(chunks={"100": {"Nickname": "Home"}})
+
+    entries = describe_sections({"100": True}, {}, info)
+
+    assert entries == [ChunkSections(chunk_id="100", name="Home", reachable=["0"], locked=[])]
+
+
+def test_describe_sections_splits_reachable_from_locked() -> None:
+    info = _chunk_info(sections={"100": {"1": [], "2": [], "3": []}})
+
+    entries = describe_sections({"100": True}, {"100": {"1": True, "3": True}}, info)
+
+    assert entries[0].reachable == ["0", "1", "3"]
+    assert entries[0].locked == ["2"]
+
+
+def test_describe_sections_prefers_nickname_over_name() -> None:
+    info = _chunk_info(chunks={"100": {"Nickname": "Home", "Name": "Formal Name"}})
+
+    entries = describe_sections({"100": True}, {}, info)
+
+    assert entries[0].name == "Home"
+
+
+def test_describe_sections_falls_back_to_name_then_none() -> None:
+    info = _chunk_info(chunks={"100": {"Name": "Formal Name"}, "200": {}})
+
+    entries = describe_sections({"100": True, "200": True}, {}, info)
+
+    by_id = {e.chunk_id: e.name for e in entries}
+    assert by_id == {"100": "Formal Name", "200": None}
+
+
+def test_describe_sections_sorts_chunk_ids_numerically() -> None:
+    info = _chunk_info()
+
+    entries = describe_sections({"200": True, "30": True, "100": True}, {}, info)
+
+    assert [e.chunk_id for e in entries] == ["30", "100", "200"]
+
+
+def test_describe_sections_as_dict() -> None:
+    entry = ChunkSections(chunk_id="100", name="Home", reachable=["0", "1"], locked=["2"])
+
+    assert entry.as_dict() == {
+        "chunk_id": "100",
+        "name": "Home",
+        "reachable": ["0", "1"],
+        "locked": ["2"],
+    }

@@ -400,3 +400,193 @@ def test_simulate_export_json_to_stdout_replaces_the_summary(
     assert result["seed"] == 1
     assert result["rolls_requested"] == 1
     assert [r["chunk_id"] for r in result["rolls"]] == ["101"]
+
+
+def test_sections_list_reports_every_unlocked_chunk(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True, "200": True}}}
+    chunkinfo_data = {"chunks": {"100": {"Nickname": "Home"}, "200": {"Nickname": "Away"}}}
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["sections", "list"]) == 0
+
+    out = capsys.readouterr().out
+    assert "unlocked chunks 2" in out
+    assert "100" in out and "Home" in out
+    assert "200" in out and "Away" in out
+
+
+def test_sections_drill_down_reports_reachable_and_locked(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {
+        "chunks": {"100": {"Nickname": "Home"}},
+        "sections": {"100": {"1": [], "2": []}},
+    }
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["sections", "100"]) == 0
+
+    out = capsys.readouterr().out
+    assert "chunk     100" in out
+    assert "name      Home" in out
+    assert "reachable 0" in out
+    assert "locked    1, 2" in out
+
+
+def test_sections_drill_down_unknown_chunk_exits_one(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    _cache_map_and_chunkinfo(monkeypatch, payload, {})
+    capsys.readouterr()
+
+    assert main(["sections", "999"]) == 1
+    assert "not unlocked" in capsys.readouterr().err
+
+
+def test_sources_category_lists_names_with_a_limit(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {"chunks": {"100": {"Shop": {"A Shop": True, "B Shop": True}}}}
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["sources", "shops"]) == 0
+
+    out = capsys.readouterr().out
+    assert "category shops" in out
+    assert "count    2" in out
+    assert "A Shop" in out
+    assert "B Shop" in out
+
+
+def test_sources_category_export_json(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {"chunks": {"100": {"Shop": {"A Shop": True}}}}
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["sources", "shops", "--export-json", "-"]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["category"] == "shops"
+    assert result["shops"] == {"A Shop": {"100": True}}
+
+
+def test_sources_unknown_category_is_rejected_by_argparse(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload: dict[str, Any] = {"chunks": {"unlocked": {}}}
+    _cache_map_and_chunkinfo(monkeypatch, payload, {})
+    capsys.readouterr()
+
+    with pytest.raises(SystemExit):
+        main(["sources", "bogus"])
+
+
+def test_tasks_category_lists_valid_task_names(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data: dict[str, Any] = {"challenges": {"Nonskill": {"Do a thing": {}}}}
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["tasks", "Nonskill"]) == 0
+
+    out = capsys.readouterr().out
+    assert "category Nonskill" in out
+    assert "valid    1" in out
+    assert "Do a thing" in out
+
+
+def test_tasks_unknown_category_exits_one(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload: dict[str, Any] = {"chunks": {"unlocked": {}}}
+    _cache_map_and_chunkinfo(monkeypatch, payload, {})
+    capsys.readouterr()
+
+    assert main(["tasks", "Bogus"]) == 1
+    assert "unknown task category" in capsys.readouterr().err
+
+
+def test_tasks_bis_category_reports_not_computed_rather_than_zero(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload: dict[str, Any] = {"chunks": {"unlocked": {}}}
+    _cache_map_and_chunkinfo(monkeypatch, payload, {})
+    capsys.readouterr()
+
+    assert main(["tasks", "BiS"]) == 0
+    assert "not computed" in capsys.readouterr().out
+
+
+def test_search_reports_hits(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {
+        "chunks": {"100": {"Monster": {"Goblin": True}}},
+        "drops": {"Goblin": {"Bones": {"1": "Always"}}},
+    }
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["search", "bones"]) == 0
+
+    out = capsys.readouterr().out
+    assert "ITEM     Bones  [available]" in out
+    assert "drop: Goblin" in out
+
+
+def test_search_type_filters_results(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {
+        "chunks": {"100": {"Monster": {"Whip seller": True}}},
+        "drops": {"Whip seller": {"Whip": {"1": "Always"}}},
+    }
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["search", "whip", "--type", "monster"]) == 0
+
+    out = capsys.readouterr().out
+    assert "MONSTER  Whip seller" in out
+    assert "ITEM" not in out
+
+
+def test_search_without_a_cached_map_exits_one(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["search", "whip"]) == 1
+    assert "no cached data for map 'fray'" in capsys.readouterr().err
+
+
+def test_search_export_json_to_stdout_replaces_the_summary(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {
+        "chunks": {"100": {"Monster": {"Goblin": True}}},
+        "drops": {"Goblin": {"Bones": {"1": "Always"}}},
+    }
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["search", "bones", "--export-json", "-"]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["query"] == "bones"
+    assert result["hits"][0]["name"] == "Bones"
+    assert result["hits"][0]["available"] is True

@@ -30,7 +30,10 @@ from fray_claude.cache import (
 from fray_claude.challenges import UNSUPPORTED_CATEGORIES
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.pipeline import MapState, derive, load_map_state
+from fray_claude.search import TYPES, build_world_index, search
+from fray_claude.sections import describe_sections, expand_chunk_areas
 from fray_claude.simulate import simulate_rolls
+from fray_claude.sources import CATEGORIES as SOURCE_CATEGORIES
 from fray_claude.summary import summarise
 from fray_claude.unlock import tasks_added_by
 
@@ -105,28 +108,73 @@ def _load_state(args: argparse.Namespace) -> tuple[MapState, dict[str, bool]]:
     return load_map_state(envelope["data"], info)
 
 
+def _error(message: str) -> int:
+    print(f"error: {message}", file=sys.stderr)
+    return 1
+
+
+def _print_capped(names: list[str], limit: int | None) -> None:
+    shown = names if limit is None else names[:limit]
+    for name in shown:
+        print(f"  {name}")
+    if limit is not None and len(names) > limit:
+        print(f"  ... and {len(names) - limit} more (--limit {len(names)} to see all)")
+
+
 def _cmd_sections(args: argparse.Namespace) -> int:
     state, unlocked = _load_state(args)
     result = derive(state, unlocked)
-    total_sections = sum(len(sections) for sections in result.reachable_sections.values())
 
-    # `--export-json -` replaces the text summary on stdout, so a pipe sees
-    # only JSON; a file destination leaves stdout for the summary as usual.
+    if args.target is None:
+        total_sections = sum(len(s) for s in result.reachable_sections.values())
+        # `--export-json -` replaces the text summary on stdout, so a pipe
+        # sees only JSON; a file destination leaves stdout for the summary.
+        if args.export_json != "-":
+            print(f"map                {args.map_id}")
+            print(f"unlocked chunks    {len(unlocked)}")
+            print(f"sectioned chunks   {len(result.reachable_sections)}")
+            print(f"reachable sections {total_sections}")
+        if args.export_json is not None:
+            _emit_json(
+                {
+                    "map_id": args.map_id,
+                    "unlocked_chunks": len(unlocked),
+                    "sections": result.reachable_sections,
+                },
+                args.export_json,
+            )
+        return 0
+
+    expanded = expand_chunk_areas(unlocked)
+    entries = describe_sections(expanded, result.reachable_sections, state.chunk_info)
+
+    if args.target == "list":
+        if args.export_json != "-":
+            print(f"map             {args.map_id}")
+            print(f"unlocked chunks {len(entries)}")
+            shown = entries if args.limit is None else entries[: args.limit]
+            for entry in shown:
+                label = f"{entry.chunk_id:<8} {entry.name or '':<20}"
+                print(f"  {label} {', '.join(entry.reachable)}")
+            if args.limit is not None and len(entries) > args.limit:
+                print(f"  ... and {len(entries) - args.limit} more (--limit {len(entries)})")
+        if args.export_json is not None:
+            _emit_json(
+                {"map_id": args.map_id, "chunks": [e.as_dict() for e in entries]}, args.export_json
+            )
+        return 0
+
+    match = next((e for e in entries if e.chunk_id == args.target), None)
+    if match is None:
+        return _error(f"chunk {args.target!r} is not unlocked on map {args.map_id!r}")
     if args.export_json != "-":
-        print(f"map                {args.map_id}")
-        print(f"unlocked chunks    {len(unlocked)}")
-        print(f"sectioned chunks   {len(result.reachable_sections)}")
-        print(f"reachable sections {total_sections}")
-
+        print(f"map       {args.map_id}")
+        print(f"chunk     {match.chunk_id}")
+        print(f"name      {match.name or 'unknown'}")
+        print(f"reachable {', '.join(match.reachable)}")
+        print(f"locked    {', '.join(match.locked) if match.locked else 'none'}")
     if args.export_json is not None:
-        _emit_json(
-            {
-                "map_id": args.map_id,
-                "unlocked_chunks": len(unlocked),
-                "sections": result.reachable_sections,
-            },
-            args.export_json,
-        )
+        _emit_json({"map_id": args.map_id, **match.as_dict()}, args.export_json)
     return 0
 
 
@@ -134,37 +182,118 @@ def _cmd_sources(args: argparse.Namespace) -> int:
     state, unlocked = _load_state(args)
     index = derive(state, unlocked).source_index
 
-    if args.export_json != "-":
-        print(f"map        {args.map_id}")
-        print(f"items      {len(index.items)}")
-        print(f"objects    {len(index.objects)}")
-        print(f"monsters   {len(index.monsters)}")
-        print(f"npcs       {len(index.npcs)}")
-        print(f"shops      {len(index.shops)}")
+    if args.category is None:
+        if args.export_json != "-":
+            print(f"map        {args.map_id}")
+            print(f"items      {len(index.items)}")
+            print(f"objects    {len(index.objects)}")
+            print(f"monsters   {len(index.monsters)}")
+            print(f"npcs       {len(index.npcs)}")
+            print(f"shops      {len(index.shops)}")
+        if args.export_json is not None:
+            _emit_json({"map_id": args.map_id, **index.as_dict()}, args.export_json)
+        return 0
 
+    contents = index.category(args.category)
+    names = sorted(contents)
+    if args.export_json != "-":
+        print(f"map      {args.map_id}")
+        print(f"category {args.category}")
+        print(f"count    {len(names)}")
+        _print_capped(names, args.limit)
     if args.export_json is not None:
-        _emit_json({"map_id": args.map_id, **index.as_dict()}, args.export_json)
+        _emit_json(
+            {"map_id": args.map_id, "category": args.category, args.category: contents},
+            args.export_json,
+        )
     return 0
 
 
 def _cmd_tasks(args: argparse.Namespace) -> int:
     state, unlocked = _load_state(args)
     result = derive(state, unlocked).challenges
-    total_valid = sum(len(names) for names in result.valid.values())
+
+    if args.category is None:
+        total_valid = sum(len(names) for names in result.valid.values())
+        if args.export_json != "-":
+            print(f"map          {args.map_id}")
+            print(f"valid tasks  {total_valid}")
+            for skill, skill_tasks in sorted(result.valid.items()):
+                print(f"  {skill:<12} {len(skill_tasks)}")
+            print(f"unsupported  {len(result.unsupported)} individual tasks (see CLAUDE.md)")
+            print(
+                f"not computed {', '.join(sorted(UNSUPPORTED_CATEGORIES))} "
+                "(whole categories - absence isn't 'none valid', see CLAUDE.md)"
+            )
+        if args.export_json is not None:
+            _emit_json({"map_id": args.map_id, **result.as_dict()}, args.export_json)
+        return 0
+
+    if args.category not in state.chunk_info.challenges and args.category not in UNSUPPORTED_CATEGORIES:
+        return _error(f"unknown task category: {args.category!r}")
+
+    names = sorted(result.valid.get(args.category, {}))
+    if args.export_json != "-":
+        print(f"map      {args.map_id}")
+        print(f"category {args.category}")
+        if args.category in UNSUPPORTED_CATEGORIES:
+            print("valid    not computed (see CLAUDE.md)")
+        else:
+            print(f"valid    {len(names)}")
+            _print_capped(names, args.limit)
+    if args.export_json is not None:
+        _emit_json(
+            {
+                "map_id": args.map_id,
+                "category": args.category,
+                "not_computed": args.category in UNSUPPORTED_CATEGORIES,
+                "valid": names,
+            },
+            args.export_json,
+        )
+    return 0
+
+
+def _cmd_search(args: argparse.Namespace) -> int:
+    state, unlocked = _load_state(args)
+    world = build_world_index(state.chunk_info)
+    result = derive(state, unlocked)
+    hits = search(
+        world, args.query, unlocked=unlocked, derived=result, types=args.type, limit=args.limit
+    )
 
     if args.export_json != "-":
-        print(f"map          {args.map_id}")
-        print(f"valid tasks  {total_valid}")
-        for skill, names in sorted(result.valid.items()):
-            print(f"  {skill:<12} {len(names)}")
-        print(f"unsupported  {len(result.unsupported)} individual tasks (see CLAUDE.md)")
-        print(
-            f"not computed {', '.join(sorted(UNSUPPORTED_CATEGORIES))} "
-            "(whole categories - absence isn't 'none valid', see CLAUDE.md)"
-        )
+        print(f"query {args.query!r}")
+        print(f"hits  {len(hits)}")
+        for hit in hits:
+            status = "available" if hit.available else "locked"
+            print(f"{hit.type.upper():8} {hit.name}  [{status}]")
+            if hit.type == "item":
+                for source in hit.detail["sources"]:
+                    source_status = "available" if source["available"] else "locked"
+                    print(f"  {source['route']}: {source['name']}  [{source_status}]")
+                    locs = source["locations"]
+                    if locs:
+                        print("    " + ", ".join(loc["chunk_id"] for loc in locs))
+                    else:
+                        print("    (no known location)")
+            elif hit.type == "task":
+                print(f"  category: {hit.detail['category']}")
+            else:
+                locs = hit.detail["locations"]
+                if locs:
+                    print("    " + ", ".join(loc["chunk_id"] for loc in locs))
+                else:
+                    print("    (no known location)")
+                if hit.type == "monster" and hit.detail["boss"]:
+                    print("    boss")
+                if hit.detail["provides"]:
+                    print("    provides: " + ", ".join(hit.detail["provides"]))
 
     if args.export_json is not None:
-        _emit_json({"map_id": args.map_id, **result.as_dict()}, args.export_json)
+        _emit_json(
+            {"query": args.query, "hits": [hit.as_dict() for hit in hits]}, args.export_json
+        )
     return 0
 
 
@@ -254,6 +383,16 @@ def build_parser() -> argparse.ArgumentParser:
         "sections", help="reachable sections for the cached map's unlocked chunks"
     )
     sections.add_argument(
+        "target",
+        nargs="?",
+        default=None,
+        metavar="[list|CHUNK_ID]",
+        help="'list' for every unlocked chunk, or a chunk id to inspect; omit for counts only",
+    )
+    sections.add_argument(
+        "--limit", type=int, default=None, help="cap the number of chunks printed by 'list'"
+    )
+    sections.add_argument(
         "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"
     )
     sections.add_argument(
@@ -274,6 +413,16 @@ def build_parser() -> argparse.ArgumentParser:
         "sources", help="items/objects/monsters/npcs/shops the cached map's unlocked chunks give"
     )
     sources.add_argument(
+        "category",
+        nargs="?",
+        default=None,
+        choices=SOURCE_CATEGORIES,
+        help=f"one of {SOURCE_CATEGORIES} to list its contents; omit for counts only",
+    )
+    sources.add_argument(
+        "--limit", type=int, default=None, help="cap the number of names printed"
+    )
+    sources.add_argument(
         "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"
     )
     sources.add_argument(
@@ -292,6 +441,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     tasks = subcommands.add_parser(
         "tasks", help="which challenges are currently valid for the cached map"
+    )
+    tasks.add_argument(
+        "category",
+        nargs="?",
+        default=None,
+        help="a challenge category (e.g. Cooking, Nonskill) to list its valid tasks",
+    )
+    tasks.add_argument(
+        "--limit", type=int, default=None, help="cap the number of tasks printed"
     )
     tasks.add_argument(
         "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"
@@ -356,6 +514,38 @@ def build_parser() -> argparse.ArgumentParser:
         help="write the full result as JSON to PATH, or to stdout if PATH is '-'",
     )
     simulate.set_defaults(func=_cmd_simulate)
+
+    search = subcommands.add_parser(
+        "search", help="fuzzy-search items/monsters/npcs/objects/shops/tasks across the whole map"
+    )
+    search.add_argument("query", help="text to search for")
+    search.add_argument(
+        "--type",
+        dest="type",
+        action="append",
+        choices=TYPES,
+        default=None,
+        help="restrict to one entity type (repeat --type to combine); default: search all",
+    )
+    search.add_argument(
+        "--limit", type=int, default=10, help="max results (default: %(default)s)"
+    )
+    search.add_argument(
+        "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"
+    )
+    search.add_argument(
+        "--chunkinfo",
+        type=Path,
+        default=None,
+        help="path to a chunkinfo export, overriding the cache and FRAY_CHUNKINFO",
+    )
+    search.add_argument(
+        "--export-json",
+        metavar="PATH",
+        default=None,
+        help="write the full result as JSON to PATH, or to stdout if PATH is '-'",
+    )
+    search.set_defaults(func=_cmd_search)
 
     return parser
 
