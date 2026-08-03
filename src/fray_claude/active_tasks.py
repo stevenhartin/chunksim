@@ -34,11 +34,34 @@ Verified against upstream and real map data before porting:
   this eligibility gate and tie-break need; getting them wrong changes which
   challenge "wins" for a meaningful fraction of skills.
 
+Deliberate divergence from the port - the completed-level ceiling:
+a challenge cannot become `active` when a *higher*-`Level` challenge in the
+same skill is already completed (`_completed_level_ceiling`); it lands in
+`obsolete` with the rest. Completing a task proves the level it requires, so
+everything easier is settled, whatever order it happened in. This matters
+because a temporary boost lets a task be completed above the player's
+natural level, which is exactly how the reported case arose: `Agility` had
+`Access the Revenant Caves jump (hard) shortcut` (Level 89) completed while
+the panel still proposed `Access the Slayer Tower ivy shortcut` (Level 81)
+as the current goal. Two other skills on the same map were wrong the same
+way, both via a skillcape: `Woodcutting` (`Buy the Woodcutting cape`, 99, vs
+a proposed `Chop magic logs`, 75) and `Mining` (`Buy the Mining cape`, 99,
+vs `Mine runite ore`, 85). The comparison is strictly greater, so an equal-
+level challenge still competes - two Level 81 tasks are alternatives, not
+tiers of each other. When it rules out every candidate the skill simply has
+no active pick, which is the honest answer.
+
+Scoped to *selection*: the ceiling is not fed back as an implied skill level
+into `challenges.py`'s `Level` gate, which would change what is `valid` and
+cascade well beyond this module.
+
 Not ported, documented rather than silently wrong:
 - Boosting's level adjustment (owned boost items, Crystal saw) - no
   boost-ownership state exists anywhere in this codebase, the same class of
   gap as `checkPrimaryMethod` (see `challenges.py`/`sources.py`'s
-  docstrings). Comparisons here use each challenge's raw `Level`.
+  docstrings). Comparisons here use each challenge's raw `Level`. The
+  ceiling above absorbs the *consequence* of a boost once the boosted task
+  is ticked off, but not a boost the player merely owns.
 - The `tempAlwaysGlobal` backlog-alternate promotion: upstream, when the
   winning candidate is backlogged, promotes a same-item alternate recorded
   by the "Highest Level"-off grouping path. This module doesn't track that
@@ -121,6 +144,30 @@ def _is_eligible(
     return name in manual_tasks.get(skill, {})
 
 
+def _completed_level_ceiling(
+    completed: Mapping[str, Any], skill_challenges: Mapping[str, Any]
+) -> float | None:
+    """The highest `Level` among this skill's already-completed challenges,
+    or `None` if none of them carries one.
+
+    Completing a task proves the level it needs, so anything easier is
+    settled - see `_classify_skill` for why that has to gate candidacy.
+    Reads the whole `completed` ledger, not just its currently-*valid*
+    intersection: a completed task is evidence regardless of whether the
+    present chunk set still makes it reachable. Entries with no `Level`, or
+    none in the export at all (real data files diary tasks under a skill:
+    `Woodcutting`'s completed set holds `~|Wilderness Diary#Medium|~ Task
+    2`), contribute nothing rather than defaulting to a level.
+    """
+    levels = [
+        float(level)
+        for name in completed
+        if isinstance(challenge := skill_challenges.get(name), dict)
+        and isinstance(level := challenge.get("Level"), (int, float))
+    ]
+    return max(levels) if levels else None
+
+
 def _classify_skill(
     skill: str,
     valid_names: Mapping[str, Any],
@@ -133,6 +180,9 @@ def _classify_skill(
 ) -> SkillClassification:
     completed_names = {name for name in valid_names if name in completed}
     remaining = [name for name in valid_names if name not in completed_names]
+    # A task the player has already beaten a *harder* version of is settled,
+    # so it can't be the skill's current goal - see the module docstring.
+    ceiling = _completed_level_ceiling(completed, skill_challenges)
 
     winner: str | None = None
     winner_level = float("-inf")
@@ -143,6 +193,8 @@ def _classify_skill(
             continue
         level = challenge.get("Level")
         level = float(level) if isinstance(level, (int, float)) else 1.0
+        if ceiling is not None and ceiling > level:
+            continue
         if not _is_eligible(
             name, challenge, level, skill=skill, passive_skill=passive_skill, manual_tasks=manual_tasks
         ):

@@ -192,3 +192,118 @@ def test_task_classification_as_dict_shape() -> None:
     result = TaskClassification(skills={"Woodcutting": classification})
 
     assert result.as_dict() == {"Woodcutting": {"active": "A", "obsolete": ["B"], "completed": ["C"]}}
+
+
+def test_a_completed_higher_level_task_rules_out_every_lower_candidate() -> None:
+    """The reported Agility bug: `Revenant Caves jump (hard)` (89) was
+    completed with a temporary boost, yet the panel proposed the Level 81
+    ivy shortcut as the current goal. Beating 89 settles everything easier.
+    """
+    info = _chunk_info(
+        challenges={
+            "Agility": {
+                "Revenant Caves jump (hard)": {"Level": 89},
+                "Slayer Tower ivy": {"Level": 81, "Primary": True},
+                "Varrock Rooftop Course": {"Level": 30, "Primary": True},
+            }
+        }
+    )
+    valid = {"Agility": {"Slayer Tower ivy": 81, "Varrock Rooftop Course": 30}}
+
+    result = classify_tasks(
+        valid,
+        info,
+        completed_challenges={"Agility": {"Revenant Caves jump (hard)": True}},
+        manual_tasks={},
+        backlog={},
+        passive_skill={},
+    )
+
+    classification = result.skills["Agility"]
+    assert classification.active is None
+    assert classification.obsolete == frozenset({"Slayer Tower ivy", "Varrock Rooftop Course"})
+
+
+def test_the_ceiling_only_rules_out_strictly_lower_candidates() -> None:
+    """Two tasks at the same level are alternatives, not tiers of one
+    another - completing one leaves the other a legitimate goal."""
+    info = _chunk_info(
+        challenges={
+            "Firemaking": {
+                "Burn magic logs": {"Level": 75},
+                "Burn magic logs at a fire": {"Level": 75, "Primary": True},
+                "Burn yew logs": {"Level": 60, "Primary": True},
+            }
+        }
+    )
+    valid = {"Firemaking": {"Burn magic logs at a fire": 75, "Burn yew logs": 60}}
+
+    result = classify_tasks(
+        valid,
+        info,
+        completed_challenges={"Firemaking": {"Burn magic logs": True}},
+        manual_tasks={},
+        backlog={},
+        passive_skill={},
+    )
+
+    classification = result.skills["Firemaking"]
+    assert classification.active == "Burn magic logs at a fire"
+    assert classification.obsolete == frozenset({"Burn yew logs"})
+
+
+def test_a_completed_task_still_wins_the_ceiling_when_it_is_no_longer_valid() -> None:
+    """Completion is evidence of the level whether or not the present chunk
+    set still makes that task reachable, so the ledger is read whole rather
+    than intersected with `valid` first."""
+    info = _chunk_info(
+        challenges={
+            "Mining": {
+                "Buy the Mining cape": {"Level": 99},
+                "Mine runite ore": {"Level": 85, "Primary": True},
+            }
+        }
+    )
+    valid = {"Mining": {"Mine runite ore": 85}}
+
+    result = classify_tasks(
+        valid,
+        info,
+        completed_challenges={"Mining": {"Buy the Mining cape": True}},
+        manual_tasks={},
+        backlog={},
+        passive_skill={},
+    )
+
+    assert result.skills["Mining"].active is None
+    # Not currently valid, so it isn't reported as completed either - the
+    # ledger entry only ever fed the ceiling.
+    assert result.skills["Mining"].completed == frozenset()
+
+
+def test_a_completed_entry_with_no_level_sets_no_ceiling() -> None:
+    """Real data files diary tasks under a skill (`Woodcutting`'s completed
+    set holds a `Wilderness Diary` entry absent from `challenges`), and some
+    challenges carry no `Level` at all. Neither may suppress a candidate."""
+    info = _chunk_info(
+        challenges={
+            "Woodcutting": {
+                "Do a thing": {},
+                "Chop magic logs": {"Level": 75, "Primary": True},
+            }
+        }
+    )
+    valid = {"Woodcutting": {"Chop magic logs": 75}}
+
+    result = classify_tasks(
+        valid,
+        info,
+        completed_challenges={
+            "Woodcutting": {"Do a thing": True, "Wilderness Diary Task 2": True}
+        },
+        manual_tasks={},
+        backlog={},
+        passive_skill={},
+    )
+
+    assert result.skills["Woodcutting"].active == "Chop magic logs"

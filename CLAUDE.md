@@ -246,10 +246,24 @@ One responsibility per module, so the planned simulation work has a pure layer t
   `Level == 1` OR a `passiveSkill` floor OR a `manualTasks` entry (real fields, present on 32%/30% of
   challenges for `Primary`/`Priority` respectively) - among eligible, non-backlogged candidates the
   highest `Level` wins, ties broken by lower `Priority`; a trivial (`Level <= 1`, non-`Primary`)
-  winner is discarded entirely (no active task for that skill). `completedChallenges` is read
+  winner is discarded entirely (no active task for that skill). **Deliberate divergence from the
+  port**: a candidate is skipped when a *strictly* higher-`Level` challenge in the same skill is
+  already completed (`_completed_level_ceiling`) — completing a task proves the level it needs, so
+  everything easier is settled whatever order it happened in. This was a real reported bug, and a
+  temporary skill boost is how it arises: `Agility` had `Revenant Caves jump (hard)` (89) completed
+  while the panel proposed the Level 81 ivy shortcut, and two more skills were wrong the same way via
+  a 99 skillcape (`Woodcutting`, `Mining`). Strictly-greater on purpose — two Level 81 tasks are
+  alternatives, not tiers — and the ceiling reads the whole `completed` ledger rather than its
+  currently-valid intersection, since completion is evidence regardless of present reachability. It
+  gates *selection only*; feeding it back as an implied skill level into `challenges.py`'s `Level`
+  gate would change what is `valid` and cascade far beyond this module. Expect many maxed skills to
+  report no active pick at all (18 -> 8 on the map this was built against), which is the honest
+  answer. `completedChallenges` is read
   directly, never re-derived - verified upstream never marks a lower tier "obsolete" in any stored
   field (`grep -i "obsolete\|supersed"` across index.js/worker.js: zero hits); "only show the highest"
-  is a pure per-recompute display choice. Boosting's level adjustment, the backlog-alternate
+  is a pure per-recompute display choice. Boosting's level adjustment (a boost the player merely
+  *owns*, as opposed to the completed-task consequence the ceiling above absorbs), the
+  backlog-alternate
   promotion, and sub-skill `Skills`-requirement cross-propagation are not modelled (no boost-ownership
   state exists anywhere in this codebase, the same class of gap as `checkPrimaryMethod`). Scope
   (only real skill categories, not Quest/Diary/Extra/Nonskill/BiS) and the oracle-comparison approach
