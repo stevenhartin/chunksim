@@ -32,7 +32,10 @@ def test_a_low_rate_drop_is_classified_secondary_by_default() -> None:
         drops={"Goblin": {"Coins": {"1": "1/16"}}},
     )
 
-    index = gather_chunks_info({"100": True}, {}, info, rules={})
+    # `Rare Drop Amount` defaults to "0", i.e. an infinite threshold that
+    # admits no rate-based drop at all; this test is about classification, so
+    # give it a threshold the 1/16 rate clears.
+    index = gather_chunks_info({"100": True}, {}, info, rules={"Rare Drop Amount": "100"})
 
     assert index.items["Coins"] == {"Goblin": "secondary-drop"}
 
@@ -193,7 +196,9 @@ def test_rdt_family_drop_is_a_single_item_when_rdt_is_off() -> None:
         codeItems={"dropTables": {"RareDropTable+": {"Loot A": "1/2@1"}}},
     )
 
-    index = gather_chunks_info({"100": True}, {}, info, rules={})
+    # A threshold the 1/128 rate clears - the default amount of "0" is an
+    # infinite threshold and would reject the drop before RDT even matters.
+    index = gather_chunks_info({"100": True}, {}, info, rules={"Rare Drop Amount": "1000"})
 
     assert "RareDropTable+" in index.items
     assert "Loot A" not in index.items
@@ -206,7 +211,9 @@ def test_rdt_family_drop_expands_to_its_table_when_rdt_is_on() -> None:
         codeItems={"dropTables": {"RareDropTable+": {"Loot A": "1/2@1"}}},
     )
 
-    index = gather_chunks_info({"100": True}, {}, info, rules={"RDT": True})
+    index = gather_chunks_info(
+        {"100": True}, {}, info, rules={"RDT": True, "Rare Drop Amount": "1000"}
+    )
 
     assert "Loot A" in index.items
     assert "RareDropTable+" not in index.items

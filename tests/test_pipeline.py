@@ -141,7 +141,12 @@ def test_derive_unlocks_an_area_and_gathers_its_contents() -> None:
         challenges={"Nonskill": {"Guardians' Lair": {"UnlocksArea": True}}},
     )
 
-    result = derive(_state(chunk_info=info), {"100": True})
+    # `Rare Drop Amount` defaults to "0" - an infinite threshold admitting no
+    # rate-based drop - and this test is about the area unlock reaching the
+    # drop at all, so give it a threshold the 1/500 rate clears.
+    result = derive(
+        _state(chunk_info=info, rules={"Rare Drop Amount": "1000"}), {"100": True}
+    )
 
     assert "Grotesque Guardians" in result.source_index.monsters
     assert "Granite gloves" in result.source_index.items

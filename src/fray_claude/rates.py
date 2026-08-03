@@ -50,12 +50,20 @@ def looks_non_numeric(raw: str) -> bool:
 
 
 def build_rare_drop_num(rare_drop_amount: str) -> float:
-    """Port of `rareDropNum = "1/" + rules['Rare Drop Amount']` plus upstream's
-    `"1/0"` special case (an amount of 0 would otherwise divide by zero;
-    upstream substitutes a threshold so small every drop clears it).
+    """Port of `rareDropNum = "1/" + rules['Rare Drop Amount']` (index.js:3664).
+
+    An amount of `0` yields the string `"1/0"`, which JS evaluates to
+    **`Infinity`** - so with `Rare Drop` off and the amount at 0, the
+    `rate > rareDropNum` test rejects *every* rate-based drop, and only
+    `Always`/`Unknown` (i.e. `NaN`) rates get through their own `isNaN`
+    escape. This function previously returned a near-zero threshold on the
+    reasoning that 0 meant "let everything through"; it is the exact
+    opposite, and the map this was built against runs `Rare Drop Amount: "0"`,
+    so the whole item index was admitting rare drops it should not - 12
+    `Extra` collection-log entries the map's own oracle omits, among others.
     """
     if rare_drop_amount == "0":
-        return parse_ratio("1/999999999999999")
+        return math.inf
     return parse_ratio(f"1/{rare_drop_amount}")
 
 
