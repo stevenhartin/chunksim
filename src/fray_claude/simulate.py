@@ -1,37 +1,34 @@
 """Simulate chunk rolls and accumulate the tasks/sections they unlock.
 
-Ports the two roll-eligibility mechanisms in index.js:
+Dispatches between the two roll-eligibility mechanisms in index.js:
 
 - **Bootstrap roll** (nothing unlocked yet): uniform over `walkableChunks`
   (or `walkableChunksF2P` under the `F2P` rule), restricted to whichever
   regions `settings.rollingChunksOptions` selects (all of them, if none are
   checked), further intersected with the `bank`/`noquest` pools if those
-  toggles are on. There is no neighbour concept yet, so region filtering
-  only ever applies here.
-- **Neighbour roll** (port of `selectAllNeighborsCanvas`): every locked
-  chunk orthogonally adjacent (`chunk_id ± 1`, `chunk_id ± 256` - the grid
-  is 256 chunks tall) to *any* unlocked chunk, that has a `chunkinfo.json`
-  `sections` entry (only walkable chunks do) with at least one connection
-  back to something already reachable - either a plain already-unlocked
-  chunk, or a specific already-reachable section - gated by `sectionsLimits`
-  requiring certain tasks already valid, where it applies. Region filters do
-  *not* apply to this pool - upstream's `selectAllNeighborsCanvas` never
-  references them.
+  toggles are on. Port of the "Random Start" branch of `pickCanvas`
+  (index.js:3345-3393). There is no neighbour concept yet, so region
+  filtering only ever applies here - which is exactly why this pool lives in
+  this module and the other one does not.
+- **Neighbour roll**: the eligible-neighbour set, owned by `neighbours.py`.
+  Read its docstring for the port of `selectAllNeighborsCanvas`, the
+  `sectionsLimits` gate and the canvas numbering. Region filters do *not*
+  apply to it - `selectAllNeighborsCanvas` never references them.
 
 Both pools are picked from uniformly at random via a seeded `random.Random`,
 over a *sorted* candidate list, so the same seed reproduces the same run
-regardless of set/dict iteration order.
+regardless of set/dict iteration order. The numbering `neighbours.py` computes
+does not bias the pick: upstream picks uniformly over the selected key set
+(index.js:3396-3398) and only reads the number back for the roll modal.
 
 Each roll's record is built via `unlock.delta_from` and never revisited by a
 later roll - `bis_upgrades` included, so a later roll's improvement doesn't
 get folded back into an earlier record. See `unlock.py` for why that is the
 agreed semantics rather than an approximation.
 
-Not modelled: manual chunk selection/blacklisting, `roll2`/`roll5` bonus
-rerolls, and the `chunkNeighboursOptions` UI conveniences
-(`autoWalkableRollable`/`walkableRollable`/`remove`) - all user-interaction
-features orthogonal to a pure roll simulation, not part of eligibility
-itself.
+Not modelled: manual chunk selection/blacklisting and the `roll2`/`roll5`
+bonus rerolls - user-interaction features orthogonal to a pure roll
+simulation, not part of eligibility itself.
 """
 
 from __future__ import annotations
@@ -41,11 +38,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from fray_claude.graph import SectionGraph, build_section_graph
+from fray_claude.neighbours import neighbour_pool
 from fray_claude.pipeline import Derived, MapState, derive
 from fray_claude.summary import _mapping
 from fray_claude.unlock import delta_from
-
-_GRID_HEIGHT = 256
 
 _REGION_NAMES = (
     "Misthalin",
@@ -96,7 +93,7 @@ def _region_key(name: str) -> str:
 
 
 def _bootstrap_pool(state: MapState) -> list[str]:
-    """Port of the "Random Start" pool (index.js, inside `pickChunkCanvas`)."""
+    """Port of the "Random Start" pool (index.js:3345-3393, inside `pickCanvas`)."""
     walkable = set(
         state.chunk_info.walkable_chunks_f2p
         if state.rules.get("F2P") is True
@@ -123,86 +120,21 @@ def _bootstrap_pool(state: MapState) -> list[str]:
     return sorted(pool & walkable)
 
 
-def _grid_neighbours(chunk_id: int) -> tuple[int, int, int, int]:
-    return (chunk_id - 1, chunk_id + 1, chunk_id - _GRID_HEIGHT, chunk_id + _GRID_HEIGHT)
-
-
-def _sections_limit_met(limit: Mapping[str, Any], valid: Mapping[str, Mapping[str, Any]]) -> bool:
-    tasks = limit.get("Tasks")
-    if not isinstance(tasks, dict):
-        return True
-    for task_name, task_skill in tasks.items():
-        if not isinstance(task_skill, str):
-            continue
-        if task_name not in valid.get(task_skill, {}):
-            return False
-    return True
-
-
-def _has_reachable_connection(
-    candidate: str,
-    candidate_sections: Mapping[str, Any],
-    sections_limits: Mapping[str, Any],
+def roll_pool(
+    state: MapState,
     unlocked: Mapping[str, bool],
-    reachable_sections: Mapping[str, Mapping[str, bool]],
-    valid: Mapping[str, Mapping[str, Any]],
-) -> bool:
-    for section_id, connections in candidate_sections.items():
-        if not isinstance(connections, list):
-            continue
-        suffix = "" if section_id == "0" else f"-{section_id}"
-        for connection in connections:
-            if not isinstance(connection, str):
-                continue
-            limit = sections_limits.get(f"{candidate}{suffix} to {connection}")
-            if isinstance(limit, dict) and not _sections_limit_met(limit, valid):
-                continue
-            if "-" in connection:
-                conn_chunk, _, conn_section = connection.partition("-")
-                if reachable_sections.get(conn_chunk, {}).get(conn_section):
-                    return True
-            elif connection in unlocked:
-                return True
-    return False
+    current: Derived,
+    *,
+    graph: SectionGraph | None = None,
+) -> list[str]:
+    """The chunk ids eligible to be rolled next, sorted for determinism.
 
-
-def _neighbour_pool(state: MapState, unlocked: Mapping[str, bool], current: Derived) -> list[str]:
-    """Port of `selectAllNeighborsCanvas`."""
-    walkable_f2p = set(state.chunk_info.walkable_chunks_f2p)
-    sections = state.chunk_info.sections
-    sections_limits = _mapping(state.chunk_info.code_items, "sectionsLimits")
-
-    pool: set[str] = set()
-    for chunk_id_str in unlocked:
-        try:
-            chunk_id = int(chunk_id_str)
-        except ValueError:
-            continue  # area names aren't grid-addressable
-        for candidate_id in _grid_neighbours(chunk_id):
-            candidate = str(candidate_id)
-            if candidate in unlocked or candidate in pool:
-                continue
-            if state.rules.get("F2P") is True and candidate not in walkable_f2p:
-                continue
-            candidate_sections = sections.get(candidate)
-            if not isinstance(candidate_sections, dict):
-                continue
-            if _has_reachable_connection(
-                candidate,
-                candidate_sections,
-                sections_limits,
-                unlocked,
-                current.reachable_sections,
-                current.challenges.valid,
-            ):
-                pool.add(candidate)
-    return sorted(pool)
-
-
-def roll_pool(state: MapState, unlocked: Mapping[str, bool], current: Derived) -> list[str]:
-    """The chunk ids eligible to be rolled next, sorted for determinism."""
+    Which pool applies is the roll's question, so the dispatch lives here;
+    the neighbour pool itself is `neighbours.py`'s. Pass `graph` to reuse one
+    across rolls.
+    """
     if unlocked:
-        return _neighbour_pool(state, unlocked, current)
+        return neighbour_pool(state, unlocked, current, graph=graph)
     return _bootstrap_pool(state)
 
 
@@ -216,10 +148,11 @@ def simulate_rolls(
     rng = random.Random(seed)
     current_ids: dict[str, bool] = dict(unlocked)
     before = derive(state, current_ids)
+    graph = build_section_graph(state.chunk_info)
     ledger: list[UnlockRecord] = []
 
     for order in range(1, rolls + 1):
-        pool = roll_pool(state, current_ids, before)
+        pool = roll_pool(state, current_ids, before, graph=graph)
         if not pool:
             break
         chunk_id = rng.choice(pool)

@@ -27,6 +27,8 @@ source-chunk is upstream and read-only from here — `fray-claude` never writes 
   you already hold.
 - **`unlock --chunk ID`** — what a single candidate chunk unlock would add on top of your current
   state: new tasks, new reachable sections, and any best-in-slot upgrades it makes reachable.
+- **`neighbours`** — which chunks you're currently eligible to unlock, each with the number
+  source-chunk's own canvas puts on it, and the connection that makes it reachable.
 - **`simulate --rolls N`** — simulate N chunk rolls in sequence and accumulate what each one adds,
   with a `--seed` for reproducible runs.
 
@@ -156,6 +158,7 @@ otherwise it's created in whatever directory you're in when you run `fray`.
    fray tasks BiS                      # best-in-slot equipment: still to get, already got, outdated
    fray search "abyssal whip"          # where in the world would I get this?
    fray unlock --chunk 12082           # what unlocking chunk 12082 would add
+   fray neighbours                     # which chunks I could unlock next, and their roll numbers
    fray simulate --rolls 20 --seed 1   # simulate 20 rolls; --seed makes it reproducible
    ```
 
@@ -164,7 +167,7 @@ otherwise it's created in whatever directory you're in when you run `fray`.
 
    Add `--export-json -` (to print JSON to stdout, for piping into `jq` or similar) or
    `--export-json PATH` (to write it to a file) to `sections`, `sources`, `tasks`, `search`, `unlock`,
-   or `simulate` for the full structured result behind the human-readable summary.
+   `neighbours` or `simulate` for the full structured result behind the human-readable summary.
 
    If you'd rather point at a chunk-info export you already have on disk instead of fetching it,
    pass `--chunkinfo PATH` to any of those commands, or set the `FRAY_CHUNKINFO` environment variable.

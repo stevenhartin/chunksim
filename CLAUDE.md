@@ -85,7 +85,8 @@ Three things that cut across modules, because each one has already caused a real
 | `cache.py` | The disk. `CacheMissError`, the `map_id`/`fetched_at`/`source`/`data` envelope, and the `--chunkinfo`/`FRAY_CHUNKINFO` override. |
 | `firebase.py` | The Firebase-safe string codec, incl. `decode_challenge_keyed`'s mixed `t_N`/literal key handling. Run any payload branch through it before believing it. |
 | `chunkinfo.py` | Typed, tolerant accessors over the parsed export. Build **one** `ChunkInfo` per invocation — parsing the ~7MB export is the expensive part. |
-| `sections.py` | Which sections of the unlocked chunks are reachable, plus named-area unlocking. `sectionsLimits` deliberately lives in `simulate.py` instead. |
+| `sections.py` | Which sections of the unlocked chunks are reachable, plus named-area unlocking. `sectionsLimits` deliberately lives in `neighbours.py` instead. |
+| `graph.py` | The export's `sections` branch as a **directed** `(chunk, section)` graph, with each edge's `sectionsLimits` gate pre-bound. Shaped for the not-yet-written pathfinding search. |
 | `rates.py` | OSRS drop-rate string parsing/formatting, matching JS's rounding because the output lands inside task names. |
 | `sources.py` | What the unlocked chunks make available (`SourceIndex`). Applies `taskUnlocks` to items *and* entities, so availability depends on challenge validity. |
 | `challenges.py` | Which challenges are valid (`ChallengeResult`) — a two-phase fixed point over 28 of 29 categories. **`BiS` is never evaluated here**; read `pipeline.Derived.bis`. |
@@ -95,7 +96,8 @@ Three things that cut across modules, because each one has already caused a real
 | `other_tasks.py` | The three non-skill categories, `Diary`/`Quest`/`Extra`. No single winner — upstream renders every valid, uncompleted one. |
 | `pipeline.py` | `MapState` + `derive`. Owns the **loop** where upstream's area-unlock circularity lives, so the modules above stay one-directional. |
 | `unlock.py` | What one candidate unlock adds, by diffing two `derive` calls. **Owns the project's attribution rule** and its one exception. |
-| `simulate.py` | Seeded chunk-roll simulation over the two upstream roll pools. Records are never revisited by a later roll. |
+| `neighbours.py` | Which chunks are eligible to unlock next, and upstream's canvas numbering (**descending chunk id, 1-based**). Owns the `sectionsLimits` gate. |
+| `simulate.py` | Seeded chunk-roll simulation: the bootstrap pool, plus the dispatch to `neighbours.py`. Records are never revisited by a later roll. |
 | `search.py` | World-wide fuzzy search over the *raw* export — all 5 item routes, so a strict superset of what `fray sources` can list. |
 | `summary.py` | Pure reductions over a raw payload. Extend this, not `cli.py`. |
 | `cli.py` | argparse subcommands and rendering only; new logic goes in a pure module. |
@@ -115,6 +117,7 @@ fray sections [list|CHUNK] [--limit N]   # reachable sections; list/drill down w
 fray sources  [CATEGORY]   [--limit N]   # items/objects/monsters/npcs/shops; list one with a positional
 fray tasks    [CATEGORY]   [--limit N]   # valid/active/obsolete/completed, incl. BiS (partial - see the module docstrings)
 fray unlock   --chunk ID    # tasks/sections one candidate chunk would add on top of the cached map
+fray neighbours [--limit N] # chunks eligible to unlock next, numbered as the app's canvas numbers them
 fray simulate --rolls N [--seed S]   # simulate N chunk rolls and accumulate their tasks/sections
 fray search   QUERY [--type T ...] [--limit N]   # fuzzy search item/monster/npc/object/shop/task
 python -m fray_claude ...   # same CLI without the console script
@@ -125,9 +128,10 @@ FRAY_CHUNKINFO=path .venv/bin/pytest tests/test_sections.py -k real   # opt-in o
 pyproject-build && pipx install --force dist/*.whl   # build + reinstall the `fray` command system-wide
 ```
 
-`--export-json PATH` (or `-` for stdout, replacing the text summary) is carried by the six
+`--export-json PATH` (or `-` for stdout, replacing the text summary) is carried by the seven
 *derivation* subcommands, not the three I/O ones. `--limit` defaults to `None` (full output) for
-`sections`/`sources`/`tasks` so piping just works, but to `10` for `search`. See `cli.py`'s docstring.
+`sections`/`sources`/`tasks`/`neighbours` so piping just works, but to `10` for `search`. See
+`cli.py`'s docstring.
 
 `mypy` and `pytest` are invoked differently on purpose: mypy is the *system* install (there is no
 `.venv/bin/mypy`), configured with `python_executable = ".venv/bin/python"` so it can see pytest's

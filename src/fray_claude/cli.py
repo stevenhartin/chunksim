@@ -8,17 +8,17 @@ handles the common cache-read + decode step.
 `--export-json PATH` writes a subcommand's full result as JSON to `PATH`, or
 to stdout if `PATH` is `-` - in which case it *replaces* the human-readable
 summary rather than interleaving with it, so piping stays clean. It is
-carried by the six *derivation* subcommands
-(`sections`/`sources`/`tasks`/`unlock`/`simulate`/`search`) and deliberately
-not by the three I/O ones (`fetch`/`show`/`chunkinfo`), whose output is the
-cache file itself.
+carried by the seven *derivation* subcommands
+(`sections`/`sources`/`tasks`/`unlock`/`neighbours`/`simulate`/`search`) and
+deliberately not by the three I/O ones (`fetch`/`show`/`chunkinfo`), whose
+output is the cache file itself.
 
 `sections`/`sources`/`tasks` take an optional positional (`list` or a chunk
 id; one of `sources.CATEGORIES`; a challenge category) to list that branch's
 contents instead of just its counts, each capped by `--limit`. That defaults
-to `None` - full output - for those three, so piping to `grep`/`less` just
-works without a flag, but to `10` for `search`, where the tail of a fuzzy
-ranking is noise rather than data.
+to `None` - full output - for those three and for `neighbours`, so piping to
+`grep`/`less` just works without a flag, but to `10` for `search`, where the
+tail of a fuzzy ranking is noise rather than data.
 
 `fray tasks <category>` branches four ways:
 
@@ -86,6 +86,8 @@ from fray_claude.cache import (
 from fray_claude.challenges import strip_task_markup
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.firebase import reverse_tasks_map
+from fray_claude.graph import build_section_graph
+from fray_claude.neighbours import eligible_neighbours
 from fray_claude.other_tasks import CATEGORIES as OTHER_CATEGORIES
 from fray_claude.other_tasks import CategoryTasks, display_name, task_text
 from fray_claude.pipeline import MapState, derive, load_map_state
@@ -558,6 +560,37 @@ def _cmd_unlock(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_neighbours(args: argparse.Namespace) -> int:
+    state, unlocked = _load_state(args)
+    entries = eligible_neighbours(
+        state, unlocked, derive(state, unlocked), graph=build_section_graph(state.chunk_info)
+    )
+
+    if args.export_json != "-":
+        print(f"map             {args.map_id}")
+        print(f"unlocked chunks {len(unlocked)}")
+        print(f"eligible chunks {len(entries)}")
+        shown = entries if args.limit is None else entries[: args.limit]
+        for entry in shown:
+            print(
+                f"  {entry.number:>3}  {entry.chunk_id:<6} "
+                f"{entry.nickname or '':<32} via {entry.via_ref}"
+            )
+        if args.limit is not None and len(entries) > args.limit:
+            print(f"  ... and {len(entries) - args.limit} more (--limit {len(entries)} to see all)")
+
+    if args.export_json is not None:
+        _emit_json(
+            {
+                "map_id": args.map_id,
+                "unlocked_chunks": len(unlocked),
+                "neighbours": [entry.as_dict() for entry in entries],
+            },
+            args.export_json,
+        )
+    return 0
+
+
 def _cmd_simulate(args: argparse.Namespace) -> int:
     state, unlocked = _load_state(args)
     ledger = simulate_rolls(state, unlocked, rolls=args.rolls, seed=args.seed)
@@ -737,6 +770,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="write the full result as JSON to PATH, or to stdout if PATH is '-'",
     )
     unlock.set_defaults(func=_cmd_unlock)
+
+    neighbours = subcommands.add_parser(
+        "neighbours",
+        help="chunks eligible to be unlocked next, numbered the way the canvas numbers them",
+    )
+    neighbours.add_argument(
+        "--limit", type=int, default=None, help="cap the number of neighbours printed"
+    )
+    neighbours.add_argument(
+        "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"
+    )
+    neighbours.add_argument(
+        "--chunkinfo",
+        type=Path,
+        default=None,
+        help="path to a chunkinfo export, overriding the cache and FRAY_CHUNKINFO",
+    )
+    neighbours.add_argument(
+        "--export-json",
+        metavar="PATH",
+        default=None,
+        help="write the full result as JSON to PATH, or to stdout if PATH is '-'",
+    )
+    neighbours.set_defaults(func=_cmd_neighbours)
 
     simulate = subcommands.add_parser(
         "simulate", help="simulate N chunk rolls from the cached map and accumulate their tasks"

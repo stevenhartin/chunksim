@@ -1,4 +1,7 @@
-"""Tests for chunk-roll eligibility and the roll simulation ledger."""
+"""Tests for the bootstrap roll pool and the roll simulation ledger.
+
+Neighbour eligibility moved to `tests/test_neighbours.py` with the logic.
+"""
 
 from __future__ import annotations
 
@@ -89,74 +92,6 @@ def test_bootstrap_pool_uses_f2p_walkable_chunks_under_the_f2p_rule() -> None:
     current = derive(state, {})
 
     assert roll_pool(state, {}, current) == ["100"]
-
-
-def test_neighbour_pool_includes_a_grid_adjacent_connected_chunk() -> None:
-    # 101 is grid-adjacent to 100 (±1), and its section 0 connects plainly
-    # back to 100, which is already unlocked.
-    info = _chunk_info(sections={"101": {"0": ["100"]}})
-    state = _state(chunk_info=info)
-    current = derive(state, {"100": True})
-
-    assert roll_pool(state, {"100": True}, current) == ["101"]
-
-
-def test_neighbour_pool_excludes_a_candidate_with_no_sections_entry() -> None:
-    # No `chunkInfo.sections` entry means "not walkable" - see the
-    # module docstring's note that `sections` is only populated for the
-    # 1,172 walkable chunks.
-    info = _chunk_info()
-    state = _state(chunk_info=info)
-    current = derive(state, {"100": True})
-
-    assert roll_pool(state, {"100": True}, current) == []
-
-
-def test_neighbour_pool_excludes_a_candidate_with_no_reachable_connection() -> None:
-    # 101 connects only to 999, which is neither unlocked nor reachable.
-    info = _chunk_info(sections={"101": {"0": ["999"]}})
-    state = _state(chunk_info=info)
-    current = derive(state, {"100": True})
-
-    assert roll_pool(state, {"100": True}, current) == []
-
-
-def test_neighbour_pool_respects_f2p_walkable_restriction() -> None:
-    info = _chunk_info(sections={"101": {"0": ["100"]}}, walkableChunksF2P=[])
-    state = _state(chunk_info=info, rules={"F2P": True})
-    current = derive(state, {"100": True})
-
-    assert roll_pool(state, {"100": True}, current) == []
-
-
-def test_neighbour_pool_respects_a_sections_limit_gate() -> None:
-    # The gate names a Quest task that's never satisfiable in this fixture
-    # (it needs a chunk that's never unlocked), so 101 must stay excluded.
-    info = _chunk_info(
-        sections={"101": {"0": ["100"]}},
-        codeItems={"sectionsLimits": {"101 to 100": {"Tasks": {"Do it": "Quest"}}}},
-        challenges={"Quest": {"Do it": {"Chunks": ["999"]}}},
-    )
-    state = _state(chunk_info=info)
-
-    current = derive(state, {"100": True})
-
-    assert "Do it" not in current.challenges.valid.get("Quest", {})
-    assert roll_pool(state, {"100": True}, current) == []
-
-
-def test_neighbour_pool_allows_a_candidate_once_its_sections_limit_gate_is_met() -> None:
-    info = _chunk_info(
-        sections={"101": {"0": ["100"]}},
-        codeItems={"sectionsLimits": {"101 to 100": {"Tasks": {"Do it": "Quest"}}}},
-        challenges={"Quest": {"Do it": {}}},
-    )
-    state = _state(chunk_info=info)
-
-    current = derive(state, {"100": True})
-
-    assert "Do it" in current.challenges.valid.get("Quest", {})
-    assert roll_pool(state, {"100": True}, current) == ["101"]
 
 
 def test_simulate_rolls_stops_early_when_the_pool_is_empty() -> None:
