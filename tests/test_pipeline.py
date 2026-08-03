@@ -18,6 +18,7 @@ def _state(**overrides: Any) -> MapState:
         "rules": {},
         "settings": {},
         "manual_sections": {},
+        "manual_areas": {},
         "manual_monsters": {},
         "manual_equipment": {},
         "backlogged_sources": {},
@@ -82,3 +83,73 @@ def test_load_map_state_tolerates_an_empty_payload() -> None:
     assert unlocked == {}
     assert state.rules == {}
     assert state.manual_sections == {}
+
+
+def test_load_map_state_merges_checked_into_completed_challenges() -> None:
+    # `checkedChallenges` is what you've ticked during the *current* chunk;
+    # upstream only migrates it into `completedChallenges` on the next roll,
+    # so treating it as not-yet-obtained would report an item you hold.
+    payload = {
+        "chunkinfo": {
+            "completedChallenges": {"BiS": {"Obtain a ~|black cape|~": True}},
+            "checkedChallenges": {"BiS": {"Obtain ~|dragon boots|~": True}},
+        }
+    }
+
+    state, _ = load_map_state(payload, _chunk_info())
+
+    assert state.completed_challenges["BiS"] == {
+        "Obtain a ~|black cape|~": True,
+        "Obtain ~|dragon boots|~": True,
+    }
+
+
+def test_derive_unlocks_an_area_and_gathers_its_contents() -> None:
+    # The area's monster is only reachable once the `UnlocksArea` challenge
+    # is valid - the circular step `derive`'s loop exists for.
+    info = _chunk_info(
+        chunks={
+            "100": {"Connect": {"6727": True}},
+            "6727": {"Name": "Guardians' Lair", "Connect": {"100": True}},
+            "Guardians' Lair": {"Monster": {"Grotesque Guardians": True}},
+        },
+        drops={"Grotesque Guardians": {"Granite gloves": {"1": "1/500"}}},
+        challenges={"Nonskill": {"Guardians' Lair": {"UnlocksArea": True}}},
+    )
+
+    result = derive(_state(chunk_info=info), {"100": True})
+
+    assert "Grotesque Guardians" in result.source_index.monsters
+    assert "Granite gloves" in result.source_index.items
+
+
+def test_derive_does_not_unlock_an_area_whose_challenge_is_invalid() -> None:
+    info = _chunk_info(
+        chunks={
+            "100": {"Connect": {"6727": True}},
+            "6727": {"Name": "Guardians' Lair", "Connect": {"100": True}},
+            "Guardians' Lair": {"Monster": {"Grotesque Guardians": True}},
+        },
+        challenges={
+            "Nonskill": {"Guardians' Lair": {"UnlocksArea": True, "Chunks": ["999"]}}
+        },
+    )
+
+    result = derive(_state(chunk_info=info), {"100": True})
+
+    assert "Grotesque Guardians" not in result.source_index.monsters
+
+
+def test_derive_exposes_challenge_output_items_to_bis() -> None:
+    # `Granite ring (i)` exists only as an imbue challenge's `Output`, so it
+    # is absent from `SourceIndex.items` yet must still be a BiS candidate.
+    info = _chunk_info(
+        challenges={"Nonskill": {"Imbue a granite ring": {"Output": "Granite ring (i)"}}},
+        equipment={"Granite ring (i)": {"slot": "ring", "melee_strength": 5}},
+    )
+
+    result = derive(_state(chunk_info=info), {})
+
+    assert "Granite ring (i)" not in result.source_index.items
+    assert "Granite ring (i)" in result.challenges.available_items
+    assert result.bis.picks["Melee-ring"] == "Granite ring (i)"

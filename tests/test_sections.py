@@ -14,8 +14,10 @@ import pytest
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.sections import (
     ChunkSections,
+    area_connections,
     describe_sections,
     expand_chunk_areas,
+    unlockable_areas,
     unlocked_sections,
 )
 
@@ -228,4 +230,129 @@ def test_describe_sections_as_dict() -> None:
         "name": "Home",
         "reachable": ["0", "1"],
         "locked": ["2"],
+    }
+
+
+# --- named-area unlocks (getAllChunkAreas' Connect walk + the UnlocksArea
+# pass). The export stores such an area twice: the numbered entrance chunk
+# carrying `Connect`/`Name`, and a top-level key under the area's own name
+# holding its contents - real shape, e.g. 6727/"Grotesque Guardians' Lair".
+
+
+def _area_info(**overrides: Any) -> ChunkInfo:
+    data: dict[str, Any] = {
+        "chunks": {
+            "100": {"Connect": {"6727": True}},
+            "6727": {"Name": "Guardians' Lair", "Connect": {"100": True}},
+            "Guardians' Lair": {"Monster": {"Grotesque Guardians": True}},
+        },
+        "challenges": {"Nonskill": {"Guardians' Lair": {"UnlocksArea": True}}},
+    }
+    data.update(overrides)
+    return ChunkInfo(data)
+
+
+def test_area_connections_maps_an_area_to_its_connecting_chunk() -> None:
+    assert area_connections({"100": True}, _area_info()) == {"Guardians' Lair": {"100": True}}
+
+
+def test_area_connections_walks_section_level_connects() -> None:
+    info = ChunkInfo(
+        {
+            "chunks": {
+                "100": {"Sections": {"1": {"Connect": {"6727": True}}}},
+                "6727": {"Name": "Guardians' Lair"},
+            }
+        }
+    )
+
+    assert area_connections({"100": True}, info) == {"Guardians' Lair": {"100": True}}
+
+
+def test_area_connections_ignores_targets_without_a_name() -> None:
+    info = ChunkInfo({"chunks": {"100": {"Connect": {"200": True}}, "200": {}}})
+
+    assert area_connections({"100": True}, info) == {}
+
+
+def test_unlockable_areas_unlocks_a_valid_unlocks_area_challenge() -> None:
+    info = _area_info()
+    valid = {"Nonskill": {"Guardians' Lair": True}}
+
+    assert unlockable_areas(valid, {"100": True}, {}, info) == {"Guardians' Lair": True}
+
+
+def test_unlockable_areas_needs_the_challenge_to_be_valid() -> None:
+    assert unlockable_areas({}, {"100": True}, {}, _area_info()) == {}
+
+
+def test_unlockable_areas_needs_the_unlocks_area_flag() -> None:
+    info = _area_info(challenges={"Nonskill": {"Guardians' Lair": {}}})
+    valid = {"Nonskill": {"Guardians' Lair": True}}
+
+    assert unlockable_areas(valid, {"100": True}, {}, info) == {}
+
+
+def test_unlockable_areas_needs_a_connecting_chunk_unlocked() -> None:
+    valid = {"Nonskill": {"Guardians' Lair": True}}
+
+    assert unlockable_areas(valid, {"999": True}, {}, _area_info()) == {}
+
+
+def test_unlockable_areas_skips_an_area_already_unlocked() -> None:
+    valid = {"Nonskill": {"Guardians' Lair": True}}
+    chunks = {"100": True, "Guardians' Lair": True}
+
+    assert unlockable_areas(valid, chunks, {}, _area_info()) == {}
+
+
+def test_unlockable_areas_respects_a_disabling_manual_area() -> None:
+    valid = {"Nonskill": {"Guardians' Lair": True}}
+
+    assert (
+        unlockable_areas(
+            valid, {"100": True}, {}, _area_info(), manual_areas={"Guardians' Lair": False}
+        )
+        == {}
+    )
+
+
+def test_unlockable_areas_applies_the_skills_needed_gate() -> None:
+    info = _area_info(
+        challenges={
+            "Nonskill": {"Guardians' Lair": {"UnlocksArea": True, "SkillsNeeded": {"Slayer": 75}}},
+            "Slayer": {"Train it": {}},
+        }
+    )
+    valid_without: dict[str, dict[str, Any]] = {"Nonskill": {"Guardians' Lair": True}}
+    valid_with: dict[str, dict[str, Any]] = {
+        "Nonskill": {"Guardians' Lair": True},
+        "Slayer": {"Train it": 1},
+    }
+
+    assert unlockable_areas(valid_without, {"100": True}, {}, info) == {}
+    assert unlockable_areas(valid_with, {"100": True}, {}, info) == {"Guardians' Lair": True}
+    # A passive-skill floor covers the requirement even with no valid Slayer task.
+    assert unlockable_areas(
+        valid_without, {"100": True}, {}, info, passive_skill={"Slayer": 80}
+    ) == {"Guardians' Lair": True}
+    # ...but max_skill below the requirement still blocks it.
+    assert unlockable_areas(valid_with, {"100": True}, {}, info, max_skill={"Slayer": 50}) == {}
+
+
+def test_unlockable_areas_requires_the_linking_section_reachable() -> None:
+    info = ChunkInfo(
+        {
+            "chunks": {
+                "100": {"Sections": {"1": {"Connect": {"6727": True}}}},
+                "6727": {"Name": "Guardians' Lair"},
+            },
+            "challenges": {"Nonskill": {"Guardians' Lair": {"UnlocksArea": True}}},
+        }
+    )
+    valid = {"Nonskill": {"Guardians' Lair": True}}
+
+    assert unlockable_areas(valid, {"100": True}, {}, info) == {}
+    assert unlockable_areas(valid, {"100": True}, {"100": {"1": True}}, info) == {
+        "Guardians' Lair": True
     }

@@ -96,7 +96,7 @@ except where noted as a silent, documented approximation instead:
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from fray_claude.chunkinfo import ChunkInfo
@@ -147,10 +147,20 @@ class ChallengeResult:
     valid here, which is a real gap, not a probably-harmless one: report
     `unsupported` alongside `valid` rather than silently treating an absence
     from `valid` as "checked and invalid".
+
+    `available_items` is `SourceIndex.items` plus every valid challenge's
+    `Output` (the fixed point's own `_seed_items_with_outputs` result, at
+    the pass matching `valid`). It is what downstream consumers wanting "what
+    can I actually get" should read - `SourceIndex.items` alone omits
+    anything only obtainable by *making* it, e.g. `Granite ring (i)`, which
+    exists solely as the output of an imbue challenge. Deliberately excluded
+    from `as_dict`: it's a pipeline artifact (thousands of entries), not part
+    of the user-facing task result.
     """
 
     valid: dict[str, dict[str, int | str | bool]]
     unsupported: frozenset[str]
+    available_items: dict[str, dict[str, str]] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {"valid": self.valid, "unsupported": sorted(self.unsupported)}
@@ -652,4 +662,8 @@ def calc_challenges(
         items = _seed_items_with_outputs(source_index.items, valid, challenges)
 
     grouped = _group_processing_skill_challenges(valid, challenges, items, rules)
-    return ChallengeResult(valid=grouped, unsupported=frozenset(unsupported))
+    return ChallengeResult(
+        valid=grouped,
+        unsupported=frozenset(unsupported),
+        available_items={item: dict(sources) for item, sources in items.items()},
+    )

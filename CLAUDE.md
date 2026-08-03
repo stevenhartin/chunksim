@@ -85,11 +85,21 @@ One responsibility per module, so the planned simulation work has a pure layer t
   Parsing the ~7MB export is the expensive part, not attribute access, so build one `ChunkInfo` per
   command invocation and pass it down rather than re-parsing.
 - `sections.py` — pure; which sections of the unlocked chunks are reachable (`unlocked_sections`), a
-  fixed point over `chunkinfo.json`'s `sections`/`chunks` connectivity. Port of `findConnectedSections`
-  plus the one live part of `getAllChunkAreas` — its automatic area-detection branch is upstream dead
-  code (a filter predicate with no `return`, always falsy), so only the `manualAreas` override is
-  reproduced. `sectionsLimits` deliberately isn't used here: it gates *rollable-neighbour* eligibility,
-  not the connectivity of chunks already unlocked, so it belongs with `simulate.py` instead.
+  fixed point over `chunkinfo.json`'s `sections`/`chunks` connectivity, **plus named-area unlocking**.
+  Port of `findConnectedSections` and `getAllChunkAreas`. That function's *auto-add* branch is upstream
+  dead code (a filter predicate with no `return`, always falsy) so only `manualAreas` adds chunks there
+  (`expand_chunk_areas`), but its other output is live and ported as `area_connections`: upstream's
+  `areasStructure` (named area -> connecting chunks), whose key set is `possibleAreas`. A named area is
+  stored twice in the export — as the numbered entrance chunk carrying `Connect`/`Name` (`6727` ->
+  `Grotesque Guardians' Lair`) and under the area's *name* as a top-level `chunks` key holding its
+  contents — so adding the name to the unlocked set is what exposes its monsters/drops to
+  `gather_chunks_info`. `unlockable_areas` ports the pass that decides when (worker.js:2102-2155): a
+  currently-*valid* `Nonskill` challenge carrying `UnlocksArea` unlocks the area it names, subject to
+  its `SkillsNeeded` gate and the area connecting to a chunk you already hold. Missing this was a real
+  reported bug — `Spiritual mage`/`Grotesque Guardians` (hence `Dragon boots`/`Granite gloves`) were
+  invisible, and the BiS oracle sat at 1/6. `sectionsLimits` deliberately isn't used here: it gates
+  *rollable-neighbour* eligibility, not the connectivity of chunks already unlocked, so it belongs with
+  `simulate.py` instead.
 - `rates.py` — pure; OSRS drop-rate string parsing/formatting (`parse_ratio`, `find_fraction`,
   `looks_non_numeric`). Centralises what upstream re-parses inline at every use site; `find_fraction`'s
   output string is embedded verbatim in synthesized task names (stage 3), so its half-away-from-zero
@@ -141,7 +151,10 @@ One responsibility per module, so the planned simulation work has a pure layer t
   Port of `calcBIS` (worker.js, ~3,150 lines — mostly 19 hand-written copies of one scoring block,
   collapsed here into a `StyleSpec` data table). For each active style (Melee/Ranged/Magic always;
   Prayer/Tank/Flinch/Weight/Stab-Slash-Crush variants gated by `rules['Show Best in Slot ...']`),
-  argmaxes a style-specific stat over reachable (`SourceIndex.items`) and wearable
+  argmaxes a style-specific stat over reachable (`ChallengeResult.available_items` — *not*
+  `SourceIndex.items`, which omits anything obtainable only by making it, e.g. `Granite ring (i)`,
+  which exists solely as an imbue challenge's `Output`; feeding outputs in moved 19 of 43 picks and
+  took the oracle 4/6 -> 5/6) and wearable
   (`_requirements_ok`/`_task_unlocks_ok`/`_consumable_ok`/`_source_reachable`) equipment, first-seen-
   wins on ties, resolves 2H-vs-(1H+shield) (ties to 1H+shield), and emits an "Obtain a/an X" task
   name/label per winner, joining multiple styles that pick the same item with upstream's literal
@@ -157,7 +170,8 @@ One responsibility per module, so the planned simulation work has a pure layer t
   history; `unlock.py`/`simulate.py` diff two calls to report which (style, slot) picks improved,
   exempted from `unlock.py`'s monotonic task-partition guarantee (see its docstring). `BisResult`
   additionally splits `tasks` into `completed` (already obtained, cross-referenced against
-  `completedChallenges.BiS`, whose task-name keys match `bis_task_name()`'s own output format) and
+  `completedChallenges.BiS` merged with `checkedChallenges.BiS`, whose task-name keys match
+  `bis_task_name()`'s own output format) and
   `active` (not yet obtained), plus `outdated`: a completed pick whose slot has since been beaten by
   something better, resolved back to an item via a `formatted_name -> (item, slot)` index built from
   `equipment`. That index lowercases both sides on purpose — the same item can be stored under two
@@ -191,10 +205,19 @@ One responsibility per module, so the planned simulation work has a pure layer t
 - `pipeline.py` — pure; bundles the per-map inputs (`MapState`) and runs `unlocked_sections` ->
   `gather_chunks_info` -> `calc_challenges` -> `compute_bis` -> `classify_tasks` for a given
   unlocked-chunk-id set (`derive` -> `Derived`, carrying `bis`/`task_classification` alongside
-  `reachable_sections`/`source_index`/`challenges`). `load_map_state` decodes a raw cached-map
+  `reachable_sections`/`source_index`/`challenges`). `derive` runs that chain in a **loop** while
+  newly-valid challenges unlock further named areas — this is where upstream's circularity lives (an
+  `UnlocksArea` challenge only becomes valid once its requirements are met, and the area it unlocks
+  adds *new sources* that can validate more challenges; upstream re-runs `gatherChunksInfo`
+  mid-`calcChallenges` for the same reason). Keeping the loop here lets `sections.py`/`sources.py`/
+  `challenges.py` each stay one-directional and separately testable. `load_map_state` decodes a raw cached-map
   payload into a `MapState` once (including `passive_skill` for `bis.py`'s skill-requirement gate,
   and `completed_challenges`/`manual_tasks`/`backlog`/`active_tasks` for `active_tasks.py`/`bis.py`'s
-  completed split - these need an optional `tasks_map` argument, the reverse map from
+  completed split - where `completed_challenges` **merges `checkedChallenges` into
+  `completedChallenges`**, since upstream keeps them apart only as a commit step: ticking a task writes
+  `checkedChallenges`, and rolling the next chunk migrates the lot and clears it
+  (`completeChallenges`, index.js:12718). Anything obtained during the *current* chunk therefore sits
+  only in `checkedChallenges`, and ignoring it reported items you already hold as still to get - these need an optional `tasks_map` argument, the reverse map from
   `firebase.reverse_tasks_map`, to resolve `t_N` ids; without one, every `t_N`-keyed entry is dropped
   rather than kept raw, so those fields decode empty except `BiS`/`manualTasks`, which never need it).
   `unlock.py`/`simulate.py` (and `cli.py`'s `sections`/`sources`/`tasks` subcommands) all call `derive`

@@ -20,7 +20,7 @@ from fray_claude.bis import BisResult, compute_bis
 from fray_claude.challenges import ChallengeResult, calc_challenges
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.firebase import decode_challenge_keyed, decode_payload
-from fray_claude.sections import expand_chunk_areas, unlocked_sections
+from fray_claude.sections import expand_chunk_areas, unlockable_areas, unlocked_sections
 from fray_claude.sources import SourceIndex, gather_chunks_info
 from fray_claude.summary import _mapping
 
@@ -35,11 +35,14 @@ class MapState:
     rules: Mapping[str, Any]
     settings: Mapping[str, Any]
     manual_sections: Mapping[str, Any]
+    manual_areas: Mapping[str, bool]
     manual_monsters: Mapping[str, Any]
     manual_equipment: Mapping[str, Any]
     backlogged_sources: Mapping[str, Any]
     max_skill: Mapping[str, int]
     passive_skill: Mapping[str, int]
+    #: `completedChallenges` merged with `checkedChallenges` - see
+    #: `load_map_state` for why they're one thing here.
     completed_challenges: Mapping[str, Mapping[str, Any]]
     manual_tasks: Mapping[str, Mapping[str, Any]]
     backlog: Mapping[str, Mapping[str, Any]]
@@ -57,32 +60,71 @@ class Derived:
     task_classification: TaskClassification
 
 
+#: Upper bound on `derive`'s area-unlock loop. Each pass can only *add*
+#: areas, and the real export's chains are a couple of links deep at most, so
+#: this is a runaway guard rather than a real limit.
+_MAX_AREA_PASSES = 8
+
+
 def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
-    """Run `unlocked_sections` -> `gather_chunks_info` -> `calc_challenges`."""
-    reachable = unlocked_sections(
-        unlocked,
-        state.chunk_info,
-        manual_sections=state.manual_sections,
-        opt_out_sections=state.settings.get("optOutSections") is True,
-        opt_out_sections_water=state.settings.get("optOutSectionsWater") is True,
-    )
-    expanded = expand_chunk_areas(unlocked)
-    index = gather_chunks_info(
-        expanded,
-        reachable,
-        state.chunk_info,
-        rules=state.rules,
-        backlogged_sources=state.backlogged_sources,
-        manual_monsters=state.manual_monsters,
-        manual_equipment=state.manual_equipment,
-        max_skill=state.max_skill,
-    )
-    challenges = calc_challenges(
-        expanded, reachable, index, state.chunk_info, rules=state.rules, max_skill=state.max_skill
-    )
+    """Run `unlocked_sections` -> `gather_chunks_info` -> `calc_challenges`,
+    looping while newly-valid challenges unlock further named areas.
+
+    That loop is what makes this function, rather than any single module,
+    the place upstream's circularity lives: an `UnlocksArea` challenge only
+    becomes valid once its requirements are met, and unlocking the area it
+    names adds that area's monsters/items as *new sources*, which can in turn
+    validate more challenges (upstream does the same thing by re-running
+    `gatherChunksInfo` mid-`calcChallenges`, worker.js:2153). Keeping the
+    loop here lets `sections.py`/`sources.py`/`challenges.py` each stay
+    one-directional and separately testable.
+    """
+    expanded = expand_chunk_areas(unlocked, manual_areas=state.manual_areas)
+    reachable: dict[str, dict[str, bool]] = {}
+    index: SourceIndex | None = None
+    challenges: ChallengeResult | None = None
+
+    for _ in range(_MAX_AREA_PASSES):
+        reachable = unlocked_sections(
+            expanded,
+            state.chunk_info,
+            manual_sections=state.manual_sections,
+            opt_out_sections=state.settings.get("optOutSections") is True,
+            opt_out_sections_water=state.settings.get("optOutSectionsWater") is True,
+        )
+        index = gather_chunks_info(
+            expanded,
+            reachable,
+            state.chunk_info,
+            rules=state.rules,
+            backlogged_sources=state.backlogged_sources,
+            manual_monsters=state.manual_monsters,
+            manual_equipment=state.manual_equipment,
+            max_skill=state.max_skill,
+        )
+        challenges = calc_challenges(
+            expanded, reachable, index, state.chunk_info, rules=state.rules, max_skill=state.max_skill
+        )
+        new_areas = unlockable_areas(
+            challenges.valid,
+            expanded,
+            reachable,
+            state.chunk_info,
+            manual_areas=state.manual_areas,
+            max_skill=state.max_skill,
+            passive_skill=state.passive_skill,
+        )
+        if not new_areas:
+            break
+        expanded = {**expanded, **new_areas}
+
+    assert index is not None and challenges is not None  # loop always runs at least once
     bis = compute_bis(
         state.chunk_info,
-        index.items,
+        # Not `index.items`: BiS candidates must include items that only
+        # exist as a valid challenge's `Output` (e.g. `Granite ring (i)`,
+        # obtainable solely by imbuing one) - see `ChallengeResult`.
+        challenges.available_items,
         challenges.valid,
         rules=state.rules,
         max_skill=state.max_skill,
@@ -106,6 +148,17 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
     )
 
 
+def _merge_challenge_keyed(
+    *branches: Mapping[str, Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Union several `{category: {name: value}}` branches."""
+    merged: dict[str, dict[str, Any]] = {}
+    for branch in branches:
+        for category, entries in branch.items():
+            merged.setdefault(category, {}).update(entries)
+    return merged
+
+
 def load_map_state(
     payload: Mapping[str, Any], chunk_info: ChunkInfo, tasks_map: Mapping[str, str] | None = None
 ) -> tuple[MapState, dict[str, bool]]:
@@ -113,12 +166,19 @@ def load_map_state(
     chunk ids. Most decoded branches hold chunk/item/monster/rule names, not
     `t_N` task ids, so decoding those needs no `tasks_map` - see
     `firebase.decode_payload`. `activeTasks`/`completedChallenges`/`backlog`
-    key every category by `t_N` id *except* `BiS`, which uses literal name
-    keys (see `firebase.decode_challenge_keyed`) - so without `tasks_map`
-    those decode to an empty dict for every other category (an unresolved
-    `t_N` key is dropped, not kept raw) rather than raising. Pass the
-    reverse map from `firebase.reverse_tasks_map` (built from the cached
-    `tasks_map` blob) when available.
+    key entries by `t_N` id (mixed with the occasional literal name; see
+    `firebase.decode_challenge_keyed`), so without `tasks_map` every id-keyed
+    entry is dropped rather than kept raw. Pass the reverse map from
+    `firebase.reverse_tasks_map` (built from the cached `tasks_map` blob)
+    when available.
+
+    `completed_challenges` merges `checkedChallenges` into
+    `completedChallenges`. They're separate upstream only as a commit step:
+    ticking a task's checkbox writes `checkedChallenges`, and rolling the
+    next chunk migrates the lot into `completedChallenges` and clears it
+    (`completeChallenges`, index.js:12718). So anything obtained during the
+    *current* chunk sits only in `checkedChallenges` - treating that as
+    not-yet-obtained would report an item you already hold as still to get.
     """
     tasks_map = tasks_map or {}
     chunkinfo_branch = _mapping(payload, "chunkinfo")
@@ -128,13 +188,15 @@ def load_map_state(
         rules=decode_payload(_mapping(payload, "rules")),
         settings=_mapping(payload, "settings"),
         manual_sections=decode_payload(_mapping(chunkinfo_branch, "manualSections")),
+        manual_areas=decode_payload(_mapping(chunkinfo_branch, "manualAreas")),
         manual_monsters=decode_payload(_mapping(chunkinfo_branch, "manualMonsters")),
         manual_equipment=decode_payload(_mapping(chunkinfo_branch, "manualEquipment")),
         backlogged_sources=decode_payload(_mapping(chunkinfo_branch, "backloggedSources")),
         max_skill=decode_payload(_mapping(chunkinfo_branch, "maxSkill")),
         passive_skill=decode_payload(_mapping(chunkinfo_branch, "passiveSkill")),
-        completed_challenges=decode_challenge_keyed(
-            _mapping(chunkinfo_branch, "completedChallenges"), tasks_map
+        completed_challenges=_merge_challenge_keyed(
+            decode_challenge_keyed(_mapping(chunkinfo_branch, "completedChallenges"), tasks_map),
+            decode_challenge_keyed(_mapping(chunkinfo_branch, "checkedChallenges"), tasks_map),
         ),
         manual_tasks=decode_challenge_keyed(
             _mapping(chunkinfo_branch, "manualTasks"), tasks_map, skip_task_ids=True

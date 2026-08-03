@@ -9,12 +9,28 @@ another chunk that's separately unlocked. This module ports upstream's fixed
 point over that connectivity: `findConnectedSections` (worker.js) plus the
 one live part of `getAllChunkAreas` (worker.js).
 
-`getAllChunkAreas`'s automatic area-detection branch is dead code upstream:
-its filter predicate (`.filter(subArea => { chunks.hasOwnProperty(subArea) })`)
-is an arrow function with a block body and no `return`, so it always
-evaluates to `undefined` and the branch it guards can never run. Only the
-`manualAreas` override has any observable effect, so that's all
-`expand_chunk_areas` reproduces.
+`getAllChunkAreas`'s *auto-add* branch is dead code upstream: its filter
+predicate (`.filter(subArea => { chunks.hasOwnProperty(subArea) })`) is an
+arrow function with a block body and no `return`, so it always evaluates to
+`undefined` and the branch it guards can never run. Only the `manualAreas`
+override adds chunks there, which is all `expand_chunk_areas` reproduces.
+
+That function's *other* output is very much live, though, and is what
+`area_connections` ports: the same walk builds `areasStructure` (named area
+-> the chunks connecting to it) and `possibleAreas` (its key set). Named
+areas are how a chunk set reaches places like `Wilderness God Wars Dungeon`:
+the export stores such an area twice - once as the numbered entrance chunk
+carrying `Connect`/`Name` (`6727` -> `Grotesque Guardians' Lair`), and once
+under the area's *name* as a top-level `chunks` key holding its actual
+contents. Adding the name to the unlocked set is therefore what makes the
+area's monsters and drops visible to `sources.gather_chunks_info`.
+
+`unlockable_areas` ports the pass that decides when that happens
+(worker.js:2102-2155, inside `calcChallenges`): a `Nonskill` challenge
+carrying `UnlocksArea` that is currently *valid* unlocks the area it names,
+provided the area connects to a chunk you already have. Because that pass
+consumes challenge validity and feeds back into source gathering, the loop
+driving it lives in `pipeline.derive`, not here - see its docstring.
 
 `sectionsLimits` is deliberately absent from this module - it gates
 *rollable-neighbour* eligibility (`selectAllNeighborsCanvas`, index.js), not
@@ -38,7 +54,9 @@ UNCONNECTED_AREAS = frozenset({"Zanaris", "Puro-Puro", "Player-owned house"})
 def expand_chunk_areas(
     chunk_ids: Mapping[str, bool], *, manual_areas: Mapping[str, bool] | None = None
 ) -> dict[str, bool]:
-    """Port of `getAllChunkAreas`'s only live effect: the `manualAreas` override."""
+    """Port of `getAllChunkAreas`'s only chunk-adding effect: the
+    `manualAreas` override. Areas earned by completing an `UnlocksArea`
+    challenge come from `unlockable_areas` instead."""
     expanded = dict(chunk_ids)
     for area, enabled in (manual_areas or {}).items():
         if enabled:
@@ -46,6 +64,147 @@ def expand_chunk_areas(
         else:
             expanded.pop(area, None)
     return expanded
+
+
+def area_connections(
+    chunk_ids: Mapping[str, bool], chunk_info: ChunkInfo
+) -> dict[str, dict[str, bool]]:
+    """Port of `getAllChunkAreas`' Connect walk: named area -> the chunks in
+    `chunk_ids` that connect to it (upstream's `areasStructure`; its key set
+    is upstream's `possibleAreas`).
+
+    Walks each chunk's top-level `Connect` and every `Sections[n].Connect`,
+    recording any target that carries a string `Name`. Not transitive:
+    upstream pushes discovered area *names* back into the set it's walking,
+    but then indexes `chunkInfo['chunks']` by that name and guards on the
+    result being truthy - and the name-keyed entry holds the area's contents,
+    never `Connect` - so a name never contributes further links.
+    """
+    structure: dict[str, dict[str, bool]] = {}
+
+    def record(source: str, targets: Any) -> None:
+        if not isinstance(targets, dict):
+            return
+        for target in targets:
+            name = chunk_info.chunk(target).get("Name")
+            if isinstance(name, str) and name:
+                structure.setdefault(name, {})[source] = True
+
+    for chunk_id in chunk_ids:
+        entry = chunk_info.chunk(chunk_id)
+        record(chunk_id, entry.get("Connect"))
+        sections_field = entry.get("Sections")
+        if isinstance(sections_field, dict):
+            for section_entry in sections_field.values():
+                if isinstance(section_entry, dict):
+                    record(chunk_id, section_entry.get("Connect"))
+    return structure
+
+
+def _skills_needed_met(
+    needed: Mapping[str, Any],
+    *,
+    valid: Mapping[str, Mapping[str, Any]],
+    max_skill: Mapping[str, int],
+    passive_skill: Mapping[str, int],
+) -> bool:
+    """Port of the `SkillsNeeded` gate (worker.js:2108): a required skill
+    blocks the unlock if it isn't trainable at all or the level exceeds
+    `maxSkill`, *unless* `passiveSkill` already covers it. `checkPrimaryMethod`
+    is approximated by "the skill has any valid challenge", the same stand-in
+    `challenges._has_any_valid` uses; the `slayerLocked` clause isn't modelled
+    (no live slayer-assignment state exists in this codebase).
+    """
+    for skill, level in needed.items():
+        if not isinstance(level, (int, float)):
+            continue
+        cap = max_skill.get(skill)
+        blocked = not bool(valid.get(skill)) or (isinstance(cap, (int, float)) and level > cap)
+        passive = passive_skill.get(skill)
+        covered = isinstance(passive, (int, float)) and passive > 1 and level <= passive
+        if blocked and not covered:
+            return False
+    return True
+
+
+def _area_is_connected(
+    area: str,
+    connectors: Mapping[str, bool],
+    chunk_ids: Mapping[str, bool],
+    reachable_sections: Mapping[str, Mapping[str, bool]],
+    chunk_info: ChunkInfo,
+) -> bool:
+    """Port of the connectivity check (worker.js:2125-2140): at least one
+    chunk connecting to `area` must be unlocked - and, when that chunk is
+    split into sections, the section actually linking to `area` must be
+    reachable.
+    """
+    for source in connectors:
+        if source not in chunk_ids:
+            continue
+        entry = chunk_info.chunk(source)
+        sections_field = entry.get("Sections")
+        if not isinstance(sections_field, dict) or not sections_field:
+            return True
+        for section, section_entry in sections_field.items():
+            if not isinstance(section_entry, dict):
+                continue
+            if not reachable_sections.get(source, {}).get(section):
+                continue
+            targets = section_entry.get("Connect")
+            if not isinstance(targets, dict):
+                continue
+            if any(chunk_info.chunk(target).get("Name") == area for target in targets):
+                return True
+    return False
+
+
+def unlockable_areas(
+    valid: Mapping[str, Mapping[str, Any]],
+    chunk_ids: Mapping[str, bool],
+    reachable_sections: Mapping[str, Mapping[str, bool]],
+    chunk_info: ChunkInfo,
+    *,
+    manual_areas: Mapping[str, bool] | None = None,
+    max_skill: Mapping[str, int] | None = None,
+    passive_skill: Mapping[str, int] | None = None,
+) -> dict[str, bool]:
+    """Named areas the currently-valid challenges unlock, not already in
+    `chunk_ids` - port of worker.js:2102-2155.
+
+    An area is unlocked by a *valid* `Nonskill` challenge whose name is the
+    area's and which carries `UnlocksArea`, subject to its `SkillsNeeded`
+    gate and to the area connecting to a chunk already unlocked. Upstream's
+    `deadChunkArray` re-queue (which retries an area whose only connectors
+    are themselves not-yet-unlocked areas) isn't reproduced here: driving
+    this to a fixed point is `pipeline.derive`'s job, and re-running the
+    whole pass subsumes it.
+    """
+    manual_areas = manual_areas or {}
+    nonskill_valid = valid.get("Nonskill") or {}
+    nonskill_challenges = chunk_info.challenges.get("Nonskill") or {}
+    structure = area_connections(chunk_ids, chunk_info)
+
+    unlocked: dict[str, bool] = {}
+    for area in nonskill_valid:
+        if area in chunk_ids or area in unlocked:
+            continue
+        challenge = nonskill_challenges.get(area)
+        if not isinstance(challenge, dict) or challenge.get("UnlocksArea") is not True:
+            continue
+        if area in manual_areas and not manual_areas[area]:
+            continue
+        connectors = structure.get(area)
+        if not connectors:
+            continue
+        needed = challenge.get("SkillsNeeded")
+        if isinstance(needed, dict) and not _skills_needed_met(
+            needed, valid=valid, max_skill=max_skill or {}, passive_skill=passive_skill or {}
+        ):
+            continue
+        if _area_is_connected(area, connectors, chunk_ids, reachable_sections, chunk_info):
+            unlocked[area] = True
+    return unlocked
 
 
 def unlocked_sections(

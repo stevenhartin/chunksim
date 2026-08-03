@@ -19,6 +19,7 @@ def _state(**overrides: Any) -> MapState:
         "rules": {},
         "settings": {},
         "manual_sections": {},
+        "manual_areas": {},
         "manual_monsters": {},
         "manual_equipment": {},
         "backlogged_sources": {},

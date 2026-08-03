@@ -448,9 +448,15 @@ def test_a_real_completed_bis_item_is_never_shown_as_active() -> None:
     completed BiS task on the live site, but was listed as still-to-obtain
     here, because `completedChallenges.BiS` stores it under the interned id
     `t_10226` and `decode_challenge_keyed` was special-casing `BiS` to skip
-    `t_N` resolution entirely. The item is *still* the current cape pick, so
-    it must land in `completed` - not `active`, and not `outdated` either
-    (nothing has superseded it).
+    `t_N` resolution entirely.
+
+    The invariant asserted is "recognised as obtained", not a specific
+    bucket: whether it lands in `completed` or `outdated` depends on whether
+    it is *still* the cape pick, and that legitimately moves as better items
+    become reachable (it is currently beaten by `Defence cape(t)`, which only
+    exists as a challenge `Output`). Pinning the bucket would make this test
+    fail on a correct improvement - what must never happen is it reappearing
+    as something still to obtain.
     """
     assert _REAL_CHUNKINFO is not None
     from fray_claude.cache import project_root, read_blob, read_cache
@@ -466,9 +472,8 @@ def test_a_real_completed_bis_item_is_never_shown_as_active() -> None:
     derived = derive(state, unlocked)
 
     task_name = "Obtain a ~|black cape|~"
-    assert task_name in derived.bis.completed
     assert task_name not in derived.bis.active
-    assert task_name not in derived.bis.outdated
+    assert task_name in {**derived.bis.completed, **derived.bis.outdated}
 
     # And nothing anywhere should still be an unresolved raw id.
     assert not [name for name in state.completed_challenges["BiS"] if name.startswith("t_")]
