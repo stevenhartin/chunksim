@@ -565,3 +565,40 @@ def test_ammo_slot_is_absent_when_the_winning_weapon_takes_none() -> None:
 
     assert result.picks["Ranged-weapon"] == "Rune knife"
     assert not [k for k in result.picks if k.endswith("-ammo")]
+
+
+def test_two_handed_wins_when_stronger_than_one_hand_plus_shield() -> None:
+    # Both sides must be scored with the *weapon* formula. Adding the
+    # shield's armour score (scaled by 100000) to a DPS-scale number made
+    # 1H+shield win essentially always, which wrongly deleted every 2H pick.
+    info = _chunk_info(
+        equipment={
+            "Godsword": {"slot": "2h", "attack_speed": 6, "attack_slash": 132, "melee_strength": 132},
+            "Dagger": {"slot": "weapon", "attack_speed": 4, "attack_slash": 5, "melee_strength": 5},
+            "Kiteshield": {"slot": "shield", "defence_slash": 60, "defence_stab": 60},
+        }
+    )
+    items = {n: {"S": "shop"} for n in ("Godsword", "Dagger", "Kiteshield")}
+
+    result = compute_bis(info, items, {}, rules={})
+
+    assert result.picks["Melee-weapon"] == "Godsword"
+    # A winning 2H removes the shield slot entirely.
+    assert "Melee-shield" not in result.picks
+
+
+def test_one_hand_plus_shield_wins_on_combined_offence() -> None:
+    # The shield's *offensive* stats do count, summed into the 1H side.
+    info = _chunk_info(
+        equipment={
+            "Weak 2h": {"slot": "2h", "attack_speed": 4, "attack_slash": 10, "melee_strength": 10},
+            "Sword": {"slot": "weapon", "attack_speed": 4, "attack_slash": 40, "melee_strength": 40},
+            "Offensive shield": {"slot": "shield", "attack_slash": 20, "melee_strength": 20},
+        }
+    )
+    items = {n: {"S": "shop"} for n in ("Weak 2h", "Sword", "Offensive shield")}
+
+    result = compute_bis(info, items, {}, rules={})
+
+    assert result.picks["Melee-weapon"] == "Sword"
+    assert result.picks["Melee-shield"] == "Offensive shield"

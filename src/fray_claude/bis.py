@@ -439,7 +439,24 @@ def _best_for_style(
     return winners
 
 
-def _finalize_slots(winners: _SlotWinners) -> dict[str, tuple[str, "str | None"]]:
+def _combined_weapon_shield(
+    weapon: Mapping[str, Any], shield: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Weapon stats with the shield's summed in, keeping the *weapon's*
+    `attack_speed` - upstream divides the combined offence by the weapon's
+    speed, not the shield's (worker.js:6228)."""
+    combined: dict[str, Any] = dict(weapon)
+    for key, value in shield.items():
+        if key == "attack_speed" or not isinstance(value, (int, float)):
+            continue
+        base = combined.get(key)
+        combined[key] = (base if isinstance(base, (int, float)) else 0) + value
+    return combined
+
+
+def _finalize_slots(
+    winners: _SlotWinners, style: StyleSpec, equipment: Mapping[str, Mapping[str, Any]]
+) -> dict[str, tuple[str, "str | None"]]:
     """Port of the 2H-vs-(1H+shield) shootout (worker.js:6220-6443): compare
     the 2H slot's score against weapon+shield combined; the winner replaces
     both. Ties go to 1H+shield (`>`, not `>=`). The `Show Best in Slot 1H
@@ -462,10 +479,29 @@ def _finalize_slots(winners: _SlotWinners) -> dict[str, tuple[str, "str | None"]
         for slot, (item, ammo, _score) in winners.items()
         if slot not in ("2h", "weapon", "shield", "ammo")
     }
-    two_h_power = two_h[2] if two_h is not None else float("-inf")
-    weapon_shield_power = (weapon[2] if weapon is not None else 0.0) + (
-        shield[2] if shield is not None else 0.0
+    def ammo_strength(name: str | None) -> float:
+        return _stat(equipment.get(name or "", {}), "ranged_strength")
+
+    def power(equip: Mapping[str, Any], ammo: str | None) -> float:
+        # Both sides are scored with the *weapon* formula. Summing the
+        # shield's armour score onto the 1H side instead - as this used to -
+        # compares a DPS-scale number against an armour score scaled by
+        # 100000, so 1H+shield won almost unconditionally, wrongly deleting
+        # every 2H pick (and with it the shield slot's real competitor).
+        if not _is_weapon(equip):
+            return 0.0
+        return style.weapon_score(equip, ammo_strength(ammo))
+
+    two_h_power = (
+        power(equipment.get(two_h[0], {}), two_h[1]) if two_h is not None else float("-inf")
     )
+    if weapon is None:
+        weapon_shield_power = 0.0
+    else:
+        weapon_equip: Mapping[str, Any] = equipment.get(weapon[0], {})
+        if shield is not None:
+            weapon_equip = _combined_weapon_shield(weapon_equip, equipment.get(shield[0], {}))
+        weapon_shield_power = power(weapon_equip, weapon[1])
     if two_h is not None and two_h_power > weapon_shield_power:
         result["weapon"] = (two_h[0], two_h[1])
         paired_ammo = two_h[1]
@@ -673,7 +709,7 @@ def compute_bis(
         winners = _best_for_style(
             style, equipment=equipment, items=items, ammo_index=ammo_index, candidate_ok=candidate_ok
         )
-        for slot, (item_name, _ammo) in _finalize_slots(winners).items():
+        for slot, (item_name, _ammo) in _finalize_slots(winners, style, equipment).items():
             picks[f"{style.name.replace(' ', '_')}-{slot}"] = item_name
             by_slot_item.setdefault((slot, item_name), []).append(style.name)
 

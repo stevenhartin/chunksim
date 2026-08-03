@@ -177,7 +177,12 @@ One responsibility per module, so the planned simulation work has a pure layer t
   which exists solely as an imbue challenge's `Output`; feeding outputs in moved 19 of 43 picks and
   took the oracle 4/6 -> 5/6) and wearable
   (`_requirements_ok`/`_task_unlocks_ok`/`_consumable_ok`/`_source_reachable`) equipment, first-seen-
-  wins on ties, resolves 2H-vs-(1H+shield) (ties to 1H+shield), sets the `ammo` slot from whatever is
+  wins on ties, resolves 2H-vs-(1H+shield) (ties to 1H+shield) by scoring **both sides with the
+  *weapon* formula**, the shield's offensive stats summed into the 1H side and the weapon's own
+  `attack_speed` retained — adding the shield's *armour* score instead compares a DPS-scale number
+  against one scaled by 100000, so 1H+shield won unconditionally and every 2H pick was wrongly
+  deleted (this is what made us miss `Webweaver bow (u)` and invent an `Odium ward` pick for a slot a
+  2H bow should have removed). It sets the `ammo` slot from whatever is
   paired with the *winning launcher* rather than picking ammo independently (deleting it when that
   weapon takes none - otherwise a Melee build gets told to obtain javelins), and emits an
   "Obtain a/an X" task
