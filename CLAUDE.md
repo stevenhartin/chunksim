@@ -207,7 +207,15 @@ One responsibility per module, so the planned simulation work has a pure layer t
   `bis_task_name()`'s own output format) and
   `active` (not yet obtained), plus `outdated`: a completed pick whose slot has since been beaten by
   something better, resolved back to an item via a `formatted_name -> (item, slot)` index built from
-  `equipment`. Candidates are iterated already-obtained-first
+  `equipment`. For *display* it also carries `slots` (task name -> slot, covering `tasks` and
+  `outdated` alike, since `picks`' packed `"{style}-{slot}"` keys can't be reached from a task name)
+  and `current_chunk` — the subset of `completed`/`outdated` still sitting in `checkedChallenges`,
+  i.e. banked during the chunk in play rather than an earlier one. `bis_display_name` renders the pair
+  as `[<slot>] Obtain a granite ring (i)` + a ` (Active Task)` suffix for the current chunk, and
+  `display_sorted` floats those to the top; `strip_task_markup` is the display-side counterpart to
+  `search.normalise`, dropping `~|...|~` without lowercasing or collapsing separators. `current_chunk`
+  is intersected with what the result actually shows, so a checked entry naming neither a current pick
+  nor a resolvable outdated one is left out rather than sitting unmatched. Candidates are iterated already-obtained-first
   (`_order_completed_first`), matching upstream's `{...completedEquipment, ...equipment}` pool: ties
   are first-seen-wins, so without it the tool proposed items you'd gain nothing from - `Defence
   cape(t)` over an identical, already-owned `Hitpoints cape(t)`, and `Amulet of glory` over
@@ -254,7 +262,10 @@ One responsibility per module, so the planned simulation work has a pure layer t
   `completedChallenges`**, since upstream keeps them apart only as a commit step: ticking a task writes
   `checkedChallenges`, and rolling the next chunk migrates the lot and clears it
   (`completeChallenges`, index.js:12718). Anything obtained during the *current* chunk therefore sits
-  only in `checkedChallenges`, and ignoring it reported items you already hold as still to get - these need an optional `tasks_map` argument, the reverse map from
+  only in `checkedChallenges`, and ignoring it reported items you already hold as still to get.
+  `MapState.checked_challenges` keeps that half addressable un-merged as well, feeding
+  `compute_bis`'s `checked_bis`: it is a **display view, not a second source of truth** — every
+  completion *test* reads the merged `completed_challenges`, of which it is a strict subset - these need an optional `tasks_map` argument, the reverse map from
   `firebase.reverse_tasks_map`, to resolve `t_N` ids; without one, every `t_N`-keyed entry is dropped
   rather than kept raw, so those fields decode empty except `BiS`/`manualTasks`, which never need it).
   `unlock.py`/`simulate.py` (and `cli.py`'s `sections`/`sources`/`tasks` subcommands) all call `derive`
@@ -320,7 +331,10 @@ One responsibility per module, so the planned simulation work has a pure layer t
   (full output) for those three, since piping to `grep`/`less` should just work without a flag, but to
   `10` for `search`, where the tail of a fuzzy ranking is noise rather than data. `fray tasks <category>` branches
   three ways: `BiS` lists `derived.bis.active`/`completed`/`outdated` (BiS isn't a category in
-  `state.chunk_info.challenges` at all - see `challenges.py`); a real skill category
+  `state.chunk_info.challenges` at all - see `challenges.py`), rendered through
+  `BisResult.display_sorted`/`display_name` rather than as raw task names, so lines read
+  `[<slot>] Obtain a granite ring (i)` with this chunk's completions floated to the top and suffixed
+  ` (Active Task)`; the raw `~|...|~` names stay the keys in `--export-json`; a real skill category
   (`derived.task_classification.skills`) shows active/obsolete/completed sections plus an
   opportunistic comparison against `state.active_tasks[skill]` ("not cached" when absent, the common
   case - see `active_tasks.py`); everything else keeps the old flat valid listing. `fray unlock`/

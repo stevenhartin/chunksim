@@ -25,6 +25,7 @@ def _state(**overrides: Any) -> MapState:
         "max_skill": {},
         "passive_skill": {},
         "completed_challenges": {},
+        "checked_challenges": {},
         "manual_tasks": {},
         "backlog": {},
         "active_tasks": {},
@@ -102,6 +103,29 @@ def test_load_map_state_merges_checked_into_completed_challenges() -> None:
         "Obtain a ~|black cape|~": True,
         "Obtain ~|dragon boots|~": True,
     }
+
+
+def test_load_map_state_also_keeps_checked_challenges_on_their_own() -> None:
+    # The merge above is what completion *tests* read; this un-merged view
+    # exists so output can tell this chunk's acquisitions from earlier ones.
+    payload = {
+        "chunkinfo": {
+            "completedChallenges": {"BiS": {"Obtain a ~|black cape|~": True}},
+            "checkedChallenges": {"BiS": {"Obtain ~|dragon boots|~": True}},
+        }
+    }
+
+    state, _ = load_map_state(payload, _chunk_info())
+
+    assert state.checked_challenges["BiS"] == {"Obtain ~|dragon boots|~": True}
+    # A subset of the merged view, never a separate source of truth.
+    assert set(state.checked_challenges["BiS"]) <= set(state.completed_challenges["BiS"])
+
+
+def test_load_map_state_leaves_checked_challenges_empty_when_absent() -> None:
+    state, _ = load_map_state({"chunkinfo": {}}, _chunk_info())
+
+    assert state.checked_challenges == {}
 
 
 def test_derive_unlocks_an_area_and_gathers_its_contents() -> None:

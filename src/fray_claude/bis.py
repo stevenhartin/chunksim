@@ -57,7 +57,7 @@ module doesn't track anyway - see "ties-as-alternates" above).
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -549,6 +549,40 @@ def bis_task_name(item_name: str, equip: Mapping[str, Any]) -> str:
 
 _TASK_ITEM_PATTERN = re.compile(r"~\|(.+?)\|~")
 
+#: Appended to a display name for a pick obtained during the *current*
+#: chunk - one still sitting in `checkedChallenges`, not yet migrated into
+#: `completedChallenges` by the next roll. See `BisResult.current_chunk`.
+CURRENT_CHUNK_SUFFIX = "(Active Task)"
+
+
+def strip_task_markup(task_name: str) -> str:
+    """Drop the `~|...|~` item delimiters a task name carries, preserving
+    the text (and its casing) between them.
+
+    `bis_task_name` wraps the item so the web app can style it; nothing
+    downstream of a terminal wants the markers. Unlike `search.normalise`,
+    this is for *display*, so it neither lowercases nor collapses the
+    variant separators that normalisation strips for matching.
+    """
+    return task_name.replace("~|", "").replace("|~", "")
+
+
+def bis_display_name(task_name: str, slot: str | None = None, *, current_chunk: bool = False) -> str:
+    """Render a BiS task for a terminal: `Obtain a ~|granite ring (i)|~`
+    becomes `[ring] Obtain a granite ring (i)`.
+
+    `slot` comes from `BisResult.slots`; it's omitted only for a task whose
+    item no longer resolves to an equipment entry. `current_chunk` appends
+    `CURRENT_CHUNK_SUFFIX` to separate what was ticked off during the chunk
+    in play from what earlier chunks already banked.
+    """
+    text = strip_task_markup(task_name)
+    if slot:
+        text = f"[{slot}] {text}"
+    if current_chunk:
+        text = f"{text} {CURRENT_CHUNK_SUFFIX}"
+    return text
+
 
 def _formatted_name_index(equipment: Mapping[str, Mapping[str, Any]]) -> dict[str, tuple[str, str]]:
     """`format_equip`'d, lowercased display name -> `(item_name, slot)` -
@@ -573,15 +607,19 @@ def _outdated_notes(
     tasks: Mapping[str, str],
     picks: Mapping[str, str],
     equipment: Mapping[str, Mapping[str, Any]],
-) -> dict[str, str]:
+) -> dict[str, tuple[str, str]]:
     """A `completed_bis` entry whose item no longer matches the current pick
     for its slot in *any* style - i.e. a better item has since become
     reachable, so the player's gear there is outdated. Only checked for
     entries absent from the current `tasks` view entirely; a still-current
     completed item is simply in both `completed` and `tasks`, needing no note.
+
+    Returns `task_name -> (note, slot)`; the slot is the *outdated* item's
+    own (2h-normalised) slot, which `compute_bis` folds into
+    `BisResult.slots` so these entries display like any other pick.
     """
     index = _formatted_name_index(equipment)
-    notes: dict[str, str] = {}
+    notes: dict[str, tuple[str, str]] = {}
     for task_name in completed_bis:
         if task_name in tasks:
             continue
@@ -603,7 +641,7 @@ def _outdated_notes(
                 upgrades[style] = item
         if upgrades:
             note = ", ".join(f"{style}: {item}" for style, item in sorted(upgrades.items()))
-            notes[task_name] = f"superseded by {note}"
+            notes[task_name] = (f"superseded by {note}", slot)
     return notes
 
 
@@ -650,6 +688,14 @@ class BisResult:
     by something better, per `_outdated_notes`. `label` joins every style
     that picked the same (slot, item) with upstream's `'/' + U+200B`
     separator (worker.js:8210) when more than one style shares a winner.
+
+    `slots[task_name] = slot` is the display counterpart to `picks`' packed
+    `"{style}-{slot}"` keys: the same slot, reachable from a task name alone,
+    covering `tasks` and `outdated` alike so `bis_display_name` can prefix
+    either. `current_chunk` holds the subset of `completed`/`outdated` names
+    obtained during the chunk in play (`checkedChallenges`, not yet migrated
+    into `completedChallenges` - see `pipeline.load_map_state`), which is
+    what separates "banked this chunk" from "banked at some point earlier".
     """
 
     picks: dict[str, str]
@@ -657,6 +703,25 @@ class BisResult:
     completed: dict[str, str] = field(default_factory=dict)
     active: dict[str, str] = field(default_factory=dict)
     outdated: dict[str, str] = field(default_factory=dict)
+    slots: dict[str, str] = field(default_factory=dict)
+    current_chunk: frozenset[str] = frozenset()
+
+    def display_name(self, task_name: str) -> str:
+        """`task_name` rendered for a terminal, with its slot prefix and, if
+        it was obtained this chunk, the `(Active Task)` suffix."""
+        return bis_display_name(
+            task_name,
+            self.slots.get(task_name),
+            current_chunk=task_name in self.current_chunk,
+        )
+
+    def display_sorted(self, task_names: Iterable[str]) -> list[str]:
+        """`task_names` as display strings, this chunk's acquisitions first
+        and each group alphabetical within itself."""
+        return [
+            self.display_name(name)
+            for name in sorted(task_names, key=lambda n: (n not in self.current_chunk, n))
+        ]
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -665,6 +730,8 @@ class BisResult:
             "completed": self.completed,
             "active": self.active,
             "outdated": self.outdated,
+            "slots": self.slots,
+            "current_chunk": sorted(self.current_chunk),
         }
 
 
@@ -677,6 +744,7 @@ def compute_bis(
     max_skill: Mapping[str, int] | None = None,
     passive_skill: Mapping[str, int] | None = None,
     completed_bis: Mapping[str, Any] | None = None,
+    checked_bis: Mapping[str, Any] | None = None,
 ) -> BisResult:
     """Compute the best-achievable item per (style, slot) for the current
     state. `items` should be the same `SourceIndex.items` ordinary
@@ -684,10 +752,16 @@ def compute_bis(
     skill-requirement and task-unlock gates. `completed_bis` is
     `MapState.completed_challenges.get("BiS", {})` - already-obtained BiS
     items, splitting the result into `completed`/`active` (see `BisResult`).
+
+    `checked_bis` is the un-merged `MapState.checked_challenges.get("BiS")`,
+    i.e. the part of `completed_bis` banked during the chunk in play. It only
+    ever labels output (`BisResult.current_chunk`); every completion gate
+    here reads `completed_bis`, which already subsumes it.
     """
     max_skill = max_skill or {}
     passive_skill = passive_skill or {}
     completed_bis = completed_bis or {}
+    checked_bis = checked_bis or {}
     equipment = _order_completed_first(_mapping(chunk_info.data, "equipment"), completed_bis)
     ammo_index = build_ammo_index(_mapping(chunk_info.code_items, "ammoTools"))
     task_unlocks_items = _mapping(_mapping(chunk_info.data, "taskUnlocks"), "Items")
@@ -714,12 +788,27 @@ def compute_bis(
             by_slot_item.setdefault((slot, item_name), []).append(style.name)
 
     tasks: dict[str, str] = {}
+    slots: dict[str, str] = {}
     for (slot, item_name), styles in by_slot_item.items():
         equip = equipment.get(item_name, {})
         task_name = bis_task_name(item_name, equip)
         tasks[task_name] = _STYLE_SEPARATOR.join(styles) + " BiS " + slot
+        slots[task_name] = slot
 
     completed = {name: label for name, label in tasks.items() if name in completed_bis}
     active = {name: label for name, label in tasks.items() if name not in completed_bis}
-    outdated = _outdated_notes(completed_bis, tasks, picks, equipment)
-    return BisResult(picks=picks, tasks=tasks, completed=completed, active=active, outdated=outdated)
+    outdated_notes = _outdated_notes(completed_bis, tasks, picks, equipment)
+    outdated = {name: note for name, (note, _slot) in outdated_notes.items()}
+    slots.update({name: slot for name, (_note, slot) in outdated_notes.items()})
+    return BisResult(
+        picks=picks,
+        tasks=tasks,
+        completed=completed,
+        active=active,
+        outdated=outdated,
+        slots=slots,
+        # Restricted to names this result actually shows: a `checkedChallenges`
+        # entry for an item that is neither a current pick nor a resolvable
+        # outdated one has nowhere to be labelled.
+        current_chunk=frozenset(checked_bis) & (frozenset(completed) | frozenset(outdated)),
+    )

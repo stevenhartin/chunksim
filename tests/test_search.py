@@ -33,6 +33,7 @@ def _state(**overrides: Any) -> MapState:
         "max_skill": {},
         "passive_skill": {},
         "completed_challenges": {},
+        "checked_challenges": {},
         "manual_tasks": {},
         "backlog": {},
         "active_tasks": {},

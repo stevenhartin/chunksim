@@ -261,13 +261,13 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
             print(f"map       {args.map_id}")
             print("category  BiS")
             print(f"active    {len(bis.active)}")
-            _print_capped(sorted(bis.active), args.limit)
+            _print_capped(bis.display_sorted(bis.active), args.limit)
             print(f"completed {len(bis.completed)}")
-            _print_capped(sorted(bis.completed), args.limit)
+            _print_capped(bis.display_sorted(bis.completed), args.limit)
             if bis.outdated:
                 print(f"outdated  {len(bis.outdated)}")
-                for name in sorted(bis.outdated):
-                    print(f"  {name}  ({bis.outdated[name]})")
+                for name in sorted(bis.outdated, key=lambda n: (n not in bis.current_chunk, n)):
+                    print(f"  {bis.display_name(name)}  ({bis.outdated[name]})")
         if args.export_json is not None:
             _emit_json({"map_id": args.map_id, "category": "BiS", **bis.as_dict()}, args.export_json)
         return 0

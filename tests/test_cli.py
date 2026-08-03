@@ -600,7 +600,43 @@ def test_tasks_bis_category_reports_computed_gear(
     assert "category  BiS" in out
     assert "active    1" in out
     assert "completed 0" in out
-    assert "Obtain a ~|rune scimitar|~" in out
+    # Slot-prefixed and markup-free: the terminal never shows `~|...|~`.
+    assert "[weapon] Obtain a rune scimitar" in out
+    assert "~|" not in out
+
+
+def test_tasks_bis_lists_this_chunks_completions_first(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A pick still sitting in `checkedChallenges` was obtained during the
+    chunk in play, so it sorts above earlier ones and carries the suffix -
+    `rune scimitar` would otherwise sort after `black cape` alphabetically.
+    """
+    payload = {
+        "chunks": {"unlocked": {"100": True}},
+        "chunkinfo": {
+            "completedChallenges": {"BiS": {"Obtain a ~|black cape|~": True}},
+            "checkedChallenges": {"BiS": {"Obtain a ~|rune scimitar|~": True}},
+        },
+    }
+    chunkinfo_data = {
+        "chunks": {"100": {"Monster": {"Goblin": True}}},
+        "drops": {"Goblin": {"Rune scimitar": {"1": "Always"}, "Black cape": {"1": "Always"}}},
+        "equipment": {
+            "Rune scimitar": {"slot": "weapon", "attack_speed": 4, "attack_slash": 45, "melee_strength": 44},
+            "Black cape": {"slot": "cape", "melee_strength": 1},
+        },
+    }
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["tasks", "BiS"]) == 0
+
+    completed = capsys.readouterr().out.split("completed ", 1)[1].splitlines()[1:3]
+    assert completed == [
+        "  [weapon] Obtain a rune scimitar (Active Task)",
+        "  [cape] Obtain a black cape",
+    ]
 
 
 def test_search_reports_hits(

@@ -42,8 +42,14 @@ class MapState:
     max_skill: Mapping[str, int]
     passive_skill: Mapping[str, int]
     #: `completedChallenges` merged with `checkedChallenges` - see
-    #: `load_map_state` for why they're one thing here.
+    #: `load_map_state` for why they're one thing here. Every completion
+    #: *test* should read this, not the two branches separately.
     completed_challenges: Mapping[str, Mapping[str, Any]]
+    #: The `checkedChallenges` half of the above on its own: what was ticked
+    #: off during the chunk currently in play, before the next roll migrates
+    #: it. A strict subset of `completed_challenges`, kept only so output can
+    #: distinguish this chunk's acquisitions from earlier ones.
+    checked_challenges: Mapping[str, Mapping[str, Any]]
     manual_tasks: Mapping[str, Mapping[str, Any]]
     backlog: Mapping[str, Mapping[str, Any]]
     active_tasks: Mapping[str, Mapping[str, Any]]
@@ -151,6 +157,7 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
         max_skill=state.max_skill,
         passive_skill=state.passive_skill,
         completed_bis=state.completed_challenges.get("BiS", {}),
+        checked_bis=state.checked_challenges.get("BiS", {}),
     )
     task_classification = classify_tasks(
         challenges.valid,
@@ -200,10 +207,16 @@ def load_map_state(
     (`completeChallenges`, index.js:12718). So anything obtained during the
     *current* chunk sits only in `checkedChallenges` - treating that as
     not-yet-obtained would report an item you already hold as still to get.
+    `checked_challenges` keeps that half addressable on its own, so output
+    can mark what was banked this chunk; it is a view for display, not a
+    second source of truth - completion tests use `completed_challenges`.
     """
     tasks_map = tasks_map or {}
     chunkinfo_branch = _mapping(payload, "chunkinfo")
     unlocked = decode_payload(_mapping(_mapping(payload, "chunks"), "unlocked"))
+    checked_challenges = decode_challenge_keyed(
+        _mapping(chunkinfo_branch, "checkedChallenges"), tasks_map
+    )
     state = MapState(
         chunk_info=chunk_info,
         rules=decode_payload(_mapping(payload, "rules")),
@@ -217,8 +230,9 @@ def load_map_state(
         passive_skill=decode_payload(_mapping(chunkinfo_branch, "passiveSkill")),
         completed_challenges=_merge_challenge_keyed(
             decode_challenge_keyed(_mapping(chunkinfo_branch, "completedChallenges"), tasks_map),
-            decode_challenge_keyed(_mapping(chunkinfo_branch, "checkedChallenges"), tasks_map),
+            checked_challenges,
         ),
+        checked_challenges=checked_challenges,
         manual_tasks=decode_challenge_keyed(
             _mapping(chunkinfo_branch, "manualTasks"), tasks_map, skip_task_ids=True
         ),

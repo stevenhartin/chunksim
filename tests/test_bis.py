@@ -11,10 +11,12 @@ import pytest
 
 from fray_claude.bis import (
     article_for,
+    bis_display_name,
     bis_task_name,
     build_ammo_index,
     compute_bis,
     format_equip,
+    strip_task_markup,
 )
 from fray_claude.chunkinfo import ChunkInfo
 
@@ -404,7 +406,128 @@ def test_as_dict_shape() -> None:
         "completed": {},
         "active": {"Obtain an ~|abyssal whip|~": "Melee/​Ranged/​Magic BiS weapon"},
         "outdated": {},
+        "slots": {"Obtain an ~|abyssal whip|~": "weapon"},
+        "current_chunk": [],
     }
+
+
+def _whip_info() -> ChunkInfo:
+    return _chunk_info(
+        equipment={
+            "Abyssal whip": {"slot": "weapon", "attack_speed": 4, "attack_slash": 82, "melee_strength": 82}
+        }
+    )
+
+
+_WHIP_TASK = "Obtain an ~|abyssal whip|~"
+
+
+def test_strip_task_markup_keeps_the_text_and_its_casing() -> None:
+    assert strip_task_markup("Obtain a ~|Karil's coif|~") == "Obtain a Karil's coif"
+
+
+def test_strip_task_markup_leaves_an_unmarked_name_alone() -> None:
+    assert strip_task_markup("Obtain a rune scimitar") == "Obtain a rune scimitar"
+
+
+def test_display_name_prefixes_the_slot() -> None:
+    assert bis_display_name(_WHIP_TASK, "weapon") == "[weapon] Obtain an abyssal whip"
+
+
+def test_display_name_omits_the_prefix_without_a_slot() -> None:
+    assert bis_display_name(_WHIP_TASK) == "Obtain an abyssal whip"
+
+
+def test_display_name_marks_a_pick_obtained_this_chunk() -> None:
+    assert bis_display_name(_WHIP_TASK, "weapon", current_chunk=True) == (
+        "[weapon] Obtain an abyssal whip (Active Task)"
+    )
+
+
+def test_compute_bis_records_each_tasks_slot() -> None:
+    items = {"Abyssal whip": {"Abyssal demon": "secondary-drop"}}
+
+    result = compute_bis(_whip_info(), items, {}, rules={})
+
+    assert result.slots == {_WHIP_TASK: "weapon"}
+    assert result.display_name(_WHIP_TASK) == "[weapon] Obtain an abyssal whip"
+
+
+def test_a_checked_pick_is_completed_and_flagged_as_this_chunks() -> None:
+    """`checkedChallenges` is a strict subset of the merged completed view,
+    so a checked pick counts as obtained *and* gets the current-chunk mark."""
+    items = {"Abyssal whip": {"Abyssal demon": "secondary-drop"}}
+
+    result = compute_bis(
+        _whip_info(),
+        items,
+        {},
+        rules={},
+        completed_bis={_WHIP_TASK: True},
+        checked_bis={_WHIP_TASK: True},
+    )
+
+    assert result.completed == {_WHIP_TASK: "Melee/​Ranged/​Magic BiS weapon"}
+    assert result.active == {}
+    assert result.current_chunk == frozenset({_WHIP_TASK})
+    assert result.display_name(_WHIP_TASK) == "[weapon] Obtain an abyssal whip (Active Task)"
+
+
+def test_a_pick_completed_in_an_earlier_chunk_is_not_flagged() -> None:
+    items = {"Abyssal whip": {"Abyssal demon": "secondary-drop"}}
+
+    result = compute_bis(
+        _whip_info(), items, {}, rules={}, completed_bis={_WHIP_TASK: True}, checked_bis={}
+    )
+
+    assert result.completed == {_WHIP_TASK: "Melee/​Ranged/​Magic BiS weapon"}
+    assert result.current_chunk == frozenset()
+    assert result.display_name(_WHIP_TASK) == "[weapon] Obtain an abyssal whip"
+
+
+def test_a_checked_entry_this_result_never_shows_is_not_flagged() -> None:
+    """A `checkedChallenges` entry naming neither a current pick nor a
+    resolvable outdated one has nowhere to be labelled, so it stays out of
+    `current_chunk` rather than sitting there unmatched."""
+    items = {"Abyssal whip": {"Abyssal demon": "secondary-drop"}}
+
+    result = compute_bis(
+        _whip_info(),
+        items,
+        {},
+        rules={},
+        completed_bis={"Obtain a ~|nonexistent trinket|~": True},
+        checked_bis={"Obtain a ~|nonexistent trinket|~": True},
+    )
+
+    assert result.current_chunk == frozenset()
+
+
+def test_display_sorted_puts_this_chunks_acquisitions_first() -> None:
+    """Within each group the order stays alphabetical - it's only the
+    this-chunk/earlier split that overrides it, so `Zamorak` sorting ahead
+    of `Ahrim's` here can only come from the current-chunk grouping.
+    """
+    equipment = {
+        "Ahrim's hood": {"slot": "head", "magic_damage": 5},
+        "Zamorak monk top": {"slot": "body", "magic_damage": 9},
+    }
+    items = {name: {"Shop": "primary-shop"} for name in equipment}
+    zamorak = "Obtain a ~|zamorak monk top|~"
+
+    result = compute_bis(
+        _chunk_info(equipment=equipment),
+        items,
+        {},
+        rules={},
+        completed_bis={zamorak: True, "Obtain an ~|ahrim's hood|~": True},
+        checked_bis={zamorak: True},
+    )
+
+    assert result.display_sorted(result.completed) == [
+        "[body] Obtain a zamorak monk top (Active Task)",
+        "[head] Obtain an ahrim's hood",
+    ]
 
 
 @pytest.mark.skipif(not _REAL_CHUNKINFO, reason="set FRAY_CHUNKINFO to a real export to run this")
