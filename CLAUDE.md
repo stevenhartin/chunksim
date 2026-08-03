@@ -82,10 +82,16 @@ One responsibility per module, so the planned simulation work has a pure layer t
   with that rule on makes `gather_chunks_info` raise `NotImplementedError` rather than silently
   producing an incomplete index.
 - `challenges.py` — pure; which challenges are valid given the source index (`calc_challenges` ->
-  `ChallengeResult`), a fixed point over 28 of the 29 categories (`BiS` is its own ~3,000-line
-  subsystem, a separate future increment). Port of the core of `calcChallenges`/`calcChallengesWork`
-  (~1,500 dense lines) — **deliberately partial, read the module docstring before trusting output**.
-  In short: `Chunks`/`Objects`/`Monsters`/`NPCs`/`Mix` requirements (incl. `[+]` families) are exact;
+  `ChallengeResult`), a fixed point over 28 of the 29 categories. `BiS` (`UNSUPPORTED_CATEGORIES`) is
+  not computed at all, not reduced-scope: unlike every other category, `BiS` challenges have no static
+  definition anywhere in `chunkinfo.json` — upstream's `calcBIS` (~3,000 lines) synthesizes them at
+  runtime by comparing the `equipment` table's combat stats across slots per combat style, with
+  weapon-ammo pairing and dynamic "Obtain a/an X" task-name generation. It shares no structure with
+  requirement-checking, so `valid['BiS']` is simply never populated — its absence means "not
+  evaluated", not "nothing valid". Port of the core of `calcChallenges`/`calcChallengesWork`
+  (~1,500 dense lines) for the other 28 — **deliberately partial, read the module docstring before
+  trusting output**. In short: `Chunks`/`Objects`/`Monsters`/`NPCs`/`Mix` requirements (incl. `[+]`
+  families) are exact;
   `Items` requirements are basic presence only — a `[+]` family or `*` secondary-marker item is not
   evaluable, and since those are the overwhelming majority of real `Items` entries, `calc_challenges`
   catches that failure *per challenge* rather than aborting the whole computation, collecting affected

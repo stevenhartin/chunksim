@@ -1,13 +1,27 @@
 """Which challenges (tasks) are valid, given the unlocked chunks' sources.
 
 Port of the core of `calcChallenges`/`calcChallengesWork` (worker.js): a
-fixed point over 28 of the 29 challenge categories (all but `BiS`, ported
-separately in `bis.py`, since it's its own ~3,000-line subsystem). Each
-challenge's `Chunks`/`Items`/`Objects`/`Monsters`/`NPCs`/`Skills`/`Tasks`
-requirements are checked against the source index (`sources.py`) and the
-running set of already-valid challenges; a valid challenge with an `Output`
-feeds back as a new item source, so another pass may unlock further
-challenges - repeating until nothing changes.
+fixed point over 28 of the 29 challenge categories - all but `BiS`, which
+this module does not compute at all (see below). Each challenge's `Chunks`/
+`Items`/`Objects`/`Monsters`/`NPCs`/`Skills`/`Tasks` requirements are checked
+against the source index (`sources.py`) and the running set of already-valid
+challenges; a valid challenge with an `Output` feeds back as a new item
+source, so another pass may unlock further challenges - repeating until
+nothing changes.
+
+**`BiS` is entirely unsupported, not merely reduced-scope.** Unlike the
+other 28 categories, `BiS` challenges have no static definition anywhere in
+`chunkinfo.json` - `challenges.BiS` doesn't exist in the export at all.
+Upstream's `calcBIS` (worker.js, ~3,000 lines) synthesizes them at runtime
+by comparing the `equipment` table's combat stats (attack/defence per style,
+`ranged_strength`, `magic_damage`, ...) across weapon/armour slots for each
+combat style (Melee/Ranged/Magic, plus several rule-gated Tank/Flinch/
+Weight/Prayer variants), including weapon-ammo pairing and dynamic
+"Obtain a/an X" task-name generation. It shares no structure with the
+requirement-checking this module does for every other category, so it was
+not ported here: `calc_challenges` simply never populates `valid['BiS']`,
+which callers must not read as "no BiS tasks are currently valid" - it
+means BiS was never evaluated.
 
 Scope: BASIC. `calcChallengesWork` is ~1,500 extremely dense lines with deep
 special-casing (item-family `[+]` matching combined with a `*` secondary/
@@ -83,6 +97,11 @@ from fray_claude.sources import SourceIndex
 from fray_claude.summary import _mapping
 
 _MAYBE_PRIMARY = frozenset({"Normal Farming", "Sulphurous Fertiliser", "Shortcut", "InsidePOH Primary"})
+
+#: Categories `calc_challenges` never evaluates - their absence from
+#: `ChallengeResult.valid` means "not computed", not "nothing is valid".
+#: See the module docstring for why `BiS` specifically is out of scope.
+UNSUPPORTED_CATEGORIES = frozenset({"BiS"})
 
 _PROCESSING_SKILLS = frozenset(
     {"Runecraft", "Magic", "Herblore", "Cooking", "Firemaking", "Fletching", "Smithing", "Crafting", "Construction"}
@@ -429,7 +448,7 @@ def calc_challenges(
     for _ in range(max_iterations):
         new_valid: dict[str, dict[str, int | str | bool]] = {}
         for skill, skill_challenges in challenges.items():
-            if not isinstance(skill_challenges, dict):
+            if skill in UNSUPPORTED_CATEGORIES or not isinstance(skill_challenges, dict):
                 continue
             for name, challenge in skill_challenges.items():
                 if not isinstance(challenge, dict):

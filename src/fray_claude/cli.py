@@ -27,7 +27,7 @@ from fray_claude.cache import (
     write_blob,
     write_cache,
 )
-from fray_claude.challenges import calc_challenges
+from fray_claude.challenges import UNSUPPORTED_CATEGORIES, calc_challenges
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.firebase import decode_payload
 from fray_claude.sections import expand_chunk_areas, unlocked_sections
@@ -226,7 +226,11 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
         print(f"valid tasks  {total_valid}")
         for skill, names in sorted(result.valid.items()):
             print(f"  {skill:<12} {len(names)}")
-        print(f"unsupported  {len(result.unsupported)} (see CLAUDE.md for what's not ported)")
+        print(f"unsupported  {len(result.unsupported)} individual tasks (see CLAUDE.md)")
+        print(
+            f"not computed {', '.join(sorted(UNSUPPORTED_CATEGORIES))} "
+            "(whole categories - absence isn't 'none valid', see CLAUDE.md)"
+        )
 
     if args.export_json is not None:
         _emit_json({"map_id": args.map_id, **result.as_dict()}, args.export_json)

@@ -261,7 +261,8 @@ def test_tasks_reports_valid_counts_per_skill(
     out = capsys.readouterr().out
     assert "valid tasks  1" in out
     assert "Nonskill     1" in out
-    assert "unsupported  0" in out
+    assert "unsupported  0 individual tasks" in out
+    assert "not computed BiS" in out
 
 
 def test_tasks_without_a_cached_map_exits_one(

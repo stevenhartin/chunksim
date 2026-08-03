@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fray_claude.challenges import (
+    UNSUPPORTED_CATEGORIES,
     calc_challenges,
     contains_sections,
     has_allowed_source,
@@ -386,3 +387,15 @@ def test_calc_challenges_tolerates_an_empty_export() -> None:
     assert result.valid == {}
     assert result.unsupported == frozenset()
     assert result.as_dict() == {"valid": {}, "unsupported": []}
+
+
+def test_bis_is_never_computed_even_if_present_and_trivially_valid() -> None:
+    # Real exports never have a `challenges.BiS` branch at all (it's
+    # synthesized at runtime upstream) - this proves the absence isn't
+    # incidental, in case that ever changes.
+    assert "BiS" in UNSUPPORTED_CATEGORIES
+    info = _chunk_info(challenges={"BiS": {"Obtain a whip": {}}})
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert "BiS" not in result.valid
