@@ -515,14 +515,26 @@ def apply_item_task_unlocks(
     the `Slay an ~|abyssal demon|~` entries `challenges._seed_items_with_outputs`
     adds. An item left with no sources is dropped entirely.
 
-    Not ported: the `-npc` suffix form and the `monster === ''` rename branch,
-    neither of which appears in the real export's keys.
+    A key with an **empty** monster (`"Double ammo mould^"`, 268 of them)
+    locks the item outright whatever its source - that one needs `~|Dwarf
+    Cannon|~` completed - and upstream deletes the entry rather than filtering
+    its sources (worker.js:924).
+
+    Not ported: the `-npc` suffix form, which the real export's keys don't use.
     """
     for key, required in _mapping(task_unlocks, "Items").items():
         if not isinstance(required, list) or _any_task_valid(required, valid_tasks):
             continue
         item_name, separator, monster = key.partition("^")
-        if not separator or not monster or "-npc" in monster:
+        if not separator or "-npc" in monster:
+            continue
+        if not monster:
+            # `"<item>^"` with no monster locks the item outright, whatever
+            # its source: `Double ammo mould^` needs `~|Dwarf Cannon|~`
+            # completed. 268 of the export's keys take this form, and
+            # upstream deletes the entry rather than filtering its sources
+            # (worker.js:924).
+            items.pop(item_name, None)
             continue
         sources = items.get(item_name)
         if not isinstance(sources, dict):

@@ -336,25 +336,20 @@ _REAL_MAP = os.environ.get("FRAY_MAP_CACHE")
 
 #: The entries our derivation and the map's own `activeTasks` still disagree
 #: on, pinned exactly so the test fails the moment anything moves - including
-#: when the underlying bugs are fixed, at which point these come out.
+#: when the underlying cause is fixed, at which point these come out.
 #:
-#: All four are item availability, not this module: `Mahogany logs` blocks the
-#: Varrock task; `tyrannical ring` is an Artio 1/716 boss drop the
-#: `Rare Drop Amount: "0"` threshold excludes but the oracle evidently keeps;
-#: and the `Giants' Foundry Reward Shop` mould we include and it does not.
+#: `Extra` is now exact. The two `Diary` entries are ours-only over-inclusions,
+#: both carrying a `Skills` requirement (`Farming: 23`, `Fishing: 53`), which
+#: points at the non-skill `Skills` filter (worker.js:8533) still being
+#: unported rather than at anything `other_tasks.py` owns.
 _KNOWN_ORACLE_DELTA = {
     "Diary": frozenset(
         {
             "~|Morytania Diary#Easy|~ Task 8",
-            "~|Varrock Diary#Medium|~ Task 10",
+            "~|Wilderness Diary#Hard|~ Task 10",
         }
     ),
-    "Extra": frozenset(
-        {
-            "(Callisto and Artio) Obtain a ~|tyrannical ring|~",
-            "(Giants' Foundry) Obtain a ~|double ammo mould|~",
-        }
-    ),
+    "Extra": frozenset(),
 }
 
 

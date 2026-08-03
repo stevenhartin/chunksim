@@ -123,8 +123,9 @@ One responsibility per module, so the planned simulation work has a pure layer t
   challenge whose only requirement is the `Catacombs of Kourend` chunk. Sources are matched as
   upstream matches them — the monster itself, or a challenge naming it whose text contains `Slay`,
   which is what catches the `Slay an ~|abyssal demon|~` entries `_seed_items_with_outputs` adds, so
-  the gate is applied in **both** places. Missing it leaked 6 collection-log items the map's own
-  oracle omits. `taskUnlocks` gating (`_task_unlocked`) is also applied to
+  the gate is applied in **both** places. A key with an **empty** monster (`"Double ammo mould^"`, 268 of them) locks the item
+  outright whatever its source. Missing all this leaked 7 collection-log items the map's own oracle
+  omits; with it, `Extra` matches the oracle **exactly**. `taskUnlocks` gating (`_task_unlocked`) is also applied to
   `Monsters`/`NPCs`/`Objects`/`Shops`/`Spawns`: an entity present in a chunk can still be locked behind
   completing challenges *at that location* (the `Sir Tiffy Cashien (The Slug Menace)` shop needs that
   quest before it sells Proselyte armour; `White Knight Armoury` needs `Wanted!`). This makes source

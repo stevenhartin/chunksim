@@ -50,20 +50,27 @@ def looks_non_numeric(raw: str) -> bool:
 
 
 def build_rare_drop_num(rare_drop_amount: str) -> float:
-    """Port of `rareDropNum = "1/" + rules['Rare Drop Amount']` (index.js:3664).
+    """Port of `rareDropNum = "1/" + rules['Rare Drop Amount']` (index.js:3664),
+    with an amount of `0` substituting a threshold so small every rate clears
+    it.
 
-    An amount of `0` yields the string `"1/0"`, which JS evaluates to
-    **`Infinity`** - so with `Rare Drop` off and the amount at 0, the
-    `rate > rareDropNum` test rejects *every* rate-based drop, and only
-    `Always`/`Unknown` (i.e. `NaN`) rates get through their own `isNaN`
-    escape. This function previously returned a near-zero threshold on the
-    reasoning that 0 meant "let everything through"; it is the exact
-    opposite, and the map this was built against runs `Rare Drop Amount: "0"`,
-    so the whole item index was admitting rare drops it should not - 12
-    `Extra` collection-log entries the map's own oracle omits, among others.
+    Read literally, `"1/0"` is `Infinity` in JS, which would make
+    `rate > rareDropNum` reject *every* rate-based drop. That reading was
+    tried and is **wrong in effect** - the map's own `activeTasks` oracle
+    lists `(Callisto and Artio) Obtain a ~|tyrannical ring|~`, an ordinary
+    `drops` entry at `1/716` with no `skillItems` fallback in play, which an
+    infinite threshold can never admit; it also dropped `Abyssal whip` out of
+    `SourceIndex` entirely. Something upstream of `rareDropNum` evidently
+    stops an amount of `0` reaching this comparison - most likely the
+    `Rare Drop` rule being off short-circuiting it - and that path has not
+    been located, so this keeps the behaviour that matches the oracle rather
+    than the arithmetic that doesn't.
+
+    The location-specific drops an infinite threshold appeared to fix are
+    really `taskUnlocks['Items']`' job - see `sources.apply_item_task_unlocks`.
     """
     if rare_drop_amount == "0":
-        return math.inf
+        return parse_ratio("1/999999999999999")
     return parse_ratio(f"1/{rare_drop_amount}")
 
 

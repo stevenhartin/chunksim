@@ -40,11 +40,11 @@ def test_looks_non_numeric_treats_a_tilde_as_non_numeric() -> None:
     assert looks_non_numeric("~1/50") is True
 
 
-def test_build_rare_drop_num_is_infinite_for_zero() -> None:
-    """`"1/" + "0"` is `Infinity` in JS, so with `Rare Drop` off nothing
-    clears `rate > rareDropNum` - only `Always`/`Unknown` rates escape, via
-    their own `isNaN` branch. Not a near-zero "let everything through"."""
-    assert build_rare_drop_num("0") == math.inf
+def test_build_rare_drop_num_substitutes_a_near_zero_threshold_for_zero() -> None:
+    """Read literally `"1/0"` is `Infinity`, but that reading was tried and
+    contradicts the map's own oracle - see `build_rare_drop_num`'s docstring.
+    An amount of 0 lets every rate through."""
+    assert build_rare_drop_num("0") == parse_ratio("1/999999999999999")
 
 
 def test_build_rare_drop_num_builds_a_plain_fraction() -> None:
