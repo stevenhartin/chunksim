@@ -242,3 +242,51 @@ def test_sources_reports_the_key_item_bosses_gap_as_an_error(
 
     assert main(["sources"]) == 1
     assert "KeyItem Bosses" in capsys.readouterr().err
+
+
+def test_tasks_reports_valid_counts_per_skill(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {
+        "chunks": {"100": {"Monster": {"Goblin": True}}},
+        "drops": {"Goblin": {"Bones": {"1": "Always"}}},
+        "challenges": {"Nonskill": {"Use bones": {"Items": ["Bones"]}}},
+    }
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["tasks"]) == 0
+
+    out = capsys.readouterr().out
+    assert "valid tasks  1" in out
+    assert "Nonskill     1" in out
+    assert "unsupported  0" in out
+
+
+def test_tasks_without_a_cached_map_exits_one(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["tasks"]) == 1
+    assert "no cached data for map 'fray'" in capsys.readouterr().err
+
+
+def test_tasks_export_json_to_stdout_replaces_the_summary(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {
+        "chunks": {"100": {"Monster": {"Goblin": True}}},
+        "drops": {"Goblin": {"Bones": {"1": "Always"}}},
+        "challenges": {
+            "Nonskill": {"Use bones": {"Items": ["Bones"]}, "Wield a whip*": {"Items": ["Whip*"]}}
+        },
+    }
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["tasks", "--export-json", "-"]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["valid"]["Nonskill"] == {"Use bones": True}
+    assert result["unsupported"] == ["Nonskill/Wield a whip*"]

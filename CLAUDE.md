@@ -81,6 +81,21 @@ One responsibility per module, so the planned simulation work has a pure layer t
   belongs with `challenges.py` instead. The `KeyItem Bosses` rate-boosting pass is unported; a map
   with that rule on makes `gather_chunks_info` raise `NotImplementedError` rather than silently
   producing an incomplete index.
+- `challenges.py` — pure; which challenges are valid given the source index (`calc_challenges` ->
+  `ChallengeResult`), a fixed point over 28 of the 29 categories (`BiS` is its own ~3,000-line
+  subsystem, a separate future increment). Port of the core of `calcChallenges`/`calcChallengesWork`
+  (~1,500 dense lines) — **deliberately partial, read the module docstring before trusting output**.
+  In short: `Chunks`/`Objects`/`Monsters`/`NPCs`/`Mix` requirements (incl. `[+]` families) are exact;
+  `Items` requirements are basic presence only — a `[+]` family or `*` secondary-marker item is not
+  evaluable, and since those are the overwhelming majority of real `Items` entries, `calc_challenges`
+  catches that failure *per challenge* rather than aborting the whole computation, collecting affected
+  `skill/name` pairs in `ChallengeResult.unsupported` so the gap stays visible rather than reading as
+  "checked and invalid". `processingSkill` categories (Runecraft/Magic/Herblore/Cooking/Firemaking/
+  Fletching/Smithing/Crafting/Construction) get plain presence checking too, not upstream's "Highest
+  Level" grouping — a real, silent accuracy gap for those 9 categories, not a raise, documented in the
+  module docstring. The output-feedback fixed point (`_seed_items_with_outputs`) is this module's own
+  design, not a located port — upstream's exact mechanism for it wasn't found despite an extensive
+  search of `calcChallengesWork`.
 - `summary.py` — pure, I/O-free reductions over a raw payload; extend this layer, not `cli.py`.
   Firebase omits empty containers rather than storing them, so every lookup must tolerate a missing
   branch — `_mapping` exists for that; reuse it (`chunkinfo.py` does too, over the export instead of a
@@ -104,6 +119,7 @@ fray show  [--map ID]       # summarise the cached copy; no network
 fray chunkinfo              # GET upstream's chunk/challenge reference data -> cache/{chunkinfo,tasks_map}.json
 fray sections [--map ID]    # reachable sections for the cached map's unlocked chunks
 fray sources  [--map ID]    # items/objects/monsters/npcs/shops the cached map's unlocked chunks give
+fray tasks    [--map ID]    # which challenges are currently valid (partial - see challenges.py)
 python -m fray_claude ...   # same CLI without the console script
 mypy                        # strict, over src/ and tests/; run from the repo root
 pytest                      # whole suite

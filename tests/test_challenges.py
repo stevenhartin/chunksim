@@ -1,0 +1,388 @@
+"""Tests for the core challenge-validity fixed point."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from fray_claude.challenges import (
+    calc_challenges,
+    contains_sections,
+    has_allowed_source,
+    only_shop,
+)
+from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.sources import SourceIndex
+
+_EMPTY = SourceIndex(items={}, objects={}, monsters={}, npcs={}, shops={}, drop_rates={})
+
+
+def _chunk_info(**data: Any) -> ChunkInfo:
+    return ChunkInfo(data)
+
+
+def test_contains_sections_recognises_a_numbered_section() -> None:
+    assert contains_sections("100-1") is True
+
+
+def test_contains_sections_recognises_a_water_section() -> None:
+    assert contains_sections("100-W1") is True
+
+
+def test_contains_sections_rejects_a_plain_chunk_id() -> None:
+    assert contains_sections("100") is False
+
+
+def test_contains_sections_rejects_a_non_numeric_base() -> None:
+    assert contains_sections("Zanaris-1") is False
+
+
+def test_only_shop_is_true_when_every_source_is_shop() -> None:
+    assert only_shop({"General Store": "shop"}) is True
+    assert only_shop({"Goblin": "primary-drop", "Store": "shop"}) is False
+
+
+def test_has_allowed_source_with_no_restriction() -> None:
+    assert has_allowed_source({"Goblin": "primary-drop"}, None) is True
+    assert has_allowed_source({"Goblin": "primary-drop"}, []) is True
+
+
+def test_has_allowed_source_checks_source_keys() -> None:
+    assert has_allowed_source({"Goblin": "primary-drop"}, ["Goblin"]) is True
+    assert has_allowed_source({"Goblin": "primary-drop"}, ["Cow"]) is False
+
+
+def test_a_challenge_with_no_requirements_is_valid() -> None:
+    info = _chunk_info(challenges={"Nonskill": {"Do a thing": {}}})
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert result.valid == {"Nonskill": {"Do a thing": True}}
+    assert result.unsupported == frozenset()
+
+
+def test_quest_and_diary_challenges_are_valued_true_not_by_level() -> None:
+    info = _chunk_info(challenges={"Quest": {"Do a quest": {"Level": 5}}})
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert result.valid == {"Quest": {"Do a quest": True}}
+
+
+def test_a_skill_challenge_is_valued_by_its_level() -> None:
+    info = _chunk_info(challenges={"Woodcutting": {"Chop a tree": {"Level": 15}}})
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert result.valid == {"Woodcutting": {"Chop a tree": 15}}
+
+
+def test_chunks_requirement_needs_the_chunk_unlocked() -> None:
+    info = _chunk_info(challenges={"Nonskill": {"Visit": {"Chunks": ["100"]}}})
+
+    without = calc_challenges({}, {}, _EMPTY, info, rules={})
+    with_chunk = calc_challenges({"100": True}, {}, _EMPTY, info, rules={})
+
+    assert without.valid == {}
+    assert with_chunk.valid == {"Nonskill": {"Visit": True}}
+
+
+def test_chunks_requirement_with_a_section_needs_it_reachable() -> None:
+    info = _chunk_info(challenges={"Nonskill": {"Visit": {"Chunks": ["100-1"]}}})
+
+    unreachable = calc_challenges({"100": True}, {}, _EMPTY, info, rules={})
+    reachable = calc_challenges({"100": True}, {"100": {"1": True}}, _EMPTY, info, rules={})
+
+    assert unreachable.valid == {}
+    assert reachable.valid == {"Nonskill": {"Visit": True}}
+
+
+def test_chunks_family_requirement_needs_at_least_one_member() -> None:
+    info = _chunk_info(
+        challenges={"Nonskill": {"Visit a bank": {"Chunks": ["Bank[+]"]}}},
+        codeItems={"chunksPlus": {"Bank[+]": ["100", "200"]}},
+    )
+
+    assert calc_challenges({}, {}, _EMPTY, info, rules={}).valid == {}
+    assert calc_challenges({"200": True}, {}, _EMPTY, info, rules={}).valid == {
+        "Nonskill": {"Visit a bank": True}
+    }
+
+
+def test_chunks_family_count_requirement() -> None:
+    info = _chunk_info(
+        challenges={"Nonskill": {"Visit two banks": {"Chunks": ["Bank[+]x2"]}}},
+        codeItems={"chunksPlus": {"Bank[+]": ["100", "200", "300"]}},
+    )
+
+    one = calc_challenges({"100": True}, {}, _EMPTY, info, rules={})
+    two = calc_challenges({"100": True, "200": True}, {}, _EMPTY, info, rules={})
+
+    assert one.valid == {}
+    assert two.valid == {"Nonskill": {"Visit two banks": True}}
+
+
+def test_objects_monsters_npcs_requirements_need_presence() -> None:
+    info = _chunk_info(
+        challenges={
+            "Nonskill": {
+                "Do it": {"Objects": ["Anvil"], "Monsters": ["Goblin"], "NPCs": ["Banker"]}
+            }
+        }
+    )
+    index = SourceIndex(
+        items={},
+        objects={"Anvil": {"100": True}},
+        monsters={"Goblin": {"100": True}},
+        npcs={"Banker": {"100": True}},
+        shops={},
+        drop_rates={},
+    )
+
+    assert calc_challenges({}, {}, _EMPTY, info, rules={}).valid == {}
+    assert calc_challenges({}, {}, index, info, rules={}).valid == {"Nonskill": {"Do it": True}}
+
+
+def test_mix_requirement_accepts_either_monster_or_npc() -> None:
+    info = _chunk_info(challenges={"Nonskill": {"Kill it": {"Mix": ["Goblin"]}}})
+    monster_index = SourceIndex(
+        items={}, objects={}, monsters={"Goblin": {"100": True}}, npcs={}, shops={}, drop_rates={}
+    )
+    npc_index = SourceIndex(
+        items={}, objects={}, monsters={}, npcs={"Goblin": {"100": True}}, shops={}, drop_rates={}
+    )
+
+    assert calc_challenges({}, {}, _EMPTY, info, rules={}).valid == {}
+    assert calc_challenges({}, {}, monster_index, info, rules={}).valid == {
+        "Nonskill": {"Kill it": True}
+    }
+    assert calc_challenges({}, {}, npc_index, info, rules={}).valid == {
+        "Nonskill": {"Kill it": True}
+    }
+
+
+def test_items_requirement_needs_presence() -> None:
+    info = _chunk_info(challenges={"Nonskill": {"Craft it": {"Items": ["Iron bar"]}}})
+    index = SourceIndex(
+        items={"Iron bar": {"100": "shop"}}, objects={}, monsters={}, npcs={}, shops={}, drop_rates={}
+    )
+
+    assert calc_challenges({}, {}, _EMPTY, info, rules={}).valid == {}
+    assert calc_challenges({}, {}, index, info, rules={}).valid == {"Nonskill": {"Craft it": True}}
+
+
+def test_items_requirement_respects_non_shop() -> None:
+    info = _chunk_info(
+        challenges={"Nonskill": {"Find it": {"Items": ["Iron bar"], "NonShop": True}}}
+    )
+    shop_only = SourceIndex(
+        items={"Iron bar": {"General Store": "shop"}},
+        objects={},
+        monsters={},
+        npcs={},
+        shops={},
+        drop_rates={},
+    )
+    also_dropped = SourceIndex(
+        items={"Iron bar": {"General Store": "shop", "Goblin": "primary-drop"}},
+        objects={},
+        monsters={},
+        npcs={},
+        shops={},
+        drop_rates={},
+    )
+
+    assert calc_challenges({}, {}, shop_only, info, rules={}).valid == {}
+    assert calc_challenges({}, {}, also_dropped, info, rules={}).valid == {
+        "Nonskill": {"Find it": True}
+    }
+
+
+def test_items_requirement_respects_allowed_sources() -> None:
+    info = _chunk_info(
+        challenges={
+            "Nonskill": {"Find it": {"Items": ["Iron bar"], "AllowedSources": ["Goblin"]}}
+        }
+    )
+    wrong_source = SourceIndex(
+        items={"Iron bar": {"Store": "shop"}}, objects={}, monsters={}, npcs={}, shops={}, drop_rates={}
+    )
+    right_source = SourceIndex(
+        items={"Iron bar": {"Goblin": "primary-drop"}},
+        objects={},
+        monsters={},
+        npcs={},
+        shops={},
+        drop_rates={},
+    )
+
+    assert calc_challenges({}, {}, wrong_source, info, rules={}).valid == {}
+    assert calc_challenges({}, {}, right_source, info, rules={}).valid == {
+        "Nonskill": {"Find it": True}
+    }
+
+
+def test_item_family_and_secondary_marker_are_reported_unsupported() -> None:
+    info = _chunk_info(
+        challenges={
+            "Nonskill": {
+                "Family": {"Items": ["Axe[+]"]},
+                "Secondary": {"Items": ["Coins*"]},
+            }
+        }
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert result.valid == {}
+    assert result.unsupported == frozenset({"Nonskill/Family", "Nonskill/Secondary"})
+
+
+def test_unsupported_challenges_do_not_block_evaluable_ones() -> None:
+    info = _chunk_info(
+        challenges={
+            "Nonskill": {
+                "Family": {"Items": ["Axe[+]"]},
+                "Simple": {},
+            }
+        }
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert result.valid == {"Nonskill": {"Simple": True}}
+    assert result.unsupported == frozenset({"Nonskill/Family"})
+
+
+def test_tasks_requirement_needs_the_prerequisite_valid() -> None:
+    info = _chunk_info(
+        challenges={
+            "Quest": {"Do quest A": {}},
+            "Nonskill": {"Needs quest A": {"Tasks": {"Do quest A": "Quest"}}},
+        }
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert result.valid["Quest"] == {"Do quest A": True}
+    assert result.valid["Nonskill"] == {"Needs quest A": True}
+
+
+def test_tasks_requirement_fails_when_the_prerequisite_is_invalid() -> None:
+    info = _chunk_info(
+        challenges={
+            "Quest": {"Do quest A": {"Chunks": ["999"]}},
+            "Nonskill": {"Needs quest A": {"Tasks": {"Do quest A": "Quest"}}},
+        }
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert "Quest" not in result.valid
+    assert "Nonskill" not in result.valid
+
+
+def test_skills_requirement_needs_the_sub_skill_valid() -> None:
+    info = _chunk_info(
+        challenges={
+            "Cooking": {"Cook something": {"Level": 1}},
+            "Nonskill": {"Needs cooking": {"Skills": {"Cooking": 1}}},
+        }
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert result.valid["Nonskill"] == {"Needs cooking": True}
+
+
+def test_skills_requirement_respects_max_skill() -> None:
+    info = _chunk_info(
+        challenges={
+            "Nonskill": {"Needs high cooking": {"Skills": {"Cooking": 50}}},
+        }
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={}, max_skill={"Cooking": 10})
+
+    assert result.valid == {}
+
+
+def test_max_skill_gate_on_the_challenges_own_level() -> None:
+    info = _chunk_info(challenges={"Woodcutting": {"Chop a tree": {"Level": 50}}})
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={}, max_skill={"Woodcutting": 10})
+
+    assert result.valid == {}
+
+
+def test_not_f2p_and_not_skiller_gates() -> None:
+    info = _chunk_info(
+        challenges={
+            "Nonskill": {
+                "F2P only": {"Not F2P": True},
+                "Skiller only": {"Not Skiller": True},
+            }
+        }
+    )
+
+    default = calc_challenges({}, {}, _EMPTY, info, rules={})
+    f2p = calc_challenges({}, {}, _EMPTY, info, rules={"F2P": True})
+    skiller = calc_challenges({}, {}, _EMPTY, info, rules={"Skiller": True})
+
+    assert default.valid["Nonskill"] == {"F2P only": True, "Skiller only": True}
+    assert "F2P only" not in f2p.valid.get("Nonskill", {})
+    assert "Skiller only" not in skiller.valid.get("Nonskill", {})
+
+
+def test_category_rule_gate_excludes_when_the_rule_is_off() -> None:
+    info = _chunk_info(challenges={"Nonskill": {"Boss task": {"Category": ["Boss"]}}})
+
+    off = calc_challenges({}, {}, _EMPTY, info, rules={"Boss": False})
+    on = calc_challenges({}, {}, _EMPTY, info, rules={"Boss": True})
+
+    assert off.valid == {}
+    assert on.valid == {"Nonskill": {"Boss task": True}}
+
+
+def test_inside_poh_primary_category_needs_the_rule_above_level_one() -> None:
+    info = _chunk_info(
+        challenges={"Nonskill": {"POH task": {"Category": ["InsidePOH Primary"], "Level": 2}}}
+    )
+
+    off = calc_challenges({}, {}, _EMPTY, info, rules={"InsidePOH": False})
+    on = calc_challenges({}, {}, _EMPTY, info, rules={"InsidePOH": True})
+
+    assert off.valid == {}
+    assert on.valid == {"Nonskill": {"POH task": 2}}
+
+
+def test_unsupported_level_gates_raise_are_caught_and_reported() -> None:
+    info = _chunk_info(
+        challenges={"Nonskill": {"Points task": {"QuestPointsNeeded": 5}}}
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert result.valid == {}
+    assert result.unsupported == frozenset({"Nonskill/Points task"})
+
+
+def test_a_valid_challenges_output_feeds_the_next_pass_as_a_new_item() -> None:
+    info = _chunk_info(
+        challenges={
+            "Smithing": {"Smelt a bar": {"Output": "Iron bar"}},
+            "Nonskill": {"Use the bar": {"Items": ["Iron bar"]}},
+        }
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert result.valid["Smithing"] == {"Smelt a bar": True}
+    assert result.valid["Nonskill"] == {"Use the bar": True}
+
+
+def test_calc_challenges_tolerates_an_empty_export() -> None:
+    result = calc_challenges({}, {}, _EMPTY, _chunk_info(), rules={})
+
+    assert result.valid == {}
+    assert result.unsupported == frozenset()
+    assert result.as_dict() == {"valid": {}, "unsupported": []}

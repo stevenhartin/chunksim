@@ -27,6 +27,7 @@ from fray_claude.cache import (
     write_blob,
     write_cache,
 )
+from fray_claude.challenges import calc_challenges
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.firebase import decode_payload
 from fray_claude.sections import expand_chunk_areas, unlocked_sections
@@ -183,6 +184,55 @@ def _cmd_sources(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_tasks(args: argparse.Namespace) -> int:
+    envelope = read_cache(args.map_id)
+    payload = envelope["data"]
+    info = ChunkInfo(read_chunkinfo(override=args.chunkinfo))
+    chunkinfo_branch = _mapping(payload, "chunkinfo")
+
+    # None of these branches reference `t_N` task ids, so decoding with no
+    # tasks map is safe - see `firebase.decode_payload`.
+    unlocked = decode_payload(_mapping(_mapping(payload, "chunks"), "unlocked"))
+    manual_sections = decode_payload(_mapping(chunkinfo_branch, "manualSections"))
+    manual_monsters = decode_payload(_mapping(chunkinfo_branch, "manualMonsters"))
+    manual_equipment = decode_payload(_mapping(chunkinfo_branch, "manualEquipment"))
+    backlogged_sources = decode_payload(_mapping(chunkinfo_branch, "backloggedSources"))
+    max_skill = decode_payload(_mapping(chunkinfo_branch, "maxSkill"))
+    rules = decode_payload(_mapping(payload, "rules"))
+    settings = _mapping(payload, "settings")
+
+    reachable = unlocked_sections(
+        unlocked,
+        info,
+        manual_sections=manual_sections,
+        opt_out_sections=settings.get("optOutSections") is True,
+        opt_out_sections_water=settings.get("optOutSectionsWater") is True,
+    )
+    expanded = expand_chunk_areas(unlocked)
+    index = gather_chunks_info(
+        expanded,
+        reachable,
+        info,
+        rules=rules,
+        backlogged_sources=backlogged_sources,
+        manual_monsters=manual_monsters,
+        manual_equipment=manual_equipment,
+    )
+    result = calc_challenges(expanded, reachable, index, info, rules=rules, max_skill=max_skill)
+    total_valid = sum(len(names) for names in result.valid.values())
+
+    if args.export_json != "-":
+        print(f"map          {args.map_id}")
+        print(f"valid tasks  {total_valid}")
+        for skill, names in sorted(result.valid.items()):
+            print(f"  {skill:<12} {len(names)}")
+        print(f"unsupported  {len(result.unsupported)} (see CLAUDE.md for what's not ported)")
+
+    if args.export_json is not None:
+        _emit_json({"map_id": args.map_id, **result.as_dict()}, args.export_json)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="fray", description="Offline tooling for source-chunk map state."
@@ -257,6 +307,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="write the full result as JSON to PATH, or to stdout if PATH is '-'",
     )
     sources.set_defaults(func=_cmd_sources)
+
+    tasks = subcommands.add_parser(
+        "tasks", help="which challenges are currently valid for the cached map"
+    )
+    tasks.add_argument(
+        "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"
+    )
+    tasks.add_argument(
+        "--chunkinfo",
+        type=Path,
+        default=None,
+        help="path to a chunkinfo export, overriding the cache and FRAY_CHUNKINFO",
+    )
+    tasks.add_argument(
+        "--export-json",
+        metavar="PATH",
+        default=None,
+        help="write the full result as JSON to PATH, or to stdout if PATH is '-'",
+    )
+    tasks.set_defaults(func=_cmd_tasks)
 
     return parser
 
