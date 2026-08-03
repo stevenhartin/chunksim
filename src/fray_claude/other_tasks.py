@@ -9,15 +9,15 @@ completed or backlogged (index.js:6702/6744/6767), grouped for display.
 
 Two details of that guard matter, and both were wrong here before:
 
-- It tests `completedChallenges` **alone** (index.js:6745). A task merely
-  ticked this chunk still renders, just with its checkbox set
-  (index.js:6663), so the merged `MapState.completed_challenges` is the wrong
-  view - it hid 9 `Extra` entries the map's own `activeTasks` oracle lists.
-  `_committed` reconstructs the stored branch by removing
-  `checked_challenges`, which is exact because upstream migrates the checked
-  set into `completedChallenges` and clears it in one step
-  (`completeChallenges`, index.js:12718) - the two are never both populated
-  for the same task.
+- It tests `completedChallenges` **alone** (index.js:6745), so a task merely
+  ticked this chunk still renders in the active list, just with its checkbox
+  set (index.js:6663). A terminal has no checkbox, so this module
+  **deliberately diverges**: a ticked task is reported as *completed*, sorted
+  to the front of its group and of the category, and marked
+  `CURRENT_CHUNK_SUFFIX` - the same treatment `bis.py` gives its own
+  current-chunk acquisitions. `CategoryTasks.current_chunk` names them, so the
+  panel's own count is still recoverable as `active_total + len(current_chunk)`
+  and the opt-in oracle test compares against that.
 - Completions are reported whether or not the challenge is still valid, the
   same rule `active_tasks.py` follows: a requirement added by a later game
   update must not erase the fact that the task was done.
@@ -135,10 +135,19 @@ class CategoryTasks:
     groups: tuple[TaskGroup, ...] = ()
     active_total: int = 0
     completed_total: int = 0
+    #: Completed names ticked off during the chunk in play. Upstream's panel
+    #: would still list these as active, so its own count is
+    #: `active_total + len(current_chunk)`.
+    current_chunk: frozenset[str] = frozenset()
 
     @property
     def label(self) -> str:
         return display_name(self.category)
+
+    def completed_text(self, name: str, challenge: Mapping[str, Any]) -> str:
+        """`task_text` plus the current-chunk marker where it applies."""
+        text = task_text(name, challenge)
+        return f"{text} {CURRENT_CHUNK_SUFFIX}" if name in self.current_chunk else text
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -146,6 +155,7 @@ class CategoryTasks:
             "label": self.label,
             "active_total": self.active_total,
             "completed_total": self.completed_total,
+            "current_chunk": sorted(self.current_chunk),
             "groups": [group.as_dict() for group in self.groups],
         }
 
@@ -282,13 +292,10 @@ def _superseded(
     return frozenset(superseded)
 
 
-def _committed(
-    completed: Mapping[str, Any], checked: Mapping[str, Any]
-) -> frozenset[str]:
-    """The stored `completedChallenges` branch, i.e. the merged view less what
-    is only ticked this chunk. See the module docstring for why the panel
-    keys off this rather than the merged set."""
-    return frozenset(completed) - frozenset(checked)
+#: Appended to a task ticked off during the chunk in play - one still sitting
+#: in `checkedChallenges`, not yet migrated into `completedChallenges` by the
+#: next roll. `bis.py` marks its own the same way.
+CURRENT_CHUNK_SUFFIX = "(Active)"
 
 
 def _classify_category(
@@ -302,16 +309,20 @@ def _classify_category(
     backlog: Mapping[str, Any],
 ) -> CategoryTasks:
     implied = _implied_completions(category, completed, challenges)
-    committed = _committed(completed, checked) | implied
+    # `completed` is the merged view, so this drops what was ticked this chunk
+    # as well - those move to `completed` with a marker rather than staying
+    # active. See the module docstring.
+    done = frozenset(completed) | implied
     superseded = _superseded(category, valid_names, challenges, chunk_info)
     active = [
         name
         for name in valid_names
         if name not in superseded
-        and not _recorded(name, committed)
+        and not _recorded(name, done)
         and not _recorded(name, backlog)
     ]
     completed_names = [*completed, *sorted(implied)]
+    current_chunk = frozenset(checked) & frozenset(completed_names)
 
     grouped: dict[str, tuple[list[str], list[str]]] = {}
 
@@ -329,19 +340,28 @@ def _classify_category(
         challenge = challenges.get(name)
         return task_text(name, challenge if isinstance(challenge, dict) else {})
 
-    groups = tuple(
+    def completed_key(name: str) -> tuple[bool, str]:
+        return (name not in current_chunk, sort_key(name))
+
+    built = [
         TaskGroup(
             name=group_name,
             active=tuple(sorted(members[0], key=sort_key)),
-            completed=tuple(sorted(members[1], key=sort_key)),
+            completed=tuple(sorted(members[1], key=completed_key)),
         )
         for group_name, members in sorted(grouped.items())
+    ]
+    # A group holding this chunk's work sorts to the front of the category,
+    # so "ticked just now" is the first thing the completed listing shows.
+    groups = tuple(
+        sorted(built, key=lambda g: (not (current_chunk & set(g.completed)), g.name))
     )
     return CategoryTasks(
         category=category,
         groups=groups,
         active_total=len(active),
         completed_total=len(completed_names),
+        current_chunk=current_chunk,
     )
 
 

@@ -342,12 +342,14 @@ One responsibility per module, so the planned simulation work has a pure layer t
   (`classify_other_tasks` -> `OtherTasks`). Nothing like `active_tasks.py`: `calcCurrentChallenges2`
   excludes these from its per-skill loop outright (worker.js:8390), so there is no single winner —
   upstream's panel renders **every** valid challenge that isn't completed or backlogged
-  (index.js:6702/6744/6767). Two details of that guard were wrong here before: it tests
-  `completedChallenges` **alone**, so a task merely ticked this chunk still renders
-  (index.js:6663/6745) and the merged `MapState.completed_challenges` hid 9 real `Extra` entries the
-  map's own oracle lists — `_committed` reconstructs the stored branch by removing
-  `checked_challenges`, exact because upstream migrates and clears in one step; and completions are
-  reported whether or not still valid, the same rule the skill categories follow. Grouping mirrors
+  (index.js:6702/6744/6767). Two things about that guard: it tests
+  `completedChallenges` **alone**, so upstream keeps a task ticked this chunk in the *active* list
+  with its checkbox set (index.js:6663/6745) — a terminal has no checkbox, so this module
+  **deliberately diverges** and reports a ticked task as *completed*, sorted to the front of its group
+  and of the category and marked `(Active)`, the same treatment `bis.py` gives its own current-chunk
+  acquisitions. `CategoryTasks.current_chunk` names them, so the panel's own view is recoverable as
+  `active` ∪ `current_chunk`, which is what the oracle test compares. Completions are also reported
+  whether or not still valid, the same rule the skill categories follow. Grouping mirrors
   the panel: `Quest` by `BaseQuest`, `Diary` by the diary and tier in the name
   (`~|Morytania Diary#Elite|~ Task 5` -> *Morytania Diary - Elite*), `Extra` by its `Label` —
   `Collection Log`, `Permanent Unlockables`, `Untracked Uniques`, plus `Fill POH`/`Fill Stashes`/

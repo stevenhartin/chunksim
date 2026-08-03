@@ -182,7 +182,13 @@ def _print_grouped(
         for name in names:
             if limit is not None and shown >= limit:
                 break
-            print(f"    {task_text(name, challenges.get(name) or {})}")
+            challenge = challenges.get(name) or {}
+            text = (
+                tasks.completed_text(name, challenge)
+                if attr == "completed"
+                else task_text(name, challenge)
+            )
+            print(f"    {text}")
             shown += 1
 
 

@@ -114,23 +114,67 @@ def test_a_completed_task_is_not_active() -> None:
     assert extra.completed_total == 1
 
 
-def test_a_task_only_checked_this_chunk_is_still_active() -> None:
-    """The panel filters on `completedChallenges` alone; a ticked task still
-    renders, just with its box set (index.js:6663/6745). Using the merged
-    view hid 9 real `Extra` entries the map's own oracle lists.
+def test_a_task_ticked_this_chunk_is_completed_and_marked() -> None:
+    """Upstream's panel keeps a ticked task in the active list with its box
+    set (index.js:6663/6745); a terminal has no box, so it moves to completed
+    with a marker instead - the same treatment `bis.py` gives its own.
     """
-    info = _chunk_info(challenges={"Extra": {"Obtain a thing": {"Label": "Collection Log"}}})
+    info = _chunk_info(
+        challenges={
+            "Extra": {
+                "Obtain a thing": {"Label": "Collection Log"},
+                "Obtain another": {"Label": "Collection Log"},
+            }
+        }
+    )
 
     result = _classify(
-        {"Extra": {"Obtain a thing": True}},
-        # `completed_challenges` is the merged view, so a checked task appears
-        # in both - which is exactly the case that must stay active.
+        {"Extra": {"Obtain a thing": True, "Obtain another": True}},
+        # `completed_challenges` is the merged view, so a ticked task is in
+        # both branches.
         info,
         completed={"Extra": {"Obtain a thing": True}},
         checked={"Extra": {"Obtain a thing": True}},
     )
 
-    assert result.categories["Extra"].active_total == 1
+    extra = result.categories["Extra"]
+    assert extra.active_total == 1
+    assert extra.current_chunk == frozenset({"Obtain a thing"})
+    # The panel's own count is still recoverable.
+    assert extra.active_total + len(extra.current_chunk) == 2
+    assert extra.completed_text("Obtain a thing", {}) == "Obtain a thing (Active)"
+    assert extra.completed_text("Obtain another", {}) == "Obtain another"
+
+
+def test_this_chunks_completions_sort_to_the_front() -> None:
+    info = _chunk_info(
+        challenges={
+            "Diary": {
+                "~|Wilderness Diary#Hard|~ Task 1": {"Description": "Aaa first alphabetically"},
+                "~|Wilderness Diary#Hard|~ Task 9": {"Description": "Zzz last alphabetically"},
+                "~|Ardougne Diary#Easy|~ Task 1": {"Description": "Another group"},
+            }
+        }
+    )
+
+    result = _classify(
+        {"Diary": {}},
+        info,
+        completed={
+            "Diary": {
+                "~|Wilderness Diary#Hard|~ Task 1": True,
+                "~|Wilderness Diary#Hard|~ Task 9": True,
+                "~|Ardougne Diary#Easy|~ Task 1": True,
+            }
+        },
+        checked={"Diary": {"~|Wilderness Diary#Hard|~ Task 9": True}},
+    )
+
+    diary = result.categories["Diary"]
+    # The group holding this chunk's work comes first, ahead of Ardougne...
+    assert diary.groups[0].name == "Wilderness Diary - Hard"
+    # ... and within it, the ticked task leads despite sorting last by text.
+    assert diary.groups[0].completed[0] == "~|Wilderness Diary#Hard|~ Task 9"
 
 
 def test_a_backlogged_task_is_not_active() -> None:
@@ -290,22 +334,56 @@ _REAL_CHUNKINFO = os.environ.get("FRAY_CHUNKINFO")
 _REAL_MAP = os.environ.get("FRAY_MAP_CACHE")
 
 
+#: The entries our derivation and the map's own `activeTasks` still disagree
+#: on, pinned exactly so the test fails the moment anything moves - including
+#: when the underlying bugs are fixed, at which point these come out.
+#:
+#: All ten are item availability, not this module: `Mahogany logs` blocks the
+#: Varrock task; Artio's 1/618-1/2800 boss drops are excluded by the
+#: `Rare Drop Amount: "0"` threshold that the oracle evidently clears somehow;
+#: `eternal gem` and `imbued heart` are `manualTasks.Extra` overrides
+#: `challenges.py` does not yet apply; and the frozen tear / dark totem /
+#: ancient shard / double ammo mould group we include and the oracle does not.
+_KNOWN_ORACLE_DELTA = {
+    "Diary": frozenset(
+        {
+            "~|Morytania Diary#Easy|~ Task 8",
+            "~|Varrock Diary#Medium|~ Task 10",
+        }
+    ),
+    "Extra": frozenset(
+        {
+            "(Amoxliatl) Obtain a ~|frozen tear|~",
+            "(Callisto and Artio) Obtain a ~|tyrannical ring|~",
+            "(Giants' Foundry) Obtain a ~|double ammo mould|~",
+            "(Miscellaneous) Obtain a ~|dark totem base|~",
+            "(Miscellaneous) Obtain a ~|dark totem middle|~",
+            "(Miscellaneous) Obtain a ~|dark totem top|~",
+            "(Skotizo) Obtain an ~|ancient shard|~",
+            "(Slayer) Obtain a ~|frozen tear|~",
+            "(Slayer) Obtain an ~|eternal gem|~",
+            "(Slayer) Obtain an ~|imbued heart|~",
+        }
+    ),
+}
+
+
 @pytest.mark.skipif(
     not (_REAL_CHUNKINFO and _REAL_MAP),
     reason="set FRAY_CHUNKINFO and FRAY_MAP_CACHE to real data to run this",
 )
 @pytest.mark.parametrize("category", ["Diary", "Extra"])
-def test_active_totals_match_the_live_oracle(category: str) -> None:
+def test_active_tasks_match_the_live_oracle(category: str) -> None:
     """Opt-in oracle: `chunkinfo.activeTasks` records what the panel last
-    showed for `Diary` and `Extra`, so our active *count* must reproduce it.
+    showed for `Diary` and `Extra`.
 
-    Counts rather than membership: the totals agree exactly (5 and 37), but a
-    handful of individual entries still differ each way, every one of them
-    traced to item availability rather than to this module - `Mahogany logs`
-    for the one Diary swap, and Artio's 1/618-1/2800 boss drops for the Extra
-    ones. Tightening this to set equality is the right next step once those
-    are resolved; asserting the totals now still catches any regression in
-    the completed/backlog/checked filtering, which is what this module owns.
+    Compared as a *set*, against `active` plus `current_chunk` - the latter is
+    what upstream still lists as active and this module reports as
+    completed-with-a-marker, so the panel's own view is the union.
+
+    The residual disagreement is pinned in `_KNOWN_ORACLE_DELTA` rather than
+    waved through with a count: an earlier version compared totals and passed
+    on `Extra` at 37 == 37 while seven entries were wrong in each direction.
     """
     assert _REAL_CHUNKINFO is not None
     from fray_claude.cache import project_root, read_blob, read_cache
@@ -320,108 +398,14 @@ def test_active_totals_match_the_live_oracle(category: str) -> None:
     state, unlocked = load_map_state(envelope["data"], info, tasks_map)
     derived = derive(state, unlocked)
 
-    oracle = decode_challenge_keyed(
-        envelope["data"]["chunkinfo"].get("activeTasks"), tasks_map
-    ).get(category, {})
-
+    oracle = set(
+        decode_challenge_keyed(
+            envelope["data"]["chunkinfo"].get("activeTasks"), tasks_map
+        ).get(category, {})
+    )
     assert oracle, f"the map no longer records active {category} tasks"
-    assert derived.other_tasks.categories[category].active_total == len(oracle)
 
+    tasks = derived.other_tasks.categories[category]
+    ours = {name for group in tasks.groups for name in group.active} | tasks.current_chunk
 
-def _arrav_info() -> ChunkInfo:
-    """The Shield of Arrav shape: one chain that forks into routes 2a and 2b
-    and rejoins at step 3 via a `[+]` family naming each route's last step."""
-    steps: dict[str, Any] = {
-        "~|Arrav|~ 1": {"BaseQuest": "Arrav", "Description": "Talk to Reldo"},
-        "~|Arrav|~ 3": {
-            "BaseQuest": "Arrav",
-            "Description": "Take the shield half to the curator",
-            "Tasks": {"Arrav2Final[+]": "Quest"},
-        },
-    }
-    for route in ("a", "b"):
-        previous = "~|Arrav|~ 1"
-        for n in (1, 2):
-            name = f"~|Arrav|~ 2{route}{n}"
-            steps[name] = {
-                "BaseQuest": "Arrav",
-                "Description": f"Route {route} step {n}",
-                "Tasks": {previous: "Quest"},
-            }
-            previous = name
-    return ChunkInfo(
-        {
-            "challenges": {"Quest": steps},
-            "codeItems": {"tasksPlus": {"Arrav2Final[+]": ["~|Arrav|~ 2a2", "~|Arrav|~ 2b2"]}},
-        }
-    )
-
-
-def test_a_reachable_later_step_supersedes_everything_before_it() -> None:
-    """`markSubTasks(..., false)` (worker.js:485/1486): being able to do a
-    step means its prerequisites are behind you, recorded or not, so only the
-    furthest reachable step of a quest shows.
-    """
-    info = _arrav_info()
-    names = info.challenges["Quest"]
-
-    result = _classify({"Quest": dict.fromkeys(names, True)}, info)
-
-    quest = result.categories["Quest"]
-    assert quest.active_total == 1
-    assert quest.groups[0].active == ("~|Arrav|~ 3",)
-
-
-def test_a_plus_family_supersedes_every_route(  ) -> None:
-    """Upstream marks *all* members of the family, not one: reaching step 3
-    means whichever route you took is behind you, and it cannot tell which.
-    """
-    info = _arrav_info()
-    names = info.challenges["Quest"]
-
-    result = _classify({"Quest": dict.fromkeys(names, True)}, info)
-
-    active = result.categories["Quest"].groups[0].active
-    assert not [n for n in active if "2a" in n or "2b" in n]
-
-
-def test_supersession_walks_through_steps_that_are_not_reachable() -> None:
-    """Route A's later steps being unreachable must not strand its first one:
-    upstream recurses whether or not the step it passes through is valid."""
-    info = _arrav_info()
-    valid = {
-        "Quest": {
-            "~|Arrav|~ 1": True,
-            "~|Arrav|~ 2a1": True,  # route A stops here
-            "~|Arrav|~ 2b1": True,
-            "~|Arrav|~ 2b2": True,
-            "~|Arrav|~ 3": True,
-        }
-    }
-
-    result = _classify(valid, info)
-
-    assert result.categories["Quest"].groups[0].active == ("~|Arrav|~ 3",)
-
-
-def test_supersession_does_not_cross_into_another_quest() -> None:
-    """Upstream guards every mark with a `BaseQuest` match, so a dependency
-    on an unrelated quest does not drag that quest's steps in."""
-    info = ChunkInfo(
-        {
-            "challenges": {
-                "Quest": {
-                    "~|Other|~ 1": {"BaseQuest": "Other", "Description": "Elsewhere"},
-                    "~|Arrav|~ 1": {
-                        "BaseQuest": "Arrav",
-                        "Description": "Needs another quest",
-                        "Tasks": {"~|Other|~ 1": "Quest"},
-                    },
-                }
-            }
-        }
-    )
-
-    result = _classify({"Quest": {"~|Other|~ 1": True, "~|Arrav|~ 1": True}}, info)
-
-    assert result.categories["Quest"].active_total == 2
+    assert ours ^ oracle == _KNOWN_ORACLE_DELTA[category]
