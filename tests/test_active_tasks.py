@@ -488,3 +488,35 @@ def test_a_non_primary_challenger_with_no_priority_does_not_displace() -> None:
     )
 
     assert winner == "Route A"
+
+
+def test_a_completed_task_recorded_with_a_slash_variant_still_counts() -> None:
+    """Upstream pairs every `completedChallenges`/`backlog` lookup with one
+    on the `#` -> `/` spelling; a single-spelling check reports an
+    already-completed task as still outstanding.
+    """
+    info = _chunk_info(
+        challenges={
+            "Combat": {
+                "Start fighting": {"Level": 1, "Primary": True},
+                "~|Morytania Diary#Easy|~ Task 3": {"Level": 40, "Primary": True},
+            }
+        }
+    )
+    valid = {"Combat": {"Start fighting": 1, "~|Morytania Diary#Easy|~ Task 3": 40}}
+
+    result = classify_tasks(
+        valid,
+        info,
+        completed_challenges={"Combat": {"~|Morytania Diary/Easy|~ Task 3": True}},
+        manual_tasks={},
+        backlog={},
+        passive_skill={},
+    )
+
+    classification = result.skills["Combat"]
+    assert classification.completed == frozenset({"~|Morytania Diary#Easy|~ Task 3"})
+    # The Level 1 `Primary` route still wins: upstream's *ceiling* loop does a
+    # plain lookup with no `/` variant (worker.js:8393), so a slash-spelled
+    # record contributes nothing there even though it counts as completed.
+    assert classification.active == "Start fighting"

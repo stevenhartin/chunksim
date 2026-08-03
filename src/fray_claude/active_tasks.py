@@ -86,7 +86,21 @@ Not ported, documented rather than silently wrong:
   this was built, so the cost of this simplification is low).
 - Sub-skill `Skills`-requirement cross-propagation (a winning challenge also
   promoting itself as the pick for a sub-skill it requires) and the
-  `Multi Step Processing` self-recursion.
+  `Multi Step Processing` self-recursion. The related *filter* on the winner
+  (worker.js:8472 - every sub-skill in a winner's `Skills` must be trainable,
+  or covered by `passiveSkill`, and never above `maxSkill`) is also unported;
+  it was checked against the real map and rejects nothing there.
+
+The `Herblore Unlocked`/`Herblore Unlocked Snake Weed` rules need no code of
+their own: they are ordinary `Category` values on the seven `Unlock
+~|Herblore|~ ...` challenges, so `challenges._category_gate_met` already
+handles them, and the `Druidic Ritual` gate is that unlock challenge's own
+`Tasks` requirement. Nothing anywhere references those challenges in turn -
+grepped both upstream files and the whole export - so an unreachable
+`Druidic Ritual` makes `Herblore` untrainable via `checkPrimaryMethod` (no
+`Level == 1` `Primary` route survives) but does **not** invalidate the
+skill's other challenges. A Level 3 herb clean boosted to `realLevel == 1`
+is therefore still eligible, which is upstream's own rule, not a gap here.
 """
 
 from __future__ import annotations
@@ -174,6 +188,18 @@ def _is_eligible(
     if isinstance(passive_level, (int, float)) and passive_level >= level:
         return True
     return name in manual_tasks.get(skill, {})
+
+
+def _recorded(name: str, ledger: Mapping[str, Any]) -> bool:
+    """Is `name` in a stored `{name: value}` ledger, under either spelling?
+
+    Upstream pairs every `completedChallenges`/`backlog` lookup with a second
+    one on `challenge.replaceAll('#', '/')` (worker.js:8438, 8471, ...). The
+    `#` in a name like `~|Morytania Diary#Easy|~ Task 3` separates a variant,
+    and older records store it as `/`, so a single-spelling check silently
+    treats an already-completed task as outstanding.
+    """
+    return name in ledger or name.replace("#", "/") in ledger
 
 
 def _lower_priority(challenger: Any, incumbent: Any) -> bool:
@@ -308,7 +334,7 @@ def _classify_skill(
     items: Mapping[str, Any],
     source_index: SourceIndex,
 ) -> SkillClassification:
-    completed_names = {name for name in valid_names if name in completed}
+    completed_names = {name for name in valid_names if _recorded(name, completed)}
     remaining = [name for name in valid_names if name not in completed_names]
     # A task no harder than one already completed is settled - see the module
     # docstring.
@@ -327,7 +353,7 @@ def _classify_skill(
     winner_challenge: Mapping[str, Any] = {}
     for name in remaining:
         challenge = skill_challenges.get(name)
-        if not isinstance(challenge, dict) or name in backlog:
+        if not isinstance(challenge, dict) or _recorded(name, backlog):
             continue
         if _never_show(skill, name, challenge, rules):
             continue
