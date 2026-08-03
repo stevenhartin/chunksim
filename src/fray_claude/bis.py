@@ -502,10 +502,12 @@ _TASK_ITEM_PATTERN = re.compile(r"~\|(.+?)\|~")
 def _formatted_name_index(equipment: Mapping[str, Mapping[str, Any]]) -> dict[str, tuple[str, str]]:
     """`format_equip`'d, lowercased display name -> `(item_name, slot)` -
     lets an `Obtain a/an ~|X|~` task name, as found in
-    `completedChallenges.BiS` (real map data: literal task-name-string keys,
-    not `t_N` ids - BiS challenges have no static definition anywhere in
-    `chunkinfo.json`, so no id is ever minted for one; see `challenges.py`'s
-    module docstring), be resolved back to the equipment entry it names.
+    `completedChallenges.BiS`, be resolved back to the equipment entry it
+    names. Lowercased on both sides deliberately: the same item can appear
+    under two spellings across time, since a name interned into
+    `tasksMap.json` keeps the casing `formatEquip` produced then, while a
+    not-yet-interned one is stored literally - real map data has both
+    `Craw's bow (u)` and `craw's bow (u)` for the same item.
     """
     index: dict[str, tuple[str, str]] = {}
     for item_name, equip in equipment.items():

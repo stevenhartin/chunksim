@@ -442,13 +442,15 @@ def test_melee_bis_weapon_matches_the_live_oracle() -> None:
 def test_a_real_completed_bis_item_is_never_shown_as_active() -> None:
     """Opt-in oracle: unlike skill-level `activeTasks` (sparse - see
     `active_tasks.py`'s module docstring), `completedChallenges.BiS` is
-    well-populated on the cached map (70 real entries). The player's
-    completed `craw's bow (u)` pick must never resurface as something still
-    to obtain - and on this account it's since been beaten by a better
-    ranged weapon, so it correctly lands in `outdated` rather than
-    `completed` (which is empty on this map: every one of the 70 completed
-    picks has since been superseded, a real-data confirmation that
-    `_outdated_notes` is doing its job, not a test bug).
+    well-populated on the cached map (70 real entries).
+
+    Regression guard for a real reported bug: `Black cape` shows as a
+    completed BiS task on the live site, but was listed as still-to-obtain
+    here, because `completedChallenges.BiS` stores it under the interned id
+    `t_10226` and `decode_challenge_keyed` was special-casing `BiS` to skip
+    `t_N` resolution entirely. The item is *still* the current cape pick, so
+    it must land in `completed` - not `active`, and not `outdated` either
+    (nothing has superseded it).
     """
     assert _REAL_CHUNKINFO is not None
     from fray_claude.cache import project_root, read_blob, read_cache
@@ -463,6 +465,10 @@ def test_a_real_completed_bis_item_is_never_shown_as_active() -> None:
     state, unlocked = load_map_state(envelope["data"], info, tasks_map)
     derived = derive(state, unlocked)
 
-    task_name = "Obtain a ~|craw's bow (u)|~"
+    task_name = "Obtain a ~|black cape|~"
+    assert task_name in derived.bis.completed
     assert task_name not in derived.bis.active
-    assert task_name in derived.bis.outdated
+    assert task_name not in derived.bis.outdated
+
+    # And nothing anywhere should still be an unresolved raw id.
+    assert not [name for name in state.completed_challenges["BiS"] if name.startswith("t_")]

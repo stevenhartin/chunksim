@@ -147,14 +147,26 @@ def decode_challenge_keyed(
 ) -> dict[str, Any]:
     """Decode a `{category: {key: value}}` map-payload branch - the shape
     `activeTasks`/`completedChallenges`/`checkedChallenges`/`backlog` all
-    share. Every category's inner keys are `t_N` task ids resolved through
-    `tasks_map`, **except `BiS`**, whose keys are literal encoded
-    challenge-name strings: BiS challenges have no static definition
-    anywhere in `chunkinfo.json`, so no id is ever minted for one (see
-    `challenges.py`'s module docstring). Pass `skip_task_ids=True` for
-    `manualTasks`, which uses literal name keys for *every* category, not
-    just `BiS` (verified against real map data - none of its keys match the
-    `t_N` pattern).
+    share.
+
+    Inner keys are `t_N` task ids resolved through `tasks_map`, but a given
+    branch can mix ids and literal encoded challenge names: `tasksMap.json`
+    interns names lazily (it carries a `currentNextIndex` counter), so a
+    name that has never been interned is stored literally instead. Real map
+    data has both - `completedChallenges.BiS` was 65 ids to 5 literals, and
+    `completedChallenges.Extra` 277 to 1, with every literal confirmed
+    absent from `tasksMap.json`. `decode_key` already routes each form
+    correctly (its `'t_' in key` test can't false-positive on an encoded
+    name: the encoding only ever emits `_` inside a `-_-` triple, so `_` is
+    always preceded by `-`, never by `t`), so no per-category rule is
+    needed here - **do not special-case `BiS`**: it looks literal-only on a
+    small sample purely because literal keys sort before `t_N` ones
+    (`'O' < 't'`), and skipping id resolution for it silently drops the
+    overwhelming majority of its entries.
+
+    Pass `skip_task_ids=True` for `manualTasks`, which genuinely does use
+    literal name keys throughout - verified against real map data, where
+    its names *are* present in `tasksMap.json` yet are still stored by name.
     """
     if not isinstance(payload, dict):
         return {}
@@ -163,6 +175,5 @@ def decode_challenge_keyed(
         category = decode_key(raw_category, None)
         if category is None or not isinstance(entries, dict):
             continue
-        category_tasks_map = None if skip_task_ids or category == "BiS" else tasks_map
-        result[category] = decode_payload(entries, category_tasks_map)
+        result[category] = decode_payload(entries, None if skip_task_ids else tasks_map)
     return result

@@ -10,6 +10,7 @@ fabricated.
 from __future__ import annotations
 
 from fray_claude.firebase import (
+    decode_challenge_keyed,
     decode_key,
     decode_payload,
     decode_string,
@@ -141,3 +142,53 @@ def test_decode_payload_leaves_non_string_scalars_untouched() -> None:
         "primary": True,
         "empty": None,
     }
+
+
+def test_decode_challenge_keyed_resolves_task_ids_per_category() -> None:
+    payload = {"Woodcutting": {"t_1": True}, "Diary": {"t_2": True}}
+    tasks_map = {"t_1": "Chop a tree", "t_2": "Do a diary task"}
+
+    assert decode_challenge_keyed(payload, tasks_map) == {
+        "Woodcutting": {"Chop a tree": True},
+        "Diary": {"Do a diary task": True},
+    }
+
+
+def test_decode_challenge_keyed_resolves_task_ids_in_the_bis_category() -> None:
+    # Regression: `BiS` was special-cased to skip `t_N` resolution, on the
+    # false premise that its keys are always literal names. Real map data
+    # had 65 ids to 5 literals there, so skipping resolution silently
+    # dropped the overwhelming majority of completed BiS entries (they
+    # stayed as raw `t_N` and matched no generated task name).
+    payload = {"BiS": {"t_10226": True}}
+    tasks_map = {"t_10226": "Obtain a ~|black cape|~"}
+
+    assert decode_challenge_keyed(payload, tasks_map) == {
+        "BiS": {"Obtain a ~|black cape|~": True}
+    }
+
+
+def test_decode_challenge_keyed_handles_a_category_mixing_ids_and_literals() -> None:
+    # A name is only stored literally when it has never been interned into
+    # `tasksMap.json`, so one category can hold both forms at once.
+    payload = {"BiS": {"t_1": True, "Obtain-_-20a-_-20~|zamorak-_-20monk-_-20top|~": True}}
+    tasks_map = {"t_1": "Obtain a ~|black cape|~"}
+
+    assert decode_challenge_keyed(payload, tasks_map) == {
+        "BiS": {"Obtain a ~|black cape|~": True, "Obtain a ~|zamorak monk top|~": True}
+    }
+
+
+def test_decode_challenge_keyed_skips_task_ids_when_asked() -> None:
+    # `manualTasks` stores literal names for every category even when those
+    # names *are* interned - verified against real map data.
+    payload = {"Quest": {"~|Nature-_-20Spirit|~-_-20Complete-_-20the-_-20quest": True}}
+
+    assert decode_challenge_keyed(payload, {}, skip_task_ids=True) == {
+        "Quest": {"~|Nature Spirit|~ Complete the quest": True}
+    }
+
+
+def test_decode_challenge_keyed_tolerates_a_missing_branch() -> None:
+    assert decode_challenge_keyed(None, {}) == {}
+    assert decode_challenge_keyed({}, {}) == {}

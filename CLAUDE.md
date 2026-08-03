@@ -49,12 +49,16 @@ upstream's `tasksMap.json`) — applied per-field by the app, not uniformly acro
 so which branches need `firebase.decode_payload` is only knowable by checking real fetched data, not
 by inspecting the client source. `chunks.unlocked` and `chunkOrder` are stored plain; `chunkinfo`'s
 `manualSections`/`stickeredNotes`/`activeTasks`/`completedChallenges`/`checkedChallenges`/`backlog`/
-`manualTasks` are encoded. Verified against real data: `activeTasks`/`completedChallenges`/
-`checkedChallenges`/`backlog` all key every category's entries by `t_N` task id **except `BiS`**,
-whose keys are literal encoded challenge-name strings instead — BiS challenges have no static
-definition anywhere in `chunkinfo.json`, so no id is ever minted for one (see `challenges.py`).
-`manualTasks` uses literal name keys for *every* category, not just `BiS`.
-`firebase.decode_challenge_keyed` handles this mixed encoding.
+`manualTasks` are encoded. `activeTasks`/`completedChallenges`/`checkedChallenges`/`backlog` key
+their entries by `t_N` task id, but **a single category can mix ids and literal encoded names**:
+`tasksMap.json` interns names lazily (note its `currentNextIndex` counter), so a name that has never
+been interned is stored literally instead. Real data had `completedChallenges.BiS` at 65 ids to 5
+literals and `completedChallenges.Extra` at 277 to 1, every literal confirmed absent from
+`tasksMap.json`. **Do not assume a category is literal-only from a small sample** — literal keys sort
+before `t_N` ones (`'O' < 't'`), which is exactly how an early sample of `BiS` looked literal-only and
+produced a real bug (see `firebase.decode_challenge_keyed`). `manualTasks` genuinely *is* literal
+throughout, verified the opposite way: its names *are* in `tasksMap.json` yet are still stored by name.
+`firebase.decode_challenge_keyed` handles both forms.
 
 ## Architecture
 
@@ -72,8 +76,11 @@ One responsibility per module, so the planned simulation work has a pure layer t
   `decode_payload`). Port of `decodeQueryParam`/`decodeObject` from upstream's `index.js`; run any map
   payload branch through this before treating it as real chunk ids, rule names, or task text.
   `decode_challenge_keyed` handles the `{category: {t_N_or_literal_key: value}}` shape shared by
-  `activeTasks`/`completedChallenges`/`checkedChallenges`/`backlog`/`manualTasks`, applying the
-  mixed `BiS`-is-literal-everything-else-is-`t_N` encoding documented above per category.
+  `activeTasks`/`completedChallenges`/`checkedChallenges`/`backlog`/`manualTasks`. It resolves `t_N`
+  ids for every category (`decode_key`'s `'t_' in key` test can't false-positive on an encoded name —
+  the encoding only emits `_` inside a `-_-` triple, so `_` is always preceded by `-`), with
+  `skip_task_ids=True` only for `manualTasks`. Per the encoding note above, categories mix both key
+  forms; special-casing one as literal-only is exactly the bug this function's docstring warns about.
 - `chunkinfo.py` — pure; typed, tolerant accessors (`ChunkInfo`) over the parsed chunkinfo export.
   Parsing the ~7MB export is the expensive part, not attribute access, so build one `ChunkInfo` per
   command invocation and pass it down rather than re-parsing.
@@ -150,13 +157,15 @@ One responsibility per module, so the planned simulation work has a pure layer t
   history; `unlock.py`/`simulate.py` diff two calls to report which (style, slot) picks improved,
   exempted from `unlock.py`'s monotonic task-partition guarantee (see its docstring). `BisResult`
   additionally splits `tasks` into `completed` (already obtained, cross-referenced against
-  `completedChallenges.BiS` - real literal-key strings that already match `bis_task_name()`'s own
-  output format, no id resolution needed) and `active` (not yet obtained), plus `outdated`: a
-  completed pick whose slot has since been beaten by something better, resolved back to an item via
-  a `formatted_name -> (item, slot)` index built from `equipment` — this caught a real bug during
-  development (a completed "2h"-slot item wasn't recognised as superseded, since `_finalize_slots`
-  always folds a winning 2H item into the `weapon` key in `picks`, and the lookup hadn't been
-  normalised the same way — verified and fixed against the real `completedChallenges.BiS` oracle).
+  `completedChallenges.BiS`, whose task-name keys match `bis_task_name()`'s own output format) and
+  `active` (not yet obtained), plus `outdated`: a completed pick whose slot has since been beaten by
+  something better, resolved back to an item via a `formatted_name -> (item, slot)` index built from
+  `equipment`. That index lowercases both sides on purpose — the same item can be stored under two
+  spellings over time (`Craw's bow (u)` interned vs. a literal `craw's bow (u)`), so real data can
+  carry an apparent duplicate for one item. Two real bugs were found here by checking against live
+  data rather than fixtures: a completed 2H-slot item was never flagged outdated (`_finalize_slots`
+  folds a 2H winner into the `weapon` key in `picks`, and the lookup wasn't normalised the same way),
+  and `completed` came back empty entirely because `BiS` was wrongly skipping `t_N` resolution.
 - `active_tasks.py` — pure; classifies each real skill category's (`challenges._SKILL_NAMES`) valid
   challenges into `active` (the one current goal)/`obsolete` (superseded)/`completed` (already done)
   (`classify_tasks` -> `TaskClassification`). Port of `calcCurrentChallenges2`'s selection
