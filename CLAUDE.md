@@ -11,9 +11,10 @@ Landed: derive reachable sections/available sources/valid tasks from a cached ma
 deltas, multi-roll simulation (`fray unlock`/`fray simulate`), category listings, world-wide fuzzy
 search (`fray search`), best-in-slot equipment synthesis (`bis.py`, surfaced via `fray tasks BiS`
 and as upgrade deltas in `fray unlock`/`fray simulate`), and active/obsolete/completed task
-classification per skill (`active_tasks.py`, surfaced via `fray tasks <Skill>`) — see `challenges.py`'s,
-`bis.py`'s, and `active_tasks.py`'s docstrings for what's deliberately unsupported before trusting
-the numbers.
+classification per skill (`active_tasks.py`, surfaced via `fray tasks <Skill>`), and the non-skill
+categories Diary/Quest/Other (`other_tasks.py`, surfaced via `fray tasks Diary|Quest|Other`) — see
+`challenges.py`'s, `bis.py`'s, `active_tasks.py`'s and `other_tasks.py`'s docstrings for what's
+deliberately unsupported before trusting the numbers.
 Planned: render a world-map image for a simulated state, generate heatmaps of likely rolls over N
 attempts, estimate time to complete all goals (needs a task-duration source; the export has none).
 
@@ -168,6 +169,11 @@ One responsibility per module, so the planned simulation work has a pure layer t
   BiS oracle's `Master wand`). `Monster[+]` is also a **wildcard** ("any monster at all",
   worker.js:4306) rather than a `monstersPlus` family — treating it as one made `Cast ~|wind strike|~`,
   Magic's only Level 1 `Primary` route, permanently invalid and so the whole skill untrainable.
+  The **`Show Diary Tasks Any` waiver** is ported (`_diary_tier_waived`, worker.js:1360): a diary
+  tier's completion challenge is marked by carrying a `Reward`, the next tier's tasks depend on it,
+  and with that rule on the dependency is dropped so an Elite task shows without the Hard diary being
+  finished (the dependent must carry no `Reward` itself, or the tiers collapse into each other).
+  This was the whole of the Diary gap — outstanding Diary tasks 1 -> 5 against the map's own oracle.
   `BackupParent` is honoured (worker.js:1679): a challenge naming one is deleted once
   that parent is valid *or backlogged*, unless it carries `ManualValid`. All 17 real uses are
   `Hunter`'s barehanded catches — `Barehanded catch a wandering lucky impling` (Level 99) exists for
@@ -332,6 +338,22 @@ One responsibility per module, so the planned simulation work has a pure layer t
   `+` contributes nothing (JS coerces it to `NaN`), and the two clamps differ — `real_level` floors at
   1 while `completed_ceiling` rewrites the boost to `Level - 1` and recomputes, yielding `-2` for a
   Construction `Saw[+]` challenge. `skillQuestXp` and the `Kill X` rule's own copy are unported.
+- `other_tasks.py` — pure; groups the three **non-skill** categories, `Diary`/`Quest`/`Extra`
+  (`classify_other_tasks` -> `OtherTasks`). Nothing like `active_tasks.py`: `calcCurrentChallenges2`
+  excludes these from its per-skill loop outright (worker.js:8390), so there is no single winner —
+  upstream's panel renders **every** valid challenge that isn't completed or backlogged
+  (index.js:6702/6744/6767). Two details of that guard were wrong here before: it tests
+  `completedChallenges` **alone**, so a task merely ticked this chunk still renders
+  (index.js:6663/6745) and the merged `MapState.completed_challenges` hid 9 real `Extra` entries the
+  map's own oracle lists — `_committed` reconstructs the stored branch by removing
+  `checked_challenges`, exact because upstream migrates and clears in one step; and completions are
+  reported whether or not still valid, the same rule the skill categories follow. Grouping mirrors
+  the panel: `Quest` by `BaseQuest`, `Diary` by the diary and tier in the name
+  (`~|Morytania Diary#Elite|~ Task 5` -> *Morytania Diary - Elite*), `Extra` by its `Label` —
+  `Collection Log`, `Permanent Unlockables`, `Untracked Uniques`, plus `Fill POH`/`Fill Stashes`/
+  `BIS Skilling`/`Stuffables` when their rules are on (`challenges._category_gate_met` already
+  decides which). `Extra` is the export's key and stays the key in `--export-json`; **`Other` is the
+  display name**, and both are accepted by `fray tasks`.
 - `pipeline.py` — pure; bundles the per-map inputs (`MapState`) and runs `unlocked_sections` ->
   `gather_chunks_info` -> `calc_challenges` -> `compute_bis` -> `classify_tasks` for a given
   unlocked-chunk-id set (`derive` -> `Derived`, carrying `bis`/`task_classification` alongside
@@ -416,7 +438,9 @@ One responsibility per module, so the planned simulation work has a pure layer t
   branch's contents instead of just its counts, each capped by `--limit` — which defaults to `None`
   (full output) for those three, since piping to `grep`/`less` should just work without a flag, but to
   `10` for `search`, where the tail of a fuzzy ranking is noise rather than data. `fray tasks <category>` branches
-  three ways: `BiS` lists `derived.bis.active`/`completed`/`outdated` (BiS isn't a category in
+  four ways: `Diary`/`Quest`/`Other` (or `Extra` — both accepted, case-insensitively, and displayed
+  `Other (Extra)`) list `derived.other_tasks` grouped with headers, showing each task's `Description`
+  where the export has one; `BiS` lists `derived.bis.active`/`completed`/`outdated` (BiS isn't a category in
   `state.chunk_info.challenges` at all - see `challenges.py`), rendered through
   `BisResult.display_sorted`/`display_name` rather than as raw task names, so lines read
   `[<slot>] Obtain a granite ring (i)` with this chunk's completions floated to the top and suffixed

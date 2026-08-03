@@ -857,3 +857,87 @@ def test_search_export_json_to_stdout_replaces_the_summary(
     assert result["query"] == "bones"
     assert result["hits"][0]["name"] == "Bones"
     assert result["hits"][0]["available"] is True
+
+
+def _other_payload() -> tuple[dict[str, Any], dict[str, Any]]:
+    payload: dict[str, Any] = {
+        "chunks": {"unlocked": {}},
+        "chunkinfo": {"completedChallenges": {"Extra": {"Obtain a cape": True}}},
+    }
+    chunkinfo_data: dict[str, Any] = {
+        "challenges": {
+            "Diary": {"~|Varrock Diary#Easy|~ Task 1": {"Description": "Browse the shop"}},
+            "Quest": {"~|Cook's Assistant|~ 1": {"BaseQuest": "Cook's Assistant",
+                                                 "Description": "Talk to the cook"}},
+            "Extra": {
+                "Obtain a ~|thing|~": {"Label": "Collection Log"},
+                "Obtain a cape": {"Label": "Permanent Unlockables"},
+            },
+        }
+    }
+    return payload, chunkinfo_data
+
+
+def test_tasks_overview_lists_the_other_categories(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload, chunkinfo_data = _other_payload()
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["tasks"]) == 0
+
+    out = capsys.readouterr().out
+    assert "Diary        active 1, completed 0" in out
+    assert "Quest        active 1, completed 0" in out
+    # `Extra` is displayed as `Other`, and the completed cape is not active.
+    assert "Other        active 1, completed 1" in out
+    assert "[Varrock Diary - Easy] Browse the shop" in out
+    assert "[Collection Log] Obtain a thing" in out
+
+
+def test_tasks_other_category_groups_with_headers(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload, chunkinfo_data = _other_payload()
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["tasks", "Other"]) == 0
+
+    out = capsys.readouterr().out
+    assert "category Other (Extra)" in out
+    assert "  Collection Log\n    Obtain a thing" in out
+    assert "  Permanent Unlockables\n    Obtain a cape" in out
+
+
+def test_tasks_accepts_extra_as_an_alias_for_other(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload, chunkinfo_data = _other_payload()
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["tasks", "Extra"]) == 0
+    from_extra = capsys.readouterr().out
+
+    assert main(["tasks", "other"]) == 0
+    from_other = capsys.readouterr().out
+
+    assert from_extra == from_other
+    assert "category Other (Extra)" in from_extra
+
+
+def test_tasks_other_category_export_json_keeps_the_real_key(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload, chunkinfo_data = _other_payload()
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["tasks", "Other", "--export-json", "-"]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["category"] == "Extra"
+    assert result["label"] == "Other"
+    assert result["active_total"] == 1

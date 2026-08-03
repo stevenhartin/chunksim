@@ -122,7 +122,7 @@ is therefore still eligible, which is upstream's own rule, not a gap here.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Container, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -219,8 +219,11 @@ def _is_eligible(
     return name in manual_tasks.get(skill, {})
 
 
-def _recorded(name: str, ledger: Mapping[str, Any]) -> bool:
-    """Is `name` in a stored `{name: value}` ledger, under either spelling?
+def _recorded(name: str, ledger: Container[str]) -> bool:
+    """Is `name` in a stored ledger, under either spelling?
+
+    Takes any container so callers can pass a `{name: value}` branch straight
+    from the map payload or a pre-reduced set of names.
 
     Upstream pairs every `completedChallenges`/`backlog` lookup with a second
     one on `challenge.replaceAll('#', '/')` (worker.js:8438, 8471, ...). The

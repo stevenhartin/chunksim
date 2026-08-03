@@ -19,6 +19,7 @@ from fray_claude.active_tasks import TaskClassification, classify_tasks
 from fray_claude.bis import BisResult, compute_bis
 from fray_claude.challenges import ChallengeResult, calc_challenges
 from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.other_tasks import OtherTasks, classify_other_tasks
 from fray_claude.firebase import decode_challenge_keyed, decode_payload
 from fray_claude.sections import expand_chunk_areas, unlockable_areas, unlocked_sections
 from fray_claude.sources import SourceIndex, gather_chunks_info
@@ -68,6 +69,7 @@ class Derived:
     challenges: ChallengeResult
     bis: BisResult
     task_classification: TaskClassification
+    other_tasks: OtherTasks
 
 
 #: Upper bound on `derive`'s convergence loop (area unlocks + `taskUnlocks`
@@ -175,12 +177,20 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
         rules=state.rules,
         available_items=challenges.available_items,
     )
+    other = classify_other_tasks(
+        challenges.valid,
+        state.chunk_info,
+        completed_challenges=state.completed_challenges,
+        checked_challenges=state.checked_challenges,
+        backlog=state.backlog,
+    )
     return Derived(
         reachable_sections=reachable,
         source_index=index,
         challenges=challenges,
         bis=bis,
         task_classification=task_classification,
+        other_tasks=other,
     )
 
 

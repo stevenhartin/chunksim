@@ -32,6 +32,8 @@ from fray_claude.cache import (
 from fray_claude.challenges import strip_task_markup
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.firebase import reverse_tasks_map
+from fray_claude.other_tasks import CATEGORIES as OTHER_CATEGORIES
+from fray_claude.other_tasks import CategoryTasks, display_name, task_text
 from fray_claude.pipeline import MapState, derive, load_map_state
 from fray_claude.search import TYPES, build_world_index, search
 from fray_claude.sections import describe_sections, expand_chunk_areas
@@ -129,6 +131,59 @@ def _display_tasks(names: Iterable[str]) -> list[str]:
     `~|Zamorak|~ ...` would otherwise sort under `~`, i.e. nowhere useful.
     """
     return sorted(strip_task_markup(name) for name in names)
+
+
+def _resolve_other_category(category: str | None) -> str | None:
+    """Map a user-typed category onto one of `other_tasks.CATEGORIES`.
+
+    Both the export's `Extra` and the app's `Other` are accepted; matching is
+    case-insensitive so `fray tasks other` works like every other argument
+    here would if it were typed loosely.
+    """
+    if category is None:
+        return None
+    folded = category.casefold()
+    for name in OTHER_CATEGORIES:
+        if folded in (name.casefold(), display_name(name).casefold()):
+            return name
+    return None
+
+
+def _other_lines(tasks: CategoryTasks, chunk_info: ChunkInfo) -> list[str]:
+    """One `[Group] description` line per active task, group order preserved."""
+    challenges = chunk_info.challenges.get(tasks.category) or {}
+    return [
+        f"[{group.name}] {task_text(name, challenges.get(name) or {})}"
+        for group in tasks.groups
+        for name in group.active
+    ]
+
+
+def _print_grouped(
+    tasks: CategoryTasks, chunk_info: ChunkInfo, attr: str, limit: int | None
+) -> None:
+    """A category's groups with headers, each group's tasks indented under it.
+
+    `--limit` caps the *tasks* rather than the groups, so a large category
+    still shows where its work is concentrated; a group with nothing in the
+    requested half is skipped entirely.
+    """
+    challenges = chunk_info.challenges.get(tasks.category) or {}
+    shown = 0
+    for group in tasks.groups:
+        names: tuple[str, ...] = getattr(group, attr)
+        if not names:
+            continue
+        if limit is not None and shown >= limit:
+            remaining = sum(len(getattr(g, attr)) for g in tasks.groups) - shown
+            print(f"  ... and {remaining} more (--limit {shown + remaining} to see all)")
+            return
+        print(f"  {group.name}")
+        for name in names:
+            if limit is not None and shown >= limit:
+                break
+            print(f"    {task_text(name, challenges.get(name) or {})}")
+            shown += 1
 
 
 def _print_capped(names: list[str], limit: int | None) -> None:
@@ -264,6 +319,15 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
                 bis_line += f", outdated {len(derived.bis.outdated)}"
             print(bis_line)
             _print_capped(derived.bis.display_sorted(derived.bis.active), args.limit)
+            for category in OTHER_CATEGORIES:
+                tasks = derived.other_tasks.categories.get(category)
+                if tasks is None:
+                    continue
+                print(
+                    f"{tasks.label:<12} active {tasks.active_total}, "
+                    f"completed {tasks.completed_total}"
+                )
+                _print_capped(_other_lines(tasks, state.chunk_info), args.limit)
         if args.export_json is not None:
             _emit_json(
                 {
@@ -271,6 +335,7 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
                     **result.as_dict(),
                     "bis": derived.bis.as_dict(),
                     "task_classification": derived.task_classification.as_dict(),
+                    "other_tasks": derived.other_tasks.as_dict(),
                 },
                 args.export_json,
             )
@@ -291,6 +356,22 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
                     print(f"  {bis.display_name(name)}  ({bis.outdated[name]})")
         if args.export_json is not None:
             _emit_json({"map_id": args.map_id, "category": "BiS", **bis.as_dict()}, args.export_json)
+        return 0
+
+    other_category = _resolve_other_category(args.category)
+    if other_category is not None:
+        tasks = derived.other_tasks.categories[other_category]
+        label = tasks.label
+        heading = label if label == other_category else f"{label} ({other_category})"
+        if args.export_json != "-":
+            print(f"map      {args.map_id}")
+            print(f"category {heading}")
+            print(f"active   {tasks.active_total}")
+            _print_grouped(tasks, state.chunk_info, "active", args.limit)
+            print(f"completed {tasks.completed_total}")
+            _print_grouped(tasks, state.chunk_info, "completed", args.limit)
+        if args.export_json is not None:
+            _emit_json({"map_id": args.map_id, **tasks.as_dict()}, args.export_json)
         return 0
 
     if args.category in derived.task_classification.skills:
