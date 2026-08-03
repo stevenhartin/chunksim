@@ -109,9 +109,12 @@ except where noted as a silent, documented approximation instead:
   validity - so it stays out of this module, but it is *not* unused: it
   gates the active-task pick, and `active_tasks._never_show` recomputes it
   there (nothing sets it statically in the export).
-- Manual per-task overrides (`manualTasks`/`userTasks`) are not applied: a
-  simulated roll has no such history to replay, so this module derives
-  validity purely from chunk/rule state.
+- `userTasks` (the other manual override) is not applied; it is empty in
+  real data. `manualTasks` **is** applied - see `_inject_manual_tasks`. An
+  earlier version of this docstring claimed both were deliberately skipped
+  because a simulated roll has no such history to replay; that reasoning
+  holds for `simulate.py` but not for deriving the *current* map, where
+  ignoring `manualTasks` hid two `Extra` entries the map's own oracle lists.
 """
 
 from __future__ import annotations
@@ -992,11 +995,42 @@ def _prune_untrainable_skills(
             del new_valid[skill]
 
 
+def _inject_manual_tasks(
+    new_valid: dict[str, dict[str, int | str | bool]],
+    challenges: Mapping[str, Mapping[str, Any]],
+    manual_tasks: Mapping[str, Mapping[str, Any]],
+) -> None:
+    """Force every `manualTasks` entry valid, in place. Port of
+    worker.js:1168-1178.
+
+    A manual task is the player asserting "I can do this", recorded per
+    account, and upstream writes it straight into `valids`/`newValids` with
+    the stored value and flags the challenge `ManualValid`. Every category but
+    `BiS` participates, and only challenges the export still defines.
+
+    This module's docstring used to say manual overrides were deliberately
+    unapplied. That is right for a *simulated* roll, which has no such history
+    to replay - but wrong for deriving the current map, where ignoring them
+    hid `(Slayer) Obtain an ~|eternal gem|~` and `(Slayer) Obtain an ~|imbued
+    heart|~`, both of which the map's own `activeTasks` oracle lists.
+    """
+    for skill, entries in manual_tasks.items():
+        if skill in UNSUPPORTED_CATEGORIES or not isinstance(entries, dict):
+            continue
+        skill_challenges = challenges.get(skill)
+        if not isinstance(skill_challenges, dict):
+            continue
+        for name, value in entries.items():
+            if name in skill_challenges:
+                new_valid.setdefault(skill, {})[name] = value
+
+
 def _drop_superseded_backups(
     new_valid: dict[str, dict[str, int | str | bool]],
     prev_valid: Mapping[str, Mapping[str, Any]],
     challenges: Mapping[str, Mapping[str, Any]],
     backlog: Mapping[str, Mapping[str, Any]],
+    manual_tasks: Mapping[str, Mapping[str, Any]],
 ) -> None:
     """Delete every challenge whose `BackupParent` is satisfied, in place.
 
@@ -1033,7 +1067,12 @@ def _drop_superseded_backups(
             if not isinstance(challenge, dict):
                 continue
             parent = challenge.get("BackupParent")
+            # Upstream sets `ManualValid` on a manually-added challenge
+            # (worker.js:1178) and exempts it here; we read the manual ledger
+            # directly rather than mutating the shared export.
             if not isinstance(parent, str) or challenge.get("ManualValid"):
+                continue
+            if name in (manual_tasks.get(skill) or {}):
                 continue
             if (
                 parent in names
@@ -1205,7 +1244,8 @@ def calc_challenges(
                     continue
                 if result is not None:
                     new_valid.setdefault(skill, {})[name] = result
-        _drop_superseded_backups(new_valid, valid, challenges, backlog)
+        _inject_manual_tasks(new_valid, challenges, manual_tasks)
+        _drop_superseded_backups(new_valid, valid, challenges, backlog, manual_tasks)
         if new_valid == valid:
             break
         valid = new_valid

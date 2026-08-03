@@ -341,9 +341,8 @@ _REAL_MAP = os.environ.get("FRAY_MAP_CACHE")
 #: All ten are item availability, not this module: `Mahogany logs` blocks the
 #: Varrock task; Artio's 1/618-1/2800 boss drops are excluded by the
 #: `Rare Drop Amount: "0"` threshold that the oracle evidently clears somehow;
-#: `eternal gem` and `imbued heart` are `manualTasks.Extra` overrides
-#: `challenges.py` does not yet apply; and the frozen tear / dark totem /
-#: ancient shard / double ammo mould group we include and the oracle does not.
+#: and the frozen tear / dark totem / ancient shard / double ammo mould group
+#: we include and the oracle does not.
 _KNOWN_ORACLE_DELTA = {
     "Diary": frozenset(
         {
@@ -361,8 +360,6 @@ _KNOWN_ORACLE_DELTA = {
             "(Miscellaneous) Obtain a ~|dark totem top|~",
             "(Skotizo) Obtain an ~|ancient shard|~",
             "(Slayer) Obtain a ~|frozen tear|~",
-            "(Slayer) Obtain an ~|eternal gem|~",
-            "(Slayer) Obtain an ~|imbued heart|~",
         }
     ),
 }

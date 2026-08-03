@@ -174,6 +174,11 @@ One responsibility per module, so the planned simulation work has a pure layer t
   and with that rule on the dependency is dropped so an Elite task shows without the Hard diary being
   finished (the dependent must carry no `Reward` itself, or the tiers collapse into each other).
   This was the whole of the Diary gap — outstanding Diary tasks 1 -> 5 against the map's own oracle.
+  **`manualTasks` is applied** (`_inject_manual_tasks`, worker.js:1168): every entry the export still
+  defines is forced valid with its stored value, for every category but `BiS`, and is exempt from the
+  `BackupParent` sweep the way upstream's `ManualValid` flag makes it. This module's docstring used to
+  say manual overrides were deliberately skipped — true for a *simulated* roll, which has no such
+  history to replay, but wrong for the current map, where it hid two `Extra` entries the oracle lists.
   `BackupParent` is honoured (worker.js:1679): a challenge naming one is deleted once
   that parent is valid *or backlogged*, unless it carries `ManualValid`. All 17 real uses are
   `Hunter`'s barehanded catches — `Barehanded catch a wandering lucky impling` (Level 99) exists for

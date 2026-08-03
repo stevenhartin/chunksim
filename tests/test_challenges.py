@@ -1037,3 +1037,66 @@ def test_the_waiver_never_applies_to_a_tier_completion_itself() -> None:
     result = calc_challenges({}, {}, _EMPTY, info, rules={"Show Diary Tasks Any": True})
 
     assert result.valid == {}
+
+
+def test_a_manual_task_is_valid_regardless_of_its_requirements() -> None:
+    """`manualTasks` is the player asserting "I can do this", recorded per
+    account; upstream writes it straight into valids (worker.js:1168). Not
+    applying it hid two `Extra` entries the map's own oracle lists.
+    """
+    info = _chunk_info(
+        challenges={"Extra": {"Obtain an ~|eternal gem|~": {"Items": ["Eternal gem"]}}}
+    )
+
+    without = calc_challenges({}, {}, _EMPTY, info, rules={})
+    with_manual = calc_challenges(
+        {}, {}, _EMPTY, info, rules={},
+        manual_tasks={"Extra": {"Obtain an ~|eternal gem|~": True}},
+    )
+
+    assert without.valid == {}
+    assert with_manual.valid == {"Extra": {"Obtain an ~|eternal gem|~": True}}
+
+
+def test_a_manual_task_the_export_no_longer_defines_is_ignored() -> None:
+    info = _chunk_info(challenges={"Extra": {}})
+
+    result = calc_challenges(
+        {}, {}, _EMPTY, info, rules={}, manual_tasks={"Extra": {"Some retired task": True}}
+    )
+
+    assert result.valid == {}
+
+
+def test_a_manual_task_is_never_injected_for_bis() -> None:
+    """`BiS` has no static definitions at all - `bis.py` computes it - so
+    upstream skips the category here and so must this."""
+    info = _chunk_info(challenges={"Extra": {"Obtain a thing": {}}})
+
+    result = calc_challenges(
+        {}, {}, _EMPTY, info, rules={}, manual_tasks={"BiS": {"Obtain a whip": True}}
+    )
+
+    assert "BiS" not in result.valid
+
+
+def test_a_manual_task_exempts_a_backup_from_being_dropped() -> None:
+    info = _chunk_info(
+        challenges={
+            "Hunter": {
+                "Catch a butterfly": {"Level": 1, "Primary": True},
+                "Catch a wandering lucky impling": {"Level": 89},
+                "Barehanded catch a wandering lucky impling": {
+                    "Level": 99,
+                    "BackupParent": "Catch a wandering lucky impling",
+                },
+            }
+        }
+    )
+
+    result = calc_challenges(
+        {}, {}, _EMPTY, info, rules={},
+        manual_tasks={"Hunter": {"Barehanded catch a wandering lucky impling": True}},
+    )
+
+    assert "Barehanded catch a wandering lucky impling" in result.valid["Hunter"]
