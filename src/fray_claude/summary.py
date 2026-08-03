@@ -5,6 +5,7 @@ Deliberately free of I/O so the later simulation work can reuse these directly.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -24,7 +25,7 @@ class Summary:
         return sum(self.active_tasks.values())
 
 
-def _mapping(payload: dict[str, Any], *keys: str) -> dict[str, Any]:
+def _mapping(payload: Mapping[str, Any], *keys: str) -> dict[str, Any]:
     """Walk nested keys, yielding `{}` if any level is absent or not an object.
 
     Firebase omits empty containers entirely rather than storing them, so every

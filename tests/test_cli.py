@@ -291,3 +291,112 @@ def test_tasks_export_json_to_stdout_replaces_the_summary(
     result = json.loads(capsys.readouterr().out)
     assert result["valid"]["Nonskill"] == {"Use bones": True}
     assert result["unsupported"] == ["Nonskill/Wield a whip*"]
+
+
+def test_unlock_reports_new_tasks_and_sections(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {
+        "chunks": {"101": {"Monster": {"Goblin": True}}},
+        "sections": {"101": {"0": ["100"]}},
+        "drops": {"Goblin": {"Bones": {"1": "Always"}}},
+        "challenges": {"Nonskill": {"Use bones": {"Items": ["Bones"]}}},
+    }
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["unlock", "--chunk", "101"]) == 0
+
+    out = capsys.readouterr().out
+    assert "chunk        101" in out
+    assert "new tasks    1" in out
+    assert "Nonskill     1" in out
+
+
+def test_unlock_without_a_cached_map_exits_one(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["unlock", "--chunk", "101"]) == 1
+    assert "no cached data for map 'fray'" in capsys.readouterr().err
+
+
+def test_unlock_export_json_to_stdout_replaces_the_summary(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {
+        "chunks": {"101": {"Monster": {"Goblin": True}}},
+        "sections": {"101": {"0": ["100"]}},
+        "drops": {"Goblin": {"Bones": {"1": "Always"}}},
+        "challenges": {"Nonskill": {"Use bones": {"Items": ["Bones"]}}},
+    }
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["unlock", "--chunk", "101", "--export-json", "-"]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["chunk_id"] == "101"
+    assert result["new_tasks"] == {"Nonskill": {"Use bones": True}}
+
+
+def test_simulate_reports_each_roll(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {"sections": {"101": {"0": ["100"]}}}
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["simulate", "--rolls", "5", "--seed", "1"]) == 0
+
+    out = capsys.readouterr().out
+    assert "rolls        1 of 5 requested (seed 1)" in out
+    assert "1 101" in out
+
+
+def test_simulate_without_a_cached_map_exits_one(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["simulate", "--rolls", "1"]) == 1
+    assert "no cached data for map 'fray'" in capsys.readouterr().err
+
+
+def test_simulate_is_deterministic_given_the_same_seed(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {
+        "sections": {
+            "101": {"0": ["100"]},
+            "102": {"0": ["100"]},
+            "103": {"0": ["100"]},
+        }
+    }
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    main(["simulate", "--rolls", "3", "--seed", "9", "--export-json", "-"])
+    first = json.loads(capsys.readouterr().out)
+
+    main(["simulate", "--rolls", "3", "--seed", "9", "--export-json", "-"])
+    second = json.loads(capsys.readouterr().out)
+
+    assert first["rolls"] == second["rolls"]
+
+
+def test_simulate_export_json_to_stdout_replaces_the_summary(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {"sections": {"101": {"0": ["100"]}}}
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["simulate", "--rolls", "1", "--seed", "1", "--export-json", "-"]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["seed"] == 1
+    assert result["rolls_requested"] == 1
+    assert [r["chunk_id"] for r in result["rolls"]] == ["101"]

@@ -1,0 +1,91 @@
+"""What a single chunk unlock adds, attributed to the unlock that caused it.
+
+`ChallengeResult.valid` (`challenges.py`) only ever grows as chunks are
+added: every requirement this project checks is a *presence* check (an
+item/object/monster/npc/chunk/prerequisite-task existing), never an
+absence check, so a larger unlocked set can only add sources, never remove
+them. That makes `derive(unlocked ∪ {chunk_id}).valid` minus
+`derive(unlocked).valid` a clean partition - each task is attributed to
+exactly the one unlock that first made it valid, and a later unlock can
+never retroactively change an earlier one's recorded delta.
+
+The *panel* (`calcCurrentChallenges2`, not ported here) would be the wrong
+thing to diff instead: it shows only the highest challenge per skill and
+re-picks BiS as better items appear, so a later chunk genuinely does change
+what an earlier one would display - unsuitable for attribution, which is
+exactly why this project's simulation ledger (`simulate.py`) is built on
+`calc_challenges`'s `valid`, not the panel.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Any
+
+from fray_claude.pipeline import Derived, MapState, derive
+
+
+@dataclass(frozen=True)
+class UnlockDelta:
+    """What unlocking `chunk_id` adds, on top of an already-derived `before`."""
+
+    chunk_id: str
+    new_sections: dict[str, dict[str, bool]]
+    new_tasks: dict[str, dict[str, int | str | bool]]
+    new_unsupported: frozenset[str]
+
+    @property
+    def task_count(self) -> int:
+        return sum(len(names) for names in self.new_tasks.values())
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "chunk_id": self.chunk_id,
+            "new_sections": self.new_sections,
+            "new_tasks": self.new_tasks,
+            "new_unsupported": sorted(self.new_unsupported),
+        }
+
+
+def diff_reachable_sections(
+    before: Mapping[str, Mapping[str, bool]], after: Mapping[str, Mapping[str, bool]]
+) -> dict[str, dict[str, bool]]:
+    """Sections present (and reachable) in `after` but not `before`."""
+    diff: dict[str, dict[str, bool]] = {}
+    for chunk, sections in after.items():
+        before_sections = before.get(chunk, {})
+        newly = {sec: True for sec, ok in sections.items() if ok and not before_sections.get(sec)}
+        if newly:
+            diff[chunk] = newly
+    return diff
+
+
+def diff_valid_tasks(
+    before: Mapping[str, Mapping[str, Any]], after: Mapping[str, Mapping[str, Any]]
+) -> dict[str, dict[str, int | str | bool]]:
+    """Tasks valid in `after` but not `before`."""
+    diff: dict[str, dict[str, int | str | bool]] = {}
+    for skill, names in after.items():
+        before_names = before.get(skill, {})
+        newly = {name: value for name, value in names.items() if name not in before_names}
+        if newly:
+            diff[skill] = newly
+    return diff
+
+
+def delta_from(before: Derived, after: Derived, chunk_id: str) -> UnlockDelta:
+    """Build the `UnlockDelta` between two already-derived pipeline runs."""
+    return UnlockDelta(
+        chunk_id=chunk_id,
+        new_sections=diff_reachable_sections(before.reachable_sections, after.reachable_sections),
+        new_tasks=diff_valid_tasks(before.challenges.valid, after.challenges.valid),
+        new_unsupported=frozenset(after.challenges.unsupported - before.challenges.unsupported),
+    )
+
+
+def tasks_added_by(state: MapState, unlocked: Mapping[str, bool], chunk_id: str) -> UnlockDelta:
+    """What unlocking `chunk_id` would add on top of `unlocked`, from scratch."""
+    before = derive(state, unlocked)
+    after = derive(state, {**unlocked, chunk_id: True})
+    return delta_from(before, after, chunk_id)

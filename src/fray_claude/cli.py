@@ -27,12 +27,12 @@ from fray_claude.cache import (
     write_blob,
     write_cache,
 )
-from fray_claude.challenges import UNSUPPORTED_CATEGORIES, calc_challenges
+from fray_claude.challenges import UNSUPPORTED_CATEGORIES
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.firebase import decode_payload
-from fray_claude.sections import expand_chunk_areas, unlocked_sections
-from fray_claude.sources import gather_chunks_info
-from fray_claude.summary import _mapping, summarise
+from fray_claude.pipeline import MapState, derive, load_map_state
+from fray_claude.simulate import simulate_rolls
+from fray_claude.summary import summarise
+from fray_claude.unlock import tasks_added_by
 
 DEFAULT_MAP = "fray"
 
@@ -99,77 +99,40 @@ def _cmd_chunkinfo(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_sections(args: argparse.Namespace) -> int:
+def _load_state(args: argparse.Namespace) -> tuple[MapState, dict[str, bool]]:
     envelope = read_cache(args.map_id)
-    payload = envelope["data"]
     info = ChunkInfo(read_chunkinfo(override=args.chunkinfo))
+    return load_map_state(envelope["data"], info)
 
-    # Neither branch used here (`chunks.unlocked`, `chunkinfo.manualSections`)
-    # references `t_N` task ids, so decoding with no tasks map is safe - see
-    # `firebase.decode_payload`.
-    unlocked = decode_payload(_mapping(_mapping(payload, "chunks"), "unlocked"))
-    manual_sections = decode_payload(_mapping(_mapping(payload, "chunkinfo"), "manualSections"))
-    settings = _mapping(payload, "settings")
 
-    reachable = unlocked_sections(
-        unlocked,
-        info,
-        manual_sections=manual_sections,
-        opt_out_sections=settings.get("optOutSections") is True,
-        opt_out_sections_water=settings.get("optOutSectionsWater") is True,
-    )
-    total_sections = sum(len(sections) for sections in reachable.values())
+def _cmd_sections(args: argparse.Namespace) -> int:
+    state, unlocked = _load_state(args)
+    result = derive(state, unlocked)
+    total_sections = sum(len(sections) for sections in result.reachable_sections.values())
 
     # `--export-json -` replaces the text summary on stdout, so a pipe sees
     # only JSON; a file destination leaves stdout for the summary as usual.
     if args.export_json != "-":
         print(f"map                {args.map_id}")
         print(f"unlocked chunks    {len(unlocked)}")
-        print(f"sectioned chunks   {len(reachable)}")
+        print(f"sectioned chunks   {len(result.reachable_sections)}")
         print(f"reachable sections {total_sections}")
 
     if args.export_json is not None:
         _emit_json(
-            {"map_id": args.map_id, "unlocked_chunks": len(unlocked), "sections": reachable},
+            {
+                "map_id": args.map_id,
+                "unlocked_chunks": len(unlocked),
+                "sections": result.reachable_sections,
+            },
             args.export_json,
         )
     return 0
 
 
 def _cmd_sources(args: argparse.Namespace) -> int:
-    envelope = read_cache(args.map_id)
-    payload = envelope["data"]
-    info = ChunkInfo(read_chunkinfo(override=args.chunkinfo))
-    chunkinfo_branch = _mapping(payload, "chunkinfo")
-
-    # None of these branches reference `t_N` task ids (they hold chunk,
-    # item, monster, and rule names), so decoding with no tasks map is safe
-    # - see `firebase.decode_payload`.
-    unlocked = decode_payload(_mapping(_mapping(payload, "chunks"), "unlocked"))
-    manual_sections = decode_payload(_mapping(chunkinfo_branch, "manualSections"))
-    manual_monsters = decode_payload(_mapping(chunkinfo_branch, "manualMonsters"))
-    manual_equipment = decode_payload(_mapping(chunkinfo_branch, "manualEquipment"))
-    backlogged_sources = decode_payload(_mapping(chunkinfo_branch, "backloggedSources"))
-    rules = decode_payload(_mapping(payload, "rules"))
-    settings = _mapping(payload, "settings")
-
-    reachable = unlocked_sections(
-        unlocked,
-        info,
-        manual_sections=manual_sections,
-        opt_out_sections=settings.get("optOutSections") is True,
-        opt_out_sections_water=settings.get("optOutSectionsWater") is True,
-    )
-    expanded = expand_chunk_areas(unlocked)
-    index = gather_chunks_info(
-        expanded,
-        reachable,
-        info,
-        rules=rules,
-        backlogged_sources=backlogged_sources,
-        manual_monsters=manual_monsters,
-        manual_equipment=manual_equipment,
-    )
+    state, unlocked = _load_state(args)
+    index = derive(state, unlocked).source_index
 
     if args.export_json != "-":
         print(f"map        {args.map_id}")
@@ -185,40 +148,8 @@ def _cmd_sources(args: argparse.Namespace) -> int:
 
 
 def _cmd_tasks(args: argparse.Namespace) -> int:
-    envelope = read_cache(args.map_id)
-    payload = envelope["data"]
-    info = ChunkInfo(read_chunkinfo(override=args.chunkinfo))
-    chunkinfo_branch = _mapping(payload, "chunkinfo")
-
-    # None of these branches reference `t_N` task ids, so decoding with no
-    # tasks map is safe - see `firebase.decode_payload`.
-    unlocked = decode_payload(_mapping(_mapping(payload, "chunks"), "unlocked"))
-    manual_sections = decode_payload(_mapping(chunkinfo_branch, "manualSections"))
-    manual_monsters = decode_payload(_mapping(chunkinfo_branch, "manualMonsters"))
-    manual_equipment = decode_payload(_mapping(chunkinfo_branch, "manualEquipment"))
-    backlogged_sources = decode_payload(_mapping(chunkinfo_branch, "backloggedSources"))
-    max_skill = decode_payload(_mapping(chunkinfo_branch, "maxSkill"))
-    rules = decode_payload(_mapping(payload, "rules"))
-    settings = _mapping(payload, "settings")
-
-    reachable = unlocked_sections(
-        unlocked,
-        info,
-        manual_sections=manual_sections,
-        opt_out_sections=settings.get("optOutSections") is True,
-        opt_out_sections_water=settings.get("optOutSectionsWater") is True,
-    )
-    expanded = expand_chunk_areas(unlocked)
-    index = gather_chunks_info(
-        expanded,
-        reachable,
-        info,
-        rules=rules,
-        backlogged_sources=backlogged_sources,
-        manual_monsters=manual_monsters,
-        manual_equipment=manual_equipment,
-    )
-    result = calc_challenges(expanded, reachable, index, info, rules=rules, max_skill=max_skill)
+    state, unlocked = _load_state(args)
+    result = derive(state, unlocked).challenges
     total_valid = sum(len(names) for names in result.valid.values())
 
     if args.export_json != "-":
@@ -234,6 +165,53 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
 
     if args.export_json is not None:
         _emit_json({"map_id": args.map_id, **result.as_dict()}, args.export_json)
+    return 0
+
+
+def _cmd_unlock(args: argparse.Namespace) -> int:
+    state, unlocked = _load_state(args)
+    delta = tasks_added_by(state, unlocked, args.chunk_id)
+
+    if args.export_json != "-":
+        print(f"map          {args.map_id}")
+        print(f"chunk        {delta.chunk_id}")
+        print(f"new tasks    {delta.task_count}")
+        for skill, names in sorted(delta.new_tasks.items()):
+            print(f"  {skill:<12} {len(names)}")
+        print(f"new sections {sum(len(s) for s in delta.new_sections.values())}")
+        if delta.new_unsupported:
+            print(f"new unsupported {len(delta.new_unsupported)} (see CLAUDE.md)")
+
+    if args.export_json is not None:
+        _emit_json({"map_id": args.map_id, **delta.as_dict()}, args.export_json)
+    return 0
+
+
+def _cmd_simulate(args: argparse.Namespace) -> int:
+    state, unlocked = _load_state(args)
+    ledger = simulate_rolls(state, unlocked, rolls=args.rolls, seed=args.seed)
+    total_tasks = sum(len(names) for record in ledger for names in record.new_tasks.values())
+
+    if args.export_json != "-":
+        seed_note = f" (seed {args.seed})" if args.seed is not None else ""
+        print(f"map          {args.map_id}")
+        print(f"rolls        {len(ledger)} of {args.rolls} requested{seed_note}")
+        for record in ledger:
+            task_count = sum(len(names) for names in record.new_tasks.values())
+            section_count = sum(len(s) for s in record.new_sections.values())
+            print(f"  {record.order:>3} {record.chunk_id:<8} tasks+{task_count} sections+{section_count}")
+        print(f"total new tasks {total_tasks}")
+
+    if args.export_json is not None:
+        _emit_json(
+            {
+                "map_id": args.map_id,
+                "seed": args.seed,
+                "rolls_requested": args.rolls,
+                "rolls": [record.as_dict() for record in ledger],
+            },
+            args.export_json,
+        )
     return 0
 
 
@@ -331,6 +309,53 @@ def build_parser() -> argparse.ArgumentParser:
         help="write the full result as JSON to PATH, or to stdout if PATH is '-'",
     )
     tasks.set_defaults(func=_cmd_tasks)
+
+    unlock = subcommands.add_parser(
+        "unlock", help="tasks/sections a candidate chunk would add, on top of the cached map"
+    )
+    unlock.add_argument("--chunk", dest="chunk_id", required=True, help="candidate chunk id")
+    unlock.add_argument(
+        "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"
+    )
+    unlock.add_argument(
+        "--chunkinfo",
+        type=Path,
+        default=None,
+        help="path to a chunkinfo export, overriding the cache and FRAY_CHUNKINFO",
+    )
+    unlock.add_argument(
+        "--export-json",
+        metavar="PATH",
+        default=None,
+        help="write the full result as JSON to PATH, or to stdout if PATH is '-'",
+    )
+    unlock.set_defaults(func=_cmd_unlock)
+
+    simulate = subcommands.add_parser(
+        "simulate", help="simulate N chunk rolls from the cached map and accumulate their tasks"
+    )
+    simulate.add_argument(
+        "--rolls", type=int, required=True, help="number of chunks to roll"
+    )
+    simulate.add_argument(
+        "--seed", type=int, default=None, help="RNG seed, for a reproducible run"
+    )
+    simulate.add_argument(
+        "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"
+    )
+    simulate.add_argument(
+        "--chunkinfo",
+        type=Path,
+        default=None,
+        help="path to a chunkinfo export, overriding the cache and FRAY_CHUNKINFO",
+    )
+    simulate.add_argument(
+        "--export-json",
+        metavar="PATH",
+        default=None,
+        help="write the full result as JSON to PATH, or to stdout if PATH is '-'",
+    )
+    simulate.set_defaults(func=_cmd_simulate)
 
     return parser
 

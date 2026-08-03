@@ -7,8 +7,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 fray-claude is a CLI that reads state from the source-chunk web app, caches it locally, and runs
 offline operations on that cache. source-chunk is upstream and read-only from here.
 
-Planned: simulate chunk rolls, render a world-map image for a simulated state, generate heatmaps of
-likely rolls over N attempts, estimate time to complete all goals.
+Landed: derive reachable sections/available sources/valid tasks from a cached map, per-chunk unlock
+deltas, and multi-roll simulation (`fray unlock`/`fray simulate`) — see `challenges.py`'s docstring
+for what's deliberately unsupported before trusting the numbers.
+Planned: render a world-map image for a simulated state, generate heatmaps of likely rolls over N
+attempts, estimate time to complete all goals (needs a task-duration source; the export has none).
 
 ## source-chunk
 
@@ -66,7 +69,7 @@ One responsibility per module, so the planned simulation work has a pure layer t
   plus the one live part of `getAllChunkAreas` — its automatic area-detection branch is upstream dead
   code (a filter predicate with no `return`, always falsy), so only the `manualAreas` override is
   reproduced. `sectionsLimits` deliberately isn't used here: it gates *rollable-neighbour* eligibility,
-  not the connectivity of chunks already unlocked, so it belongs with the future roll simulation.
+  not the connectivity of chunks already unlocked, so it belongs with `simulate.py` instead.
 - `rates.py` — pure; OSRS drop-rate string parsing/formatting (`parse_ratio`, `find_fraction`,
   `looks_non_numeric`). Centralises what upstream re-parses inline at every use site; `find_fraction`'s
   output string is embedded verbatim in synthesized task names (stage 3), so its half-away-from-zero
@@ -91,26 +94,51 @@ One responsibility per module, so the planned simulation work has a pure layer t
   evaluated", not "nothing valid". Port of the core of `calcChallenges`/`calcChallengesWork`
   (~1,500 dense lines) for the other 28 — **deliberately partial, read the module docstring before
   trusting output**. In short: `Chunks`/`Objects`/`Monsters`/`NPCs`/`Mix` requirements (incl. `[+]`
-  families) are exact;
-  `Items` requirements are basic presence only — a `[+]` family or `*` secondary-marker item is not
-  evaluable, and since those are the overwhelming majority of real `Items` entries, `calc_challenges`
-  catches that failure *per challenge* rather than aborting the whole computation, collecting affected
-  `skill/name` pairs in `ChallengeResult.unsupported` so the gap stays visible rather than reading as
-  "checked and invalid". `processingSkill` categories (Runecraft/Magic/Herblore/Cooking/Firemaking/
-  Fletching/Smithing/Crafting/Construction) get plain presence checking too, not upstream's "Highest
-  Level" grouping — a real, silent accuracy gap for those 9 categories, not a raise, documented in the
-  module docstring. The output-feedback fixed point (`_seed_items_with_outputs`) is this module's own
-  design, not a located port — upstream's exact mechanism for it wasn't found despite an extensive
-  search of `calcChallengesWork`.
+  families) are exact. `Items` requirements are basic presence only — a `[+]` family or `*`
+  secondary-marker item is not evaluable, and since those are the overwhelming majority of real
+  `Items` entries, `calc_challenges` catches that failure *per challenge* rather than aborting the
+  whole computation, collecting affected `skill/name` pairs in `ChallengeResult.unsupported` so the
+  gap stays visible rather than reading as "checked and invalid". `processingSkill` categories
+  (Runecraft/Magic/Herblore/Cooking/Firemaking/Fletching/Smithing/Crafting/Construction) get plain
+  presence checking too, not upstream's "Highest Level" grouping — a real, silent accuracy gap for
+  those 9 categories, not a raise, documented in the module docstring. The output-feedback fixed point
+  (`_seed_items_with_outputs`) is this module's own design, not a located port — upstream's exact
+  mechanism for it wasn't found despite an extensive search of `calcChallengesWork`.
+- `pipeline.py` — pure; bundles the per-map inputs (`MapState`) and runs `unlocked_sections` ->
+  `gather_chunks_info` -> `calc_challenges` for a given unlocked-chunk-id set (`derive`).
+  `load_map_state` decodes a raw cached-map payload into a `MapState` once; `unlock.py`/`simulate.py`
+  (and `cli.py`'s `sections`/`sources`/`tasks` subcommands) all call `derive` rather than re-deriving
+  the same pipeline themselves.
+- `unlock.py` — pure; what a single candidate chunk unlock adds (`tasks_added_by` -> `UnlockDelta`),
+  by running `pipeline.derive` for the unlocked set and for that set plus the candidate, then diffing.
+  This is the module the project's attribution rule lives in: because `ChallengeResult.valid` only
+  ever grows (every requirement `challenges.py` checks is a presence check, never an absence check),
+  the diff partitions cleanly — each task belongs to exactly the one unlock that first made it valid,
+  and a later unlock can never retroactively change an earlier delta. Diffing the *panel*
+  (`calcCurrentChallenges2`, not ported) instead would be wrong: it shows only the highest challenge
+  per skill and re-picks BiS as better items appear, so it is not monotonic.
+- `simulate.py` — pure; simulates chunk rolls and accumulates the tasks/sections they unlock
+  (`simulate_rolls` -> `list[UnlockRecord]`), each record built via `unlock.delta_from` and never
+  revisited by a later roll. Two roll mechanisms, ported from index.js: a "random start" bootstrap
+  pool (`walkableChunks`/`walkableChunksF2P` filtered by `settings.rollingChunksOptions`) used only
+  when nothing is unlocked yet, and an ongoing neighbour pool (port of `selectAllNeighborsCanvas`) —
+  every chunk orthogonally grid-adjacent (`±1`, `±256`; the grid is 256 chunks tall) to an unlocked
+  chunk, expanded through `chunkinfo.json`'s `sections` connectivity graph and gated by
+  `sectionsLimits`' task requirements (this is `sectionsLimits`' actual purpose — see `sections.py`).
+  A seeded `random.Random` picks uniformly from whichever pool applies, over a *sorted* candidate list
+  so the same seed reproduces the same run regardless of set/dict iteration order. Not modelled: manual
+  chunk selection/blacklisting, `roll2`/`roll5` bonus rerolls, and the `chunkNeighboursOptions` UI
+  conveniences — all user-interaction features orthogonal to a pure roll simulation.
 - `summary.py` — pure, I/O-free reductions over a raw payload; extend this layer, not `cli.py`.
   Firebase omits empty containers rather than storing them, so every lookup must tolerate a missing
   branch — `_mapping` exists for that; reuse it (`chunkinfo.py` does too, over the export instead of a
   map payload).
-- `cli.py` — argparse subcommands only. `main()` funnels `FetchError` and `CacheMissError` into a
-  stderr message and exit 1; a new subcommand keeps its logic in a pure module. `--export-json PATH`
-  (where supported) writes a subcommand's full result as JSON to `PATH`, or to stdout if `PATH` is
-  `-` — in which case it replaces the human-readable summary on stdout rather than interleaving with
-  it, so piping stays clean.
+- `cli.py` — argparse subcommands only. `main()` funnels `FetchError`, `CacheMissError`, and
+  `NotImplementedError` into a stderr message and exit 1; a new subcommand keeps its logic in a pure
+  module (`_load_state` -> `pipeline.load_map_state` handles the common cache-read + decode step).
+  `--export-json PATH` (where supported) writes a subcommand's full result as JSON to `PATH`, or to
+  stdout if `PATH` is `-` — in which case it replaces the human-readable summary on stdout rather than
+  interleaving with it, so piping stays clean.
 
 ## Toolchain
 
@@ -126,6 +154,8 @@ fray chunkinfo              # GET upstream's chunk/challenge reference data -> c
 fray sections [--map ID]    # reachable sections for the cached map's unlocked chunks
 fray sources  [--map ID]    # items/objects/monsters/npcs/shops the cached map's unlocked chunks give
 fray tasks    [--map ID]    # which challenges are currently valid (partial - see challenges.py)
+fray unlock   --chunk ID    # tasks/sections one candidate chunk would add on top of the cached map
+fray simulate --rolls N [--seed S]   # simulate N chunk rolls and accumulate their tasks/sections
 python -m fray_claude ...   # same CLI without the console script
 mypy                        # strict, over src/ and tests/; run from the repo root
 pytest                      # whole suite
