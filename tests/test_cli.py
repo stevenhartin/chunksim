@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 
 from fray_claude.api import DEFAULT_TIMEOUT, FetchError
+from fray_claude.cache import write_blob
 from fray_claude.cli import _format_age, build_parser, main
 
 
@@ -1027,3 +1028,197 @@ def test_neighbours_limit_defaults_to_showing_everything() -> None:
     args = build_parser().parse_args(["neighbours"])
 
     assert args.limit is None
+
+
+# --- simulated map caches ----------------------------------------------------
+
+
+def _cache_map_and_chunkinfo_blob(
+    monkeypatch: pytest.MonkeyPatch, payload: dict[str, Any], chunkinfo_data: dict[str, Any]
+) -> None:
+    """Like `_cache_map_and_chunkinfo`, but writes the chunkinfo to the cache
+    rather than monkeypatching the reader - `batch.run_one` resolves its own
+    copy, which is the whole point of the worker design.
+    """
+    monkeypatch.delenv("FRAY_CHUNKINFO", raising=False)
+    monkeypatch.setattr(
+        "fray_claude.cli.fetch_map", lambda map_id, timeout=DEFAULT_TIMEOUT: payload
+    )
+    main(["fetch"])
+    write_blob("chunkinfo", chunkinfo_data, "test")
+
+
+def _simulatable(monkeypatch: pytest.MonkeyPatch) -> None:
+    _cache_map_and_chunkinfo_blob(
+        monkeypatch,
+        {"chunks": {"unlocked": {"100": "100"}}},
+        {"sections": {"101": {"0": ["100"]}, "102": {"0": ["101"]}}},
+    )
+
+
+def test_simulate_cache_map_writes_a_readable_map(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _simulatable(monkeypatch)
+    capsys.readouterr()
+
+    assert main(["simulate", "--rolls", "2", "--seed", "1", "--cache-map", "Demo"]) == 0
+
+    out = capsys.readouterr().out
+    assert "batch        Demo" in out
+    assert "fray tasks --map Demo" in out
+    assert (project / "cache" / "sims" / "Demo" / "run-001" / "map.json").is_file()
+
+    # The saved state is a map like any other.
+    assert main(["sections", "--map", "Demo"]) == 0
+    assert "unlocked chunks    3" in capsys.readouterr().out
+
+
+def test_simulate_cache_map_suffixes_a_taken_name(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _simulatable(monkeypatch)
+    main(["simulate", "--rolls", "1", "--seed", "1", "--cache-map", "Demo"])
+    capsys.readouterr()
+
+    assert main(["simulate", "--rolls", "1", "--seed", "2", "--cache-map", "Demo"]) == 0
+
+    out = capsys.readouterr().out
+    assert "was taken; saved as 'Demo-2'" in out
+    assert (project / "cache" / "sims" / "Demo-2").is_dir()
+
+
+def test_simulate_runs_need_a_cache_to_go_into(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _simulatable(monkeypatch)
+    capsys.readouterr()
+
+    assert main(["simulate", "--rolls", "1", "--runs", "3"]) == 1
+    assert "--runs needs --cache-map" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("flag", ["--rolls", "--runs", "--jobs"])
+def test_simulate_rejects_counts_below_one(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], flag: str
+) -> None:
+    _simulatable(monkeypatch)
+    capsys.readouterr()
+    argv = ["simulate", "--rolls", "1", flag, "0"]
+
+    assert main(argv) == 1
+    assert f"{flag} must be at least 1" in capsys.readouterr().err
+
+
+def test_simulate_export_json_describes_the_whole_batch(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _simulatable(monkeypatch)
+    capsys.readouterr()
+
+    assert (
+        main(
+            ["simulate", "--rolls", "1", "--runs", "2", "--seed", "3", "--cache-map", "D",
+             "--export-json", "-"]
+        )
+        == 0
+    )
+
+    result = json.loads(capsys.readouterr().out)
+    assert [run["run"] for run in result["runs"]] == ["run-001", "run-002"]
+    assert result["seed"] == 3
+
+
+def test_maps_lists_fetched_and_simulated_maps(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _simulatable(monkeypatch)
+    main(["simulate", "--rolls", "1", "--seed", "1", "--cache-map", "Demo"])
+    capsys.readouterr()
+
+    assert main(["maps"]) == 0
+
+    out = capsys.readouterr().out
+    assert "fray" in out and "fetched" in out
+    assert "Demo" in out and "simulated" in out
+
+
+def test_maps_can_expand_runs_and_export_json(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _simulatable(monkeypatch)
+    main(["simulate", "--rolls", "1", "--runs", "2", "--seed", "1", "--cache-map", "Demo"])
+    capsys.readouterr()
+
+    assert main(["maps", "list", "--runs", "--export-json", "-"]) == 0
+
+    listed = json.loads(capsys.readouterr().out)["maps"]
+    assert [entry["map_id"] for entry in listed] == [
+        "fray",
+        "Demo",
+        "Demo/run-001",
+        "Demo/run-002",
+    ]
+
+
+def test_maps_rm_removes_a_simulated_batch(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _simulatable(monkeypatch)
+    main(["simulate", "--rolls", "1", "--seed", "1", "--cache-map", "Demo"])
+    capsys.readouterr()
+
+    assert main(["maps", "rm", "Demo"]) == 0
+    assert not (project / "cache" / "sims" / "Demo").exists()
+
+
+def test_maps_rm_guards_a_fetched_map(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _simulatable(monkeypatch)
+    capsys.readouterr()
+
+    assert main(["maps", "rm", "fray"]) == 1
+    assert "--include-fetched" in capsys.readouterr().err
+    assert (project / "cache" / "fray.json").is_file()
+
+    assert main(["maps", "rm", "fray", "--include-fetched"]) == 0
+    assert not (project / "cache" / "fray.json").exists()
+
+
+def test_maps_clean_removes_only_simulations(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _simulatable(monkeypatch)
+    main(["simulate", "--rolls", "1", "--seed", "1", "--cache-map", "Demo"])
+    main(["simulate", "--rolls", "1", "--seed", "2", "--cache-map", "Other"])
+    capsys.readouterr()
+
+    assert main(["maps", "clean"]) == 0
+
+    out = capsys.readouterr().out
+    assert "removed 2 cached maps" in out
+    assert (project / "cache" / "fray.json").is_file()
+    assert (project / "cache" / "chunkinfo.json").is_file()
+    assert list((project / "cache" / "sims").iterdir()) == []
+
+
+def test_maps_clean_can_take_the_fetched_maps_too(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _simulatable(monkeypatch)
+    main(["simulate", "--rolls", "1", "--seed", "1", "--cache-map", "Demo"])
+    capsys.readouterr()
+
+    assert main(["maps", "clean", "--include-fetched"]) == 0
+
+    assert not (project / "cache" / "fray.json").exists()
+    # The 10MB blobs are never in scope: re-downloading them is the expensive part.
+    assert (project / "cache" / "chunkinfo.json").is_file()
+
+
+def test_maps_on_an_empty_cache_says_so(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["maps"]) == 0
+    assert "no cached maps" in capsys.readouterr().out

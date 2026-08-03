@@ -30,7 +30,11 @@ source-chunk is upstream and read-only from here — `fray-claude` never writes 
 - **`neighbours`** — which chunks you're currently eligible to unlock, each with the number
   source-chunk's own canvas puts on it, and the connection that makes it reachable.
 - **`simulate --rolls N`** — simulate N chunk rolls in sequence and accumulate what each one adds,
-  with a `--seed` for reproducible runs.
+  with a `--seed` for reproducible runs. Add `--cache-map NAME` to keep each simulated future as a
+  cached map you can point every other command at (`fray tasks --map NAME`), `--runs R` to generate a
+  batch of them, and `--jobs J` to spread that batch over worker processes.
+- **`maps`** — list what's cached, fetched and simulated alike; `maps rm NAME` and `maps clean`
+  remove them again.
 
 Everything after the initial `fetch`/`chunkinfo` runs offline, against the local cache.
 
@@ -171,6 +175,29 @@ otherwise it's created in whatever directory you're in when you run `fray`.
 
    If you'd rather point at a chunk-info export you already have on disk instead of fetching it,
    pass `--chunkinfo PATH` to any of those commands, or set the `FRAY_CHUNKINFO` environment variable.
+
+5. **Keep a simulated future and work against it**, instead of just reading the summary:
+
+   ```sh
+   fray simulate --rolls 50 --cache-map Future            # saved as cache/sims/Future/run-001
+   fray tasks --map Future                                # the same commands, against that world
+   fray simulate --rolls 50 --cache-map Sweep --runs 100 --jobs 8   # a batch, 8 processes wide
+   fray maps                                              # what's cached, fetched and simulated
+   fray maps rm Sweep                                     # ... and remove one again
+   fray maps clean                                        # remove every simulated map
+   ```
+
+   A batch writes one directory per run, addressable as `--map Sweep/run-007`; a bare `--map Sweep`
+   works whenever the batch holds exactly one run. Each run records the seed it used, so any single
+   run can be reproduced on its own with `fray simulate --seed <that>`. `cache/sims/<name>/batch.json`
+   holds every run's rolled chunks in one small file, which is what to read for "how often did chunk X
+   come up". Naming a batch something already taken saves it alongside as `<name>-2` rather than
+   overwriting, and `maps rm`/`maps clean` refuse to touch a *fetched* map unless you pass
+   `--include-fetched` (they never touch the chunk-info download).
+
+   A roll costs a full derivation — a few seconds — so a 50-roll run takes a couple of minutes and
+   `--jobs` is how a large batch finishes in a reasonable time. `--jobs` only changes which process a
+   run executes in: the same seed gives the same rolls either way.
 
 Run `fray <command> --help` for the full option list of any command, or `fray --help` for the list of
 commands.

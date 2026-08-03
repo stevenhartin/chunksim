@@ -9,7 +9,8 @@ offline operations on that cache. source-chunk is upstream and read-only from he
 
 Planned: a shortest-path search ("fewest chunk unlocks to reach X" — `graph.py` exists to serve it and
 has no other reason to be a separate module), render a world-map image for a simulated state, generate
-heatmaps of likely rolls over N attempts, estimate time to complete all goals (needs a task-duration
+heatmaps of likely rolls over N attempts (the cached simulation batches are the input for this — see
+the `cache/sims/` layout under Commands), estimate time to complete all goals (needs a task-duration
 source; the export has none).
 
 ## source-chunk
@@ -69,7 +70,7 @@ guess at, with `worker.js`/`index.js` line references — **read it before trust
 numbers or changing its behaviour.** That is where the design rationale lives; this section is a
 map to it, not a substitute.
 
-Three things that cut across modules, because each one has already caused a real bug:
+Four things that cut across modules — the first three because each has already caused a real bug:
 
 - **Reachable items are `ChallengeResult.available_items`, not `SourceIndex.items`.** The latter
   omits anything obtainable only by *making* it. `bis.py` and `boosts.py` both got this wrong first.
@@ -80,11 +81,19 @@ Three things that cut across modules, because each one has already caused a real
 - **Task names are markup-bearing keys.** The raw `~|...|~` form is the key everywhere (`valid`,
   ledger lookups, `--export-json`); `challenges.strip_task_markup` is display-only, and applies to
   challenge/task names *only* — other branches use `~` and `|` for real.
+- **The pure layer must stay process-parallel.** `fray simulate --jobs N` runs simulations in worker
+  processes, and a roll costs a full `derive` (~2.6s on the real export, ~100% of the runtime), so
+  this is the only way a heatmap-sized batch finishes. That holds today only because there is **no
+  module-level mutable state anywhere** — no `lru_cache`, no memo dicts, no globals; `_UNARMED_SOURCES`
+  and `_UNIVERSAL_PRIMARY` are read-only constants — and because `MapState`/`Derived` are frozen.
+  Adding a cache to a "pure" module would break `--jobs` silently, in the form of runs that disagree.
+  Workers each load their own `ChunkInfo` (~0.1s) rather than sharing the parent's; one process writes
+  any given file, never two.
 
 | Module | Owns |
 |---|---|
 | `api.py` | The network. `FetchError`. An unknown map is HTTP 200 + bare `null`, never a 404. |
-| `cache.py` | The disk. `CacheMissError`, the `map_id`/`fetched_at`/`source`/`data` envelope, and the `--chunkinfo`/`FRAY_CHUNKINFO` override. |
+| `cache.py` | The disk. `CacheMissError`, the `map_id`/`fetched_at`/`source`/`is_simulated`/`data` envelope, the `--chunkinfo`/`FRAY_CHUNKINFO` override, and the fetched-vs-simulated map layout below (incl. `--map` resolution, atomic writes and the batch-name claim). |
 | `firebase.py` | The Firebase-safe string codec, incl. `decode_challenge_keyed`'s mixed `t_N`/literal key handling. Run any payload branch through it before believing it. |
 | `chunkinfo.py` | Typed, tolerant accessors over the parsed export. Build **one** `ChunkInfo` per invocation — parsing the ~7MB export is the expensive part. |
 | `sections.py` | Which sections of the unlocked chunks are reachable, plus named-area unlocking. `sectionsLimits` deliberately lives in `neighbours.py` instead. |
@@ -99,7 +108,8 @@ Three things that cut across modules, because each one has already caused a real
 | `pipeline.py` | `MapState` + `derive`. Owns the **loop** where upstream's area-unlock circularity lives, so the modules above stay one-directional. |
 | `unlock.py` | What one candidate unlock adds, by diffing two `derive` calls. **Owns the project's attribution rule** and its one exception. |
 | `neighbours.py` | Which chunks are eligible to unlock next, and upstream's canvas numbering (**descending chunk id, 1-based**). Owns the `sectionsLimits` gate. |
-| `simulate.py` | Seeded chunk-roll simulation: the bootstrap pool, plus the dispatch to `neighbours.py`. Records are never revisited by a later roll. |
+| `simulate.py` | Seeded chunk-roll simulation: the bootstrap pool, plus the dispatch to `neighbours.py`. Records are never revisited by a later roll. `simulated_payload` turns a finished ledger back into a map payload — read its docstring before changing which branches it touches. |
+| `batch.py` | N simulations from one state, each cached as its own map. Owns seed derivation and the **only** `ProcessPoolExecutor` in the project. `--jobs` must never change a result. |
 | `search.py` | World-wide fuzzy search over the *raw* export — all 5 item routes, so a strict superset of what `fray sources` can list. |
 | `summary.py` | Pure reductions over a raw payload. Extend this, not `cli.py`. Also home to `_mapping`, the tolerant dict accessor eight other modules import despite the `_` — Firebase omits empty containers, so every lookup anywhere must survive a missing branch. |
 | `cli.py` | argparse subcommands and rendering only; new logic goes in a pure module. |
@@ -121,6 +131,8 @@ fray tasks    [CATEGORY]   [--limit N]   # valid/active/obsolete/completed, incl
 fray unlock   --chunk ID    # tasks/sections one candidate chunk would add on top of the cached map
 fray neighbours [--limit N] # chunks eligible to unlock next, numbered as the app's canvas numbers them
 fray simulate --rolls N [--seed S]   # simulate N chunk rolls and accumulate their tasks/sections
+fray simulate --rolls N --cache-map NAME [--runs R] [--jobs J]   # ... and save each run as a cached map
+fray maps [list [--runs]] | maps rm NAME... | maps clean [--include-fetched]   # manage cached maps
 fray search   QUERY [--type T ...] [--limit N]   # fuzzy search item/monster/npc/object/shop/task
 python -m fray_claude ...   # same CLI without the console script
 mypy                        # strict, over src/ and tests/; run from the repo root
@@ -137,9 +149,25 @@ envelope-wrapped `cache/chunkinfo.json` (hence the extraction — see Convention
 the envelope fails silently), and `FRAY_MAP_CACHE` is presence-only, its value unused.
 
 `--export-json PATH` (or `-` for stdout, replacing the text summary) is carried by the seven
-*derivation* subcommands, not the three I/O ones. `--limit` defaults to `None` (full output) for
-`sections`/`sources`/`tasks`/`neighbours` so piping just works, but to `10` for `search`. See
-`cli.py`'s docstring.
+*derivation* subcommands plus `maps list`, not the three I/O ones. `--limit` defaults to `None` (full
+output) for `sections`/`sources`/`tasks`/`neighbours` so piping just works, but to `10` for `search`.
+See `cli.py`'s docstring.
+
+**Two kinds of cached map.** A *fetched* map is `cache/<id>.json`; a *simulated* one is a
+`fray simulate --cache-map` product, one directory per run under a named batch:
+
+```
+cache/sims/<batch>/batch.json          # every run's seed and rolled chunk ids - the analysis surface
+cache/sims/<batch>/run-001/map.json    # a normal envelope, `is_simulated: true`
+cache/sims/<batch>/run-001/rolls.json  # that run's per-roll ledger
+```
+
+Every subcommand's `--map` takes either kind, because `cache.read_cache` resolves them: a fetched
+`cache/<id>.json` wins, then `<batch>/run-00N`, then a bare `<batch>` holding exactly one run (which is
+what makes `--cache-map X` then `--map X` work). A bare batch name with several runs is an error naming
+them, never a guess. A name that is already taken — by a batch *or* a fetched map — gains `-2`, `-3`,
+… so `--map` is never ambiguous; the claim is a `mkdir(exist_ok=False)`, so parallel writers cannot
+both win it. Counting how often a chunk was rolled means reading `batch.json`, not the payloads.
 
 `mypy` and `pytest` are invoked differently on purpose: mypy is the *system* install (there is no
 `.venv/bin/mypy`), configured with `python_executable = ".venv/bin/python"` so it can see pytest's
@@ -147,8 +175,8 @@ stubs — which is why it must run from the repo root and needs the venv to exis
 `dev` extra inside the venv and is **not** on `PATH`, so a bare `pytest` fails with
 "command not found"; call `.venv/bin/pytest` (or activate the venv first).
 
-`cache/` is gitignored, so a fresh clone has no data and `fray show`/`fray sections` fail until
-`fray fetch`/`fray chunkinfo` run. `fray chunkinfo` downloads ~10MB; `--chunkinfo PATH` or the
+`cache/` is gitignored — including `cache/sims/` — so a fresh clone has no data and
+`fray show`/`fray sections` fail until `fray fetch`/`fray chunkinfo` run. `fray chunkinfo` downloads ~10MB; `--chunkinfo PATH` or the
 `FRAY_CHUNKINFO` env var point `fray sections` (and later commands) at an existing local export
 instead.
 

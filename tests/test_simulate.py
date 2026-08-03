@@ -1,15 +1,18 @@
-"""Tests for the bootstrap roll pool and the roll simulation ledger.
+"""Tests for the bootstrap roll pool, the roll ledger, and the payload a
+finished ledger turns back into.
 
-Neighbour eligibility moved to `tests/test_neighbours.py` with the logic.
+Neighbour eligibility moved to `tests/test_neighbours.py` with the logic;
+persisting a payload is `tests/test_batch.py`'s.
 """
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.pipeline import MapState, derive
-from fray_claude.simulate import roll_pool, simulate_rolls
+from fray_claude.simulate import UnlockRecord, roll_pool, simulate_rolls, simulated_payload
 
 
 def _chunk_info(**data: Any) -> ChunkInfo:
@@ -163,3 +166,90 @@ def test_a_later_roll_does_not_change_an_earlier_records_delta() -> None:
     assert stopped_after_one[0].chunk_id == first_chunk
     assert stopped_after_one[0].new_tasks == full_run[0].new_tasks
     assert stopped_after_one[0].new_sections == full_run[0].new_sections
+
+
+# --- turning a finished ledger back into a map payload -----------------------
+
+
+def _record(chunk_id: str, order: int = 1) -> UnlockRecord:
+    return UnlockRecord(
+        order=order,
+        chunk_id=chunk_id,
+        new_sections={},
+        new_tasks={},
+        new_unsupported=frozenset(),
+        bis_upgrades={},
+    )
+
+
+def test_simulated_payload_adds_the_rolled_chunks_in_the_payloads_own_form() -> None:
+    base = {"chunks": {"unlocked": {"100": "100"}}}
+
+    payload = simulated_payload(base, [_record("101"), _record("102", 2)])
+
+    # `{id: id}`, matching real data - not `{id: True}`.
+    assert payload["chunks"]["unlocked"] == {"100": "100", "101": "101", "102": "102"}
+
+
+def test_simulated_payload_never_mutates_the_payload_it_was_given() -> None:
+    """Runs in a batch share one base payload; mutating it would leak roll N
+    into run N+1."""
+    base = {"chunks": {"unlocked": {"100": "100"}}, "chunkOrder": {}, "chunkinfo": {}}
+    before = json.loads(json.dumps(base))
+
+    simulated_payload(base, [_record("101")])
+
+    assert base == before
+
+
+def test_simulated_payload_logs_each_roll_in_chunk_order() -> None:
+    base = {"chunks": {"unlocked": {}}, "chunkOrder": {"1709907279995": 7222}}
+
+    payload = simulated_payload(base, [_record("101"), _record("102", 2)], start_time_ms=1000)
+
+    assert payload["chunkOrder"] == {"1709907279995": 7222, "1000": 101, "1001": 102}
+
+
+def test_simulated_payload_commits_the_current_chunks_tick_offs() -> None:
+    """Rolling migrates `checkedChallenges` into `completedChallenges` and
+    clears it upstream (`completeChallenges`, index.js:12718)."""
+    base = {
+        "chunks": {"unlocked": {}},
+        "chunkinfo": {
+            "completedChallenges": {"Mining": {"t_1": True}},
+            "checkedChallenges": {"Mining": {"t_2": True}, "BiS": {"t_3": True}},
+        },
+    }
+
+    payload = simulated_payload(base, [_record("101")])
+
+    assert payload["chunkinfo"]["completedChallenges"] == {
+        "Mining": {"t_1": True, "t_2": True},
+        "BiS": {"t_3": True},
+    }
+    assert "checkedChallenges" not in payload["chunkinfo"]
+
+
+def test_simulated_payload_leaves_tick_offs_alone_when_nothing_rolled() -> None:
+    base = {"chunks": {"unlocked": {}}, "chunkinfo": {"checkedChallenges": {"Mining": {"t_2": 1}}}}
+
+    payload = simulated_payload(base, [])
+
+    assert payload["chunkinfo"]["checkedChallenges"] == {"Mining": {"t_2": 1}}
+
+
+def test_simulated_payload_drops_upstreams_recorded_answers() -> None:
+    """`activeTasks` and `chunks.selected` are upstream's own computed answers
+    for a chunk set it has actually seen - this project's oracles. Carrying
+    them into a simulated state would invent an oracle for a world upstream
+    never computed."""
+    base = {
+        "chunks": {"unlocked": {}, "selected": {"101": 1}},
+        "chunkinfo": {"activeTasks": {"Slayer": {"t_9": "x"}}, "maxSkill": {"Mining": 70}},
+    }
+
+    payload = simulated_payload(base, [_record("101")])
+
+    assert "selected" not in payload["chunks"]
+    assert "activeTasks" not in payload["chunkinfo"]
+    assert payload["chunkinfo"]["maxSkill"] == {"Mining": 70}

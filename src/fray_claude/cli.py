@@ -9,9 +9,19 @@ handles the common cache-read + decode step.
 to stdout if `PATH` is `-` - in which case it *replaces* the human-readable
 summary rather than interleaving with it, so piping stays clean. It is
 carried by the seven *derivation* subcommands
-(`sections`/`sources`/`tasks`/`unlock`/`neighbours`/`simulate`/`search`) and
-deliberately not by the three I/O ones (`fetch`/`show`/`chunkinfo`), whose
-output is the cache file itself.
+(`sections`/`sources`/`tasks`/`unlock`/`neighbours`/`simulate`/`search`),
+plus `maps list` - whose output is a reduction over the cache rather than a
+cache file, and is the index a batch analysis iterates - and deliberately not
+by the three I/O ones (`fetch`/`show`/`chunkinfo`).
+
+`simulate --cache-map NAME` saves each run as a cached map instead of only
+printing it, `--runs N` asks for N independent simulations and `--jobs N`
+spreads them over worker processes; `batch.py` owns all three, and `cache.py`
+the layout they land in. `--runs` without `--cache-map` is an error rather
+than a silent single run: there would be nowhere to put the other N-1. The
+`maps` subcommand is this file's only *nested* one (`maps list|rm|clean`) -
+two of its three verbs are destructive, and `maps rm NAME` reads better than
+a `--rm NAME` flag on a listing command.
 
 `sections`/`sources`/`tasks` take an optional positional (`list` or a chunk
 id; one of `sources.CATEGORIES`; a challenge category) to list that branch's
@@ -73,13 +83,19 @@ from fray_claude.api import (
     fetch_map,
     fetch_tasks_map,
 )
+from fray_claude.batch import RunResult, run_batch
 from fray_claude.cache import (
     CHUNKINFO_BLOB_NAME,
+    FETCHED,
     TASKS_MAP_BLOB_NAME,
     CacheMissError,
+    MapEntry,
+    list_maps,
     read_blob,
     read_cache,
     read_chunkinfo,
+    remove_all_simulated,
+    remove_map,
     write_blob,
     write_cache,
 )
@@ -139,8 +155,19 @@ def _cmd_show(args: argparse.Namespace) -> int:
     envelope = read_cache(args.map_id)
     summary = summarise(envelope["data"])
 
+    simulated = envelope.get("is_simulated") is True
     print(f"map            {args.map_id}")
-    print(f"fetched        {_format_age(envelope.get('fetched_at'))}")
+    if simulated:
+        simulation = envelope.get("simulation")
+        provenance = simulation if isinstance(simulation, dict) else {}
+        rolled = provenance.get("rolls")
+        rolls = len(rolled) if isinstance(rolled, list) else 0
+        print(
+            f"simulated      {rolls} rolls from {provenance.get('base_map')} "
+            f"(seed {provenance.get('seed')})"
+        )
+    age = _format_age(envelope.get("fetched_at"))
+    print(f"{'created' if simulated else 'fetched'}        {age}")
     print(f"unlocked       {summary.unlocked_chunks} chunks")
     print(f"chunk order    {summary.chunk_order_entries} entries")
     print(f"rules          {summary.rules_enabled} of {summary.rules_total} enabled")
@@ -591,7 +618,105 @@ def _cmd_neighbours(args: argparse.Namespace) -> int:
     return 0
 
 
+def _maps_rows(entries: Iterable[MapEntry]) -> list[str]:
+    """`fray maps` as fixed-width rows; runs indent under their batch."""
+    rows = [f"{'NAME':<28} {'KIND':<10} {'RUNS':>5} {'ROLLS':>6} {'CHUNKS':>7}  AGE"]
+    for entry in entries:
+        runs = "-" if entry.runs is None else str(entry.runs)
+        rolls = "-" if entry.rolls is None else str(entry.rolls)
+        chunks = "-" if entry.unlocked_chunks is None else str(entry.unlocked_chunks)
+        indent = "  " if "/" in entry.map_id else ""
+        name = f"{indent}{entry.map_id}"
+        rows.append(
+            f"{name:<28} {entry.kind:<10} {runs:>5} {rolls:>6} {chunks:>7}  "
+            f"{_format_age(entry.created_at)}"
+        )
+    return rows
+
+
+def _cmd_maps_list(args: argparse.Namespace) -> int:
+    entries = list_maps(expand_runs=args.runs)
+    if args.export_json != "-":
+        if entries:
+            for row in _maps_rows(entries):
+                print(row)
+        else:
+            print("no cached maps; run: fray fetch")
+    if args.export_json is not None:
+        _emit_json({"maps": [entry.as_dict() for entry in entries]}, args.export_json)
+    return 0
+
+
+def _cmd_maps_rm(args: argparse.Namespace) -> int:
+    for map_id in args.names:
+        path = remove_map(map_id, include_fetched=args.include_fetched)
+        print(f"removed {map_id} ({path})")
+    return 0
+
+
+def _cmd_maps_clean(args: argparse.Namespace) -> int:
+    removed = remove_all_simulated()
+    for name in removed:
+        print(f"removed {name}")
+    if args.include_fetched:
+        for entry in list_maps():
+            if entry.kind == FETCHED:
+                remove_map(entry.map_id, include_fetched=True)
+                print(f"removed {entry.map_id}")
+                removed.append(entry.map_id)
+    if not removed:
+        print("nothing to clean")
+    else:
+        plural = "" if len(removed) == 1 else "s"
+        print(f"removed {len(removed)} cached map{plural}")
+    return 0
+
+
+def _simulate_to_cache(args: argparse.Namespace) -> int:
+    """`fray simulate --cache-map`: persist each run as its own cached map."""
+    envelope = read_cache(args.map_id)
+    quiet = args.export_json == "-"
+
+    def report(result: RunResult) -> None:
+        print(f"  {result.name} {len(result.rolls)} rolls -> {result.unlocked_chunks} chunks")
+
+    batch = run_batch(
+        name=args.cache_map,
+        payload=envelope["data"],
+        base_map=args.map_id,
+        base_fetched_at=envelope.get("fetched_at"),
+        rolls=args.rolls,
+        runs=args.runs,
+        jobs=args.jobs,
+        seed=args.seed,
+        chunkinfo_path=args.chunkinfo,
+        on_complete=None if quiet else report,
+    )
+
+    if not quiet:
+        if batch.name != args.cache_map:
+            print(f"name {args.cache_map!r} was taken; saved as {batch.name!r}")
+        print(f"batch        {batch.name} ({batch.directory})")
+        print(f"runs         {len(batch.runs)} x {args.rolls} rolls")
+        read_as = batch.name if len(batch.runs) == 1 else f"{batch.name}/{batch.runs[0].name}"
+        print(f"read with    fray tasks --map {read_as}")
+    if args.export_json is not None:
+        _emit_json(batch.as_dict(), args.export_json)
+    return 0
+
+
 def _cmd_simulate(args: argparse.Namespace) -> int:
+    if args.rolls < 1:
+        return _error("--rolls must be at least 1")
+    if args.runs < 1:
+        return _error("--runs must be at least 1")
+    if args.jobs < 1:
+        return _error("--jobs must be at least 1")
+    if args.cache_map is not None:
+        return _simulate_to_cache(args)
+    if args.runs > 1:
+        return _error("--runs needs --cache-map: without it there is nowhere to put the runs")
+
     state, unlocked = _load_state(args)
     ledger = simulate_rolls(state, unlocked, rolls=args.rolls, seed=args.seed)
     total_tasks = sum(len(names) for record in ledger for names in record.new_tasks.values())
@@ -805,6 +930,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--seed", type=int, default=None, help="RNG seed, for a reproducible run"
     )
     simulate.add_argument(
+        "--cache-map",
+        dest="cache_map",
+        metavar="NAME",
+        default=None,
+        help="save each run as a cached map under NAME, readable with --map",
+    )
+    simulate.add_argument(
+        "--runs",
+        type=int,
+        default=1,
+        help="number of independent simulations to run (needs --cache-map; default: %(default)s)",
+    )
+    simulate.add_argument(
+        "--jobs",
+        type=int,
+        default=1,
+        help="worker processes to spread the runs over (default: %(default)s)",
+    )
+    simulate.add_argument(
         "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"
     )
     simulate.add_argument(
@@ -820,6 +964,44 @@ def build_parser() -> argparse.ArgumentParser:
         help="write the full result as JSON to PATH, or to stdout if PATH is '-'",
     )
     simulate.set_defaults(func=_cmd_simulate)
+
+    # The only nested subcommand here: `maps` is three verbs over one noun,
+    # two of them destructive, and `--rm NAME`-style flags read far worse for
+    # those than `maps rm NAME` does.
+    maps = subcommands.add_parser("maps", help="list, remove or clean cached maps")
+    maps.set_defaults(func=_cmd_maps_list, runs=False, export_json=None)
+    map_verbs = maps.add_subparsers(dest="maps_command")
+
+    maps_list = map_verbs.add_parser("list", help="list cached maps (the default)")
+    maps_list.add_argument(
+        "--runs", action="store_true", help="also list each simulated batch's individual runs"
+    )
+    maps_list.add_argument(
+        "--export-json",
+        metavar="PATH",
+        default=None,
+        help="write the listing as JSON to PATH, or to stdout if PATH is '-'",
+    )
+    maps_list.set_defaults(func=_cmd_maps_list)
+
+    maps_rm = map_verbs.add_parser("rm", help="remove a simulated batch, a single run, or a map")
+    maps_rm.add_argument(
+        "names", nargs="+", metavar="NAME", help="map id, e.g. Demo or Demo/run-002"
+    )
+    maps_rm.add_argument(
+        "--include-fetched",
+        action="store_true",
+        help="allow removing a fetched map, not just simulated ones",
+    )
+    maps_rm.set_defaults(func=_cmd_maps_rm)
+
+    maps_clean = map_verbs.add_parser("clean", help="remove every simulated map")
+    maps_clean.add_argument(
+        "--include-fetched",
+        action="store_true",
+        help="also remove fetched maps (never the chunkinfo/tasks-map blobs)",
+    )
+    maps_clean.set_defaults(func=_cmd_maps_clean)
 
     search = subcommands.add_parser(
         "search", help="fuzzy-search items/monsters/npcs/objects/shops/tasks across the whole map"

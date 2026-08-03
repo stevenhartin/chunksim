@@ -26,6 +26,12 @@ later roll - `bis_upgrades` included, so a later roll's improvement doesn't
 get folded back into an earlier record. See `unlock.py` for why that is the
 agreed semantics rather than an approximation.
 
+`simulated_payload` turns a finished ledger back into a *map payload*, so a
+simulated future can be cached and read by every other subcommand (see
+`cache.py`'s layout and `batch.py`'s driver). It is pure - it never mutates the
+payload it is given - and it touches exactly four branches; its docstring says
+why each one, including the two it deliberately deletes.
+
 Not modelled: manual chunk selection/blacklisting and the `roll2`/`roll5`
 bonus rerolls - user-interaction features orthogonal to a pure roll
 simulation, not part of eligibility itself.
@@ -34,7 +40,8 @@ simulation, not part of eligibility itself.
 from __future__ import annotations
 
 import random
-from collections.abc import Mapping
+import time
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -86,6 +93,76 @@ class UnlockRecord:
                 for key, (previous, new) in self.bis_upgrades.items()
             },
         }
+
+
+def simulated_payload(
+    base_payload: Mapping[str, Any],
+    records: Sequence[UnlockRecord],
+    *,
+    start_time_ms: int | None = None,
+) -> dict[str, Any]:
+    """A new map payload with `records`' rolls applied to `base_payload`.
+
+    Pure: every branch it changes is rebuilt rather than mutated, so the
+    payload passed in is safe to reuse for another run in the same process.
+    Four branches change, and no others:
+
+    - `chunks.unlocked` gains each rolled chunk in the payload's own
+      `{id: id}` string form - real data is `{'6449': '6449'}`, not booleans,
+      and `pipeline.load_map_state` only reads the keys.
+    - `chunkOrder` gains one `{timestamp_ms: chunk_id}` entry per roll, its
+      real shape. Nothing derives from it (it's a partial log upstream too),
+      but leaving it alone would make `fray show` misreport a simulated map.
+    - `chunkinfo.checkedChallenges` is merged into `completedChallenges` and
+      cleared, because that is what rolling the next chunk does upstream
+      (`completeChallenges`, index.js:12718). Both branches are stored
+      encoded, and merging them keyed-as-stored needs no decode round trip -
+      `firebase.decode_challenge_keyed` handles either form on the way back
+      in. Derivation is unaffected (`load_map_state` already merges the two);
+      what this fixes is the `(Active)` marker, which would otherwise keep
+      flagging the *pre-simulation* chunk's tick-offs as "this chunk". With
+      no rolls, nothing has committed, so nothing moves.
+    - `chunkinfo.activeTasks` and `chunks.selected` are **dropped**. They hold
+      upstream's own computed answers for the unlocked set it computed them
+      against - this project's oracles (see `active_tasks.py`,
+      `neighbours.py`). Carrying them into a state upstream has never seen
+      would manufacture an oracle that agrees with nothing, and
+      `fray tasks`'s "upstream says" line would compare against it.
+    """
+    payload = dict(base_payload)
+
+    chunks = dict(_mapping(base_payload, "chunks"))
+    unlocked = dict(_mapping(chunks, "unlocked"))
+    for record in records:
+        unlocked[record.chunk_id] = record.chunk_id
+    chunks["unlocked"] = unlocked
+    chunks.pop("selected", None)
+    payload["chunks"] = chunks
+
+    order = dict(_mapping(base_payload, "chunkOrder"))
+    stamp = int(time.time() * 1000) if start_time_ms is None else start_time_ms
+    for offset, record in enumerate(records):
+        order[str(stamp + offset)] = (
+            int(record.chunk_id) if record.chunk_id.isdigit() else record.chunk_id
+        )
+    payload["chunkOrder"] = order
+
+    info = dict(_mapping(base_payload, "chunkinfo"))
+    if records:
+        completed: dict[str, Any] = {}
+        for category, entries in _mapping(info, "completedChallenges").items():
+            completed[category] = dict(entries) if isinstance(entries, dict) else entries
+        for category, entries in _mapping(info, "checkedChallenges").items():
+            if isinstance(entries, dict) and isinstance(completed.get(category), dict):
+                completed[category].update(entries)
+            elif isinstance(entries, dict):
+                completed[category] = dict(entries)
+        info["completedChallenges"] = completed
+        info.pop("checkedChallenges", None)
+    info.pop("activeTasks", None)
+    payload["chunkinfo"] = info
+
+    return payload
 
 
 def _region_key(name: str) -> str:
