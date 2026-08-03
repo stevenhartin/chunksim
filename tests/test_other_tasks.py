@@ -400,7 +400,10 @@ _KNOWN_ORACLE_DELTA: dict[str, frozenset[str]] = {
 
 @pytest.mark.skipif(
     not (_REAL_CHUNKINFO and _REAL_MAP),
-    reason="set FRAY_CHUNKINFO and FRAY_MAP_CACHE to real data to run this",
+    reason=(
+        "set FRAY_CHUNKINFO to a raw export and FRAY_MAP_CACHE to anything; the map "
+        "itself is read from the repo's own cache/, so FRAY_MAP_CACHE's value is unused"
+    ),
 )
 @pytest.mark.parametrize("category", ["Diary", "Extra"])
 def test_active_tasks_match_the_live_oracle(category: str) -> None:

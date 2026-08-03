@@ -355,7 +355,10 @@ def test_a_completed_entry_with_no_level_sets_no_ceiling() -> None:
 
 @pytest.mark.skipif(
     not (_REAL_CHUNKINFO and _REAL_MAP),
-    reason="set FRAY_CHUNKINFO and FRAY_MAP_CACHE to real data to run this",
+    reason=(
+        "set FRAY_CHUNKINFO to a raw export and FRAY_MAP_CACHE to anything; the map "
+        "itself is read from the repo's own cache/, so FRAY_MAP_CACHE's value is unused"
+    ),
 )
 def test_active_slayer_task_matches_the_live_oracle() -> None:
     """Opt-in oracle: `chunkinfo.activeTasks.Slayer` is upstream's *own* last
