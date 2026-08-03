@@ -445,6 +445,14 @@ def _finalize_slots(winners: _SlotWinners) -> dict[str, tuple[str, "str | None"]
     both. Ties go to 1H+shield (`>`, not `>=`). The `Show Best in Slot 1H
     and 2H` rule's dual-emission case (keeping both under `ammo (2h)`) isn't
     modelled - see the module docstring.
+
+    The `ammo` slot is **not** an independent pick. Upstream overwrites it
+    with `bestAmmoSaved[<winning launcher slot>]` - the ammo paired with
+    whichever weapon actually won - and deletes it outright when that
+    launcher takes none (worker.js:6430-6443). Treating ammo as its own
+    argmax produced items no setup could use: a Melee build was told to
+    obtain javelins, and a Ranged build the highest-`ranged_strength` ammo
+    in the game rather than something its bow can fire.
     """
     two_h = winners.get("2h")
     weapon = winners.get("weapon")
@@ -452,7 +460,7 @@ def _finalize_slots(winners: _SlotWinners) -> dict[str, tuple[str, "str | None"]
     result: dict[str, tuple[str, str | None]] = {
         slot: (item, ammo)
         for slot, (item, ammo, _score) in winners.items()
-        if slot not in ("2h", "weapon", "shield")
+        if slot not in ("2h", "weapon", "shield", "ammo")
     }
     two_h_power = two_h[2] if two_h is not None else float("-inf")
     weapon_shield_power = (weapon[2] if weapon is not None else 0.0) + (
@@ -460,11 +468,15 @@ def _finalize_slots(winners: _SlotWinners) -> dict[str, tuple[str, "str | None"]
     )
     if two_h is not None and two_h_power > weapon_shield_power:
         result["weapon"] = (two_h[0], two_h[1])
+        paired_ammo = two_h[1]
     else:
+        paired_ammo = weapon[1] if weapon is not None else None
         if weapon is not None:
             result["weapon"] = (weapon[0], weapon[1])
         if shield is not None:
             result["shield"] = (shield[0], None)
+    if paired_ammo is not None:
+        result["ammo"] = (paired_ammo, None)
     return result
 
 

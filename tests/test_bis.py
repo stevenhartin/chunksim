@@ -527,3 +527,41 @@ def test_completed_ordering_never_beats_a_strictly_better_item() -> None:
     )
 
     assert result.picks["Melee-cape"] == "Strong cape"
+
+
+def test_ammo_slot_follows_the_winning_launcher() -> None:
+    # Upstream overwrites the ammo slot with the ammo paired to whichever
+    # weapon won, rather than picking ammo independently - otherwise a
+    # Ranged build is told to obtain the highest-strength ammo in the game
+    # even when its bow cannot fire it.
+    info = _chunk_info(
+        equipment={
+            "Oak shortbow": {"slot": "2h", "attack_speed": 6, "attack_ranged": 8},
+            "Bronze arrow": {"slot": "ammo", "ranged_strength": 7},
+            "Dragon javelin": {"slot": "ammo", "ranged_strength": 150},
+        },
+        codeItems={"ammoTools": {"Bronze arrow": {"Oak shortbow": True}}},
+    )
+    items = {n: {"S": "shop"} for n in ("Oak shortbow", "Bronze arrow", "Dragon javelin")}
+
+    result = compute_bis(info, items, {}, rules={})
+
+    assert result.picks["Ranged-weapon"] == "Oak shortbow"
+    # Dragon javelin scores far higher but no reachable launcher fires it.
+    assert result.picks["Ranged-ammo"] == "Bronze arrow"
+
+
+def test_ammo_slot_is_absent_when_the_winning_weapon_takes_none() -> None:
+    info = _chunk_info(
+        equipment={
+            "Rune knife": {"slot": "weapon", "attack_speed": 3, "attack_ranged": 25},
+            "Dragon javelin": {"slot": "ammo", "ranged_strength": 150},
+        },
+        codeItems={"ammoTools": {}},
+    )
+    items = {"Rune knife": {"S": "shop"}, "Dragon javelin": {"S": "shop"}}
+
+    result = compute_bis(info, items, {}, rules={})
+
+    assert result.picks["Ranged-weapon"] == "Rune knife"
+    assert not [k for k in result.picks if k.endswith("-ammo")]

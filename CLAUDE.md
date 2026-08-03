@@ -177,7 +177,10 @@ One responsibility per module, so the planned simulation work has a pure layer t
   which exists solely as an imbue challenge's `Output`; feeding outputs in moved 19 of 43 picks and
   took the oracle 4/6 -> 5/6) and wearable
   (`_requirements_ok`/`_task_unlocks_ok`/`_consumable_ok`/`_source_reachable`) equipment, first-seen-
-  wins on ties, resolves 2H-vs-(1H+shield) (ties to 1H+shield), and emits an "Obtain a/an X" task
+  wins on ties, resolves 2H-vs-(1H+shield) (ties to 1H+shield), sets the `ammo` slot from whatever is
+  paired with the *winning launcher* rather than picking ammo independently (deleting it when that
+  weapon takes none - otherwise a Melee build gets told to obtain javelins), and emits an
+  "Obtain a/an X" task
   name/label per winner, joining multiple styles that pick the same item with upstream's literal
   `'/' + U+200B` (zero-width space) separator. Verified against a real, load-bearing oracle: the cached
   map's `chunkinfo.activeTasks.BiS` records upstream's own last-computed Melee BiS weapon as
