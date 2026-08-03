@@ -158,8 +158,9 @@ a silent no-op ("already seems to be installed") — it will not pick up new cod
 - After completing a task, rebuild and reinstall the CLI locally so the `fray` on `PATH` reflects it:
   `pyproject-build && pipx install --force dist/*.whl` (see Commands for why `--force` is required)
 - Tests are pytest, in `tests/`, named after the module under test (`tests/test_summary.py`). No test
-  touches the network or the real `cache/`: pass `cache.py`'s `root` a `tmp_path`, and monkeypatch
-  `urllib.request.urlopen` (`tests/test_api.py`) or `fray_claude.cli.fetch_map` (`tests/test_cli.py`).
+  touches the network, and none the real `cache/` bar the three `FRAY_MAP_CACHE` oracles: pass
+  `cache.py`'s `root` a `tmp_path`, and monkeypatch `urllib.request.urlopen` (`tests/test_api.py`)
+  or `fray_claude.cli.fetch_map` (`tests/test_cli.py`).
   Any test calling `cache.read_chunkinfo()` without an explicit `override` must
   `monkeypatch.delenv("FRAY_CHUNKINFO", raising=False)` first, or an ambient env var shadows `tmp_path`
 - A test that needs the real (~7MB) chunkinfo export is opt-in, not run by default: build fixtures by
