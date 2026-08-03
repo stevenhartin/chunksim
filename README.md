@@ -3,8 +3,8 @@
 A command-line tool that reads state from the [source-chunk](https://github.com/source-chunk/chunk-picker-v2/)
 web app, caches it locally, and derives things from that cache entirely offline: which sections of
 your unlocked chunks are reachable, what items/monsters/objects they give you access to, which
-challenges are currently valid, what a candidate chunk unlock would add, and simulated multi-roll
-outcomes.
+challenges are currently valid and which are your current goal per skill, your best-in-slot equipment
+per combat style, what a candidate chunk unlock would add, and simulated multi-roll outcomes.
 
 source-chunk is upstream and read-only from here — `fray-claude` never writes back to it.
 
@@ -18,21 +18,36 @@ source-chunk is upstream and read-only from here — `fray-claude` never writes 
   split into numbered sub-areas; unlocking the chunk alone doesn't open all of them).
 - **`sources`** — every item, object, monster, NPC and shop your unlocked chunks currently give you
   access to.
-- **`tasks`** — which challenges are currently valid, given that access.
+- **`tasks`** — which challenges are currently valid, given that access. Pass a skill category to see
+  which single challenge is your *current* goal for that skill and which lower tiers it supersedes;
+  pass `BiS` for your best-in-slot equipment tasks (see below).
+- **`search`** — fuzzy-search any item, monster, NPC, object, shop or task across the *whole* world,
+  unlocked or not, to answer "where would I get this". Unlike `sources`, it isn't limited to chunks
+  you already hold.
 - **`unlock --chunk ID`** — what a single candidate chunk unlock would add on top of your current
-  state: new tasks, new reachable sections.
+  state: new tasks, new reachable sections, and any best-in-slot upgrades it makes reachable.
 - **`simulate --rolls N`** — simulate N chunk rolls in sequence and accumulate what each one adds,
   with a `--seed` for reproducible runs.
 
 Everything after the initial `fetch`/`chunkinfo` runs offline, against the local cache.
 
 **This is a genuine, but deliberately partial, reimplementation of source-chunk's own validity logic**
-— not a wrapper around it. `tasks`/`unlock`/`simulate` are correct for the majority of challenge
-categories, but a few things are explicitly out of scope for now rather than silently approximated:
-`BiS` (best-in-slot) tasks aren't computed at all, and any task whose item requirement uses an item
-*family* (e.g. "any axe") or the secondary-item marker is reported separately as unsupported rather
-than evaluated. Run `fray tasks` and read the `unsupported`/`not computed` lines it prints, or see the
-`challenges.py` module docstring for the full, precise list of what's covered and what isn't.
+— not a wrapper around it. `tasks`/`unlock`/`simulate` cover 28 of the 29 challenge categories, plus
+`BiS`, which upstream synthesises at runtime rather than storing and which is computed here separately.
+What's left out is left out explicitly rather than silently approximated. The main gaps:
+
+- **Five level gates** — `QuestPointsNeeded`, `CombatPointsNeeded`, `KudosNeeded`, `TotalLevelNeeded`
+  and `CombatLevelNeeded`. Computing these needs state (quest points earned, kudos, …) that nothing
+  in the export provides, so a task carrying one is reported as *unsupported* instead of guessed at.
+  That's the only thing that ever lands in that bucket — 42 tasks on the map this was built against.
+- **Best-in-slot set effects** — the Void/Obsidian/Inquisitor/Verac's/Crystal/Karil's DPS overrides
+  aren't modelled, so a set-bonus item can be under-rated against a raw-stats rival.
+- **Anything needing history you don't have** — boost ownership, manual per-task overrides, and
+  manual chunk selection/blacklisting during simulation.
+
+Run `fray tasks` and read the `unsupported` line it prints for the count on *your* map. The module
+docstrings in `challenges.py`, `bis.py`, `active_tasks.py`, `sources.py` and `simulate.py` carry the
+full, precise list of what each one does and doesn't implement — read them before trusting a number.
 
 ## Requirements
 
@@ -58,6 +73,11 @@ Before committing, run the same checks CI would expect:
 mypy      # strict type checking, from the repo root
 pytest    # whole test suite
 ```
+
+`pytest` comes from the `dev` extra, so it lives in the virtualenv you installed into rather than on
+`PATH` — activate that environment first, or call it by path (`.venv/bin/pytest`). `mypy` is expected
+to be a system install: it's configured to point at `.venv/bin/python` for stubs, so it must run from
+the repo root and the virtualenv has to exist.
 
 See `CLAUDE.md` for the module-by-module architecture, testing conventions, and — importantly — the
 precise list of what each derivation module does and doesn't implement.
@@ -121,13 +141,19 @@ otherwise it's created in whatever directory you're in when you run `fray`.
    fray sections                       # reachable sections of your unlocked chunks
    fray sources                        # items/objects/monsters/npcs/shops available to you
    fray tasks                          # which challenges are currently valid
+   fray tasks Woodcutting              # your current goal for one skill, and what it supersedes
+   fray tasks BiS                      # best-in-slot equipment: still to get, already got, outdated
+   fray search "abyssal whip"          # where in the world would I get this?
    fray unlock --chunk 12082           # what unlocking chunk 12082 would add
    fray simulate --rolls 20 --seed 1   # simulate 20 rolls; --seed makes it reproducible
    ```
 
+   `sections`, `sources` and `tasks` print counts by default and take an optional positional to list
+   one branch's contents in full; `--limit N` caps that.
+
    Add `--export-json -` (to print JSON to stdout, for piping into `jq` or similar) or
-   `--export-json PATH` (to write it to a file) to `sections`, `sources`, `tasks`, `unlock`, or
-   `simulate` for the full structured result behind the human-readable summary.
+   `--export-json PATH` (to write it to a file) to `sections`, `sources`, `tasks`, `search`, `unlock`,
+   or `simulate` for the full structured result behind the human-readable summary.
 
    If you'd rather point at a chunk-info export you already have on disk instead of fetching it,
    pass `--chunkinfo PATH` to any of those commands, or set the `FRAY_CHUNKINFO` environment variable.

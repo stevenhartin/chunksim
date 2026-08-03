@@ -914,10 +914,11 @@ def calc_challenges(
                         prev_valid=valid,
                     )
                 except NotImplementedError:
-                    # A single challenge using a mechanic this module
-                    # doesn't implement (e.g. an item family, `*`) must not
-                    # abort every other, evaluable challenge - see
-                    # `ChallengeResult.unsupported`.
+                    # A single challenge using a mechanic this module doesn't
+                    # implement - in practice always one of
+                    # `_LEVEL_GATES_NOT_SUPPORTED`, the only raise inside this
+                    # call path - must not abort every other, evaluable
+                    # challenge. See `ChallengeResult.unsupported`.
                     unsupported.add(f"{skill}/{name}")
                     continue
                 if result is not None:
