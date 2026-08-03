@@ -12,12 +12,13 @@ someone already filled): this module recomputes the best achievable item per
 history. `unlock.py`/`simulate.py` diff two `compute_bis` calls to report
 which slots improved, kept separate from their monotonic `new_tasks` set.
 
-For each (style, slot) this maximizes a style-specific stat
-(`_STYLE SCORING FUNCTIONS`) over items that are both reachable (present in
-the passed-in item index) and wearable (`_is_candidate`: skill requirements,
-task-unlocks, consumable rules, and the same "don't require training a skill
-just to wield its output" source-quality gate `challenges.py` uses for
-combat `Items` requirements), first-seen-wins on ties, then resolves
+For each (style, slot) this maximizes a style-specific stat (the scoring
+functions collected in `StyleSpec`) over items that are both reachable
+(present in the passed-in item index) and wearable - the "candidate gates"
+section below: `_requirements_ok` for skill requirements, `_task_unlocks_ok`,
+`_consumable_ok`, and `_source_reachable`, the same "don't require training a
+skill just to wield its output" gate `challenges.py` applies to combat
+`Items` requirements. Ties are first-seen-wins; it then resolves
 2H-vs-(1H+shield) and emits an "Obtain a/an X" task name/label per winner.
 
 Deliberately not ported (documented, not silently wrong):
@@ -35,8 +36,13 @@ Deliberately not ported (documented, not silently wrong):
   behaviour); the rule-on case, which additionally keeps the 1H alternative
   under a second `ammo (2h)` pseudo-slot, is not modelled.
 - Full `checkPrimaryMethod`/`slayerLocked` (see `sources.py`'s
-  `_slayer_skill_items_for` docstring) - skill-requirement gating reuses
-  `_has_any_valid`, the same simplified stand-in `challenges.py` uses.
+  `_slayer_skill_items_for` docstring). Skill-requirement gating here is
+  `_has_any_valid` - "the skill has *a* valid challenge". Note this is
+  **weaker than `challenges.py`'s own gate**, which stopped sharing it once
+  `_check_primary_method` was ported: a skill that is untrainable but still
+  holds valid `Level 1` challenges passes here and fails there, so an
+  equipment candidate can be admitted whose `Items` requirement the same
+  skill would refuse.
 - `ProcessingSource` (zero uses in the real export this was built against)
   and `Multi Step Processing`. Upstream keeps a separate ammo variant of the
   source-quality gate differing only in the `ProcessingSource` clause; since

@@ -44,9 +44,11 @@ Implemented:
   matching via `codeItems.itemsPlus`, and `AllowedSources`/`NonShop`
   filtering. The `*` secondary marker is stripped and otherwise ignored -
   verified against upstream (worker.js:4046,4064) it does **not** gate
-  validity, only a `Secondary` flag feeding `checkPrimaryMethod` (not ported)
-  and a `forcedPrimary` gate with zero real-export uses, so it isn't
-  threaded through here; see `_items_requirement_met`'s docstring. For
+  validity, only a `Secondary` flag feeding `checkPrimaryMethod` and a
+  `forcedPrimary` gate with zero real-export uses, so it isn't threaded
+  through here. (`checkPrimaryMethod` itself *is* ported, as
+  `_check_primary_method`; it is that `Secondary` **input** to it which
+  isn't.) See `_items_requirement_met`'s docstring. For
   combat skills and challenges whose `Category` includes `BIS Skilling`, an
   item sourced *only* from another skill's crafted output is additionally
   rejected unless `Not Equip`/`Wield Crafted Items`/a Slayer source/the
@@ -117,11 +119,12 @@ except where noted as a silent, documented approximation instead:
   ignoring `manualTasks` hid two `Extra` entries the map's own oracle lists.
 
 The fixed point runs in **two phases**, and both halves are load-bearing. The
-first converges with no pruning at all, so trainability is decided from a
-fully seeded item index; from the second outer pass the prunes
-(`_prune_untrainable_skills`, `_drop_unreachable_subskills`,
-`_drop_superseded_backups`) join the loop and the item index is re-seeded
-from the pruned `valid` each time.
+first converges with the *trainability* prunes switched off, so trainability
+is decided from a fully seeded item index; from the second outer pass
+`_prune_untrainable_skills` and `_drop_unreachable_subskills` join the inner
+loop, and the item index is re-seeded from the pruned `valid` each time.
+(`_inject_manual_tasks` and `_drop_superseded_backups` are not phase-gated -
+they run every inner pass throughout, neither one depending on trainability.)
 
 - Pruning from the *start* starves the seeding: deciding trainability from a
   half-seeded index prunes a skill whose own `Output` chain would have made
@@ -527,9 +530,10 @@ def _items_requirement_met(
     """Port of the `Items` block (worker.js:3899-4121). The `*` secondary
     marker is stripped and otherwise ignored here: verified against upstream
     (worker.js:4046,4064), it does **not** gate validity - it only sets a
-    per-challenge `Secondary` flag that feeds `checkPrimaryMethod` (not
-    ported; see `_has_any_valid`'s docstring) and a `forcedPrimary` gate that
-    has zero real-export uses, so it isn't threaded through here. `[+]`
+    per-challenge `Secondary` flag that feeds `checkPrimaryMethod` and a
+    `forcedPrimary` gate that has zero real-export uses, so it isn't threaded
+    through here. (`checkPrimaryMethod` is ported, as `_check_primary_method`
+    - it is the `Secondary` input to it that isn't.) `[+]`
     resolves through `codeItems.itemsPlus`, the same shape `_plus_family`
     already handles for `Chunks`/`Objects`/`Monsters`/`NPCs`/`Mix`.
     """
@@ -1147,9 +1151,11 @@ def _drop_unreachable_subskills(
     are exempt, as upstream exempts them.
 
     This is the counterpart of `_prune_untrainable_skills` for the categories
-    that have no single active pick, and runs in the same post-convergence
-    slot for the same reason: deciding trainability from a half-seeded item
-    index prunes things whose own `Output` chain would have justified them.
+    that have no single active pick, and shares its schedule: held back until
+    the first fixed point converges, then run inside the loop from the second
+    outer pass on. Deciding trainability from a half-seeded item index prunes
+    things whose own `Output` chain would have justified them - see
+    `calc_challenges` for why both halves of that are needed.
 
     Upstream's `slayerLocked` arm is inert - no real map payload carries that
     branch - and is not reproduced.

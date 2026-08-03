@@ -114,9 +114,15 @@ def _skills_needed_met(
     """Port of the `SkillsNeeded` gate (worker.js:2108): a required skill
     blocks the unlock if it isn't trainable at all or the level exceeds
     `maxSkill`, *unless* `passiveSkill` already covers it. `checkPrimaryMethod`
-    is approximated by "the skill has any valid challenge", the same stand-in
-    `challenges._has_any_valid` uses; the `slayerLocked` clause isn't modelled
-    (no live slayer-assignment state exists in this codebase).
+    is approximated by "the skill has any valid challenge" - the same shape as
+    `challenges._has_any_valid`, but note that is **no longer how
+    `challenges.py` decides trainability**: it ports the real thing as
+    `_check_primary_method`. Calling that from here would invert the module
+    layering (this module sits below `sources.py`, and imports only
+    `chunkinfo`), and `unlockable_areas` isn't handed the `SourceIndex`/rules
+    it needs regardless - so this stays the looser test, and is looser than
+    the gate `challenges.py` applies to the same skill. The `slayerLocked`
+    clause isn't modelled (no live slayer-assignment state exists here).
     """
     for skill, level in needed.items():
         if not isinstance(level, (int, float)):
