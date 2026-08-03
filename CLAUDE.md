@@ -161,6 +161,7 @@ mypy                        # strict, over src/ and tests/; run from the repo ro
 pytest                      # whole suite
 pytest tests/test_summary.py::test_summarise_counts_unlocked_chunks   # single test
 FRAY_CHUNKINFO=path pytest tests/test_sections.py -k real   # opt-in oracle test against a real export
+pyproject-build && pipx install --force dist/*.whl   # build + reinstall the `fray` command system-wide
 ```
 
 The system mypy is configured with `python_executable = ".venv/bin/python"` so it can see pytest's
@@ -171,10 +172,19 @@ stubs, which is why it must run from the repo root and needs the venv to exist.
 `FRAY_CHUNKINFO` env var point `fray sections` (and later commands) at an existing local export
 instead.
 
+`pyproject-build` (from the `build` package — `pip install build` or `pipx install build` if it's not
+already on `PATH`) writes `dist/fray_claude-<version>-py3-none-any.whl`, independent of the `.venv`
+editable install. `pipx install` installs that into its own managed venv and puts `fray` on `PATH` for
+use outside this checkout. The `--force` is load-bearing, not optional: the version in `pyproject.toml`
+doesn't change between builds, so a plain `pipx install dist/*.whl` on an already-installed package is
+a silent no-op ("already seems to be installed") — it will not pick up new code.
+
 ## Conventions
 
 - PEP 8, type hints on all functions
 - Commit after completing a change
+- After completing a task, rebuild and reinstall the CLI locally so the `fray` on `PATH` reflects it:
+  `pyproject-build && pipx install --force dist/*.whl` (see Commands for why `--force` is required)
 - Tests are pytest, in `tests/`, named after the module under test (`tests/test_summary.py`). No test
   touches the network or the real `cache/`: pass `cache.py`'s `root` a `tmp_path`, and monkeypatch
   `urllib.request.urlopen` (`tests/test_api.py`) or `fray_claude.cli.fetch_map` (`tests/test_cli.py`).
