@@ -26,7 +26,10 @@ Deliberately not ported (documented, not silently wrong):
   self-contained sub-algorithm, out of scope for this increment.
 - Ties-as-alternates (`bestEquipmentAlts`) and the greedy set-cover dedup
   pass (worker.js:8321-8379) that lets one item cover several styles - this
-  module picks a single first-seen winner per (style, slot) instead.
+  module picks a single first-seen winner per (style, slot) instead. The
+  *ordering* half of that is modelled though: already-obtained equipment is
+  iterated first (`_order_completed_first`), so a tie resolves to gear you
+  already have rather than proposing an identical item you don't.
 - The `Show Best in Slot 1H and 2H` rule's dual weapon/2h emission: a 2H
   winner always *replaces* the weapon+shield slots here (upstream's rule-off
   behaviour); the rule-on case, which additionally keeps the 1H alternative
@@ -556,6 +559,35 @@ def _outdated_notes(
     return notes
 
 
+def _order_completed_first(
+    equipment: Mapping[str, Mapping[str, Any]], completed_bis: Mapping[str, Any]
+) -> dict[str, Mapping[str, Any]]:
+    """Iterate already-obtained equipment first, so an exact scoring tie
+    resolves to gear the player already has.
+
+    Ties are decided first-seen-wins (see `_best_for_style`), and upstream
+    builds its candidate pool as `{...completedEquipment, ...equipment}` -
+    completed items ahead of the export's own order. Skipping this was a
+    real mismatch: `Defence cape(t)` and `Hitpoints cape(t)` have byte-identical
+    stats, as do `Amulet of glory` and `Amulet of avarice`, and in each pair
+    the export happens to list the *unobtained* one first - so this module
+    kept proposing an item you'd gain nothing by getting, while upstream
+    correctly reported the slot as already filled.
+    """
+    index = _formatted_name_index(equipment)
+    completed_names: list[str] = []
+    for task_name in completed_bis:
+        match = _TASK_ITEM_PATTERN.search(task_name)
+        if match is None:
+            continue
+        resolved = index.get(match.group(1).lower())
+        if resolved is not None and resolved[0] in equipment:
+            completed_names.append(resolved[0])
+    # `{**a, **b}` keeps a's key positions for duplicates, so the completed
+    # names stay at the front while every entry still maps to its real data.
+    return {**{name: equipment[name] for name in completed_names}, **equipment}
+
+
 @dataclass(frozen=True)
 class BisResult:
     """`picks["{style}-{slot}"] = item_name` (style spaces replaced by `_`,
@@ -608,7 +640,7 @@ def compute_bis(
     max_skill = max_skill or {}
     passive_skill = passive_skill or {}
     completed_bis = completed_bis or {}
-    equipment = _mapping(chunk_info.data, "equipment")
+    equipment = _order_completed_first(_mapping(chunk_info.data, "equipment"), completed_bis)
     ammo_index = build_ammo_index(_mapping(chunk_info.code_items, "ammoTools"))
     task_unlocks_items = _mapping(_mapping(chunk_info.data, "taskUnlocks"), "Items")
     challenges = chunk_info.challenges

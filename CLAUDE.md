@@ -199,7 +199,11 @@ One responsibility per module, so the planned simulation work has a pure layer t
   `bis_task_name()`'s own output format) and
   `active` (not yet obtained), plus `outdated`: a completed pick whose slot has since been beaten by
   something better, resolved back to an item via a `formatted_name -> (item, slot)` index built from
-  `equipment`. That index lowercases both sides on purpose — the same item can be stored under two
+  `equipment`. Candidates are iterated already-obtained-first
+  (`_order_completed_first`), matching upstream's `{...completedEquipment, ...equipment}` pool: ties
+  are first-seen-wins, so without it the tool proposed items you'd gain nothing from - `Defence
+  cape(t)` over an identical, already-owned `Hitpoints cape(t)`, and `Amulet of glory` over
+  `Amulet of avarice`. That index lowercases both sides on purpose — the same item can be stored under two
   spellings over time (`Craw's bow (u)` interned vs. a literal `craw's bow (u)`), so real data can
   carry an apparent duplicate for one item. Two real bugs were found here by checking against live
   data rather than fixtures: a completed 2H-slot item was never flagged outdated (`_finalize_slots`

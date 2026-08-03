@@ -490,3 +490,40 @@ def test_a_real_completed_bis_item_is_never_shown_as_active() -> None:
 
     # And nothing anywhere should still be an unresolved raw id.
     assert not [name for name in state.completed_challenges["BiS"] if name.startswith("t_")]
+
+
+def test_a_scoring_tie_resolves_to_an_already_completed_item() -> None:
+    # Upstream builds its candidate pool as `{...completedEquipment,
+    # ...equipment}`, and ties are first-seen-wins - so an item you already
+    # have beats an identical one you don't. Real case: `Defence cape(t)`
+    # and `Hitpoints cape(t)` have identical stats, and the export lists the
+    # unobtained one first.
+    stats = {"slot": "cape", "melee_strength": 5}
+    info = _chunk_info(equipment={"Unowned cape": dict(stats), "Owned cape": dict(stats)})
+    items = {"Unowned cape": {"S": "shop"}, "Owned cape": {"S": "shop"}}
+
+    without = compute_bis(info, items, {}, rules={})
+    with_completed = compute_bis(
+        info, items, {}, rules={}, completed_bis={"Obtain an ~|owned cape|~": True}
+    )
+
+    assert without.picks["Melee-cape"] == "Unowned cape"
+    assert with_completed.picks["Melee-cape"] == "Owned cape"
+    # ...and having it means nothing is proposed for that slot.
+    assert with_completed.active == {}
+
+
+def test_completed_ordering_never_beats_a_strictly_better_item() -> None:
+    info = _chunk_info(
+        equipment={
+            "Weak cape": {"slot": "cape", "melee_strength": 1},
+            "Strong cape": {"slot": "cape", "melee_strength": 9},
+        }
+    )
+    items = {"Weak cape": {"S": "shop"}, "Strong cape": {"S": "shop"}}
+
+    result = compute_bis(
+        info, items, {}, rules={}, completed_bis={"Obtain a ~|weak cape|~": True}
+    )
+
+    assert result.picks["Melee-cape"] == "Strong cape"
