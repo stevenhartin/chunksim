@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.sources import CATEGORIES, gather_chunks_info
+from fray_claude.sources import CATEGORIES, apply_item_task_unlocks, gather_chunks_info
 
 
 def _chunk_info(**data: Any) -> ChunkInfo:
@@ -296,3 +296,70 @@ def test_category_rejects_an_unknown_name() -> None:
 
 def test_categories_matches_the_source_index_fields() -> None:
     assert CATEGORIES == ("items", "objects", "monsters", "npcs", "shops")
+
+
+def test_item_task_unlocks_removes_a_locked_monster_source() -> None:
+    """`taskUnlocks['Items']`'s `"<item>^<monster>"` keys are how upstream
+    keeps a merged drop table's location-specific half out:
+    `skillItems.Slayer['Abyssal demon']` carries the Catacombs of Kourend
+    drops alongside the Slayer Tower ones, and `Ancient shard^Abyssal demon`
+    gates them on a challenge needing the Catacombs chunk.
+    """
+    items: dict[str, dict[str, str]] = {
+        "Ancient shard": {"Abyssal demon": "secondary-drop"},
+        "Abyssal whip": {"Abyssal demon": "secondary-drop"},
+    }
+    unlocks = {"Items": {"Ancient shard^Abyssal demon": [{"Catacombs drops": "Nonskill"}]}}
+
+    apply_item_task_unlocks(items, unlocks, {})
+
+    assert "Ancient shard" not in items
+    assert items["Abyssal whip"] == {"Abyssal demon": "secondary-drop"}
+
+
+def test_item_task_unlocks_keeps_the_source_once_the_task_is_valid() -> None:
+    items: dict[str, dict[str, str]] = {"Ancient shard": {"Abyssal demon": "secondary-drop"}}
+    unlocks = {"Items": {"Ancient shard^Abyssal demon": [{"Catacombs drops": "Nonskill"}]}}
+
+    apply_item_task_unlocks(items, unlocks, {"Nonskill": {"Catacombs drops": True}})
+
+    assert items["Ancient shard"] == {"Abyssal demon": "secondary-drop"}
+
+
+def test_item_task_unlocks_also_matches_a_slay_challenge_source() -> None:
+    """The challenge-`Output` route keys its sources by challenge name, so
+    upstream matches `source.includes('Slay')` plus the monster name."""
+    items: dict[str, dict[str, str]] = {
+        "Ancient shard": {"Slay an ~|abyssal demon|~": "primary-Slayer"}
+    }
+    unlocks = {"Items": {"Ancient shard^Abyssal demon": [{"Catacombs drops": "Nonskill"}]}}
+
+    apply_item_task_unlocks(items, unlocks, {})
+
+    assert "Ancient shard" not in items
+
+
+def test_item_task_unlocks_is_satisfied_by_any_one_task() -> None:
+    """Unlike the entity branches' all-of semantics, this list needs only one
+    entry valid (upstream filters for `length > 0`)."""
+    items: dict[str, dict[str, str]] = {"Brimstone key": {"Abyssal demon": "secondary-drop"}}
+    unlocks = {
+        "Items": {
+            "Brimstone key^Abyssal demon": [
+                {"Receive an assignment from Konar": "Slayer"},
+                {"Some other route": "Nonskill"},
+            ]
+        }
+    }
+
+    apply_item_task_unlocks(items, unlocks, {"Nonskill": {"Some other route": True}})
+
+    assert items["Brimstone key"] == {"Abyssal demon": "secondary-drop"}
+
+
+def test_item_task_unlocks_ignores_a_key_without_a_monster() -> None:
+    items: dict[str, dict[str, str]] = {"Climbing boots": {"Shop": "shop"}}
+
+    apply_item_task_unlocks(items, {"Items": {"Climbing boots": [{"A task": "Nonskill"}]}}, {})
+
+    assert items["Climbing boots"] == {"Shop": "shop"}

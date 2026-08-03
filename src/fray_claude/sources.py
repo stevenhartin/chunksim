@@ -7,6 +7,13 @@ shops/monsters directly present, the items obtainable from monster drops
 and the `Rare Drop Amount`/`Secondary Primary Amount` thresholds), and items
 buyable from an accessible shop.
 
+`taskUnlocks['Items']` is applied by `apply_item_task_unlocks`: 976 flat
+`"<item>^<monster>"` entries gating an item *from a given monster* behind a
+task. It is how upstream separates a monster's location-specific drops when
+the export merges them - `skillItems.Slayer['Abyssal demon']` carries the
+Catacombs of Kourend drops next to the Slayer Tower ones, and `Ancient
+shard^Abyssal demon` gates them on a challenge needing that chunk.
+
 A monster with no `drops` entry falls back to its `skillItems.Slayer` entry
 (e.g. `Abyssal demon` has no `drops` table - `Abyssal whip` only exists via
 `skillItems.Slayer.'Abyssal demon'`), gated by a simplified Slayer-level
@@ -447,8 +454,10 @@ def _task_unlocked(
     made every such source unconditionally available.
 
     Only the entity branches (`Monsters`/`NPCs`/`Objects`/`Shops`/`Spawns`)
-    are checked here; `Items` has a different, flat shape and is applied by
-    `bis.py`'s `_task_unlocks_ok` against equipment candidates.
+    are checked here; `Items` has a different, flat shape and its own
+    any-of semantics - see `apply_item_task_unlocks` (and `bis.py`'s
+    `_task_unlocks_ok`, which applies the same branch to equipment
+    candidates).
     """
     locations = _mapping(task_unlocks, branch).get(name)
     if not isinstance(locations, dict):
@@ -465,6 +474,66 @@ def _task_unlocked(
             if task_name not in valid_tasks.get(task_skill, {}):
                 return False
     return True
+
+
+def _any_task_valid(
+    required: list[Any], valid_tasks: Mapping[str, Mapping[str, Any]]
+) -> bool:
+    """`taskUnlocks['Items']`'s list is satisfied by **any** one of its
+    `{task: category}` entries (upstream filters for `length > 0`), unlike the
+    entity branches' all-of semantics in `_task_unlocked`."""
+    for entry in required:
+        if not isinstance(entry, dict):
+            continue
+        for task_name, task_skill in entry.items():
+            if isinstance(task_skill, str) and task_name in valid_tasks.get(task_skill, {}):
+                return True
+    return False
+
+
+def apply_item_task_unlocks(
+    items: dict[str, dict[str, str]],
+    task_unlocks: Mapping[str, Any],
+    valid_tasks: Mapping[str, Mapping[str, Any]],
+) -> None:
+    """Remove item sources still locked behind a task - port of
+    worker.js:882-925, in place.
+
+    `taskUnlocks['Items']` is flat rather than location-keyed: 976 entries,
+    924 of them `"<item>^<monster>"`, each listing the tasks that unlock that
+    item *from that monster*. It is how upstream keeps a monster's
+    location-specific drops apart when the export merges them into one table:
+    `skillItems.Slayer['Abyssal demon']` carries the Catacombs of Kourend
+    drops alongside the Slayer Tower ones, and `"Ancient shard^Abyssal
+    demon"` gates them on the `Catacombs drops` challenge - a `Nonskill`
+    challenge whose only requirement is the `Catacombs of Kourend` chunk. A
+    map without that chunk therefore cannot have ancient shards or dark
+    totems, however many abyssal demons it can reach.
+
+    Sources are matched the way upstream matches them: the monster itself, or
+    a *challenge* naming it whose text contains `Slay` - which is what catches
+    the `Slay an ~|abyssal demon|~` entries `challenges._seed_items_with_outputs`
+    adds. An item left with no sources is dropped entirely.
+
+    Not ported: the `-npc` suffix form and the `monster === ''` rename branch,
+    neither of which appears in the real export's keys.
+    """
+    for key, required in _mapping(task_unlocks, "Items").items():
+        if not isinstance(required, list) or _any_task_valid(required, valid_tasks):
+            continue
+        item_name, separator, monster = key.partition("^")
+        if not separator or not monster or "-npc" in monster:
+            continue
+        sources = items.get(item_name)
+        if not isinstance(sources, dict):
+            continue
+        lowered = monster.lower()
+        for source in [
+            s for s in sources if s == monster or (lowered in s.lower() and "Slay" in s)
+        ]:
+            del sources[source]
+        if not sources:
+            items.pop(item_name, None)
 
 
 def _add_shop_items(
@@ -696,6 +765,8 @@ def gather_chunks_info(
                     rules=rules,
                     backlogged=backlogged,
                 )
+
+    apply_item_task_unlocks(items, chunk_info.data.get("taskUnlocks") or {}, valid_tasks or {})
 
     return SourceIndex(
         items=items,

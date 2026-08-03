@@ -114,7 +114,17 @@ One responsibility per module, so the planned simulation work has a pure layer t
   dynamic "Every Drop"/"All Droptables" challenge synthesis in `calcChallengesWork` consumes and so
   belongs with `challenges.py` instead. The `KeyItem Bosses` rate-boosting pass is unported; a map
   with that rule on makes `gather_chunks_info` raise `NotImplementedError` rather than silently
-  producing an incomplete index. `taskUnlocks` gating (`_task_unlocked`) is applied to
+  producing an incomplete index. **`taskUnlocks['Items']` is applied** (`apply_item_task_unlocks`, worker.js:882): 976 flat
+  `"<item>^<monster>"` entries, each listing tasks that unlock that item *from that monster*, satisfied
+  by **any one** of them (unlike the entity branches' all-of). This is how upstream separates a
+  monster's location-specific drops when the export merges them into one table —
+  `skillItems.Slayer['Abyssal demon']` carries the Catacombs of Kourend drops alongside the Slayer
+  Tower ones, and `Ancient shard^Abyssal demon` gates them on `Catacombs drops`, a `Nonskill`
+  challenge whose only requirement is the `Catacombs of Kourend` chunk. Sources are matched as
+  upstream matches them — the monster itself, or a challenge naming it whose text contains `Slay`,
+  which is what catches the `Slay an ~|abyssal demon|~` entries `_seed_items_with_outputs` adds, so
+  the gate is applied in **both** places. Missing it leaked 6 collection-log items the map's own
+  oracle omits. `taskUnlocks` gating (`_task_unlocked`) is also applied to
   `Monsters`/`NPCs`/`Objects`/`Shops`/`Spawns`: an entity present in a chunk can still be locked behind
   completing challenges *at that location* (the `Sir Tiffy Cashien (The Slug Menace)` shop needs that
   quest before it sells Proselyte armour; `White Knight Armoury` needs `Wanted!`). This makes source

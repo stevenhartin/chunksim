@@ -126,7 +126,7 @@ from typing import Any
 
 from fray_claude import boosts
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.sources import SourceIndex
+from fray_claude.sources import SourceIndex, apply_item_task_unlocks
 from fray_claude.summary import _mapping
 
 _MAYBE_PRIMARY = frozenset({"Normal Farming", "Sulphurous Fertiliser", "Shortcut", "InsidePOH Primary"})
@@ -930,6 +930,13 @@ def _seed_items_with_outputs(
             for item in table:
                 if isinstance(item, str) and backlogged_items.get(item) is not True:
                     items.setdefault(item, {}).setdefault(name, tag)
+
+    # The `Slay an ~|abyssal demon|~` sources just added are exactly what
+    # `taskUnlocks['Items']`'s `"<item>^<monster>"` keys gate, and upstream
+    # re-runs `gatherChunksInfo` mid-`calcChallenges` so its own pass sees
+    # them too. Re-applying here is what keeps a merged drop table's
+    # location-specific half out - see `sources.apply_item_task_unlocks`.
+    apply_item_task_unlocks(items, _mapping(chunk_info.data, "taskUnlocks"), valid)
     return items
 
 

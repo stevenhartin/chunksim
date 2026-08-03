@@ -338,11 +338,10 @@ _REAL_MAP = os.environ.get("FRAY_MAP_CACHE")
 #: on, pinned exactly so the test fails the moment anything moves - including
 #: when the underlying bugs are fixed, at which point these come out.
 #:
-#: All ten are item availability, not this module: `Mahogany logs` blocks the
-#: Varrock task; Artio's 1/618-1/2800 boss drops are excluded by the
-#: `Rare Drop Amount: "0"` threshold that the oracle evidently clears somehow;
-#: and the frozen tear / dark totem / ancient shard / double ammo mould group
-#: we include and the oracle does not.
+#: All four are item availability, not this module: `Mahogany logs` blocks the
+#: Varrock task; `tyrannical ring` is an Artio 1/716 boss drop the
+#: `Rare Drop Amount: "0"` threshold excludes but the oracle evidently keeps;
+#: and the `Giants' Foundry Reward Shop` mould we include and it does not.
 _KNOWN_ORACLE_DELTA = {
     "Diary": frozenset(
         {
@@ -352,14 +351,8 @@ _KNOWN_ORACLE_DELTA = {
     ),
     "Extra": frozenset(
         {
-            "(Amoxliatl) Obtain a ~|frozen tear|~",
             "(Callisto and Artio) Obtain a ~|tyrannical ring|~",
             "(Giants' Foundry) Obtain a ~|double ammo mould|~",
-            "(Miscellaneous) Obtain a ~|dark totem base|~",
-            "(Miscellaneous) Obtain a ~|dark totem middle|~",
-            "(Miscellaneous) Obtain a ~|dark totem top|~",
-            "(Skotizo) Obtain an ~|ancient shard|~",
-            "(Slayer) Obtain a ~|frozen tear|~",
         }
     ),
 }
