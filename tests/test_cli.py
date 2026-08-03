@@ -305,8 +305,17 @@ def test_tasks_overview_active_breakdown_respects_the_limit(
     payload = {"chunks": {"unlocked": {"100": True}}}
     chunkinfo_data = {
         "challenges": {
-            "Woodcutting": {"Chop a tree": {"Level": 5, "Primary": True}},
-            "Mining": {"Mine a rock": {"Level": 5, "Primary": True}},
+            # The Level 1 entries make each skill *trainable*
+            # (`checkPrimaryMethod`), without which nothing above the passive
+            # floor is eligible at all - see `active_tasks._is_eligible`.
+            "Woodcutting": {
+                "Chop a sapling": {"Level": 1, "Primary": True},
+                "Chop a tree": {"Level": 5, "Primary": True},
+            },
+            "Mining": {
+                "Mine a pebble": {"Level": 1, "Primary": True},
+                "Mine a rock": {"Level": 5, "Primary": True},
+            },
         }
     }
     _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
@@ -656,7 +665,14 @@ def test_tasks_skill_category_reports_a_cached_active_task_match(
         "chunks": {"unlocked": {}},
         "chunkinfo": {"activeTasks": {"Woodcutting": {"t_1": "41"}}},
     }
-    chunkinfo_data = {"challenges": {"Woodcutting": {"Chop with a rune axe": {"Level": 41, "Primary": True}}}}
+    chunkinfo_data = {
+        "challenges": {
+            "Woodcutting": {
+                "Chop with a bronze axe": {"Level": 1, "Primary": True},
+                "Chop with a rune axe": {"Level": 41, "Primary": True},
+            }
+        }
+    }
     _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
     write_blob("tasks_map", {"Chop with a rune axe": "t_1"}, "https://example/tasksMap.json")
     capsys.readouterr()

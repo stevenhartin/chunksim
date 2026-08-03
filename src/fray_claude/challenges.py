@@ -93,11 +93,13 @@ except where noted as a silent, documented approximation instead:
   checked at all, which can over-include processing-skill tasks when that
   rule is on.
 - Dynamic Max Cape / Quest Point Cape challenge injection, Slayer-lock,
-  Mahogany Homes, Collection Log Clues thresholds: not implemented. Shortcut
+  Collection Log Clues thresholds: not implemented. (Mahogany Homes *is*
+  now handled - see `_MAHOGANY_HOMES_CONTRACT`.) Shortcut
   Task / Combat and Teleport Spells / Cleaning Herbs only ever set
-  `NeverShow` upstream, which is a display-only panel filter - out of scope
-  per this project's attribution rule (see the stage-3 plan), so correctly
-  not needed here regardless.
+  `NeverShow` upstream, a display-only panel filter that never affects
+  validity - so it stays out of this module, but it is *not* unused: it
+  gates the active-task pick, and `active_tasks._never_show` recomputes it
+  there (nothing sets it statically in the export).
 - Manual per-task overrides (`manualTasks`/`userTasks`) are not applied: a
   simulated roll has no such history to replay, so this module derives
   validity purely from chunk/rule state.
@@ -167,6 +169,13 @@ def strip_task_markup(task_name: str) -> str:
     """
     return _TASK_MARKUP.sub("", task_name)
 
+
+#: Substring upstream matches a challenge name against when
+#: `chunkinfo.constructionLocked` is set (worker.js:3758) - Mahogany Homes is
+#: gated behind a specific chunk the player hasn't taken, so every contract
+#: tier is invalid regardless of its own requirements. Matched as a plain
+#: substring against the *raw* (markup-carrying) name, exactly as upstream does.
+_MAHOGANY_HOMES_CONTRACT = "contract for ~|Mahogany Homes|~"
 
 _LEVEL_GATES_NOT_SUPPORTED = (
     "QuestPointsNeeded",
@@ -720,7 +729,10 @@ def _evaluate_challenge(
     secondary_primary_amount: str,
     trainable: Mapping[str, bool],
     prev_valid: Mapping[str, Mapping[str, Any]],
+    construction_locked: bool,
 ) -> int | str | bool | None:
+    if construction_locked and _MAHOGANY_HOMES_CONTRACT in name:
+        return None
     if not _level_gates_met(challenge, skill, max_skill, rules):
         return None
     if not _category_gate_met(challenge, rules, secondary_primary_amount):
@@ -887,6 +899,7 @@ def calc_challenges(
     passive_skill: Mapping[str, int] | None = None,
     backlog: Mapping[str, Mapping[str, Any]] | None = None,
     manual_tasks: Mapping[str, Mapping[str, Any]] | None = None,
+    construction_locked: bool = False,
     max_iterations: int = 15,
 ) -> ChallengeResult:
     """Port of `calcChallenges`/`calcChallengesWork`'s core fixed point - see
@@ -944,6 +957,7 @@ def calc_challenges(
                         secondary_primary_amount=secondary_primary_amount,
                         trainable=trainable,
                         prev_valid=valid,
+                        construction_locked=construction_locked,
                     )
                 except NotImplementedError:
                     # A single challenge using a mechanic this module doesn't

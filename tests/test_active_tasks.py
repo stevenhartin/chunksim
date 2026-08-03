@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import json
+import os
+from pathlib import Path
 from typing import Any
+
+import pytest
 
 from fray_claude.active_tasks import SkillClassification, TaskClassification, classify_tasks
 from fray_claude.chunkinfo import ChunkInfo
+
+_REAL_CHUNKINFO = os.environ.get("FRAY_CHUNKINFO")
+_REAL_MAP = os.environ.get("FRAY_MAP_CACHE")
 
 
 def _chunk_info(**data: Any) -> ChunkInfo:
@@ -33,7 +41,12 @@ def test_primary_challenge_with_highest_level_wins() -> None:
     assert classification.completed == frozenset()
 
 
-def test_ineligible_challenge_never_wins_even_at_a_higher_level() -> None:
+def test_a_trainable_skill_can_pick_a_non_primary_challenge() -> None:
+    """Eligibility keys off `checkPrimaryMethod(skill)` - one boolean for the
+    whole skill - not the challenge's own `Primary` field. Real `Slayer`
+    challenges are almost all `Primary: false`, and upstream still picks the
+    highest of them once the skill is trainable at all.
+    """
     info = _chunk_info(
         challenges={
             "Woodcutting": {
@@ -49,8 +62,24 @@ def test_ineligible_challenge_never_wins_even_at_a_higher_level() -> None:
     )
 
     classification = result.skills["Woodcutting"]
-    assert classification.active == "Chop with a bronze axe"
-    assert classification.obsolete == frozenset({"Some secondary route"})
+    assert classification.active == "Some secondary route"
+    assert classification.obsolete == frozenset({"Chop with a bronze axe"})
+
+
+def test_an_untrainable_skill_offers_nothing_above_its_passive_floor() -> None:
+    """With no `Level == 1` Primary route the skill isn't trainable here, so
+    nothing above the passive floor competes - the real `Herblore` case,
+    where a Level 90 potion was being proposed for a skill locked behind a
+    quest the account hasn't done.
+    """
+    info = _chunk_info(challenges={"Herblore": {"Mix a super combat potion": {"Level": 90}}})
+    valid = {"Herblore": {"Mix a super combat potion": 90}}
+
+    result = classify_tasks(
+        valid, info, completed_challenges={}, manual_tasks={}, backlog={}, passive_skill={}
+    )
+
+    assert result.skills["Herblore"].active is None
 
 
 def test_passive_skill_floor_makes_a_challenge_eligible() -> None:
@@ -224,19 +253,30 @@ def test_a_completed_higher_level_task_rules_out_every_lower_candidate() -> None
     assert classification.obsolete == frozenset({"Slayer Tower ivy", "Varrock Rooftop Course"})
 
 
-def test_the_ceiling_only_rules_out_strictly_lower_candidates() -> None:
-    """Two tasks at the same level are alternatives, not tiers of one
-    another - completing one leaves the other a legitimate goal."""
+def test_the_ceiling_also_rules_out_an_equal_level_candidate() -> None:
+    """Upstream requires `realLevel > highestChallengeLevelArr`, so a
+    candidate at exactly the completed ceiling is settled too. Both real
+    reports of this were equal-level: `Burn magic logs` completed while
+    `Burn magic logs at a fire` (also 75) was proposed, and `rune platebody`
+    completed while `rune plateskirt` (also 99) was.
+    """
     info = _chunk_info(
         challenges={
             "Firemaking": {
                 "Burn magic logs": {"Level": 75},
                 "Burn magic logs at a fire": {"Level": 75, "Primary": True},
                 "Burn yew logs": {"Level": 60, "Primary": True},
+                "Light a candle": {"Level": 1, "Primary": True},
             }
         }
     )
-    valid = {"Firemaking": {"Burn magic logs at a fire": 75, "Burn yew logs": 60}}
+    valid = {
+        "Firemaking": {
+            "Burn magic logs at a fire": 75,
+            "Burn yew logs": 60,
+            "Light a candle": 1,
+        }
+    }
 
     result = classify_tasks(
         valid,
@@ -248,8 +288,10 @@ def test_the_ceiling_only_rules_out_strictly_lower_candidates() -> None:
     )
 
     classification = result.skills["Firemaking"]
-    assert classification.active == "Burn magic logs at a fire"
-    assert classification.obsolete == frozenset({"Burn yew logs"})
+    assert classification.active is None
+    assert classification.obsolete == frozenset(
+        {"Burn magic logs at a fire", "Burn yew logs", "Light a candle"}
+    )
 
 
 def test_a_completed_task_still_wins_the_ceiling_when_it_is_no_longer_valid() -> None:
@@ -289,11 +331,12 @@ def test_a_completed_entry_with_no_level_sets_no_ceiling() -> None:
         challenges={
             "Woodcutting": {
                 "Do a thing": {},
+                "Chop a regular tree": {"Level": 1, "Primary": True},
                 "Chop magic logs": {"Level": 75, "Primary": True},
             }
         }
     )
-    valid = {"Woodcutting": {"Chop magic logs": 75}}
+    valid = {"Woodcutting": {"Chop a regular tree": 1, "Chop magic logs": 75}}
 
     result = classify_tasks(
         valid,
@@ -307,3 +350,47 @@ def test_a_completed_entry_with_no_level_sets_no_ceiling() -> None:
     )
 
     assert result.skills["Woodcutting"].active == "Chop magic logs"
+
+
+@pytest.mark.skipif(
+    not (_REAL_CHUNKINFO and _REAL_MAP),
+    reason="set FRAY_CHUNKINFO and FRAY_MAP_CACHE to real data to run this",
+)
+def test_active_slayer_task_matches_the_live_oracle() -> None:
+    """Opt-in oracle: `chunkinfo.activeTasks.Slayer` is upstream's *own* last
+    computed active Slayer task, so it must reproduce exactly.
+
+    An earlier stage of this project recorded this entry as "an unrelated
+    slayer-master assignment" and therefore ignored it. It is nothing of the
+    sort - it is the one real oracle this module has, and it was failing.
+    Getting it to pass found the eligibility bug: the candidacy gate keys off
+    `checkPrimaryMethod(skill)`, one boolean for the whole skill, and this
+    module was reading each challenge's own `Primary` field instead. Real
+    Slayer challenges are almost all `Primary: false`, so nothing above the
+    Level 45 passive floor could ever be picked and `Slay an Infernal Mage`
+    (45) won instead of the Level 92 araxyte.
+
+    The stored value is `"92{5}"` - Level 92 less a 5-point `Wild pie` boost.
+    Only the *name* is asserted: boosting isn't modelled (see the module
+    docstring), and this challenge wins on raw level regardless.
+    """
+    assert _REAL_CHUNKINFO is not None
+    from fray_claude.cache import project_root, read_blob, read_cache
+    from fray_claude.firebase import decode_challenge_keyed, reverse_tasks_map
+    from fray_claude.pipeline import derive, load_map_state
+
+    data = json.loads(Path(_REAL_CHUNKINFO).read_text(encoding="utf-8"))
+    info = ChunkInfo(data)
+    root = project_root()
+    envelope = read_cache("fray", root)
+    tasks_map = reverse_tasks_map(read_blob("tasks_map", root)["data"])
+    state, unlocked = load_map_state(envelope["data"], info, tasks_map)
+    derived = derive(state, unlocked)
+
+    oracle = decode_challenge_keyed(
+        envelope["data"]["chunkinfo"].get("activeTasks"), tasks_map
+    ).get("Slayer", {})
+    recorded = next(iter(oracle), None)
+
+    assert recorded is not None, "the map no longer records an active Slayer task"
+    assert derived.task_classification.skills["Slayer"].active == recorded

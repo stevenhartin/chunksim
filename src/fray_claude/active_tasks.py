@@ -34,34 +34,45 @@ Verified against upstream and real map data before porting:
   this eligibility gate and tie-break need; getting them wrong changes which
   challenge "wins" for a meaningful fraction of skills.
 
-Deliberate divergence from the port - the completed-level ceiling:
-a challenge cannot become `active` when a *higher*-`Level` challenge in the
-same skill is already completed (`_completed_level_ceiling`); it lands in
-`obsolete` with the rest. Completing a task proves the level it requires, so
-everything easier is settled, whatever order it happened in. This matters
-because a temporary boost lets a task be completed above the player's
-natural level, which is exactly how the reported case arose: `Agility` had
-`Access the Revenant Caves jump (hard) shortcut` (Level 89) completed while
-the panel still proposed `Access the Slayer Tower ivy shortcut` (Level 81)
-as the current goal. Two other skills on the same map were wrong the same
-way, both via a skillcape: `Woodcutting` (`Buy the Woodcutting cape`, 99, vs
-a proposed `Chop magic logs`, 75) and `Mining` (`Buy the Mining cape`, 99,
-vs `Mine runite ore`, 85). The comparison is strictly greater, so an equal-
-level challenge still competes - two Level 81 tasks are alternatives, not
-tiers of each other. When it rules out every candidate the skill simply has
-no active pick, which is the honest answer.
+The completed-level ceiling (`_completed_level_ceiling`) is upstream's
+`highestChallengeLevelArr` (worker.js:8392): the highest `Level` among the
+skill's *completed* challenges, which a candidate must **strictly exceed**
+(`realLevel > highestChallengeLevelArr`, worker.js:8438) to compete. So a
+candidate at or below it is settled and lands in `obsolete`. Completing a
+task proves the level it needs, so everything no harder is done with,
+whatever order it happened in - which matters because a temporary boost lets
+a task be completed above the player's natural level. Four reported bugs
+were this one mechanism, two of them equal-level (the reason `<=` and not
+`<` is load-bearing):
+- `Agility`: `Revenant Caves jump (hard)` (89, boosted) completed, yet the
+  Level 81 ivy shortcut was proposed.
+- `Woodcutting`/`Mining`: a 99 skillcape completed, yet Level 75/85 tasks
+  proposed.
+- `Firemaking`: `Burn magic logs` (75) completed, yet `Burn magic logs at a
+  fire` - also 75 - proposed.
+- `Smithing`: `rune platebody` (99) completed, yet `rune plateskirt` - also
+  99, and only a worse `Priority` - proposed.
+
+When it rules out every candidate the skill simply has no active pick, which
+is the honest answer and common on a maxed account.
 
 Scoped to *selection*: the ceiling is not fed back as an implied skill level
 into `challenges.py`'s `Level` gate, which would change what is `valid` and
 cascade well beyond this module.
 
 Not ported, documented rather than silently wrong:
-- Boosting's level adjustment (owned boost items, Crystal saw) - no
-  boost-ownership state exists anywhere in this codebase, the same class of
-  gap as `checkPrimaryMethod` (see `challenges.py`/`sources.py`'s
-  docstrings). Comparisons here use each challenge's raw `Level`. The
-  ceiling above absorbs the *consequence* of a boost once the boosted task
-  is ticked off, but not a boost the player merely owns.
+- **Boosting's level adjustment** (worker.js:8394-8430/8440-8466). `rules
+  ['Boosting']` is on for real maps, and upstream compares a *boosted*
+  `realLevel = Level - bestBoost` on both sides of the ceiling test, taking
+  the best `codeItems.boostItems[skill]` entry the player can reach (plus a
+  `+3` Construction Crystal saw case, `codeItems.boostTaskBans` exclusions,
+  and `"N%+M"` proportional boosts), skipping any challenge flagged
+  `NoBoost`. Nothing here models boost *ownership*, so comparisons use the
+  raw `Level`. The consequence: a pick can be off whenever two candidates
+  are within one boost of each other. It does not affect the oracle case -
+  `activeTasks.Slayer` records `Slay an araxyte#Level 96` as `"92{5}"`, i.e.
+  Level 92 less a 5-point `Wild pie` boost, and that challenge wins on raw
+  level too - but it is the largest remaining gap in this module.
 - The `tempAlwaysGlobal` backlog-alternate promotion: upstream, when the
   winning candidate is backlogged, promotes a same-item alternate recorded
   by the "Highest Level"-off grouping path. This module doesn't track that
@@ -80,8 +91,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from fray_claude.challenges import _SKILL_NAMES
+from fray_claude.challenges import _SKILL_NAMES, _check_primary_method
 from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.sources import SourceIndex
+
+_EMPTY_SOURCE_INDEX = SourceIndex(
+    items={}, objects={}, monsters={}, npcs={}, shops={}, drop_rates={}
+)
 
 
 @dataclass(frozen=True)
@@ -118,23 +134,34 @@ class TaskClassification:
 
 def _is_eligible(
     name: str,
-    challenge: Mapping[str, Any],
     level: float,
     *,
     skill: str,
+    skill_is_primary: bool,
     passive_skill: Mapping[str, int],
     manual_tasks: Mapping[str, Mapping[str, Any]],
 ) -> bool:
-    """Port of `calcCurrentChallenges2`'s candidacy gate (worker.js:~8420):
-    a challenge only competes for "active" if it's flagged `Primary`, is a
-    trivial `Level == 1` task, is already covered by a passive-skill floor,
-    or has a `manualTasks` entry (a real, per-account recorded override -
-    unlike `challenges.py`'s requirement-checking, which deliberately never
-    applies `manualTasks`/`userTasks`, this *selection* layer does, since
-    `manualTasks` here means "treat this as the skill's active method"
-    rather than a requirement bypass).
+    """Port of `calcCurrentChallenges2`'s candidacy gate (worker.js:8437):
+    `isPrimary || realLevel === 1 || passiveSkill[skill] >= realLevel ||
+    manualTasks[skill][challenge] || userTasks[skill][challenge]`.
+
+    `skill_is_primary` is `checkPrimaryMethod(skill, ...)` - **one boolean
+    per skill** ("can this skill be trained here at all"), not the
+    challenge's own `Primary` field. An earlier version of this port read
+    the per-challenge flag, which is a different thing entirely and broke
+    both directions: `Slayer` challenges are almost all `Primary: false`, so
+    only ones under the passive floor could ever be picked (the Level 92
+    araxyte upstream records as the active task was unreachable), while
+    `Herblore` - which `checkPrimaryMethod` reports untrainable on the real
+    map - still offered a Level 90 potion.
+
+    `manualTasks` is a real, per-account recorded override; unlike
+    `challenges.py`'s requirement-checking, which deliberately never applies
+    `manualTasks`/`userTasks`, this *selection* layer does, since here it
+    means "treat this as the skill's active method" rather than a
+    requirement bypass. `userTasks` is empty in real data and unmodelled.
     """
-    if challenge.get("Primary") is True:
+    if skill_is_primary:
         return True
     if level == 1:
         return True
@@ -142,6 +169,36 @@ def _is_eligible(
     if isinstance(passive_level, (int, float)) and passive_level >= level:
         return True
     return name in manual_tasks.get(skill, {})
+
+
+def _never_show(
+    skill: str, name: str, challenge: Mapping[str, Any], rules: Mapping[str, Any]
+) -> bool:
+    """Upstream's `NeverShow` flag, which `calcChallengesWork` *sets* while
+    checking validity (worker.js:3776/3782/3794) and `calcCurrentChallenges2`
+    then honours when picking the active task.
+
+    It never appears statically in the export (0 entries), so it has to be
+    recomputed rather than read: three rules each hide a family of `Level > 1`
+    challenges without invalidating them. On the map this was built against
+    only the `Combat and Teleport Spells` arm fires, over 15 Magic
+    challenges - a skill `checkPrimaryMethod` already reports untrainable
+    there, so this changes nothing today and exists so it stays right if that
+    changes.
+    """
+    level = challenge.get("Level")
+    if not (isinstance(level, (int, float)) and level > 1):
+        return False
+    categories = challenge.get("Category") or []
+    if not rules.get("Shortcut Task") and "Shortcut" in categories:
+        return True
+    if not rules.get("Combat and Teleport Spells") and "Combat and Teleport Spells Task" in categories:
+        return True
+    return (
+        not rules.get("Cleaning Herbs")
+        and skill == "Herblore"
+        and ("Clean a" in name or "(unf)" in name)
+    )
 
 
 def _completed_level_ceiling(
@@ -177,11 +234,13 @@ def _classify_skill(
     backlog: Mapping[str, Any],
     manual_tasks: Mapping[str, Mapping[str, Any]],
     passive_skill: Mapping[str, int],
+    skill_is_primary: bool,
+    rules: Mapping[str, Any],
 ) -> SkillClassification:
     completed_names = {name for name in valid_names if name in completed}
     remaining = [name for name in valid_names if name not in completed_names]
-    # A task the player has already beaten a *harder* version of is settled,
-    # so it can't be the skill's current goal - see the module docstring.
+    # A task no harder than one already completed is settled - see the module
+    # docstring.
     ceiling = _completed_level_ceiling(completed, skill_challenges)
 
     winner: str | None = None
@@ -191,12 +250,19 @@ def _classify_skill(
         challenge = skill_challenges.get(name)
         if not isinstance(challenge, dict) or name in backlog:
             continue
+        if _never_show(skill, name, challenge, rules):
+            continue
         level = challenge.get("Level")
         level = float(level) if isinstance(level, (int, float)) else 1.0
-        if ceiling is not None and ceiling > level:
+        if ceiling is not None and level <= ceiling:
             continue
         if not _is_eligible(
-            name, challenge, level, skill=skill, passive_skill=passive_skill, manual_tasks=manual_tasks
+            name,
+            level,
+            skill=skill,
+            skill_is_primary=skill_is_primary,
+            passive_skill=passive_skill,
+            manual_tasks=manual_tasks,
         ):
             continue
         if winner is None or level > winner_level:
@@ -227,9 +293,20 @@ def classify_tasks(
     manual_tasks: Mapping[str, Mapping[str, Any]],
     backlog: Mapping[str, Mapping[str, Any]],
     passive_skill: Mapping[str, int],
+    source_index: SourceIndex | None = None,
+    rules: Mapping[str, Any] | None = None,
 ) -> TaskClassification:
-    """Classify every `challenges._SKILL_NAMES` category present in `valid`."""
+    """Classify every `challenges._SKILL_NAMES` category present in `valid`.
+
+    `source_index` is what `checkPrimaryMethod` needs to decide whether each
+    skill is trainable at all (see `_is_eligible`). It defaults to an empty
+    index rather than being required, which reports every skill untrainable -
+    fine for a fixture exercising one rule, wrong for real data, so callers
+    deriving a real map must pass it (`pipeline.derive` does).
+    """
     challenges = chunk_info.challenges
+    index = source_index if source_index is not None else _EMPTY_SOURCE_INDEX
+    rules = rules or {}
     skills: dict[str, SkillClassification] = {}
     for skill, valid_names in valid.items():
         if skill not in _SKILL_NAMES or not valid_names:
@@ -242,5 +319,15 @@ def classify_tasks(
             backlog=backlog.get(skill, {}),
             manual_tasks=manual_tasks,
             passive_skill=passive_skill,
+            rules=rules,
+            skill_is_primary=_check_primary_method(
+                skill,
+                valid,
+                index,
+                chunk_info,
+                passive_skill=passive_skill,
+                backlog=backlog,
+                manual_tasks=manual_tasks,
+            ),
         )
     return TaskClassification(skills=skills)

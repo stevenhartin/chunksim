@@ -53,6 +53,10 @@ class MapState:
     manual_tasks: Mapping[str, Mapping[str, Any]]
     backlog: Mapping[str, Mapping[str, Any]]
     active_tasks: Mapping[str, Mapping[str, Any]]
+    #: Truthy `chunkinfo.constructionLocked` (real data: `{'chunk': '10547'}`)
+    #: - Mahogany Homes is gated behind a chunk the player hasn't taken, which
+    #: invalidates every contract tier. See `challenges.py`.
+    construction_locked: bool = False
 
 
 @dataclass(frozen=True)
@@ -130,6 +134,7 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
             passive_skill=state.passive_skill,
             backlog=state.backlog,
             manual_tasks=state.manual_tasks,
+            construction_locked=state.construction_locked,
         )
         new_areas = unlockable_areas(
             challenges.valid,
@@ -166,6 +171,8 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
         manual_tasks=state.manual_tasks,
         backlog=state.backlog,
         passive_skill=state.passive_skill,
+        source_index=index,
+        rules=state.rules,
     )
     return Derived(
         reachable_sections=reachable,
@@ -238,5 +245,6 @@ def load_map_state(
         ),
         backlog=decode_challenge_keyed(_mapping(chunkinfo_branch, "backlog"), tasks_map),
         active_tasks=decode_challenge_keyed(_mapping(chunkinfo_branch, "activeTasks"), tasks_map),
+        construction_locked=bool(chunkinfo_branch.get("constructionLocked")),
     )
     return state, unlocked

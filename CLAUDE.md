@@ -157,7 +157,11 @@ One responsibility per module, so the planned simulation work has a pure layer t
   matching plain presence checking with no grouping needed. Only ~42 challenges remain genuinely
   unsupported on that map — the `QuestPointsNeeded`/`CombatPointsNeeded`/`KudosNeeded`/
   `TotalLevelNeeded`/`CombatLevelNeeded` gates, which need state (quest points, kudos, ...) this module
-  doesn't derive. `_seed_items_with_outputs` is the output-feedback half of the fixed point, and **is**
+  doesn't derive. `chunkinfo.constructionLocked` is honoured (worker.js:3758): when set — real data
+  has `{'chunk': '10547'}` — every challenge whose name contains `contract for ~|Mahogany Homes|~` is
+  invalid outright, since Mahogany Homes is gated behind a chunk the account hasn't taken. Missing
+  this was a real reported bug (`fray tasks` proposed an expert contract as the Construction goal).
+  `_seed_items_with_outputs` is the output-feedback half of the fixed point, and **is**
   a located port after all (worker.js:2848/2894/3030 — an earlier stage recorded it as this module's
   own invention because the mechanism wasn't found): a valid challenge's `Output` becomes an item,
   *and* doubles as the activity key into `skillItems[<that skill>]`, admitting everything that
@@ -246,32 +250,42 @@ One responsibility per module, so the planned simulation work has a pure layer t
   `Level == 1` OR a `passiveSkill` floor OR a `manualTasks` entry (real fields, present on 32%/30% of
   challenges for `Primary`/`Priority` respectively) - among eligible, non-backlogged candidates the
   highest `Level` wins, ties broken by lower `Priority`; a trivial (`Level <= 1`, non-`Primary`)
-  winner is discarded entirely (no active task for that skill). **Deliberate divergence from the
-  port**: a candidate is skipped when a *strictly* higher-`Level` challenge in the same skill is
-  already completed (`_completed_level_ceiling`) — completing a task proves the level it needs, so
-  everything easier is settled whatever order it happened in. This was a real reported bug, and a
-  temporary skill boost is how it arises: `Agility` had `Revenant Caves jump (hard)` (89) completed
-  while the panel proposed the Level 81 ivy shortcut, and two more skills were wrong the same way via
-  a 99 skillcape (`Woodcutting`, `Mining`). Strictly-greater on purpose — two Level 81 tasks are
-  alternatives, not tiers — and the ceiling reads the whole `completed` ledger rather than its
-  currently-valid intersection, since completion is evidence regardless of present reachability. It
-  gates *selection only*; feeding it back as an implied skill level into `challenges.py`'s `Level`
-  gate would change what is `valid` and cascade far beyond this module. Expect many maxed skills to
-  report no active pick at all (18 -> 8 on the map this was built against), which is the honest
-  answer. `completedChallenges` is read
+  winner is discarded entirely (no active task for that skill). Two corrections came out of reading
+  the real `calcCurrentChallenges2` against five user-reported mismatches — **eligibility is
+  `checkPrimaryMethod(skill)`, one boolean per skill** ("can this skill be trained here"), *not* the
+  challenge's own `Primary` field, which is a different thing; and a candidate must **strictly
+  exceed** `_completed_level_ceiling` (upstream's `highestChallengeLevelArr`: the highest `Level`
+  among that skill's completed challenges), so equal-level candidates are settled too. The first
+  broke both ways: real `Slayer` challenges are almost all `Primary: false`, so nothing above the
+  passive floor could win (missing the Level 92 araxyte the map's own oracle records), while
+  `Herblore` — untrainable per `checkPrimaryMethod` — still offered a Level 90 potion. The second
+  covers `Agility`/`Woodcutting`/`Mining` (a boosted or skillcape completion outranking the proposal)
+  *and* the equal-level pairs `Firemaking` (`Burn magic logs` 75 vs `... at a fire` 75) and
+  `Smithing` (`rune platebody` 99 vs `rune plateskirt` 99). The ceiling reads the whole `completed`
+  ledger rather than its currently-valid intersection, since completion is evidence regardless of
+  present reachability, and gates *selection only* — feeding it back as an implied skill level into
+  `challenges.py`'s `Level` gate would change what is `valid` and cascade far beyond this module.
+  `_never_show` recomputes upstream's `NeverShow` flag (set dynamically in `calcChallengesWork`, never
+  present statically in the export) from the `Shortcut Task`/`Combat and Teleport Spells`/`Cleaning
+  Herbs` rules. Expect many maxed skills to report no active pick at all (18 -> 4 on the map this was
+  built against), which is the honest answer. `completedChallenges` is read
   directly, never re-derived - verified upstream never marks a lower tier "obsolete" in any stored
   field (`grep -i "obsolete\|supersed"` across index.js/worker.js: zero hits); "only show the highest"
-  is a pure per-recompute display choice. Boosting's level adjustment (a boost the player merely
-  *owns*, as opposed to the completed-task consequence the ceiling above absorbs), the
-  backlog-alternate
-  promotion, and sub-skill `Skills`-requirement cross-propagation are not modelled (no boost-ownership
-  state exists anywhere in this codebase, the same class of gap as `checkPrimaryMethod`). Scope
+  is a pure per-recompute display choice. **Boosting is the largest remaining gap**: `rules['Boosting']`
+  is on for real maps and upstream compares a *boosted* `realLevel = Level - bestBoost` on both sides
+  of the ceiling test (best reachable `codeItems.boostItems[skill]`, plus a `+3` Construction Crystal
+  saw case, `boostTaskBans` exclusions, `"N%+M"` proportional boosts, skipping `NoBoost` challenges);
+  nothing here models boost ownership, so a pick can be wrong whenever two candidates sit within one
+  boost of each other. The backlog-alternate promotion and sub-skill `Skills`-requirement
+  cross-propagation are likewise not modelled. Scope
   (only real skill categories, not Quest/Diary/Extra/Nonskill/BiS) and the oracle-comparison approach
   were explicit user decisions - see the module docstring for the full reasoning. `activeTasks[skill]`
-  is a real oracle for the computed `active` pick when present, but **confirmed empty for every real
-  skill category on the map this was built against** (only `BiS`/`Diary`/`Extra`/`Slayer` have
-  entries, and `Slayer`'s is an unrelated slayer-master assignment) — the same "only written when
-  that panel was last rendered" staleness this project's BiS oracle note already documents, not a bug.
+  is a real oracle for the computed `active` pick when present. Only `BiS`/`Diary`/`Extra`/`Slayer`
+  carry entries on the map this was built against — and **`Slayer`'s is a load-bearing oracle, not
+  the "unrelated slayer-master assignment" an earlier stage recorded it as**. It stores
+  `{'Slay an ~|araxyte#Level 96|~': '92{5}'}` (Level 92 less a 5-point `Wild pie` boost), it was
+  failing, and fixing it is what surfaced the `checkPrimaryMethod` bug above. Asserted by
+  `tests/test_active_tasks.py`'s opt-in oracle test; treat a mismatch there as a defect, not staleness.
 - `pipeline.py` — pure; bundles the per-map inputs (`MapState`) and runs `unlocked_sections` ->
   `gather_chunks_info` -> `calc_challenges` -> `compute_bis` -> `classify_tasks` for a given
   unlocked-chunk-id set (`derive` -> `Derived`, carrying `bis`/`task_classification` alongside
