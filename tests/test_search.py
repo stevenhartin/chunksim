@@ -260,6 +260,36 @@ def test_search_exact_name_match_suppresses_fuzzy_neighbours() -> None:
     assert [hit.name for hit in hits] == ["Abyssal whip"]
 
 
+def test_search_exact_monster_name_match_suppresses_fuzzy_neighbours() -> None:
+    info = _chunk_info(
+        chunks={
+            "100": {"Monster": {"Abyssal demon": True}},
+            "200": {"Monster": {"Abyssal demon#Wilderness Slayer Cave": True}},
+        }
+    )
+    world = build_world_index(info)
+
+    hits = search(world, "Abyssal demon", types=["monster"], limit=10)
+
+    assert [hit.name for hit in hits] == ["Abyssal demon"]
+
+
+def test_search_exact_task_name_match_suppresses_fuzzy_neighbours() -> None:
+    info = _chunk_info(
+        challenges={
+            "Agility": {
+                "Access the ~|Dorgesh-Kaan Agility Course|~": {},
+                "Access the ~|Dorgesh-Kaan Agility Course|~ (grapple route)": {},
+            }
+        }
+    )
+    world = build_world_index(info)
+
+    hits = search(world, "Access the Dorgesh-Kaan Agility Course", types=["task"], limit=10)
+
+    assert [hit.name for hit in hits] == ["Access the ~|Dorgesh-Kaan Agility Course|~"]
+
+
 def test_search_exact_name_match_is_case_insensitive() -> None:
     info = _chunk_info(
         drops={
