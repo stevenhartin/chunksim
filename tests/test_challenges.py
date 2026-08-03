@@ -945,3 +945,95 @@ def test_an_unknown_plus_family_is_still_unsatisfiable() -> None:
     )
 
     assert calc_challenges({}, {}, with_monster, info, rules={}).valid == {}
+
+
+def _diary_info(**rules_unused: Any) -> ChunkInfo:
+    return _chunk_info(
+        challenges={
+            "Diary": {
+                "~|Varrock Diary#Easy|~ Task 1": {"BaseQuest": "Varrock Diary"},
+                "~|Varrock Diary#Easy|~ Complete the Easy Diary": {
+                    "BaseQuest": "Varrock Diary",
+                    "Reward": ["Varrock armour 1"],
+                    "Tasks": {"~|Varrock Diary#Easy|~ Task 1": "Diary"},
+                },
+                "~|Varrock Diary#Medium|~ Task 10": {
+                    "BaseQuest": "Varrock Diary",
+                    "Chunks": ["100"],
+                    "Tasks": {"~|Varrock Diary#Easy|~ Complete the Easy Diary": "Diary"},
+                },
+            }
+        }
+    )
+
+
+def test_show_diary_tasks_any_waives_the_tier_completion_dependency() -> None:
+    """A later tier's tasks depend on the previous tier's completion
+    challenge, which carries a `Reward`. `Show Diary Tasks Any` - "show all
+    diary tasks possible, regardless of tier" - drops that dependency.
+    """
+    info = _diary_info()
+
+    result = calc_challenges(
+        {"100": True}, {}, _EMPTY, info, rules={"Show Diary Tasks Any": True}
+    )
+
+    assert "~|Varrock Diary#Medium|~ Task 10" in result.valid["Diary"]
+
+
+def test_without_the_rule_the_tier_completion_dependency_still_applies() -> None:
+    info = _diary_info()
+
+    # The Easy tier's own task needs no chunk, so the tier completion *is*
+    # valid here; make it unreachable by withholding the Medium task's chunk
+    # only, leaving the dependency as the sole thing under test.
+    result = calc_challenges({"100": True}, {}, _EMPTY, info, rules={})
+
+    assert "~|Varrock Diary#Medium|~ Task 10" in result.valid["Diary"]
+
+    # ... and with the Easy tier itself unreachable, the dependency bites.
+    blocked = _chunk_info(
+        challenges={
+            "Diary": {
+                "~|Varrock Diary#Easy|~ Complete the Easy Diary": {
+                    "BaseQuest": "Varrock Diary",
+                    "Chunks": ["999"],
+                    "Reward": ["Varrock armour 1"],
+                },
+                "~|Varrock Diary#Medium|~ Task 10": {
+                    "BaseQuest": "Varrock Diary",
+                    "Tasks": {"~|Varrock Diary#Easy|~ Complete the Easy Diary": "Diary"},
+                },
+            }
+        }
+    )
+
+    off = calc_challenges({}, {}, _EMPTY, blocked, rules={})
+    on = calc_challenges({}, {}, _EMPTY, blocked, rules={"Show Diary Tasks Any": True})
+
+    assert off.valid == {}
+    assert "~|Varrock Diary#Medium|~ Task 10" in on.valid["Diary"]
+
+
+def test_the_waiver_never_applies_to_a_tier_completion_itself() -> None:
+    """Waiving it for tier-completion challenges too would collapse the
+    tiers into one another, so upstream requires the dependent to carry no
+    `Reward` of its own."""
+    info = _chunk_info(
+        challenges={
+            "Diary": {
+                "~|Varrock Diary#Easy|~ Complete the Easy Diary": {
+                    "Chunks": ["999"],
+                    "Reward": ["Varrock armour 1"],
+                },
+                "~|Varrock Diary#Medium|~ Complete the Medium Diary": {
+                    "Reward": ["Varrock armour 2"],
+                    "Tasks": {"~|Varrock Diary#Easy|~ Complete the Easy Diary": "Diary"},
+                },
+            }
+        }
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={"Show Diary Tasks Any": True})
+
+    assert result.valid == {}

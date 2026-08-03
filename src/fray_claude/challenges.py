@@ -669,11 +669,47 @@ def _skills_requirement_met(
     return True
 
 
+def _diary_tier_waived(
+    skill: str,
+    challenge: Mapping[str, Any],
+    task_name: str,
+    task_skill: str,
+    chunk_info: ChunkInfo,
+    rules: Mapping[str, Any],
+) -> bool:
+    """Is this `Tasks` dependency waived by `Show Diary Tasks Any`?
+
+    Port of the `skill === 'Diary'` arm at worker.js:1360. A diary tier's
+    completion challenge (`~|Morytania Diary#Hard|~ Complete the Hard Diary`)
+    is marked by carrying a `Reward`, and the tasks of the *next* tier depend
+    on it. With `Show Diary Tasks Any` on - "Show all diary tasks possible,
+    regardless of tier" - that dependency is dropped, so an Elite task shows
+    without the Hard diary being finished. The dependent must not itself be a
+    tier completion, or the tiers would collapse into each other.
+
+    `Combat Achievements` is exempt from the rule check upstream and always
+    waived.
+    """
+    if skill != "Diary" or task_skill != "Diary":
+        return False
+    if "Reward" in challenge:
+        return False
+    dependency = (chunk_info.challenges.get("Diary") or {}).get(task_name)
+    if not isinstance(dependency, dict) or "Reward" not in dependency:
+        return False
+    return rules.get("Show Diary Tasks Any") is True or (
+        dependency.get("BaseQuest") == "Combat Achievements"
+    )
+
+
 def _tasks_requirement_met(
     challenge: Mapping[str, Any],
     valid: Mapping[str, Mapping[str, Any]],
     chunk_info: ChunkInfo,
     prev_valid: Mapping[str, Mapping[str, Any]] = {},
+    *,
+    skill: str = "",
+    rules: Mapping[str, Any] = {},
 ) -> bool:
     """A challenge needing other challenges already valid, including `[+]`
     families (`codeItems.tasksPlus`, 153 of them) and the `[+]xN` "at least
@@ -692,6 +728,8 @@ def _tasks_requirement_met(
         return True
     for task_name, task_skill in tasks.items():
         if not isinstance(task_skill, str):
+            continue
+        if _diary_tier_waived(skill, challenge, task_name, task_skill, chunk_info, rules):
             continue
         # Consult the previous pass as well as the partially-built current
         # one: categories are evaluated in the export's own key order, so a
@@ -803,7 +841,9 @@ def _evaluate_challenge(
         return None
     if not _skills_requirement_met(challenge, max_skill, valid, trainable=trainable):
         return None
-    if not _tasks_requirement_met(challenge, valid, chunk_info, prev_valid):
+    if not _tasks_requirement_met(
+        challenge, valid, chunk_info, prev_valid, skill=skill, rules=rules
+    ):
         return None
     return _challenge_value(challenge, skill)
 
