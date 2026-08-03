@@ -521,7 +521,13 @@ def test_display_sorted_puts_this_chunks_acquisitions_first() -> None:
     ]
 
 
-@pytest.mark.skipif(not _REAL_CHUNKINFO, reason="set FRAY_CHUNKINFO to a real export to run this")
+@pytest.mark.skipif(
+    not (_REAL_CHUNKINFO and _REAL_MAP),
+    reason=(
+        "set FRAY_CHUNKINFO to a raw export and FRAY_MAP_CACHE to anything; the map "
+        "itself is read from the repo's own cache/, so FRAY_MAP_CACHE's value is unused"
+    ),
+)
 def test_every_bis_pick_matches_the_live_oracle() -> None:
     """Opt-in oracle: `chunkinfo.activeTasks.BiS` is upstream's *own* last
     computed BiS pick per (style, slot), so every entry must reproduce
@@ -565,7 +571,13 @@ def test_every_bis_pick_matches_the_live_oracle() -> None:
         assert bis_task_name(ours, equipment.get(ours, {})) == task_name, label
 
 
-@pytest.mark.skipif(not _REAL_CHUNKINFO, reason="set FRAY_CHUNKINFO to a real export to run this")
+@pytest.mark.skipif(
+    not (_REAL_CHUNKINFO and _REAL_MAP),
+    reason=(
+        "set FRAY_CHUNKINFO to a raw export and FRAY_MAP_CACHE to anything; the map "
+        "itself is read from the repo's own cache/, so FRAY_MAP_CACHE's value is unused"
+    ),
+)
 def test_a_real_completed_bis_item_is_never_shown_as_active() -> None:
     """Opt-in oracle: unlike skill-level `activeTasks` (sparse - see
     `active_tasks.py`'s module docstring), `completedChallenges.BiS` is

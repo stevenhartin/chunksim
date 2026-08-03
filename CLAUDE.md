@@ -7,8 +7,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 fray-claude is a CLI that reads state from the source-chunk web app, caches it locally, and runs
 offline operations on that cache. source-chunk is upstream and read-only from here.
 
-Planned: render a world-map image for a simulated state, generate heatmaps of likely rolls over N
-attempts, estimate time to complete all goals (needs a task-duration source; the export has none).
+Planned: a shortest-path search ("fewest chunk unlocks to reach X" — `graph.py` exists to serve it and
+has no other reason to be a separate module), render a world-map image for a simulated state, generate
+heatmaps of likely rolls over N attempts, estimate time to complete all goals (needs a task-duration
+source; the export has none).
 
 ## source-chunk
 
@@ -99,7 +101,7 @@ Three things that cut across modules, because each one has already caused a real
 | `neighbours.py` | Which chunks are eligible to unlock next, and upstream's canvas numbering (**descending chunk id, 1-based**). Owns the `sectionsLimits` gate. |
 | `simulate.py` | Seeded chunk-roll simulation: the bootstrap pool, plus the dispatch to `neighbours.py`. Records are never revisited by a later roll. |
 | `search.py` | World-wide fuzzy search over the *raw* export — all 5 item routes, so a strict superset of what `fray sources` can list. |
-| `summary.py` | Pure reductions over a raw payload. Extend this, not `cli.py`. |
+| `summary.py` | Pure reductions over a raw payload. Extend this, not `cli.py`. Also home to `_mapping`, the tolerant dict accessor eight other modules import despite the `_` — Firebase omits empty containers, so every lookup anywhere must survive a missing branch. |
 | `cli.py` | argparse subcommands and rendering only; new logic goes in a pure module. |
 
 ## Toolchain
@@ -125,8 +127,14 @@ mypy                        # strict, over src/ and tests/; run from the repo ro
 .venv/bin/pytest            # whole suite
 .venv/bin/pytest tests/test_summary.py::test_summarise_counts_unlocked_chunks   # single test
 FRAY_CHUNKINFO=path .venv/bin/pytest tests/test_sections.py -k real   # opt-in oracle test against a real export
+python -c 'import json;json.dump(json.load(open("cache/chunkinfo.json"))["data"],open("/tmp/raw.json","w"))'
+FRAY_CHUNKINFO=/tmp/raw.json FRAY_MAP_CACHE=1 .venv/bin/pytest   # all six oracles, the real correctness signal
 pyproject-build && pipx install --force dist/*.whl   # build + reinstall the `fray` command system-wide
 ```
+
+Those two lines go together: `FRAY_CHUNKINFO` wants a *raw* export, not `fray chunkinfo`'s
+envelope-wrapped `cache/chunkinfo.json` (hence the extraction — see Conventions for why pointing it at
+the envelope fails silently), and `FRAY_MAP_CACHE` is presence-only, its value unused.
 
 `--export-json PATH` (or `-` for stdout, replacing the text summary) is carried by the seven
 *derivation* subcommands, not the three I/O ones. `--limit` defaults to `None` (full output) for
@@ -162,7 +170,13 @@ a silent no-op ("already seems to be installed") — it will not pick up new cod
 - After completing a task, rebuild and reinstall the CLI locally so the `fray` on `PATH` reflects it:
   `pyproject-build && pipx install --force dist/*.whl` (see Commands for why `--force` is required)
 - Tests are pytest, in `tests/`, named after the module under test (`tests/test_summary.py`). No test
-  touches the network, and none the real `cache/` bar the three `FRAY_MAP_CACHE` oracles: pass
+  touches the network, and none the real `cache/` bar the six oracles that read it through
+  `cache.project_root()` (`test_active_tasks`, `test_other_tasks`, `test_neighbours` x2, `test_bis` x2).
+  Every one of those is gated on **both** `FRAY_CHUNKINFO` and `FRAY_MAP_CACHE` — the latter is
+  presence-only, a flag saying "this checkout's own `cache/` is populated, read it", since the map is
+  not read from its value. Gating a real-cache test on `FRAY_CHUNKINFO` alone is a bug, not a shortcut:
+  it makes the test *fail* with `CacheMissError` on a fresh clone instead of skipping, which is what
+  the two `test_bis` oracles used to do. To add one, copy an existing pair of decorators verbatim. Pass
   `cache.py`'s `root` a `tmp_path`, and monkeypatch `urllib.request.urlopen` (`tests/test_api.py`)
   or `fray_claude.cli.fetch_map` (`tests/test_cli.py`).
   Any test calling `cache.read_chunkinfo()` without an explicit `override` must
