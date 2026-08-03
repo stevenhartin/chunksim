@@ -111,6 +111,18 @@ from typing import Any
 
 from fray_claude import boosts
 from fray_claude.challenges import _SKILL_NAMES, _check_primary_method
+
+#: `Combat` is in upstream's `skillNames` - it needs to be, for `Skills:
+#: {Combat: N}` requirements and its own `universalPrimary` line - but it is
+#: not a levelled skill, and upstream's per-skill view excludes it explicitly
+#: (`skillNames.filter(skill => skill !== 'Combat')`, index.js:9570). Its 14
+#: challenges are 13 slayer-master assignments plus a quest requirement, all
+#: of which exist to satisfy *other* categories rather than to be a goal of
+#: their own. Classifying it produced a phantom active task - `Receive a
+#: Slayer assignment from ~|Vannaka|~ in Edgeville Dungeon`, whose only
+#: distinguishing requirement is `Skills: {Slayer: 1}`, long since exceeded
+#: by Slayer's own Level 92 pick.
+_DISPLAY_SKILLS = _SKILL_NAMES - {"Combat"}
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.sources import SourceIndex
 
@@ -140,9 +152,9 @@ class SkillClassification:
 
 @dataclass(frozen=True)
 class TaskClassification:
-    """`skills` covers only `challenges._SKILL_NAMES` categories present in
-    the `valid` passed to `classify_tasks` - every other category (Quest,
-    Diary, Extra, Nonskill, BiS, ...) is absent, not empty.
+    """`skills` covers only `_DISPLAY_SKILLS` categories present in the
+    `valid` passed to `classify_tasks` - every other category (Quest, Diary,
+    Extra, Nonskill, BiS, **and `Combat`**) is absent, not empty.
     """
 
     skills: dict[str, SkillClassification] = field(default_factory=dict)
@@ -407,7 +419,7 @@ def classify_tasks(
     rules: Mapping[str, Any] | None = None,
     available_items: Mapping[str, Any] | None = None,
 ) -> TaskClassification:
-    """Classify every `challenges._SKILL_NAMES` category present in `valid`.
+    """Classify every `_DISPLAY_SKILLS` category present in `valid`.
 
     `source_index` is what `checkPrimaryMethod` needs to decide whether each
     skill is trainable at all (see `_is_eligible`). It defaults to an empty
@@ -423,7 +435,7 @@ def classify_tasks(
     available_items = index.items if available_items is None else available_items
     skills: dict[str, SkillClassification] = {}
     for skill, valid_names in valid.items():
-        if skill not in _SKILL_NAMES or not valid_names:
+        if skill not in _DISPLAY_SKILLS or not valid_names:
             continue
         skills[skill] = _classify_skill(
             skill,

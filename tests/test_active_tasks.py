@@ -497,26 +497,53 @@ def test_a_completed_task_recorded_with_a_slash_variant_still_counts() -> None:
     """
     info = _chunk_info(
         challenges={
-            "Combat": {
-                "Start fighting": {"Level": 1, "Primary": True},
+            "Woodcutting": {
+                "Chop a sapling": {"Level": 1, "Primary": True},
                 "~|Morytania Diary#Easy|~ Task 3": {"Level": 40, "Primary": True},
             }
         }
     )
-    valid = {"Combat": {"Start fighting": 1, "~|Morytania Diary#Easy|~ Task 3": 40}}
+    valid = {"Woodcutting": {"Chop a sapling": 1, "~|Morytania Diary#Easy|~ Task 3": 40}}
 
     result = classify_tasks(
         valid,
         info,
-        completed_challenges={"Combat": {"~|Morytania Diary/Easy|~ Task 3": True}},
+        completed_challenges={"Woodcutting": {"~|Morytania Diary/Easy|~ Task 3": True}},
         manual_tasks={},
         backlog={},
         passive_skill={},
     )
 
-    classification = result.skills["Combat"]
+    classification = result.skills["Woodcutting"]
     assert classification.completed == frozenset({"~|Morytania Diary#Easy|~ Task 3"})
     # The Level 1 `Primary` route still wins: upstream's *ceiling* loop does a
     # plain lookup with no `/` variant (worker.js:8393), so a slash-spelled
     # record contributes nothing there even though it counts as completed.
-    assert classification.active == "Start fighting"
+    assert classification.active == "Chop a sapling"
+
+
+def test_combat_is_not_classified_as_a_display_skill() -> None:
+    """`Combat` is in upstream's `skillNames`, but its per-skill view filters
+    it out (index.js:9570) - it is a pseudo-skill whose challenges are
+    slayer-master assignments existing to satisfy *other* categories. Left in,
+    it produced a phantom `Receive a Slayer assignment from Vannaka` pick
+    whose only requirement, `Skills: {Slayer: 1}`, Slayer's own Level 92 pick
+    had long since exceeded.
+    """
+    info = _chunk_info(
+        challenges={
+            "Combat": {"Receive a Slayer assignment from Vannaka": {"Level": 40, "Primary": True}},
+            "Slayer": {"Slay something": {"Level": 1, "Primary": True}},
+        }
+    )
+    valid = {
+        "Combat": {"Receive a Slayer assignment from Vannaka": 40},
+        "Slayer": {"Slay something": 1},
+    }
+
+    result = classify_tasks(
+        valid, info, completed_challenges={}, manual_tasks={}, backlog={}, passive_skill={}
+    )
+
+    assert "Combat" not in result.skills
+    assert "Slayer" in result.skills

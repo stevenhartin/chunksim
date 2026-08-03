@@ -258,7 +258,14 @@ One responsibility per module, so the planned simulation work has a pure layer t
   data rather than fixtures: a completed 2H-slot item was never flagged outdated (`_finalize_slots`
   folds a 2H winner into the `weapon` key in `picks`, and the lookup wasn't normalised the same way),
   and `completed` came back empty entirely because `BiS` was wrongly skipping `t_N` resolution.
-- `active_tasks.py` — pure; classifies each real skill category's (`challenges._SKILL_NAMES`) valid
+- `active_tasks.py` — pure; classifies each real skill category's (`_DISPLAY_SKILLS`, i.e.
+  `challenges._SKILL_NAMES` **less `Combat`** — it is in upstream's `skillNames` because
+  `Skills: {Combat: N}` requirements and its own `universalPrimary` line need it there, but it is not
+  a levelled skill and upstream's own per-skill view filters it out, index.js:9570; its 14 challenges
+  are 13 slayer-master assignments plus a quest requirement, all existing to satisfy *other*
+  categories. Left in, it produced a phantom `Receive a Slayer assignment from ~|Vannaka|~` pick whose
+  only distinguishing requirement, `Skills: {Slayer: 1}`, Slayer's own Level 92 pick had long since
+  exceeded) valid
   challenges into `active` (the one current goal)/`obsolete` (superseded)/`completed` (already done)
   (`classify_tasks` -> `TaskClassification`). Port of `calcCurrentChallenges2`'s selection
   (worker.js:8383-8727) — **a different mechanism from `challenges._group_processing_skill_challenges`**
