@@ -154,7 +154,7 @@ a silent no-op ("already seems to be installed") — it will not pick up new cod
   file is for what spans modules or can't be discovered from them. When a port turns out to be wrong,
   correct the docstring rather than appending a note: several already record a superseded claim
   explicitly, which is worth keeping only where the wrong version is the tempting one.
-- Commit after completing a change
+- Commit after completing a change, and try to push
 - After completing a task, rebuild and reinstall the CLI locally so the `fray` on `PATH` reflects it:
   `pyproject-build && pipx install --force dist/*.whl` (see Commands for why `--force` is required)
 - Tests are pytest, in `tests/`, named after the module under test (`tests/test_summary.py`). No test

@@ -20,7 +20,8 @@ source-chunk is upstream and read-only from here — `fray-claude` never writes 
   access to.
 - **`tasks`** — which challenges are currently valid, given that access. Pass a skill category to see
   which single challenge is your *current* goal for that skill and which lower tiers it supersedes;
-  pass `BiS` for your best-in-slot equipment tasks (see below).
+  `Diary`, `Quest` or `Other` for the non-skill categories, grouped the way source-chunk's own panel
+  groups them; `BiS` for your best-in-slot equipment tasks (see below).
 - **`search`** — fuzzy-search any item, monster, NPC, object, shop or task across the *whole* world,
   unlocked or not, to answer "where would I get this". Unlike `sources`, it isn't limited to chunks
   you already hold.
@@ -34,20 +35,23 @@ Everything after the initial `fetch`/`chunkinfo` runs offline, against the local
 **This is a genuine, but deliberately partial, reimplementation of source-chunk's own validity logic**
 — not a wrapper around it. `tasks`/`unlock`/`simulate` cover 28 of the 29 challenge categories, plus
 `BiS`, which upstream synthesises at runtime rather than storing and which is computed here separately.
-What's left out is left out explicitly rather than silently approximated. The main gaps:
+What's left out is left out explicitly rather than silently approximated. The three gaps you're most
+likely to notice:
 
 - **Five level gates** — `QuestPointsNeeded`, `CombatPointsNeeded`, `KudosNeeded`, `TotalLevelNeeded`
   and `CombatLevelNeeded`. Computing these needs state (quest points earned, kudos, …) that nothing
   in the export provides, so a task carrying one is reported as *unsupported* instead of guessed at.
   That's the only thing that ever lands in that bucket — 42 tasks on the map this was built against.
+  Run `fray tasks` and read the `unsupported` line for the count on *your* map.
 - **Best-in-slot set effects** — the Void/Obsidian/Inquisitor/Verac's/Crystal/Karil's DPS overrides
   aren't modelled, so a set-bonus item can be under-rated against a raw-stats rival.
-- **Anything needing history you don't have** — boost ownership, manual per-task overrides, and
-  manual chunk selection/blacklisting during simulation.
+- **Manual choices during simulation** — chunk selection and blacklisting, and the `roll2`/`roll5`
+  bonus rerolls. `fray simulate` rolls the way an untouched map would.
 
-Run `fray tasks` and read the `unsupported` line it prints for the count on *your* map. The module
-docstrings in `challenges.py`, `bis.py`, `active_tasks.py`, `sources.py` and `simulate.py` carry the
-full, precise list of what each one does and doesn't implement — read them before trusting a number.
+That list is the short version, and it moves as the port advances. **Each module's docstring carries
+the precise, current statement of what it implements, what it approximates, and what it refuses to
+guess at** — `challenges.py`, `bis.py`, `active_tasks.py`, `other_tasks.py`, `sources.py` and
+`simulate.py` are the ones to read before trusting a number.
 
 ## Requirements
 
@@ -67,22 +71,26 @@ pip install -e ".[dev]"
 This is an editable install: it links the `fray` console script to your checkout and pulls in the
 `dev` extra (`pytest`), so edits take effect immediately without reinstalling.
 
-Before committing, run the same checks CI would expect:
+Before committing:
 
 ```sh
-mypy      # strict type checking, from the repo root
-pytest    # whole test suite
+mypy                 # strict type checking; run from the repo root
+.venv/bin/pytest     # whole test suite
 ```
 
-`pytest` comes from the `dev` extra, so it lives in the virtualenv you installed into rather than on
-`PATH` — activate that environment first, or call it by path (`.venv/bin/pytest`). `mypy` is expected
-to be a system install: it's configured to point at `.venv/bin/python` for stubs, so it must run from
-the repo root and the virtualenv has to exist.
+The two are invoked differently on purpose: `mypy` is a *system* install pointed at
+`.venv/bin/python` for stubs, so it needs the repo root and an existing virtualenv, while `pytest`
+comes from the `dev` extra and so isn't on `PATH` at all.
 
-See `CLAUDE.md` for the module-by-module architecture and testing conventions. The precise list of
-what each derivation module does and doesn't implement lives in that module's own docstring —
-`challenges.py`, `bis.py`, `active_tasks.py`, `other_tasks.py`, `sources.py` and `simulate.py` are
-the ones to read before trusting a number.
+Tests that check against a real ~7MB chunkinfo export are opt-in and skipped by default. They compare
+against source-chunk's own recorded answers, which makes them the suite's real correctness signal —
+run them before trusting a change to the derivation modules:
+
+```sh
+FRAY_CHUNKINFO=/path/to/raw-export.json .venv/bin/pytest
+```
+
+See `CLAUDE.md` for the module-by-module architecture and the testing conventions in full.
 
 ## Deploying
 
@@ -144,6 +152,7 @@ otherwise it's created in whatever directory you're in when you run `fray`.
    fray sources                        # items/objects/monsters/npcs/shops available to you
    fray tasks                          # which challenges are currently valid
    fray tasks Woodcutting              # your current goal for one skill, and what it supersedes
+   fray tasks Diary                    # outstanding diary tasks, grouped by diary and tier
    fray tasks BiS                      # best-in-slot equipment: still to get, already got, outdated
    fray search "abyssal whip"          # where in the world would I get this?
    fray unlock --chunk 12082           # what unlocking chunk 12082 would add
