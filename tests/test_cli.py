@@ -267,6 +267,59 @@ def test_tasks_overview_summarises_without_the_per_category_valid_breakdown(
     assert "skill tasks  active 0, completed 0, obsolete 0" in out
 
 
+def test_tasks_overview_lists_the_active_task_of_each_category(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {
+        "chunks": {"100": {"Monster": {"Goblin": True}}},
+        "drops": {"Goblin": {"Rune scimitar": {"1": "Always"}}},
+        "equipment": {
+            "Rune scimitar": {"slot": "weapon", "attack_speed": 4, "attack_slash": 45, "melee_strength": 44}
+        },
+        "challenges": {
+            "Woodcutting": {
+                "Chop with a ~|bronze axe|~": {"Level": 1, "Primary": True},
+                "Chop with a ~|rune axe|~": {"Level": 41, "Primary": True},
+            }
+        },
+    }
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["tasks"]) == 0
+
+    out = capsys.readouterr().out
+    # The winning pick per skill, markup-stripped - not the superseded tier.
+    assert "  Woodcutting   Chop with a rune axe" in out
+    assert "bronze axe" not in out
+    # And BiS's own active picks, in the same `[slot] Obtain ...` form the
+    # `fray tasks BiS` view uses.
+    assert "BiS          active 1" in out
+    assert "  [weapon] Obtain a rune scimitar" in out
+
+
+def test_tasks_overview_active_breakdown_respects_the_limit(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {
+        "challenges": {
+            "Woodcutting": {"Chop a tree": {"Level": 5, "Primary": True}},
+            "Mining": {"Mine a rock": {"Level": 5, "Primary": True}},
+        }
+    }
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["tasks", "--limit", "1"]) == 0
+
+    out = capsys.readouterr().out
+    assert "  Mining        Mine a rock" in out
+    assert "Chop a tree" not in out
+    assert "... and 1 more" in out
+
+
 def test_tasks_without_a_cached_map_exits_one(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

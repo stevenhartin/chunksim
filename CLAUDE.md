@@ -367,9 +367,11 @@ One responsibility per module, so the planned simulation work has a pure layer t
   stripped form** so the visible order matches the screen — sorting raw would file every marked-up
   name under `~`. `search` strips per hit type (task hits and `task:` routes only), never blanket, so
   a genuinely tilde-named shop survives. The bare `fray tasks` overview
-  prints totals and the active/completed/obsolete split only: the per-category `valid` enumeration it
-  used to carry is mostly tasks a higher tier has already superseded, and `--export-json` still has
-  the full mapping for anyone who wants it. `fray unlock`/`fray simulate` print BiS upgrades alongside
+  prints totals, the active/completed/obsolete split, and then each category's *active* tasks beneath
+  its own line — one `<skill> <task>` row per skill that has a current goal, then the `BiS` picks in
+  the same `[<slot>] Obtain ...` form `fray tasks BiS` uses, both capped by `--limit`. The
+  per-category `valid` enumeration it used to carry instead is mostly tasks a higher tier has already
+  superseded, and `--export-json` still has the full mapping for anyone who wants it. `fray unlock`/`fray simulate` print BiS upgrades alongside
   new tasks/sections when there are any; both report task *counts*, never names, so neither needs
   markup stripping.
 

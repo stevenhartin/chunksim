@@ -241,8 +241,9 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
         if args.export_json != "-":
             # The per-category `valid` breakdown this used to print is mostly
             # tasks a higher tier has already superseded - the totals stay for
-            # scale, the actionable split is below. `--export-json` still
-            # carries the full per-category `valid` mapping.
+            # scale, and each category lists its *active* tasks instead, which
+            # is the part you can act on. `--export-json` still carries the
+            # full per-category `valid` mapping.
             print(f"map          {args.map_id}")
             print(f"valid tasks  {total_valid}")
             print(f"unsupported  {len(result.unsupported)} individual tasks (see CLAUDE.md)")
@@ -250,10 +251,19 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
                 f"skill tasks  active {active_count}, completed {completed_count}, "
                 f"obsolete {obsolete_count} (across {len(classifications)} skill categories)"
             )
-            bis_line = f"  {'BiS':<10} active {len(derived.bis.active)}, completed {len(derived.bis.completed)}"
+            _print_capped(
+                [
+                    f"{skill:<13} {strip_task_markup(classification.active)}"
+                    for skill, classification in sorted(classifications.items())
+                    if classification.active is not None
+                ],
+                args.limit,
+            )
+            bis_line = f"BiS          active {len(derived.bis.active)}, completed {len(derived.bis.completed)}"
             if derived.bis.outdated:
                 bis_line += f", outdated {len(derived.bis.outdated)}"
             print(bis_line)
+            _print_capped(derived.bis.display_sorted(derived.bis.active), args.limit)
         if args.export_json is not None:
             _emit_json(
                 {
