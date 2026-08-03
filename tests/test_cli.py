@@ -244,7 +244,7 @@ def test_sources_reports_the_key_item_bosses_gap_as_an_error(
     assert "KeyItem Bosses" in capsys.readouterr().err
 
 
-def test_tasks_reports_valid_counts_per_skill(
+def test_tasks_overview_summarises_without_the_per_category_valid_breakdown(
     project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     payload = {"chunks": {"unlocked": {"100": True}}}
@@ -260,9 +260,11 @@ def test_tasks_reports_valid_counts_per_skill(
 
     out = capsys.readouterr().out
     assert "valid tasks  1" in out
-    assert "Nonskill     1" in out
     assert "unsupported  0 individual tasks" in out
-    assert "BiS          0" in out
+    # Totals stay; the per-category enumeration of mostly-superseded valid
+    # tasks is gone, and the summary reads active -> completed -> obsolete.
+    assert "Nonskill" not in out
+    assert "skill tasks  active 0, completed 0, obsolete 0" in out
 
 
 def test_tasks_without_a_cached_map_exits_one(
@@ -542,6 +544,54 @@ def test_tasks_skill_category_shows_active_obsolete_and_completed(
     assert "Chop with a steel axe" in out
     assert "completed 1" in out
     assert "Chop with a bronze axe" in out
+    # Sections read active -> completed -> obsolete.
+    assert out.index("active   ") < out.index("completed ") < out.index("obsolete ")
+
+
+def test_tasks_skill_category_strips_markup_from_every_section(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from fray_claude.cache import write_blob
+
+    payload: dict[str, Any] = {
+        "chunks": {"unlocked": {}},
+        "chunkinfo": {"completedChallenges": {"Woodcutting": {"t_1": True}}},
+    }
+    chunkinfo_data = {
+        "challenges": {
+            "Woodcutting": {
+                "Chop a ~|regular tree|~": {"Level": 1, "Primary": True},
+                "Chop a ~|magic tree|~": {"Level": 75, "Primary": True},
+                "Chop a ~|yew tree|~": {"Level": 60, "Primary": True},
+            }
+        }
+    }
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    write_blob("tasks_map", {"Chop a ~|regular tree|~": "t_1"}, "https://example/tasksMap.json")
+    capsys.readouterr()
+
+    assert main(["tasks", "Woodcutting"]) == 0
+
+    out = capsys.readouterr().out
+    assert "active   Chop a magic tree" in out
+    assert "  Chop a regular tree" in out
+    assert "  Chop a yew tree" in out
+    assert "~|" not in out
+
+
+def test_tasks_flat_category_strips_markup(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload: dict[str, Any] = {"chunks": {"unlocked": {}}}
+    chunkinfo_data: dict[str, Any] = {"challenges": {"Quest": {"Complete ~|Dragon Slayer|~": {}}}}
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["tasks", "Quest"]) == 0
+
+    out = capsys.readouterr().out
+    assert "  Complete Dragon Slayer" in out
+    assert "~|" not in out
 
 
 def test_tasks_skill_category_reports_a_cached_active_task_match(
@@ -655,6 +705,27 @@ def test_search_reports_hits(
     out = capsys.readouterr().out
     assert "ITEM     Bones  [available]" in out
     assert "drop: Goblin" in out
+
+
+def test_search_strips_markup_from_task_names_and_task_routes(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A task hit's own name and the `task:<category>` route behind an item
+    that only exists as a challenge `Output` both carry challenge markup."""
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {
+        "chunks": {"100": {"Monster": {"Goblin": True}}},
+        "challenges": {"Nonskill": {"Earn ~|Pizazz points|~": {"Output": "Pizazz points loot"}}},
+    }
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["search", "pizazz"]) == 0
+
+    out = capsys.readouterr().out
+    assert "TASK     Earn Pizazz points" in out
+    assert "task:Nonskill: Earn Pizazz points" in out
+    assert "~|" not in out
 
 
 def test_search_type_filters_results(

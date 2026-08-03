@@ -136,6 +136,21 @@ _SKILL_NAMES = frozenset(
 )
 _COMBAT_SKILLS = frozenset({"Attack", "Strength", "Defence", "Hitpoints", "Ranged", "Magic", "Prayer"})
 
+def strip_task_markup(task_name: str) -> str:
+    """Drop the `~|...|~` delimiters a task name wraps its subject in,
+    preserving the text (and its casing) between them.
+
+    The markers exist so the web app can style the item/monster a task
+    names; nothing downstream of a terminal wants them. Deliberately does
+    *not* touch the `#` variant separator (`~|wooden hull#Raft|~`) or the
+    trailing `*` secondary marker: both are real parts of the stored name,
+    and rendering them is upstream behaviour this project hasn't located.
+    Unlike `search.normalise`, this is for *display*, so it neither
+    lowercases nor collapses anything that matching would.
+    """
+    return task_name.replace("~|", "").replace("|~", "")
+
+
 _LEVEL_GATES_NOT_SUPPORTED = (
     "QuestPointsNeeded",
     "CombatPointsNeeded",

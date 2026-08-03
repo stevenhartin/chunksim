@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,7 @@ from fray_claude.cache import (
     write_blob,
     write_cache,
 )
+from fray_claude.challenges import strip_task_markup
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.firebase import reverse_tasks_map
 from fray_claude.pipeline import MapState, derive, load_map_state
@@ -119,6 +121,14 @@ def _load_state(args: argparse.Namespace) -> tuple[MapState, dict[str, bool]]:
 def _error(message: str) -> int:
     print(f"error: {message}", file=sys.stderr)
     return 1
+
+
+def _display_tasks(names: Iterable[str]) -> list[str]:
+    """Task names sorted for display, markup stripped. Sorting happens on
+    the stripped form so the visible order matches what's on screen -
+    `~|Zamorak|~ ...` would otherwise sort under `~`, i.e. nowhere useful.
+    """
+    return sorted(strip_task_markup(name) for name in names)
 
 
 def _print_capped(names: list[str], limit: int | None) -> None:
@@ -229,15 +239,16 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
         obsolete_count = sum(len(c.obsolete) for c in classifications.values())
         completed_count = sum(len(c.completed) for c in classifications.values())
         if args.export_json != "-":
+            # The per-category `valid` breakdown this used to print is mostly
+            # tasks a higher tier has already superseded - the totals stay for
+            # scale, the actionable split is below. `--export-json` still
+            # carries the full per-category `valid` mapping.
             print(f"map          {args.map_id}")
             print(f"valid tasks  {total_valid}")
-            for skill, skill_tasks in sorted(result.valid.items()):
-                print(f"  {skill:<12} {len(skill_tasks)}")
-            print(f"  {'BiS':<12} {len(derived.bis.tasks)}")
             print(f"unsupported  {len(result.unsupported)} individual tasks (see CLAUDE.md)")
             print(
-                f"skill tasks  active {active_count}, obsolete {obsolete_count}, "
-                f"completed {completed_count} (across {len(classifications)} skill categories)"
+                f"skill tasks  active {active_count}, completed {completed_count}, "
+                f"obsolete {obsolete_count} (across {len(classifications)} skill categories)"
             )
             bis_line = f"  {'BiS':<10} active {len(derived.bis.active)}, completed {len(derived.bis.completed)}"
             if derived.bis.outdated:
@@ -279,17 +290,20 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
         if oracle_active is None:
             oracle_note = "not cached"
         elif oracle_active == classification.active:
-            oracle_note = f"matches cached active task ({oracle_active!r})"
+            oracle_note = f"matches cached active task ({strip_task_markup(oracle_active)!r})"
         else:
-            oracle_note = f"cached active task is {oracle_active!r} (mismatch)"
+            oracle_note = f"cached active task is {strip_task_markup(oracle_active)!r} (mismatch)"
+        active_name = (
+            strip_task_markup(classification.active) if classification.active else "(none)"
+        )
         if args.export_json != "-":
             print(f"map      {args.map_id}")
             print(f"category {args.category}")
-            print(f"active   {classification.active or '(none)'}  [{oracle_note}]")
-            print(f"obsolete {len(classification.obsolete)}")
-            _print_capped(sorted(classification.obsolete), args.limit)
+            print(f"active   {active_name}  [{oracle_note}]")
             print(f"completed {len(classification.completed)}")
-            _print_capped(sorted(classification.completed), args.limit)
+            _print_capped(_display_tasks(classification.completed), args.limit)
+            print(f"obsolete {len(classification.obsolete)}")
+            _print_capped(_display_tasks(classification.obsolete), args.limit)
         if args.export_json is not None:
             _emit_json(
                 {
@@ -310,7 +324,7 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
         print(f"map      {args.map_id}")
         print(f"category {args.category}")
         print(f"valid    {len(names)}")
-        _print_capped(names, args.limit)
+        _print_capped(_display_tasks(names), args.limit)
     if args.export_json is not None:
         _emit_json(
             {"map_id": args.map_id, "category": args.category, "valid": names},
@@ -332,11 +346,15 @@ def _cmd_search(args: argparse.Namespace) -> int:
         print(f"hits  {len(hits)}")
         for hit in hits:
             status = "available" if hit.available else "locked"
-            print(f"{hit.type.upper():8} {hit.name}  [{status}]")
+            # A no-op for every type but `task`, whose names carry the same
+            # `~|...|~` markup - as do the challenge names behind a
+            # `task:<category>` item route.
+            print(f"{hit.type.upper():8} {strip_task_markup(hit.name)}  [{status}]")
             if hit.type == "item":
                 for source in hit.detail["sources"]:
                     source_status = "available" if source["available"] else "locked"
-                    print(f"  {source['route']}: {source['name']}  [{source_status}]")
+                    source_name = strip_task_markup(source["name"])
+                    print(f"  {source['route']}: {source_name}  [{source_status}]")
                     locs = source["locations"]
                     if locs:
                         print("    " + ", ".join(loc["chunk_id"] for loc in locs))

@@ -16,7 +16,6 @@ from fray_claude.bis import (
     build_ammo_index,
     compute_bis,
     format_equip,
-    strip_task_markup,
 )
 from fray_claude.chunkinfo import ChunkInfo
 
@@ -420,14 +419,6 @@ def _whip_info() -> ChunkInfo:
 
 
 _WHIP_TASK = "Obtain an ~|abyssal whip|~"
-
-
-def test_strip_task_markup_keeps_the_text_and_its_casing() -> None:
-    assert strip_task_markup("Obtain a ~|Karil's coif|~") == "Obtain a Karil's coif"
-
-
-def test_strip_task_markup_leaves_an_unmarked_name_alone() -> None:
-    assert strip_task_markup("Obtain a rune scimitar") == "Obtain a rune scimitar"
 
 
 def test_display_name_prefixes_the_slot() -> None:

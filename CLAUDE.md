@@ -168,6 +168,12 @@ One responsibility per module, so the planned simulation work has a pure layer t
   a backlogged `Uncut onyx` otherwise re-enters at a 1/100,000,000 rate and drags an entire crafting
   chain with it. Simplified: everything is tagged `primary-` rather than split by drop rate, and the
   `Rare Drop Amount` filter on an activity's items isn't applied; the `bossLogs` gate is.
+  `strip_task_markup` lives here too — the display-side counterpart to `search.normalise`, dropping a
+  task name's `~|...|~` delimiters without lowercasing or collapsing anything. It is *only* for
+  output: the raw names stay the keys everywhere (`valid`, `completedChallenges` lookups,
+  `--export-json`), since those must match what upstream stores. It deliberately leaves the `#`
+  variant separator (`~|wooden hull#Raft|~`) and trailing `*` secondary marker alone — both are real
+  parts of the stored name and how upstream renders them isn't something this project has located.
 - `bis.py` — pure; best-in-slot equipment per (combat style, slot) (`compute_bis` -> `BisResult`).
   Port of `calcBIS` (worker.js, ~3,150 lines — mostly 19 hand-written copies of one scoring block,
   collapsed here into a `StyleSpec` data table). For each active style (Melee/Ranged/Magic always;
@@ -212,8 +218,7 @@ One responsibility per module, so the planned simulation work has a pure layer t
   and `current_chunk` — the subset of `completed`/`outdated` still sitting in `checkedChallenges`,
   i.e. banked during the chunk in play rather than an earlier one. `bis_display_name` renders the pair
   as `[<slot>] Obtain a granite ring (i)` + a ` (Active Task)` suffix for the current chunk, and
-  `display_sorted` floats those to the top; `strip_task_markup` is the display-side counterpart to
-  `search.normalise`, dropping `~|...|~` without lowercasing or collapsing separators. `current_chunk`
+  `display_sorted` floats those to the top, over `challenges.strip_task_markup`. `current_chunk`
   is intersected with what the result actually shows, so a checked entry naming neither a current pick
   nor a resolvable outdated one is left out rather than sitting unmatched. Candidates are iterated already-obtained-first
   (`_order_completed_first`), matching upstream's `{...completedEquipment, ...equipment}` pool: ties
@@ -335,10 +340,17 @@ One responsibility per module, so the planned simulation work has a pure layer t
   `BisResult.display_sorted`/`display_name` rather than as raw task names, so lines read
   `[<slot>] Obtain a granite ring (i)` with this chunk's completions floated to the top and suffixed
   ` (Active Task)`; the raw `~|...|~` names stay the keys in `--export-json`; a real skill category
-  (`derived.task_classification.skills`) shows active/obsolete/completed sections plus an
+  (`derived.task_classification.skills`) shows **active -> completed -> obsolete** sections plus an
   opportunistic comparison against `state.active_tasks[skill]` ("not cached" when absent, the common
-  case - see `active_tasks.py`); everything else keeps the old flat valid listing. `fray unlock`/
-  `fray simulate` print BiS upgrades alongside new tasks/sections when there are any.
+  case - see `active_tasks.py`); everything else keeps the flat valid listing. Every one of those
+  paths (and `search`'s task hits / `task:<category>` item routes) renders through `_display_tasks` ->
+  `challenges.strip_task_markup`, which **sorts on the stripped form** so the visible order matches
+  the screen — sorting raw would file every marked-up name under `~`. The bare `fray tasks` overview
+  prints totals and the active/completed/obsolete split only: the per-category `valid` enumeration it
+  used to carry is mostly tasks a higher tier has already superseded, and `--export-json` still has
+  the full mapping for anyone who wants it. `fray unlock`/`fray simulate` print BiS upgrades alongside
+  new tasks/sections when there are any; both report task *counts*, never names, so neither needs
+  markup stripping.
 
 ## Toolchain
 

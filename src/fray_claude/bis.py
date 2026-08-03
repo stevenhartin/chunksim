@@ -61,7 +61,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from fray_claude.challenges import _PROCESSING_SKILLS, _has_any_valid
+from fray_claude.challenges import _PROCESSING_SKILLS, _has_any_valid, strip_task_markup
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.summary import _mapping
 
@@ -553,18 +553,6 @@ _TASK_ITEM_PATTERN = re.compile(r"~\|(.+?)\|~")
 #: chunk - one still sitting in `checkedChallenges`, not yet migrated into
 #: `completedChallenges` by the next roll. See `BisResult.current_chunk`.
 CURRENT_CHUNK_SUFFIX = "(Active Task)"
-
-
-def strip_task_markup(task_name: str) -> str:
-    """Drop the `~|...|~` item delimiters a task name carries, preserving
-    the text (and its casing) between them.
-
-    `bis_task_name` wraps the item so the web app can style it; nothing
-    downstream of a terminal wants the markers. Unlike `search.normalise`,
-    this is for *display*, so it neither lowercases nor collapses the
-    variant separators that normalisation strips for matching.
-    """
-    return task_name.replace("~|", "").replace("|~", "")
 
 
 def bis_display_name(task_name: str, slot: str | None = None, *, current_chunk: bool = False) -> str:
