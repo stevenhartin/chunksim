@@ -42,12 +42,22 @@ Implemented:
   item sourced *only* from another skill's crafted output is additionally
   rejected unless `Not Equip`/`Wield Crafted Items`/a Slayer source/the
   requiring skill being Magic excuses it - see `_source_quality_ok`.
-- `Skills` requirements (a challenge needing another skill category to
-  already have a valid entry): checked via `_has_any_valid`, a simplified
-  stand-in for upstream's `checkPrimaryMethod` - "the skill has *a* valid
-  entry" rather than one meeting upstream's primary/secondary nuance.
-- `Tasks` requirements (a challenge needing a specific *other* challenge
-  already valid): checked exactly.
+- `Skills` requirements: the sub-skill must be *trainable*, via
+  `_check_primary_method` - a port of upstream's `checkPrimaryMethod` over
+  its `universalPrimary` table (a `Primary`-flagged valid challenge at an
+  attainable level, or any monster, or bones, or a usable ammo/launcher
+  pair, or - for `Combat` - any combat skill being trainable). This replaced
+  a much looser "the skill has *a* valid entry" stand-in, which reported
+  `Combat` untrainable on every real map (it has 14 challenges, all needing
+  specific chunks) and so silently invalidated every Slayer-master
+  assignment and everything gated behind them.
+- `Tasks` requirements (a challenge needing specific *other* challenges
+  already valid), including `[+]`/`[+]xN` families via `codeItems.tasksPlus`.
+  Lookups consult the previous pass as well as the partially-built current
+  one: categories are iterated in the export's own key order, so a
+  dependency pointing "backwards" (`Nonskill` at index 16 needing `Slayer`
+  at 21) would otherwise never resolve at all, since `new_valid` is rebuilt
+  from scratch each pass.
 - `MaxSkill`/`Not F2P`/`Not Skiller` gates, and the general category-rule
   gate (a `Category` naming a rule that's off invalidates the challenge,
   unless the category is in `maybePrimary` or is the `Secondary Primary`
@@ -401,22 +411,164 @@ def _items_requirement_met(
     return True
 
 
-def _has_any_valid(skill: str, valid: Mapping[str, Mapping[str, Any]]) -> bool:
-    """Simplified stand-in for `checkPrimaryMethod`: does `skill` have any
-    valid entry at all? Upstream's version additionally weighs primary vs.
-    secondary sourcing, not modelled here.
+#: index.js's `universalPrimary`: how each skill is *actually trained*.
+#: A skill counts as trainable if any one of its listed methods is met.
+_UNIVERSAL_PRIMARY: dict[str, tuple[str, ...]] = {
+    "Slayer": ("Primary[+]",), "Thieving": ("Primary[+]",),
+    "Attack": ("Monster[+]",), "Defence": ("Monster[+]",),
+    "Strength": ("Monster[+]",), "Hitpoints": ("Monster[+]",),
+    "Ranged": ("Ranged[+]",), "Prayer": ("Primary[+]", "Bones[+]"),
+    "Runecraft": ("Primary[+]",), "Sailing": ("Primary[+]",),
+    "Magic": ("Primary[+]",), "Farming": ("Primary[+]",),
+    "Herblore": ("Primary[+]",), "Hunter": ("Primary[+]",),
+    "Cooking": ("Primary[+]",), "Woodcutting": ("Primary[+]",),
+    "Firemaking": ("Primary[+]",), "Fletching": ("Primary[+]",),
+    "Fishing": ("Primary[+]",), "Mining": ("Primary[+]",),
+    "Smithing": ("Primary[+]",), "Crafting": ("Primary[+]",),
+    "Agility": ("Primary[+]",), "Construction": ("Primary[+]",),
+    "Combat": ("Combat[+]",),
+}
+
+
+def _has_primary_task(
+    skill: str,
+    valid: Mapping[str, Mapping[str, Any]],
+    chunk_info: ChunkInfo,
+    passive_skill: Mapping[str, int],
+    backlog: Mapping[str, Mapping[str, Any]],
+) -> bool:
+    """`Primary[+]`: a valid challenge flagged `Primary`, not backlogged, at
+    a level actually attainable - `Level == 1`, or covered by
+    `passiveSkill`. Upstream additionally allows a `skillQuestXp` floor and
+    shifts the level by the best applicable boost; neither is modelled (no
+    quest-XP or boost-ownership state exists here), so this is the
+    conservative subset.
     """
+    challenges = chunk_info.challenges.get(skill) or {}
+    backlogged = backlog.get(skill) or {}
+    passive = passive_skill.get(skill)
+    for name in valid.get(skill, {}):
+        challenge = challenges.get(name)
+        if not isinstance(challenge, dict):
+            continue
+        if challenge.get("Primary") is not True or name in backlogged:
+            continue
+        level = challenge.get("Level")
+        if not isinstance(level, (int, float)) or level == 1:
+            return True
+        if isinstance(passive, (int, float)) and passive > 1 and level <= passive:
+            return True
+    return False
+
+
+def _check_primary_method(
+    skill: str,
+    valid: Mapping[str, Mapping[str, Any]],
+    source_index: SourceIndex,
+    chunk_info: ChunkInfo,
+    *,
+    passive_skill: Mapping[str, int],
+    backlog: Mapping[str, Mapping[str, Any]],
+    manual_tasks: Mapping[str, Mapping[str, Any]],
+    _seen: frozenset[str] = frozenset(),
+) -> bool:
+    """Port of `checkPrimaryMethod` (worker.js:5077-5220): can `skill`
+    actually be *trained* in the current chunks?
+
+    This is a different question from "does the skill have a valid
+    challenge", which is what this used to answer - and the difference has
+    teeth. `Combat` has only 14 challenges in the whole export, all needing
+    chunks a given map is unlikely to own, so the old stand-in reported it
+    untrainable always; every challenge gated on `Skills: {Combat: N}` -
+    including all six Slayer-master assignments - was therefore invalid,
+    which silently invalidated whole `taskUnlocks` chains hanging off them.
+    Upstream instead defines `Combat` as "any combat skill is trainable",
+    and those in turn need only a monster to hit.
+
+    Not modelled (all documented rather than silently approximated): the
+    `Boosting` level shift and `skillQuestXp` floor inside `Primary[+]`, the
+    secondary/processing-source filtering inside `Ranged[+]`, and the
+    `Smithing by Smelting` anvil caveat on the `manualTasks` override.
+    """
+    lines = _UNIVERSAL_PRIMARY.get(skill)
+    if lines is None:
+        return True  # upstream: `!universalPrimary[skill] && (tempValid = true)`
+
+    for line in lines:
+        if line == "Primary[+]":
+            if _has_primary_task(skill, valid, chunk_info, passive_skill, backlog):
+                return True
+        elif line == "Monster[+]":
+            if source_index.monsters:
+                return True
+        elif line == "Bones[+]":
+            bones = _mapping(chunk_info.code_items, "boneItems")
+            bone_names = bones if isinstance(bones, dict) else {}
+            if any(bone in source_index.items for bone in bone_names):
+                return True
+        elif line == "Combat[+]":
+            if any(
+                other not in _seen
+                and _check_primary_method(
+                    other,
+                    valid,
+                    source_index,
+                    chunk_info,
+                    passive_skill=passive_skill,
+                    backlog=backlog,
+                    manual_tasks=manual_tasks,
+                    _seen=_seen | {skill},
+                )
+                for other in sorted(_COMBAT_SKILLS)
+            ):
+                return True
+        elif line == "Ranged[+]":
+            # Upstream needs a usable ammo/launcher pair *and* something to
+            # shoot; the per-source secondary filtering is not modelled.
+            ammo_tools = _mapping(chunk_info.code_items, "ammoTools")
+            usable = any(
+                ammo in source_index.items
+                and isinstance(launchers, dict)
+                and any(weapon in source_index.items for weapon in launchers)
+                for ammo, launchers in ammo_tools.items()
+                if ammo != "No ammo"
+            )
+            if usable and source_index.monsters:
+                return True
+
+    # `manualTasks[skill]` naming a Primary, non-backlogged challenge also
+    # counts as a training method, as does an explicit `manualPrimary`.
+    challenges = chunk_info.challenges.get(skill) or {}
+    backlogged = backlog.get(skill) or {}
+    for name in manual_tasks.get(skill, {}):
+        challenge = challenges.get(name)
+        if isinstance(challenge, dict) and challenge.get("Primary") is True and name not in backlogged:
+            return True
+    return False
+
+
+def _has_any_valid(skill: str, valid: Mapping[str, Mapping[str, Any]]) -> bool:
+    """Kept for the `Skills` requirement's *level* half only - see
+    `_skills_requirement_met`. Trainability now goes through
+    `_check_primary_method`."""
     return bool(valid.get(skill))
 
 
 def _skills_requirement_met(
-    challenge: Mapping[str, Any], max_skill: Mapping[str, int], valid: Mapping[str, Mapping[str, Any]]
+    challenge: Mapping[str, Any],
+    max_skill: Mapping[str, int],
+    valid: Mapping[str, Mapping[str, Any]],
+    *,
+    trainable: Mapping[str, bool],
 ) -> bool:
+    """A `Skills` requirement needs the sub-skill to be *trainable* (see
+    `_check_primary_method`, precomputed once per pass into `trainable`) and
+    its level within `max_skill` where that caps it."""
     skills = challenge.get("Skills")
     if not isinstance(skills, dict):
         return True
     for sub_skill, required_level in skills.items():
-        if not _has_any_valid(sub_skill, valid):
+        if not trainable.get(sub_skill, False):
             return False
         if isinstance(required_level, (int, float)) and sub_skill in max_skill:
             if required_level > max_skill[sub_skill]:
@@ -424,14 +576,47 @@ def _skills_requirement_met(
     return True
 
 
-def _tasks_requirement_met(challenge: Mapping[str, Any], valid: Mapping[str, Mapping[str, Any]]) -> bool:
+def _tasks_requirement_met(
+    challenge: Mapping[str, Any],
+    valid: Mapping[str, Mapping[str, Any]],
+    chunk_info: ChunkInfo,
+    prev_valid: Mapping[str, Mapping[str, Any]] = {},
+) -> bool:
+    """A challenge needing other challenges already valid, including `[+]`
+    families (`codeItems.tasksPlus`, 153 of them) and the `[+]xN` "at least
+    N of" form - the same shape `Chunks`/`Items`/etc. use, resolved here
+    against `valid` rather than a source index.
+
+    206 of the export's 6,428 `Tasks` entries are families, and missing them
+    silently invalidated whole chains: `Gargoyle task` requires
+    `VannakaBetterMastersAndMortimer[+]x1` (any one of six Slayer masters),
+    and while it stayed invalid every `taskUnlocks` gate keyed on it -
+    including the one guarding `Grotesque Guardians`, hence `Granite gloves`
+    - failed too.
+    """
     tasks = challenge.get("Tasks")
     if not isinstance(tasks, dict):
         return True
     for task_name, task_skill in tasks.items():
         if not isinstance(task_skill, str):
             continue
-        if task_name not in valid.get(task_skill, {}):
+        # Consult the previous pass as well as the partially-built current
+        # one: categories are evaluated in the export's own key order, so a
+        # cross-category dependency pointing "backwards" (Nonskill at index
+        # 16 needing Slayer at 21) would otherwise never resolve - not
+        # merely converge slowly, since `new_valid` is rebuilt each pass.
+        # Real case: `Gargoyle task` needs any Slayer-master assignment.
+        valid_for_skill = {**prev_valid.get(task_skill, {}), **valid.get(task_skill, {})}
+        if "[+]" in task_name:
+            base_name, marker, count_str = task_name.partition("[+]x")
+            family_name = f"{base_name}[+]" if marker else task_name
+            family = _plus_family(chunk_info, "tasksPlus", family_name)
+            if family is None:
+                return False
+            needed = int(count_str) if marker and count_str.isdigit() else 1
+            if sum(1 for member in family if member in valid_for_skill) < needed:
+                return False
+        elif task_name not in valid_for_skill:
             return False
     return True
 
@@ -501,6 +686,8 @@ def _evaluate_challenge(
     rules: Mapping[str, Any],
     max_skill: Mapping[str, int],
     secondary_primary_amount: str,
+    trainable: Mapping[str, bool],
+    prev_valid: Mapping[str, Mapping[str, Any]],
 ) -> int | str | bool | None:
     if not _level_gates_met(challenge, skill, max_skill, rules):
         return None
@@ -518,9 +705,9 @@ def _evaluate_challenge(
         return None
     if not _items_requirement_met(challenge, items, chunk_info, skill=skill, rules=rules):
         return None
-    if not _skills_requirement_met(challenge, max_skill, valid):
+    if not _skills_requirement_met(challenge, max_skill, valid, trainable=trainable):
         return None
-    if not _tasks_requirement_met(challenge, valid):
+    if not _tasks_requirement_met(challenge, valid, chunk_info, prev_valid):
         return None
     return _challenge_value(challenge, skill)
 
@@ -665,6 +852,9 @@ def calc_challenges(
     rules: Mapping[str, Any],
     max_skill: Mapping[str, int] | None = None,
     backlogged_sources: Mapping[str, Any] | None = None,
+    passive_skill: Mapping[str, int] | None = None,
+    backlog: Mapping[str, Mapping[str, Any]] | None = None,
+    manual_tasks: Mapping[str, Mapping[str, Any]] | None = None,
     max_iterations: int = 15,
 ) -> ChallengeResult:
     """Port of `calcChallenges`/`calcChallengesWork`'s core fixed point - see
@@ -672,6 +862,9 @@ def calc_challenges(
     """
     challenges = chunk_info.challenges
     max_skill = max_skill or {}
+    passive_skill = passive_skill or {}
+    backlog = backlog or {}
+    manual_tasks = manual_tasks or {}
     secondary_primary_amount = str(rules.get("Secondary Primary Amount", "1"))
 
     items: Mapping[str, Mapping[str, str]] = source_index.items
@@ -679,6 +872,21 @@ def calc_challenges(
     unsupported: set[str] = set()
 
     for _ in range(max_iterations):
+        # Trainability depends on the *previous* pass's validity, so compute
+        # it once per pass rather than per challenge (`_check_primary_method`
+        # walks every valid challenge in a skill).
+        trainable = {
+            skill: _check_primary_method(
+                skill,
+                valid,
+                source_index,
+                chunk_info,
+                passive_skill=passive_skill,
+                backlog=backlog,
+                manual_tasks=manual_tasks,
+            )
+            for skill in _UNIVERSAL_PRIMARY
+        }
         new_valid: dict[str, dict[str, int | str | bool]] = {}
         for skill, skill_challenges in challenges.items():
             if skill in UNSUPPORTED_CATEGORIES or not isinstance(skill_challenges, dict):
@@ -702,6 +910,8 @@ def calc_challenges(
                         rules=rules,
                         max_skill=max_skill,
                         secondary_primary_amount=secondary_primary_amount,
+                        trainable=trainable,
+                        prev_valid=valid,
                     )
                 except NotImplementedError:
                     # A single challenge using a mechanic this module

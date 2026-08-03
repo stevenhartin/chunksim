@@ -427,6 +427,46 @@ def _resolve_monster(
             )
 
 
+def _task_unlocked(
+    task_unlocks: Mapping[str, Any],
+    branch: str,
+    name: str,
+    source: str,
+    valid_tasks: Mapping[str, Mapping[str, Any]],
+) -> bool:
+    """Port of the `taskUnlocks` gate (worker.js:2155+, upstream's
+    `shouldDelete` pass): an entity present in a chunk can still be locked
+    behind completing specific challenges *at that location*.
+
+    `taskUnlocks[branch][name]` is keyed by location - a chunk id, a
+    `chunk-section`, or a named area - each mapping to a list of
+    `{task name: task skill}` that must all be valid. Real examples: the
+    `Sir Tiffy Cashien (The Slug Menace)` shop needs that quest before it
+    sells Proselyte armour, `White Knight Armoury` needs `Wanted!`, and
+    `Crazy archaeologist`/`Lava dragon` are gated `F2P Only`. Ignoring this
+    made every such source unconditionally available.
+
+    Only the entity branches (`Monsters`/`NPCs`/`Objects`/`Shops`/`Spawns`)
+    are checked here; `Items` has a different, flat shape and is applied by
+    `bis.py`'s `_task_unlocks_ok` against equipment candidates.
+    """
+    locations = _mapping(task_unlocks, branch).get(name)
+    if not isinstance(locations, dict):
+        return True
+    required = locations.get(source)
+    if not isinstance(required, list):
+        return True
+    for entry in required:
+        if not isinstance(entry, dict):
+            continue
+        for task_name, task_skill in entry.items():
+            if not isinstance(task_skill, str):
+                continue
+            if task_name not in valid_tasks.get(task_skill, {}):
+                return False
+    return True
+
+
 def _add_shop_items(
     *,
     shop: str,
@@ -457,6 +497,7 @@ def gather_chunks_info(
     manual_monsters: Mapping[str, Any] | None = None,
     manual_equipment: Mapping[str, Any] | None = None,
     max_skill: Mapping[str, int] | None = None,
+    valid_tasks: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> SourceIndex:
     """Port of `gatherChunksInfo`: what the unlocked chunks make available.
 
@@ -480,6 +521,8 @@ def gather_chunks_info(
     drops = _apply_drop_rate_overrides(chunk_info.drops, chunk_info, chunk_ids, reachable_sections)
     skill_items_slayer = _mapping(chunk_info.skill_items, "Slayer")
     slayer_monsters = chunk_info.slayer_monsters
+    task_unlocks = _mapping(chunk_info.data, "taskUnlocks")
+    valid_tasks = valid_tasks or {}
 
     items: dict[str, dict[str, str]] = {}
     objects: dict[str, dict[str, bool]] = {}
@@ -504,6 +547,8 @@ def gather_chunks_info(
                     continue
                 source = f"{chunk_id}-{section_id}"
                 for monster in _mapping(section_entry, "Monster"):
+                    if not _task_unlocked(task_unlocks, "Monsters", monster, source, valid_tasks):
+                        continue
                     _resolve_monster(
                         monster=monster,
                         drops=drops,
@@ -521,6 +566,8 @@ def gather_chunks_info(
                         max_skill=max_skill,
                     )
                 for shop in _mapping(section_entry, "Shop"):
+                    if not _task_unlocked(task_unlocks, "Shops", shop, source, valid_tasks):
+                        continue
                     _add_shop_items(
                         shop=shop,
                         shop_items=shop_items,
@@ -532,17 +579,25 @@ def gather_chunks_info(
                     if not _is_backlogged(backlogged, "shops", shop):
                         shops.setdefault(shop, {})[source] = True
                 for spawn in _mapping(section_entry, "Spawn"):
-                    if not _is_backlogged(backlogged, "items", spawn):
+                    if not _is_backlogged(backlogged, "items", spawn) and _task_unlocked(
+                        task_unlocks, "Spawns", spawn, source, valid_tasks
+                    ):
                         tag = "primary-spawn" if rules.get("Primary Spawns") is True else "secondary-spawn"
                         items.setdefault(spawn, {})[source] = tag
                 for obj in _mapping(section_entry, "Object"):
-                    if not _is_backlogged(backlogged, "objects", obj):
+                    if not _is_backlogged(backlogged, "objects", obj) and _task_unlocked(
+                        task_unlocks, "Objects", obj, source, valid_tasks
+                    ):
                         objects.setdefault(obj, {})[source] = True
                 for npc in _mapping(section_entry, "NPC"):
-                    if not _is_backlogged(backlogged, "npcs", npc):
+                    if not _is_backlogged(backlogged, "npcs", npc) and _task_unlocked(
+                        task_unlocks, "NPCs", npc, source, valid_tasks
+                    ):
                         npcs.setdefault(npc, {})[source] = True
 
         for monster in _mapping(entry, "Monster"):
+            if not _task_unlocked(task_unlocks, "Monsters", monster, chunk_id, valid_tasks):
+                continue
             _resolve_monster(
                 monster=monster,
                 drops=drops,
@@ -560,6 +615,8 @@ def gather_chunks_info(
                 max_skill=max_skill,
             )
         for shop in _mapping(entry, "Shop"):
+            if not _task_unlocked(task_unlocks, "Shops", shop, chunk_id, valid_tasks):
+                continue
             _add_shop_items(
                 shop=shop,
                 shop_items=shop_items,
@@ -571,14 +628,20 @@ def gather_chunks_info(
             if not _is_backlogged(backlogged, "shops", shop):
                 shops.setdefault(shop, {})[chunk_id] = True
         for spawn in _mapping(entry, "Spawn"):
-            if not _is_backlogged(backlogged, "items", spawn):
+            if not _is_backlogged(backlogged, "items", spawn) and _task_unlocked(
+                task_unlocks, "Spawns", spawn, chunk_id, valid_tasks
+            ):
                 tag = "primary-spawn" if rules.get("Primary Spawns") is True else "secondary-spawn"
                 items.setdefault(spawn, {})[chunk_id] = tag
         for obj in _mapping(entry, "Object"):
-            if not _is_backlogged(backlogged, "objects", obj):
+            if not _is_backlogged(backlogged, "objects", obj) and _task_unlocked(
+                task_unlocks, "Objects", obj, chunk_id, valid_tasks
+            ):
                 objects.setdefault(obj, {})[chunk_id] = True
         for npc in _mapping(entry, "NPC"):
-            if not _is_backlogged(backlogged, "npcs", npc):
+            if not _is_backlogged(backlogged, "npcs", npc) and _task_unlocked(
+                task_unlocks, "NPCs", npc, chunk_id, valid_tasks
+            ):
                 npcs.setdefault(npc, {})[chunk_id] = True
 
     manual_monster_items = manual_monsters.get("Items")

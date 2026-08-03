@@ -113,7 +113,13 @@ One responsibility per module, so the planned simulation work has a pure layer t
   dynamic "Every Drop"/"All Droptables" challenge synthesis in `calcChallengesWork` consumes and so
   belongs with `challenges.py` instead. The `KeyItem Bosses` rate-boosting pass is unported; a map
   with that rule on makes `gather_chunks_info` raise `NotImplementedError` rather than silently
-  producing an incomplete index. A monster with no `drops` entry falls back to its `skillItems.Slayer`
+  producing an incomplete index. `taskUnlocks` gating (`_task_unlocked`) is applied to
+  `Monsters`/`NPCs`/`Objects`/`Shops`/`Spawns`: an entity present in a chunk can still be locked behind
+  completing challenges *at that location* (the `Sir Tiffy Cashien (The Slug Menace)` shop needs that
+  quest before it sells Proselyte armour; `White Knight Armoury` needs `Wanted!`). This makes source
+  availability depend on challenge validity, so `pipeline.derive` feeds each pass's validity back in
+  via `valid_tasks` — upstream instead deletes from an already-built index (`shouldDelete`,
+  worker.js:2155). A monster with no `drops` entry falls back to its `skillItems.Slayer`
   entry (e.g. `Abyssal demon` -> `Abyssal whip`, gated by a simplified Slayer-level check rather than
   upstream's full `isSlayerValid`, which needs challenge-validity state this one-directional pipeline
   doesn't have — see `_slayer_skill_items_for`'s docstring); this was added as a prerequisite for
@@ -135,7 +141,14 @@ One responsibility per module, so the planned simulation work has a pure layer t
   feeds have zero real-export uses. Combat skills and `BIS Skilling`-category challenges additionally
   reject an item sourced *only* from another skill's crafted output (`_source_quality_ok`) unless
   `Not Equip`/`Wield Crafted Items`/a Slayer source/the requiring skill being Magic excuses it — the
-  same mechanic `bis.py`'s `_source_reachable` implements for equipment candidates. `processingSkill`
+  same mechanic `bis.py`'s `_source_reachable` implements for equipment candidates. `Skills`
+  requirements go through `_check_primary_method`, a port of upstream's `checkPrimaryMethod` over its
+  `universalPrimary` table ("is this skill actually *trainable* here"), replacing a loose
+  "has any valid entry" stand-in that reported `Combat` untrainable on every real map and so killed
+  every Slayer-master assignment. `Tasks` requirements support `[+]`/`[+]xN` families
+  (`codeItems.tasksPlus`) and consult the previous fixed-point pass, without which a dependency
+  pointing backwards through the export's category order (`Nonskill` -> `Slayer`) could never resolve.
+  `sources.py`'s `taskUnlocks` gating depends on all three, which is why they landed together. `processingSkill`
   categories (Runecraft/Magic/Herblore/Cooking/Firemaking/Fletching/Smithing/Crafting/Construction) get
   the "Highest Level" grouping (`_group_processing_skill_challenges`): **rule off** (upstream's
   default) keeps only the *lowest*-`Level` consumer per available ingredient (e.g. smelting a bronze

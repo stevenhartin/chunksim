@@ -60,8 +60,8 @@ class Derived:
     task_classification: TaskClassification
 
 
-#: Upper bound on `derive`'s area-unlock loop. Each pass can only *add*
-#: areas, and the real export's chains are a couple of links deep at most, so
+#: Upper bound on `derive`'s convergence loop (area unlocks + `taskUnlocks`
+#: source gating). The real export's chains are a couple of links deep, so
 #: this is a runaway guard rather than a real limit.
 _MAX_AREA_PASSES = 8
 
@@ -78,11 +78,21 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
     `gatherChunksInfo` mid-`calcChallenges`, worker.js:2153). Keeping the
     loop here lets `sections.py`/`sources.py`/`challenges.py` each stay
     one-directional and separately testable.
+
+    The same loop feeds each pass's validity back into `gather_chunks_info`
+    as `valid_tasks`, which is how `taskUnlocks` gating works: a shop or
+    monster present in a chunk can still be locked behind completing a
+    challenge there (upstream's `shouldDelete` pass deletes such entries
+    from an already-built index instead; iterating to a fixed point reaches
+    the same answer without a mutate-after-the-fact step). The first pass
+    runs ungated, so a gate can only ever *remove* a source that its own
+    unlock task hadn't yet justified.
     """
     expanded = expand_chunk_areas(unlocked, manual_areas=state.manual_areas)
     reachable: dict[str, dict[str, bool]] = {}
     index: SourceIndex | None = None
     challenges: ChallengeResult | None = None
+    valid_tasks: dict[str, dict[str, int | str | bool]] = {}
 
     for _ in range(_MAX_AREA_PASSES):
         reachable = unlocked_sections(
@@ -101,6 +111,7 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
             manual_monsters=state.manual_monsters,
             manual_equipment=state.manual_equipment,
             max_skill=state.max_skill,
+            valid_tasks=valid_tasks,
         )
         challenges = calc_challenges(
             expanded,
@@ -110,6 +121,9 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
             rules=state.rules,
             max_skill=state.max_skill,
             backlogged_sources=state.backlogged_sources,
+            passive_skill=state.passive_skill,
+            backlog=state.backlog,
+            manual_tasks=state.manual_tasks,
         )
         new_areas = unlockable_areas(
             challenges.valid,
@@ -120,8 +134,9 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
             max_skill=state.max_skill,
             passive_skill=state.passive_skill,
         )
-        if not new_areas:
+        if not new_areas and challenges.valid == valid_tasks:
             break
+        valid_tasks = challenges.valid
         expanded = {**expanded, **new_areas}
 
     assert index is not None and challenges is not None  # loop always runs at least once

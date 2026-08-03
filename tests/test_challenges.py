@@ -395,7 +395,27 @@ def test_tasks_requirement_fails_when_the_prerequisite_is_invalid() -> None:
     assert "Nonskill" not in result.valid
 
 
-def test_skills_requirement_needs_the_sub_skill_valid() -> None:
+def test_skills_requirement_needs_the_sub_skill_trainable() -> None:
+    # A `Skills` requirement needs the sub-skill *trainable*, which for a
+    # `Primary[+]` skill like Cooking means a valid challenge actually
+    # flagged `Primary` - not merely any valid entry (see
+    # `_check_primary_method`).
+    info = _chunk_info(
+        challenges={
+            "Cooking": {"Cook something": {"Level": 1, "Primary": True}},
+            "Nonskill": {"Needs cooking": {"Skills": {"Cooking": 1}}},
+        }
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert result.valid["Nonskill"] == {"Needs cooking": True}
+
+
+def test_skills_requirement_rejects_a_sub_skill_with_no_training_method() -> None:
+    # Same fixture without the `Primary` flag: the Cooking challenge is
+    # valid, but it isn't a way to *train* Cooking, so the dependent task
+    # stays invalid.
     info = _chunk_info(
         challenges={
             "Cooking": {"Cook something": {"Level": 1}},
@@ -405,7 +425,63 @@ def test_skills_requirement_needs_the_sub_skill_valid() -> None:
 
     result = calc_challenges({}, {}, _EMPTY, info, rules={})
 
-    assert result.valid["Nonskill"] == {"Needs cooking": True}
+    assert result.valid.get("Cooking") == {"Cook something": 1}
+    assert "Nonskill" not in result.valid
+
+
+def test_combat_is_trainable_when_any_monster_exists() -> None:
+    # `Combat` has almost no challenges of its own; upstream defines it as
+    # "any combat skill is trainable", and those need only something to
+    # hit. Before this, every `Skills: {Combat: N}` task was dead.
+    info = _chunk_info(challenges={"Nonskill": {"Fight something": {"Skills": {"Combat": 40}}}})
+    with_monster = SourceIndex(
+        items={}, objects={}, monsters={"Goblin": {"100": True}}, npcs={}, shops={}, drop_rates={}
+    )
+
+    assert calc_challenges({}, {}, _EMPTY, info, rules={}).valid == {}
+    assert calc_challenges({}, {}, with_monster, info, rules={}).valid == {
+        "Nonskill": {"Fight something": True}
+    }
+
+
+def test_tasks_requirement_resolves_across_category_iteration_order() -> None:
+    # `Nonskill` is iterated before `Slayer` in the real export, so a
+    # Nonskill task depending on a Slayer one must still resolve - the
+    # fixed point consults the previous pass, not just the partially-built
+    # current one.
+    info = _chunk_info(
+        challenges={
+            "Nonskill": {"Needs slayer": {"Tasks": {"Do slayer": "Slayer"}}},
+            "Slayer": {"Do slayer": {}},
+        }
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert result.valid["Nonskill"] == {"Needs slayer": True}
+
+
+def test_tasks_family_requirement_needs_one_valid_member() -> None:
+    info = _chunk_info(
+        challenges={
+            "Nonskill": {"Needs a master": {"Tasks": {"Masters[+]x1": "Slayer"}}},
+            "Slayer": {"Ask Vannaka": {}},
+        },
+        codeItems={"tasksPlus": {"Masters[+]": ["Ask Duradel", "Ask Vannaka"]}},
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert result.valid["Nonskill"] == {"Needs a master": True}
+
+
+def test_tasks_family_requirement_fails_with_no_valid_member() -> None:
+    info = _chunk_info(
+        challenges={"Nonskill": {"Needs a master": {"Tasks": {"Masters[+]x1": "Slayer"}}}},
+        codeItems={"tasksPlus": {"Masters[+]": ["Ask Duradel"]}},
+    )
+
+    assert calc_challenges({}, {}, _EMPTY, info, rules={}).valid == {}
 
 
 def test_skills_requirement_respects_max_skill() -> None:
