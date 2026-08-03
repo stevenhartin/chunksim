@@ -309,12 +309,16 @@ One responsibility per module, so the planned simulation work has a pure layer t
 - `cli.py` — argparse subcommands only. `main()` funnels `FetchError`, `CacheMissError`, and
   `NotImplementedError` into a stderr message and exit 1; a new subcommand keeps its logic in a pure
   module (`_load_state` -> `pipeline.load_map_state` handles the common cache-read + decode step).
-  `--export-json PATH` (where supported) writes a subcommand's full result as JSON to `PATH`, or to
+  `--export-json PATH` writes a subcommand's full result as JSON to `PATH`, or to
   stdout if `PATH` is `-` — in which case it replaces the human-readable summary on stdout rather than
-  interleaving with it, so piping stays clean. `sections`/`sources`/`tasks` take an optional
+  interleaving with it, so piping stays clean. It is carried by the six *derivation* subcommands
+  (`sections`/`sources`/`tasks`/`unlock`/`simulate`/`search`) and deliberately not by the three I/O
+  ones (`fetch`/`show`/`chunkinfo`), whose output is the cache file itself. `sections`/`sources`/`tasks`
+  take an optional
   positional (`list`/a chunk id; one of `sources.CATEGORIES`; a challenge category) to list that
-  branch's contents instead of just its counts, each capped by `--limit` (full output by default,
-  since piping to `grep`/`less` should just work without a flag). `fray tasks <category>` branches
+  branch's contents instead of just its counts, each capped by `--limit` — which defaults to `None`
+  (full output) for those three, since piping to `grep`/`less` should just work without a flag, but to
+  `10` for `search`, where the tail of a fuzzy ranking is noise rather than data. `fray tasks <category>` branches
   three ways: `BiS` lists `derived.bis.active`/`completed`/`outdated` (BiS isn't a category in
   `state.chunk_info.challenges` at all - see `challenges.py`); a real skill category
   (`derived.task_classification.skills`) shows active/obsolete/completed sections plus an
@@ -341,14 +345,17 @@ fray simulate --rolls N [--seed S]   # simulate N chunk rolls and accumulate the
 fray search   QUERY [--type T ...] [--limit N]   # fuzzy search item/monster/npc/object/shop/task
 python -m fray_claude ...   # same CLI without the console script
 mypy                        # strict, over src/ and tests/; run from the repo root
-pytest                      # whole suite
-pytest tests/test_summary.py::test_summarise_counts_unlocked_chunks   # single test
-FRAY_CHUNKINFO=path pytest tests/test_sections.py -k real   # opt-in oracle test against a real export
+.venv/bin/pytest            # whole suite
+.venv/bin/pytest tests/test_summary.py::test_summarise_counts_unlocked_chunks   # single test
+FRAY_CHUNKINFO=path .venv/bin/pytest tests/test_sections.py -k real   # opt-in oracle test against a real export
 pyproject-build && pipx install --force dist/*.whl   # build + reinstall the `fray` command system-wide
 ```
 
-The system mypy is configured with `python_executable = ".venv/bin/python"` so it can see pytest's
-stubs, which is why it must run from the repo root and needs the venv to exist.
+`mypy` and `pytest` are invoked differently on purpose: mypy is the *system* install (there is no
+`.venv/bin/mypy`), configured with `python_executable = ".venv/bin/python"` so it can see pytest's
+stubs — which is why it must run from the repo root and needs the venv to exist. pytest is only a
+`dev` extra inside the venv and is **not** on `PATH`, so a bare `pytest` fails with
+"command not found"; call `.venv/bin/pytest` (or activate the venv first).
 
 `cache/` is gitignored, so a fresh clone has no data and `fray show`/`fray sections` fail until
 `fray fetch`/`fray chunkinfo` run. `fray chunkinfo` downloads ~10MB; `--chunkinfo PATH` or the
