@@ -22,12 +22,14 @@ from fray_claude.cache import (
     CHUNKINFO_BLOB_NAME,
     TASKS_MAP_BLOB_NAME,
     CacheMissError,
+    read_blob,
     read_cache,
     read_chunkinfo,
     write_blob,
     write_cache,
 )
 from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.firebase import reverse_tasks_map
 from fray_claude.pipeline import MapState, derive, load_map_state
 from fray_claude.search import TYPES, build_world_index, search
 from fray_claude.sections import describe_sections, expand_chunk_areas
@@ -104,7 +106,14 @@ def _cmd_chunkinfo(args: argparse.Namespace) -> int:
 def _load_state(args: argparse.Namespace) -> tuple[MapState, dict[str, bool]]:
     envelope = read_cache(args.map_id)
     info = ChunkInfo(read_chunkinfo(override=args.chunkinfo))
-    return load_map_state(envelope["data"], info)
+    try:
+        tasks_map = reverse_tasks_map(read_blob(TASKS_MAP_BLOB_NAME)["data"])
+    except CacheMissError:
+        # No cached tasks map (e.g. a bare `--chunkinfo` override with no
+        # `fray chunkinfo` run) - degrade gracefully rather than fail: see
+        # `pipeline.load_map_state`'s docstring for what this costs.
+        tasks_map = {}
+    return load_map_state(envelope["data"], info, tasks_map)
 
 
 def _error(message: str) -> int:
@@ -215,6 +224,10 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
 
     if args.category is None:
         total_valid = sum(len(names) for names in result.valid.values())
+        classifications = derived.task_classification.skills
+        active_count = sum(1 for c in classifications.values() if c.active is not None)
+        obsolete_count = sum(len(c.obsolete) for c in classifications.values())
+        completed_count = sum(len(c.completed) for c in classifications.values())
         if args.export_json != "-":
             print(f"map          {args.map_id}")
             print(f"valid tasks  {total_valid}")
@@ -222,23 +235,69 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
                 print(f"  {skill:<12} {len(skill_tasks)}")
             print(f"  {'BiS':<12} {len(derived.bis.tasks)}")
             print(f"unsupported  {len(result.unsupported)} individual tasks (see CLAUDE.md)")
+            print(
+                f"skill tasks  active {active_count}, obsolete {obsolete_count}, "
+                f"completed {completed_count} (across {len(classifications)} skill categories)"
+            )
+            bis_line = f"  {'BiS':<10} active {len(derived.bis.active)}, completed {len(derived.bis.completed)}"
+            if derived.bis.outdated:
+                bis_line += f", outdated {len(derived.bis.outdated)}"
+            print(bis_line)
         if args.export_json is not None:
             _emit_json(
-                {"map_id": args.map_id, **result.as_dict(), "bis": derived.bis.as_dict()},
+                {
+                    "map_id": args.map_id,
+                    **result.as_dict(),
+                    "bis": derived.bis.as_dict(),
+                    "task_classification": derived.task_classification.as_dict(),
+                },
                 args.export_json,
             )
         return 0
 
     if args.category == "BiS":
-        names = sorted(derived.bis.tasks)
+        bis = derived.bis
+        if args.export_json != "-":
+            print(f"map       {args.map_id}")
+            print("category  BiS")
+            print(f"active    {len(bis.active)}")
+            _print_capped(sorted(bis.active), args.limit)
+            print(f"completed {len(bis.completed)}")
+            _print_capped(sorted(bis.completed), args.limit)
+            if bis.outdated:
+                print(f"outdated  {len(bis.outdated)}")
+                for name in sorted(bis.outdated):
+                    print(f"  {name}  ({bis.outdated[name]})")
+        if args.export_json is not None:
+            _emit_json({"map_id": args.map_id, "category": "BiS", **bis.as_dict()}, args.export_json)
+        return 0
+
+    if args.category in derived.task_classification.skills:
+        classification = derived.task_classification.skills[args.category]
+        oracle = state.active_tasks.get(args.category, {})
+        oracle_active = next(iter(oracle), None)
+        if oracle_active is None:
+            oracle_note = "not cached"
+        elif oracle_active == classification.active:
+            oracle_note = f"matches cached active task ({oracle_active!r})"
+        else:
+            oracle_note = f"cached active task is {oracle_active!r} (mismatch)"
         if args.export_json != "-":
             print(f"map      {args.map_id}")
-            print("category BiS")
-            print(f"valid    {len(names)}")
-            _print_capped(names, args.limit)
+            print(f"category {args.category}")
+            print(f"active   {classification.active or '(none)'}  [{oracle_note}]")
+            print(f"obsolete {len(classification.obsolete)}")
+            _print_capped(sorted(classification.obsolete), args.limit)
+            print(f"completed {len(classification.completed)}")
+            _print_capped(sorted(classification.completed), args.limit)
         if args.export_json is not None:
             _emit_json(
-                {"map_id": args.map_id, "category": "BiS", "valid": derived.bis.tasks},
+                {
+                    "map_id": args.map_id,
+                    "category": args.category,
+                    **classification.as_dict(),
+                    "cached_active_task": oracle_active,
+                },
                 args.export_json,
             )
         return 0

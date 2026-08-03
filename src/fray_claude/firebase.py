@@ -140,3 +140,29 @@ def decode_payload(payload: Any, tasks_map: Mapping[str, str] | None = None) -> 
                 output[new_key] = value
         return output
     return payload
+
+
+def decode_challenge_keyed(
+    payload: Any, tasks_map: Mapping[str, str] | None, *, skip_task_ids: bool = False
+) -> dict[str, Any]:
+    """Decode a `{category: {key: value}}` map-payload branch - the shape
+    `activeTasks`/`completedChallenges`/`checkedChallenges`/`backlog` all
+    share. Every category's inner keys are `t_N` task ids resolved through
+    `tasks_map`, **except `BiS`**, whose keys are literal encoded
+    challenge-name strings: BiS challenges have no static definition
+    anywhere in `chunkinfo.json`, so no id is ever minted for one (see
+    `challenges.py`'s module docstring). Pass `skip_task_ids=True` for
+    `manualTasks`, which uses literal name keys for *every* category, not
+    just `BiS` (verified against real map data - none of its keys match the
+    `t_N` pattern).
+    """
+    if not isinstance(payload, dict):
+        return {}
+    result: dict[str, Any] = {}
+    for raw_category, entries in payload.items():
+        category = decode_key(raw_category, None)
+        if category is None or not isinstance(entries, dict):
+            continue
+        category_tasks_map = None if skip_task_ids or category == "BiS" else tasks_map
+        result[category] = decode_payload(entries, category_tasks_map)
+    return result

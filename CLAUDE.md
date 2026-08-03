@@ -9,9 +9,11 @@ offline operations on that cache. source-chunk is upstream and read-only from he
 
 Landed: derive reachable sections/available sources/valid tasks from a cached map, per-chunk unlock
 deltas, multi-roll simulation (`fray unlock`/`fray simulate`), category listings, world-wide fuzzy
-search (`fray search`), and best-in-slot equipment synthesis (`bis.py`, surfaced via `fray tasks BiS`
-and as upgrade deltas in `fray unlock`/`fray simulate`) — see `challenges.py`'s and `bis.py`'s
-docstrings for what's deliberately unsupported before trusting the numbers.
+search (`fray search`), best-in-slot equipment synthesis (`bis.py`, surfaced via `fray tasks BiS`
+and as upgrade deltas in `fray unlock`/`fray simulate`), and active/obsolete/completed task
+classification per skill (`active_tasks.py`, surfaced via `fray tasks <Skill>`) — see `challenges.py`'s,
+`bis.py`'s, and `active_tasks.py`'s docstrings for what's deliberately unsupported before trusting
+the numbers.
 Planned: render a world-map image for a simulated state, generate heatmaps of likely rolls over N
 attempts, estimate time to complete all goals (needs a task-duration source; the export has none).
 
@@ -46,7 +48,13 @@ purely-numeric keys gain a `*fb*_` prefix, and some fields intern task names to 
 upstream's `tasksMap.json`) — applied per-field by the app, not uniformly across the whole payload,
 so which branches need `firebase.decode_payload` is only knowable by checking real fetched data, not
 by inspecting the client source. `chunks.unlocked` and `chunkOrder` are stored plain; `chunkinfo`'s
-`manualSections`/`stickeredNotes`/`activeTasks`/`checkedChallenges`/`backlog` are encoded.
+`manualSections`/`stickeredNotes`/`activeTasks`/`completedChallenges`/`checkedChallenges`/`backlog`/
+`manualTasks` are encoded. Verified against real data: `activeTasks`/`completedChallenges`/
+`checkedChallenges`/`backlog` all key every category's entries by `t_N` task id **except `BiS`**,
+whose keys are literal encoded challenge-name strings instead — BiS challenges have no static
+definition anywhere in `chunkinfo.json`, so no id is ever minted for one (see `challenges.py`).
+`manualTasks` uses literal name keys for *every* category, not just `BiS`.
+`firebase.decode_challenge_keyed` handles this mixed encoding.
 
 ## Architecture
 
@@ -63,6 +71,9 @@ One responsibility per module, so the planned simulation work has a pure layer t
 - `firebase.py` — pure; the Firebase-safe string codec (`decode_string`, `decode_key`, `decode_value`,
   `decode_payload`). Port of `decodeQueryParam`/`decodeObject` from upstream's `index.js`; run any map
   payload branch through this before treating it as real chunk ids, rule names, or task text.
+  `decode_challenge_keyed` handles the `{category: {t_N_or_literal_key: value}}` shape shared by
+  `activeTasks`/`completedChallenges`/`checkedChallenges`/`backlog`/`manualTasks`, applying the
+  mixed `BiS`-is-literal-everything-else-is-`t_N` encoding documented above per category.
 - `chunkinfo.py` — pure; typed, tolerant accessors (`ChunkInfo`) over the parsed chunkinfo export.
   Parsing the ~7MB export is the expensive part, not attribute access, so build one `ChunkInfo` per
   command invocation and pass it down rather than re-parsing.
@@ -137,23 +148,60 @@ One responsibility per module, so the planned simulation work has a pure layer t
   (a later chunk can surface a *better* item for a slot already filled) — per the project's agreed
   semantics, `compute_bis` recomputes the best-achievable set fresh per state rather than accumulating
   history; `unlock.py`/`simulate.py` diff two calls to report which (style, slot) picks improved,
-  exempted from `unlock.py`'s monotonic task-partition guarantee (see its docstring).
+  exempted from `unlock.py`'s monotonic task-partition guarantee (see its docstring). `BisResult`
+  additionally splits `tasks` into `completed` (already obtained, cross-referenced against
+  `completedChallenges.BiS` - real literal-key strings that already match `bis_task_name()`'s own
+  output format, no id resolution needed) and `active` (not yet obtained), plus `outdated`: a
+  completed pick whose slot has since been beaten by something better, resolved back to an item via
+  a `formatted_name -> (item, slot)` index built from `equipment` — this caught a real bug during
+  development (a completed "2h"-slot item wasn't recognised as superseded, since `_finalize_slots`
+  always folds a winning 2H item into the `weapon` key in `picks`, and the lookup hadn't been
+  normalised the same way — verified and fixed against the real `completedChallenges.BiS` oracle).
+- `active_tasks.py` — pure; classifies each real skill category's (`challenges._SKILL_NAMES`) valid
+  challenges into `active` (the one current goal)/`obsolete` (superseded)/`completed` (already done)
+  (`classify_tasks` -> `TaskClassification`). Port of `calcCurrentChallenges2`'s selection
+  (worker.js:8383-8727) — **a different mechanism from `challenges._group_processing_skill_challenges`**
+  ("Highest Level" grouping, which governs *fixed-point membership* for the 9 processing skills only);
+  this one runs after that fixed point, over whatever ended up valid for *any* skill, and picks a
+  single *display* winner — it never changes `ChallengeResult.valid`. Eligibility: `Primary` flag OR
+  `Level == 1` OR a `passiveSkill` floor OR a `manualTasks` entry (real fields, present on 32%/30% of
+  challenges for `Primary`/`Priority` respectively) - among eligible, non-backlogged candidates the
+  highest `Level` wins, ties broken by lower `Priority`; a trivial (`Level <= 1`, non-`Primary`)
+  winner is discarded entirely (no active task for that skill). `completedChallenges` is read
+  directly, never re-derived - verified upstream never marks a lower tier "obsolete" in any stored
+  field (`grep -i "obsolete\|supersed"` across index.js/worker.js: zero hits); "only show the highest"
+  is a pure per-recompute display choice. Boosting's level adjustment, the backlog-alternate
+  promotion, and sub-skill `Skills`-requirement cross-propagation are not modelled (no boost-ownership
+  state exists anywhere in this codebase, the same class of gap as `checkPrimaryMethod`). Scope
+  (only real skill categories, not Quest/Diary/Extra/Nonskill/BiS) and the oracle-comparison approach
+  were explicit user decisions - see the module docstring for the full reasoning. `activeTasks[skill]`
+  is a real oracle for the computed `active` pick when present, but **confirmed empty for every real
+  skill category on the map this was built against** (only `BiS`/`Diary`/`Extra`/`Slayer` have
+  entries, and `Slayer`'s is an unrelated slayer-master assignment) — the same "only written when
+  that panel was last rendered" staleness this project's BiS oracle note already documents, not a bug.
 - `pipeline.py` — pure; bundles the per-map inputs (`MapState`) and runs `unlocked_sections` ->
-  `gather_chunks_info` -> `calc_challenges` -> `compute_bis` for a given unlocked-chunk-id set
-  (`derive` -> `Derived`, now carrying `bis` alongside `reachable_sections`/`source_index`/
-  `challenges`). `load_map_state` decodes a raw cached-map payload into a `MapState` once (including
-  `passive_skill`, added for `bis.py`'s skill-requirement gate); `unlock.py`/`simulate.py` (and
-  `cli.py`'s `sections`/`sources`/`tasks` subcommands) all call `derive` rather than re-deriving the
-  same pipeline themselves.
+  `gather_chunks_info` -> `calc_challenges` -> `compute_bis` -> `classify_tasks` for a given
+  unlocked-chunk-id set (`derive` -> `Derived`, carrying `bis`/`task_classification` alongside
+  `reachable_sections`/`source_index`/`challenges`). `load_map_state` decodes a raw cached-map
+  payload into a `MapState` once (including `passive_skill` for `bis.py`'s skill-requirement gate,
+  and `completed_challenges`/`manual_tasks`/`backlog`/`active_tasks` for `active_tasks.py`/`bis.py`'s
+  completed split - these need an optional `tasks_map` argument, the reverse map from
+  `firebase.reverse_tasks_map`, to resolve `t_N` ids; without one, every `t_N`-keyed entry is dropped
+  rather than kept raw, so those fields decode empty except `BiS`/`manualTasks`, which never need it).
+  `unlock.py`/`simulate.py` (and `cli.py`'s `sections`/`sources`/`tasks` subcommands) all call `derive`
+  rather than re-deriving the same pipeline themselves.
 - `unlock.py` — pure; what a single candidate chunk unlock adds (`tasks_added_by` -> `UnlockDelta`),
   by running `pipeline.derive` for the unlocked set and for that set plus the candidate, then diffing.
   This is the module the project's attribution rule lives in: because `ChallengeResult.valid` only
   ever grows (every requirement `challenges.py` checks is a presence check, never an absence check),
   the diff partitions cleanly — each task belongs to exactly the one unlock that first made it valid,
-  and a later unlock can never retroactively change an earlier delta. Diffing the *panel*
-  (`calcCurrentChallenges2`, not ported) instead would be wrong: it shows only the highest challenge
-  per skill and re-picks BiS as better items appear, so it is not monotonic. `UnlockDelta.bis_upgrades`
-  (`diff_bis_picks`) is exactly that non-monotonic case, deliberately exempted from the partition
+  and a later unlock can never retroactively change an earlier delta. Diffing the *panel*'s
+  active-task selection instead (`calcCurrentChallenges2`, now ported in `active_tasks.py`) would
+  still be wrong for attribution even though it's computed: it picks only the single highest
+  challenge per skill from whatever's currently valid, and a later chunk can promote a *different*
+  one into that role, so it is not monotonic - the simulation ledger is built on `calc_challenges`'s
+  `valid` directly, not `active_tasks.py`'s classification. `UnlockDelta.bis_upgrades`
+  (`diff_bis_picks`) is the same non-monotonic case for BiS, deliberately exempted from the partition
   guarantee above: a later unlock can surface a *better* item for a slot already filled, so it records
   which `(style, slot)` picks changed, not tasks attributed to one unlock.
 - `simulate.py` — pure; simulates chunk rolls and accumulates the tasks/sections/BiS upgrades they
@@ -197,10 +245,13 @@ One responsibility per module, so the planned simulation work has a pure layer t
   interleaving with it, so piping stays clean. `sections`/`sources`/`tasks` take an optional
   positional (`list`/a chunk id; one of `sources.CATEGORIES`; a challenge category) to list that
   branch's contents instead of just its counts, each capped by `--limit` (full output by default,
-  since piping to `grep`/`less` should just work without a flag). `fray tasks BiS` lists
-  `derived.bis.tasks` rather than `derived.challenges.valid.get("BiS")`, since `BiS` isn't a category
-  in `state.chunk_info.challenges` at all (see `challenges.py`); `fray unlock`/`fray simulate` print
-  BiS upgrades alongside new tasks/sections when there are any.
+  since piping to `grep`/`less` should just work without a flag). `fray tasks <category>` branches
+  three ways: `BiS` lists `derived.bis.active`/`completed`/`outdated` (BiS isn't a category in
+  `state.chunk_info.challenges` at all - see `challenges.py`); a real skill category
+  (`derived.task_classification.skills`) shows active/obsolete/completed sections plus an
+  opportunistic comparison against `state.active_tasks[skill]` ("not cached" when absent, the common
+  case - see `active_tasks.py`); everything else keeps the old flat valid listing. `fray unlock`/
+  `fray simulate` print BiS upgrades alongside new tasks/sections when there are any.
 
 ## Toolchain
 
@@ -215,7 +266,7 @@ fray show  [--map ID]       # summarise the cached copy; no network
 fray chunkinfo              # GET upstream's chunk/challenge reference data -> cache/{chunkinfo,tasks_map}.json
 fray sections [list|CHUNK] [--limit N]   # reachable sections; list/drill down with a positional
 fray sources  [CATEGORY]   [--limit N]   # items/objects/monsters/npcs/shops; list one with a positional
-fray tasks    [CATEGORY]   [--limit N]   # which challenges are valid, incl. BiS (partial - see challenges.py/bis.py)
+fray tasks    [CATEGORY]   [--limit N]   # valid/active/obsolete/completed, incl. BiS (partial - see challenges.py/bis.py/active_tasks.py)
 fray unlock   --chunk ID    # tasks/sections one candidate chunk would add on top of the cached map
 fray simulate --rolls N [--seed S]   # simulate N chunk rolls and accumulate their tasks/sections
 fray search   QUERY [--type T ...] [--limit N]   # fuzzy search item/monster/npc/object/shop/task

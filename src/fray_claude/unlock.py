@@ -9,12 +9,15 @@ them. That makes `derive(unlocked ∪ {chunk_id}).valid` minus
 exactly the one unlock that first made it valid, and a later unlock can
 never retroactively change an earlier one's recorded delta.
 
-The *panel* (`calcCurrentChallenges2`, not ported here) would be the wrong
-thing to diff instead: it shows only the highest challenge per skill and
-re-picks BiS as better items appear, so a later chunk genuinely does change
-what an earlier one would display - unsuitable for attribution, which is
-exactly why this project's simulation ledger (`simulate.py`) is built on
-`calc_challenges`'s `valid`, not the panel.
+The *panel*'s active-task selection (`calcCurrentChallenges2`, now ported in
+`active_tasks.py`) would still be the wrong thing to diff for attribution,
+even though it's computed: it picks only the single highest challenge per
+skill from whatever's currently valid, and a later chunk can promote a
+*different* (higher) challenge into that role, so what counts as "active"
+for a skill is not monotonic - a later chunk genuinely does change what an
+earlier one would display. That's exactly why this project's simulation
+ledger (`simulate.py`) is built on `calc_challenges`'s `valid` directly, not
+`active_tasks.py`'s classification.
 
 `bis.py`'s output is exactly that non-monotonic panel-like case, deliberately
 exempted from the partition argument above: a later unlock can make a

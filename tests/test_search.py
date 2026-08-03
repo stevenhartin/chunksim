@@ -31,6 +31,10 @@ def _state(**overrides: Any) -> MapState:
         "backlogged_sources": {},
         "max_skill": {},
         "passive_skill": {},
+        "completed_challenges": {},
+        "manual_tasks": {},
+        "backlog": {},
+        "active_tasks": {},
     }
     defaults.update(overrides)
     return MapState(**defaults)

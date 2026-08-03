@@ -53,6 +53,7 @@ module doesn't track anyway - see "ties-as-alternates" above).
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -495,22 +496,94 @@ def bis_task_name(item_name: str, equip: Mapping[str, Any]) -> str:
     return f"Obtain{article_for(item_name)}~|{format_equip(equip, item_name)}|~"
 
 
+_TASK_ITEM_PATTERN = re.compile(r"~\|(.+?)\|~")
+
+
+def _formatted_name_index(equipment: Mapping[str, Mapping[str, Any]]) -> dict[str, tuple[str, str]]:
+    """`format_equip`'d, lowercased display name -> `(item_name, slot)` -
+    lets an `Obtain a/an ~|X|~` task name, as found in
+    `completedChallenges.BiS` (real map data: literal task-name-string keys,
+    not `t_N` ids - BiS challenges have no static definition anywhere in
+    `chunkinfo.json`, so no id is ever minted for one; see `challenges.py`'s
+    module docstring), be resolved back to the equipment entry it names.
+    """
+    index: dict[str, tuple[str, str]] = {}
+    for item_name, equip in equipment.items():
+        slot = equip.get("slot")
+        if isinstance(slot, str):
+            index[format_equip(equip, item_name).lower()] = (item_name, slot)
+    return index
+
+
+def _outdated_notes(
+    completed_bis: Mapping[str, Any],
+    tasks: Mapping[str, str],
+    picks: Mapping[str, str],
+    equipment: Mapping[str, Mapping[str, Any]],
+) -> dict[str, str]:
+    """A `completed_bis` entry whose item no longer matches the current pick
+    for its slot in *any* style - i.e. a better item has since become
+    reachable, so the player's gear there is outdated. Only checked for
+    entries absent from the current `tasks` view entirely; a still-current
+    completed item is simply in both `completed` and `tasks`, needing no note.
+    """
+    index = _formatted_name_index(equipment)
+    notes: dict[str, str] = {}
+    for task_name in completed_bis:
+        if task_name in tasks:
+            continue
+        match = _TASK_ITEM_PATTERN.search(task_name)
+        if match is None:
+            continue
+        resolved = index.get(match.group(1).lower())
+        if resolved is None:
+            continue
+        old_item, slot = resolved
+        # `_finalize_slots` always folds a winning "2h" item into the
+        # "weapon" key - "2h" itself never appears in `picks` - so an old
+        # 2h item's slot must be normalised the same way to compare.
+        slot = "weapon" if slot == "2h" else slot
+        upgrades: dict[str, str] = {}
+        for style_slot, item in picks.items():
+            style, _, key_slot = style_slot.rpartition("-")
+            if key_slot == slot and item != old_item:
+                upgrades[style] = item
+        if upgrades:
+            note = ", ".join(f"{style}: {item}" for style, item in sorted(upgrades.items()))
+            notes[task_name] = f"superseded by {note}"
+    return notes
+
+
 @dataclass(frozen=True)
 class BisResult:
     """`picks["{style}-{slot}"] = item_name` (style spaces replaced by `_`,
     matching upstream's `highestOverallLocal` key shape) is the structural
     view `unlock.py`/`simulate.py` diff to report which slots improved.
-    `tasks[task_name] = label` is the display view `fray tasks BiS` lists;
-    `label` joins every style that picked the same (slot, item) with
-    upstream's `'/' + U+200B` separator (worker.js:8210) when more than one
-    style shares a winner.
+    `tasks[task_name] = label` is the full current-picks display view (every
+    style's winner, regardless of completion). `completed`/`active` split
+    `tasks` against `completed_bis` (`completedChallenges.BiS`, passed into
+    `compute_bis`): completed picks the player has already obtained versus
+    ones still to get - upstream's own `calcBIS(completedOnly)` distinction.
+    `outdated` flags a `completed_bis` entry whose slot has since been beaten
+    by something better, per `_outdated_notes`. `label` joins every style
+    that picked the same (slot, item) with upstream's `'/' + U+200B`
+    separator (worker.js:8210) when more than one style shares a winner.
     """
 
     picks: dict[str, str]
     tasks: dict[str, str] = field(default_factory=dict)
+    completed: dict[str, str] = field(default_factory=dict)
+    active: dict[str, str] = field(default_factory=dict)
+    outdated: dict[str, str] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
-        return {"picks": self.picks, "tasks": self.tasks}
+        return {
+            "picks": self.picks,
+            "tasks": self.tasks,
+            "completed": self.completed,
+            "active": self.active,
+            "outdated": self.outdated,
+        }
 
 
 def compute_bis(
@@ -521,14 +594,18 @@ def compute_bis(
     rules: Mapping[str, Any],
     max_skill: Mapping[str, int] | None = None,
     passive_skill: Mapping[str, int] | None = None,
+    completed_bis: Mapping[str, Any] | None = None,
 ) -> BisResult:
     """Compute the best-achievable item per (style, slot) for the current
     state. `items` should be the same `SourceIndex.items` ordinary
     challenges use; `valid` is `ChallengeResult.valid`, consulted by the
-    skill-requirement and task-unlock gates.
+    skill-requirement and task-unlock gates. `completed_bis` is
+    `MapState.completed_challenges.get("BiS", {})` - already-obtained BiS
+    items, splitting the result into `completed`/`active` (see `BisResult`).
     """
     max_skill = max_skill or {}
     passive_skill = passive_skill or {}
+    completed_bis = completed_bis or {}
     equipment = _mapping(chunk_info.data, "equipment")
     ammo_index = build_ammo_index(_mapping(chunk_info.code_items, "ammoTools"))
     task_unlocks_items = _mapping(_mapping(chunk_info.data, "taskUnlocks"), "Items")
@@ -559,4 +636,8 @@ def compute_bis(
         equip = equipment.get(item_name, {})
         task_name = bis_task_name(item_name, equip)
         tasks[task_name] = _STYLE_SEPARATOR.join(styles) + " BiS " + slot
-    return BisResult(picks=picks, tasks=tasks)
+
+    completed = {name: label for name, label in tasks.items() if name in completed_bis}
+    active = {name: label for name, label in tasks.items() if name not in completed_bis}
+    outdated = _outdated_notes(completed_bis, tasks, picks, equipment)
+    return BisResult(picks=picks, tasks=tasks, completed=completed, active=active, outdated=outdated)

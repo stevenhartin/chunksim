@@ -511,6 +511,59 @@ def test_tasks_category_lists_valid_task_names(
     assert "Do a thing" in out
 
 
+def test_tasks_skill_category_shows_active_obsolete_and_completed(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from fray_claude.cache import write_blob
+
+    payload: dict[str, Any] = {
+        "chunks": {"unlocked": {}},
+        "chunkinfo": {"completedChallenges": {"Woodcutting": {"t_1": True}}},
+    }
+    chunkinfo_data = {
+        "challenges": {
+            "Woodcutting": {
+                "Chop with a bronze axe": {"Level": 1, "Primary": True},
+                "Chop with a rune axe": {"Level": 41, "Primary": True},
+                "Chop with a steel axe": {"Level": 6, "Primary": True},
+            }
+        }
+    }
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    write_blob("tasks_map", {"Chop with a bronze axe": "t_1"}, "https://example/tasksMap.json")
+    capsys.readouterr()
+
+    assert main(["tasks", "Woodcutting"]) == 0
+
+    out = capsys.readouterr().out
+    assert "category Woodcutting" in out
+    assert "active   Chop with a rune axe  [not cached]" in out
+    assert "obsolete 1" in out
+    assert "Chop with a steel axe" in out
+    assert "completed 1" in out
+    assert "Chop with a bronze axe" in out
+
+
+def test_tasks_skill_category_reports_a_cached_active_task_match(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from fray_claude.cache import write_blob
+
+    payload: dict[str, Any] = {
+        "chunks": {"unlocked": {}},
+        "chunkinfo": {"activeTasks": {"Woodcutting": {"t_1": "41"}}},
+    }
+    chunkinfo_data = {"challenges": {"Woodcutting": {"Chop with a rune axe": {"Level": 41, "Primary": True}}}}
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    write_blob("tasks_map", {"Chop with a rune axe": "t_1"}, "https://example/tasksMap.json")
+    capsys.readouterr()
+
+    assert main(["tasks", "Woodcutting"]) == 0
+
+    out = capsys.readouterr().out
+    assert "matches cached active task" in out
+
+
 def test_tasks_unknown_category_exits_one(
     project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -544,7 +597,9 @@ def test_tasks_bis_category_reports_computed_gear(
     assert main(["tasks", "BiS"]) == 0
 
     out = capsys.readouterr().out
-    assert "category BiS" in out
+    assert "category  BiS" in out
+    assert "active    1" in out
+    assert "completed 0" in out
     assert "Obtain a ~|rune scimitar|~" in out
 
 

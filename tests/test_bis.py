@@ -304,6 +304,89 @@ def test_task_name_and_label_are_generated() -> None:
     }
 
 
+def test_completed_bis_item_is_excluded_from_active() -> None:
+    info = _chunk_info(
+        equipment={
+            "Abyssal whip": {
+                "slot": "weapon",
+                "attack_speed": 4,
+                "attack_slash": 82,
+                "melee_strength": 82,
+            }
+        }
+    )
+    items = {"Abyssal whip": {"Abyssal demon": "secondary-drop"}}
+
+    result = compute_bis(info, items, {}, rules={}, completed_bis={"Obtain an ~|abyssal whip|~": True})
+
+    assert "Obtain an ~|abyssal whip|~" in result.completed
+    assert "Obtain an ~|abyssal whip|~" not in result.active
+    assert result.tasks == result.completed
+
+
+def test_not_yet_completed_bis_item_is_active() -> None:
+    info = _chunk_info(
+        equipment={
+            "Abyssal whip": {
+                "slot": "weapon",
+                "attack_speed": 4,
+                "attack_slash": 82,
+                "melee_strength": 82,
+            }
+        }
+    )
+    items = {"Abyssal whip": {"Abyssal demon": "secondary-drop"}}
+
+    result = compute_bis(info, items, {}, rules={})
+
+    assert result.completed == {}
+    assert "Obtain an ~|abyssal whip|~" in result.active
+
+
+def test_outdated_note_when_a_better_item_has_since_become_reachable() -> None:
+    info = _chunk_info(
+        equipment={
+            "Bronze scimitar": {
+                "slot": "weapon",
+                "attack_speed": 4,
+                "attack_slash": 5,
+                "melee_strength": 4,
+            },
+            "Abyssal whip": {
+                "slot": "weapon",
+                "attack_speed": 4,
+                "attack_slash": 82,
+                "melee_strength": 82,
+            },
+        }
+    )
+    items = {"Abyssal whip": {"Abyssal demon": "secondary-drop"}}
+    completed_bis = {"Obtain a ~|bronze scimitar|~": True}
+
+    result = compute_bis(info, items, {}, rules={}, completed_bis=completed_bis)
+
+    assert "Obtain a ~|bronze scimitar|~" in result.outdated
+    assert "Abyssal whip" in result.outdated["Obtain a ~|bronze scimitar|~"]
+
+
+def test_no_outdated_note_when_the_completed_item_is_still_best() -> None:
+    info = _chunk_info(
+        equipment={
+            "Abyssal whip": {
+                "slot": "weapon",
+                "attack_speed": 4,
+                "attack_slash": 82,
+                "melee_strength": 82,
+            }
+        }
+    )
+    items = {"Abyssal whip": {"Abyssal demon": "secondary-drop"}}
+
+    result = compute_bis(info, items, {}, rules={}, completed_bis={"Obtain an ~|abyssal whip|~": True})
+
+    assert result.outdated == {}
+
+
 def test_as_dict_shape() -> None:
     info = _chunk_info(equipment={"Abyssal whip": {"slot": "weapon", "attack_speed": 4, "attack_slash": 82, "melee_strength": 82}})
     items = {"Abyssal whip": {"Abyssal demon": "secondary-drop"}}
@@ -317,6 +400,9 @@ def test_as_dict_shape() -> None:
             "Magic-weapon": "Abyssal whip",
         },
         "tasks": {"Obtain an ~|abyssal whip|~": "Melee/​Ranged/​Magic BiS weapon"},
+        "completed": {},
+        "active": {"Obtain an ~|abyssal whip|~": "Melee/​Ranged/​Magic BiS weapon"},
+        "outdated": {},
     }
 
 
@@ -350,3 +436,33 @@ def test_melee_bis_weapon_matches_the_live_oracle() -> None:
     )
 
     assert result.picks["Melee-weapon"] == "Abyssal whip"
+
+
+@pytest.mark.skipif(not _REAL_CHUNKINFO, reason="set FRAY_CHUNKINFO to a real export to run this")
+def test_a_real_completed_bis_item_is_never_shown_as_active() -> None:
+    """Opt-in oracle: unlike skill-level `activeTasks` (sparse - see
+    `active_tasks.py`'s module docstring), `completedChallenges.BiS` is
+    well-populated on the cached map (70 real entries). The player's
+    completed `craw's bow (u)` pick must never resurface as something still
+    to obtain - and on this account it's since been beaten by a better
+    ranged weapon, so it correctly lands in `outdated` rather than
+    `completed` (which is empty on this map: every one of the 70 completed
+    picks has since been superseded, a real-data confirmation that
+    `_outdated_notes` is doing its job, not a test bug).
+    """
+    assert _REAL_CHUNKINFO is not None
+    from fray_claude.cache import project_root, read_blob, read_cache
+    from fray_claude.firebase import reverse_tasks_map
+    from fray_claude.pipeline import derive, load_map_state
+
+    data = json.loads(Path(_REAL_CHUNKINFO).read_text(encoding="utf-8"))
+    info = ChunkInfo(data)
+    root = project_root()
+    envelope = read_cache("fray", root)
+    tasks_map = reverse_tasks_map(read_blob("tasks_map", root)["data"])
+    state, unlocked = load_map_state(envelope["data"], info, tasks_map)
+    derived = derive(state, unlocked)
+
+    task_name = "Obtain a ~|craw's bow (u)|~"
+    assert task_name not in derived.bis.active
+    assert task_name in derived.bis.outdated

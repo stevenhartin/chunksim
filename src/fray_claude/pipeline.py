@@ -5,8 +5,8 @@ invocation (the chunkinfo export, decoded rules/settings, manual overrides);
 `derive` runs the pipeline for a given *set of unlocked chunk ids*, so
 `unlock.py` and `simulate.py` can call it twice - once for the current
 state, once for a candidate chunk added - without duplicating the
-`unlocked_sections` -> `gather_chunks_info` -> `calc_challenges` -> `compute_bis`
-wiring that `cli.py`'s `sections`/`sources`/`tasks` subcommands also share.
+`unlocked_sections` -> `gather_chunks_info` -> `calc_challenges` -> `compute_bis` ->
+`classify_tasks` wiring that `cli.py`'s `sections`/`sources`/`tasks` subcommands also share.
 """
 
 from __future__ import annotations
@@ -15,10 +15,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from fray_claude.active_tasks import TaskClassification, classify_tasks
 from fray_claude.bis import BisResult, compute_bis
 from fray_claude.challenges import ChallengeResult, calc_challenges
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.firebase import decode_payload
+from fray_claude.firebase import decode_challenge_keyed, decode_payload
 from fray_claude.sections import expand_chunk_areas, unlocked_sections
 from fray_claude.sources import SourceIndex, gather_chunks_info
 from fray_claude.summary import _mapping
@@ -39,6 +40,10 @@ class MapState:
     backlogged_sources: Mapping[str, Any]
     max_skill: Mapping[str, int]
     passive_skill: Mapping[str, int]
+    completed_challenges: Mapping[str, Mapping[str, Any]]
+    manual_tasks: Mapping[str, Mapping[str, Any]]
+    backlog: Mapping[str, Mapping[str, Any]]
+    active_tasks: Mapping[str, Mapping[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -49,6 +54,7 @@ class Derived:
     source_index: SourceIndex
     challenges: ChallengeResult
     bis: BisResult
+    task_classification: TaskClassification
 
 
 def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
@@ -81,16 +87,40 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
         rules=state.rules,
         max_skill=state.max_skill,
         passive_skill=state.passive_skill,
+        completed_bis=state.completed_challenges.get("BiS", {}),
     )
-    return Derived(reachable_sections=reachable, source_index=index, challenges=challenges, bis=bis)
+    task_classification = classify_tasks(
+        challenges.valid,
+        state.chunk_info,
+        completed_challenges=state.completed_challenges,
+        manual_tasks=state.manual_tasks,
+        backlog=state.backlog,
+        passive_skill=state.passive_skill,
+    )
+    return Derived(
+        reachable_sections=reachable,
+        source_index=index,
+        challenges=challenges,
+        bis=bis,
+        task_classification=task_classification,
+    )
 
 
-def load_map_state(payload: Mapping[str, Any], chunk_info: ChunkInfo) -> tuple[MapState, dict[str, bool]]:
+def load_map_state(
+    payload: Mapping[str, Any], chunk_info: ChunkInfo, tasks_map: Mapping[str, str] | None = None
+) -> tuple[MapState, dict[str, bool]]:
     """Decode a raw cached-map payload into a `MapState` plus its unlocked
-    chunk ids. None of the decoded branches reference `t_N` task ids (they
-    hold chunk, item, monster, and rule names), so decoding with no tasks
-    map is safe - see `firebase.decode_payload`.
+    chunk ids. Most decoded branches hold chunk/item/monster/rule names, not
+    `t_N` task ids, so decoding those needs no `tasks_map` - see
+    `firebase.decode_payload`. `activeTasks`/`completedChallenges`/`backlog`
+    key every category by `t_N` id *except* `BiS`, which uses literal name
+    keys (see `firebase.decode_challenge_keyed`) - so without `tasks_map`
+    those decode to an empty dict for every other category (an unresolved
+    `t_N` key is dropped, not kept raw) rather than raising. Pass the
+    reverse map from `firebase.reverse_tasks_map` (built from the cached
+    `tasks_map` blob) when available.
     """
+    tasks_map = tasks_map or {}
     chunkinfo_branch = _mapping(payload, "chunkinfo")
     unlocked = decode_payload(_mapping(_mapping(payload, "chunks"), "unlocked"))
     state = MapState(
@@ -103,5 +133,13 @@ def load_map_state(payload: Mapping[str, Any], chunk_info: ChunkInfo) -> tuple[M
         backlogged_sources=decode_payload(_mapping(chunkinfo_branch, "backloggedSources")),
         max_skill=decode_payload(_mapping(chunkinfo_branch, "maxSkill")),
         passive_skill=decode_payload(_mapping(chunkinfo_branch, "passiveSkill")),
+        completed_challenges=decode_challenge_keyed(
+            _mapping(chunkinfo_branch, "completedChallenges"), tasks_map
+        ),
+        manual_tasks=decode_challenge_keyed(
+            _mapping(chunkinfo_branch, "manualTasks"), tasks_map, skip_task_ids=True
+        ),
+        backlog=decode_challenge_keyed(_mapping(chunkinfo_branch, "backlog"), tasks_map),
+        active_tasks=decode_challenge_keyed(_mapping(chunkinfo_branch, "activeTasks"), tasks_map),
     )
     return state, unlocked
