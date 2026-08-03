@@ -28,7 +28,10 @@ area's monsters and drops visible to `sources.gather_chunks_info`.
 `unlockable_areas` ports the pass that decides when that happens
 (worker.js:2102-2155, inside `calcChallenges`): a `Nonskill` challenge
 carrying `UnlocksArea` that is currently *valid* unlocks the area it names,
-provided the area connects to a chunk you already have. Because that pass
+subject to its `SkillsNeeded` gate and to the area connecting to a chunk you
+already have. Missing this pass was a real reported bug: `Spiritual mage` and
+`Grotesque Guardians` - and so `Dragon boots` and `Granite gloves` - were
+invisible, and the BiS oracle sat at 1 of 6. Because that pass
 consumes challenge validity and feeds back into source gathering, the loop
 driving it lives in `pipeline.derive`, not here - see its docstring.
 

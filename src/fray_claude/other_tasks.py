@@ -39,7 +39,20 @@ chain, so progress at one point settles everything before it:
   `[+]` families expand to **every** member (worker.js:498/512): `~|Shield of
   Arrav|~ 3` needs `ShieldOfArrav2Final[+]`, the last step of either route,
   and reaching it means whichever route you took is done - upstream cannot
-  tell which either. Both passes are guarded on a matching `BaseQuest`.
+  tell which either. Note the family key is
+  `name.split('[+]x')[0].replace('[+]','') + '[+]'`: an existing `[+]` comes
+  *off* before one is appended, or `X[+]` looks up as `X[+][+]` and silently
+  finds nothing. Both passes are guarded on a matching `BaseQuest`.
+
+Together those two took `Quest` active from 94 to 7 to 0 on the real map, and
+0 is right: only 13 quests are fully reachable there, and all 13 are done.
+
+`Diary` gets `_implied_completions` too, but seeded from a **tier completion
+only** (`_implies_from` - the challenges carrying a `Reward`, whose `Tasks`
+list every task in that tier). Real data had ten of Morytania Easy's eleven
+tasks marked individually plus the tier itself, leaving `Task 8` looking
+outstanding. An ordinary diary task implies nothing, its `Tasks` being
+ordinary requirements rather than a roster.
 
 Grouping mirrors the panel's own: `Quest` by `BaseQuest`; `Diary` by the
 diary and tier encoded in the name (`~|Morytania Diary#Elite|~ Task 5` ->
@@ -49,6 +62,10 @@ exactly the user-facing groups - `Collection Log`, `Permanent Unlockables`,
 `Stuffables` when their rules are on. Which labels appear is already handled
 upstream of here: `challenges._category_gate_met` drops a challenge whose
 `Category` names a rule that is off.
+
+`Extra` is the export's own key and stays the key in `--export-json`;
+**`Other` is the display name** (`display_name`), and `fray tasks` accepts
+either.
 """
 
 from __future__ import annotations

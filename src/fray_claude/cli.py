@@ -1,4 +1,58 @@
-"""Command line entry point."""
+"""Command line entry point: argparse subcommands and their rendering only.
+
+A new subcommand keeps its logic in a pure module and calls it from here.
+`main()` funnels `FetchError`, `CacheMissError` and `NotImplementedError`
+into a stderr message and exit 1; `_load_state` (-> `pipeline.load_map_state`)
+handles the common cache-read + decode step.
+
+`--export-json PATH` writes a subcommand's full result as JSON to `PATH`, or
+to stdout if `PATH` is `-` - in which case it *replaces* the human-readable
+summary rather than interleaving with it, so piping stays clean. It is
+carried by the six *derivation* subcommands
+(`sections`/`sources`/`tasks`/`unlock`/`simulate`/`search`) and deliberately
+not by the three I/O ones (`fetch`/`show`/`chunkinfo`), whose output is the
+cache file itself.
+
+`sections`/`sources`/`tasks` take an optional positional (`list` or a chunk
+id; one of `sources.CATEGORIES`; a challenge category) to list that branch's
+contents instead of just its counts, each capped by `--limit`. That defaults
+to `None` - full output - for those three, so piping to `grep`/`less` just
+works without a flag, but to `10` for `search`, where the tail of a fuzzy
+ranking is noise rather than data.
+
+`fray tasks <category>` branches four ways:
+
+- `Diary`/`Quest`/`Other` (or `Extra`; both accepted case-insensitively and
+  displayed `Other (Extra)`) list `derived.other_tasks` grouped under
+  headers, showing each task's `Description` where the export has one.
+- `BiS` lists `derived.bis.active`/`completed`/`outdated` - BiS isn't a
+  category in `state.chunk_info.challenges` at all, see `challenges.py` -
+  rendered through `BisResult.display_sorted`/`bis_display_name` rather than
+  as raw task names, so lines read `[<slot>] Obtain a granite ring (i)` with
+  this chunk's completions floated to the top. The raw `~|...|~` names stay
+  the keys in `--export-json`.
+- A real skill category (`derived.task_classification.skills`) shows
+  **active -> completed -> obsolete** sections, plus an opportunistic
+  comparison against `state.active_tasks[skill]` ("not cached" when absent,
+  the common case - see `active_tasks.py`).
+- Anything else keeps the flat valid listing.
+
+Every one of those paths renders through `_display_tasks` ->
+`challenges.strip_task_markup`, which **sorts on the stripped form** so the
+visible order matches the screen; sorting raw would file every marked-up name
+under `~`. `search` strips per hit type (task hits and `task:` routes only),
+never blanket, so a genuinely tilde-named shop survives.
+
+The bare `fray tasks` overview prints totals, the active/completed/obsolete
+split, and then each category's *active* tasks beneath its own line - one
+`<skill> <task>` row per skill with a current goal, then the `BiS` picks in
+the same `[<slot>] Obtain ...` form, both capped by `--limit`. The
+per-category `valid` enumeration it used to carry instead was mostly tasks a
+higher tier has already superseded; `--export-json` still has the full
+mapping. `fray unlock`/`fray simulate` print BiS upgrades alongside new
+tasks/sections when there are any, and report task *counts* rather than
+names, so neither needs markup stripping.
+"""
 
 from __future__ import annotations
 
@@ -307,7 +361,7 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
             # full per-category `valid` mapping.
             print(f"map          {args.map_id}")
             print(f"valid tasks  {total_valid}")
-            print(f"unsupported  {len(result.unsupported)} individual tasks (see CLAUDE.md)")
+            print(f"unsupported  {len(result.unsupported)} individual tasks (see challenges.py)")
             print(
                 f"skill tasks  active {active_count}, completed {completed_count}, "
                 f"obsolete {obsolete_count} (across {len(classifications)} skill categories)"
@@ -497,7 +551,7 @@ def _cmd_unlock(args: argparse.Namespace) -> int:
             for key, (previous, new) in sorted(delta.bis_upgrades.items()):
                 print(f"  {key:<20} {previous or '(none)'} -> {new}")
         if delta.new_unsupported:
-            print(f"new unsupported {len(delta.new_unsupported)} (see CLAUDE.md)")
+            print(f"new unsupported {len(delta.new_unsupported)} (see challenges.py)")
 
     if args.export_json is not None:
         _emit_json({"map_id": args.map_id, **delta.as_dict()}, args.export_json)

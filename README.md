@@ -79,8 +79,10 @@ pytest    # whole test suite
 to be a system install: it's configured to point at `.venv/bin/python` for stubs, so it must run from
 the repo root and the virtualenv has to exist.
 
-See `CLAUDE.md` for the module-by-module architecture, testing conventions, and — importantly — the
-precise list of what each derivation module does and doesn't implement.
+See `CLAUDE.md` for the module-by-module architecture and testing conventions. The precise list of
+what each derivation module does and doesn't implement lives in that module's own docstring —
+`challenges.py`, `bis.py`, `active_tasks.py`, `other_tasks.py`, `sources.py` and `simulate.py` are
+the ones to read before trusting a number.
 
 ## Deploying
 

@@ -22,6 +22,12 @@ The pieces, all from `chunkinfo.json`'s `codeItems`:
 - `Crystal saw` is Construction-only and applies **+3 only to challenges
   whose `Items` include `Saw[+]`**; it is tracked separately from
   `best_boost` because the two clamps below treat it differently.
+- A `NoBoost` challenge is exempt from all of it.
+
+**Availability is read from `ChallengeResult.available_items`, not
+`SourceIndex.items`** - the same trap `bis.py` hit. The oracle's own `Wild
+pie` is baked, not dropped, so the narrower index silently yields no boost at
+all.
 
 Faithful to two upstream quirks, because reproducing the behaviour is the
 point:

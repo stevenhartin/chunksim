@@ -19,7 +19,13 @@ Ports the two roll-eligibility mechanisms in index.js:
   references them.
 
 Both pools are picked from uniformly at random via a seeded `random.Random`,
-so the same seed reproduces the same simulated run.
+over a *sorted* candidate list, so the same seed reproduces the same run
+regardless of set/dict iteration order.
+
+Each roll's record is built via `unlock.delta_from` and never revisited by a
+later roll - `bis_upgrades` included, so a later roll's improvement doesn't
+get folded back into an earlier record. See `unlock.py` for why that is the
+agreed semantics rather than an approximation.
 
 Not modelled: manual chunk selection/blacklisting, `roll2`/`roll5` bonus
 rerolls, and the `chunkNeighboursOptions` UI conveniences

@@ -21,14 +21,20 @@ way):
   fishing spot (an NPC, oddly - "Fish shoal"), for Slayer it usually is a
   monster ("Aquanite") - so resolving its location tries Monster/NPC/Object
   in turn rather than assuming one category.
-- `shopItems[shop]` - shop stock.
-- a chunk's (or chunk section's) `Spawn` block - fixed ground spawns; the
-  spawn's own chunk-section *is* its location, so this route needs no
-  further lookup.
+- `shopItems[shop]` - shop stock (1,385 items).
+- a chunk's (or chunk section's) `Spawn` block - fixed ground spawns (357
+  items); the spawn's own chunk-section *is* its location, so this route
+  needs no further lookup.
 - a challenge's `Output` field - crafted/cooked/smithed/produced items,
   keyed by the producing challenge rather than a place at all; "available"
   for this route means the challenge is currently valid, not that some
   chunk is unlocked.
+
+Because `sources.py` covers only 3 of those 5 routes, **this module's
+availability marking is a strict superset of `fray sources`'s**: a query can
+report an item available that `fray sources` would never list. "Abyssal whip"
+is the concrete case - a `skillItems.Slayer` drop appearing nowhere in
+`drops`.
 
 Entity locations (`Monster`/`NPC`/`Object`/`Shop`/`Spawn` blocks) are read
 directly off `chunkinfo.json`'s `chunks`, walking both the top-level block

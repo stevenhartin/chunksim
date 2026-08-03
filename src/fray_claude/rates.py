@@ -7,6 +7,10 @@
 than through a shared helper. This module centralises that parsing, plus
 `findFraction` (worker.js), the `1/N`-style rate formatter whose output is
 embedded verbatim in synthesized "Every Drop"/"All Droptables" task names.
+
+Because that output ends up inside a task *name*, `find_fraction`'s
+half-away-from-zero rounding and no-trailing-zero formatting deliberately
+match JS's `Math.round`/`Number.toString` rather than Python's own.
 """
 
 from __future__ import annotations

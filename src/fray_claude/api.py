@@ -2,7 +2,12 @@
 
 The web app reaches this database through the Firebase JS SDK, but the REST API
 exposes the same data and the database is world-readable, so a plain GET is
-enough. No credentials are involved.
+enough. No credentials are involved, and no custom `User-Agent` is set -
+there is nothing to disguise.
+
+The only module that touches the network; raises `FetchError`. Note that an
+unknown map comes back as HTTP 200 with a bare `null` rather than a 404, so
+that is the *only* "no such map" signal available.
 """
 
 from __future__ import annotations

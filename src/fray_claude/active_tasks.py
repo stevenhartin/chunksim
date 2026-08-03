@@ -5,10 +5,20 @@ skill has several tiered challenges available (e.g. "Chop with a bronze axe"
 *and* "Chop with a rune axe"), every tier stays in `ChallengeResult.valid`
 simultaneously - there's no notion of a lower tier being superseded. This
 module adds that on top, for the ~25 real skill categories only
-(`challenges._SKILL_NAMES` - Quest/Diary/Extra/Nonskill/BiS are structurally
+(`_DISPLAY_SKILLS` - Quest/Diary/Extra/Nonskill/BiS are structurally
 flat lists with no tier progression, and BiS gets its own completed/active
 split in `bis.py` instead, since its own argmax already discards lower-tier
 candidates before a task is ever generated).
+
+`_DISPLAY_SKILLS` is `challenges._SKILL_NAMES` **less `Combat`**. `Combat` is
+in upstream's `skillNames` because `Skills: {Combat: N}` requirements and its
+own `universalPrimary` line need it there, but it is not a levelled skill and
+upstream's own per-skill view filters it out (index.js:9570). Its 14
+challenges are 13 slayer-master assignments plus a quest requirement, all
+existing to satisfy *other* categories; left in, it produced a phantom
+`Receive a Slayer assignment from ~|Vannaka|~` pick whose only distinguishing
+requirement, `Skills: {Slayer: 1}`, Slayer's own Level 92 pick had long since
+exceeded.
 
 Port of `calcCurrentChallenges2`'s selection (worker.js:8383-8727) - a
 different mechanism from `challenges._group_processing_skill_challenges`
@@ -118,6 +128,21 @@ grepped both upstream files and the whole export - so an unreachable
 `Level == 1` `Primary` route survives) but does **not** invalidate the
 skill's other challenges. A Level 3 herb clean boosted to `realLevel == 1`
 is therefore still eligible, which is upstream's own rule, not a gap here.
+
+`_never_show` recomputes upstream's `NeverShow` flag from the `Shortcut
+Task`/`Combat and Teleport Spells`/`Cleaning Herbs` rules. Upstream sets it
+dynamically in `calcChallengesWork` and it is never present statically in the
+export, so there is nothing to read - but it is display-only and so gates the
+pick here rather than validity in `challenges.py`.
+
+**`activeTasks[skill]` is a real oracle for the computed `active` pick**
+whenever the map carries one - only `BiS`/`Diary`/`Extra`/`Slayer` do on the
+map this was built against. `Slayer`'s is load-bearing, not the "unrelated
+slayer-master assignment" an earlier stage of this project recorded it as: it
+stores `{'Slay an ~|araxyte#Level 96|~': '92{5}'}` (Level 92 less a 5-point
+`Wild pie` boost), it was failing, and chasing it is what surfaced the
+`checkPrimaryMethod` bug above. `tests/test_active_tasks.py`'s opt-in oracle
+test asserts it; treat a mismatch there as a defect, not as staleness.
 """
 
 from __future__ import annotations

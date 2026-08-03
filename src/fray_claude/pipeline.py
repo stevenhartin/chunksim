@@ -7,6 +7,37 @@ invocation (the chunkinfo export, decoded rules/settings, manual overrides);
 state, once for a candidate chunk added - without duplicating the
 `unlocked_sections` -> `gather_chunks_info` -> `calc_challenges` -> `compute_bis` ->
 `classify_tasks` wiring that `cli.py`'s `sections`/`sources`/`tasks` subcommands also share.
+
+`derive` runs that chain in a **loop**, while newly-valid challenges keep
+unlocking further named areas. This is where upstream's circularity lives: an
+`UnlocksArea` challenge only becomes valid once its requirements are met, and
+the area it unlocks adds *new sources* that can validate more challenges
+(upstream re-runs `gatherChunksInfo` mid-`calcChallenges` for the same
+reason). Keeping the loop here is what lets `sections.py`, `sources.py` and
+`challenges.py` each stay one-directional and separately testable. The same
+loop feeds each pass's challenge validity back into `gather_chunks_info` as
+`valid_tasks`, which `sources.py`'s `taskUnlocks` gating needs.
+
+`load_map_state` decodes a raw cached-map payload into a `MapState` once,
+including `passive_skill` for `bis.py`'s skill-requirement gate and
+`completed_challenges`/`manual_tasks`/`backlog`/`active_tasks` for
+`active_tasks.py` and `bis.py`'s completed split.
+
+`completed_challenges` **merges `checkedChallenges` into
+`completedChallenges`**. Upstream keeps those apart only as a commit step:
+ticking a task writes `checkedChallenges`, and rolling the next chunk
+migrates the lot and clears it (`completeChallenges`, index.js:12718).
+Anything obtained during the *current* chunk therefore sits only in
+`checkedChallenges`, and ignoring it reported items you already hold as still
+to get. `MapState.checked_challenges` keeps that half addressable un-merged
+as well, feeding `compute_bis`'s `checked_bis` - but it is a **display view,
+not a second source of truth**: every completion *test* reads the merged
+`completed_challenges`, of which it is a strict subset.
+
+Those fields need the optional `tasks_map` argument (the reverse map from
+`firebase.reverse_tasks_map`) to resolve `t_N` ids. Without one, every
+`t_N`-keyed entry is *dropped* rather than kept raw, so they decode empty -
+except `BiS` and `manualTasks`, which never need it.
 """
 
 from __future__ import annotations

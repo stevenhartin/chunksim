@@ -1,6 +1,12 @@
 """Derive counts from a raw map payload.
 
 Deliberately free of I/O so the later simulation work can reuse these directly.
+Extend this layer rather than `cli.py`.
+
+Firebase omits empty containers rather than storing them, so every lookup
+here must tolerate a missing branch - `_mapping` exists for that, and is
+worth reusing (`chunkinfo.py` does too, over the export instead of a map
+payload).
 """
 
 from __future__ import annotations

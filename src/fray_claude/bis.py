@@ -52,6 +52,64 @@ at all (first-seen-wins via `>`, not `>=`, on `ranged_strength`), which
 produces the same winner upstream's always-true tie-break would, without
 needing to replicate the bug's alt-registration side effect (which this
 module doesn't track anyway - see "ties-as-alternates" above).
+
+Three details that each cost a wrong answer before they were right:
+
+- **Candidates come from `ChallengeResult.available_items`, not
+  `SourceIndex.items`.** The narrow index omits anything obtainable only by
+  *making* it - `Granite ring (i)` exists solely as an imbue challenge's
+  `Output`. Feeding challenge outputs in moved 19 of 43 picks and took the
+  oracle from 4/6 to 5/6. (`boosts.py` hit the identical trap.)
+- **2H-vs-(1H+shield) scores both sides with the *weapon* formula**, the
+  shield's offensive stats summed into the 1H side and the weapon's own
+  `attack_speed` retained; ties go to 1H+shield. Scoring the shield with the
+  *armour* formula instead compares a DPS-scale number against one scaled by
+  100000, so 1H+shield won unconditionally and every 2H pick was wrongly
+  deleted - which is what made this module miss `Webweaver bow (u)` and
+  invent an `Odium ward` pick for a slot a 2H bow should have removed.
+- **The `ammo` slot is set from whatever pairs with the *winning launcher***,
+  not picked independently, and is deleted when that weapon takes no ammo -
+  otherwise a Melee build is told to go and obtain javelins.
+
+Multiple styles picking the same item join their labels with upstream's
+literal `_STYLE_SEPARATOR` (a slash plus U+200B).
+
+**The oracle is real and load-bearing.** The cached map's
+`chunkinfo.activeTasks.BiS` records upstream's own last-computed picks, and
+`tests/test_bis.py`'s opt-in oracle test asserts **all six** of them
+(including the Melee weapon `Abyssal whip`, reached via the
+`skillItems.Slayer` route in `sources.py`). Every one of the six started out
+mismatched, and each mismatch turned out to be a distinct real bug - unported
+area unlocks, challenge `Output` items not reaching BiS, unported
+`skillItems`-via-`Output`, and unhonoured `backloggedSources`. Treat a
+mismatch there as a defect, not as oracle staleness; an earlier stage of this
+project wrongly explained five of them away that way.
+
+`BisResult` splits `tasks` into `completed` (already obtained, cross-
+referenced against `completedChallenges.BiS` merged with
+`checkedChallenges.BiS`, whose task-name keys match `bis_task_name`'s own
+output format) and `active` (not yet obtained), plus `outdated`: a completed
+pick whose slot has since been beaten by something better, resolved back to
+an item via `_formatted_name_index` (`formatted_name -> (item, slot)`, built
+from `equipment`). For *display* it also carries `slots` (task name -> slot,
+covering `tasks` and `outdated` alike, since `picks`' packed
+`"{style}-{slot}"` keys can't be reached from a task name) and
+`current_chunk` - the subset of `completed`/`outdated` still sitting in
+`checkedChallenges`, i.e. banked during the chunk in play rather than an
+earlier one. `bis_display_name` renders the pair as `[<slot>] Obtain a
+granite ring (i)`, suffixed `CURRENT_CHUNK_SUFFIX` for the current chunk, and
+`display_sorted` floats those to the top. `current_chunk` is intersected with
+what the result actually shows, so a checked entry naming neither a current
+pick nor a resolvable outdated one is left out rather than sitting unmatched.
+
+`_formatted_name_index` lowercases both sides on purpose: the same item can
+be stored under two spellings over time (`Craw's bow (u)` interned vs. a
+literal `craw's bow (u)`), so real data can carry an apparent duplicate for
+one item. Two bugs here were found only by checking against live data rather
+than fixtures - a completed 2H-slot item was never flagged outdated
+(`_finalize_slots` folds a 2H winner into the `weapon` key in `picks`, and
+the lookup wasn't normalised the same way), and `completed` came back empty
+entirely because `BiS` was wrongly skipping `t_N` resolution.
 """
 
 from __future__ import annotations

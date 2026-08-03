@@ -14,6 +14,26 @@ the export merges them - `skillItems.Slayer['Abyssal demon']` carries the
 Catacombs of Kourend drops next to the Slayer Tower ones, and `Ancient
 shard^Abyssal demon` gates them on a challenge needing that chunk.
 
+An entry is satisfied by **any one** of the tasks it lists, unlike the entity
+branches below, which need all of them. Sources are matched as upstream
+matches them - the monster itself, or a challenge naming it whose text
+contains `Slay`, which is what catches the `Slay an ~|abyssal demon|~`
+entries `challenges._seed_items_with_outputs` adds, so the gate is applied in
+**both** places. A key with an **empty** monster (`"Double ammo mould^"`, 268
+of the 976) locks the item outright, whatever its source. Missing all this
+leaked 7 collection-log items the map's own oracle omits; with it, `Extra`
+matches that oracle exactly.
+
+The same `taskUnlocks` gating (`_task_unlocked`) applies to
+`Monsters`/`NPCs`/`Objects`/`Shops`/`Spawns`: an entity present in a chunk
+can still be locked behind completing challenges *at that location* - the
+`Sir Tiffy Cashien (The Slug Menace)` shop needs that quest before it sells
+Proselyte armour, and `White Knight Armoury` needs `Wanted!`. This makes
+source availability depend on challenge validity, which is why
+`pipeline.derive` feeds each pass's validity back in via `valid_tasks`;
+upstream instead deletes from an already-built index (`shouldDelete`,
+worker.js:2155).
+
 A monster with no `drops` entry falls back to its `skillItems.Slayer` entry
 (e.g. `Abyssal demon` has no `drops` table - `Abyssal whip` only exists via
 `skillItems.Slayer.'Abyssal demon'`), gated by a simplified Slayer-level

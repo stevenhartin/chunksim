@@ -115,6 +115,94 @@ except where noted as a silent, documented approximation instead:
   because a simulated roll has no such history to replay; that reasoning
   holds for `simulate.py` but not for deriving the *current* map, where
   ignoring `manualTasks` hid two `Extra` entries the map's own oracle lists.
+
+The fixed point runs in **two phases**, and both halves are load-bearing. The
+first converges with no pruning at all, so trainability is decided from a
+fully seeded item index; from the second outer pass the prunes
+(`_prune_untrainable_skills`, `_drop_unreachable_subskills`,
+`_drop_superseded_backups`) join the loop and the item index is re-seeded
+from the pruned `valid` each time.
+
+- Pruning from the *start* starves the seeding: deciding trainability from a
+  half-seeded index prunes a skill whose own `Output` chain would have made
+  it trainable, and the next pass then settles on the wrong fixed point. It
+  broke `Magic`, and with it the BiS oracle's `Master wand`.
+- Pruning only *after* convergence leaves a removed challenge's `Output` on
+  the shelf: a locked `Herblore` still supplied `Blamish oil`, which kept
+  `Make an oily fishing rod` valid and a Wilderness diary task active - 57
+  items stayed keyed to challenges that were no longer valid.
+
+Pruning only ever removes, so the loop still terminates.
+
+Also implemented, beyond the requirement checking above:
+
+- **`BackupParent`** (`_drop_superseded_backups`, worker.js:1679): a
+  challenge naming one is deleted once that parent is valid *or* backlogged,
+  unless it carries `ManualValid`. All 17 real uses are `Hunter`'s barehanded
+  catches - `Barehanded catch a wandering lucky impling` (Level 99) exists
+  for players with no butterfly net and must vanish once the Level 89 net
+  version is possible; instead it outranked its own parent and became the
+  active Hunter task. **This is the module's one *absence* check**, so
+  `valid` no longer strictly grows - 11 challenges disappear on the real map
+  once a net is reachable. See `unlock.py` for what that costs the
+  attribution partition.
+- **`manualTasks`** (`_inject_manual_tasks`, worker.js:1168): every entry the
+  export still defines is forced valid with its stored value, for every
+  category but `BiS`, and is exempt from the `BackupParent` sweep the way
+  upstream's `ManualValid` flag makes it.
+- **The `Show Diary Tasks Any` waiver** (`_diary_tier_waived`,
+  worker.js:1360): a diary tier's completion challenge is marked by carrying
+  a `Reward`, and the next tier's tasks depend on it. With that rule on the
+  dependency is dropped, so an Elite task shows without the Hard diary being
+  finished - the dependent must carry no `Reward` itself, or the tiers
+  collapse into each other. This was the whole of the Diary gap: outstanding
+  Diary tasks went 1 -> 5 against the map's own oracle.
+- **The non-skill `Skills` filter** (`_drop_unreachable_subskills`,
+  worker.js:8533): for `Extra`/`Quest`/`Diary`/`BiS` - the categories
+  `calcCurrentChallenges2` sends down its `else` branch, having no per-skill
+  winner to pick - a challenge is dropped when its `Skills` names a sub-skill
+  that is untrainable *and* uncovered by a boosted `passiveSkill` floor, or
+  whose requirement exceeds `maxSkill`. `manualTasks` entries are exempt. It
+  changes nothing on the map this was built against, every sub-skill named
+  there being trainable and within `maxSkill`.
+- **`chunkinfo.constructionLocked`** (`_MAHOGANY_HOMES_CONTRACT`,
+  worker.js:3758): when set - real data has `{'chunk': '10547'}` - every
+  challenge whose name contains `contract for ~|Mahogany Homes|~` is invalid
+  outright, Mahogany Homes being gated behind a chunk the account hasn't
+  taken. Missing it made `fray tasks` propose an expert contract as the
+  Construction goal.
+
+`_seed_items_with_outputs` is the output-feedback half of the fixed point,
+and is a located port (worker.js:2848/2894/3030) rather than this project's
+own invention, as an earlier version of this docstring recorded it: a valid
+challenge's `Output` becomes an item, *and* doubles as the activity key into
+`skillItems[<that skill>]`, admitting everything that activity yields. That
+second half is the only route to non-Slayer `skillItems` - `Master wand`
+exists solely in `skillItems.Nonskill['Pizazz points loot']`, reached via the
+`~|Pizazz points|~*` challenge's `Output`. (`sources.py` handles the *other*
+`skillItems` route, a Slayer monster physically present in a chunk.)
+`backloggedSources['items']` is honoured here as upstream does, and it isn't
+cosmetic: a backlogged `Uncut onyx` otherwise re-enters at a 1/100,000,000
+rate and drags an entire crafting chain in with it. Simplified - everything
+is tagged `primary-` rather than split by drop rate, and the `Rare Drop
+Amount` filter on an activity's items isn't applied; the `bossLogs` gate is.
+
+`strip_task_markup` lives here too, the display-side counterpart to
+`search.normalise`: it drops a task name's `~|...|~` delimiters without
+lowercasing or collapsing anything. It is *only* for output - the raw names
+stay the keys everywhere (`valid`, `completedChallenges` lookups,
+`--export-json`), since those must match what upstream stores. It removes the
+delimiter **characters**, not the `~|`/`|~` pairs: four real names are
+malformed (`Carve a ~log |canoe|~` has its opening `|` four characters late)
+and pair-stripping left the visible wreckage `Carve a ~log |canoe`.
+Character-stripping renders those correctly and is byte-identical on all
+14,688 well-formed names, where neither `~` nor `|` occurs outside this
+markup. **Only call it on a challenge/task name** - other branches use those
+characters for real (the shop `~ Uglug's stuffsies ~`), which is why
+`cli.py`'s `search` applies it per hit type rather than blanket. It
+deliberately leaves the `#` variant separator (`~|wooden hull#Raft|~`) and
+the trailing `*` secondary marker alone: both are real parts of the stored
+name, and how upstream renders them isn't something this project has located.
 """
 
 from __future__ import annotations

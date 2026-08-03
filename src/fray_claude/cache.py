@@ -1,4 +1,17 @@
-"""On-disk cache of fetched map state, kept in the project's `cache/` directory."""
+"""On-disk cache of fetched map state, kept in the project's `cache/` directory.
+
+The only module that touches disk; raises `CacheMissError`. A map payload is
+stored in an envelope (`map_id`/`fetched_at`/`source`/`data`), so readers go
+through the `data` key. `cache/` is found by walking up to the nearest
+`pyproject.toml`, which lets the CLI run from any subdirectory.
+
+Non-map blobs (the chunkinfo export, the tasks map) go through the generic
+`write_blob`/`read_blob` pair instead. `read_chunkinfo` layers an override
+(`--chunkinfo` / the `FRAY_CHUNKINFO` env var) in front of the cached copy,
+for working from an export you already have locally - note that path reads
+the file directly, with no `["data"]` unwrapping, so it wants a *raw* export
+rather than this module's own envelope.
+"""
 
 from __future__ import annotations
 
