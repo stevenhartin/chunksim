@@ -268,28 +268,81 @@ def test_a_partly_done_quest_keeps_its_later_steps_active() -> None:
     assert quest.completed_total == 2
 
 
-def test_the_chain_rule_does_not_apply_to_other_categories() -> None:
-    """Outside `Quest` a `Tasks` entry is an ordinary requirement, not a step
-    chain, so completing one says nothing about the other."""
+def test_completing_a_diary_tier_implies_all_of_its_tasks() -> None:
+    """A tier completion carries a `Reward` and lists every task in its tier,
+    so recording it settles them all. Real data had ten of Morytania Easy's
+    eleven tasks marked individually and the tier itself marked, leaving
+    `Task 8` looking outstanding.
+    """
+    tasks = {f"~|D#Easy|~ Task {n}": {"BaseQuest": "D", "Description": f"T{n}"} for n in (1, 2)}
     info = _chunk_info(
         challenges={
             "Diary": {
-                "~|Varrock Diary#Easy|~ Task 1": {"Description": "One"},
-                "~|Varrock Diary#Easy|~ Task 2": {
-                    "Description": "Two",
-                    "Tasks": {"~|Varrock Diary#Easy|~ Task 1": "Diary"},
+                **tasks,
+                "~|D#Easy|~ Complete the Easy Diary": {
+                    "BaseQuest": "D",
+                    "Reward": ["A cloak"],
+                    "Tasks": {name: "Diary" for name in tasks},
                 },
             }
         }
     )
 
     result = _classify(
-        {"Diary": {"~|Varrock Diary#Easy|~ Task 1": True, "~|Varrock Diary#Easy|~ Task 2": True}},
+        {"Diary": dict.fromkeys(tasks, True)},
         info,
-        completed={"Diary": {"~|Varrock Diary#Easy|~ Task 2": True}},
+        completed={"Diary": {"~|D#Easy|~ Complete the Easy Diary": True}},
+    )
+
+    assert result.categories["Diary"].active_total == 0
+
+
+def test_an_ordinary_diary_task_implies_nothing() -> None:
+    """Only tier completions imply: one diary task's `Tasks` are ordinary
+    requirements (a quest, or the tier below), not steps walked through."""
+    info = _chunk_info(
+        challenges={
+            "Diary": {
+                "~|D#Easy|~ Task 1": {"BaseQuest": "D", "Description": "One"},
+                "~|D#Easy|~ Task 2": {
+                    "BaseQuest": "D",
+                    "Description": "Two",
+                    "Tasks": {"~|D#Easy|~ Task 1": "Diary"},
+                },
+            }
+        }
+    )
+
+    result = _classify(
+        {"Diary": {"~|D#Easy|~ Task 1": True, "~|D#Easy|~ Task 2": True}},
+        info,
+        completed={"Diary": {"~|D#Easy|~ Task 2": True}},
     )
 
     assert result.categories["Diary"].active_total == 1
+
+
+def test_the_chain_rule_does_not_apply_to_other_categories() -> None:
+    """`Extra` has no chain at all, so a `Tasks` edge there implies nothing."""
+    info = _chunk_info(
+        challenges={
+            "Extra": {
+                "Obtain a thing": {"Label": "Collection Log"},
+                "Obtain another": {
+                    "Label": "Collection Log",
+                    "Tasks": {"Obtain a thing": "Extra"},
+                },
+            }
+        }
+    )
+
+    result = _classify(
+        {"Extra": {"Obtain a thing": True, "Obtain another": True}},
+        info,
+        completed={"Extra": {"Obtain another": True}},
+    )
+
+    assert result.categories["Extra"].active_total == 1
 
 
 def test_a_quest_step_does_not_imply_a_dependency_in_another_category() -> None:
@@ -338,14 +391,14 @@ _REAL_MAP = os.environ.get("FRAY_MAP_CACHE")
 #: on, pinned exactly so the test fails the moment anything moves - including
 #: when the underlying cause is fixed, at which point these come out.
 #:
-#: `Extra` is now exact. The two `Diary` entries are ours-only over-inclusions,
-#: both carrying a `Skills` requirement (`Farming: 23`, `Fishing: 53`), which
-#: points at the non-skill `Skills` filter (worker.js:8533) still being
-#: unported rather than at anything `other_tasks.py` owns.
+#: `Extra` is exact. The one `Diary` entry is an ours-only over-inclusion whose
+#: every requirement checks out - chunk, object, both items, `Fishing: 53`
+#: against a trainable Fishing with Level 1 routes valid - and which survives
+#: both the non-skill `Skills` filter and the tier-completion implication.
+#: No further gate has been found for it.
 _KNOWN_ORACLE_DELTA = {
     "Diary": frozenset(
         {
-            "~|Morytania Diary#Easy|~ Task 8",
             "~|Wilderness Diary#Hard|~ Task 10",
         }
     ),

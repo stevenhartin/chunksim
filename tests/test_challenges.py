@@ -1100,3 +1100,84 @@ def test_a_manual_task_exempts_a_backup_from_being_dropped() -> None:
     )
 
     assert "Barehanded catch a wandering lucky impling" in result.valid["Hunter"]
+
+
+def _subskill_info(needed: dict[str, Any]) -> ChunkInfo:
+    """An `Extra` challenge gated on a sub-skill, plus a `Fishing` category
+    that is trainable only when its Level 1 `Primary` route is valid."""
+    return _chunk_info(
+        challenges={
+            "Extra": {"Obtain a thing": {"Label": "Collection Log", "Skills": needed}},
+            "Fishing": {"Catch a shrimp": {"Level": 1, "Primary": True}},
+        }
+    )
+
+
+def test_a_non_skill_challenge_needing_an_untrainable_subskill_is_dropped() -> None:
+    """worker.js:8533 - `Extra`/`Quest`/`Diary` have no per-skill winner to
+    pick, so upstream instead deletes any challenge whose `Skills` names a
+    sub-skill that is untrainable and uncovered by `passiveSkill`.
+    """
+    info = _chunk_info(
+        challenges={
+            "Extra": {"Obtain a thing": {"Label": "Collection Log", "Skills": {"Fishing": 40}}},
+            "Fishing": {"Catch a shark": {"Level": 76, "Primary": True}},
+        }
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert "Extra" not in result.valid
+
+
+def test_a_trainable_subskill_keeps_the_challenge() -> None:
+    info = _subskill_info({"Fishing": 40})
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert "Obtain a thing" in result.valid["Extra"]
+
+
+def test_a_subskill_requirement_above_max_skill_is_dropped() -> None:
+    """The `maxSkill` arm bites even when the sub-skill is trainable."""
+    info = _subskill_info({"Fishing": 80})
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={}, max_skill={"Fishing": 70})
+
+    assert "Extra" not in result.valid
+
+
+def test_a_manual_task_is_exempt_from_the_subskill_filter() -> None:
+    info = _chunk_info(
+        challenges={
+            "Extra": {"Obtain a thing": {"Label": "Collection Log", "Skills": {"Fishing": 40}}},
+            "Fishing": {"Catch a shark": {"Level": 76, "Primary": True}},
+        }
+    )
+
+    result = calc_challenges(
+        {}, {}, _EMPTY, info, rules={}, manual_tasks={"Extra": {"Obtain a thing": True}}
+    )
+
+    assert "Obtain a thing" in result.valid["Extra"]
+
+
+def test_the_subskill_filter_leaves_real_skill_categories_alone() -> None:
+    """Only `Extra`/`Quest`/`Diary`/`BiS` go down that branch; a skill
+    category's own `Skills` requirement is handled by `_skills_requirement_met`
+    during the fixed point instead."""
+    info = _chunk_info(
+        challenges={
+            "Woodcutting": {
+                "Chop a sapling": {"Level": 1, "Primary": True},
+                "Chop with a fishing rod": {"Level": 5, "Skills": {"Fishing": 40}},
+            },
+            "Fishing": {"Catch a shark": {"Level": 76, "Primary": True}},
+        }
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    # Dropped by the ordinary `Skills` requirement check, not by the filter -
+    # and Woodcutting itself survives, which the filter would not have allowed.
+    assert "Chop a sapling" in result.valid["Woodcutting"]

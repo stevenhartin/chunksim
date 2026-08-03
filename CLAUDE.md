@@ -190,6 +190,13 @@ One responsibility per module, so the planned simulation work has a pure layer t
   `BackupParent` sweep the way upstream's `ManualValid` flag makes it. This module's docstring used to
   say manual overrides were deliberately skipped — true for a *simulated* roll, which has no such
   history to replay, but wrong for the current map, where it hid two `Extra` entries the oracle lists.
+  The **non-skill `Skills` filter** is ported (`_drop_unreachable_subskills`, worker.js:8533): for
+  `Extra`/`Quest`/`Diary`/`BiS` — the categories `calcCurrentChallenges2` sends down its `else`
+  branch, having no per-skill winner to pick — a challenge is dropped when its `Skills` names a
+  sub-skill that is untrainable *and* uncovered by a boosted `passiveSkill` floor, or whose
+  requirement exceeds `maxSkill`; `manualTasks` entries are exempt. Runs in the same
+  post-convergence slot as `_prune_untrainable_skills`, for the same reason. It changes nothing on
+  the map this was built against (every sub-skill named there is trainable and within `maxSkill`).
   `BackupParent` is honoured (worker.js:1679): a challenge naming one is deleted once
   that parent is valid *or backlogged*, unless it carries `ManualValid`. All 17 real uses are
   `Hunter`'s barehanded catches — `Barehanded catch a wandering lucky impling` (Level 99) exists for
@@ -371,10 +378,14 @@ One responsibility per module, so the planned simulation work has a pure layer t
   `Collection Log`, `Permanent Unlockables`, `Untracked Uniques`, plus `Fill POH`/`Fill Stashes`/
   `BIS Skilling`/`Stuffables` when their rules are on (`challenges._category_gate_met` already
   decides which). `Extra` is the export's key and stays the key in `--export-json`; **`Other` is the
-  display name**, and both are accepted by `fray tasks`. **`Quest` gets two extra passes**, both because a quest is a step
+  display name**, and both are accepted by `fray tasks`. **`Quest` and `Diary` completions imply their prerequisites**, both because a quest is a step
   chain: `_implied_completions` closes the *recorded* completions transitively (ticking a quest off
-  stores only `~|X|~ Complete the quest`), and `_superseded` ports upstream's `markSubTasks(...,
-  false)` (worker.js:485/1486) — being able to *reach* a step means its prerequisites are behind you
+  stores only `~|X|~ Complete the quest`). `Diary` gets the same from a **tier completion only**
+  (`_implies_from` — the challenges carrying a `Reward`, whose `Tasks` list every task in that tier):
+  real data had ten of Morytania Easy's eleven tasks marked individually plus the tier itself, leaving
+  `Task 8` looking outstanding. An ordinary diary task implies nothing, its `Tasks` being ordinary
+  requirements. `_superseded` (Quest only) ports upstream's `markSubTasks(..., false)`
+  (worker.js:485/1486) — being able to *reach* a step means its prerequisites are behind you
   whether or not anything recorded them, so only the furthest reachable step of a quest shows.
   Together they took Quest active 94 -> 7 -> 0 on the real map, and 0 is right: only 13 quests are
   fully reachable there and all 13 are done. `[+]` families expand to **every** member

@@ -171,9 +171,30 @@ class OtherTasks:
         return {name: tasks.as_dict() for name, tasks in self.categories.items()}
 
 
-#: Categories whose `Tasks` edges form a *step chain* rather than general
-#: requirements, so completing a later step proves every earlier one.
-_CHAINED_CATEGORIES = frozenset({"Quest"})
+#: Categories whose `Tasks` edges prove their prerequisites were done, rather
+#: than merely stating a requirement. `Quest` because a quest is a step chain;
+#: `Diary` only from a *tier completion* (see `_implies_from`).
+_CHAINED_CATEGORIES = frozenset({"Quest", "Diary"})
+
+#: `Quest` supersession (`_superseded`) is a chain property and applies to
+#: quests alone - a diary tier's tasks are independent of one another, so
+#: reaching one says nothing about the rest.
+_SUPERSEDING_CATEGORIES = frozenset({"Quest"})
+
+
+def _implies_from(category: str, challenge: Mapping[str, Any]) -> bool:
+    """May completing `challenge` be taken as proof of its `Tasks`?
+
+    For `Quest`, always: the steps form a chain. For `Diary`, only from a
+    *tier completion* - the challenges carrying a `Reward`, whose `Tasks` list
+    every task in that tier. Completing the Easy diary proves all eleven of
+    its tasks; completing one ordinary diary task proves nothing about the
+    others, and its own `Tasks` are ordinary requirements (a quest, or the
+    previous tier) rather than steps it must have walked through.
+    """
+    if category == "Diary":
+        return "Reward" in challenge
+    return True
 
 
 def _implied_completions(
@@ -186,11 +207,16 @@ def _implied_completions(
     final entry, so all seven steps stayed "active" here while the quest was
     demonstrably finished - the bulk of the Quest category's noise.
 
-    Only `Quest` gets this (`_CHAINED_CATEGORIES`), and only along edges that
-    stay inside the category. Elsewhere a `Tasks` entry is an ordinary
-    requirement - a `Diary` task needing a quest done says nothing about the
-    diary task itself - and inferring completion across that would be
-    inventing history rather than reading it.
+    `Diary` gets the same treatment from a *tier completion* only
+    (`_implies_from`): `~|Morytania Diary#Easy|~ Complete the Easy Diary`
+    lists all eleven Easy tasks and is itself recorded, so all eleven are
+    done - real data had ten of them marked individually and left `Task 8`
+    looking outstanding. Recursion through tier completions carries earlier
+    tiers along, since each tier's completion requires the one below it.
+
+    Only edges that stay inside the category are followed. Across categories a
+    `Tasks` entry is an ordinary requirement, and inferring completion from
+    one would be inventing history rather than reading it.
     """
     if category not in _CHAINED_CATEGORIES:
         return frozenset()
@@ -199,7 +225,7 @@ def _implied_completions(
     while pending:
         name = pending.pop()
         challenge = challenges.get(name)
-        if not isinstance(challenge, dict):
+        if not isinstance(challenge, dict) or not _implies_from(category, challenge):
             continue
         tasks = challenge.get("Tasks")
         if not isinstance(tasks, dict):
@@ -275,7 +301,7 @@ def _superseded(
     `ChallengeResult.valid`: validity means "requirements met" everywhere
     else in this project, and `unlock.py`/`simulate.py` diff that mapping.
     """
-    if category not in _CHAINED_CATEGORIES:
+    if category not in _SUPERSEDING_CATEGORIES:
         return frozenset()
     superseded: set[str] = set()
     pending = list(valid_names)

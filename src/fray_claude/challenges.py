@@ -1032,6 +1032,90 @@ def _inject_manual_tasks(
                 new_valid.setdefault(skill, {})[name] = value
 
 
+#: The categories `calcCurrentChallenges2` sends down its `else` branch
+#: (worker.js:8390/8533) - the ones with no per-skill winner to pick, where it
+#: instead prunes challenges whose `Skills` sub-requirements are out of reach.
+_NON_SKILL_CATEGORIES = frozenset({"Extra", "Quest", "Diary", "BiS"})
+
+
+def _drop_unreachable_subskills(
+    new_valid: dict[str, dict[str, int | str | bool]],
+    chunk_info: ChunkInfo,
+    source_index: SourceIndex,
+    *,
+    rules: Mapping[str, Any],
+    max_skill: Mapping[str, int],
+    passive_skill: Mapping[str, int],
+    backlog: Mapping[str, Mapping[str, Any]],
+    manual_tasks: Mapping[str, Mapping[str, Any]],
+    items: Mapping[str, Mapping[str, str]],
+) -> None:
+    """Drop `Extra`/`Quest`/`Diary` challenges whose `Skills` requirement names
+    a sub-skill out of reach - port of worker.js:8533-8567, in place.
+
+    A sub-skill is out of reach when it is untrainable (`checkPrimaryMethod`)
+    *and* no `passiveSkill` floor covers the boosted requirement, or when the
+    requirement simply exceeds `maxSkill`. Challenges listed in `manualTasks`
+    are exempt, as upstream exempts them.
+
+    This is the counterpart of `_prune_untrainable_skills` for the categories
+    that have no single active pick, and runs in the same post-convergence
+    slot for the same reason: deciding trainability from a half-seeded item
+    index prunes things whose own `Output` chain would have justified them.
+
+    Upstream's `slayerLocked` arm is inert - no real map payload carries that
+    branch - and is not reproduced.
+    """
+    for category in sorted(_NON_SKILL_CATEGORIES & set(new_valid)):
+        category_challenges = chunk_info.challenges.get(category)
+        if not isinstance(category_challenges, dict):
+            continue
+        manual = manual_tasks.get(category) or {}
+        for name in list(new_valid[category]):
+            challenge = category_challenges.get(name)
+            if not isinstance(challenge, dict) or name in manual:
+                continue
+            needed = challenge.get("Skills")
+            if not isinstance(needed, dict):
+                continue
+            for sub_skill, level in needed.items():
+                if not isinstance(level, (int, float)) or isinstance(level, bool):
+                    continue
+                cap = max_skill.get(sub_skill)
+                if isinstance(cap, (int, float)) and level > cap:
+                    break
+                if _check_primary_method(
+                    sub_skill,
+                    new_valid,
+                    source_index,
+                    chunk_info,
+                    passive_skill=passive_skill,
+                    backlog=backlog,
+                    manual_tasks=manual_tasks,
+                    rules=rules,
+                    items=items,
+                ):
+                    continue
+                best, saw = boosts.best_boost(
+                    sub_skill,
+                    name,
+                    challenge,
+                    float(level),
+                    rules=rules,
+                    chunk_info=chunk_info,
+                    items=items,
+                    source_index=source_index,
+                )
+                floor = passive_skill.get(sub_skill)
+                if not isinstance(floor, (int, float)) or floor < level - (best + saw):
+                    break
+            else:
+                continue
+            del new_valid[category][name]
+        if not new_valid[category]:
+            del new_valid[category]
+
+
 def _drop_superseded_backups(
     new_valid: dict[str, dict[str, int | str | bool]],
     prev_valid: Mapping[str, Mapping[str, Any]],
@@ -1270,6 +1354,17 @@ def calc_challenges(
         chunk_info,
         source_index,
         rules=rules,
+        passive_skill=passive_skill,
+        backlog=backlog,
+        manual_tasks=manual_tasks,
+        items=items,
+    )
+    _drop_unreachable_subskills(
+        valid,
+        chunk_info,
+        source_index,
+        rules=rules,
+        max_skill=max_skill,
         passive_skill=passive_skill,
         backlog=backlog,
         manual_tasks=manual_tasks,
