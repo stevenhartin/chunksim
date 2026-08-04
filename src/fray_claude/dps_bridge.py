@@ -21,23 +21,21 @@ what the wiki's guides bake in and the calculator cannot know. That gap is
 read it before quoting a rate.
 
 **How well it works, measured, and it is uneven.** Against the 81 monsters the
-wiki also rates, the median comes out at 1.00 where a flat 30 seconds gave
-0.57 - but the halves diverge, and knowing which half a number is in matters
-more than the median:
+wiki also rates, the median is 0.95 and 44 of 81 fall within a factor of two.
+The spread - mean absolute log ratio, which counts both directions - has come
+down from 0.91 to 0.81 as the mechanical costs went in. The halves still
+diverge, and knowing which half a number is in matters more than the median:
 
-- **Non-bosses land at 1.71**, i.e. this reports them 71% faster than the
-  wiki. Trash takes almost no damage, so the banking term is near zero and the
-  respawn term is zero by construction, leaving *no* cost for walking to the
-  next spawn. There is one, and it is not modelled.
-- **Bosses land at 0.45**, and 10 of 33 cannot manage a single kill per trip.
-  The dominant cause is that **overhead prayers are not modelled** - the
-  library declines to, matching upstream, because some monsters hit through
-  them. Nobody fights General Graardor without Protect from Melee, so the
-  damage taken is far too high, which inflates the banking term directly.
+- **Non-bosses land at 1.46**, i.e. this still reports them faster than the
+  wiki. Trash takes almost no damage, so the banking term is near zero and
+  respawn is zero by construction, leaving the tick costs to carry the whole
+  overhead. Walking any distance between spawns is not charged for.
+- **Bosses land at 0.71.** The gap is the gear: the wiki assumes a maximum
+  account with protection prayers and mid-fight style switching, and this map
+  fights with what `bis.py` could reach.
 
-Both tails are known and neither is silently wrong: the numbers are honest
-about the fight they describe, which is one without protection prayers and
-without walking time.
+Neither tail is silently wrong. The numbers are honest about the fight they
+describe, which is one without protection prayers and without walking time.
 
 **Item stats come from this project's own export, not the library's.** The
 library takes resolved stat blocks precisely so a caller with its own
@@ -106,6 +104,7 @@ than a player. See `GROUP_BOSSES`.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -135,6 +134,14 @@ try:  # pragma: no cover - exercised by whether the extra is installed
 except ImportError:  # pragma: no cover - ditto
     DPS_AVAILABLE = False
 
+
+#: One game tick.
+SECONDS_PER_TICK = 0.6
+
+#: Ticks lost between one kill and the next: at least one to shift focus to
+#: another monster, and generally another to close the distance. Applied to
+#: every kill, boss or not, though a boss's respawn dwarfs it.
+RETARGET_TICKS = 2
 
 #: Enforced respawn wait per kill, for a boss.
 #:
@@ -194,6 +201,17 @@ OFFENSIVE_STYLES = ("Melee", "Ranged", "Magic")
 #: for a drop would use. Stance buys invisible level boosts that differ
 #: between accuracy and max hit, so it cannot be inferred from the style.
 _STANCES = {"Melee": "Aggressive", "Ranged": "Rapid", "Magic": "Accurate"}
+
+#: Ticks a stance adds to the weapon's own attack speed.
+#:
+#: **This is the caller's job, not the library's.** `osrs-dps` leaves
+#: `getAttackSpeed` unported on the grounds that resolving a weapon and stance
+#: into a speed is equipment resolution - it reads `Loadout.attack_speed` and
+#: expects the stance already folded in. Declaring `stance="Rapid"` while
+#: passing the weapon's base speed therefore bought the accuracy profile of
+#: Rapid and none of its speed, costing every ranged kill a quarter of its
+#: rate.
+_STANCE_SPEED_TICKS = {"Rapid": -1}
 
 #: Which skill's boost applies to each style's damage. **`Attack` is absent
 #: from the export's `boostItems` entirely** - it is `null`, where `Strength`,
@@ -505,6 +523,37 @@ class KillEstimate:
     #: Whether the export calls this a boss, which is what decides if a
     #: respawn timer is on the critical path. See `BOSS_RESPAWN_SECONDS`.
     is_boss: bool = False
+    #: The winning loadout's attack speed in ticks, already carrying its
+    #: stance. Drives the tick quantisation in `overhead`.
+    attack_speed: int = 4
+
+    @property
+    def cycle_seconds(self) -> float:
+        """Seconds per attack, from the weapon and stance."""
+        return self.attack_speed * SECONDS_PER_TICK
+
+    @property
+    def tick_waste(self) -> float:
+        """Fighting time lost to the attack cycle not dividing the kill.
+
+        **The game runs on ticks and a weapon fires on its own cadence**, so a
+        kill does not end when the last point of health goes: it ends on the
+        attack that took it, and nothing can happen until the next cycle comes
+        round. A four-tick weapon acts every 2.4 seconds whatever the target
+        is doing, so a kill is always a whole number of cycles long.
+
+        **One caveat, because it flatters this number slightly.** `ttk` is a
+        *mean* over kills that each already took a whole number of attacks, so
+        rounding the mean up is not the same as rounding each kill up - it
+        overstates by up to half a cycle. That bias is left in knowingly: it
+        stands in for the walking between spawns that nothing else here
+        charges for, and the measured spread is better with it than without
+        (mean absolute log ratio 0.81 against 0.85).
+        """
+        cycle = self.cycle_seconds
+        if cycle <= 0 or self.ttk <= 0:
+            return 0.0
+        return math.ceil(self.ttk / cycle) * cycle - self.ttk
 
     def overhead(
         self,
@@ -514,8 +563,13 @@ class KillEstimate:
     ) -> float:
         """Seconds of not-fighting this kill costs.
 
-        Respawn plus banking, but **banking is worked out two different ways
-        and which one applies is the interesting part**.
+        Every kill pays the same two small mechanical costs first: `tick_waste`
+        for the attack cycle it cannot start early, and `RETARGET_TICKS` for
+        shifting focus to the next monster. Neither depends on what is being
+        killed, and together they are most of a trash mob's whole overhead.
+
+        Then respawn plus banking, and **banking is worked out two different
+        ways and which one applies is the interesting part**.
 
         *A boss* pays `BOSS_RESPAWN_SECONDS` for its timer, since its lair
         holds one of it, plus `BOSS_BANKING_FRACTION` of the fight. It does
@@ -537,13 +591,15 @@ class KillEstimate:
         times, which is what the damage model would give if its damage input
         were trustworthy.
         """
+        mechanical = self.tick_waste + RETARGET_TICKS * SECONDS_PER_TICK
+
         if self.is_boss:
-            return BOSS_RESPAWN_SECONDS + BOSS_BANKING_FRACTION * self.ttk
+            return mechanical + BOSS_RESPAWN_SECONDS + BOSS_BANKING_FRACTION * self.ttk
 
         damage_per_kill = self.damage_taken * self.ttk
         if damage_per_kill <= 0 or health_pool <= 0:
-            return 0.0
-        return banking * damage_per_kill / health_pool
+            return mechanical
+        return mechanical + banking * damage_per_kill / health_pool
 
     def kills_per_hour(self, overhead: float | None = None) -> float:
         """Kills per hour: this kill's fighting time plus its overhead.
@@ -693,7 +749,9 @@ def build_loadouts(
         weapon_pick = "weapon" if "weapon" in entries else "2h" if "2h" in entries else ""
         weapon = entries.get(weapon_pick, {})
         speed = weapon.get("attack_speed", 4)
-        attack_speed = int(speed) if isinstance(speed, (int, float)) and speed > 0 else 4
+        base_speed = int(speed) if isinstance(speed, (int, float)) and speed > 0 else 4
+        # Never below one tick, whatever the stance would take it to.
+        attack_speed = max(1, base_speed + _STANCE_SPEED_TICKS.get(_STANCES[style], 0))
         two_handed = weapon.get("slot") == "2h"
 
         if style == "Melee":
@@ -850,6 +908,7 @@ def best_kill(
                     # the player is standing in while being hit.
                     damage_taken=damage_taken_per_second(armed, fight),
                     is_boss=boss,
+                    attack_speed=armed.attack_speed,
                 )
     return best
 
@@ -1004,6 +1063,8 @@ __all__ = [
     "DPS_AVAILABLE",
     "GROUP_BOSSES",
     "MAGIC_DAMAGE_SCALE",
+    "RETARGET_TICKS",
+    "SECONDS_PER_TICK",
     "OFFENSIVE_STYLES",
     "DpsUnavailableError",
     "KillEstimate",

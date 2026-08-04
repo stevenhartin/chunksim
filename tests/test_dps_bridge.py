@@ -280,20 +280,31 @@ def _kill(**kwargs: Any) -> dps_bridge.KillEstimate:
     return dps_bridge.KillEstimate(**base)
 
 
-def test_something_that_cannot_hurt_you_has_no_overhead() -> None:
+#: A kill time that is an exact number of 4-tick cycles, so `tick_waste` is
+#: zero and the term under test is the only thing moving.
+WHOLE_TTK = 120.0
+#: What every kill pays before anything monster-specific: retarget only, when
+#: the kill time divides evenly.
+MECHANICAL = dps_bridge.RETARGET_TICKS * dps_bridge.SECONDS_PER_TICK
+
+
+def test_something_that_cannot_hurt_you_pays_only_the_mechanics() -> None:
     """No damage means no trip has to end, so there is nothing to amortise.
 
-    The flat 30 seconds this replaced was 92% of a rat's whole cycle.
+    What is left is the tick cost every kill pays. The flat 30 seconds this
+    replaced was 92% of a rat's whole cycle.
     """
-    assert _kill(damage_taken=0.0).overhead() == 0.0
+    assert _kill(ttk=WHOLE_TTK, damage_taken=0.0).overhead() == pytest.approx(MECHANICAL)
 
 
 def test_a_boss_carries_its_respawn_and_a_rat_does_not() -> None:
     """Respawn only bites where the monster is the scarce thing."""
-    assert _kill(ttk=0.0, damage_taken=0.0, is_boss=True).overhead() == (
-        dps_bridge.BOSS_RESPAWN_SECONDS
+    assert _kill(ttk=0.0, damage_taken=0.0, is_boss=True).overhead() == pytest.approx(
+        dps_bridge.BOSS_RESPAWN_SECONDS + MECHANICAL
     )
-    assert _kill(damage_taken=0.0, is_boss=False).overhead() == 0.0
+    assert _kill(ttk=0.0, damage_taken=0.0, is_boss=False).overhead() == pytest.approx(
+        MECHANICAL
+    )
 
 
 def test_a_boss_banks_by_share_of_the_fight_not_by_damage_taken() -> None:
@@ -304,11 +315,11 @@ def test_a_boss_banks_by_share_of_the_fight_not_by_damage_taken() -> None:
     A share of the fight sidesteps it, and two bosses with the same kill time
     must therefore cost the same overhead however hard they hit.
     """
-    gentle = _kill(ttk=200.0, damage_taken=0.5, is_boss=True)
-    brutal = _kill(ttk=200.0, damage_taken=40.0, is_boss=True)
+    gentle = _kill(ttk=WHOLE_TTK, damage_taken=0.5, is_boss=True)
+    brutal = _kill(ttk=WHOLE_TTK, damage_taken=40.0, is_boss=True)
 
     assert gentle.overhead() == brutal.overhead()
-    assert gentle.overhead() == pytest.approx(15.0 + 0.15 * 200.0)
+    assert gentle.overhead() == pytest.approx(MECHANICAL + 15.0 + 0.15 * WHOLE_TTK)
 
 
 def test_a_quicker_boss_pays_less_banking() -> None:
@@ -325,19 +336,19 @@ def test_banking_is_proportional_to_the_damage_a_kill_costs() -> None:
     400 damage a kill against a 400-point pool is one kill per trip, so that
     kill carries the whole bank run; half the damage carries half of it.
     """
-    pool = 400.0
-    whole = _kill(ttk=100.0, damage_taken=4.0).overhead(health_pool=pool, banking=120.0)
-    half = _kill(ttk=100.0, damage_taken=2.0).overhead(health_pool=pool, banking=120.0)
+    pool = WHOLE_TTK * 4.0
+    whole = _kill(ttk=WHOLE_TTK, damage_taken=4.0).overhead(health_pool=pool, banking=120.0)
+    half = _kill(ttk=WHOLE_TTK, damage_taken=2.0).overhead(health_pool=pool, banking=120.0)
 
-    assert whole == pytest.approx(120.0)
-    assert half == pytest.approx(60.0)
+    assert whole - MECHANICAL == pytest.approx(120.0)
+    assert half - MECHANICAL == pytest.approx(60.0)
 
 
 def test_a_boss_pays_both_parts() -> None:
     """Respawn for its timer, plus a share of the fight for banking."""
-    kill = _kill(ttk=100.0, damage_taken=4.0, is_boss=True)
+    kill = _kill(ttk=WHOLE_TTK, damage_taken=4.0, is_boss=True)
 
-    assert kill.overhead() == pytest.approx(15.0 + 0.15 * 100.0)
+    assert kill.overhead() == pytest.approx(MECHANICAL + 15.0 + 0.15 * WHOLE_TTK)
 
 
 def test_kills_per_hour_uses_the_model_by_default() -> None:
@@ -350,10 +361,55 @@ def test_kills_per_hour_uses_the_model_by_default() -> None:
 
 def test_the_default_pool_is_the_inventory_plus_a_full_health_bar() -> None:
     """15 food at about 20 each, on top of 99 Hitpoints."""
-    kill = _kill(ttk=100.0, damage_taken=4.0)
+    kill = _kill(ttk=WHOLE_TTK, damage_taken=4.0)
     pool = dps_bridge.INVENTORY_HEALING + 99.0
+    damage = 4.0 * WHOLE_TTK
 
-    assert kill.overhead() == pytest.approx(dps_bridge.BANKING_SECONDS * 400.0 / pool)
+    assert kill.overhead() - MECHANICAL == pytest.approx(
+        dps_bridge.BANKING_SECONDS * damage / pool
+    )
+
+
+def test_a_kill_is_a_whole_number_of_attack_cycles() -> None:
+    """The game runs on ticks; a weapon fires on its own cadence.
+
+    A 4-tick weapon acts every 2.4 seconds, so a kill that "takes" 5 seconds
+    actually ends on the third cycle at 7.2. Nothing can happen before then.
+    """
+    kill = _kill(ttk=5.0, attack_speed=4)
+
+    assert kill.cycle_seconds == pytest.approx(2.4)
+    assert kill.tick_waste == pytest.approx(7.2 - 5.0)
+
+
+def test_a_kill_that_divides_evenly_wastes_nothing() -> None:
+    assert _kill(ttk=WHOLE_TTK, attack_speed=4).tick_waste == pytest.approx(0.0)
+
+
+def test_a_faster_weapon_wastes_less() -> None:
+    """Rapid takes a bow to three ticks, which is a smaller rounding unit."""
+    assert _kill(ttk=5.0, attack_speed=3).tick_waste < _kill(
+        ttk=5.0, attack_speed=5
+    ).tick_waste
+
+
+def test_rapid_speeds_the_bow_up_by_a_tick() -> None:
+    """`osrs-dps` leaves stance-to-speed to the caller, so this must apply it.
+
+    Declaring Rapid while passing the weapon's base speed bought its accuracy
+    profile and none of its speed, costing every ranged kill a quarter of its
+    rate.
+    """
+    loadouts = dps_bridge.build_loadouts(
+        _chunk_info(),
+        {"Ranged-weapon": "Webweaver bow (u)", "Melee-weapon": "Abyssal whip"},
+        LEVELS,
+    )
+
+    assert loadouts["Ranged"].stance == "Rapid"
+    assert loadouts["Ranged"].attack_speed == 3
+    # Aggressive does not change the weapon's speed.
+    assert loadouts["Melee"].attack_speed == 4
 
 
 def test_price_monsters_omits_what_it_cannot_price() -> None:
