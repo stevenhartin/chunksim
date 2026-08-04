@@ -433,20 +433,19 @@ def _is_offered(
 
 
 def _below(needed: Any, held: int | None) -> bool:
-    """Is a known level short of `needed`? **Unknown is not short.**
+    """Is the level held short of `needed`? Unknown counts as 1.
 
-    The map records no skill levels at all - `levels` is built from
-    `passiveSkill`, which on the real map names five skills - so treating a
-    missing one as level 1 blocks every task with a requirement outside that
-    handful. Vannaka's basilisks want `Defence: 20` and were reading as "the
-    master never offers this", which is a very different claim from "you
-    cannot get there": the first costs nothing, the second costs a skip. It
-    hid 8 weight of skips behind a requirement the player almost certainly
-    meets.
+    That is only honest because the caller infers levels from the player's
+    *completed challenges* (`estimate.infer_levels`) rather than reading
+    `passiveSkill`, which names five skills on the real map. Vannaka's
+    basilisks want `Defence: 20`; the ledger says a Defence cape was bought,
+    so the floor is 99 and the task is offered - and then skipped, because
+    the Fremennik Slayer Dungeon is not unlocked. Without the inference this
+    read as "never offered", which is the opposite claim and costs nothing.
     """
     if not isinstance(needed, (int, float)) or isinstance(needed, bool):
         return False
-    return held is not None and needed > held
+    return needed > (held if held is not None else 1)
 
 
 def _is_reachable(

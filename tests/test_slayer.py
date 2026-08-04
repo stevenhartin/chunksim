@@ -692,12 +692,9 @@ def test_the_published_point_values_are_used_by_default() -> None:
     assert rate.skip_cost == 30.0
 
 
-def test_an_unknown_skill_level_does_not_block_a_task() -> None:
-    # The map records no skill levels, so treating a missing one as level 1
-    # blocks every task with a requirement outside the handful `passiveSkill`
-    # happens to name. Vannaka's basilisks want Defence 20 and read as "never
-    # offered" - which costs nothing - instead of "offered and unreachable",
-    # which costs a skip.
+def test_a_skill_requirement_is_enforced_against_the_inferred_level() -> None:
+    # Unknown counts as 1, which is only honest because the caller infers
+    # levels from completed challenges - see `estimate.infer_levels`.
     info = _info(
         slayerMasterTasks={
             "M": {"Basilisks": {"Weight": 8, "Level": 15, "Skills": {"Defence": 20}}}
@@ -705,10 +702,14 @@ def test_an_unknown_skill_level_does_not_block_a_task() -> None:
     )
     heuristics = Heuristics(slayer={"M": {"Basilisks": SlayerTask(100, 10, 100)}})
 
-    offered = master_rates(
-        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={"Slayer": 45}
+    met = master_rates(
+        info,
+        heuristics,
+        reachable_monsters=frozenset(),
+        valid={},
+        levels={"Slayer": 45, "Defence": 99},
     )[0]
-    blocked = master_rates(
+    short = master_rates(
         info,
         heuristics,
         reachable_monsters=frozenset(),
@@ -716,7 +717,5 @@ def test_an_unknown_skill_level_does_not_block_a_task() -> None:
         levels={"Slayer": 45, "Defence": 3},
     )[0]
 
-    # Unknown Defence: assumed met, so the task is offered.
-    assert offered.offered == 1.0
-    # A Defence level we *do* know, and it is short: genuinely not offered.
-    assert blocked.offered == 0.0
+    assert met.offered == 1.0
+    assert short.offered == 0.0

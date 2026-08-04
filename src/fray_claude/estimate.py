@@ -90,20 +90,27 @@ so an unlocked chunk adding a faster method shortens the estimate. Slayer
 takes `slayer.best_master` instead, because its rate is a distribution rather
 than a method you pick.
 
-`current` is the problem, and it reaches further than this bucket.
-**The map does not record the player's skill levels.** `max_skill` is a declared *cap* (`sources.py` reads it as "levels I
-can reach"), and `passive_skill` is what a level is attainable *without* a
-training method (`worker.js:5114`). Neither is "what I am now". This module
-takes `passive_skill` as the floor, because it is the only per-skill number in
-the payload that means anything like progress, and lets a `levels` override
-replace it outright. Where that floor is wrong the skilling bucket is wrong
-with it, which is why every skill row prints the level it assumed.
+`current` is the problem, and it reaches further than this bucket. **The map
+records no skill levels.** `maxSkill` is a *cap* the player declared, not a
+level they hold; `passiveSkill` is what is reachable *without* a training
+method (`worker.js:5114`) and names five skills on the real map. Neither is
+"what I am now".
 
-The same gap bites `slayer.py`, which reads these levels to decide what a
-master will offer. A level it has no number for is treated as **met**, not as
-1: assuming 1 turned every task with a requirement outside `passiveSkill`'s
-handful into "never offered", which costs nothing, when it should have been
-"offered and unreachable", which costs a skip.
+`infer_levels` reads it out of the ledger instead: **a completed challenge is
+proof of its own level requirement.** `Buy the ~|Defence cape|~` is not
+something a player under 99 Defence has ticked off, so the highest `Level`
+among a skill's completions is a floor on that skill. On the real map that
+gives 22 skills real numbers - Defence 99, Cooking 99, Mining 99, Attack 75 -
+where `passiveSkill` alone gave five.
+
+It is still a floor. A player at 99 Attack who has ticked nothing above 75
+reads as 75, and every skill row prints the level it assumed so a wrong one
+is visible. `levels` in `heuristics/overrides.json` replaces it outright.
+
+`slayer.py` reads the same numbers to decide what a master will offer, and
+that is where the floor mattered most: Vannaka's basilisks want Defence 20,
+which `passiveSkill` could not confirm, so the task read as "never offered" -
+free - instead of "offered and unreachable", which costs a 30-point skip.
 """
 
 from __future__ import annotations
@@ -759,13 +766,51 @@ def _declared(state: MapState) -> dict[str, int]:
     }
 
 
+def infer_levels(state: MapState) -> dict[str, int]:
+    """What the player's levels must be *at least*, from what they have done.
+
+    **A completed challenge is proof of its own level requirement.** The map
+    records no skill levels, but it does record what has been ticked off, and
+    `Buy the ~|Defence cape|~` is not something a player under 99 Defence has
+    done. Taking the highest `Level` among each skill's completions turns the
+    ledger into a floor: on the real map that is Defence 99, Attack 75,
+    Strength 70 - none of which `passiveSkill` mentions at all.
+
+    Better evidence than the alternatives, and the reason this exists.
+    `maxSkill` is a *cap* the player declared, not a level they hold;
+    `passiveSkill` is what a level is reachable without training, which on
+    the real map names five skills. Both are taken into account - the highest
+    of the three wins - because each is a floor and the best floor is the
+    highest one.
+
+    Still a floor, not a level: a player at 99 Attack who has ticked nothing
+    above 75 reads as 75. `levels` in `heuristics/overrides.json` replaces it
+    outright where that matters.
+    """
+    levels: dict[str, int] = {}
+
+    def raise_to(skill: str, level: Any) -> None:
+        if isinstance(level, (int, float)) and not isinstance(level, bool):
+            levels[skill] = max(levels.get(skill, 1), int(level))
+
+    for skill, level in state.passive_skill.items():
+        raise_to(str(skill), level)
+
+    for skill, completed in state.completed_challenges.items():
+        challenges = _mapping(state.chunk_info.challenges, str(skill))
+        if not isinstance(completed, Mapping):
+            continue
+        for name in completed:
+            challenge = challenges.get(name)
+            if isinstance(challenge, dict):
+                raise_to(str(skill), challenge.get("Level"))
+
+    return levels
+
+
 def _levels(state: MapState, overrides: dict[str, int]) -> dict[str, int]:
     """The per-skill level to count from. See the module docstring's caveat."""
-    levels = {
-        skill: int(level)
-        for skill, level in state.passive_skill.items()
-        if isinstance(level, (int, float)) and not isinstance(level, bool)
-    }
+    levels = infer_levels(state)
     levels.update(overrides)
     return levels
 

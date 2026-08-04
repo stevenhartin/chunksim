@@ -47,9 +47,15 @@ here, then edit the value.
 
 `levels` has no scraped layer and exists only here. **The map records no
 current skill levels** — `maxSkill` is a declared cap and `passiveSkill` is
-what is reachable *without* a training method — so the estimator counts from
-the passive floor unless you say otherwise. Every skill row prints the level
-it assumed, so a wrong one is visible.
+what is reachable *without* a training method. The estimator infers a floor
+from your *completed* challenges instead: a ticked `Buy the Defence cape`
+proves 99 Defence. That covers 22 skills on a well-played map where
+`passiveSkill` covers five.
+
+It is still a floor — nothing you have ticked above 75 Attack reads as more
+than 75 — so set the real numbers here where it matters. Every skill row
+prints the level it assumed, and slayer masters use the same numbers to
+decide what they will offer you.
 
 Example:
 

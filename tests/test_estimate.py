@@ -10,7 +10,7 @@ from fray_claude.active_tasks import SkillClassification, TaskClassification
 from fray_claude.bis import BisResult
 from fray_claude.challenges import ChallengeResult
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.estimate import estimate, task_gated_monsters
+from fray_claude.estimate import estimate, infer_levels, task_gated_monsters
 from fray_claude.heuristics import (
     DEFAULT_XP_PER_HOUR,
     Heuristics,
@@ -945,3 +945,44 @@ def test_every_reachable_slayer_master_is_reported() -> None:
     # Duradel is faster but unreachable, so he is not offered at all.
     assert [rate.master for rate in result.slayer_masters] == ["Vannaka", "Mazchna"]
     assert result.slayer is not None and result.slayer.master == "Vannaka"
+
+
+def test_levels_are_inferred_from_completed_challenges() -> None:
+    # The ledger is the evidence: buying a Defence cape is not something a
+    # player under 99 Defence has done, and `passiveSkill` names none of it.
+    info = ChunkInfo(
+        {
+            "challenges": {
+                "Defence": {
+                    "Buy the ~|Defence cape|~": {"Level": 99},
+                    "Wear melee ~|barrows armour|~": {"Level": 70},
+                    "Wear ~|dragon armour|~": {"Level": 60},
+                    "Wear something else": {"Level": 120},
+                }
+            }
+        }
+    )
+    state = _state(
+        info,
+        passive_skill={"Slayer": 45},
+        completed_challenges={
+            "Defence": {
+                "Buy the ~|Defence cape|~": True,
+                "Wear melee ~|barrows armour|~": True,
+                "Wear ~|dragon armour|~": True,
+            }
+        },
+    )
+
+    levels = infer_levels(state)
+
+    assert levels["Defence"] == 99
+    # passiveSkill still counts; the highest floor wins.
+    assert levels["Slayer"] == 45
+
+
+def test_an_uncompleted_challenge_proves_nothing() -> None:
+    info = ChunkInfo({"challenges": {"Attack": {"Wield a ~|godsword|~": {"Level": 75}}}})
+    state = _state(info, completed_challenges={})
+
+    assert "Attack" not in infer_levels(state)

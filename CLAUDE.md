@@ -217,8 +217,9 @@ corrections go in **`heuristics/overrides.json`, which is checked in** so they a
 survive a re-scrape. Overrides win, key by key. The export has *no* durations, rates or XP figures at
 all, so every number `fray estimate` spends comes from one of those two files or a default in
 `heuristics.py` — read that module's docstring on coverage before quoting a total, and
-`estimate.py`'s on what `current level` means, because **the map records no skill levels**
-(`maxSkill` is a declared cap, `passiveSkill` is what's reachable untrained). `experience.py`'s XP
+`estimate.py`'s on what `current level` means: **the map records no skill levels** (`maxSkill` is
+a declared cap, `passiveSkill` is what's reachable untrained), so `estimate.infer_levels` reads a
+floor out of the *completed* challenges — a ticked `Buy the Defence cape` proves 99 Defence. `experience.py`'s XP
 curve is the one exact input and is deliberately not overridable.
 
 **`cache/derived/` is a third thing, and not a map.** It holds `pipeline.derive`'s *results*, one
