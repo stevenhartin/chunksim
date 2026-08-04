@@ -912,18 +912,30 @@ def _cmd_diff(args: argparse.Namespace) -> int:
     return 0
 
 
-def _load_heuristics(args: argparse.Namespace, info: ChunkInfo) -> Heuristics:
-    """The two layers merged: scraped numbers under hand-written corrections."""
+def _load_heuristics(args: argparse.Namespace, info: ChunkInfo) -> tuple[Heuristics, bool]:
+    """The two layers merged, and whether the scraped one was there at all.
+
+    Returns the flag rather than swallowing it: an estimate with no scrape
+    still produces a plausible-looking total, and the difference is not
+    small. Without it there are no superior mappings and no slayer assignment
+    sizes, so every superior drop and every task-gated boss drop goes
+    unpriced - on the real map, 19 unpriced items against 3, and a total
+    ~3,000 hours light. Printing that quietly would be the worst of both.
+    """
     try:
         scraped = read_blob(WIKI_RATES_BLOB_NAME, hint="run: fray heuristics")["data"]
+        scraped_found = True
     except CacheMissError:
-        # Usable without a scrape: everything falls back to a default, which
-        # is honest and says so, rather than refusing to answer at all.
-        scraped = {}
-    return load(
-        merge(scraped, read_overrides()),
-        boss_monsters=frozenset(_mapping(info.code_items, "bossMonsters")),
-        slayer_monsters=frozenset(info.slayer_monsters),
+        # Still usable: everything falls back to a default. That is honest
+        # only if the command says so, which `_print_estimate_warnings` does.
+        scraped, scraped_found = {}, False
+    return (
+        load(
+            merge(scraped, read_overrides()),
+            boss_monsters=frozenset(_mapping(info.code_items, "bossMonsters")),
+            slayer_monsters=frozenset(info.slayer_monsters),
+        ),
+        scraped_found,
     )
 
 
@@ -933,7 +945,7 @@ def _cmd_estimate(args: argparse.Namespace) -> int:
 
     state, unlocked = _load_state(args)
     derived = _derive(args, state, unlocked)
-    heuristics = _load_heuristics(args, state.chunk_info)
+    heuristics, scraped_found = _load_heuristics(args, state.chunk_info)
     overrides = _mapping(read_overrides(), "levels")
     result = estimate(
         state,
@@ -948,14 +960,18 @@ def _cmd_estimate(args: argparse.Namespace) -> int:
     )
 
     if args.export_json != "-":
-        _print_estimate(result, args.map_id, args.bucket, args.limit)
+        _print_estimate(result, args.map_id, args.bucket, args.limit, scraped_found)
     if args.export_json is not None:
         _emit_json({"map_id": args.map_id, **result.as_dict()}, args.export_json)
     return 0
 
 
 def _print_estimate(
-    result: EstimateResult, map_id: str, bucket: str | None, limit: int | None
+    result: EstimateResult,
+    map_id: str,
+    bucket: str | None,
+    limit: int | None,
+    scraped_found: bool = True,
 ) -> None:
     print(f"map          {map_id}")
     for name, hours in result.buckets.items():
@@ -965,7 +981,7 @@ def _print_estimate(
         print(f"{'total':<12} {result.total_hours:>9,.1f}h")
         if result.unpriced:
             print(f"unpriced     {len(result.unpriced)} (no priceable route - see estimate.py)")
-        _print_estimate_warnings(result)
+        _print_estimate_warnings(result, scraped_found)
         return
 
     if bucket == "skilling":
@@ -1003,8 +1019,18 @@ def _print_estimate(
         print(f"  ... and {len(entries) - limit} more (--limit {len(entries)} to see all)")
 
 
-def _print_estimate_warnings(result: EstimateResult) -> None:
+def _print_estimate_warnings(result: EstimateResult, scraped_found: bool = True) -> None:
     """What makes the total untrustworthy, said plainly rather than buried."""
+    if not scraped_found:
+        # The single biggest thing that can be wrong with a total, and the
+        # easiest to miss: without the scrape there are no superior mappings
+        # and no slayer assignment sizes, so whole classes of drop cannot be
+        # priced and the total is light rather than wrong-looking.
+        print(
+            "\nno cached wiki rates: every rate below is a default."
+            "\n  run: fray heuristics   (superior and task-gated drops cannot be"
+            " priced without it)"
+        )
     defaulted = [skill.skill for skill in result.skills if skill.defaulted]
     if defaulted:
         print(

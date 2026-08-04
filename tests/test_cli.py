@@ -1766,3 +1766,28 @@ def test_an_override_beats_the_scraped_rate(
     fast = json.loads(capsys.readouterr().out)
 
     assert fast["total_hours"] < slow["total_hours"]
+
+
+def test_estimate_says_when_it_has_no_wiki_rates(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Without the scrape the total is quietly light - no superior mappings and
+    # no slayer assignment sizes - so the command has to say so.
+    _estimate_fixture(monkeypatch)
+    capsys.readouterr()
+
+    main(["estimate"])
+
+    assert "no cached wiki rates" in capsys.readouterr().out
+
+
+def test_estimate_is_quiet_about_rates_it_has(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _estimate_fixture(monkeypatch)
+    write_blob("wiki_rates", {"monsters": {"Goblin": {"value": 100.0}}}, "test")
+    capsys.readouterr()
+
+    main(["estimate"])
+
+    assert "no cached wiki rates" not in capsys.readouterr().out
