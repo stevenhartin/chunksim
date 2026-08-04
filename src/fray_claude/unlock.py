@@ -37,6 +37,16 @@ exempted from the partition argument above: a later unlock can make a
 `before`/`after` - not "new" tasks attributed to one unlock, but a per-unlock
 snapshot of what improved, as agreed with the project's BiS semantics
 (recompute the best achievable set fresh per state, per chunk roll).
+
+**Everything above is why this module's diffs are one-directional**, and it
+holds only for the one pair it builds: a single `MapState` with one extra
+chunk. Comparing two *arbitrary* cached maps is `delta.py` - symmetric,
+across all six `Derived` branches, claiming no attribution. The three helpers
+here are projections of its primitives (the added half, `after`-side only),
+so the two views of the same diff cannot drift apart. They stay projections
+rather than calls to `delta.compare`: `simulate.py` runs `delta_from` once
+per roll, and a six-branch comparison there would be a new cost in the loop
+`--jobs` exists to make finish.
 """
 
 from __future__ import annotations
@@ -45,6 +55,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from fray_claude.delta import diff_nested, diff_picks
 from fray_claude.pipeline import Derived, MapState, derive
 
 
@@ -79,26 +90,22 @@ def diff_reachable_sections(
     before: Mapping[str, Mapping[str, bool]], after: Mapping[str, Mapping[str, bool]]
 ) -> dict[str, dict[str, bool]]:
     """Sections present (and reachable) in `after` but not `before`."""
-    diff: dict[str, dict[str, bool]] = {}
-    for chunk, sections in after.items():
-        before_sections = before.get(chunk, {})
-        newly = {sec: True for sec, ok in sections.items() if ok and not before_sections.get(sec)}
-        if newly:
-            diff[chunk] = newly
-    return diff
+    return {
+        chunk: {section: True for section in branch.added}
+        for chunk, branch in diff_nested(before, after, truthy_only=True).items()
+        if branch.added
+    }
 
 
 def diff_valid_tasks(
     before: Mapping[str, Mapping[str, Any]], after: Mapping[str, Mapping[str, Any]]
 ) -> dict[str, dict[str, int | str | bool]]:
     """Tasks valid in `after` but not `before`."""
-    diff: dict[str, dict[str, int | str | bool]] = {}
-    for skill, names in after.items():
-        before_names = before.get(skill, {})
-        newly = {name: value for name, value in names.items() if name not in before_names}
-        if newly:
-            diff[skill] = newly
-    return diff
+    return {
+        skill: branch.added
+        for skill, branch in diff_nested(before, after, keep_values=True).items()
+        if branch.added
+    }
 
 
 def diff_bis_picks(
@@ -106,11 +113,14 @@ def diff_bis_picks(
 ) -> dict[str, tuple[str | None, str]]:
     """`(style, slot)` picks that appeared or changed in `after` versus
     `before` - a slot with no prior pick has `previous=None`.
+
+    A slot the `after` state does not fill at all is *not* reported, which is
+    what keeps this the additions-only view: `delta.diff_picks` records that
+    as `(item, None)`, and this drops it.
     """
     diff: dict[str, tuple[str | None, str]] = {}
-    for key, item in after.items():
-        previous = before.get(key)
-        if previous != item:
+    for key, (previous, item) in diff_picks(before, after).items():
+        if item is not None:
             diff[key] = (previous, item)
     return diff
 

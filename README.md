@@ -26,7 +26,12 @@ source-chunk is upstream and read-only from here — `fray-claude` never writes 
   unlocked or not, to answer "where would I get this". Unlike `sources`, it isn't limited to chunks
   you already hold.
 - **`unlock --chunk ID`** — what a single candidate chunk unlock would add on top of your current
-  state: new tasks, new reachable sections, and any best-in-slot upgrades it makes reachable.
+  state: new tasks, new reachable sections, and any best-in-slot upgrades it makes reachable. Add
+  `--cache-map NAME` to keep the resulting world as a cached map you can point every other command at.
+- **`diff --map1 A --map2 B`** — compare two cached maps of any kind, in both directions: what the
+  second has that the first doesn't, *and* what it's lost. Unlike `unlock`, which only ever adds one
+  chunk to one map, two arbitrary maps can differ either way — so a task valid on one side and not
+  the other shows up whichever side it's on.
 - **`neighbours`** — which chunks you're currently eligible to unlock, each with the number
   source-chunk's own canvas puts on it, and the connection that makes it reachable.
 - **`simulate --rolls N`** — simulate N chunk rolls in sequence and accumulate what each one adds,
@@ -163,16 +168,17 @@ otherwise it's created in whatever directory you're in when you run `fray`.
    fray tasks BiS                      # best-in-slot equipment: still to get, already got, outdated
    fray search "abyssal whip"          # where in the world would I get this?
    fray unlock --chunk 12082           # what unlocking chunk 12082 would add
+   fray diff --map1 fray --map2 Future # what's different between two cached maps, both ways
    fray neighbours                     # which chunks I could unlock next, and their roll numbers
    fray simulate --rolls 20 --seed 1   # simulate 20 rolls; --seed makes it reproducible
    ```
 
-   `sections`, `sources` and `tasks` print counts by default and take an optional positional to list
-   one branch's contents in full; `--limit N` caps that.
+   `sections`, `sources`, `tasks` and `diff` print counts by default and take an optional positional
+   to list one branch's contents in full; `--limit N` caps that.
 
    Add `--export-json -` (to print JSON to stdout, for piping into `jq` or similar) or
    `--export-json PATH` (to write it to a file) to `sections`, `sources`, `tasks`, `search`, `unlock`,
-   `neighbours` or `simulate` for the full structured result behind the human-readable summary.
+   `diff`, `neighbours` or `simulate` for the full structured result behind the human-readable summary.
 
    If you'd rather point at a chunk-info export you already have on disk instead of fetching it,
    pass `--chunkinfo PATH` to any of those commands, or set the `FRAY_CHUNKINFO` environment variable.
@@ -192,16 +198,21 @@ otherwise it's created in whatever directory you're in when you run `fray`.
    one it ends on (that last one being what the saved simulated map holds, so reading the map back is
    immediate), and `--cache-behaviour none` keeps nothing at all.
 
-5. **Keep a simulated future and work against it**, instead of just reading the summary:
+5. **Keep a possible future and work against it**, instead of just reading the summary:
 
    ```sh
    fray simulate --rolls 50 --cache-map Future            # saved as cache/sims/Future/run-001
+   fray unlock --chunk 12082 --cache-map Candidate        # the same, for one chosen chunk
    fray tasks --map Future                                # the same commands, against that world
+   fray diff --map1 Candidate --map2 Future               # ... or against each other
    fray simulate --rolls 50 --cache-map Sweep --runs 100 --jobs 8   # a batch, 8 processes wide
    fray maps                                              # what's cached, fetched and simulated
    fray maps rm Sweep                                     # ... and remove one again
    fray maps clean                                        # remove every simulated map
    ```
+
+   `unlock --cache-map` saves into the same place a simulation does, so everything below applies to
+   it too — it's just a one-run batch whose single "roll" you chose rather than rolled.
 
    A batch writes one directory per run, addressable as `--map Sweep/run-007`; a bare `--map Sweep`
    works whenever the batch holds exactly one run. Each run records the seed it used, so any single

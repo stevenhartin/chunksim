@@ -409,6 +409,216 @@ def test_unlock_export_json_to_stdout_replaces_the_summary(
     assert result["new_tasks"] == {"Nonskill": {"Use bones": True}}
 
 
+def test_unlock_cache_map_saves_a_readable_map(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {
+        "chunks": {"101": {"Monster": {"Goblin": True}}},
+        "sections": {"101": {"0": ["100"]}},
+        "drops": {"Goblin": {"Bones": {"1": "Always"}}},
+        "challenges": {"Nonskill": {"Use bones": {"Items": ["Bones"]}}},
+    }
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    assert main(["unlock", "--chunk", "101", "--cache-map", "Candidate"]) == 0
+
+    out = capsys.readouterr().out
+    assert "saved as     Candidate" in out
+    envelope = json.loads(
+        (project / "cache" / "sims" / "Candidate" / "run-001" / "map.json").read_text()
+    )
+    assert envelope["is_simulated"] is True
+    assert envelope["source"] == "unlock 101 from 'fray'"
+    assert envelope["simulation"]["origin"] == "unlock"
+    assert set(envelope["data"]["chunks"]["unlocked"]) == {"100", "101"}
+
+    # The saved world is a cached map like any other, so `--map` reaches it.
+    assert main(["sections", "--map", "Candidate"]) == 0
+    assert "unlocked chunks    2" in capsys.readouterr().out
+
+
+def test_unlock_cache_map_suffixes_a_name_already_taken(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    _cache_map_and_chunkinfo(monkeypatch, payload, {"sections": {"101": {"0": ["100"]}}})
+    capsys.readouterr()
+
+    main(["unlock", "--chunk", "101", "--cache-map", "Candidate"])
+    capsys.readouterr()
+    assert main(["unlock", "--chunk", "101", "--cache-map", "Candidate"]) == 0
+
+    out = capsys.readouterr().out
+    assert "'Candidate' was taken; saved as 'Candidate-2'" in out
+    assert (project / "cache" / "sims" / "Candidate-2" / "run-001" / "map.json").is_file()
+
+
+def test_unlock_cache_map_export_json_reports_the_name(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    _cache_map_and_chunkinfo(monkeypatch, payload, {"sections": {"101": {"0": ["100"]}}})
+    capsys.readouterr()
+
+    assert main(["unlock", "--chunk", "101", "--cache-map", "Kept", "--export-json", "-"]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["cached_map"] == "Kept"
+
+
+def _cache_two_maps(
+    monkeypatch: pytest.MonkeyPatch,
+    first: dict[str, Any],
+    second: dict[str, Any],
+    chunkinfo_data: dict[str, Any],
+) -> None:
+    payloads = {"a": first, "b": second}
+    monkeypatch.setattr(
+        "fray_claude.cli.fetch_map", lambda map_id, timeout=DEFAULT_TIMEOUT: payloads[map_id]
+    )
+    main(["fetch", "--map", "a"])
+    main(["fetch", "--map", "b"])
+    monkeypatch.setattr(
+        "fray_claude.cli.read_chunkinfo",
+        lambda override=None, root=None: chunkinfo_data,
+    )
+
+
+_DIFF_CHUNKINFO: dict[str, Any] = {
+    "chunks": {"101": {"Monster": {"Goblin": True}}, "102": {"Monster": {"Imp": True}}},
+    "drops": {"Goblin": {"Bones": {"1": "Always"}}, "Imp": {"Beads": {"1": "Always"}}},
+    "challenges": {
+        "Nonskill": {"Use bones": {"Items": ["Bones"]}, "Use beads": {"Items": ["Beads"]}}
+    },
+}
+
+
+def test_diff_reports_both_directions(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _cache_two_maps(
+        monkeypatch,
+        {"chunks": {"unlocked": {"101": True}}},
+        {"chunks": {"unlocked": {"102": True}}},
+        _DIFF_CHUNKINFO,
+    )
+    capsys.readouterr()
+
+    assert main(["diff", "--map1", "a", "--map2", "b"]) == 0
+
+    out = capsys.readouterr().out
+    assert "map1         a" in out
+    assert "map2         b" in out
+    # Neither map contains the other, so both halves are non-empty - the case
+    # `fray unlock` structurally cannot report.
+    assert "chunks       +1 -1" in out
+    assert "tasks        +1 -1" in out
+
+
+def test_diff_of_a_map_with_itself_reports_nothing(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"101": True}}}
+    _cache_two_maps(monkeypatch, payload, payload, _DIFF_CHUNKINFO)
+    capsys.readouterr()
+
+    assert main(["diff", "--map1", "a", "--map2", "b"]) == 0
+
+    out = capsys.readouterr().out
+    assert "tasks        +0 -0" in out
+    assert "bis picks" not in out
+
+
+def test_diff_lists_one_branch(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _cache_two_maps(
+        monkeypatch,
+        {"chunks": {"unlocked": {"101": True}}},
+        {"chunks": {"unlocked": {"102": True}}},
+        _DIFF_CHUNKINFO,
+    )
+    capsys.readouterr()
+
+    assert main(["diff", "--map1", "a", "--map2", "b", "tasks"]) == 0
+
+    out = capsys.readouterr().out
+    assert "+ Use beads" in out
+    assert "- Use bones" in out
+    # The other branches weren't computed, so they aren't reported as zeroes.
+    assert "sources" not in out
+
+
+def test_diff_rejects_an_unknown_branch(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = {"chunks": {"unlocked": {"101": True}}}
+    _cache_two_maps(monkeypatch, payload, payload, _DIFF_CHUNKINFO)
+    capsys.readouterr()
+
+    assert main(["diff", "--map1", "a", "--map2", "b", "nope"]) == 1
+    assert "unknown branch 'nope'" in capsys.readouterr().err
+
+
+def test_diff_export_json_to_stdout_replaces_the_summary(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _cache_two_maps(
+        monkeypatch,
+        {"chunks": {"unlocked": {"101": True}}},
+        {"chunks": {"unlocked": {"102": True}}},
+        _DIFF_CHUNKINFO,
+    )
+    capsys.readouterr()
+
+    assert main(["diff", "--map1", "a", "--map2", "b", "--export-json", "-"]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert (result["before_map"], result["after_map"]) == ("a", "b")
+    assert result["tasks"]["Nonskill"]["added"] == {"Use beads": True}
+    assert result["tasks"]["Nonskill"]["removed"] == ["Use bones"]
+
+
+def test_diff_needs_both_maps() -> None:
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["diff", "--map1", "a"])
+
+
+def test_diff_without_a_cached_map_exits_one(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["diff", "--map1", "a", "--map2", "b"]) == 1
+    assert "no cached data for map 'a'" in capsys.readouterr().err
+
+
+def test_diff_against_a_saved_unlock_matches_what_unlock_reported(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The loop the two halves of this feature close: saving an unlock and then
+    # diffing against it must reproduce the unlock's own numbers.
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    chunkinfo_data = {
+        "chunks": {"101": {"Monster": {"Goblin": True}}},
+        "sections": {"101": {"0": ["100"]}},
+        "drops": {"Goblin": {"Bones": {"1": "Always"}}},
+        "challenges": {"Nonskill": {"Use bones": {"Items": ["Bones"]}}},
+    }
+    _cache_map_and_chunkinfo(monkeypatch, payload, chunkinfo_data)
+    capsys.readouterr()
+
+    main(["unlock", "--chunk", "101", "--cache-map", "Candidate", "--export-json", "-"])
+    unlocked = json.loads(capsys.readouterr().out)
+
+    main(["diff", "--map1", "fray", "--map2", "Candidate", "--export-json", "-"])
+    difference = json.loads(capsys.readouterr().out)
+
+    assert difference["tasks"]["Nonskill"]["added"] == unlocked["new_tasks"]["Nonskill"]
+    assert difference["chunks"]["added"] == {"101": True}
+    assert difference["tasks"]["Nonskill"]["removed"] == []
+
+
 def test_simulate_reports_each_roll(
     project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -116,7 +116,8 @@ Five things that cut across modules — the first three because each has already
 | `boosts.py` | Temporary skill boosts. With `rules['Boosting']` on, **every** level comparison upstream makes is boosted, so this is a dependency of `challenges.py`/`active_tasks.py`, not a feature. |
 | `other_tasks.py` | The three non-skill categories, `Diary`/`Quest`/`Extra`. No single winner — upstream renders every valid, uncompleted one. |
 | `pipeline.py` | `MapState` + `derive`. Owns the **loop** where upstream's area-unlock circularity lives, so the modules above stay one-directional. Raises `ConvergenceError` rather than returning a truncated derivation. |
-| `unlock.py` | What one candidate unlock adds, by diffing two `derive` calls. **Owns the project's attribution rule** and its one exception. |
+| `unlock.py` | What one candidate unlock adds, by diffing two `derive` calls. **Owns the project's attribution rule** and its one exception. Additions-only, and only over one `MapState` — for two arbitrary maps read `delta.py`. |
+| `delta.py` | The **symmetric** comparison of two derived states, over all six `Derived` branches. Owns the diff primitives `unlock.py` projects down to its one-directional view; the two must agree, which `tests/test_delta.py` asserts. |
 | `neighbours.py` | Which chunks are eligible to unlock next, and upstream's canvas numbering (**descending chunk id, 1-based**). Owns the `sectionsLimits` gate. |
 | `simulate.py` | Seeded chunk-roll simulation: the bootstrap pool, plus the dispatch to `neighbours.py`. Records are never revisited by a later roll. `simulated_payload` turns a finished ledger back into a map payload — read its docstring before changing which branches it touches. |
 | `batch.py` | N simulations from one state, each cached as its own map. Owns seed derivation and the **only** `ProcessPoolExecutor` in the project. `--jobs` must never change a result. |
@@ -144,7 +145,8 @@ fray chunkinfo              # GET upstream's chunk/challenge reference data -> c
 fray sections [list|CHUNK] [--limit N]   # reachable sections; list/drill down with a positional
 fray sources  [CATEGORY]   [--limit N]   # items/objects/monsters/npcs/shops; list one with a positional
 fray tasks    [CATEGORY]   [--limit N]   # valid/active/obsolete/completed, incl. BiS (partial - see the module docstrings)
-fray unlock   --chunk ID    # tasks/sections one candidate chunk would add on top of the cached map
+fray unlock   --chunk ID [--cache-map NAME]   # what one candidate chunk would add; optionally saved
+fray diff --map1 A --map2 B [BRANCH] [--limit N]   # symmetric comparison of two cached maps
 fray neighbours [--limit N] # chunks eligible to unlock next, numbered as the app's canvas numbers them
 fray simulate --rolls N [--seed S]   # simulate N chunk rolls and accumulate their tasks/sections
 fray simulate --rolls N --cache-map NAME [--runs R] [--jobs J] [--cache-behaviour all|extremities|none]
@@ -165,14 +167,21 @@ Those two lines go together: `FRAY_CHUNKINFO` wants a *raw* export, not `fray ch
 envelope-wrapped `cache/chunkinfo.json` (hence the extraction — see Conventions for why pointing it at
 the envelope fails silently), and `FRAY_MAP_CACHE` is presence-only, its value unused.
 
-`--export-json PATH` (or `-` for stdout, replacing the text summary) is carried by the seven
+`--export-json PATH` (or `-` for stdout, replacing the text summary) is carried by the eight
 *derivation* subcommands plus `maps list`, not the three I/O ones. `--recompute` is carried by those
-same seven and nothing else, so it means one thing everywhere. `--limit` defaults to `None` (full
-output) for `sections`/`sources`/`tasks`/`neighbours` so piping just works, but to `10` for `search`.
-See `cli.py`'s docstring.
+same eight and nothing else, so it means one thing everywhere. `--limit` defaults to `None` (full
+output) for `sections`/`sources`/`tasks`/`neighbours`/`diff` so piping just works, but to `10` for
+`search`. See `cli.py`'s docstring.
 
-**Two kinds of cached map.** A *fetched* map is `cache/<id>.json`; a *simulated* one is a
-`fray simulate --cache-map` product, one directory per run under a named batch:
+`fray diff` is the one subcommand taking two maps, hence `--map1`/`--map2` rather than `--map`; both
+are required, and either can name a fetched or a simulated map. It reports **both directions**, which
+`fray unlock` deliberately does not — `unlock` is additions-only because adding a chunk is very nearly
+monotone, and two arbitrary maps are not related that way at all. Read `delta.py` before assuming the
+two commands answer the same question.
+
+**Two kinds of cached map.** A *fetched* map is `cache/<id>.json`; a *simulated* one is anything this
+project computed — `fray simulate --cache-map` and `fray unlock --cache-map` both land here — one
+directory per run under a named batch:
 
 ```
 cache/sims/<batch>/batch.json          # every run's seed and rolled chunk ids - the analysis surface
@@ -186,6 +195,10 @@ what makes `--cache-map X` then `--map X` work). A bare batch name with several 
 them, never a guess. A name that is already taken — by a batch *or* a fetched map — gains `-2`, `-3`,
 … so `--map` is never ambiguous; the claim is a `mkdir(exist_ok=False)`, so parallel writers cannot
 both win it. Counting how often a chunk was rolled means reading `batch.json`, not the payloads.
+An unlock product is a one-run batch that differs only in its envelope `source` and `run.json`'s
+`origin`: `is_simulated` and `MapEntry.kind` stay as they are for a simulation, since both mean "this
+project computed it, upstream never saw it" — see `cache.write_sim_run` for why a third `kind` isn't
+worth what it would cost `maps rm`/`maps clean`.
 
 **`cache/derived/` is a third thing, and not a map.** It holds `pipeline.derive`'s *results*, one
 zstd-compressed pickle per key (~0.12MB each), so a repeat command costs ~0.15s instead of ~1.05s.

@@ -203,6 +203,31 @@ def _sim(root: Path, batch: str, index: int = 1, **payload: Any) -> Path:
     )
 
 
+def test_a_run_records_its_default_provenance(tmp_path: Path) -> None:
+    envelope = json.loads(_sim(tmp_path, "Demo").read_text(encoding="utf-8"))
+
+    assert envelope["source"] == "simulated from 'fray'"
+
+
+def test_a_run_can_override_its_provenance_line(tmp_path: Path) -> None:
+    # `fray unlock --cache-map` writes here too; the `source` line is the only
+    # thing separating the two, `is_simulated` staying true for both.
+    directory = run_dir(sims_root(tmp_path) / "Candidate", 1)
+    path = write_sim_run(
+        directory,
+        map_id="Candidate/run-001",
+        data={"chunks": {"unlocked": {"100": "100"}}},
+        simulation={"run": "run-001", "origin": "unlock", "base_map": "fray"},
+        ledger=[],
+        source="unlock 101 from 'fray'",
+    )
+    envelope = json.loads(path.read_text(encoding="utf-8"))
+
+    assert envelope["source"] == "unlock 101 from 'fray'"
+    assert envelope["is_simulated"] is True
+    assert read_cache("Candidate", root=tmp_path)["simulation"]["origin"] == "unlock"
+
+
 def test_a_simulated_run_is_readable_by_its_full_id(tmp_path: Path) -> None:
     _sim(tmp_path, "Demo", 2)
 

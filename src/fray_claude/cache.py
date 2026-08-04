@@ -13,8 +13,10 @@ the file directly, with no `["data"]` unwrapping, so it wants a *raw* export
 rather than this module's own envelope.
 
 **Two kinds of map live here.** A *fetched* map is a flat `cache/<id>.json`,
-written by `fray fetch` from upstream. A *simulated* map is a `fray simulate`
-product, stored one directory per run under a named batch::
+written by `fray fetch` from upstream. A *simulated* map is anything this
+project computed instead - `fray simulate --cache-map` and
+`fray unlock --cache-map` both land here - stored one directory per run under
+a named batch::
 
     cache/sims/<batch>/batch.json          # every run's seed and rolled chunks
     cache/sims/<batch>/run-001/map.json    # envelope, `is_simulated: true`
@@ -291,19 +293,28 @@ def write_sim_run(
     data: dict[str, Any],
     simulation: dict[str, Any],
     ledger: list[dict[str, Any]],
+    source: str | None = None,
 ) -> Path:
-    """Write one simulated run: its envelope, its ledger, and its metadata.
+    """Write one synthetic run: its envelope, its ledger, and its metadata.
 
     `map.json` is what `read_cache` reads; `rolls.json` is the full per-roll
     ledger; `run.json` is the small summary `list_maps` reads, so listing a
     100-run batch never opens a payload. The envelope mirrors `write_cache`'s,
     with `is_simulated` true and a `simulation` block for provenance.
+
+    `source` overrides that provenance line for a run this project produced
+    some way other than rolling - `fray unlock --cache-map` writes one. It is
+    the *only* thing distinguishing the two here: `is_simulated` stays true
+    and `MapEntry.kind` stays `SIMULATED`, because both mean "this project
+    computed it, upstream never saw it", which is equally true of either. A
+    third `kind` would have to be taught to `remove_map`'s `include_fetched`
+    guard, `remove_all_simulated` and `fray maps clean` to buy nothing.
     """
     directory.mkdir(parents=True, exist_ok=True)
     envelope = {
         "map_id": map_id,
         "fetched_at": datetime.now(UTC).isoformat(),
-        "source": f"simulated from {simulation.get('base_map')!r}",
+        "source": source or f"simulated from {simulation.get('base_map')!r}",
         "is_simulated": True,
         "simulation": simulation,
         "data": data,

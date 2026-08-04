@@ -8,11 +8,20 @@ A new subcommand keeps its logic in a pure module and calls it from here.
 `--export-json PATH` writes a subcommand's full result as JSON to `PATH`, or
 to stdout if `PATH` is `-` - in which case it *replaces* the human-readable
 summary rather than interleaving with it, so piping stays clean. It is
-carried by the seven *derivation* subcommands
-(`sections`/`sources`/`tasks`/`unlock`/`neighbours`/`simulate`/`search`),
+carried by the eight *derivation* subcommands
+(`sections`/`sources`/`tasks`/`unlock`/`diff`/`neighbours`/`simulate`/`search`),
 plus `maps list` - whose output is a reduction over the cache rather than a
 cache file, and is the index a batch analysis iterates - and deliberately not
 by the three I/O ones (`fetch`/`show`/`chunkinfo`).
+
+`diff --map1 A --map2 B` compares two cached maps of either kind through
+`delta.compare_maps`, which is symmetric where `unlock` is one-directional -
+read `delta.py` before assuming the two report the same thing. It is the one
+subcommand taking two maps, so it names them `--map1`/`--map2` instead of
+this file's usual `--map`, and builds a single `ChunkInfo` for both sides.
+`unlock --cache-map NAME` saves the post-unlock state the way
+`simulate --cache-map` saves a run, into the same layout and so readable by
+every other subcommand's `--map`.
 
 `simulate --cache-map NAME` saves each run as a cached map instead of only
 printing it, `--runs N` asks for N independent simulations and `--jobs N`
@@ -94,6 +103,7 @@ from fray_claude.cache import (
     MapEntry,
     blob_path,
     chunkinfo_source,
+    claim_sim_batch,
     file_digest,
     list_derived,
     list_maps,
@@ -103,11 +113,15 @@ from fray_claude.cache import (
     read_chunkinfo,
     remove_all_simulated,
     remove_map,
+    run_dir,
     write_blob,
     write_cache,
+    write_sim_batch,
+    write_sim_run,
 )
 from fray_claude.challenges import strip_task_markup
 from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.delta import BRANCHES, BranchDelta, MapSide, StateDelta, compare_maps
 from fray_claude.derived_cache import CacheBehaviour, Digests, RollCache, cached_derive
 from fray_claude.firebase import reverse_tasks_map
 from fray_claude.graph import build_section_graph
@@ -117,10 +131,10 @@ from fray_claude.other_tasks import CategoryTasks, display_name, task_text
 from fray_claude.pipeline import ConvergenceError, Derived, MapState, load_map_state
 from fray_claude.search import TYPES, build_world_index, search
 from fray_claude.sections import describe_sections, expand_chunk_areas
-from fray_claude.simulate import simulate_rolls
+from fray_claude.simulate import UnlockRecord, simulate_rolls, simulated_payload
 from fray_claude.sources import CATEGORIES as SOURCE_CATEGORIES
 from fray_claude.summary import summarise
-from fray_claude.unlock import tasks_added_by
+from fray_claude.unlock import UnlockDelta, tasks_added_by
 
 DEFAULT_MAP = "fray"
 
@@ -217,9 +231,20 @@ def _derive(args: argparse.Namespace, state: MapState, unlocked: Mapping[str, bo
     return cached_derive(state, unlocked, _digests(args), refresh=args.recompute)
 
 
-def _load_state(args: argparse.Namespace) -> tuple[MapState, dict[str, bool]]:
-    envelope = read_cache(args.map_id)
-    info = ChunkInfo(read_chunkinfo(override=args.chunkinfo))
+def _load_state(
+    args: argparse.Namespace,
+    map_id: str | None = None,
+    *,
+    chunk_info: ChunkInfo | None = None,
+) -> tuple[MapState, dict[str, bool]]:
+    """The cached map, decoded into a `MapState` and its unlocked-chunk set.
+
+    `map_id` overrides `args.map_id` and `chunk_info` reuses an already-parsed
+    export, so `fray diff` can load two maps while paying the ~7MB parse once
+    (`chunkinfo.py`: build one `ChunkInfo` per invocation).
+    """
+    envelope = read_cache(map_id if map_id is not None else args.map_id)
+    info = chunk_info or ChunkInfo(read_chunkinfo(override=args.chunkinfo))
     try:
         tasks_map = reverse_tasks_map(read_blob(TASKS_MAP_BLOB_NAME)["data"])
     except CacheMissError:
@@ -591,6 +616,65 @@ def _cmd_search(args: argparse.Namespace) -> int:
     return 0
 
 
+def _unlock_to_cache(args: argparse.Namespace, delta: UnlockDelta) -> str:
+    """Save the post-unlock state as a cached map; returns the name claimed.
+
+    Reuses `simulate.py`'s two pieces rather than growing its own: a one-entry
+    ledger drives `simulated_payload` (which reads only `chunk_id` from a
+    record, plus whether there are any), and the run lands in the sims layout
+    so `--map`, `fray maps` and the `-2` clash suffix all work unchanged. What
+    marks it as an unlock is the envelope's `source` line and `run.json`'s
+    `origin` - see `cache.write_sim_run` for why not a third `kind`.
+    """
+    envelope = read_cache(args.map_id)
+    record = UnlockRecord(
+        order=1,
+        chunk_id=delta.chunk_id,
+        new_sections=delta.new_sections,
+        new_tasks=delta.new_tasks,
+        new_unsupported=delta.new_unsupported,
+        bis_upgrades=delta.bis_upgrades,
+    )
+    payload = simulated_payload(envelope["data"], [record])
+    directory = claim_sim_batch(args.cache_map)
+    run = run_dir(directory, 1)
+    held = payload.get("chunks", {}).get("unlocked", {})
+    meta: dict[str, Any] = {
+        "run": run.name,
+        "origin": "unlock",
+        "chunk": delta.chunk_id,
+        "seed": None,
+        "rolls": [delta.chunk_id],
+        "rolls_requested": 1,
+        "base_map": args.map_id,
+        "base_fetched_at": envelope.get("fetched_at"),
+        "created_at": datetime.now(UTC).isoformat(),
+        "unlocked_chunks": len(held) if isinstance(held, dict) else None,
+    }
+    write_sim_run(
+        run,
+        map_id=f"{directory.name}/{run.name}",
+        data=payload,
+        simulation=meta,
+        ledger=[record.as_dict()],
+        source=f"unlock {delta.chunk_id} from {args.map_id!r}",
+    )
+    write_sim_batch(
+        directory,
+        {
+            "name": directory.name,
+            "origin": "unlock",
+            "created_at": meta["created_at"],
+            "base_map": args.map_id,
+            "base_fetched_at": envelope.get("fetched_at"),
+            "rolls_requested": 1,
+            "seed": None,
+            "runs": [meta],
+        },
+    )
+    return directory.name
+
+
 def _cmd_unlock(args: argparse.Namespace) -> int:
     state, unlocked = _load_state(args)
     delta = tasks_added_by(
@@ -599,6 +683,7 @@ def _cmd_unlock(args: argparse.Namespace) -> int:
         args.chunk_id,
         derive_with=lambda s, u: _derive(args, s, u),
     )
+    saved = _unlock_to_cache(args, delta) if args.cache_map is not None else None
 
     if args.export_json != "-":
         print(f"map          {args.map_id}")
@@ -613,9 +698,121 @@ def _cmd_unlock(args: argparse.Namespace) -> int:
                 print(f"  {key:<20} {previous or '(none)'} -> {new}")
         if delta.new_unsupported:
             print(f"new unsupported {len(delta.new_unsupported)} (see challenges.py)")
+        if saved is not None:
+            if saved != args.cache_map:
+                print(f"name {args.cache_map!r} was taken; saved as {saved!r}")
+            print(f"saved as     {saved}")
+            print(f"read with    fray tasks --map {saved}")
 
     if args.export_json is not None:
-        _emit_json({"map_id": args.map_id, **delta.as_dict()}, args.export_json)
+        payload: dict[str, Any] = {"map_id": args.map_id, **delta.as_dict()}
+        if saved is not None:
+            payload["cached_map"] = saved
+        _emit_json(payload, args.export_json)
+    return 0
+
+
+def _delta_lines(branch: BranchDelta, *, strip: bool = False) -> list[str]:
+    """One `+ name`/`- name` line each, gains before losses."""
+    added = _display_tasks(branch.added) if strip else sorted(branch.added)
+    removed = _display_tasks(branch.removed) if strip else sorted(branch.removed)
+    return [f"+ {name}" for name in added] + [f"- {name}" for name in removed]
+
+
+def _nested_delta_lines(
+    branches: Mapping[str, BranchDelta], *, strip: bool = False, label: str = ""
+) -> list[str]:
+    """Each key's gains and losses indented under its own header."""
+    lines: list[str] = []
+    for key in sorted(branches):
+        lines.append(f"{label}{key}")
+        lines.extend(f"  {line}" for line in _delta_lines(branches[key], strip=strip))
+    return lines
+
+
+def _name_or_none(name: str | None) -> str:
+    return strip_task_markup(name) if name else "(none)"
+
+
+def _print_diff_branch(delta: StateDelta, branch: str, limit: int | None) -> None:
+    """One branch's names in full. `--limit` caps printed *lines*, headers
+    included, so a capped listing still shows which keys it got through.
+    """
+    lines: list[str] = []
+    if branch == "chunks":
+        lines = _delta_lines(delta.chunks)
+    elif branch == "sections":
+        lines = _nested_delta_lines(delta.sections)
+    elif branch == "tasks":
+        lines = _nested_delta_lines(delta.tasks, strip=True)
+    elif branch == "unsupported":
+        lines = _delta_lines(delta.unsupported, strip=True)
+    elif branch == "sources":
+        lines = _nested_delta_lines(delta.sources)
+    elif branch == "bis":
+        lines = [
+            f"{key:<24} {_name_or_none(before)} -> {_name_or_none(after)}"
+            for key, (before, after) in sorted(delta.bis_picks.items())
+        ]
+        lines.extend(_nested_delta_lines(delta.bis_tasks, strip=True))
+    elif branch == "skills":
+        for skill in sorted(delta.skills):
+            change = delta.skills[skill]
+            lines.append(skill)
+            if change.active is not None:
+                was, now = change.active
+                lines.append(f"  goal {_name_or_none(was)} -> {_name_or_none(now)}")
+            lines.extend(f"  obsolete {line}" for line in _delta_lines(change.obsolete, strip=True))
+            lines.extend(
+                f"  completed {line}" for line in _delta_lines(change.completed, strip=True)
+            )
+    else:
+        for category in sorted(delta.other):
+            lines.append(display_name(category))
+            for name, changed in sorted(delta.other[category].items()):
+                lines.extend(f"  {name} {line}" for line in _delta_lines(changed, strip=True))
+    _print_capped(lines, limit)
+
+
+def _print_diff_summary(delta: StateDelta, branch: str | None) -> None:
+    """`+gained -lost` per branch. With `--branch`, only that one: the others
+    weren't computed, and printing them as zeroes would read as "unchanged".
+    """
+    print(f"map1         {delta.before_map}")
+    print(f"map2         {delta.after_map}")
+    for name, (added, removed) in delta.counts().items():
+        if branch is None or branch == name:
+            print(f"{name:<12} +{added} -{removed}")
+    if delta.bis_picks:
+        print(f"bis picks    {len(delta.bis_picks)} changed")
+    goals = sum(1 for change in delta.skills.values() if change.active is not None)
+    if goals:
+        print(f"skill goals  {goals} changed")
+
+
+def _cmd_diff(args: argparse.Namespace) -> int:
+    if args.branch is not None and args.branch not in BRANCHES:
+        return _error(f"unknown branch {args.branch!r} (expected one of {', '.join(BRANCHES)})")
+
+    # One `ChunkInfo` for both sides: parsing the ~10MB export is the expensive
+    # part, and the two maps are read against the same world by definition.
+    # Taking it from the first side rather than building it up front also keeps
+    # a missing *map* the first thing reported, as in every other subcommand.
+    before_state, before_unlocked = _load_state(args, args.map1)
+    after_state, after_unlocked = _load_state(args, args.map2, chunk_info=before_state.chunk_info)
+    delta = compare_maps(
+        MapSide(before_state, before_unlocked, args.map1),
+        MapSide(after_state, after_unlocked, args.map2),
+        derive_with=lambda s, u: _derive(args, s, u),
+        branches=None if args.branch is None else frozenset({args.branch}),
+    )
+
+    if args.export_json != "-":
+        _print_diff_summary(delta, args.branch)
+        if args.branch is not None:
+            _print_diff_branch(delta, args.branch, args.limit)
+    if args.export_json is not None:
+        _emit_json(delta.as_dict(), args.export_json)
     return 0
 
 
@@ -973,6 +1170,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     unlock.add_argument("--chunk", dest="chunk_id", required=True, help="candidate chunk id")
     unlock.add_argument(
+        "--cache-map",
+        dest="cache_map",
+        metavar="NAME",
+        default=None,
+        help="save the post-unlock state as a cached map under NAME, readable with --map",
+    )
+    unlock.add_argument(
         "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"
     )
     unlock.add_argument(
@@ -993,6 +1197,41 @@ def build_parser() -> argparse.ArgumentParser:
         help="ignore any cached derivation and compute (and re-store) a fresh one",
     )
     unlock.set_defaults(func=_cmd_unlock)
+
+    # `--map1`/`--map2` rather than this file's usual single `--map`, and both
+    # required: a diff against a defaulted map id would compare the wrong two
+    # worlds on a typo and still print a plausible answer.
+    diff = subcommands.add_parser(
+        "diff", help="compare two cached maps: what the second has that the first doesn't, and back"
+    )
+    diff.add_argument("--map1", required=True, metavar="MAPID", help="the map to compare from")
+    diff.add_argument("--map2", required=True, metavar="MAPID", help="the map to compare to")
+    diff.add_argument(
+        "branch",
+        nargs="?",
+        default=None,
+        metavar="BRANCH",
+        help=f"list one branch's names in full, one of: {', '.join(BRANCHES)}",
+    )
+    diff.add_argument("--limit", type=int, default=None, help="cap the lines printed for BRANCH")
+    diff.add_argument(
+        "--chunkinfo",
+        type=Path,
+        default=None,
+        help="path to a chunkinfo export, overriding the cache and FRAY_CHUNKINFO",
+    )
+    diff.add_argument(
+        "--export-json",
+        metavar="PATH",
+        default=None,
+        help="write the full result as JSON to PATH, or to stdout if PATH is '-'",
+    )
+    diff.add_argument(
+        "--recompute",
+        action="store_true",
+        help="ignore any cached derivation and compute (and re-store) a fresh one",
+    )
+    diff.set_defaults(func=_cmd_diff)
 
     neighbours = subcommands.add_parser(
         "neighbours",
