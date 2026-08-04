@@ -409,6 +409,13 @@ def stems(word: str) -> frozenset[str]:
         candidates.add(word[:-2])
     if word.endswith("ies") and len(word) > 4:
         candidates.add(f"{word[:-3]}y")
+    if word.endswith("ves") and len(word) > 4:
+        # `wolves`/`elves`/`dwarves` are `wolf`/`elf`/`dwarf`, and `knives` is
+        # `knife` - two rules, so both candidates go in. Slayer names four
+        # task categories this way (`Wolves`, `Elves`, `Dwarves`,
+        # `Werewolves`), none of which matched a monster without it.
+        candidates.add(f"{word[:-3]}f")
+        candidates.add(f"{word[:-3]}fe")
     return frozenset(candidates)
 
 

@@ -359,6 +359,20 @@ def test_stems_covers_the_irregular_plurals() -> None:
     assert stems("bloodveld") == {"bloodveld"}
 
 
+def test_stems_undoes_the_f_to_ves_plural() -> None:
+    """Slayer names four task categories this way and none matched without it.
+
+    `Wolves`, `Elves`, `Dwarves` and `Werewolves` are all real task names, and
+    -s/-es/-ies between them get none of `wolf`, `elf` or `dwarf`. Both `-f`
+    and `-fe` go in because English does both.
+    """
+    assert "wolf" in stems("wolves")
+    assert "elf" in stems("elves")
+    assert "dwarf" in stems("dwarves")
+    assert "werewolf" in stems("werewolves")
+    assert "knife" in stems("knives")
+
+
 def test_a_plural_task_matches_a_singular_sheet_row() -> None:
     # The real one: the export says `Jellies`, the spreadsheet says `Jelly`,
     # and `rstrip("s")` read the first as `jellie` so they never met.

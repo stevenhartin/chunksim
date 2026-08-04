@@ -28,6 +28,7 @@ from fray_claude.slayer import (
     superior_rolls_per_hour,
     superior_spawns_per_hour,
     superior_table_items,
+    task_monsters,
 )
 
 _CSV = (
@@ -749,3 +750,59 @@ def test_superior_spawns_and_table_rolls_are_different_rates() -> None:
     # those roll it.
     assert spawns == pytest.approx(0.25)
     assert rolls == pytest.approx(spawns / 2)
+
+
+def test_task_monsters_reads_the_slayer_list_first() -> None:
+    info = _info(
+        slayerMonsters={"Aberrant spectre": True, "Abyssal demon": True},
+        drops={"Aberrant spectre": {}, "Cow": {}},
+    )
+
+    assert task_monsters(info, "Aberrant spectres") == {"Aberrant spectre"}
+
+
+def test_the_world_fallback_finds_the_ordinary_monsters() -> None:
+    """`slayerMonsters` holds 95 slayer-specific entries and no cows.
+
+    A master's easy list is mostly ordinary world monsters, so 29 task
+    categories on the real export - `Cows`, `Goblins`, `Bats`, `Wolves` -
+    matched nothing in it at all.
+    """
+    info = _info(
+        slayerMonsters={"Aberrant spectre": True},
+        drops={"Cow": {}, "Cow calf": {}, "Aberrant spectre": {}},
+    )
+
+    assert task_monsters(info, "Cows") == set()
+    assert task_monsters(info, "Cows", world=True) == {"Cow", "Cow calf"}
+
+
+def test_the_world_fallback_only_applies_when_the_slayer_list_misses() -> None:
+    """A category the slayer list covers must not be widened out of it."""
+    info = _info(
+        slayerMonsters={"Aberrant spectre": True},
+        drops={"Aberrant spectre": {}, "Aberrant spectre (weak)": {}},
+    )
+
+    assert task_monsters(info, "Aberrant spectres", world=True) == {"Aberrant spectre"}
+
+
+def test_irregular_plurals_reach_their_monster() -> None:
+    """-s/-es/-ies between them get none of `wolf`, `elf` or `dwarf`."""
+    info = _info(slayerMonsters={}, drops={"Wolf": {}, "Elf Warrior": {}, "Dwarf": {}})
+
+    assert task_monsters(info, "Wolves", world=True) == {"Wolf"}
+    assert task_monsters(info, "Elves", world=True) == {"Elf Warrior"}
+    assert task_monsters(info, "Dwarves", world=True) == {"Dwarf"}
+
+
+def test_reachability_does_not_see_the_widened_list() -> None:
+    """Widening it there would turn "no opinion" into a real gate.
+
+    `_is_reachable` reads an empty result as "nothing to say" and lets the
+    task through. Handing it every cow in the world instead is a different
+    question from the one it asks, so `world` stays off by default.
+    """
+    info = _info(slayerMonsters={"Abyssal demon": True}, drops={"Cow": {}})
+
+    assert task_monsters(info, "Cows") == set()

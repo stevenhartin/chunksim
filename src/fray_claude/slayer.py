@@ -363,8 +363,8 @@ def _weight(entry: Mapping[str, Any]) -> float:
     return float(value)
 
 
-def task_monsters(chunk_info: ChunkInfo, task: str) -> set[str]:
-    """Which `slayerMonsters` a task category covers.
+def task_monsters(chunk_info: ChunkInfo, task: str, *, world: bool = False) -> set[str]:
+    """Which monsters a task category covers.
 
     Public because `dps_bridge.py` needs the same join to price a task the
     config has no rate for, and two spellings of it would drift apart.
@@ -372,14 +372,29 @@ def task_monsters(chunk_info: ChunkInfo, task: str) -> set[str]:
     The export names tasks in the plural (`Aberrant spectres`) and monsters in
     the singular (`Aberrant spectre`), sometimes with a `#Level 96` variant
     suffix, so matching is on depluralised words rather than equality.
+
+    **`slayerMonsters` holds 95 entries and they are the slayer-specific
+    ones** - abyssal demons, gargoyles, nechryael. A master's easy list is
+    mostly ordinary world monsters, so `Cows`, `Goblins`, `Bats` and 26 other
+    categories match nothing in it at all. `world` widens the search to every
+    monster with a drop table, which covers them.
+
+    **Off by default, because widening it changes what "reachable" means.**
+    `_is_reachable` reads an empty result as "no opinion" and lets the task
+    through; handing it a populated set instead turns that into a real gate,
+    which is a different question from the one this was written for. Only
+    pricing asks for `world`.
     """
     if not normalise(task):
         return set()
-    return {
+    found = {
         monster
         for monster in chunk_info.slayer_monsters
         if _words_match(task, monster)
     }
+    if found or not world:
+        return found
+    return {monster for monster in chunk_info.drops if _words_match(task, monster)}
 
 
 def _words_match(left: str, right: str) -> bool:

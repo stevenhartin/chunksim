@@ -879,3 +879,84 @@ def test_with_slayer_rates_merges_without_mutating() -> None:
     assert set(merged.slayer["Turael"]) == {"Banshees", "Cockatrices"}
     assert set(original.slayer["Turael"]) == {"Banshees"}
     assert dps_bridge.with_slayer_rates(original, {}) is original
+
+
+def test_slayer_pricing_narrows_to_what_the_map_can_reach() -> None:
+    """The widened join reaches monsters nobody gets sent to.
+
+    A `Wolves` task matches eleven monsters once the search leaves
+    `slayerMonsters`, including the Gauntlet's Crystalline Wolf. Choosing the
+    fastest of *those* prices a fight that is not the task.
+    """
+    from fray_claude.heuristics import Heuristics, SlayerTask
+
+    info = ChunkInfo(
+        {
+            "equipment": _equipment(),
+            "slayerMasterTasks": {"Turael": {"Wolves": {"Weight": 10}}},
+            "slayerMonsters": {},
+            "drops": {"Wolf": {}, "Crystalline Wolf": {}},
+        }
+    )
+    index = _FakeIndex(
+        {
+            "Wolf": _target(name="Wolf", hitpoints=15),
+            "Crystalline Wolf": _target(name="Crystalline Wolf", hitpoints=40),
+        }
+    )
+    heuristics = Heuristics(
+        slayer={
+            "Turael": {
+                "Wolves": SlayerTask(
+                    mean_count=40.0, xp_per_kill=0.0, kills_per_hour=0.0
+                )
+            }
+        }
+    )
+    priced = dps_bridge.price_slayer_tasks(
+        info,
+        {"Melee-weapon": "Abyssal whip"},
+        LEVELS,
+        heuristics=heuristics,
+        index=index,  # type: ignore[arg-type]
+        reachable_monsters=frozenset({"Wolf"}),
+    )
+
+    # The reachable wolf's hitpoints, not the Gauntlet one's.
+    assert priced["Turael"]["Wolves"].xp_per_kill == 15.0
+
+
+def test_a_task_whose_monsters_are_all_unreachable_is_not_priced() -> None:
+    """`slayer.py` has already decided that is a skip, not a rate."""
+    from fray_claude.heuristics import Heuristics, SlayerTask
+
+    info = ChunkInfo(
+        {
+            "equipment": _equipment(),
+            "slayerMasterTasks": {"Turael": {"Wolves": {"Weight": 10}}},
+            "slayerMonsters": {},
+            "drops": {"Wolf": {}},
+        }
+    )
+    index = _FakeIndex({"Wolf": _target(name="Wolf", hitpoints=15)})
+    heuristics = Heuristics(
+        slayer={
+            "Turael": {
+                "Wolves": SlayerTask(
+                    mean_count=40.0, xp_per_kill=0.0, kills_per_hour=0.0
+                )
+            }
+        }
+    )
+
+    assert (
+        dps_bridge.price_slayer_tasks(
+            info,
+            {"Melee-weapon": "Abyssal whip"},
+            LEVELS,
+            heuristics=heuristics,
+            index=index,  # type: ignore[arg-type]
+            reachable_monsters=frozenset({"Something else"}),
+        )
+        == {}
+    )
