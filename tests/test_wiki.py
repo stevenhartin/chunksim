@@ -1,0 +1,194 @@
+"""Tests for the wikitext parsing.
+
+Fixtures are cut down from real pages rather than invented: the nested
+`{{SCP|Quest}}`, the comment inside Gargoyle's `slayxp`, and the
+`{{+=|weight|7|echo=2}}` weight call are all shapes the live wiki actually
+serves, and each one breaks a naive parse in a different way.
+"""
+
+from __future__ import annotations
+
+from fray_claude.wiki import (
+    mmg_rates,
+    monster_slayer_xp,
+    parse_number,
+    quest_difficulty,
+    quest_length,
+    slayer_assignments,
+    strip_comments,
+    strip_links,
+    template_params,
+)
+
+#: Cut from the live `Dragon Slayer I`. The length is in `{{Quest details}}`
+#: and *not* in `{{Infobox Quest}}` - both are here because a parser that
+#: reads the wrong one returns `None` for every quest without erroring.
+_QUEST = """
+{{Infobox Quest
+|name = Dragon Slayer I
+|number = 17
+|image = [[File:Dragon Slayer.png|300px]]
+|members = No
+|developer = [[Paul Gower]]
+}}
+'''Dragon Slayer I''' is a quest.
+
+==Details==
+{{Quest details
+|start = Talk to the [[Guildmaster]].
+|difficulty = Experienced
+|length = Medium
+|requirements = 32 {{SCP|Quest|link=yes}} points
+|items = 10 [[Steel nails|nails]]
+}}
+"""
+
+_MMG = """
+{{Mmgtable
+|Activity = [[Underwater Agility and Thieving]]
+|Members = Yes
+|Skill = {{SCP|Agility|60}}
+|Experience1 = Thieving
+|Experience1num = 422.8
+|Experience2 = Agility
+|Experience2num = 4.5
+|kph = 200
+|kph name = Mermaid's Tears per hour
+}}
+"""
+
+_ASSIGNMENTS = """
+{| class="wikitable sortable"
+! Task !! Amount !! Requirements !! Weight
+|-
+|[[Slayer task/Aberrant spectres|Aberrant Spectres]]
+|130-200
+|{{SCP|Slayer|60}}
+|{{+=|weight|7|echo=2}}
+|-
+|[[Slayer task/Metal dragons|Metal Dragons]]
+|35-45
+|
+|{{+=|weight|14|echo=2}}
+|-
+! Total
+!
+!
+!{{#var:weight}}
+|}
+"""
+
+
+def test_strip_comments_removes_multi_line_spans() -> None:
+    assert strip_comments("a<!--\nnote\n-->b") == "ab"
+
+
+def test_parse_number_tolerates_separators_and_trailing_markup() -> None:
+    assert parse_number("1,200") == 1200.0
+    assert parse_number("422.8") == 422.8
+    assert parse_number("27 kills<ref name=x/>") == 27.0
+    assert parse_number("no number here") is None
+
+
+def test_quest_length_reads_the_infobox() -> None:
+    assert quest_length(_QUEST) == "Medium"
+
+
+def test_length_is_not_read_from_the_infobox() -> None:
+    # The tempting wrong template. It parses fine and has no length, so the
+    # failure mode is a silent `None` for every quest in the game.
+    assert "length" not in template_params(_QUEST, "Infobox Quest")
+
+
+def test_quest_difficulty_reads_the_same_template() -> None:
+    assert quest_difficulty(_QUEST) == "Experienced"
+
+
+def test_a_nested_template_does_not_end_the_parameter() -> None:
+    # `{{SCP|Quest|link=yes}}` contains two `|` and an `=`; splitting on
+    # either without tracking depth loses every parameter after it.
+    params = template_params(_QUEST, "Quest details")
+
+    assert params["requirements"] == "32 {{SCP|Quest|link=yes}} points"
+    assert params["difficulty"] == "Experienced"
+
+
+def test_a_nested_link_does_not_end_the_parameter() -> None:
+    assert template_params(_QUEST, "Quest details")["items"] == "10 [[Steel nails|nails]]"
+
+
+def test_strip_links_keeps_the_visible_text() -> None:
+    assert strip_links("Killing [[General Graardor]]") == "Killing General Graardor"
+    assert strip_links("10 [[Steel nails|nails]]") == "10 nails"
+
+
+def test_the_template_name_matches_loosely() -> None:
+    # MediaWiki normalises case and underscores, and pages use either.
+    assert template_params("{{quest_details|length = Long}}", "Quest details") == {"length": "Long"}
+
+
+def test_a_missing_template_is_empty_rather_than_an_error() -> None:
+    assert template_params("just prose", "Quest details") == {}
+    assert quest_length("just prose") is None
+
+
+def test_a_quest_without_a_length_reads_none() -> None:
+    assert quest_length("{{Quest details|start = Talk to someone}}") is None
+
+
+def test_a_comment_inside_a_value_is_not_part_of_it() -> None:
+    # Gargoyle's real infobox, which is why comments are stripped first.
+    text = "{{Infobox Monster|slaylvl = 75|slayxp = 105<!-- before changing this, read -->}}"
+
+    assert monster_slayer_xp(text) == 105.0
+
+
+def test_mmg_rates_pairs_experience_with_its_amount() -> None:
+    rates = mmg_rates(_MMG)
+
+    assert rates is not None
+    assert rates.activity == "Underwater Agility and Thieving"
+    assert rates.kph == 200.0
+    assert rates.experience == {"Thieving": 422.8, "Agility": 4.5}
+
+
+def test_an_unpaired_experience_entry_is_dropped() -> None:
+    rates = mmg_rates("{{Mmgtable|Activity = X|kph = 10|Experience1 = Thieving}}")
+
+    assert rates is not None and rates.experience == {}
+
+
+def test_a_guide_without_kph_still_parses() -> None:
+    rates = mmg_rates("{{Mmgtable|Activity = Buying beer}}")
+
+    assert rates is not None
+    assert rates.kph is None
+    assert rates.activity == "Buying beer"
+
+
+def test_a_page_that_is_not_a_guide_reads_none() -> None:
+    assert mmg_rates("{{Infobox Quest|length = Long}}") is None
+
+
+def test_slayer_assignments_reads_task_amount_and_weight() -> None:
+    rows = slayer_assignments(_ASSIGNMENTS)
+
+    assert [(row.task, row.weight, row.low, row.high) for row in rows] == [
+        ("Aberrant spectres", 7, 130, 200),
+        ("Metal dragons", 14, 35, 45),
+    ]
+    assert rows[0].mean_count == 165.0
+
+
+def test_assignment_rows_missing_any_of_the_three_are_skipped() -> None:
+    # The header and total rows match none of the three patterns, and a row
+    # with a task but no weight is a note rather than an assignment.
+    rows = slayer_assignments(_ASSIGNMENTS + "\n|-\n|[[Slayer task/Nothing|Nothing]]\n|1-2\n|}")
+
+    assert len(rows) == 2
+
+
+def test_an_en_dash_range_parses_like_a_hyphen() -> None:
+    row = "|-\n|[[Slayer task/Bloodvelds|Bloodvelds]]\n|120 – 185\n|{{+=|weight|8|echo=2}}"
+
+    assert slayer_assignments(row)[0].mean_count == 152.5
