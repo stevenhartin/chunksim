@@ -1791,3 +1791,34 @@ def test_estimate_is_quiet_about_rates_it_has(
     main(["estimate"])
 
     assert "no cached wiki rates" not in capsys.readouterr().out
+
+
+def test_estimate_skilling_lists_every_slayer_master(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    chunkinfo_data = {
+        "chunks": {"100": {"NPC": {"Vannaka": 1, "Mazchna": 1}}},
+        "slayerMasterTasks": {
+            "Vannaka": {"Bats": {"Weight": 1}},
+            "Mazchna": {"Bats": {"Weight": 1}},
+        },
+    }
+    _cache_map_and_chunkinfo(monkeypatch, {"chunks": {"unlocked": {"100": True}}}, chunkinfo_data)
+    write_blob(
+        "wiki_rates",
+        {
+            "slayer": {
+                "Vannaka": {"Bats": {"mean_count": 100, "xp_per_kill": 50, "kills_per_hour": 100}},
+                "Mazchna": {"Bats": {"mean_count": 100, "xp_per_kill": 10, "kills_per_hour": 100}},
+            }
+        },
+        "test",
+    )
+    capsys.readouterr()
+
+    assert main(["estimate", "skilling"]) == 0
+
+    out = capsys.readouterr().out
+    assert "slayer master" in out
+    assert "Vannaka" in out and "Mazchna" in out
+    assert "used by the estimate" in out

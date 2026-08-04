@@ -232,7 +232,21 @@ class EstimateResult:
     #: The boss-drop and activity buckets, one entry per unique item.
     items: tuple[ItemEstimate, ...] = ()
     skills: tuple[SkillEstimate, ...] = ()
+    #: The master the Slayer estimate used - the fastest reachable one.
     slayer: MasterRate | None = None
+    #: **Every** reachable master, fastest first. The estimate has to pick
+    #: one, but XP rate is not the only reason to choose: coverage, how much
+    #: of the list is unpriced, and how often supers turn up all differ, and
+    #: a player may reasonably want a slower master for any of them. Shown in
+    #: full rather than collapsed to the winner.
+    slayer_masters: tuple[MasterRate, ...] = ()
+    #: `master -> superior-table rolls per hour`, for the same comparison.
+    #: Computed at the levels the player has *declared they can reach*, not
+    #: the ones they hold, because that is what the item prices rest on - the
+    #: skilling bucket is already paying for the climb. At a passive floor of
+    #: 45 every superior-bearing task is level-gated out and this would read
+    #: zero everywhere, which would contradict the hours printed beside it.
+    superior_rolls: dict[str, float] = field(default_factory=dict)
     #: Items with no priceable route - the honest coverage figure.
     unpriced: tuple[str, ...] = ()
 
@@ -308,6 +322,10 @@ class EstimateResult:
             },
             "skills": [skill.as_dict() for skill in self.skills],
             "slayer": self.slayer.as_dict() if self.slayer else None,
+            "slayer_masters": [
+                {**rate.as_dict(), "superior_rolls_per_hour": self.superior_rolls.get(rate.master, 0.0)}
+                for rate in self.slayer_masters
+            ],
             "unpriced": list(self.unpriced),
         }
 
@@ -785,7 +803,7 @@ def estimate(
     # A slayer master you cannot reach assigns nothing - see `slayer.py`.
     reachable_masters = frozenset(derived.source_index.npcs)
 
-    slayer_rate = best_master(
+    reachable_rates = tuple(
         master_rates(
             state.chunk_info,
             heuristics,
@@ -798,6 +816,7 @@ def estimate(
             reachable_masters=reachable_masters,
         )
     )
+    slayer_rate = best_master(list(reachable_rates))
     # Every master's table, for *task-gated drops only*, computed at the
     # levels the player has declared they can reach rather than the ones they
     # have. Grotesque Guardians need a gargoyle task, which needs Slayer 75;
@@ -896,6 +915,8 @@ def estimate(
         items=tuple(items),
         skills=tuple(skills),
         slayer=slayer_rate,
+        slayer_masters=reachable_rates,
+        superior_rolls=dict(walk.superior_rolls),
         unpriced=tuple(sorted(unpriced)),
     )
 

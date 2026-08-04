@@ -901,3 +901,47 @@ def test_the_shared_superior_table_is_one_source_across_a_master() -> None:
     assert {item.source for item in result.items} == {"superiors:Vannaka"}
     # One pool, so the bucket is the longer of the two and not their sum.
     assert result.buckets["activities"] == pytest.approx(32.0)
+
+
+def test_every_reachable_slayer_master_is_reported() -> None:
+    # XP rate is not the only reason to pick a master, so the estimate names
+    # the one it used and shows the rest to compare against.
+    info = ChunkInfo(
+        {
+            "slayerMasterTasks": {
+                "Vannaka": {"Bats": {"Weight": 1}},
+                "Mazchna": {"Bats": {"Weight": 1}},
+                "Duradel": {"Bats": {"Weight": 1}},
+            },
+            "challenges": {},
+        }
+    )
+    derived = Derived(
+        reachable_sections={},
+        expanded_chunks={"100": True},
+        source_index=SourceIndex(
+            items={},
+            objects={},
+            monsters={},
+            npcs={"Vannaka": {"100": True}, "Mazchna": {"100": True}},
+            shops={},
+            drop_rates={},
+        ),
+        challenges=ChallengeResult(valid={}, unsupported=frozenset()),
+        bis=BisResult(picks={}),
+        task_classification=TaskClassification(),
+        other_tasks=OtherTasks(),
+    )
+    heuristics = Heuristics(
+        slayer={
+            "Vannaka": {"Bats": SlayerTask(100, 50, 100)},
+            "Mazchna": {"Bats": SlayerTask(100, 10, 100)},
+            "Duradel": {"Bats": SlayerTask(100, 99, 100)},
+        }
+    )
+
+    result = _run(info, derived, heuristics)
+
+    # Duradel is faster but unreachable, so he is not offered at all.
+    assert [rate.master for rate in result.slayer_masters] == ["Vannaka", "Mazchna"]
+    assert result.slayer is not None and result.slayer.master == "Vannaka"

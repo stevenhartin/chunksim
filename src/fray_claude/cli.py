@@ -1011,12 +1011,7 @@ def _print_estimate(
                 f" {skill.xp:>10,} xp @ {skill.xp_per_hour:>9,.0f}/hr"
                 f" = {skill.hours:>7,.1f}h  {skill.method}{flag}"
             )
-        if result.slayer is not None:
-            print(
-                f"  slayer master {result.slayer.master}"
-                f" at {result.slayer.xp_per_hour:,.0f} xp/hr,"
-                f" {result.slayer.coverage:.0%} of its tasks reachable"
-            )
+        _print_slayer_masters(result)
         return
 
     if bucket == "quests":
@@ -1039,6 +1034,34 @@ def _print_estimate(
             print(f"      {entry.hours:>8,.1f}h {entry.item}{covers}")
     if limit is not None and len(groups) > limit:
         print(f"  ... and {len(groups) - limit} more (--limit {len(groups)} to see all)")
+
+
+def _print_slayer_masters(result: EstimateResult) -> None:
+    """Every reachable master, not just the one the estimate used.
+
+    Slayer is the one skill whose rate depends on *who you talk to*, and XP
+    per hour is not the only reason to pick one: a master with a fuller task
+    list, fewer gaps in its data, or a denser superior pool can be the better
+    choice even when slower. The estimate still uses the fastest.
+    """
+    if not result.slayer_masters:
+        return
+
+    chosen = result.slayer.master if result.slayer else ""
+    print(
+        f"\n  {'slayer master':<18} {'xp/hr':>9}  {'tasks':>5} {'reach':>6} {'no data':>7}"
+        "  supers*"
+    )
+    for rate in result.slayer_masters:
+        rolls = result.superior_rolls.get(rate.master, 0.0)
+        supers = f"1 per {1 / rolls:,.0f}h" if rolls > 0 else "none"
+        marker = " *" if rate.master == chosen else "  "
+        print(
+            f" {marker}{rate.master:<18} {rate.xp_per_hour:>9,.0f}"
+            f"  {len(rate.tasks):>5} {rate.coverage:>6.0%} {rate.unpriced:>7.0%}  {supers}"
+        )
+    print("  * used by the estimate (fastest); the others are shown to compare")
+    print("  supers* assume the levels you can reach, as the item prices do")
 
 
 def _print_estimate_warnings(result: EstimateResult, scraped_found: bool = True) -> None:
