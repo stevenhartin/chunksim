@@ -26,6 +26,7 @@ from fray_claude.slayer import (
     parse_mob_data,
     parse_task_lengths,
     superior_rolls_per_hour,
+    superior_spawns_per_hour,
     superior_table_items,
 )
 
@@ -724,3 +725,27 @@ def test_a_skill_requirement_is_enforced_against_the_inferred_level() -> None:
 
     assert met.offered == 1.0
     assert short.offered == 0.0
+
+
+def test_superior_spawns_and_table_rolls_are_different_rates() -> None:
+    # A superior appears about 1 in 200 kills; it then rolls the shared table
+    # only some of the time. Reporting one as the other is off by the table
+    # rate - on the real map, 1.9h against 163h.
+    info = _superior_info()
+    heuristics = _superior_heuristics()
+    rate = master_rates(
+        info,
+        heuristics,
+        reachable_monsters=frozenset({"Abyssal demon", "Bat"}),
+        valid={},
+        levels={},
+    )[0]
+
+    spawns = superior_spawns_per_hour(rate, info, heuristics)
+    rolls = superior_rolls_per_hour(rate, info, heuristics)
+
+    # Half the assignments are abyssal demons, 100 kills at 1/200 supers over
+    # 1h: 0.25 supers an hour. The fixture's table rate is 1/2, so half of
+    # those roll it.
+    assert spawns == pytest.approx(0.25)
+    assert rolls == pytest.approx(spawns / 2)

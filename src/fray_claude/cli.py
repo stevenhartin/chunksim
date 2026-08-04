@@ -1059,8 +1059,8 @@ def _print_slayer_masters(result: EstimateResult) -> None:
         "  supers"
     )
     for rate in result.slayer_masters:
-        rolls = result.superior_rolls.get(rate.master, 0.0)
-        supers = f"1 per {1 / rolls:,.0f}h" if rolls > 0 else "none"
+        spawns = result.superior_spawns.get(rate.master, 0.0)
+        supers = f"1 per {1 / spawns:,.1f}h" if spawns > 0 else "none"
         marker = " *" if rate.master == chosen else "  "
         print(
             f" {marker}{rate.master:<18} {rate.xp_per_hour:>9,.0f} {rate.skip_rate:>5.0%}"
@@ -1069,6 +1069,8 @@ def _print_slayer_masters(result: EstimateResult) -> None:
     print("  * used by the estimate (fastest); the others are shown to compare")
     print("  skip = share of *offered* tasks whose monsters this map cannot reach")
     print("  pts/task = points earned, less points paid skipping those; negative bleeds points")
+    print("  supers = how often a superior spawns; the four items they *share*")
+    print("  are far rarer, and `fray estimate activities` prices those")
     print("  all four assume this chunk's end levels - the task list you will")
     print("  spend most of it on - not the levels you hold today")
 

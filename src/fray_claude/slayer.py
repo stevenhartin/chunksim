@@ -717,6 +717,49 @@ def superior_rolls_per_hour(
     return per_assignment / master.average_hours
 
 
+def superior_spawns_per_hour(
+    master: MasterRate, chunk_info: ChunkInfo, heuristics: Heuristics
+) -> float:
+    """Expected *superior spawns* per hour slaying for `master`.
+
+    **Not the same thing as `superior_rolls_per_hour`, and confusing the two
+    is easy.** A superior appears roughly 1 in 200 kills; it then rolls the
+    shared drop table only 1 in 43 to 1 in 142 times depending on which
+    superior it is. So Vannaka sees a superior about every 1.9 hours and one
+    of the four shared items about every 163 - two orders of magnitude apart.
+
+    This is the one a player recognises, so it is what gets reported; the
+    other is what prices the items.
+    """
+    if master.average_hours <= 0:
+        return 0.0
+    total_weight = sum(task.weight for task in master.tasks)
+    if total_weight <= 0:
+        return 0.0
+
+    per_assignment = 0.0
+    for task in master.tasks:
+        chance = _superior_spawn_chance(task.task, chunk_info, heuristics)
+        if chance > 0:
+            per_assignment += (task.weight / total_weight) * task.mean_count * chance
+    return per_assignment / master.average_hours
+
+
+def _superior_spawn_chance(task: str, chunk_info: ChunkInfo, heuristics: Heuristics) -> float:
+    """Chance one kill of `task`'s monsters spawns a superior at all."""
+    monsters = _task_monsters(chunk_info, task)
+    if not monsters:
+        return 0.0
+    return max(
+        (
+            superior.spawn_rate
+            for superior in heuristics.superiors.values()
+            if superior.base in monsters and superior.spawn_rate > 0
+        ),
+        default=0.0,
+    )
+
+
 def _superior_table_chance(task: str, chunk_info: ChunkInfo, heuristics: Heuristics) -> float:
     """Chance one kill of `task`'s monsters yields a superior-table roll.
 

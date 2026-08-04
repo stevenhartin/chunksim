@@ -138,6 +138,7 @@ from fray_claude.slayer import (
     best_master,
     master_rates,
     superior_rolls_per_hour,
+    superior_spawns_per_hour,
     superior_table_items,
 )
 from fray_claude.summary import _mapping
@@ -260,6 +261,9 @@ class EstimateResult:
     #: a player may reasonably want a slower master for any of them. Shown in
     #: full rather than collapsed to the winner.
     slayer_masters: tuple[MasterRate, ...] = ()
+    #: `master -> superior *spawns* per hour`. What a player recognises,
+    #: and two orders of magnitude commoner than a shared-table roll.
+    superior_spawns: dict[str, float] = field(default_factory=dict)
     #: `master -> superior-table rolls per hour`, for the same comparison.
     #: Computed at the levels the player has *declared they can reach*, not
     #: the ones they hold, because that is what the item prices rest on - the
@@ -343,7 +347,11 @@ class EstimateResult:
             "skills": [skill.as_dict() for skill in self.skills],
             "slayer": self.slayer.as_dict() if self.slayer else None,
             "slayer_masters": [
-                {**rate.as_dict(), "superior_rolls_per_hour": self.superior_rolls.get(rate.master, 0.0)}
+                {
+                    **rate.as_dict(),
+                    "superior_spawns_per_hour": self.superior_spawns.get(rate.master, 0.0),
+                    "superior_rolls_per_hour": self.superior_rolls.get(rate.master, 0.0),
+                }
                 for rate in self.slayer_masters
             ],
             "unpriced": list(self.unpriced),
@@ -504,8 +512,9 @@ def _superior_table_hours(walk: _Walk, item: str) -> _Priced | None:
 
 
 def _rolls_label(walk: _Walk, master: str) -> str:
+    """How often the *shared table* comes up - far rarer than a superior."""
     rolls = walk.superior_rolls.get(master, 0.0)
-    return f"1 super per {1 / rolls:,.1f}h" if rolls > 0 else "no supers"
+    return f"1 table roll per {1 / rolls:,.0f}h" if rolls > 0 else "no supers"
 
 
 def _route_hours(
@@ -984,6 +993,10 @@ def estimate(
         slayer=slayer_rate,
         slayer_masters=reachable_rates,
         superior_rolls=dict(walk.superior_rolls),
+        superior_spawns={
+            rate.master: superior_spawns_per_hour(rate, state.chunk_info, heuristics)
+            for rate in reachable_rates
+        },
         unpriced=tuple(sorted(unpriced)),
     )
 
