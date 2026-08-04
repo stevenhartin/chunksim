@@ -488,7 +488,40 @@ def _gated_heuristics() -> Heuristics:
 
 
 def test_task_gated_monsters_are_read_out_of_task_unlocks() -> None:
-    assert task_gated_monsters(_gated_info()) == {"Grotesque Guardians": "Gargoyles"}
+    info = _gated_info()
+    gates = task_gated_monsters(info, build_world_index(info), frozenset({"100"}))
+
+    assert gates == {"Grotesque Guardians": "Gargoyles"}
+
+
+def test_a_monster_reachable_somewhere_ungated_is_not_gated() -> None:
+    # Aberrant spectres need a task in the Stronghold Slayer Cave and nowhere
+    # else; gating the monster outright made a 1/512 drop off them cost 1,707
+    # hours instead of 8.
+    info = ChunkInfo(
+        {
+            "chunks": {
+                "13623": {"Monster": {"Aberrant spectre": 1}},
+                "Stronghold Slayer Cave": {"Monster": {"Aberrant spectre": 1}},
+            },
+            "codeItems": {"slayerTasks": {"Aberrant spectres": {"Aberrant spectre": True}}},
+            "taskUnlocks": {
+                "Monsters": {
+                    "Aberrant spectre": {
+                        "Stronghold Slayer Cave": [{"Aberrant spectre task": "Nonskill"}]
+                    }
+                }
+            },
+        }
+    )
+    world = build_world_index(info)
+
+    # The Slayer Tower chunk is open, so no task is needed.
+    assert task_gated_monsters(info, world, frozenset({"13623"})) == {}
+    # With only the gated cave reachable, the task is unavoidable again.
+    assert task_gated_monsters(info, world, frozenset({"Stronghold Slayer Cave"})) == {
+        "Aberrant spectre": "Aberrant spectres"
+    }
 
 
 def test_a_task_gated_kill_includes_the_wait_for_the_task() -> None:

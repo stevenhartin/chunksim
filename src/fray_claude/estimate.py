@@ -583,8 +583,17 @@ def _superior_hours(walk: _Walk, superior: Superior, item: str) -> _Priced | Non
     # Base kills needed: one superior per `1 / spawn_rate`, and one drop per
     # `1 / chance` superiors.
     kills = (1 / superior.spawn_rate) * (1 / chance)
-    gated = _task_hours(walk, superior.base, kills, rate.value)
-    hours = gated[0] if gated is not None else kills / rate.value
+    if superior.base in walk.task_gates:
+        # Same rule as a direct kill: if the base's task cannot be costed,
+        # the route has no price. Falling back to an ungated figure here made
+        # the superior route look *cheaper* than the base monster's own drop,
+        # which is how a 1/512 drop came out at 1,707 hours.
+        gated = _task_hours(walk, superior.base, kills, rate.value)
+        if gated is None:
+            return None
+        hours = gated[0]
+    else:
+        hours = kills / rate.value
     # The *base* monster is the source: the superior spawns while you kill it,
     # so its drops accumulate alongside the base's own.
     return _Priced(
@@ -595,49 +604,83 @@ def _superior_hours(walk: _Walk, superior: Superior, item: str) -> _Priced | Non
     )
 
 
-def task_gated_monsters(chunk_info: ChunkInfo) -> dict[str, str]:
+def task_gated_monsters(
+    chunk_info: ChunkInfo,
+    world: WorldIndex,
+    reachable_places: frozenset[str],
+) -> dict[str, str]:
     """Monsters you must be *on a slayer task* to fight, and which task.
 
-    Read out of `taskUnlocks['Monsters']`, whose entries are per location::
+    Read out of `taskUnlocks['Monsters']`, whose entries are **per location**::
 
         "Grotesque Guardians": {"Grotesque Guardians' Lair":
                                     [{"Gargoyle task": "Nonskill"}]}
-        "Alchemical Hydra":    {"Karuulm Slayer Dungeon":
-                                    [{"Hydra task": "Nonskill"}]}
+        "Aberrant spectre":    {"Stronghold Slayer Cave":
+                                    [{"Aberrant spectre task": "Nonskill"}]}
+
+    **Per location is the whole point, and reading it as per monster is
+    wrong.** Aberrant spectres need a task in the Stronghold Slayer Cave and
+    nowhere else - the Slayer Tower and three other chunks place them freely -
+    so gating the monster outright made a 1/512 drop off them cost 1,707 hours
+    instead of 8. A monster is gated here only when *every* reachable place
+    that holds it demands a task; one open door is enough to walk through.
+    Grotesque Guardians stay gated because their lair is the only place they
+    exist.
 
     A `Nonskill` requirement named `<something> task` is the export's way of
-    saying "only while assigned". The other gates there are quests
-    (`Adamant dragon` wants Dragon Slayer II) and are ordinary validity
-    requirements `challenges.py` already enforces, so only the task-shaped
-    ones matter here. The name maps back to a `codeItems.slayerTasks` key -
-    `Gargoyle task` to the `Gargoyles` assignment - because that is where the
-    weight lives.
-
-    Nothing marks these monsters directly, which is why this is inferred
-    rather than looked up. Guessing instead (all 469 monsters a slayer task
-    covers, say) would put a waiting cost on every aberrant spectre you can
-    already walk up to and kill.
+    saying "only while assigned"; the other gates there are quests and are
+    ordinary validity requirements `challenges.py` already enforces. The name
+    maps back to a `codeItems.slayerTasks` key - `Gargoyle task` to the
+    `Gargoyles` assignment - because that is where the weight lives.
     """
     assignments = _mapping(chunk_info.code_items, "slayerTasks")
     by_normalised = {normalise(name): name for name in assignments}
+    placements = _mapping(world.locations, "Monster")
 
     gates: dict[str, str] = {}
     for monster, locations in _mapping(chunk_info.data, "taskUnlocks").get("Monsters", {}).items():
         if not isinstance(locations, dict):
             continue
-        for requirements in locations.values():
-            for requirement in requirements if isinstance(requirements, list) else ():
-                if not isinstance(requirement, dict):
-                    continue
-                for name, category in requirement.items():
-                    if category != "Nonskill" or not name.endswith(" task"):
-                        continue
-                    subject = normalise(name.removesuffix(" task"))
-                    for candidate in (subject, f"{subject}s", f"{subject}es"):
-                        if candidate in by_normalised:
-                            gates[monster] = by_normalised[candidate]
-                            break
+        task = _gating_task(locations, by_normalised)
+        if task is None:
+            continue
+        if _has_open_door(monster, locations, placements, reachable_places):
+            continue
+        gates[monster] = task
     return gates
+
+
+def _gating_task(locations: dict[str, Any], by_normalised: dict[str, str]) -> str | None:
+    """The slayer task a location's `<X> task` requirement names, if any."""
+    for requirements in locations.values():
+        for requirement in requirements if isinstance(requirements, list) else ():
+            if not isinstance(requirement, dict):
+                continue
+            for name, category in requirement.items():
+                if category != "Nonskill" or not name.endswith(" task"):
+                    continue
+                subject = normalise(name.removesuffix(" task"))
+                for candidate in (subject, f"{subject}s", f"{subject}es"):
+                    if candidate in by_normalised:
+                        return by_normalised[candidate]
+    return None
+
+
+def _has_open_door(
+    monster: str,
+    gated: dict[str, Any],
+    placements: Mapping[str, Any],
+    reachable_places: frozenset[str],
+) -> bool:
+    """Is `monster` somewhere reachable that does *not* demand a task?"""
+    gated_places = {normalise(place) for place in gated}
+    for place in placements.get(monster) or ():
+        chunk = str(place).split("#")[0].split("-")[0]
+        if normalise(str(place)) in gated_places or normalise(chunk) in gated_places:
+            continue
+        if str(place) in reachable_places or chunk in reachable_places:
+            return True
+    return False
 
 
 def _bucket_for(walk: _Walk, source: str) -> str:
@@ -782,7 +825,9 @@ def estimate(
         tables=_mapping(state.chunk_info.code_items, "dropTables"),
         by_lower={item.lower(): item for item in world.item_sources},
         available=reachable,
-        task_gates=task_gated_monsters(state.chunk_info),
+        task_gates=task_gated_monsters(
+            state.chunk_info, world, frozenset(expanded)
+        ),
         masters=gate_masters,
         superior_table=superior_table_items(state.chunk_info),
         superior_rolls={
