@@ -15,7 +15,11 @@
 const CANVAS = document.getElementById("canvas");
 const CTX = CANVAS.getContext("2d");
 
-const MIN_ZOOM = 0.2;
+/* Upstream clamps at 0.2, which is too high here: the whole 9216x6528 map needs
+ * 0.138 to fit a 1600x900 window and 0.110 for a 1280x720 one, so at 0.2 you
+ * could never see the world at once - and a sparse map whose chunks span it
+ * would open already clipped, because fitToCells would clamp too. */
+const MIN_ZOOM = 0.08;
 const MAX_ZOOM = 3.5;
 const ZOOM_STEP = 0.15;
 

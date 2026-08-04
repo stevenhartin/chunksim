@@ -434,3 +434,25 @@ class _FakeRun:
     def __init__(self, name: str) -> None:
         self.name = name
         self.unlocked_chunks = 1
+
+
+def test_the_canvas_is_given_an_explicit_size() -> None:
+    """`inset: 0` does not stretch a canvas, so the stylesheet must say the
+    size outright.
+
+    A canvas is a *replaced* element with intrinsic dimensions of 300x150, so
+    with `width: auto` the offsets resolve against that intrinsic size rather
+    than stretching it. Drop these two declarations and the map renders
+    correctly into a 300x150 box in the corner - every coordinate right, the
+    whole thing unusable, and looking like a rendering bug rather than a
+    layout one.
+    """
+    from fray_claude.gui.server import RESOURCE_DIR
+
+    css = (RESOURCE_DIR / "style.css").read_text(encoding="utf-8")
+    canvas_rule = re.search(r"#canvas\s*\{(.*?)\}", css, re.DOTALL)
+
+    assert canvas_rule is not None
+    body = canvas_rule.group(1)
+    assert re.search(r"\bwidth:\s*100%", body)
+    assert re.search(r"\bheight:\s*100%", body)
