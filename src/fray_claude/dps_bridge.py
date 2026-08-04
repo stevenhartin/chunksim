@@ -70,11 +70,17 @@ magma form takes nothing whatever from melee.
 - **Weapon category.** The export has no `category` field, so the effects
   keyed off one - `Polearm` reaching flying monsters, `Pickaxe` against
   Guardians, `Salamander` bypassing some melee immunities - never fire.
-- **`in_wilderness`.** The wilderness weapons only get their bonus inside it,
-  and a drop table does not say where its monster stands. The map's BiS holds
-  a `Webweaver bow (u)`, so this one is live and costs real damage.
 - **Prayer sustainability.** Prayers are applied for the whole fight however
   long it runs, which nothing restores in the model.
+
+**Where the fight happens is part of the loadout.** The wilderness weapons are
+worth +50% damage, gated on being in the wilderness *and* on the weapon being
+charged - and the export expresses charge state as a name suffix where the
+library expresses it as `weapon_version`. Both gates were failing at once: the
+map's BiS had picked `Webweaver bow (u)` over the identically-statted
+`Webweaver bow`, whose name is the one the library's special case looks for.
+Fixing the pair took the Chaos Elemental from 149 to 78 seconds and the Chaos
+Fanatic from 110 to 56. See `_WILDERNESS_WEAPONS` and `wilderness_monsters`.
 
 **Group bosses are refused, not priced.** A solo kill time for team content is
 not a number worth having, and the wiki's rate for one describes a team rather
@@ -217,6 +223,44 @@ _DRAIN_WEAPONS = (
     "Accursed sceptre",
 )
 
+#: The wilderness weapons, whose bonus is worth +50% damage and is gated on
+#: **two** things the export cannot express: being in the wilderness, and the
+#: weapon being charged.
+#:
+#: The export carries charge state *in the name* - `Webweaver bow` and
+#: `Webweaver bow (u)` are separate entries with **identical stats** - where
+#: the library carries it as `Loadout.weapon_version`. Identical stats mean
+#: `bis.py` picks between them on a tie, and it picked the uncharged one; the
+#: library's special case then never fired, because its name list holds only
+#: `Webweaver bow`. Translating the suffix into `weapon_version` is what makes
+#: the two models agree, and it is only done when the charged form is
+#: genuinely reachable - a map holding only the uncharged one keeps it.
+_WILDERNESS_WEAPONS = frozenset(
+    {
+        "Craw's bow",
+        "Webweaver bow",
+        "Viggora's chainmace",
+        "Ursine chainmace",
+        "Thammaron's sceptre",
+        "Accursed sceptre",
+    }
+)
+
+#: The uncharged suffix the export appends. Not a general rule - only the
+#: weapons above have a charge state this library models.
+_UNCHARGED_SUFFIX = " (u)"
+
+#: The wilderness, as OSRS region coordinates. A chunk id **is** a region id
+#: (`regionX * 256 + regionY`), verified against known chunks: 12850 is
+#: Lumbridge, 11833 holds the Crazy archaeologist. The wilderness spans
+#: x 2944-3392 and y 3520-3968, which is these bounds once divided by 64.
+#:
+#: The eastern edge matters: region x53 begins at x 3392 and holds the Slayer
+#: Tower, so an inclusive upper bound of 52 is what keeps abyssal demons out
+#: of the wilderness.
+_WILDERNESS_REGION_X = range(46, 53)
+_WILDERNESS_REGION_Y = range(55, 63)
+
 #: Specials assumed landed before the fight proper. Two is a realistic opener
 #: on a full bar, not a maximum - a longer fight regenerates energy and lands
 #: more, which this does not model.
@@ -303,6 +347,11 @@ class Kit:
     spell: str = ""
     #: Defence draining the map can bring, already counted in specials.
     reductions: DefenceReductions | None = None
+    #: Items the map reaches, for the charge-state swap. See `_charged`.
+    items: Mapping[str, Any] = field(default_factory=dict)
+    #: Monsters the map places in the wilderness, which is half of what gates
+    #: the wilderness weapons' +50%. See `wilderness_monsters`.
+    wilderness: frozenset[str] = frozenset()
 
 
 def assemble_kit(
@@ -362,7 +411,14 @@ def assemble_kit(
             accursed="Accursed sceptre" in items,
         )
 
-    return Kit(boosts=boosts, prayers=prayers, spell=spell, reductions=reductions)
+    return Kit(
+        boosts=boosts,
+        prayers=prayers,
+        spell=spell,
+        reductions=reductions,
+        items=items,
+        wilderness=wilderness_monsters(source_index),
+    )
 
 
 @dataclass(frozen=True)
@@ -420,6 +476,51 @@ def _stat_block(entry: Mapping[str, Any]) -> StatBlock:
     )
 
 
+def in_wilderness(chunk_id: str) -> bool:
+    """Whether a chunk id names a region inside the wilderness.
+
+    A chunk id is an OSRS region id, so the coordinates fall straight out of
+    it. See `_WILDERNESS_REGION_X`.
+    """
+    if not chunk_id.isdigit():
+        return False
+    region = int(chunk_id)
+    return (region >> 8) in _WILDERNESS_REGION_X and (region & 0xFF) in _WILDERNESS_REGION_Y
+
+
+def wilderness_monsters(source_index: Any) -> frozenset[str]:
+    """Every monster the map places inside the wilderness.
+
+    `SourceIndex.monsters` keys each monster's locations as `"{chunk}-{section}"`,
+    so this is the chunk half of those keys run through `in_wilderness`. A
+    monster placed in several chunks counts if *any* of them is in the
+    wilderness, since that is where someone chasing its drop would go.
+    """
+    found = set()
+    for monster, locations in source_index.monsters.items():
+        for key in locations:
+            if in_wilderness(str(key).split("-")[0]):
+                found.add(monster)
+                break
+    return frozenset(found)
+
+
+def _charged(worn: Mapping[str, str], items: Mapping[str, Any]) -> dict[str, str]:
+    """`worn` with reachable wilderness weapons swapped to their charged form.
+
+    See `_WILDERNESS_WEAPONS` for why the uncharged form gets picked in the
+    first place and why leaving it alone silently disables a +50% bonus.
+    """
+    swapped = dict(worn)
+    for slot, name in worn.items():
+        if not name.endswith(_UNCHARGED_SUFFIX):
+            continue
+        base = name[: -len(_UNCHARGED_SUFFIX)]
+        if base in _WILDERNESS_WEAPONS and base in items:
+            swapped[slot] = base
+    return swapped
+
+
 def _melee_style(weapon: Mapping[str, Any]) -> CombatStyle:
     """The damage type a melee weapon rolls, by its own best attack bonus.
 
@@ -469,6 +570,7 @@ def build_loadouts(
         if not worn:
             continue
 
+        worn = _charged(worn, kit.items)
         entries = {
             slot: _mapping(equipment, name) for slot, name in worn.items() if name
         }
@@ -521,6 +623,12 @@ def build_loadouts(
             spell=kit.spell if style == "Magic" else "",
             worn=frozenset(worn.values()),
             weapon_name=worn.get(weapon_pick, ""),
+            # Charge state is a `version` in the library and a name suffix in
+            # the export; `_charged` has already reconciled the two, so a
+            # wilderness weapon reaching here is the charged one.
+            weapon_version=(
+                "Charged" if worn.get(weapon_pick, "") in _WILDERNESS_WEAPONS else ""
+            ),
             two_handed=two_handed,
         )
     return loadouts
@@ -581,6 +689,7 @@ def best_kill(
     *,
     on_slayer_task: bool = False,
     reductions: DefenceReductions | None = None,
+    wilderness: bool = False,
 ) -> KillEstimate | None:
     """The fastest way to kill `name` with the gear on offer, or `None`.
 
@@ -612,8 +721,9 @@ def best_kill(
         if reductions is not None:
             fight = scale(fight, RaidInputs(defence_reductions=reductions))
         for style, loadout in loadouts.items():
+            armed = _with_buffs(loadout, on_task=on_slayer_task, wilderness=wilderness)
             try:
-                result = dps(_on_task(loadout) if on_slayer_task else loadout, fight)
+                result = dps(armed, fight)
             except Unsupported:
                 continue
             # A zero rate is the library saying "never killed"; its companion
@@ -633,9 +743,22 @@ def best_kill(
     return best
 
 
-def _on_task(loadout: Loadout) -> Loadout:
-    """`loadout` with the slayer-task buff set, for black masks and helms."""
-    return replace(loadout, buffs=replace(loadout.buffs, on_slayer_task=True))
+def _with_buffs(loadout: Loadout, *, on_task: bool, wilderness: bool) -> Loadout:
+    """`loadout` with the fight's circumstances set.
+
+    Both are properties of *where and why* the fight happens rather than of
+    the gear, which is why they are applied per monster rather than baked in
+    when the loadout is built: the same bow is worth half as much again
+    against a wilderness boss as against anything else.
+    """
+    if not on_task and not wilderness:
+        return loadout
+    return replace(
+        loadout,
+        buffs=replace(
+            loadout.buffs, on_slayer_task=on_task, in_wilderness=wilderness
+        ),
+    )
 
 
 def _slayer_target(target: Target) -> Target:
@@ -682,6 +805,7 @@ def price_monsters(
             candidate_targets(monster_index, name),
             on_slayer_task=name in slayer_monsters,
             reductions=reductions,
+            wilderness=name in kit.wilderness if kit is not None else False,
         )
         if kill is None:
             continue
@@ -747,6 +871,7 @@ def measure_overhead(
             monster,
             candidate_targets(monster_index, monster),
             reductions=kit.reductions if kit is not None else None,
+            wilderness=monster in kit.wilderness if kit is not None else False,
         )
         if kill is None:
             continue
@@ -773,9 +898,11 @@ __all__ = [
     "OverheadSample",
     "assemble_kit",
     "best_kill",
+    "in_wilderness",
     "build_loadouts",
     "candidate_targets",
     "load_monster_index",
     "measure_overhead",
     "price_monsters",
+    "wilderness_monsters",
 ]

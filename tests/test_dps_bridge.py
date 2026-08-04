@@ -298,11 +298,12 @@ def test_price_monsters_without_loadouts_prices_nothing() -> None:
 
 
 class _FakeSourceIndex:
-    """Only the attributes `boosts._available` reaches for."""
+    """Only the attributes `boosts._available` and `wilderness_monsters` use."""
 
     items: dict[str, Any] = {}
     npcs: dict[str, Any] = {}
     objects: dict[str, Any] = {}
+    monsters: dict[str, Any] = {}
 
 
 def _boost_info(**boost_items: Any) -> ChunkInfo:
@@ -473,6 +474,90 @@ def test_defence_draining_speeds_up_the_kill() -> None:
 
     assert plain is not None and drained is not None
     assert drained.ttk < plain.ttk
+
+
+def test_wilderness_regions_come_out_of_the_chunk_id() -> None:
+    """A chunk id is an OSRS region id, verified against known chunks."""
+    assert dps_bridge.in_wilderness("11833")  # Crazy archaeologist
+    assert dps_bridge.in_wilderness("11831")  # the Wilderness ditch
+    assert not dps_bridge.in_wilderness("12850")  # Lumbridge
+    # Region x53 starts at x 3392 and holds the Slayer Tower, which is what
+    # the inclusive upper bound of 52 exists to exclude.
+    assert not dps_bridge.in_wilderness("13623")
+    assert not dps_bridge.in_wilderness("Fortis Barracks")
+
+
+def test_wilderness_monsters_read_their_placements() -> None:
+    class _Index:
+        monsters = {
+            "Chaos Fanatic": {"11836-1": True},
+            "Abyssal demon": {"13623-1": True},
+            # Placed in both; the wilderness one is where you would go.
+            "Green dragon": {"12850-1": True, "11832-1": True},
+        }
+
+    found = dps_bridge.wilderness_monsters(_Index())
+    assert found == frozenset({"Chaos Fanatic", "Green dragon"})
+
+
+def test_a_charged_wilderness_weapon_replaces_the_uncharged_pick() -> None:
+    """`bis.py` cannot tell them apart; the library only knows the charged name.
+
+    The two entries have identical stats, so the pick is a coin toss - and the
+    uncharged one silently disables a +50% bonus, because the library's
+    special case matches on `Webweaver bow` and never on `Webweaver bow (u)`.
+    """
+    info = ChunkInfo(
+        {
+            "equipment": {
+                **_equipment(),
+                "Webweaver bow": _equipment()["Webweaver bow (u)"],
+            }
+        }
+    )
+    kit = dps_bridge.Kit(items={"Webweaver bow": True})
+    loadouts = dps_bridge.build_loadouts(
+        info, {"Ranged-weapon": "Webweaver bow (u)"}, LEVELS, kit
+    )
+
+    assert loadouts["Ranged"].weapon_name == "Webweaver bow"
+    assert loadouts["Ranged"].weapon_version == "Charged"
+    assert "Webweaver bow" in loadouts["Ranged"].worn
+
+
+def test_an_unreachable_charge_leaves_the_uncharged_pick_alone() -> None:
+    """A map holding only the uncharged form keeps it, rather than being
+    handed a weapon it does not own."""
+    loadouts = dps_bridge.build_loadouts(
+        _chunk_info(), {"Ranged-weapon": "Webweaver bow (u)"}, LEVELS, dps_bridge.Kit()
+    )
+    assert loadouts["Ranged"].weapon_name == "Webweaver bow (u)"
+    assert loadouts["Ranged"].weapon_version == ""
+
+
+def test_the_wilderness_bonus_only_applies_in_the_wilderness() -> None:
+    """Where the fight happens is part of the loadout, not of the gear."""
+    info = ChunkInfo(
+        {
+            "equipment": {
+                **_equipment(),
+                "Webweaver bow": _equipment()["Webweaver bow (u)"],
+            }
+        }
+    )
+    loadouts = dps_bridge.build_loadouts(
+        info,
+        {"Ranged-weapon": "Webweaver bow (u)"},
+        LEVELS,
+        dps_bridge.Kit(items={"Webweaver bow": True}),
+    )
+    target = _target(name="Boss", hitpoints=500)
+
+    outside = dps_bridge.best_kill(loadouts, "Boss", [("Boss", target)], wilderness=False)
+    inside = dps_bridge.best_kill(loadouts, "Boss", [("Boss", target)], wilderness=True)
+
+    assert outside is not None and inside is not None
+    assert inside.ttk < outside.ttk
 
 
 def test_group_bosses_are_not_priced_solo() -> None:
