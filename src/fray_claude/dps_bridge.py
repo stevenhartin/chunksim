@@ -1019,9 +1019,9 @@ def price_slayer_tasks(
     heuristics: Heuristics,
     index: MonsterIndex | None = None,
     kit: Kit | None = None,
+    reachable_masters: frozenset[str],
     boss_monsters: frozenset[str] = frozenset(),
     reachable_monsters: frozenset[str] = frozenset(),
-    reachable_masters: frozenset[str] | None = None,
 ) -> dict[str, dict[str, SlayerTask]]:
     """Rates for the slayer tasks the config has no measurement for.
 
@@ -1060,11 +1060,12 @@ def price_slayer_tasks(
     gates. Passing nothing keeps every candidate, which is the wrong default
     for a real map and the right one for a test.
 
-    **`reachable_masters` is the master's own NPC**, and `slayer.master_rates`
-    takes the same set for the same reason: a master you cannot walk up to
-    assigns nothing, so pricing their list is work spent on a rate no caller
-    should quote. `None` means "do not filter", matching `master_rates`, and
-    only fixtures should want it. This map holds three of the ten masters.
+    **`reachable_masters` is the master's own NPC, and it is required**, as it
+    is on `slayer.master_rates`: a master you cannot walk up to assigns
+    nothing, so pricing their list is work spent on a rate no caller should
+    quote. Neither takes a default, because a default that quietly means "do
+    not filter" reads identically to a gated call and answers with fiction.
+    The real map holds three of the ten masters.
     """
     _require()
     monster_index = load_monster_index() if index is None else index
@@ -1078,7 +1079,7 @@ def price_slayer_tasks(
     for master, tasks in _mapping(chunk_info.data, "slayerMasterTasks").items():
         if not isinstance(tasks, dict):
             continue
-        if reachable_masters is not None and master not in reachable_masters:
+        if master not in reachable_masters:
             continue
         for task in tasks:
             known = (heuristics.slayer.get(master) or {}).get(task)

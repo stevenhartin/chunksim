@@ -792,6 +792,7 @@ def test_slayer_gaps_are_filled_and_measurements_are_not() -> None:
         LEVELS,
         heuristics=heuristics,
         index=index,  # type: ignore[arg-type]
+        reachable_masters=frozenset({"Turael"}),
     )
 
     assert set(filled["Turael"]) == {"Cockatrices"}
@@ -823,6 +824,7 @@ def test_slayer_xp_per_kill_is_the_monsters_hitpoints() -> None:
         LEVELS,
         heuristics=heuristics,
         index=index,  # type: ignore[arg-type]
+        reachable_masters=frozenset({"Turael"}),
     )
 
     assert filled["Turael"]["Banshees"].xp_per_kill == 22.0
@@ -851,6 +853,7 @@ def test_a_task_with_no_measured_size_is_left_alone() -> None:
             LEVELS,
             heuristics=heuristics,
             index=index,  # type: ignore[arg-type]
+            reachable_masters=frozenset({"Turael"}),
         )
         == {}
     )
@@ -923,6 +926,7 @@ def test_slayer_pricing_narrows_to_what_the_map_can_reach() -> None:
         LEVELS,
         heuristics=heuristics,
         index=index,  # type: ignore[arg-type]
+        reachable_masters=frozenset({"Turael"}),
         reachable_monsters=frozenset({"Wolf"}),
     )
 
@@ -959,6 +963,7 @@ def test_a_task_whose_monsters_are_all_unreachable_is_not_priced() -> None:
             LEVELS,
             heuristics=heuristics,
             index=index,  # type: ignore[arg-type]
+            reachable_masters=frozenset({"Turael"}),
             reachable_monsters=frozenset({"Something else"}),
         )
         == {}
@@ -1002,8 +1007,8 @@ def test_slayer_pricing_skips_masters_you_cannot_reach() -> None:
     assert set(priced) == {"Turael"}
 
 
-def test_no_master_filter_prices_every_master() -> None:
-    """`None` means "do not filter", matching `master_rates`. Fixtures only."""
+def test_naming_both_masters_prices_both() -> None:
+    """There is no "do not filter" mode; a caller states who is reachable."""
     from fray_claude.heuristics import Heuristics, SlayerTask
 
     info = ChunkInfo(
@@ -1028,6 +1033,7 @@ def test_no_master_filter_prices_every_master() -> None:
         LEVELS,
         heuristics=heuristics,
         index=index,  # type: ignore[arg-type]
+        reachable_masters=frozenset({"Turael", "Duradel"}),
     )
 
     assert set(priced) == {"Turael", "Duradel"}

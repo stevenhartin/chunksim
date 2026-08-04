@@ -52,7 +52,15 @@ def _heuristics(*, master: str = "M", **tasks: SlayerTask) -> Heuristics:
 
 
 def _everywhere(table: dict[str, SlayerTask]) -> dict[str, dict[str, SlayerTask]]:
-    return {name: dict(table) for name in ("M", "Slow", "Fast", "Duradel", "Konar quo Maten")}
+    return {name: dict(table) for name in _FIXTURE_MASTERS}
+
+
+#: Every master a fixture here names. `master_rates` requires the reachable
+#: set rather than defaulting it, so a test that does not care about the NPC
+#: gate says so by passing all of them.
+_FIXTURE_MASTERS = frozenset(
+    {"M", "Slow", "Fast", "Duradel", "Konar quo Maten", "Krystilia"}
+)
 
 
 def test_the_rate_is_the_time_weighted_mean() -> None:
@@ -71,6 +79,7 @@ def test_the_rate_is_the_time_weighted_mean() -> None:
     rate = master_rates(
         info,
         heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
         reachable_monsters=frozenset(),
         valid={},
         levels={"Slayer": 99},
@@ -97,7 +106,10 @@ def test_a_plain_mean_of_rates_would_give_a_different_answer() -> None:
     )
 
     rate = master_rates(
-        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={}
+        info,
+        heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
+        reachable_monsters=frozenset(), valid={}, levels={}
     )[0]
 
     assert rate.xp_per_hour == pytest.approx(400.0)
@@ -114,7 +126,10 @@ def test_a_task_above_the_players_slayer_level_is_excluded() -> None:
     )
 
     rate = master_rates(
-        info, heuristics, reachable_monsters=frozenset(), valid={},
+        info,
+        heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
+        reachable_monsters=frozenset(), valid={},
         levels={"Slayer": 50},
     )[0]
 
@@ -141,7 +156,10 @@ def test_a_task_whose_quest_is_not_done_is_excluded() -> None:
     )
 
     rate = master_rates(
-        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={}
+        info,
+        heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
+        reachable_monsters=frozenset(), valid={}, levels={}
     )[0]
 
     assert [task.task for task in rate.tasks] == ["A"]
@@ -160,7 +178,10 @@ def test_an_unreachable_task_drops_out_and_coverage_falls() -> None:
     )
 
     rate = master_rates(
-        info, heuristics, reachable_monsters=frozenset({"Bear"}), valid={},
+        info,
+        heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
+        reachable_monsters=frozenset({"Bear"}), valid={},
         levels={},
     )[0]
 
@@ -176,7 +197,10 @@ def test_an_unpriced_task_is_folded_in_at_the_poor_default() -> None:
     heuristics = _heuristics(A=SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=100))
 
     rate = master_rates(
-        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={}
+        info,
+        heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
+        reachable_monsters=frozenset(), valid={}, levels={}
     )[0]
 
     assert sorted(task.task for task in rate.tasks) == ["A", "B"]
@@ -193,7 +217,10 @@ def test_a_defaulted_task_takes_a_typical_assignment_length() -> None:
     heuristics = _heuristics(A=SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=50))
 
     rate = master_rates(
-        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={}
+        info,
+        heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
+        reachable_monsters=frozenset(), valid={}, levels={}
     )[0]
     defaulted = next(task for task in rate.tasks if task.defaulted)
 
@@ -210,7 +237,12 @@ def test_a_master_with_nothing_assignable_is_reported_at_zero() -> None:
     )
 
     rates = master_rates(
-        info, Heuristics(), reachable_monsters=frozenset(), valid={}, levels={"Slayer": 3}
+        info,
+        Heuristics(),
+        reachable_masters=_FIXTURE_MASTERS,
+        reachable_monsters=frozenset(),
+        valid={},
+        levels={"Slayer": 3},
     )
 
     assert rates[0].xp_per_hour == 0.0
@@ -228,7 +260,10 @@ def test_the_fastest_master_is_chosen() -> None:
 
     chosen = best_master(
         master_rates(
-            info, heuristics, reachable_monsters=frozenset(), valid={},
+            info,
+        heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
+        reachable_monsters=frozenset(), valid={},
             levels={},
         )
     )
@@ -282,7 +317,10 @@ def test_a_task_with_no_rate_data_is_counted_apart_from_unreachable_ones() -> No
     )
 
     rate = master_rates(
-        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={}
+        info,
+        heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
+        reachable_monsters=frozenset(), valid={}, levels={}
     )[0]
 
     # Both halves are assignable, so coverage is full; half of it is a
@@ -302,7 +340,10 @@ def test_an_unreachable_task_is_not_counted_as_unpriced() -> None:
     )
 
     rate = master_rates(
-        info, heuristics, reachable_monsters=frozenset({"Bear"}), valid={},
+        info,
+        heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
+        reachable_monsters=frozenset({"Bear"}), valid={},
         levels={},
     )[0]
 
@@ -331,6 +372,7 @@ def test_a_prerequisite_is_checked_in_its_own_category() -> None:
     granted = master_rates(
         info,
         heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
         reachable_monsters=frozenset(),
         valid={"Thieving": {"Unlock the ~|door (Magic axe hut)|~": True}},
         levels={},
@@ -338,6 +380,7 @@ def test_a_prerequisite_is_checked_in_its_own_category() -> None:
     refused = master_rates(
         info,
         heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
         reachable_monsters=frozenset(),
         valid={"Quest": {"Unlock the ~|door (Magic axe hut)|~": True}},
         levels={},
@@ -367,6 +410,7 @@ def test_a_quest_prerequisite_may_be_a_single_step() -> None:
     rate = master_rates(
         info,
         heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
         reachable_monsters=frozenset(),
         valid={"Quest": {"~|Desert Treasure I|~ 7c1": True}},
         levels={},
@@ -381,6 +425,7 @@ def test_an_entrys_chunks_gate_is_honoured() -> None:
         Jellies=SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=100)
     )
     kwargs: dict[str, Any] = {
+        "reachable_masters": _FIXTURE_MASTERS,
         "reachable_monsters": frozenset(),
         "valid": {},
         "levels": {},
@@ -399,10 +444,16 @@ def test_a_skills_requirement_is_honoured() -> None:
     )
 
     met = master_rates(
-        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={"Agility": 70}
+        info,
+        heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
+        reachable_monsters=frozenset(), valid={}, levels={"Agility": 70}
     )[0]
     unmet = master_rates(
-        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={"Agility": 40}
+        info,
+        heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
+        reachable_monsters=frozenset(), valid={}, levels={"Agility": 40}
     )[0]
 
     assert met.tasks and unmet.tasks == ()
@@ -429,7 +480,10 @@ def test_a_fractional_weight_counts() -> None:
     )
 
     rate = master_rates(
-        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={}
+        info,
+        heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
+        reachable_monsters=frozenset(), valid={}, levels={}
     )[0]
 
     assert len(rate.tasks) == 2
@@ -501,6 +555,7 @@ def test_the_extended_flag_lengthens_the_average_assignment() -> None:
         slayer={"M": {"A": SlayerTask(100, 10, 100, extended_count=200, extended=True)}}
     )
     kwargs: dict[str, Any] = {
+        "reachable_masters": _FIXTURE_MASTERS,
         "reachable_monsters": frozenset(),
         "valid": {},
         "levels": {},
@@ -551,6 +606,7 @@ def test_superior_rolls_aggregate_over_a_masters_whole_task_list() -> None:
     rate = master_rates(
         _superior_info(),
         _superior_heuristics(),
+        reachable_masters=_FIXTURE_MASTERS,
         reachable_monsters=frozenset({"Abyssal demon", "Bat"}),
         valid={},
         levels={},
@@ -571,6 +627,7 @@ def test_a_task_with_no_superior_contributes_nothing() -> None:
     rate = master_rates(
         only_bats,
         heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
         reachable_monsters=frozenset({"Bat"}),
         valid={},
         levels={},
@@ -603,7 +660,10 @@ def test_a_plural_task_finds_its_singular_monster() -> None:
     )
 
     rate = master_rates(
-        info, heuristics, reachable_monsters=frozenset({"Jelly"}), valid={}, levels={}
+        info,
+        heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
+        reachable_monsters=frozenset({"Jelly"}), valid={}, levels={}
     )[0]
 
     assert superior_rolls_per_hour(rate, info, heuristics) > 0
@@ -629,6 +689,7 @@ def test_the_points_delta_matches_the_worked_example() -> None:
     rate = master_rates(
         info,
         heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
         reachable_monsters=frozenset(),
         valid={},
         levels={},
@@ -655,7 +716,10 @@ def test_a_task_the_master_never_offers_is_not_a_skip() -> None:
     )
 
     rate = master_rates(
-        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={"Slayer": 50}
+        info,
+        heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
+        reachable_monsters=frozenset(), valid={}, levels={"Slayer": 50}
     )[0]
 
     assert rate.offered == 0.5
@@ -675,6 +739,7 @@ def test_an_unreachable_offered_task_costs_a_skip() -> None:
     rate = master_rates(
         info,
         heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
         reachable_monsters=frozenset(),
         valid={},
         levels={},
@@ -691,7 +756,10 @@ def test_the_published_point_values_are_used_by_default() -> None:
     heuristics = Heuristics(slayer={"Krystilia": {"A": SlayerTask(100, 10, 100)}})
 
     rate = master_rates(
-        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={}
+        info,
+        heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
+        reachable_monsters=frozenset(), valid={}, levels={}
     )[0]
 
     # 25 base, lifted by the streak milestones.
@@ -712,6 +780,7 @@ def test_a_skill_requirement_is_enforced_against_the_inferred_level() -> None:
     met = master_rates(
         info,
         heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
         reachable_monsters=frozenset(),
         valid={},
         levels={"Slayer": 45, "Defence": 99},
@@ -719,6 +788,7 @@ def test_a_skill_requirement_is_enforced_against_the_inferred_level() -> None:
     short = master_rates(
         info,
         heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
         reachable_monsters=frozenset(),
         valid={},
         levels={"Slayer": 45, "Defence": 3},
@@ -737,6 +807,7 @@ def test_superior_spawns_and_table_rolls_are_different_rates() -> None:
     rate = master_rates(
         info,
         heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
         reachable_monsters=frozenset({"Abyssal demon", "Bat"}),
         valid={},
         levels={},

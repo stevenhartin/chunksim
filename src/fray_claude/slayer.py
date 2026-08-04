@@ -516,17 +516,22 @@ def master_rates(
     levels: dict[str, int],
     unlocked: Mapping[str, bool] | None = None,
     reachable_sections: Mapping[str, Mapping[str, bool]] | None = None,
+    reachable_masters: frozenset[str],
     combat_level: int = 126,
-    reachable_masters: frozenset[str] | None = None,
 ) -> list[MasterRate]:
     """Every reachable master's expected XP per hour, best first.
 
-    **`reachable_masters` is the master's own NPC availability**, and leaving
-    it out is how this module first went wrong: it happily picked Duradel on
-    a map holding none of Duradel. A master you cannot walk up to assigns you
-    nothing, so a rate computed from their task table is fiction. Pass the
-    unlocked NPCs (`SourceIndex.npcs`); `None` means "do not filter", which
-    only fixtures should want.
+    **`reachable_masters` is the master's own NPC availability, and it is
+    required.** Leaving it out is how this module first went wrong: it happily
+    picked Duradel on a map holding none of Duradel. A master you cannot walk
+    up to assigns you nothing, so a rate computed from their task table is
+    fiction. Pass the unlocked NPCs (`SourceIndex.npcs`).
+
+    It carried a `None` default meaning "do not filter" and that default was
+    the whole hazard: an ungated call looks exactly like a gated one at the
+    call site and answers with a table of masters the player cannot visit -
+    which happened again, to a reader of this very docstring, long after the
+    warning above was written. A fixture wanting every master now says so.
 
     A master with no priced, reachable task is returned with a rate of zero
     rather than omitted, so a caller can tell "cannot train here" from "no
@@ -536,7 +541,7 @@ def master_rates(
     for master, tasks in _mapping(chunk_info.data, "slayerMasterTasks").items():
         if not isinstance(tasks, dict):
             continue
-        if reachable_masters is not None and master not in reachable_masters:
+        if master not in reachable_masters:
             continue
         total_weight = sum(
             _weight(entry) for entry in tasks.values() if isinstance(entry, dict)
