@@ -1049,7 +1049,7 @@ def _print_slayer_masters(result: EstimateResult) -> None:
 
     chosen = result.slayer.master if result.slayer else ""
     print(
-        f"\n  {'slayer master':<18} {'xp/hr':>9}  {'tasks':>5} {'reach':>6} {'no data':>7}"
+        f"\n  {'slayer master':<18} {'xp/hr':>9} {'skip':>5} {'pts/task':>9} {'no data':>8}"
         "  supers*"
     )
     for rate in result.slayer_masters:
@@ -1057,10 +1057,12 @@ def _print_slayer_masters(result: EstimateResult) -> None:
         supers = f"1 per {1 / rolls:,.0f}h" if rolls > 0 else "none"
         marker = " *" if rate.master == chosen else "  "
         print(
-            f" {marker}{rate.master:<18} {rate.xp_per_hour:>9,.0f}"
-            f"  {len(rate.tasks):>5} {rate.coverage:>6.0%} {rate.unpriced:>7.0%}  {supers}"
+            f" {marker}{rate.master:<18} {rate.xp_per_hour:>9,.0f} {rate.skip_rate:>5.0%}"
+            f" {rate.points_delta:>+9.1f} {rate.unpriced:>8.0%}  {supers}"
         )
     print("  * used by the estimate (fastest); the others are shown to compare")
+    print("  skip = share of *offered* tasks whose monsters this map cannot reach")
+    print("  pts/task = points earned, less points paid skipping those; negative bleeds points")
     print("  supers* assume the levels you can reach, as the item prices do")
 
 

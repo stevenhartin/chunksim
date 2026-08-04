@@ -38,19 +38,31 @@ master whichever looks closest. Read `heuristics.SlayerTask` on the shape,
 and its `count` rather than `mean_count` - that is what applies the
 Extended-unlock flag.
 
-**Which tasks count, and the lie in it.** Only tasks the player can actually
-be assigned. `_requirements_met` checks all five gates an entry can carry -
-`Level`, `CombatLevel`, `Skills`, `Tasks` (*in the category each names*, which
-is as often `Thieving` or `Nonskill` as `Quest`, and as often a single quest
-*step* as a completion) and `Chunks`, the export's own location gate. Only
-where an entry has no `Chunks` does a monster-name heuristic get a say.
-The surviving weights are
-then renormalised, and *that is an approximation which flatters a sparse map*:
-in the real game a blocked task is still assigned and costs you a skip, so a
-map holding two of a master's thirty tasks does not really train Slayer at the
-rate of those two. `MasterRate.coverage` is the surviving fraction of total
-weight, reported precisely so the size of that lie is visible rather than
-folded into a number.
+**Two very different reasons a task drops out, and they must not be
+confused.** `_is_offered` applies the *game's* requirements - `Level`,
+`CombatLevel`, `Skills`, and `Tasks` in whatever category each names. A task
+failing those is never assigned, so it costs nothing: it never comes up.
+`_is_reachable` applies this project's artificial one - `Chunks`, the
+export's location gate, with a monster-name heuristic only where an entry
+carries none. A task failing *that* was offered, and you have to **pay to
+skip it**.
+
+That distinction is the whole of the points economy. `MasterRate.skip_rate`
+is the share of offered weight you must cancel, and `points_delta` is what a
+master is worth per assignment once you net the skips off::
+
+    points_delta = (1 - skip_rate) * points_per_task - skip_rate * skip_cost
+
+Two thirds doable at 10 points a task against 30 a skip is `-3.3` - the
+master *costs* points to train at, however good the XP looks, and that
+decides where you go as much as the rate does. Point values are the wiki's
+published figures (`heuristics.SLAYER_POINTS`); the skip cost is the flat 30,
+not the far larger `block` cost tabulated beside it, blocking being permanent
+and a different decision.
+
+The surviving weights are then renormalised, and *that flatters a sparse
+map*: a blocked task is still assigned and still eats the time you spend
+cancelling it. `coverage` is what survived, of what was offered.
 
 **Tasks with no rate data are folded in, not dropped.** They are the
 low-level ones nobody has bothered to measure, and excluding them from a
@@ -160,6 +172,22 @@ class MasterRate:
     #: a fact is how "27% reachable" got quoted for a master whose tasks were
     #: nearly all reachable.
     unpriced: float = 0.0
+    #: Fraction of the master's whole list they will actually offer you, the
+    #: rest being level- or quest-gated and so never assigned.
+    offered: float = 0.0
+    #: Fraction of what *is* offered that has to be cancelled, because the
+    #: monsters are somewhere this map cannot reach. **This is the one that
+    #: costs points**, and it is a different thing entirely from a task the
+    #: master never offers: that one never comes up, this one is handed to
+    #: you and thrown away.
+    skip_rate: float = 0.0
+    points_per_task: float = 0.0
+    skip_cost: float = 0.0
+    #: Net slayer points per assignment: what you earn on the tasks you can
+    #: do, less what you pay cancelling the ones you cannot. Negative means
+    #: the master costs you points to train at, however good the XP looks -
+    #: two thirds doable at 10 a task against 30 a skip is `-3.3`.
+    points_delta: float = 0.0
 
     @property
     def average_hours(self) -> float:
@@ -192,6 +220,11 @@ class MasterRate:
             "xp_per_hour": self.xp_per_hour,
             "coverage": self.coverage,
             "unpriced": self.unpriced,
+            "offered": self.offered,
+            "skip_rate": self.skip_rate,
+            "points_per_task": self.points_per_task,
+            "skip_cost": self.skip_cost,
+            "points_delta": self.points_delta,
             "tasks": [task.as_dict() for task in self.tasks],
         }
 
@@ -359,38 +392,24 @@ def _words_match(left: str, right: str) -> bool:
     )
 
 
-def _requirements_met(
+def _is_offered(
     requirement: dict[str, Any],
     *,
-    chunk_info: ChunkInfo,
     levels: dict[str, int],
     combat_level: int,
     valid: Mapping[str, Mapping[str, Any]],
-    unlocked: Mapping[str, bool],
-    reachable_sections: Mapping[str, Mapping[str, bool]],
 ) -> bool:
-    """Can this master assign this task at all?
+    """Would the master assign this task at all?
 
-    Five gates, and the entries really do use all five::
+    **The game's own requirements only** - slayer level, combat level, other
+    skills, and the `Tasks` prerequisites in whatever category each names.
+    A task failing these is never offered, so it costs nothing: it simply
+    never comes up.
 
-        "Dust devils": {"Chunks": ["Wilderness Slayer Cave"], "Level": 65,
-                        "Tasks": {"~|Desert Treasure I|~ 7c1": "Quest"},
-                        "Weight": 5}
-
-    **`Tasks` maps a name to its *category*, and the category is the half that
-    was being thrown away.** Checking every prerequisite against the `Quest`
-    branch alone silently failed the nine that are not quests - Krystilia's
-    `Magic axes` wants a `Thieving` challenge, her `Pirates` a `Nonskill` one,
-    Nieve's `Frost dragons` a `Sailing` one - so those tasks could never be
-    assigned however much of the map was unlocked. Note also that a quest
-    prerequisite is frequently a *step* (`Desert Treasure I 7c1`), not the
-    whole quest, which is why the lookup has to be by name rather than by
-    matching a `Complete the quest` entry.
-
-    `Chunks` was not checked at all, and it is the authoritative location
-    gate - 128 entries carry one, using named areas and `[+]` families.
-    `challenges.chunks_requirement_met` already implements exactly those
-    semantics, so it is reused rather than approximated here.
+    Deliberately *not* including `Chunks`. That gate is this project's
+    artificial one, and the master knows nothing about it - they will happily
+    send you somewhere you cannot go, and you pay to skip it. See
+    `_is_reachable`.
     """
     level = requirement.get("Level")
     if isinstance(level, (int, float)) and level > levels.get("Slayer", 1):
@@ -411,8 +430,35 @@ def _requirements_met(
         for name, category in prerequisites.items():
             if name not in (valid.get(str(category)) or {}):
                 return False
+    return True
 
-    return chunks_requirement_met(requirement, unlocked, reachable_sections, chunk_info)
+
+def _is_reachable(
+    requirement: dict[str, Any],
+    task: str,
+    *,
+    chunk_info: ChunkInfo,
+    reachable_monsters: frozenset[str],
+    unlocked: Mapping[str, bool],
+    reachable_sections: Mapping[str, Mapping[str, bool]],
+) -> bool:
+    """Can the task actually be done, once offered?
+
+    The `Chunks` gate is the export's own location test - 128 entries carry
+    one, with named areas and `[+]` families - and
+    `challenges.chunks_requirement_met` already implements exactly those
+    semantics. Only where an entry has none does a monster-name heuristic get
+    a say.
+
+    Failing *this* is what costs a skip, because the master offered it.
+    """
+    if not chunks_requirement_met(requirement, unlocked, reachable_sections, chunk_info):
+        return False
+    if "Chunks" not in requirement:
+        monsters = _task_monsters(chunk_info, task)
+        if monsters and not (monsters & reachable_monsters):
+            return False
+    return True
 
 
 def master_rates(
@@ -452,30 +498,31 @@ def master_rates(
         priced: list[TaskRate] = []
         unknown: list[tuple[str, float, float]] = []
         unpriced_weight = 0.0
+        offered_weight = 0.0
+        skipped_weight = 0.0
         for task, entry in tasks.items():
             if not isinstance(entry, dict):
                 continue
             weight = _weight(entry)
             if weight <= 0:
                 continue
-            if not _requirements_met(
+            if not _is_offered(
+                entry, levels=levels, combat_level=combat_level, valid=valid
+            ):
+                # Never assigned, so never a cost. Not the same thing at all
+                # as a task you are handed and cannot go to.
+                continue
+            offered_weight += weight
+            if not _is_reachable(
                 entry,
+                task,
                 chunk_info=chunk_info,
-                levels=levels,
-                combat_level=combat_level,
-                valid=valid,
+                reachable_monsters=reachable_monsters,
                 unlocked=unlocked or {},
                 reachable_sections=reachable_sections or {},
             ):
+                skipped_weight += weight
                 continue
-            # `Chunks` is the export's own location gate and beats guessing.
-            # Only where an entry has none does the monster-name heuristic
-            # get a say - it matched `Spiders` to nothing and dropped a task
-            # whose `SpidersWildernessTask[+]` chunks were plainly unlocked.
-            if "Chunks" not in entry:
-                monsters = _task_monsters(chunk_info, task)
-                if monsters and not (monsters & reachable_monsters):
-                    continue
             rate = (heuristics.slayer.get(master) or {}).get(task)
             if rate is None or rate.kills_per_hour <= 0 or rate.count <= 0:
                 # Assignable and doable, just unknown to the config. Counted
@@ -495,7 +542,18 @@ def master_rates(
             )
 
         priced.extend(_defaulted(unknown, priced))
-        rates.append(_combine(master, priced, total_weight, unpriced_weight))
+        rates.append(
+            _combine(
+                master,
+                priced,
+                total_weight,
+                unpriced_weight,
+                offered_weight,
+                skipped_weight,
+                heuristics.slayer_points(master),
+                heuristics.slayer_skip_cost(master),
+            )
+        )
 
     rates.sort(key=lambda rate: (-rate.xp_per_hour, rate.master))
     return rates
@@ -550,13 +608,32 @@ def _typical_hours(priced: list[TaskRate]) -> float:
 
 
 def _combine(
-    master: str, tasks: list[TaskRate], total_weight: float, unpriced_weight: float = 0.0
+    master: str,
+    tasks: list[TaskRate],
+    total_weight: float,
+    unpriced_weight: float = 0.0,
+    offered_weight: float = 0.0,
+    skipped_weight: float = 0.0,
+    points: float = 0.0,
+    skip_cost: float = 0.0,
 ) -> MasterRate:
     """The time-weighted mean of `tasks` - see the module docstring."""
     surviving = sum(task.weight for task in tasks)
-    share = unpriced_weight / total_weight if total_weight > 0 else 0.0
+    share = unpriced_weight / offered_weight if offered_weight > 0 else 0.0
+    skip_rate = skipped_weight / offered_weight if offered_weight > 0 else 0.0
+    offered = offered_weight / total_weight if total_weight > 0 else 0.0
+    points_delta = (1 - skip_rate) * points - skip_rate * skip_cost
     if not tasks or surviving <= 0:
-        return MasterRate(master=master, xp_per_hour=0.0, unpriced=share)
+        return MasterRate(
+            master=master,
+            xp_per_hour=0.0,
+            unpriced=share,
+            offered=offered,
+            skip_rate=skip_rate,
+            points_per_task=points,
+            skip_cost=skip_cost,
+            points_delta=points_delta,
+        )
 
     expected_xp = sum(task.weight * task.xp for task in tasks) / surviving
     expected_hours = sum(task.weight * task.hours for task in tasks) / surviving
@@ -564,8 +641,13 @@ def _combine(
         master=master,
         xp_per_hour=expected_xp / expected_hours if expected_hours > 0 else 0.0,
         tasks=tuple(sorted(tasks, key=lambda task: (-task.weight, task.task))),
-        coverage=surviving / total_weight if total_weight > 0 else 0.0,
+        coverage=surviving / offered_weight if offered_weight > 0 else 0.0,
         unpriced=share,
+        offered=offered,
+        skip_rate=skip_rate,
+        points_per_task=points,
+        skip_cost=skip_cost,
+        points_delta=points_delta,
     )
 
 

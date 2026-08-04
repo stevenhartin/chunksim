@@ -66,6 +66,27 @@ Example:
 The task names in `training` are the export's own, markup included. Copy them
 verbatim from `cache/wiki_rates.json` rather than retyping them.
 
+## Slayer masters
+
+`fray estimate skilling` prints every reachable master with a `pts/task`
+column: points earned on the tasks you can do, less the 30 you pay cancelling
+the ones the master offers but your chunks cannot reach. A **negative** figure
+means training there bleeds points however good the XP looks.
+
+Tasks the master will not offer at all — level-gated, quest-gated — cost
+nothing and are not counted as skips. Only what you are handed and have to
+throw away is.
+
+Point values are the wiki's published figures. Override per master:
+
+```json
+{"masters": {"Vannaka": {"points": 8, "skip_cost": 30}}}
+```
+
+Worth doing if you have a diary that raises them (Konar 18 → 20 with Kourend
+& Kebos elite, Nieve 12 → 15 with Western Provinces elite), which nothing
+here detects.
+
 ## Extended slayer tasks
 
 `slayer` is keyed by **master first**, because assignment sizes differ by

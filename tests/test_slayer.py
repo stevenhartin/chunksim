@@ -115,8 +115,12 @@ def test_a_task_above_the_players_slayer_level_is_excluded() -> None:
         levels={"Slayer": 50},
     )[0]
 
+    # B is never offered at all, so it is not a skip and not a cost - it
+    # simply never comes up. Coverage is of what *is* offered.
     assert [task.task for task in rate.tasks] == ["A"]
-    assert rate.coverage == 0.5
+    assert rate.offered == 0.5
+    assert rate.coverage == 1.0
+    assert rate.skip_rate == 0.0
 
 
 def test_a_task_whose_quest_is_not_done_is_excluded() -> None:
@@ -600,3 +604,89 @@ def test_a_plural_task_finds_its_singular_monster() -> None:
     )[0]
 
     assert superior_rolls_per_hour(rate, info, heuristics) > 0
+
+
+def test_the_points_delta_matches_the_worked_example() -> None:
+    # Two of three tasks doable, 10 points a completion, 30 a skip:
+    #   (2/3)*10 - (1/3)*30 = 6.67 - 10 = -3.33 points per assignment.
+    info = _info(
+        slayerMasterTasks={
+            "M": {
+                "A": {"Weight": 1},
+                "B": {"Weight": 1},
+                "C": {"Weight": 1, "Chunks": ["9999"]},
+            }
+        }
+    )
+    heuristics = Heuristics(
+        slayer={"M": {name: SlayerTask(100, 10, 100) for name in "ABC"}},
+        master_points={"M": 10.0},
+    )
+
+    rate = master_rates(
+        info,
+        heuristics,
+        reachable_monsters=frozenset(),
+        valid={},
+        levels={},
+        unlocked={"1": True},
+    )[0]
+
+    assert rate.skip_rate == pytest.approx(1 / 3)
+    assert rate.points_delta == pytest.approx(-10 / 3)
+
+
+def test_a_task_the_master_never_offers_is_not_a_skip() -> None:
+    # Level- and quest-gated tasks are not offered at all, so they cost
+    # nothing. Only a task you are *handed* and cannot go to costs points.
+    info = _info(
+        slayerMasterTasks={"M": {"A": {"Weight": 1}, "B": {"Weight": 1, "Level": 90}}}
+    )
+    heuristics = Heuristics(
+        slayer={"M": {"A": SlayerTask(100, 10, 100), "B": SlayerTask(100, 10, 100)}},
+        master_points={"M": 10.0},
+    )
+
+    rate = master_rates(
+        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={"Slayer": 50}
+    )[0]
+
+    assert rate.offered == 0.5
+    assert rate.skip_rate == 0.0
+    assert rate.points_delta == pytest.approx(10.0)
+
+
+def test_an_unreachable_offered_task_costs_a_skip() -> None:
+    info = _info(
+        slayerMasterTasks={"M": {"A": {"Weight": 1}, "B": {"Weight": 1, "Chunks": ["9999"]}}}
+    )
+    heuristics = Heuristics(
+        slayer={"M": {"A": SlayerTask(100, 10, 100), "B": SlayerTask(100, 10, 100)}},
+        master_points={"M": 10.0},
+    )
+
+    rate = master_rates(
+        info,
+        heuristics,
+        reachable_monsters=frozenset(),
+        valid={},
+        levels={},
+        unlocked={"1": True},
+    )[0]
+
+    assert rate.offered == 1.0
+    assert rate.skip_rate == 0.5
+    # 0.5*10 - 0.5*30 = -10
+    assert rate.points_delta == pytest.approx(-10.0)
+
+
+def test_the_published_point_values_are_used_by_default() -> None:
+    info = _info(slayerMasterTasks={"Krystilia": {"A": {"Weight": 1}}})
+    heuristics = Heuristics(slayer={"Krystilia": {"A": SlayerTask(100, 10, 100)}})
+
+    rate = master_rates(
+        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={}
+    )[0]
+
+    assert rate.points_per_task == 25.0
+    assert rate.skip_cost == 30.0

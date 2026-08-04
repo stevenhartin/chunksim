@@ -99,6 +99,30 @@ DEFAULT_KPH: dict[str, float] = {"boss": 20.0, "slayer": 60.0, "regular": 150.0}
 #: purpose - see the module docstring.
 DEFAULT_XP_PER_HOUR = 1000.0
 
+#: Slayer reward points a completed task pays, by master. Not in the export;
+#: these are the wiki's published figures. Turael, Spria and Mortimer pay
+#: nothing by default, which is exactly why they are cheap to train at and
+#: expensive to *skip* at.
+SLAYER_POINTS: dict[str, float] = {
+    "Turael": 0.0,
+    "Spria": 0.0,
+    "Mazchna": 6.0,
+    "Vannaka": 8.0,
+    "Chaeldar": 10.0,
+    "Nieve": 12.0,
+    "Duradel": 15.0,
+    "Konar quo Maten": 18.0,
+    "Krystilia": 25.0,
+    "Mortimer": 0.0,
+}
+
+#: What cancelling a task costs. The flat 30 is universal; Mortimer is the
+#: exception. Note this is the *skip* cost, not the far larger `block` cost
+#: the wiki tabulates beside it - blocking is permanent and a different
+#: decision.
+DEFAULT_SKIP_COST = 30.0
+SLAYER_SKIP_COST: dict[str, float] = {"Mortimer": 100.0}
+
 #: What an unpriced *slayer task* is assumed to yield. Deliberately poor -
 #: the tasks with no data are the low-level ones nobody optimises, and a
 #: master whose list is full of them should look slow rather than look fast
@@ -250,6 +274,9 @@ class Heuristics:
     #: part of the key. See `SlayerTask`.
     slayer: dict[str, dict[str, SlayerTask]] = field(default_factory=dict)
     rarities: dict[str, float] = field(default_factory=lambda: dict(RARITY_PROBABILITY))
+    #: Per-master point values, overriding `SLAYER_POINTS`.
+    master_points: dict[str, float] = field(default_factory=dict)
+    master_skip_costs: dict[str, float] = field(default_factory=dict)
     boss_monsters: frozenset[str] = frozenset()
     slayer_monsters: frozenset[str] = frozenset()
 
@@ -272,6 +299,16 @@ class Heuristics:
     def xp_per_hour(self, task: str, skill: str) -> Rate:
         found = self.training.get(task, {}).get(skill)
         return found if found is not None else Rate(value=DEFAULT_XP_PER_HOUR)
+
+    def slayer_points(self, master: str) -> float:
+        """Points a completed task pays, before any diary modifiers."""
+        return self.master_points.get(master, SLAYER_POINTS.get(master, 0.0))
+
+    def slayer_skip_cost(self, master: str) -> float:
+        """Points cancelling a task costs."""
+        return self.master_skip_costs.get(
+            master, SLAYER_SKIP_COST.get(master, DEFAULT_SKIP_COST)
+        )
 
     def rarity(self, word: str) -> float | None:
         """A probability for a worded rate, or `None` if the word says nothing.
@@ -694,6 +731,18 @@ def load(
             }
             for master, tasks in _entries(config, "slayer")
             if isinstance(tasks, dict)
+        },
+        master_points={
+            str(master): float(entry["points"])
+            for master, entry in _entries(config, "masters")
+            if isinstance(entry.get("points"), (int, float))
+            and not isinstance(entry.get("points"), bool)
+        },
+        master_skip_costs={
+            str(master): float(entry["skip_cost"])
+            for master, entry in _entries(config, "masters")
+            if isinstance(entry.get("skip_cost"), (int, float))
+            and not isinstance(entry.get("skip_cost"), bool)
         },
         rarities={
             **RARITY_PROBABILITY,
