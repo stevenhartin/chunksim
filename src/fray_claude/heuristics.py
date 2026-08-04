@@ -99,6 +99,12 @@ DEFAULT_KPH: dict[str, float] = {"boss": 20.0, "slayer": 60.0, "regular": 150.0}
 #: purpose - see the module docstring.
 DEFAULT_XP_PER_HOUR = 1000.0
 
+#: What an unpriced *slayer task* is assumed to yield. Deliberately poor -
+#: the tasks with no data are the low-level ones nobody optimises, and a
+#: master whose list is full of them should look slow rather than look fast
+#: by having them quietly excluded from its average.
+DEFAULT_SLAYER_XP_PER_HOUR = 7000.0
+
 #: A superior's base spawn chance from a normal counterpart's death, per the
 #: wiki. The per-monster figures in its table are the improved rates that the
 #: `Bigger and Badder` unlock buys; this is the plain one.

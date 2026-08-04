@@ -52,6 +52,15 @@ rate of those two. `MasterRate.coverage` is the surviving fraction of total
 weight, reported precisely so the size of that lie is visible rather than
 folded into a number.
 
+**Tasks with no rate data are folded in, not dropped.** They are the
+low-level ones nobody has bothered to measure, and excluding them from a
+master's mixture silently reweights the rest in that master's favour -
+Vannaka reached 23% of his list with 24% of it unmeasured and came out
+*fastest*, which is backwards. They now enter at
+`heuristics.DEFAULT_SLAYER_XP_PER_HOUR` for the master's own typical
+assignment length, which moved Vannaka from 57,675 xp/hr to 32,176 and made
+Krystilia - who has no gaps at all - the pick.
+
 **The spreadsheet has no stability contract.** It is a community document that
 gets restructured between versions, so columns are read by *header name* and a
 missing header raises rather than defaulting to zero. A renamed column should
@@ -69,7 +78,13 @@ from typing import Any
 
 from fray_claude.challenges import chunks_requirement_met
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.heuristics import Heuristics, SlayerTask, TaskLength, stems
+from fray_claude.heuristics import (
+    DEFAULT_SLAYER_XP_PER_HOUR,
+    Heuristics,
+    SlayerTask,
+    TaskLength,
+    stems,
+)
 from fray_claude.rates import parse_ratio
 from fray_claude.search import normalise
 from fray_claude.summary import _mapping
@@ -100,6 +115,8 @@ class TaskRate:
     mean_count: float
     xp_per_kill: float
     kills_per_hour: float
+    #: True when no rate was found and the poor default stood in.
+    defaulted: bool = False
 
     @property
     def xp(self) -> float:
@@ -118,6 +135,7 @@ class TaskRate:
             "mean_count": self.mean_count,
             "xp_per_kill": self.xp_per_kill,
             "kills_per_hour": self.kills_per_hour,
+            "defaulted": self.defaulted,
             "xp": self.xp,
             "hours": self.hours,
         }
@@ -134,12 +152,13 @@ class MasterRate:
     #: accessibility filter. Low means the number is optimistic - read the
     #: module docstring before quoting it.
     coverage: float = 0.0
-    #: Fraction of that weight dropped for want of *data* rather than access:
-    #: a task you can be assigned and could do, but which no rate could be
-    #: found for. Reported apart from `coverage` because the two call for
-    #: opposite responses - one is a fact about the map, the other is a hole
-    #: in the config, and reading a hole as a fact is how "27% reachable" got
-    #: quoted for a master whose tasks were nearly all reachable.
+    #: Fraction of the total weight that had no rate data and was folded in
+    #: at `DEFAULT_SLAYER_XP_PER_HOUR` instead. Orthogonal to `coverage`:
+    #: that says how much of the list you can be assigned, this says how much
+    #: of it is a guess. The two call for opposite responses - one is a fact
+    #: about the map, the other a hole in the config - and reading a hole as
+    #: a fact is how "27% reachable" got quoted for a master whose tasks were
+    #: nearly all reachable.
     unpriced: float = 0.0
 
     @property
@@ -431,6 +450,7 @@ def master_rates(
             _weight(entry) for entry in tasks.values() if isinstance(entry, dict)
         )
         priced: list[TaskRate] = []
+        unknown: list[tuple[str, float, float]] = []
         unpriced_weight = 0.0
         for task, entry in tasks.items():
             if not isinstance(entry, dict):
@@ -459,8 +479,10 @@ def master_rates(
             rate = (heuristics.slayer.get(master) or {}).get(task)
             if rate is None or rate.kills_per_hour <= 0 or rate.count <= 0:
                 # Assignable and doable, just unknown to the config. Counted
-                # apart from the accessibility drops above.
+                # apart from the accessibility drops above, and folded back
+                # in at a poor default rather than dropped - see `_defaulted`.
                 unpriced_weight += weight
+                unknown.append((task, weight, rate.count if rate else 0.0))
                 continue
             priced.append(
                 TaskRate(
@@ -472,10 +494,59 @@ def master_rates(
                 )
             )
 
+        priced.extend(_defaulted(unknown, priced))
         rates.append(_combine(master, priced, total_weight, unpriced_weight))
 
     rates.sort(key=lambda rate: (-rate.xp_per_hour, rate.master))
     return rates
+
+
+def _defaulted(
+    unknown: list[tuple[str, float, float]], priced: list[TaskRate]
+) -> list[TaskRate]:
+    """Fold the tasks with no rate data back in at a poor default.
+
+    **Excluding them flattered whoever had the most gaps.** A master's rate
+    is a mixture over what it assigns, so dropping a quarter of that mixture
+    silently reweights the rest - Vannaka reached only 23% of his list with
+    24% unpriced and came out *fastest*, which is exactly backwards: those
+    are the low-level tasks nobody has bothered to measure, and being sent on
+    them is time not spent earning.
+
+    Nothing is known about how long they take, so they are given the
+    master's own typical assignment length and
+    `DEFAULT_SLAYER_XP_PER_HOUR` while on it. Assuming a *duration* would be
+    inventing a second number on top of the first; assuming a typical one
+    keeps the guess to the rate alone.
+    """
+    if not unknown:
+        return []
+    typical = _typical_hours(priced)
+    filled: list[TaskRate] = []
+    for task, weight, count in unknown:
+        size = count if count > 0 else 100.0
+        filled.append(
+            TaskRate(
+                task=task,
+                weight=weight,
+                mean_count=size,
+                # Chosen so `xp / hours` is the default rate exactly, at the
+                # typical assignment length.
+                xp_per_kill=DEFAULT_SLAYER_XP_PER_HOUR * typical / size,
+                kills_per_hour=size / typical,
+                defaulted=True,
+            )
+        )
+    return filled
+
+
+def _typical_hours(priced: list[TaskRate]) -> float:
+    """How long this master's measured assignments take, on average."""
+    total = sum(task.weight for task in priced)
+    if total <= 0:
+        return 1.0
+    average = sum(task.weight * task.hours for task in priced) / total
+    return average if average > 0 else 1.0
 
 
 def _combine(

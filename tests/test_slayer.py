@@ -12,7 +12,12 @@ from typing import Any
 import pytest
 
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.heuristics import Heuristics, SlayerTask, Superior
+from fray_claude.heuristics import (
+    DEFAULT_SLAYER_XP_PER_HOUR,
+    Heuristics,
+    SlayerTask,
+    Superior,
+)
 from fray_claude.slayer import (
     SheetFormatError,
     best_master,
@@ -156,7 +161,10 @@ def test_an_unreachable_task_drops_out_and_coverage_falls() -> None:
     assert rate.coverage == 0.25
 
 
-def test_an_unpriced_task_is_not_counted() -> None:
+def test_an_unpriced_task_is_folded_in_at_the_poor_default() -> None:
+    # Excluding it flattered whoever had the most gaps: a master's rate is a
+    # mixture over what it assigns, so dropping half of it silently
+    # reweighted the rest.
     info = _info(slayerMasterTasks={"M": {"A": {"Weight": 1}, "B": {"Weight": 1}}})
     heuristics = _heuristics(A=SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=100))
 
@@ -164,16 +172,38 @@ def test_an_unpriced_task_is_not_counted() -> None:
         info, heuristics, reachable_monsters=frozenset(), valid={}, levels={}
     )[0]
 
-    assert [task.task for task in rate.tasks] == ["A"]
+    assert sorted(task.task for task in rate.tasks) == ["A", "B"]
+    assert [task.defaulted for task in rate.tasks if task.task == "B"] == [True]
+    # A alone is 1,000 xp/hr; B comes in at the 7,000 default, so the mixture
+    # lands between the two rather than pretending B is not assigned.
+    assert 1_000 < rate.xp_per_hour < DEFAULT_SLAYER_XP_PER_HOUR
 
 
-def test_a_master_with_nothing_doable_is_reported_at_zero() -> None:
+def test_a_defaulted_task_takes_a_typical_assignment_length() -> None:
+    # Nothing is known about how long it takes, so it gets the master's own
+    # typical length - assuming a duration too would be a second invention.
+    info = _info(slayerMasterTasks={"M": {"A": {"Weight": 1}, "B": {"Weight": 1}}})
+    heuristics = _heuristics(A=SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=50))
+
+    rate = master_rates(
+        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={}
+    )[0]
+    defaulted = next(task for task in rate.tasks if task.defaulted)
+
+    assert defaulted.hours == pytest.approx(2.0)  # A is 100/50 = 2h
+    assert defaulted.xp / defaulted.hours == pytest.approx(DEFAULT_SLAYER_XP_PER_HOUR)
+
+
+def test_a_master_with_nothing_assignable_is_reported_at_zero() -> None:
     # Zero rather than absent, so a caller can tell "cannot train here" from
-    # "no such master".
-    info = _info(slayerMasterTasks={"M": {"A": {"Weight": 1}}})
+    # "no such master". Nothing *assignable* - an assignable task with no
+    # data is defaulted rather than dropped.
+    info = _info(
+        slayerMasterTasks={"M": {"A": {"Weight": 1, "Level": 90}}},
+    )
 
     rates = master_rates(
-        info, Heuristics(), reachable_monsters=frozenset(), valid={}, levels={}
+        info, Heuristics(), reachable_monsters=frozenset(), valid={}, levels={"Slayer": 3}
     )
 
     assert rates[0].xp_per_hour == 0.0
@@ -248,7 +278,9 @@ def test_a_task_with_no_rate_data_is_counted_apart_from_unreachable_ones() -> No
         info, heuristics, reachable_monsters=frozenset(), valid={}, levels={}
     )[0]
 
-    assert rate.coverage == 0.5
+    # Both halves are assignable, so coverage is full; half of it is a
+    # guess, which is what `unpriced` is for. The two are orthogonal.
+    assert rate.coverage == 1.0
     assert rate.unpriced == 0.5
 
 
