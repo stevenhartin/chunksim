@@ -20,6 +20,29 @@ to `Heuristics.rarity` for the ~1,200 entries the export words rather than
 numbers (`Always`, `Common`, ...). Drop tables compose multiplicatively, the
 same expansion `sources.py` does for the unlocked case.
 
+**Three gates stand between a drop and its price, and skipping any of them
+prices a game nobody is playing.**
+
+1. *The monster has to be reachable.* `WorldIndex` spans the whole world, so
+   without a check the walk costs every drop in OSRS. `SourceIndex.monsters`
+   is the answer - placed in an unlocked chunk *and* past its `taskUnlocks`
+   gates. `Colossal Hydra` is what taught this: a `skillItems.Slayer` activity
+   with 43 drops and no chunk anywhere, priced as though you could go and
+   fight one.
+2. *A task-gated monster has to be assigned.* `taskUnlocks['Monsters']` names
+   a `<X> task` Nonskill requirement per location - Grotesque Guardians want
+   a gargoyle task - and being sent one costs far more than the fighting
+   does. `task_gated_monsters` reads them; `_task_hours` prices the wait. If
+   no reachable master can assign it, the route has **no** price rather than
+   a free one.
+3. *The master has to be reachable too.* That gate lives in `slayer.py`, and
+   its absence had this module quoting Duradel on a map holding none of him.
+
+**Superiors are the exception that proves the first gate.** A superior slayer
+monster is never in a chunk - it replaces a normal counterpart on death, on
+task, at 1/200 - so gate 1 correctly refuses it and `_superior_hours` then
+prices it through its base monster, which carries gates 2 and 3 itself.
+
 **Two deliberate limits, both of which would otherwise bite.**
 
 - *An item made from other items recurses*, and can cycle: A is the output of
@@ -56,7 +79,7 @@ from typing import Any
 
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.experience import MAX_LEVEL, xp_between
-from fray_claude.heuristics import Heuristics, activity_name
+from fray_claude.heuristics import Heuristics, Superior, activity_name
 from fray_claude.pipeline import Derived, MapState
 from fray_claude.rates import parse_ratio
 from fray_claude.search import WorldIndex, normalise
@@ -170,6 +193,19 @@ class _Walk:
     world: WorldIndex
     heuristics: Heuristics
     tables: dict[str, Any] = field(default_factory=dict)
+    #: Monsters actually reachable on this map: placed in an unlocked chunk
+    #: *and* past their `taskUnlocks` gates. This is `SourceIndex.monsters`,
+    #: and gating on it is the difference between pricing the world and
+    #: pricing your world - see `_route_hours`.
+    available: frozenset[str] = frozenset()
+    #: Monster -> the slayer task you must be on to fight it, where one is
+    #: required. Derived from `taskUnlocks`; see `task_gated_monsters`.
+    task_gates: dict[str, str] = field(default_factory=dict)
+    #: Every master's task table. A gated kill is priced against whichever
+    #: master can assign the task *soonest*, not the one with the best XP
+    #: rate: different masters assign different things, and Krystilia being
+    #: fastest overall is no help at all when the task you need is gargoyles.
+    masters: tuple[MasterRate, ...] = ()
     #: Lowercased item name -> the export's own spelling. Task names carry
     #: the item in lower case inside their `~|...|~` span
     #: (`Obtain a ~|granite ring (i)|~`) while `item_sources` is keyed by the
@@ -281,14 +317,147 @@ def _route_hours(
             total += priced[0]
         return total, f"make: {provider}"
 
+    return _kill_hours(walk, provider, item)
+
+
+def _kill_hours(walk: _Walk, provider: str, item: str) -> tuple[float, str] | None:
+    """Hours of killing `provider` to see one `item`, gates included.
+
+    **Availability is checked first and is not negotiable.** `provider` has to
+    be a monster this map can actually reach - placed in an unlocked chunk and
+    past its `taskUnlocks` gates. Without that the walk prices the whole game:
+    `Colossal Hydra` is a `skillItems.Slayer` activity with 43 drops and no
+    chunk anywhere (it is a superior, spawned from Alchemical Hydra), and it
+    was being costed as though you could go and fight one.
+    """
+    if provider not in walk.available:
+        superior = walk.heuristics.superiors.get(provider)
+        return _superior_hours(walk, superior, item) if superior else None
+
     chance = _drop_probability(walk, provider, item)
     if chance is None or chance <= 0:
         return None
     rate = walk.heuristics.kills_per_hour(provider)
     if rate.value <= 0:
         return None
-    hours = (1 / chance) / rate.value
-    return hours, f"{provider} at 1/{1 / chance:,.0f}, {rate.value:g}/hr"
+
+    kills = 1 / chance
+    detail = f"{provider} at 1/{kills:,.0f}, {rate.value:g}/hr"
+
+    if provider in walk.task_gates:
+        # Mandatory: a task-gated monster priced without its task reads as
+        # though you could walk up and fight it. If the wait cannot be
+        # costed, the honest answer is that this route has no price.
+        gated = _task_hours(walk, provider, kills, rate.value)
+        if gated is None:
+            return None
+        hours, task = gated
+        return hours, f"{detail} on {task} task"
+    return kills / rate.value, detail
+
+
+def _task_hours(
+    walk: _Walk, provider: str, kills: float, kills_per_hour: float
+) -> tuple[float, str] | None:
+    """Cost of `kills` of a task-gated monster, waiting for tasks included.
+
+    You cannot go and kill a Grotesque Guardian; you have to be *sent*. One
+    assignment yields `mean_count` of them, so `kills` needs
+    `kills / mean_count` assignments, and each of those costs the wait for
+    that task to come up plus the killing itself. Ignoring the wait is what
+    made these look cheap: a gargoyle task once every several hours dwarfs the
+    twenty minutes of actual fighting.
+    """
+    task = walk.task_gates.get(provider)
+    rate = walk.heuristics.slayer.get(task) if task else None
+    if task is None or rate is None or rate.mean_count <= 0:
+        return None
+
+    waits = [
+        wait
+        for master in walk.masters
+        if (wait := master.hours_to_be_assigned(task)) is not None
+    ]
+    if not waits:
+        return None
+    assignments = max(1.0, kills / rate.mean_count)
+    return assignments * (min(waits) + rate.mean_count / kills_per_hour), task
+
+
+def _superior_hours(
+    walk: _Walk, superior: Superior, item: str
+) -> tuple[float, str] | None:
+    """Hours to see one `item` from a superior slayer monster.
+
+    A superior is never placed in a chunk: it replaces one of its normal
+    counterparts on death, only while on task, at roughly 1/200. So its cost
+    is its base monster's cost multiplied by how many base kills a superior
+    takes - and the base is usually task-gated itself, which the recursion
+    picks up.
+    """
+    if superior.spawn_rate <= 0 or superior.base not in walk.available:
+        return None
+    chance = _drop_probability(walk, superior.name, item)
+    if chance is None or chance <= 0:
+        return None
+    rate = walk.heuristics.kills_per_hour(superior.base)
+    if rate.value <= 0:
+        return None
+
+    # Base kills needed: one superior per `1 / spawn_rate`, and one drop per
+    # `1 / chance` superiors.
+    kills = (1 / superior.spawn_rate) * (1 / chance)
+    gated = _task_hours(walk, superior.base, kills, rate.value)
+    hours = gated[0] if gated is not None else kills / rate.value
+    return hours, (
+        f"{superior.name} (superior) <- {superior.base}"
+        f" at 1/{1 / superior.spawn_rate:,.0f}, drop 1/{1 / chance:,.0f}"
+    )
+
+
+def task_gated_monsters(chunk_info: ChunkInfo) -> dict[str, str]:
+    """Monsters you must be *on a slayer task* to fight, and which task.
+
+    Read out of `taskUnlocks['Monsters']`, whose entries are per location::
+
+        "Grotesque Guardians": {"Grotesque Guardians' Lair":
+                                    [{"Gargoyle task": "Nonskill"}]}
+        "Alchemical Hydra":    {"Karuulm Slayer Dungeon":
+                                    [{"Hydra task": "Nonskill"}]}
+
+    A `Nonskill` requirement named `<something> task` is the export's way of
+    saying "only while assigned". The other gates there are quests
+    (`Adamant dragon` wants Dragon Slayer II) and are ordinary validity
+    requirements `challenges.py` already enforces, so only the task-shaped
+    ones matter here. The name maps back to a `codeItems.slayerTasks` key -
+    `Gargoyle task` to the `Gargoyles` assignment - because that is where the
+    weight lives.
+
+    Nothing marks these monsters directly, which is why this is inferred
+    rather than looked up. Guessing instead (all 469 monsters a slayer task
+    covers, say) would put a waiting cost on every aberrant spectre you can
+    already walk up to and kill.
+    """
+    assignments = _mapping(chunk_info.code_items, "slayerTasks")
+    by_normalised = {normalise(name): name for name in assignments}
+
+    gates: dict[str, str] = {}
+    for monster, locations in _mapping(chunk_info.data, "taskUnlocks").get("Monsters", {}).items():
+        if not isinstance(locations, dict):
+            continue
+        for requirements in locations.values():
+            for requirement in requirements if isinstance(requirements, list) else ():
+                if not isinstance(requirement, dict):
+                    continue
+                for name, category in requirement.items():
+                    if category != "Nonskill" or not name.endswith(" task"):
+                        continue
+                    subject = normalise(name.removesuffix(" task"))
+                    for candidate in (subject, f"{subject}s", f"{subject}es"):
+                        if candidate in by_normalised:
+                            gates[monster] = by_normalised[candidate]
+                            break
+    return gates
 
 
 def _bucket_for(walk: _Walk, detail: str) -> str:
@@ -335,6 +504,15 @@ def _steps_in(derived: Derived, quest: str) -> int:
     )
 
 
+def _declared(state: MapState) -> dict[str, int]:
+    """The levels the map says are *reachable* (`maxSkill`), not held."""
+    return {
+        skill: int(level)
+        for skill, level in state.max_skill.items()
+        if isinstance(level, (int, float)) and not isinstance(level, bool)
+    }
+
+
 def _levels(state: MapState, overrides: dict[str, int]) -> dict[str, int]:
     """The per-skill level to count from. See the module docstring's caveat."""
     levels = {
@@ -374,14 +552,51 @@ def estimate(
     level_overrides: dict[str, int] | None = None,
 ) -> EstimateResult:
     """Estimate the outstanding active work. See the module docstring first."""
+    levels = _levels(state, level_overrides or {})
+    reachable = frozenset(derived.source_index.monsters)
+    valid_quests = frozenset(derived.challenges.valid.get("Quest") or {})
+    # A slayer master you cannot reach assigns nothing - see `slayer.py`.
+    reachable_masters = frozenset(derived.source_index.npcs)
+
+    slayer_rate = best_master(
+        master_rates(
+            state.chunk_info,
+            heuristics,
+            reachable_monsters=reachable,
+            valid_quests=valid_quests,
+            levels=levels,
+            combat_level=levels.get("Combat", MAX_LEVEL),
+            reachable_masters=reachable_masters,
+        )
+    )
+    # Every master's table, for *task-gated drops only*, computed at the
+    # levels the player has declared they can reach rather than the ones they
+    # have. Grotesque Guardians need a gargoyle task, which needs Slayer 75;
+    # at the current level that task is unassignable and the drop would read
+    # as unobtainable forever. It isn't - the skilling bucket is already
+    # costing the climb - so the kill is priced at what it will cost once
+    # assignable.
+    gate_masters = tuple(
+        master_rates(
+            state.chunk_info,
+            heuristics,
+            reachable_monsters=reachable,
+            valid_quests=valid_quests,
+            levels={**levels, **_declared(state)},
+            combat_level=MAX_LEVEL,
+            reachable_masters=reachable_masters,
+        )
+    )
     walk = _Walk(
         chunk_info=state.chunk_info,
         world=world,
         heuristics=heuristics,
         tables=_mapping(state.chunk_info.code_items, "dropTables"),
         by_lower={item.lower(): item for item in world.item_sources},
+        available=reachable,
+        task_gates=task_gated_monsters(state.chunk_info),
+        masters=gate_masters,
     )
-    levels = _levels(state, level_overrides or {})
 
     tasks: list[TaskEstimate] = list(_quest_tasks(derived, heuristics))
     unpriced: list[str] = []
@@ -397,17 +612,6 @@ def estimate(
                 task=name, bucket=_bucket_for(walk, detail), hours=hours, detail=detail
             )
         )
-
-    slayer_rate = best_master(
-        master_rates(
-            state.chunk_info,
-            heuristics,
-            reachable_monsters=frozenset(derived.source_index.monsters),
-            valid_quests=frozenset(derived.challenges.valid.get("Quest") or {}),
-            levels=levels,
-            combat_level=levels.get("Combat", MAX_LEVEL),
-        )
-    )
 
     skills: list[SkillEstimate] = []
     for skill, classification in sorted(derived.task_classification.skills.items()):

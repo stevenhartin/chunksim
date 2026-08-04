@@ -153,7 +153,14 @@ from fray_claude.slayer import SheetFormatError, parse_mob_data
 from fray_claude.sources import CATEGORIES as SOURCE_CATEGORIES
 from fray_claude.summary import _mapping, summarise
 from fray_claude.unlock import UnlockDelta, tasks_added_by
-from fray_claude.wiki import ASSIGNMENTS_PAGE, MMG_PREFIX, mmg_rates, slayer_assignments
+from fray_claude.wiki import (
+    ASSIGNMENTS_PAGE,
+    MMG_PREFIX,
+    SUPERIORS_PAGE,
+    mmg_rates,
+    slayer_assignments,
+    superior_pairs,
+)
 
 DEFAULT_MAP = "fray"
 
@@ -256,6 +263,10 @@ def _cmd_heuristics(args: argparse.Namespace) -> int:
     }
     print(f"assignment pages {len(assignments)}/{len(masters)}")
 
+    superior_page = fetch_wiki_pages([SUPERIORS_PAGE], timeout=args.timeout)
+    superiors = superior_pairs(superior_page.get(SUPERIORS_PAGE, ""))
+    print(f"superiors        {len(superiors)}")
+
     try:
         mob_data = parse_mob_data(fetch_text(slayer_sheet_url(), what="slayer sheet"))
         print(f"slayer sheet     {len(mob_data)} tasks")
@@ -271,6 +282,7 @@ def _cmd_heuristics(args: argparse.Namespace) -> int:
         mmg_pages=mmg,
         assignments=assignments,
         mob_data=mob_data,
+        superiors=superiors,
     )
     path = write_blob(WIKI_RATES_BLOB_NAME, config, WIKI_API_URL)
 

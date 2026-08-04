@@ -54,6 +54,10 @@ MMG_PREFIX = "Money making guide/"
 #: own page, which only links to it.
 ASSIGNMENTS_PAGE = "Slayer assignments"
 
+#: The one page listing every superior slayer monster against the ordinary
+#: one it replaces. The export knows nothing about them.
+SUPERIORS_PAGE = "Superior slayer monster"
+
 #: `<!-- ... -->`, including the multi-line ones real infoboxes carry.
 _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
@@ -270,6 +274,31 @@ def mmg_rates(text: str) -> MmgRates | None:
         kph=parse_number(params.get("kph", "")),
         experience=experience,
     )
+
+
+def superior_pairs(text: str) -> list[tuple[str, str]]:
+    """`(superior, the normal monster it replaces)` from the wiki's table.
+
+    Each row is `|[[Crawling Hand|Crawling hand]]` followed by
+    `|[[Crushing hand]]`, so the *first two* links in a row are the pair, in
+    that order. Read positionally within the row because the table's other
+    columns (combat level, hitpoints, unique-drop odds, slayer XP) are plain
+    numbers and templates that carry no links to confuse them.
+    """
+    pairs: list[tuple[str, str]] = []
+    for block in strip_comments(text).split("|-"):
+        links = _LINK_RE.findall(block)
+        targets = [
+            match.group(1).strip()
+            for match in re.finditer(r"\[\[([^\]|]+)", block)
+            if not match.group(1).lower().startswith("file:")
+        ]
+        if len(links) < 2 or len(targets) < 2:
+            continue
+        base, superior = targets[0], targets[1]
+        if base and superior and base != superior:
+            pairs.append((superior, base))
+    return pairs
 
 
 def slayer_assignments(text: str) -> list[Assignment]:

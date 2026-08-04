@@ -10,8 +10,15 @@ from fray_claude.active_tasks import SkillClassification, TaskClassification
 from fray_claude.bis import BisResult
 from fray_claude.challenges import ChallengeResult
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.estimate import estimate
-from fray_claude.heuristics import DEFAULT_XP_PER_HOUR, Heuristics, QuestRate, Rate
+from fray_claude.estimate import estimate, task_gated_monsters
+from fray_claude.heuristics import (
+    DEFAULT_XP_PER_HOUR,
+    Heuristics,
+    QuestRate,
+    Rate,
+    SlayerTask,
+    Superior,
+)
 from fray_claude.other_tasks import CategoryTasks, OtherTasks, TaskGroup
 from fray_claude.pipeline import Derived, MapState
 from fray_claude.search import build_world_index
@@ -40,11 +47,18 @@ def _state(info: ChunkInfo, **overrides: Any) -> MapState:
     return MapState(**defaults)
 
 
-def _derived(**overrides: Any) -> Derived:
+def _derived(*, monsters: tuple[str, ...] = (), **overrides: Any) -> Derived:
+    """`monsters` are the ones reachable on this map - the estimator prices
+    nothing it cannot reach, so a fixture that omits them prices nothing."""
     defaults: dict[str, Any] = {
         "reachable_sections": {},
         "source_index": SourceIndex(
-            items={}, objects={}, monsters={}, npcs={}, shops={}, drop_rates={}
+            items={},
+            objects={},
+            monsters={name: {"100": True} for name in monsters},
+            npcs={},
+            shops={},
+            drop_rates={},
         ),
         "challenges": ChallengeResult(valid={}, unsupported=frozenset()),
         "bis": BisResult(picks={}),
@@ -80,6 +94,7 @@ def test_a_boss_drop_costs_one_over_the_rate_divided_by_kills_per_hour() -> None
         }
     )
     derived = _derived(
+        monsters=("General Graardor",),
         other_tasks=OtherTasks(
             categories={
                 "Extra": CategoryTasks(
@@ -87,7 +102,7 @@ def test_a_boss_drop_costs_one_over_the_rate_divided_by_kills_per_hour() -> None
                     groups=(TaskGroup(name="Boss", active=("Obtain a ~|bandos chestplate|~",)),),
                 )
             }
-        )
+        ),
     )
     heuristics = Heuristics(monsters={"General Graardor": Rate(27.0, "mmg:x", "exact")})
 
@@ -105,13 +120,14 @@ def test_a_non_boss_provider_lands_in_activities() -> None:
         }
     )
     derived = _derived(
+        monsters=("Goblin",),
         other_tasks=OtherTasks(
             categories={
                 "Extra": CategoryTasks(
                     category="Extra", groups=(TaskGroup(name="X", active=("Obtain ~|bones|~",)),)
                 )
             }
-        )
+        ),
     )
 
     result = _run(info, derived, Heuristics(monsters={"Goblin": Rate(100.0)}))
@@ -130,13 +146,14 @@ def test_a_worded_rate_is_priced_through_the_config() -> None:
         }
     )
     derived = _derived(
+        monsters=("Goblin",),
         other_tasks=OtherTasks(
             categories={
                 "Extra": CategoryTasks(
                     category="Extra", groups=(TaskGroup(name="X", active=("Obtain ~|bones|~",)),)
                 )
             }
-        )
+        ),
     )
 
     result = _run(info, derived, Heuristics(monsters={"Goblin": Rate(50.0)}))
@@ -180,6 +197,7 @@ def test_a_made_item_costs_its_inputs() -> None:
         }
     )
     derived = _derived(
+        monsters=("Goblin",),
         other_tasks=OtherTasks(
             categories={
                 "Extra": CategoryTasks(
@@ -187,7 +205,7 @@ def test_a_made_item_costs_its_inputs() -> None:
                     groups=(TaskGroup(name="X", active=("Obtain a ~|bone ring|~",)),),
                 )
             }
-        )
+        ),
     )
 
     result = _run(info, derived, Heuristics(monsters={"Goblin": Rate(100.0)}))
@@ -369,3 +387,195 @@ def test_the_level_override_beats_the_passive_floor() -> None:
 
     assert higher.skills[0].current_level == 84
     assert higher.skills[0].xp < lower.skills[0].xp
+
+
+# --- reachability and slayer-task gates -------------------------------------
+
+
+def _bones_task(info: ChunkInfo, **derived_kwargs: Any) -> Derived:
+    return _derived(
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra", groups=(TaskGroup(name="X", active=("Obtain ~|bones|~",)),)
+                )
+            }
+        ),
+        **derived_kwargs,
+    )
+
+
+def test_a_monster_outside_the_unlocked_chunks_is_not_priced() -> None:
+    # The bug this gate exists for: `Colossal Hydra` is a skillItems.Slayer
+    # activity with 43 drops and no chunk anywhere, and was being costed as
+    # though you could go and fight one.
+    info = ChunkInfo(
+        {
+            "drops": {"Goblin": {"Bones": {"1": "1/10"}}},
+            "challenges": {"Extra": {"Obtain ~|bones|~": {}}},
+        }
+    )
+
+    result = _run(info, _bones_task(info), Heuristics(monsters={"Goblin": Rate(100.0)}))
+
+    assert result.unpriced == ("Obtain ~|bones|~",)
+
+
+def _gated_info() -> ChunkInfo:
+    return ChunkInfo(
+        {
+            "drops": {"Grotesque Guardians": {"Granite maul": {"1": "1/100"}}},
+            "challenges": {"Extra": {"Obtain a ~|granite maul|~": {}}},
+            "codeItems": {"slayerTasks": {"Gargoyles": {"Grotesque Guardians": True}}},
+            "taskUnlocks": {
+                "Monsters": {
+                    "Grotesque Guardians": {
+                        "Grotesque Guardians' Lair": [{"Gargoyle task": "Nonskill"}]
+                    }
+                }
+            },
+            "slayerMasterTasks": {
+                "Vannaka": {"Gargoyles": {"Weight": 1}, "Bats": {"Weight": 9}},
+                "Duradel": {"Gargoyles": {"Weight": 9}, "Bats": {"Weight": 1}},
+            },
+        }
+    )
+
+
+def _gated_derived() -> Derived:
+    derived = _derived(
+        monsters=("Grotesque Guardians",),
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra",
+                    groups=(TaskGroup(name="X", active=("Obtain a ~|granite maul|~",)),),
+                )
+            }
+        ),
+    )
+    # Vannaka is the only master whose NPC is in an unlocked chunk.
+    return Derived(
+        reachable_sections=derived.reachable_sections,
+        source_index=SourceIndex(
+            items={},
+            objects={},
+            monsters=derived.source_index.monsters,
+            npcs={"Vannaka": {"100": True}},
+            shops={},
+            drop_rates={},
+        ),
+        challenges=derived.challenges,
+        bis=derived.bis,
+        task_classification=derived.task_classification,
+        other_tasks=derived.other_tasks,
+    )
+
+
+def _gated_heuristics() -> Heuristics:
+    return Heuristics(
+        monsters={"Grotesque Guardians": Rate(20.0)},
+        slayer={
+            "Gargoyles": SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=20),
+            "Bats": SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=100),
+        },
+    )
+
+
+def test_task_gated_monsters_are_read_out_of_task_unlocks() -> None:
+    assert task_gated_monsters(_gated_info()) == {"Grotesque Guardians": "Gargoyles"}
+
+
+def test_a_task_gated_kill_includes_the_wait_for_the_task() -> None:
+    # Vannaka: P(Gargoyles) = 1/10 and an average task of
+    # (1*100/20 + 9*100/100)/10 = (5 + 9)/10 = 1.4h, so the wait is 14h.
+    # One assignment of 100 covers the 100 kills needed, and killing them
+    # takes 100/20 = 5h. Total 19h - against 5h if the task were ignored.
+    result = _run(_gated_info(), _gated_derived(), _gated_heuristics())
+
+    assert result.tasks[0].hours == pytest.approx(19.0)
+    assert "on Gargoyles task" in result.tasks[0].detail
+
+
+def test_an_unreachable_master_cannot_supply_the_task() -> None:
+    # Duradel assigns gargoyles nine times as often, but is not in any
+    # unlocked chunk - picking him would price a task you can never be given.
+    result = _run(_gated_info(), _gated_derived(), _gated_heuristics())
+
+    assert result.tasks[0].hours == pytest.approx(19.0)  # Vannaka's 14h wait, not Duradel's
+
+
+def test_a_task_gated_kill_with_no_reachable_master_is_unpriced() -> None:
+    derived = _derived(
+        monsters=("Grotesque Guardians",),
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra",
+                    groups=(TaskGroup(name="X", active=("Obtain a ~|granite maul|~",)),),
+                )
+            }
+        ),
+    )
+
+    result = _run(_gated_info(), derived, _gated_heuristics())
+
+    # No master NPC reachable, so no way to be assigned - not a free kill.
+    assert result.unpriced == ("Obtain a ~|granite maul|~",)
+
+
+def test_a_superior_is_priced_through_its_base_monster() -> None:
+    # 1/200 spawn, then a 1/10 drop off the superior: 2,000 base kills at
+    # 100/hr = 20h.
+    info = ChunkInfo(
+        {
+            "skillItems": {"Slayer": {"Marble gargoyle": {"Granite maul": {"1": "1/10"}}}},
+            "challenges": {"Extra": {"Obtain a ~|granite maul|~": {}}},
+        }
+    )
+    derived = _derived(
+        monsters=("Gargoyle",),
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra",
+                    groups=(TaskGroup(name="X", active=("Obtain a ~|granite maul|~",)),),
+                )
+            }
+        ),
+    )
+    heuristics = Heuristics(
+        monsters={"Gargoyle": Rate(100.0)},
+        superiors={"Marble gargoyle": Superior("Marble gargoyle", "Gargoyle", 1 / 200)},
+    )
+
+    result = _run(info, derived, heuristics)
+
+    assert result.tasks[0].hours == pytest.approx(20.0)
+    assert "(superior) <- Gargoyle" in result.tasks[0].detail
+
+
+def test_a_superior_whose_base_is_unreachable_is_unpriced() -> None:
+    info = ChunkInfo(
+        {
+            "skillItems": {"Slayer": {"Colossal Hydra": {"Granite maul": {"1": "1/10"}}}},
+            "challenges": {"Extra": {"Obtain a ~|granite maul|~": {}}},
+        }
+    )
+    derived = _derived(
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra",
+                    groups=(TaskGroup(name="X", active=("Obtain a ~|granite maul|~",)),),
+                )
+            }
+        )
+    )
+    heuristics = Heuristics(
+        superiors={"Colossal Hydra": Superior("Colossal Hydra", "Hydra", 1 / 200)}
+    )
+
+    result = _run(info, derived, heuristics)
+
+    assert result.unpriced == ("Obtain a ~|granite maul|~",)

@@ -114,6 +114,31 @@ class MasterRate:
     #: module docstring before quoting it.
     coverage: float = 0.0
 
+    @property
+    def average_hours(self) -> float:
+        """How long one assignment takes on average, whatever it turns out to be."""
+        total = sum(task.weight for task in self.tasks)
+        return (
+            sum(task.weight * task.hours for task in self.tasks) / total if total else 0.0
+        )
+
+    def probability(self, task: str) -> float:
+        """The chance a fresh assignment is `task`, over what is reachable."""
+        total = sum(entry.weight for entry in self.tasks)
+        weight = next((entry.weight for entry in self.tasks if entry.task == task), 0)
+        return weight / total if total else 0.0
+
+    def hours_to_be_assigned(self, task: str) -> float | None:
+        """Expected hours of slaying before `task` comes up, `None` if it can't.
+
+        One assignment in `1 / P(task)` is the one you want, and each costs
+        `average_hours` whatever it is, so the wait is the two multiplied.
+        This is what makes a task-gated boss expensive: you cannot simply go
+        and kill it, you have to be sent.
+        """
+        chance = self.probability(task)
+        return self.average_hours / chance if chance > 0 else None
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "master": self.master,
@@ -216,8 +241,16 @@ def master_rates(
     valid_quests: frozenset[str],
     levels: dict[str, int],
     combat_level: int = 126,
+    reachable_masters: frozenset[str] | None = None,
 ) -> list[MasterRate]:
-    """Every master's expected XP per hour, best first.
+    """Every reachable master's expected XP per hour, best first.
+
+    **`reachable_masters` is the master's own NPC availability**, and leaving
+    it out is how this module first went wrong: it happily picked Duradel on
+    a map holding none of Duradel. A master you cannot walk up to assigns you
+    nothing, so a rate computed from their task table is fiction. Pass the
+    unlocked NPCs (`SourceIndex.npcs`); `None` means "do not filter", which
+    only fixtures should want.
 
     A master with no priced, reachable task is returned with a rate of zero
     rather than omitted, so a caller can tell "cannot train here" from "no
@@ -226,6 +259,8 @@ def master_rates(
     rates: list[MasterRate] = []
     for master, tasks in _mapping(chunk_info.data, "slayerMasterTasks").items():
         if not isinstance(tasks, dict):
+            continue
+        if reachable_masters is not None and master not in reachable_masters:
             continue
         total_weight = sum(
             weight

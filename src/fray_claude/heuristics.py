@@ -89,6 +89,11 @@ DEFAULT_KPH: dict[str, float] = {"boss": 20.0, "slayer": 60.0, "regular": 150.0}
 #: purpose - see the module docstring.
 DEFAULT_XP_PER_HOUR = 1000.0
 
+#: A superior's base spawn chance from a normal counterpart's death, per the
+#: wiki. The per-monster figures in its table are the improved rates that the
+#: `Bigger and Badder` unlock buys; this is the plain one.
+DEFAULT_SUPERIOR_SPAWN_RATE = 1 / 200
+
 #: Words that carry no identity in an activity name, so a task name matching
 #: everything but these still counts as contained. `Killing X` and `X` are the
 #: same activity; `Making a Y` and `Y` likewise.
@@ -152,11 +157,30 @@ class SlayerTask:
 
 
 @dataclass(frozen=True)
+class Superior:
+    """A superior slayer monster, and the ordinary one it replaces.
+
+    Superiors are never placed in a chunk - they spawn from the death of a
+    normal counterpart, only while on a slayer task, at roughly 1/200. The
+    export has no idea they exist as monsters: `Colossal Hydra` appears only
+    as a `skillItems.Slayer` activity with 43 drops and no location at all.
+    """
+
+    name: str
+    base: str
+    spawn_rate: float = DEFAULT_SUPERIOR_SPAWN_RATE
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"base": self.base, "spawn_rate": self.spawn_rate}
+
+
+@dataclass(frozen=True)
 class Heuristics:
     """Every hand-correctable number, already merged across the two layers."""
 
     quests: dict[str, QuestRate] = field(default_factory=dict)
     monsters: dict[str, Rate] = field(default_factory=dict)
+    superiors: dict[str, Superior] = field(default_factory=dict)
     #: Training task name -> skill -> XP per hour.
     training: dict[str, dict[str, Rate]] = field(default_factory=dict)
     slayer: dict[str, SlayerTask] = field(default_factory=dict)
@@ -311,6 +335,7 @@ def build_config(
     mmg_pages: dict[str, MmgRates],
     assignments: dict[str, list[Assignment]],
     mob_data: dict[str, SlayerTask],
+    superiors: list[tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Generate the full config from the export plus everything fetched.
 
@@ -356,11 +381,20 @@ def build_config(
             value=per_hour, source=f"mmg:{title}", match=found[1]
         ).as_dict()
 
+    # Only superiors the export actually knows about, so the section stays a
+    # list of things that can appear in an estimate rather than a copy of the
+    # wiki. `skillItems.Slayer` is where they live - never `drops`.
+    known = set(_mapping(chunk_info.skill_items, "Slayer"))
     return {
         "quests": quests,
         "monsters": monsters,
         "training": training,
         "slayer": _slayer_section(chunk_info, assignments, mob_data),
+        "superiors": {
+            superior: Superior(name=superior, base=base).as_dict()
+            for superior, base in superiors or ()
+            if superior in known
+        },
         "rarities": dict(RARITY_PROBABILITY),
     }
 
@@ -471,6 +505,15 @@ def load(
         },
         monsters={
             name: _rate(entry) for name, entry in _entries(config, "monsters")
+        },
+        superiors={
+            name: Superior(
+                name=name,
+                base=str(entry.get("base") or ""),
+                spawn_rate=_float(entry.get("spawn_rate"), DEFAULT_SUPERIOR_SPAWN_RATE),
+            )
+            for name, entry in _entries(config, "superiors")
+            if entry.get("base")
         },
         training={
             task: {
