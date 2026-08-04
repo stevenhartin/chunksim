@@ -430,7 +430,7 @@ def _plus_family(chunk_info: ChunkInfo, key: str, name: str) -> list[str] | None
     return family if isinstance(family, list) else None
 
 
-def _chunks_requirement_met(
+def chunks_requirement_met(
     challenge: Mapping[str, Any],
     chunk_ids: Mapping[str, bool],
     reachable_sections: Mapping[str, Mapping[str, bool]],
@@ -1071,7 +1071,7 @@ def _static_gates_met(
         return False
     if not _category_gate_met(challenge, rules, secondary_primary_amount):
         return False
-    if not _chunks_requirement_met(challenge, chunk_ids, reachable_sections, chunk_info):
+    if not chunks_requirement_met(challenge, chunk_ids, reachable_sections, chunk_info):
         return False
     if not _presence_requirement_met(challenge, "Objects", objects, chunk_info, "objectsPlus"):
         return False

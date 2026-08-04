@@ -54,7 +54,7 @@ def test_the_rate_is_the_time_weighted_mean() -> None:
         info,
         heuristics,
         reachable_monsters=frozenset(),
-        valid_quests=frozenset(),
+        valid={},
         levels={"Slayer": 99},
     )[0]
 
@@ -79,7 +79,7 @@ def test_a_plain_mean_of_rates_would_give_a_different_answer() -> None:
     )
 
     rate = master_rates(
-        info, heuristics, reachable_monsters=frozenset(), valid_quests=frozenset(), levels={}
+        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={}
     )[0]
 
     assert rate.xp_per_hour == pytest.approx(400.0)
@@ -96,7 +96,7 @@ def test_a_task_above_the_players_slayer_level_is_excluded() -> None:
     )
 
     rate = master_rates(
-        info, heuristics, reachable_monsters=frozenset(), valid_quests=frozenset(),
+        info, heuristics, reachable_monsters=frozenset(), valid={},
         levels={"Slayer": 50},
     )[0]
 
@@ -119,7 +119,7 @@ def test_a_task_whose_quest_is_not_done_is_excluded() -> None:
     )
 
     rate = master_rates(
-        info, heuristics, reachable_monsters=frozenset(), valid_quests=frozenset(), levels={}
+        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={}
     )[0]
 
     assert [task.task for task in rate.tasks] == ["A"]
@@ -138,7 +138,7 @@ def test_an_unreachable_task_drops_out_and_coverage_falls() -> None:
     )
 
     rate = master_rates(
-        info, heuristics, reachable_monsters=frozenset({"Bear"}), valid_quests=frozenset(),
+        info, heuristics, reachable_monsters=frozenset({"Bear"}), valid={},
         levels={},
     )[0]
 
@@ -151,7 +151,7 @@ def test_an_unpriced_task_is_not_counted() -> None:
     heuristics = _heuristics(A=SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=100))
 
     rate = master_rates(
-        info, heuristics, reachable_monsters=frozenset(), valid_quests=frozenset(), levels={}
+        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={}
     )[0]
 
     assert [task.task for task in rate.tasks] == ["A"]
@@ -163,7 +163,7 @@ def test_a_master_with_nothing_doable_is_reported_at_zero() -> None:
     info = _info(slayerMasterTasks={"M": {"A": {"Weight": 1}}})
 
     rates = master_rates(
-        info, Heuristics(), reachable_monsters=frozenset(), valid_quests=frozenset(), levels={}
+        info, Heuristics(), reachable_monsters=frozenset(), valid={}, levels={}
     )
 
     assert rates[0].xp_per_hour == 0.0
@@ -181,7 +181,7 @@ def test_the_fastest_master_is_chosen() -> None:
 
     chosen = best_master(
         master_rates(
-            info, heuristics, reachable_monsters=frozenset(), valid_quests=frozenset(),
+            info, heuristics, reachable_monsters=frozenset(), valid={},
             levels={},
         )
     )
@@ -235,7 +235,7 @@ def test_a_task_with_no_rate_data_is_counted_apart_from_unreachable_ones() -> No
     )
 
     rate = master_rates(
-        info, heuristics, reachable_monsters=frozenset(), valid_quests=frozenset(), levels={}
+        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={}
     )[0]
 
     assert rate.coverage == 0.5
@@ -253,9 +253,107 @@ def test_an_unreachable_task_is_not_counted_as_unpriced() -> None:
     )
 
     rate = master_rates(
-        info, heuristics, reachable_monsters=frozenset({"Bear"}), valid_quests=frozenset(),
+        info, heuristics, reachable_monsters=frozenset({"Bear"}), valid={},
         levels={},
     )[0]
 
     assert rate.coverage == 0.5
     assert rate.unpriced == 0.0
+
+
+def test_a_prerequisite_is_checked_in_its_own_category() -> None:
+    # `Tasks` maps a name to its *category*, and the category was being
+    # thrown away: every prerequisite was looked up under `Quest`, so
+    # Krystilia's `Magic axes` (a Thieving unlock) could never be assigned.
+    info = _info(
+        slayerMasterTasks={
+            "M": {
+                "Magic axes": {
+                    "Weight": 1,
+                    "Tasks": {"Unlock the ~|door (Magic axe hut)|~": "Thieving"},
+                }
+            }
+        }
+    )
+    heuristics = _heuristics(
+        Magic_axes=SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=100)
+    )
+
+    granted = master_rates(
+        info,
+        heuristics,
+        reachable_monsters=frozenset(),
+        valid={"Thieving": {"Unlock the ~|door (Magic axe hut)|~": True}},
+        levels={},
+    )[0]
+    refused = master_rates(
+        info,
+        heuristics,
+        reachable_monsters=frozenset(),
+        valid={"Quest": {"Unlock the ~|door (Magic axe hut)|~": True}},
+        levels={},
+    )[0]
+
+    assert [task.task for task in granted.tasks] == ["Magic axes"]
+    assert refused.tasks == ()
+
+
+def test_a_quest_prerequisite_may_be_a_single_step() -> None:
+    # `Desert Treasure I 7c1`, not `Complete the quest` - so the lookup has
+    # to be by name rather than by matching a completion entry.
+    info = _info(
+        slayerMasterTasks={
+            "M": {
+                "Dust devils": {
+                    "Weight": 1,
+                    "Tasks": {"~|Desert Treasure I|~ 7c1": "Quest"},
+                }
+            }
+        }
+    )
+    heuristics = _heuristics(
+        Dust_devils=SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=100)
+    )
+
+    rate = master_rates(
+        info,
+        heuristics,
+        reachable_monsters=frozenset(),
+        valid={"Quest": {"~|Desert Treasure I|~ 7c1": True}},
+        levels={},
+    )[0]
+
+    assert [task.task for task in rate.tasks] == ["Dust devils"]
+
+
+def test_an_entrys_chunks_gate_is_honoured() -> None:
+    info = _info(slayerMasterTasks={"M": {"Jellies": {"Weight": 1, "Chunks": ["1234"]}}})
+    heuristics = _heuristics(
+        Jellies=SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=100)
+    )
+    kwargs: dict[str, Any] = {
+        "reachable_monsters": frozenset(),
+        "valid": {},
+        "levels": {},
+    }
+
+    assert master_rates(info, heuristics, unlocked={"1234": True}, **kwargs)[0].tasks
+    assert master_rates(info, heuristics, unlocked={"9999": True}, **kwargs)[0].tasks == ()
+
+
+def test_a_skills_requirement_is_honoured() -> None:
+    info = _info(
+        slayerMasterTasks={"M": {"Aviansies": {"Weight": 1, "Skills": {"Agility": 60}}}}
+    )
+    heuristics = _heuristics(
+        Aviansies=SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=100)
+    )
+
+    met = master_rates(
+        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={"Agility": 70}
+    )[0]
+    unmet = master_rates(
+        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={"Agility": 40}
+    )[0]
+
+    assert met.tasks and unmet.tasks == ()

@@ -82,6 +82,7 @@ with it, which is why every skill row prints the level it assumed.
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -91,6 +92,7 @@ from fray_claude.heuristics import Heuristics, Superior, activity_name
 from fray_claude.pipeline import Derived, MapState
 from fray_claude.rates import parse_ratio
 from fray_claude.search import WorldIndex, normalise
+from fray_claude.sections import expand_chunk_areas
 from fray_claude.slayer import MasterRate, best_master, master_rates
 from fray_claude.summary import _mapping
 
@@ -595,12 +597,17 @@ def estimate(
     world: WorldIndex,
     heuristics: Heuristics,
     *,
+    unlocked: Mapping[str, bool] | None = None,
     level_overrides: dict[str, int] | None = None,
 ) -> EstimateResult:
     """Estimate the outstanding active work. See the module docstring first."""
     levels = _levels(state, level_overrides or {})
     reachable = frozenset(derived.source_index.monsters)
-    valid_quests = frozenset(derived.challenges.valid.get("Quest") or {})
+    valid = derived.challenges.valid
+    # The same expansion `pipeline.derive` does before evaluating a
+    # challenge's `Chunks`, so a master's own `Chunks` gate is judged against
+    # exactly the same notion of "unlocked".
+    expanded = expand_chunk_areas(unlocked or {}, manual_areas=state.manual_areas)
     # A slayer master you cannot reach assigns nothing - see `slayer.py`.
     reachable_masters = frozenset(derived.source_index.npcs)
 
@@ -609,7 +616,9 @@ def estimate(
             state.chunk_info,
             heuristics,
             reachable_monsters=reachable,
-            valid_quests=valid_quests,
+            valid=valid,
+            unlocked=expanded,
+            reachable_sections=derived.reachable_sections,
             levels=levels,
             combat_level=levels.get("Combat", MAX_LEVEL),
             reachable_masters=reachable_masters,
@@ -627,7 +636,9 @@ def estimate(
             state.chunk_info,
             heuristics,
             reachable_monsters=reachable,
-            valid_quests=valid_quests,
+            valid=valid,
+            unlocked=expanded,
+            reachable_sections=derived.reachable_sections,
             levels={**levels, **_declared(state)},
             combat_level=MAX_LEVEL,
             reachable_masters=reachable_masters,

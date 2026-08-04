@@ -29,8 +29,12 @@ and kills per hour come from KodakKid3's spreadsheet, the only source found
 for slayer kill rates.
 
 **Which tasks count, and the lie in it.** Only tasks the player can actually
-do: slayer level met, combat level met, quest prerequisites valid, and the
-task's monsters reachable in the unlocked chunks. The surviving weights are
+be assigned. `_requirements_met` checks all five gates an entry can carry -
+`Level`, `CombatLevel`, `Skills`, `Tasks` (*in the category each names*, which
+is as often `Thieving` or `Nonskill` as `Quest`, and as often a single quest
+*step* as a completion) and `Chunks`, the export's own location gate. Only
+where an entry has no `Chunks` does a monster-name heuristic get a say.
+The surviving weights are
 then renormalised, and *that is an approximation which flatters a sparse map*:
 in the real game a blocked task is still assigned and costs you a skip, so a
 map holding two of a master's thirty tasks does not really train Slayer at the
@@ -48,9 +52,11 @@ from __future__ import annotations
 
 import csv
 import io
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from fray_claude.challenges import chunks_requirement_met
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.heuristics import Heuristics, SlayerTask
 from fray_claude.search import normalise
@@ -225,20 +231,57 @@ def _stem_words(text: str) -> frozenset[str]:
 def _requirements_met(
     requirement: dict[str, Any],
     *,
+    chunk_info: ChunkInfo,
     levels: dict[str, int],
     combat_level: int,
-    valid_quests: frozenset[str],
+    valid: Mapping[str, Mapping[str, Any]],
+    unlocked: Mapping[str, bool],
+    reachable_sections: Mapping[str, Mapping[str, bool]],
 ) -> bool:
+    """Can this master assign this task at all?
+
+    Five gates, and the entries really do use all five::
+
+        "Dust devils": {"Chunks": ["Wilderness Slayer Cave"], "Level": 65,
+                        "Tasks": {"~|Desert Treasure I|~ 7c1": "Quest"},
+                        "Weight": 5}
+
+    **`Tasks` maps a name to its *category*, and the category is the half that
+    was being thrown away.** Checking every prerequisite against the `Quest`
+    branch alone silently failed the nine that are not quests - Krystilia's
+    `Magic axes` wants a `Thieving` challenge, her `Pirates` a `Nonskill` one,
+    Nieve's `Frost dragons` a `Sailing` one - so those tasks could never be
+    assigned however much of the map was unlocked. Note also that a quest
+    prerequisite is frequently a *step* (`Desert Treasure I 7c1`), not the
+    whole quest, which is why the lookup has to be by name rather than by
+    matching a `Complete the quest` entry.
+
+    `Chunks` was not checked at all, and it is the authoritative location
+    gate - 128 entries carry one, using named areas and `[+]` families.
+    `challenges.chunks_requirement_met` already implements exactly those
+    semantics, so it is reused rather than approximated here.
+    """
     level = requirement.get("Level")
     if isinstance(level, (int, float)) and level > levels.get("Slayer", 1):
         return False
+
     combat = requirement.get("CombatLevel")
     if isinstance(combat, (int, float)) and combat > combat_level:
         return False
+
+    skills = requirement.get("Skills")
+    if isinstance(skills, dict):
+        for skill, needed in skills.items():
+            if isinstance(needed, (int, float)) and needed > levels.get(str(skill), 1):
+                return False
+
     prerequisites = requirement.get("Tasks")
     if isinstance(prerequisites, dict):
-        return all(name in valid_quests for name in prerequisites)
-    return True
+        for name, category in prerequisites.items():
+            if name not in (valid.get(str(category)) or {}):
+                return False
+
+    return chunks_requirement_met(requirement, unlocked, reachable_sections, chunk_info)
 
 
 def master_rates(
@@ -246,8 +289,10 @@ def master_rates(
     heuristics: Heuristics,
     *,
     reachable_monsters: frozenset[str],
-    valid_quests: frozenset[str],
+    valid: Mapping[str, Mapping[str, Any]],
     levels: dict[str, int],
+    unlocked: Mapping[str, bool] | None = None,
+    reachable_sections: Mapping[str, Mapping[str, bool]] | None = None,
     combat_level: int = 126,
     reachable_masters: frozenset[str] | None = None,
 ) -> list[MasterRate]:
@@ -284,12 +329,23 @@ def master_rates(
             if not isinstance(weight, int) or weight <= 0:
                 continue
             if not _requirements_met(
-                entry, levels=levels, combat_level=combat_level, valid_quests=valid_quests
+                entry,
+                chunk_info=chunk_info,
+                levels=levels,
+                combat_level=combat_level,
+                valid=valid,
+                unlocked=unlocked or {},
+                reachable_sections=reachable_sections or {},
             ):
                 continue
-            monsters = _task_monsters(chunk_info, task)
-            if monsters and not (monsters & reachable_monsters):
-                continue
+            # `Chunks` is the export's own location gate and beats guessing.
+            # Only where an entry has none does the monster-name heuristic
+            # get a say - it matched `Spiders` to nothing and dropped a task
+            # whose `SpidersWildernessTask[+]` chunks were plainly unlocked.
+            if "Chunks" not in entry:
+                monsters = _task_monsters(chunk_info, task)
+                if monsters and not (monsters & reachable_monsters):
+                    continue
             rate = heuristics.slayer.get(task)
             if rate is None or rate.kills_per_hour <= 0 or rate.mean_count <= 0:
                 # Assignable and doable, just unknown to the config. Counted
