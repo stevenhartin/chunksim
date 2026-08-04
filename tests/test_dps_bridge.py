@@ -1093,3 +1093,59 @@ def test_a_slayer_task_is_priced_on_xp_per_hour_not_speed() -> None:
     task = priced["Krystilia"]["Scorpions"]
     assert task.xp_per_kill == 30.0
     assert task.xp_per_kill * task.kills_per_hour > 2.0 * 750.0
+
+
+def test_a_hand_override_outranks_the_computed_rate() -> None:
+    """`defaults < scraped < computed < overrides`.
+
+    A computed rate beats the spreadsheet because the spreadsheet measures a
+    method this map may not have. It does not beat somebody who looked at the
+    number and disagreed - that is what the overrides file is for, and a
+    computed layer outranking it would make hand corrections stop working
+    with no sign that they had.
+    """
+    from fray_claude.heuristics import Heuristics, Rate, SlayerTask
+
+    heuristics = Heuristics(
+        monsters={"Rat": Rate(value=1.0, source="overrides")},
+        slayer={
+            "Turael": {
+                "Wolves": SlayerTask(
+                    mean_count=40.0, xp_per_kill=1.0, kills_per_hour=1.0, source="overrides"
+                )
+            }
+        },
+    )
+
+    kept = dps_bridge.with_monster_rates(
+        heuristics, {"Rat": Rate(value=500.0, source="dps")}, pinned=frozenset({"Rat"})
+    )
+    assert kept.monsters["Rat"].value == 1.0
+
+    taken = dps_bridge.with_monster_rates(
+        heuristics, {"Rat": Rate(value=500.0, source="dps")}
+    )
+    assert taken.monsters["Rat"].value == 500.0
+
+    slayer_kept = dps_bridge.with_slayer_rates(
+        heuristics,
+        {"Turael": {"Wolves": SlayerTask(40.0, 30.0, 500.0, source="dps")}},
+        pinned={"Turael": frozenset({"Wolves"})},
+    )
+    assert slayer_kept.slayer["Turael"]["Wolves"].source == "overrides"
+
+
+def test_coverage_counts_only_what_it_actually_placed() -> None:
+    """A pinned entry is reported as pinned, not as priced."""
+    coverage = dps_bridge.DpsCoverage(monsters=3, slayer_tasks=2, pinned=1)
+
+    assert coverage.priced_anything
+    assert coverage.as_dict()["pinned"] == 1
+    assert not dps_bridge.DpsCoverage().priced_anything
+
+
+def test_library_version_reports_the_installed_extra() -> None:
+    version = dps_bridge.library_version()
+
+    assert version is not None
+    assert version.count(".") >= 1

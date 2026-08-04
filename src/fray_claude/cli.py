@@ -130,7 +130,14 @@ from fray_claude.cache import (
 from fray_claude.challenges import strip_task_markup
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.delta import BRANCHES, BranchDelta, MapSide, StateDelta, compare_maps
-from fray_claude.estimate import BUCKETS, EstimateResult, estimate
+from fray_claude import dps_bridge
+from fray_claude.estimate import (
+    BUCKETS,
+    EstimateResult,
+    estimate,
+    goal_levels,
+    infer_levels,
+)
 from fray_claude.heuristics import (
     Heuristics,
     build_config,
@@ -226,6 +233,15 @@ def _cmd_show(args: argparse.Namespace) -> int:
         print(f"active tasks   {summary.active_task_total} ({detail})")
     else:
         print("active tasks   0")
+    # Not a property of the map at all, but of this installation - and an
+    # estimate computed with the calculator is a different number from one
+    # computed without it, which nothing else on this screen would say.
+    version = dps_bridge.library_version()
+    print(
+        f"dps calc       osrs-dps {version}"
+        if version is not None
+        else "dps calc       not installed (pip install '.[dps]')"
+    )
     return 0
 
 
@@ -958,6 +974,42 @@ def _load_heuristics(args: argparse.Namespace, info: ChunkInfo) -> tuple[Heurist
     )
 
 
+def _apply_dps(
+    state: MapState,
+    derived: Derived,
+    heuristics: Heuristics,
+    level_overrides: dict[str, int],
+) -> tuple[Heuristics, dps_bridge.DpsCoverage | None]:
+    """The computed rates layered over the scraped ones, if the extra is here.
+
+    `None` for the coverage means `osrs-dps` is not installed, which is a
+    supported way to run and a different answer rather than a broken one -
+    `_print_estimate` says which happened.
+
+    The levels are `goal_levels`, the ones the chunk *ends* at, because that
+    is what `slayer.py` already judges a master at and pricing the same fight
+    at two different levels inside one command would be indefensible.
+    """
+    if not dps_bridge.DPS_AVAILABLE:
+        return heuristics, None
+    raw = read_overrides()
+    pinned_slayer = {
+        master: frozenset(tasks)
+        for master, tasks in _mapping(raw, "slayer").items()
+        if isinstance(tasks, dict)
+    }
+    levels = infer_levels(state)
+    levels.update(level_overrides)
+    return dps_bridge.enrich(
+        heuristics,
+        state.chunk_info,
+        derived,
+        goal_levels(state, derived, levels),
+        pinned_monsters=frozenset(_mapping(raw, "monsters")),
+        pinned_slayer=pinned_slayer,
+    )
+
+
 def _cmd_estimate(args: argparse.Namespace) -> int:
     if args.bucket is not None and args.bucket not in BUCKETS:
         return _error(f"unknown bucket {args.bucket!r} (expected one of {', '.join(BUCKETS)})")
@@ -966,22 +1018,31 @@ def _cmd_estimate(args: argparse.Namespace) -> int:
     derived = _derive(args, state, unlocked)
     heuristics, scraped_found = _load_heuristics(args, state.chunk_info)
     overrides = _mapping(read_overrides(), "levels")
+    level_overrides = {
+        skill: int(level)
+        for skill, level in overrides.items()
+        if isinstance(level, int) and not isinstance(level, bool)
+    }
+    heuristics, coverage = _apply_dps(state, derived, heuristics, level_overrides)
     result = estimate(
         state,
         derived,
         build_world_index(state.chunk_info),
         heuristics,
-        level_overrides={
-            skill: int(level)
-            for skill, level in overrides.items()
-            if isinstance(level, int) and not isinstance(level, bool)
-        },
+        level_overrides=level_overrides,
     )
 
     if args.export_json != "-":
-        _print_estimate(result, args.map_id, args.bucket, args.limit, scraped_found)
+        _print_estimate(result, args.map_id, args.bucket, args.limit, scraped_found, coverage)
     if args.export_json is not None:
-        _emit_json({"map_id": args.map_id, **result.as_dict()}, args.export_json)
+        _emit_json(
+            {
+                "map_id": args.map_id,
+                "dps": coverage.as_dict() if coverage is not None else None,
+                **result.as_dict(),
+            },
+            args.export_json,
+        )
     return 0
 
 
@@ -991,8 +1052,15 @@ def _print_estimate(
     bucket: str | None,
     limit: int | None,
     scraped_found: bool = True,
+    coverage: dps_bridge.DpsCoverage | None = None,
 ) -> None:
     print(f"map          {map_id}")
+    if coverage is not None and coverage.priced_anything:
+        pinned = f", {coverage.pinned} pinned" if coverage.pinned else ""
+        print(
+            f"dps calc     {coverage.monsters} monsters, "
+            f"{coverage.slayer_tasks} slayer tasks ({'/'.join(coverage.styles)}{pinned})"
+        )
     for name, hours in result.buckets.items():
         if bucket is None or bucket == name:
             print(f"{name:<12} {hours:>9,.1f}h")

@@ -68,6 +68,30 @@ def test_show_summarises_the_cached_map(
     assert "active tasks   0" in out
 
 
+def test_show_reports_whether_the_dps_calculator_is_installed(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Not a property of the map, but an estimate computed with it differs.
+
+    Nothing else on that screen would say which of the two numbers you are
+    about to get, so the line is there whichever way it falls.
+    """
+    monkeypatch.setattr(
+        "fray_claude.cli.fetch_map",
+        lambda map_id, timeout=DEFAULT_TIMEOUT: {"chunks": {"unlocked": {"50_50": True}}},
+    )
+    main(["fetch"])
+    capsys.readouterr()
+
+    monkeypatch.setattr("fray_claude.dps_bridge.library_version", lambda: "9.9.9")
+    main(["show"])
+    assert "dps calc       osrs-dps 9.9.9" in capsys.readouterr().out
+
+    monkeypatch.setattr("fray_claude.dps_bridge.library_version", lambda: None)
+    main(["show"])
+    assert "dps calc       not installed" in capsys.readouterr().out
+
+
 def test_show_without_a_cache_exits_one(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -132,7 +132,7 @@ Five things that cut across modules — the first three because each has already
 | `derived_cache.py` | The on-disk cache of `derive` results: the key (hash of every input), the zstd+pickle codec, `cached_derive`, and `CacheBehaviour`/`RollCache` — which of a simulation's states to keep. Pure bar the bytes, which `cache.py` writes. |
 | `search.py` | World-wide fuzzy search over the *raw* export — all 5 item routes, so a strict superset of what `fray sources` can list. |
 | `summary.py` | Pure reductions over a raw payload. Extend this, not `cli.py`. Also home to `_mapping`, the tolerant dict accessor eight other modules import despite the `_` — Firebase omits empty containers, so every lookup anywhere must survive a missing branch. |
-| `dps_bridge.py` | The seam to `osrs-dps`, which prices a kill from the gear `bis.py` reaches instead of a money-making guide. **Optional import** — check `DPS_AVAILABLE`, never assume it. Owns the export→library conversions (`magic_damage` is a display percentage here and tenths of a percent there), the monster-name join and its `exact`/`variant` provenance, and the refusal of fight *phases*, which are not substitutable the way variants are. |
+| `dps_bridge.py` | The seam to `osrs-dps`, which prices a kill from the gear `bis.py` reaches instead of a money-making guide. **Optional import** — check `DPS_AVAILABLE`, never assume it. `enrich` is the one entry point a command needs. Owns the export→library conversions (`magic_damage` is a display percentage here and tenths of a percent there), the overhead model, the monster-name join and its `exact`/`variant` provenance, and the refusal of fight *phases* and group bosses. |
 | `cli.py` | argparse subcommands and rendering only; new logic goes in a pure module. |
 
 ## Toolchain
@@ -241,6 +241,14 @@ all, so every number `fray estimate` spends comes from one of those two files or
 a declared cap, `passiveSkill` is what's reachable untrained), so `estimate.infer_levels` reads a
 floor out of the *completed* challenges — a ticked `Buy the Defence cape` proves 99 Defence. `experience.py`'s XP
 curve is the one exact input and is deliberately not overridable.
+
+**With the `dps` extra installed the layering is `defaults < scraped < computed < overrides`.**
+`fray estimate` calls `dps_bridge.enrich`, which recomputes kill rates and slayer task rates from
+the map's own BiS gear and lets them beat the scrape — the wiki's numbers assume gear and methods
+(chinning, barrage bursting) a chunk map may not have. **Hand overrides still win**, which is the
+point of the file; `enrich` takes the pinned keys and leaves them alone. Without the extra the
+command runs exactly as before, and `fray show` reports which of the two you are getting, because
+they are materially different totals — 3,969h against 2,816h on the real map.
 
 **`cache/derived/` is a third thing, and not a map.** It holds `pipeline.derive`'s *results*, one
 zstd-compressed pickle per key (~0.12MB each), so a repeat command costs ~0.15s instead of ~1.05s.

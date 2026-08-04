@@ -141,6 +141,7 @@ from typing import Any
 from fray_claude.boosts import combat_boost
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.heuristics import Heuristics, Rate, SlayerTask
+from fray_claude.pipeline import Derived
 from fray_claude.slayer import task_monsters
 from fray_claude.summary import _mapping
 
@@ -1167,21 +1168,187 @@ def price_slayer_tasks(
 
 
 def with_slayer_rates(
-    heuristics: Heuristics, filled: Mapping[str, Mapping[str, SlayerTask]]
+    heuristics: Heuristics,
+    filled: Mapping[str, Mapping[str, SlayerTask]],
+    *,
+    pinned: Mapping[str, frozenset[str]] | None = None,
 ) -> Heuristics:
     """`heuristics` with `filled` merged into its slayer table.
 
     A new value rather than a mutation, so the pure layer stays shareable
-    across processes. Existing entries win nothing here - `price_slayer_tasks`
-    has already refused to touch anything measured - but the merge is written
-    to overwrite only the keys it was given.
+    across processes.
+
+    **`pinned` is what somebody wrote in `heuristics/overrides.json`, and it
+    wins.** The layering is `defaults < scraped < computed < overrides`: a
+    computed rate beats the spreadsheet because the spreadsheet measures a
+    method this map may not have, but it does not beat a human who looked at
+    the number and disagreed. That is the whole purpose of the overrides file,
+    and a computed layer that silently outranked it would make hand
+    corrections stop working with no sign that they had.
     """
     if not filled:
         return heuristics
+    kept = pinned or {}
     merged = {master: dict(tasks) for master, tasks in heuristics.slayer.items()}
     for master, tasks in filled.items():
-        merged.setdefault(master, {}).update(tasks)
+        for task, rate in tasks.items():
+            if task in kept.get(master, frozenset()):
+                continue
+            merged.setdefault(master, {})[task] = rate
     return replace(heuristics, slayer=merged)
+
+
+def with_monster_rates(
+    heuristics: Heuristics,
+    rates: Mapping[str, Rate],
+    *,
+    pinned: frozenset[str] = frozenset(),
+) -> Heuristics:
+    """`heuristics` with `rates` merged into its kills-per-hour table.
+
+    Same layering as `with_slayer_rates`, and the same reason: `pinned` names
+    the monsters `heuristics/overrides.json` speaks for, and those keep the
+    number a person chose.
+    """
+    if not rates:
+        return heuristics
+    merged = dict(heuristics.monsters)
+    merged.update({name: rate for name, rate in rates.items() if name not in pinned})
+    return replace(heuristics, monsters=merged)
+
+
+@dataclass(frozen=True)
+class DpsCoverage:
+    """What the bridge managed to price, for a command to report.
+
+    Counts rather than the values themselves: this exists so `fray estimate`
+    can say how much of its answer came from the calculator instead of the
+    scrape, which is the one thing a reader needs to judge the total by.
+    """
+
+    monsters: int = 0
+    slayer_tasks: int = 0
+    #: The BiS styles that produced a usable loadout.
+    styles: tuple[str, ...] = ()
+    #: Entries left alone because `heuristics/overrides.json` speaks for them.
+    pinned: int = 0
+
+    @property
+    def priced_anything(self) -> bool:
+        return bool(self.monsters or self.slayer_tasks)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "monsters": self.monsters,
+            "slayer_tasks": self.slayer_tasks,
+            "styles": list(self.styles),
+            "pinned": self.pinned,
+        }
+
+
+def enrich(
+    heuristics: Heuristics,
+    chunk_info: ChunkInfo,
+    derived: Derived,
+    levels: Mapping[str, int],
+    *,
+    index: MonsterIndex | None = None,
+    pinned_monsters: frozenset[str] = frozenset(),
+    pinned_slayer: Mapping[str, frozenset[str]] | None = None,
+) -> tuple[Heuristics, DpsCoverage]:
+    """`heuristics` with every rate this can compute, and what it computed.
+
+    The one entry point a command needs: it builds the `Kit`, loads the
+    monster index once, prices both the kill rates and the slayer tasks, and
+    merges them at the right layer. Everything it needs about the map comes
+    off `derived`, so a caller does not have to know which branch feeds which
+    gate.
+
+    **Nothing here is a fallback.** A monster this cannot price keeps whatever
+    the scrape or the default gave it, so the result is never worse-informed
+    than the input - only differently informed where a fight could actually be
+    simulated.
+
+    `levels` should be the same ones the estimate itself will spend. On the
+    real map that means `estimate.goal_levels` - the levels the chunk *ends*
+    at rather than today's - because that is what `slayer.py` already judges a
+    master at, and pricing the same fight at two different levels in one
+    command would be indefensible.
+    """
+    _require()
+    monster_index = load_monster_index() if index is None else index
+    kit = assemble_kit(
+        chunk_info,
+        levels,
+        items=derived.challenges.available_items,
+        source_index=derived.source_index,
+    )
+    loadouts = build_loadouts(chunk_info, derived.bis.picks, levels, kit)
+    if not loadouts:
+        return heuristics, DpsCoverage()
+
+    bosses = frozenset(_mapping(chunk_info.code_items, "bossMonsters"))
+    reachable = frozenset(derived.source_index.monsters)
+    masters = frozenset(derived.source_index.npcs)
+
+    monsters = price_monsters(
+        chunk_info,
+        derived.bis.picks,
+        levels,
+        sorted(chunk_info.drops),
+        index=monster_index,
+        slayer_monsters=frozenset(chunk_info.slayer_monsters),
+        boss_monsters=bosses,
+        kit=kit,
+    )
+    tasks = price_slayer_tasks(
+        chunk_info,
+        derived.bis.picks,
+        levels,
+        heuristics=heuristics,
+        index=monster_index,
+        kit=kit,
+        reachable_masters=masters,
+        boss_monsters=bosses,
+        reachable_monsters=reachable,
+    )
+
+    kept = pinned_slayer or {}
+    pinned_count = sum(1 for name in monsters if name in pinned_monsters) + sum(
+        1
+        for master, names in tasks.items()
+        for name in names
+        if name in kept.get(master, frozenset())
+    )
+
+    enriched = with_monster_rates(heuristics, monsters, pinned=pinned_monsters)
+    enriched = with_slayer_rates(enriched, tasks, pinned=pinned_slayer)
+    return enriched, DpsCoverage(
+        monsters=sum(1 for name in monsters if name not in pinned_monsters),
+        slayer_tasks=sum(
+            1
+            for master, names in tasks.items()
+            for name in names
+            if name not in kept.get(master, frozenset())
+        ),
+        styles=tuple(sorted(loadouts)),
+        pinned=pinned_count,
+    )
+
+
+def library_version() -> str | None:
+    """The installed `osrs-dps` version, or `None` when it is absent.
+
+    For `fray show`, which reports whether the calculator is in play at all -
+    an estimate computed with it and one computed without are different
+    numbers, and nothing else on that screen would say so.
+    """
+    if not DPS_AVAILABLE:
+        return None
+    import osrs_dps
+
+    version: str = osrs_dps.__version__
+    return version
 
 
 @dataclass(frozen=True)
@@ -1262,6 +1429,7 @@ __all__ = [
     "RETARGET_TICKS",
     "SECONDS_PER_TICK",
     "OFFENSIVE_STYLES",
+    "DpsCoverage",
     "DpsUnavailableError",
     "KillEstimate",
     "Kit",
@@ -1271,10 +1439,13 @@ __all__ = [
     "in_wilderness",
     "build_loadouts",
     "candidate_targets",
+    "enrich",
+    "library_version",
     "load_monster_index",
     "measure_overhead",
     "price_monsters",
     "price_slayer_tasks",
     "wilderness_monsters",
+    "with_monster_rates",
     "with_slayer_rates",
 ]
