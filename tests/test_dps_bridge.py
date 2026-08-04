@@ -290,10 +290,33 @@ def test_something_that_cannot_hurt_you_has_no_overhead() -> None:
 
 def test_a_boss_carries_its_respawn_and_a_rat_does_not() -> None:
     """Respawn only bites where the monster is the scarce thing."""
-    assert _kill(damage_taken=0.0, is_boss=True).overhead() == (
+    assert _kill(ttk=0.0, damage_taken=0.0, is_boss=True).overhead() == (
         dps_bridge.BOSS_RESPAWN_SECONDS
     )
     assert _kill(damage_taken=0.0, is_boss=False).overhead() == 0.0
+
+
+def test_a_boss_banks_by_share_of_the_fight_not_by_damage_taken() -> None:
+    """The damage measurement is not trustworthy for a boss.
+
+    Overhead prayers are unmodelled, so a boss's damage taken is roughly
+    double the real thing - which put 10 of 33 bosses below one kill per trip.
+    A share of the fight sidesteps it, and two bosses with the same kill time
+    must therefore cost the same overhead however hard they hit.
+    """
+    gentle = _kill(ttk=200.0, damage_taken=0.5, is_boss=True)
+    brutal = _kill(ttk=200.0, damage_taken=40.0, is_boss=True)
+
+    assert gentle.overhead() == brutal.overhead()
+    assert gentle.overhead() == pytest.approx(15.0 + 0.15 * 200.0)
+
+
+def test_a_quicker_boss_pays_less_banking() -> None:
+    """Shorter fights are easier bosses, so trips last longer."""
+    quick = _kill(ttk=30.0, is_boss=True).overhead()
+    slow = _kill(ttk=300.0, is_boss=True).overhead()
+
+    assert quick < slow
 
 
 def test_banking_is_proportional_to_the_damage_a_kill_costs() -> None:
@@ -310,10 +333,11 @@ def test_banking_is_proportional_to_the_damage_a_kill_costs() -> None:
     assert half == pytest.approx(60.0)
 
 
-def test_a_boss_that_ends_a_trip_pays_both_parts() -> None:
+def test_a_boss_pays_both_parts() -> None:
+    """Respawn for its timer, plus a share of the fight for banking."""
     kill = _kill(ttk=100.0, damage_taken=4.0, is_boss=True)
 
-    assert kill.overhead(health_pool=400.0, banking=120.0) == pytest.approx(135.0)
+    assert kill.overhead() == pytest.approx(15.0 + 0.15 * 100.0)
 
 
 def test_kills_per_hour_uses_the_model_by_default() -> None:

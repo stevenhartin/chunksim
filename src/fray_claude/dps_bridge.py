@@ -146,8 +146,31 @@ except ImportError:  # pragma: no cover - ditto
 #: which is wrong per boss and about right on average.
 BOSS_RESPAWN_SECONDS = 15.0
 
-#: Seconds to bank: teleport out, restock food and potions, return.
+#: Seconds to bank: teleport out, restock food and potions, return. Used for
+#: everything that is not a boss; see `BOSS_BANKING_FRACTION` for why bosses
+#: are handled the other way.
 BANKING_SECONDS = 120.0
+
+#: A boss's banking cost, as a share of the fight itself.
+#:
+#: **Bosses do not get the measured banking model, deliberately.** Working a
+#: trip out from damage taken needs the damage to be right, and for a boss it
+#: is not: nobody fights General Graardor without Protect from Melee, and
+#: overhead prayers are not modelled - the library declines to, matching
+#: upstream, because some monsters hit through them. Feeding roughly double
+#: the real damage into a trip length put 10 of 33 bosses below one kill per
+#: trip and dragged the whole boss half to 0.45 of the wiki's rate.
+#:
+#: A share of the fight is the better shape, and the arithmetic agrees: a
+#: 120-second bank run over a plausible trip is 20% of a 20-second kill, 10%
+#: of a 100-second one and 12% of a 200-second one - near enough flat across
+#: the range, because an easier boss buys more kills per trip in proportion to
+#: how much quicker it dies. 15% sits in the middle of that.
+#:
+#: Not fitted to the wiki, and it cannot be: the boss half already sits at
+#: 0.70 with *no* banking at all, so any fit would be reading the gear gap and
+#: calling it banking.
+BOSS_BANKING_FRACTION = 0.15
 
 #: Healing an inventory carries - roughly 15 food at 20 each. Added to the
 #: player's Hitpoints level to give the damage a trip can absorb before it has
@@ -491,32 +514,36 @@ class KillEstimate:
     ) -> float:
         """Seconds of not-fighting this kill costs.
 
-        Two parts, and neither is a flat constant:
+        Respawn plus banking, but **banking is worked out two different ways
+        and which one applies is the interesting part**.
 
-        1. **Respawn**, but only for a boss - `BOSS_RESPAWN_SECONDS`. Anywhere
-           there is a second monster to walk to, the timer is not on the
-           critical path.
-        2. **Banking**, amortised over a trip. A trip ends when the damage
-           taken exhausts what the player can absorb, so it lasts
-           `health_pool / damage_taken` seconds of fighting and yields
-           `health_pool / (damage_taken * ttk)` kills. Each of those kills
-           carries its share of one bank run.
+        *A boss* pays `BOSS_RESPAWN_SECONDS` for its timer, since its lair
+        holds one of it, plus `BOSS_BANKING_FRACTION` of the fight. It does
+        **not** use the damage measurement below: that needs the damage to be
+        right, and for a boss it is not, because overhead prayers are not
+        modelled and nobody fights one without them.
 
-        Which reduces to `banking * damage_per_kill / health_pool`: **the
-        banking cost is proportional to the damage a kill costs you**, which
-        is the property that makes it right for both a rat and a boss. A rat
-        that never lands a hit needs no trip at all and gets no banking
-        overhead; Vorkath ends a trip in a handful of kills and carries most
-        of a bank run each.
+        *Everything else* pays no respawn - there is always another spectre in
+        the cave - and a banking cost amortised over a trip. A trip ends when
+        damage taken exhausts what the player can absorb, so it yields
+        `health_pool / (damage_taken * ttk)` kills and each carries its share
+        of one bank run. That reduces to `banking * damage_per_kill /
+        health_pool`: **the banking cost is proportional to the damage a kill
+        costs you**. A rat that never lands a hit needs no trip at all and
+        gets nothing.
 
-        A monster that cannot damage the player returns the respawn wait
-        alone - correctly, since nothing forces the trip to end.
+        The two branches meet in the middle rather than clashing: a boss's
+        share-of-the-fight works out at 10-20% across the whole range of kill
+        times, which is what the damage model would give if its damage input
+        were trustworthy.
         """
-        respawn = BOSS_RESPAWN_SECONDS if self.is_boss else 0.0
+        if self.is_boss:
+            return BOSS_RESPAWN_SECONDS + BOSS_BANKING_FRACTION * self.ttk
+
         damage_per_kill = self.damage_taken * self.ttk
         if damage_per_kill <= 0 or health_pool <= 0:
-            return respawn
-        return respawn + banking * damage_per_kill / health_pool
+            return 0.0
+        return banking * damage_per_kill / health_pool
 
     def kills_per_hour(self, overhead: float | None = None) -> float:
         """Kills per hour: this kill's fighting time plus its overhead.
