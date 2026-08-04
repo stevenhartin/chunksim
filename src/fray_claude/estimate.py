@@ -42,12 +42,14 @@ same expansion `sources.py` does for the unlocked case.
 **Three gates stand between a drop and its price, and skipping any of them
 prices a game nobody is playing.**
 
-1. *The monster has to be reachable.* `WorldIndex` spans the whole world, so
-   without a check the walk costs every drop in OSRS. `SourceIndex.monsters`
-   is the answer - placed in an unlocked chunk *and* past its `taskUnlocks`
-   gates. `Colossal Hydra` is what taught this: a `skillItems.Slayer` activity
-   with 43 drops and no chunk anywhere, priced as though you could go and
-   fight one.
+1. *The provider has to be reachable.* `WorldIndex` spans the whole world,
+   so without a check the walk costs every drop in OSRS. `SourceIndex`'s
+   monsters, objects *and* NPCs are the answer - all placed in an unlocked
+   chunk and past their `taskUnlocks` gates. `Colossal Hydra` is what taught
+   the check: a `skillItems.Slayer` activity with 43 drops and no chunk
+   anywhere, priced as though you could go and fight one. `Larran's big
+   chest` taught the breadth of it: a `skillItems` activity is only
+   *usually* a monster, and a monsters-only gate refused its 34 drops.
 2. *A task-gated monster has to be assigned.* `taskUnlocks['Monsters']` names
    a `<X> task` Nonskill requirement per location - Grotesque Guardians want
    a gargoyle task - and being sent one costs far more than the fighting
@@ -78,6 +80,13 @@ superior's *own* drops stay attributed to its base monster.
   a challenge needing B, which needs A. Bounded by `_MAX_DEPTH` and a visited
   set, and anything hitting either is reported `unpriced` rather than guessed
   at - the posture `challenges.py` takes with `unsupported`.
+- *A task can want a kill rather than a drop.* Several diary tasks are of
+  that shape - "kill an abyssal demon in the Slayer Tower" - with `Monsters`
+  and no `Items`. They cost one kill, attributed to the monster, so the
+  per-source clamp folds them into any grind already happening there. Only a
+  BiS task, which has no challenge at all, has its item read out of its
+  `~|...|~` span; doing that to a challenge produced a request for an item
+  called `Morytania Diary#Elite`.
 - *Quantity is ignored.* Drop quantities are strings this project has never
   parsed (`"25-30 (noted)"`, `"1,3"`, `"104-194"`), and every task here is
   "obtain one", so the first drop ends it. A task wanting fifty of something
@@ -366,10 +375,11 @@ class _Walk:
     world: WorldIndex
     heuristics: Heuristics
     tables: dict[str, Any] = field(default_factory=dict)
-    #: Monsters actually reachable on this map: placed in an unlocked chunk
-    #: *and* past their `taskUnlocks` gates. This is `SourceIndex.monsters`,
-    #: and gating on it is the difference between pricing the world and
-    #: pricing your world - see `_route_hours`.
+    #: Everything reachable on this map that can *provide* an item: the
+    #: monsters, objects and NPCs of `SourceIndex`, all past their
+    #: `taskUnlocks` gates. Not monsters alone - a `skillItems` activity is
+    #: only usually a monster (`search.py`), and `Larran's big chest` is an
+    #: Object, so a monsters-only gate refused its 34 drops outright.
     available: frozenset[str] = frozenset()
     #: Monster -> the slayer task you must be on to fight it, where one is
     #: required. Derived from `taskUnlocks`; see `task_gated_monsters`.
@@ -881,6 +891,10 @@ def estimate(
     """Estimate the outstanding active work. See the module docstring first."""
     levels = _levels(state, level_overrides or {})
     reachable = frozenset(derived.source_index.monsters)
+    # Anything that can hand you an item, not just anything you can kill.
+    providers = reachable | frozenset(derived.source_index.objects) | frozenset(
+        derived.source_index.npcs
+    )
     valid = derived.challenges.valid
     # `derive`'s *settled* expansion, not a fresh one-shot call: areas keep
     # opening as challenges become valid, and expanding once leaves 60 named
@@ -919,7 +933,7 @@ def estimate(
         heuristics=heuristics,
         tables=_mapping(state.chunk_info.code_items, "dropTables"),
         by_lower={item.lower(): item for item in world.item_sources},
-        available=reachable,
+        available=providers,
         task_gates=task_gated_monsters(
             state.chunk_info, world, frozenset(expanded)
         ),
@@ -951,6 +965,24 @@ def estimate(
                 hours=priced.hours,
                 detail=priced.detail,
                 source=priced.source,
+                tasks=tuple(sorted(wanted_by)),
+            )
+        )
+
+    # Tasks wanting a kill rather than a drop: one kill at that monster's
+    # rate, attributed to it so the clamp folds it into any grind already
+    # happening there.
+    for monster, wanted_by in sorted(_required_kills(walk, derived).items()):
+        kph = heuristics.kills_per_hour(monster).value
+        if kph <= 0:
+            continue
+        items.append(
+            ItemEstimate(
+                item=f"kill {monster}",
+                bucket=_bucket_for(walk, monster),
+                hours=1 / kph,
+                detail=f"one kill at {kph:g}/hr",
+                source=monster,
                 tasks=tuple(sorted(wanted_by)),
             )
         )
@@ -1020,15 +1052,57 @@ def _required_items(walk: _Walk, derived: Derived) -> dict[str, set[str]]:
     keeps the tasks it answers alongside, so the listing can still show why
     it is wanted.
 
-    A BiS task names its item in its `~|...|~` span and has no challenge
-    behind it (`bis.py` synthesises those names), so the span is the only
-    handle; an ordinary challenge lists its `Items`.
+    A BiS task names its item in its `~|...|~` span and has **no challenge
+    behind it** (`bis.py` synthesises those names), so the span is the only
+    handle there. Where a challenge *does* exist the span is not an item and
+    must not be read as one: `~|Morytania Diary#Elite|~ Task 5` is "kill an
+    abyssal demon in the Slayer Tower", and taking its span produced a
+    request for an item called `Morytania Diary#Elite`, which of course had
+    no route and reported as unpriced.
     """
     wanted: dict[str, set[str]] = {}
     for task in _item_tasks(derived):
-        for item in _challenge_items(walk, task) or [activity_name(task)]:
+        challenge = _find_challenge(walk, task)
+        if challenge is None:
+            wanted.setdefault(walk.resolve(activity_name(task)), set()).add(task)
+            continue
+        for item in _challenge_items(walk, task):
             wanted.setdefault(walk.resolve(item), set()).add(task)
     return wanted
+
+
+def _required_kills(walk: _Walk, derived: Derived) -> dict[str, set[str]]:
+    """Tasks that want no item, only something dead, by what has to die.
+
+    Several diary tasks are of this shape - "kill an abyssal demon in the
+    Slayer Tower", "kill Callisto, Venenatis and Vet'ion". One kill is
+    cheap, but it is not free and it is not an item, and pricing it against
+    the monster means the per-source clamp folds it into whatever grind that
+    monster is already part of.
+    """
+    families = _mapping(walk.chunk_info.code_items, "monstersPlus")
+    wanted: dict[str, set[str]] = {}
+    for task in _item_tasks(derived):
+        challenge = _find_challenge(walk, task)
+        if challenge is None or challenge.get("Items"):
+            continue
+        for name in challenge.get("Monsters") or ():
+            if not isinstance(name, str):
+                continue
+            members = families.get(name) if "[+]" in name else [name]
+            for member in members if isinstance(members, list) else [name]:
+                if isinstance(member, str) and member in walk.available:
+                    wanted.setdefault(member, set()).add(task)
+                    break
+    return wanted
+
+
+def _find_challenge(walk: _Walk, task: str) -> dict[str, Any] | None:
+    for challenges in walk.chunk_info.challenges.values():
+        if isinstance(challenges, dict) and isinstance(challenges.get(task), dict):
+            found: dict[str, Any] = challenges[task]
+            return found
+    return None
 
 
 def _challenge_items(walk: _Walk, task: str) -> list[str]:

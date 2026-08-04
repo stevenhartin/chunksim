@@ -96,7 +96,7 @@ def test_a_boss_drop_costs_one_over_the_rate_divided_by_kills_per_hour() -> None
         {
             "drops": {"General Graardor": {"Bandos chestplate": {"1": "1/381"}}},
             "codeItems": {"bossMonsters": {"General Graardor": True}},
-            "challenges": {"Extra": {"Obtain a ~|bandos chestplate|~": {}}},
+            "challenges": {"Extra": {"Obtain a ~|bandos chestplate|~": {"Items": ["Bandos chestplate"]}}},
         }
     )
     derived = _derived(
@@ -122,7 +122,7 @@ def test_a_non_boss_provider_lands_in_activities() -> None:
     info = ChunkInfo(
         {
             "drops": {"Goblin": {"Bones": {"1": "1/10"}}},
-            "challenges": {"Extra": {"Obtain ~|bones|~": {}}},
+            "challenges": {"Extra": {"Obtain ~|bones|~": {"Items": ["Bones"]}}},
         }
     )
     derived = _derived(
@@ -148,7 +148,7 @@ def test_a_worded_rate_is_priced_through_the_config() -> None:
     info = ChunkInfo(
         {
             "drops": {"Goblin": {"Bones": {"1": "Always"}}},
-            "challenges": {"Extra": {"Obtain ~|bones|~": {}}},
+            "challenges": {"Extra": {"Obtain ~|bones|~": {"Items": ["Bones"]}}},
         }
     )
     derived = _derived(
@@ -173,7 +173,7 @@ def test_an_item_with_no_priceable_route_is_reported_unpriced() -> None:
     info = ChunkInfo(
         {
             "drops": {"Goblin": {"Bones": {"1": "Varies"}}},
-            "challenges": {"Extra": {"Obtain ~|bones|~": {}}},
+            "challenges": {"Extra": {"Obtain ~|bones|~": {"Items": ["Bones"]}}},
         }
     )
     derived = _derived(
@@ -198,7 +198,7 @@ def test_a_made_item_costs_its_inputs() -> None:
             "drops": {"Goblin": {"Bones": {"1": "1/10"}}},
             "challenges": {
                 "Crafting": {"Carve a ~|bone ring|~": {"Items": ["Bones"], "Output": "Bone ring"}},
-                "Extra": {"Obtain a ~|bone ring|~": {}},
+                "Extra": {"Obtain a ~|bone ring|~": {"Items": ["Bone ring"]}},
             },
         }
     )
@@ -229,7 +229,7 @@ def test_a_cycle_of_made_items_is_unpriced_rather_than_recursing() -> None:
                     "Make ~|a|~": {"Items": ["B"], "Output": "A"},
                     "Make ~|b|~": {"Items": ["A"], "Output": "B"},
                 },
-                "Extra": {"Obtain ~|A|~": {}},
+                "Extra": {"Obtain ~|A|~": {"Items": ["A"]}},
             }
         }
     )
@@ -418,7 +418,7 @@ def test_a_monster_outside_the_unlocked_chunks_is_not_priced() -> None:
     info = ChunkInfo(
         {
             "drops": {"Goblin": {"Bones": {"1": "1/10"}}},
-            "challenges": {"Extra": {"Obtain ~|bones|~": {}}},
+            "challenges": {"Extra": {"Obtain ~|bones|~": {"Items": ["Bones"]}}},
         }
     )
 
@@ -431,7 +431,7 @@ def _gated_info() -> ChunkInfo:
     return ChunkInfo(
         {
             "drops": {"Grotesque Guardians": {"Granite maul": {"1": "1/100"}}},
-            "challenges": {"Extra": {"Obtain a ~|granite maul|~": {}}},
+            "challenges": {"Extra": {"Obtain a ~|granite maul|~": {"Items": ["Granite maul"]}}},
             "codeItems": {"slayerTasks": {"Gargoyles": {"Grotesque Guardians": True}}},
             "taskUnlocks": {
                 "Monsters": {
@@ -573,7 +573,7 @@ def test_a_superior_is_priced_through_its_base_monster() -> None:
     info = ChunkInfo(
         {
             "skillItems": {"Slayer": {"Marble gargoyle": {"Granite maul": {"1": "1/10"}}}},
-            "challenges": {"Extra": {"Obtain a ~|granite maul|~": {}}},
+            "challenges": {"Extra": {"Obtain a ~|granite maul|~": {"Items": ["Granite maul"]}}},
         }
     )
     derived = _derived(
@@ -602,7 +602,7 @@ def test_a_superior_whose_base_is_unreachable_is_unpriced() -> None:
     info = ChunkInfo(
         {
             "skillItems": {"Slayer": {"Colossal Hydra": {"Granite maul": {"1": "1/10"}}}},
-            "challenges": {"Extra": {"Obtain a ~|granite maul|~": {}}},
+            "challenges": {"Extra": {"Obtain a ~|granite maul|~": {"Items": ["Granite maul"]}}},
         }
     )
     derived = _derived(
@@ -1020,3 +1020,79 @@ def test_a_skill_with_no_active_goal_keeps_its_floor() -> None:
     state = _state(info, passive_skill={"Mining": 70})
 
     assert goal_levels(state, _derived(), infer_levels(state))["Mining"] == 70
+
+
+def test_an_object_can_provide_an_item() -> None:
+    # `skillItems` activities are only *usually* monsters. Larran's big chest
+    # is an Object with 34 drops, and a monsters-only availability gate
+    # refused all of them.
+    info = ChunkInfo(
+        {
+            "skillItems": {"Nonskill": {"Larran's big chest": {"Dagon'hai robe bottom": {"1": "1/256"}}}},
+            "challenges": {
+                "Extra": {"Obtain a ~|robe|~": {"Items": ["Dagon'hai robe bottom"]}}
+            },
+        }
+    )
+    derived = Derived(
+        reachable_sections={},
+        expanded_chunks={"100": True},
+        source_index=SourceIndex(
+            items={},
+            objects={"Larran's big chest": {"100": True}},
+            monsters={},
+            npcs={},
+            shops={},
+            drop_rates={},
+        ),
+        challenges=ChallengeResult(valid={}, unsupported=frozenset()),
+        bis=BisResult(picks={}),
+        task_classification=TaskClassification(),
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra",
+                    groups=(TaskGroup(name="X", active=("Obtain a ~|robe|~",)),),
+                )
+            }
+        ),
+    )
+
+    result = _run(info, derived, Heuristics())
+
+    assert result.unpriced == ()
+    assert result.items[0].source == "Larran's big chest"
+
+
+def test_a_task_wanting_a_kill_rather_than_an_item_is_priced_as_one_kill() -> None:
+    # "Kill an abyssal demon in the Slayer Tower" has Monsters and no Items.
+    # Taking its `~|...|~` span produced a request for an item called
+    # `Morytania Diary#Elite`, which had no route and read as unpriced.
+    info = ChunkInfo(
+        {
+            "challenges": {
+                "Diary": {
+                    "~|Morytania Diary#Elite|~ Task 5": {"Monsters": ["Abyssal demon"]}
+                }
+            }
+        }
+    )
+    derived = _derived(
+        monsters=("Abyssal demon",),
+        other_tasks=OtherTasks(
+            categories={
+                "Diary": CategoryTasks(
+                    category="Diary",
+                    groups=(
+                        TaskGroup(name="X", active=("~|Morytania Diary#Elite|~ Task 5",)),
+                    ),
+                )
+            }
+        ),
+    )
+
+    result = _run(info, derived, Heuristics(monsters={"Abyssal demon": Rate(60.0)}))
+
+    assert result.unpriced == ()
+    assert result.items[0].item == "kill Abyssal demon"
+    assert result.items[0].hours == pytest.approx(1 / 60)
