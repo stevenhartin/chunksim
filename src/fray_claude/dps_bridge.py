@@ -15,12 +15,29 @@ without it. Import this module freely - importing is safe when the library is
 absent; only calling is not.
 
 **Time-to-kill is not a kill cycle.** The library returns seconds of
-*fighting*; a kills-per-hour figure also carries travel, banking and respawn,
-which is exactly what the wiki's guides bake in and the calculator cannot
-know. `kills_per_hour` therefore takes an explicit `overhead` and the whole
-conversion is `3600 / (ttk + overhead)`. See `measure_overhead` for what the
-real map says that number is, and read its docstring before trusting a
-calibration: the naive fit is contaminated by the gear gap.
+*fighting*; a kills-per-hour figure also carries banking and respawn, which is
+what the wiki's guides bake in and the calculator cannot know. That gap is
+`KillEstimate.overhead`, built from two measured parts rather than assumed -
+read it before quoting a rate.
+
+**How well it works, measured, and it is uneven.** Against the 81 monsters the
+wiki also rates, the median comes out at 1.00 where a flat 30 seconds gave
+0.57 - but the halves diverge, and knowing which half a number is in matters
+more than the median:
+
+- **Non-bosses land at 1.71**, i.e. this reports them 71% faster than the
+  wiki. Trash takes almost no damage, so the banking term is near zero and the
+  respawn term is zero by construction, leaving *no* cost for walking to the
+  next spawn. There is one, and it is not modelled.
+- **Bosses land at 0.45**, and 10 of 33 cannot manage a single kill per trip.
+  The dominant cause is that **overhead prayers are not modelled** - the
+  library declines to, matching upstream, because some monsters hit through
+  them. Nobody fights General Graardor without Protect from Melee, so the
+  damage taken is far too high, which inflates the banking term directly.
+
+Both tails are known and neither is silently wrong: the numbers are honest
+about the fight they describe, which is one without protection prayers and
+without walking time.
 
 **Item stats come from this project's own export, not the library's.** The
 library takes resolved stat blocks precisely so a caller with its own
@@ -108,6 +125,7 @@ try:  # pragma: no cover - exercised by whether the extra is installed
         StatBlock,
         Target,
         Unsupported,
+        damage_taken_per_second,
         dps,
         scale,
     )
@@ -118,11 +136,27 @@ except ImportError:  # pragma: no cover - ditto
     DPS_AVAILABLE = False
 
 
-#: Seconds of not-fighting per kill: travel, banking, respawn, finding the
-#: next one. A single flat number is crude - a boss with a 90-second respawn
-#: and a slayer monster in a packed cave are nothing alike - which is why it
-#: is a parameter everywhere and this is only the fallback. Calibrated against
-#: the wiki's own rates by `measure_overhead`.
+#: Enforced respawn wait per kill, for a boss.
+#:
+#: **Respawn only costs anything when the monster is the scarce thing.** A
+#: slayer cave holds enough aberrant spectres that the next one is always
+#: ready; a boss lair holds one, so its timer lands on every kill. Rather than
+#: read a per-monster timer off the wiki, this takes a flat 15 seconds for
+#: anything in the export's `bossMonsters` and nothing for everything else -
+#: which is wrong per boss and about right on average.
+BOSS_RESPAWN_SECONDS = 15.0
+
+#: Seconds to bank: teleport out, restock food and potions, return.
+BANKING_SECONDS = 120.0
+
+#: Healing an inventory carries - roughly 15 food at 20 each. Added to the
+#: player's Hitpoints level to give the damage a trip can absorb before it has
+#: to end.
+INVENTORY_HEALING = 300.0
+
+#: Superseded. A flat 30 seconds on every kill was 43% of the median cycle and
+#: 92% of a rat's - the fight was the minority of the reported time. Kept named
+#: because `measure_overhead`'s samples were fitted against it.
 DEFAULT_OVERHEAD_SECONDS = 30.0
 
 #: The export stores magic damage as a display percentage; the library wants
@@ -441,10 +475,55 @@ class KillEstimate:
     #: and the easiest version was chosen. Mirrors `heuristics.py`'s habit of
     #: recording how a join was made rather than only its result.
     match: str = "exact"
+    #: Damage the monster deals to the player per second of fighting, from the
+    #: library's reverse calculation. This is what makes the banking half of
+    #: the overhead a measurement rather than a guess.
+    damage_taken: float = 0.0
+    #: Whether the export calls this a boss, which is what decides if a
+    #: respawn timer is on the critical path. See `BOSS_RESPAWN_SECONDS`.
+    is_boss: bool = False
 
-    def kills_per_hour(self, overhead: float = DEFAULT_OVERHEAD_SECONDS) -> float:
-        """Kills per hour, this kill's fighting time plus `overhead`."""
-        cycle = self.ttk + overhead
+    def overhead(
+        self,
+        *,
+        health_pool: float = INVENTORY_HEALING + 99.0,
+        banking: float = BANKING_SECONDS,
+    ) -> float:
+        """Seconds of not-fighting this kill costs.
+
+        Two parts, and neither is a flat constant:
+
+        1. **Respawn**, but only for a boss - `BOSS_RESPAWN_SECONDS`. Anywhere
+           there is a second monster to walk to, the timer is not on the
+           critical path.
+        2. **Banking**, amortised over a trip. A trip ends when the damage
+           taken exhausts what the player can absorb, so it lasts
+           `health_pool / damage_taken` seconds of fighting and yields
+           `health_pool / (damage_taken * ttk)` kills. Each of those kills
+           carries its share of one bank run.
+
+        Which reduces to `banking * damage_per_kill / health_pool`: **the
+        banking cost is proportional to the damage a kill costs you**, which
+        is the property that makes it right for both a rat and a boss. A rat
+        that never lands a hit needs no trip at all and gets no banking
+        overhead; Vorkath ends a trip in a handful of kills and carries most
+        of a bank run each.
+
+        A monster that cannot damage the player returns the respawn wait
+        alone - correctly, since nothing forces the trip to end.
+        """
+        respawn = BOSS_RESPAWN_SECONDS if self.is_boss else 0.0
+        damage_per_kill = self.damage_taken * self.ttk
+        if damage_per_kill <= 0 or health_pool <= 0:
+            return respawn
+        return respawn + banking * damage_per_kill / health_pool
+
+    def kills_per_hour(self, overhead: float | None = None) -> float:
+        """Kills per hour: this kill's fighting time plus its overhead.
+
+        `overhead` overrides the computed one, for callers comparing models.
+        """
+        cycle = self.ttk + (self.overhead() if overhead is None else overhead)
         return 3600.0 / cycle if cycle > 0 else 0.0
 
 
@@ -690,6 +769,7 @@ def best_kill(
     on_slayer_task: bool = False,
     reductions: DefenceReductions | None = None,
     wilderness: bool = False,
+    boss: bool = False,
 ) -> KillEstimate | None:
     """The fastest way to kill `name` with the gear on offer, or `None`.
 
@@ -739,6 +819,10 @@ def best_kill(
                     max_hit=result.max_hit,
                     accuracy=result.accuracy,
                     match="exact" if key == name else "variant",
+                    # Measured against the gear that won, since that is what
+                    # the player is standing in while being hit.
+                    damage_taken=damage_taken_per_second(armed, fight),
+                    is_boss=boss,
                 )
     return best
 
@@ -773,8 +857,9 @@ def price_monsters(
     monsters: Iterable[str],
     *,
     index: MonsterIndex | None = None,
-    overhead: float = DEFAULT_OVERHEAD_SECONDS,
+    overhead: float | None = None,
     slayer_monsters: frozenset[str] = frozenset(),
+    boss_monsters: frozenset[str] = frozenset(),
     kit: Kit | None = None,
 ) -> dict[str, Rate]:
     """Kills-per-hour for `monsters`, as `Rate`s ready to merge.
@@ -806,6 +891,7 @@ def price_monsters(
             on_slayer_task=name in slayer_monsters,
             reductions=reductions,
             wilderness=name in kit.wilderness if kit is not None else False,
+            boss=name in boss_monsters,
         )
         if kill is None:
             continue

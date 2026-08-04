@@ -267,6 +267,71 @@ def test_kills_per_hour_adds_the_overhead() -> None:
     assert kill.kills_per_hour(overhead=0.0) == pytest.approx(120.0)
 
 
+def _kill(**kwargs: Any) -> dps_bridge.KillEstimate:
+    base: dict[str, Any] = {
+        "monster": "Test",
+        "style": "Melee",
+        "ttk": 30.0,
+        "dps": 5.0,
+        "max_hit": 20,
+        "accuracy": 0.5,
+    }
+    base.update(kwargs)
+    return dps_bridge.KillEstimate(**base)
+
+
+def test_something_that_cannot_hurt_you_has_no_overhead() -> None:
+    """No damage means no trip has to end, so there is nothing to amortise.
+
+    The flat 30 seconds this replaced was 92% of a rat's whole cycle.
+    """
+    assert _kill(damage_taken=0.0).overhead() == 0.0
+
+
+def test_a_boss_carries_its_respawn_and_a_rat_does_not() -> None:
+    """Respawn only bites where the monster is the scarce thing."""
+    assert _kill(damage_taken=0.0, is_boss=True).overhead() == (
+        dps_bridge.BOSS_RESPAWN_SECONDS
+    )
+    assert _kill(damage_taken=0.0, is_boss=False).overhead() == 0.0
+
+
+def test_banking_is_proportional_to_the_damage_a_kill_costs() -> None:
+    """Which is the property that makes one model fit a rat and a boss.
+
+    400 damage a kill against a 400-point pool is one kill per trip, so that
+    kill carries the whole bank run; half the damage carries half of it.
+    """
+    pool = 400.0
+    whole = _kill(ttk=100.0, damage_taken=4.0).overhead(health_pool=pool, banking=120.0)
+    half = _kill(ttk=100.0, damage_taken=2.0).overhead(health_pool=pool, banking=120.0)
+
+    assert whole == pytest.approx(120.0)
+    assert half == pytest.approx(60.0)
+
+
+def test_a_boss_that_ends_a_trip_pays_both_parts() -> None:
+    kill = _kill(ttk=100.0, damage_taken=4.0, is_boss=True)
+
+    assert kill.overhead(health_pool=400.0, banking=120.0) == pytest.approx(135.0)
+
+
+def test_kills_per_hour_uses_the_model_by_default() -> None:
+    """The explicit `overhead` is for comparing models, not the normal path."""
+    kill = _kill(ttk=100.0, damage_taken=4.0)
+
+    assert kill.kills_per_hour() == pytest.approx(3600.0 / (100.0 + kill.overhead()))
+    assert kill.kills_per_hour(overhead=0.0) == pytest.approx(36.0)
+
+
+def test_the_default_pool_is_the_inventory_plus_a_full_health_bar() -> None:
+    """15 food at about 20 each, on top of 99 Hitpoints."""
+    kill = _kill(ttk=100.0, damage_taken=4.0)
+    pool = dps_bridge.INVENTORY_HEALING + 99.0
+
+    assert kill.overhead() == pytest.approx(dps_bridge.BANKING_SECONDS * 400.0 / pool)
+
+
 def test_price_monsters_omits_what_it_cannot_price() -> None:
     """A monster missing from the result falls back to the scraped rate.
 
