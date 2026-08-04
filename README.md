@@ -40,6 +40,11 @@ source-chunk is upstream and read-only from here — `fray-claude` never writes 
   batch of them, and `--jobs J` to spread that batch over worker processes.
 - **`maps`** — list what's cached, fetched and simulated alike; `maps rm NAME` and `maps clean`
   remove them again.
+- **`heuristics`** — pulls the numbers an estimate needs from the OSRS wiki and a public
+  spreadsheet: quest lengths, kills per hour, XP rates, and slayer assignment data. Run about as
+  often as `chunkinfo`.
+- **`estimate`** — roughly how long the outstanding work would take, in four buckets: quests, boss
+  drops, activity unlocks and skilling. Deliberately a heuristic — see below.
 - **`derived`** — inspect or clean the cache of computed results (see below).
 
 Everything after the initial `fetch`/`chunkinfo` runs offline, against the local cache.
@@ -59,6 +64,22 @@ likely to notice:
   aren't modelled, so a set-bonus item can be under-rated against a raw-stats rival.
 - **Manual choices during simulation** — chunk selection and blacklisting, and the `roll2`/`roll5`
   bonus rerolls. `fray simulate` rolls the way an untouched map would.
+
+**`fray estimate` is a rough guide, not a projection.** The chunk-info export contains no durations,
+no kill rates and no XP figures of any kind, so every number it spends comes from the OSRS wiki, a
+community spreadsheet, or a default — and any of them can be wrong for you. Three things to know
+before believing a total:
+
+- The money-making guides only cover **243 of the 2,710** ways of training a skill, because most
+  training methods don't make money and so have no guide. Everything else sits at a deliberately low
+  1,000 xp/hr so it looks slow rather than free. `fray estimate` prints which skills are on that
+  default; correcting them in `heuristics/overrides.json` is where the accuracy comes from.
+- **Your skill levels aren't in the map.** source-chunk records a level *cap* and a passively
+  reachable level, neither of which is where you actually are, so the estimate counts from the
+  passive floor unless you set `levels` in the overrides file. Every skill row prints the level it
+  assumed.
+- Slayer's rate is averaged over the tasks your master can assign *and* you can reach; the reported
+  coverage says how much of the master's task list that was. A low figure means an optimistic number.
 
 That list is the short version, and it moves as the port advances. **Each module's docstring carries
 the precise, current statement of what it implements, what it approximates, and what it refuses to
@@ -151,6 +172,13 @@ otherwise it's created in whatever directory you're in when you run `fray`.
    fray chunkinfo
    ```
 
+   If you want `fray estimate`, also pull the rates it spends (~18 requests to the OSRS wiki and one
+   published spreadsheet). Like `chunkinfo`, this only needs repeating occasionally:
+
+   ```sh
+   fray heuristics
+   ```
+
 3. **Look at what you've got:**
 
    ```sh
@@ -169,6 +197,8 @@ otherwise it's created in whatever directory you're in when you run `fray`.
    fray search "abyssal whip"          # where in the world would I get this?
    fray unlock --chunk 12082           # what unlocking chunk 12082 would add
    fray diff --map1 fray --map2 Future # what's different between two cached maps, both ways
+   fray estimate                       # roughly how long the outstanding work would take
+   fray estimate skilling              # ... and which training method each skill would use
    fray neighbours                     # which chunks I could unlock next, and their roll numbers
    fray simulate --rolls 20 --seed 1   # simulate 20 rolls; --seed makes it reproducible
    ```
@@ -178,7 +208,8 @@ otherwise it's created in whatever directory you're in when you run `fray`.
 
    Add `--export-json -` (to print JSON to stdout, for piping into `jq` or similar) or
    `--export-json PATH` (to write it to a file) to `sections`, `sources`, `tasks`, `search`, `unlock`,
-   `diff`, `neighbours` or `simulate` for the full structured result behind the human-readable summary.
+   `diff`, `estimate`, `neighbours` or `simulate` for the full structured result behind the
+   human-readable summary.
 
    If you'd rather point at a chunk-info export you already have on disk instead of fetching it,
    pass `--chunkinfo PATH` to any of those commands, or set the `FRAY_CHUNKINFO` environment variable.

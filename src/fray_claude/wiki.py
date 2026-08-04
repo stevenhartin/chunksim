@@ -46,6 +46,14 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+#: Every money-making guide is a subpage of this, which is how they are
+#: enumerated - there is no category or Cargo table to query.
+MMG_PREFIX = "Money making guide/"
+
+#: A slayer master's assignment table is on this subpage, not on the master's
+#: own page, which only links to it.
+ASSIGNMENTS_PAGE = "Slayer assignments"
+
 #: `<!-- ... -->`, including the multi-line ones real infoboxes carry.
 _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 

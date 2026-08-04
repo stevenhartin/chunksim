@@ -10,8 +10,11 @@ offline operations on that cache. source-chunk is upstream and read-only from he
 Planned: a shortest-path search ("fewest chunk unlocks to reach X" — `graph.py` exists to serve it and
 has no other reason to be a separate module), render a world-map image for a simulated state, generate
 heatmaps of likely rolls over N attempts (the cached simulation batches are the input for this — see
-the `cache/sims/` layout under Commands), estimate time to complete all goals (needs a task-duration
-source; the export has none).
+the `cache/sims/` layout under Commands).
+
+`fray estimate` answers "time to complete the goals" — the export still has no duration source, so
+the numbers come from the OSRS wiki and a community spreadsheet via `fray heuristics`. See the
+estimator paragraph below Commands.
 
 ## source-chunk
 
@@ -102,7 +105,12 @@ Five things that cut across modules — the first three because each has already
 
 | Module | Owns |
 |---|---|
-| `api.py` | The network. `FetchError`. An unknown map is HTTP 200 + bare `null`, never a 404. |
+| `api.py` | The network. `FetchError`. An unknown map is HTTP 200 + bare `null`, never a 404. Four hosts now: Firebase, upstream's `gh-pages`, the OSRS wiki (which **requires** a `User-Agent`) and one published Google Sheet. |
+| `wiki.py` | Wikitext template parsing. Pure. Quest length is in `{{Quest details}}`, **not** `{{Infobox Quest}}` — the tempting wrong template has no `length` and so returns `None` for every quest without erroring. |
+| `experience.py` | The exact 1–99 XP curve, closed-form. **Not a heuristic and not overridable** — that separation from `heuristics.py` is the point of the module. |
+| `heuristics.py` | Every hand-correctable number, and the `defaults < scraped < overrides` merge. Owns the joins and their `exact`/`contained` provenance; **no fuzzy tier**, by measurement — read the docstring before adding one back. |
+| `slayer.py` | Slayer's rate, which is a *distribution* not a chosen method: a time-weighted mean over what a master assigns. Reports `coverage`, because renormalising over reachable tasks flatters a sparse map. |
+| `estimate.py` | The four `plan.md` buckets over the **active** set. Owns the item walk, its bounded `Output` recursion, and the `unpriced` list — the honest coverage figure. |
 | `cache.py` | The disk. `CacheMissError`, the `map_id`/`fetched_at`/`source`/`is_simulated`/`data` envelope, the `--chunkinfo`/`FRAY_CHUNKINFO` override, and the fetched-vs-simulated map layout below (incl. `--map` resolution, atomic writes and the batch-name claim). |
 | `firebase.py` | The Firebase-safe string codec, incl. `decode_challenge_keyed`'s mixed `t_N`/literal key handling. Run any payload branch through it before believing it. |
 | `chunkinfo.py` | Typed, tolerant accessors over the parsed export. Build **one** `ChunkInfo` per invocation — parsing the ~7MB export is the expensive part. |
@@ -142,6 +150,8 @@ pip install -e ".[dev]"     # editable install into .venv; provides the `fray` s
 fray fetch [--map ID]       # GET live state -> cache/<map>.json (default map: fray)
 fray show  [--map ID]       # summarise the cached copy; no network
 fray chunkinfo              # GET upstream's chunk/challenge reference data -> cache/{chunkinfo,tasks_map}.json
+fray heuristics             # GET wiki/spreadsheet rates -> cache/wiki_rates.json (~18 requests)
+fray estimate [BUCKET] [--limit N]   # rough hours for the outstanding active tasks
 fray sections [list|CHUNK] [--limit N]   # reachable sections; list/drill down with a positional
 fray sources  [CATEGORY]   [--limit N]   # items/objects/monsters/npcs/shops; list one with a positional
 fray tasks    [CATEGORY]   [--limit N]   # valid/active/obsolete/completed, incl. BiS (partial - see the module docstrings)
@@ -167,9 +177,10 @@ Those two lines go together: `FRAY_CHUNKINFO` wants a *raw* export, not `fray ch
 envelope-wrapped `cache/chunkinfo.json` (hence the extraction — see Conventions for why pointing it at
 the envelope fails silently), and `FRAY_MAP_CACHE` is presence-only, its value unused.
 
-`--export-json PATH` (or `-` for stdout, replacing the text summary) is carried by the eight
-*derivation* subcommands plus `maps list`, not the three I/O ones. `--recompute` is carried by those
-same eight and nothing else, so it means one thing everywhere. `--limit` defaults to `None` (full
+`--export-json PATH` (or `-` for stdout, replacing the text summary) is carried by the nine
+*derivation* subcommands plus `maps list`, not the four I/O ones (`fetch`/`show`/`chunkinfo`/
+`heuristics`). `--recompute` is carried by those same nine and nothing else, so it means one thing
+everywhere. `--limit` defaults to `None` (full
 output) for `sections`/`sources`/`tasks`/`neighbours`/`diff` so piping just works, but to `10` for
 `search`. See `cli.py`'s docstring.
 
@@ -199,6 +210,16 @@ An unlock product is a one-run batch that differs only in its envelope `source` 
 `origin`: `is_simulated` and `MapEntry.kind` stay as they are for a simulation, since both mean "this
 project computed it, upstream never saw it" — see `cache.write_sim_run` for why a third `kind` isn't
 worth what it would cost `maps rm`/`maps clean`.
+
+**The estimator's numbers live in two places, and only one is in `cache/`.** `fray heuristics`
+writes the scrape to `cache/wiki_rates.json` (a normal blob, refetchable, gitignored); hand-written
+corrections go in **`heuristics/overrides.json`, which is checked in** so they are diffable and
+survive a re-scrape. Overrides win, key by key. The export has *no* durations, rates or XP figures at
+all, so every number `fray estimate` spends comes from one of those two files or a default in
+`heuristics.py` — read that module's docstring on coverage before quoting a total, and
+`estimate.py`'s on what `current level` means, because **the map records no skill levels**
+(`maxSkill` is a declared cap, `passiveSkill` is what's reachable untrained). `experience.py`'s XP
+curve is the one exact input and is deliberately not overridable.
 
 **`cache/derived/` is a third thing, and not a map.** It holds `pipeline.derive`'s *results*, one
 zstd-compressed pickle per key (~0.12MB each), so a repeat command costs ~0.15s instead of ~1.05s.
@@ -265,5 +286,10 @@ a silent no-op ("already seems to be installed") — it will not pick up new cod
   directly with no `["data"]` unwrapping, so pointing it at the envelope silently produces wrong or
   incomplete results rather than an error. Extract the raw export first if working from the cache
   (`json.load(open("cache/chunkinfo.json"))["data"]`).
-- No custom `User-Agent` on requests — the endpoint is public and unauthenticated, so there's nothing
-  to disguise
+- **`User-Agent` differs by host, deliberately.** Firebase and GitHub get none — those endpoints are
+  public and unauthenticated, so there's nothing to disguise and a header would only publish
+  information nobody asked for. The **OSRS wiki gets `api.WIKI_USER_AGENT`, and requires it**: an
+  anonymous request there is answered with HTTP 403 (measured, not assumed), because the wiki applies
+  MediaWiki's user-agent policy asking automated clients to identify themselves. Both rules come from
+  one principle — send what the endpoint needs to serve the request, and nothing more about who is
+  asking. The header names the project and its repo, never the user.

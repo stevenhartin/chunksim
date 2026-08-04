@@ -89,10 +89,15 @@ from fray_claude.api import (
     DEFAULT_TIMEOUT,
     CHUNKINFO_URL,
     TASKS_MAP_URL,
+    WIKI_API_URL,
     FetchError,
     fetch_chunkinfo,
     fetch_map,
     fetch_tasks_map,
+    fetch_text,
+    fetch_wiki_page_titles,
+    fetch_wiki_pages,
+    slayer_sheet_url,
 )
 from fray_claude.batch import RunResult, run_batch
 from fray_claude.cache import (
@@ -110,7 +115,9 @@ from fray_claude.cache import (
     prune_derived,
     read_blob,
     read_cache,
+    WIKI_RATES_BLOB_NAME,
     read_chunkinfo,
+    read_overrides,
     remove_all_simulated,
     remove_map,
     run_dir,
@@ -122,6 +129,16 @@ from fray_claude.cache import (
 from fray_claude.challenges import strip_task_markup
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.delta import BRANCHES, BranchDelta, MapSide, StateDelta, compare_maps
+from fray_claude.estimate import BUCKETS, EstimateResult, estimate
+from fray_claude.heuristics import (
+    Heuristics,
+    build_config,
+    disagreements,
+    load,
+    merge,
+    primary_training_tasks,
+    quest_names,
+)
 from fray_claude.derived_cache import CacheBehaviour, Digests, RollCache, cached_derive
 from fray_claude.firebase import reverse_tasks_map
 from fray_claude.graph import build_section_graph
@@ -132,9 +149,11 @@ from fray_claude.pipeline import ConvergenceError, Derived, MapState, load_map_s
 from fray_claude.search import TYPES, build_world_index, search
 from fray_claude.sections import describe_sections, expand_chunk_areas
 from fray_claude.simulate import UnlockRecord, simulate_rolls, simulated_payload
+from fray_claude.slayer import SheetFormatError, parse_mob_data
 from fray_claude.sources import CATEGORIES as SOURCE_CATEGORIES
-from fray_claude.summary import summarise
+from fray_claude.summary import _mapping, summarise
 from fray_claude.unlock import UnlockDelta, tasks_added_by
+from fray_claude.wiki import ASSIGNMENTS_PAGE, MMG_PREFIX, mmg_rates, slayer_assignments
 
 DEFAULT_MAP = "fray"
 
@@ -210,6 +229,71 @@ def _cmd_chunkinfo(args: argparse.Namespace) -> int:
     tasks_map_path = write_blob(TASKS_MAP_BLOB_NAME, tasks_map, TASKS_MAP_URL)
     print(f"fetched tasks map -> {tasks_map_path} ({tasks_map_path.stat().st_size:,} bytes)")
     return 0
+
+
+def _cmd_heuristics(args: argparse.Namespace) -> int:
+    """`fray heuristics`: rebuild the scraped half of the estimator's numbers.
+
+    ~18 requests, run about as often as `fray chunkinfo`. Coverage is printed
+    per section because it is the honest measure of how much of the estimate
+    is real data and how much is a default waiting to be corrected.
+    """
+    info = ChunkInfo(read_chunkinfo(override=args.chunkinfo))
+
+    quests = sorted(quest_names(info))
+    quest_pages = fetch_wiki_pages(quests, timeout=args.timeout)
+    print(f"quest pages      {len(quest_pages)}/{len(quests)}")
+
+    titles = [t for t in fetch_wiki_page_titles(MMG_PREFIX, timeout=args.timeout) if t != MMG_PREFIX]
+    guides = fetch_wiki_pages(titles, timeout=args.timeout)
+    mmg = {title: rates for title, text in guides.items() if (rates := mmg_rates(text))}
+    print(f"money guides     {len(mmg)}/{len(titles)}")
+
+    masters = sorted(_mapping(info.data, "slayerMasterTasks"))
+    pages = fetch_wiki_pages([f"{m}/{ASSIGNMENTS_PAGE}" for m in masters], timeout=args.timeout)
+    assignments = {
+        title.split("/")[0]: slayer_assignments(text) for title, text in pages.items()
+    }
+    print(f"assignment pages {len(assignments)}/{len(masters)}")
+
+    try:
+        mob_data = parse_mob_data(fetch_text(slayer_sheet_url(), what="slayer sheet"))
+        print(f"slayer sheet     {len(mob_data)} tasks")
+    except (FetchError, SheetFormatError) as exc:
+        # A third-party document; losing it costs the Slayer bucket, not the
+        # command. Say so rather than writing a config that prices it at zero.
+        print(f"slayer sheet     unavailable ({exc})", file=sys.stderr)
+        mob_data = {}
+
+    config = build_config(
+        info,
+        quest_pages=quest_pages,
+        mmg_pages=mmg,
+        assignments=assignments,
+        mob_data=mob_data,
+    )
+    path = write_blob(WIKI_RATES_BLOB_NAME, config, WIKI_API_URL)
+
+    print()
+    _report_coverage(info, config)
+    for line in disagreements(config, read_overrides()):
+        print(f"  overridden: {line}")
+    print(f"\nwrote {path} ({path.stat().st_size:,} bytes)")
+    return 0
+
+
+def _report_coverage(info: ChunkInfo, config: dict[str, Any]) -> None:
+    """What the scrape found, against what the export has to price."""
+    totals = {
+        "quests": len(quest_names(info)),
+        "monsters": len(info.drops),
+        "training": len(primary_training_tasks(info)),
+    }
+    for section, total in totals.items():
+        found = len(config.get(section) or {})
+        share = f"{found / total:.0%} from the wiki" if total else "nothing to price"
+        print(f"{section:<9} {found:>5}/{total:<5} ({share})")
+    print(f"{'slayer':<9} {len(config.get('slayer') or {}):>5}       tasks priced")
 
 
 def _digests(args: argparse.Namespace) -> Digests:
@@ -816,6 +900,101 @@ def _cmd_diff(args: argparse.Namespace) -> int:
     return 0
 
 
+def _load_heuristics(args: argparse.Namespace, info: ChunkInfo) -> Heuristics:
+    """The two layers merged: scraped numbers under hand-written corrections."""
+    try:
+        scraped = read_blob(WIKI_RATES_BLOB_NAME, hint="run: fray heuristics")["data"]
+    except CacheMissError:
+        # Usable without a scrape: everything falls back to a default, which
+        # is honest and says so, rather than refusing to answer at all.
+        scraped = {}
+    return load(
+        merge(scraped, read_overrides()),
+        boss_monsters=frozenset(_mapping(info.code_items, "bossMonsters")),
+        slayer_monsters=frozenset(info.slayer_monsters),
+    )
+
+
+def _cmd_estimate(args: argparse.Namespace) -> int:
+    if args.bucket is not None and args.bucket not in BUCKETS:
+        return _error(f"unknown bucket {args.bucket!r} (expected one of {', '.join(BUCKETS)})")
+
+    state, unlocked = _load_state(args)
+    derived = _derive(args, state, unlocked)
+    heuristics = _load_heuristics(args, state.chunk_info)
+    overrides = _mapping(read_overrides(), "levels")
+    result = estimate(
+        state,
+        derived,
+        build_world_index(state.chunk_info),
+        heuristics,
+        level_overrides={
+            skill: int(level)
+            for skill, level in overrides.items()
+            if isinstance(level, int) and not isinstance(level, bool)
+        },
+    )
+
+    if args.export_json != "-":
+        _print_estimate(result, args.map_id, args.bucket, args.limit)
+    if args.export_json is not None:
+        _emit_json({"map_id": args.map_id, **result.as_dict()}, args.export_json)
+    return 0
+
+
+def _print_estimate(
+    result: EstimateResult, map_id: str, bucket: str | None, limit: int | None
+) -> None:
+    print(f"map          {map_id}")
+    for name, hours in result.buckets.items():
+        if bucket is None or bucket == name:
+            print(f"{name:<12} {hours:>9,.1f}h")
+    if bucket is None:
+        print(f"{'total':<12} {result.total_hours:>9,.1f}h")
+        if result.unpriced:
+            print(f"unpriced     {len(result.unpriced)} (no priceable route - see estimate.py)")
+        _print_estimate_warnings(result)
+        return
+
+    if bucket == "skilling":
+        for skill in sorted(result.skills, key=lambda skill: -skill.hours):
+            flag = " (default rate)" if skill.defaulted else ""
+            print(
+                f"  {skill.skill:<13} {skill.current_level:>3} -> {skill.target_level:<3}"
+                f" {skill.xp:>10,} xp @ {skill.xp_per_hour:>9,.0f}/hr"
+                f" = {skill.hours:>7,.1f}h  {skill.method}{flag}"
+            )
+        if result.slayer is not None:
+            print(
+                f"  slayer master {result.slayer.master}"
+                f" at {result.slayer.xp_per_hour:,.0f} xp/hr,"
+                f" {result.slayer.coverage:.0%} of its tasks reachable"
+            )
+        return
+
+    rows = result.in_bucket(bucket)
+    for task in rows if limit is None else rows[:limit]:
+        print(f"  {task.hours:>8,.1f}h {strip_task_markup(task.task):<48} {task.detail}")
+    if limit is not None and len(rows) > limit:
+        print(f"  ... and {len(rows) - limit} more (--limit {len(rows)} to see all)")
+
+
+def _print_estimate_warnings(result: EstimateResult) -> None:
+    """What makes the total untrustworthy, said plainly rather than buried."""
+    defaulted = [skill.skill for skill in result.skills if skill.defaulted]
+    if defaulted:
+        print(
+            f"\n{len(defaulted)} skill(s) using the default training rate:"
+            f" {', '.join(sorted(defaulted))}"
+        )
+        print("  correct them in heuristics/overrides.json - see heuristics.py")
+    if result.slayer is not None and result.slayer.coverage < 0.5:
+        print(
+            f"\nslayer: only {result.slayer.coverage:.0%} of {result.slayer.master}'s tasks are"
+            " reachable, so its rate is optimistic (see slayer.py)"
+        )
+
+
 def _cmd_neighbours(args: argparse.Namespace) -> int:
     state, unlocked = _load_state(args)
     entries = eligible_neighbours(
@@ -1060,6 +1239,61 @@ def build_parser() -> argparse.ArgumentParser:
         help="request timeout in seconds (default: %(default)s)",
     )
     chunkinfo.set_defaults(func=_cmd_chunkinfo)
+
+    # An I/O command like `fetch`/`chunkinfo`, so no `--export-json`: its
+    # product is the cache blob, and `fray estimate --export-json` is how the
+    # numbers come back out.
+    heuristics = subcommands.add_parser(
+        "heuristics", help="download the wiki/spreadsheet rates the estimator spends"
+    )
+    heuristics.add_argument(
+        "--timeout",
+        type=float,
+        default=DEFAULT_TIMEOUT,
+        help="request timeout in seconds (default: %(default)s)",
+    )
+    heuristics.add_argument(
+        "--chunkinfo",
+        type=Path,
+        default=None,
+        help="path to a chunkinfo export, overriding the cache and FRAY_CHUNKINFO",
+    )
+    heuristics.set_defaults(func=_cmd_heuristics)
+
+    estimate_cmd = subcommands.add_parser(
+        "estimate", help="roughly how long the outstanding active tasks would take"
+    )
+    estimate_cmd.add_argument(
+        "bucket",
+        nargs="?",
+        default=None,
+        metavar="BUCKET",
+        help=f"drill into one bucket, one of: {', '.join(BUCKETS)}",
+    )
+    estimate_cmd.add_argument(
+        "--limit", type=int, default=None, help="cap the tasks listed for BUCKET"
+    )
+    estimate_cmd.add_argument(
+        "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"
+    )
+    estimate_cmd.add_argument(
+        "--chunkinfo",
+        type=Path,
+        default=None,
+        help="path to a chunkinfo export, overriding the cache and FRAY_CHUNKINFO",
+    )
+    estimate_cmd.add_argument(
+        "--export-json",
+        metavar="PATH",
+        default=None,
+        help="write the full result as JSON to PATH, or to stdout if PATH is '-'",
+    )
+    estimate_cmd.add_argument(
+        "--recompute",
+        action="store_true",
+        help="ignore any cached derivation and compute (and re-store) a fresh one",
+    )
+    estimate_cmd.set_defaults(func=_cmd_estimate)
 
     sections = subcommands.add_parser(
         "sections", help="reachable sections for the cached map's unlocked chunks"

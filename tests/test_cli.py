@@ -1610,3 +1610,159 @@ def test_a_simulated_maps_own_state_is_cached_by_its_run(
 
     assert main(["tasks", "--map", "S"]) == 0
     assert len(_derived_entries(project)) == stored
+
+
+# --- heuristics and estimate ------------------------------------------------
+
+
+def _patch_wiki_sources(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    quest_pages: dict[str, str] | None = None,
+    guides: dict[str, str] | None = None,
+    sheet: str = '"Task","XP/Kill","Raw Kills/Hour"\n"Bats","5","800"\n',
+) -> None:
+    """Stand in for every network source `fray heuristics` reaches."""
+    pages = {**(quest_pages or {}), **(guides or {})}
+    monkeypatch.setattr(
+        "fray_claude.cli.fetch_wiki_pages", lambda titles, timeout=DEFAULT_TIMEOUT: {
+            title: pages[title] for title in titles if title in pages
+        }
+    )
+    monkeypatch.setattr(
+        "fray_claude.cli.fetch_wiki_page_titles",
+        lambda prefix, timeout=DEFAULT_TIMEOUT: sorted(guides or {}),
+    )
+    monkeypatch.setattr(
+        "fray_claude.cli.fetch_text", lambda url, timeout=DEFAULT_TIMEOUT, what="": sheet
+    )
+
+
+def test_heuristics_writes_the_config_and_reports_coverage(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    chunkinfo_data = {
+        "challenges": {
+            "Quest": {"~|Cook's Assistant|~ 1": {"BaseQuest": "Cook's Assistant"}},
+            "Mining": {"Mine ~|sunstone rocks|~": {"Primary": True, "Level": 50}},
+        },
+        "drops": {"General Graardor": {"Bandos chestplate": {"1": "1/381"}}},
+    }
+    _cache_map_and_chunkinfo(monkeypatch, {"chunks": {"unlocked": {}}}, chunkinfo_data)
+    _patch_wiki_sources(
+        monkeypatch,
+        quest_pages={"Cook's Assistant": "{{Quest details|length = Very Short}}"},
+        guides={
+            "Money making guide/Killing General Graardor": "{{Mmgtable|Activity = Killing "
+            "[[General Graardor]]|kph = 27}}"
+        },
+    )
+    capsys.readouterr()
+
+    assert main(["heuristics"]) == 0
+
+    out = capsys.readouterr().out
+    assert "quest pages      1/1" in out
+    assert "100% from the wiki" in out
+    config = json.loads((project / "cache" / "wiki_rates.json").read_text())["data"]
+    assert config["quests"]["Cook's Assistant"]["hours"] == 0.17
+    assert config["monsters"]["General Graardor"]["value"] == 27.0
+
+
+def test_heuristics_survives_the_slayer_sheet_being_unavailable(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A third-party document; losing it should cost the Slayer bucket, not
+    # the command, and must say so rather than pricing it at zero silently.
+    _cache_map_and_chunkinfo(monkeypatch, {"chunks": {"unlocked": {}}}, {})
+    _patch_wiki_sources(monkeypatch)
+    monkeypatch.setattr(
+        "fray_claude.cli.fetch_text",
+        lambda url, timeout=DEFAULT_TIMEOUT, what="": (_ for _ in ()).throw(
+            FetchError("HTTP 404 fetching slayer sheet")
+        ),
+    )
+    capsys.readouterr()
+
+    assert main(["heuristics"]) == 0
+
+    assert "slayer sheet     unavailable" in capsys.readouterr().err
+
+
+def _estimate_fixture(monkeypatch: pytest.MonkeyPatch) -> None:
+    chunkinfo_data = {
+        "chunks": {"100": {"Monster": {"Goblin": True}}},
+        "drops": {"Goblin": {"Bones": {"1": "1/10"}}},
+        "challenges": {"Extra": {"Obtain ~|bones|~": {"Items": ["Bones"]}}},
+    }
+    _cache_map_and_chunkinfo(monkeypatch, {"chunks": {"unlocked": {"100": True}}}, chunkinfo_data)
+
+
+def test_estimate_reports_hours_per_bucket(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _estimate_fixture(monkeypatch)
+    capsys.readouterr()
+
+    assert main(["estimate"]) == 0
+
+    out = capsys.readouterr().out
+    assert "boss drops" in out and "skilling" in out and "total" in out
+
+
+def test_estimate_works_without_a_scraped_config(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Everything falls back to a default, which announces itself - better than
+    # refusing to answer until a ~18-request scrape has been run.
+    _estimate_fixture(monkeypatch)
+    capsys.readouterr()
+
+    assert main(["estimate"]) == 0
+    assert not (project / "cache" / "wiki_rates.json").exists()
+
+
+def test_estimate_rejects_an_unknown_bucket(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _estimate_fixture(monkeypatch)
+    capsys.readouterr()
+
+    assert main(["estimate", "nope"]) == 1
+    assert "unknown bucket 'nope'" in capsys.readouterr().err
+
+
+def test_estimate_export_json_to_stdout_replaces_the_summary(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _estimate_fixture(monkeypatch)
+    capsys.readouterr()
+
+    assert main(["estimate", "--export-json", "-"]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert set(result["buckets"]) == {"quests", "boss drops", "activities", "skilling"}
+    assert "unpriced" in result
+
+
+def test_an_override_beats_the_scraped_rate(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _estimate_fixture(monkeypatch)
+    overrides = project / "heuristics"
+    overrides.mkdir()
+    (overrides / "overrides.json").write_text(
+        json.dumps({"monsters": {"Goblin": {"value": 1.0}}}), encoding="utf-8"
+    )
+    capsys.readouterr()
+
+    main(["estimate", "--export-json", "-"])
+    slow = json.loads(capsys.readouterr().out)
+
+    (overrides / "overrides.json").write_text(
+        json.dumps({"monsters": {"Goblin": {"value": 100.0}}}), encoding="utf-8"
+    )
+    main(["estimate", "--export-json", "-"])
+    fast = json.loads(capsys.readouterr().out)
+
+    assert fast["total_hours"] < slow["total_hours"]

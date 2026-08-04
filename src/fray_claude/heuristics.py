@@ -321,7 +321,7 @@ def build_config(
     guides = _mmg_index(mmg_pages)
 
     quests: dict[str, Any] = {}
-    for quest in sorted(_quest_names(chunk_info)):
+    for quest in sorted(quest_names(chunk_info)):
         text = quest_pages.get(quest)
         length = quest_length(text) if text else None
         quests[quest] = QuestRate(
@@ -365,7 +365,7 @@ def build_config(
     }
 
 
-def _quest_names(chunk_info: ChunkInfo) -> set[str]:
+def quest_names(chunk_info: ChunkInfo) -> set[str]:
     """Every quest with challenges, by `BaseQuest` - the wiki's page title."""
     quests: set[str] = set()
     for challenge in _mapping(chunk_info.challenges, "Quest").values():

@@ -67,7 +67,15 @@ _ROOT_MARKER = "pyproject.toml"
 
 CHUNKINFO_BLOB_NAME = "chunkinfo"
 TASKS_MAP_BLOB_NAME = "tasks_map"
+#: The scraped half of the estimator's numbers - see `heuristics.py` for why
+#: the hand-edited half lives outside `cache/` instead.
+WIKI_RATES_BLOB_NAME = "wiki_rates"
 CHUNKINFO_ENV_VAR = "FRAY_CHUNKINFO"
+
+#: Where hand-written corrections live: checked in, so they are diffable and
+#: survive a re-scrape, which nothing under the gitignored `cache/` would.
+HEURISTICS_DIR_NAME = "heuristics"
+OVERRIDES_FILE_NAME = "overrides.json"
 
 MAP_FILE_NAME = "map.json"
 ROLLS_FILE_NAME = "rolls.json"
@@ -236,10 +244,16 @@ def write_blob(name: str, data: dict[str, Any], source: str, root: Path | None =
     return path
 
 
-def read_blob(name: str, root: Path | None = None) -> dict[str, Any]:
-    """Return the cached envelope for `name`."""
+def read_blob(name: str, root: Path | None = None, *, hint: str | None = None) -> dict[str, Any]:
+    """Return the cached envelope for `name`.
+
+    `hint` is the command that would produce it, named in the error. It has a
+    default because two of the three blobs come from `fray chunkinfo`, and it
+    is a parameter because the third does not - a missing wiki blob telling
+    you to run `fray chunkinfo` sends you to the wrong command entirely.
+    """
     path = blob_path(name, root)
-    hint = "run: fray chunkinfo"
+    hint = hint or "run: fray chunkinfo"
     try:
         raw = path.read_text(encoding="utf-8")
     except FileNotFoundError as exc:
@@ -253,6 +267,33 @@ def read_blob(name: str, root: Path | None = None) -> dict[str, Any]:
     if not isinstance(envelope, dict) or not isinstance(envelope.get("data"), dict):
         raise CacheMissError(f"cache for {name!r} is malformed; {hint}")
     return envelope
+
+
+def overrides_path(root: Path | None = None) -> Path:
+    """The checked-in file holding hand-written heuristic corrections."""
+    return (root or project_root()) / HEURISTICS_DIR_NAME / OVERRIDES_FILE_NAME
+
+
+def read_overrides(root: Path | None = None) -> dict[str, Any]:
+    """Hand-written corrections, or `{}` if there are none.
+
+    Absent is normal and not an error: a fresh clone has no corrections yet,
+    and the estimator's job is to work from the scrape until someone disagrees
+    with it. A *malformed* file does raise - it was written deliberately, so
+    silently ignoring it would drop corrections without saying so.
+    """
+    path = overrides_path(root)
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}
+    try:
+        parsed: Any = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise CacheMissError(f"{path} is not valid JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise CacheMissError(f"{path} should hold an object, got {type(parsed).__name__}")
+    return parsed
 
 
 def claim_sim_batch(name: str, root: Path | None = None) -> Path:
