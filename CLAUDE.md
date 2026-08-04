@@ -198,6 +198,7 @@ directory per run under a named batch:
 cache/sims/<batch>/batch.json          # every run's seed and rolled chunk ids - the analysis surface
 cache/sims/<batch>/run-001/map.json    # a normal envelope, `is_simulated: true`
 cache/sims/<batch>/run-001/rolls.json  # that run's per-roll ledger
+cache/sims/<batch>/run-001/run.json    # that run's seed/rolls/origin, the summary `maps list` reads
 ```
 
 Every subcommand's `--map` takes either kind, because `cache.read_cache` resolves them: a fetched
@@ -214,7 +215,8 @@ worth what it would cost `maps rm`/`maps clean`.
 **The estimator's numbers live in two places, and only one is in `cache/`.** `fray heuristics`
 writes the scrape to `cache/wiki_rates.json` (a normal blob, refetchable, gitignored); hand-written
 corrections go in **`heuristics/overrides.json`, which is checked in** so they are diffable and
-survive a re-scrape. Overrides win, key by key. The export has *no* durations, rates or XP figures at
+survive a re-scrape (`heuristics/README.md`, also checked in, is the guide to which numbers are
+worth correcting and what the three layers are). Overrides win, key by key. The export has *no* durations, rates or XP figures at
 all, so every number `fray estimate` spends comes from one of those two files or a default in
 `heuristics.py` — read that module's docstring on coverage before quoting a total, and
 `estimate.py`'s on what `current level` means: **the map records no skill levels** (`maxSkill` is
