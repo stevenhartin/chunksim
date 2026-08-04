@@ -629,14 +629,17 @@ def test_one_item_wanted_by_several_tasks_is_costed_once() -> None:
 
 
 def test_a_task_needing_two_items_pays_for_both() -> None:
+    # Two items from *different* sources, so nothing is earned in parallel
+    # and the costs genuinely add. (Same-source items are clamped instead -
+    # see `test_items_from_one_source_are_earned_together`.)
     info = ChunkInfo(
         {
-            "drops": {"Goblin": {"Bones": {"1": "1/10"}, "Beads": {"1": "1/20"}}},
+            "drops": {"Goblin": {"Bones": {"1": "1/10"}}, "Imp": {"Beads": {"1": "1/20"}}},
             "challenges": {"Extra": {"Obtain ~|both|~": {"Items": ["Bones", "Beads"]}}},
         }
     )
     derived = _derived(
-        monsters=("Goblin",),
+        monsters=("Goblin", "Imp"),
         other_tasks=OtherTasks(
             categories={
                 "Extra": CategoryTasks(
@@ -646,7 +649,145 @@ def test_a_task_needing_two_items_pays_for_both() -> None:
         ),
     )
 
-    result = _run(info, derived, Heuristics(monsters={"Goblin": Rate(100.0)}))
+    result = _run(
+        info, derived, Heuristics(monsters={"Goblin": Rate(100.0), "Imp": Rate(100.0)})
+    )
 
     assert {item.item for item in result.items} == {"Bones", "Beads"}
     assert result.total_hours == pytest.approx(10 / 100 + 20 / 100)
+
+
+def _two_drops(rate_a: str, rate_b: str, *, same_monster: bool = True) -> tuple[Any, Any]:
+    monsters = ("Abyssal demon",) if same_monster else ("Abyssal demon", "Goblin")
+    drops: dict[str, Any] = {"Abyssal demon": {"Abyssal dagger": {"1": rate_a}}}
+    if same_monster:
+        drops["Abyssal demon"]["Abyssal head"] = {"1": rate_b}
+    else:
+        drops["Goblin"] = {"Abyssal head": {"1": rate_b}}
+    info = ChunkInfo(
+        {
+            "drops": drops,
+            "challenges": {
+                "Extra": {
+                    "Obtain a ~|abyssal dagger|~": {"Items": ["Abyssal dagger"]},
+                    "Obtain a ~|abyssal head|~": {"Items": ["Abyssal head"]},
+                }
+            },
+        }
+    )
+    derived = _derived(
+        monsters=monsters,
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra",
+                    groups=(
+                        TaskGroup(
+                            name="X",
+                            active=(
+                                "Obtain a ~|abyssal dagger|~",
+                                "Obtain a ~|abyssal head|~",
+                            ),
+                        ),
+                    ),
+                )
+            }
+        ),
+    )
+    return info, derived
+
+
+def test_items_from_one_source_are_earned_together() -> None:
+    # 1/1000 at 100/hr is 10h; 1/100 is 1h. You get the second on the way to
+    # the first, so the source costs 10h and not 11.
+    info, derived = _two_drops("1/1000", "1/100")
+
+    result = _run(info, derived, Heuristics(monsters={"Abyssal demon": Rate(100.0)}))
+
+    assert result.buckets["activities"] == pytest.approx(10.0)
+    assert result.total_hours == pytest.approx(10.0)
+
+
+def test_the_individual_hours_are_still_reported() -> None:
+    # "How long for this one thing" and "how long for all of it" are
+    # different questions; clamping the total must not erase the first.
+    info, derived = _two_drops("1/1000", "1/100")
+
+    result = _run(info, derived, Heuristics(monsters={"Abyssal demon": Rate(100.0)}))
+
+    assert {item.item: item.hours for item in result.items} == {
+        "Abyssal dagger": pytest.approx(10.0),
+        "Abyssal head": pytest.approx(1.0),
+    }
+
+
+def test_items_from_different_sources_still_add_up() -> None:
+    # Nothing is earned in parallel here, so the clamp must not apply.
+    info, derived = _two_drops("1/1000", "1/100", same_monster=False)
+    heuristics = Heuristics(
+        monsters={"Abyssal demon": Rate(100.0), "Goblin": Rate(100.0)}
+    )
+
+    result = _run(info, derived, heuristics)
+
+    assert result.buckets["activities"] == pytest.approx(11.0)
+
+
+def test_sources_in_groups_items_under_what_earns_them() -> None:
+    info, derived = _two_drops("1/1000", "1/100")
+
+    result = _run(info, derived, Heuristics(monsters={"Abyssal demon": Rate(100.0)}))
+    groups = result.sources_in("activities")
+
+    assert len(groups) == 1
+    source, hours, items = groups[0]
+    assert source == "Abyssal demon"
+    assert hours == pytest.approx(10.0)
+    assert len(items) == 2
+
+
+def test_a_superior_shares_its_base_monsters_source() -> None:
+    # You are killing the base monster either way, so its own drops and the
+    # superior's accrue at the same time.
+    info = ChunkInfo(
+        {
+            "drops": {"Gargoyle": {"Granite maul": {"1": "1/100"}}},
+            "skillItems": {"Slayer": {"Marble gargoyle": {"Granite ring": {"1": "1/10"}}}},
+            "challenges": {
+                "Extra": {
+                    "Obtain a ~|granite maul|~": {"Items": ["Granite maul"]},
+                    "Obtain a ~|granite ring|~": {"Items": ["Granite ring"]},
+                }
+            },
+        }
+    )
+    derived = _derived(
+        monsters=("Gargoyle",),
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra",
+                    groups=(
+                        TaskGroup(
+                            name="X",
+                            active=(
+                                "Obtain a ~|granite maul|~",
+                                "Obtain a ~|granite ring|~",
+                            ),
+                        ),
+                    ),
+                )
+            }
+        ),
+    )
+    heuristics = Heuristics(
+        monsters={"Gargoyle": Rate(100.0)},
+        superiors={"Marble gargoyle": Superior("Marble gargoyle", "Gargoyle", 1 / 200)},
+    )
+
+    result = _run(info, derived, heuristics)
+
+    assert {item.source for item in result.items} == {"Gargoyle"}
+    # 1/200 spawn then 1/10 drop = 2,000 kills at 100/hr = 20h, which covers
+    # the maul's 1h along the way.
+    assert result.buckets["activities"] == pytest.approx(20.0)

@@ -1028,15 +1028,18 @@ def _print_estimate(
             print(f"  ... and {len(rows) - limit} more (--limit {len(rows)} to see all)")
         return
 
-    # Keyed by item, not by task: one whip answers three tasks and is got
-    # once, so the count of tasks it covers goes beside it rather than the
-    # cost being repeated per task.
-    entries = result.items_in(bucket)
-    for entry in entries if limit is None else entries[:limit]:
-        covers = f" ({len(entry.tasks)} tasks)" if len(entry.tasks) > 1 else ""
-        print(f"  {entry.hours:>8,.1f}h {entry.item:<34}{covers:<12} {entry.detail}")
-    if limit is not None and len(entries) > limit:
-        print(f"  ... and {len(entries) - limit} more (--limit {len(entries)} to see all)")
+    # Grouped by source, because that is how the time is actually spent: the
+    # items under one heading are earned together, so the heading carries
+    # what the source costs and each item still shows its own expected time.
+    groups = result.sources_in(bucket)
+    for source, hours, entries in groups if limit is None else groups[:limit]:
+        together = f"  ({len(entries)} items, earned together)" if len(entries) > 1 else ""
+        print(f"  {hours:>8,.1f}h {source}{together}")
+        for entry in entries:
+            covers = f" x{len(entry.tasks)}" if len(entry.tasks) > 1 else ""
+            print(f"      {entry.hours:>8,.1f}h {entry.item}{covers}")
+    if limit is not None and len(groups) > limit:
+        print(f"  ... and {len(groups) - limit} more (--limit {len(groups)} to see all)")
 
 
 def _print_estimate_warnings(result: EstimateResult, scraped_found: bool = True) -> None:

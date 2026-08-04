@@ -20,6 +20,17 @@ duplication, across seven items. `ItemEstimate` therefore keys on the item and
 carries the tasks it satisfies alongside. Quests are the exception and stay
 per-task, a quest not being something you can get twice over.
 
+**Items from one source are earned in parallel, and the total says so.**
+Killing abyssal demons for a dagger at 1/32,000 hands you the head at 1/6,000
+long before you finish, so the pair costs the dagger's 533 hours and not their
+633. Every `ItemEstimate` therefore records the `source` it comes off, and
+`EstimateResult.buckets` takes the **longest** item per source rather than the
+sum - a superior counting as its base monster, since that is what you are
+actually killing. This was the estimate's largest single overstatement:
+correcting it took the real map from 10,673 hours to 3,849. The per-item hours
+are untouched and still printed, because "how long for this one thing" and
+"how long for all of it" are different questions.
+
 **The item walk.** A task needs items; an item has routes (`search.py`'s
 `WorldIndex`, the whole-world index of all five); a route has a rate. The
 cheapest route wins and its cost is `(1 / p) / kills_per_hour`. Rates come
@@ -128,6 +139,18 @@ class TaskEstimate:
 
 
 @dataclass(frozen=True)
+class _Priced:
+    """A costed route to one item: how long, why, and off what."""
+
+    hours: float
+    detail: str
+    #: The thing you repeatedly kill or do to get it. Items sharing a source
+    #: are earned *at the same time*, which is what `EstimateResult.buckets`
+    #: uses to stop adding them together.
+    source: str
+
+
+@dataclass(frozen=True)
 class ItemEstimate:
     """One item's cost, and every active task that wants it.
 
@@ -140,6 +163,8 @@ class ItemEstimate:
     bucket: str
     hours: float
     detail: str = ""
+    #: What you kill or do for it. Shared sources are worked in parallel.
+    source: str = ""
     tasks: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
@@ -148,6 +173,7 @@ class ItemEstimate:
             "bucket": self.bucket,
             "hours": self.hours,
             "detail": self.detail,
+            "source": self.source,
             "tasks": list(self.tasks),
         }
 
@@ -197,13 +223,47 @@ class EstimateResult:
 
     @property
     def buckets(self) -> dict[str, float]:
+        """Hours per bucket, **clamped per source**.
+
+        Items from the same source are earned at the same time, not one after
+        another: the hours that get you an abyssal dagger at 1/32,000 have
+        long since got you the abyssal head at 1/6,000, so the pair costs the
+        dagger's time and not their sum. Summing them was the estimate's
+        largest single overstatement - on the real map it turned a 2,400-hour
+        Abyssal demon grind into nearly 4,000.
+
+        The per-item hours are untouched and still reported: "how long for
+        this one thing" and "how long for all of it" are different questions
+        and both are worth answering.
+        """
         totals = {bucket: 0.0 for bucket in BUCKETS}
         for task in self.tasks:
             totals[task.bucket] = totals.get(task.bucket, 0.0) + task.hours
-        for item in self.items:
-            totals[item.bucket] = totals.get(item.bucket, 0.0) + item.hours
+        for (bucket, _), hours in self.by_source().items():
+            totals[bucket] = totals.get(bucket, 0.0) + hours
         totals["skilling"] += sum(skill.hours for skill in self.skills)
         return totals
+
+    def by_source(self) -> dict[tuple[str, str], float]:
+        """`(bucket, source) -> hours`, the longest item that source owes."""
+        longest: dict[tuple[str, str], float] = {}
+        for item in self.items:
+            key = (item.bucket, item.source or item.item)
+            longest[key] = max(longest.get(key, 0.0), item.hours)
+        return longest
+
+    def sources_in(self, bucket: str) -> list[tuple[str, float, list[ItemEstimate]]]:
+        """Each source in `bucket`: what it costs, and what it yields."""
+        grouped: dict[str, list[ItemEstimate]] = {}
+        for item in self.items_in(bucket):
+            grouped.setdefault(item.source or item.item, []).append(item)
+        return sorted(
+            (
+                (source, max(item.hours for item in items), items)
+                for source, items in grouped.items()
+            ),
+            key=lambda row: (-row[1], row[0]),
+        )
 
     @property
     def total_hours(self) -> float:
@@ -227,6 +287,10 @@ class EstimateResult:
             "total_hours": self.total_hours,
             "tasks": [task.as_dict() for task in self.tasks],
             "items": [item.as_dict() for item in self.items],
+            "by_source": {
+                f"{bucket}/{source}": hours
+                for (bucket, source), hours in self.by_source().items()
+            },
             "skills": [skill.as_dict() for skill in self.skills],
             "slayer": self.slayer.as_dict() if self.slayer else None,
             "unpriced": list(self.unpriced),
@@ -323,7 +387,7 @@ def _table_probability(
 
 def _item_hours(
     walk: _Walk, item: str, *, depth: int = 0, seen: frozenset[str] = frozenset()
-) -> tuple[float, str] | None:
+) -> _Priced | None:
     """Cheapest route to one `item`, as `(hours, why)`, or `None`.
 
     `None` is "no route this module can price", which the caller reports as
@@ -334,19 +398,19 @@ def _item_hours(
     if item in seen or depth > _MAX_DEPTH:
         return None
 
-    best: tuple[float, str] | None = None
+    best: _Priced | None = None
     for source in walk.world.item_sources.get(item, ()):
         priced = _route_hours(walk, item, source.route, source.name, depth, seen | {item})
-        if priced is not None and (best is None or priced[0] < best[0]):
+        if priced is not None and (best is None or priced.hours < best.hours):
             best = priced
     return best
 
 
 def _route_hours(
     walk: _Walk, item: str, route: str, provider: str, depth: int, seen: frozenset[str]
-) -> tuple[float, str] | None:
+) -> _Priced | None:
     if route in _FREE_ROUTES:
-        return 0.0, f"{route}: {provider}"
+        return _Priced(0.0, f"{route}: {provider}", f"{route}:{provider}")
 
     if route.startswith("task:"):
         # Made rather than found: the cost is its inputs, recursively.
@@ -362,13 +426,13 @@ def _route_hours(
             priced = _item_hours(walk, required.replace("*", ""), depth=depth + 1, seen=seen)
             if priced is None:
                 return None
-            total += priced[0]
-        return total, f"make: {provider}"
+            total += priced.hours
+        return _Priced(total, f"make: {provider}", f"make:{provider}")
 
     return _kill_hours(walk, provider, item)
 
 
-def _kill_hours(walk: _Walk, provider: str, item: str) -> tuple[float, str] | None:
+def _kill_hours(walk: _Walk, provider: str, item: str) -> _Priced | None:
     """Hours of killing `provider` to see one `item`, gates included.
 
     **Availability is checked first and is not negotiable.** `provider` has to
@@ -400,8 +464,8 @@ def _kill_hours(walk: _Walk, provider: str, item: str) -> tuple[float, str] | No
         if gated is None:
             return None
         hours, task = gated
-        return hours, f"{detail} on {task} task"
-    return kills / rate.value, detail
+        return _Priced(hours, f"{detail} on {task} task", provider)
+    return _Priced(kills / rate.value, detail, provider)
 
 
 def _task_hours(
@@ -434,9 +498,7 @@ def _task_hours(
     return (best, task) if best is not None else None
 
 
-def _superior_hours(
-    walk: _Walk, superior: Superior, item: str
-) -> tuple[float, str] | None:
+def _superior_hours(walk: _Walk, superior: Superior, item: str) -> _Priced | None:
     """Hours to see one `item` from a superior slayer monster.
 
     A superior is never placed in a chunk: it replaces one of its normal
@@ -459,9 +521,13 @@ def _superior_hours(
     kills = (1 / superior.spawn_rate) * (1 / chance)
     gated = _task_hours(walk, superior.base, kills, rate.value)
     hours = gated[0] if gated is not None else kills / rate.value
-    return hours, (
+    # The *base* monster is the source: the superior spawns while you kill it,
+    # so its drops accumulate alongside the base's own.
+    return _Priced(
+        hours,
         f"{superior.name} (superior) <- {superior.base}"
-        f" at 1/{1 / superior.spawn_rate:,.0f}, drop 1/{1 / chance:,.0f}"
+        f" at 1/{1 / superior.spawn_rate:,.0f}, drop 1/{1 / chance:,.0f}",
+        superior.base,
     )
 
 
@@ -510,10 +576,9 @@ def task_gated_monsters(chunk_info: ChunkInfo) -> dict[str, str]:
     return gates
 
 
-def _bucket_for(walk: _Walk, detail: str) -> str:
+def _bucket_for(walk: _Walk, source: str) -> str:
     """Boss drops and activity unlocks differ only in what you are killing."""
-    provider = detail.split(" at 1/")[0]
-    return "boss drops" if provider in walk.world.boss_monsters else "activities"
+    return "boss drops" if source in walk.world.boss_monsters else "activities"
 
 
 def _quest_tasks(derived: Derived, heuristics: Heuristics) -> list[TaskEstimate]:
@@ -670,13 +735,13 @@ def estimate(
         if priced is None:
             unpriced.append(item)
             continue
-        hours, detail = priced
         items.append(
             ItemEstimate(
                 item=item,
-                bucket=_bucket_for(walk, detail),
-                hours=hours,
-                detail=detail,
+                bucket=_bucket_for(walk, priced.source),
+                hours=priced.hours,
+                detail=priced.detail,
+                source=priced.source,
                 tasks=tuple(sorted(wanted_by)),
             )
         )
