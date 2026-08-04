@@ -1056,11 +1056,13 @@ def _print_slayer_masters(result: EstimateResult) -> None:
     chosen = result.slayer.master if result.slayer else ""
     print(
         f"\n  {'slayer master':<18} {'xp/hr':>9} {'skip':>5} {'pts/task':>9} {'no data':>8}"
-        "  supers"
+        "  sup. unique"
     )
     for rate in result.slayer_masters:
-        spawns = result.superior_spawns.get(rate.master, 0.0)
-        supers = f"1 per {1 / spawns:,.1f}h" if spawns > 0 else "none"
+        # The shared unique table, not the superior itself: the drops are
+        # what anyone is farming supers for.
+        rolls = result.superior_rolls.get(rate.master, 0.0)
+        supers = f"1 per {1 / rolls:,.0f}h" if rolls > 0 else "none"
         marker = " *" if rate.master == chosen else "  "
         print(
             f" {marker}{rate.master:<18} {rate.xp_per_hour:>9,.0f} {rate.skip_rate:>5.0%}"
@@ -1069,8 +1071,9 @@ def _print_slayer_masters(result: EstimateResult) -> None:
     print("  * used by the estimate (fastest); the others are shown to compare")
     print("  skip = share of *offered* tasks whose monsters this map cannot reach")
     print("  pts/task = points earned, less points paid skipping those; negative bleeds points")
-    print("  supers = how often a superior spawns; the four items they *share*")
-    print("  are far rarer, and `fray estimate activities` prices those")
+    print("  sup. unique = how often the shared superior table rolls - imbued heart,")
+    print("  eternal gem, dust and mist battlestaff. A superior itself spawns far")
+    print("  more often; the unique off one is what the hours are spent on")
     print("  all four assume this chunk's end levels - the task list you will")
     print("  spend most of it on - not the levels you hold today")
 
