@@ -1,0 +1,126 @@
+/* Dark chrome around a bright map: anything lighter competes with the image. */
+
+:root {
+  --bg: #14161a;
+  --bar: #1c1f26;
+  --edge: #2c313b;
+  --text: #d7dbe2;
+  --muted: #8b93a1;
+  --accent: #ffbe00;
+  --warn: #e2a03f;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.bar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 2;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 8px 14px;
+  background: var(--bar);
+  border-bottom: 1px solid var(--edge);
+}
+
+.brand {
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.bar label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--muted);
+}
+
+.bar label.check { cursor: pointer; }
+
+select, button {
+  font: inherit;
+  color: var(--text);
+  background: #232833;
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+select { max-width: 22ch; }
+button { cursor: pointer; }
+button:hover { border-color: #3d444e; }
+button.warn { color: var(--warn); border-color: var(--warn); }
+
+.counts { color: var(--muted); font-variant-numeric: tabular-nums; }
+.status {
+  margin-left: auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+#canvas {
+  position: fixed;
+  inset: 0;
+  /* The bar floats over the top edge rather than shrinking the canvas, so
+     the map keeps the whole window and the arithmetic stays in one space. */
+  z-index: 1;
+  display: block;
+  cursor: grab;
+  background: #0b0d10;
+}
+
+#canvas.dragging { cursor: grabbing; }
+
+.legend {
+  position: fixed;
+  z-index: 2;
+  left: 14px;
+  bottom: 14px;
+  display: flex;
+  gap: 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: rgba(28, 31, 38, .92);
+  color: var(--muted);
+}
+
+.legend span { display: flex; gap: 6px; align-items: center; }
+
+.sw {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  border: 1px solid #000;
+}
+
+.sw.unlocked { background: #6f8f5a; }
+.sw.locked   { background: #7e8288; }
+.sw.added    { background: rgba(60, 200, 90, .75); }
+.sw.removed  { background: rgba(220, 60, 60, .75); }
+.sw.hull     { background: transparent; border: 2px solid var(--accent); }
+
+.toast {
+  position: fixed;
+  z-index: 3;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: #232833;
+  border: 1px solid var(--edge);
+}

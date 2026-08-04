@@ -21,9 +21,16 @@ dps = ["osrs-dps"]
 
 [project.scripts]
 fray = "fray_claude.cli:main"
+fray-gui = "fray_claude.gui:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# The GUI's html/js/css. Small, and ours. The world map image is deliberately
+# *not* here - it is Jagex's artwork and gets fetched to cache/assets/ instead,
+# so nothing this project redistributes carries it.
+[tool.setuptools.package-data]
+fray_claude = ["gui/resources/*"]
 
 [tool.mypy]
 python_version = "3.14"

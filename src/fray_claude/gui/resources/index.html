@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>fray — world map</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="bar">
+  <span class="brand">fray</span>
+
+  <label>map
+    <select id="map"></select>
+  </label>
+
+  <label>compare
+    <select id="compare"><option value="">none</option></select>
+  </label>
+
+  <button id="reset" type="button" title="Fit the unlocked chunks to the window">reset view</button>
+
+  <label class="check" title="Re-read the cache every couple of seconds, so a fray fetch or simulate in another terminal shows up here">
+    <input id="live" type="checkbox" checked> live
+  </label>
+
+  <span class="counts" id="counts"></span>
+  <button id="skipped" type="button" class="warn" hidden></button>
+  <span class="status" id="status"></span>
+</header>
+
+<canvas id="canvas"></canvas>
+
+<div class="legend">
+  <span><i class="sw unlocked"></i>unlocked</span>
+  <span><i class="sw locked"></i>locked</span>
+  <span><i class="sw added"></i>gained</span>
+  <span><i class="sw removed"></i>lost</span>
+  <span><i class="sw hull"></i>border</span>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
