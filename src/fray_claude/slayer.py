@@ -81,7 +81,7 @@ class TaskRate:
     """One assignable task, priced."""
 
     task: str
-    weight: int
+    weight: float
     mean_count: float
     xp_per_kill: float
     kills_per_hour: float
@@ -207,6 +207,16 @@ def _number(raw: str | None) -> float | None:
         return None
 
 
+def _weight(entry: Mapping[str, Any]) -> float:
+    """An entry's assignment weight. **Floats are real**: Konar splits a task
+    across locations and gives each a third of the weight (`1.67`), so an
+    `isinstance(x, int)` test drops all 93 of her tasks."""
+    value = entry.get("Weight")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0.0
+    return float(value)
+
+
 def _task_monsters(chunk_info: ChunkInfo, task: str) -> set[str]:
     """Which `slayerMonsters` a task category covers.
 
@@ -316,17 +326,15 @@ def master_rates(
         if reachable_masters is not None and master not in reachable_masters:
             continue
         total_weight = sum(
-            weight
-            for entry in tasks.values()
-            if isinstance(entry, dict) and isinstance(weight := entry.get("Weight"), int)
+            _weight(entry) for entry in tasks.values() if isinstance(entry, dict)
         )
         priced: list[TaskRate] = []
-        unpriced_weight = 0
+        unpriced_weight = 0.0
         for task, entry in tasks.items():
             if not isinstance(entry, dict):
                 continue
-            weight = entry.get("Weight")
-            if not isinstance(weight, int) or weight <= 0:
+            weight = _weight(entry)
+            if weight <= 0:
                 continue
             if not _requirements_met(
                 entry,
@@ -369,7 +377,7 @@ def master_rates(
 
 
 def _combine(
-    master: str, tasks: list[TaskRate], total_weight: int, unpriced_weight: int = 0
+    master: str, tasks: list[TaskRate], total_weight: float, unpriced_weight: float = 0.0
 ) -> MasterRate:
     """The time-weighted mean of `tasks` - see the module docstring."""
     surviving = sum(task.weight for task in tasks)

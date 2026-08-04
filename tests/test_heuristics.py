@@ -18,6 +18,7 @@ from fray_claude.heuristics import (
     load,
     merge,
     primary_training_tasks,
+    stems,
 )
 from fray_claude.wiki import Assignment, MmgRates
 
@@ -125,7 +126,9 @@ def test_a_guide_joins_when_the_activity_contains_the_name() -> None:
     )
 
     assert config["monsters"]["General Graardor"]["value"] == 27.0
-    assert config["monsters"]["General Graardor"]["match"] == "contained"
+    # `Killing` is filler, so the identity-bearing words are identical - as
+    # trustworthy as the names agreeing outright.
+    assert config["monsters"]["General Graardor"]["match"] == "exact"
 
 
 def test_a_plural_guide_title_still_joins() -> None:
@@ -287,3 +290,63 @@ def test_load_tolerates_a_malformed_entry() -> None:
 
     assert heuristics.kills_per_hour("X").value == 0.0
     assert heuristics.quests == {}
+
+
+def test_stems_covers_the_irregular_plurals() -> None:
+    # One rule always loses something: -ies wants `jelly`, -es wants `axe`,
+    # -s wants `zombie`. Generating the candidates costs nothing.
+    assert "jelly" in stems("jellies")
+    assert "axe" in stems("axes")
+    assert "zombie" in stems("zombies")
+    assert stems("bloodveld") == {"bloodveld"}
+
+
+def test_a_plural_task_matches_a_singular_sheet_row() -> None:
+    # The real one: the export says `Jellies`, the spreadsheet says `Jelly`,
+    # and `rstrip("s")` read the first as `jellie` so they never met.
+    info = _info(slayerMasterTasks={"Krystilia": {"Jellies": {"Weight": 5}}})
+    config = _config(
+        info=info,
+        assignments={"Krystilia": [Assignment("Jellies", 5, 100, 150)]},
+        mob_data={
+            "jelly": SlayerTask(mean_count=0.0, xp_per_kill=88.38, kills_per_hour=1500.0)
+        },
+    )
+
+    entry = config["slayer"]["Jellies"]
+    assert (entry["xp_per_kill"], entry["kills_per_hour"]) == (88.38, 1500.0)
+    assert entry["mean_count"] == 125.0
+    assert entry["source"] == "wiki+sheet"
+
+
+def test_a_singular_wiki_row_sizes_a_plural_task() -> None:
+    # `[[Ankou]]` on the wiki against `Ankous` in the export.
+    info = _info(slayerMasterTasks={"Krystilia": {"Ankous": {"Weight": 6}}})
+    config = _config(
+        info=info, assignments={"Krystilia": [Assignment("Ankou", 6, 75, 125)]}
+    )
+
+    assert config["slayer"]["Ankous"]["mean_count"] == 100.0
+
+
+def test_konars_location_suffix_is_stripped_before_lookup() -> None:
+    # Konar keys 93 tasks `<task> - <location>`; the rates are recorded
+    # against the task alone, so the suffix has to come off to find them.
+    info = _info(
+        slayerMasterTasks={
+            "Konar quo Maten": {"Aberrant spectres - Catacombs of Kourend": {"Weight": 2}}
+        }
+    )
+    config = _config(
+        info=info,
+        assignments={"K": [Assignment("Aberrant spectres", 2, 130, 200)]},
+        mob_data={
+            "aberrant spectre": SlayerTask(
+                mean_count=0.0, xp_per_kill=106.0, kills_per_hour=340.0
+            )
+        },
+    )
+
+    # Keyed by the full name, since that is what the export asks for.
+    entry = config["slayer"]["Aberrant spectres - Catacombs of Kourend"]
+    assert (entry["mean_count"], entry["kills_per_hour"]) == (165.0, 340.0)

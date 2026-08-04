@@ -357,3 +357,29 @@ def test_a_skills_requirement_is_honoured() -> None:
     )[0]
 
     assert met.tasks and unmet.tasks == ()
+
+
+def test_a_fractional_weight_counts() -> None:
+    # Konar splits a task across locations and gives each a third of the
+    # weight (1.67). An `isinstance(x, int)` test dropped all 93 of her tasks.
+    info = _info(
+        slayerMasterTasks={
+            "Konar quo Maten": {
+                "Aberrant spectres - Catacombs": {"Weight": 1.67},
+                "Aberrant spectres - Slayer Tower": {"Weight": 1.67},
+            }
+        }
+    )
+    heuristics = Heuristics(
+        slayer={
+            "Aberrant spectres - Catacombs": SlayerTask(100, 10, 100),
+            "Aberrant spectres - Slayer Tower": SlayerTask(100, 10, 100),
+        }
+    )
+
+    rate = master_rates(
+        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={}
+    )[0]
+
+    assert len(rate.tasks) == 2
+    assert rate.coverage == pytest.approx(1.0)

@@ -31,11 +31,21 @@ afternoon of hand-correction are the ones dominating the total. The generated
 config lists every quest, monster and training method regardless, so there is
 always a line to correct.
 
-**Joins record how they were made**, and there are only two ways: `exact` (the
-names agree) and `contained` (every identity-bearing word of the task name
-appears in the guide's activity - `Agility Pyramid` inside `Climbing the
-Agility Pyramid`). Writing the provenance next to the number is what makes a
-wrong join findable in a 3,700-entry file instead of buried inside one total.
+**Joins record how they were made**, and there are only two ways. `exact`
+means the identity-bearing words are the same set - which covers `Jellies`
+against `Jelly` and `Killing General Graardor` against `General Graardor`,
+since plurals and filler words carry no identity. `contained` means every
+word of the task name appears in a longer activity name, as `Agility Pyramid`
+does inside `Climbing the Agility Pyramid`. Writing the provenance next to the
+number is what makes a wrong join findable in a 3,700-entry file instead of
+buried inside one total.
+
+Plurals get `stems`, which generates *every* singular a word might be rather
+than applying one rule. English does not have one rule - `jellies`/`jelly`,
+`axes`/`axe`, `zombies`/`zombie` - and a single rule silently loses whichever
+words it does not fit. `rstrip("s")` read `Jellies` as `jellie`, never matched
+the spreadsheet's `Jelly`, and the task reported as having no kill-rate data
+while the row sat there.
 
 **There is no fuzzy tier, and that was a measurement rather than a taste.**
 An edit-distance fallback (`search.rank`) lifted monster coverage from 105 to
@@ -243,17 +253,38 @@ def hours_for_length(length: str) -> float:
     return sum(ends) / len(ends) if ends else DEFAULT_QUEST_HOURS
 
 
-def _words(text: str) -> frozenset[str]:
-    """Identity-bearing words of a name: filler dropped, plurals stemmed.
+def stems(word: str) -> frozenset[str]:
+    """Every singular `word` might be, because English has no single rule.
 
-    Stemming matters more than it looks. The export names a monster
-    `Adamant dragon` and the guide is titled `Killing adamant dragons`; on
-    exact words those share nothing decisive, and the match falls through to
-    whatever fuzzy tier exists to catch it. Stemming makes it a containment,
-    which is checkable.
+    `jellies` is `jelly`, `axes` is `axe`, `zombies` is `zombie`: any one
+    stemming rule gets some of those and breaks the others. Naive
+    `rstrip("s")` reads `Jellies` as `jellie` and so never matched the
+    spreadsheet's `Jelly` - which then reported as "no kill rate for this
+    task" when the row was sitting right there. Generating the candidates and
+    accepting any overlap costs nothing at these lengths and cannot be wrong
+    in the way a single rule is.
     """
-    words = frozenset(_WORD_RE.findall(normalise(text))) - _FILLER
-    return frozenset(word.rstrip("s") or word for word in words)
+    candidates = {word}
+    if word.endswith("s") and not word.endswith("ss"):
+        candidates.add(word[:-1])
+    if word.endswith("es"):
+        candidates.add(word[:-2])
+    if word.endswith("ies") and len(word) > 4:
+        candidates.add(f"{word[:-3]}y")
+    return frozenset(candidates)
+
+
+def _same_word(left: str, right: str) -> bool:
+    return bool(stems(left) & stems(right))
+
+
+def _words(text: str) -> frozenset[str]:
+    """Identity-bearing words of a name, filler dropped.
+
+    Kept unstemmed; comparison goes through `_same_word`, which considers
+    every plural form either side might be wearing.
+    """
+    return frozenset(_WORD_RE.findall(normalise(text))) - _FILLER
 
 
 def activity_name(task_name: str) -> str:
@@ -293,7 +324,22 @@ def _best_match(name: str, candidates: dict[str, Any]) -> tuple[str, str] | None
     name_words = _words(name)
     if not name_words:
         return None
-    contained = [key for key in candidates if name_words <= _words(key)]
+
+    # Singular/plural counts as exact: `Jellies` and `Jelly` are one task.
+    same = [
+        key
+        for key in candidates
+        if len(_words(key)) == len(name_words)
+        and all(any(_same_word(word, other) for other in _words(key)) for word in name_words)
+    ]
+    if same:
+        return min(same, key=len), "exact"
+
+    contained = [
+        key
+        for key in candidates
+        if all(any(_same_word(word, other) for other in _words(key)) for word in name_words)
+    ]
     if not contained:
         return None
     return min(contained, key=lambda key: (len(_words(key)), key)), "contained"
@@ -420,6 +466,9 @@ def _slayer_section(
     live here: the export already has them per master, and duplicating them
     would let the config and the export disagree about the same fact.
     """
+    # Sizes get the same plural-tolerant lookup the rates do: the wiki writes
+    # `[[Ankou]]` where the export says `Ankous`, and an exact-key lookup
+    # reported that as "no assignment size" with the row in hand.
     sizes: dict[str, Assignment] = {}
     for rows in assignments.values():
         for row in rows:
@@ -430,12 +479,19 @@ def _slayer_section(
         if not isinstance(master_tasks, dict):
             continue
         for task in master_tasks:
-            key = normalise(task)
+            # Konar keys her tasks `<task> - <location>` ("Aberrant spectres
+            # - Catacombs of Kourend"), 93 of them; the rates are recorded
+            # against the task, so the location has to come off before any
+            # lookup. Keyed back under the full name, since that is what the
+            # export - and therefore `slayer.py` - asks for.
+            key = normalise(task.split(" - ")[0])
             if task in tasks:
                 continue
-            size = sizes.get(key)
+            size = sizes.get(key) or (
+                sizes[hit[0]] if (hit := _best_match(key, sizes)) else None
+            )
             rates = mob_data.get(key) or (
-                mob_data[found[0]] if (found := _best_match(task, mob_data)) else None
+                mob_data[found[0]] if (found := _best_match(key, mob_data)) else None
             )
             if size is None and rates is None:
                 continue
