@@ -476,8 +476,11 @@ def _gated_heuristics() -> Heuristics:
     return Heuristics(
         monsters={"Grotesque Guardians": Rate(20.0)},
         slayer={
-            "Gargoyles": SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=20),
-            "Bats": SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=100),
+            master: {
+                "Gargoyles": SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=20),
+                "Bats": SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=100),
+            }
+            for master in ("Vannaka", "Duradel")
         },
     )
 

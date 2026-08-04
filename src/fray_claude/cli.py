@@ -87,6 +87,7 @@ from typing import Any
 
 from fray_claude.api import (
     DEFAULT_TIMEOUT,
+    TASK_LENGTHS_TAB,
     CHUNKINFO_URL,
     TASKS_MAP_URL,
     WIKI_API_URL,
@@ -149,7 +150,7 @@ from fray_claude.pipeline import ConvergenceError, Derived, MapState, load_map_s
 from fray_claude.search import TYPES, build_world_index, search
 from fray_claude.sections import describe_sections, expand_chunk_areas
 from fray_claude.simulate import UnlockRecord, simulate_rolls, simulated_payload
-from fray_claude.slayer import SheetFormatError, parse_mob_data
+from fray_claude.slayer import SheetFormatError, parse_mob_data, parse_task_lengths
 from fray_claude.sources import CATEGORIES as SOURCE_CATEGORIES
 from fray_claude.summary import _mapping, summarise
 from fray_claude.unlock import UnlockDelta, tasks_added_by
@@ -282,12 +283,15 @@ def _cmd_heuristics(args: argparse.Namespace) -> int:
 
     try:
         mob_data = parse_mob_data(fetch_text(slayer_sheet_url(), what="slayer sheet"))
-        print(f"slayer sheet     {len(mob_data)} tasks")
+        lengths = parse_task_lengths(
+            fetch_text(slayer_sheet_url(sheet=TASK_LENGTHS_TAB), what="task lengths")
+        )
+        print(f"slayer sheet     {len(mob_data)} tasks, {len(lengths)} with lengths")
     except (FetchError, SheetFormatError) as exc:
         # A third-party document; losing it costs the Slayer bucket, not the
         # command. Say so rather than writing a config that prices it at zero.
         print(f"slayer sheet     unavailable ({exc})", file=sys.stderr)
-        mob_data = {}
+        mob_data, lengths = {}, {}
 
     config = build_config(
         info,
@@ -295,6 +299,7 @@ def _cmd_heuristics(args: argparse.Namespace) -> int:
         mmg_pages=mmg,
         assignments=assignments,
         mob_data=mob_data,
+        task_lengths=lengths,
         superiors=superiors,
     )
     path = write_blob(WIKI_RATES_BLOB_NAME, config, WIKI_API_URL)
@@ -318,7 +323,8 @@ def _report_coverage(info: ChunkInfo, config: dict[str, Any]) -> None:
         found = len(config.get(section) or {})
         share = f"{found / total:.0%} from the wiki" if total else "nothing to price"
         print(f"{section:<9} {found:>5}/{total:<5} ({share})")
-    print(f"{'slayer':<9} {len(config.get('slayer') or {}):>5}       tasks priced")
+    priced = sum(len(tasks) for tasks in (config.get("slayer") or {}).values())
+    print(f"{'slayer':<9} {priced:>5}       master/task pairs priced")
 
 
 def _digests(args: argparse.Namespace) -> Digests:

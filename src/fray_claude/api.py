@@ -46,6 +46,8 @@ WIKI_API_URL = "https://oldschool.runescape.wiki/api.php"
 #: KodakKid3's OSRS Slayer Spreadsheet, published to the web, read as CSV.
 SLAYER_SHEET_ID = "1KR92OY-sK6I8wAAuFLt2TgLq-xadG7yA6Bzgb5YnVQM"
 SLAYER_SHEET_TAB = "Mob Data"
+#: The tab holding assignment sizes, ordinary and extended, per master.
+TASK_LENGTHS_TAB = "Task Lengths"
 _SHEET_CSV = "https://docs.google.com/spreadsheets/d/{doc}/gviz/tq?tqx=out:csv&sheet={sheet}"
 
 #: **The wiki requires this and the rest of this module deliberately has no

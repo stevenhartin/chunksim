@@ -59,7 +59,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypeVar
 
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.search import normalise
@@ -114,6 +114,8 @@ _FILLER = frozenset(
     participating participate raw""".split()
 )
 
+_T = TypeVar("_T")
+
 _WORD_RE = re.compile(r"[a-z0-9']+")
 _MARKED_SPAN = re.compile(r"~\|([^|]*)\|~")
 
@@ -150,20 +152,65 @@ class QuestRate:
 
 @dataclass(frozen=True)
 class SlayerTask:
-    """One slayer task's assignment size and the rates for killing it."""
+    """One master's assignment of one task: how many, and how fast.
+
+    **Sizes are per master and the rates are not.** Duradel assigns 130-200
+    abyssal demons where Krystilia assigns 75-125, so the config is keyed
+    `slayer[master][task]`; how quickly you kill one and what it gives is a
+    property of the monster, so those repeat across masters.
+
+    `extended_count` is the size with the Extended unlock bought, and is
+    **off unless `extended` says otherwise** - it is a paid unlock, so
+    assuming it would silently lengthen every task for a player who has not
+    bought it. Set it per task in `heuristics/overrides.json`.
+    """
 
     mean_count: float
     xp_per_kill: float
     kills_per_hour: float
     source: str = "default"
+    #: `0.0` where the task has no extended size, which most do not have.
+    extended_count: float = 0.0
+    extended: bool = False
+
+    @property
+    def count(self) -> float:
+        """The assignment size actually in force - read this, not the fields."""
+        if self.extended and self.extended_count > 0:
+            return self.extended_count
+        return self.mean_count
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "mean_count": self.mean_count,
+            "extended_count": self.extended_count,
+            "extended": self.extended,
             "xp_per_kill": self.xp_per_kill,
             "kills_per_hour": self.kills_per_hour,
             "source": self.source,
         }
+
+
+@dataclass(frozen=True)
+class TaskLength:
+    """One task's assignment size, ordinary and with the Extended unlock."""
+
+    task: str
+    low: float
+    high: float
+    extended_low: float = 0.0
+    extended_high: float = 0.0
+
+    @property
+    def mean_count(self) -> float:
+        return (self.low + self.high) / 2
+
+    @property
+    def extended_count(self) -> float:
+        """`0.0` when the task has no extended size, which most do not."""
+        if self.extended_low <= 0 or self.extended_high <= 0:
+            return 0.0
+        return (self.extended_low + self.extended_high) / 2
 
 
 @dataclass(frozen=True)
@@ -193,7 +240,9 @@ class Heuristics:
     superiors: dict[str, Superior] = field(default_factory=dict)
     #: Training task name -> skill -> XP per hour.
     training: dict[str, dict[str, Rate]] = field(default_factory=dict)
-    slayer: dict[str, SlayerTask] = field(default_factory=dict)
+    #: `slayer[master][task]` - sizes differ by master, so the master is
+    #: part of the key. See `SlayerTask`.
+    slayer: dict[str, dict[str, SlayerTask]] = field(default_factory=dict)
     rarities: dict[str, float] = field(default_factory=lambda: dict(RARITY_PROBABILITY))
     boss_monsters: frozenset[str] = frozenset()
     slayer_monsters: frozenset[str] = frozenset()
@@ -234,7 +283,10 @@ class Heuristics:
                 task: {skill: rate.as_dict() for skill, rate in skills.items()}
                 for task, skills in self.training.items()
             },
-            "slayer": {name: task.as_dict() for name, task in self.slayer.items()},
+            "slayer": {
+                master: {name: task.as_dict() for name, task in tasks.items()}
+                for master, tasks in self.slayer.items()
+            },
             "rarities": self.rarities,
         }
 
@@ -381,6 +433,7 @@ def build_config(
     mmg_pages: dict[str, MmgRates],
     assignments: dict[str, list[Assignment]],
     mob_data: dict[str, SlayerTask],
+    task_lengths: dict[str, dict[str, TaskLength]] | None = None,
     superiors: list[tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Generate the full config from the export plus everything fetched.
@@ -435,7 +488,7 @@ def build_config(
         "quests": quests,
         "monsters": monsters,
         "training": training,
-        "slayer": _slayer_section(chunk_info, assignments, mob_data),
+        "slayer": _slayer_section(chunk_info, assignments, mob_data, task_lengths),
         "superiors": {
             superior: Superior(name=superior, base=base).as_dict()
             for superior, base in superiors or ()
@@ -454,54 +507,94 @@ def quest_names(chunk_info: ChunkInfo) -> set[str]:
     return quests
 
 
+def _sheet_master(master: str, lengths: dict[str, dict[str, TaskLength]]) -> str:
+    """The sheet's label for an export master: `Konar` for `Konar quo Maten`."""
+    for label in lengths:
+        if _words(label) <= _words(master):
+            return label
+    return master
+
+
+def _lookup(key: str, table: dict[str, _T]) -> _T | None:
+    """`table[key]`, falling back to the plural-tolerant match."""
+    found = table.get(key)
+    if found is not None:
+        return found
+    near = _best_match(key, table)
+    return table[near[0]] if near else None
+
+
 def _slayer_section(
     chunk_info: ChunkInfo,
     assignments: dict[str, list[Assignment]],
     mob_data: dict[str, SlayerTask],
+    task_lengths: dict[str, dict[str, TaskLength]] | None = None,
 ) -> dict[str, Any]:
-    """One entry per assignable task: its size, and the rates for killing it.
+    """`slayer[master][task]`: how many, and how fast.
 
-    Sizes come from the wiki (any master that assigns the task will do - they
-    agree), the rates from the spreadsheet. The *weights* deliberately do not
-    live here: the export already has them per master, and duplicating them
-    would let the config and the export disagree about the same fact.
+    **Keyed by master, because the size is.** Duradel assigns 130-200 abyssal
+    demons and Krystilia 75-125; a flat per-task config had to pick one and
+    was silently wrong for every other master. The rates are per monster and
+    so repeat across masters, which is duplication a generated file can
+    afford.
+
+    Sizes come from two places. The spreadsheet's Task Lengths tab is
+    preferred where it has the task, because it is the only source for the
+    *extended* size as well; the wiki's per-master tables cover the six
+    masters that tab omits. Weights deliberately live in neither: the export
+    already has them, and duplicating them would let the two disagree about
+    the same fact.
     """
-    # Sizes get the same plural-tolerant lookup the rates do: the wiki writes
-    # `[[Ankou]]` where the export says `Ankous`, and an exact-key lookup
-    # reported that as "no assignment size" with the row in hand.
-    sizes: dict[str, Assignment] = {}
+    lengths = task_lengths or {}
+    sizes_by_master: dict[str, dict[str, Assignment]] = {
+        master: {normalise(row.task): row for row in rows}
+        for master, rows in assignments.items()
+    }
+    anywhere: dict[str, Assignment] = {}
     for rows in assignments.values():
         for row in rows:
-            sizes.setdefault(normalise(row.task), row)
+            anywhere.setdefault(normalise(row.task), row)
 
-    tasks: dict[str, Any] = {}
-    for master_tasks in _mapping(chunk_info.data, "slayerMasterTasks").values():
+    section: dict[str, Any] = {}
+    for master, master_tasks in _mapping(chunk_info.data, "slayerMasterTasks").items():
         if not isinstance(master_tasks, dict):
             continue
+        entries: dict[str, Any] = {}
         for task in master_tasks:
             # Konar keys her tasks `<task> - <location>` ("Aberrant spectres
             # - Catacombs of Kourend"), 93 of them; the rates are recorded
-            # against the task, so the location has to come off before any
-            # lookup. Keyed back under the full name, since that is what the
-            # export - and therefore `slayer.py` - asks for.
+            # against the task, so the location comes off before any lookup.
+            # Keyed back under the full name, which is what the export - and
+            # therefore `slayer.py` - asks for.
             key = normalise(task.split(" - ")[0])
-            if task in tasks:
+
+            length = _lookup(key, lengths.get(_sheet_master(master, lengths)) or {})
+            size = _lookup(key, sizes_by_master.get(master) or {}) or _lookup(key, anywhere)
+            rates = _lookup(key, mob_data)
+
+            mean = length.mean_count if length else (size.mean_count if size else 0.0)
+            if mean <= 0 and rates is None:
                 continue
-            size = sizes.get(key) or (
-                sizes[hit[0]] if (hit := _best_match(key, sizes)) else None
-            )
-            rates = mob_data.get(key) or (
-                mob_data[found[0]] if (found := _best_match(key, mob_data)) else None
-            )
-            if size is None and rates is None:
-                continue
-            tasks[task] = SlayerTask(
-                mean_count=size.mean_count if size else 0.0,
+            entries[task] = SlayerTask(
+                mean_count=mean,
+                extended_count=length.extended_count if length else 0.0,
+                extended=False,
                 xp_per_kill=rates.xp_per_kill if rates else 0.0,
                 kills_per_hour=rates.kills_per_hour if rates else 0.0,
-                source="wiki+sheet" if size and rates else "wiki" if size else "sheet",
+                source="+".join(
+                    part
+                    for part, present in (
+                        ("lengths", length is not None),
+                        ("wiki", length is None and size is not None),
+                        ("sheet", rates is not None),
+                    )
+                    if present
+                )
+                or "default",
             ).as_dict()
-    return tasks
+        if entries:
+            section[master] = entries
+    return section
 
 
 def merge(scraped: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
@@ -581,13 +674,20 @@ def load(
             if isinstance(skills, dict)
         },
         slayer={
-            name: SlayerTask(
-                mean_count=_float(entry.get("mean_count"), 0.0),
-                xp_per_kill=_float(entry.get("xp_per_kill"), 0.0),
-                kills_per_hour=_float(entry.get("kills_per_hour"), 0.0),
-                source=str(entry.get("source") or "default"),
-            )
-            for name, entry in _entries(config, "slayer")
+            master: {
+                name: SlayerTask(
+                    mean_count=_float(entry.get("mean_count"), 0.0),
+                    extended_count=_float(entry.get("extended_count"), 0.0),
+                    extended=entry.get("extended") is True,
+                    xp_per_kill=_float(entry.get("xp_per_kill"), 0.0),
+                    kills_per_hour=_float(entry.get("kills_per_hour"), 0.0),
+                    source=str(entry.get("source") or "default"),
+                )
+                for name, entry in tasks.items()
+                if isinstance(entry, dict)
+            }
+            for master, tasks in _entries(config, "slayer")
+            if isinstance(tasks, dict)
         },
         rarities={
             **RARITY_PROBABILITY,

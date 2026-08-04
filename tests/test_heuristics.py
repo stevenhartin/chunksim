@@ -226,7 +226,7 @@ def test_the_slayer_section_pairs_wiki_sizes_with_sheet_rates() -> None:
         },
     )
 
-    entry = config["slayer"]["Aberrant spectres"]
+    entry = config["slayer"]["Duradel"]["Aberrant spectres"]
     assert entry["mean_count"] == 165.0
     assert (entry["xp_per_kill"], entry["kills_per_hour"]) == (106.0, 340.0)
     assert entry["source"] == "wiki+sheet"
@@ -237,7 +237,7 @@ def test_weights_are_not_copied_into_the_config() -> None:
     info = _info(slayerMasterTasks={"Duradel": {"Bats": {"Weight": 7}}})
     config = _config(info=info, assignments={"Duradel": [Assignment("Bats", 7, 10, 20)]})
 
-    assert "weight" not in config["slayer"]["Bats"]
+    assert "weight" not in config["slayer"]["Duradel"]["Bats"]
 
 
 # --- the merge -------------------------------------------------------------
@@ -271,7 +271,7 @@ def test_load_round_trips_a_generated_config() -> None:
         "quests": {"Nowt": {"hours": 3.0, "length": "Long", "source": "wiki"}},
         "monsters": {"Zulrah": {"value": 30.0, "source": "mmg:x", "match": "exact"}},
         "training": {"t": {"Mining": {"value": 55.0, "source": "mmg:y"}}},
-        "slayer": {"Bats": {"mean_count": 15.0, "xp_per_kill": 2.0, "kills_per_hour": 800.0}},
+        "slayer": {"M": {"Bats": {"mean_count": 15.0, "xp_per_kill": 2.0, "kills_per_hour": 800.0}}},
         "rarities": {"varies": 0.5},
     }
 
@@ -280,7 +280,7 @@ def test_load_round_trips_a_generated_config() -> None:
     assert heuristics.quest_hours("Nowt").hours == 3.0
     assert heuristics.kills_per_hour("Zulrah").value == 30.0
     assert heuristics.xp_per_hour("t", "Mining").value == 55.0
-    assert heuristics.slayer["Bats"].kills_per_hour == 800.0
+    assert heuristics.slayer["M"]["Bats"].kills_per_hour == 800.0
     # An override may add a rarity the defaults deliberately leave out.
     assert heuristics.rarity("Varies") == 0.5
 
@@ -313,7 +313,7 @@ def test_a_plural_task_matches_a_singular_sheet_row() -> None:
         },
     )
 
-    entry = config["slayer"]["Jellies"]
+    entry = config["slayer"]["Krystilia"]["Jellies"]
     assert (entry["xp_per_kill"], entry["kills_per_hour"]) == (88.38, 1500.0)
     assert entry["mean_count"] == 125.0
     assert entry["source"] == "wiki+sheet"
@@ -326,7 +326,7 @@ def test_a_singular_wiki_row_sizes_a_plural_task() -> None:
         info=info, assignments={"Krystilia": [Assignment("Ankou", 6, 75, 125)]}
     )
 
-    assert config["slayer"]["Ankous"]["mean_count"] == 100.0
+    assert config["slayer"]["Krystilia"]["Ankous"]["mean_count"] == 100.0
 
 
 def test_konars_location_suffix_is_stripped_before_lookup() -> None:
@@ -348,5 +348,5 @@ def test_konars_location_suffix_is_stripped_before_lookup() -> None:
     )
 
     # Keyed by the full name, since that is what the export asks for.
-    entry = config["slayer"]["Aberrant spectres - Catacombs of Kourend"]
+    entry = config["slayer"]["Konar quo Maten"]["Aberrant spectres - Catacombs of Kourend"]
     assert (entry["mean_count"], entry["kills_per_hour"]) == (165.0, 340.0)

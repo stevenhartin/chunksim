@@ -18,6 +18,7 @@ from fray_claude.slayer import (
     best_master,
     master_rates,
     parse_mob_data,
+    parse_task_lengths,
 )
 
 _CSV = (
@@ -33,8 +34,15 @@ def _info(**data: Any) -> ChunkInfo:
     return ChunkInfo(data)
 
 
-def _heuristics(**tasks: SlayerTask) -> Heuristics:
-    return Heuristics(slayer={name.replace("_", " "): rate for name, rate in tasks.items()})
+def _heuristics(*, master: str = "M", **tasks: SlayerTask) -> Heuristics:
+    """A per-master slayer table. Every master in a fixture shares it, so a
+    test naming two masters does not have to restate the rates."""
+    table = {name.replace("_", " "): rate for name, rate in tasks.items()}
+    return Heuristics(slayer=_everywhere(table))
+
+
+def _everywhere(table: dict[str, SlayerTask]) -> dict[str, dict[str, SlayerTask]]:
+    return {name: dict(table) for name in ("M", "Slow", "Fast", "Duradel", "Konar quo Maten")}
 
 
 def test_the_rate_is_the_time_weighted_mean() -> None:
@@ -371,10 +379,12 @@ def test_a_fractional_weight_counts() -> None:
         }
     )
     heuristics = Heuristics(
-        slayer={
-            "Aberrant spectres - Catacombs": SlayerTask(100, 10, 100),
-            "Aberrant spectres - Slayer Tower": SlayerTask(100, 10, 100),
-        }
+        slayer=_everywhere(
+            {
+                "Aberrant spectres - Catacombs": SlayerTask(100, 10, 100),
+                "Aberrant spectres - Slayer Tower": SlayerTask(100, 10, 100),
+            }
+        )
     )
 
     rate = master_rates(
@@ -383,3 +393,77 @@ def test_a_fractional_weight_counts() -> None:
 
     assert len(rate.tasks) == 2
     assert rate.coverage == pytest.approx(1.0)
+
+
+_LENGTHS = (
+    '"Duradel Tasks","Min","Max","eMin","eMax",'
+    '"Konar Tasks","Location","Min","Max","eMin","eMax",'
+    '"Krystilia Tasks","Min","Max","eMin","eMax"\n'
+    '"Abyssal Demon","130","200","200","250",'
+    '"Abyssal Demon","Catacombs","120","170","200","250",'
+    '"Abyssal Demons","75","125","200","250"\n'
+    '"Jelly","120","170","","",'
+    '"","","","","","",'
+    '"Jelly","100","150","",""\n'
+)
+
+
+def test_task_lengths_are_read_per_master() -> None:
+    # Flattening looks harmless and is not: the sheet writes Duradel's row
+    # `Abyssal Demon` and Krystilia's `Abyssal Demons`, so a flat table keeps
+    # both and every master matches whichever spelling looks closest.
+    lengths = parse_task_lengths(_LENGTHS)
+
+    assert lengths["Duradel"]["abyssal demon"].mean_count == 165.0
+    assert lengths["Krystilia"]["abyssal demons"].mean_count == 100.0
+    assert lengths["Krystilia"]["jelly"].mean_count == 125.0
+
+
+def test_the_extra_location_column_does_not_shift_the_numbers() -> None:
+    # Konar's group is a column wider than the others, so the Min/Max labels
+    # are found inside each group rather than at a fixed offset.
+    assert parse_task_lengths(_LENGTHS)["Konar"]["abyssal demon"].mean_count == 145.0
+
+
+def test_extended_sizes_are_read_where_they_exist() -> None:
+    lengths = parse_task_lengths(_LENGTHS)
+
+    assert lengths["Duradel"]["abyssal demon"].extended_count == 225.0
+    # Most tasks have none, and an absent one is 0.0 rather than a guess.
+    assert lengths["Duradel"]["jelly"].extended_count == 0.0
+
+
+def test_a_task_uses_its_ordinary_size_unless_extended_is_set() -> None:
+    ordinary = SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=100, extended_count=225)
+    extended = SlayerTask(
+        mean_count=100, xp_per_kill=10, kills_per_hour=100, extended_count=225, extended=True
+    )
+
+    # Extended is a paid unlock; assuming it would lengthen every task for a
+    # player who has not bought it.
+    assert ordinary.count == 100
+    assert extended.count == 225
+
+
+def test_extended_with_no_extended_size_falls_back() -> None:
+    task = SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=100, extended=True)
+
+    assert task.count == 100
+
+
+def test_the_extended_flag_lengthens_the_average_assignment() -> None:
+    info = _info(slayerMasterTasks={"M": {"A": {"Weight": 1}}})
+    plain = Heuristics(
+        slayer={"M": {"A": SlayerTask(100, 10, 100, extended_count=200)}}
+    )
+    longer = Heuristics(
+        slayer={"M": {"A": SlayerTask(100, 10, 100, extended_count=200, extended=True)}}
+    )
+    kwargs: dict[str, Any] = {
+        "reachable_monsters": frozenset(),
+        "valid": {},
+        "levels": {},
+    }
+
+    assert master_rates(info, plain, **kwargs)[0].average_hours == pytest.approx(1.0)
+    assert master_rates(info, longer, **kwargs)[0].average_hours == pytest.approx(2.0)

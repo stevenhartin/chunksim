@@ -417,19 +417,21 @@ def _task_hours(
     twenty minutes of actual fighting.
     """
     task = walk.task_gates.get(provider)
-    rate = walk.heuristics.slayer.get(task) if task else None
-    if task is None or rate is None or rate.mean_count <= 0:
+    if task is None:
         return None
 
-    waits = [
-        wait
-        for master in walk.masters
-        if (wait := master.hours_to_be_assigned(task)) is not None
-    ]
-    if not waits:
-        return None
-    assignments = max(1.0, kills / rate.mean_count)
-    return assignments * (min(waits) + rate.mean_count / kills_per_hour), task
+    # Cheapest over the masters that can assign it: the size is theirs too,
+    # so wait and assignment length have to come from the same one.
+    best: float | None = None
+    for master in walk.masters:
+        wait = master.hours_to_be_assigned(task)
+        rate = (walk.heuristics.slayer.get(master.master) or {}).get(task)
+        if wait is None or rate is None or rate.count <= 0:
+            continue
+        assignments = max(1.0, kills / rate.count)
+        hours = assignments * (wait + rate.count / kills_per_hour)
+        best = hours if best is None else min(best, hours)
+    return (best, task) if best is not None else None
 
 
 def _superior_hours(

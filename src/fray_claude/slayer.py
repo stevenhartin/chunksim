@@ -24,9 +24,19 @@ and it is the version that survives someone checking it.
 **Where the three inputs come from.** Weights are in the *export*
 (`slayerMasterTasks`), so they are never scraped and never duplicated into the
 config - the export and the config cannot disagree about them. Assignment
-sizes come from the wiki's `<Master>/Slayer assignments` tables. XP per kill
-and kills per hour come from KodakKid3's spreadsheet, the only source found
-for slayer kill rates.
+sizes come from KodakKid3's Task Lengths tab where it has the master (it is
+also the only source for the *extended* sizes) and the wiki's
+`<Master>/Slayer assignments` tables for the six masters that tab omits. XP
+per kill and kills per hour come from the same spreadsheet's Mob Data tab, the
+only source found for slayer kill rates.
+
+**Sizes are per master, and flattening them is a trap.** Duradel assigns
+130-200 abyssal demons where Krystilia assigns 75-125, and the sheet even
+spells the row differently for each (`Abyssal Demon` against
+`Abyssal Demons`), so a per-task table keeps both spellings and hands every
+master whichever looks closest. Read `heuristics.SlayerTask` on the shape,
+and its `count` rather than `mean_count` - that is what applies the
+Extended-unlock flag.
 
 **Which tasks count, and the lie in it.** Only tasks the player can actually
 be assigned. `_requirements_met` checks all five gates an entry can carry -
@@ -58,7 +68,7 @@ from typing import Any
 
 from fray_claude.challenges import chunks_requirement_met
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.heuristics import Heuristics, SlayerTask
+from fray_claude.heuristics import Heuristics, SlayerTask, TaskLength
 from fray_claude.search import normalise
 from fray_claude.summary import _mapping
 
@@ -195,6 +205,81 @@ def parse_mob_data(csv_text: str) -> dict[str, SlayerTask]:
         if key not in best or (score, quality) > best[key][:2]:
             best[key] = (score, quality, entry)
     return {key: entry for key, (_, _, entry) in best.items()}
+
+
+def parse_task_lengths(csv_text: str) -> dict[str, dict[str, TaskLength]]:
+    """Parse the spreadsheet's Task Lengths tab: assignment sizes per task.
+
+    The layout is column *groups*, one per master, and they are not the same
+    width - Konar's carries an extra `Location` column because she splits a
+    task across places. So the header is scanned for `<Master> Tasks` columns
+    and the `Min`/`Max`/`eMin`/`eMax` labels are found *within* each group
+    rather than at fixed offsets.
+
+    `eMin`/`eMax` are the sizes with the Extended unlock bought, which is the
+    only place those numbers exist at all - the wiki's tables carry a column
+    for them but not consistently, and nothing else does.
+
+    **Returned per master, because it is per master.** Flattening it looks
+    harmless and is not: the sheet writes Duradel's row `Abyssal Demon` and
+    Krystilia's `Abyssal Demons`, so a flat table keeps *both* under different
+    keys and every master then matches whichever spelling happens to look
+    closest. Duradel came out assigning 100 abyssal demons - Krystilia's
+    number - rather than his own 165.
+
+    The master label is the header minus its ` Tasks` suffix, and is the
+    sheet's short form (`Konar`) rather than the export's (`Konar quo Maten`);
+    `heuristics._slayer_section` resolves between them.
+    """
+    rows = list(csv.reader(io.StringIO(csv_text)))
+    if not rows:
+        return {}
+
+    header = rows[0]
+    starts = [index for index, name in enumerate(header) if name.strip().endswith(" Tasks")]
+    lengths: dict[str, dict[str, TaskLength]] = {}
+
+    for position, start in enumerate(starts):
+        master = header[start].strip().removesuffix(" Tasks").strip()
+        per_master = lengths.setdefault(master, {})
+        end = starts[position + 1] if position + 1 < len(starts) else len(header)
+        columns = {
+            header[index].strip().lower(): index for index in range(start + 1, end)
+        }
+        wanted = {label: columns.get(label) for label in ("min", "max", "emin", "emax")}
+        if wanted["min"] is None or wanted["max"] is None:
+            continue
+
+        for row in rows[1:]:
+            task = row[start].strip() if len(row) > start else ""
+            if not task:
+                continue
+            key = normalise(task)
+            if key in per_master:
+                continue
+            low, high = _cell(row, wanted["min"]), _cell(row, wanted["max"])
+            if low is None or high is None:
+                continue
+            extended_low = _cell(row, wanted["emin"])
+            extended_high = _cell(row, wanted["emax"])
+            per_master[key] = TaskLength(
+                task=task,
+                low=min(low, high),
+                high=max(low, high),
+                extended_low=min(extended_low, extended_high)
+                if extended_low is not None and extended_high is not None
+                else 0.0,
+                extended_high=max(extended_low, extended_high)
+                if extended_low is not None and extended_high is not None
+                else 0.0,
+            )
+    return lengths
+
+
+def _cell(row: list[str], index: int | None) -> float | None:
+    if index is None or len(row) <= index:
+        return None
+    return _number(row[index])
 
 
 def _number(raw: str | None) -> float | None:
@@ -354,8 +439,8 @@ def master_rates(
                 monsters = _task_monsters(chunk_info, task)
                 if monsters and not (monsters & reachable_monsters):
                     continue
-            rate = heuristics.slayer.get(task)
-            if rate is None or rate.kills_per_hour <= 0 or rate.mean_count <= 0:
+            rate = (heuristics.slayer.get(master) or {}).get(task)
+            if rate is None or rate.kills_per_hour <= 0 or rate.count <= 0:
                 # Assignable and doable, just unknown to the config. Counted
                 # apart from the accessibility drops above.
                 unpriced_weight += weight
@@ -364,7 +449,7 @@ def master_rates(
                 TaskRate(
                     task=task,
                     weight=weight,
-                    mean_count=rate.mean_count,
+                    mean_count=rate.count,
                     xp_per_kill=rate.xp_per_kill,
                     kills_per_hour=rate.kills_per_hour,
                 )
