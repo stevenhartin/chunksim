@@ -28,22 +28,31 @@ with exactly one run (which is what makes `--cache-map X` followed by
 rather than a guess. Ids are validated before they reach the filesystem, so a
 `--map ../../etc/passwd` cannot escape `cache/`.
 
+A third kind of thing lives here: `cache/derived/<key>` holds cached *results*
+of `pipeline.derive` (see `derived_cache.py` for the key and the codec). Those
+are pure derived data - deleting the lot only costs recomputation - which is
+why `fray derived clean` needs no guard while `fray maps rm` does.
+
 Everything here is written so a batch can be produced by several processes at
 once (see `batch.py`): `claim_sim_batch` uses `mkdir(exist_ok=False)` as an
-atomic claim rather than a check-then-create, and every write lands through
-`_atomic_write_json` (temp file in the destination directory, then
-`os.replace`), so an interrupted run leaves either the old file or the new one
-and never a half-written envelope that later reads as malformed.
+atomic claim rather than a check-then-create, and every write lands through a
+temp file in the destination directory followed by `os.replace`, so an
+interrupted run leaves either the old file or the new one and never a
+half-written envelope that later reads as malformed. The derived cache needs no
+lock for the same reason plus one more: two processes that computed the same
+key wrote the same bytes, so either rename winning is correct. Its only mutable
+field is the mtime `read_derived` touches, which is a single atomic syscall.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import shutil
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +60,7 @@ from fray_claude.api import map_url
 
 CACHE_DIR_NAME = "cache"
 SIMS_DIR_NAME = "sims"
+DERIVED_DIR_NAME = "derived"
 _ROOT_MARKER = "pyproject.toml"
 
 CHUNKINFO_BLOB_NAME = "chunkinfo"
@@ -70,6 +80,8 @@ SIMULATED = "simulated"
 #: reinterpret. A map id is one of these, optionally followed by `/run-<n>`.
 _NAME_RE = re.compile(r"[A-Za-z0-9_.-]+")
 _RUN_RE = re.compile(rf"{RUN_PREFIX}\d+")
+#: A derived-cache key: hex digest plus the suffix its codec claims.
+_DERIVED_KEY_RE = re.compile(r"[0-9a-f]{16,64}\.[a-z0-9.]{1,12}")
 
 
 class CacheMissError(Exception):
@@ -490,6 +502,116 @@ def remove_all_simulated(root: Path | None = None) -> list[str]:
     return removed
 
 
+def derived_root(root: Path | None = None) -> Path:
+    """The directory cached derivations live in."""
+    return (root or project_root()) / CACHE_DIR_NAME / DERIVED_DIR_NAME
+
+
+def derived_path(key: str, root: Path | None = None) -> Path:
+    """The file a derived-cache key names.
+
+    `key` is a hex digest plus its codec's suffix (`derived_cache.py` builds
+    it); anything else is rejected before it reaches the filesystem, on the
+    same principle as `split_map_id`.
+    """
+    if not _DERIVED_KEY_RE.fullmatch(key):
+        raise CacheMissError(f"invalid derived-cache key {key!r}")
+    return derived_root(root) / key
+
+
+def read_derived(key: str, root: Path | None = None) -> bytes | None:
+    """Return a cached derivation's bytes, or `None` if there isn't one.
+
+    Reading is what "used" means here, so this refreshes the file's mtime -
+    one `os.utime`, atomic, needing no lock and no ledger, which is what
+    `prune_derived` then reads as last-accessed. `st_atime` would be the
+    obvious field and is not usable: `relatime`/`noatime` mounts make it a lie.
+
+    A missing entry is `None` rather than an error, because every caller's
+    response to one is the same: compute it.
+    """
+    path = derived_path(key, root)
+    try:
+        blob = path.read_bytes()
+    except (FileNotFoundError, IsADirectoryError):
+        return None
+    try:
+        os.utime(path)
+    except OSError:
+        # A read-only cache directory is still a perfectly good cache; it just
+        # ages by creation time instead.
+        pass
+    return blob
+
+
+def write_derived(key: str, blob: bytes, root: Path | None = None) -> Path:
+    """Store a cached derivation.
+
+    Same temp-file-plus-`os.replace` as every other write here, which is what
+    makes concurrent writers safe *without* a lock: two workers that computed
+    the same key wrote the same bytes, so whichever rename lands last is
+    correct either way, and no reader ever sees a partial file.
+    """
+    path = derived_path(key, root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temp.write_bytes(blob)
+    os.replace(temp, path)
+    return path
+
+
+@dataclass(frozen=True)
+class DerivedEntry:
+    """One cached derivation on disk: `accessed_at` is its mtime."""
+
+    key: str
+    size: int
+    accessed_at: datetime
+
+
+def list_derived(root: Path | None = None) -> list[DerivedEntry]:
+    """Every cached derivation, least recently used first."""
+    directory = derived_root(root)
+    if not directory.is_dir():
+        return []
+    entries = [
+        DerivedEntry(
+            key=path.name,
+            size=path.stat().st_size,
+            accessed_at=datetime.fromtimestamp(path.stat().st_mtime, UTC),
+        )
+        for path in directory.iterdir()
+        if path.is_file() and _DERIVED_KEY_RE.fullmatch(path.name)
+    ]
+    return sorted(entries, key=lambda entry: entry.accessed_at)
+
+
+def prune_derived(
+    root: Path | None = None, *, max_age_days: float | None = None
+) -> list[DerivedEntry]:
+    """Delete cached derivations untouched for `max_age_days`, or all of them.
+
+    Ages on *last access*, not creation: an entry read every day is worth
+    keeping however old it is, and one written a month ago and never read
+    since is not.
+    """
+    removed: list[DerivedEntry] = []
+    cutoff = (
+        None
+        if max_age_days is None
+        else datetime.now(UTC) - timedelta(days=max_age_days)
+    )
+    for entry in list_derived(root):
+        if cutoff is not None and entry.accessed_at >= cutoff:
+            continue
+        try:
+            derived_path(entry.key, root).unlink()
+        except FileNotFoundError:  # pragma: no cover - another process got there first
+            continue
+        removed.append(entry)
+    return removed
+
+
 def _read_json_object(path: Path) -> dict[str, Any]:
     """Read one JSON object off disk, as itself - no envelope unwrapping.
 
@@ -509,6 +631,15 @@ def _read_json_object(path: Path) -> dict[str, Any]:
     return data
 
 
+def chunkinfo_source(override: Path | None = None, root: Path | None = None) -> Path:
+    """The file `read_chunkinfo` would read: override, env var, then the cache."""
+    path = override
+    if path is None:
+        env_value = os.environ.get(CHUNKINFO_ENV_VAR)
+        path = Path(env_value) if env_value else None
+    return path if path is not None else blob_path(CHUNKINFO_BLOB_NAME, root)
+
+
 def read_chunkinfo(override: Path | None = None, root: Path | None = None) -> dict[str, Any]:
     """Return the parsed chunkinfo export.
 
@@ -523,3 +654,22 @@ def read_chunkinfo(override: Path | None = None, root: Path | None = None) -> di
         return _read_json_object(path)
     data: dict[str, Any] = read_blob(CHUNKINFO_BLOB_NAME, root)["data"]
     return data
+
+
+def file_digest(path: Path) -> str:
+    """A content hash of `path`, or `""` if it isn't readable.
+
+    Used to key the derived cache on the reference data a derivation was
+    computed against. sha256 over the whole ~10MB export measures at 4ms
+    (it is hardware-accelerated), so this is cheap enough to do on every
+    invocation and far safer than trusting size and mtime.
+
+    An unreadable file hashes to `""` rather than raising: the caller is
+    building a cache key, and the honest answer for "I could not identify the
+    inputs" is a key that matches nothing.
+    """
+    try:
+        with path.open("rb") as handle:
+            return hashlib.file_digest(handle, "sha256").hexdigest()
+    except OSError:
+        return ""

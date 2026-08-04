@@ -1222,3 +1222,130 @@ def test_maps_on_an_empty_cache_says_so(
 ) -> None:
     assert main(["maps"]) == 0
     assert "no cached maps" in capsys.readouterr().out
+
+
+# --- the derived cache -------------------------------------------------------
+
+
+def _derived_entries(project: Path) -> list[Path]:
+    directory = project / "cache" / "derived"
+    return sorted(directory.iterdir()) if directory.is_dir() else []
+
+
+def test_a_second_command_reuses_the_first_ones_derivation(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The key is the derivation's *inputs*, so unrelated commands over the
+    same state share one entry rather than each keeping their own."""
+    _simulatable(monkeypatch)
+    main(["tasks"])
+    assert len(_derived_entries(project)) == 1
+    capsys.readouterr()
+
+    calls: list[int] = []
+    monkeypatch.setattr(
+        "fray_claude.derived_cache.derive",
+        lambda *a, **k: calls.append(1),  # never reached on a hit
+    )
+
+    assert main(["sections"]) == 0
+    assert main(["sources"]) == 0
+    assert calls == []
+    assert len(_derived_entries(project)) == 1
+
+
+def test_recompute_ignores_the_cached_derivation(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _simulatable(monkeypatch)
+    main(["tasks"])
+    capsys.readouterr()
+    fresh = main(["tasks", "--recompute", "--export-json", "-"])
+    recomputed = capsys.readouterr().out
+
+    cached = main(["tasks", "--export-json", "-"])
+
+    assert (fresh, cached) == (0, 0)
+    assert capsys.readouterr().out == recomputed
+
+
+def test_a_changed_map_is_not_served_the_old_derivation(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The one failure that would matter: a re-fetch must invalidate."""
+    _simulatable(monkeypatch)
+    main(["sections"])
+    capsys.readouterr()
+
+    monkeypatch.setattr(
+        "fray_claude.cli.fetch_map",
+        lambda map_id, timeout=DEFAULT_TIMEOUT: {
+            "chunks": {"unlocked": {"100": "100", "101": "101"}}
+        },
+    )
+    main(["fetch"])
+    capsys.readouterr()
+
+    assert main(["sections"]) == 0
+    assert "unlocked chunks    2" in capsys.readouterr().out
+    assert len(_derived_entries(project)) == 2
+
+
+def test_derived_list_summarises_the_cache(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _simulatable(monkeypatch)
+    main(["tasks"])
+    capsys.readouterr()
+
+    assert main(["derived", "list", "--verbose"]) == 0
+
+    out = capsys.readouterr().out
+    assert "entries      1" in out
+    assert ".pkl" in out
+
+
+def test_derived_list_on_an_empty_cache_says_so(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["derived"]) == 0
+    assert "no cached derivations" in capsys.readouterr().out
+
+
+def test_derived_clean_all_empties_the_cache(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _simulatable(monkeypatch)
+    main(["tasks"])
+    capsys.readouterr()
+
+    assert main(["derived", "clean", "--all"]) == 0
+
+    assert "removed 1 cached derivations" in capsys.readouterr().out
+    assert _derived_entries(project) == []
+
+
+def test_derived_clean_keeps_recently_read_entries(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _simulatable(monkeypatch)
+    main(["tasks"])
+    capsys.readouterr()
+
+    assert main(["derived", "clean"]) == 0
+
+    assert "nothing to clean" in capsys.readouterr().out
+    assert len(_derived_entries(project)) == 1
+
+
+def test_a_simulation_caches_only_the_state_its_runs_share(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The scope decision: per-roll states are computed, never stored, so a
+    batch cannot fill the cache with states nothing will ask for again."""
+    _simulatable(monkeypatch)
+    capsys.readouterr()
+
+    assert main(["simulate", "--rolls", "2", "--runs", "3", "--seed", "1", "--cache-map", "S"]) == 0
+
+    assert len(_derived_entries(project)) == 1

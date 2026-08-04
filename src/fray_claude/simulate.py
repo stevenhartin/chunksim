@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import random
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -216,15 +216,27 @@ def roll_pool(
 
 
 def simulate_rolls(
-    state: MapState, unlocked: Mapping[str, bool], *, rolls: int, seed: int | None = None
+    state: MapState,
+    unlocked: Mapping[str, bool],
+    *,
+    rolls: int,
+    seed: int | None = None,
+    derive_base: Callable[[MapState, Mapping[str, bool]], Derived] | None = None,
 ) -> list[UnlockRecord]:
     """Simulate up to `rolls` chunk unlocks from `unlocked`, stopping early
     if the roll pool is ever empty. Each record's delta is computed against
     the state immediately before that roll and never recomputed afterwards.
+
+    `derive_base` overrides how the *starting* state is derived, and only that
+    one - `batch.py` passes `derived_cache.cached_derive` so that every run of
+    a batch shares one cached entry instead of each recomputing the state they
+    all begin from. The per-roll derives below stay uncached deliberately: at
+    ~0.12MB an entry a 50-roll, 100-run batch would store ~5,000 of them, for
+    states nothing will ever ask about again.
     """
     rng = random.Random(seed)
     current_ids: dict[str, bool] = dict(unlocked)
-    before = derive(state, current_ids)
+    before = (derive_base or derive)(state, current_ids)
     graph = build_section_graph(state.chunk_info)
     ledger: list[UnlockRecord] = []
 

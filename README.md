@@ -35,6 +35,7 @@ source-chunk is upstream and read-only from here — `fray-claude` never writes 
   batch of them, and `--jobs J` to spread that batch over worker processes.
 - **`maps`** — list what's cached, fetched and simulated alike; `maps rm NAME` and `maps clean`
   remove them again.
+- **`derived`** — inspect or clean the cache of computed results (see below).
 
 Everything after the initial `fetch`/`chunkinfo` runs offline, against the local cache.
 
@@ -175,6 +176,15 @@ otherwise it's created in whatever directory you're in when you run `fray`.
 
    If you'd rather point at a chunk-info export you already have on disk instead of fetching it,
    pass `--chunkinfo PATH` to any of those commands, or set the `FRAY_CHUNKINFO` environment variable.
+
+   Working out what's valid takes about a second, so the answer is cached under `cache/derived/` and
+   reused until something it depended on changes — your map, the chunk-info export, or the chunks
+   you asked about. A repeat command takes about a tenth of a second, and because the cache is keyed
+   on those inputs rather than on the command, `fray sections` reuses what `fray tasks` just worked
+   out. Nothing needs invalidating by hand: a `fray fetch` simply produces a different answer to
+   "what did this depend on". Pass `--recompute` to any of those commands to ignore the cache and
+   redo the work, `fray derived` to see what's stored, and `fray derived clean` to drop entries you
+   haven't used in a fortnight (`--all` for the lot). Deleting them only ever costs recomputation.
 
 5. **Keep a simulated future and work against it**, instead of just reading the summary:
 

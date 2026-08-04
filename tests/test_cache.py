@@ -7,7 +7,8 @@ touched.
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+import os
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +21,15 @@ from fray_claude.cache import (
     CacheMissError,
     blob_path,
     cache_path,
+    chunkinfo_source,
     claim_sim_batch,
+    derived_path,
+    derived_root,
+    file_digest,
+    list_derived,
+    prune_derived,
+    read_derived,
+    write_derived,
     list_maps,
     project_root,
     read_blob,
@@ -323,3 +332,110 @@ def test_cleaning_removes_simulations_and_nothing_else(tmp_path: Path) -> None:
     assert cache_path("fray", tmp_path).is_file()
     assert blob_path("chunkinfo", tmp_path).is_file()
     assert list(sims_root(tmp_path).iterdir()) == []
+
+
+# --- the derived cache -------------------------------------------------------
+
+_KEY = "a" * 64 + ".pkl.zst"
+_OTHER_KEY = "b" * 64 + ".pkl.zst"
+
+
+def test_a_derived_entry_round_trips(tmp_path: Path) -> None:
+    write_derived(_KEY, b"payload", root=tmp_path)
+
+    assert read_derived(_KEY, root=tmp_path) == b"payload"
+
+
+def test_a_missing_derived_entry_is_a_miss_not_an_error(tmp_path: Path) -> None:
+    """Every caller's answer to a miss is the same - compute it - so this
+    returns `None` rather than raising."""
+    assert read_derived(_KEY, root=tmp_path) is None
+
+
+def test_reading_a_derived_entry_refreshes_its_last_access(tmp_path: Path) -> None:
+    """mtime *is* the last-accessed field: `prune_derived` reads it, and one
+    `os.utime` needs no lock or ledger to stay correct across processes."""
+    path = write_derived(_KEY, b"payload", root=tmp_path)
+    stale = datetime.now(UTC) - timedelta(days=30)
+    os.utime(path, (stale.timestamp(), stale.timestamp()))
+
+    read_derived(_KEY, root=tmp_path)
+
+    assert list_derived(tmp_path)[0].accessed_at > stale
+
+
+def test_rewriting_a_derived_entry_leaves_one_valid_file(tmp_path: Path) -> None:
+    """Two workers computing the same key wrote the same bytes, so the last
+    atomic rename winning is correct either way - and neither leaves a
+    temp file behind."""
+    write_derived(_KEY, b"first", root=tmp_path)
+    write_derived(_KEY, b"second", root=tmp_path)
+
+    assert read_derived(_KEY, root=tmp_path) == b"second"
+    assert [p.name for p in derived_root(tmp_path).iterdir()] == [_KEY]
+
+
+@pytest.mark.parametrize("key", ["../escape.pkl", "/etc/passwd", "nothex.pkl", "abc", ""])
+def test_a_derived_key_cannot_escape_the_cache_directory(tmp_path: Path, key: str) -> None:
+    with pytest.raises(CacheMissError, match="invalid derived-cache key"):
+        derived_path(key, tmp_path)
+
+
+def test_listing_derived_entries_orders_by_least_recently_used(tmp_path: Path) -> None:
+    write_derived(_KEY, b"old", root=tmp_path)
+    stale = (datetime.now(UTC) - timedelta(days=3)).timestamp()
+    os.utime(derived_path(_KEY, tmp_path), (stale, stale))
+    write_derived(_OTHER_KEY, b"new", root=tmp_path)
+    # Junk in the directory is not an entry.
+    (derived_root(tmp_path) / "notes.txt").write_text("hi", encoding="utf-8")
+
+    assert [entry.key for entry in list_derived(tmp_path)] == [_KEY, _OTHER_KEY]
+    assert list_derived(tmp_path)[0].size == 3
+
+
+def test_pruning_drops_entries_by_last_access_not_creation(tmp_path: Path) -> None:
+    """An entry read every day is worth keeping however old it is."""
+    write_derived(_KEY, b"stale", root=tmp_path)
+    stale = (datetime.now(UTC) - timedelta(days=30)).timestamp()
+    os.utime(derived_path(_KEY, tmp_path), (stale, stale))
+    write_derived(_OTHER_KEY, b"fresh", root=tmp_path)
+
+    removed = prune_derived(tmp_path, max_age_days=14)
+
+    assert [entry.key for entry in removed] == [_KEY]
+    assert [entry.key for entry in list_derived(tmp_path)] == [_OTHER_KEY]
+
+
+def test_pruning_with_no_age_empties_the_cache(tmp_path: Path) -> None:
+    write_derived(_KEY, b"a", root=tmp_path)
+    write_derived(_OTHER_KEY, b"b", root=tmp_path)
+
+    assert len(prune_derived(tmp_path)) == 2
+    assert list_derived(tmp_path) == []
+
+
+def test_pruning_an_absent_cache_is_not_an_error(tmp_path: Path) -> None:
+    assert prune_derived(tmp_path) == []
+
+
+def test_file_digest_tracks_content(tmp_path: Path) -> None:
+    path = tmp_path / "export.json"
+    path.write_text("{}", encoding="utf-8")
+    first = file_digest(path)
+    path.write_text('{"a": 1}', encoding="utf-8")
+
+    assert first != file_digest(path)
+    assert file_digest(tmp_path / "missing.json") == ""
+
+
+def test_chunkinfo_source_names_the_file_read_chunkinfo_would_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(CHUNKINFO_ENV_VAR, raising=False)
+    assert chunkinfo_source(root=tmp_path) == blob_path("chunkinfo", tmp_path)
+
+    override = tmp_path / "raw.json"
+    assert chunkinfo_source(override, tmp_path) == override
+
+    monkeypatch.setenv(CHUNKINFO_ENV_VAR, str(tmp_path / "env.json"))
+    assert chunkinfo_source(root=tmp_path) == tmp_path / "env.json"

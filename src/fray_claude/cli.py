@@ -69,7 +69,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -90,7 +90,12 @@ from fray_claude.cache import (
     TASKS_MAP_BLOB_NAME,
     CacheMissError,
     MapEntry,
+    blob_path,
+    chunkinfo_source,
+    file_digest,
+    list_derived,
     list_maps,
+    prune_derived,
     read_blob,
     read_cache,
     read_chunkinfo,
@@ -101,12 +106,13 @@ from fray_claude.cache import (
 )
 from fray_claude.challenges import strip_task_markup
 from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.derived_cache import Digests, cached_derive
 from fray_claude.firebase import reverse_tasks_map
 from fray_claude.graph import build_section_graph
 from fray_claude.neighbours import eligible_neighbours
 from fray_claude.other_tasks import CATEGORIES as OTHER_CATEGORIES
 from fray_claude.other_tasks import CategoryTasks, display_name, task_text
-from fray_claude.pipeline import ConvergenceError, MapState, derive, load_map_state
+from fray_claude.pipeline import ConvergenceError, Derived, MapState, load_map_state
 from fray_claude.search import TYPES, build_world_index, search
 from fray_claude.sections import describe_sections, expand_chunk_areas
 from fray_claude.simulate import simulate_rolls
@@ -188,6 +194,25 @@ def _cmd_chunkinfo(args: argparse.Namespace) -> int:
     tasks_map_path = write_blob(TASKS_MAP_BLOB_NAME, tasks_map, TASKS_MAP_URL)
     print(f"fetched tasks map -> {tasks_map_path} ({tasks_map_path.stat().st_size:,} bytes)")
     return 0
+
+
+def _digests(args: argparse.Namespace) -> Digests:
+    """Content hashes of the reference data, for the derived cache's key."""
+    return Digests(
+        chunkinfo=file_digest(chunkinfo_source(override=args.chunkinfo)),
+        tasks_map=file_digest(blob_path(TASKS_MAP_BLOB_NAME)),
+    )
+
+
+def _derive(args: argparse.Namespace, state: MapState, unlocked: Mapping[str, bool]) -> Derived:
+    """`derive` through the on-disk cache - see `derived_cache.py`.
+
+    Every subcommand goes through here rather than calling `derive` directly,
+    so `--recompute` means the same thing everywhere. Tests and the opt-in
+    oracles keep calling `pipeline.derive`, which is what keeps them a
+    cache-free correctness signal.
+    """
+    return cached_derive(state, unlocked, _digests(args), refresh=args.recompute)
 
 
 def _load_state(args: argparse.Namespace) -> tuple[MapState, dict[str, bool]]:
@@ -285,7 +310,7 @@ def _print_capped(names: list[str], limit: int | None) -> None:
 
 def _cmd_sections(args: argparse.Namespace) -> int:
     state, unlocked = _load_state(args)
-    result = derive(state, unlocked)
+    result = _derive(args, state, unlocked)
 
     if args.target is None:
         total_sections = sum(len(s) for s in result.reachable_sections.values())
@@ -342,7 +367,7 @@ def _cmd_sections(args: argparse.Namespace) -> int:
 
 def _cmd_sources(args: argparse.Namespace) -> int:
     state, unlocked = _load_state(args)
-    index = derive(state, unlocked).source_index
+    index = _derive(args, state, unlocked).source_index
 
     if args.category is None:
         if args.export_json != "-":
@@ -373,7 +398,7 @@ def _cmd_sources(args: argparse.Namespace) -> int:
 
 def _cmd_tasks(args: argparse.Namespace) -> int:
     state, unlocked = _load_state(args)
-    derived = derive(state, unlocked)
+    derived = _derive(args, state, unlocked)
     result = derived.challenges
 
     if args.category is None:
@@ -516,7 +541,7 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
 def _cmd_search(args: argparse.Namespace) -> int:
     state, unlocked = _load_state(args)
     world = build_world_index(state.chunk_info)
-    result = derive(state, unlocked)
+    result = _derive(args, state, unlocked)
     hits = search(
         world, args.query, unlocked=unlocked, derived=result, types=args.type, limit=args.limit
     )
@@ -566,7 +591,12 @@ def _cmd_search(args: argparse.Namespace) -> int:
 
 def _cmd_unlock(args: argparse.Namespace) -> int:
     state, unlocked = _load_state(args)
-    delta = tasks_added_by(state, unlocked, args.chunk_id)
+    delta = tasks_added_by(
+        state,
+        unlocked,
+        args.chunk_id,
+        derive_with=lambda s, u: _derive(args, s, u),
+    )
 
     if args.export_json != "-":
         print(f"map          {args.map_id}")
@@ -590,7 +620,7 @@ def _cmd_unlock(args: argparse.Namespace) -> int:
 def _cmd_neighbours(args: argparse.Namespace) -> int:
     state, unlocked = _load_state(args)
     entries = eligible_neighbours(
-        state, unlocked, derive(state, unlocked), graph=build_section_graph(state.chunk_info)
+        state, unlocked, _derive(args, state, unlocked), graph=build_section_graph(state.chunk_info)
     )
 
     if args.export_json != "-":
@@ -669,6 +699,45 @@ def _cmd_maps_clean(args: argparse.Namespace) -> int:
     else:
         plural = "" if len(removed) == 1 else "s"
         print(f"removed {len(removed)} cached map{plural}")
+    return 0
+
+
+#: `fray derived clean`'s default cut-off. Entries are keyed by content, so a
+#: stale one is never *wrong*, only unreachable - ageing them out is about disk,
+#: not correctness, hence a generous default.
+DEFAULT_DERIVED_MAX_AGE_DAYS = 14
+
+
+def _cmd_derived_list(args: argparse.Namespace) -> int:
+    entries = list_derived()
+    if not entries:
+        print("no cached derivations")
+        return 0
+
+    total = sum(entry.size for entry in entries)
+    print(f"entries      {len(entries)}")
+    print(f"size         {total / 1_048_576:.1f} MiB")
+    print(f"oldest read  {_format_age(entries[0].accessed_at.isoformat())}")
+    print(f"newest read  {_format_age(entries[-1].accessed_at.isoformat())}")
+    if args.verbose:
+        for entry in entries:
+            age = _format_age(entry.accessed_at.isoformat())
+            print(f"  {entry.key}  {entry.size / 1024:>8.0f} KiB  read {age}")
+    return 0
+
+
+def _cmd_derived_clean(args: argparse.Namespace) -> int:
+    max_age = None if args.all else args.older_than
+    removed = prune_derived(max_age_days=max_age)
+    if not removed:
+        print("nothing to clean")
+        return 0
+    freed = sum(entry.size for entry in removed)
+    scope = "all" if args.all else f"unread for {args.older_than:g} days"
+    print(
+        f"removed {len(removed)} cached derivations ({scope}), "
+        f"freeing {freed / 1_048_576:.1f} MiB"
+    )
     return 0
 
 
@@ -814,6 +883,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="write the full result as JSON to PATH, or to stdout if PATH is '-'",
     )
+    sections.add_argument(
+        "--recompute",
+        action="store_true",
+        help="ignore any cached derivation and compute (and re-store) a fresh one",
+    )
     sections.set_defaults(func=_cmd_sections)
 
     sources = subcommands.add_parser(
@@ -844,6 +918,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="write the full result as JSON to PATH, or to stdout if PATH is '-'",
     )
+    sources.add_argument(
+        "--recompute",
+        action="store_true",
+        help="ignore any cached derivation and compute (and re-store) a fresh one",
+    )
     sources.set_defaults(func=_cmd_sources)
 
     tasks = subcommands.add_parser(
@@ -873,6 +952,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="write the full result as JSON to PATH, or to stdout if PATH is '-'",
     )
+    tasks.add_argument(
+        "--recompute",
+        action="store_true",
+        help="ignore any cached derivation and compute (and re-store) a fresh one",
+    )
     tasks.set_defaults(func=_cmd_tasks)
 
     unlock = subcommands.add_parser(
@@ -893,6 +977,11 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         default=None,
         help="write the full result as JSON to PATH, or to stdout if PATH is '-'",
+    )
+    unlock.add_argument(
+        "--recompute",
+        action="store_true",
+        help="ignore any cached derivation and compute (and re-store) a fresh one",
     )
     unlock.set_defaults(func=_cmd_unlock)
 
@@ -917,6 +1006,11 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         default=None,
         help="write the full result as JSON to PATH, or to stdout if PATH is '-'",
+    )
+    neighbours.add_argument(
+        "--recompute",
+        action="store_true",
+        help="ignore any cached derivation and compute (and re-store) a fresh one",
     )
     neighbours.set_defaults(func=_cmd_neighbours)
 
@@ -963,6 +1057,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="write the full result as JSON to PATH, or to stdout if PATH is '-'",
     )
+    simulate.add_argument(
+        "--recompute",
+        action="store_true",
+        help="ignore any cached derivation and compute (and re-store) a fresh one",
+    )
     simulate.set_defaults(func=_cmd_simulate)
 
     # The only nested subcommand here: `maps` is three verbs over one noun,
@@ -994,6 +1093,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="allow removing a fetched map, not just simulated ones",
     )
     maps_rm.set_defaults(func=_cmd_maps_rm)
+
+    # Same nested shape as `maps`, for the other on-disk cache. No
+    # `--include-fetched`-style guard here: a cached derivation is pure derived
+    # data, so the worst a wrong `clean` costs is recomputation.
+    derived = subcommands.add_parser("derived", help="inspect or clean the cached derivations")
+    derived.set_defaults(func=_cmd_derived_list, verbose=False)
+    derived_verbs = derived.add_subparsers(dest="derived_command")
+
+    derived_list = derived_verbs.add_parser("list", help="summarise the cache (the default)")
+    derived_list.add_argument(
+        "--verbose", action="store_true", help="list every entry, not just the totals"
+    )
+    derived_list.set_defaults(func=_cmd_derived_list)
+
+    derived_clean = derived_verbs.add_parser("clean", help="drop entries that haven't been read")
+    derived_clean.add_argument(
+        "--older-than",
+        type=float,
+        default=DEFAULT_DERIVED_MAX_AGE_DAYS,
+        metavar="DAYS",
+        help="drop entries not read for this many days (default: %(default)s)",
+    )
+    derived_clean.add_argument(
+        "--all", action="store_true", help="drop every entry, whenever it was last read"
+    )
+    derived_clean.set_defaults(func=_cmd_derived_clean)
 
     maps_clean = map_verbs.add_parser("clean", help="remove every simulated map")
     maps_clean.add_argument(
@@ -1032,6 +1157,11 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         default=None,
         help="write the full result as JSON to PATH, or to stdout if PATH is '-'",
+    )
+    search.add_argument(
+        "--recompute",
+        action="store_true",
+        help="ignore any cached derivation and compute (and re-store) a fresh one",
     )
     search.set_defaults(func=_cmd_search)
 

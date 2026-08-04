@@ -41,7 +41,7 @@ snapshot of what improved, as agreed with the project's BiS semantics
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -126,8 +126,21 @@ def delta_from(before: Derived, after: Derived, chunk_id: str) -> UnlockDelta:
     )
 
 
-def tasks_added_by(state: MapState, unlocked: Mapping[str, bool], chunk_id: str) -> UnlockDelta:
-    """What unlocking `chunk_id` would add on top of `unlocked`, from scratch."""
-    before = derive(state, unlocked)
-    after = derive(state, {**unlocked, chunk_id: True})
+def tasks_added_by(
+    state: MapState,
+    unlocked: Mapping[str, bool],
+    chunk_id: str,
+    *,
+    derive_with: Callable[[MapState, Mapping[str, bool]], Derived] = derive,
+) -> UnlockDelta:
+    """What unlocking `chunk_id` would add on top of `unlocked`, from scratch.
+
+    `derive_with` lets `cli.py` route both runs through the on-disk cache
+    (`derived_cache.cached_derive`) - two derives is why `fray unlock` costs
+    twice what the other commands do, and the "before" half is the very state
+    every other command just derived. It defaults to the plain `derive`, so
+    nothing that imports this module gets a cache it didn't ask for.
+    """
+    before = derive_with(state, unlocked)
+    after = derive_with(state, {**unlocked, chunk_id: True})
     return delta_from(before, after, chunk_id)

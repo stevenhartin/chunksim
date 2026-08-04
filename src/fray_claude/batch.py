@@ -39,7 +39,10 @@ from typing import Any
 from fray_claude.cache import (
     TASKS_MAP_BLOB_NAME,
     CacheMissError,
+    blob_path,
+    chunkinfo_source,
     claim_sim_batch,
+    file_digest,
     read_blob,
     read_chunkinfo,
     run_dir,
@@ -47,6 +50,7 @@ from fray_claude.cache import (
     write_sim_run,
 )
 from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.derived_cache import Digests, cached_derive
 from fray_claude.firebase import reverse_tasks_map
 from fray_claude.pipeline import load_map_state
 from fray_claude.simulate import simulate_rolls, simulated_payload
@@ -146,7 +150,20 @@ def run_one(spec: RunSpec) -> RunResult:
         tasks_map = {}
 
     state, unlocked = load_map_state(spec.payload, info, tasks_map)
-    ledger = simulate_rolls(state, unlocked, rolls=spec.rolls, seed=spec.seed)
+    # Only the base state is cached: every run in the batch starts from it, so
+    # this is one shared entry that saves one derive per run. The per-roll
+    # states are not - see `simulate_rolls`.
+    digests = Digests(
+        chunkinfo=file_digest(chunkinfo_source(spec.chunkinfo_path, spec.root)),
+        tasks_map=file_digest(blob_path(TASKS_MAP_BLOB_NAME, spec.root)),
+    )
+    ledger = simulate_rolls(
+        state,
+        unlocked,
+        rolls=spec.rolls,
+        seed=spec.seed,
+        derive_base=lambda s, u: cached_derive(s, u, digests, root=spec.root),
+    )
     payload = simulated_payload(spec.payload, ledger)
     rolled = tuple(record.chunk_id for record in ledger)
     held = payload.get("chunks", {}).get("unlocked", {})

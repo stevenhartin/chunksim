@@ -87,8 +87,8 @@ Five things that cut across modules — the first three because each has already
   categories this project computes, and the payload has no sections, sources or validity branches at
   all. Upstream derives all of it in the browser and persists only those few UI-facing answers —
   which is exactly what makes them oracles. `completedChallenges` is the player's ticked list, an
-  *input*. So every derivation command pays for `derive` (~1s), and `fray show` — a pure cache read at
-  0.07s — is what "just reading the cache" actually costs.
+  *input*. Computing it is therefore unavoidable; what `cache/derived/` does is avoid computing it
+  *twice* (see below), which is the real version of the optimisation this bullet keeps attracting.
 - **The pure layer must stay process-parallel.** `fray simulate --jobs N` runs simulations in worker
   processes, and a roll costs a full `derive` (~0.95s on the real export, ~100% of the runtime), so
   this is the only way a heatmap-sized batch finishes. That holds today only because there is **no
@@ -96,7 +96,9 @@ Five things that cut across modules — the first three because each has already
   and `_UNIVERSAL_PRIMARY` are read-only constants — and because `MapState`/`Derived` are frozen.
   Adding a cache to a "pure" module would break `--jobs` silently, in the form of runs that disagree.
   Workers each load their own `ChunkInfo` (~0.1s) rather than sharing the parent's; one process writes
-  any given file, never two.
+  any given file, never two. `cache/derived/` obeys the same rule from the other direction: it is
+  content-keyed, so two workers racing on one key write identical bytes and the atomic rename makes
+  either winner correct — which is why it needs no lock and has no shared index.
 
 | Module | Owns |
 |---|---|
@@ -118,6 +120,7 @@ Five things that cut across modules — the first three because each has already
 | `neighbours.py` | Which chunks are eligible to unlock next, and upstream's canvas numbering (**descending chunk id, 1-based**). Owns the `sectionsLimits` gate. |
 | `simulate.py` | Seeded chunk-roll simulation: the bootstrap pool, plus the dispatch to `neighbours.py`. Records are never revisited by a later roll. `simulated_payload` turns a finished ledger back into a map payload — read its docstring before changing which branches it touches. |
 | `batch.py` | N simulations from one state, each cached as its own map. Owns seed derivation and the **only** `ProcessPoolExecutor` in the project. `--jobs` must never change a result. |
+| `derived_cache.py` | The on-disk cache of `derive` results: the key (hash of every input), the zstd+pickle codec, and `cached_derive`. Pure bar the bytes, which `cache.py` writes. |
 | `search.py` | World-wide fuzzy search over the *raw* export — all 5 item routes, so a strict superset of what `fray sources` can list. |
 | `summary.py` | Pure reductions over a raw payload. Extend this, not `cli.py`. Also home to `_mapping`, the tolerant dict accessor eight other modules import despite the `_` — Firebase omits empty containers, so every lookup anywhere must survive a missing branch. |
 | `cli.py` | argparse subcommands and rendering only; new logic goes in a pure module. |
@@ -141,6 +144,7 @@ fray neighbours [--limit N] # chunks eligible to unlock next, numbered as the ap
 fray simulate --rolls N [--seed S]   # simulate N chunk rolls and accumulate their tasks/sections
 fray simulate --rolls N --cache-map NAME [--runs R] [--jobs J]   # ... and save each run as a cached map
 fray maps [list [--runs]] | maps rm NAME... | maps clean [--include-fetched]   # manage cached maps
+fray derived [list [--verbose]] | derived clean [--older-than DAYS] [--all]    # manage cached derivations
 fray search   QUERY [--type T ...] [--limit N]   # fuzzy search item/monster/npc/object/shop/task
 python -m fray_claude ...   # same CLI without the console script
 mypy                        # strict, over src/ and tests/; run from the repo root
@@ -176,6 +180,17 @@ what makes `--cache-map X` then `--map X` work). A bare batch name with several 
 them, never a guess. A name that is already taken — by a batch *or* a fetched map — gains `-2`, `-3`,
 … so `--map` is never ambiguous; the claim is a `mkdir(exist_ok=False)`, so parallel writers cannot
 both win it. Counting how often a chunk was rolled means reading `batch.json`, not the payloads.
+
+**`cache/derived/` is a third thing, and not a map.** It holds `pipeline.derive`'s *results*, one
+zstd-compressed pickle per key (~0.12MB each), so a repeat command costs ~0.15s instead of ~1.05s.
+The key is a hash of everything `derive` read — the `MapState` fields, the unlocked set, and content
+digests of the chunkinfo export and tasks map — which is why one entry serves `sections`, `sources`,
+`tasks`, `neighbours` and `search` on the same state, and why `fray fetch` invalidates without
+anything having to notice. `--recompute` bypasses it; `fray derived list|clean` inspects and ages it
+out by last read. **`derived_cache.py` owns all of that — read it before changing what `derive`
+returns**, because a result dataclass gaining a field must invalidate old entries (it does: the key
+includes a hash of those classes' shapes). `derive` itself stays uncached and pure, which is what
+keeps the opt-in oracles an honest signal.
 
 `mypy` and `pytest` are invoked differently on purpose: mypy is the *system* install (there is no
 `.venv/bin/mypy`), configured with `python_executable = ".venv/bin/python"` so it can see pytest's
