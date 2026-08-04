@@ -124,3 +124,36 @@ button.warn { color: var(--warn); border-color: var(--warn); }
   background: #232833;
   border: 1px solid var(--edge);
 }
+
+.sep {
+  width: 1px;
+  height: 22px;
+  background: var(--edge);
+}
+
+.bar input[type="number"] {
+  width: 5ch;
+  font: inherit;
+  color: var(--text);
+  background: #232833;
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+
+/* Under the bar rather than inside it: a job line appears and disappears, and
+   a bar that changed height each time would jump the map. */
+.job {
+  position: fixed;
+  z-index: 2;
+  top: 41px;
+  left: 0;
+  right: 0;
+  padding: 6px 14px;
+  background: rgba(28, 31, 38, .96);
+  border-bottom: 1px solid var(--edge);
+  color: var(--muted);
+}
+
+.job.failed { color: #e26d6d; }
+.job.done { color: #7fc98a; }

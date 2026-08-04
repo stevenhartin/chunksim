@@ -25,10 +25,20 @@
     <input id="live" type="checkbox" checked> live
   </label>
 
+  <span class="sep"></span>
+
+  <button id="fetch" type="button" title="Re-download this map from source-chunk">fetch</button>
+
+  <label>rolls <input id="rolls" type="number" min="1" value="5"></label>
+  <label>runs <input id="runs" type="number" min="1" value="1"></label>
+  <button id="simulate" type="button" title="Simulate chunk rolls and save each run as a cached map">simulate</button>
+
   <span class="counts" id="counts"></span>
   <button id="skipped" type="button" class="warn" hidden></button>
   <span class="status" id="status"></span>
 </header>
+
+<div class="job" id="job" hidden></div>
 
 <canvas id="canvas"></canvas>
 

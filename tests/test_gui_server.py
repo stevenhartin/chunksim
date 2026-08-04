@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
@@ -133,12 +134,15 @@ def test_an_unknown_route_is_a_404(ctx: Context) -> None:
     assert _get("/nope", ctx).status == HTTPStatus.NOT_FOUND
 
 
-def test_only_read_methods_are_accepted(ctx: Context) -> None:
-    """Until there is something to post. `method` is threaded through so that
-    stays an added branch rather than a changed signature."""
-    response = handle_request("POST", "/api/view", {}, ctx)
+def test_an_unknown_method_is_refused(ctx: Context) -> None:
+    assert handle_request("PUT", "/api/view", {}, ctx).status == (
+        HTTPStatus.METHOD_NOT_ALLOWED
+    )
 
-    assert response.status == HTTPStatus.METHOD_NOT_ALLOWED
+
+def test_posting_to_a_read_only_route_is_a_404(ctx: Context) -> None:
+    """Only the action routes accept a POST; the rest simply are not there."""
+    assert handle_request("POST", "/api/view", {}, ctx).status == HTTPStatus.NOT_FOUND
 
 
 # --- traversal -------------------------------------------------------------
@@ -284,3 +288,149 @@ def test_the_hover_readout_inverts_the_real_projection() -> None:
     source = _app_js()
     assert re.search(rf"const regionX = gx \+ {MIN_REGION_X};", source)
     assert re.search(rf"const regionY = {MAX_REGION_Y} - gy;", source)
+
+
+# --- the actions -----------------------------------------------------------
+
+
+def _post(path: str, ctx: Context, payload: Any = None, **headers: str) -> Response:
+    body = b"" if payload is None else json.dumps(payload).encode("utf-8")
+    return handle_request("POST", path, {}, ctx, body=body, headers=headers)
+
+
+def _wait(ctx: Context, job_id: str, timeout: float = 5.0) -> dict[str, Any]:
+    """Poll a job to completion, the way the browser does."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        job = ctx.jobs.get(job_id)
+        assert job is not None
+        if job.state != "running":
+            return job.as_dict()
+        time.sleep(0.01)
+    raise AssertionError(f"job {job_id} did not finish within {timeout}s")
+
+
+def test_a_simulate_post_returns_a_job_that_finishes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The whole point of the job shape: a POST answers before the work does."""
+    monkeypatch.setattr(
+        "fray_claude.gui.server.run_batch",
+        lambda **kw: _FakeBatch(kw["name"], kw["runs"], kw["on_complete"]),
+    )
+    ctx = Context(root=tmp_path, check_origin=False)
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+
+    response = _post("/api/simulate", ctx, {"map": "fray", "name": "sim", "rolls": 2})
+
+    assert response.status == HTTPStatus.ACCEPTED
+    job = _wait(ctx, _body(response)["job"])
+    assert job["state"] == "done"
+    assert job["result"]["batch"] == "sim"
+
+
+def test_a_failing_job_reports_its_reason_without_a_traceback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The traceback names paths on this machine, so it stays in the terminal."""
+    def explode(**kw: Any) -> None:
+        raise RuntimeError("the pool caught fire")
+
+    monkeypatch.setattr("fray_claude.gui.server.run_batch", explode)
+    ctx = Context(root=tmp_path, check_origin=False)
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+
+    response = _post("/api/simulate", ctx, {"map": "fray", "name": "sim", "rolls": 1})
+    job = _wait(ctx, _body(response)["job"])
+
+    assert job["state"] == "failed"
+    assert job["error"] == "RuntimeError: the pool caught fire"
+    assert "Traceback" not in json.dumps(job)
+
+
+def test_a_bad_base_map_fails_the_post_not_the_job(tmp_path: Path) -> None:
+    """Catching it here means the browser sees it immediately, not after a poll."""
+    ctx = Context(root=tmp_path, check_origin=False)
+
+    response = _post("/api/simulate", ctx, {"map": "nope", "name": "sim", "rolls": 1})
+
+    assert response.status == HTTPStatus.NOT_FOUND
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [{"name": "sim"}, {"map": "fray"}, {}],
+)
+def test_a_simulate_without_its_required_fields_is_a_400(
+    ctx: Context, payload: dict[str, Any]
+) -> None:
+    ctx = Context(root=ctx.root, check_origin=False)
+    assert _post("/api/simulate", ctx, payload).status == HTTPStatus.BAD_REQUEST
+
+
+def test_a_malformed_body_is_a_400(ctx: Context) -> None:
+    ctx = Context(root=ctx.root, check_origin=False)
+    response = handle_request("POST", "/api/fetch", {}, ctx, body=b"{not json")
+
+    assert response.status == HTTPStatus.BAD_REQUEST
+
+
+def test_a_cross_site_post_is_refused(ctx: Context) -> None:
+    """A loopback bind stops other machines, not other tabs.
+
+    Any page you have open can POST to 127.0.0.1 and the browser will send it.
+    It cannot read the reply, so the exposure is nuisance-grade - but the
+    header says plainly that the request is cross-site, and it costs nothing to
+    believe it.
+    """
+    response = _post(
+        "/api/fetch", ctx, {"map": "fray"}, **{"Sec-Fetch-Site": "cross-site", "Host": "localhost:8731"}
+    )
+
+    assert response.status == HTTPStatus.FORBIDDEN
+    assert "cross-site" in _body(response)["error"]
+
+
+def test_a_rebound_host_is_refused(ctx: Context) -> None:
+    """DNS rebinding: a hostile domain resolving to 127.0.0.1, so its page's
+    origin *is* this server and Sec-Fetch-Site reads same-origin."""
+    response = _post(
+        "/api/fetch", ctx, {"map": "fray"}, **{"Sec-Fetch-Site": "same-origin", "Host": "evil.example.com"}
+    )
+
+    assert response.status == HTTPStatus.FORBIDDEN
+    assert "Host" in _body(response)["error"]
+
+
+def test_a_same_origin_post_is_allowed(ctx: Context, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "fray_claude.gui.server.fetch_map",
+        lambda map_id, timeout=30.0: {"chunks": {"unlocked": {LUMBRIDGE: LUMBRIDGE}}},
+    )
+    response = _post(
+        "/api/fetch", ctx, {"map": "fray"}, **{"Sec-Fetch-Site": "same-origin", "Host": "127.0.0.1:8731"}
+    )
+
+    assert response.status == HTTPStatus.ACCEPTED
+    assert _wait(ctx, _body(response)["job"])["state"] == "done"
+
+
+def test_an_unknown_job_is_a_404(ctx: Context) -> None:
+    assert _get("/api/jobs/nope", ctx).status == HTTPStatus.NOT_FOUND
+
+
+class _FakeBatch:
+    """Stands in for `batch.run_batch`, which would want a real export."""
+
+    def __init__(self, name: str, runs: int, on_complete: Any) -> None:
+        self.name = name
+        self.runs = [_FakeRun(f"run-{n:03d}") for n in range(1, runs + 1)]
+        for run in self.runs:
+            if on_complete:
+                on_complete(run)
+
+
+class _FakeRun:
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.unlocked_chunks = 1

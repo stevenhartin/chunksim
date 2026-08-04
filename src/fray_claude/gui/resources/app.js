@@ -49,6 +49,11 @@ const el = {
   skipped: document.getElementById("skipped"),
   status: document.getElementById("status"),
   toast: document.getElementById("toast"),
+  fetch: document.getElementById("fetch"),
+  simulate: document.getElementById("simulate"),
+  rolls: document.getElementById("rolls"),
+  runs: document.getElementById("runs"),
+  job: document.getElementById("job"),
 };
 
 /* ---- geometry ---------------------------------------------------------- */
@@ -357,6 +362,100 @@ function loadImage() {
     image.src = "/world_map.png";
   });
 }
+
+/* ---- actions ----------------------------------------------------------- */
+
+/* A POST answers with a job id, not a result: a simulate of fifty runs takes
+ * minutes. Everything below is polling that job and showing its progress. */
+
+async function postJSON(path, payload) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const parsed = await response.json();
+  if (!response.ok) throw new Error(parsed.error || response.statusText);
+  return parsed;
+}
+
+function showJob(text, cls) {
+  el.job.hidden = false;
+  el.job.textContent = text;
+  el.job.className = "job" + (cls ? " " + cls : "");
+}
+
+async function runAction(label, path, payload, onDone) {
+  setBusy(true);
+  try {
+    const { job } = await postJSON(path, payload);
+    showJob(label + " starting...");
+    await followJob(job, label, onDone);
+  } catch (error) {
+    showJob(label + " failed: " + error.message, "failed");
+  } finally {
+    setBusy(false);
+  }
+}
+
+function followJob(id, label, onDone) {
+  return new Promise((resolve) => {
+    const timer = setInterval(async () => {
+      let job;
+      try {
+        job = await getJSON("/api/jobs/" + id);
+      } catch {
+        clearInterval(timer);
+        return resolve();
+      }
+      if (job.state === "running") {
+        showJob(label + ": " + (job.progress || "working..."));
+        return;
+      }
+      clearInterval(timer);
+      if (job.state === "failed") {
+        showJob(label + " failed: " + job.error, "failed");
+      } else {
+        showJob(label + " done", "done");
+        setTimeout(() => { el.job.hidden = true; }, 4000);
+        onDone?.(job.result);
+      }
+      resolve();
+    }, 400);
+  });
+}
+
+function setBusy(busy) {
+  el.fetch.disabled = busy;
+  el.simulate.disabled = busy;
+}
+
+el.fetch.addEventListener("click", () => {
+  const map = el.map.value;
+  runAction("fetch " + map, "/api/fetch", { map }, () => loadView());
+});
+
+el.simulate.addEventListener("click", () => {
+  const map = el.map.value;
+  const rolls = Number(el.rolls.value) || 1;
+  const runs = Number(el.runs.value) || 1;
+  /* A name the user did not have to invent. The server appends -2, -3 if it
+   * is taken, and tells us what it actually used. */
+  const name = map + "-sim";
+  runAction(
+    "simulate " + rolls + " rolls",
+    "/api/simulate",
+    { map, name, rolls, runs },
+    async (result) => {
+      await loadMaps();
+      /* Jump straight to the result and show it against where you started,
+       * which is the question you were asking by simulating. */
+      el.map.value = map;
+      el.compare.value = result.open;
+      await loadView({ refit: true });
+    },
+  );
+});
 
 /* ---- boot -------------------------------------------------------------- */
 
