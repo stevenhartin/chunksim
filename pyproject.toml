@@ -11,6 +11,13 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest"]
+# The DPS calculator that `dps_bridge.py` prices kills with. Optional, and it
+# must stay optional: `fray estimate` falls back to the scraped wiki rates
+# without it. Kept out of `dependencies` for a second reason too - osrs-dps is
+# GPL-3.0 and this project is MIT, so it is an ordinary installed package a
+# user opts into rather than something vendored in. Not on PyPI yet; install
+# it from a checkout with `pip install -e ../osrs-dps`.
+dps = ["osrs-dps"]
 
 [project.scripts]
 fray = "fray_claude.cli:main"

@@ -132,16 +132,25 @@ Five things that cut across modules — the first three because each has already
 | `derived_cache.py` | The on-disk cache of `derive` results: the key (hash of every input), the zstd+pickle codec, `cached_derive`, and `CacheBehaviour`/`RollCache` — which of a simulation's states to keep. Pure bar the bytes, which `cache.py` writes. |
 | `search.py` | World-wide fuzzy search over the *raw* export — all 5 item routes, so a strict superset of what `fray sources` can list. |
 | `summary.py` | Pure reductions over a raw payload. Extend this, not `cli.py`. Also home to `_mapping`, the tolerant dict accessor eight other modules import despite the `_` — Firebase omits empty containers, so every lookup anywhere must survive a missing branch. |
+| `dps_bridge.py` | The seam to `osrs-dps`, which prices a kill from the gear `bis.py` reaches instead of a money-making guide. **Optional import** — check `DPS_AVAILABLE`, never assume it. Owns the export→library conversions (`magic_damage` is a display percentage here and tenths of a percent there), the monster-name join and its `exact`/`variant` provenance, and the refusal of fight *phases*, which are not substitutable the way variants are. |
 | `cli.py` | argparse subcommands and rendering only; new logic goes in a pure module. |
 
 ## Toolchain
 
 Python 3.14.6, mypy, pip (no uv). Run `mypy` and `.venv/bin/pytest` before each commit.
 
-**Zero runtime dependencies, deliberately** — `pyproject.toml` has an empty `dependencies` and
-`pytest` alone in the `dev` extra, so a new module gets the stdlib and nothing else. `derived_cache.py`
+**Zero *required* runtime dependencies, deliberately** — `pyproject.toml` has an empty `dependencies`,
+so a new module gets the stdlib and nothing else. `derived_cache.py`
 is the shape that keeps to: it wanted zstd and got it from 3.14's stdlib (`compression.zstd`, PEP 784)
 rather than PyPI, and still degrades to plain pickle on a CPython built without `_zstd`.
+
+There are two extras and they are not alike. `dev` is `pytest`. **`dps` is
+[`osrs-dps`](https://github.com/stevenhartin/osrs-dps), and it must stay optional for a reason beyond
+taste: it is GPL-3.0 where this project is MIT.** So it is a package a user installs deliberately
+(`pip install -e ../osrs-dps`), never vendored in, and `dps_bridge.py` is the only module that may
+import it — behind a `try`/`except ImportError` that sets `DPS_AVAILABLE`. Importing `dps_bridge` is
+always safe; calling into it without the extra raises `DpsUnavailableError`. Its tests skip rather
+than fail when the extra is absent, like the `FRAY_CHUNKINFO` oracles.
 
 ## Commands
 

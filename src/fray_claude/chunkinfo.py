@@ -61,6 +61,17 @@ class ChunkInfo:
         return _mapping(self.data, "slayerMonsters")
 
     @property
+    def equipment(self) -> dict[str, Any]:
+        """Per-item combat bonuses, attack speed and slot.
+
+        The one branch carrying stats rather than names, and the player half
+        of a damage calculation - the export has no monster combat stats at
+        all. See `dps_bridge.py`, which pairs it with an external source for
+        the other half.
+        """
+        return _mapping(self.data, "equipment")
+
+    @property
     def rolling_chunks(self) -> dict[str, Any]:
         return _mapping(self.data, "rollingChunks")
 
