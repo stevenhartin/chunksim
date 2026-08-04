@@ -12,13 +12,15 @@ from typing import Any
 import pytest
 
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.heuristics import Heuristics, SlayerTask
+from fray_claude.heuristics import Heuristics, SlayerTask, Superior
 from fray_claude.slayer import (
     SheetFormatError,
     best_master,
     master_rates,
     parse_mob_data,
     parse_task_lengths,
+    superior_rolls_per_hour,
+    superior_table_items,
 )
 
 _CSV = (
@@ -467,3 +469,78 @@ def test_the_extended_flag_lengthens_the_average_assignment() -> None:
 
     assert master_rates(info, plain, **kwargs)[0].average_hours == pytest.approx(1.0)
     assert master_rates(info, longer, **kwargs)[0].average_hours == pytest.approx(2.0)
+
+
+def _superior_info() -> ChunkInfo:
+    return ChunkInfo(
+        {
+            "slayerMasterTasks": {
+                "M": {"Abyssal demons": {"Weight": 1}, "Bats": {"Weight": 1}}
+            },
+            "slayerMonsters": {"Abyssal demon": 85, "Bat": 1},
+            "codeItems": {
+                "dropTables": {
+                    "SuperiorDropTable+": {"Imbued heart": "1/8@1", "Dust battlestaff": "3/8@1"}
+                }
+            },
+            "skillItems": {
+                "Slayer": {"Greater abyssal demon": {"SuperiorDropTable+": {"1": "1/2"}}}
+            },
+        }
+    )
+
+
+def _superior_heuristics() -> Heuristics:
+    return Heuristics(
+        slayer={
+            "M": {
+                "Abyssal demons": SlayerTask(100, 10, 100),
+                "Bats": SlayerTask(100, 10, 100),
+            }
+        },
+        superiors={
+            "Greater abyssal demon": Superior("Greater abyssal demon", "Abyssal demon", 1 / 200)
+        },
+    )
+
+
+def test_superior_rolls_aggregate_over_a_masters_whole_task_list() -> None:
+    # Half the assignments are abyssal demons; each is 100 kills at 1/200
+    # supers, and each super rolls the table at 1/2. So per assignment:
+    #   0.5 * 100 * (1/200) * (1/2) = 0.125 rolls
+    # An assignment takes 100/100 = 1h, so 0.125 rolls an hour.
+    rate = master_rates(
+        _superior_info(),
+        _superior_heuristics(),
+        reachable_monsters=frozenset({"Abyssal demon", "Bat"}),
+        valid={},
+        levels={},
+    )[0]
+
+    rolls = superior_rolls_per_hour(rate, _superior_info(), _superior_heuristics())
+
+    assert rolls == pytest.approx(0.125)
+
+
+def test_a_task_with_no_superior_contributes_nothing() -> None:
+    # Bats have no superior, so they dilute the rate rather than adding to
+    # it - which is exactly right, that time is spent not seeing supers.
+    info = _superior_info()
+    heuristics = _superior_heuristics()
+    only_bats = ChunkInfo({**info.data, "slayerMasterTasks": {"M": {"Bats": {"Weight": 1}}}})
+
+    rate = master_rates(
+        only_bats,
+        heuristics,
+        reachable_monsters=frozenset({"Bat"}),
+        valid={},
+        levels={},
+    )[0]
+
+    assert superior_rolls_per_hour(rate, only_bats, heuristics) == 0.0
+
+
+def test_the_shared_table_is_read_with_its_shares() -> None:
+    shares = superior_table_items(_superior_info())
+
+    assert shares == {"Imbued heart": pytest.approx(1 / 8), "Dust battlestaff": pytest.approx(3 / 8)}

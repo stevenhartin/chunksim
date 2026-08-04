@@ -791,3 +791,77 @@ def test_a_superior_shares_its_base_monsters_source() -> None:
     # 1/200 spawn then 1/10 drop = 2,000 kills at 100/hr = 20h, which covers
     # the maul's 1h along the way.
     assert result.buckets["activities"] == pytest.approx(20.0)
+
+
+def test_the_shared_superior_table_is_one_source_across_a_master() -> None:
+    # You never hunt a particular superior: you take a master's assignments
+    # and price what turns up. Both items come off the same rolls, so they
+    # are one source and the bucket takes the longer.
+    info = ChunkInfo(
+        {
+            "slayerMasterTasks": {"Vannaka": {"Abyssal demons": {"Weight": 1}}},
+            "slayerMonsters": {"Abyssal demon": 85},
+            "codeItems": {
+                "dropTables": {
+                    "SuperiorDropTable+": {"Imbued heart": "1/8@1", "Dust battlestaff": "3/8@1"}
+                }
+            },
+            "skillItems": {
+                "Slayer": {"Greater abyssal demon": {"SuperiorDropTable+": {"1": "1/2"}}}
+            },
+            "challenges": {
+                "Extra": {
+                    "Obtain an ~|imbued heart|~": {"Items": ["Imbued heart"]},
+                    "Obtain a ~|dust battlestaff|~": {"Items": ["Dust battlestaff"]},
+                }
+            },
+        }
+    )
+    derived = Derived(
+        reachable_sections={},
+        source_index=SourceIndex(
+            items={},
+            objects={},
+            monsters={"Abyssal demon": {"100": True}},
+            npcs={"Vannaka": {"100": True}},
+            shops={},
+            drop_rates={},
+        ),
+        challenges=ChallengeResult(valid={}, unsupported=frozenset()),
+        bis=BisResult(picks={}),
+        task_classification=TaskClassification(),
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra",
+                    groups=(
+                        TaskGroup(
+                            name="X",
+                            active=(
+                                "Obtain an ~|imbued heart|~",
+                                "Obtain a ~|dust battlestaff|~",
+                            ),
+                        ),
+                    ),
+                )
+            }
+        ),
+    )
+    heuristics = Heuristics(
+        slayer={"Vannaka": {"Abyssal demons": SlayerTask(100, 10, 100)}},
+        superiors={
+            "Greater abyssal demon": Superior("Greater abyssal demon", "Abyssal demon", 1 / 200)
+        },
+    )
+
+    result = _run(info, derived, heuristics)
+
+    # 100 kills an assignment at 1/200 supers rolling 1/2 = 0.25 rolls an
+    # assignment, over 1h, so 0.25 rolls an hour. The heart is 1/8 of a roll
+    # (8 rolls = 32h) and the staff 3/8 (2.67 rolls = 10.67h).
+    by_item = {item.item: item.hours for item in result.items}
+    assert by_item["Imbued heart"] == pytest.approx(32.0)
+    assert by_item["Dust battlestaff"] == pytest.approx(32.0 / 3)
+    assert {item.source for item in result.items} == {"superiors:Vannaka"}
+    # One pool, so the bucket is the longer of the two and not their sum.
+    assert result.buckets["activities"] == pytest.approx(32.0)

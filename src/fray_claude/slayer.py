@@ -62,6 +62,7 @@ from __future__ import annotations
 
 import csv
 import io
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -69,6 +70,7 @@ from typing import Any
 from fray_claude.challenges import chunks_requirement_met
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.heuristics import Heuristics, SlayerTask, TaskLength
+from fray_claude.rates import parse_ratio
 from fray_claude.search import normalise
 from fray_claude.summary import _mapping
 
@@ -80,6 +82,9 @@ XP_COLUMN = "XP/Kill"
 KPH_COLUMN = "Raw Kills/Hour"
 XP_HOUR_COLUMN = "Raw XP/Hour"
 QUALITY_COLUMN = "Data Quality"
+
+#: The drop table every superior slayer monster shares.
+SUPERIOR_TABLE = "SuperiorDropTable+"
 
 
 class SheetFormatError(Exception):
@@ -484,3 +489,79 @@ def _combine(
 def best_master(rates: list[MasterRate]) -> MasterRate | None:
     """The fastest master that can train at all, or `None` if none can."""
     return next((rate for rate in rates if rate.xp_per_hour > 0), None)
+
+
+def superior_rolls_per_hour(
+    master: MasterRate, chunk_info: ChunkInfo, heuristics: Heuristics
+) -> float:
+    """Expected `SuperiorDropTable+` rolls per hour slaying for `master`.
+
+    **Superiors share one drop table, so they are one source, not many.** The
+    four items on it - imbued heart, eternal gem, and the dust and mist
+    battlestaves - do not care which superior rolled them, and you are never
+    hunting a particular superior anyway: you take the master's assignments
+    and whatever supers appear, appear. Pricing an imbued heart against a
+    single base monster asks the wrong question and answers it far too
+    pessimistically.
+
+    So the rate aggregates over everything the master can send you to::
+
+        rolls per assignment = sum over tasks t of
+            P(t) * count(t) * spawn_rate(superior of t) * table_rate(...)
+        rolls per hour = that / average hours per assignment
+
+    **Per master, because you serve one master at a time.** Krystilia's
+    abyssal demons, jellies and nechryaels contribute together; Duradel's
+    list is a different pool entirely, and adding the two would describe
+    nobody's game.
+    """
+    if master.average_hours <= 0:
+        return 0.0
+
+    total_weight = sum(task.weight for task in master.tasks)
+    if total_weight <= 0:
+        return 0.0
+
+    per_assignment = 0.0
+    for task in master.tasks:
+        chance = _superior_table_chance(task.task, chunk_info, heuristics)
+        if chance > 0:
+            per_assignment += (task.weight / total_weight) * task.mean_count * chance
+    return per_assignment / master.average_hours
+
+
+def _superior_table_chance(task: str, chunk_info: ChunkInfo, heuristics: Heuristics) -> float:
+    """Chance one kill of `task`'s monsters yields a superior-table roll.
+
+    Zero for the many tasks with no superior at all, which is most of them.
+    """
+    monsters = _task_monsters(chunk_info, task)
+    if not monsters:
+        return 0.0
+
+    activities = _mapping(chunk_info.skill_items, "Slayer")
+    best = 0.0
+    for superior in heuristics.superiors.values():
+        if superior.base not in monsters or superior.spawn_rate <= 0:
+            continue
+        rolls = _mapping(activities, superior.name).get(SUPERIOR_TABLE)
+        if not isinstance(rolls, dict):
+            continue
+        for raw in rolls.values():
+            rate = parse_ratio(str(raw).partition("@")[0])
+            if not math.isnan(rate) and rate > 0:
+                best = max(best, superior.spawn_rate * rate)
+    return best
+
+
+def superior_table_items(chunk_info: ChunkInfo) -> dict[str, float]:
+    """The shared table's contents: item -> its share of a roll."""
+    table = _mapping(chunk_info.code_items, "dropTables").get(SUPERIOR_TABLE)
+    if not isinstance(table, dict):
+        return {}
+    shares: dict[str, float] = {}
+    for item, raw in table.items():
+        rate = parse_ratio(str(raw).partition("@")[0])
+        if not math.isnan(rate) and rate > 0:
+            shares[str(item)] = rate
+    return shares

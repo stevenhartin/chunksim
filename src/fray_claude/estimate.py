@@ -62,6 +62,16 @@ monster is never in a chunk - it replaces a normal counterpart on death, on
 task, at 1/200 - so gate 1 correctly refuses it and `_superior_hours` then
 prices it through its base monster, which carries gates 2 and 3 itself.
 
+**The four items superiors *share* are priced differently again.** Imbued
+heart, eternal gem and the two battlestaves sit on `SuperiorDropTable+`,
+which every superior rolls, so they are one source and not thirty-one: you
+never hunt a particular superior, you take a master's assignments and price
+whatever turns up. `slayer.superior_rolls_per_hour` aggregates the rate over
+everything that master can send you to - Krystilia's abyssal demons, jellies
+and nechryaels feeding one pool - and does it **per master**, because you
+serve one at a time and combining two would describe nobody's game. A
+superior's *own* drops stay attributed to its base monster.
+
 **Two deliberate limits, both of which would otherwise bite.**
 
 - *An item made from other items recurses*, and can cycle: A is the output of
@@ -104,7 +114,13 @@ from fray_claude.pipeline import Derived, MapState
 from fray_claude.rates import parse_ratio
 from fray_claude.search import WorldIndex, normalise
 from fray_claude.sections import expand_chunk_areas
-from fray_claude.slayer import MasterRate, best_master, master_rates
+from fray_claude.slayer import (
+    MasterRate,
+    best_master,
+    master_rates,
+    superior_rolls_per_hour,
+    superior_table_items,
+)
 from fray_claude.summary import _mapping
 
 #: The buckets, in the order `fray estimate` reports them.
@@ -313,6 +329,10 @@ class _Walk:
     #: Monster -> the slayer task you must be on to fight it, where one is
     #: required. Derived from `taskUnlocks`; see `task_gated_monsters`.
     task_gates: dict[str, str] = field(default_factory=dict)
+    #: The shared superior drop table: item -> its share of one roll.
+    superior_table: dict[str, float] = field(default_factory=dict)
+    #: `master -> superior-table rolls per hour` while serving that master.
+    superior_rolls: dict[str, float] = field(default_factory=dict)
     #: Every master's task table. A gated kill is priced against whichever
     #: master can assign the task *soonest*, not the one with the best XP
     #: rate: different masters assign different things, and Krystilia being
@@ -398,12 +418,57 @@ def _item_hours(
     if item in seen or depth > _MAX_DEPTH:
         return None
 
+    shared = _superior_table_hours(walk, item)
+    if shared is not None:
+        return shared
+
     best: _Priced | None = None
     for source in walk.world.item_sources.get(item, ()):
         priced = _route_hours(walk, item, source.route, source.name, depth, seen | {item})
         if priced is not None and (best is None or priced.hours < best.hours):
             best = priced
     return best
+
+
+def _superior_table_hours(walk: _Walk, item: str) -> _Priced | None:
+    """Price one of the four items every superior shares, or `None`.
+
+    **Superiors are one source, not thirty-one.** The table is rolled by any
+    superior, and you never hunt a particular one - you take a master's
+    assignments and whatever supers turn up, turn up. So the rate is the
+    master's *aggregate*: Krystilia's abyssal demons, jellies and nechryaels
+    all feed the same pool. Pricing this against a single base monster asks
+    which superior you are farming, which is not a question the game poses.
+
+    Per master, because you serve one at a time - combining two masters'
+    pools would describe nobody's game. The best of them wins, as everywhere
+    else here.
+    """
+    share = walk.superior_table.get(item)
+    if not share:
+        return None
+
+    best: tuple[float, str] | None = None
+    for master, rolls in walk.superior_rolls.items():
+        if rolls <= 0:
+            continue
+        hours = (1 / share) / rolls
+        if best is None or hours < best[0]:
+            best = (hours, master)
+    if best is None:
+        return None
+
+    hours, master = best
+    return _Priced(
+        hours,
+        f"superior table under {master}, {1 / share:,.1f} rolls at {_rolls_label(walk, master)}",
+        f"superiors:{master}",
+    )
+
+
+def _rolls_label(walk: _Walk, master: str) -> str:
+    rolls = walk.superior_rolls.get(master, 0.0)
+    return f"1 super per {1 / rolls:,.1f}h" if rolls > 0 else "no supers"
 
 
 def _route_hours(
@@ -720,6 +785,11 @@ def estimate(
         available=reachable,
         task_gates=task_gated_monsters(state.chunk_info),
         masters=gate_masters,
+        superior_table=superior_table_items(state.chunk_info),
+        superior_rolls={
+            rate.master: superior_rolls_per_hour(rate, state.chunk_info, heuristics)
+            for rate in gate_masters
+        },
     )
 
     tasks: list[TaskEstimate] = list(_quest_tasks(derived, heuristics))
