@@ -155,6 +155,61 @@ def test_an_unrelated_guide_does_not_join() -> None:
     assert "Albatross" not in config["monsters"]
 
 
+def test_a_guide_that_does_not_count_kills_cannot_price_a_monster() -> None:
+    """The real case: `Grinding unicorn horns` priced `Unicorn` at 9,000/hr.
+
+    The join is correct - the guide really is about unicorns - but its `kph`
+    counts horns ground, not unicorns killed. Only the label separates them.
+    """
+    info = _info(drops={"Unicorn": {"Unicorn horn": {"1": "Always"}}})
+    config = _config(
+        info=info,
+        mmg_pages={
+            "Money making guide/Grinding unicorn horns": MmgRates(
+                activity="Grinding unicorn horns",
+                kph=9000.0,
+                kph_name="Horns per hour",
+            )
+        },
+    )
+
+    assert "Unicorn" not in config["monsters"]
+
+
+def test_a_skilling_guide_still_prices_training() -> None:
+    """Rejecting it as a *kill* rate must not reject it as an XP rate.
+
+    Units per hour times XP per unit is exactly what a non-kill guide is for,
+    so the two paths deliberately see different pools of guides.
+    """
+    info = _info(
+        drops={"Unicorn": {"Unicorn horn": {"1": "Always"}}},
+        challenges={
+            "Herblore": {
+                "Do ~|Grinding unicorn horns|~ for Herblore xp": {
+                    "Primary": True,
+                    "Level": 5,
+                }
+            }
+        },
+    )
+    config = _config(
+        info=info,
+        mmg_pages={
+            "g": MmgRates(
+                activity="Grinding unicorn horns",
+                kph=9000.0,
+                kph_name="Horns per hour",
+                experience={"Herblore": 1.0},
+            )
+        },
+    )
+
+    task = "Do ~|Grinding unicorn horns|~ for Herblore xp"
+    assert "Unicorn" not in config["monsters"]
+    assert config["training"][task]["Herblore"]["value"] == 9000.0
+
+
 def test_a_training_method_is_priced_as_xp_per_unit_times_rate() -> None:
     info = _info(
         challenges={

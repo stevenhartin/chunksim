@@ -95,11 +95,37 @@ class MmgRates:
     multiplied by `kph`. Keeping them separate here means a guide with a
     `kph` and no experience (a pure boss drop) and one with both (a skilling
     activity) parse through the same path.
+
+    **`kph` is not always kills.** The template counts whatever the guide is
+    about, and `kph name` relabels the column when it is not kills - see
+    `counts_kills`.
     """
 
     activity: str = ""
     kph: float | None = None
     experience: dict[str, float] = field(default_factory=dict)
+    #: The `kph name` override as written, or `""` when the guide leaves the
+    #: column with its default name of `Kills per hour`.
+    kph_name: str = ""
+
+    @property
+    def counts_kills(self) -> bool:
+        """Whether `kph` is a rate of *killing something*.
+
+        **The template serves every kind of money maker, and `kph` counts
+        whatever the guide is about** - berries picked, pockets picked, horns
+        ground. A guide relabels the column with `kph name` when it is not
+        kills, so the absence of that parameter is the wiki's own statement
+        that the number is a kill rate.
+
+        Measured over the 97 guides that were reaching monster names: all 82
+        without a `kph name` are titled `Killing ...` or `Looting ...`, and no
+        guide with a different verb omits it. The parameter is also *better*
+        than the title, which is why it is what this reads - `Killing cows and
+        tanning cowhide` counts `Leather made per hour` and `Looting ogre
+        coffins` counts `Coffins per hour`, and both would pass a title test.
+        """
+        return not self.kph_name or self.kph_name.strip().casefold() == "kills per hour"
 
 
 @dataclass(frozen=True)
@@ -278,6 +304,9 @@ def mmg_rates(text: str) -> MmgRates | None:
         activity=strip_links(params.get("activity", "")).strip(),
         kph=parse_number(params.get("kph", "")),
         experience=experience,
+        # Note the space: the parameter is `kph name`, not `kphname`, and
+        # `template_params` lowercases but does not otherwise normalise keys.
+        kph_name=params.get("kph name", ""),
     )
 
 

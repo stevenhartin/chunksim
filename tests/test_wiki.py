@@ -170,6 +170,55 @@ def test_a_page_that_is_not_a_guide_reads_none() -> None:
     assert mmg_rates("{{Infobox Quest|length = Long}}") is None
 
 
+def test_a_guide_without_a_kph_name_counts_kills() -> None:
+    """The wiki's default column name is `Kills per hour`, so silence means kills."""
+    rates = mmg_rates("{{Mmgtable|Activity = Killing [[General Graardor]]|kph = 27}}")
+
+    assert rates is not None
+    assert rates.kph_name == ""
+    assert rates.counts_kills
+
+
+def test_a_relabelled_kph_column_is_not_a_kill_rate() -> None:
+    """`Mmgtable` counts whatever its guide is about.
+
+    Reading these as kill rates put a `Unicorn` at 9,000 an hour, which is two
+    and a half kills a second.
+    """
+    grinding = mmg_rates(
+        "{{Mmgtable|Activity = Grinding [[unicorn horn]]s"
+        "|kph = 9000|kph name = Horns per hour}}"
+    )
+    thieving = mmg_rates(
+        "{{Mmgtable|Activity = Pickpocketing [[Knights of Ardougne]]"
+        "|kph = 3000|kph name = Pickpockets per hour}}"
+    )
+
+    assert grinding is not None and not grinding.counts_kills
+    assert thieving is not None and not thieving.counts_kills
+
+
+def test_an_explicit_kills_per_hour_label_still_counts_kills() -> None:
+    rates = mmg_rates("{{Mmgtable|Activity = X|kph = 30|kph name = Kills per hour}}")
+
+    assert rates is not None and rates.counts_kills
+
+
+def test_the_label_beats_the_title_verb() -> None:
+    """Two real guides say `Killing`/`Looting` and count something else.
+
+    `Killing cows and tanning cowhide` counts leather and `Looting ogre
+    coffins` counts coffins, so a title test would admit both. The parameter
+    is the wiki's own statement about the column and is what this reads.
+    """
+    cows = mmg_rates(
+        "{{Mmgtable|Activity = Killing cows and tanning cowhide"
+        "|kph = 1000|kph name = Leather made per hour}}"
+    )
+
+    assert cows is not None and not cows.counts_kills
+
+
 def test_slayer_assignments_reads_task_amount_and_weight() -> None:
     rows = slayer_assignments(_ASSIGNMENTS)
 

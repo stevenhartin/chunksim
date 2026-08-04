@@ -21,10 +21,17 @@ someone pinned by hand - the one thing a silent merge would hide.
 
 **On coverage, honestly.** The money-making guides are about money, and most
 ways of training a skill do not make any, so they have no guide at all.
-Measured against the real export: 960 of 1,111 guides carry a `kph`, and they
-join to **243 of the 2,710** `Primary: true` training methods and **105 of the
+Measured against the real export: 1,015 of 1,111 guides carry a `kph`, and they
+join to **246 of the 2,657** `Primary: true` training methods and **91 of the
 872** monsters with drops. Quests are the exception and come out complete,
-209 of 209. Everything unjoined gets a default, which is why
+209 of 209.
+
+That monster count is 91 rather than 106 because **a `kph` is only a kill rate
+when its guide says so**. `Mmgtable` counts whatever its guide is about, so
+joining every guide to a monster name had `Grinding unicorn horns` pricing a
+`Unicorn` at 9,000 an hour. `MmgRates.counts_kills` is the gate; the training
+path deliberately keeps using every guide, since XP per hour is exactly what
+the non-kill ones measure. Everything unjoined gets a default, which is why
 `DEFAULT_XP_PER_HOUR` is deliberately *low* - an un-joined method should look
 slow and obvious rather than fast and invisible, so the entries worth an
 afternoon of hand-correction are the ones dominating the total. The generated
@@ -534,12 +541,21 @@ def build_config(
             source="wiki" if length else "default",
         ).as_dict()
 
+    # **Only guides that count kills can price a kill.** `Mmgtable`'s `kph`
+    # counts whatever its guide is about, so joining a monster name against
+    # every guide let `Grinding unicorn horns` set `Unicorn` to 9,000 an hour
+    # and `Pickpocketing Knights of Ardougne` set that knight to 3,000 - rates
+    # of grinding and thieving, not of killing. See `MmgRates.counts_kills`.
+    kill_guides = {
+        key: value for key, value in guides.items() if value[1].counts_kills
+    }
+
     monsters: dict[str, Any] = {}
     for monster in sorted(chunk_info.drops):
-        found = _best_match(monster, guides)
+        found = _best_match(monster, kill_guides)
         if found is None:
             continue
-        title, rates = guides[found[0]]
+        title, rates = kill_guides[found[0]]
         monsters[monster] = Rate(
             value=rates.kph or 0.0, source=f"mmg:{title}", match=found[1]
         ).as_dict()
