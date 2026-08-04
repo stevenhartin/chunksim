@@ -104,9 +104,18 @@ than a player. See `GROUP_BOSSES`.
 **Slayer's holes are the other thing this fills.** `slayer.py` folds a task it
 has no data for back in at a flat 7,000 XP an hour, deliberately poor so a
 master full of gaps looks slow rather than quietly fast. `price_slayer_tasks`
-computes those instead, and **every master on the real map is now 0% guessed**.
+computes those instead, and the real map's three reachable masters - Krystilia,
+Vannaka and Mazchna - are now 0% guessed where Mazchna was 63% and Vannaka 40%.
 Read its docstring on why the XP comes from hitpoints, and on why a master's
 rate can *fall* when a guess is replaced by a number.
+
+**Quote a master only after gating on its NPC.** `master_rates` takes
+`reachable_masters` and defaults it to `None`, meaning "do not filter", which
+is right for fixtures and wrong for every real map - this one holds three of
+the ten masters, so an ungated table puts Konar at the top of a list of
+masters the player cannot walk up to. `price_slayer_tasks` takes the same set
+for the same reason: pricing a master's list is wasted work if nobody can be
+assigned from it.
 
 The tasks that are not priced are the ones whose monsters this map cannot
 reach, and they are now counted as *skips* rather than as unpriced work - a
@@ -1012,6 +1021,7 @@ def price_slayer_tasks(
     kit: Kit | None = None,
     boss_monsters: frozenset[str] = frozenset(),
     reachable_monsters: frozenset[str] = frozenset(),
+    reachable_masters: frozenset[str] | None = None,
 ) -> dict[str, dict[str, SlayerTask]]:
     """Rates for the slayer tasks the config has no measurement for.
 
@@ -1049,6 +1059,12 @@ def price_slayer_tasks(
     Pass `SourceIndex.monsters`, which is already past its `taskUnlocks`
     gates. Passing nothing keeps every candidate, which is the wrong default
     for a real map and the right one for a test.
+
+    **`reachable_masters` is the master's own NPC**, and `slayer.master_rates`
+    takes the same set for the same reason: a master you cannot walk up to
+    assigns nothing, so pricing their list is work spent on a rate no caller
+    should quote. `None` means "do not filter", matching `master_rates`, and
+    only fixtures should want it. This map holds three of the ten masters.
     """
     _require()
     monster_index = load_monster_index() if index is None else index
@@ -1061,6 +1077,8 @@ def price_slayer_tasks(
     filled: dict[str, dict[str, SlayerTask]] = {}
     for master, tasks in _mapping(chunk_info.data, "slayerMasterTasks").items():
         if not isinstance(tasks, dict):
+            continue
+        if reachable_masters is not None and master not in reachable_masters:
             continue
         for task in tasks:
             known = (heuristics.slayer.get(master) or {}).get(task)

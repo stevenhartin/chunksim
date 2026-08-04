@@ -963,3 +963,71 @@ def test_a_task_whose_monsters_are_all_unreachable_is_not_priced() -> None:
         )
         == {}
     )
+
+
+def test_slayer_pricing_skips_masters_you_cannot_reach() -> None:
+    """A master you cannot walk up to assigns nothing.
+
+    `master_rates` has gated on this since it once picked Duradel on a map
+    holding none of him; pricing their task list is the same waste, and an
+    entry for a master nobody can visit invites the same misreading.
+    """
+    from fray_claude.heuristics import Heuristics, SlayerTask
+
+    info = ChunkInfo(
+        {
+            "equipment": _equipment(),
+            "slayerMasterTasks": {
+                "Turael": {"Wolves": {"Weight": 10}},
+                "Duradel": {"Wolves": {"Weight": 10}},
+            },
+            "codeItems": {"slayerTasks": {"Wolves": {"Wolf": True}}},
+        }
+    )
+    index = _FakeIndex({"Wolf": _target(name="Wolf", hitpoints=15)})
+    task = SlayerTask(mean_count=40.0, xp_per_kill=0.0, kills_per_hour=0.0)
+    heuristics = Heuristics(
+        slayer={"Turael": {"Wolves": task}, "Duradel": {"Wolves": task}}
+    )
+
+    priced = dps_bridge.price_slayer_tasks(
+        info,
+        {"Melee-weapon": "Abyssal whip"},
+        LEVELS,
+        heuristics=heuristics,
+        index=index,  # type: ignore[arg-type]
+        reachable_masters=frozenset({"Turael"}),
+    )
+
+    assert set(priced) == {"Turael"}
+
+
+def test_no_master_filter_prices_every_master() -> None:
+    """`None` means "do not filter", matching `master_rates`. Fixtures only."""
+    from fray_claude.heuristics import Heuristics, SlayerTask
+
+    info = ChunkInfo(
+        {
+            "equipment": _equipment(),
+            "slayerMasterTasks": {
+                "Turael": {"Wolves": {"Weight": 10}},
+                "Duradel": {"Wolves": {"Weight": 10}},
+            },
+            "codeItems": {"slayerTasks": {"Wolves": {"Wolf": True}}},
+        }
+    )
+    index = _FakeIndex({"Wolf": _target(name="Wolf", hitpoints=15)})
+    task = SlayerTask(mean_count=40.0, xp_per_kill=0.0, kills_per_hour=0.0)
+    heuristics = Heuristics(
+        slayer={"Turael": {"Wolves": task}, "Duradel": {"Wolves": task}}
+    )
+
+    priced = dps_bridge.price_slayer_tasks(
+        info,
+        {"Melee-weapon": "Abyssal whip"},
+        LEVELS,
+        heuristics=heuristics,
+        index=index,  # type: ignore[arg-type]
+    )
+
+    assert set(priced) == {"Turael", "Duradel"}
