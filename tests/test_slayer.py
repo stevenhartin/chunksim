@@ -14,6 +14,7 @@ import pytest
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.heuristics import (
     DEFAULT_SLAYER_XP_PER_HOUR,
+    streak_factor,
     Heuristics,
     SlayerTask,
     Superior,
@@ -632,8 +633,12 @@ def test_the_points_delta_matches_the_worked_example() -> None:
         unlocked={"1": True},
     )[0]
 
+    # Milestones lift what a completion pays, so the delta is computed on
+    # 10 * streak_factor() rather than a flat 10.
     assert rate.skip_rate == pytest.approx(1 / 3)
-    assert rate.points_delta == pytest.approx(-10 / 3)
+    assert rate.points_delta == pytest.approx(
+        (2 / 3) * 10 * streak_factor() - (1 / 3) * 30
+    )
 
 
 def test_a_task_the_master_never_offers_is_not_a_skip() -> None:
@@ -653,7 +658,7 @@ def test_a_task_the_master_never_offers_is_not_a_skip() -> None:
 
     assert rate.offered == 0.5
     assert rate.skip_rate == 0.0
-    assert rate.points_delta == pytest.approx(10.0)
+    assert rate.points_delta == pytest.approx(10.0 * streak_factor())
 
 
 def test_an_unreachable_offered_task_costs_a_skip() -> None:
@@ -676,8 +681,7 @@ def test_an_unreachable_offered_task_costs_a_skip() -> None:
 
     assert rate.offered == 1.0
     assert rate.skip_rate == 0.5
-    # 0.5*10 - 0.5*30 = -10
-    assert rate.points_delta == pytest.approx(-10.0)
+    assert rate.points_delta == pytest.approx(0.5 * 10.0 * streak_factor() - 0.5 * 30)
 
 
 def test_the_published_point_values_are_used_by_default() -> None:
@@ -688,7 +692,8 @@ def test_the_published_point_values_are_used_by_default() -> None:
         info, heuristics, reachable_monsters=frozenset(), valid={}, levels={}
     )[0]
 
-    assert rate.points_per_task == 25.0
+    # 25 base, lifted by the streak milestones.
+    assert rate.points_per_task == pytest.approx(25.0 * streak_factor())
     assert rate.skip_cost == 30.0
 
 

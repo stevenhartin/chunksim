@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.heuristics import (
     DEFAULT_KPH,
@@ -19,6 +21,7 @@ from fray_claude.heuristics import (
     merge,
     primary_training_tasks,
     stems,
+    streak_factor,
 )
 from fray_claude.wiki import Assignment, MmgRates
 
@@ -350,3 +353,25 @@ def test_konars_location_suffix_is_stripped_before_lookup() -> None:
     # Keyed by the full name, since that is what the export asks for.
     entry = config["slayer"]["Konar quo Maten"]["Aberrant spectres - Catacombs of Kourend"]
     assert (entry["mean_count"], entry["kills_per_hour"]) == (165.0, 340.0)
+
+
+def test_the_streak_factor_reproduces_the_wikis_worked_example() -> None:
+    # The wiki puts a 1,000-task Krystilia streak at 44,375 points on a base
+    # of 25. That figure is what settles the stacking question: only the
+    # highest applicable milestone is paid, never the sum.
+    assert 25 * 1000 * streak_factor() == pytest.approx(44_375)
+
+
+def test_only_the_highest_milestone_is_paid() -> None:
+    # Task 1,000 is also a 250th, a 100th, a 50th and a 10th. Summing them
+    # gives 53,500 against the wiki's 44,375.
+    assert 25 * 1000 * streak_factor() != pytest.approx(53_500)
+
+
+def test_a_table_with_no_milestones_leaves_the_rate_alone() -> None:
+    assert streak_factor({}) == 1.0
+
+
+def test_a_single_milestone_amortises_over_its_interval() -> None:
+    # Nine ordinary tasks and one paying 5x is (9 + 5) / 10.
+    assert streak_factor({10: 5.0}) == pytest.approx(1.4)

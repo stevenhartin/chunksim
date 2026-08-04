@@ -56,9 +56,12 @@ master is worth per assignment once you net the skips off::
 Two thirds doable at 10 points a task against 30 a skip is `-3.3` - the
 master *costs* points to train at, however good the XP looks, and that
 decides where you go as much as the rate does. Point values are the wiki's
-published figures (`heuristics.SLAYER_POINTS`); the skip cost is the flat 30,
-not the far larger `block` cost tabulated beside it, blocking being permanent
-and a different decision.
+published figures (`heuristics.SLAYER_POINTS`), lifted by
+`heuristics.streak_factor` so the milestone bonuses are in the average rather
+than in a footnote - 1.775x on the standard table, which takes Krystilia from
+25 a task to 44.4. The skip cost is the flat 30, not the far larger `block`
+cost tabulated beside it, blocking being permanent and a different decision,
+and cancelling does not break the streak - Turael-skipping is what does.
 
 The surviving weights are then renormalised, and *that flatters a sparse
 map*: a blocked task is still assigned and still eats the time you spend
@@ -92,6 +95,7 @@ from fray_claude.challenges import chunks_requirement_met
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.heuristics import (
     DEFAULT_SLAYER_XP_PER_HOUR,
+    streak_factor,
     Heuristics,
     SlayerTask,
     TaskLength,
@@ -637,7 +641,10 @@ def _combine(
     share = unpriced_weight / offered_weight if offered_weight > 0 else 0.0
     skip_rate = skipped_weight / offered_weight if offered_weight > 0 else 0.0
     offered = offered_weight / total_weight if total_weight > 0 else 0.0
-    points_delta = (1 - skip_rate) * points - skip_rate * skip_cost
+    # Milestones are folded into what a completed task pays; a cancelled
+    # one pays nothing and costs the skip.
+    earned = points * streak_factor()
+    points_delta = (1 - skip_rate) * earned - skip_rate * skip_cost
     if not tasks or surviving <= 0:
         return MasterRate(
             master=master,
@@ -645,7 +652,7 @@ def _combine(
             unpriced=share,
             offered=offered,
             skip_rate=skip_rate,
-            points_per_task=points,
+            points_per_task=earned,
             skip_cost=skip_cost,
             points_delta=points_delta,
         )
@@ -660,7 +667,7 @@ def _combine(
         unpriced=share,
         offered=offered,
         skip_rate=skip_rate,
-        points_per_task=points,
+        points_per_task=earned,
         skip_cost=skip_cost,
         points_delta=points_delta,
     )

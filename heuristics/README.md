@@ -83,7 +83,11 @@ Tasks the master will not offer at all — level-gated, quest-gated — cost
 nothing and are not counted as skips. Only what you are handed and have to
 throw away is.
 
-Point values are the wiki's published figures. Override per master:
+Point values are the wiki's published figures, raised by the task-streak
+milestones (5x every 10th task, 15x every 50th, 25x every 100th, 35x every
+250th, 50x every 1,000th — only the highest applicable one is paid). Amortised
+that is **1.775x**, so Krystilia's 25 a task is really 44.4 over a streak.
+Override the base per master:
 
 ```json
 {"masters": {"Vannaka": {"points": 8, "skip_cost": 30}}}

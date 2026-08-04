@@ -116,6 +116,13 @@ SLAYER_POINTS: dict[str, float] = {
     "Mortimer": 0.0,
 }
 
+#: Task-streak milestones: every Nth completed task pays this multiple of
+#: the master's base points. **Only the highest applicable one is awarded**,
+#: not the sum - checked against the wiki's own worked example, a 1,000-task
+#: Krystilia streak paying 44,375. Highest-applicable reproduces that
+#: exactly; stacking them gives 53,500.
+STREAK_BONUSES: dict[int, float] = {10: 5.0, 50: 15.0, 100: 25.0, 250: 35.0, 1000: 50.0}
+
 #: What cancelling a task costs. The flat 30 is universal; Mortimer is the
 #: exception. Note this is the *skip* cost, not the far larger `block` cost
 #: the wiki tabulates beside it - blocking is permanent and a different
@@ -332,6 +339,35 @@ class Heuristics:
             },
             "rarities": self.rarities,
         }
+
+
+def streak_factor(bonuses: dict[int, float] | None = None) -> float:
+    """Average points multiplier per completed task, milestones included.
+
+    The milestones are worth having in the average: 1.775x on the standard
+    table, so a master paying 25 a task really pays 44.4 over a long streak.
+    Amortising them is the honest way to carry that - the alternative is a
+    per-task figure that is right for 900 tasks in 1,000 and wrong for the
+    other hundred.
+
+    Computed by walking one full cycle rather than by inclusion-exclusion,
+    because the milestones overlap (task 1,000 is also a 250th, a 100th, a
+    50th and a 10th) and only the highest counts. Walking it cannot get the
+    overlaps wrong; the closed form can, and did.
+
+    **Assumes cancelling does not break the streak.** In-game it is
+    Turael-skipping that resets it, not paying a master to cancel - which is
+    the whole reason cancelling costs points.
+    """
+    table = bonuses if bonuses is not None else STREAK_BONUSES
+    if not table:
+        return 1.0
+    cycle = max(table)
+    total = 0.0
+    for task in range(1, cycle + 1):
+        hit = [multiple for interval, multiple in table.items() if task % interval == 0]
+        total += max(hit) if hit else 1.0
+    return total / cycle
 
 
 def hours_for_length(length: str) -> float:
