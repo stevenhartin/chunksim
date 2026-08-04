@@ -104,9 +104,16 @@ than a player. See `GROUP_BOSSES`.
 **Slayer's holes are the other thing this fills.** `slayer.py` folds a task it
 has no data for back in at a flat 7,000 XP an hour, deliberately poor so a
 master full of gaps looks slow rather than quietly fast. `price_slayer_tasks`
-computes those instead, and the real map's three reachable masters - Krystilia,
-Vannaka and Mazchna - are now 0% guessed where Mazchna was 63% and Vannaka 40%.
-Read its docstring on why the XP comes from hitpoints, and on why a master's
+computes those, **and now every other task too**: the sheet's rates are real
+observations of the *best* method, and the best method for a stackable task is
+chinning or bursting, which wants a box trap or Desert Treasure I. On a map
+without them that number describes an activity the player cannot perform. The
+three reachable masters land at Krystilia 18,609 against the sheet's 50,126,
+Vannaka 16,939 against 32,044, and Mazchna 14,780 against 14,569 - the last
+barely moving, its list holding one multi-target row against Krystilia's seven.
+
+Read `price_slayer_tasks` on why the XP comes from hitpoints, on why the
+monster is chosen by XP an hour rather than by speed, and on why a master's
 rate can *fall* when a guess is replaced by a number.
 
 **Quote a master only after gating on its NPC.** `master_rates` takes
@@ -1025,11 +1032,20 @@ def price_slayer_tasks(
 ) -> dict[str, dict[str, SlayerTask]]:
     """Rates for the slayer tasks the config has no measurement for.
 
-    **Gaps only.** A task the wiki and the community spreadsheet already
-    measure keeps its number: that is an observation of people actually doing
-    it, where this is a model of one fight. Only where `slayer.py` would
-    otherwise fall back to `DEFAULT_SLAYER_XP_PER_HOUR` - a flat 7,000 an hour
-    chosen to be deliberately poor - does this have anything to say.
+    **Every task, not only the unmeasured ones.** The spreadsheet's rates are
+    real observations, but of the *best* method, and the best method for a
+    stackable task is chinning or bursting - `Spiders` at 3,360 kills an hour
+    is one every 1.07 seconds, which is chinchompas into a stack. Those need
+    Desert Treasure I or a box trap and the catching time behind it, so on a
+    map without them the sheet is measuring an activity the player cannot
+    perform. `SlayerTask.is_multi_target` names the 18 rows where that is
+    unmistakable; the same objection applies more quietly to the rest, every
+    one of which assumes gear this map does not have.
+
+    So this computes the single-target rate for everything it can, and
+    `with_slayer_rates` lets it win. The sheet's number stays reachable
+    through `Heuristics.slayer` for anyone who wants to compare, and a task
+    this cannot price keeps it.
 
     Two numbers make a task priceable, and both are now available:
 
@@ -1088,8 +1104,6 @@ def price_slayer_tasks(
             continue
         for task in tasks:
             known = (heuristics.slayer.get(master) or {}).get(task)
-            if known is not None and known.kills_per_hour > 0 and known.count > 0:
-                continue
             if known is None or known.count <= 0:
                 # No measured assignment size, so there is no size to put a
                 # rate beside. `slayer.py`'s own fallback still covers it.

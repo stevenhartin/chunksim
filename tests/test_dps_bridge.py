@@ -756,11 +756,12 @@ def _slayer_info(**tasks: Any) -> ChunkInfo:
     )
 
 
-def test_slayer_gaps_are_filled_and_measurements_are_not() -> None:
-    """A measured task keeps its number; only a hole gets a computed one.
+def test_every_task_is_priced_not_only_the_unmeasured_ones() -> None:
+    """The sheet measures the best method, which needs things a map may lack.
 
-    The community sheet is people actually doing the task. This is a model of
-    one fight, so it defers wherever there is an observation.
+    Chinning and bursting want a box trap or Desert Treasure I, so a rate
+    derived from one is not a rate this player can reach. The single-target
+    number is computed for every task, and a measured row does not exempt it.
     """
     from fray_claude.heuristics import Heuristics, SlayerTask
 
@@ -795,12 +796,13 @@ def test_slayer_gaps_are_filled_and_measurements_are_not() -> None:
         reachable_masters=frozenset({"Turael"}),
     )
 
-    assert set(filled["Turael"]) == {"Cockatrices"}
-    task = filled["Turael"]["Cockatrices"]
-    assert task.source == "dps"
-    assert task.kills_per_hour > 0
+    assert set(filled["Turael"]) == {"Banshees", "Cockatrices"}
+    for name in ("Banshees", "Cockatrices"):
+        assert filled["Turael"][name].source == "dps"
+        assert filled["Turael"][name].kills_per_hour > 0
     # The measured assignment size is kept, not reinvented.
-    assert task.mean_count == 40.0
+    assert filled["Turael"]["Cockatrices"].mean_count == 40.0
+    assert filled["Turael"]["Banshees"].mean_count == 50.0
 
 
 def test_slayer_xp_per_kill_is_the_monsters_hitpoints() -> None:

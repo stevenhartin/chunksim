@@ -137,6 +137,12 @@ STREAK_BONUSES: dict[int, float] = {10: 5.0, 50: 15.0, 100: 25.0, 250: 35.0, 100
 DEFAULT_SKIP_COST = 30.0
 SLAYER_SKIP_COST: dict[str, float] = {"Mortimer": 100.0}
 
+#: Kills per hour above which a slayer rate must have been measured with a
+#: multi-target method - chinning or barrage bursting - rather than by
+#: fighting one thing at a time. See `SlayerTask.is_multi_target` for why the
+#: rate is the only available tell and what the line misses.
+MULTI_TARGET_KPH = 1000.0
+
 #: What an unpriced *slayer task* is assumed to yield. Deliberately poor -
 #: the tasks with no data are the low-level ones nobody optimises, and a
 #: master whose list is full of them should look slow rather than look fast
@@ -223,6 +229,35 @@ class SlayerTask:
         if self.extended and self.extended_count > 0:
             return self.extended_count
         return self.mean_count
+
+    @property
+    def is_multi_target(self) -> bool:
+        """Whether this rate was measured with chinning or barrage bursting.
+
+        **The spreadsheet records the best method, and the best method for a
+        stackable task is not fighting things one at a time.** `Spiders` reads
+        3,360 kills an hour - one every 1.07 seconds - which no weapon does
+        single-target; it is red chinchompas thrown into a stack. `Ankous`,
+        `Jellies` and `Zombies` all read 1,500, the same signature.
+
+        There is no column saying so, so the rate itself is the only tell and
+        `MULTI_TARGET_KPH` is where the line is drawn. It catches 18 of the
+        147 measured tasks.
+
+        **Deliberately conservative, and it misses some.** `Dust devils` at
+        950 and `Kalphites` at 870 are bursting tasks in practice and sit just
+        under. Pin them in `heuristics/overrides.json` if their rates matter;
+        the threshold is not trying to be clever, only to name the rows that
+        obviously are not single-target.
+
+        Why any of this is worth knowing: these methods need things a chunk
+        map may simply not have - barrage wants Desert Treasure I, chinning
+        wants a box trap and the roughly 500 chinchompas an hour that catching
+        them yields - so a 70,000 XP an hour figure derived from one is not a
+        rate this player can achieve. `dps_bridge.price_slayer_tasks` computes
+        the single-target alternative.
+        """
+        return self.kills_per_hour >= MULTI_TARGET_KPH
 
     def as_dict(self) -> dict[str, Any]:
         return {

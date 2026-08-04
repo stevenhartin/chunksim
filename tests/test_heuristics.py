@@ -444,3 +444,37 @@ def test_a_table_with_no_milestones_leaves_the_rate_alone() -> None:
 def test_a_single_milestone_amortises_over_its_interval() -> None:
     # Nine ordinary tasks and one paying 5x is (9 + 5) / 10.
     assert streak_factor({10: 5.0}) == pytest.approx(1.4)
+
+
+def test_a_stackable_tasks_rate_reads_as_multi_target() -> None:
+    """3,360 kills an hour is one every 1.07 seconds - chinchompas, not a weapon."""
+    from fray_claude.heuristics import MULTI_TARGET_KPH, SlayerTask
+
+    spiders = SlayerTask(mean_count=150, xp_per_kill=12.8, kills_per_hour=3360)
+    ankous = SlayerTask(mean_count=150, xp_per_kill=98.0, kills_per_hour=1500)
+
+    assert spiders.is_multi_target
+    assert ankous.is_multi_target
+    assert MULTI_TARGET_KPH == 1000.0
+
+
+def test_an_ordinary_rate_does_not() -> None:
+    """Black dragons at 195 an hour is somebody hitting one dragon."""
+    from fray_claude.heuristics import SlayerTask
+
+    assert not SlayerTask(
+        mean_count=150, xp_per_kill=262.0, kills_per_hour=195
+    ).is_multi_target
+
+
+def test_the_threshold_is_conservative_and_says_so() -> None:
+    """`Dust devils` at 950 is a bursting task and sits under the line.
+
+    Recorded rather than fixed: the threshold is not trying to be clever, and
+    an override is the place to correct a row that matters.
+    """
+    from fray_claude.heuristics import SlayerTask
+
+    assert not SlayerTask(
+        mean_count=150, xp_per_kill=105, kills_per_hour=950
+    ).is_multi_target
