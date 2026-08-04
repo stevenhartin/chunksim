@@ -180,6 +180,8 @@ FRAY_CHUNKINFO=path .venv/bin/pytest tests/test_sections.py -k real   # opt-in o
 python -c 'import json;json.dump(json.load(open("cache/chunkinfo.json"))["data"],open("/tmp/raw.json","w"))'
 FRAY_CHUNKINFO=/tmp/raw.json FRAY_MAP_CACHE=1 .venv/bin/pytest   # all six oracles, the real correctness signal
 pyproject-build && pipx install --force dist/*.whl   # build + reinstall the `fray` command system-wide
+pip install -e ../osrs-dps                           # the optional `dps` extra, into .venv for development
+(cd ../osrs-dps && pyproject-build) && pipx inject --force fray-claude ../osrs-dps/dist/osrs_dps-*.whl
 ```
 
 Those two lines go together: `FRAY_CHUNKINFO` wants a *raw* export, not `fray chunkinfo`'s
@@ -192,6 +194,13 @@ the envelope fails silently), and `FRAY_MAP_CACHE` is presence-only, its value u
 everywhere. `--limit` defaults to `None` (full
 output) for `sections`/`sources`/`tasks`/`neighbours`/`diff` so piping just works, but to `10` for
 `search`. See `cli.py`'s docstring.
+
+**The `dps` extra is installed two different ways, one per venv.** `pip install -e ../osrs-dps` puts
+it in `.venv` for development and the test suite; the `fray` on `PATH` lives in pipx's own venv and
+needs `pipx inject` instead. An injected package **survives `pipx install --force`** (measured), so
+the ordinary rebuild loop leaves it alone — but injecting copies a wheel, so a change to `osrs-dps`
+needs its wheel rebuilt and re-injected, and `--force` is required there for the same reason it is
+for `fray`: the version does not move between builds, so a plain `inject` silently no-ops.
 
 `fray diff` is the one subcommand taking two maps, hence `--map1`/`--map2` rather than `--map`; both
 are required, and either can name a fetched or a simulated map. It reports **both directions**, which
