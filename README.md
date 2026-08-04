@@ -49,6 +49,34 @@ source-chunk is upstream and read-only from here — `fray-claude` never writes 
 
 Everything after the initial `fetch`/`chunkinfo` runs offline, against the local cache.
 
+## The map (`fray-gui`)
+
+There is a second command. `fray-gui` starts a local server and opens a browser on an interactive
+OSRS world map: your unlocked chunks bright against a greyed-out world, with a thick border traced
+around the *outside* of the unlocked region — no line between two chunks you already hold. Pan by
+dragging, zoom with the wheel, click a chunk to copy its id.
+
+```
+fray-gui                              # serve http://127.0.0.1:8731 and open it
+fray-gui --compare my-sim             # delta mode: gains green, losses red
+fray-gui --no-browser --port 0        # bind an OS-assigned port, open nothing
+```
+
+It re-reads the cache as it goes, so a `fray fetch` or `fray simulate` in another terminal appears
+in the browser a couple of seconds later. You can also drive both from the page itself: **fetch**
+re-downloads the current map, and **simulate** rolls N chunks, saves each run as a cached map and
+opens the result as a comparison against where you started.
+
+**It binds `127.0.0.1` and is not authenticated.** A page you have open in another tab cannot read
+anything from it — the same-origin policy stops that — and its `fetch`/`simulate` buttons are
+guarded by the `Sec-Fetch-Site` and `Host` headers. `--host` will bind elsewhere, and the help text
+says what that exposes; think before using it on a shared network.
+
+The world map image is **not** part of this repository. It is Jagex's artwork, so `fray-gui`
+downloads it from source-chunk to `cache/assets/` on first run — the same thing `fray chunkinfo`
+already does with the 10MB export — and nothing this project distributes contains it. Point
+`FRAY_WORLD_MAP` at a local copy to skip the download.
+
 **This is a genuine, but deliberately partial, reimplementation of source-chunk's own validity logic**
 — not a wrapper around it. `tasks`/`unlock`/`simulate` cover 28 of the 29 challenge categories, plus
 `BiS`, which upstream synthesises at runtime rather than storing and which is computed here separately.

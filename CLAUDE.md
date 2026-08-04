@@ -7,10 +7,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 fray-claude is a CLI that reads state from the source-chunk web app, caches it locally, and runs
 offline operations on that cache. source-chunk is upstream and read-only from here.
 
+**Two apps, one distribution.** `fray` is the CLI; `fray-gui` is a local server plus a browser
+front-end that draws the world map — see the GUI paragraph below Commands. The 27 modules beside
+`cli.py` are the library both use, which is why there is no separate `core/` package and no second
+distribution: the layering already exists, and three pyprojects would buy independent versioning
+nobody needs.
+
 Planned: a shortest-path search ("fewest chunk unlocks to reach X" — `graph.py` exists to serve it and
-has no other reason to be a separate module), render a world-map image for a simulated state, generate
-heatmaps of likely rolls over N attempts (the cached simulation batches are the input for this — see
-the `cache/sims/` layout under Commands).
+has no other reason to be a separate module), and heatmaps of likely rolls over N attempts (the
+cached simulation batches are the input, and `gui/resources/app.js`'s `LAYERS` array plus
+`MapView.overlays` is the seam they attach to — see the `cache/sims/` layout under Commands).
 
 `fray estimate` answers "time to complete the goals" — the export still has no duration source, so
 the numbers come from the OSRS wiki and a community spreadsheet via `fray heuristics`. See the
@@ -62,8 +68,12 @@ throughout, verified the opposite way: its names *are* in `tasksMap.json` yet ar
 ## Architecture
 
 One responsibility per module, so the planned simulation work has a pure layer to build on.
-**`api.py` is the only module that touches the network and `cache.py` the only one that touches
-disk; everything else is pure.** The derivation chain is
+**`api.py` is the only module that makes *outbound* network calls and `cache.py` the only one that
+touches disk; everything else is pure.** `gui/server.py` is the one exception in each direction and
+neither weakens the rule: it is the only module that **accepts inbound** connections, binding
+loopback unless `--host` says otherwise, and the only disk it touches beyond `cache.py` is its own
+packaged read-only resources — every map it reads goes through `cache.read_cache`. The derivation
+chain is
 `sections` -> `sources` -> `challenges` -> `bis` -> `active_tasks`/`other_tasks`, wired by
 `pipeline.derive` and reached by every subcommand through it.
 
@@ -134,6 +144,9 @@ Five things that cut across modules — the first three because each has already
 | `summary.py` | Pure reductions over a raw payload. Extend this, not `cli.py`. Also home to `_mapping`, the tolerant dict accessor eight other modules import despite the `_` — Firebase omits empty containers, so every lookup anywhere must survive a missing branch. |
 | `dps_bridge.py` | The seam to `osrs-dps`, which prices a kill from the gear `bis.py` reaches instead of a money-making guide. **Optional import** — check `DPS_AVAILABLE`, never assume it. `enrich` is the one entry point a command needs. Owns the export→library conversions (`magic_damage` is a display percentage here and tenths of a percent there), the overhead model, the monster-name join and its `exact`/`variant` provenance, and the refusal of fight *phases* and group bosses. |
 | `cli.py` | argparse subcommands and rendering only; new logic goes in a pure module. |
+| `gui/worldmap.py` | Where a chunk sits on upstream's map image, and which of its sides face outward. Pure. Owns the projection (`grid_x = region_x - 15`, **`grid_y = 65 - region_y`** — the y axis is flipped), the two kinds of id that have no square, and `hull_edges`. In `gui/` because all of it is about one particular image. |
+| `gui/server.py` | Routing, as a **pure `handle_request`** with a `BaseHTTPRequestHandler` adapter over it — so tests reach the whole surface without binding a socket. Owns the static allowlist and the `Sec-Fetch-Site`/`Host` checks. |
+| `gui/jobs.py` | The background job registry the POST actions use. **The only mutable state in the GUI**, kept out of the pure layer deliberately. |
 
 ## Toolchain
 
@@ -179,7 +192,9 @@ mypy                        # strict, over src/ and tests/; run from the repo ro
 FRAY_CHUNKINFO=path .venv/bin/pytest tests/test_sections.py -k real   # opt-in oracle test against a real export
 python -c 'import json;json.dump(json.load(open("cache/chunkinfo.json"))["data"],open("/tmp/raw.json","w"))'
 FRAY_CHUNKINFO=/tmp/raw.json FRAY_MAP_CACHE=1 .venv/bin/pytest   # all six oracles, the real correctness signal
-pyproject-build && pipx install --force dist/*.whl   # build + reinstall the `fray` command system-wide
+fray-gui [--map ID] [--compare ID] [--port N] [--no-browser]   # the interactive world map
+pyproject-build && pipx install --force dist/*.whl   # build + reinstall `fray` and `fray-gui`
+python -m zipfile -l dist/*.whl | grep resources     # prove the GUI's html/js/css shipped
 pip install -e ../osrs-dps                           # the optional `dps` extra, into .venv for development
 (cd ../osrs-dps && pyproject-build) && pipx inject --force fray-claude ../osrs-dps/dist/osrs_dps-*.whl
 ```
@@ -249,6 +264,26 @@ the map's own BiS gear and lets them beat the scrape — the wiki's numbers assu
 point of the file; `enrich` takes the pinned keys and leaves them alone. Without the extra the
 command runs exactly as before, and `fray show` reports which of the two you are getting, because
 they are materially different totals — 3,969h against 2,816h on the real map.
+
+**`fray-gui` is the second app, and it derives nothing.** It draws the world map: unlocked chunks
+bright against a locked wash, a hull outline around the outside of the unlocked blob (no border
+between two unlocked chunks — that is `worldmap.hull_edges`), and a delta mode where `--compare`'s
+gains are green and its losses red. It can also drive `fetch` and `simulate`, which return a job id
+and report progress while a thread does the work.
+
+Three things worth knowing before changing it:
+
+- **A request is milliseconds, so nothing is cached.** Rendering needs only `chunks.unlocked` — a
+  chunk's square is fixed by its id — so there is no `ChunkInfo` parse and no `derive`. Every
+  request re-reads the map file, which is what makes a `fray fetch` in another terminal appear in
+  the browser two seconds later with no invalidation machinery at all.
+- **The delta uses `delta.diff_names`, not `compare_maps`.** The latter derives *both* sides
+  whatever `branches` says — the `derive_with(...)` calls are arguments to `compare` — so it would
+  spend ~2s on a set difference. It becomes the right call only when an overlay is keyed on a
+  derived branch.
+- **The map image is fetched, never committed.** It is Jagex's artwork; shipping it in an MIT wheel
+  would imply a sublicence this project has not got. `fray-gui` downloads it to `cache/assets/` on
+  first run exactly as `fray chunkinfo` downloads 10MB, and `FRAY_WORLD_MAP` points at a local copy.
 
 **`cache/derived/` is a third thing, and not a map.** It holds `pipeline.derive`'s *results*, one
 zstd-compressed pickle per key (~0.12MB each), so a repeat command costs ~0.15s instead of ~1.05s.
