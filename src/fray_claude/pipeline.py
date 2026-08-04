@@ -96,6 +96,14 @@ class Derived:
     """One pipeline run's full output for a given unlocked-chunk-id set."""
 
     reachable_sections: dict[str, dict[str, bool]]
+    #: The unlocked chunk ids **plus every named area they reach**, as the
+    #: loop below finally settled it. Not the same as
+    #: `sections.expand_chunk_areas(unlocked)`: that is only the first pass,
+    #: and areas keep opening as challenges become valid - 106 entries
+    #: against 166 on the real map, the 60 including `Wilderness Slayer
+    #: Cave`. Anything evaluating a `Chunks` requirement outside this module
+    #: wants *this*, or it will judge half the world locked.
+    expanded_chunks: dict[str, bool]
     source_index: SourceIndex
     challenges: ChallengeResult
     bis: BisResult
@@ -240,6 +248,7 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
     )
     return Derived(
         reachable_sections=reachable,
+        expanded_chunks=dict(expanded),
         source_index=index,
         challenges=challenges,
         bis=bis,

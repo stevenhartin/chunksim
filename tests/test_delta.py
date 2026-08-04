@@ -73,6 +73,7 @@ def _sources(**overrides: Any) -> SourceIndex:
 def _derived(**overrides: Any) -> Derived:
     defaults: dict[str, Any] = {
         "reachable_sections": {},
+        "expanded_chunks": {},
         "source_index": _sources(),
         "challenges": ChallengeResult(valid={}, unsupported=frozenset()),
         "bis": BisResult(picks={}),

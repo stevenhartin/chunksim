@@ -971,7 +971,6 @@ def _cmd_estimate(args: argparse.Namespace) -> int:
         derived,
         build_world_index(state.chunk_info),
         heuristics,
-        unlocked=unlocked,
         level_overrides={
             skill: int(level)
             for skill, level in overrides.items()

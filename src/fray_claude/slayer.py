@@ -69,7 +69,7 @@ from typing import Any
 
 from fray_claude.challenges import chunks_requirement_met
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.heuristics import Heuristics, SlayerTask, TaskLength
+from fray_claude.heuristics import Heuristics, SlayerTask, TaskLength, stems
 from fray_claude.rates import parse_ratio
 from fray_claude.search import normalise
 from fray_claude.summary import _mapping
@@ -314,18 +314,30 @@ def _task_monsters(chunk_info: ChunkInfo, task: str) -> set[str]:
     the singular (`Aberrant spectre`), sometimes with a `#Level 96` variant
     suffix, so matching is on depluralised words rather than equality.
     """
-    wanted = _stem_words(task)
-    if not wanted:
+    if not normalise(task):
         return set()
     return {
         monster
         for monster in chunk_info.slayer_monsters
-        if wanted <= _stem_words(monster) or _stem_words(monster) <= wanted
+        if _words_match(task, monster)
     }
 
 
-def _stem_words(text: str) -> frozenset[str]:
-    return frozenset(word.rstrip("s") for word in normalise(text).split() if word)
+def _words_match(left: str, right: str) -> bool:
+    """Do two names mean the same monster, allowing for plurals?
+
+    Word by word through `heuristics.stems`, which knows English has no one
+    rule. `rstrip("s")` lived here too and read `Jellies` as `jellie`, so
+    Krystilia's jelly task matched no monster, found no superior, and
+    contributed nothing to her superior rate.
+    """
+    first = [word for word in normalise(left).split() if word]
+    second = [word for word in normalise(right).split() if word]
+    if not first or not second:
+        return False
+    return all(any(stems(word) & stems(other) for other in second) for word in first) or all(
+        any(stems(word) & stems(other) for other in first) for word in second
+    )
 
 
 def _requirements_met(

@@ -113,7 +113,6 @@ from fray_claude.heuristics import Heuristics, Superior, activity_name
 from fray_claude.pipeline import Derived, MapState
 from fray_claude.rates import parse_ratio
 from fray_claude.search import WorldIndex, normalise
-from fray_claude.sections import expand_chunk_areas
 from fray_claude.slayer import (
     MasterRate,
     best_master,
@@ -729,17 +728,17 @@ def estimate(
     world: WorldIndex,
     heuristics: Heuristics,
     *,
-    unlocked: Mapping[str, bool] | None = None,
     level_overrides: dict[str, int] | None = None,
 ) -> EstimateResult:
     """Estimate the outstanding active work. See the module docstring first."""
     levels = _levels(state, level_overrides or {})
     reachable = frozenset(derived.source_index.monsters)
     valid = derived.challenges.valid
-    # The same expansion `pipeline.derive` does before evaluating a
-    # challenge's `Chunks`, so a master's own `Chunks` gate is judged against
-    # exactly the same notion of "unlocked".
-    expanded = expand_chunk_areas(unlocked or {}, manual_areas=state.manual_areas)
+    # `derive`'s *settled* expansion, not a fresh one-shot call: areas keep
+    # opening as challenges become valid, and expanding once leaves 60 named
+    # areas locked on the real map - `Wilderness Slayer Cave` among them,
+    # which silently cost Krystilia every task that can roll a superior.
+    expanded = dict(derived.expanded_chunks)
     # A slayer master you cannot reach assigns nothing - see `slayer.py`.
     reachable_masters = frozenset(derived.source_index.npcs)
 

@@ -544,3 +544,27 @@ def test_the_shared_table_is_read_with_its_shares() -> None:
     shares = superior_table_items(_superior_info())
 
     assert shares == {"Imbued heart": pytest.approx(1 / 8), "Dust battlestaff": pytest.approx(3 / 8)}
+
+
+def test_a_plural_task_finds_its_singular_monster() -> None:
+    # `rstrip("s")` lived here too and read `Jellies` as `jellie`, so
+    # Krystilia's jelly task matched no monster, found no superior, and
+    # contributed nothing at all to her superior rate.
+    info = ChunkInfo(
+        {
+            "slayerMasterTasks": {"M": {"Jellies": {"Weight": 1}}},
+            "slayerMonsters": {"Jelly": 52},
+            "codeItems": {"dropTables": {"SuperiorDropTable+": {"Imbued heart": "1/8@1"}}},
+            "skillItems": {"Slayer": {"Vitreous Jelly": {"SuperiorDropTable+": {"1": "1/2"}}}},
+        }
+    )
+    heuristics = Heuristics(
+        slayer={"M": {"Jellies": SlayerTask(100, 10, 100)}},
+        superiors={"Vitreous Jelly": Superior("Vitreous Jelly", "Jelly", 1 / 200)},
+    )
+
+    rate = master_rates(
+        info, heuristics, reachable_monsters=frozenset({"Jelly"}), valid={}, levels={}
+    )[0]
+
+    assert superior_rolls_per_hour(rate, info, heuristics) > 0

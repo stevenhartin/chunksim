@@ -52,6 +52,7 @@ def _derived(*, monsters: tuple[str, ...] = (), **overrides: Any) -> Derived:
     nothing it cannot reach, so a fixture that omits them prices nothing."""
     defaults: dict[str, Any] = {
         "reachable_sections": {},
+        "expanded_chunks": {"100": True},
         "source_index": SourceIndex(
             items={},
             objects={},
@@ -457,6 +458,7 @@ def _gated_derived() -> Derived:
     # Vannaka is the only master whose NPC is in an unlocked chunk.
     return Derived(
         reachable_sections=derived.reachable_sections,
+        expanded_chunks=derived.expanded_chunks,
         source_index=SourceIndex(
             items={},
             objects={},
@@ -819,6 +821,7 @@ def test_the_shared_superior_table_is_one_source_across_a_master() -> None:
     )
     derived = Derived(
         reachable_sections={},
+        expanded_chunks={"100": True},
         source_index=SourceIndex(
             items={},
             objects={},
