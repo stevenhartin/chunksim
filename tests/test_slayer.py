@@ -752,57 +752,79 @@ def test_superior_spawns_and_table_rolls_are_different_rates() -> None:
     assert rolls == pytest.approx(spawns / 2)
 
 
-def test_task_monsters_reads_the_slayer_list_first() -> None:
+def test_task_monsters_reads_the_exports_own_list() -> None:
+    """`codeItems.slayerTasks` is the authoritative task-to-monster mapping."""
     info = _info(
-        slayerMonsters={"Aberrant spectre": True, "Abyssal demon": True},
-        drops={"Aberrant spectre": {}, "Cow": {}},
+        codeItems={
+            "slayerTasks": {
+                "Dwarves": {
+                    "Dwarf": True,
+                    "Black Guard Berserker": True,
+                    "Chaos dwarf": True,
+                }
+            }
+        }
     )
 
-    assert task_monsters(info, "Aberrant spectres") == {"Aberrant spectre"}
+    assert task_monsters(info, "Dwarves") == {
+        "Dwarf",
+        "Black Guard Berserker",
+        "Chaos dwarf",
+    }
 
 
-def test_the_world_fallback_finds_the_ordinary_monsters() -> None:
-    """`slayerMonsters` holds 95 slayer-specific entries and no cows.
+def test_it_finds_monsters_no_stemming_could_reach() -> None:
+    """A Black Guard is a dwarf task and shares no word with `Dwarves`.
 
-    A master's easy list is mostly ordinary world monsters, so 29 task
-    categories on the real export - `Cows`, `Goblins`, `Bats`, `Wolves` -
-    matched nothing in it at all.
+    This is why the word match it replaced could not work in principle, not
+    merely in the cases that happened to fail.
     """
     info = _info(
-        slayerMonsters={"Aberrant spectre": True},
-        drops={"Cow": {}, "Cow calf": {}, "Aberrant spectre": {}},
+        codeItems={"slayerTasks": {"Dwarves": {"Black Guard Berserker": True}}},
+        slayerMonsters={"Black Guard Berserker": 1},
     )
 
-    assert task_monsters(info, "Cows") == set()
-    assert task_monsters(info, "Cows", world=True) == {"Cow", "Cow calf"}
+    assert "Black Guard Berserker" in task_monsters(info, "Dwarves")
 
 
-def test_the_world_fallback_only_applies_when_the_slayer_list_misses() -> None:
-    """A category the slayer list covers must not be widened out of it."""
-    info = _info(
-        slayerMonsters={"Aberrant spectre": True},
-        drops={"Aberrant spectre": {}, "Aberrant spectre (weak)": {}},
-    )
+def test_it_does_not_over_match_the_way_a_word_search_did() -> None:
+    """`Wolves` is the seven real ones, not every monster with `wolf` in it.
 
-    assert task_monsters(info, "Aberrant spectres", world=True) == {"Aberrant spectre"}
-
-
-def test_irregular_plurals_reach_their_monster() -> None:
-    """-s/-es/-ies between them get none of `wolf`, `elf` or `dwarf`."""
-    info = _info(slayerMonsters={}, drops={"Wolf": {}, "Elf Warrior": {}, "Dwarf": {}})
-
-    assert task_monsters(info, "Wolves", world=True) == {"Wolf"}
-    assert task_monsters(info, "Elves", world=True) == {"Elf Warrior"}
-    assert task_monsters(info, "Dwarves", world=True) == {"Dwarf"}
-
-
-def test_reachability_does_not_see_the_widened_list() -> None:
-    """Widening it there would turn "no opinion" into a real gate.
-
-    `_is_reachable` reads an empty result as "nothing to say" and lets the
-    task through. Handing it every cow in the world instead is a different
-    question from the one it asks, so `world` stays off by default.
+    Searching the whole drop table gave eleven, including the Gauntlet's
+    Crystalline Wolf, which is not a wolf anyone gets sent to.
     """
-    info = _info(slayerMonsters={"Abyssal demon": True}, drops={"Cow": {}})
+    info = _info(
+        codeItems={"slayerTasks": {"Wolves": {"Wolf": True, "Ice wolf": True}}},
+        drops={"Wolf": {}, "Ice wolf": {}, "Crystalline Wolf": {}},
+    )
 
-    assert task_monsters(info, "Cows") == set()
+    assert task_monsters(info, "Wolves") == {"Wolf", "Ice wolf"}
+
+
+def test_konars_location_is_dropped_to_find_the_category() -> None:
+    """`Aberrant spectres - Slayer Tower` is not itself a category key.
+
+    The monster is the same one wherever it stands; the location gate is the
+    entry's own `Chunks` requirement, which `_is_reachable` reads separately.
+    """
+    info = _info(
+        codeItems={"slayerTasks": {"Aberrant spectres": {"Aberrant spectre": True}}}
+    )
+
+    assert task_monsters(info, "Aberrant spectres - Slayer Tower") == {
+        "Aberrant spectre"
+    }
+
+
+def test_an_unlisted_task_falls_back_to_the_word_match() -> None:
+    """`Warped creatures` is the one name the list does not carry.
+
+    Returning nothing would read as "this task has no monsters", which
+    `_is_reachable` treats as no opinion rather than as unreachable - so the
+    fallback keeps the two apart.
+    """
+    info = _info(
+        codeItems={"slayerTasks": {}}, slayerMonsters={"Warped creature": 1}
+    )
+
+    assert task_monsters(info, "Warped creatures") == {"Warped creature"}

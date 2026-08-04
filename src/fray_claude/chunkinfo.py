@@ -61,6 +61,17 @@ class ChunkInfo:
         return _mapping(self.data, "slayerMonsters")
 
     @property
+    def slayer_tasks(self) -> dict[str, Any]:
+        """`slayerTasks[category][monster]` - which monsters count for a task.
+
+        Lives under `codeItems`, not at the top level beside `slayerMonsters`,
+        which is a different thing: that one maps a monster to its Slayer
+        level requirement and holds 95 entries, where this holds 144
+        categories and is the authoritative task-to-monster mapping.
+        """
+        return _mapping(self.code_items, "slayerTasks")
+
+    @property
     def equipment(self) -> dict[str, Any]:
         """Per-item combat bonuses, attack speed and slot.
 

@@ -104,18 +104,15 @@ than a player. See `GROUP_BOSSES`.
 **Slayer's holes are the other thing this fills.** `slayer.py` folds a task it
 has no data for back in at a flat 7,000 XP an hour, deliberately poor so a
 master full of gaps looks slow rather than quietly fast. `price_slayer_tasks`
-computes those instead - 73 of the 116 unpriced pairs on the real map. Mortimer
-goes from wholly guessed to wholly priced, Turael and Spria from 68% guessed to
-3%, Mazchna and Chaeldar to none at all. Read its docstring on why the XP comes
-from hitpoints, and on why a master's rate can *fall* when a guess is replaced
-by a number.
+computes those instead, and **every master on the real map is now 0% guessed**.
+Read its docstring on why the XP comes from hitpoints, and on why a master's
+rate can *fall* when a guess is replaced by a number.
 
-Of the 43 still unpriced, 42 are tasks whose monsters this map cannot reach.
-`slayer.py` counts those as unpriced rather than as skips because its own
-reachability test does not use the widened monster list - see
-`slayer.task_monsters` on why that is deliberate, and note that moving them
-would change the master's skip rate and point economics rather than only its
-XP.
+The tasks that are not priced are the ones whose monsters this map cannot
+reach, and they are now counted as *skips* rather than as unpriced work - a
+task you are handed and must cancel, which is what `slayer.py` always meant by
+the word. That fell out of `slayer.task_monsters` reading the export's own
+task-to-monster list, which gives its reachability test something to test.
 """
 
 from __future__ import annotations
@@ -1046,12 +1043,11 @@ def price_slayer_tasks(
     sent on the task would seek out. Its hitpoints give the XP, so the two
     halves describe the same monster rather than a mixture of them.
 
-    **`reachable_monsters` is what keeps that choice sane once the search
-    widens.** `task_monsters(world=True)` reaches every monster with a drop
-    table, and a `Wolves` task then matches eleven of them including the
-    Gauntlet's Crystalline Wolf - which is not a wolf anyone gets sent to.
-    Narrowing to what the map can reach before choosing the fastest removes
-    those; passing nothing keeps every candidate, which is the wrong default
+    **`reachable_monsters` narrows the candidates before the choice is made.**
+    A `Dwarves` task names eight monsters and this map may hold two of them;
+    pricing the fastest of all eight would quote a fight that is not on offer.
+    Pass `SourceIndex.monsters`, which is already past its `taskUnlocks`
+    gates. Passing nothing keeps every candidate, which is the wrong default
     for a real map and the right one for a test.
     """
     _require()
@@ -1075,13 +1071,13 @@ def price_slayer_tasks(
                 # rate beside. `slayer.py`'s own fallback still covers it.
                 continue
 
-            candidates_for = task_monsters(chunk_info, task, world=True)
+            # The export's own task-to-monster list, narrowed to the ones
+            # this map can actually get to. `SourceIndex.monsters` is already
+            # past its `taskUnlocks` gates, so what survives is a monster you
+            # could walk up to and fight today.
+            candidates_for = task_monsters(chunk_info, task)
             if reachable_monsters:
-                narrowed = candidates_for & reachable_monsters
-                # An empty intersection means the task's monsters are all
-                # somewhere this map cannot go, which `slayer.py` has already
-                # decided is a skip rather than a rate.
-                candidates_for = narrowed
+                candidates_for = candidates_for & reachable_monsters
 
             best: KillEstimate | None = None
             best_hitpoints = 0

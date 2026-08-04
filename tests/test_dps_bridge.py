@@ -747,7 +747,11 @@ def _slayer_info(**tasks: Any) -> ChunkInfo:
         {
             "equipment": _equipment(),
             "slayerMasterTasks": {"Turael": {name: {"Weight": 10} for name in tasks}},
-            "slayerMonsters": dict.fromkeys(tasks.values(), True),
+            "codeItems": {
+                "slayerTasks": {
+                    name: {monster: True} for name, monster in tasks.items()
+                }
+            },
         }
     )
 
@@ -882,11 +886,10 @@ def test_with_slayer_rates_merges_without_mutating() -> None:
 
 
 def test_slayer_pricing_narrows_to_what_the_map_can_reach() -> None:
-    """The widened join reaches monsters nobody gets sent to.
+    """A task names every monster that counts, not the ones you can get to.
 
-    A `Wolves` task matches eleven monsters once the search leaves
-    `slayerMonsters`, including the Gauntlet's Crystalline Wolf. Choosing the
-    fastest of *those* prices a fight that is not the task.
+    `Dwarves` names eight and a map may hold two; pricing the fastest of all
+    eight quotes a fight that is not on offer.
     """
     from fray_claude.heuristics import Heuristics, SlayerTask
 
@@ -894,14 +897,15 @@ def test_slayer_pricing_narrows_to_what_the_map_can_reach() -> None:
         {
             "equipment": _equipment(),
             "slayerMasterTasks": {"Turael": {"Wolves": {"Weight": 10}}},
-            "slayerMonsters": {},
-            "drops": {"Wolf": {}, "Crystalline Wolf": {}},
+            "codeItems": {
+                "slayerTasks": {"Wolves": {"Wolf": True, "Ice wolf": True}}
+            },
         }
     )
     index = _FakeIndex(
         {
             "Wolf": _target(name="Wolf", hitpoints=15),
-            "Crystalline Wolf": _target(name="Crystalline Wolf", hitpoints=40),
+            "Ice wolf": _target(name="Ice wolf", hitpoints=40),
         }
     )
     heuristics = Heuristics(
@@ -922,7 +926,7 @@ def test_slayer_pricing_narrows_to_what_the_map_can_reach() -> None:
         reachable_monsters=frozenset({"Wolf"}),
     )
 
-    # The reachable wolf's hitpoints, not the Gauntlet one's.
+    # The reachable wolf's hitpoints, not the one this map cannot get to.
     assert priced["Turael"]["Wolves"].xp_per_kill == 15.0
 
 
@@ -934,8 +938,7 @@ def test_a_task_whose_monsters_are_all_unreachable_is_not_priced() -> None:
         {
             "equipment": _equipment(),
             "slayerMasterTasks": {"Turael": {"Wolves": {"Weight": 10}}},
-            "slayerMonsters": {},
-            "drops": {"Wolf": {}},
+            "codeItems": {"slayerTasks": {"Wolves": {"Wolf": True}}},
         }
     )
     index = _FakeIndex({"Wolf": _target(name="Wolf", hitpoints=15)})

@@ -363,38 +363,47 @@ def _weight(entry: Mapping[str, Any]) -> float:
     return float(value)
 
 
-def task_monsters(chunk_info: ChunkInfo, task: str, *, world: bool = False) -> set[str]:
-    """Which monsters a task category covers.
+def task_monsters(chunk_info: ChunkInfo, task: str) -> set[str]:
+    """Which monsters count towards a slayer task.
 
-    Public because `dps_bridge.py` needs the same join to price a task the
-    config has no rate for, and two spellings of it would drift apart.
+    **`codeItems.slayerTasks` is the export's own answer**, and it is the one
+    to use: `Dwarves` names eight monsters including Black Guards and a Chaos
+    dwarf, which share no word with the category and which no amount of
+    stemming would find. It covers 204 of the 205 task names the masters
+    between them assign, `Warped creatures` being the single exception.
 
-    The export names tasks in the plural (`Aberrant spectres`) and monsters in
-    the singular (`Aberrant spectre`), sometimes with a `#Level 96` variant
-    suffix, so matching is on depluralised words rather than equality.
+    This replaced a word match against `slayerMonsters`. That branch is a
+    different thing - 95 entries mapping a monster to its Slayer level - and
+    matching against it failed two ways at once: it held none of the ordinary
+    world monsters a low master assigns, so `Cows` and `Goblins` found
+    nothing, and widening the search to every monster with a drop table then
+    over-matched, giving `Wolves` the Gauntlet's Crystalline Wolf. The
+    authoritative list has neither problem: its `Wolves` is the seven real
+    ones.
 
-    **`slayerMonsters` holds 95 entries and they are the slayer-specific
-    ones** - abyssal demons, gargoyles, nechryael. A master's easy list is
-    mostly ordinary world monsters, so `Cows`, `Goblins`, `Bats` and 26 other
-    categories match nothing in it at all. `world` widens the search to every
-    monster with a drop table, which covers them.
-
-    **Off by default, because widening it changes what "reachable" means.**
-    `_is_reachable` reads an empty result as "no opinion" and lets the task
-    through; handing it a populated set instead turns that into a real gate,
-    which is a different question from the one this was written for. Only
-    pricing asks for `world`.
+    **Konar names a place as well as a category** - `Aberrant spectres -
+    Slayer Tower` - and the categories are not keyed that way, so the place is
+    dropped and the category looked up. That is the right reduction for
+    pricing, the monster being the same one wherever it stands; a caller that
+    needs the location gate should read the entry's own `Chunks` requirement,
+    which is what `_is_reachable` already does.
     """
     if not normalise(task):
         return set()
-    found = {
+    tasks = chunk_info.slayer_tasks
+    entry = tasks.get(task)
+    if entry is None:
+        # Konar's `<Category> - <Place>`, reduced to its category.
+        entry = tasks.get(task.split(" - ", 1)[0])
+    if isinstance(entry, dict):
+        return {monster for monster in entry if isinstance(monster, str)}
+    # Nothing named it. Fall back to the old word match rather than claiming
+    # the task has no monsters, which would read as "unreachable".
+    return {
         monster
         for monster in chunk_info.slayer_monsters
         if _words_match(task, monster)
     }
-    if found or not world:
-        return found
-    return {monster for monster in chunk_info.drops if _words_match(task, monster)}
 
 
 def _words_match(left: str, right: str) -> bool:
