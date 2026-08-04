@@ -1048,10 +1048,15 @@ def price_slayer_tasks(
     the real map already carry one from the wiki's assignment tables, so this
     fills in the rate beside a measured size rather than inventing both.
 
-    A task spanning several monsters is priced on the one that dies fastest,
-    matching `best_kill`'s policy everywhere else - that being the one someone
-    sent on the task would seek out. Its hitpoints give the XP, so the two
-    halves describe the same monster rather than a mixture of them.
+    **A task spanning several monsters is priced on the best XP an hour, not
+    the fastest kill.** That is the one place this departs from `best_kill`'s
+    policy, and it has to: a slayer kill pays the monster's health, so the
+    quickest thing on a list is routinely the worst thing on it. `Scorpions`
+    reaches a 2-hitpoint Scorpion that dies in 1.9 seconds and pays 1,500 XP
+    an hour, and a King Scorpion that pays 16,176. Choosing on speed picked
+    the former and under-reported the task tenfold; `Spiders` and `Zombies`
+    were the same shape. Whichever monster wins, its hitpoints give the XP, so
+    the two halves describe one monster rather than a mixture.
 
     **`reachable_monsters` narrows the candidates before the choice is made.**
     A `Dwarves` task names eight monsters and this map may hold two of them;
@@ -1100,6 +1105,7 @@ def price_slayer_tasks(
 
             best: KillEstimate | None = None
             best_hitpoints = 0
+            best_xp_per_hour = 0.0
             for monster in sorted(candidates_for):
                 bare = monster.split("#")[0]
                 candidates = candidate_targets(monster_index, bare)
@@ -1114,16 +1120,23 @@ def price_slayer_tasks(
                 )
                 if kill is None:
                     continue
-                if best is None or kill.ttk < best.ttk:
-                    best = kill
-                    best_hitpoints = next(
-                        (
-                            target.hitpoints
-                            for key, target in candidates
-                            if key == kill.monster
-                        ),
-                        0,
-                    )
+                hitpoints = next(
+                    (
+                        target.hitpoints
+                        for key, target in candidates
+                        if key == kill.monster
+                    ),
+                    0,
+                )
+                # **XP per hour, not kills per hour.** A slayer kill is worth
+                # the monster's health, so the quickest thing on the list is
+                # routinely the worst thing to kill: a Scorpion dies in 1.9
+                # seconds and pays 2 XP, where a King Scorpion on the same
+                # task pays 30 and is worth ten times as much an hour.
+                xp_per_hour = hitpoints * kill.kills_per_hour()
+                if xp_per_hour > best_xp_per_hour:
+                    best, best_hitpoints = kill, hitpoints
+                    best_xp_per_hour = xp_per_hour
 
             if best is None or best_hitpoints <= 0:
                 continue

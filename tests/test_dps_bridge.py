@@ -1037,3 +1037,57 @@ def test_naming_both_masters_prices_both() -> None:
     )
 
     assert set(priced) == {"Turael", "Duradel"}
+
+
+def test_a_slayer_task_is_priced_on_xp_per_hour_not_speed() -> None:
+    """The quickest thing on a task list is routinely the worst thing on it.
+
+    A slayer kill pays the monster's health, so a 2-hitpoint Scorpion dying in
+    under two seconds is worth a tenth of a King Scorpion on the same task.
+    Choosing on speed under-reported `Scorpions`, `Spiders` and `Zombies` by
+    seven to thirteen times.
+    """
+    from fray_claude.heuristics import Heuristics, SlayerTask
+
+    info = ChunkInfo(
+        {
+            "equipment": _equipment(),
+            "slayerMasterTasks": {"Krystilia": {"Scorpions": {"Weight": 10}}},
+            "codeItems": {
+                "slayerTasks": {
+                    "Scorpions": {"Scorpion": True, "King Scorpion": True}
+                }
+            },
+        }
+    )
+    index = _FakeIndex(
+        {
+            # Dies almost instantly and pays almost nothing.
+            "Scorpion": _target(name="Scorpion", hitpoints=2),
+            # Slower per kill, far more experience per hour.
+            "King Scorpion": _target(name="King Scorpion", hitpoints=30),
+        }
+    )
+    heuristics = Heuristics(
+        slayer={
+            "Krystilia": {
+                "Scorpions": SlayerTask(
+                    mean_count=100.0, xp_per_kill=0.0, kills_per_hour=0.0
+                )
+            }
+        }
+    )
+
+    priced = dps_bridge.price_slayer_tasks(
+        info,
+        {"Melee-weapon": "Abyssal whip"},
+        LEVELS,
+        heuristics=heuristics,
+        index=index,  # type: ignore[arg-type]
+        reachable_masters=frozenset({"Krystilia"}),
+        reachable_monsters=frozenset({"Scorpion", "King Scorpion"}),
+    )
+
+    task = priced["Krystilia"]["Scorpions"]
+    assert task.xp_per_kill == 30.0
+    assert task.xp_per_kill * task.kills_per_hour > 2.0 * 750.0
