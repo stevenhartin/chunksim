@@ -16,7 +16,9 @@ import pytest
 
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.derived_cache import (
+    CacheBehaviour,
     Digests,
+    RollCache,
     _structure_digest,
     cached_derive,
     decode,
@@ -213,3 +215,93 @@ def test_store_off_still_reads_an_existing_entry(tmp_path: Path) -> None:
 
     assert len(_entries(tmp_path)) == 1
     assert result.challenges.valid == derive(state, unlocked).challenges.valid
+
+
+# --- which of a simulation's states are kept ---------------------------------
+
+
+def _roll_cache(behaviour: CacheBehaviour, root: Path) -> RollCache:
+    return RollCache(_DIGESTS, behaviour, root)
+
+
+def test_all_keeps_every_state_it_derives(tmp_path: Path) -> None:
+    cache = _roll_cache(CacheBehaviour.ALL, tmp_path)
+    state = _state()
+
+    cache.derive_state(state, {"100": True}, start=True)
+    cache.derive_state(state, {"100": True, "101": True}, start=False)
+
+    assert len(_entries(tmp_path)) == 2
+
+
+def test_extremities_keeps_the_start_but_not_what_it_passes_through(tmp_path: Path) -> None:
+    cache = _roll_cache(CacheBehaviour.EXTREMITIES, tmp_path)
+    state = _state()
+
+    cache.derive_state(state, {"100": True}, start=True)
+    cache.derive_state(state, {"100": True, "101": True}, start=False)
+
+    assert len(_entries(tmp_path)) == 1
+
+
+def test_extremities_keeps_the_state_the_run_finished_on(tmp_path: Path) -> None:
+    """`keep_final` exists because a run's last roll is only identifiable after
+    the loop - it ends at `rolls` or at the first empty pool, and the second is
+    a whole iteration late."""
+    cache = _roll_cache(CacheBehaviour.EXTREMITIES, tmp_path)
+    state, final = _state(), {"100": True, "101": True}
+    derived = cache.derive_state(state, final, start=False)
+    assert _entries(tmp_path) == []
+
+    cache.keep_final(state, final, derived)
+
+    key = derivation_key(state, final, _DIGESTS)
+    assert [path.name for path in _entries(tmp_path)] == [key]
+
+
+def test_none_keeps_nothing_at_all(tmp_path: Path) -> None:
+    cache = _roll_cache(CacheBehaviour.NONE, tmp_path)
+    state = _state()
+
+    derived = cache.derive_state(state, {"100": True}, start=True)
+    cache.keep_final(state, {"100": True}, derived)
+
+    assert _entries(tmp_path) == []
+
+
+def test_none_does_not_read_the_cache_either(tmp_path: Path) -> None:
+    """"None" means "don't touch it", not "no new entries" - so a stored answer
+    is not consulted, which is also why it is the slowest setting."""
+    state, unlocked = _state(), {"100": True}
+    cached_derive(state, unlocked, _DIGESTS, root=tmp_path)
+    _entries(tmp_path)[0].write_bytes(encode(derive(_state(rules={"F2P": True}), {})))
+
+    result = _roll_cache(CacheBehaviour.NONE, tmp_path).derive_state(
+        state, unlocked, start=True
+    )
+
+    assert result.challenges.valid == derive(state, unlocked).challenges.valid
+
+
+def test_keep_final_is_a_no_op_when_every_state_was_already_kept(tmp_path: Path) -> None:
+    cache = _roll_cache(CacheBehaviour.ALL, tmp_path)
+    state, final = _state(), {"100": True}
+    derived = cache.derive_state(state, final, start=False)
+    before = _entries(tmp_path)[0].stat().st_mtime_ns
+
+    cache.keep_final(state, final, derived)
+
+    assert len(_entries(tmp_path)) == 1
+    assert _entries(tmp_path)[0].stat().st_mtime_ns == before
+
+
+def test_a_cached_state_is_the_same_derivation_whichever_behaviour_stored_it(
+    tmp_path: Path,
+) -> None:
+    expected = derive(_state(), {"100": True})
+
+    for behaviour in CacheBehaviour:
+        result = _roll_cache(behaviour, tmp_path).derive_state(
+            _state(), {"100": True}, start=True
+        )
+        assert result.challenges.as_dict() == expected.challenges.as_dict()

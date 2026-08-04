@@ -44,11 +44,12 @@ this project already requires, so it adds no dependency - but a CPython built
 without `_zstd` falls back to plain pickle, and the suffix in the key records
 which was used so the two can never be confused for one another.
 
-**Scope.** `cli.py`'s commands and `unlock.py` read and write. `simulate.py`
-caches only the *base* state every run starts from - one entry shared by all of
-a batch's runs - and never its per-roll intermediates: at 0.118MB each, a
-`--rolls 50 --runs 100` batch would write ~5,000 entries for states no second
-command will ever ask for.
+**Scope.** `cli.py`'s commands and `unlock.py` read and write, always. A
+simulation's states are governed by `CacheBehaviour` (`--cache-behaviour`),
+which defaults to keeping every one of them; `RollCache` is the implementation
+of `simulate.StateCache` that applies it. The sizing to keep in mind is
+~118KiB per state, so a 50-roll, 100-run batch can reach ~600MB under `all` -
+reclaimed with `fray derived clean`, and avoided with `extremities`.
 """
 
 from __future__ import annotations
@@ -58,6 +59,7 @@ import hashlib
 import json
 import pickle
 import sys
+from enum import StrEnum
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -179,6 +181,66 @@ def decode(blob: bytes) -> Derived | None:
     except Exception:  # noqa: BLE001 - any failure here means "recompute"
         return None
     return derived if isinstance(derived, Derived) else None
+
+
+class CacheBehaviour(StrEnum):
+    """Which of a simulation's derived states are worth keeping.
+
+    Every roll of a run derives a state, and they are not equally useful:
+
+    - `ALL` (the default) keeps all of them, so re-running a seed, or asking
+      about a chunk some run passed through, is served from disk. Costs the
+      most: ~118KiB per state, so up to ~600MB for a 50-roll, 100-run batch
+      before counting the overlap between runs that reached the same chunk set.
+    - `EXTREMITIES` keeps only the state each run starts from and the one it
+      finishes on. The start is shared by every run in a batch; the finish is
+      exactly the state the saved simulated map holds, so a later
+      `fray tasks --map <that run>` is immediate. Two entries per run.
+    - `NONE` keeps nothing and reads nothing - a genuine "don't touch my disk",
+      not "no new intermediates". It is therefore also the slowest, since even
+      the shared starting state is recomputed per run.
+    """
+
+    ALL = "all"
+    EXTREMITIES = "extremities"
+    NONE = "none"
+
+
+@dataclass(frozen=True)
+class RollCache:
+    """`simulate.StateCache` for one run: the policy `CacheBehaviour` names.
+
+    Frozen and self-contained so it can be built inside a worker process -
+    nothing here is shared between runs, which is what keeps `--jobs` honest.
+    """
+
+    digests: Digests
+    behaviour: CacheBehaviour = CacheBehaviour.ALL
+    root: Path | None = None
+
+    def derive_state(
+        self, state: MapState, unlocked: Mapping[str, bool], *, start: bool
+    ) -> Derived:
+        if self.behaviour is CacheBehaviour.NONE:
+            return derive(state, unlocked)
+        store = self.behaviour is CacheBehaviour.ALL or start
+        return cached_derive(state, unlocked, self.digests, root=self.root, store=store)
+
+    def keep_final(
+        self, state: MapState, unlocked: Mapping[str, bool], derived: Derived
+    ) -> None:
+        """Store the state the run finished on.
+
+        Under `ALL` it is already there (`derive_state` stored it as it went);
+        under `NONE` it must not be. That leaves `EXTREMITIES`, which is why
+        this exists at all: a run's last roll is only identifiable *after* the
+        loop, so it cannot be flagged when it is derived without deriving it
+        twice.
+        """
+        if self.behaviour is not CacheBehaviour.EXTREMITIES:
+            return
+        key = derivation_key(state, unlocked, self.digests)
+        write_derived(key, encode(derived), self.root)
 
 
 def cached_derive(

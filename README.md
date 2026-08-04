@@ -186,6 +186,12 @@ otherwise it's created in whatever directory you're in when you run `fray`.
    redo the work, `fray derived` to see what's stored, and `fray derived clean` to drop entries you
    haven't used in a fortnight (`--all` for the lot). Deleting them only ever costs recomputation.
 
+   A simulation derives a state per roll, and by default all of them are kept — so re-running a
+   seeded batch takes about a quarter of a second instead of eight, at roughly 118 KiB per state.
+   `fray simulate --cache-behaviour extremities` keeps only the state each run starts from and the
+   one it ends on (that last one being what the saved simulated map holds, so reading the map back is
+   immediate), and `--cache-behaviour none` keeps nothing at all.
+
 5. **Keep a simulated future and work against it**, instead of just reading the summary:
 
    ```sh

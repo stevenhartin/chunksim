@@ -26,6 +26,10 @@ later roll - `bis_upgrades` included, so a later roll's improvement doesn't
 get folded back into an earlier record. See `unlock.py` for why that is the
 agreed semantics rather than an approximation.
 
+Which of a run's derived states get cached is `derived_cache.py`'s call, not
+this module's: `StateCache` is the seam, and this module only says whether a
+state is the one it started from, passed through, or finished on.
+
 `simulated_payload` turns a finished ledger back into a *map payload*, so a
 simulated future can be cached and read by every other subcommand (see
 `cache.py`'s layout and `batch.py`'s driver). It is pure - it never mutates the
@@ -41,9 +45,9 @@ from __future__ import annotations
 
 import random
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from fray_claude.graph import SectionGraph, build_section_graph
 from fray_claude.neighbours import neighbour_pool
@@ -215,28 +219,54 @@ def roll_pool(
     return _bootstrap_pool(state)
 
 
+class StateCache(Protocol):
+    """How a simulation's derived states are stored, if at all.
+
+    This module knows *which* state it is deriving - the one it starts from,
+    one it passed through, the one it finished on - and nothing about whether
+    any of them is worth keeping. `derived_cache.RollCache` implements this and
+    owns that policy, so `--cache-behaviour` never leaks in here.
+    """
+
+    def derive_state(
+        self, state: MapState, unlocked: Mapping[str, bool], *, start: bool
+    ) -> Derived:
+        """Derive `unlocked`, storing it or not as the policy sees fit."""
+
+    def keep_final(
+        self, state: MapState, unlocked: Mapping[str, bool], derived: Derived
+    ) -> None:
+        """Offer the state the run finished on, which is the one the saved
+        simulated map holds - so a later `--map <that run>` can reuse it."""
+
+
 def simulate_rolls(
     state: MapState,
     unlocked: Mapping[str, bool],
     *,
     rolls: int,
     seed: int | None = None,
-    derive_base: Callable[[MapState, Mapping[str, bool]], Derived] | None = None,
+    cache: StateCache | None = None,
 ) -> list[UnlockRecord]:
     """Simulate up to `rolls` chunk unlocks from `unlocked`, stopping early
     if the roll pool is ever empty. Each record's delta is computed against
     the state immediately before that roll and never recomputed afterwards.
 
-    `derive_base` overrides how the *starting* state is derived, and only that
-    one - `batch.py` passes `derived_cache.cached_derive` so that every run of
-    a batch shares one cached entry instead of each recomputing the state they
-    all begin from. The per-roll derives below stay uncached deliberately: at
-    ~0.12MB an entry a 50-roll, 100-run batch would store ~5,000 of them, for
-    states nothing will ever ask about again.
+    Every derived state is offered to `cache` (see `StateCache`); with none
+    supplied nothing is stored and this is a plain sequence of `derive` calls.
+    The finishing state is offered *separately*, after the loop, because
+    whether a roll is the last one is not knowable when it is derived: the run
+    ends either at `rolls` or the first time the pool comes up empty, and the
+    second of those is only visible one iteration later. Deriving it twice to
+    find out would cost a second per run, which is the whole saving.
     """
     rng = random.Random(seed)
     current_ids: dict[str, bool] = dict(unlocked)
-    before = (derive_base or derive)(state, current_ids)
+    before = (
+        cache.derive_state(state, current_ids, start=True)
+        if cache is not None
+        else derive(state, current_ids)
+    )
     graph = build_section_graph(state.chunk_info)
     ledger: list[UnlockRecord] = []
 
@@ -246,7 +276,11 @@ def simulate_rolls(
             break
         chunk_id = rng.choice(pool)
         current_ids = {**current_ids, chunk_id: True}
-        after = derive(state, current_ids)
+        after = (
+            cache.derive_state(state, current_ids, start=False)
+            if cache is not None
+            else derive(state, current_ids)
+        )
         delta = delta_from(before, after, chunk_id)
         ledger.append(
             UnlockRecord(
@@ -259,5 +293,8 @@ def simulate_rolls(
             )
         )
         before = after
+
+    if cache is not None and ledger:
+        cache.keep_final(state, current_ids, before)
 
     return ledger

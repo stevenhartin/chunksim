@@ -24,6 +24,7 @@ from fray_claude.cache import (
     write_blob,
 )
 from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.derived_cache import CacheBehaviour
 from fray_claude.pipeline import load_map_state
 from fray_claude.simulate import simulate_rolls
 
@@ -225,3 +226,53 @@ def test_batch_rejects_nonsense_counts(root: Path, rolls: int, runs: int, jobs: 
             jobs=jobs,
             root=root,
         )
+
+
+def test_cache_behaviour_reaches_the_workers(root: Path) -> None:
+    """It travels in the `RunSpec`, so it has to survive being pickled into a
+    worker process - `--jobs` must not quietly change what gets stored."""
+    run_batch(
+        name="Kept",
+        payload=_PAYLOAD,
+        base_map="fray",
+        rolls=2,
+        runs=2,
+        jobs=2,
+        seed=7,
+        root=root,
+        cache_behaviour=CacheBehaviour.NONE,
+    )
+    assert not (root / "cache" / "derived").exists()
+
+    run_batch(
+        name="Stored",
+        payload=_PAYLOAD,
+        base_map="fray",
+        rolls=2,
+        runs=2,
+        jobs=2,
+        seed=7,
+        root=root,
+        cache_behaviour=CacheBehaviour.ALL,
+    )
+    assert list((root / "cache" / "derived").iterdir())
+
+
+def test_caching_states_does_not_change_the_rolls(root: Path) -> None:
+    """The guarantee that matters: a cached state is the same state."""
+    uncached = run_batch(
+        name="Cold", payload=_PAYLOAD, base_map="fray", rolls=3, runs=3, seed=11,
+        root=root, cache_behaviour=CacheBehaviour.NONE,
+    )
+    warm = run_batch(
+        name="Warm", payload=_PAYLOAD, base_map="fray", rolls=3, runs=3, seed=11,
+        root=root, cache_behaviour=CacheBehaviour.ALL,
+    )
+    # Third time every state is a hit rather than a computation.
+    reused = run_batch(
+        name="Reused", payload=_PAYLOAD, base_map="fray", rolls=3, runs=3, seed=11,
+        root=root, cache_behaviour=CacheBehaviour.ALL,
+    )
+
+    assert [r.rolls for r in uncached.runs] == [r.rolls for r in warm.runs]
+    assert [r.rolls for r in uncached.runs] == [r.rolls for r in reused.runs]

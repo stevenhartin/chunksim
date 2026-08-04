@@ -120,7 +120,7 @@ Five things that cut across modules — the first three because each has already
 | `neighbours.py` | Which chunks are eligible to unlock next, and upstream's canvas numbering (**descending chunk id, 1-based**). Owns the `sectionsLimits` gate. |
 | `simulate.py` | Seeded chunk-roll simulation: the bootstrap pool, plus the dispatch to `neighbours.py`. Records are never revisited by a later roll. `simulated_payload` turns a finished ledger back into a map payload — read its docstring before changing which branches it touches. |
 | `batch.py` | N simulations from one state, each cached as its own map. Owns seed derivation and the **only** `ProcessPoolExecutor` in the project. `--jobs` must never change a result. |
-| `derived_cache.py` | The on-disk cache of `derive` results: the key (hash of every input), the zstd+pickle codec, and `cached_derive`. Pure bar the bytes, which `cache.py` writes. |
+| `derived_cache.py` | The on-disk cache of `derive` results: the key (hash of every input), the zstd+pickle codec, `cached_derive`, and `CacheBehaviour`/`RollCache` — which of a simulation's states to keep. Pure bar the bytes, which `cache.py` writes. |
 | `search.py` | World-wide fuzzy search over the *raw* export — all 5 item routes, so a strict superset of what `fray sources` can list. |
 | `summary.py` | Pure reductions over a raw payload. Extend this, not `cli.py`. Also home to `_mapping`, the tolerant dict accessor eight other modules import despite the `_` — Firebase omits empty containers, so every lookup anywhere must survive a missing branch. |
 | `cli.py` | argparse subcommands and rendering only; new logic goes in a pure module. |
@@ -142,7 +142,7 @@ fray tasks    [CATEGORY]   [--limit N]   # valid/active/obsolete/completed, incl
 fray unlock   --chunk ID    # tasks/sections one candidate chunk would add on top of the cached map
 fray neighbours [--limit N] # chunks eligible to unlock next, numbered as the app's canvas numbers them
 fray simulate --rolls N [--seed S]   # simulate N chunk rolls and accumulate their tasks/sections
-fray simulate --rolls N --cache-map NAME [--runs R] [--jobs J]   # ... and save each run as a cached map
+fray simulate --rolls N --cache-map NAME [--runs R] [--jobs J] [--cache-behaviour all|extremities|none]
 fray maps [list [--runs]] | maps rm NAME... | maps clean [--include-fetched]   # manage cached maps
 fray derived [list [--verbose]] | derived clean [--older-than DAYS] [--all]    # manage cached derivations
 fray search   QUERY [--type T ...] [--limit N]   # fuzzy search item/monster/npc/object/shop/task
@@ -187,7 +187,10 @@ The key is a hash of everything `derive` read — the `MapState` fields, the unl
 digests of the chunkinfo export and tasks map — which is why one entry serves `sections`, `sources`,
 `tasks`, `neighbours` and `search` on the same state, and why `fray fetch` invalidates without
 anything having to notice. `--recompute` bypasses it; `fray derived list|clean` inspects and ages it
-out by last read. **`derived_cache.py` owns all of that — read it before changing what `derive`
+out by last read. `fray simulate --cache-behaviour all|extremities|none` chooses how much of a
+simulation to keep (default `all`, ~118KiB per roll state — a repeat of a seeded batch then costs
+0.3s instead of 7.8s; `extremities` keeps only each run's first and last state, the last being the
+one the saved simulated map holds). **`derived_cache.py` owns all of that — read it before changing what `derive`
 returns**, because a result dataclass gaining a field must invalidate old entries (it does: the key
 includes a hash of those classes' shapes). `derive` itself stays uncached and pure, which is what
 keeps the opt-in oracles an honest signal.

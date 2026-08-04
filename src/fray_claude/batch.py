@@ -50,7 +50,7 @@ from fray_claude.cache import (
     write_sim_run,
 )
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.derived_cache import Digests, cached_derive
+from fray_claude.derived_cache import CacheBehaviour, Digests, RollCache
 from fray_claude.firebase import reverse_tasks_map
 from fray_claude.pipeline import load_map_state
 from fray_claude.simulate import simulate_rolls, simulated_payload
@@ -77,6 +77,8 @@ class RunSpec:
     base_fetched_at: str | None
     chunkinfo_path: Path | None
     root: Path | None
+    #: Which of this run's derived states to keep - see `CacheBehaviour`.
+    cache_behaviour: CacheBehaviour = CacheBehaviour.ALL
 
 
 @dataclass(frozen=True)
@@ -150,9 +152,8 @@ def run_one(spec: RunSpec) -> RunResult:
         tasks_map = {}
 
     state, unlocked = load_map_state(spec.payload, info, tasks_map)
-    # Only the base state is cached: every run in the batch starts from it, so
-    # this is one shared entry that saves one derive per run. The per-roll
-    # states are not - see `simulate_rolls`.
+    # Built here rather than passed in: a `RollCache` is cheap, and building it
+    # inside the worker keeps `RunSpec` to plain data.
     digests = Digests(
         chunkinfo=file_digest(chunkinfo_source(spec.chunkinfo_path, spec.root)),
         tasks_map=file_digest(blob_path(TASKS_MAP_BLOB_NAME, spec.root)),
@@ -162,7 +163,7 @@ def run_one(spec: RunSpec) -> RunResult:
         unlocked,
         rolls=spec.rolls,
         seed=spec.seed,
-        derive_base=lambda s, u: cached_derive(s, u, digests, root=spec.root),
+        cache=RollCache(digests, spec.cache_behaviour, spec.root),
     )
     payload = simulated_payload(spec.payload, ledger)
     rolled = tuple(record.chunk_id for record in ledger)
@@ -200,6 +201,7 @@ def _specs(
     base_fetched_at: str | None,
     chunkinfo_path: Path | None,
     root: Path | None,
+    cache_behaviour: CacheBehaviour,
 ) -> list[RunSpec]:
     specs: list[RunSpec] = []
     for index, seed in enumerate(seeds, start=1):
@@ -215,6 +217,7 @@ def _specs(
                 base_fetched_at=base_fetched_at,
                 chunkinfo_path=chunkinfo_path,
                 root=root,
+                cache_behaviour=cache_behaviour,
             )
         )
     return specs
@@ -232,6 +235,7 @@ def run_batch(
     seed: int | None = None,
     chunkinfo_path: Path | None = None,
     root: Path | None = None,
+    cache_behaviour: CacheBehaviour = CacheBehaviour.ALL,
     on_complete: Callable[[RunResult], None] | None = None,
 ) -> BatchResult:
     """Claim a batch directory, run `runs` simulations into it, and summarise.
@@ -264,6 +268,7 @@ def run_batch(
         base_fetched_at=base_fetched_at,
         chunkinfo_path=chunkinfo_path,
         root=root,
+        cache_behaviour=cache_behaviour,
     )
 
     results: list[RunResult] = []

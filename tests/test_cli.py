@@ -1338,14 +1338,65 @@ def test_derived_clean_keeps_recently_read_entries(
     assert len(_derived_entries(project)) == 1
 
 
-def test_a_simulation_caches_only_the_state_its_runs_share(
-    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize(
+    ("behaviour", "expected"),
+    [
+        # The fixture leaves one candidate per roll, so all three runs walk the
+        # same two states: start, +101, +102.
+        ("all", 3),
+        # Start and finish only - and the finish is the state the saved map
+        # holds, so `--map S/run-001` is served from disk afterwards.
+        ("extremities", 2),
+        ("none", 0),
+    ],
+)
+def test_cache_behaviour_decides_which_roll_states_are_kept(
+    project: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    behaviour: str,
+    expected: int,
 ) -> None:
-    """The scope decision: per-roll states are computed, never stored, so a
-    batch cannot fill the cache with states nothing will ask for again."""
     _simulatable(monkeypatch)
     capsys.readouterr()
 
-    assert main(["simulate", "--rolls", "2", "--runs", "3", "--seed", "1", "--cache-map", "S"]) == 0
+    assert (
+        main(
+            ["simulate", "--rolls", "2", "--runs", "3", "--seed", "1",
+             "--cache-map", "S", "--cache-behaviour", behaviour]
+        )
+        == 0
+    )
 
-    assert len(_derived_entries(project)) == 1
+    assert len(_derived_entries(project)) == expected
+
+
+def test_simulate_caches_every_state_by_default(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _simulatable(monkeypatch)
+    capsys.readouterr()
+
+    assert main(["simulate", "--rolls", "2", "--seed", "1", "--cache-map", "S"]) == 0
+
+    assert len(_derived_entries(project)) == 3
+
+
+def test_a_simulated_maps_own_state_is_cached_by_its_run(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The point of always keeping the finishing state: the map the run saved
+    is derived from it, so reading that map back costs nothing."""
+    _simulatable(monkeypatch)
+    main(["simulate", "--rolls", "2", "--seed", "1", "--cache-map", "S", "--cache-behaviour",
+          "extremities"])
+    capsys.readouterr()
+    stored = len(_derived_entries(project))
+
+    monkeypatch.setattr(
+        "fray_claude.derived_cache.derive",
+        lambda *a, **k: pytest.fail("the saved map's own state should already be cached"),
+    )
+
+    assert main(["tasks", "--map", "S"]) == 0
+    assert len(_derived_entries(project)) == stored

@@ -17,7 +17,9 @@ by the three I/O ones (`fetch`/`show`/`chunkinfo`).
 `simulate --cache-map NAME` saves each run as a cached map instead of only
 printing it, `--runs N` asks for N independent simulations and `--jobs N`
 spreads them over worker processes; `batch.py` owns all three, and `cache.py`
-the layout they land in. `--runs` without `--cache-map` is an error rather
+the layout they land in. `--cache-behaviour` picks how much of a run's derived
+state to keep (`derived_cache.CacheBehaviour`) - all of it by default, so
+re-running a seed is served from disk. `--runs` without `--cache-map` is an error rather
 than a silent single run: there would be nowhere to put the other N-1. The
 `maps` subcommand is this file's only *nested* one (`maps list|rm|clean`) -
 two of its three verbs are destructive, and `maps rm NAME` reads better than
@@ -106,7 +108,7 @@ from fray_claude.cache import (
 )
 from fray_claude.challenges import strip_task_markup
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.derived_cache import Digests, cached_derive
+from fray_claude.derived_cache import CacheBehaviour, Digests, RollCache, cached_derive
 from fray_claude.firebase import reverse_tasks_map
 from fray_claude.graph import build_section_graph
 from fray_claude.neighbours import eligible_neighbours
@@ -759,6 +761,7 @@ def _simulate_to_cache(args: argparse.Namespace) -> int:
         jobs=args.jobs,
         seed=args.seed,
         chunkinfo_path=args.chunkinfo,
+        cache_behaviour=CacheBehaviour(args.cache_behaviour),
         on_complete=None if quiet else report,
     )
 
@@ -787,7 +790,13 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
         return _error("--runs needs --cache-map: without it there is nowhere to put the runs")
 
     state, unlocked = _load_state(args)
-    ledger = simulate_rolls(state, unlocked, rolls=args.rolls, seed=args.seed)
+    ledger = simulate_rolls(
+        state,
+        unlocked,
+        rolls=args.rolls,
+        seed=args.seed,
+        cache=RollCache(_digests(args), CacheBehaviour(args.cache_behaviour)),
+    )
     total_tasks = sum(len(names) for record in ledger for names in record.new_tasks.values())
     total_bis = sum(len(record.bis_upgrades) for record in ledger)
 
@@ -1035,6 +1044,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=1,
         help="number of independent simulations to run (needs --cache-map; default: %(default)s)",
+    )
+    simulate.add_argument(
+        "--cache-behaviour",
+        dest="cache_behaviour",
+        choices=[behaviour.value for behaviour in CacheBehaviour],
+        default=CacheBehaviour.ALL.value,
+        help="which derived states to keep in the derivation cache (default: %(default)s)",
     )
     simulate.add_argument(
         "--jobs",
