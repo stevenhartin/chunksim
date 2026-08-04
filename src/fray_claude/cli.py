@@ -1,9 +1,9 @@
 """Command line entry point: argparse subcommands and their rendering only.
 
 A new subcommand keeps its logic in a pure module and calls it from here.
-`main()` funnels `FetchError`, `CacheMissError` and `NotImplementedError`
-into a stderr message and exit 1; `_load_state` (-> `pipeline.load_map_state`)
-handles the common cache-read + decode step.
+`main()` funnels `FetchError`, `CacheMissError`, `NotImplementedError` and
+`ConvergenceError` into a stderr message and exit 1; `_load_state`
+(-> `pipeline.load_map_state`) handles the common cache-read + decode step.
 
 `--export-json PATH` writes a subcommand's full result as JSON to `PATH`, or
 to stdout if `PATH` is `-` - in which case it *replaces* the human-readable
@@ -106,7 +106,7 @@ from fray_claude.graph import build_section_graph
 from fray_claude.neighbours import eligible_neighbours
 from fray_claude.other_tasks import CATEGORIES as OTHER_CATEGORIES
 from fray_claude.other_tasks import CategoryTasks, display_name, task_text
-from fray_claude.pipeline import MapState, derive, load_map_state
+from fray_claude.pipeline import ConvergenceError, MapState, derive, load_map_state
 from fray_claude.search import TYPES, build_world_index, search
 from fray_claude.sections import describe_sections, expand_chunk_areas
 from fray_claude.simulate import simulate_rolls
@@ -1043,7 +1043,7 @@ def main(argv: list[str] | None = None) -> int:
     handler: Any = args.func
     try:
         return int(handler(args))
-    except (FetchError, CacheMissError, NotImplementedError) as exc:
+    except (FetchError, CacheMissError, NotImplementedError, ConvergenceError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 

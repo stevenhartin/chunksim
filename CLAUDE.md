@@ -70,7 +70,7 @@ guess at, with `worker.js`/`index.js` line references — **read it before trust
 numbers or changing its behaviour.** That is where the design rationale lives; this section is a
 map to it, not a substitute.
 
-Four things that cut across modules — the first three because each has already caused a real bug:
+Five things that cut across modules — the first three because each has already caused a real bug:
 
 - **Reachable items are `ChallengeResult.available_items`, not `SourceIndex.items`.** The latter
   omits anything obtainable only by *making* it. `bis.py` and `boosts.py` both got this wrong first.
@@ -81,8 +81,16 @@ Four things that cut across modules — the first three because each has already
 - **Task names are markup-bearing keys.** The raw `~|...|~` form is the key everywhere (`valid`,
   ledger lookups, `--export-json`); `challenges.strip_task_markup` is display-only, and applies to
   challenge/task names *only* — other branches use `~` and `|` for real.
+- **The cached map does not contain the derivation — don't try to read it instead of computing.**
+  This looks like an obvious optimisation and isn't possible: `chunkinfo.activeTasks` holds **49
+  entries** (BiS 6, Diary 5, Extra 37, Slayer 1) against the **2,700 valid tasks** across 21 skill
+  categories this project computes, and the payload has no sections, sources or validity branches at
+  all. Upstream derives all of it in the browser and persists only those few UI-facing answers —
+  which is exactly what makes them oracles. `completedChallenges` is the player's ticked list, an
+  *input*. So every derivation command pays for `derive` (~1s), and `fray show` — a pure cache read at
+  0.07s — is what "just reading the cache" actually costs.
 - **The pure layer must stay process-parallel.** `fray simulate --jobs N` runs simulations in worker
-  processes, and a roll costs a full `derive` (~2.6s on the real export, ~100% of the runtime), so
+  processes, and a roll costs a full `derive` (~0.95s on the real export, ~100% of the runtime), so
   this is the only way a heatmap-sized batch finishes. That holds today only because there is **no
   module-level mutable state anywhere** — no `lru_cache`, no memo dicts, no globals; `_UNARMED_SOURCES`
   and `_UNIVERSAL_PRIMARY` are read-only constants — and because `MapState`/`Derived` are frozen.
@@ -100,12 +108,12 @@ Four things that cut across modules — the first three because each has already
 | `graph.py` | The export's `sections` branch as a **directed** `(chunk, section)` graph, with each edge's `sectionsLimits` gate pre-bound. Shaped for the not-yet-written pathfinding search. |
 | `rates.py` | OSRS drop-rate string parsing/formatting, matching JS's rounding because the output lands inside task names. |
 | `sources.py` | What the unlocked chunks make available (`SourceIndex`). Applies `taskUnlocks` to items *and* entities, so availability depends on challenge validity. |
-| `challenges.py` | Which challenges are valid (`ChallengeResult`) — a two-phase fixed point over 28 of 29 categories. **`BiS` is never evaluated here**; read `pipeline.Derived.bis`. |
+| `challenges.py` | Which challenges are valid (`ChallengeResult`) — a two-phase fixed point over 28 of 29 categories. **`BiS` is never evaluated here**; read `pipeline.Derived.bis`. Also **where every derivation command spends its time** — read the docstring's static/dynamic gate split before touching the loop. |
 | `bis.py` | Best-in-slot per (combat style, slot). Inherently **non-monotonic**: recomputed fresh per state, never accumulated. |
 | `active_tasks.py` | Per-skill active/obsolete/completed classification. A *display* winner only — it never changes `ChallengeResult.valid`. |
 | `boosts.py` | Temporary skill boosts. With `rules['Boosting']` on, **every** level comparison upstream makes is boosted, so this is a dependency of `challenges.py`/`active_tasks.py`, not a feature. |
 | `other_tasks.py` | The three non-skill categories, `Diary`/`Quest`/`Extra`. No single winner — upstream renders every valid, uncompleted one. |
-| `pipeline.py` | `MapState` + `derive`. Owns the **loop** where upstream's area-unlock circularity lives, so the modules above stay one-directional. |
+| `pipeline.py` | `MapState` + `derive`. Owns the **loop** where upstream's area-unlock circularity lives, so the modules above stay one-directional. Raises `ConvergenceError` rather than returning a truncated derivation. |
 | `unlock.py` | What one candidate unlock adds, by diffing two `derive` calls. **Owns the project's attribution rule** and its one exception. |
 | `neighbours.py` | Which chunks are eligible to unlock next, and upstream's canvas numbering (**descending chunk id, 1-based**). Owns the `sectionsLimits` gate. |
 | `simulate.py` | Seeded chunk-roll simulation: the bootstrap pool, plus the dispatch to `neighbours.py`. Records are never revisited by a later roll. `simulated_payload` turns a finished ledger back into a map payload — read its docstring before changing which branches it touches. |

@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from fray_claude.challenges import (
     UNSUPPORTED_CATEGORIES,
+    _compile_items,
+    _item_plan_met,
+    _items_requirement_met,
     calc_challenges,
     contains_sections,
     has_allowed_source,
@@ -1184,3 +1189,84 @@ def test_the_subskill_filter_leaves_real_skill_categories_alone() -> None:
     # Dropped by the ordinary `Skills` requirement check, not by the filter -
     # and Woodcutting itself survives, which the filter would not have allowed.
     assert "Chop a sapling" in result.valid["Woodcutting"]
+
+
+# --- the compiled `Items` plan ----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("refs", "items", "expected"),
+    [
+        (["Bones"], {"Bones": {"Goblin": "primary-drop"}}, True),
+        (["Bones"], {}, False),
+        # `*` is a secondary marker, stripped and otherwise ignored.
+        (["*Bones"], {"Bones": {"Goblin": "primary-drop"}}, True),
+        (["Axe[+]"], {"Bronze axe": {"Shop": "shop"}}, True),
+        (["Axe[+]"], {"Unrelated": {"Shop": "shop"}}, False),
+        # `[+]xN` needs N distinct members of the family.
+        (["Axe[+]x2"], {"Bronze axe": {"Shop": "shop"}}, False),
+        (["Axe[+]x2"], {"Bronze axe": {"Shop": "shop"}, "Iron axe": {"Shop": "shop"}}, True),
+        # An unresolvable family fails the whole requirement.
+        (["Nothing[+]"], {"Bronze axe": {"Shop": "shop"}}, False),
+    ],
+)
+def test_a_compiled_item_plan_answers_exactly_as_the_uncompiled_path(
+    refs: list[str], items: dict[str, dict[str, str]], expected: bool
+) -> None:
+    """The compile hoists *parsing* out of the fixed point and nothing else, so
+    the two paths must never disagree - `calc_challenges` uses the compiled one
+    on every sweep."""
+    info = _chunk_info(codeItems={"itemsPlus": {"Axe[+]": ["Bronze axe", "Iron axe"]}})
+    challenge: dict[str, Any] = {"Items": refs}
+
+    plan = _compile_items(challenge, info)
+    assert plan is not None
+    compiled = _item_plan_met(plan, items, skill="Nonskill", challenge=challenge, rules={})
+    uncompiled = _items_requirement_met(challenge, items, info, skill="Nonskill", rules={})
+
+    assert compiled == uncompiled == expected
+
+
+def test_a_challenge_with_no_items_compiles_to_no_plan() -> None:
+    assert _compile_items({"Level": 1}, _chunk_info()) is None
+
+
+def test_the_item_plan_is_static_but_the_check_is_not() -> None:
+    """The plan is built once per `calc_challenges` call and checked against an
+    item index that keeps growing - so a requirement unmet on one sweep must
+    still be able to pass on the next."""
+    info = _chunk_info(codeItems={"itemsPlus": {"Axe[+]": ["Bronze axe"]}})
+    challenge: dict[str, Any] = {"Items": ["Axe[+]"]}
+    plan = _compile_items(challenge, info)
+    assert plan is not None
+
+    before = _item_plan_met(plan, {}, skill="Nonskill", challenge=challenge, rules={})
+    after = _item_plan_met(
+        plan, {"Bronze axe": {"Shop": "shop"}}, skill="Nonskill", challenge=challenge, rules={}
+    )
+
+    assert (before, after) == (False, True)
+
+
+def test_a_static_gate_rejection_never_reaches_the_dynamic_half() -> None:
+    """What the candidate prefilter relies on: a challenge whose `Chunks`,
+    `Objects`/`Monsters`/`NPCs`, level or category gate fails cannot be revived
+    by anything the fixed point does, because none of those gates read
+    anything the fixed point changes."""
+    info = _chunk_info(
+        challenges={
+            "Nonskill": {
+                "Open the chest": {"Output": "Iron bar"},
+                # Wants the item that `Output` supplies, so the fixed point
+                # does reach it - but it sits in a chunk that is not unlocked,
+                # which is a static rejection nothing downstream can undo.
+                "Use the bar": {"Items": ["Iron bar"], "Chunks": ["999"]},
+                # The same requirement without the chunk gate, as a control.
+                "Use it here": {"Items": ["Iron bar"]},
+            }
+        }
+    )
+
+    result = calc_challenges({"100": True}, {}, _EMPTY, info, rules={})
+
+    assert result.valid["Nonskill"] == {"Open the chest": True, "Use it here": True}

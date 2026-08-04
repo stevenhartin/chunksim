@@ -4,11 +4,12 @@
 seed derivation, the process pool, and what each run leaves on disk. It is the
 only module that spawns processes.
 
-**Why processes.** A roll costs one `pipeline.derive`, measured at ~2.6s on the
-real export, and that is essentially the whole cost of a run (the ~10MB
-chunkinfo parse is ~0.1s, `unlock.delta_from` is free). The work is pure-Python
-and CPU-bound, so threads would serialise on the GIL; a heatmap-sized batch
-(100 runs x 50 rolls) is ~3.7 hours in one process and minutes across a dozen.
+**Why processes.** A roll costs one `pipeline.derive`, measured at ~0.95s on
+the real export (2.6s before `challenges.py`'s gate split), and that is
+essentially the whole cost of a run (the ~10MB chunkinfo parse is ~0.1s,
+`unlock.delta_from` is free). The work is pure-Python and CPU-bound, so threads
+would serialise on the GIL; a heatmap-sized batch (100 runs x 50 rolls) is well
+over an hour in one process and minutes across a dozen.
 
 **No shared mutable state, by construction.** Each worker loads its *own*
 `ChunkInfo` from disk rather than receiving the parent's, because at ~0.1s

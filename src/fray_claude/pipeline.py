@@ -103,10 +103,23 @@ class Derived:
     other_tasks: OtherTasks
 
 
+class ConvergenceError(RuntimeError):
+    """`derive`'s area-unlock loop did not reach a fixed point."""
+
+
 #: Upper bound on `derive`'s convergence loop (area unlocks + `taskUnlocks`
-#: source gating). The real export's chains are a couple of links deep, so
-#: this is a runaway guard rather than a real limit.
-_MAX_AREA_PASSES = 8
+#: source gating).
+#:
+#: **Measured, not guessed.** The real map needs *eight* passes: seven that
+#: each unlock further named areas (46, then 9, 2, 1, 1, 1, 0) and an eighth
+#: that confirms nothing moved. This was 8 when it was believed the chains were
+#: "a couple of links deep", i.e. the loop was silently stopping on the last
+#: allowed pass and a map one link deeper would have returned a **truncated
+#: derivation** - fewer reachable areas, fewer sources, fewer valid tasks, no
+#: warning. Hitting the cap now raises instead: a wrong answer that looks right
+#: is the worst outcome for this project, since every other module trusts
+#: `Derived`.
+_MAX_AREA_PASSES = 32
 
 
 def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
@@ -120,7 +133,9 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
     validate more challenges (upstream does the same thing by re-running
     `gatherChunksInfo` mid-`calcChallenges`, worker.js:2153). Keeping the
     loop here lets `sections.py`/`sources.py`/`challenges.py` each stay
-    one-directional and separately testable.
+    one-directional and separately testable. Raises `ConvergenceError` rather
+    than returning a truncated derivation if it fails to settle - see
+    `_MAX_AREA_PASSES` for why that is not a theoretical concern.
 
     The same loop feeds each pass's validity back into `gather_chunks_info`
     as `valid_tasks`, which is how `taskUnlocks` gating works: a shop or
@@ -136,6 +151,7 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
     index: SourceIndex | None = None
     challenges: ChallengeResult | None = None
     valid_tasks: dict[str, dict[str, int | str | bool]] = {}
+    converged = False
 
     for _ in range(_MAX_AREA_PASSES):
         reachable = unlocked_sections(
@@ -179,11 +195,18 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
             passive_skill=state.passive_skill,
         )
         if not new_areas and challenges.valid == valid_tasks:
+            converged = True
             break
         valid_tasks = challenges.valid
         expanded = {**expanded, **new_areas}
 
     assert index is not None and challenges is not None  # loop always runs at least once
+    if not converged:
+        raise ConvergenceError(
+            f"the area-unlock loop did not settle in {_MAX_AREA_PASSES} passes "
+            f"({len(expanded)} areas, {sum(len(v) for v in challenges.valid.values())} valid tasks "
+            "at the cut-off); the result would be truncated, so it is not returned"
+        )
     bis = compute_bis(
         state.chunk_info,
         # Not `index.items`: BiS candidates must include items that only

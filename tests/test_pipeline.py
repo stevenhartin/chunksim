@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.pipeline import MapState, derive, load_map_state
+from fray_claude.pipeline import ConvergenceError, MapState, derive, load_map_state
 
 
 def _chunk_info(**data: Any) -> ChunkInfo:
@@ -182,3 +184,33 @@ def test_derive_exposes_challenge_output_items_to_bis() -> None:
     assert "Granite ring (i)" not in result.source_index.items
     assert "Granite ring (i)" in result.challenges.available_items
     assert result.bis.picks["Melee-ring"] == "Granite ring (i)"
+
+
+def test_derive_refuses_to_return_a_truncated_derivation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The loop used to stop silently at its cap. On the real map it converges
+    on exactly the last allowed pass, so a map one link deeper would have got a
+    quietly short answer - fewer areas, fewer sources, fewer valid tasks.
+    """
+    monkeypatch.setattr("fray_claude.pipeline._MAX_AREA_PASSES", 1)
+    info = _chunk_info(
+        chunks={"100": {"Monster": {"Goblin": True}}},
+        drops={"Goblin": {"Bones": {"1": "Always"}}},
+        challenges={"Prayer": {"Bury bones": {"Items": ["Bones"], "Level": 1}}},
+    )
+
+    with pytest.raises(ConvergenceError, match="did not settle in 1 passes"):
+        derive(_state(chunk_info=info), {"100": True})
+
+
+def test_derive_converges_well_inside_the_cap_on_a_simple_state() -> None:
+    """Guards the other direction: the cap is headroom, not a target."""
+    info = _chunk_info(
+        chunks={"100": {"Monster": {"Goblin": True}}},
+        drops={"Goblin": {"Bones": {"1": "Always"}}},
+    )
+
+    result = derive(_state(chunk_info=info), {"100": True})
+
+    assert "Bones" in result.source_index.items
