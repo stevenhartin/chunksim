@@ -119,6 +119,45 @@ def _available(boost: str, items: Mapping[str, Any], source_index: SourceIndex) 
     return name in contents
 
 
+def combat_boost(
+    skill: str,
+    level: float,
+    *,
+    chunk_info: ChunkInfo,
+    items: Mapping[str, Any],
+    source_index: SourceIndex,
+) -> int:
+    """The best reachable boost for `skill` at `level`, for a *fight*.
+
+    Same table and same reachability test as `best_boost`, without any of the
+    challenge machinery - and deliberately **not gated on `rules['Boosting']`**.
+    That rule governs whether a challenge may be attempted below its stated
+    level, which is a source-chunk scoring question; drinking a super strength
+    potion before a boss is ordinary play whether or not the rule is on.
+    Conflating the two would have made every combat estimate depend on a
+    setting that has nothing to do with combat.
+
+    No `NoBoost`, no task bans and no `Crystal saw`: all three are properties
+    of a challenge, and there is no challenge here. `dps_bridge.py` is the
+    caller - see its docstring on which skills the export actually covers.
+    """
+    table = _mapping(_mapping(chunk_info.code_items, "boostItems"), skill)
+    if not table:
+        return 0
+
+    best = 0
+    for boost, amount in table.items():
+        if boost == _CRYSTAL_SAW or not _available(boost, items, source_index):
+            continue
+        if isinstance(amount, str):
+            possible = _percent_boost(amount, level)
+            if possible is not None and possible > best:
+                best = possible
+        elif isinstance(amount, (int, float)) and amount > best:
+            best = int(amount)
+    return best
+
+
 def best_boost(
     skill: str,
     name: str,

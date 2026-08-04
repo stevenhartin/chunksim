@@ -297,6 +297,198 @@ def test_price_monsters_without_loadouts_prices_nothing() -> None:
     )
 
 
+class _FakeSourceIndex:
+    """Only the attributes `boosts._available` reaches for."""
+
+    items: dict[str, Any] = {}
+    npcs: dict[str, Any] = {}
+    objects: dict[str, Any] = {}
+
+
+def _boost_info(**boost_items: Any) -> ChunkInfo:
+    return ChunkInfo(
+        {"equipment": _equipment(), "codeItems": {"boostItems": boost_items}}
+    )
+
+
+def test_kit_takes_the_best_reachable_boost() -> None:
+    info = _boost_info(
+        Strength={"Strength potion(4)": "10%+3", "Super strength(4)": "15%+5"}
+    )
+    kit = dps_bridge.assemble_kit(
+        info,
+        {"Strength": 70, "Prayer": 1},
+        items={"Strength potion(4)": True},
+        source_index=_FakeSourceIndex(),
+    )
+    # 9, not the 10 that `10%+3` of 70 reads like: `boosts._percent_boost`
+    # ports upstream's two-step form, which applies the percentage to the
+    # level *less* the first pass. The super strength it cannot reach is
+    # ignored regardless, which is what this is really asserting.
+    assert kit.boosts["Strength"] == 9
+
+
+def test_kit_boosts_nothing_it_cannot_reach() -> None:
+    info = _boost_info(Strength={"Super strength(4)": "15%+5"})
+    kit = dps_bridge.assemble_kit(
+        info, {"Strength": 70}, items={}, source_index=_FakeSourceIndex()
+    )
+    assert kit.boosts["Strength"] == 0
+
+
+def test_prayers_step_down_with_the_level() -> None:
+    """The tier a player qualifies for, not the best one that exists."""
+    high = dps_bridge.assemble_kit(
+        _boost_info(), {"Prayer": 99, "Defence": 99}, items={}, source_index=_FakeSourceIndex()
+    )
+    low = dps_bridge.assemble_kit(
+        _boost_info(), {"Prayer": 40, "Defence": 99}, items={}, source_index=_FakeSourceIndex()
+    )
+    none = dps_bridge.assemble_kit(
+        _boost_info(), {"Prayer": 1, "Defence": 1}, items={}, source_index=_FakeSourceIndex()
+    )
+
+    assert high.prayers["Melee"] == frozenset({"Piety"})
+    # Below the capes the accuracy and strength prayers stack.
+    assert low.prayers["Melee"] == frozenset({"Ultimate Strength", "Incredible Reflexes"})
+    assert "Melee" not in none.prayers
+
+
+def test_piety_needs_the_defence_level_too() -> None:
+    kit = dps_bridge.assemble_kit(
+        _boost_info(), {"Prayer": 99, "Defence": 60}, items={}, source_index=_FakeSourceIndex()
+    )
+    assert kit.prayers["Melee"] == frozenset({"Ultimate Strength", "Incredible Reflexes"})
+
+
+def test_rigour_needs_its_scroll_to_be_reachable() -> None:
+    """The one prayer tier gated on an item rather than only a level."""
+    without = dps_bridge.assemble_kit(
+        _boost_info(), {"Prayer": 99}, items={}, source_index=_FakeSourceIndex()
+    )
+    with_scroll = dps_bridge.assemble_kit(
+        _boost_info(),
+        {"Prayer": 99},
+        items={"Dexterous prayer scroll": True},
+        source_index=_FakeSourceIndex(),
+    )
+
+    assert without.prayers["Ranged"] == frozenset({"Eagle Eye"})
+    assert with_scroll.prayers["Ranged"] == frozenset({"Rigour"})
+
+
+def test_the_spell_follows_the_boosted_magic_level() -> None:
+    kit = dps_bridge.assemble_kit(
+        _boost_info(), {"Magic": 87}, items={}, source_index=_FakeSourceIndex()
+    )
+    assert kit.spell == "Water Surge"
+
+    low = dps_bridge.assemble_kit(
+        _boost_info(), {"Magic": 20}, items={}, source_index=_FakeSourceIndex()
+    )
+    assert low.spell == "Fire Strike"
+
+
+def test_magic_is_unpriceable_without_a_spell() -> None:
+    """The failure this whole `Kit` exists to stop.
+
+    A magic loadout with no spell has no max hit at all, so the library
+    refuses it and `best_kill` moves on - which looks exactly like a style
+    that never wins. Magic priced *nothing* until `Kit` named a spell.
+    """
+    picks = {"Magic-weapon": "Master wand"}
+    target = _target(name="Rat", hitpoints=50)
+
+    bare = dps_bridge.build_loadouts(_chunk_info(), picks, LEVELS)
+    assert dps_bridge.best_kill(bare, "Rat", [("Rat", target)]) is None
+
+    armed = dps_bridge.build_loadouts(
+        _chunk_info(), picks, LEVELS, dps_bridge.Kit(spell="Fire Bolt")
+    )
+    assert dps_bridge.best_kill(armed, "Rat", [("Rat", target)]) is not None
+
+
+def test_only_magic_carries_the_spell() -> None:
+    """A spell on a melee loadout names a manual cast, which it is not."""
+    loadouts = dps_bridge.build_loadouts(
+        _chunk_info(),
+        {"Melee-weapon": "Abyssal whip", "Magic-weapon": "Master wand"},
+        LEVELS,
+        dps_bridge.Kit(spell="Fire Bolt"),
+    )
+    assert loadouts["Melee"].spell == ""
+    assert loadouts["Magic"].spell == "Fire Bolt"
+
+
+def test_boosts_reach_the_loadout_levels() -> None:
+    loadouts = dps_bridge.build_loadouts(
+        _chunk_info(),
+        {"Melee-weapon": "Abyssal whip"},
+        {"Attack": 75, "Strength": 70},
+        dps_bridge.Kit(boosts={"Strength": 15, "Attack": 99}),
+    )
+    assert loadouts["Melee"].levels.strength == 85
+    # Attack is deliberately never boosted - the export has no table for it,
+    # so a caller supplying one must not quietly change the answer.
+    assert loadouts["Melee"].levels.attack == 75
+
+
+def test_prayers_speed_up_the_kill() -> None:
+    """Not a formula check - that the kit is actually plumbed through."""
+    picks = {"Melee-weapon": "Abyssal whip"}
+    target = _target(name="Tough", hitpoints=300)
+
+    bare = dps_bridge.best_kill(
+        dps_bridge.build_loadouts(_chunk_info(), picks, LEVELS),
+        "Tough",
+        [("Tough", target)],
+    )
+    prayed = dps_bridge.best_kill(
+        dps_bridge.build_loadouts(
+            _chunk_info(), picks, LEVELS, dps_bridge.Kit(prayers={"Melee": frozenset({"Piety"})})
+        ),
+        "Tough",
+        [("Tough", target)],
+    )
+
+    assert bare is not None and prayed is not None
+    assert prayed.ttk < bare.ttk
+
+
+def test_defence_draining_speeds_up_the_kill() -> None:
+    """Defence drives accuracy, which drives everything."""
+    from osrs_dps import DefenceReductions, Levels as DpsLevels
+
+    picks = {"Melee-weapon": "Abyssal whip"}
+    loadouts = dps_bridge.build_loadouts(_chunk_info(), picks, LEVELS)
+    boss = _target(name="Boss", hitpoints=500, levels=DpsLevels(defence=200))
+
+    plain = dps_bridge.best_kill(loadouts, "Boss", [("Boss", boss)])
+    drained = dps_bridge.best_kill(
+        loadouts,
+        "Boss",
+        [("Boss", boss)],
+        reductions=DefenceReductions(dragon_warhammer=3),
+    )
+
+    assert plain is not None and drained is not None
+    assert drained.ttk < plain.ttk
+
+
+def test_group_bosses_are_not_priced_solo() -> None:
+    """A solo kill time for team content is not a number worth having."""
+    index = _FakeIndex({"Nex": _target(name="Nex", hitpoints=3400)})
+    rates = dps_bridge.price_monsters(
+        _chunk_info(),
+        {"Melee-weapon": "Abyssal whip"},
+        LEVELS,
+        ["Nex"],
+        index=index,  # type: ignore[arg-type]
+    )
+    assert rates == {}
+    assert "Nex" in dps_bridge.GROUP_BOSSES
+
+
 def test_measure_overhead_reports_samples_not_an_average() -> None:
     """Including the negative ones, which is the point.
 

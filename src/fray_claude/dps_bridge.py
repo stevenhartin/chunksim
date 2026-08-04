@@ -43,26 +43,51 @@ that bites:
 2. `slot: "2h"` is the export's way of saying two-handed; the library carries
    it as a separate `two_handed` flag beside an ordinary weapon slot.
 
-**What is deliberately not supplied**, each of which makes the estimate
+**Worn gear is a fraction of what decides a kill.** Prayers, potions, the
+spell being cast and defence draining are each worth more than an equipment
+upgrade, and a fight priced without them is not the fight anyone has - the
+map's BiS takes 6,789 seconds to kill Nex on bare gear. `Kit` carries all four
+and `assemble_kit` derives them from what the map reaches, so they are gated
+on availability like everything else rather than assumed. Passing no `Kit`
+gives the bare-gear number, which is a floor and not an estimate.
+
+**Magic needs a named spell or it does not work at all.** Without one the
+library has no max hit to compute and refuses the loadout, so before `Kit`
+existed the magic style silently priced *nothing* - `best_kill` caught the
+refusal and moved on. A style that contributes nothing looks exactly like a
+style that never wins, which is why this went unnoticed.
+
+**All three styles are always tried.** A monster's defences are wildly uneven
+and the right style is a property of the fight, not of the gear: Zulrah's
+magma form takes nothing whatever from melee.
+
+**What is still not supplied**, each of which makes the estimate
 *conservative* rather than wrong - a missing bonus lengthens the kill:
 
-- **Prayers.** Piety and Rigour are worth a lot, but the map records no prayer
-  level (`estimate.infer_levels` reads a floor out of completed challenges,
-  which says nothing about what is active in a fight).
+- **Attack boosts.** The export's `boostItems` has no `Attack` table at all,
+  so a melee attack roll never boosts. See `_BOOSTED_SKILLS`.
+- **The Bandos godsword's drain.** See `_DRAIN_WEAPONS`.
 - **Weapon category.** The export has no `category` field, so the effects
   keyed off one - `Polearm` reaching flying monsters, `Pickaxe` against
   Guardians, `Salamander` bypassing some melee immunities - never fire.
 - **`in_wilderness`.** The wilderness weapons only get their bonus inside it,
   and a drop table does not say where its monster stands. The map's BiS holds
   a `Webweaver bow (u)`, so this one is live and costs real damage.
+- **Prayer sustainability.** Prayers are applied for the whole fight however
+  long it runs, which nothing restores in the model.
+
+**Group bosses are refused, not priced.** A solo kill time for team content is
+not a number worth having, and the wiki's rate for one describes a team rather
+than a player. See `GROUP_BOSSES`.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any
 
+from fray_claude.boosts import combat_boost
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.heuristics import Rate
 from fray_claude.summary import _mapping
@@ -70,12 +95,15 @@ from fray_claude.summary import _mapping
 try:  # pragma: no cover - exercised by whether the extra is installed
     from osrs_dps import (
         CombatStyle,
+        DefenceReductions,
         Levels,
         Loadout,
+        RaidInputs,
         StatBlock,
         Target,
         Unsupported,
         dps,
+        scale,
     )
     from osrs_dps.data import MonsterIndex, load_monsters
 
@@ -103,6 +131,118 @@ OFFENSIVE_STYLES = ("Melee", "Ranged", "Magic")
 #: for a drop would use. Stance buys invisible level boosts that differ
 #: between accuracy and max hit, so it cannot be inferred from the style.
 _STANCES = {"Melee": "Aggressive", "Ranged": "Rapid", "Magic": "Accurate"}
+
+#: Which skill's boost applies to each style's damage. **`Attack` is absent
+#: from the export's `boostItems` entirely** - it is `null`, where `Strength`,
+#: `Ranged`, `Magic` and `Defence` all have tables - so a melee attack roll
+#: never boosts here even though a super combat potion boosts it in the game.
+#: Following the export is the rule (see the module docstring); the effect is
+#: to understate melee accuracy, which lengthens kills rather than shortening
+#: them.
+_BOOSTED_SKILLS = ("Strength", "Ranged", "Magic", "Defence")
+
+#: Prayer tiers per style, strongest first: `(prayers, prayer level, defence
+#: level, item required)`. The first tier the player qualifies for wins.
+#:
+#: Below the capes, the accuracy and strength prayers are **separate and
+#: stack**, which is why these are sets rather than single names - a player at
+#: 40 Prayer runs Ultimate Strength *and* Incredible Reflexes together.
+#:
+#: Rigour and Augury are gated on an item rather than only a level, because
+#: they are unlocked by a scroll that has to be obtained. That makes them
+#: checkable against what the map reaches, unlike Piety, whose quest
+#: requirement nothing here records - Piety is granted on level alone, which
+#: is the one optimistic assumption in this table.
+_PRAYER_TIERS: dict[str, tuple[tuple[frozenset[str], int, int, str], ...]] = {
+    "Melee": (
+        (frozenset({"Piety"}), 70, 70, ""),
+        (frozenset({"Chivalry"}), 60, 65, ""),
+        (frozenset({"Ultimate Strength", "Incredible Reflexes"}), 34, 0, ""),
+        (frozenset({"Superhuman Strength", "Improved Reflexes"}), 16, 0, ""),
+        (frozenset({"Burst of Strength", "Clarity of Thought"}), 7, 0, ""),
+    ),
+    "Ranged": (
+        (frozenset({"Rigour"}), 74, 0, "Dexterous prayer scroll"),
+        (frozenset({"Eagle Eye"}), 44, 0, ""),
+        (frozenset({"Hawk Eye"}), 26, 0, ""),
+        (frozenset({"Sharp Eye"}), 8, 0, ""),
+    ),
+    "Magic": (
+        (frozenset({"Augury"}), 77, 0, "Arcane prayer scroll"),
+        (frozenset({"Mystic Might"}), 45, 0, ""),
+        (frozenset({"Mystic Lore"}), 27, 0, ""),
+        (frozenset({"Mystic Will"}), 9, 0, ""),
+    ),
+}
+
+#: The strongest standard-spellbook attack spell at each Magic level. Without
+#: one a magic loadout has **no max hit at all** and the library refuses it -
+#: which is how magic silently priced nothing at all until this table existed.
+#:
+#: Runes are not checked. A map holding a magic weapon is assumed to be able
+#: to cast with it, which is the optimistic direction and the one assumption
+#: here that is not gated on reachability. Elemental spells resolve by tier
+#: inside the library anyway, so naming the tier is what matters, not the
+#: element.
+_SPELL_TIERS: tuple[tuple[int, str], ...] = (
+    (95, "Fire Surge"),
+    (85, "Water Surge"),
+    (75, "Fire Wave"),
+    (65, "Water Wave"),
+    (59, "Fire Blast"),
+    (47, "Water Blast"),
+    (35, "Fire Bolt"),
+    (23, "Water Bolt"),
+    (13, "Fire Strike"),
+    (1, "Wind Strike"),
+)
+
+#: Defence-draining weapons this can model. A boss's defence drives accuracy,
+#: which drives everything, so a map holding one of these kills far faster
+#: than the plain numbers suggest - the Corporeal Beast is not sensibly
+#: killable without one.
+#:
+#: **The Bandos godsword is deliberately absent.** Its `DefenceReductions`
+#: field counts *damage dealt*, not specials landed, so filling it needs a
+#: special-attack damage estimate this module does not have. Leaving it out
+#: understates a map that holds one, which is the safe direction.
+#:
+#: `assemble_kit` names each of these explicitly rather than looping this
+#: table, because `accursed` is a flag where the rest are counts.
+_DRAIN_WEAPONS = (
+    "Elder maul",
+    "Dragon warhammer",
+    "Arclight",
+    "Emberlight",
+    "Accursed sceptre",
+)
+
+#: Specials assumed landed before the fight proper. Two is a realistic opener
+#: on a full bar, not a maximum - a longer fight regenerates energy and lands
+#: more, which this does not model.
+_OPENING_SPECIALS = 2
+
+#: Bosses that are not soloable, and whose kill time is therefore not a number
+#: this module should produce. The wiki's rates for these describe a *team*,
+#: so comparing against them is meaningless too. Curated: nothing in the
+#: export marks group content.
+GROUP_BOSSES = frozenset(
+    {
+        "Nex",
+        "Corporeal Beast",
+        # The team version. `Phosani's Nightmare` is the solo one and stays
+        # priceable, however badly.
+        "The Nightmare",
+        "Verzik Vitur",
+        "Tekton",
+        "Great Olm",
+        "Nylocas Vasilias",
+        "Pestilent Bloat",
+        "Sotetseg",
+        "Xarpus",
+        "Maiden of Sugadinti",
+    }
+)
 
 #: Which melee damage type each export attack bonus corresponds to. Ordered,
 #: because a weapon with equal bonuses resolves to the first.
@@ -138,6 +278,91 @@ def _require() -> None:
             "osrs-dps is not installed; install the optional extra with "
             "`pip install -e ../osrs-dps` (or `pip install '.[dps]'`)"
         )
+
+
+@dataclass(frozen=True)
+class Kit:
+    """What the map brings to a fight beyond the gear it wears.
+
+    Assembled by `assemble_kit` from what the map actually reaches, so an
+    early chunk gets none of it and a late one gets all of it. Every field
+    defaults inert, which makes an unsupplied `Kit` the plain-gear estimate
+    rather than a silently boosted one.
+
+    These are the four things the wiki's own kill rates assume and the bare
+    gear numbers do not, and between them they are worth more than the gear:
+    a boss that takes 6,700 seconds unprayed and unboosted is not the same
+    fight the money-making guide is describing.
+    """
+
+    #: Skill name -> levels added, from reachable potions.
+    boosts: Mapping[str, int] = field(default_factory=dict)
+    #: Style name -> the prayers to run. See `_PRAYER_TIERS`.
+    prayers: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    #: The strongest castable standard-book spell, or `""` for none.
+    spell: str = ""
+    #: Defence draining the map can bring, already counted in specials.
+    reductions: DefenceReductions | None = None
+
+
+def assemble_kit(
+    chunk_info: ChunkInfo,
+    levels: Mapping[str, int],
+    *,
+    items: Mapping[str, Any],
+    source_index: Any,
+) -> Kit:
+    """The boosts, prayers, spell and defence draining this map can bring.
+
+    `items` is `ChallengeResult.available_items` and `source_index` the
+    `SourceIndex` - the same pair `boosts.py` takes, and for the same reason:
+    the narrower `SourceIndex.items` omits anything obtainable only by making
+    it, which silently loses boosts that are baked rather than dropped.
+    """
+    _require()
+
+    boosts = {
+        skill: combat_boost(
+            skill,
+            levels.get(skill, 1),
+            chunk_info=chunk_info,
+            items=items,
+            source_index=source_index,
+        )
+        for skill in _BOOSTED_SKILLS
+    }
+
+    prayers: dict[str, frozenset[str]] = {}
+    for style, tiers in _PRAYER_TIERS.items():
+        for names, prayer_level, defence_level, item in tiers:
+            if levels.get("Prayer", 1) < prayer_level:
+                continue
+            if levels.get("Defence", 1) < defence_level:
+                continue
+            if item and item not in items:
+                continue
+            prayers[style] = names
+            break
+
+    magic = levels.get("Magic", 1) + boosts.get("Magic", 0)
+    spell = next((name for level, name in _SPELL_TIERS if magic >= level), "")
+
+    def specials(weapon: str) -> int:
+        return _OPENING_SPECIALS if weapon in items else 0
+
+    reductions = None
+    if any(weapon in items for weapon in _DRAIN_WEAPONS):
+        reductions = DefenceReductions(
+            elder_maul=specials("Elder maul"),
+            dragon_warhammer=specials("Dragon warhammer"),
+            arclight=specials("Arclight"),
+            emberlight=specials("Emberlight"),
+            # A flag rather than a count: the sceptre's effect either applied
+            # or it did not, where a hammer stacks per special landed.
+            accursed="Accursed sceptre" in items,
+        )
+
+    return Kit(boosts=boosts, prayers=prayers, spell=spell, reductions=reductions)
 
 
 @dataclass(frozen=True)
@@ -215,6 +440,7 @@ def build_loadouts(
     chunk_info: ChunkInfo,
     picks: Mapping[str, str],
     levels: Mapping[str, int],
+    kit: Kit | None = None,
 ) -> dict[str, Loadout]:
     """A `Loadout` per offensive style, from `BisResult.picks`.
 
@@ -225,9 +451,14 @@ def build_loadouts(
 
     `levels` is `estimate.infer_levels`'s floor, so an unproven skill reads as
     level 1 and the kill comes out slow. That is the conservative direction.
+
+    `kit` adds the prayers, potion boosts and spell the map can reach. Without
+    one the loadouts are bare gear, which is a *far* slower fight than anyone
+    actually has - see `Kit`.
     """
     _require()
     equipment = chunk_info.equipment
+    kit = kit or Kit()
     loadouts: dict[str, Loadout] = {}
 
     for style in OFFENSIVE_STYLES:
@@ -264,13 +495,18 @@ def build_loadouts(
         else:
             combat_style = CombatStyle.MAGIC
 
+        def boosted(skill: str, floor: int = 1) -> int:
+            return levels.get(skill, floor) + kit.boosts.get(skill, 0)
+
         loadouts[style] = Loadout(
             levels=Levels(
+                # Attack alone never boosts: the export has no `boostItems`
+                # table for it. See `_BOOSTED_SKILLS`.
                 attack=levels.get("Attack", 1),
-                strength=levels.get("Strength", 1),
-                defence=levels.get("Defence", 1),
-                ranged=levels.get("Ranged", 1),
-                magic=levels.get("Magic", 1),
+                strength=boosted("Strength"),
+                defence=boosted("Defence"),
+                ranged=boosted("Ranged"),
+                magic=boosted("Magic"),
                 hitpoints=levels.get("Hitpoints", 10),
                 prayer=levels.get("Prayer", 1),
             ),
@@ -278,6 +514,11 @@ def build_loadouts(
             attack_speed=attack_speed,
             style=combat_style,
             stance=_STANCES[style],
+            prayers=kit.prayers.get(style, frozenset()),
+            # Magic needs a named spell or it has no max hit at all and the
+            # library refuses the loadout outright. The other two styles must
+            # *not* carry one - a spell names a manual cast.
+            spell=kit.spell if style == "Magic" else "",
             worn=frozenset(worn.values()),
             weapon_name=worn.get(weapon_pick, ""),
             two_handed=two_handed,
@@ -339,13 +580,19 @@ def best_kill(
     candidates: Iterable[tuple[str, Target]],
     *,
     on_slayer_task: bool = False,
+    reductions: DefenceReductions | None = None,
 ) -> KillEstimate | None:
     """The fastest way to kill `name` with the gear on offer, or `None`.
 
     Fastest across **both** axes: which BiS style to use, and - when the name
-    was ambiguous - which version of the monster. Choosing the quickest
-    version is the one policy here with a defensible meaning: someone farming
-    a drop kills whichever one they can kill fastest.
+    was ambiguous - which version of the monster. Trying all three styles is
+    not a nicety: a monster's defences are wildly uneven, and Zulrah's magma
+    form takes **nothing** from melee while answering ranged normally. Picking
+    a style up front would price a fight nobody would choose to have.
+
+    `reductions` drains the target's defence before any of that, which is the
+    difference between a plausible boss time and a nonsensical one - defence
+    drives accuracy, and accuracy drives everything.
 
     `None` means no combination produced a kill: an empty `candidates`, a
     loadout that cannot damage the target (`dps == 0`, which the library
@@ -362,6 +609,8 @@ def best_kill(
         fight = target
         if on_slayer_task and not target.is_slayer_monster:
             fight = _slayer_target(target)
+        if reductions is not None:
+            fight = scale(fight, RaidInputs(defence_reductions=reductions))
         for style, loadout in loadouts.items():
             try:
                 result = dps(_on_task(loadout) if on_slayer_task else loadout, fight)
@@ -403,30 +652,36 @@ def price_monsters(
     index: MonsterIndex | None = None,
     overhead: float = DEFAULT_OVERHEAD_SECONDS,
     slayer_monsters: frozenset[str] = frozenset(),
+    kit: Kit | None = None,
 ) -> dict[str, Rate]:
     """Kills-per-hour for `monsters`, as `Rate`s ready to merge.
 
     Returns only what it could price. A monster missing from the result is one
     the caller should leave to the scraped rate or the default - this never
     substitutes a guess, because a wrong kill time is indistinguishable from a
-    right one once it reaches a total.
+    right one once it reaches a total. `GROUP_BOSSES` are skipped for that
+    reason: a solo kill time for team content is not a number worth having.
 
     The `Rate.source` is `dps`, and `Rate.match` carries `KillEstimate.match`
     so an estimate can show which numbers rest on a variant choice.
     """
     _require()
     monster_index = load_monster_index() if index is None else index
-    loadouts = build_loadouts(chunk_info, picks, levels)
+    loadouts = build_loadouts(chunk_info, picks, levels, kit)
     if not loadouts:
         return {}
+    reductions = kit.reductions if kit is not None else None
 
     rates: dict[str, Rate] = {}
     for name in monsters:
+        if name in GROUP_BOSSES:
+            continue
         kill = best_kill(
             loadouts,
             name,
             candidate_targets(monster_index, name),
             on_slayer_task=name in slayer_monsters,
+            reductions=reductions,
         )
         if kill is None:
             continue
@@ -456,6 +711,7 @@ def measure_overhead(
     wiki_rates: Mapping[str, Rate],
     *,
     index: MonsterIndex | None = None,
+    kit: Kit | None = None,
 ) -> tuple[OverheadSample, ...]:
     """Per-monster overhead implied by the wiki's own rates.
 
@@ -478,15 +734,20 @@ def measure_overhead(
     """
     _require()
     monster_index = load_monster_index() if index is None else index
-    loadouts = build_loadouts(chunk_info, picks, levels)
+    loadouts = build_loadouts(chunk_info, picks, levels, kit)
     if not loadouts:
         return ()
 
     samples: list[OverheadSample] = []
     for monster, rate in sorted(wiki_rates.items()):
-        if rate.value <= 0:
+        if rate.value <= 0 or monster in GROUP_BOSSES:
             continue
-        kill = best_kill(loadouts, monster, candidate_targets(monster_index, monster))
+        kill = best_kill(
+            loadouts,
+            monster,
+            candidate_targets(monster_index, monster),
+            reductions=kit.reductions if kit is not None else None,
+        )
         if kill is None:
             continue
         samples.append(
@@ -503,11 +764,14 @@ def measure_overhead(
 __all__ = [
     "DEFAULT_OVERHEAD_SECONDS",
     "DPS_AVAILABLE",
+    "GROUP_BOSSES",
     "MAGIC_DAMAGE_SCALE",
     "OFFENSIVE_STYLES",
     "DpsUnavailableError",
     "KillEstimate",
+    "Kit",
     "OverheadSample",
+    "assemble_kit",
     "best_kill",
     "build_loadouts",
     "candidate_targets",
