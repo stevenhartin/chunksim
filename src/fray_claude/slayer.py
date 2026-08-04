@@ -363,8 +363,11 @@ def _weight(entry: Mapping[str, Any]) -> float:
     return float(value)
 
 
-def _task_monsters(chunk_info: ChunkInfo, task: str) -> set[str]:
+def task_monsters(chunk_info: ChunkInfo, task: str) -> set[str]:
     """Which `slayerMonsters` a task category covers.
+
+    Public because `dps_bridge.py` needs the same join to price a task the
+    config has no rate for, and two spellings of it would drift apart.
 
     The export names tasks in the plural (`Aberrant spectres`) and monsters in
     the singular (`Aberrant spectre`), sometimes with a `#Level 96` variant
@@ -474,7 +477,7 @@ def _is_reachable(
     if not chunks_requirement_met(requirement, unlocked, reachable_sections, chunk_info):
         return False
     if "Chunks" not in requirement:
-        monsters = _task_monsters(chunk_info, task)
+        monsters = task_monsters(chunk_info, task)
         if monsters and not (monsters & reachable_monsters):
             return False
     return True
@@ -747,7 +750,7 @@ def superior_spawns_per_hour(
 
 def _superior_spawn_chance(task: str, chunk_info: ChunkInfo, heuristics: Heuristics) -> float:
     """Chance one kill of `task`'s monsters spawns a superior at all."""
-    monsters = _task_monsters(chunk_info, task)
+    monsters = task_monsters(chunk_info, task)
     if not monsters:
         return 0.0
     return max(
@@ -765,7 +768,7 @@ def _superior_table_chance(task: str, chunk_info: ChunkInfo, heuristics: Heurist
 
     Zero for the many tasks with no superior at all, which is most of them.
     """
-    monsters = _task_monsters(chunk_info, task)
+    monsters = task_monsters(chunk_info, task)
     if not monsters:
         return 0.0
 

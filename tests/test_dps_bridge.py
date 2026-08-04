@@ -739,3 +739,143 @@ def test_measure_overhead_reports_samples_not_an_average() -> None:
     assert samples[0].monster == "Rat"
     assert samples[0].wiki_kph == 100.0
     assert samples[0].overhead == pytest.approx(36.0 - samples[0].ttk)
+
+
+def _slayer_info(**tasks: Any) -> ChunkInfo:
+    """An export with one master, and the slayer monsters its tasks name."""
+    return ChunkInfo(
+        {
+            "equipment": _equipment(),
+            "slayerMasterTasks": {"Turael": {name: {"Weight": 10} for name in tasks}},
+            "slayerMonsters": dict.fromkeys(tasks.values(), True),
+        }
+    )
+
+
+def test_slayer_gaps_are_filled_and_measurements_are_not() -> None:
+    """A measured task keeps its number; only a hole gets a computed one.
+
+    The community sheet is people actually doing the task. This is a model of
+    one fight, so it defers wherever there is an observation.
+    """
+    from fray_claude.heuristics import Heuristics, SlayerTask
+
+    info = _slayer_info(Banshees="Banshee", Cockatrices="Cockatrice")
+    index = _FakeIndex(
+        {
+            "Banshee": _target(name="Banshee", hitpoints=22),
+            "Cockatrice": _target(name="Cockatrice", hitpoints=37),
+        }
+    )
+    heuristics = Heuristics(
+        slayer={
+            "Turael": {
+                # Measured: a size and a rate. Must survive untouched.
+                "Banshees": SlayerTask(
+                    mean_count=50.0, xp_per_kill=22.0, kills_per_hour=300.0, source="sheet"
+                ),
+                # A size but no rate - the hole this fills.
+                "Cockatrices": SlayerTask(
+                    mean_count=40.0, xp_per_kill=0.0, kills_per_hour=0.0
+                ),
+            }
+        }
+    )
+
+    filled = dps_bridge.price_slayer_tasks(
+        info,
+        {"Melee-weapon": "Abyssal whip"},
+        LEVELS,
+        heuristics=heuristics,
+        index=index,  # type: ignore[arg-type]
+    )
+
+    assert set(filled["Turael"]) == {"Cockatrices"}
+    task = filled["Turael"]["Cockatrices"]
+    assert task.source == "dps"
+    assert task.kills_per_hour > 0
+    # The measured assignment size is kept, not reinvented.
+    assert task.mean_count == 40.0
+
+
+def test_slayer_xp_per_kill_is_the_monsters_hitpoints() -> None:
+    """A slayer kill awards experience equal to the monster's health.
+
+    Checked against the wiki's `slayxp` on nine monsters and exact on all
+    nine. Not to be confused with the sheet's `xp_per_kill`, which averages a
+    task's whole monster mix.
+    """
+    from fray_claude.heuristics import Heuristics, SlayerTask
+
+    info = _slayer_info(Banshees="Banshee")
+    index = _FakeIndex({"Banshee": _target(name="Banshee", hitpoints=22)})
+    heuristics = Heuristics(
+        slayer={"Turael": {"Banshees": SlayerTask(mean_count=50.0, xp_per_kill=0.0, kills_per_hour=0.0)}}
+    )
+
+    filled = dps_bridge.price_slayer_tasks(
+        info,
+        {"Melee-weapon": "Abyssal whip"},
+        LEVELS,
+        heuristics=heuristics,
+        index=index,  # type: ignore[arg-type]
+    )
+
+    assert filled["Turael"]["Banshees"].xp_per_kill == 22.0
+
+
+def test_a_task_with_no_measured_size_is_left_alone() -> None:
+    """A rate beside no size is half an answer; `slayer.py` still covers it."""
+    from fray_claude.heuristics import Heuristics, SlayerTask
+
+    info = _slayer_info(Banshees="Banshee")
+    index = _FakeIndex({"Banshee": _target(name="Banshee", hitpoints=22)})
+    heuristics = Heuristics(
+        slayer={
+            "Turael": {
+                "Banshees": SlayerTask(
+                    mean_count=0.0, xp_per_kill=0.0, kills_per_hour=0.0
+                )
+            }
+        }
+    )
+
+    assert (
+        dps_bridge.price_slayer_tasks(
+            info,
+            {"Melee-weapon": "Abyssal whip"},
+            LEVELS,
+            heuristics=heuristics,
+            index=index,  # type: ignore[arg-type]
+        )
+        == {}
+    )
+
+
+def test_with_slayer_rates_merges_without_mutating() -> None:
+    """The pure layer stays shareable, so this returns a new value."""
+    from fray_claude.heuristics import Heuristics, SlayerTask
+
+    original = Heuristics(
+        slayer={
+            "Turael": {
+                "Banshees": SlayerTask(
+                    mean_count=50.0, xp_per_kill=22.0, kills_per_hour=1.0
+                )
+            }
+        }
+    )
+    merged = dps_bridge.with_slayer_rates(
+        original,
+        {
+            "Turael": {
+                "Cockatrices": SlayerTask(
+                    mean_count=40.0, xp_per_kill=37.0, kills_per_hour=2.0
+                )
+            }
+        },
+    )
+
+    assert set(merged.slayer["Turael"]) == {"Banshees", "Cockatrices"}
+    assert set(original.slayer["Turael"]) == {"Banshees"}
+    assert dps_bridge.with_slayer_rates(original, {}) is original

@@ -100,6 +100,14 @@ Fanatic from 110 to 56. See `_WILDERNESS_WEAPONS` and `wilderness_monsters`.
 **Group bosses are refused, not priced.** A solo kill time for team content is
 not a number worth having, and the wiki's rate for one describes a team rather
 than a player. See `GROUP_BOSSES`.
+
+**Slayer's holes are the other thing this fills.** `slayer.py` folds a task it
+has no data for back in at a flat 7,000 XP an hour, deliberately poor so a
+master full of gaps looks slow rather than quietly fast. `price_slayer_tasks`
+computes those instead - 57 of the 116 unpriced pairs on the real map - which
+takes Mortimer from wholly guessed to wholly priced and Turael's guessed share
+from 68% to 41%. Read its docstring on why the XP comes from hitpoints, and on
+why a master's rate can *fall* when a guess is replaced by a number.
 """
 
 from __future__ import annotations
@@ -111,7 +119,8 @@ from typing import Any
 
 from fray_claude.boosts import combat_boost
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.heuristics import Rate
+from fray_claude.heuristics import Heuristics, Rate, SlayerTask
+from fray_claude.slayer import task_monsters
 from fray_claude.summary import _mapping
 
 try:  # pragma: no cover - exercised by whether the extra is installed
@@ -988,6 +997,126 @@ def price_monsters(
     return rates
 
 
+def price_slayer_tasks(
+    chunk_info: ChunkInfo,
+    picks: Mapping[str, str],
+    levels: Mapping[str, int],
+    *,
+    heuristics: Heuristics,
+    index: MonsterIndex | None = None,
+    kit: Kit | None = None,
+    boss_monsters: frozenset[str] = frozenset(),
+) -> dict[str, dict[str, SlayerTask]]:
+    """Rates for the slayer tasks the config has no measurement for.
+
+    **Gaps only.** A task the wiki and the community spreadsheet already
+    measure keeps its number: that is an observation of people actually doing
+    it, where this is a model of one fight. Only where `slayer.py` would
+    otherwise fall back to `DEFAULT_SLAYER_XP_PER_HOUR` - a flat 7,000 an hour
+    chosen to be deliberately poor - does this have anything to say.
+
+    Two numbers make a task priceable, and both are now available:
+
+    - **Kills per hour** from `best_kill`, with `on_slayer_task` set, since
+      being on the task is exactly the condition a black mask keys off.
+    - **XP per kill from the monster's hitpoints.** In Old School RuneScape a
+      slayer kill awards experience equal to the monster's health, which held
+      on every one of the nine monsters checkable against the wiki's `slayxp`
+      - Banshee 22, Basilisk 75, Gargoyle 105, Abyssal demon 150. Note this is
+      *not* what the community sheet's `xp_per_kill` holds: that is averaged
+      over a task's whole monster mix, which is why a `Basilisks` task reads
+      335 against a Basilisk's own 75. Comparing the two looks like a
+      contradiction and is not.
+
+    **The assignment size is left alone.** 115 of the 116 unpriced pairs on
+    the real map already carry one from the wiki's assignment tables, so this
+    fills in the rate beside a measured size rather than inventing both.
+
+    A task spanning several monsters is priced on the one that dies fastest,
+    matching `best_kill`'s policy everywhere else - that being the one someone
+    sent on the task would seek out. Its hitpoints give the XP, so the two
+    halves describe the same monster rather than a mixture of them.
+    """
+    _require()
+    monster_index = load_monster_index() if index is None else index
+    loadouts = build_loadouts(chunk_info, picks, levels, kit)
+    if not loadouts:
+        return {}
+    reductions = kit.reductions if kit is not None else None
+    wild = kit.wilderness if kit is not None else frozenset()
+
+    filled: dict[str, dict[str, SlayerTask]] = {}
+    for master, tasks in _mapping(chunk_info.data, "slayerMasterTasks").items():
+        if not isinstance(tasks, dict):
+            continue
+        for task in tasks:
+            known = (heuristics.slayer.get(master) or {}).get(task)
+            if known is not None and known.kills_per_hour > 0 and known.count > 0:
+                continue
+            if known is None or known.count <= 0:
+                # No measured assignment size, so there is no size to put a
+                # rate beside. `slayer.py`'s own fallback still covers it.
+                continue
+
+            best: KillEstimate | None = None
+            best_hitpoints = 0
+            for monster in sorted(task_monsters(chunk_info, task)):
+                bare = monster.split("#")[0]
+                candidates = candidate_targets(monster_index, bare)
+                kill = best_kill(
+                    loadouts,
+                    bare,
+                    candidates,
+                    on_slayer_task=True,
+                    reductions=reductions,
+                    wilderness=bare in wild,
+                    boss=bare in boss_monsters,
+                )
+                if kill is None:
+                    continue
+                if best is None or kill.ttk < best.ttk:
+                    best = kill
+                    best_hitpoints = next(
+                        (
+                            target.hitpoints
+                            for key, target in candidates
+                            if key == kill.monster
+                        ),
+                        0,
+                    )
+
+            if best is None or best_hitpoints <= 0:
+                continue
+            rate = best.kills_per_hour()
+            if rate <= 0:
+                continue
+            filled.setdefault(master, {})[task] = replace(
+                known,
+                xp_per_kill=float(best_hitpoints),
+                kills_per_hour=rate,
+                source="dps",
+            )
+    return filled
+
+
+def with_slayer_rates(
+    heuristics: Heuristics, filled: Mapping[str, Mapping[str, SlayerTask]]
+) -> Heuristics:
+    """`heuristics` with `filled` merged into its slayer table.
+
+    A new value rather than a mutation, so the pure layer stays shareable
+    across processes. Existing entries win nothing here - `price_slayer_tasks`
+    has already refused to touch anything measured - but the merge is written
+    to overwrite only the keys it was given.
+    """
+    if not filled:
+        return heuristics
+    merged = {master: dict(tasks) for master, tasks in heuristics.slayer.items()}
+    for master, tasks in filled.items():
+        merged.setdefault(master, {}).update(tasks)
+    return replace(heuristics, slayer=merged)
+
+
 @dataclass(frozen=True)
 class OverheadSample:
     """One monster where both a wiki rate and a computed kill time exist."""
@@ -1078,5 +1207,7 @@ __all__ = [
     "load_monster_index",
     "measure_overhead",
     "price_monsters",
+    "price_slayer_tasks",
     "wilderness_monsters",
+    "with_slayer_rates",
 ]
