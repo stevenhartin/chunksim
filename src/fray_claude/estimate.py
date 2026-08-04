@@ -12,6 +12,14 @@ uncompleted Diary/Quest/Extra tasks - about a hundred things rather than the
 you are actually working towards; the superseded tiers below each winner are
 not work you will ever do.
 
+**The item is the unit of work, not the task.** Tasks overlap heavily: an
+abyssal whip answers a BiS pick, a Slayer collection-log entry *and* the
+Abyssal Sire's own log entry, and you obtain one whip. Costing per task
+charged for it three times - 1,035 of the real map's hours were that
+duplication, across seven items. `ItemEstimate` therefore keys on the item and
+carries the tasks it satisfies alongside. Quests are the exception and stay
+per-task, a quest not being something you can get twice over.
+
 **The item walk.** A task needs items; an item has routes (`search.py`'s
 `WorldIndex`, the whole-world index of all five); a route has a rate. The
 cheapest route wins and its cost is `(1 / p) / kills_per_hour`. Rates come
@@ -118,6 +126,31 @@ class TaskEstimate:
 
 
 @dataclass(frozen=True)
+class ItemEstimate:
+    """One item's cost, and every active task that wants it.
+
+    The unit of the boss-drop and activity buckets. Tasks overlap heavily -
+    an abyssal whip is a BiS pick *and* two separate log entries - and the
+    work of getting one is done once, so the cost is counted once.
+    """
+
+    item: str
+    bucket: str
+    hours: float
+    detail: str = ""
+    tasks: tuple[str, ...] = ()
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "item": self.item,
+            "bucket": self.bucket,
+            "hours": self.hours,
+            "detail": self.detail,
+            "tasks": list(self.tasks),
+        }
+
+
+@dataclass(frozen=True)
 class SkillEstimate:
     """One skill's climb to its current goal."""
 
@@ -150,10 +183,14 @@ class SkillEstimate:
 class EstimateResult:
     """Per-bucket hours, the detail behind them, and what could not be priced."""
 
+    #: Quest-bucket entries. Quests are the one thing costed per *task*, since
+    #: a quest is not an item you can get twice over.
     tasks: tuple[TaskEstimate, ...] = ()
+    #: The boss-drop and activity buckets, one entry per unique item.
+    items: tuple[ItemEstimate, ...] = ()
     skills: tuple[SkillEstimate, ...] = ()
     slayer: MasterRate | None = None
-    #: Tasks whose items have no priceable route - the honest coverage figure.
+    #: Items with no priceable route - the honest coverage figure.
     unpriced: tuple[str, ...] = ()
 
     @property
@@ -161,12 +198,20 @@ class EstimateResult:
         totals = {bucket: 0.0 for bucket in BUCKETS}
         for task in self.tasks:
             totals[task.bucket] = totals.get(task.bucket, 0.0) + task.hours
+        for item in self.items:
+            totals[item.bucket] = totals.get(item.bucket, 0.0) + item.hours
         totals["skilling"] += sum(skill.hours for skill in self.skills)
         return totals
 
     @property
     def total_hours(self) -> float:
         return sum(self.buckets.values())
+
+    def items_in(self, bucket: str) -> list[ItemEstimate]:
+        return sorted(
+            (item for item in self.items if item.bucket == bucket),
+            key=lambda item: (-item.hours, item.item),
+        )
 
     def in_bucket(self, bucket: str) -> list[TaskEstimate]:
         return sorted(
@@ -179,6 +224,7 @@ class EstimateResult:
             "buckets": self.buckets,
             "total_hours": self.total_hours,
             "tasks": [task.as_dict() for task in self.tasks],
+            "items": [item.as_dict() for item in self.items],
             "skills": [skill.as_dict() for skill in self.skills],
             "slayer": self.slayer.as_dict() if self.slayer else None,
             "unpriced": list(self.unpriced),
@@ -601,15 +647,24 @@ def estimate(
     tasks: list[TaskEstimate] = list(_quest_tasks(derived, heuristics))
     unpriced: list[str] = []
 
-    for name in _item_tasks(derived):
-        priced = _cheapest_for_task(walk, name)
+    # Price the *item*, once, no matter how many tasks want it. An abyssal
+    # whip answers a BiS pick, a Slayer log entry and a monster-drop log
+    # entry; charging for it three times inflated the total by however much
+    # the active set happens to overlap, which on the real map is a lot.
+    items: list[ItemEstimate] = []
+    for item, wanted_by in sorted(_required_items(walk, derived).items()):
+        priced = _item_hours(walk, item)
         if priced is None:
-            unpriced.append(name)
+            unpriced.append(item)
             continue
         hours, detail = priced
-        tasks.append(
-            TaskEstimate(
-                task=name, bucket=_bucket_for(walk, detail), hours=hours, detail=detail
+        items.append(
+            ItemEstimate(
+                item=item,
+                bucket=_bucket_for(walk, detail),
+                hours=hours,
+                detail=detail,
+                tasks=tuple(sorted(wanted_by)),
             )
         )
 
@@ -646,6 +701,7 @@ def estimate(
 
     return EstimateResult(
         tasks=tuple(tasks),
+        items=tuple(items),
         skills=tuple(skills),
         slayer=slayer_rate,
         unpriced=tuple(sorted(unpriced)),
@@ -662,27 +718,27 @@ def _item_tasks(derived: Derived) -> list[str]:
     return names
 
 
-def _cheapest_for_task(walk: _Walk, task: str) -> tuple[float, str] | None:
-    """Price a task by the items it needs, summing them.
+def _required_items(walk: _Walk, derived: Derived) -> dict[str, set[str]]:
+    """Every item the active set needs, mapped to the tasks that want it.
+
+    **The item is the unit of work, not the task.** One abyssal whip closes a
+    BiS pick, a Slayer collection-log entry and a monster-drop log entry; you
+    obtain it once. Keying on the item collapses that to a single cost and
+    keeps the tasks it answers alongside, so the listing can still show why
+    it is wanted.
 
     A BiS task names its item in its `~|...|~` span and has no challenge
     behind it (`bis.py` synthesises those names), so the span is the only
     handle; an ordinary challenge lists its `Items`.
     """
-    items = _required_items(walk, task) or [activity_name(task)]
-    total = 0.0
-    detail = ""
-    for item in items:
-        priced = _item_hours(walk, item)
-        if priced is None:
-            return None
-        total += priced[0]
-        if not detail or priced[0] > 0:
-            detail = priced[1]
-    return total, detail
+    wanted: dict[str, set[str]] = {}
+    for task in _item_tasks(derived):
+        for item in _challenge_items(walk, task) or [activity_name(task)]:
+            wanted.setdefault(walk.resolve(item), set()).add(task)
+    return wanted
 
 
-def _required_items(walk: _Walk, task: str) -> list[str]:
+def _challenge_items(walk: _Walk, task: str) -> list[str]:
     for challenges in walk.chunk_info.challenges.values():
         if not isinstance(challenges, dict):
             continue

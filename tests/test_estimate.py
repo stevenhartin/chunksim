@@ -108,8 +108,8 @@ def test_a_boss_drop_costs_one_over_the_rate_divided_by_kills_per_hour() -> None
 
     result = _run(info, derived, heuristics)
 
-    assert result.tasks[0].hours == pytest.approx(381 / 27)
-    assert result.tasks[0].bucket == "boss drops"
+    assert result.items[0].hours == pytest.approx(381 / 27)
+    assert result.items[0].bucket == "boss drops"
 
 
 def test_a_non_boss_provider_lands_in_activities() -> None:
@@ -132,8 +132,8 @@ def test_a_non_boss_provider_lands_in_activities() -> None:
 
     result = _run(info, derived, Heuristics(monsters={"Goblin": Rate(100.0)}))
 
-    assert result.tasks[0].bucket == "activities"
-    assert result.tasks[0].hours == pytest.approx(10 / 100)
+    assert result.items[0].bucket == "activities"
+    assert result.items[0].hours == pytest.approx(10 / 100)
 
 
 def test_a_worded_rate_is_priced_through_the_config() -> None:
@@ -158,7 +158,7 @@ def test_a_worded_rate_is_priced_through_the_config() -> None:
 
     result = _run(info, derived, Heuristics(monsters={"Goblin": Rate(50.0)}))
 
-    assert result.tasks[0].hours == pytest.approx(1 / 50)
+    assert result.items[0].hours == pytest.approx(1 / 50)
 
 
 def test_an_item_with_no_priceable_route_is_reported_unpriced() -> None:
@@ -182,8 +182,8 @@ def test_an_item_with_no_priceable_route_is_reported_unpriced() -> None:
 
     result = _run(info, derived, Heuristics())
 
-    assert result.unpriced == ("Obtain ~|bones|~",)
-    assert result.tasks == ()
+    assert result.unpriced == ("Bones",)
+    assert result.items == ()
 
 
 def test_a_made_item_costs_its_inputs() -> None:
@@ -210,8 +210,8 @@ def test_a_made_item_costs_its_inputs() -> None:
 
     result = _run(info, derived, Heuristics(monsters={"Goblin": Rate(100.0)}))
 
-    assert result.tasks[0].hours == pytest.approx(10 / 100)
-    assert result.tasks[0].detail.startswith("make:")
+    assert result.items[0].hours == pytest.approx(10 / 100)
+    assert result.items[0].detail.startswith("make:")
 
 
 def test_a_cycle_of_made_items_is_unpriced_rather_than_recursing() -> None:
@@ -239,7 +239,7 @@ def test_a_cycle_of_made_items_is_unpriced_rather_than_recursing() -> None:
 
     result = _run(info, derived, Heuristics())
 
-    assert result.unpriced == ("Obtain ~|A|~",)
+    assert result.unpriced == ("A",)
 
 
 # --- quests ----------------------------------------------------------------
@@ -418,7 +418,7 @@ def test_a_monster_outside_the_unlocked_chunks_is_not_priced() -> None:
 
     result = _run(info, _bones_task(info), Heuristics(monsters={"Goblin": Rate(100.0)}))
 
-    assert result.unpriced == ("Obtain ~|bones|~",)
+    assert result.unpriced == ("Bones",)
 
 
 def _gated_info() -> ChunkInfo:
@@ -493,8 +493,8 @@ def test_a_task_gated_kill_includes_the_wait_for_the_task() -> None:
     # takes 100/20 = 5h. Total 19h - against 5h if the task were ignored.
     result = _run(_gated_info(), _gated_derived(), _gated_heuristics())
 
-    assert result.tasks[0].hours == pytest.approx(19.0)
-    assert "on Gargoyles task" in result.tasks[0].detail
+    assert result.items[0].hours == pytest.approx(19.0)
+    assert "on Gargoyles task" in result.items[0].detail
 
 
 def test_an_unreachable_master_cannot_supply_the_task() -> None:
@@ -502,7 +502,7 @@ def test_an_unreachable_master_cannot_supply_the_task() -> None:
     # unlocked chunk - picking him would price a task you can never be given.
     result = _run(_gated_info(), _gated_derived(), _gated_heuristics())
 
-    assert result.tasks[0].hours == pytest.approx(19.0)  # Vannaka's 14h wait, not Duradel's
+    assert result.items[0].hours == pytest.approx(19.0)  # Vannaka's 14h wait, not Duradel's
 
 
 def test_a_task_gated_kill_with_no_reachable_master_is_unpriced() -> None:
@@ -521,7 +521,7 @@ def test_a_task_gated_kill_with_no_reachable_master_is_unpriced() -> None:
     result = _run(_gated_info(), derived, _gated_heuristics())
 
     # No master NPC reachable, so no way to be assigned - not a free kill.
-    assert result.unpriced == ("Obtain a ~|granite maul|~",)
+    assert result.unpriced == ("Granite maul",)
 
 
 def test_a_superior_is_priced_through_its_base_monster() -> None:
@@ -551,8 +551,8 @@ def test_a_superior_is_priced_through_its_base_monster() -> None:
 
     result = _run(info, derived, heuristics)
 
-    assert result.tasks[0].hours == pytest.approx(20.0)
-    assert "(superior) <- Gargoyle" in result.tasks[0].detail
+    assert result.items[0].hours == pytest.approx(20.0)
+    assert "(superior) <- Gargoyle" in result.items[0].detail
 
 
 def test_a_superior_whose_base_is_unreachable_is_unpriced() -> None:
@@ -578,4 +578,72 @@ def test_a_superior_whose_base_is_unreachable_is_unpriced() -> None:
 
     result = _run(info, derived, heuristics)
 
-    assert result.unpriced == ("Obtain a ~|granite maul|~",)
+    assert result.unpriced == ("Granite maul",)
+
+
+def test_one_item_wanted_by_several_tasks_is_costed_once() -> None:
+    # The real shape: an abyssal whip answers a BiS pick, a Slayer log entry
+    # and the Abyssal Sire's own log entry. It is obtained once.
+    info = ChunkInfo(
+        {
+            "drops": {"Abyssal demon": {"Abyssal whip": {"1": "1/512"}}},
+            "challenges": {
+                "Extra": {
+                    "(Abyssal Sire) Obtain an ~|abyssal whip|~": {"Items": ["Abyssal whip"]},
+                    "(Slayer) Obtain an ~|abyssal whip|~": {"Items": ["Abyssal whip"]},
+                }
+            },
+        }
+    )
+    derived = _derived(
+        monsters=("Abyssal demon",),
+        bis=BisResult(picks={}, active={"Obtain an ~|abyssal whip|~": "weapon"}),
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra",
+                    groups=(
+                        TaskGroup(
+                            name="X",
+                            active=(
+                                "(Abyssal Sire) Obtain an ~|abyssal whip|~",
+                                "(Slayer) Obtain an ~|abyssal whip|~",
+                            ),
+                        ),
+                    ),
+                )
+            }
+        ),
+    )
+
+    result = _run(info, derived, Heuristics(monsters={"Abyssal demon": Rate(100.0)}))
+
+    assert len(result.items) == 1
+    assert result.items[0].item == "Abyssal whip"
+    assert len(result.items[0].tasks) == 3
+    # Charged once, not three times.
+    assert result.total_hours == pytest.approx(512 / 100)
+
+
+def test_a_task_needing_two_items_pays_for_both() -> None:
+    info = ChunkInfo(
+        {
+            "drops": {"Goblin": {"Bones": {"1": "1/10"}, "Beads": {"1": "1/20"}}},
+            "challenges": {"Extra": {"Obtain ~|both|~": {"Items": ["Bones", "Beads"]}}},
+        }
+    )
+    derived = _derived(
+        monsters=("Goblin",),
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra", groups=(TaskGroup(name="X", active=("Obtain ~|both|~",)),)
+                )
+            }
+        ),
+    )
+
+    result = _run(info, derived, Heuristics(monsters={"Goblin": Rate(100.0)}))
+
+    assert {item.item for item in result.items} == {"Bones", "Beads"}
+    assert result.total_hours == pytest.approx(10 / 100 + 20 / 100)

@@ -984,11 +984,23 @@ def _print_estimate(
             )
         return
 
-    rows = result.in_bucket(bucket)
-    for task in rows if limit is None else rows[:limit]:
-        print(f"  {task.hours:>8,.1f}h {strip_task_markup(task.task):<48} {task.detail}")
-    if limit is not None and len(rows) > limit:
-        print(f"  ... and {len(rows) - limit} more (--limit {len(rows)} to see all)")
+    if bucket == "quests":
+        rows = result.in_bucket(bucket)
+        for task in rows if limit is None else rows[:limit]:
+            print(f"  {task.hours:>8,.1f}h {strip_task_markup(task.task):<48} {task.detail}")
+        if limit is not None and len(rows) > limit:
+            print(f"  ... and {len(rows) - limit} more (--limit {len(rows)} to see all)")
+        return
+
+    # Keyed by item, not by task: one whip answers three tasks and is got
+    # once, so the count of tasks it covers goes beside it rather than the
+    # cost being repeated per task.
+    entries = result.items_in(bucket)
+    for entry in entries if limit is None else entries[:limit]:
+        covers = f" ({len(entry.tasks)} tasks)" if len(entry.tasks) > 1 else ""
+        print(f"  {entry.hours:>8,.1f}h {entry.item:<34}{covers:<12} {entry.detail}")
+    if limit is not None and len(entries) > limit:
+        print(f"  ... and {len(entries) - limit} more (--limit {len(entries)} to see all)")
 
 
 def _print_estimate_warnings(result: EstimateResult) -> None:
