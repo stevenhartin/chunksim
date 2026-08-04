@@ -129,6 +129,11 @@ Five things that cut across modules — the first three because each has already
 
 Python 3.14.6, mypy, pip (no uv). Run `mypy` and `.venv/bin/pytest` before each commit.
 
+**Zero runtime dependencies, deliberately** — `pyproject.toml` has an empty `dependencies` and
+`pytest` alone in the `dev` extra, so a new module gets the stdlib and nothing else. `derived_cache.py`
+is the shape that keeps to: it wanted zstd and got it from 3.14's stdlib (`compression.zstd`, PEP 784)
+rather than PyPI, and still degrades to plain pickle on a CPython built without `_zstd`.
+
 ## Commands
 
 ```
@@ -143,7 +148,7 @@ fray unlock   --chunk ID    # tasks/sections one candidate chunk would add on to
 fray neighbours [--limit N] # chunks eligible to unlock next, numbered as the app's canvas numbers them
 fray simulate --rolls N [--seed S]   # simulate N chunk rolls and accumulate their tasks/sections
 fray simulate --rolls N --cache-map NAME [--runs R] [--jobs J] [--cache-behaviour all|extremities|none]
-fray maps [list [--runs]] | maps rm NAME... | maps clean [--include-fetched]   # manage cached maps
+fray maps [list [--runs]] | maps rm NAME... [--include-fetched] | maps clean [--include-fetched]
 fray derived [list [--verbose]] | derived clean [--older-than DAYS] [--all]    # manage cached derivations
 fray search   QUERY [--type T ...] [--limit N]   # fuzzy search item/monster/npc/object/shop/task
 python -m fray_claude ...   # same CLI without the console script
@@ -161,7 +166,8 @@ envelope-wrapped `cache/chunkinfo.json` (hence the extraction — see Convention
 the envelope fails silently), and `FRAY_MAP_CACHE` is presence-only, its value unused.
 
 `--export-json PATH` (or `-` for stdout, replacing the text summary) is carried by the seven
-*derivation* subcommands plus `maps list`, not the three I/O ones. `--limit` defaults to `None` (full
+*derivation* subcommands plus `maps list`, not the three I/O ones. `--recompute` is carried by those
+same seven and nothing else, so it means one thing everywhere. `--limit` defaults to `None` (full
 output) for `sections`/`sources`/`tasks`/`neighbours` so piping just works, but to `10` for `search`.
 See `cli.py`'s docstring.
 
