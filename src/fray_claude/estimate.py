@@ -90,14 +90,20 @@ so an unlocked chunk adding a faster method shortens the estimate. Slayer
 takes `slayer.best_master` instead, because its rate is a distribution rather
 than a method you pick.
 
-`current` is the problem. **The map does not record the player's skill
-levels.** `max_skill` is a declared *cap* (`sources.py` reads it as "levels I
+`current` is the problem, and it reaches further than this bucket.
+**The map does not record the player's skill levels.** `max_skill` is a declared *cap* (`sources.py` reads it as "levels I
 can reach"), and `passive_skill` is what a level is attainable *without* a
 training method (`worker.js:5114`). Neither is "what I am now". This module
 takes `passive_skill` as the floor, because it is the only per-skill number in
 the payload that means anything like progress, and lets a `levels` override
 replace it outright. Where that floor is wrong the skilling bucket is wrong
 with it, which is why every skill row prints the level it assumed.
+
+The same gap bites `slayer.py`, which reads these levels to decide what a
+master will offer. A level it has no number for is treated as **met**, not as
+1: assuming 1 turned every task with a requirement outside `passiveSkill`'s
+handful into "never offered", which costs nothing, when it should have been
+"offered and unreachable", which costs a skip.
 """
 
 from __future__ import annotations

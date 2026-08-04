@@ -411,8 +411,7 @@ def _is_offered(
     send you somewhere you cannot go, and you pay to skip it. See
     `_is_reachable`.
     """
-    level = requirement.get("Level")
-    if isinstance(level, (int, float)) and level > levels.get("Slayer", 1):
+    if _below(requirement.get("Level"), levels.get("Slayer")):
         return False
 
     combat = requirement.get("CombatLevel")
@@ -422,7 +421,7 @@ def _is_offered(
     skills = requirement.get("Skills")
     if isinstance(skills, dict):
         for skill, needed in skills.items():
-            if isinstance(needed, (int, float)) and needed > levels.get(str(skill), 1):
+            if _below(needed, levels.get(str(skill))):
                 return False
 
     prerequisites = requirement.get("Tasks")
@@ -431,6 +430,23 @@ def _is_offered(
             if name not in (valid.get(str(category)) or {}):
                 return False
     return True
+
+
+def _below(needed: Any, held: int | None) -> bool:
+    """Is a known level short of `needed`? **Unknown is not short.**
+
+    The map records no skill levels at all - `levels` is built from
+    `passiveSkill`, which on the real map names five skills - so treating a
+    missing one as level 1 blocks every task with a requirement outside that
+    handful. Vannaka's basilisks want `Defence: 20` and were reading as "the
+    master never offers this", which is a very different claim from "you
+    cannot get there": the first costs nothing, the second costs a skip. It
+    hid 8 weight of skips behind a requirement the player almost certainly
+    meets.
+    """
+    if not isinstance(needed, (int, float)) or isinstance(needed, bool):
+        return False
+    return held is not None and needed > held
 
 
 def _is_reachable(

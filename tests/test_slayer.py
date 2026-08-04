@@ -690,3 +690,33 @@ def test_the_published_point_values_are_used_by_default() -> None:
 
     assert rate.points_per_task == 25.0
     assert rate.skip_cost == 30.0
+
+
+def test_an_unknown_skill_level_does_not_block_a_task() -> None:
+    # The map records no skill levels, so treating a missing one as level 1
+    # blocks every task with a requirement outside the handful `passiveSkill`
+    # happens to name. Vannaka's basilisks want Defence 20 and read as "never
+    # offered" - which costs nothing - instead of "offered and unreachable",
+    # which costs a skip.
+    info = _info(
+        slayerMasterTasks={
+            "M": {"Basilisks": {"Weight": 8, "Level": 15, "Skills": {"Defence": 20}}}
+        }
+    )
+    heuristics = Heuristics(slayer={"M": {"Basilisks": SlayerTask(100, 10, 100)}})
+
+    offered = master_rates(
+        info, heuristics, reachable_monsters=frozenset(), valid={}, levels={"Slayer": 45}
+    )[0]
+    blocked = master_rates(
+        info,
+        heuristics,
+        reachable_monsters=frozenset(),
+        valid={},
+        levels={"Slayer": 45, "Defence": 3},
+    )[0]
+
+    # Unknown Defence: assumed met, so the task is offered.
+    assert offered.offered == 1.0
+    # A Defence level we *do* know, and it is short: genuinely not offered.
+    assert blocked.offered == 0.0
