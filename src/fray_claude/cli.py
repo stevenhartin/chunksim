@@ -1041,8 +1041,14 @@ def _print_slayer_masters(result: EstimateResult) -> None:
 
     Slayer is the one skill whose rate depends on *who you talk to*, and XP
     per hour is not the only reason to pick one: a master with a fuller task
-    list, fewer gaps in its data, or a denser superior pool can be the better
-    choice even when slower. The estimate still uses the fastest.
+    list, fewer gaps in its data, a denser superior pool, or a points balance
+    that does not bleed can be the better choice even when slower. The
+    estimate still uses the fastest.
+
+    Every column is computed at this chunk's *end* levels - see
+    `estimate.goal_levels`. The list a master offers at Slayer 92 is the one
+    that holds for the tail of the chunk, and the tail is where the time
+    goes.
     """
     if not result.slayer_masters:
         return
@@ -1050,7 +1056,7 @@ def _print_slayer_masters(result: EstimateResult) -> None:
     chosen = result.slayer.master if result.slayer else ""
     print(
         f"\n  {'slayer master':<18} {'xp/hr':>9} {'skip':>5} {'pts/task':>9} {'no data':>8}"
-        "  supers*"
+        "  supers"
     )
     for rate in result.slayer_masters:
         rolls = result.superior_rolls.get(rate.master, 0.0)
@@ -1063,7 +1069,8 @@ def _print_slayer_masters(result: EstimateResult) -> None:
     print("  * used by the estimate (fastest); the others are shown to compare")
     print("  skip = share of *offered* tasks whose monsters this map cannot reach")
     print("  pts/task = points earned, less points paid skipping those; negative bleeds points")
-    print("  supers* assume the levels you can reach, as the item prices do")
+    print("  all four assume this chunk's end levels - the task list you will")
+    print("  spend most of it on - not the levels you hold today")
 
 
 def _print_estimate_warnings(result: EstimateResult, scraped_found: bool = True) -> None:

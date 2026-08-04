@@ -107,10 +107,17 @@ It is still a floor. A player at 99 Attack who has ticked nothing above 75
 reads as 75, and every skill row prints the level it assumed so a wrong one
 is visible. `levels` in `heuristics/overrides.json` replaces it outright.
 
-`slayer.py` reads the same numbers to decide what a master will offer, and
-that is where the floor mattered most: Vannaka's basilisks want Defence 20,
-which `passiveSkill` could not confirm, so the task read as "never offered" -
-free - instead of "offered and unreachable", which costs a 30-point skip.
+**`goal_levels` raises that floor to where the chunk is going.** An active
+goal carries the level it needs, and finishing the chunk means reaching it -
+Slayer here is inferred at 45 and aiming at 92. What a slayer master offers
+is judged at *those* levels, because that list is the one that holds for the
+tail of the chunk and the tail is where the time goes. The XP still to earn
+is measured from the floor up, which is the whole point of the climb.
+
+`slayer.py` reads these numbers to decide what a master will offer, and that
+is where they matter most: Vannaka's basilisks want Defence 20, which
+`passiveSkill` could not confirm, so the task read as "never offered" - free -
+instead of "offered and unreachable", which costs a 30-point skip.
 """
 
 from __future__ import annotations
@@ -757,13 +764,33 @@ def _steps_in(derived: Derived, quest: str) -> int:
     )
 
 
-def _declared(state: MapState) -> dict[str, int]:
-    """The levels the map says are *reachable* (`maxSkill`), not held."""
-    return {
-        skill: int(level)
-        for skill, level in state.max_skill.items()
-        if isinstance(level, (int, float)) and not isinstance(level, bool)
-    }
+def goal_levels(state: MapState, derived: Derived, floor: dict[str, int]) -> dict[str, int]:
+    """The levels this chunk will *end* at: its floor raised to its goals.
+
+    **What a chunk is working towards is as much a fact as what it has
+    done.** The active goal for a skill carries the level it needs, and
+    finishing the chunk means reaching it - Slayer here is inferred at 45 and
+    aiming at 92, so 92 is the level that describes most of the chunk.
+
+    Used for what a slayer master will *offer*, because that list is the one
+    that holds for the tail of the chunk, and the tail is where the time
+    goes. Not used for the XP still to earn: that is measured from the floor
+    up, which is the whole point of the climb.
+
+    Preferred over `maxSkill`, which is a cap the player declared rather than
+    work they are committed to - Slayer's cap says 99 where the outstanding
+    task says 92, and 92 is the number with a reason behind it.
+    """
+    levels = dict(floor)
+    for skill, classification in derived.task_classification.skills.items():
+        goal = classification.active
+        if goal is None:
+            continue
+        challenge = _mapping(state.chunk_info.challenges, str(skill)).get(goal)
+        target = challenge.get("Level") if isinstance(challenge, dict) else None
+        if isinstance(target, (int, float)) and not isinstance(target, bool):
+            levels[str(skill)] = max(levels.get(str(skill), 1), int(target))
+    return levels
 
 
 def infer_levels(state: MapState) -> dict[str, int]:
@@ -854,6 +881,10 @@ def estimate(
     # A slayer master you cannot reach assigns nothing - see `slayer.py`.
     reachable_masters = frozenset(derived.source_index.npcs)
 
+    # End-of-chunk levels, not today's: the task list a master offers then
+    # is the one that holds for the tail of the chunk, which is where the
+    # time goes.
+    goals = goal_levels(state, derived, levels)
     reachable_rates = tuple(
         master_rates(
             state.chunk_info,
@@ -862,32 +893,17 @@ def estimate(
             valid=valid,
             unlocked=expanded,
             reachable_sections=derived.reachable_sections,
-            levels=levels,
-            combat_level=levels.get("Combat", MAX_LEVEL),
+            levels=goals,
+            combat_level=goals.get("Combat", MAX_LEVEL),
             reachable_masters=reachable_masters,
         )
     )
     slayer_rate = best_master(list(reachable_rates))
-    # Every master's table, for *task-gated drops only*, computed at the
-    # levels the player has declared they can reach rather than the ones they
-    # have. Grotesque Guardians need a gargoyle task, which needs Slayer 75;
-    # at the current level that task is unassignable and the drop would read
-    # as unobtainable forever. It isn't - the skilling bucket is already
-    # costing the climb - so the kill is priced at what it will cost once
-    # assignable.
-    gate_masters = tuple(
-        master_rates(
-            state.chunk_info,
-            heuristics,
-            reachable_monsters=reachable,
-            valid=valid,
-            unlocked=expanded,
-            reachable_sections=derived.reachable_sections,
-            levels={**levels, **_declared(state)},
-            combat_level=MAX_LEVEL,
-            reachable_masters=reachable_masters,
-        )
-    )
+    # The same end-of-chunk levels for task-gated drops. Grotesque Guardians
+    # need a gargoyle task, which needs Slayer 75; at today's level that task
+    # is unassignable and the drop would read as unobtainable forever. It
+    # isn't - the skilling bucket is already costing the climb.
+    gate_masters = reachable_rates
     walk = _Walk(
         chunk_info=state.chunk_info,
         world=world,

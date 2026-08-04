@@ -10,7 +10,12 @@ from fray_claude.active_tasks import SkillClassification, TaskClassification
 from fray_claude.bis import BisResult
 from fray_claude.challenges import ChallengeResult
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.estimate import estimate, infer_levels, task_gated_monsters
+from fray_claude.estimate import (
+    estimate,
+    goal_levels,
+    infer_levels,
+    task_gated_monsters,
+)
 from fray_claude.heuristics import (
     DEFAULT_XP_PER_HOUR,
     Heuristics,
@@ -986,3 +991,32 @@ def test_an_uncompleted_challenge_proves_nothing() -> None:
     state = _state(info, completed_challenges={})
 
     assert "Attack" not in infer_levels(state)
+
+
+def test_goal_levels_raise_the_floor_to_what_the_chunk_is_working_towards() -> None:
+    # Slayer inferred at 45 with an active goal needing 92: by the end of the
+    # chunk it is 92, and that is the task list a master will be offering for
+    # most of it.
+    info = ChunkInfo(
+        {"challenges": {"Slayer": {"Slay an ~|araxyte|~": {"Level": 92, "Primary": False}}}}
+    )
+    state = _state(info, passive_skill={"Slayer": 45})
+    derived = _derived(
+        task_classification=TaskClassification(
+            skills={
+                "Slayer": SkillClassification(
+                    active="Slay an ~|araxyte|~", obsolete=frozenset(), completed=frozenset()
+                )
+            }
+        )
+    )
+
+    assert infer_levels(state)["Slayer"] == 45
+    assert goal_levels(state, derived, infer_levels(state))["Slayer"] == 92
+
+
+def test_a_skill_with_no_active_goal_keeps_its_floor() -> None:
+    info = ChunkInfo({"challenges": {}})
+    state = _state(info, passive_skill={"Mining": 70})
+
+    assert goal_levels(state, _derived(), infer_levels(state))["Mining"] == 70
