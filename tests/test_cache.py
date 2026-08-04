@@ -28,7 +28,10 @@ from fray_claude.cache import (
     file_digest,
     list_derived,
     prune_derived,
+    read_asset,
     read_derived,
+    world_map_source,
+    write_asset,
     write_derived,
     list_maps,
     project_root,
@@ -464,3 +467,39 @@ def test_chunkinfo_source_names_the_file_read_chunkinfo_would_read(
 
     monkeypatch.setenv(CHUNKINFO_ENV_VAR, str(tmp_path / "env.json"))
     assert chunkinfo_source(root=tmp_path) == tmp_path / "env.json"
+
+
+def test_an_asset_round_trips(tmp_path: Path) -> None:
+    write_asset("world_map.png", b"\x89PNG payload", root=tmp_path)
+
+    assert read_asset("world_map.png", root=tmp_path) == b"\x89PNG payload"
+
+
+def test_a_missing_asset_reads_as_none(tmp_path: Path) -> None:
+    """Every caller answers a missing asset the same way: fetch it.
+
+    That is `read_derived`'s contract rather than `read_blob`'s, whose absence
+    is a user-facing "run this command" failure.
+    """
+    assert read_asset("world_map.png", root=tmp_path) is None
+
+
+def test_an_asset_write_leaves_no_temp_file(tmp_path: Path) -> None:
+    """Temp-file-plus-rename, so a reader never sees a partial PNG."""
+    path = write_asset("world_map.png", b"payload", root=tmp_path)
+
+    assert path.read_bytes() == b"payload"
+    assert [p.name for p in path.parent.iterdir()] == ["world_map.png"]
+
+
+def test_the_world_map_source_prefers_an_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Override, then `FRAY_WORLD_MAP`, then the cache - as `chunkinfo_source`."""
+    monkeypatch.delenv("FRAY_WORLD_MAP", raising=False)
+    assert world_map_source(root=tmp_path) == tmp_path / "cache" / "assets" / "world_map.png"
+
+    monkeypatch.setenv("FRAY_WORLD_MAP", "/somewhere/map.png")
+    assert world_map_source(root=tmp_path) == Path("/somewhere/map.png")
+
+    assert world_map_source(Path("/explicit.png"), root=tmp_path) == Path("/explicit.png")

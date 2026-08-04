@@ -22,6 +22,7 @@ from fray_claude.api import (
     WIKI_API_URL,
     WIKI_TITLES_PER_REQUEST,
     WIKI_USER_AGENT,
+    WORLD_MAP_URL,
     FetchError,
     fetch_chunkinfo,
     fetch_map,
@@ -29,6 +30,7 @@ from fray_claude.api import (
     fetch_text,
     fetch_wiki_page_titles,
     fetch_wiki_pages,
+    fetch_world_map,
     map_url,
     slayer_sheet_url,
 )
@@ -280,3 +282,31 @@ def test_fetch_text_reports_the_http_status(monkeypatch: pytest.MonkeyPatch) -> 
 def test_the_slayer_sheet_url_names_the_tab() -> None:
     assert "Mob%20Data" in slayer_sheet_url()
     assert "out:csv" in slayer_sheet_url()
+
+
+def test_the_world_map_comes_back_as_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A PNG, not JSON, so it does not go through `_fetch_json_object`."""
+    png = b"\x89PNG\r\n\x1a\n" + b"payload"
+    calls = _patch_urlopen(monkeypatch, _responds(png))
+
+    assert fetch_world_map() == png
+    assert calls[0][0] == WORLD_MAP_URL
+    assert WORLD_MAP_URL.endswith("/osrs_world_map.png")
+
+
+def test_an_empty_world_map_is_an_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Zero bytes would be cached and then served as a broken image forever."""
+    _patch_urlopen(monkeypatch, _responds(b""))
+
+    with pytest.raises(FetchError, match="empty response"):
+        fetch_world_map()
+
+
+def test_a_world_map_http_error_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_urlopen(
+        monkeypatch,
+        _raises(urllib.error.HTTPError(WORLD_MAP_URL, 404, "Not Found", Message(), None)),
+    )
+
+    with pytest.raises(FetchError, match="HTTP 404 fetching world map image"):
+        fetch_world_map()

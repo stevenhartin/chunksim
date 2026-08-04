@@ -77,6 +77,13 @@ CHUNKINFO_ENV_VAR = "FRAY_CHUNKINFO"
 HEURISTICS_DIR_NAME = "heuristics"
 OVERRIDES_FILE_NAME = "overrides.json"
 
+#: Binary assets the GUI needs, kept beside the JSON blobs. Only the world map
+#: lives here today; it is fetched rather than committed because it is Jagex's
+#: artwork - see `api.WORLD_MAP_URL`.
+ASSET_DIR_NAME = "assets"
+WORLD_MAP_ASSET = "world_map.png"
+WORLD_MAP_ENV_VAR = "FRAY_WORLD_MAP"
+
 MAP_FILE_NAME = "map.json"
 ROLLS_FILE_NAME = "rolls.json"
 RUN_META_FILE_NAME = "run.json"
@@ -610,6 +617,54 @@ def write_derived(key: str, blob: bytes, root: Path | None = None) -> Path:
     temp.write_bytes(blob)
     os.replace(temp, path)
     return path
+
+
+def asset_path(name: str, root: Path | None = None) -> Path:
+    """Where a binary asset lives. `name` is a fixed constant, never user input."""
+    return (root or project_root()) / CACHE_DIR_NAME / ASSET_DIR_NAME / name
+
+
+def write_asset(name: str, blob: bytes, root: Path | None = None) -> Path:
+    """Store a binary asset, atomically.
+
+    Same temp-file-plus-`os.replace` as `write_derived`, for the same reason:
+    a reader never sees a partial file, so the GUI serving the world map while
+    it is being refetched gets one version or the other rather than a truncated
+    PNG.
+    """
+    path = asset_path(name, root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temp.write_bytes(blob)
+    os.replace(temp, path)
+    return path
+
+
+def read_asset(name: str, root: Path | None = None) -> bytes | None:
+    """An asset's bytes, or `None` when it has not been fetched yet.
+
+    `None` rather than an error because every caller responds the same way:
+    fetch it. That mirrors `read_derived`, and differs from `read_blob`, whose
+    absence is a user-facing "run this command" failure.
+    """
+    try:
+        return asset_path(name, root).read_bytes()
+    except FileNotFoundError:
+        return None
+
+
+def world_map_source(override: Path | None = None, root: Path | None = None) -> Path:
+    """The file the GUI would serve: override, `FRAY_WORLD_MAP`, then the cache.
+
+    The same precedence `chunkinfo_source` uses, so pointing either at a local
+    copy works the same way. Unlike the chunkinfo override there is no envelope
+    to confuse: both paths hold a plain PNG.
+    """
+    path = override
+    if path is None:
+        env_value = os.environ.get(WORLD_MAP_ENV_VAR)
+        path = Path(env_value) if env_value else None
+    return path if path is not None else asset_path(WORLD_MAP_ASSET, root)
 
 
 @dataclass(frozen=True)

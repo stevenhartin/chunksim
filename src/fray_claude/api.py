@@ -40,6 +40,12 @@ MAP_URL = "https://chunkpicker.firebaseio.com/maps/{map_id}.json"
 _UPSTREAM_RAW = "https://raw.githubusercontent.com/source-chunk/chunk-picker-v2/gh-pages/{path}"
 CHUNKINFO_URL = _UPSTREAM_RAW.format(path="chunkpicker-chunkinfo-export.json")
 TASKS_MAP_URL = _UPSTREAM_RAW.format(path="tasksMap.json")
+#: The world map the GUI draws on: 9216x6528, 8.4MiB, one 192-pixel square per
+#: chunk. **Deliberately not committed to this repository** - it is Jagex's
+#: artwork, and upstream publishing it grants no right to redistribute it
+#: inside an MIT-licensed wheel. Fetching it means each user takes their own
+#: copy from upstream, exactly as they already do for the chunkinfo export.
+WORLD_MAP_URL = _UPSTREAM_RAW.format(path="osrs_world_map.png")
 
 WIKI_API_URL = "https://oldschool.runescape.wiki/api.php"
 
@@ -269,6 +275,35 @@ def _wiki_contents(payload: dict[str, Any], requested: list[str]) -> dict[str, s
             by_title[str(page.get("title"))] = content
 
     return {title: by_title[final(title)] for title in requested if final(title) in by_title}
+
+
+def fetch_world_map(timeout: float = DEFAULT_TIMEOUT) -> bytes:
+    """Return upstream's world map image (~8.4MiB PNG, static).
+
+    Bytes rather than JSON, so it does not go through `_fetch_json_object`. No
+    `User-Agent`, matching every other GitHub call here - see this module's
+    docstring on why the wiki is the exception.
+    """
+    return _fetch_bytes(WORLD_MAP_URL, timeout, what="world map image")
+
+
+def _fetch_bytes(url: str, timeout: float, *, what: str) -> bytes:
+    import urllib.error
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            payload: bytes = response.read()
+    except urllib.error.HTTPError as exc:
+        raise FetchError(f"HTTP {exc.code} fetching {what}") from exc
+    except TimeoutError as exc:
+        raise FetchError(f"timed out after {timeout:g}s fetching {what}") from exc
+    except urllib.error.URLError as exc:
+        raise FetchError(f"network error fetching {what}: {exc.reason}") from exc
+
+    if not payload:
+        raise FetchError(f"empty response fetching {what}")
+    return payload
 
 
 def _fetch_json_object(
