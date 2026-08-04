@@ -4,8 +4,8 @@
 seed derivation, the process pool, and what each run leaves on disk. It is the
 only module that spawns processes.
 
-**Why processes.** A roll costs one `pipeline.derive`, measured at ~0.95s on
-the real export (2.6s before `challenges.py`'s gate split), and that is
+**Why processes.** A roll costs one `pipeline.derive`, measured at ~0.76s on
+the real export (2.7s before `challenges.py`'s gate hoists), and that is
 essentially the whole cost of a run (the ~10MB chunkinfo parse is ~0.1s,
 `unlock.delta_from` is free). The work is pure-Python and CPU-bound, so threads
 would serialise on the GIL; a heatmap-sized batch (100 runs x 50 rolls) is well
@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import random
 from collections.abc import Callable, Mapping, Sequence
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -279,6 +278,11 @@ def run_batch(
             if on_complete is not None:
                 on_complete(result)
     else:
+        # Imported here, not at module scope: `concurrent.futures` costs ~12ms
+        # to import (it pulls in `multiprocessing`), and `cli.py` imports this
+        # module on every command while only `--jobs > 1` ever needs a pool.
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+
         with ProcessPoolExecutor(max_workers=min(jobs, len(specs))) as pool:
             futures = [pool.submit(run_one, spec) for spec in specs]
             for future in as_completed(futures):

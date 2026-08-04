@@ -215,11 +215,29 @@ check repeats. `_items_requirement_met` is that same compile-then-check, kept
 as the single-challenge entry point so there is one statement of the
 semantics rather than two.
 
-Both are pure hoists: the predicates, their arguments and their order are
-unchanged, and the whole point is that they are *provably* unable to alter the
-result. Verified as such - the real map's full derivation is byte-identical
-before and after, and the opt-in oracles still pass. Together they took
-`derive` from 2.68s to 0.94s.
+Two smaller things follow the same rule of "decide it where it cannot change":
+`_quality_flags` lifts the source-quality gate's per-challenge terms into the
+plan, and `_tasks_requirement_met` asks two dictionaries rather than building
+the merged one it used to (membership in `{**a, **b}` is membership in either,
+and that merge ran ~300,000 times a derivation over categories reaching 878
+entries - 20x the cost of asking both).
+
+All of these are pure hoists: the predicates, their arguments and their order
+are unchanged, and the whole point is that they are *provably* unable to alter
+the result. Verified as such at every step - the real map's full derivation is
+byte-identical throughout, and the opt-in oracles still pass. Together they took
+`derive` from 2.68s to ~0.76s.
+
+What is *not* done, deliberately: warm-starting this fixed point from the
+previous outer pass's `valid` instead of from `{}`. It would cut the nine-to-
+thirteen sweeps per call to two or three - by far the largest remaining win -
+and the usual argument (a monotone operator started below its least fixed point
+converges to that same fixed point) would make it safe. The operator is not
+monotone: `_drop_superseded_backups` *removes* a barehanded-catch challenge once
+the method it backs up becomes valid, so more validity can mean less. Same trap
+sits under skipping the static prefilter on later outer passes, since
+`taskUnlocks` gating can withdraw a source. Both would have to be justified by
+agreement on one map, which this project has learnt not to accept as proof.
 
 `strip_task_markup` lives here too, the display-side counterpart to
 `search.normalise`: it drops a task name's `~|...|~` delimiters without
@@ -502,9 +520,28 @@ def _item_source_ok(
     return has_allowed_source(sources, allowed_sources)
 
 
-def _source_quality_ok(
-    sources: Mapping[str, str], *, skill: str, challenge: Mapping[str, Any], rules: Mapping[str, Any]
-) -> bool:
+def _quality_flags(
+    skill: str, challenge: Mapping[str, Any], rules: Mapping[str, Any]
+) -> tuple[bool, bool]:
+    """`(applies, waived)` for the source-quality gate.
+
+    Both are properties of the challenge, the requiring skill and the rules -
+    none of which move while a fixed point runs - so `_ItemPlan` computes them
+    once and `_source_quality_ok` is left with only the part that reads the
+    item index.
+    """
+    applies = skill in _COMBAT_SKILLS or (
+        isinstance(challenge.get("Category"), list) and "BIS Skilling" in challenge["Category"]
+    )
+    waived = (
+        challenge.get("Not Equip") is True
+        or rules.get("Wield Crafted Items") is True
+        or skill == "Magic"
+    )
+    return applies, waived
+
+
+def _source_quality_ok(sources: Mapping[str, str], *, applies: bool, waived: bool) -> bool:
     """Port of the combat/`BIS Skilling` source-quality gate
     (worker.js:4067-4082): for combat skills and challenges whose `Category`
     includes `BIS Skilling`, an item only counts if at least one of its
@@ -516,21 +553,19 @@ def _source_quality_ok(
     the requiring skill is Magic. Upstream's escape hatch for a matching
     Quest/Diary `Tasks` sub-task (the `'--'`-joined naming convention) is not
     ported - it has no real-export uses worth the complexity.
+
+    `applies`/`waived` come from `_quality_flags`. `waived` is upstream's
+    per-challenge escape hatch, and it sits *inside* the loop there, so an item
+    with no sources at all still fails - hence `bool(sources)` rather than a
+    bare `True`.
     """
-    if skill not in _COMBAT_SKILLS:
-        categories = challenge.get("Category")
-        if not (isinstance(categories, list) and "BIS Skilling" in categories):
-            return True
+    if not applies:
+        return True
+    if waived:
+        return bool(sources)
     for tag in sources.values():
         source_skill = tag.partition("-")[2]
-        if (
-            "-" not in tag
-            or source_skill not in _SKILL_NAMES
-            or challenge.get("Not Equip") is True
-            or rules.get("Wield Crafted Items") is True
-            or source_skill == "Slayer"
-            or skill == "Magic"
-        ):
+        if "-" not in tag or source_skill not in _SKILL_NAMES or source_skill == "Slayer":
             return True
     return False
 
@@ -540,14 +575,13 @@ def _item_usable(
     *,
     non_shop: bool,
     allowed_sources: Any,
-    skill: str,
-    challenge: Mapping[str, Any],
-    rules: Mapping[str, Any],
+    applies: bool,
+    waived: bool,
 ) -> bool:
     if not _item_source_ok(sources, non_shop, allowed_sources):
         return False
     assert sources is not None  # narrowed by _item_source_ok
-    return _source_quality_ok(sources, skill=skill, challenge=challenge, rules=rules)
+    return _source_quality_ok(sources, applies=applies, waived=waived)
 
 
 @dataclass(frozen=True)
@@ -569,9 +603,18 @@ class _ItemPlan:
     families: tuple[tuple[tuple[str, ...] | None, int], ...]
     allowed_sources: Any
     non_shop: bool
+    #: `_quality_flags` for this challenge - see `_source_quality_ok`.
+    quality_applies: bool
+    quality_waived: bool
 
 
-def _compile_items(challenge: Mapping[str, Any], chunk_info: ChunkInfo) -> _ItemPlan | None:
+def _compile_items(
+    challenge: Mapping[str, Any],
+    chunk_info: ChunkInfo,
+    *,
+    skill: str = "",
+    rules: Mapping[str, Any] = {},
+) -> _ItemPlan | None:
     """Resolve a challenge's `Items` refs, or `None` if it has no `Items`."""
     item_refs = challenge.get("Items")
     if not isinstance(item_refs, list):
@@ -589,27 +632,24 @@ def _compile_items(challenge: Mapping[str, Any], chunk_info: ChunkInfo) -> _Item
             )
         else:
             families.append(((name,), 1))
+    applies, waived = _quality_flags(skill, challenge, rules)
     return _ItemPlan(
         families=tuple(families),
         allowed_sources=challenge.get("AllowedSources"),
         non_shop=challenge.get("NonShop") is True,
+        quality_applies=applies,
+        quality_waived=waived,
     )
 
 
-def _item_plan_met(
-    plan: _ItemPlan,
-    items: Mapping[str, Mapping[str, str]],
-    *,
-    skill: str,
-    challenge: Mapping[str, Any],
-    rules: Mapping[str, Any],
-) -> bool:
+def _item_plan_met(plan: _ItemPlan, items: Mapping[str, Mapping[str, str]]) -> bool:
     """Check a compiled plan against the current item index.
 
-    `_item_usable` is called with exactly the arguments the uncompiled path
-    passed it - the compilation moves *parsing* out of the loop, and nothing
-    else. Counting stops at `needed` because the answer cannot change after
-    that, which the uncompiled `sum()` had no way to do.
+    Everything the check needs that isn't the index itself was decided when the
+    plan was compiled - the refs, and the source-quality gate's two flags - so
+    what runs here per sweep is dictionary lookups and nothing more. Counting
+    stops at `needed` because the answer cannot change after that, which the
+    uncompiled `sum()` had no way to do.
     """
     for family, needed in plan.families:
         if family is None:
@@ -620,9 +660,8 @@ def _item_plan_met(
                 items.get(member),
                 non_shop=plan.non_shop,
                 allowed_sources=plan.allowed_sources,
-                skill=skill,
-                challenge=challenge,
-                rules=rules,
+                applies=plan.quality_applies,
+                waived=plan.quality_waived,
             ):
                 matches += 1
                 if matches >= needed:
@@ -653,10 +692,10 @@ def _items_requirement_met(
     Compile-then-check, so this and `calc_challenges`'s hot loop share one
     statement of the semantics - the loop just hoists the compile step out.
     """
-    plan = _compile_items(challenge, chunk_info)
+    plan = _compile_items(challenge, chunk_info, skill=skill, rules=rules)
     if plan is None:
         return True
-    return _item_plan_met(plan, items, skill=skill, challenge=challenge, rules=rules)
+    return _item_plan_met(plan, items)
 
 
 #: index.js's `universalPrimary`: how each skill is *actually trained*.
@@ -919,7 +958,14 @@ def _tasks_requirement_met(
         # 16 needing Slayer at 21) would otherwise never resolve - not
         # merely converge slowly, since `new_valid` is rebuilt each pass.
         # Real case: `Gargoyle task` needs any Slayer-master assignment.
-        valid_for_skill = {**prev_valid.get(task_skill, {}), **valid.get(task_skill, {})}
+        #
+        # Tested as two lookups rather than built as one merged dict: this
+        # runs ~300,000 times per derivation and the categories reach 878
+        # entries, so materialising `{**prev, **current}` per reference cost
+        # 20x what asking both costs. Membership in the union is membership
+        # in either, so the answer is identical.
+        current = valid.get(task_skill, {})
+        previous = prev_valid.get(task_skill, {})
         if "[+]" in task_name:
             base_name, marker, count_str = task_name.partition("[+]x")
             family_name = f"{base_name}[+]" if marker else task_name
@@ -927,9 +973,15 @@ def _tasks_requirement_met(
             if family is None:
                 return False
             needed = int(count_str) if marker and count_str.isdigit() else 1
-            if sum(1 for member in family if member in valid_for_skill) < needed:
+            found = 0
+            for member in family:
+                if member in current or member in previous:
+                    found += 1
+                    if found >= needed:
+                        break
+            if found < needed:
                 return False
-        elif task_name not in valid_for_skill:
+        elif task_name not in current and task_name not in previous:
             return False
     return True
 
@@ -1050,9 +1102,7 @@ def _dynamic_gates_met(
     `plan` is the challenge's `Items` refs already resolved (`_compile_items`),
     since only the *index* they are checked against changes between sweeps.
     """
-    if plan is not None and not _item_plan_met(
-        plan, items, skill=skill, challenge=challenge, rules=rules
-    ):
+    if plan is not None and not _item_plan_met(plan, items):
         return False
     if not _skills_requirement_met(challenge, max_skill, valid, trainable=trainable):
         return False
@@ -1102,7 +1152,7 @@ def _evaluate_challenge(
     if not _dynamic_gates_met(
         skill,
         challenge,
-        plan=_compile_items(challenge, chunk_info),
+        plan=_compile_items(challenge, chunk_info, skill=skill, rules=rules),
         items=items,
         valid=valid,
         chunk_info=chunk_info,
@@ -1549,7 +1599,10 @@ def calc_challenges(
     # changes for the life of this call (see `_static_gates_met`). On the real
     # export this is 14,692 challenges in, 5,935 candidates out - so the loops
     # below stop re-deriving 8,757 rejections they cannot change.
-    candidates: list[tuple[str, str, Mapping[str, Any], _ItemPlan | None]] = []
+    # Each entry carries everything about the challenge that cannot change
+    # while this call runs: its compiled `Items` plan and the value it takes
+    # when valid. Only the three dynamic gates are left to the sweeps.
+    candidates: list[tuple[str, str, Mapping[str, Any], _ItemPlan | None, int | str | bool]] = []
     for skill, skill_challenges in challenges.items():
         if skill in UNSUPPORTED_CATEGORIES or not isinstance(skill_challenges, dict):
             continue
@@ -1582,7 +1635,15 @@ def calc_challenges(
                 unsupported.add(f"{skill}/{name}")
                 continue
             if survives:
-                candidates.append((skill, name, challenge, _compile_items(challenge, chunk_info)))
+                candidates.append(
+                    (
+                        skill,
+                        name,
+                        challenge,
+                        _compile_items(challenge, chunk_info, skill=skill, rules=rules),
+                        _challenge_value(challenge, skill),
+                    )
+                )
 
     # Outer pass: the post-convergence prunes below *remove* challenges, and a
     # removed challenge's `Output` must stop being an available item - otherwise
@@ -1612,7 +1673,7 @@ def calc_challenges(
                 for skill in _UNIVERSAL_PRIMARY
             }
             new_valid: dict[str, dict[str, int | str | bool]] = {}
-            for skill, name, challenge, plan in candidates:
+            for skill, name, challenge, plan, value in candidates:
                 if _dynamic_gates_met(
                     skill,
                     challenge,
@@ -1625,7 +1686,7 @@ def calc_challenges(
                     trainable=trainable,
                     prev_valid=valid,
                 ):
-                    new_valid.setdefault(skill, {})[name] = _challenge_value(challenge, skill)
+                    new_valid.setdefault(skill, {})[name] = value
             _inject_manual_tasks(new_valid, challenges, manual_tasks)
             _drop_superseded_backups(new_valid, valid, challenges, backlog, manual_tasks)
             if pruning:

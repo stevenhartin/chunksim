@@ -1219,9 +1219,9 @@ def test_a_compiled_item_plan_answers_exactly_as_the_uncompiled_path(
     info = _chunk_info(codeItems={"itemsPlus": {"Axe[+]": ["Bronze axe", "Iron axe"]}})
     challenge: dict[str, Any] = {"Items": refs}
 
-    plan = _compile_items(challenge, info)
+    plan = _compile_items(challenge, info, skill="Nonskill", rules={})
     assert plan is not None
-    compiled = _item_plan_met(plan, items, skill="Nonskill", challenge=challenge, rules={})
+    compiled = _item_plan_met(plan, items)
     uncompiled = _items_requirement_met(challenge, items, info, skill="Nonskill", rules={})
 
     assert compiled == uncompiled == expected
@@ -1237,13 +1237,11 @@ def test_the_item_plan_is_static_but_the_check_is_not() -> None:
     still be able to pass on the next."""
     info = _chunk_info(codeItems={"itemsPlus": {"Axe[+]": ["Bronze axe"]}})
     challenge: dict[str, Any] = {"Items": ["Axe[+]"]}
-    plan = _compile_items(challenge, info)
+    plan = _compile_items(challenge, info, skill="Nonskill", rules={})
     assert plan is not None
 
-    before = _item_plan_met(plan, {}, skill="Nonskill", challenge=challenge, rules={})
-    after = _item_plan_met(
-        plan, {"Bronze axe": {"Shop": "shop"}}, skill="Nonskill", challenge=challenge, rules={}
-    )
+    before = _item_plan_met(plan, {})
+    after = _item_plan_met(plan, {"Bronze axe": {"Shop": "shop"}})
 
     assert (before, after) == (False, True)
 

@@ -1,9 +1,10 @@
 """Cache `pipeline.derive`'s result on disk, keyed by everything it read.
 
-`derive` costs ~1.0s on the real map and is ~100% of every derivation command's
+`derive` costs ~0.76s on the real map and is ~100% of every derivation command's
 runtime, while its inputs change only when you fetch, roll, or update the
-chunkinfo export. Storing the result turns a repeat command into ~0.15s, the
-floor being the chunkinfo parse `fray show` already pays.
+chunkinfo export. Storing the result turns a repeat command into ~0.12s, the
+floor being the chunkinfo parse and interpreter start `fray show` already pays
+at 0.05s.
 
 **The key is the inputs, not a version number.** `derive(state, unlocked)`
 reads exactly two things, so `derivation_key` hashes exactly two things: every

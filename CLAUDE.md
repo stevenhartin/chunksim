@@ -90,7 +90,7 @@ Five things that cut across modules — the first three because each has already
   *input*. Computing it is therefore unavoidable; what `cache/derived/` does is avoid computing it
   *twice* (see below), which is the real version of the optimisation this bullet keeps attracting.
 - **The pure layer must stay process-parallel.** `fray simulate --jobs N` runs simulations in worker
-  processes, and a roll costs a full `derive` (~0.95s on the real export, ~100% of the runtime), so
+  processes, and a roll costs a full `derive` (~0.76s on the real export, ~100% of the runtime), so
   this is the only way a heatmap-sized batch finishes. That holds today only because there is **no
   module-level mutable state anywhere** — no `lru_cache`, no memo dicts, no globals; `_UNARMED_SOURCES`
   and `_UNIVERSAL_PRIMARY` are read-only constants — and because `MapState`/`Derived` are frozen.

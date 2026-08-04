@@ -8,13 +8,18 @@ there is nothing to disguise.
 The only module that touches the network; raises `FetchError`. Note that an
 unknown map comes back as HTTP 200 with a bare `null` rather than a 404, so
 that is the *only* "no such map" signal available.
+
+`urllib` is imported inside the two functions that fetch, not at module scope.
+`cache.py` imports this module for `map_url` alone, so every command paid
+`urllib.request`'s ~11ms import (it drags in `logging` and `traceback`) to reach
+one `str.format` - and only `fetch`/`chunkinfo` ever open a socket. Patching
+`urllib.request.urlopen` still works: the name is resolved on the module object
+at call time, which is what `tests/test_api.py` does.
 """
 
 from __future__ import annotations
 
 import json
-import urllib.error
-import urllib.request
 from typing import Any
 
 MAP_URL = "https://chunkpicker.firebaseio.com/maps/{map_id}.json"
@@ -43,6 +48,9 @@ def fetch_map(map_id: str, timeout: float = DEFAULT_TIMEOUT) -> dict[str, Any]:
     No custom headers are sent: urllib's default User-Agent identifies neither
     the user nor this project, so setting one would only add information.
     """
+    import urllib.error
+    import urllib.request
+
     url = map_url(map_id)
     try:
         with urllib.request.urlopen(url, timeout=timeout) as response:
@@ -78,6 +86,9 @@ def fetch_tasks_map(timeout: float = DEFAULT_TIMEOUT) -> dict[str, Any]:
 
 
 def _fetch_json_object(url: str, timeout: float, *, what: str) -> dict[str, Any]:
+    import urllib.error
+    import urllib.request
+
     try:
         with urllib.request.urlopen(url, timeout=timeout) as response:
             payload: Any = json.load(response)
