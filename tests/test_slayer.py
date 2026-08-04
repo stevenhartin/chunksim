@@ -221,3 +221,41 @@ def test_rows_without_usable_numbers_are_skipped() -> None:
     )
 
     assert set(parsed) == {"rat"}
+
+
+def test_a_task_with_no_rate_data_is_counted_apart_from_unreachable_ones() -> None:
+    # The distinction that matters: `coverage` is a fact about the map,
+    # `unpriced` is a hole in the config, and conflating them reported "27%
+    # reachable" for a master whose tasks were nearly all reachable.
+    info = _info(
+        slayerMasterTasks={"M": {"Known": {"Weight": 5}, "Unknown": {"Weight": 5}}}
+    )
+    heuristics = _heuristics(
+        Known=SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=100)
+    )
+
+    rate = master_rates(
+        info, heuristics, reachable_monsters=frozenset(), valid_quests=frozenset(), levels={}
+    )[0]
+
+    assert rate.coverage == 0.5
+    assert rate.unpriced == 0.5
+
+
+def test_an_unreachable_task_is_not_counted_as_unpriced() -> None:
+    info = _info(
+        slayerMasterTasks={"M": {"Bats": {"Weight": 5}, "Bears": {"Weight": 5}}},
+        slayerMonsters={"Bat": 1, "Bear": 1},
+    )
+    heuristics = _heuristics(
+        Bats=SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=100),
+        Bears=SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=100),
+    )
+
+    rate = master_rates(
+        info, heuristics, reachable_monsters=frozenset({"Bear"}), valid_quests=frozenset(),
+        levels={},
+    )[0]
+
+    assert rate.coverage == 0.5
+    assert rate.unpriced == 0.0

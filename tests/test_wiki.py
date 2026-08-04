@@ -192,3 +192,37 @@ def test_an_en_dash_range_parses_like_a_hyphen() -> None:
     row = "|-\n|[[Slayer task/Bloodvelds|Bloodvelds]]\n|120 – 185\n|{{+=|weight|8|echo=2}}"
 
     assert slayer_assignments(row)[0].mean_count == 152.5
+
+
+_PLAIN_ASSIGNMENTS = """
+{| class="wikitable sortable lighttable"
+! Monster !! Amount !! Task weight
+|-
+| [[Abyssal demon]]s<ref group="n">Needs [[Priest in Peril]].</ref>
+| 75-125
+|200-250
+| {{+=|weight|5|echo=2}}
+|-
+| [[Ankou]]
+| 75-125
+| {{+=|weight|6|echo=2}}
+|}
+"""
+
+
+def test_a_row_linking_the_monster_directly_still_parses() -> None:
+    # Six of the ten masters write `[[Abyssal demon]]s` rather than
+    # `[[Slayer task/Abyssal demons|...]]`, and only the second shape was
+    # handled - so those masters parsed to nothing and read downstream as
+    # "unreachable" rather than "uncollected".
+    rows = slayer_assignments(_PLAIN_ASSIGNMENTS)
+
+    assert [(row.task, row.weight, row.low, row.high) for row in rows] == [
+        ("Abyssal demons", 5, 75, 125),
+        ("Ankou", 6, 75, 125),
+    ]
+
+
+def test_the_plural_outside_the_link_is_kept() -> None:
+    # The export keys on the plural, so the trailing `s` is part of the name.
+    assert slayer_assignments(_PLAIN_ASSIGNMENTS)[0].task == "Abyssal demons"

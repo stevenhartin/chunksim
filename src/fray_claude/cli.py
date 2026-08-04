@@ -155,6 +155,7 @@ from fray_claude.summary import _mapping, summarise
 from fray_claude.unlock import UnlockDelta, tasks_added_by
 from fray_claude.wiki import (
     ASSIGNMENTS_PAGE,
+    Assignment,
     MMG_PREFIX,
     SUPERIORS_PAGE,
     mmg_rates,
@@ -256,12 +257,24 @@ def _cmd_heuristics(args: argparse.Namespace) -> int:
     mmg = {title: rates for title, text in guides.items() if (rates := mmg_rates(text))}
     print(f"money guides     {len(mmg)}/{len(titles)}")
 
+    # Only four masters have the `/Slayer assignments` subpage; the other six
+    # keep the table on their own page, so both are asked for and whichever
+    # yields rows wins.
     masters = sorted(_mapping(info.data, "slayerMasterTasks"))
-    pages = fetch_wiki_pages([f"{m}/{ASSIGNMENTS_PAGE}" for m in masters], timeout=args.timeout)
-    assignments = {
-        title.split("/")[0]: slayer_assignments(text) for title, text in pages.items()
-    }
-    print(f"assignment pages {len(assignments)}/{len(masters)}")
+    pages = fetch_wiki_pages(
+        [f"{m}/{ASSIGNMENTS_PAGE}" for m in masters] + masters, timeout=args.timeout
+    )
+    assignments: dict[str, list[Assignment]] = {}
+    for master in masters:
+        for title in (f"{master}/{ASSIGNMENTS_PAGE}", master):
+            rows = slayer_assignments(pages.get(title, ""))
+            if rows:
+                assignments[master] = rows
+                break
+    print(
+        f"assignment pages {len(assignments)}/{len(masters)}"
+        f" ({sum(len(rows) for rows in assignments.values())} rows)"
+    )
 
     superior_page = fetch_wiki_pages([SUPERIORS_PAGE], timeout=args.timeout)
     superiors = superior_pairs(superior_page.get(SUPERIORS_PAGE, ""))
@@ -1038,11 +1051,22 @@ def _print_estimate_warnings(result: EstimateResult, scraped_found: bool = True)
             f" {', '.join(sorted(defaulted))}"
         )
         print("  correct them in heuristics/overrides.json - see heuristics.py")
-    if result.slayer is not None and result.slayer.coverage < 0.5:
+    slayer = result.slayer
+    if slayer is None:
+        return
+    # Two different problems, said as two different sentences: one is a fact
+    # about the map, the other is a hole in the config.
+    if slayer.coverage < 0.5:
         print(
-            f"\nslayer: only {result.slayer.coverage:.0%} of {result.slayer.master}'s tasks are"
+            f"\nslayer: only {slayer.coverage:.0%} of {slayer.master}'s task weight is"
             " reachable, so its rate is optimistic (see slayer.py)"
         )
+    if slayer.unpriced > 0.05:
+        print(
+            f"\nslayer: {slayer.unpriced:.0%} of {slayer.master}'s task weight has no rate"
+            " data - reachable, but not costed"
+        )
+        print("  add them under `slayer` in heuristics/overrides.json")
 
 
 def _cmd_neighbours(args: argparse.Namespace) -> int:

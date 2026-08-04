@@ -69,6 +69,11 @@ _NUMBER_RE = re.compile(r"-?\d[\d,]*(?:\.\d+)?")
 #: is the canonical task name; the display half is inconsistently capitalised.
 _TASK_LINK_RE = re.compile(r"\[\[Slayer task/([^|\]]+)")
 
+#: Any link plus whatever word characters trail it, because half the masters'
+#: tables write the task as `[[Abyssal demon]]s` - the plural lives *outside*
+#: the link, and the export keys on the plural.
+_ANY_LINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\](\w*)")
+
 #: `[[General Graardor]]` / `[[Foo|bar]]` -> the visible text. Guide titles
 #: are written `Killing [[General Graardor]]`, and the join wants the words.
 _LINK_RE = re.compile(r"\[\[(?:[^|\]]*\|)?([^\]]*)\]\]")
@@ -311,19 +316,44 @@ def slayer_assignments(text: str) -> list[Assignment]:
     """
     assignments: list[Assignment] = []
     for block in strip_comments(text).split("|-"):
-        task = _TASK_LINK_RE.search(block)
         weight = _WEIGHT_RE.search(block)
         amount = _RANGE_RE.search(block)
+        task = _row_task(block)
         if task is None or weight is None or amount is None:
             continue
         low = int(amount.group(1).replace(",", ""))
         high = int(amount.group(2).replace(",", ""))
         assignments.append(
             Assignment(
-                task=task.group(1).strip(),
+                task=task,
                 weight=int(weight.group(1)),
                 low=min(low, high),
                 high=max(low, high),
             )
         )
     return assignments
+
+
+def _row_task(block: str) -> str | None:
+    """The task an assignment row is for, however the row spells it.
+
+    Four masters route through `[[Slayer task/Abyssal demons|...]]`; the other
+    six link the monster directly and put the plural outside the link, as
+    `[[Abyssal demon]]s`. Only the first shape was handled, so Krystilia,
+    Vannaka, Chaeldar, Konar, Spria and Mortimer parsed to nothing at all -
+    which read downstream as "you cannot reach these tasks" rather than "no
+    data was collected for them".
+
+    The export keys on the plural, so the trailing text is part of the name.
+    """
+    canonical = _TASK_LINK_RE.search(block)
+    if canonical is not None:
+        return canonical.group(1).strip()
+
+    match = _ANY_LINK_RE.search(block)
+    if match is None:
+        return None
+    target, display, trailing = match.groups()
+    if target.lower().startswith(("file:", "image:")):
+        return None
+    return f"{(display or target).strip()}{trailing}"

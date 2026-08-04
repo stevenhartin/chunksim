@@ -113,6 +113,13 @@ class MasterRate:
     #: accessibility filter. Low means the number is optimistic - read the
     #: module docstring before quoting it.
     coverage: float = 0.0
+    #: Fraction of that weight dropped for want of *data* rather than access:
+    #: a task you can be assigned and could do, but which no rate could be
+    #: found for. Reported apart from `coverage` because the two call for
+    #: opposite responses - one is a fact about the map, the other is a hole
+    #: in the config, and reading a hole as a fact is how "27% reachable" got
+    #: quoted for a master whose tasks were nearly all reachable.
+    unpriced: float = 0.0
 
     @property
     def average_hours(self) -> float:
@@ -144,6 +151,7 @@ class MasterRate:
             "master": self.master,
             "xp_per_hour": self.xp_per_hour,
             "coverage": self.coverage,
+            "unpriced": self.unpriced,
             "tasks": [task.as_dict() for task in self.tasks],
         }
 
@@ -268,6 +276,7 @@ def master_rates(
             if isinstance(entry, dict) and isinstance(weight := entry.get("Weight"), int)
         )
         priced: list[TaskRate] = []
+        unpriced_weight = 0
         for task, entry in tasks.items():
             if not isinstance(entry, dict):
                 continue
@@ -283,6 +292,9 @@ def master_rates(
                 continue
             rate = heuristics.slayer.get(task)
             if rate is None or rate.kills_per_hour <= 0 or rate.mean_count <= 0:
+                # Assignable and doable, just unknown to the config. Counted
+                # apart from the accessibility drops above.
+                unpriced_weight += weight
                 continue
             priced.append(
                 TaskRate(
@@ -294,17 +306,20 @@ def master_rates(
                 )
             )
 
-        rates.append(_combine(master, priced, total_weight))
+        rates.append(_combine(master, priced, total_weight, unpriced_weight))
 
     rates.sort(key=lambda rate: (-rate.xp_per_hour, rate.master))
     return rates
 
 
-def _combine(master: str, tasks: list[TaskRate], total_weight: int) -> MasterRate:
+def _combine(
+    master: str, tasks: list[TaskRate], total_weight: int, unpriced_weight: int = 0
+) -> MasterRate:
     """The time-weighted mean of `tasks` - see the module docstring."""
     surviving = sum(task.weight for task in tasks)
+    share = unpriced_weight / total_weight if total_weight > 0 else 0.0
     if not tasks or surviving <= 0:
-        return MasterRate(master=master, xp_per_hour=0.0)
+        return MasterRate(master=master, xp_per_hour=0.0, unpriced=share)
 
     expected_xp = sum(task.weight * task.xp for task in tasks) / surviving
     expected_hours = sum(task.weight * task.hours for task in tasks) / surviving
@@ -313,6 +328,7 @@ def _combine(master: str, tasks: list[TaskRate], total_weight: int) -> MasterRat
         xp_per_hour=expected_xp / expected_hours if expected_hours > 0 else 0.0,
         tasks=tuple(sorted(tasks, key=lambda task: (-task.weight, task.task))),
         coverage=surviving / total_weight if total_weight > 0 else 0.0,
+        unpriced=share,
     )
 
 
