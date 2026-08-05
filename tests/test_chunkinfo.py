@@ -73,3 +73,43 @@ def test_walkable_chunks_drops_non_string_elements() -> None:
     info = ChunkInfo({"walkableChunks": ["3883", 42, None]})
 
     assert info.walkable_chunks == ["3883"]
+
+
+def test_area_names_maps_a_region_to_the_place_it_is_part_of() -> None:
+    """**A named area's location, and it is exact rather than a name match.**
+
+    The export stores such a place twice: once under its name, holding the
+    contents, and once as ordinary numbered chunks carrying `Name`. A numbered
+    chunk is a region, so it has a square - which is what makes `Abyss`
+    drawable at all.
+    """
+    info = ChunkInfo(
+        {
+            "chunks": {
+                "6727": {"Name": "Grotesque Guardians' Lair", "Object": {"Ladder": 1}},
+                "5022": {"Name": "Karuulm Slayer Dungeon"},
+                "5023": {"Name": "Karuulm Slayer Dungeon"},
+                "12850": {"Monster": {"Cow": 4}},
+                "Grotesque Guardians' Lair": {"Monster": {"Dusk": 1}},
+                "broken": [],
+            }
+        }
+    )
+
+    names = info.area_names()
+
+    assert names["6727"] == "Grotesque Guardians' Lair"
+    # Many-to-one: an area spans several regions, a region has one name.
+    assert names["5022"] == names["5023"] == "Karuulm Slayer Dungeon"
+    # A chunk with no `Name` is not in an area, and the name-keyed entry -
+    # which holds the *contents* - is not a region and carries no `Name`.
+    assert "12850" not in names
+    assert "Grotesque Guardians' Lair" not in names
+    # Tolerant of a wrongly-typed branch, like every other accessor here.
+    assert "broken" not in names
+
+
+def test_area_names_ignores_an_empty_or_wrongly_typed_name() -> None:
+    info = ChunkInfo({"chunks": {"1": {"Name": ""}, "2": {"Name": 7}, "3": {"Name": "Ok"}}})
+
+    assert info.area_names() == {"3": "Ok"}

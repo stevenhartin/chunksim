@@ -195,6 +195,21 @@ def _unlocked(map_id: str, ctx: Context) -> tuple[dict[str, Any], int]:
     return unlocked_of(envelope), revision
 
 
+def _areas_for(unlocked: Mapping[str, Any], ctx: Context) -> dict[str, str] | None:
+    """`chunkinfo.area_names()`, but **only when something needs it**.
+
+    Resolving `Abyss` to the regions it occupies needs the 10MB export parsed,
+    and the whole reason `/api/view` is milliseconds is that it does not do
+    that. So the parse is conditional on the map actually holding a
+    non-numeric id: every ordinary map has none, keeps the fast path, and a
+    test pins that. A map that *does* hold one has no cheaper way to be drawn
+    correctly, and pays about a second, once.
+    """
+    if not any(not chunk_id.isdigit() for chunk_id in unlocked):
+        return None
+    return ctx.derivations.chunk_info().area_names()
+
+
 def build_map_view(map_id: str, compare: str | None, ctx: Context) -> MapView:
     """The payload for one map, or for one map against another.
 
@@ -204,7 +219,12 @@ def build_map_view(map_id: str, compare: str | None, ctx: Context) -> MapView:
     """
     base, revision = _unlocked(map_id, ctx)
     if compare is None:
-        return build_view(map_id=map_id, unlocked=base, revision=revision)
+        return build_view(
+            map_id=map_id,
+            unlocked=base,
+            revision=revision,
+            areas=_areas_for(base, ctx),
+        )
 
     other, other_revision = _unlocked(compare, ctx)
     branch = diff_names(base, other)
@@ -217,6 +237,7 @@ def build_map_view(map_id: str, compare: str | None, ctx: Context) -> MapView:
         # Either side changing has to invalidate the view, so the token spans
         # both. Summing is enough - it moves whenever either mtime does.
         revision=revision + other_revision,
+        areas=_areas_for({**base, **other}, ctx),
     )
 
 
@@ -876,6 +897,13 @@ def handle_request(
                     for entry in cache.list_maps(ctx.root, expand_runs=True)
                 ]
             )
+
+        if path == "/api/areas":
+            # Static per export - which region is part of which named place
+            # does not depend on any map - so no `map` parameter and no
+            # derivation. It does need the export parsed; that is why the
+            # browser asks for it once at boot rather than per view.
+            return _json({"areas": ctx.derivations.chunk_info().area_names()})
 
         if path == "/api/tiles":
             return _json(_tile_source(ctx))

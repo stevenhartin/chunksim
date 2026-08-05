@@ -350,3 +350,60 @@ def test_one_tile_is_one_chunk_at_the_native_zoom() -> None:
     # Lumbridge: chunk 12850 -> tile (50, 50), *not* flipped. Only the drawing
     # inverts y; the tile index counts north like the game does.
     assert region_xy(int(LUMBRIDGE)) == (50, 50)
+
+
+# --- named areas -----------------------------------------------------------
+
+#: `Kurask Lair` is region (18, 143); `Karuulm Slayer Dungeon` spans two.
+_AREAS = {
+    "4751": "Kurask Lair",
+    "5022": "Karuulm Slayer Dungeon",
+    "5023": "Karuulm Slayer Dungeon",
+}
+
+
+def test_a_named_area_is_drawn_at_the_regions_that_carry_its_name() -> None:
+    """**This is what makes `Abyss` drawable.**
+
+    A named id has no coordinates of its own, so without the mapping it can
+    only be reported as skipped. With it, the name resolves to the numbered
+    regions the export says are that place - and an area spanning two regions
+    gets two squares, because it occupies two.
+    """
+    view = build_view(
+        map_id="fray", unlocked=[LUMBRIDGE, "Karuulm Slayer Dungeon"], areas=_AREAS
+    )
+
+    drawn = {cell.chunk_id for cell in view.cells}
+
+    assert drawn == {LUMBRIDGE, "5022", "5023"}
+    assert view.skipped == ()
+    assert {cell.area for cell in view.cells if cell.chunk_id == "5022"} == {
+        "Karuulm Slayer Dungeon"
+    }
+    # A region in no area says so rather than inventing one.
+    assert next(c for c in view.cells if c.chunk_id == LUMBRIDGE).area is None
+
+
+def test_an_area_and_its_own_region_are_one_cell_not_two() -> None:
+    """Holding both must not put two cells on one square.
+
+    Two would mean two hull edges along the same side and the square counted
+    twice, which reads as a rendering fault rather than as double-counting.
+    """
+    view = build_view(map_id="fray", unlocked=["Kurask Lair", "4751"], areas=_AREAS)
+
+    assert [cell.chunk_id for cell in view.cells] == ["4751"]
+    assert view.counts.unlocked == 1
+
+
+def test_without_the_mapping_a_named_area_is_still_reported_skipped() -> None:
+    """The mapping costs a 10MB parse, so the caller may decline to pay it.
+
+    Declining has to leave the old behaviour rather than a wrong one: the id
+    is unplaceable and says so.
+    """
+    view = build_view(map_id="fray", unlocked=[LUMBRIDGE, "Kurask Lair"])
+
+    assert view.skipped == ("Kurask Lair",)
+    assert [cell.chunk_id for cell in view.cells] == [LUMBRIDGE]

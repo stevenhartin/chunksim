@@ -99,6 +99,42 @@ class ChunkInfo:
         value = self.chunks.get(chunk_id)
         return value if isinstance(value, dict) else {}
 
+    def area_names(self) -> dict[str, str]:
+        """`chunk id -> the named area it is part of`, for every chunk in one.
+
+        **This is where a named area's location comes from, and it is exact
+        rather than a name match.** The export stores such a place twice: once
+        under its *name* as a top-level `chunks` key holding its contents, and
+        once as one or more ordinary numbered chunks carrying `Name` - and a
+        numbered chunk is a region, so it has a square. `6727` is region
+        (26, 71) and says `Name: "Grotesque Guardians' Lair"`; that region *is*
+        where the lair is.
+
+        Measured on the real export: all 315 named areas are reachable this
+        way, 301 of them landing somewhere drawable, and **502 of the 719
+        placeable underground chunks get a label** out of it. Nothing here is
+        fuzzy, so there is no provenance to record and no tier to tune -
+        contrast `heuristics.py`, whose joins are between two vocabularies
+        nobody reconciled.
+
+        The mapping is many-to-one and stays that way: 70 areas span several
+        chunks (Hallowed Sepulchre is 24) but **no chunk carries two names**,
+        so inverting it is lossless.
+
+        `sections.area_connections` walks the same `Name` fields for a
+        different question - which chunks *unlock* an area - and the two are
+        deliberately separate: connectivity is upstream's rule set, and this
+        is geometry.
+        """
+        found: dict[str, str] = {}
+        for chunk_id, entry in self.chunks.items():
+            if not isinstance(entry, dict):
+                continue
+            name = entry.get("Name")
+            if isinstance(name, str) and name:
+                found[chunk_id] = name
+        return found
+
     def _string_list(self, key: str) -> list[str]:
         value = self.data.get(key)
         if not isinstance(value, list):

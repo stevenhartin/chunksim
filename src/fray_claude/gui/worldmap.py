@@ -276,6 +276,10 @@ class ChunkCell:
     state: CellState
     #: An `Edge` bitmask. `0` when the cell sits wholly inside the blob.
     edges: int = 0
+    #: The named area this region is part of, when it is part of one -
+    #: `Kurask Lair`, `Karuulm Slayer Dungeon`. `None` for the 1,396 regions
+    #: the export gives no name.
+    area: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -286,6 +290,7 @@ class ChunkCell:
             "grid_y": self.grid_y,
             "state": str(self.state),
             "edges": self.edges,
+            "area": self.area,
         }
 
 
@@ -355,6 +360,7 @@ def build_view(
     compare_map_id: str | None = None,
     revision: int = 0,
     overlays: Mapping[str, Any] | None = None,
+    areas: Mapping[str, str] | None = None,
 ) -> MapView:
     """Assemble the payload for one map, or for one map against another.
 
@@ -378,11 +384,33 @@ def build_view(
     decide every label. Passing the base is simply the honest description of
     what the caller has.
 
+    **`areas` is `chunkinfo.area_names()` and is what lets a named area be
+    drawn at all.** Without it `Abyss` is an id with no square; with it, the
+    name resolves to the numbered chunks that carry it - the regions the place
+    actually occupies - and those get cells. A resolved id is *not* a second
+    cell on top of the numeric one: when a map holds both `Abyss` and its
+    region, one cell comes out, because two cells on one square would put two
+    hull edges there and count the square twice.
+
     Every input is membership-tested and never read for its value. The map
     payload stores `chunks.unlocked` as `{"12850": "12850"}` - the id again,
     not `True` - so a truthiness check here would be a coincidence rather than
     a contract.
     """
+    # A named area to the numbered chunks it occupies. Built once and only
+    # when there is something to look up, so the ordinary all-numeric map pays
+    # nothing for a feature it does not use.
+    regions_of: dict[str, list[str]] = {}
+    if areas:
+        for chunk_id, area in areas.items():
+            regions_of.setdefault(area, []).append(chunk_id)
+
+    def expand(chunk_id: str) -> list[str]:
+        """A named id becomes the regions it names; anything else stays put."""
+        if chunk_id.isdigit():
+            return [chunk_id]
+        return regions_of.get(chunk_id) or [chunk_id]
+
     base = tuple(unlocked)
     gained = tuple(added)
     lost = tuple(removed)
@@ -391,14 +419,17 @@ def build_view(
     # the browser draws in, so two runs produce byte-identical JSON.
     states: dict[str, CellState] = {}
     for chunk_id in base:
-        states.setdefault(chunk_id, CellState.UNLOCKED)
+        for resolved in expand(chunk_id):
+            states.setdefault(resolved, CellState.UNLOCKED)
     for chunk_id in gained:
-        states[chunk_id] = CellState.ADDED
+        for resolved in expand(chunk_id):
+            states[resolved] = CellState.ADDED
     for chunk_id in lost:
         # Relabels a base chunk, or introduces one the base never had - which
         # is what happens when the *compared* map is passed as `unlocked`.
         # Either way a removed square is drawn outside the hull.
-        states[chunk_id] = CellState.REMOVED
+        for resolved in expand(chunk_id):
+            states[resolved] = CellState.REMOVED
 
     positions: dict[str, GridPos] = {}
     skipped: list[str] = []
@@ -431,6 +462,7 @@ def build_view(
                 grid_y=position.grid_y,
                 state=states[chunk_id],
                 edges=int(edges.get(int(chunk_id), Edge.NONE)),
+                area=(areas or {}).get(chunk_id),
             )
         )
 

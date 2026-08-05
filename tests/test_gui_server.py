@@ -815,6 +815,74 @@ def test_the_full_diff_needs_both_maps(tmp_path: Path) -> None:
     assert "map2" in _body(response)["error"]
 
 
+def test_the_areas_route_names_every_region_that_is_part_of_a_place(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Static per export, so no `map` and no derivation - just the parse.
+
+    Which region is part of `Kurask Lair` does not depend on anybody's map,
+    which is why the browser asks once at boot and never invalidates it.
+    """
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+    ctx = _derived_ctx(
+        tmp_path,
+        monkeypatch,
+        {
+            "chunks": {
+                "4751": {"Name": "Kurask Lair"},
+                LUMBRIDGE: {"Monster": {"Cow": 4}},
+            },
+            "sections": {},
+        },
+    )
+
+    payload = _body(_get("/api/areas", ctx))
+
+    assert payload["areas"] == {"4751": "Kurask Lair"}
+
+
+def test_a_map_holding_a_named_area_pays_for_the_export(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The one case where `/api/view` is allowed to parse the 10MB export.
+
+    A named id has no coordinates, so there is no cheaper way to draw it. The
+    parse is conditional on the map actually holding one - see the companion
+    test that an all-numeric map still never touches the export.
+    """
+    _write_map(tmp_path, "fray", [LUMBRIDGE, "Kurask Lair"])
+    ctx = _derived_ctx(
+        tmp_path,
+        monkeypatch,
+        {"chunks": {"4751": {"Name": "Kurask Lair"}}, "sections": {}},
+    )
+
+    payload = _body(_get("/api/view", ctx, map="fray"))
+    drawn = {cell["chunk_id"]: cell["area"] for cell in payload["cells"]}
+
+    assert drawn == {LUMBRIDGE: None, "4751": "Kurask Lair"}
+    assert payload["counts"]["skipped"] == 0
+    assert ctx.derivations.loaded
+
+
+def test_the_area_labels_are_drawn_over_the_hull_and_read_the_same_map() -> None:
+    """Two things the panel and the canvas have to agree on.
+
+    A label under the hull is a name with a line through it; a hover readout
+    reading some other source is a name that disagrees with the one on screen.
+    """
+    source = _app_js()
+
+    layers = re.search(r"const LAYERS = \[(.*?)\];", source, re.DOTALL)
+    assert layers is not None
+    order = [n.strip() for n in layers.group(1).replace("\n", " ").split(",") if n.strip()]
+    assert order.index("drawAreas") > order.index("drawHull")
+    # The readout and the labels both read `state.areas`, which `/api/areas`
+    # fills - not a second copy that could drift.
+    assert "state.areas[chunkId]" in source
+    assert 'getJSON("/api/areas")' in source
+
+
 def test_the_summary_answers_what_fray_show_answers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

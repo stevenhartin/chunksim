@@ -75,6 +75,7 @@ const state = {
   candidates: new Map(),   // chunk id -> neighbour entry
   found: new Set(),        // chunk ids highlighted by a search
   sections: {},            // chunk id -> {section: reachable}, for the masks
+  areas: {},               // chunk id -> named area, for labels and the readout
   selected: null,
   hovered: null,
   panX: 0, panY: 0, zoom: 0.5,
@@ -329,8 +330,12 @@ function maskTargets() {
  * the hull has to change. */
 const LAYERS = [
   drawTiles, drawLockedWash, drawGrid, drawStates, drawMasks, drawFound,
-  drawCandidates, drawHull, drawHovered, drawSelected,
+  drawCandidates, drawHull, drawAreas, drawHovered, drawSelected,
 ];
+
+/* Below this on-screen chunk size a name is unreadable and the map is better
+ * off without it. */
+const AREA_LABEL_MIN_CELL = 54;
 
 /* ---- the tile layer ---------------------------------------------------- */
 
@@ -602,6 +607,53 @@ function drawCandidates() {
   }
 }
 
+/* **Names the dungeons.** Underground is 719 squares of unlabelled rooms
+ * without this - the tiles show you a boss arena and nothing says which. 502
+ * of them are part of a named area, and the name comes from the export rather
+ * than from any match: a numbered region carrying `Name` *is* where that place
+ * is. See `chunkinfo.area_names`.
+ *
+ * **One label per area, anchored to its top-left square that is on screen.**
+ * Not one per square: `Hallowed Sepulchre` is 24 regions and writing its name
+ * on each is a wall of repeated text. Not one per area *globally* either -
+ * that anchor is often scrolled off, and a dungeon you are looking straight at
+ * with its name somewhere else is worse than either. Re-anchoring per frame
+ * costs a sort of what is visible and means every area you can see is named
+ * exactly once. */
+function drawAreas() {
+  const size = cellSize();
+  if (size < AREA_LABEL_MIN_CELL) return;
+
+  const anchor = new Map();
+  for (const [chunkId, area] of Object.entries(state.areas)) {
+    const at = chunkToGrid(chunkId);
+    if (!at) continue;
+    const [x, y] = toScreen(at[0], at[1]);
+    if (!onScreen(x, y, size)) continue;
+    const held = anchor.get(area);
+    /* Reading order: topmost row wins, then leftmost column. */
+    if (!held || at[1] < held[1] || (at[1] === held[1] && at[0] < held[0])) {
+      anchor.set(area, at);
+    }
+  }
+  if (!anchor.size) return;
+
+  CTX.textAlign = "left";
+  CTX.textBaseline = "top";
+  CTX.font = `600 ${Math.round(Math.min(15, size * 0.16))}px system-ui, sans-serif`;
+  CTX.lineWidth = 3;
+  CTX.lineJoin = "round";
+  for (const [area, at] of anchor) {
+    const [x, y] = toScreen(at[0], at[1]);
+    /* Stroked underneath, so a name stays readable over both the bright side
+     * of an unlocked square and the wash over a locked one. */
+    CTX.strokeStyle = "rgba(4, 8, 12, .85)";
+    CTX.strokeText(area, x + 4, y + 3);
+    CTX.fillStyle = "#e8eef6";
+    CTX.fillText(area, x + 4, y + 3);
+  }
+}
+
 function drawHull() {
   /* One path, one stroke: the joins stay clean where edges meet at a corner,
    * and there is no per-cell state churn. */
@@ -867,6 +919,9 @@ function showHovered(sx, sy) {
   const cell = at && state.cells.get(at[0] + "," + at[1]);
   const candidate = state.candidates.get(chunkId);
   const bits = [chunkId];
+  /* The name first among the words, because "Kurask Lair" is what you are
+   * looking for and the id is what you paste into `fray unlock`. */
+  if (state.areas[chunkId]) bits.push(state.areas[chunkId]);
   if (cell) bits.push(cell.state);
   if (candidate) bits.push("#" + candidate.number);
   el.hover.textContent = bits.join("  ");
@@ -1984,6 +2039,21 @@ async function poll() {
   } catch { /* a map deleted under us; the next load reports it */ }
 }
 
+/* Which region belongs to which named place. Static per export and map
+ * independent, so it is asked for once and never invalidated - a new export
+ * arrives through `fray chunkinfo`, which restarts nothing but does reset
+ * `Derivations`, and a reload picks it up. */
+async function loadAreas() {
+  try {
+    const payload = await getJSON("/api/areas");
+    state.areas = payload.areas || {};
+    invalidate();
+  } catch {
+    /* Labels are an improvement, not a precondition: the map draws without
+     * them and every id still works. */
+  }
+}
+
 /* Ask the server *where* the tiles are - not for the tiles. See `drawTiles`. */
 async function loadTiles() {
   try {
@@ -2016,6 +2086,7 @@ function renderAttribution() {
   await loadView();
   await loadTiles();
   fitToCells();
+  loadAreas();
   if (BOOT.plane) { el.plane.value = BOOT.plane; el.plane.dispatchEvent(new Event("change")); }
   if (BOOT.candidates) el.candidates.click();
   if (BOOT.sections) el.masks.click();

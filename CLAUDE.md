@@ -328,9 +328,19 @@ Things worth knowing before changing it:
   region rectangle (x 14–66, y 18–197, 53×180) rather than the surface's, underground sits north of
   the overworld because of the y-flip, and **1,905 of the export's 1,919 numeric ids are placeable
   against 1,176 before**. A plane selector picks the floor; it changes the tiles and nothing else,
-  since a region contains every plane. What is left unplaced: the 315 named areas (`Abyss`), of
-  which **76 match a `basemaps.json` entry by name** and are the next seam, and 14 numeric outliers
-  past region x 405.
+  since a region contains every plane. What is left unplaced: 14 numeric outliers past region x 405.
+- **A named area is placed by the export, not by matching its name.** `Abyss` has no coordinates,
+  but the export stores such a place *twice* — once under its name holding the contents, and once as
+  one or more ordinary numbered chunks carrying `Name` — and a numbered chunk is a region, so it has
+  a square. `chunkinfo.area_names()` inverts that (`6727` → `Grotesque Guardians' Lair`); all 315
+  named areas resolve, 301 land somewhere drawable, and **502 of the 719 placeable underground
+  chunks get a label**, which is what stops the dungeons being a field of unnamed squares. No fuzzy
+  tier, because there is nothing to be fuzzy about — contrast `heuristics.py`, whose joins really do
+  span two vocabularies. The mapping is many-to-one (Hallowed Sepulchre is 24 regions) but **no
+  region carries two names**, so inverting is lossless. `build_view(areas=…)` resolves a named id to
+  those regions and **collapses it onto the numeric cell** when a map holds both, since two cells on
+  one square would double the hull and the count. `/api/view` only pays the 10MB parse when the map
+  actually holds a non-numeric id; `/api/areas` serves the whole mapping once, map-independently.
   **Never read `maps.runescape.wiki/osrs/data/dataloader.json`** — it is the superseded standalone
   app's config, pinned at a 2019 render, and believing it is what made an earlier pass conclude the
   tiles were seven years stale. The current sources are `wgKartographerDataConfig` (read off any
