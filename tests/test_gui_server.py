@@ -283,11 +283,16 @@ def test_the_hover_readout_inverts_the_real_projection() -> None:
     drifts would name the wrong chunk under the cursor - the sort of thing
     nobody notices until they paste the id into `fray unlock`.
     """
-    from fray_claude.gui.worldmap import MAX_REGION_Y, MIN_REGION_X
+    from fray_claude.gui.worldmap import MAX_REGION_Y, MIN_REGION_X, REGION_STRIDE
 
     source = _app_js()
-    assert re.search(rf"const regionX = gx \+ {MIN_REGION_X};", source)
-    assert re.search(rf"const regionY = {MAX_REGION_Y} - gy;", source)
+    # `gridToChunk`, which the hover readout and the candidate overlay both use.
+    assert re.search(
+        rf"\(gx \+ {MIN_REGION_X}\) \* {REGION_STRIDE} \+ \({MAX_REGION_Y} - gy\)", source
+    )
+    # `chunkToGrid`, the same projection run backwards.
+    assert re.search(rf"\(id >> 8\) - {MIN_REGION_X}", source)
+    assert re.search(rf"{MAX_REGION_Y} - \(id & 0xff\)", source)
 
 
 # --- the actions -----------------------------------------------------------
@@ -610,3 +615,19 @@ def test_the_map_view_never_parses_the_export(
     assert _get("/api/revision", ctx, map="fray").status == HTTPStatus.OK
     assert _get("/api/summary", ctx, map="fray").status == HTTPStatus.OK
     assert not ctx.derivations.loaded
+
+
+def test_the_page_strips_task_markup_for_display() -> None:
+    """Task names are markup-bearing keys and the raw form must not be shown.
+
+    `~|Dom Onion's Reward Shop|~` is what everything is *keyed* by; stripping
+    it is display-only, which is why the browser does it rather than the
+    server. Mirrors `challenges.strip_task_markup`, and the page applies it
+    only to names and details - other branches of the export use `~` and `|`
+    for real.
+    """
+    source = _app_js()
+
+    assert "function plain(" in source
+    # Every place a task-ish string reaches innerHTML goes through it.
+    assert source.count("plain(") >= 5

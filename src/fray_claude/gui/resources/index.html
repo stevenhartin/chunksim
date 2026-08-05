@@ -8,48 +8,70 @@
 </head>
 <body>
 
+<canvas id="canvas"></canvas>
+
+<!-- The bar floats over the map rather than sitting above it, so the world
+     keeps the whole window and the pan arithmetic stays in one space. -->
 <header class="bar">
   <span class="brand">fray</span>
 
-  <label>map
-    <select id="map"></select>
-  </label>
+  <select id="map" class="pick" aria-label="map"></select>
+  <span class="vs">vs</span>
+  <select id="compare" class="pick" aria-label="compare against"><option value="">—</option></select>
 
-  <label>compare
-    <select id="compare"><option value="">none</option></select>
-  </label>
+  <span class="rule"></span>
 
-  <button id="reset" type="button" title="Fit the unlocked chunks to the window">reset view</button>
-
-  <label class="check" title="Re-read the cache every couple of seconds, so a fray fetch or simulate in another terminal shows up here">
-    <input id="live" type="checkbox" checked> live
-  </label>
-
-  <span class="sep"></span>
-
-  <button id="fetch" type="button" title="Re-download this map from source-chunk">fetch</button>
-
-  <label>rolls <input id="rolls" type="number" min="1" value="5"></label>
-  <label>runs <input id="runs" type="number" min="1" value="1"></label>
-  <button id="simulate" type="button" title="Simulate chunk rolls and save each run as a cached map">simulate</button>
+  <button id="candidates" class="toggle" type="button" aria-pressed="false"
+          title="Show the chunks you could roll next, numbered as the app numbers them">candidates</button>
+  <button id="live" class="toggle on" type="button" aria-pressed="true"
+          title="Re-read the cache, so a fray fetch or simulate elsewhere shows up here">live</button>
+  <button id="fit" type="button" title="Fit your chunks to the window">fit</button>
 
   <span class="counts" id="counts"></span>
-  <button id="skipped" type="button" class="warn" hidden></button>
-  <span class="status" id="status"></span>
+  <button id="skipped" class="warn" type="button" hidden></button>
+
+  <span class="spacer"></span>
+  <span class="hover" id="hover"></span>
+  <button id="toggle-panel" type="button" title="Show or hide the panel">panel</button>
 </header>
+
+<aside class="panel" id="panel">
+  <nav class="tabs" id="tabs">
+    <button data-tab="chunk" class="on" type="button">chunk</button>
+    <button data-tab="tasks" type="button">tasks</button>
+    <button data-tab="estimate" type="button">estimate</button>
+    <button data-tab="find" type="button">find</button>
+    <button data-tab="maps" type="button">maps</button>
+  </nav>
+
+  <section class="pane on" data-pane="chunk">
+    <div id="chunk-body" class="empty">Click a chunk on the map.</div>
+  </section>
+
+  <section class="pane" data-pane="tasks">
+    <div id="tasks-body" class="empty">Loading…</div>
+  </section>
+
+  <section class="pane" data-pane="estimate">
+    <div id="estimate-body" class="empty">Loading…</div>
+  </section>
+
+  <section class="pane" data-pane="find">
+    <form id="find-form" class="row">
+      <input id="find-input" type="search" placeholder="item, monster, npc, object…" autocomplete="off">
+      <button type="submit">find</button>
+    </form>
+    <div id="find-body" class="empty">Search the whole world, unlocked or not.</div>
+  </section>
+
+  <section class="pane" data-pane="maps">
+    <div id="maps-body" class="empty">Loading…</div>
+  </section>
+</aside>
 
 <div class="job" id="job" hidden></div>
 
-<canvas id="canvas"></canvas>
-
-<div class="legend">
-  <span><i class="sw unlocked"></i>unlocked</span>
-  <span><i class="sw locked"></i>locked</span>
-  <span><i class="sw added"></i>gained</span>
-  <span><i class="sw removed"></i>lost</span>
-  <span><i class="sw hull"></i>border</span>
-</div>
-
+<div class="legend" id="legend"></div>
 <div class="toast" id="toast" hidden></div>
 
 <script src="/static/app.js"></script>
