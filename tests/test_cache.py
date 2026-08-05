@@ -642,3 +642,29 @@ def test_migrating_twice_changes_nothing(tmp_path: Path) -> None:
 
     assert migrate_layout(tmp_path) == []
     assert (tmp_path / "cache" / "maps" / "fetched" / "fray.json").is_file()
+
+
+def test_every_envelope_written_today_states_its_kind(tmp_path: Path) -> None:
+    """`_with_kind` exists for caches written before the field did.
+
+    If a fresh write still needed it, the field would be decoration and the
+    inference would be the real contract - which is exactly the arrangement
+    `is_simulated` had, and the reason a rolled map and an unlocked one could
+    not be told apart.
+    """
+    path = write_cache("fray", {"chunks": {}}, root=tmp_path)
+
+    assert json.loads(path.read_text())["kind"] == FETCHED
+
+    directory = claim_batch("rolled", tmp_path, kind=SIMULATED)
+    run = run_dir(directory, 1)
+    write_sim_run(
+        run,
+        map_id="rolled/run-001",
+        data={"chunks": {}},
+        simulation={"base_map": "fray"},
+        ledger=[],
+        kind=SIMULATED,
+    )
+
+    assert json.loads((run / "map.json").read_text())["kind"] == SIMULATED

@@ -339,11 +339,18 @@ def _atomic_write_json(path: Path, payload: dict[str, Any]) -> Path:
 
 
 def write_cache(map_id: str, data: dict[str, Any], root: Path | None = None) -> Path:
-    """Write `data` in an envelope recording when and where it came from."""
+    """Write `data` in an envelope recording when and where it came from.
+
+    `kind` is written here as well as by `write_sim_run`, so `_with_kind`'s
+    fill-in is only ever reached by a cache written before the field existed.
+    An envelope that has to be *inferred* to be understood is one nobody can
+    read on its own, which is what `is_simulated` was.
+    """
     envelope = {
         "map_id": map_id,
         "fetched_at": datetime.now(UTC).isoformat(),
         "source": map_url(map_id),
+        "kind": FETCHED,
         "is_simulated": False,
         "data": data,
     }
