@@ -670,6 +670,137 @@ class _FakeRun:
         self.unlocked_chunks = 1
 
 
+def _resources() -> tuple[str, str, str]:
+    from fray_claude.gui.server import RESOURCE_DIR
+
+    return (
+        (RESOURCE_DIR / "index.html").read_text(encoding="utf-8"),
+        (RESOURCE_DIR / "app.js").read_text(encoding="utf-8"),
+        (RESOURCE_DIR / "style.css").read_text(encoding="utf-8"),
+    )
+
+
+def test_every_element_the_page_reaches_for_exists() -> None:
+    """`app.js` looks its elements up once, by id, into `el`.
+
+    A renamed or dropped element leaves `el.thing` undefined and the failure
+    lands wherever it is *used*, which may be three tabs away and only on a
+    map that has something to show. Checking the list against the markup is
+    the cheapest place to catch it.
+    """
+    html, js, _ = _resources()
+
+    ids = set(re.findall(r'id="([^"]+)"', html))
+    loop = re.search(r"for \(const id of \[(.*?)\]\)", js, re.DOTALL)
+    assert loop is not None
+    asked = set(re.findall(r'"([^"]+)"', loop.group(1)))
+
+    assert asked, "the boot loop found no ids at all"
+    assert asked <= ids, f"asked for but not in the markup: {sorted(asked - ids)}"
+
+
+def test_every_style_token_is_defined() -> None:
+    """The stylesheet's lengths all come from one scale.
+
+    `var(--s7)` where the scale stops at `--s6` is not an error anywhere - the
+    declaration is simply dropped and the element loses its padding, which
+    reads as a layout bug with no cause.
+    """
+    _, _, css = _resources()
+
+    defined = set(re.findall(r"^\s*(--[a-z0-9-]+)\s*:", css, re.MULTILINE))
+    used = set(re.findall(r"var\((--[a-z0-9-]+)", css))
+
+    assert used - defined == set(), f"undefined tokens: {sorted(used - defined)}"
+    assert defined - used == set(), f"dead tokens: {sorted(defined - used)}"
+
+
+def test_there_is_one_tooltip_system() -> None:
+    """`title` and `data-tip` both show a tooltip, and both at once shows two.
+
+    The custom one can carry a heading, a note and a keyboard hint; the native
+    one is a plain string on a browser delay. Mixing them meant the bar behaved
+    differently from every list under it.
+    """
+    html, _, _ = _resources()
+
+    assert 'title="' not in html
+    assert "data-tip=" in html
+
+
+def test_the_scrolling_panes_reserve_their_gutter() -> None:
+    """Chrome's overlay scrollbar sits *on top* of the last characters of a
+    long task name, so the thing you are reading is the thing it covers.
+
+    `scrollbar-gutter: stable` takes the width out of the content box whether
+    or not the bar is showing, which also stops the pane reflowing the moment
+    a list grows past the fold.
+    """
+    _, _, css = _resources()
+
+    pane = re.search(r"\.pane > div:last-child \{(.*?)\}", css, re.DOTALL)
+    assert pane is not None
+    assert "scrollbar-gutter: stable" in pane.group(1)
+
+
+def test_an_action_that_answers_inline_is_not_polled_as_a_job() -> None:
+    """**Three of the six actions finish before they reply**, and reading
+    `{ job }` off all six is what left the Maps tab showing deleted maps.
+
+    `fetch`, `simulate` and `refresh` hand back a job id; `maps/remove`,
+    `derived/prune` and `window` do the work and hand back the result. Polling
+    `/api/jobs/undefined` 404s, and the 404 path treated that as "nothing more
+    to say" - so the refresh callback never ran.
+    """
+    _, js, _ = _resources()
+
+    assert "if (reply && reply.job) return followJob(" in js
+    # The inline branch runs the callback rather than dropping it.
+    assert "await onDone?.(reply);" in js
+
+
+def test_the_chip_gestures_are_click_shift_ctrl() -> None:
+    """Everything on by default, and narrowing to one is a single click.
+
+    The strip records what is *off* rather than what is on, which is what
+    makes a category nobody has seen yet default to on - holding the selected
+    set froze it at whatever the first chunk happened to contain.
+    """
+    _, js, _ = _resources()
+
+    body = re.search(r"function applyChipGesture\(.*?\n\}", js, re.DOTALL)
+    assert body is not None
+    assert "event.shiftKey" in body.group(0) and "off.delete(key)" in body.group(0)
+    assert "event.ctrlKey || event.metaKey" in body.group(0) and "off.add(key)" in body.group(0)
+    assert "off.clear();" in body.group(0)
+    # Nothing anywhere holds a positive selection any more.
+    assert "chunkCategories" not in js and "taskSections" not in js
+
+
+def test_a_truncated_list_can_be_opened() -> None:
+    """"17 more" used to be a dead grey line naming what it would not show."""
+    _, js, css = _resources()
+
+    assert "function withMore(" in js
+    assert 'data-more="' in js
+    # Collapsing is a second press, not something that happens on scroll.
+    assert "Show fewer" in js
+    body = re.search(r"function withMore\(.*?\n\}", js, re.DOTALL)
+    assert body is not None and "scroll" not in body.group(0)
+    assert ".more-toggle" in css
+
+
+def test_removing_maps_asks_first() -> None:
+    """`maps rm` deletes directories and is not undoable."""
+    _, js, _ = _resources()
+
+    assert "function confirmAction(" in js
+    assert js.count("await confirmAction(") >= 2       # one map, and all of them
+    # The derived cache is pure recomputation, so it is *not* gated.
+    prune = re.search(r'getElementById\("prune"\)\.onclick.*?;', js, re.DOTALL)
+    assert prune is not None and "confirmAction" not in prune.group(0)
+
+
 def test_the_canvas_is_given_an_explicit_size() -> None:
     """`inset: 0` does not stretch a canvas, so the stylesheet must say the
     size outright.

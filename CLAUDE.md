@@ -302,6 +302,19 @@ Things worth knowing before changing it:
   `inset: 0` does not stretch a replaced element and the failure is silent. A third assertion pins
   that **no `raw()` interpolation lands inside an attribute**: `data-tip="${raw(...)}"` splices
   unescaped quotes through the closing quote, and the markup after it appears on screen as text.
+- **Three interface rules that each replaced a bug**, all pinned by `tests/test_gui_server.py`:
+  **one tooltip system** (`data-tip`, never `title` — both at once shows two tooltips, and only the
+  custom one can carry a heading, a note and a key hint); **chip strips record what is *off*, not
+  what is on** (holding the selected set froze it at whatever the first chunk happened to contain,
+  so a category nobody had seen yet came up unchecked — click narrows to one, shift adds, ctrl
+  removes); and **an action's reply shape decides whether it is polled** — `fetch`/`simulate`/
+  `refresh` return a job id, `maps/remove`/`derived/prune`/`window` return the result, and reading
+  `{ job }` off all six polled `/api/jobs/undefined`, whose 404 silently swallowed the refresh
+  callback and left deleted maps on screen.
+- **Every length in `style.css` comes from one scale** (`--s1`…`--s6`, `--r1`…`--r3`), and a test
+  asserts no token is used undefined or defined unused. Panes reserve their scrollbar with
+  `scrollbar-gutter: stable`, because Chrome's overlay bar sits *on top* of the last characters of a
+  long task name.
 - **`gui/panels.py` is `app.js`'s pure module**, and the reason it exists is that `bis`,
   `task_classification` and `other_tasks` offer three shapes where the panel needs one. Walking
   `Object.keys` over a *category envelope* is what made the first tasks tab print `active_total`

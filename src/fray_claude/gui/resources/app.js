@@ -91,8 +91,10 @@ const state = {
 const el = {};
 for (const id of [
   "map", "compare", "breakdown", "plane", "candidates", "masks", "live", "fit", "counts", "skipped",
-  "hover", "toggle-panel", "panel", "tabs", "job", "toast", "legend", "tip",
-  "overlay", "overlay-title", "overlay-body", "overlay-close",
+  "hover", "toggle-panel", "panel", "tabs", "toast", "legend", "tip",
+  "progress", "progress-title", "progress-count", "progress-detail",
+  "progress-track", "progress-fill",
+  "overlay", "overlay-title", "overlay-body", "overlay-close", "overlay-actions",
   "chunk-head", "chunk-chips", "chunk-body", "task-chips", "tasks-body",
   "show-done", "estimate-total", "estimate-why", "estimate-body",
   "find-body", "find-form", "find-input", "maps-body", "attribution",
@@ -1112,6 +1114,57 @@ function showHovered(sx, sy) {
   el.hover.textContent = bits.join("  ");
 }
 
+/* ---- lists that are too long to print ------------------------------------ */
+
+/* **A truncated list is a control, not a caption.** "17 more" was a dead grey
+ * line telling you what you were not being shown and offering no way to see
+ * it; the only route to the rest was `--export-json`.
+ *
+ * `expanded` holds the keys currently opened. Collapsing is a second press,
+ * not something that happens when the region scrolls out of view: a list that
+ * folds itself while you are reading further down moves the thing you were
+ * looking at, and a control that undoes itself when you look away is one you
+ * stop trusting.
+ *
+ * The set survives a re-render - which is what makes the expansion *stay* open
+ * while you change a chip - and is cleared when the underlying data is
+ * refetched, because those keys are then about a list that no longer exists. */
+const expanded = new Set();
+
+function clearExpansions(prefix) {
+  for (const key of [...expanded]) if (key.startsWith(prefix)) expanded.delete(key);
+}
+
+/* Render at most `limit` rows, plus the control that reveals the rest. */
+function withMore(rows, key, limit, render) {
+  const open = expanded.has(key);
+  const shown = open ? rows : rows.slice(0, limit);
+  let out = shown.map(render).join("");
+  if (rows.length <= limit) return out;
+  const hidden = rows.length - limit;
+  out += tmpl`<li class="more"><button class="more-toggle" data-more="${key}"
+      aria-expanded="${open}">${raw(icon(open ? "up" : "down").__raw)}
+      <span>${open ? "Show fewer" : "Show " + hidden + " more"}</span></button></li>`;
+  return out;
+}
+
+/* Who redraws when one of their lists is opened, keyed by the prefix their
+ * keys carry. A pane registers itself as it renders, which keeps the knowledge
+ * of *how* to redraw next to the code that knows *what* to draw. */
+const moreOwners = new Map();
+
+function ownsMore(prefix, redraw) { moreOwners.set(prefix, redraw); }
+
+/* Delegated, so a list gets the behaviour by emitting the markup and never has
+ * to remember to wire anything up. */
+document.addEventListener("click", (event) => {
+  const toggle = event.target.closest("[data-more]");
+  if (!toggle) return;
+  const key = toggle.dataset.more;
+  if (expanded.has(key)) expanded.delete(key); else expanded.add(key);
+  moreOwners.get(key.split(":")[0])?.();
+});
+
 /* ---- panel plumbing ---------------------------------------------------- */
 
 /* Escapes every interpolation unless it is wrapped in `raw`. Chunk nicknames
@@ -1190,8 +1243,11 @@ el.tabs.addEventListener("click", (e) => {
 });
 
 el["toggle-panel"].addEventListener("click", () => {
-  el.panel.classList.toggle("hidden");
-  el.job.style.right = el.panel.classList.contains("hidden") ? "0" : "";
+  const hidden = el.panel.classList.toggle("hidden");
+  /* Everything anchored to the right of the *map* reads `--rail`, so the
+   * progress card and the attribution slide out with the panel instead of
+   * hanging over the gap it left. */
+  document.body.classList.toggle("no-panel", hidden);
 });
 
 function toast(message) {
@@ -1203,13 +1259,37 @@ function toast(message) {
 
 /* One dialog, reused. An answer you asked a question to get needs somewhere
  * to live that is not "instead of the thing you were reading". */
-function openOverlay(title, html) {
+function openOverlay(title, html, actions) {
   el["overlay-title"].textContent = title;
   el["overlay-body"].innerHTML = html;
+  el["overlay-actions"].innerHTML = actions || "";
+  el["overlay-actions"].hidden = !actions;
   el.overlay.hidden = false;
 }
 
-function closeOverlay() { el.overlay.hidden = true; }
+function closeOverlay() {
+  el.overlay.hidden = true;
+  /* A dialog that was asking a question and is dismissed has been answered
+   * "no". Anything awaiting it has to hear that rather than wait forever. */
+  if (closeOverlay.pending) { const answer = closeOverlay.pending; closeOverlay.pending = null; answer(false); }
+}
+
+/* **Ask before destroying something on disk.** `maps rm` is not undoable: a
+ * simulated map can be rebuilt from its seed but only if you still know it,
+ * and a batch of forty is forty directories. The dialog names what goes
+ * rather than asking "are you sure", because the count *is* the question. */
+function confirmAction(title, body, verb) {
+  return new Promise((resolve) => {
+    openOverlay(title, body, tmpl`<button id="confirm-no" type="button">Cancel</button>
+      <button id="confirm-yes" class="danger" type="button">${verb}</button>`);
+    closeOverlay.pending = resolve;
+    const answer = (value) => { closeOverlay.pending = null; el.overlay.hidden = true; resolve(value); };
+    document.getElementById("confirm-no").onclick = () => answer(false);
+    const yes = document.getElementById("confirm-yes");
+    yes.onclick = () => answer(true);
+    yes.focus();
+  });
+}
 
 el["overlay-close"].addEventListener("click", closeOverlay);
 el.overlay.addEventListener("click", (e) => { if (e.target === el.overlay) closeOverlay(); });
@@ -1406,7 +1486,9 @@ let chunkDetail = null;
  * at once and the default is all of them. Kept across renders and across
  * chunks - if you narrowed to monsters, the next chunk you click means the
  * same question. */
-let chunkCategories = null;
+/* Which categories are switched *off*. Empty means everything shows, which is
+ * what a chunk you have just clicked should do. See `applyChipGesture`. */
+const chunkOff = new Set();
 
 async function selectChunk(chunkId) {
   state.selected = chunkId;
@@ -1454,20 +1536,22 @@ function renderChunk() {
    * had to scroll past each other to compare. They are *checkboxes*, so the
    * comparison can also be "monsters and NPCs together". */
   const categories = [...Object.keys(detail.contents), SECTIONS_CHIP];
-  if (chunkCategories === null) chunkCategories = new Set(categories);
-
   el["chunk-chips"].innerHTML = categories.map((key) => {
-    const on = chunkCategories.has(key);
+    const on = !chunkOff.has(key);
     const count = key === SECTIONS_CHIP ? detail.sections.length : detail.contents[key].length;
-    return tmpl`<button class="chip ${on ? "on" : ""}" data-cat="${key}" title="${categoryLabel(key)}"
-      role="checkbox" aria-checked="${on}">
+    const tip = tmpl`<b>${categoryLabel(key)}</b><span class="sub">${count} in this chunk</span><span class="hint">${CHIP_HINT}</span>`;
+    return tmpl`<button class="chip ${on ? "on" : ""}" data-cat="${key}" data-tip="${tip}"
+      role="checkbox" aria-checked="${on}" aria-label="${categoryLabel(key)}">
       ${icon(key === SECTIONS_CHIP ? "sections" : (CATEGORY_ICONS[key] || "dot"))}<span class="count">${count}</span></button>`;
   }).join("");
   for (const chip of el["chunk-chips"].querySelectorAll("[data-cat]")) {
-    chip.onclick = () => { toggleIn(chunkCategories, chip.dataset.cat); renderChunk(); };
+    chip.onclick = (event) => {
+      applyChipGesture(chunkOff, chip.dataset.cat, categories, event);
+      renderChunk();
+    };
   }
 
-  const showing = categories.filter((key) => chunkCategories.has(key));
+  const showing = categories.filter((key) => !chunkOff.has(key));
   if (!showing.length) {
     el["chunk-body"].innerHTML = tmpl`<p class="empty">No categories selected.</p>`;
     return;
@@ -1481,18 +1565,42 @@ function renderChunk() {
   }).join("");
 }
 
-/* Checkbox semantics for a chip strip. Deselecting the last one is allowed -
- * "show me nothing" is a state you pass through on the way to "show me only
- * that one", and forbidding it makes the strip feel stuck. */
-function toggleIn(set, key) {
-  if (set.has(key)) set.delete(key); else set.add(key);
+/* **A chip strip records what is *off*, not what is on**, and that is the fix
+ * for a real bug rather than a preference. Holding the selected set meant it
+ * was frozen the first time a strip rendered: click a chunk with no shops and
+ * the `shop` chip was simply absent, so the next chunk that *did* have one
+ * showed it unchecked, with nothing to say why. Tracking exclusions instead
+ * means a category nobody has ever seen is on by default, for ever, which is
+ * what "all on to begin with" has to mean.
+ *
+ * Three gestures, matching how selection works in every file manager:
+ *
+ *   click        only this one
+ *   shift-click  add this one to the selection
+ *   ctrl-click   take this one out of the selection
+ *
+ * Plain click narrowing to one is the important half: with everything on by
+ * default, "just show me monsters" is the common request and it should not
+ * take eight clicks. */
+function applyChipGesture(off, key, keys, event) {
+  if (event.shiftKey) return off.delete(key);
+  if (event.ctrlKey || event.metaKey) return off.add(key);
+  off.clear();
+  for (const other of keys) if (other !== key) off.add(other);
 }
+
+const CHIP_HINT = "Click for only this · shift adds · ctrl removes";
 
 function renderSections(detail) {
   if (!detail.sections.length) return tmpl`<p class="empty">This chunk is not split.</p>`;
   let out = "<ul class='list'>";
   for (const section of detail.sections) {
-    out += tmpl`<li><span class="name">Section ${section.section}</span>
+    const tip = section.section === "0"
+      ? "Section 0 opens with the chunk itself."
+      : (section.reachable
+          ? "Opened by a link from a section you already reach."
+          : "Needs a link from somewhere you have not unlocked yet.");
+    out += tmpl`<li data-tip="${tip}"><span class="name">Section ${section.section}</span>
       <span class="pill ${section.reachable ? "reachable" : "locked"}">${section.reachable ? "Reachable" : "Unreached"}</span></li>`;
   }
   return out + "</ul>";
@@ -1508,7 +1616,12 @@ function renderCategory(detail, key) {
   for (const row of rows) {
     const where = row.sections.length > 1 || row.sections[0] !== "0"
       ? row.sections.join(", ") : "";
-    out += tmpl`<li class="${row.reachable ? "" : "unreached"}">
+    const tip = tmpl`<b>${plain(row.name)}</b><span class="sub">${
+      row.sections.length === 1 ? "Section " + row.sections[0] : "Sections " + row.sections.join(", ")
+    }</span><span class="sub">${row.reachable
+      ? "You can reach this"
+      : "Behind a section you have not opened"}</span>`;
+    out += tmpl`<li class="${row.reachable ? "" : "unreached"}" data-tip="${tip}">
       <span class="name">${plain(row.name)}</span>
       <span class="num">${where}</span></li>`;
   }
@@ -1532,13 +1645,17 @@ async function previewUnlock(chunkId) {
       <dt>BiS upgrades</dt><dd>${Object.keys(delta.bis_upgrades).length}</dd></dl>`;
     if (tasks.length) {
       out += "<h3>By category</h3><ul class='list'>";
-      for (const [category, names] of tasks.sort((a, b) => Object.keys(b[1]).length - Object.keys(a[1]).length)) {
-        const sample = Object.keys(names).slice(0, 6).map(plain).join("<br>");
-        out += tmpl`<li data-tip="${sample}"><span class="name">${category}</span><span class="num">${Object.keys(names).length}</span></li>`;
-      }
+      const sorted = tasks.sort((a, b) => Object.keys(b[1]).length - Object.keys(a[1]).length);
+      out += withMore(sorted, "unlock:tasks", 8, ([category, names]) => {
+        const keys = Object.keys(names);
+        const tip = tmpl`<b>${category}</b>` + keys.slice(0, 8).map((n) => tmpl`<span class="sub">${plain(n)}</span>`).join("")
+          + (keys.length > 8 ? tmpl`<span class="hint">and ${keys.length - 8} more</span>` : "");
+        return tmpl`<li data-tip="${tip}"><span class="name">${category}</span><span class="num">${keys.length}</span></li>`;
+      });
       out += "</ul>";
     }
     openOverlay("If you unlocked " + chunkId, out);
+    ownsMore("unlock", () => previewUnlock(chunkId));
   } catch (error) {
     openOverlay("If you unlocked " + chunkId, tmpl`<p class="empty">${error.message}</p>`);
   }
@@ -1593,16 +1710,10 @@ function diffNames(branch) {
   return { added, removed };
 }
 
-function diffList(rows, kind) {
-  let out = tmpl`<ul class="list ${kind}">`;
-  for (const [name, note] of rows.slice(0, DIFF_SAMPLE)) {
-    out += tmpl`<li><span class="mark">${kind === "gain" ? "+" : "−"}</span>
-      <span class="name">${plain(name)}</span><span class="sub">${plain(note)}</span></li>`;
-  }
-  if (rows.length > DIFF_SAMPLE) {
-    out += tmpl`<li class="more"><span class="name">${rows.length - DIFF_SAMPLE} more</span></li>`;
-  }
-  return out + "</ul>";
+function diffList(rows, kind, key) {
+  return tmpl`<ul class="list ${kind}">` + withMore(rows, key, DIFF_SAMPLE, ([name, note]) =>
+    tmpl`<li><span class="mark">${kind === "gain" ? "+" : "−"}</span>
+      <span class="name">${plain(name)}</span><span class="sub">${plain(note)}</span></li>`) + "</ul>";
 }
 
 async function showBreakdown() {
@@ -1610,39 +1721,52 @@ async function showBreakdown() {
   if (!from || !to) return;
   const title = from + " → " + to;
   openOverlay(title, tmpl`<p class="empty">Deriving both worlds…</p>`);
-  try {
-    const delta = await getJSON(
-      "/api/diff?map1=" + encodeURIComponent(from) + "&map2=" + encodeURIComponent(to));
 
+  let delta;
+  try {
+    delta = await getJSON(
+      "/api/diff?map1=" + encodeURIComponent(from) + "&map2=" + encodeURIComponent(to));
+  } catch (error) {
+    return openOverlay(title, tmpl`<p class="empty">${error.message}</p>`);
+  }
+
+  /* Built as a function so opening one of its lists redraws from the delta
+   * already in hand. Re-running the comparison would derive both maps again
+   * for a set the browser is holding. */
+  const render = () => {
     /* The summary first, because "did anything change, and where" is the
-     * question, and eight numbers answer it before any list has to be read. */
+     * question, and eight numbers answer it before any list is read. */
     let out = tmpl`<p class="sub">Everything <b>${to}</b> holds that <b>${from}</b> does not, and the reverse.</p><dl class="kv">`;
-    let anything = false;
     for (const [key, name] of DIFF_BRANCHES) {
       const counts = delta.counts[key] || { added: 0, removed: 0 };
       if (!counts.added && !counts.removed) continue;
-      anything = true;
       out += tmpl`<dt>${name}</dt><dd><span class="gain">+${counts.added}</span>
         <span class="loss">−${counts.removed}</span></dd>`;
     }
     out += "</dl>";
-    if (!anything) {
-      openOverlay(title, tmpl`<p class="empty">These two derive identically. Every branch agrees.</p>`);
-      return;
-    }
 
     for (const [key, name] of DIFF_BRANCHES) {
       const counts = delta.counts[key] || { added: 0, removed: 0 };
       if (!counts.added && !counts.removed) continue;
       const { added, removed } = diffNames(delta[key === "bis" ? "bis_tasks" : key]);
       out += tmpl`<h3>${name} <span class="num">+${counts.added} −${counts.removed}</span></h3>`;
-      if (added.length) out += diffList(added, "gain");
-      if (removed.length) out += diffList(removed, "loss");
+      if (added.length) out += diffList(added, "gain", "diff:" + key + ":gain");
+      if (removed.length) out += diffList(removed, "loss", "diff:" + key + ":loss");
     }
-    openOverlay(title, out);
-  } catch (error) {
-    openOverlay(title, tmpl`<p class="empty">${error.message}</p>`);
+    return out;
+  };
+
+  const changed = DIFF_BRANCHES.some(([key]) => {
+    const counts = delta.counts[key] || { added: 0, removed: 0 };
+    return counts.added || counts.removed;
+  });
+  if (!changed) {
+    return openOverlay(title, tmpl`<p class="empty">These two derive identically. Every branch agrees.</p>`);
   }
+
+  clearExpansions("diff:");
+  openOverlay(title, render());
+  ownsMore("diff", () => openOverlay(title, render()));
 }
 
 el.breakdown.addEventListener("click", showBreakdown);
@@ -1663,10 +1787,9 @@ const GROUP_ICONS = {
 };
 
 let taskPanel = null;
-/* Checkboxes, defaulting to every category. The five sections answer one
- * question between them - "what is left" - and picking one at a time made
- * that five questions. */
-let taskSections = null;
+/* Which task categories are switched *off*. The five answer one question
+ * between them - "what is left" - so they all show until you say otherwise. */
+const taskOff = new Set();
 
 async function loadTasks() {
   if (taskPanel && taskPanel.map_id === el.map.value) return renderTasks();
@@ -1683,20 +1806,24 @@ async function loadTasks() {
 
 function renderTasks() {
   const sections = taskPanel.sections;
-  if (taskSections === null) taskSections = new Set(sections.map((s) => s.key));
-
+  const keys = sections.map((s) => s.key);
   el["task-chips"].innerHTML = sections.map((s) => {
-    const on = taskSections.has(s.key);
-    return tmpl`<button class="chip ${on ? "on" : ""}" data-section="${s.key}"
+    const on = !taskOff.has(s.key);
+    const count = state.showDone ? s.completed_total : s.active_total;
+    const tip = tmpl`<b>${s.label}</b><span class="sub">${count} ${state.showDone ? "completed" : "outstanding"}</span><span class="hint">${CHIP_HINT}</span>`;
+    return tmpl`<button class="chip ${on ? "on" : ""}" data-section="${s.key}" data-tip="${tip}"
       role="checkbox" aria-checked="${on}">
-      ${s.label}<span class="count">${state.showDone ? s.completed_total : s.active_total}</span></button>`;
+      ${s.label}<span class="count">${count}</span></button>`;
   }).join("");
   for (const chip of el["task-chips"].querySelectorAll("[data-section]")) {
-    chip.onclick = () => { toggleIn(taskSections, chip.dataset.section); renderTasks(); };
+    chip.onclick = (event) => {
+      applyChipGesture(taskOff, chip.dataset.section, keys, event);
+      renderTasks();
+    };
   }
 
   const side = state.showDone ? "completed" : "active";
-  const showing = sections.filter((s) => taskSections.has(s.key));
+  const showing = sections.filter((s) => !taskOff.has(s.key));
   if (!showing.length) {
     el["tasks-body"].innerHTML = tmpl`<p class="empty">No categories selected.</p>`;
     return;
@@ -1721,9 +1848,15 @@ function renderTasks() {
       out += "<ul class='list'>";
       for (const row of group[side]) {
         const badge = row.icon
-          ? tmpl`<img class="skill-icon" src="/assets/skill/${row.icon}.png" alt="${row.icon}" title="${row.icon}">`
+          ? tmpl`<img class="skill-icon" src="/assets/skill/${row.icon}.png" alt="${row.icon}">`
           : "";
-        out += tmpl`<li>${raw(badge)}<span class="name">${plain(row.name)}</span>
+        /* The row shows the subject; the tooltip shows the whole task as the
+         * export writes it, which is what `fray tasks` prints and what you
+         * would search for. */
+        const tip = tmpl`<b>${plain(row.name)}</b>`
+          + (row.note ? tmpl`<span class="sub">${plain(row.note)}</span>` : "")
+          + tmpl`<span class="hint">${plain(row.key)}</span>`;
+        out += tmpl`<li data-tip="${tip}">${raw(badge)}<span class="name">${plain(row.name)}</span>
           <span class="sub">${plain(row.note || "")}</span></li>`;
       }
       out += "</ul>";
@@ -1755,6 +1888,7 @@ async function loadEstimate() {
   el["estimate-body"].innerHTML = tmpl`<p class="empty">Pricing the outstanding work…</p>`;
   try {
     estimatePayload = await getJSON("/api/estimate?map=" + encodeURIComponent(el.map.value));
+    clearExpansions("estimate:");
     renderEstimate(estimatePayload);
   } catch (error) {
     estimatePayload = null;
@@ -1840,35 +1974,35 @@ function renderEstimate(payload) {
       const skills = (payload.skills || []).slice().sort((a, b) => b.hours - a.hours);
       if (!skills.length) continue;
       out += tmpl`<h3>${raw(swatch)}${label(bucket)} <span class="num">${skills.length}</span></h3><ul class="list">`;
-      for (const skill of skills.slice(0, 14)) {
-        out += tmpl`<li><img class="skill-icon" src="/assets/skill/${skill.skill}.png" alt="">
+      out += withMore(skills, "estimate:skilling", 14, (skill) => {
+        const tip = tmpl`<b>${skill.skill}</b><span class="sub">Level ${skill.current_level} to ${skill.target_level}</span><span class="sub">${hours(skill.hours)} at the rate this map can reach</span>`;
+        return tmpl`<li data-tip="${tip}"><img class="skill-icon" src="/assets/skill/${skill.skill}.png" alt="">
           <span class="name">${skill.skill}</span>
           <span class="sub">${skill.current_level} → ${skill.target_level}</span>
           <span class="num">${hours(skill.hours)}</span></li>`;
-      }
+      });
       out += "</ul>";
       continue;
     }
     const rows = (byBucket.get(bucket) || []).slice().sort((a, b) => b.hours - a.hours);
     if (!rows.length) continue;
     out += tmpl`<h3>${raw(swatch)}${label(bucket)} <span class="num">${rows.length}</span></h3><ul class="list">`;
-    for (const row of rows.slice(0, 12)) {
+    out += withMore(rows, "estimate:" + bucket, 12, (row) => {
       const tip = tmpl`<b>${plain(row.name)}</b><span class="sub">${plain(row.detail)}</span><span class="sub">${label(row.bucket)}</span>`;
-      out += tmpl`<li data-tip="${tip}"><span class="name">${plain(row.name)}</span><span class="num">${hours(row.hours)}</span></li>`;
-    }
-    if (rows.length > 12) out += tmpl`<li class="more"><span class="name">${rows.length - 12} more</span></li>`;
+      return tmpl`<li data-tip="${tip}"><span class="name">${plain(row.name)}</span><span class="num">${hours(row.hours)}</span></li>`;
+    });
     out += "</ul>";
   }
 
   const unpriced = payload.unpriced || [];
   if (unpriced.length) {
-    out += tmpl`<h3>Unpriced <span class="num">${unpriced.length}</span></h3><ul class="list">`;
-    for (const item of unpriced.slice(0, 25)) {
-      out += tmpl`<li><span class="name">${plain(typeof item === "string" ? item : item.item || "")}</span></li>`;
-    }
+    out += tmpl`<h3 data-tip="${"Reachable, but no rate exists for it in cache/wiki_rates.json, heuristics/overrides.json or a default - so none of these hours are in the total above."}">Unpriced <span class="num">${unpriced.length}</span></h3><ul class="list">`;
+    out += withMore(unpriced, "estimate:unpriced", 25, (item) =>
+      tmpl`<li><span class="name">${plain(typeof item === "string" ? item : item.item || "")}</span></li>`);
     out += "</ul>";
   }
   el["estimate-body"].innerHTML = out;
+  ownsMore("estimate", () => renderEstimate(estimatePayload));
 }
 
 /* Provenance is not a number you act on, it is a caveat on all of them - so
@@ -1995,7 +2129,10 @@ async function runFind() {
     results.forEach((result, index) => {
       const chunks = chunksOf(result);
       const note = chunks.length ? chunks.length + (chunks.length === 1 ? " chunk" : " chunks") : "—";
-      out += tmpl`<li>
+      const tip = tmpl`<b>${plain(result.name)}</b><span class="sub">${label(result.type)} · ${
+        result.available ? "reachable on this map" : "not reachable yet"
+      }</span><span class="hint">${chunks.length ? "Click to light up its " + note + " on the map" : "Nowhere on the surface map"}</span>`;
+      out += tmpl`<li data-tip="${tip}">
         <span class="pill ${result.available ? "reachable" : "locked"}">${label(result.type)}</span>
         <button class="link name" data-result="${index}">${plain(result.name)}</button>
         <span class="num">${note}</span></li>`;
@@ -2033,13 +2170,18 @@ async function loadMapsPane() {
   try {
     const maps = await getJSON("/api/maps");
     let out = `<h3>Actions</h3><div class="actions">
-      <button id="do-fetch" type="button">Fetch This Map</button>
-      <button id="do-refresh" type="button">Refresh Chunk Data</button>
+      <button id="do-fetch" type="button"
+        data-tip="Re-read this map from source-chunk and write it to cache/. About a second.">Fetch This Map</button>
+      <button id="do-refresh" type="button"
+        data-tip="Re-download the 10MB chunk export and the tasks map. Everything derived from them is recomputed after.">Refresh Chunk Data</button>
     </div>
     <h3>Simulate</h3><div class="row">
-      <input id="sim-rolls" type="number" min="1" value="5" style="width:7ch" aria-label="Rolls">
-      <input id="sim-runs" type="number" min="1" value="1" style="width:7ch" aria-label="Runs">
-      <button id="do-sim" type="button">Roll</button>
+      <input id="sim-rolls" type="number" min="1" value="5" style="width:7ch" aria-label="Rolls"
+        data-tip="Chunks to roll in each run.">
+      <input id="sim-runs" type="number" min="1" value="1" style="width:7ch" aria-label="Runs"
+        data-tip="How many times to repeat the whole roll, each with its own seed.">
+      <button id="do-sim" type="button"
+        data-tip="Roll from this map and save the result as a new simulated map, opened as a comparison.">Roll</button>
     </div>`;
     out += tmpl`<h3>Cached maps <span class="num">${maps.length}</span></h3><ul class="list">`;
     for (const m of maps) {
@@ -2049,8 +2191,10 @@ async function loadMapsPane() {
       out += tmpl`<li data-tip="${mapTip(m)}"><span class="name">${m.map_id}</span><span class="num">${note}</span>${raw(remove)}</li>`;
     }
     out += `</ul><div class="actions">
-      <button id="rm-sims" class="danger" type="button">Remove All Simulated</button>
-      <button id="prune" type="button">Clear Derived Cache</button>
+      <button id="rm-sims" class="danger" type="button"
+        data-tip="Delete every batch under cache/sims/. Fetched maps are left alone.">Remove All Simulated</button>
+      <button id="prune" type="button"
+        data-tip="Empty cache/derived/. Pure recomputation, so nothing is lost - the next command is just slower.">Clear Derived Cache</button>
     </div>`;
     body.innerHTML = out;
 
@@ -2071,15 +2215,42 @@ async function loadMapsPane() {
           loadMapsPane();
         });
     };
+    /* Whatever was removed, the list on screen is now wrong until it is read
+     * again - and so is the map, if what went was the one being drawn. */
+    const afterRemoval = async () => {
+      await loadMaps();
+      await loadMapsPane();
+      await loadView();
+    };
+
     for (const button of body.querySelectorAll("button[data-rm]")) {
-      button.onclick = () => runAction("Remove " + button.dataset.rm, "/api/maps/remove",
-        { names: [button.dataset.rm] },
-        async () => { await loadMaps(); loadMapsPane(); loadView(); });
+      button.onclick = async () => {
+        const name = button.dataset.rm;
+        const ok = await confirmAction(
+          "Remove " + name + "?",
+          tmpl`<p>Deletes its directory under <code>cache/sims/</code>. A simulated
+            map can be rebuilt by running its seed again; nothing else brings it back.</p>`,
+          "Remove");
+        if (ok) runAction("Remove " + name, "/api/maps/remove", { names: [name] }, afterRemoval);
+      };
     }
-    document.getElementById("rm-sims").onclick = () =>
-      runAction("Remove simulated maps", "/api/maps/remove", { all: true },
-        async () => { await loadMaps(); loadMapsPane(); loadView(); });
+
+    document.getElementById("rm-sims").onclick = async () => {
+      const doomed = maps.filter((m) => m.kind !== "fetched" && !m.map_id.includes("/"));
+      if (!doomed.length) return toast("No simulated maps to remove");
+      const ok = await confirmAction(
+        "Remove " + doomed.length + (doomed.length === 1 ? " simulated map?" : " simulated maps?"),
+        tmpl`<p>Deletes every batch under <code>cache/sims/</code>. Fetched maps are
+          left alone.</p><ul class="list">`
+          + doomed.map((m) => tmpl`<li><span class="name">${m.map_id}</span>
+              <span class="num">${m.runs == null ? "" : m.runs + (m.runs === 1 ? " run" : " runs")}</span></li>`).join("")
+          + "</ul>",
+        "Remove all");
+      if (ok) runAction("Remove simulated maps", "/api/maps/remove", { all: true }, afterRemoval);
+    };
     document.getElementById("prune").onclick = () =>
+      /* Not confirmed: `cache/derived/` is pure recomputation, so the cost of
+       * being wrong is 0.9 seconds rather than a map you cannot get back. */
       runAction("Clear derived cache", "/api/derived/prune", {});
   } catch (error) {
     body.innerHTML = tmpl`<p class="empty">${error.message}</p>`;
@@ -2088,35 +2259,101 @@ async function loadMapsPane() {
 
 /* ---- jobs -------------------------------------------------------------- */
 
-function showJob(text, cls) {
-  el.job.hidden = false;
-  el.job.textContent = text;
-  el.job.className = "job" + (cls ? " " + cls : "");
+/* **Three of the six actions finish before they answer, and pretending
+ * otherwise is what broke the Maps tab.** `fetch`, `simulate` and `refresh`
+ * hand back a job id to poll; `maps/remove`, `derived/prune` and `window` do
+ * the work inline and hand back the result. The old code read `{ job }` off
+ * every response, then polled `/api/jobs/undefined`, got a 404, and treated
+ * that as "nothing more to say" - so the completion callback never ran and the
+ * map list went on showing maps that were no longer on disk.
+ *
+ * So the shape of the reply decides: a job id means follow it, anything else
+ * *is* the answer. */
+function showProgress(title, { detail = "", done = 0, total = 0, state = "" } = {}) {
+  el.progress.hidden = false;
+  el.progress.className = "progress" + (state ? " " + state : "");
+  el["progress-title"].textContent = title;
+  el["progress-count"].textContent = total ? done + "/" + total : "";
+  el["progress-detail"].textContent = detail;
+  /* A bar that cannot say how far along it is says so by moving instead of by
+   * filling. Inventing a percentage would be the only dishonest option. */
+  el["progress-track"].classList.toggle("indeterminate", !total);
+  el["progress-fill"].style.width = total ? Math.round((done / total) * 100) + "%" : "";
+}
+
+function hideProgress(after) {
+  clearTimeout(hideProgress.timer);
+  hideProgress.timer = setTimeout(() => { el.progress.hidden = true; }, after);
+}
+
+/* `3/40 runs - ...` is the shape `batch.run_batch` reports, and it is the only
+ * thing here that can drive a real bar. Anything else stays indeterminate
+ * rather than being guessed at. */
+function countsIn(text) {
+  const match = /(\d+)\s*\/\s*(\d+)/.exec(text || "");
+  return match ? { done: +match[1], total: +match[2] } : { done: 0, total: 0 };
+}
+
+/* What an inline action actually did, in the interface's own words. */
+function summariseReply(reply) {
+  if (!reply || typeof reply !== "object") return "Done";
+  if (Array.isArray(reply.removed)) {
+    return reply.removed.length
+      ? "Removed " + reply.removed.length + (reply.removed.length === 1 ? " map" : " maps")
+      : "Nothing to remove";
+  }
+  if (typeof reply.dropped === "number") {
+    return "Dropped " + reply.dropped
+      + (reply.dropped === 1 ? " cached derivation" : " cached derivations")
+      + (reply.freed ? ", freeing " + bytes(reply.freed) : "");
+  }
+  return "Done";
 }
 
 async function runAction(label, path, payload, onDone) {
+  clearTimeout(hideProgress.timer);
+  showProgress(label, { detail: "Starting…" });
+  let reply;
   try {
-    const { job } = await postJSON(path, payload);
-    showJob(label + " starting…");
-    await followJob(job, label, onDone);
+    reply = await postJSON(path, payload);
   } catch (error) {
-    showJob(label + " failed: " + error.message, "failed");
+    showProgress(label, { detail: error.message, state: "failed" });
+    hideProgress(6000);
+    return;
   }
+  if (reply && reply.job) return followJob(reply.job, label, onDone);
+
+  showProgress(label, { detail: summariseReply(reply), done: 1, total: 1, state: "done" });
+  hideProgress(3200);
+  await onDone?.(reply);
 }
 
 function followJob(id, label, onDone) {
   return new Promise((resolve) => {
     const timer = setInterval(async () => {
       let job;
-      try { job = await getJSON("/api/jobs/" + id); }
-      catch { clearInterval(timer); return resolve(); }
-      if (job.state === "running") return showJob(label + ": " + (job.progress || "working…"));
+      try {
+        job = await getJSON("/api/jobs/" + id);
+      } catch (error) {
+        clearInterval(timer);
+        showProgress(label, { detail: error.message, state: "failed" });
+        hideProgress(6000);
+        return resolve();
+      }
+      if (job.state === "running") {
+        return showProgress(label, {
+          detail: job.progress || "Working…",
+          ...countsIn(job.progress),
+        });
+      }
       clearInterval(timer);
-      if (job.state === "failed") showJob(label + " failed: " + job.error, "failed");
-      else {
-        showJob(label + " done", "done");
-        setTimeout(() => { el.job.hidden = true; }, 4000);
-        onDone?.(job.result);
+      if (job.state === "failed") {
+        showProgress(label, { detail: job.error, state: "failed" });
+        hideProgress(8000);
+      } else {
+        showProgress(label, { detail: "Finished", done: 1, total: 1, state: "done" });
+        hideProgress(3200);
+        await onDone?.(job.result);
       }
       resolve();
     }, 400);

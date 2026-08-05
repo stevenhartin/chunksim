@@ -33,6 +33,8 @@
     <g id="i-help"><circle cx="12" cy="12" r="9"/><path d="M9.4 9.2a2.7 2.7 0 0 1 5.2.9c0 1.8-2.6 2.2-2.6 4"/><circle cx="12" cy="17.4" r="1.1" fill="currentColor" stroke="none"/></g>
     <g id="i-close"><path d="m6 6 12 12M18 6 6 18"/></g>
     <g id="i-layers"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></g>
+    <g id="i-down"><path d="m6 9 6 6 6-6"/></g>
+    <g id="i-up"><path d="m6 15 6-6 6 6"/></g>
   </defs>
 </svg>
 
@@ -45,13 +47,13 @@
   <span class="vs">vs</span>
   <select id="compare" class="pick" aria-label="Compare against"><option value="">—</option></select>
   <button id="breakdown" type="button" disabled
-          title="Every branch of the difference between these two maps">Diff</button>
+          data-tip="&lt;b&gt;Compare these two maps&lt;/b&gt;&lt;span class='sub'&gt;Sections, tasks, sources and BiS, both directions.&lt;/span&gt;&lt;span class='hint'&gt;Derives both sides — about two seconds&lt;/span&gt;">Diff</button>
 
   <span class="rule"></span>
 
   <!-- The floor. Every rendered region has up to four, and a dungeon's
        interesting half is often not on the ground one. -->
-  <select id="plane" class="pick" aria-label="Plane" title="Which floor to draw (0 is ground level)">
+  <select id="plane" class="pick" aria-label="Plane" data-tip="&lt;b&gt;Floor to draw&lt;/b&gt;&lt;span class='sub'&gt;Above ground level the floor below is sunk so this one stands out.&lt;/span&gt;">
     <option value="0">Plane 0</option>
     <option value="1">Plane 1</option>
     <option value="2">Plane 2</option>
@@ -59,19 +61,19 @@
   </select>
 
   <button id="candidates" class="toggle" type="button" aria-pressed="false"
-          title="Show the chunks you could roll next, numbered as the app numbers them (C)">Candidates</button>
+          data-tip="&lt;b&gt;Candidates&lt;/b&gt;&lt;span class='sub'&gt;The chunks you could roll next, numbered as source-chunk numbers them.&lt;/span&gt;&lt;span class='hint'&gt;C&lt;/span&gt;">Candidates</button>
   <button id="masks" class="toggle" type="button" aria-pressed="false"
-          title="Shade each section of the selected chunk: green reachable, red not (S)">Sections</button>
+          data-tip="&lt;b&gt;Sections&lt;/b&gt;&lt;span class='sub'&gt;Shade inside each chunk: green where you can reach, red where you cannot.&lt;/span&gt;&lt;span class='hint'&gt;S&lt;/span&gt;">Sections</button>
   <button id="live" class="toggle on" type="button" aria-pressed="true"
-          title="Re-read the cache, so a fray fetch or simulate elsewhere shows up here">Live</button>
-  <button id="fit" type="button" title="Fit your chunks to the window (Home)">Fit</button>
+          data-tip="&lt;b&gt;Live&lt;/b&gt;&lt;span class='sub'&gt;Re-read the cache every two seconds, so a fray fetch in a terminal shows up here.&lt;/span&gt;">Live</button>
+  <button id="fit" type="button" data-tip="&lt;b&gt;Fit&lt;/b&gt;&lt;span class='sub'&gt;Frame everything this map holds.&lt;/span&gt;&lt;span class='hint'&gt;Home&lt;/span&gt;">Fit</button>
 
   <span class="counts" id="counts"></span>
   <button id="skipped" class="warn" type="button" hidden></button>
 
   <span class="spacer"></span>
   <span class="hover" id="hover"></span>
-  <button id="toggle-panel" type="button" title="Show or hide the panel (P)">Panel</button>
+  <button id="toggle-panel" type="button" data-tip="&lt;b&gt;Panel&lt;/b&gt;&lt;span class='sub'&gt;Hide it to give the map the whole window.&lt;/span&gt;&lt;span class='hint'&gt;P&lt;/span&gt;">Panel</button>
 </header>
 
 <aside class="panel" id="panel">
@@ -87,7 +89,7 @@
     <div class="pane-head">
       <div class="chips" id="task-chips"></div>
       <button id="show-done" class="icon-btn" type="button" aria-pressed="false"
-              title="Show what is already done">
+              data-tip="&lt;b&gt;Show what is done&lt;/b&gt;&lt;span class='sub'&gt;Swap every list from outstanding to completed.&lt;/span&gt;">
         <svg class="icon" viewBox="0 0 24 24"><use href="#i-eye"/></svg>
       </button>
     </div>
@@ -110,7 +112,7 @@
   <section class="pane" data-pane="estimate">
     <div class="pane-head">
       <span class="pane-title" id="estimate-total"></span>
-      <button id="estimate-why" class="icon-btn" type="button" title="Where these numbers come from">
+      <button id="estimate-why" class="icon-btn" type="button" data-tip="&lt;b&gt;Where these numbers come from&lt;/b&gt;&lt;span class='sub'&gt;The export carries no durations at all — every hour here is scraped or hand-corrected.&lt;/span&gt;">
         <svg class="icon" viewBox="0 0 24 24"><use href="#i-help"/></svg>
       </button>
     </div>
@@ -122,7 +124,16 @@
   </section>
 </aside>
 
-<div class="job" id="job" hidden></div>
+<!-- Work that takes time gets a card in the top right of the map, not a
+     status line the weight of the hover readout. -->
+<div class="progress" id="progress" role="status" aria-live="polite" hidden>
+  <div class="progress-head">
+    <span class="progress-title" id="progress-title"></span>
+    <span class="progress-count" id="progress-count"></span>
+  </div>
+  <div class="progress-detail" id="progress-detail"></div>
+  <div class="progress-track" id="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+</div>
 
 <div class="legend" id="legend"></div>
 
@@ -144,6 +155,7 @@
       </button>
     </header>
     <div id="overlay-body"></div>
+    <footer id="overlay-actions" hidden></footer>
   </div>
 </div>
 
