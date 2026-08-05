@@ -329,37 +329,9 @@ function maskTargets() {
  * one more entry plus one key in view.overlays, and nothing about pan, zoom or
  * the hull has to change. */
 const LAYERS = [
-  drawTiles, drawPlaneScrim, drawLockedWash, drawGrid, drawStates, drawMasks,
-  drawFound, drawCandidates, drawHull, drawAreas, drawHovered, drawSelected,
+  drawTiles, drawLockedWash, drawGrid, drawStates, drawMasks, drawFound,
+  drawCandidates, drawHull, drawAreas, drawHovered, drawSelected,
 ];
-
-/* How far the map sinks on a floor above the ground.
- *
- * **A tile for plane N is the whole ground floor re-rendered dim, plus this
- * floor's own features over it** - so on the surface, where the ground is
- * bright green and busy, the ghost shouts louder than the castle walls you
- * switched floors to look at. Sinking the base layer is what lets them
- * through.
- *
- * **Deliberately a flat wash and not a contrast curve.** `brightness`/
- * `contrast` looked like the smarter answer - crush the dim ghost to black,
- * keep the bright features - and measuring it on real tiles killed it: at
- * `brightness(1.1) contrast(1.9)` Lumbridge's ground turned garish yellow
- * (contrast expands saturation too) and Karuulm's faint outline, already only
- * a few levels above black, **clipped to nothing**. A wash is monotone: it can
- * dim something into being hard to see, but it cannot destroy it or invent
- * colour that was not there.
- *
- * It is applied to the tiles alone, before every overlay, so the hull, the
- * area labels and the section masks stay at full strength. Darkening the map
- * is the point; darkening what is drawn *about* the map is not. */
-const PLANE_SCRIM = 0.55;
-
-function drawPlaneScrim() {
-  if (!state.plane) return;
-  CTX.fillStyle = `rgba(0, 0, 0, ${PLANE_SCRIM})`;
-  CTX.fillRect(0, 0, CANVAS.clientWidth, CANVAS.clientHeight);
-}
 
 /* Below this on-screen chunk size a name is unreadable and the map is better
  * off without it. */
@@ -426,8 +398,8 @@ const TILE_TRIES = 3;
 
 const tileFails = new Map();   // url -> how many times it has failed
 
-function tileFor(z, x, y) {
-  const url = tileUrl(z, x, y, state.plane);
+function tileFor(z, x, y, plane) {
+  const url = tileUrl(z, x, y, plane);
   const held = tileCache.get(url);
   if (held !== undefined) return held instanceof Image ? held : null;
 
@@ -455,6 +427,118 @@ function tileFor(z, x, y) {
   return null;
 }
 
+/* ---- separating a floor from the ground under it ------------------------ */
+
+/* **A tile for plane N is not that floor on its own.** It is the whole ground
+ * floor faded back, with this floor's own features drawn over the top - one
+ * flat image, no transparency, and no separate overlay tile to ask for
+ * (Kartographer's `basePlainTileURL` turns out to be the same URL as the
+ * ordinary one on this wiki). So sinking the *background* while leaving the
+ * floor bright means working out which pixels are which.
+ *
+ * A flat wash over the whole tile was the first attempt and it is not this:
+ * it dimmed the floor along with the ground, which is the thing it was
+ * supposed to separate.
+ *
+ * **The fade is linear, so it can be fitted and subtracted.** Across a tile,
+ * `planeN ≈ a * plane0 + b` per channel holds for 70-90% of pixels to within
+ * a few levels, and that majority *is* the ground. `a` is nothing like
+ * constant - 0.13 on Lumbridge, 0.36 on Al Kharid, 0.52 on God Wars - which
+ * is why it is fitted per tile rather than assumed. Whatever misses the fit
+ * is what this floor added, and it is left exactly alone.
+ *
+ * The result is cached per tile: it costs two `getImageData` calls and a pass
+ * over 65k pixels, which is the same bargain `tintMask` makes for the section
+ * overlays. */
+const PLANE_GHOST_SCRIM = 0.72;
+
+/* How far a pixel may sit from the fitted fade and still count as ground.
+ * Generous on purpose: the fade is fitted over a whole tile, so it is never
+ * exact, while the features this has to spare are drawn in flat colour and
+ * miss by far more than this. */
+const PLANE_GHOST_TOLERANCE = 14;
+
+const planeCache = new Map();   // plane-N tile url -> composed canvas
+
+/* How many tiles may be separated in one frame.
+ *
+ * Measured at 3-4.5ms each, so a screenful of 91 cost 280ms in one go - a
+ * hitch you feel every time you pan somewhere new on an upper floor. At this
+ * budget the same 91 spread over seven frames with a worst frame of 55ms, and
+ * the tiles waiting their turn draw *unseparated* rather than not at all, so
+ * the map fills in and settles instead of stalling. Steady state is 0.9ms. */
+const PLANE_COMPOSE_BUDGET = 12;
+let composeBudget = 0;
+
+/* `y = a*x + b` by least squares, from running sums - no matrices needed. */
+function fitFade(under, over, channel) {
+  let sx = 0, sy = 0, sxx = 0, sxy = 0;
+  const n = under.length / 4;
+  for (let i = channel; i < under.length; i += 4) {
+    const a = under[i], b = over[i];
+    sx += a; sy += b; sxx += a * a; sxy += a * b;
+  }
+  const denom = n * sxx - sx * sx;
+  if (!denom) return [0, sy / n];
+  const slope = (n * sxy - sx * sy) / denom;
+  return [slope, (sy - slope * sx) / n];
+}
+
+function composeFloor(ground, floor) {
+  const out = document.createElement("canvas");
+  out.width = out.height = TILE_PIXELS;
+  const c = out.getContext("2d", { willReadFrequently: true });
+
+  c.drawImage(floor, 0, 0);
+  const top = c.getImageData(0, 0, TILE_PIXELS, TILE_PIXELS);
+  c.drawImage(ground, 0, 0);
+  const under = c.getImageData(0, 0, TILE_PIXELS, TILE_PIXELS).data;
+  const px = top.data;
+
+  const fit = [0, 1, 2].map((channel) => fitFade(under, px, channel));
+  const keep = 1 - PLANE_GHOST_SCRIM;
+  for (let i = 0; i < px.length; i += 4) {
+    let miss = 0;
+    for (let ch = 0; ch < 3; ch++) {
+      miss += Math.abs(fit[ch][0] * under[i + ch] + fit[ch][1] - px[i + ch]);
+    }
+    /* Ground: sink it. This floor's own features: leave them exactly alone. */
+    if (miss / 3 < PLANE_GHOST_TOLERANCE) {
+      px[i] *= keep; px[i + 1] *= keep; px[i + 2] *= keep;
+    }
+  }
+  c.putImageData(top, 0, 0);
+  return out;
+}
+
+/* The tile to draw for the current plane: raw on the ground floor, and the
+ * floor lifted off its own background above it.
+ *
+ * Returns the *unseparated* tile while the ground floor is still on the wire,
+ * and permanently if the ground floor has no tile at all. Both beat drawing
+ * nothing, and the first self-corrects on the frame after the fetch lands. */
+function composedTile(z, x, y) {
+  const floor = tileFor(z, x, y, state.plane);
+  if (!state.plane || !floor) return floor;
+
+  const key = tileUrl(z, x, y, state.plane);
+  const held = planeCache.get(key);
+  if (held) return held;
+
+  const ground = tileFor(z, x, y, 0);
+  if (!ground) return floor;
+  if (composeBudget <= 0) {
+    /* Out of budget this frame. Draw the floor as it came and ask for another
+     * frame, which will pick up where this one stopped. */
+    invalidate();
+    return floor;
+  }
+  composeBudget--;
+  const composed = composeFloor(ground, floor);
+  planeCache.set(key, composed);
+  return composed;
+}
+
 /* The nearest loaded ancestor of a tile, and which part of it to draw.
  *
  * **A tile that is not there yet should look like a blurry version of itself,
@@ -479,7 +563,7 @@ function tileFor(z, x, y) {
 function tileAncestor(z, x, y) {
   for (let up = 1; z - up >= MIN_TILE_ZOOM; up++) {
     const step = 1 << up;
-    const image = tileFor(z - up, x >> up, y >> up);
+    const image = composedTile(z - up, x >> up, y >> up);
     if (!image) continue;
     const size = TILE_PIXELS / step;
     return {
@@ -515,6 +599,7 @@ function screenToWorldY(sy) {
 
 function drawTiles() {
   if (!tiles.template || !tiles.version) return;
+  composeBudget = PLANE_COMPOSE_BUDGET;
   const z = tileZoom(), span = tileSpan(z);
   const size = (span / 64) * cellSize();
   /* One pixel of overlap. Adjacent tiles land on fractional pixels at most
@@ -533,7 +618,7 @@ function drawTiles() {
       if (x < 0 || y < 0) continue;
       const dx = worldToScreenX(x * span);
       const dy = worldToScreenY((y + 1) * span);
-      const image = tileFor(z, x, y);
+      const image = composedTile(z, x, y);
       if (image) {
         CTX.imageSmoothingEnabled = smoothing;
         CTX.drawImage(image, dx, dy, size + bleed, size + bleed);
@@ -2123,6 +2208,8 @@ el.masks.addEventListener("click", async () => {
  * carries the plane. */
 el.plane.addEventListener("change", () => {
   state.plane = Number(el.plane.value) || 0;
+  /* Nothing to clear: both caches key on a URL carrying the plane, so going
+   * back to a floor you have already looked at is a redraw and no more. */
   invalidate();
 });
 

@@ -423,28 +423,32 @@ def test_the_plane_reaches_the_tile_url_and_nothing_else() -> None:
     assert "loadView" not in body and "getJSON" not in body
 
 
-def test_a_higher_plane_sinks_the_tiles_and_only_the_tiles() -> None:
-    """A plane-N tile is the ground floor re-rendered dim plus this floor over
-    it, so on the surface the ghost shouts louder than what you switched floors
-    to see.
+def test_a_higher_plane_sinks_the_ground_and_not_the_floor() -> None:
+    """**A plane-N tile is one flat image holding both**, which is the whole
+    difficulty.
 
-    The scrim goes **immediately after the tiles and before every overlay**:
-    darkening the map is the point, darkening the hull, the area labels and
-    the section masks drawn *about* the map is not. And it is gated on the
-    plane, so the ground floor is untouched.
+    It is the ground floor faded back with this floor drawn over it - no
+    transparency, and no separate overlay tile to ask for. Darkening the tile
+    darkens the floor along with the ground, which is the bug this replaces.
+    The fade is linear, so it is fitted per tile (`a` runs 0.13 to 0.52, so it
+    cannot be assumed) and only the pixels that *fit* are sunk.
     """
     source = _app_js()
 
-    layers = re.search(r"const LAYERS = \[(.*?)\];", source, re.DOTALL)
-    assert layers is not None
-    order = [n.strip() for n in layers.group(1).replace("\n", " ").split(",") if n.strip()]
-    assert order.index("drawPlaneScrim") == order.index("drawTiles") + 1
-    assert order.index("drawPlaneScrim") < order.index("drawHull")
-    assert order.index("drawPlaneScrim") < order.index("drawAreas")
-
-    body = re.search(r"function drawPlaneScrim\(\) \{(.*?)\n\}", source, re.DOTALL)
-    assert body is not None
-    assert "if (!state.plane) return;" in body.group(1)
+    assert "function composeFloor(" in source
+    assert "function fitFade(" in source
+    # The draw path and the coarse fallback both go through the composition,
+    # or a fallback tile would come out undarkened.
+    assert "const image = composedTile(z, x, y);" in source
+    assert "composedTile(z - up, x >> up, y >> up)" in source
+    # The ground floor is never composed against itself.
+    assert "if (!state.plane || !floor) return floor;" in source
+    # A whole-canvas scrim would darken the overlays too, and is gone.
+    assert "drawPlaneScrim" not in source
+    # Separating costs ~3ms a tile, so it is rationed per frame rather than
+    # spent all at once; unbudgeted tiles draw unseparated, never blank.
+    assert "composeBudget = PLANE_COMPOSE_BUDGET;" in source
+    assert "if (composeBudget <= 0) {" in source
 
 
 def test_a_missing_tile_falls_back_to_a_coarser_one() -> None:
