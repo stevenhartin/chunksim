@@ -1,13 +1,19 @@
 """HTTP access to the chunk-picker database and the reference data around it.
 
-Five hosts, no credentials anywhere: the chunk-picker Firebase Realtime
-Database, upstream's `gh-pages` raw files, Jagex's own CDN for the world map
-image, the OSRS wiki's MediaWiki API, and one published Google Sheet. The web
-app reaches Firebase through the JS SDK, but the REST API exposes the same data
-and the database is world-readable, so a plain GET is enough.
+Four hosts, no credentials anywhere: the chunk-picker Firebase Realtime
+Database, upstream's `gh-pages` raw files, the OSRS wiki (its MediaWiki API and
+one rendered page), and one published Google Sheet. The web app reaches Firebase
+through the JS SDK, but the REST API exposes the same data and the database is
+world-readable, so a plain GET is enough.
+
+**The map tiles are a fifth host this module never calls.** `MAP_TILE_URL` is a
+template handed to the browser, which loads the tiles itself - see that
+constant for why keeping the bytes out of this process is a licence decision
+rather than an optimisation. The only request made on their behalf is
+`fetch_map_tile_version`, and that asks the wiki for a page of HTML.
 
 **`User-Agent` differs by host, and the two rules are not in tension.** The
-Firebase, GitHub and CDN calls send none: urllib's default identifies neither
+Firebase and GitHub calls send none: urllib's default identifies neither
 the user nor this project, and adding one would only publish information nobody
 asked for. The wiki calls send `WIKI_USER_AGENT`, because an anonymous request
 there is answered with HTTP 403 - it applies MediaWiki's user-agent policy,
@@ -33,6 +39,8 @@ import json
 from collections.abc import Sequence
 from typing import Any
 
+from fray_claude.wiki import map_tile_version
+
 MAP_URL = "https://chunkpicker.firebaseio.com/maps/{map_id}.json"
 
 # gh-pages is upstream's default branch and where the live site is served
@@ -40,30 +48,37 @@ MAP_URL = "https://chunkpicker.firebaseio.com/maps/{map_id}.json"
 _UPSTREAM_RAW = "https://raw.githubusercontent.com/source-chunk/chunk-picker-v2/gh-pages/{path}"
 CHUNKINFO_URL = _UPSTREAM_RAW.format(path="chunkpicker-chunkinfo-export.json")
 TASKS_MAP_URL = _UPSTREAM_RAW.format(path="tasksMap.json")
-#: The dated render `WORLD_MAP_URL` pins. Jagex publishes each redraw under its
-#: own path, so this is the whole of what changes when the world does - and
-#: pinning it means a new city cannot appear under a user halfway through a
-#: session. Bumping it re-downloads once; check `worldmap.py`'s asserted
-#: geometry still holds, since a different scale would move every square.
-WORLD_MAP_REVISION = "2025-11-18"
-
-#: The world map the GUI draws on: 6145x4353, 2.9MiB, one 128-pixel square per
-#: chunk plus a one-pixel border (see `worldmap.IMAGE_ORIGIN_Y`).
+#: The OSRS wiki's cartography tiles, which the browser loads **directly**.
 #:
-#: **Taken from Jagex's own CDN, not from upstream's copy of it.** Both serve
-#: the same artwork and this one serves it from the people who drew it: no
-#: third party's redistribution is relied on, the bytes are current rather
-#: than whenever upstream last synced, and it is 2.9MiB of JPEG against
-#: 8.4MiB of PNG - which is also 107MB of decoded canvas instead of 240MB.
-#: **Still deliberately not committed to this repository**, for the reason
-#: that has not changed: it is Jagex's artwork, and shipping it inside an
-#: MIT-licensed wheel would imply a sublicence this project has not got.
-#: Fetching means each user takes their own copy from the rights holder,
-#: exactly as they already do for the chunkinfo export.
-WORLD_MAP_URL = (
-    "https://cdn.runescape.com/assets/img/external/oldschool/world-map/"
-    f"{WORLD_MAP_REVISION}/osrs_world_map.jpg"
+#: **This project never fetches, stores or serves a tile.** The template is
+#: handed to the page and the page puts it in an `<img>`, so the bytes go from
+#: the wiki's CDN to the user's browser cache and touch nothing here. That is
+#: deliberate and it is about the licence: the tiles are CC BY-NC-SA 3.0 and
+#: this project is MIT, so caching them in `cache/` or serving them off
+#: `127.0.0.1` would make this a redistributor of NonCommercial artwork.
+#: Pointing at them makes it a page with a picture on it, which is what every
+#: other site embedding a map is.
+#:
+#: `{version}` is `MAP_TILE_VERSION_URL`'s answer; `{map_id}` is 0 for the
+#: surface; `{z}` is -3..3 with `256 / 2**z` game tiles per 256px tile, so
+#: **z=2 is exactly one chunk per tile**; `{plane}` is the floor, 0..3; and
+#: `{x}`/`{y}` are the tile indices, y counting *northward* like the game's own
+#: coordinates rather than downward like an image row.
+MAP_TILE_URL = (
+    "https://maps.runescape.wiki/osrs/versions/{version}"
+    "/tiles/rendered/{map_id}/{z}/{plane}_{x}_{y}.png"
 )
+
+#: Where `MAP_TILE_URL`'s `{version}` comes from. The wiki publishes no index
+#: of renders, but its map page embeds a no-JavaScript fallback whose
+#: `background-image` is a list of real tile URLs - see `wiki.map_tile_version`
+#: for why that is read rather than a version being constructed from the date.
+MAP_TILE_VERSION_URL = "https://oldschool.runescape.wiki/w/RuneScape:Map"
+
+#: The credit the page shows beside the map. CC BY-NC-SA 3.0 asks for
+#: attribution, and this is the whole of what that costs when you link rather
+#: than copy.
+MAP_TILE_ATTRIBUTION = "Map tiles © OSRS Wiki (CC BY-NC-SA 3.0)"
 
 #: The per-section masks the GUI shades a split chunk with, and the skill
 #: icons the tasks panel labels rows with. Same artwork argument as the world
@@ -226,18 +241,27 @@ def fetch_wiki_pages(
     return fetched
 
 
-def fetch_text(url: str, timeout: float = DEFAULT_TIMEOUT, *, what: str) -> str:
+def fetch_text(
+    url: str, timeout: float = DEFAULT_TIMEOUT, *, what: str, wiki: bool = False
+) -> str:
     """Fetch `url` as text.
 
     The sibling of `_fetch_json_object` for a body that is not JSON - the
-    slayer spreadsheet's CSV export. Same four failure conversions, and no
-    shape validation to do beyond decoding.
+    slayer spreadsheet's CSV export, and the wiki's rendered map page. Same
+    four failure conversions, and no shape validation to do beyond decoding.
+
+    `wiki` sends `WIKI_USER_AGENT`, for the same reason `_fetch_json_object`
+    has the flag: the sheet is a Google export that wants no header and the
+    wiki answers an anonymous client with a 403.
     """
     import urllib.error
     import urllib.request
 
+    target: Any = (
+        urllib.request.Request(url, headers={"User-Agent": WIKI_USER_AGENT}) if wiki else url
+    )
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
+        with urllib.request.urlopen(target, timeout=timeout) as response:
             raw: bytes = response.read()
     except urllib.error.HTTPError as exc:
         raise FetchError(f"HTTP {exc.code} fetching {what}") from exc
@@ -303,15 +327,30 @@ def _wiki_contents(payload: dict[str, Any], requested: list[str]) -> dict[str, s
     return {title: by_title[final(title)] for title in requested if final(title) in by_title}
 
 
-def fetch_world_map(timeout: float = DEFAULT_TIMEOUT) -> bytes:
-    """Return Jagex's published world map image (~2.9MiB JPEG, static).
+def fetch_map_tile_version(timeout: float = DEFAULT_TIMEOUT) -> str:
+    """The current map-tile render, scraped from the wiki's map page.
 
-    Bytes rather than JSON, so it does not go through `_fetch_json_object`. No
-    `User-Agent`: this is a public CDN asset served to any browser that asks,
-    so there is nothing to identify and the wiki stays the one exception - see
-    this module's docstring.
+    **The only request this project makes on the tiles' behalf**, and it is
+    for a page of HTML rather than for artwork - the tiles themselves the
+    browser fetches directly. ~95KB, once, cached to disk afterwards.
+
+    A wiki URL, so it sends `WIKI_USER_AGENT` like every other call to that
+    host; the tile CDN behind it 403s an anonymous client too, but that is the
+    browser's request to make and browsers always identify themselves.
+
+    Raises `FetchError` when the page cannot be read *or* when it no longer
+    carries a tile URL, because both leave the caller in the same position -
+    holding no version - and the second is the one that will happen quietly
+    one day when Kartographer's markup changes.
     """
-    return _fetch_bytes(WORLD_MAP_URL, timeout, what="world map image")
+    html = fetch_text(MAP_TILE_VERSION_URL, timeout, what="map tile version", wiki=True)
+    version = map_tile_version(html)
+    if version is None:
+        raise FetchError(
+            f"no tile version in {MAP_TILE_VERSION_URL} - the wiki's map page "
+            "no longer embeds a tile URL; set FRAY_TILE_VERSION to pin one"
+        )
+    return version
 
 
 def fetch_section_overlay(name: str, timeout: float = DEFAULT_TIMEOUT) -> bytes:

@@ -205,59 +205,109 @@ def test_the_packaged_resources_are_served(
     assert response.body
 
 
-def test_the_world_map_is_served_with_an_etag(tmp_path: Path) -> None:
-    cache.write_asset(cache.WORLD_MAP_ASSET, b"\xff\xd8\xff fake", root=tmp_path)
-    ctx = Context(root=tmp_path)
+def test_the_tile_source_is_a_template_and_never_a_tile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**`/api/tiles` hands out a URL. It must never hand out a picture.**
 
-    response = _get("/world_map", ctx)
-
-    assert response.status == HTTPStatus.OK
-    assert response.content_type == "image/jpeg"
-    assert response.body == b"\xff\xd8\xff fake"
-    assert response.headers["ETag"]
-
-
-def test_the_content_type_follows_the_suffix(tmp_path: Path) -> None:
-    """The cached copy is Jagex's JPEG; an override may well be a PNG.
-
-    Pinned rather than assumed, because a JPEG served as `image/png` is a
-    broken image with no error anywhere to explain it.
+    The tiles are CC BY-NC-SA 3.0 and this project is MIT, so caching them
+    under `cache/` or re-serving them off loopback would make it a
+    redistributor of NonCommercial artwork - pointing the browser at the
+    wiki's own CDN makes it a page with a picture on it. That distinction is
+    the whole reason this route exists, so it is asserted rather than trusted
+    to a comment.
     """
-    local = tmp_path / "upstreams-copy.png"
-    local.write_bytes(b"\x89PNG local")
+    monkeypatch.delenv("FRAY_TILE_VERSION", raising=False)
+    cache.write_tile_version("2026-07-29_a", "https://example.invalid", root=tmp_path)
 
-    response = _get("/world_map", Context(root=tmp_path, world_map=local))
+    payload = _body(_get("/api/tiles", Context(root=tmp_path)))
 
-    assert response.content_type == "image/png"
-
-
-def test_a_matching_etag_is_a_304_with_no_body(tmp_path: Path) -> None:
-    """2.9MiB is worth a conditional request; without one every reload
-    re-sends an image that changes only when Jagex re-renders the world."""
-    cache.write_asset(cache.WORLD_MAP_ASSET, b"\xff\xd8\xff fake", root=tmp_path)
-    ctx = Context(root=tmp_path)
-    etag = _get("/world_map", ctx).headers["ETag"]
-
-    response = handle_request("GET", "/world_map", {}, ctx, if_none_match=etag)
-
-    assert response.status == HTTPStatus.NOT_MODIFIED
-    assert response.body == b""
+    assert payload["version"] == "2026-07-29_a"
+    assert payload["template"].startswith("https://maps.runescape.wiki/")
+    assert "{version}" in payload["template"] and "{z}" in payload["template"]
+    assert payload["attribution"]
+    assert payload["error"] is None
+    # Nothing image-shaped was written anywhere under the cache root.
+    assert not list((tmp_path / "cache").rglob("*.png"))
+    assert not list((tmp_path / "cache").rglob("*.jpg"))
 
 
-def test_a_missing_world_map_says_how_to_get_one(tmp_path: Path) -> None:
-    response = _get("/world_map", Context(root=tmp_path))
+def test_a_pinned_tile_version_skips_the_network(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`FRAY_TILE_VERSION` is the escape hatch for a scrape that has broken.
 
-    assert response.status == HTTPStatus.NOT_FOUND
-    assert "FRAY_WORLD_MAP" in _body(response)["error"]
+    The version comes out of a rendered page, and a page can change shape;
+    pinning is what turns that from "the map is gone" into "the map is a bit
+    old". It must not touch the wiki at all, which is what the exploding
+    fetcher pins.
+    """
+    monkeypatch.setenv("FRAY_TILE_VERSION", "2020-01-01_z")
+    monkeypatch.setattr(
+        "fray_claude.gui.server.fetch_map_tile_version",
+        lambda *a, **k: pytest.fail("a pinned version still scraped the wiki"),
+    )
+
+    payload = _body(_get("/api/tiles", Context(root=tmp_path)))
+
+    assert payload["version"] == "2020-01-01_z"
+    assert payload["pinned"] is True
 
 
-def test_the_world_map_override_is_honoured(tmp_path: Path) -> None:
-    local = tmp_path / "elsewhere.png"
-    local.write_bytes(b"\x89PNG local")
+def test_a_failed_scrape_falls_back_to_the_last_known_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stale version still draws a map; no version draws nothing.
 
-    response = _get("/world_map", Context(root=tmp_path, world_map=local))
+    The render it names stays on the CDN, so the worst case of using an old
+    one is a world a few weeks out of date - strictly better than a blank
+    canvas. The error rides along so the page can say so.
+    """
+    monkeypatch.delenv("FRAY_TILE_VERSION", raising=False)
+    cache.write_tile_version("2026-07-29_a", "https://example.invalid", root=tmp_path)
+    # Age it past the refresh window so the scrape is attempted.
+    blob = cache.blob_path(cache.TILE_VERSION_BLOB_NAME, tmp_path)
+    stale = json.loads(blob.read_text())
+    stale["fetched_at"] = "2020-01-01T00:00:00+00:00"
+    blob.write_text(json.dumps(stale))
 
-    assert response.body == b"\x89PNG local"
+    def explode(*args: Any, **kwargs: Any) -> str:
+        raise FetchError("the wiki is down")
+
+    monkeypatch.setattr("fray_claude.gui.server.fetch_map_tile_version", explode)
+
+    payload = _body(_get("/api/tiles", Context(root=tmp_path)))
+
+    assert payload["version"] == "2026-07-29_a"
+    assert "the wiki is down" in payload["error"]
+
+
+def test_no_version_anywhere_is_reported_rather_than_guessed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A version is never constructed from today's date.
+
+    The suffix is a letter that increments within a day, so a guess is wrong
+    more often than not and a wrong one 404s into a blank map with nothing
+    saying why.
+    """
+    monkeypatch.delenv("FRAY_TILE_VERSION", raising=False)
+
+    def explode(*args: Any, **kwargs: Any) -> str:
+        raise FetchError("the wiki is down")
+
+    monkeypatch.setattr("fray_claude.gui.server.fetch_map_tile_version", explode)
+
+    payload = _body(_get("/api/tiles", Context(root=tmp_path)))
+
+    assert payload["version"] == ""
+    assert "the wiki is down" in payload["error"]
+
+
+def test_the_world_map_route_is_gone(tmp_path: Path) -> None:
+    """It used to serve Jagex's image off loopback. Nothing serves imagery now."""
+    assert _get("/world_map", Context(root=tmp_path)).status == HTTPStatus.NOT_FOUND
+    assert _get("/world_map.png", Context(root=tmp_path)).status == HTTPStatus.NOT_FOUND
 
 
 # --- the contract between the two languages --------------------------------
@@ -311,21 +361,67 @@ def test_the_hover_readout_inverts_the_real_projection() -> None:
     assert re.search(rf"{MAX_REGION_Y} - \(id & 0xff\)", source)
 
 
-def test_the_base_image_is_placed_by_its_content_origin() -> None:
-    """Jagex's JPEG has a border, so the image and the grid start elsewhere.
+def test_the_tile_pyramid_agrees_across_the_two_languages() -> None:
+    """Three numbers cross into JavaScript with nothing enforcing agreement.
 
-    One pixel, which is small enough that a browser check would not catch it
-    and wrong at every zoom. The geometry carries `origin_x`/`origin_y` and
-    `drawBase` has to subtract them; without that the whole world draws one
-    pixel out and nothing anywhere reports it.
+    `app.js` computes tile indices itself - a round trip per tile would be
+    absurd - so it carries its own copy of the pyramid. Disagree and every
+    tile is fetched at the wrong level, which draws a plausible-looking map of
+    the wrong place.
     """
-    from fray_claude.gui.worldmap import MapGeometry
+    from fray_claude.gui.worldmap import MAX_TILE_ZOOM, MIN_TILE_ZOOM, TILE_PIXELS
 
-    assert (MapGeometry().origin_x, MapGeometry().origin_y) != (0, 0)
-    assert set(MapGeometry().as_dict()) >= {"origin_x", "origin_y"}
     source = _app_js()
-    assert "state.panX - state.zoom * (g.origin_x || 0)" in source
-    assert "state.panY - state.zoom * (g.origin_y || 0)" in source
+    assert f"const TILE_PIXELS = {TILE_PIXELS};" in source
+    assert f"const MIN_TILE_ZOOM = {MIN_TILE_ZOOM};" in source
+    assert f"const MAX_TILE_ZOOM = {MAX_TILE_ZOOM};" in source
+    # The span relation, which is the one piece of arithmetic that has to
+    # match the wiki's scheme rather than merely match Python.
+    assert "return TILE_PIXELS / Math.pow(2, z);" in source
+
+
+def test_the_tile_placement_uses_the_edge_row_not_the_cell_row() -> None:
+    """The off-by-one that draws a plausible map of the wrong place.
+
+    `gridToChunk` uses `MAX_REGION_Y - region_y`, which numbers a *cell*:
+    region 65 is row 0. `worldToScreenY` maps a world coordinate to where that
+    *line* falls, and the line along the top of row 0 is region 65's north
+    edge - one region further on. So it needs `MAX_REGION_Y + 1`, and using 65
+    in both places puts every tile one row high.
+
+    Caught by comparing the canvas against a raw tile, which matched to 0.016
+    mean channel difference once fixed and 13.7 one pixel out. Pinned here
+    because nothing else would notice.
+    """
+    from fray_claude.gui.worldmap import MAX_REGION_Y
+
+    match = re.search(r"const GRID_TOP_REGION_Y = (\d+);", _app_js())
+    assert match is not None
+    assert int(match.group(1)) == MAX_REGION_Y + 1
+
+
+def test_the_page_loads_tiles_from_the_wiki_and_not_from_here() -> None:
+    """The licence lives in this assertion as much as in any docstring.
+
+    A future edit that proxies tiles through `fray-gui` "for caching" would
+    turn this project into a redistributor of NonCommercial artwork, and it
+    would look like a performance win while doing it.
+    """
+    source = _app_js()
+
+    assert "tiles.template" in source
+    # No same-origin tile route, and no re-introduced world-map fetch.
+    assert "/world_map" not in source
+    assert 'image.crossOrigin = "anonymous";' in source
+
+
+def test_the_tile_attribution_is_on_screen() -> None:
+    """CC BY-NC-SA asks for credit, and a credit behind a menu is not one."""
+    from fray_claude.gui.server import RESOURCE_DIR
+
+    html = (RESOURCE_DIR / "index.html").read_text(encoding="utf-8")
+    assert 'id="attribution"' in html
+    assert "renderAttribution" in _app_js()
 
 
 def test_the_whole_chunk_section_sentinel_agrees_across_the_two_languages() -> None:

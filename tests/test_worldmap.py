@@ -12,12 +12,12 @@ import pytest
 
 from fray_claude.delta import diff_names
 from fray_claude.gui.worldmap import (
-    BORDER_PIXELS,
     GRID_COLUMNS,
     GRID_ROWS,
-    IMAGE_HEIGHT,
-    IMAGE_WIDTH,
+    NATIVE_TILE_ZOOM,
     PIXELS_PER_CHUNK,
+    TILE_PIXELS,
+    TILES_PER_CHUNK,
     CellState,
     Edge,
     build_view,
@@ -27,7 +27,7 @@ from fray_claude.gui.worldmap import (
     region_xy,
 )
 
-#: Lumbridge. Region (50, 50), grid (35, 15), pixel (4480, 1921).
+#: Lumbridge. Region (50, 50), grid (35, 15), tile 2/0_50_50.png.
 LUMBRIDGE = "12850"
 
 
@@ -43,8 +43,7 @@ def test_lumbridge_is_where_lumbridge_is() -> None:
 
     assert position is not None
     assert (position.grid_x, position.grid_y) == (35, 15)
-    # Border-inclusive: grid (0, 0) starts one row down. See IMAGE_ORIGIN_Y.
-    assert (position.pixel_x, position.pixel_y) == (4480, 1921)
+    assert (position.pixel_x, position.pixel_y) == (8960, 3840)
 
 
 def test_the_y_axis_is_flipped() -> None:
@@ -64,11 +63,8 @@ def test_the_projection_tiles_the_image_exactly() -> None:
     assert top_left is not None and bottom_right is not None
     assert (top_left.grid_x, top_left.grid_y) == (0, 0)
     assert (bottom_right.grid_x, bottom_right.grid_y) == (GRID_COLUMNS - 1, GRID_ROWS - 1)
-    # The far edge lands one pixel short of the image, which is the border
-    # the origin does not consume - on the right for x, and already spent
-    # at the top for y.
-    assert bottom_right.pixel_x + PIXELS_PER_CHUNK + BORDER_PIXELS == IMAGE_WIDTH
-    assert bottom_right.pixel_y + PIXELS_PER_CHUNK == IMAGE_HEIGHT
+    assert bottom_right.pixel_x + PIXELS_PER_CHUNK == GRID_COLUMNS * PIXELS_PER_CHUNK
+    assert bottom_right.pixel_y + PIXELS_PER_CHUNK == GRID_ROWS * PIXELS_PER_CHUNK
 
 
 def test_a_region_round_trips_through_its_id() -> None:
@@ -294,3 +290,23 @@ def test_overlays_are_carried_through() -> None:
 @pytest.mark.parametrize("value", ["", "  ", "-1", "12.5", "12850x"])
 def test_a_malformed_id_is_skipped_rather_than_raising(value: str) -> None:
     assert grid_position(value) is None
+
+
+def test_one_tile_is_one_chunk_at_the_native_zoom() -> None:
+    """The property the whole renderer rests on.
+
+    The wiki's tiles are indexed on the game's own coordinates - `256 / 2**z`
+    game tiles per 256px tile - so at z=2 a tile spans exactly one 64x64
+    region and its index *is* the chunk id decomposed. That is what lets
+    `app.js` draw a chunk's square straight from a single file, and it is
+    asserted rather than assumed because a re-tiling upstream would break it
+    silently.
+    """
+    span = TILE_PIXELS // 2**NATIVE_TILE_ZOOM
+
+    assert span == TILES_PER_CHUNK
+    assert TILE_PIXELS // span * TILES_PER_CHUNK == PIXELS_PER_CHUNK
+
+    # Lumbridge: chunk 12850 -> tile (50, 50), *not* flipped. Only the drawing
+    # inverts y; the tile index counts north like the game does.
+    assert region_xy(int(LUMBRIDGE)) == (50, 50)

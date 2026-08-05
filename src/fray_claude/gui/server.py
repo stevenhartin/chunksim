@@ -60,7 +60,6 @@ import time
 import traceback
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from functools import cached_property
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -71,10 +70,14 @@ from fray_claude import cache, dps_bridge
 from fray_claude.api import (
     CHUNKINFO_URL,
     DEFAULT_TIMEOUT,
+    MAP_TILE_ATTRIBUTION,
+    MAP_TILE_URL,
+    MAP_TILE_VERSION_URL,
     TASKS_MAP_URL,
     FetchError,
     fetch_chunkinfo,
     fetch_map,
+    fetch_map_tile_version,
     fetch_section_overlay,
     fetch_skill_icon,
     fetch_tasks_map,
@@ -106,9 +109,9 @@ DEFAULT_HOST = "127.0.0.1"
 #: Only armed when no app window was opened; see `gui/browser.py`.
 IDLE_TIMEOUT_SECONDS = 15.0
 
-#: Text assets that ship inside the package. The world map is *not* here - it
-#: is fetched to `cache/assets/` because it is Jagex's artwork; see
-#: `api.WORLD_MAP_URL`.
+#: Text assets that ship inside the package. No map imagery is here or
+#: anywhere else on this machine: the browser loads tiles straight from the
+#: wiki's CDN - see `api.MAP_TILE_URL`.
 RESOURCE_DIR = Path(__file__).resolve().parent / "resources"
 
 #: **The whole static surface, as a fixed allowlist.** Four entries, matched by
@@ -145,7 +148,6 @@ class Context:
 
     root: Path | None = None
     resources: Path = RESOURCE_DIR
-    world_map: Path | None = None
     jobs: JobRegistry = field(default_factory=JobRegistry)
     #: Loaded on the first request that needs a derivation, never for the map
     #: view. See `gui/derivation.py`.
@@ -155,6 +157,10 @@ class Context:
     #: the alternative is unfreezing `Context`, and every other field here
     #: genuinely is constant.
     last_seen: list[float] = field(default_factory=lambda: [0.0])
+    #: The map-tile version last resolved, so one server run scrapes the
+    #: wiki once however many times the page asks. Mutable for the same reason
+    #: `last_seen` is.
+    tile_version: list[str] = field(default_factory=lambda: [""])
     #: Whether the browser-origin checks apply. Off in tests, which have no
     #: browser to send the headers this asserts on.
     check_origin: bool = True
@@ -164,11 +170,6 @@ class Context:
         # from, and a default factory cannot see its siblings.
         if self.derivations._root is None and self.root is not None:
             object.__setattr__(self.derivations, "_root", self.root)
-
-    @cached_property
-    def world_map_path(self) -> Path:
-        """The PNG to serve. Override, `FRAY_WORLD_MAP`, then the cache."""
-        return cache.world_map_source(self.world_map, self.root)
 
 
 def _json(payload: Any, status: int = HTTPStatus.OK) -> Response:
@@ -497,42 +498,65 @@ def _static(path: str, ctx: Context) -> Response | None:
     )
 
 
-def _world_map(ctx: Context, if_none_match: str | None) -> Response:
-    """The map image, with an `ETag` so it is fetched over the wire once.
+def _tile_source(ctx: Context) -> dict[str, Any]:
+    """Where the browser should get its map tiles.
 
-    2.9MiB is worth a conditional request: without one, every reload spends it
-    again on an image that changes only when Jagex re-renders the world.
+    **This hands out a URL template; it never fetches a tile.** The tiles are
+    CC BY-NC-SA 3.0 and this project is MIT, so caching them under `cache/` or
+    serving them off loopback would make it a redistributor of NonCommercial
+    artwork. Pointing the page at the wiki's own CDN makes it a page with a
+    picture on it. That also means the `User-Agent` those tiles need is the
+    browser's, which browsers always send - the 403 an anonymous script gets is
+    not a problem anybody here has to solve.
 
-    The content type is read off the suffix rather than pinned, because the
-    cached copy is Jagex's JPEG while `FRAY_WORLD_MAP` may well point at
-    upstream's PNG - and a JPEG served as `image/png` is a broken image with
-    no error anywhere to explain it.
+    Only the *version* has to be resolved, and it is the fragile part: the wiki
+    publishes no index, so it is scraped out of the map page's fallback image
+    (`wiki.map_tile_version`). Three layers, in order:
+
+    - `FRAY_TILE_VERSION`, which skips the network entirely;
+    - a cached answer younger than `TILE_VERSION_MAX_AGE_HOURS`;
+    - the wiki, written back to the cache.
+
+    **A failed scrape falls back to the cached version rather than to
+    nothing.** A stale version still draws a map; the render it names stays on
+    the CDN. `error` is reported either way so the page can say the map may be
+    out of date instead of quietly showing one.
     """
-    path = ctx.world_map_path
-    try:
-        stat = path.stat()
-    except FileNotFoundError:
-        return _error(
-            f"world map not cached at {path}; it is downloaded on first run, "
-            "or point FRAY_WORLD_MAP at a local copy",
-            HTTPStatus.NOT_FOUND,
-        )
+    source: dict[str, Any] = {
+        "template": MAP_TILE_URL,
+        "attribution": MAP_TILE_ATTRIBUTION,
+        "attribution_url": MAP_TILE_VERSION_URL,
+        "version": "",
+        "error": None,
+    }
 
-    content_type = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
-    etag = f'"{stat.st_mtime_ns:x}-{stat.st_size:x}"'
-    if if_none_match == etag:
-        return Response(
-            status=HTTPStatus.NOT_MODIFIED,
-            content_type=content_type,
-            body=b"",
-            headers={"ETag": etag},
-        )
-    return Response(
-        status=HTTPStatus.OK,
-        content_type=content_type,
-        body=path.read_bytes(),
-        headers={"ETag": etag, "Cache-Control": "no-cache"},
-    )
+    pinned = cache.tile_version_override()
+    if pinned:
+        return {**source, "version": pinned, "pinned": True}
+
+    if ctx.tile_version[0]:
+        return {**source, "version": ctx.tile_version[0]}
+
+    cached, age = "", float("inf")
+    try:
+        cached, age = cache.read_tile_version(ctx.root)
+    except cache.CacheMissError:
+        pass
+    if cached and age < cache.TILE_VERSION_MAX_AGE_HOURS:
+        ctx.tile_version[0] = cached
+        return {**source, "version": cached}
+
+    try:
+        version = fetch_map_tile_version(DEFAULT_TIMEOUT)
+    except FetchError as exc:
+        if cached:
+            ctx.tile_version[0] = cached
+            return {**source, "version": cached, "error": f"{exc} (using the last known version)"}
+        return {**source, "error": str(exc)}
+
+    cache.write_tile_version(version, MAP_TILE_VERSION_URL, ctx.root)
+    ctx.tile_version[0] = version
+    return {**source, "version": version}
 
 
 def _cached_upstream_asset(
@@ -816,13 +840,6 @@ def handle_request(
     if static is not None:
         return static
 
-    # Extensionless, because the bytes behind it may be a JPEG or a PNG - the
-    # cached copy is Jagex's JPEG and `FRAY_WORLD_MAP` may point at either.
-    # `/world_map.png` stays a route so an open tab from before the switch
-    # keeps working until it reloads.
-    if path in ("/world_map", "/world_map.png"):
-        return _world_map(ctx, if_none_match)
-
     # Both names are validated by `cache.py` against an alphabet with no `.`
     # and no `/` in it, and a `ValueError` there is a malformed URL, not a
     # missing file - so it is a 400 rather than the 404 a real miss gets.
@@ -857,6 +874,9 @@ def handle_request(
                     for entry in cache.list_maps(ctx.root, expand_runs=True)
                 ]
             )
+
+        if path == "/api/tiles":
+            return _json(_tile_source(ctx))
 
         if path == "/api/jobs":
             return _json([job.as_dict() for job in ctx.jobs.recent()])

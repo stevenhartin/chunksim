@@ -52,8 +52,9 @@ Everything after the initial `fetch`/`chunkinfo` runs offline, against the local
 ## The map (`fray-gui`)
 
 There is a second command. `fray-gui` starts a local server and opens a browser on an interactive
-OSRS world map: your unlocked chunks bright against a greyed-out world, a thin grid showing every
-chunk boundary, and a thick border traced around the *outside* of the unlocked region — no heavy
+OSRS world map — the wiki's cartography render, drawn from the game's own cache, at twice the detail
+of the published map and with the icons on it. Your unlocked chunks are bright against a greyed-out
+world, with a thin grid showing every chunk boundary, and a thick border traced around the *outside* of the unlocked region — no heavy
 line between two chunks you already hold. Pan by dragging, zoom with the wheel, click a chunk to
 open it in the panel. Press <kbd>F</kbd> to fly the camera to whatever is under the cursor.
 
@@ -110,11 +111,15 @@ anything from it — the same-origin policy stops that — and its `fetch`/`simu
 guarded by the `Sec-Fetch-Site` and `Host` headers. `--host` will bind elsewhere, and the help text
 says what that exposes; think before using it on a shared network.
 
-The world map image is **not** part of this repository. It is Jagex's artwork, so `fray-gui`
-downloads it — 2.9MB, from Jagex's own CDN rather than from anyone's copy of it — to `cache/assets/`
-on first run, the same thing `fray chunkinfo` already does with the 10MB export, and nothing this
-project distributes contains it. Point `FRAY_WORLD_MAP` at a local copy to skip the download. The section masks and skill icons come the
-same way, but one file at a time as you first look at them rather than all 1,558 up front.
+**The map is the OSRS wiki's, and your browser loads it directly from their CDN.** No map image is
+downloaded, cached or served by `fray-gui` — it hands the page a URL and the page uses it. That is
+deliberate: the tiles are CC BY-NC-SA 3.0 and this project is MIT, so keeping a copy would make it a
+redistributor of NonCommercial artwork, while linking makes it a page with a picture on it. The
+credit sits in the corner of the map, which is what that licence asks for. If the wiki ever moves
+its tiles, `FRAY_TILE_VERSION` pins a render by hand.
+
+The section masks and skill icons *are* fetched — they come from source-chunk, one file at a time as
+you first look at them rather than all 1,558 up front.
 
 **This is a genuine, but deliberately partial, reimplementation of source-chunk's own validity logic**
 — not a wrapper around it. `tasks`/`unlock`/`simulate` cover 28 of the 29 challenge categories, plus

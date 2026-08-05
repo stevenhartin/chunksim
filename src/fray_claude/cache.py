@@ -78,15 +78,29 @@ HEURISTICS_DIR_NAME = "heuristics"
 OVERRIDES_FILE_NAME = "overrides.json"
 
 #: Binary assets the GUI needs, kept beside the JSON blobs. Every one of them
-#: is fetched rather than committed, because all of it is Jagex's artwork -
-#: see `api.WORLD_MAP_URL`.
+#: is fetched rather than committed, because all of it is somebody else's
+#: artwork - see `api.SECTION_OVERLAY_URL`.
+#:
+#: **The world map is deliberately not among them.** It is the wiki's
+#: cartography tiles now and the browser loads them straight from the wiki's
+#: CDN, so nothing here ever holds one; a checkout that predates the change has
+#: a stale `world_map.jpg` (or `.png`) in here, which nothing reads and which
+#: is safe to delete. See `api.MAP_TILE_URL` for why that is a licence
+#: decision rather than a saving.
 ASSET_DIR_NAME = "assets"
-#: JPEG, because that is what Jagex publishes. An earlier build took the PNG
-#: upstream keeps a copy of, so a checkout that predates the switch has a
-#: stale `world_map.png` beside this one; it is 8.4MiB of nothing and safe to
-#: delete, and nothing reads it.
-WORLD_MAP_ASSET = "world_map.jpg"
-WORLD_MAP_ENV_VAR = "FRAY_WORLD_MAP"
+
+#: The map-tile render the browser should ask for, remembered so a restart
+#: does not re-scrape the wiki. An ordinary blob: `{"data": "2026-07-29_a",
+#: "fetched_at": ..., "source": ...}`.
+TILE_VERSION_BLOB_NAME = "tile_version"
+TILE_VERSION_ENV_VAR = "FRAY_TILE_VERSION"
+
+#: How long a remembered tile version is used before the wiki is asked again.
+#: The wiki re-renders every few weeks, and a version that has moved costs a
+#: blank map rather than a stale one - the old paths 404 - so this is short
+#: enough to self-heal within a day and long enough that opening the GUI
+#: repeatedly does not scrape a page each time.
+TILE_VERSION_MAX_AGE_HOURS = 24.0
 
 #: Subdirectories of `assets/` holding the many-small-files kinds: one
 #: 192x192 mask per (chunk, section), and one icon per skill. Both are fetched
@@ -480,6 +494,7 @@ _NOT_MAPS = frozenset(
         CHUNKINFO_BLOB_NAME,
         TASKS_MAP_BLOB_NAME,
         WIKI_RATES_BLOB_NAME,
+        TILE_VERSION_BLOB_NAME,
         Path(GUI_WINDOW_FILE).stem,
     }
 )
@@ -675,35 +690,6 @@ def asset_path(name: str, root: Path | None = None) -> Path:
     return (root or project_root()) / CACHE_DIR_NAME / ASSET_DIR_NAME / name
 
 
-def write_asset(name: str, blob: bytes, root: Path | None = None) -> Path:
-    """Store a binary asset, atomically.
-
-    Same temp-file-plus-`os.replace` as `write_derived`, for the same reason:
-    a reader never sees a partial file, so the GUI serving the world map while
-    it is being refetched gets one version or the other rather than a truncated
-    PNG.
-    """
-    path = asset_path(name, root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    temp.write_bytes(blob)
-    os.replace(temp, path)
-    return path
-
-
-def read_asset(name: str, root: Path | None = None) -> bytes | None:
-    """An asset's bytes, or `None` when it has not been fetched yet.
-
-    `None` rather than an error because every caller responds the same way:
-    fetch it. That mirrors `read_derived`, and differs from `read_blob`, whose
-    absence is a user-facing "run this command" failure.
-    """
-    try:
-        return asset_path(name, root).read_bytes()
-    except FileNotFoundError:
-        return None
-
-
 def map_size(map_id: str, root: Path | None = None) -> int:
     """Bytes one cached map occupies, counting a run's whole directory.
 
@@ -748,12 +734,16 @@ def skill_icon_path(skill: str, root: Path | None = None) -> Path:
 
 
 def write_asset_at(path: Path, blob: bytes) -> Path:
-    """`write_asset` for a path already decided, so a name can be validated first.
+    """Store a binary asset, atomically, at a path the caller already decided.
 
-    The nested-asset case: `write_asset` builds its own path from a constant
-    name, which is right for the world map and wrong for the thousand-odd
-    masks whose names have to be checked before anything joins them onto a
-    directory.
+    The path comes in rather than a name because every asset left here is a
+    *nested* one - a section mask, a skill icon - whose name has to be
+    validated by `section_overlay_path` or `skill_icon_path` before anything
+    joins it onto a directory.
+
+    Same temp-file-plus-`os.replace` as `write_derived`, for the same reason:
+    a reader never sees a partial file, so a mask being refetched under a
+    request serves one version or the other rather than a truncated PNG.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
@@ -770,9 +760,8 @@ def gui_window_path(root: Path | None = None) -> Path:
 def read_gui_window(root: Path | None = None) -> dict[str, Any]:
     """How the window was last left, or `{}` if it never has been.
 
-    Empty rather than an error for the same reason `read_asset` returns
-    `None`: the caller's response to "no saved geometry" is to pick a default,
-    and a first run is not a fault.
+    Empty rather than an error because the caller's response to "no saved
+    geometry" is to pick a default, and a first run is not a fault.
     """
     try:
         return _read_json_object(gui_window_path(root))
@@ -787,19 +776,43 @@ def write_gui_window(geometry: dict[str, Any], root: Path | None = None) -> Path
     return _atomic_write_json(path, geometry)
 
 
-def world_map_source(override: Path | None = None, root: Path | None = None) -> Path:
-    """The file the GUI would serve: override, `FRAY_WORLD_MAP`, then the cache.
+def tile_version_override() -> str | None:
+    """`FRAY_TILE_VERSION`, for pinning a render the wiki no longer advertises.
 
-    The same precedence `chunkinfo_source` uses, so pointing either at a local
-    copy works the same way. Unlike the chunkinfo override there is no envelope
-    to confuse: both paths hold a plain image, and `server.py` reads its
-    content type off the suffix so an override may be a PNG.
+    The escape hatch for the one fragile thing about the tile source: the
+    version is scraped out of a page, and a page can change shape. Set this and
+    nothing is scraped at all.
     """
-    path = override
-    if path is None:
-        env_value = os.environ.get(WORLD_MAP_ENV_VAR)
-        path = Path(env_value) if env_value else None
-    return path if path is not None else asset_path(WORLD_MAP_ASSET, root)
+    value = (os.environ.get(TILE_VERSION_ENV_VAR) or "").strip()
+    return value or None
+
+
+def read_tile_version(root: Path | None = None) -> tuple[str, float]:
+    """The remembered tile version and its age in hours.
+
+    The age is returned rather than judged here, because `cache.py` decides
+    nothing about the network: whether an old version is worth re-scraping is
+    the caller's call, and the caller is also the one that can fall back to
+    this value when the scrape fails.
+    """
+    envelope = read_blob(TILE_VERSION_BLOB_NAME, root, hint="the GUI fetches this itself")
+    data = envelope.get("data")
+    version = data.get("version") if isinstance(data, dict) else None
+    if not isinstance(version, str) or not version:
+        raise CacheMissError(f"no tile version in {blob_path(TILE_VERSION_BLOB_NAME, root)}")
+    try:
+        fetched = datetime.fromisoformat(str(envelope.get("fetched_at")))
+    except ValueError:
+        # An unreadable timestamp means "as old as it gets", which sends the
+        # caller to the network - the safe direction, since the cost is one
+        # request and the alternative is trusting a version forever.
+        return version, float("inf")
+    return version, (datetime.now(UTC) - fetched).total_seconds() / 3600
+
+
+def write_tile_version(version: str, source: str, root: Path | None = None) -> Path:
+    """Remember `version`, so a restart does not scrape the wiki again."""
+    return write_blob(TILE_VERSION_BLOB_NAME, {"version": version}, source, root)
 
 
 @dataclass(frozen=True)

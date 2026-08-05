@@ -1,9 +1,10 @@
 "use strict";
 /* The world map canvas, and the panel beside it.
  *
- * One classic script, no modules, no build step, no CDN. The zero-dependency
- * rule is about what a user has to install, and shipping a bundler would break
- * its spirit even though npm is not pip.
+ * One classic script, no modules, no build step, no CDN for *code*. The
+ * zero-dependency rule is about what a user has to install, and shipping a
+ * bundler would break its spirit even though npm is not pip. The map tiles are
+ * the one thing loaded from elsewhere, and deliberately so: see `tileUrl`.
  *
  * Pan and zoom are manual affine arithmetic rather than ctx.transform, matching
  * upstream's renderer so the two can be compared line by line: the map is one
@@ -17,14 +18,13 @@
 const CANVAS = document.getElementById("canvas");
 const CTX = CANVAS.getContext("2d");
 
-/* Zoom is a multiplier on a 128-pixel chunk, so these are really "a chunk may
- * be 15 to 640 screen pixels". Upstream's 0.2 floor was set against a 192-pixel
- * cell and is too high either way: the whole map needs 0.26 to fit a 1600x900
- * window, so at 0.2 you could never see the world at once. The ceiling is above
- * 1.0 on purpose - past there it is upscaling, but reading a chunk's contents
- * off the picture is worth a soft image. */
-const MIN_ZOOM = 0.12;
-const MAX_ZOOM = 5.0;
+/* Zoom is a multiplier on `geometry.pixels_per_chunk`, which is one chunk at
+ * the tiles' native resolution (256px, i.e. 4px per game tile). So zoom 1.0 is
+ * 1:1 with the source and these are really "a chunk may be 15 to 640 screen
+ * pixels". The ceiling is above 1.0 on purpose - past there it is upscaling,
+ * but reading a chunk's contents off the picture is worth a soft image. */
+const MIN_ZOOM = 0.06;
+const MAX_ZOOM = 2.5;
 const ZOOM_STEP = 0.15;
 
 /* Upstream's own wash, so a screenshot of either is recognisably the same map. */
@@ -77,7 +77,6 @@ const state = {
   sections: {},            // chunk id -> {section: reachable}, for the masks
   selected: null,
   hovered: null,
-  image: null,
   panX: 0, panY: 0, zoom: 0.5,
   needsDraw: false,
   live: true,
@@ -94,7 +93,7 @@ for (const id of [
   "overlay", "overlay-title", "overlay-body", "overlay-close",
   "chunk-head", "chunk-chips", "chunk-body", "task-chips", "tasks-body",
   "show-done", "estimate-total", "estimate-why", "estimate-body",
-  "find-body", "find-form", "find-input", "maps-body",
+  "find-body", "find-form", "find-input", "maps-body", "attribution",
 ]) el[id] = document.getElementById(id);
 
 /* ---- geometry ---------------------------------------------------------- */
@@ -328,25 +327,127 @@ function maskTargets() {
  * one more entry plus one key in view.overlays, and nothing about pan, zoom or
  * the hull has to change. */
 const LAYERS = [
-  drawBase, drawLockedWash, drawGrid, drawStates, drawMasks, drawFound,
+  drawTiles, drawLockedWash, drawGrid, drawStates, drawMasks, drawFound,
   drawCandidates, drawHull, drawHovered, drawSelected,
 ];
 
-/* The image is placed by its *content* origin, not by its top-left corner:
- * Jagex's JPEG carries a one-pixel border on its top and right edges, so grid
- * (0, 0) sits at (origin_x, origin_y) inside the file. Drawing it at the pan
- * position directly puts every square one pixel out - too little to see and
- * enough to be wrong. See gui/worldmap.py's IMAGE_ORIGIN_Y. */
-function drawBase() {
-  if (!state.image) return;
-  const g = state.view.geometry;
-  CTX.drawImage(
-    state.image,
-    state.panX - state.zoom * (g.origin_x || 0),
-    state.panY - state.zoom * (g.origin_y || 0),
-    state.zoom * g.image_width,
-    state.zoom * g.image_height,
-  );
+/* ---- the tile layer ---------------------------------------------------- */
+
+/* **The map is the OSRS wiki's cartography tiles, loaded straight from their
+ * CDN by this page.** Nothing about them passes through `fray-gui`: the server
+ * hands over a URL template and this file puts it in an `Image`, so the bytes
+ * go wiki -> browser cache and touch no disk of ours. That is a licence
+ * decision, not a performance one - the tiles are CC BY-NC-SA 3.0 against this
+ * project's MIT, and caching or re-serving them would make it a redistributor
+ * of NonCommercial artwork. Linking to them makes it a page with a picture on
+ * it. `MAP_TILE_ATTRIBUTION` is on screen for the same reason.
+ *
+ * The scheme is a standard pyramid keyed on the game's own coordinates:
+ * `256 / 2**z` game tiles per 256px tile, y counting *northward*. So z=2 is
+ * exactly one tile per chunk, z=1 covers 2x2 chunks, z=3 splits a chunk into
+ * 2x2 - which means `tileZoom` only has to pick the level whose source
+ * resolution is nearest the size a chunk is being drawn at, and the number of
+ * requests on screen stays roughly constant however far you zoom out. */
+const TILE_PIXELS = 256;
+const MIN_TILE_ZOOM = -3;
+const MAX_TILE_ZOOM = 3;
+
+/* Where the tiles come from. Filled in by `/api/tiles`; until then there is
+ * simply no base layer, and the grid, hull and overlays draw over nothing. */
+const tiles = { template: "", version: "", attribution: "", error: null };
+
+const tileCache = new Map();   // url -> Image | "pending" | "missing"
+
+/* Game tiles spanned by one 256px tile at this zoom. */
+function tileSpan(z) { return TILE_PIXELS / Math.pow(2, z); }
+
+/* The pyramid level to draw at: the coarsest one whose source is still at
+ * least as detailed as the screen. Source pixels per chunk at level z is
+ * `64 / tileSpan(z) * 256`; solving for cell size gives this log. */
+function tileZoom() {
+  const perChunk = cellSize();
+  const wanted = Math.ceil(Math.log2(perChunk / 64));
+  return Math.max(MIN_TILE_ZOOM, Math.min(MAX_TILE_ZOOM, wanted));
+}
+
+function tileUrl(z, x, y, plane) {
+  return tiles.template
+    .replace("{version}", tiles.version)
+    .replace("{map_id}", "0")
+    .replace("{z}", String(z))
+    .replace("{plane}", String(plane || 0))
+    .replace("{x}", String(x))
+    .replace("{y}", String(y));
+}
+
+function tileFor(z, x, y) {
+  const url = tileUrl(z, x, y, 0);
+  const held = tileCache.get(url);
+  if (held !== undefined) return held instanceof Image ? held : null;
+
+  const image = new Image();
+  /* The CDN answers `access-control-allow-origin: *`, so asking for CORS
+   * costs nothing and keeps the canvas untainted - which matters the day
+   * anything wants `getImageData` off it. */
+  image.crossOrigin = "anonymous";
+  image.onload = () => { tileCache.set(url, image); invalidate(); };
+  /* Ocean and off-world squares have no tile. Remembering the miss is what
+   * stops one 404 becoming one per frame. */
+  image.onerror = () => { tileCache.set(url, "missing"); };
+  image.src = url;
+  tileCache.set(url, "pending");
+  return null;
+}
+
+/* Grid space <-> world-tile space. `gridToChunk` already encodes the
+ * projection; these are the same arithmetic without the round trip through a
+ * chunk id, because a tile boundary need not land on one.
+ *
+ * **The y constant is 66, not the 65 of `gridToChunk`, and that is not a
+ * typo.** `grid_y = 65 - region_y` numbers a *cell*: region 65 is row 0. These
+ * take a world coordinate and answer where that *line* is, and the line at the
+ * top of row 0 is region 65's **north** edge - world y 4224, which is region
+ * 66's south edge. Off by one and every tile draws one row high, which looks
+ * like a plausible map of somewhere slightly wrong. */
+const GRID_TOP_REGION_Y = 66;
+
+function worldToScreenX(wx) { return state.panX + (wx / 64 - 15) * cellSize(); }
+function worldToScreenY(wy) {
+  return state.panY + (GRID_TOP_REGION_Y - wy / 64) * cellSize();
+}
+function screenToWorldX(sx) { return ((sx - state.panX) / cellSize() + 15) * 64; }
+function screenToWorldY(sy) {
+  return (GRID_TOP_REGION_Y - (sy - state.panY) / cellSize()) * 64;
+}
+
+function drawTiles() {
+  if (!tiles.template || !tiles.version) return;
+  const z = tileZoom(), span = tileSpan(z);
+  const size = (span / 64) * cellSize();
+  /* One pixel of overlap. Adjacent tiles land on fractional pixels at most
+   * zooms, and rounding each independently leaves hairlines between them. */
+  const bleed = 1;
+
+  const x0 = Math.floor(screenToWorldX(0) / span);
+  const x1 = Math.floor(screenToWorldX(CANVAS.clientWidth) / span);
+  // Screen y runs opposite world y, so the top of the screen is the high one.
+  const y1 = Math.floor(screenToWorldY(0) / span);
+  const y0 = Math.floor(screenToWorldY(CANVAS.clientHeight) / span);
+
+  for (let x = x0; x <= x1; x++) {
+    for (let y = y0; y <= y1; y++) {
+      if (x < 0 || y < 0) continue;
+      const image = tileFor(z, x, y);
+      if (!image) continue;
+      CTX.drawImage(
+        image,
+        worldToScreenX(x * span),
+        worldToScreenY((y + 1) * span),
+        size + bleed,
+        size + bleed,
+      );
+    }
+  }
 }
 
 function onScreen(x, y, size) {
@@ -1862,15 +1963,29 @@ async function poll() {
   } catch { /* a map deleted under us; the next load reports it */ }
 }
 
-function loadImage() {
-  return new Promise((resolve) => {
-    const image = new Image();
-    image.onload = () => { state.image = image; resolve(true); };
-    image.onerror = () => { toast("World map image unavailable"); resolve(false); };
-    /* Extensionless: the bytes are Jagex's JPEG, and `FRAY_WORLD_MAP` may
-     * point at a PNG instead. The server decides the content type. */
-    image.src = "/world_map";
-  });
+/* Ask the server *where* the tiles are - not for the tiles. See `drawTiles`. */
+async function loadTiles() {
+  try {
+    const source = await getJSON("/api/tiles");
+    Object.assign(tiles, source);
+    if (source.error) toast(source.error);
+    if (!source.version) return false;
+  } catch (error) {
+    tiles.error = error.message;
+    toast("Could not find the map tiles: " + error.message);
+    return false;
+  }
+  renderAttribution();
+  invalidate();
+  return true;
+}
+
+/* CC BY-NC-SA asks for attribution, and this is the whole of what that costs
+ * when you link rather than copy. */
+function renderAttribution() {
+  if (!tiles.attribution) return;
+  el.attribution.innerHTML = tmpl`<a href="${tiles.attribution_url || "#"}" target="_blank" rel="noreferrer">${tiles.attribution}</a>`;
+  el.attribution.hidden = false;
 }
 
 (async function start() {
@@ -1878,7 +1993,7 @@ function loadImage() {
   if (!(await loadMaps())) return;
   syncBreakdown();
   await loadView();
-  await loadImage();
+  await loadTiles();
   fitToCells();
   if (BOOT.candidates) el.candidates.click();
   if (BOOT.sections) el.masks.click();

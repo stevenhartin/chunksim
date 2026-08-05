@@ -44,7 +44,7 @@ import webbrowser
 from pathlib import Path
 
 from fray_claude import cache
-from fray_claude.api import DEFAULT_TIMEOUT, FetchError, fetch_world_map
+from fray_claude.api import DEFAULT_TIMEOUT
 from fray_claude.gui.browser import open_app_window
 from fray_claude.gui.jobs import JobState
 from fray_claude.gui.server import (
@@ -57,31 +57,6 @@ from fray_claude.gui.server import (
 from fray_claude.gui.worldmap import MapView, build_view
 
 __all__ = ["MapView", "build_view", "main"]
-
-
-def _ensure_world_map(context: Context, timeout: float) -> None:
-    """Download the map image if this installation has not got it yet.
-
-    Fetched rather than shipped because it is Jagex's artwork - see
-    `api.WORLD_MAP_URL`. Once per machine, and `FRAY_WORLD_MAP` skips it
-    entirely.
-
-    A failure here is reported and *not* fatal: the chunk grid, the hull and
-    every number still work without the image, and a server that refuses to
-    start because a CDN is unreachable would be worse than one that draws on
-    a blank background.
-    """
-    if context.world_map_path.is_file():
-        return
-    print("world map not cached, downloading from Jagex (~2.9 MiB)...", flush=True)
-    try:
-        blob = fetch_world_map(timeout)
-    except FetchError as exc:
-        print(f"could not download the world map: {exc}", file=sys.stderr)
-        print("the map will draw without its background image", file=sys.stderr)
-        return
-    path = cache.write_asset(cache.WORLD_MAP_ASSET, blob, context.root)
-    print(f"wrote {path} ({len(blob):,} bytes)", flush=True)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -130,24 +105,25 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--world-map",
-        type=Path,
-        default=None,
-        help="path to a local copy of the map image, overriding FRAY_WORLD_MAP",
-    )
-    parser.add_argument(
         "--timeout",
         type=float,
         default=DEFAULT_TIMEOUT,
-        help="request timeout for the one-off image download (default: %(default)s)",
+        help=(
+            "request timeout for the one wiki page read to find the current "
+            "map-tile render (default: %(default)s)"
+        ),
     )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    context = Context(world_map=args.world_map)
-    _ensure_world_map(context, args.timeout)
+    # **No map image is downloaded and none is served.** The browser fetches
+    # the wiki's tiles itself; all this process resolves is which render to
+    # ask for, lazily, on the first `/api/tiles` request. See
+    # `api.MAP_TILE_URL` for why keeping the bytes out of here is a licence
+    # decision rather than a saving.
+    context = Context()
 
     try:
         server = MapServer((args.host, args.port), context)

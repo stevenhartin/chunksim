@@ -11,7 +11,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 from email.message import Message
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -22,8 +22,8 @@ from fray_claude.api import (
     WIKI_API_URL,
     WIKI_TITLES_PER_REQUEST,
     WIKI_USER_AGENT,
-    WORLD_MAP_REVISION,
-    WORLD_MAP_URL,
+    MAP_TILE_URL,
+    MAP_TILE_VERSION_URL,
     FetchError,
     fetch_chunkinfo,
     fetch_map,
@@ -31,7 +31,7 @@ from fray_claude.api import (
     fetch_text,
     fetch_wiki_page_titles,
     fetch_wiki_pages,
-    fetch_world_map,
+    fetch_map_tile_version,
     map_url,
     slayer_sheet_url,
 )
@@ -285,41 +285,66 @@ def test_the_slayer_sheet_url_names_the_tab() -> None:
     assert "out:csv" in slayer_sheet_url()
 
 
-def test_the_world_map_comes_back_as_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
-    """An image, not JSON, so it does not go through `_fetch_json_object`."""
-    jpeg = b"\xff\xd8\xff\xe0" + b"payload"
-    calls = _patch_urlopen(monkeypatch, _responds(jpeg))
+def test_the_tile_version_is_read_out_of_the_map_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The one request made on the tiles' behalf, and it is for HTML.
 
-    assert fetch_world_map() == jpeg
-    assert calls[0][0] == WORLD_MAP_URL
-    assert WORLD_MAP_URL.endswith("/osrs_world_map.jpg")
-
-
-def test_the_world_map_comes_from_jagex_not_from_upstream() -> None:
-    """The rights holder's own CDN, and a pinned render.
-
-    Upstream keeps a copy and taking it from there worked - but it relied on a
-    third party's redistribution for the one asset in this project that is
-    somebody else's artwork, and served whatever upstream last synced.
+    The tiles themselves the browser loads directly from the wiki's CDN - see
+    `api.MAP_TILE_URL` for why keeping the bytes out of this process is a
+    licence decision. All that is fetched here is which render to ask for.
     """
-    assert WORLD_MAP_URL.startswith("https://cdn.runescape.com/")
-    assert WORLD_MAP_REVISION in WORLD_MAP_URL
-    assert "githubusercontent" not in WORLD_MAP_URL
+    page = (
+        '<a class="mw-kartographer-map" style="background-image: '
+        "url(https://maps.runescape.wiki/osrs/versions/2026-07-29_a"
+        '/tiles/rendered/0/1/0_24_26.png)"></a>'
+    )
+    calls = _patch_urlopen(monkeypatch, _responds(page.encode("utf-8")))
+
+    assert fetch_map_tile_version() == "2026-07-29_a"
+    # A `Request`, not a bare URL, because the wiki 403s an anonymous client -
+    # which is also why the tiles behind it are the *browser's* problem to
+    # fetch and not this process's.
+    request = cast(urllib.request.Request, calls[0][0])
+    assert request.full_url == MAP_TILE_VERSION_URL
+    assert "fray-claude" in (request.get_header("User-agent") or "")
 
 
-def test_an_empty_world_map_is_an_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Zero bytes would be cached and then served as a broken image forever."""
-    _patch_urlopen(monkeypatch, _responds(b""))
+def test_a_map_page_with_no_tile_url_is_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The failure that will happen quietly one day, made loud.
 
-    with pytest.raises(FetchError, match="empty response"):
-        fetch_world_map()
+    There is no index of renders anywhere, so the version is scraped - and a
+    page that stops carrying a tile URL would otherwise yield an empty version
+    and a blank map with nothing anywhere saying why.
+    """
+    _patch_urlopen(monkeypatch, _responds(b"<p>the map has moved</p>"))
+
+    with pytest.raises(FetchError, match="no tile version"):
+        fetch_map_tile_version()
 
 
-def test_a_world_map_http_error_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_tile_version_http_error_is_reported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _patch_urlopen(
         monkeypatch,
-        _raises(urllib.error.HTTPError(WORLD_MAP_URL, 404, "Not Found", Message(), None)),
+        _raises(
+            urllib.error.HTTPError(MAP_TILE_VERSION_URL, 404, "Not Found", Message(), None)
+        ),
     )
 
-    with pytest.raises(FetchError, match="HTTP 404 fetching world map image"):
-        fetch_world_map()
+    with pytest.raises(FetchError, match="HTTP 404 fetching map tile version"):
+        fetch_map_tile_version()
+
+
+def test_the_tile_template_carries_every_coordinate() -> None:
+    """The template is handed to the browser, so it is a contract.
+
+    `app.js` substitutes each of these by name. A renamed placeholder leaves a
+    literal `{z}` in a URL, which 404s into a blank map rather than failing.
+    """
+    for placeholder in ("{version}", "{map_id}", "{z}", "{plane}", "{x}", "{y}"):
+        assert placeholder in MAP_TILE_URL
+    assert MAP_TILE_URL.startswith("https://maps.runescape.wiki/")

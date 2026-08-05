@@ -115,8 +115,8 @@ Five things that cut across modules — the first three because each has already
 
 | Module | Owns |
 |---|---|
-| `api.py` | The network. `FetchError`. An unknown map is HTTP 200 + bare `null`, never a 404. Five hosts now: Firebase, upstream's `gh-pages`, **Jagex's own CDN** for the world map image, the OSRS wiki (which **requires** a `User-Agent`) and one published Google Sheet. |
-| `wiki.py` | Wikitext template parsing. Pure. Quest length is in `{{Quest details}}`, **not** `{{Infobox Quest}}` — the tempting wrong template has no `length` and so returns `None` for every quest without erroring. |
+| `api.py` | The network. `FetchError`. An unknown map is HTTP 200 + bare `null`, never a 404. Four hosts: Firebase, upstream's `gh-pages`, the OSRS wiki (which **requires** a `User-Agent`) and one published Google Sheet. **The map tiles are a fifth host it never calls** — `MAP_TILE_URL` is a template the browser uses; see the GUI paragraph. |
+| `wiki.py` | Wikitext template parsing, plus `map_tile_version` over the map page's rendered *HTML*. Pure. Quest length is in `{{Quest details}}`, **not** `{{Infobox Quest}}` — the tempting wrong template has no `length` and so returns `None` for every quest without erroring. |
 | `experience.py` | The exact 1–99 XP curve, closed-form. **Not a heuristic and not overridable** — that separation from `heuristics.py` is the point of the module. |
 | `heuristics.py` | Every hand-correctable number, and the `defaults < scraped < overrides` merge. Owns the joins and their `exact`/`contained` provenance; **no fuzzy tier**, by measurement — read the docstring before adding one back. |
 | `slayer.py` | Slayer's rate, which is a *distribution* not a chosen method: a time-weighted mean over what a master assigns. Also owns `superior_rolls_per_hour` — the shared `SuperiorDropTable+` is one pool per master, not one per superior. **Masters are gated on their NPC being reachable** — without that it quoted Duradel on a map holding none of him. Reports `coverage`, because renormalising over reachable tasks flatters a sparse map. |
@@ -145,12 +145,12 @@ Five things that cut across modules — the first three because each has already
 | `dps_bridge.py` | The seam to `osrs-dps`, which prices a kill from the gear `bis.py` reaches instead of a money-making guide. **Optional import** — check `DPS_AVAILABLE`, never assume it. `enrich` is the one entry point a command needs. Owns the export→library conversions (`magic_damage` is a display percentage here and tenths of a percent there), the overhead model, the monster-name join and its `exact`/`variant` provenance, and the refusal of fight *phases* and group bosses. |
 | `cli.py` | argparse subcommands and rendering only; new logic goes in a pure module. `gui/server.py` follows the same rule, with `gui/panels.py` as its pure module. |
 | `gui/panels.py` | Shaping `Derived` into what the panel draws — sections of groups of `{key, name, note, icon}`, one shape across all five categories. Pure. Owns the three rules that are domain knowledge rather than formatting: a quest keeps only its **furthest** step, `Extra`'s collection-log rows split source from item, BiS groups by combat style. |
-| `gui/worldmap.py` | Where a chunk sits on upstream's map image, and which of its sides face outward. Pure. Owns the projection (`grid_x = region_x - 15`, **`grid_y = 65 - region_y`** — the y axis is flipped), the two kinds of id that have no square, and `hull_edges`. In `gui/` because all of it is about one particular image. |
+| `gui/worldmap.py` | Where a chunk sits on the map, and which of its sides face outward. Pure. Owns the projection (`grid_x = region_x - 15`, **`grid_y = 65 - region_y`** — the y axis is flipped), the tile pyramid's constants, the two kinds of id that have no square, and `hull_edges`. In `gui/` because all of it is about one particular tiling. |
 | `gui/server.py` | Routing, as a **pure `handle_request`** with a `BaseHTTPRequestHandler` adapter over it — so tests reach the whole surface without binding a socket. Owns the static allowlist, the `Sec-Fetch-Site`/`Host` checks, and the **lazy proxy** for upstream's section masks and skill icons. |
 | `gui/jobs.py` | The background job registry the POST actions use. **The only mutable state in the GUI**, kept out of the pure layer deliberately. |
 | `gui/derivation.py` | The boundary between the cheap path and the expensive one. Loads `ChunkInfo` **lazily** — a request that does not need a derivation must not pay for one, and a test asserts the map view never triggers it. |
 | `gui/browser.py` | Finding a Chromium-family browser and opening an app window whose lifetime is the server's. `--user-data-dir` is load-bearing, not tidiness. `window_flags` restores the remembered geometry, which Chrome will not — see the GUI paragraph below Commands. |
-| `gui/__init__.py` | `fray-gui`'s argparse and its socket, and the **arming of exactly one** of the two shutdown mechanisms — never both. Also the one-off world-map download. The GUI imports the library rather than shelling out to `fray`, which would re-parse the 10MB export per call. |
+| `gui/__init__.py` | `fray-gui`'s argparse and its socket, and the **arming of exactly one** of the two shutdown mechanisms — never both. Downloads nothing: the map is the browser's to fetch. The GUI imports the library rather than shelling out to `fray`, which would re-parse the 10MB export per call. |
 
 ## Toolchain
 
@@ -196,7 +196,7 @@ mypy                        # strict, over src/ and tests/; run from the repo ro
 FRAY_CHUNKINFO=path .venv/bin/pytest tests/test_sections.py -k real   # opt-in oracle test against a real export
 python -c 'import json;json.dump(json.load(open("cache/chunkinfo.json"))["data"],open("/tmp/raw.json","w"))'
 FRAY_CHUNKINFO=/tmp/raw.json FRAY_MAP_CACHE=1 .venv/bin/pytest   # all six oracles, the real correctness signal
-fray-gui [--map ID] [--compare ID] [--port N] [--host H] [--no-browser] [--tab] [--world-map PATH]
+fray-gui [--map ID] [--compare ID] [--port N] [--host H] [--no-browser] [--tab]
 pyproject-build && pipx install --force dist/*.whl   # build + reinstall `fray` and `fray-gui`
 python -m zipfile -l dist/*.whl | grep resources     # prove the GUI's html/js/css shipped
 pip install -e ../osrs-dps                           # the optional `dps` extra, into .venv for development
@@ -276,8 +276,8 @@ delta mode where `--compare`'s gains are green and its losses red. It can also d
 `simulate`, which return a job id and report progress while a thread does the work.
 
 **All fifteen CLI subcommands are reachable from it.** `GET /api/{maps,view,revision,summary,
-neighbours,chunk,sections,unlock,diff,search,estimate,tasks,derived,jobs}` and `POST /api/{fetch,
-simulate,refresh,maps/remove,derived/prune,window}`. The panel's tabs are tasks / chunk / find / estimate /
+neighbours,chunk,sections,unlock,diff,search,estimate,tasks,tiles,derived,jobs}` and `POST /api/
+{fetch,simulate,refresh,maps/remove,derived/prune,window}`. The panel's tabs are tasks / chunk / find / estimate /
 maps, and `?map=&compare=&candidates=1&sections=1&tab=` reproduces a view.
 
 Things worth knowing before changing it:
@@ -306,16 +306,21 @@ Things worth knowing before changing it:
   `task_classification` and `other_tasks` offer three shapes where the panel needs one. Walking
   `Object.keys` over a *category envelope* is what made the first tasks tab print `active_total`
   and `groups` as if they were task names. New shaping goes there, not into the JavaScript.
-- **The map image comes from Jagex's CDN and is fetched, never committed.** Upstream keeps a copy
-  and taking it from there worked, but this is the one asset in the project that is somebody else's
-  artwork: the rights holder's own URL relies on no third party's redistribution, is current rather
-  than whenever upstream last synced, and is 2.9MiB of JPEG against 8.4MiB of PNG — 107MB of decoded
-  canvas instead of 240MB. Shipping it in an MIT wheel would still imply a sublicence this project
-  has not got, so `fray-gui` downloads it to `cache/assets/` on first run exactly as `fray chunkinfo`
-  downloads 10MB, and `FRAY_WORLD_MAP` points at a local copy. **That image is 6145×4353 with a
-  one-pixel border**, so the grid starts at `worldmap.IMAGE_ORIGIN_Y = 1` and `drawBase` subtracts
-  it — one pixel is small enough to look right and wrong at every zoom. `api.WORLD_MAP_REVISION`
-  pins the dated render; bumping it means re-checking the asserted geometry.
+- **The map is the OSRS wiki's cartography tiles, and the browser loads them — this project never
+  touches one.** `/api/tiles` hands out a URL *template*; `app.js` puts it in an `Image`. That is a
+  licence decision, not an optimisation: the tiles are CC BY-NC-SA 3.0 against this project's MIT,
+  so caching them under `cache/` or re-serving them off loopback would make this a redistributor of
+  NonCommercial artwork, where linking makes it a page with a picture on it. `MAP_TILE_ATTRIBUTION`
+  is on screen for the same reason, and `tests/test_gui_server.py` asserts no tile route exists so
+  a later "let's cache these" cannot pass review by looking like a speed-up.
+  **The scheme fits this project almost exactly**: `256 / 2**z` game tiles per 256px tile with y
+  counting *northward*, so at `NATIVE_TILE_ZOOM = 2` one tile **is** one chunk and its index is the
+  chunk id decomposed. `drawTiles` picks the pyramid level from the on-screen cell size. Two
+  things bite here — `worldToScreenY` needs `MAX_REGION_Y + 1` because it maps an *edge* where
+  `gridToChunk` numbers a *cell*, and the version is scraped from `RuneScape:Map`'s fallback image
+  because no index of renders exists anywhere. Both have tests; the first was found by comparing the
+  canvas against a raw tile (0.016 mean channel difference aligned, 13.7 one pixel out).
+  `FRAY_TILE_VERSION` pins a render when the scrape breaks.
   **The 1,534 section masks and 24 skill icons are the same argument with a different answer to
   *when*:** they are proxied one file at a time, on the request that first draws them, because a
   chunk has a handful of sections and nobody opens all of them. `cache.section_overlay_path` is the

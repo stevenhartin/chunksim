@@ -15,9 +15,11 @@ from typing import Any
 import pytest
 
 from fray_claude.cache import (
+    section_overlay_path,
+    write_asset_at,
     write_gui_window,
     WIKI_RATES_BLOB_NAME,
-    WORLD_MAP_ASSET,
+    TILE_VERSION_BLOB_NAME,
     CHUNKINFO_ENV_VAR,
     FETCHED,
     SIMULATED,
@@ -31,10 +33,10 @@ from fray_claude.cache import (
     file_digest,
     list_derived,
     prune_derived,
-    read_asset,
     read_derived,
-    world_map_source,
-    write_asset,
+    read_tile_version,
+    tile_version_override,
+    write_tile_version,
     write_derived,
     list_maps,
     project_root,
@@ -472,40 +474,49 @@ def test_chunkinfo_source_names_the_file_read_chunkinfo_would_read(
     assert chunkinfo_source(root=tmp_path) == tmp_path / "env.json"
 
 
-def test_an_asset_round_trips(tmp_path: Path) -> None:
-    write_asset("world_map.png", b"\x89PNG payload", root=tmp_path)
+def test_an_asset_write_is_atomic_and_leaves_no_temp_file(tmp_path: Path) -> None:
+    """Temp-file-plus-rename, so a reader never sees a partial PNG.
 
-    assert read_asset("world_map.png", root=tmp_path) == b"\x89PNG payload"
-
-
-def test_a_missing_asset_reads_as_none(tmp_path: Path) -> None:
-    """Every caller answers a missing asset the same way: fetch it.
-
-    That is `read_derived`'s contract rather than `read_blob`'s, whose absence
-    is a user-facing "run this command" failure.
+    The path comes in already built, because every asset left here is a nested
+    one whose name `section_overlay_path` or `skill_icon_path` has validated -
+    the world map, which was the one asset with a constant name, is not stored
+    at all any more.
     """
-    assert read_asset("world_map.png", root=tmp_path) is None
+    target = section_overlay_path("12850-1", root=tmp_path)
+    path = write_asset_at(target, b"\x89PNG payload")
+
+    assert path.read_bytes() == b"\x89PNG payload"
+    assert [p.name for p in path.parent.iterdir()] == ["12850-1.png"]
 
 
-def test_an_asset_write_leaves_no_temp_file(tmp_path: Path) -> None:
-    """Temp-file-plus-rename, so a reader never sees a partial PNG."""
-    path = write_asset("world_map.png", b"payload", root=tmp_path)
-
-    assert path.read_bytes() == b"payload"
-    assert [p.name for p in path.parent.iterdir()] == ["world_map.png"]
-
-
-def test_the_world_map_source_prefers_an_override(
+def test_a_tile_version_round_trips_with_its_age(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Override, then `FRAY_WORLD_MAP`, then the cache - as `chunkinfo_source`."""
-    monkeypatch.delenv("FRAY_WORLD_MAP", raising=False)
-    assert world_map_source(root=tmp_path) == tmp_path / "cache" / "assets" / WORLD_MAP_ASSET
+    """The GUI remembers which render to ask for, so a restart does not scrape.
 
-    monkeypatch.setenv("FRAY_WORLD_MAP", "/somewhere/map.png")
-    assert world_map_source(root=tmp_path) == Path("/somewhere/map.png")
+    The *age* comes back rather than a verdict: whether an old version is worth
+    re-scraping is a network decision, and `cache.py` makes none.
+    """
+    monkeypatch.delenv("FRAY_TILE_VERSION", raising=False)
+    write_tile_version("2026-07-29_a", "https://example.invalid", root=tmp_path)
 
-    assert world_map_source(Path("/explicit.png"), root=tmp_path) == Path("/explicit.png")
+    version, age = read_tile_version(root=tmp_path)
+
+    assert version == "2026-07-29_a"
+    assert age < 1.0
+    assert tile_version_override() is None
+
+    monkeypatch.setenv("FRAY_TILE_VERSION", "2020-01-01_z")
+    assert tile_version_override() == "2020-01-01_z"
+
+
+def test_a_tile_version_blob_is_not_a_map(tmp_path: Path) -> None:
+    """It lives in `cache/` beside the maps and is emphatically not one."""
+    write_cache("fray", {"chunks": {"unlocked": {}}}, root=tmp_path)
+    write_tile_version("2026-07-29_a", "https://example.invalid", root=tmp_path)
+
+    assert [entry.map_id for entry in list_maps(root=tmp_path)] == ["fray"]
+    assert TILE_VERSION_BLOB_NAME == "tile_version"
 
 
 def test_the_blobs_beside_the_maps_are_not_maps(tmp_path: Path) -> None:

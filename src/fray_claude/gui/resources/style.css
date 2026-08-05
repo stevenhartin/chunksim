@@ -548,3 +548,23 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 @media (prefers-reduced-motion: reduce) {
   .panel { transition: none; }
 }
+
+/* --- tile attribution ----------------------------------------------------- */
+
+/* Bottom-right, opposite the legend, quiet but never hidden: CC BY-NC-SA asks
+   for credit and a credit you have to open a menu to find is not one. */
+.attribution {
+  position: fixed;
+  z-index: 2;
+  right: calc(var(--panel-w) + 12px);
+  bottom: 12px;
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(23, 26, 32, .93);
+  color: var(--dim);
+  font-size: 11px;
+}
+
+.attribution a { color: inherit; text-decoration: none; }
+.attribution a:hover { color: var(--text); text-decoration: underline; }
