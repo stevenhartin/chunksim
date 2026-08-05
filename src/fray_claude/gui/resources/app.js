@@ -669,6 +669,15 @@ function plain(text) { return String(text == null ? "" : text).replace(/~\|/g, "
 
 function icon(name) { return raw(`<svg class="icon" viewBox="0 0 24 24"><use href="#i-${name}"/></svg>`); }
 
+/* Library vocabularies - `estimate.BUCKETS`, `search.TYPES` - are lower-case
+ * because that is how `fray` prints them, and they stay that way as keys.
+ * Only the label is capitalised, so the panel does not set "activities" next
+ * to "Longest single items" and read as two different interfaces. */
+function label(text) {
+  const s = String(text || "");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 function hours(value) { return Number(value || 0).toFixed(value >= 100 ? 0 : 1) + "h"; }
 
 function bytes(value) {
@@ -793,7 +802,7 @@ async function loadMaps() {
     showTab("maps");
     return false;
   }
-  const options = maps.map((m) => tmpl`<option value="${m.map_id}">${m.map_id}${m.kind === "fetched" ? "" : "  (" + m.kind + ")"}</option>`).join("");
+  const options = maps.map((m) => tmpl`<option value="${m.map_id}">${m.map_id}${m.kind === "fetched" ? "" : "  (" + label(m.kind) + ")"}</option>`).join("");
   const keepMap = el.map.value, keepCompare = el.compare.value;
   el.map.innerHTML = options;
   el.compare.innerHTML = "<option value=''>—</option>" + options;
@@ -1130,7 +1139,7 @@ function renderEstimate(payload) {
 
   let out = '<div class="pie-row">' + donut(payload.buckets, total || 1) + '<div class="pie-key">';
   for (const [name, value] of Object.entries(payload.buckets)) {
-    out += tmpl`<span><i class="sw" style="background:${BUCKET_COLOURS[name] || "#858d9c"}"></i>${name}<b>${hours(value)}</b></span>`;
+    out += tmpl`<span><i class="sw" style="background:${BUCKET_COLOURS[name] || "#858d9c"}"></i>${label(name)}<b>${hours(value)}</b></span>`;
   }
   out += "</div></div>";
 
@@ -1141,7 +1150,7 @@ function renderEstimate(payload) {
   if (items.length) {
     out += tmpl`<h3>Longest single items</h3><ul class="list">`;
     for (const item of items.slice(0, 14)) {
-      const tip = tmpl`<b>${plain(item.item)}</b><span class="sub">${plain(item.detail)}</span><span class="sub">${item.bucket}</span>`;
+      const tip = tmpl`<b>${plain(item.item)}</b><span class="sub">${plain(item.detail)}</span><span class="sub">${label(item.bucket)}</span>`;
       out += tmpl`<li data-tip="${tip}"><span class="name">${plain(item.item)}</span><span class="num">${hours(item.hours)}</span></li>`;
     }
     out += "</ul>";
@@ -1281,7 +1290,7 @@ async function runFind() {
       const chunks = chunksOf(result);
       const note = chunks.length ? chunks.length + (chunks.length === 1 ? " chunk" : " chunks") : "—";
       out += tmpl`<li>
-        <span class="pill ${result.available ? "reachable" : "locked"}">${result.type}</span>
+        <span class="pill ${result.available ? "reachable" : "locked"}">${label(result.type)}</span>
         <button class="link name" data-result="${index}">${plain(result.name)}</button>
         <span class="num">${note}</span></li>`;
     });
@@ -1301,7 +1310,7 @@ el["find-form"].addEventListener("submit", (e) => { e.preventDefault(); clearTim
 
 function mapTip(entry) {
   const rows = [
-    ["Kind", entry.kind],
+    ["Kind", label(entry.kind)],
     ["Created", when(entry.created_at)],
     ["Size", bytes(entry.size)],
     ["Chunks", entry.unlocked_chunks == null ? "—" : entry.unlocked_chunks],
@@ -1328,7 +1337,7 @@ async function loadMapsPane() {
     </div>`;
     out += tmpl`<h3>Cached maps <span class="num">${maps.length}</span></h3><ul class="list">`;
     for (const m of maps) {
-      const note = m.unlocked_chunks == null ? m.kind : m.unlocked_chunks + " chunks";
+      const note = m.unlocked_chunks == null ? label(m.kind) : m.unlocked_chunks + " chunks";
       const remove = m.kind === "fetched" ? "" :
         '<button class="link danger" data-rm="' + m.map_id.replace(/"/g, "&quot;") + '">Remove</button>';
       out += tmpl`<li data-tip="${mapTip(m)}"><span class="name">${m.map_id}</span><span class="num">${note}</span>${raw(remove)}</li>`;
