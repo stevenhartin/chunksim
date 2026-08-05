@@ -315,7 +315,14 @@ Things worth knowing before changing it:
   a later "let's cache these" cannot pass review by looking like a speed-up.
   **The scheme fits this project almost exactly**: `256 / 2**z` game tiles per 256px tile with y
   counting *northward*, so at `NATIVE_TILE_ZOOM = 2` one tile **is** one chunk and its index is the
-  chunk id decomposed. `drawTiles` picks the pyramid level from the on-screen cell size. Two
+  chunk id decomposed. `drawTiles` picks the pyramid level from the on-screen cell size, and **falls back up the pyramid
+  when a tile is not there** — every level covers the same world, so the level above holds it at half
+  the resolution, and blurry beats a black square. That also covers the case it was written for: a
+  browser `Image` cannot tell a 404 from a dropped connection, so a miss is retried `TILE_TRIES`
+  times before it is remembered, and one unlucky request no longer blacks a square out for the
+  session. The sub-rectangle's **y is flipped and its x is not** (`step - 1 - (y & mask)`), because
+  tile indices count north while image rows run south; a test pins that, and getting it backwards
+  mirrors each fallback into a still-plausible piece of map. Two
   things bite here — `worldToScreenY` needs `MAX_REGION_Y + 1` because it maps an *edge* where
   `gridToChunk` numbers a *cell*, and the version comes from
   `MediaWiki:Kartographer-map-version?action=raw`, the message Kartographer itself reads, because

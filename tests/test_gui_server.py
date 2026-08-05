@@ -423,6 +423,40 @@ def test_the_plane_reaches_the_tile_url_and_nothing_else() -> None:
     assert "loadView" not in body and "getJSON" not in body
 
 
+def test_a_missing_tile_falls_back_to_a_coarser_one() -> None:
+    """A tile that is not there should look blurry, not black.
+
+    Every level of the pyramid covers the same world, so the level above
+    contains this tile at half the resolution. Without the walk a dropped
+    request is a black square for the rest of the session - `onerror` cannot
+    tell a 404 from a connection the browser gave up on, so a miss is also
+    retried before it counts as absent.
+    """
+    source = _app_js()
+
+    assert "function tileAncestor(" in source
+    assert "tileAncestor(z, x, y)" in source          # drawTiles actually uses it
+    # A miss is provisional: more than one attempt before it is remembered.
+    match = re.search(r"const TILE_TRIES = (\d+);", source)
+    assert match is not None and int(match.group(1)) > 1
+    assert 'tileCache.delete(url)' in source          # so a later frame retries
+
+
+def test_the_coarse_fallback_flips_y_and_not_x() -> None:
+    """The one line in the fallback that can be silently wrong.
+
+    Tile indices count *northward* while image rows run *southward*, so within
+    an ancestor the child with the highest y is at the **top**. Getting it
+    backwards mirrors every fallback vertically - which still looks like a
+    plausible piece of map. Checked against real tiles: each of the four
+    quadrants matched its parent crop and was the best of the four.
+    """
+    source = _app_js()
+
+    assert "sx: (x & (step - 1)) * size," in source
+    assert "sy: (step - 1 - (y & (step - 1))) * size," in source
+
+
 def test_the_page_loads_tiles_from_the_wiki_and_not_from_here() -> None:
     """The licence lives in this assertion as much as in any docstring.
 

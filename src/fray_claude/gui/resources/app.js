@@ -386,6 +386,18 @@ function tileUrl(z, x, y, plane) {
     .replace("{y}", String(y));
 }
 
+/* How many times a tile is asked for again before it counts as absent.
+ *
+ * **A failed `Image` cannot tell you why it failed.** `onerror` fires the same
+ * way for a 404 as for a connection the browser dropped because two hundred
+ * requests went out at once - and one dropped request, remembered forever, is
+ * a square that stays black for the rest of the session however long you look
+ * at it. So a miss is provisional until it has happened `TILE_TRIES` times.
+ * Absent tiles cost two extra requests each, once; transient ones recover. */
+const TILE_TRIES = 3;
+
+const tileFails = new Map();   // url -> how many times it has failed
+
 function tileFor(z, x, y) {
   const url = tileUrl(z, x, y, state.plane);
   const held = tileCache.get(url);
@@ -396,12 +408,59 @@ function tileFor(z, x, y) {
    * costs nothing and keeps the canvas untainted - which matters the day
    * anything wants `getImageData` off it. */
   image.crossOrigin = "anonymous";
-  image.onload = () => { tileCache.set(url, image); invalidate(); };
-  /* Ocean and off-world squares have no tile. Remembering the miss is what
-   * stops one 404 becoming one per frame. */
-  image.onerror = () => { tileCache.set(url, "missing"); };
+  image.onload = () => { tileCache.set(url, image); tileFails.delete(url); invalidate(); };
+  image.onerror = () => {
+    const failed = (tileFails.get(url) || 0) + 1;
+    tileFails.set(url, failed);
+    if (failed >= TILE_TRIES) {
+      /* Ocean and off-world squares really have no tile. Remembering that is
+       * what stops one 404 becoming one request per frame. */
+      tileCache.set(url, "missing");
+    } else {
+      /* Dropping the entry is what lets a later frame ask again. */
+      tileCache.delete(url);
+      invalidate();
+    }
+  };
   image.src = url;
   tileCache.set(url, "pending");
+  return null;
+}
+
+/* The nearest loaded ancestor of a tile, and which part of it to draw.
+ *
+ * **A tile that is not there yet should look like a blurry version of itself,
+ * not like a hole.** Every level of the pyramid covers the same world, so the
+ * tile one level up contains this one at half the resolution - and its
+ * grandparent at a quarter, and so on. Walking up until something is loaded
+ * gives progressive refinement while panning, and it is also what rescues a
+ * square whose own tile failed: the black squares this replaces were a
+ * dropped request being remembered, drawn as nothing.
+ *
+ * The y arithmetic is the one part that is not obvious. Tile indices count
+ * *northward* but image rows run *southward*, so within an ancestor the child
+ * with the **highest** y sits at the **top**: hence `span - 1 - (y & mask)`
+ * rather than the `x` form. Getting that backwards mirrors each fallback
+ * vertically, which looks like a plausible piece of map.
+ *
+ * **This asks for the ancestors, it does not merely use ones already held**,
+ * and the cost of that is bounded rather than merely small: each level up has
+ * a quarter the tiles, so a screen of N tiles pulls at most N(1 + 1/4 + 1/16 +
+ * ...) < 1.34N. In exchange the fallback works on a cold deep link, and
+ * zooming back *out* is instant because those levels are already there. */
+function tileAncestor(z, x, y) {
+  for (let up = 1; z - up >= MIN_TILE_ZOOM; up++) {
+    const step = 1 << up;
+    const image = tileFor(z - up, x >> up, y >> up);
+    if (!image) continue;
+    const size = TILE_PIXELS / step;
+    return {
+      image,
+      sx: (x & (step - 1)) * size,
+      sy: (step - 1 - (y & (step - 1))) * size,
+      size,
+    };
+  }
   return null;
 }
 
@@ -440,20 +499,33 @@ function drawTiles() {
   const y1 = Math.floor(screenToWorldY(0) / span);
   const y0 = Math.floor(screenToWorldY(CANVAS.clientHeight) / span);
 
+  const smoothing = CTX.imageSmoothingEnabled;
   for (let x = x0; x <= x1; x++) {
     for (let y = y0; y <= y1; y++) {
       if (x < 0 || y < 0) continue;
+      const dx = worldToScreenX(x * span);
+      const dy = worldToScreenY((y + 1) * span);
       const image = tileFor(z, x, y);
-      if (!image) continue;
+      if (image) {
+        CTX.imageSmoothingEnabled = smoothing;
+        CTX.drawImage(image, dx, dy, size + bleed, size + bleed);
+        continue;
+      }
+      /* Not there - yet, or at all. Draw the same ground from a coarser level
+       * rather than leaving a hole. Smoothing is forced on: this is always a
+       * magnification, and blurry reads as "lower resolution" where blocky
+       * reads as a rendering fault. */
+      const coarse = tileAncestor(z, x, y);
+      if (!coarse) continue;
+      CTX.imageSmoothingEnabled = true;
       CTX.drawImage(
-        image,
-        worldToScreenX(x * span),
-        worldToScreenY((y + 1) * span),
-        size + bleed,
-        size + bleed,
+        coarse.image,
+        coarse.sx, coarse.sy, coarse.size, coarse.size,
+        dx, dy, size + bleed, size + bleed,
       );
     }
   }
+  CTX.imageSmoothingEnabled = smoothing;
 }
 
 function onScreen(x, y, size) {
