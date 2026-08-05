@@ -60,11 +60,22 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs, urlsplit
 
-from fray_claude import cache
-from fray_claude.api import DEFAULT_TIMEOUT, fetch_map
+from fray_claude import cache, dps_bridge
+from fray_claude.api import (
+    CHUNKINFO_URL,
+    DEFAULT_TIMEOUT,
+    TASKS_MAP_URL,
+    fetch_chunkinfo,
+    fetch_map,
+    fetch_tasks_map,
+)
 from fray_claude.batch import RunResult, run_batch
+from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.delta import diff_names
 from fray_claude.derived_cache import cached_derive
+from fray_claude.estimate import estimate, goal_levels, infer_levels
+from fray_claude.heuristics import Heuristics, merge
+from fray_claude.heuristics import load as load_heuristics
 from fray_claude.neighbours import eligible_neighbours
 from fray_claude.search import build_world_index, search
 from fray_claude.summary import _mapping, summarise
@@ -273,6 +284,72 @@ def _unlock_preview(state: DerivedState, chunk_id: str, ctx: Context) -> dict[st
     return delta.as_dict()
 
 
+def _heuristics_for(info: ChunkInfo, root: Path | None) -> tuple[Heuristics, bool]:
+    """The estimator's two layers, and whether the scrape was there at all.
+
+    Mirrors `cli._load_heuristics`. The flag is returned rather than swallowed
+    for the same reason it is there: without a scrape every number falls to a
+    default and the total is thousands of hours light, which is only honest if
+    the screen says so.
+    """
+    try:
+        scraped = cache.read_blob(cache.WIKI_RATES_BLOB_NAME, root)["data"]
+        found = True
+    except cache.CacheMissError:
+        scraped, found = {}, False
+    return (
+        load_heuristics(
+            merge(scraped, cache.read_overrides(root)),
+            boss_monsters=frozenset(_mapping(info.code_items, "bossMonsters")),
+            slayer_monsters=frozenset(info.slayer_monsters),
+        ),
+        found,
+    )
+
+
+def _estimate_payload(state: DerivedState, ctx: Context) -> dict[str, Any]:
+    """`fray estimate`, plus whether the DPS bridge contributed.
+
+    The bridge is an optional extra, so an estimate computed with it and one
+    computed without are different numbers - and the screen has to be able to
+    say which it is showing.
+    """
+    info = state.state.chunk_info
+    heuristics, scraped_found = _heuristics_for(info, ctx.root)
+    overrides = _mapping(cache.read_overrides(ctx.root), "levels")
+    level_overrides = {
+        skill: int(level)
+        for skill, level in overrides.items()
+        if isinstance(level, int) and not isinstance(level, bool)
+    }
+
+    coverage = None
+    if dps_bridge.DPS_AVAILABLE:
+        levels = infer_levels(state.state)
+        levels.update(level_overrides)
+        heuristics, coverage = dps_bridge.enrich(
+            heuristics,
+            info,
+            state.derived,
+            goal_levels(state.state, state.derived, levels),
+            pinned_monsters=frozenset(_mapping(cache.read_overrides(ctx.root), "monsters")),
+        )
+
+    result = estimate(
+        state.state,
+        state.derived,
+        build_world_index(info),
+        heuristics,
+        level_overrides=level_overrides,
+    )
+    return {
+        "map_id": state.map_id,
+        "scraped_rates": scraped_found,
+        "dps": coverage.as_dict() if coverage is not None else None,
+        **result.as_dict(),
+    }
+
+
 def _first(query: Mapping[str, list[str]], name: str) -> str | None:
     values = query.get(name)
     if not values:
@@ -397,9 +474,73 @@ def _simulate_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     return {"job": ctx.jobs.submit("simulate", work).id}
 
 
+def _refresh_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
+    """Re-download the reference data `fray chunkinfo` and `fray heuristics` get.
+
+    Both in one action because they are one decision - the chunkinfo export and
+    the wiki rates are the two static inputs, and refreshing one without the
+    other leaves the estimator quoting numbers against a world that moved.
+    """
+    what = str(payload.get("what") or "chunkinfo")
+    if what not in ("chunkinfo", "heuristics"):
+        raise ValueError(f"unknown refresh target {what!r}")
+
+    def work(progress: Progress) -> dict[str, Any]:
+        if what == "chunkinfo":
+            progress("downloading the chunk export (~10 MiB)")
+            info = fetch_chunkinfo(DEFAULT_TIMEOUT)
+            cache.write_blob(cache.CHUNKINFO_BLOB_NAME, info, CHUNKINFO_URL, ctx.root)
+            progress("downloading the tasks map")
+            tasks = fetch_tasks_map(DEFAULT_TIMEOUT)
+            cache.write_blob(cache.TASKS_MAP_BLOB_NAME, tasks, TASKS_MAP_URL, ctx.root)
+            # The export changed underneath us, so anything parsed from the old
+            # one is now wrong. Dropping it is cheaper than reasoning about it.
+            ctx.derivations.reset()
+            return {"refreshed": "chunkinfo", "chunks": len(info.get("chunks", {}))}
+        raise NotImplementedError(
+            "refreshing the wiki rates from here is not wired up yet; run: fray heuristics"
+        )
+
+    return {"job": ctx.jobs.submit(f"refresh {what}", work).id}
+
+
+def _remove_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
+    """Delete cached maps, or every simulated one.
+
+    Fetched maps are refused unless `include_fetched` says otherwise, matching
+    `fray maps rm`: a simulated map can be regenerated from its seed, and a
+    fetched one costs a round trip and is the thing everything else is derived
+    from.
+    """
+    names = payload.get("names")
+    include_fetched = bool(payload.get("include_fetched"))
+    if payload.get("all"):
+        removed = cache.remove_all_simulated(ctx.root)
+        return {"removed": removed}
+    if not isinstance(names, list) or not names:
+        raise ValueError("missing 'names' to remove")
+    removed = []
+    for name in names:
+        cache.remove_map(str(name), ctx.root, include_fetched=include_fetched)
+        removed.append(str(name))
+    return {"removed": removed}
+
+
+def _prune_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
+    """Age out cached derivations. Pure recomputation, so nothing is at risk."""
+    # `None` means "all of them", which is what an omitted age asks for.
+    raw = payload.get("older_than")
+    older_than = None if raw is None or raw == "" else float(raw)
+    dropped = cache.prune_derived(ctx.root, max_age_days=older_than)
+    return {"dropped": len(dropped), "freed": sum(entry.size for entry in dropped)}
+
+
 _ACTIONS: dict[str, Callable[[Mapping[str, Any], Context], dict[str, Any]]] = {
     "/api/fetch": _fetch_job,
     "/api/simulate": _simulate_job,
+    "/api/refresh": _refresh_job,
+    "/api/maps/remove": _remove_job,
+    "/api/derived/prune": _prune_job,
 }
 
 
@@ -565,6 +706,38 @@ def handle_request(
             limit = max(1, min(200, int(_first(query, "limit") or 40)))
             results = search(build_world_index(info), term, limit=limit)
             return _json({"query": term, "results": [r.as_dict() for r in results]})
+
+        if path == "/api/estimate":
+            map_id = _first(query, "map")
+            if map_id is None:
+                return _error("missing required parameter 'map'", HTTPStatus.BAD_REQUEST)
+            return _json(_estimate_payload(ctx.derivations.load(map_id), ctx))
+
+        if path == "/api/tasks":
+            map_id = _first(query, "map")
+            if map_id is None:
+                return _error("missing required parameter 'map'", HTTPStatus.BAD_REQUEST)
+            state = ctx.derivations.load(map_id)
+            return _json(
+                {
+                    "map_id": map_id,
+                    "skills": state.derived.task_classification.as_dict(),
+                    "other": state.derived.other_tasks.as_dict(),
+                    "bis": state.derived.bis.as_dict(),
+                }
+            )
+
+        if path == "/api/derived":
+            return _json(
+                [
+                    {
+                        "key": cached.key,
+                        "size": cached.size,
+                        "accessed_at": cached.accessed_at.isoformat(),
+                    }
+                    for cached in cache.list_derived(ctx.root)
+                ]
+            )
 
         if path in ("/api/view", "/api/revision"):
             map_id = _first(query, "map")

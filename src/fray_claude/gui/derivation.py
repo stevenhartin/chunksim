@@ -102,6 +102,19 @@ class Derivations:
                 )
             return self._digests
 
+    def reset(self) -> None:
+        """Forget the parsed export, so the next request reloads it.
+
+        Called when `fray chunkinfo` refreshes the file underneath us. The
+        alternative - reasoning about which parts of a parsed export a new one
+        invalidates - is the invalidation problem this server was built to
+        avoid, and dropping the lot costs one second.
+        """
+        with self._lock:
+            self._info = None
+            self._tasks_map = None
+            self._digests = None
+
     def load(self, map_id: str) -> DerivedState:
         """Parse and derive one map.
 
