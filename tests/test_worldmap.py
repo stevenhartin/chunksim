@@ -8,6 +8,8 @@ against the real image by cropping it rather than by re-reading the arithmetic.
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from fray_claude.delta import diff_names
@@ -407,3 +409,83 @@ def test_without_the_mapping_a_named_area_is_still_reported_skipped() -> None:
 
     assert view.skipped == ("Kurask Lair",)
     assert [cell.chunk_id for cell in view.cells] == [LUMBRIDGE]
+
+
+#: The real shape of the fourteen pointers: a `Name` and nothing else, at a
+#: synthetic region no tiling covers. Their parent is an ordinary dungeon.
+_SUBDIVIDED = {
+    "109001": "Brimhaven Dungeon#Section 1",
+    "10644": "Brimhaven Dungeon",
+    "10645": "Brimhaven Dungeon",
+    "5280": "Karuulm Slayer Dungeon#Lobby",
+}
+
+
+def test_a_subdivision_with_no_square_borrows_its_parents() -> None:
+    """`109001` is region (425, 201) - a pointer, not a place.
+
+    All fourteen such ids are `<parent>#Section N`, and both parents are
+    ordinary placeable dungeons, so the honest square for a section is the
+    dungeon's. Holding the section by id or by name reaches the same squares.
+    """
+    from fray_claude.gui.worldmap import region_xy as _rx
+
+    assert _rx(109001) == (425, 201)
+    assert grid_position("109001") is None
+
+    by_id = build_view(map_id="t", unlocked=["109001"], areas=_SUBDIVIDED)
+    by_name = build_view(
+        map_id="t", unlocked=["Brimhaven Dungeon#Section 1"], areas=_SUBDIVIDED
+    )
+
+    assert {c.chunk_id for c in by_id.cells} == {"10644", "10645"}
+    assert {c.chunk_id for c in by_name.cells} == {"10644", "10645"}
+    assert by_id.skipped == () and by_name.skipped == ()
+    # The label is the parent's, because the square is the parent's.
+    assert {c.area for c in by_id.cells} == {"Brimhaven Dungeon"}
+
+
+def test_a_subdivision_that_has_its_own_square_keeps_it() -> None:
+    """**The condition is "nowhere to draw", not "contains a `#`".**
+
+    59 named areas carry the separator and 52 of them have their own region.
+    Firing on the separator would move every one of those onto its parent and
+    throw away the detail the export went to the trouble of recording.
+    """
+    view = build_view(map_id="t", unlocked=["Karuulm Slayer Dungeon#Lobby"], areas=_SUBDIVIDED)
+
+    assert [c.chunk_id for c in view.cells] == ["5280"]
+    assert [c.area for c in view.cells] == ["Karuulm Slayer Dungeon#Lobby"]
+
+
+def test_a_subdivision_whose_parent_is_unplaceable_too_stays_skipped() -> None:
+    """Inventing a square would be worse than admitting there isn't one."""
+    view = build_view(
+        map_id="t",
+        unlocked=["Nowhere#Basement"],
+        areas={"109001": "Brimhaven Dungeon#Section 1"},
+    )
+
+    assert view.cells == ()
+    assert view.skipped == ("Nowhere#Basement",)
+
+
+@pytest.mark.skipif(
+    not os.environ.get("FRAY_CHUNKINFO"), reason="needs the real ~7MB export"
+)
+def test_the_real_export_has_nothing_left_unplaced() -> None:
+    """The whole point of the two resolutions, measured on real data.
+
+    Named areas resolve through the regions carrying their `Name`, and the
+    fourteen pointers through their parent. Between them every one of the
+    export's 2,234 ids lands somewhere, so `skipped` becomes a statement about
+    a *map* rather than about the export.
+    """
+    from fray_claude import cache
+    from fray_claude.chunkinfo import ChunkInfo
+
+    info = ChunkInfo(cache.read_chunkinfo())
+    view = build_view(map_id="real", unlocked=list(info.chunks), areas=info.area_names())
+
+    assert view.skipped == ()
+    assert len(view.cells) == len({c.chunk_id for c in view.cells})

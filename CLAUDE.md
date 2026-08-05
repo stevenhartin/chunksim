@@ -328,7 +328,7 @@ Things worth knowing before changing it:
   region rectangle (x 14–66, y 18–197, 53×180) rather than the surface's, underground sits north of
   the overworld because of the y-flip, and **1,905 of the export's 1,919 numeric ids are placeable
   against 1,176 before**. A plane selector picks the floor; it changes the tiles and nothing else,
-  since a region contains every plane. What is left unplaced: 14 numeric outliers past region x 405.
+  since a region contains every plane. What is left unplaced: nothing.
 - **A named area is placed by the export, not by matching its name.** `Abyss` has no coordinates,
   but the export stores such a place *twice* — once under its name holding the contents, and once as
   one or more ordinary numbered chunks carrying `Name` — and a numbered chunk is a region, so it has
@@ -339,8 +339,14 @@ Things worth knowing before changing it:
   span two vocabularies. The mapping is many-to-one (Hallowed Sepulchre is 24 regions) but **no
   region carries two names**, so inverting is lossless. `build_view(areas=…)` resolves a named id to
   those regions and **collapses it onto the numeric cell** when a map holds both, since two cells on
-  one square would double the hull and the count. `/api/view` only pays the 10MB parse when the map
-  actually holds a non-numeric id; `/api/areas` serves the whole mapping once, map-independently.
+  one square would double the hull and the count. **A `<parent>#<part>` with nowhere to go borrows its parent's regions**, which is what places the
+  last 14 — synthetic ids like `109001` carrying `Brimhaven Dungeon#Section 1` and nothing else, at
+  regions no tiling covers. The condition is "has no square", **not** "contains a `#`": 59 named
+  areas carry the separator and 52 already have their own region, so firing on the separator would
+  throw away detail the export went to the trouble of recording. Given the whole export that leaves
+  **2,234 ids → 1,905 cells and an empty `skipped`**, so `skipped` is now a statement about a map
+  rather than about the export. `/api/view` only pays the 10MB parse when the map actually holds a
+  non-numeric id; `/api/areas` serves the whole mapping once, map-independently.
   **Never read `maps.runescape.wiki/osrs/data/dataloader.json`** — it is the superseded standalone
   app's config, pinned at a 2019 render, and believing it is what made an earlier pass conclude the
   tiles were seven years stale. The current sources are `wgKartographerDataConfig` (read off any

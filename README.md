@@ -55,7 +55,8 @@ There is a second command. `fray-gui` starts a local server and opens a browser 
 OSRS world map — the wiki's cartography render, drawn from the game's own cache, at twice the detail
 of the published map and with the icons on it. It is the *whole* world: every dungeon, instance and
 boss room as well as the overworld, on one grid, with a selector for which floor to draw and the
-rooms named on it — Kurask Lair, Karuulm Slayer Dungeon, Grotesque Guardians' Lair. Your
+rooms named on it — Kurask Lair, Karuulm Slayer Dungeon, Grotesque Guardians' Lair. Every place the
+export knows about has a square, including the ones it stores only by name. Your
 unlocked chunks are bright against a greyed-out world, with a thin grid showing every chunk
 boundary, and a thick border traced around the *outside* of the unlocked region — no heavy
 line between two chunks you already hold. Pan by dragging, zoom with the wheel, click a chunk to

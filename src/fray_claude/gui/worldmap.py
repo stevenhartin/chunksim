@@ -40,20 +40,25 @@ because the y-flip puts high region y at the top. That is how the wiki lays it
 out too. 1,905 of the export's 1,919 numeric ids are placeable this way,
 against 1,176 when only the surface was drawn.
 
-**What still has no square**, which `grid_position` reports as `None`:
+**`grid_position` is about *regions*, and two kinds of id are not one:**
 
 - **Named areas.** 315 of the export's 2,234 chunk ids are strings like
-  `Abyss` or `Player-owned house`. They are real places with real contents;
-  they are not regions and have no coordinates at all. 76 of them *do* match a
-  `basemaps.json` entry by name, which is the seam for placing them later.
-- **Fourteen numeric outliers**, at region x 405 and beyond - far outside any
-  rendered rectangle, and outside the id space a region encodes sensibly.
+  `Abyss` or `Player-owned house`, with no coordinates at all.
+- **Fourteen numeric pointers**, at synthetic regions like (425, 201) that no
+  tiling covers. They carry a `Name` and nothing else.
 
-A caller that assumes "numeric implies drawable" gets a wrong square rather
-than an error, which is why the check is one function and every path goes
-through it. `MapView.skipped` carries whatever was dropped, so a canvas showing
-fewer chunks than `fray show` counted explains itself instead of reading as a
-rendering fault.
+Both are `None` here and both are resolved by `build_view` instead, which has
+`chunkinfo.area_names()` to hand: a name becomes the regions carrying it, and
+a `<parent>#<part>` with nowhere to go borrows its parent's. **Given the whole
+export, that leaves nothing unplaced** - 2,234 ids become 1,905 cells and an
+empty `skipped`.
+
+`skipped` is therefore now about a *map* holding something this build cannot
+place, not about the export having ids it never could. A caller that assumes
+"numeric implies drawable" still gets a wrong square rather than an error,
+which is why the check is one function and every path goes through it, and
+`MapView.skipped` still carries whatever was dropped so a canvas showing fewer
+chunks than `fray show` counted explains itself.
 """
 
 from __future__ import annotations
@@ -111,6 +116,14 @@ GRID_ROWS = MAX_REGION_Y - MIN_REGION_Y + 1
 #: The id-space step between horizontally adjacent chunks. `region_x` occupies
 #: the high byte, so a step east is +256 and a step *north* is +1.
 REGION_STRIDE = 256
+
+#: What separates a named area from a part of it: `Brimhaven Dungeon#Section
+#: 1`, `Karuulm Slayer Dungeon#Lobby`. **Not markup** - `challenges.py`'s
+#: `~|...|~` is markup and this is a real character in a real name, one of the
+#: several the Firebase codec escapes and restores. `build_view` uses it for
+#: one narrow fallback; see its docstring for why the separator alone is not
+#: the condition.
+AREA_SUBDIVISION = "#"
 
 # One tile per chunk at the native zoom is the whole basis of the renderer. If
 # the wiki ever re-tiles at a different scale this stops holding, and failing at
@@ -392,6 +405,21 @@ def build_view(
     region, one cell comes out, because two cells on one square would put two
     hull edges there and count the square twice.
 
+    **A subdivision with no square of its own falls back to its parent's.**
+    Fourteen ids in the export are pure pointers - they carry a `Name` and
+    nothing else, at synthetic regions like (425, 201) that no tiling covers -
+    and they are all `<parent>#Section N`: `Brimhaven Dungeon` sections 1-7 and
+    `Yanille Agility Dungeon` sections 1-7. Both parents *are* placeable, so
+    the honest square for a section is the dungeon's.
+
+    **The condition is "has no square", not "has a `#`"**, and the difference
+    is the whole rule: 59 named areas contain a `#` and **52 of them already
+    have their own region** (`Karuulm Slayer Dungeon#Lobby` is region 5280).
+    Firing on the separator would move those onto their parent and lose the
+    detail the export went to the trouble of recording. Of the remaining
+    seven, the ones whose parent has no region either - `Barbarian
+    Assault#Basement`, and 38 like it - stay unplaced, which is the truth.
+
     Every input is membership-tested and never read for its value. The map
     payload stores `chunks.unlocked` as `{"12850": "12850"}` - the id again,
     not `True` - so a truthiness check here would be a coincidence rather than
@@ -405,11 +433,29 @@ def build_view(
         for chunk_id, area in areas.items():
             regions_of.setdefault(area, []).append(chunk_id)
 
+    def drawable(chunk_ids: Iterable[str]) -> bool:
+        return any(grid_position(chunk_id) is not None for chunk_id in chunk_ids)
+
     def expand(chunk_id: str) -> list[str]:
-        """A named id becomes the regions it names; anything else stays put."""
+        """A named id becomes the regions it names; anything else stays put.
+
+        With one fallback, and only when there is otherwise nowhere to draw:
+        a `<parent>#<part>` subdivision borrows its parent's regions. See the
+        docstring on why the test is "nowhere to draw" rather than "has a
+        `#`".
+        """
         if chunk_id.isdigit():
-            return [chunk_id]
-        return regions_of.get(chunk_id) or [chunk_id]
+            resolved = [chunk_id]
+            name = (areas or {}).get(chunk_id, "")
+        else:
+            resolved = list(regions_of.get(chunk_id) or [chunk_id])
+            name = chunk_id
+        if drawable(resolved):
+            return resolved
+
+        parent = name.split(AREA_SUBDIVISION, 1)[0] if AREA_SUBDIVISION in name else ""
+        inherited = regions_of.get(parent) or []
+        return list(inherited) if drawable(inherited) else resolved
 
     base = tuple(unlocked)
     gained = tuple(added)
@@ -485,6 +531,7 @@ def build_view(
 
 
 __all__ = [
+    "AREA_SUBDIVISION",
     "GRID_COLUMNS",
     "GRID_ROWS",
     "MAX_TILE_ZOOM",
