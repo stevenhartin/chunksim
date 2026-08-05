@@ -20,10 +20,9 @@ case here is testable on a fixture string. What it reads, and why each one:
   table, its `/Slayer assignments` subpage does.
 - `{{Infobox Monster |slayxp = 150}}` - slayer XP per kill, as a cross-check
   on the third-party sheet `slayer.py` reads.
-- **`RuneScape:Map`'s rendered HTML** - the current map-tile version. The one
-  thing here that is not wikitext, and it is here anyway because it is the
-  same job: text the wiki serves, turned into one fact, purely. See
-  `map_tile_version`.
+- **`MediaWiki:Kartographer-map-version`** - the current map-tile render, as
+  one bare string. Barely a parse, and it is here anyway because the check it
+  does is the point: see `map_tile_version`.
 
 **Comments are stripped first, and that is not defensive.** Gargoyle's infobox
 reads `slayxp = 105<!-- before changing this, remember that the morytania
@@ -62,19 +61,14 @@ ASSIGNMENTS_PAGE = "Slayer assignments"
 #: one it replaces. The export knows nothing about them.
 SUPERIORS_PAGE = "Superior slayer monster"
 
-#: The page whose rendered HTML names the current map-tile render. See
-#: `map_tile_version`.
-MAP_PAGE = "RuneScape:Map"
+#: The MediaWiki message naming the current map-tile render. Kartographer
+#: reads this one itself (`mw.message('kartographer-map-version')`), so it is
+#: the published answer rather than something inferred.
+MAP_VERSION_PAGE = "MediaWiki:Kartographer-map-version"
 
-#: `.../versions/2026-07-29_a/tiles/rendered/...`, as it appears inside the
-#: `background-image` of the page's `mw-kartographer-map` element. Matched on
-#: the *path* rather than on the element, because the element is Kartographer's
-#: markup and the path is the thing we are actually going to request - an
-#: attribute can be renamed without the URLs moving, and if the URLs do move
-#: this stops matching, which is the failure we want.
-_TILE_VERSION_RE = re.compile(
-    r"/versions/(?P<version>\d{4}-\d{2}-\d{2}_[0-9a-z]+)/tiles/rendered/"
-)
+#: `2026-07-29_a`. A date and a letter that increments within the day - which
+#: is exactly why a version is never *constructed* from today's date.
+_TILE_VERSION_RE = re.compile(r"\A\d{4}-\d{2}-\d{2}_[0-9a-z]+\Z")
 
 #: `<!-- ... -->`, including the multi-line ones real infoboxes carry.
 _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
@@ -406,26 +400,22 @@ def _row_task(block: str) -> str | None:
     return f"{(display or target).strip()}{trailing}"
 
 
-def map_tile_version(html: str) -> str | None:
-    """The current map-tile render, out of `RuneScape:Map`'s rendered HTML.
+def map_tile_version(raw: str) -> str | None:
+    """The map-tile render named by `MAP_VERSION_PAGE`, if it names one.
 
-    **The tile URLs carry a version and nothing publishes it as data.** The
-    path is `versions/<render>/tiles/rendered/<mapId>/<z>/<plane>_<x>_<y>.png`,
-    and `<render>` is a dated string like `2026-07-29_a` that moves whenever
-    the wiki re-renders the world from a new game cache. There is no index,
-    no `versions.json` and no directory listing - but the map page embeds a
-    static fallback image for browsers without JavaScript, and its
-    `background-image` is a list of real tile URLs. That is where the answer
-    is, so that is where it is read from.
+    **The value is one bare string, so this is a check rather than a parse -
+    and the check is the reason it exists.** `?action=raw` on a page that has
+    been deleted, renamed or protected does not fail; it answers with an error
+    document, and interpolating *that* into a tile URL produces a request for
+    something enormous and nonsensical rather than a visible failure.
 
-    Deliberately **not** guessed at from today's date: the suffix is a letter
-    that increments within a day, so a constructed URL is wrong more often
-    than not, and a wrong one 404s silently into a blank map.
+    Deliberately **not** guessed at from today's date, either: the suffix is a
+    letter that increments within a day, so a constructed version is wrong more
+    often than not and a wrong one 404s silently into a blank map.
 
-    Returns `None` rather than raising, because a page that stops carrying a
-    tile URL is a thing the caller has to *decide* about - fall back to the
-    version it cached last time, or say the map is unavailable - and neither
-    is this function's call to make.
+    Returns `None` rather than raising, because what to do about it is the
+    caller's call - fall back to the version it cached last time, or say the
+    map is unavailable - and not this function's.
     """
-    found = _TILE_VERSION_RE.search(html)
-    return found.group("version") if found is not None else None
+    candidate = raw.strip()
+    return candidate if _TILE_VERSION_RE.match(candidate) else None

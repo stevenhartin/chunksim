@@ -317,10 +317,24 @@ Things worth knowing before changing it:
   counting *northward*, so at `NATIVE_TILE_ZOOM = 2` one tile **is** one chunk and its index is the
   chunk id decomposed. `drawTiles` picks the pyramid level from the on-screen cell size. Two
   things bite here — `worldToScreenY` needs `MAX_REGION_Y + 1` because it maps an *edge* where
-  `gridToChunk` numbers a *cell*, and the version is scraped from `RuneScape:Map`'s fallback image
-  because no index of renders exists anywhere. Both have tests; the first was found by comparing the
-  canvas against a raw tile (0.016 mean channel difference aligned, 13.7 one pixel out).
-  `FRAY_TILE_VERSION` pins a render when the scrape breaks.
+  `gridToChunk` numbers a *cell*, and the version comes from
+  `MediaWiki:Kartographer-map-version?action=raw`, the message Kartographer itself reads, because
+  no index of renders exists anywhere. Both have tests; the first was found by comparing the canvas
+  against a raw tile (0.016 mean channel difference aligned, 13.7 one pixel out).
+  `FRAY_TILE_VERSION` pins a render when that message moves.
+- **The tile set is `-1`, "Full Map", not `0`, "Gielinor Surface" — and that is what puts the
+  dungeons on the grid.** Where the two overlap the tiles are byte-identical, so nothing is traded
+  away, and `-1` is what the wiki's own `World_map` asks for. The grid is therefore the *whole*
+  region rectangle (x 14–66, y 18–197, 53×180) rather than the surface's, underground sits north of
+  the overworld because of the y-flip, and **1,905 of the export's 1,919 numeric ids are placeable
+  against 1,176 before**. A plane selector picks the floor; it changes the tiles and nothing else,
+  since a region contains every plane. What is left unplaced: the 315 named areas (`Abyss`), of
+  which **76 match a `basemaps.json` entry by name** and are the next seam, and 14 numeric outliers
+  past region x 405.
+  **Never read `maps.runescape.wiki/osrs/data/dataloader.json`** — it is the superseded standalone
+  app's config, pinned at a 2019 render, and believing it is what made an earlier pass conclude the
+  tiles were seven years stale. The current sources are `wgKartographerDataConfig` (read off any
+  page embedding a map) and `versions/<v>/basemaps.json`.
   **The 1,534 section masks and 24 skill icons are the same argument with a different answer to
   *when*:** they are proxied one file at a time, on the request that first draws them, because a
   chunk has a handful of sections and nobody opens all of them. `cache.section_overlay_path` is the

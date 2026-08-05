@@ -49,6 +49,15 @@
 
   <span class="rule"></span>
 
+  <!-- The floor. Every rendered region has up to four, and a dungeon's
+       interesting half is often not on the ground one. -->
+  <select id="plane" class="pick" aria-label="Plane" title="Which floor to draw (0 is ground level)">
+    <option value="0">Plane 0</option>
+    <option value="1">Plane 1</option>
+    <option value="2">Plane 2</option>
+    <option value="3">Plane 3</option>
+  </select>
+
   <button id="candidates" class="toggle" type="button" aria-pressed="false"
           title="Show the chunks you could roll next, numbered as the app numbers them (C)">Candidates</button>
   <button id="masks" class="toggle" type="button" aria-pressed="false"

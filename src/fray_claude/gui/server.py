@@ -71,6 +71,7 @@ from fray_claude.api import (
     CHUNKINFO_URL,
     DEFAULT_TIMEOUT,
     MAP_TILE_ATTRIBUTION,
+    MAP_TILE_MAP_ID,
     MAP_TILE_URL,
     MAP_TILE_VERSION_URL,
     TASKS_MAP_URL,
@@ -524,6 +525,7 @@ def _tile_source(ctx: Context) -> dict[str, Any]:
     """
     source: dict[str, Any] = {
         "template": MAP_TILE_URL,
+        "map_id": MAP_TILE_MAP_ID,
         "attribution": MAP_TILE_ATTRIBUTION,
         "attribution_url": MAP_TILE_VERSION_URL,
         "version": "",

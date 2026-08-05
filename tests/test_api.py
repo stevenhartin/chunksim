@@ -22,6 +22,7 @@ from fray_claude.api import (
     WIKI_API_URL,
     WIKI_TITLES_PER_REQUEST,
     WIKI_USER_AGENT,
+    MAP_TILE_MAP_ID,
     MAP_TILE_URL,
     MAP_TILE_VERSION_URL,
     FetchError,
@@ -288,18 +289,15 @@ def test_the_slayer_sheet_url_names_the_tab() -> None:
 def test_the_tile_version_is_read_out_of_the_map_page(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The one request made on the tiles' behalf, and it is for HTML.
+    """The one request made on the tiles' behalf, and it is a dozen bytes.
 
-    The tiles themselves the browser loads directly from the wiki's CDN - see
-    `api.MAP_TILE_URL` for why keeping the bytes out of this process is a
-    licence decision. All that is fetched here is which render to ask for.
+    `MediaWiki:Kartographer-map-version` is the message Kartographer itself
+    reads, so this is the published answer rather than something inferred off
+    a rendered page. The tiles the browser loads directly - see
+    `api.MAP_TILE_URL` for why keeping those bytes out of this process is a
+    licence decision.
     """
-    page = (
-        '<a class="mw-kartographer-map" style="background-image: '
-        "url(https://maps.runescape.wiki/osrs/versions/2026-07-29_a"
-        '/tiles/rendered/0/1/0_24_26.png)"></a>'
-    )
-    calls = _patch_urlopen(monkeypatch, _responds(page.encode("utf-8")))
+    calls = _patch_urlopen(monkeypatch, _responds(b"2026-07-29_a\n"))
 
     assert fetch_map_tile_version() == "2026-07-29_a"
     # A `Request`, not a bare URL, because the wiki 403s an anonymous client -
@@ -310,19 +308,29 @@ def test_the_tile_version_is_read_out_of_the_map_page(
     assert "fray-claude" in (request.get_header("User-agent") or "")
 
 
-def test_a_map_page_with_no_tile_url_is_an_error(
+def test_a_message_page_that_is_not_a_version_is_an_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The failure that will happen quietly one day, made loud.
+    """`?action=raw` on a missing page answers with a document, not a failure.
 
-    There is no index of renders anywhere, so the version is scraped - and a
-    page that stops carrying a tile URL would otherwise yield an empty version
-    and a blank map with nothing anywhere saying why.
+    So the check is not defensive: interpolating an error page into a tile URL
+    asks the CDN for something enormous and nonsensical, and nothing anywhere
+    would say why the map went blank.
     """
-    _patch_urlopen(monkeypatch, _responds(b"<p>the map has moved</p>"))
+    _patch_urlopen(monkeypatch, _responds(b"<!DOCTYPE html><p>No such page</p>"))
 
     with pytest.raises(FetchError, match="no tile version"):
         fetch_map_tile_version()
+
+
+def test_the_full_map_is_the_tile_set_asked_for() -> None:
+    """`-1`, not `0`. The whole reason this tiling is worth using.
+
+    `0` is the surface alone; `-1` adds every dungeon, instance and boss room,
+    and where they overlap the tiles are byte-identical - so there is nothing
+    traded away. It is also what the wiki's own `World_map` asks for.
+    """
+    assert MAP_TILE_MAP_ID == -1
 
 
 def test_a_tile_version_http_error_is_reported(

@@ -6,7 +6,7 @@ turns a request into a `MapView` and back into bytes, the same way `cli.py`
 holds argparse and nothing else.
 
 **This lives in `gui/` rather than in the library because all of it is about
-one particular map.** The 48x34 grid, the tile pyramid and the flipped y axis
+one particular map.** The 53x180 grid, the tile pyramid and the flipped y axis
 are properties of how the OSRS wiki tiles the world, not facts about the game
 that the rest of the project could use. The one piece that *is* world knowledge
 is `region_xy`, and `dps_bridge.in_wilderness` already inlines it; if the
@@ -18,14 +18,14 @@ module import from an app package.
 A chunk id *is* an OSRS region id, so:
 
     region_x, region_y = chunk_id >> 8, chunk_id & 0xFF
-    grid_x = region_x - MIN_REGION_X          # 15
-    grid_y = MAX_REGION_Y - region_y          # 65 - y, and note the direction
+    grid_x = region_x - MIN_REGION_X          # 14
+    grid_y = MAX_REGION_Y - region_y          # 197 - y, and note the direction
 
 **The y axis is flipped**, which is the one thing here that will look like a
 bug: the screen's origin is the world's *north*-west corner and rows grow
 southward, while OSRS's `region_y` grows *northward*. Lumbridge is chunk 12850
-= region (50, 50) = grid (35, 15), and its tile really is
-`.../tiles/rendered/0/2/0_50_50.png` - checked, not assumed, because every
+= region (50, 50) = grid (36, 147), and its tile really is
+`.../tiles/rendered/-1/2/0_50_50.png` - checked, not assumed, because every
 later bug in this module would otherwise look like a hull bug.
 
 **The tile URLs do *not* flip y.** The tile index counts north like the game
@@ -33,16 +33,21 @@ does, so a tile is addressed `(region_x, region_y)` and only the *drawing*
 inverts. Mixing those two up puts the world upside down, which at least fails
 loudly; getting it right in one place and not the other does not.
 
-**Two kinds of chunk id have no square on this map**, and `grid_position`
-returning `None` is how both are reported:
+**Underground is on the same grid, not on a second one.** The Full Map tile
+set covers region y up to 197, so Kurask Lair at region (18, 143) has a square
+like anything else - it simply sits far to the *north* of the overworld,
+because the y-flip puts high region y at the top. That is how the wiki lays it
+out too. 1,905 of the export's 1,919 numeric ids are placeable this way,
+against 1,176 when only the surface was drawn.
+
+**What still has no square**, which `grid_position` reports as `None`:
 
 - **Named areas.** 315 of the export's 2,234 chunk ids are strings like
-  `Abyss`, `Dorgesh-Kaan` or `Player-owned house`. They are real places with
-  real contents; they are not regions and have no coordinates at all.
-- **Underground and instanced regions.** Numeric, but outside the surface
-  rectangle - `4751` is Kurask Lair at region (18, 143), far below the map's
-  `region_y` ceiling of 65. 743 of them. The wiki tiles them under their own
-  map ids, which is a seam this does not use yet.
+  `Abyss` or `Player-owned house`. They are real places with real contents;
+  they are not regions and have no coordinates at all. 76 of them *do* match a
+  `basemaps.json` entry by name, which is the seam for placing them later.
+- **Fourteen numeric outliers**, at region x 405 and beyond - far outside any
+  rendered rectangle, and outside the id space a region encodes sensibly.
 
 A caller that assumes "numeric implies drawable" gets a wrong square rather
 than an error, which is why the check is one function and every path goes
@@ -78,12 +83,27 @@ NATIVE_TILE_ZOOM = 2
 MIN_TILE_ZOOM = -3
 MAX_TILE_ZOOM = 3
 
-#: The surface rectangle the map covers, in OSRS region coordinates. World
-#: tiles x 960-4031 and y 2048-4223, divided by 64.
-MIN_REGION_X = 15
-MAX_REGION_X = 62
-MIN_REGION_Y = 32
-MAX_REGION_Y = 65
+#: The rectangle the map covers, in OSRS region coordinates - **the whole
+#: world, not the surface.** These are `basemaps.json`'s bounds for the
+#: `Full Map` tile set (`api.MAP_TILE_MAP_ID`), which is the one that carries
+#: the dungeons, instances and boss rooms as well as the overworld.
+#:
+#: They were narrower once, and that was a real bug rather than a simpler
+#: choice: the surface-only rectangle (x 15-62, y 32-65) clipped five chunks
+#: the export actually holds - 6722, 7234, 7490, 11842 and 13122, all at
+#: region y 66 - and reported them as unplaceable alongside the genuinely
+#: unplaceable ones, where nothing distinguished the two.
+#:
+#: To re-derive after a re-render: read `versions/<v>/basemaps.json`, find the
+#: entry whose `mapId` is -1, and divide its `bounds` by 64. Hardcoded rather
+#: than fetched because the projection has to be a constant - `grid_position`
+#: is called from pure code that has no business making a request - and
+#: because a world that grows makes these too small, which shows up as chunks
+#: in `skipped` rather than as anything silent.
+MIN_REGION_X = 14
+MAX_REGION_X = 66
+MIN_REGION_Y = 18
+MAX_REGION_Y = 197
 
 GRID_COLUMNS = MAX_REGION_X - MIN_REGION_X + 1
 GRID_ROWS = MAX_REGION_Y - MIN_REGION_Y + 1
@@ -132,8 +152,12 @@ def chunk_id_of(region_x: int, region_y: int) -> int:
     return region_x * REGION_STRIDE + region_y
 
 
-def on_surface(region_x: int, region_y: int) -> bool:
-    """Whether a region falls inside the rectangle the map image covers."""
+def on_map(region_x: int, region_y: int) -> bool:
+    """Whether a region falls inside the rectangle the tiles cover.
+
+    Named `on_surface` once, which stopped being true when the base layer
+    became the Full Map: most of what passes now is *underground*.
+    """
     return (
         MIN_REGION_X <= region_x <= MAX_REGION_X
         and MIN_REGION_Y <= region_y <= MAX_REGION_Y
@@ -142,7 +166,7 @@ def on_surface(region_x: int, region_y: int) -> bool:
 
 @dataclass(frozen=True)
 class GridPos:
-    """A chunk's cell on the 48x34 grid, and its pixel origin on the image."""
+    """A chunk's cell on the grid, and its pixel origin at native zoom."""
 
     grid_x: int
     grid_y: int
@@ -170,7 +194,7 @@ def grid_position(chunk_id: str) -> GridPos | None:
     if not chunk_id.isdigit():
         return None
     region_x, region_y = region_xy(int(chunk_id))
-    if not on_surface(region_x, region_y):
+    if not on_map(region_x, region_y):
         return None
     # The y-flip. See the module docstring - image rows grow south, region y
     # grows north.
@@ -452,6 +476,6 @@ __all__ = [
     "chunk_id_of",
     "grid_position",
     "hull_edges",
-    "on_surface",
+    "on_map",
     "region_xy",
 ]

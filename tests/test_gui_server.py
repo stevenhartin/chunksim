@@ -223,6 +223,7 @@ def test_the_tile_source_is_a_template_and_never_a_tile(
     payload = _body(_get("/api/tiles", Context(root=tmp_path)))
 
     assert payload["version"] == "2026-07-29_a"
+    assert payload["map_id"] == -1  # Full Map, not the surface. See MAP_TILE_MAP_ID.
     assert payload["template"].startswith("https://maps.runescape.wiki/")
     assert "{version}" in payload["template"] and "{z}" in payload["template"]
     assert payload["attribution"]
@@ -398,6 +399,28 @@ def test_the_tile_placement_uses_the_edge_row_not_the_cell_row() -> None:
     match = re.search(r"const GRID_TOP_REGION_Y = (\d+);", _app_js())
     assert match is not None
     assert int(match.group(1)) == MAX_REGION_Y + 1
+
+
+def test_the_plane_reaches_the_tile_url_and_nothing_else() -> None:
+    """**Changing floor changes the picture and no data at all.**
+
+    A chunk is a region and a region contains every plane, so the unlocked
+    set, the hull and every panel are identical on floor 3 and floor 0 - only
+    the tiles differ. If a plane change ever started refetching a view, that
+    would be a derivation per floor for no answer.
+    """
+    source = _app_js()
+
+    assert "plane: 0," in source                      # part of the camera state
+    assert '.replace("{plane}"' in source             # substituted into the URL
+    # The handler invalidates and does nothing else - no loadView, no fetch.
+    handler = re.search(
+        r'el\.plane\.addEventListener\("change", \(\) => \{(.*?)\}\);', source, re.DOTALL
+    )
+    assert handler is not None
+    body = handler.group(1)
+    assert "invalidate()" in body
+    assert "loadView" not in body and "getJSON" not in body
 
 
 def test_the_page_loads_tiles_from_the_wiki_and_not_from_here() -> None:

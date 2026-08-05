@@ -59,21 +59,38 @@ TASKS_MAP_URL = _UPSTREAM_RAW.format(path="tasksMap.json")
 #: Pointing at them makes it a page with a picture on it, which is what every
 #: other site embedding a map is.
 #:
-#: `{version}` is `MAP_TILE_VERSION_URL`'s answer; `{map_id}` is 0 for the
-#: surface; `{z}` is -3..3 with `256 / 2**z` game tiles per 256px tile, so
-#: **z=2 is exactly one chunk per tile**; `{plane}` is the floor, 0..3; and
-#: `{x}`/`{y}` are the tile indices, y counting *northward* like the game's own
-#: coordinates rather than downward like an image row.
+#: `{version}` is `MAP_TILE_VERSION_URL`'s answer; `{map_id}` selects a tile
+#: set (see `MAP_TILE_MAP_ID`); `{z}` is -3..3 with `256 / 2**z` game tiles per
+#: 256px tile, so **z=2 is exactly one chunk per tile**; `{plane}` is the
+#: floor, 0..3; and `{x}`/`{y}` are the tile indices, y counting *northward*
+#: like the game's own coordinates rather than downward like an image row.
+#:
+#: Both halves are `wgKartographerDataConfig`'s own `baseTileURL` and
+#: `tileURLFormat`, read off a page that embeds a map. Kartographer writes the
+#: y as `{-y}` because Leaflet counts rows downward and this scheme does not;
+#: nothing here has a Leaflet to undo, so it is a plain `{y}`.
 MAP_TILE_URL = (
     "https://maps.runescape.wiki/osrs/versions/{version}"
     "/tiles/rendered/{map_id}/{z}/{plane}_{x}_{y}.png"
 )
 
-#: Where `MAP_TILE_URL`'s `{version}` comes from. The wiki publishes no index
-#: of renders, but its map page embeds a no-JavaScript fallback whose
-#: `background-image` is a list of real tile URLs - see `wiki.map_tile_version`
-#: for why that is read rather than a version being constructed from the date.
-MAP_TILE_VERSION_URL = "https://oldschool.runescape.wiki/w/RuneScape:Map"
+#: **`-1` is "Full Map", and it is the whole point of using this tiling.**
+#: `0` is the surface alone; `-1` is every rendered region including the 219
+#: named dungeons, instances and boss rooms - and where the two overlap the
+#: tiles are *byte-identical* (checked by hash on Lumbridge, Varrock and Al
+#: Kharid), so there is nothing to trade away. It is also what the wiki's own
+#: `World_map` page asks for. That single change takes the chunks this project
+#: can draw from 1,176 to 1,905 of the export's 1,919 numeric ids.
+MAP_TILE_MAP_ID = -1
+
+#: Where `MAP_TILE_URL`'s `{version}` comes from: the MediaWiki message
+#: Kartographer itself reads (`mw.message('kartographer-map-version')`),
+#: served raw. There is no index of renders anywhere - no `versions.json`, no
+#: directory listing - so this *is* the published answer rather than a
+#: workaround, and `?action=raw` returns the bare string and nothing else.
+MAP_TILE_VERSION_URL = (
+    "https://oldschool.runescape.wiki/w/MediaWiki:Kartographer-map-version?action=raw"
+)
 
 #: The credit the page shows beside the map. CC BY-NC-SA 3.0 asks for
 #: attribution, and this is the whole of what that costs when you link rather
@@ -328,23 +345,23 @@ def _wiki_contents(payload: dict[str, Any], requested: list[str]) -> dict[str, s
 
 
 def fetch_map_tile_version(timeout: float = DEFAULT_TIMEOUT) -> str:
-    """The current map-tile render, scraped from the wiki's map page.
+    """The current map-tile render, read from the wiki message that names it.
 
     **The only request this project makes on the tiles' behalf**, and it is
-    for a page of HTML rather than for artwork - the tiles themselves the
-    browser fetches directly. ~95KB, once, cached to disk afterwards.
+    for a dozen bytes of text rather than for artwork - the tiles themselves
+    the browser fetches directly.
 
     A wiki URL, so it sends `WIKI_USER_AGENT` like every other call to that
     host; the tile CDN behind it 403s an anonymous client too, but that is the
     browser's request to make and browsers always identify themselves.
 
-    Raises `FetchError` when the page cannot be read *or* when it no longer
-    carries a tile URL, because both leave the caller in the same position -
-    holding no version - and the second is the one that will happen quietly
-    one day when Kartographer's markup changes.
+    Raises `FetchError` when the message cannot be read *or* when it does not
+    look like a version, because both leave the caller in the same position -
+    holding nothing usable - and a message page that starts returning an error
+    document would otherwise become a version string made of HTML.
     """
-    html = fetch_text(MAP_TILE_VERSION_URL, timeout, what="map tile version", wiki=True)
-    version = map_tile_version(html)
+    raw = fetch_text(MAP_TILE_VERSION_URL, timeout, what="map tile version", wiki=True)
+    version = map_tile_version(raw)
     if version is None:
         raise FetchError(
             f"no tile version in {MAP_TILE_VERSION_URL} - the wiki's map page "

@@ -14,6 +14,10 @@ from fray_claude.delta import diff_names
 from fray_claude.gui.worldmap import (
     GRID_COLUMNS,
     GRID_ROWS,
+    MAX_REGION_X,
+    MAX_REGION_Y,
+    MIN_REGION_X,
+    MIN_REGION_Y,
     NATIVE_TILE_ZOOM,
     PIXELS_PER_CHUNK,
     TILE_PIXELS,
@@ -32,7 +36,7 @@ LUMBRIDGE = "12850"
 
 
 def test_lumbridge_is_where_lumbridge_is() -> None:
-    """The anchor. Verified by cropping the real image at this rectangle.
+    """The anchor. Verified against the real tile at this index.
 
     If the y-flip is ever inverted this is the test that says so - everything
     else in the module is self-consistent either way round.
@@ -42,8 +46,8 @@ def test_lumbridge_is_where_lumbridge_is() -> None:
     position = grid_position(LUMBRIDGE)
 
     assert position is not None
-    assert (position.grid_x, position.grid_y) == (35, 15)
-    assert (position.pixel_x, position.pixel_y) == (8960, 3840)
+    assert (position.grid_x, position.grid_y) == (36, 147)
+    assert (position.pixel_x, position.pixel_y) == (9216, 37632)
 
 
 def test_the_y_axis_is_flipped() -> None:
@@ -55,10 +59,14 @@ def test_the_y_axis_is_flipped() -> None:
     assert north.grid_y < south.grid_y
 
 
-def test_the_projection_tiles_the_image_exactly() -> None:
-    """The four corners, and no off-by-one at either far edge."""
-    top_left = grid_position(str(chunk_id_of(15, 65)))
-    bottom_right = grid_position(str(chunk_id_of(62, 32)))
+def test_the_projection_tiles_the_grid_exactly() -> None:
+    """The four corners, and no off-by-one at either far edge.
+
+    The corners are the Full Map's bounds, not the surface's - the narrower
+    rectangle clipped five chunks the export holds at region y 66.
+    """
+    top_left = grid_position(str(chunk_id_of(MIN_REGION_X, MAX_REGION_Y)))
+    bottom_right = grid_position(str(chunk_id_of(MAX_REGION_X, MIN_REGION_Y)))
 
     assert top_left is not None and bottom_right is not None
     assert (top_left.grid_x, top_left.grid_y) == (0, 0)
@@ -72,6 +80,18 @@ def test_a_region_round_trips_through_its_id() -> None:
         assert chunk_id_of(*region_xy(chunk_id)) == chunk_id
 
 
+def test_the_grid_covers_the_chunks_the_surface_alone_clipped() -> None:
+    """Five real chunks sat at region y 66, one row past the old ceiling.
+
+    They were reported as unplaceable beside the genuinely unplaceable ones,
+    where nothing distinguished "we do not draw this" from "this is not a
+    place". Region y 66 is now inside the grid.
+    """
+    for chunk_id in ("6722", "7234", "7490", "11842", "13122"):
+        assert region_xy(int(chunk_id))[1] == 66
+        assert grid_position(chunk_id) is not None
+
+
 def test_a_named_area_has_no_square() -> None:
     """315 of the export's chunk ids are places, not regions."""
     assert grid_position("Abyss") is None
@@ -79,15 +99,35 @@ def test_a_named_area_has_no_square() -> None:
     assert grid_position("Player-owned house") is None
 
 
-def test_an_underground_region_has_no_square() -> None:
-    """Numeric, but off the surface rectangle the image covers.
+def test_an_underground_region_is_on_the_grid() -> None:
+    """**The Full Map tile set puts underground on the same grid.**
 
-    `4751` is Kurask Lair at region (18, 143) - a real region, nowhere on this
-    map. Assuming "numeric implies drawable" draws it at a wrong square rather
-    than failing, which is why the check exists at all.
+    `4751` is Kurask Lair at region (18, 143). It had no square while the base
+    layer was the surface alone; it has one now, far to the *north* of the
+    overworld because the y-flip puts high region y at the top. 729 chunks
+    moved from unplaceable to placeable with it.
     """
     assert region_xy(4751) == (18, 143)
-    assert grid_position("4751") is None
+
+    position = grid_position("4751")
+
+    assert position is not None
+    assert (position.grid_x, position.grid_y) == (4, 54)
+    # Lumbridge is at row 147, so the dungeon really is drawn above it.
+    surface = grid_position(LUMBRIDGE)
+    assert surface is not None and position.grid_y < surface.grid_y
+
+
+def test_a_region_beyond_every_rendered_rectangle_has_no_square() -> None:
+    """Fourteen of the export's ids sit outside any tiling at all.
+
+    `103891` is region (405, 211) - past the Full Map's x ceiling of 66, and
+    past anything a region id encodes sensibly. Assuming "numeric implies
+    drawable" draws it at a wrong square rather than failing, which is why the
+    check exists at all.
+    """
+    assert region_xy(103891) == (405, 211)
+    assert grid_position("103891") is None
     assert grid_position(str(chunk_id_of(425, 50))) is None
 
 
@@ -190,14 +230,14 @@ def test_locked_chunks_are_absent_rather_than_listed() -> None:
 
     assert [cell.chunk_id for cell in view.cells] == [LUMBRIDGE]
     assert view.counts.unlocked == 1
-    assert view.geometry.grid_columns * view.geometry.grid_rows == 1632
+    assert view.geometry.grid_columns * view.geometry.grid_rows == 53 * 180
 
 
 def test_unplaceable_ids_are_reported_not_dropped() -> None:
     """A canvas showing fewer chunks than `fray show` must explain itself."""
-    view = build_view(map_id="fray", unlocked=[LUMBRIDGE, "Abyss", "4751"])
+    view = build_view(map_id="fray", unlocked=[LUMBRIDGE, "Abyss", "103891"])
 
-    assert view.skipped == ("Abyss", "4751")
+    assert view.skipped == ("Abyss", "103891")
     assert view.counts.skipped == 2
     assert view.counts.unlocked == 3  # counted as held, just not drawable
     assert [cell.chunk_id for cell in view.cells] == [LUMBRIDGE]

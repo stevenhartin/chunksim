@@ -78,6 +78,7 @@ const state = {
   selected: null,
   hovered: null,
   panX: 0, panY: 0, zoom: 0.5,
+  plane: 0,
   needsDraw: false,
   live: true,
   showCandidates: false,
@@ -88,7 +89,7 @@ const state = {
 
 const el = {};
 for (const id of [
-  "map", "compare", "breakdown", "candidates", "masks", "live", "fit", "counts", "skipped",
+  "map", "compare", "breakdown", "plane", "candidates", "masks", "live", "fit", "counts", "skipped",
   "hover", "toggle-panel", "panel", "tabs", "job", "toast", "legend", "tip",
   "overlay", "overlay-title", "overlay-body", "overlay-close",
   "chunk-head", "chunk-chips", "chunk-body", "task-chips", "tasks-body",
@@ -108,12 +109,12 @@ function toScreen(gx, gy) {
 /* The browser inverts the projection itself rather than asking the server: a
  * chunk id is a function of its square, so a round trip per mousemove would be
  * absurd. Must match gui/worldmap.py's grid_position. */
-function gridToChunk(gx, gy) { return String((gx + 15) * 256 + (65 - gy)); }
+function gridToChunk(gx, gy) { return String((gx + 14) * 256 + (197 - gy)); }
 
 function chunkToGrid(chunkId) {
   const id = Number(chunkId);
   if (!Number.isFinite(id)) return null;
-  const gx = (id >> 8) - 15, gy = 65 - (id & 0xff);
+  const gx = (id >> 8) - 14, gy = 197 - (id & 0xff);
   const { grid_columns: cols, grid_rows: rows } = state.view.geometry;
   if (gx < 0 || gy < 0 || gx >= cols || gy >= rows) return null;
   return [gx, gy];
@@ -354,7 +355,7 @@ const MAX_TILE_ZOOM = 3;
 
 /* Where the tiles come from. Filled in by `/api/tiles`; until then there is
  * simply no base layer, and the grid, hull and overlays draw over nothing. */
-const tiles = { template: "", version: "", attribution: "", error: null };
+const tiles = { template: "", version: "", map_id: -1, attribution: "", error: null };
 
 const tileCache = new Map();   // url -> Image | "pending" | "missing"
 
@@ -373,15 +374,15 @@ function tileZoom() {
 function tileUrl(z, x, y, plane) {
   return tiles.template
     .replace("{version}", tiles.version)
-    .replace("{map_id}", "0")
+    .replace("{map_id}", String(tiles.map_id))
     .replace("{z}", String(z))
-    .replace("{plane}", String(plane || 0))
+    .replace("{plane}", String(plane == null ? state.plane : plane))
     .replace("{x}", String(x))
     .replace("{y}", String(y));
 }
 
 function tileFor(z, x, y) {
-  const url = tileUrl(z, x, y, 0);
+  const url = tileUrl(z, x, y, state.plane);
   const held = tileCache.get(url);
   if (held !== undefined) return held instanceof Image ? held : null;
 
@@ -409,13 +410,13 @@ function tileFor(z, x, y) {
  * top of row 0 is region 65's **north** edge - world y 4224, which is region
  * 66's south edge. Off by one and every tile draws one row high, which looks
  * like a plausible map of somewhere slightly wrong. */
-const GRID_TOP_REGION_Y = 66;
+const GRID_TOP_REGION_Y = 198;
 
-function worldToScreenX(wx) { return state.panX + (wx / 64 - 15) * cellSize(); }
+function worldToScreenX(wx) { return state.panX + (wx / 64 - 14) * cellSize(); }
 function worldToScreenY(wy) {
   return state.panY + (GRID_TOP_REGION_Y - wy / 64) * cellSize();
 }
-function screenToWorldX(sx) { return ((sx - state.panX) / cellSize() + 15) * 64; }
+function screenToWorldX(sx) { return ((sx - state.panX) / cellSize() + 14) * 64; }
 function screenToWorldY(sy) {
   return (GRID_TOP_REGION_Y - (sy - state.panY) / cellSize()) * 64;
 }
@@ -465,13 +466,22 @@ function onScreen(x, y, size) {
 function drawLockedWash() {
   const { grid_columns: cols, grid_rows: rows } = state.view.geometry;
   const size = cellSize();
+  /* **Iterate what is on screen, not the whole grid.** The grid is 53x180 =
+   * 9,540 cells now that underground is on it, against 1,632 when it was the
+   * surface alone, and all but a handful are off screen at any time. */
+  const [left, top] = toScreen(0, 0);
+  const x0 = Math.max(0, Math.floor(-left / size));
+  const x1 = Math.min(cols - 1, Math.ceil((CANVAS.clientWidth - left) / size));
+  const y0 = Math.max(0, Math.floor(-top / size));
+  const y1 = Math.min(rows - 1, Math.ceil((CANVAS.clientHeight - top) / size));
+
   CTX.fillStyle = LOCKED_WASH;
-  for (let gx = 0; gx < cols; gx++) {
-    for (let gy = 0; gy < rows; gy++) {
+  for (let gx = x0; gx <= x1; gx++) {
+    for (let gy = y0; gy <= y1; gy++) {
       const cell = state.cells.get(gx + "," + gy);
       if (cell && cell.state !== "removed") continue;
       const [x, y] = toScreen(gx, gy);
-      if (onScreen(x, y, size)) CTX.fillRect(x, y, size, size);
+      CTX.fillRect(x, y, size, size);
     }
   }
 }
@@ -1923,6 +1933,7 @@ const BOOT = {
   compare: PARAMS.get("compare") || "",
   candidates: PARAMS.get("candidates") === "1",
   sections: PARAMS.get("sections") === "1",
+  plane: PARAMS.get("plane") || "",
   tab: PARAMS.get("tab") || "",
 };
 
@@ -1948,6 +1959,16 @@ el.masks.addEventListener("click", async () => {
   el.masks.setAttribute("aria-pressed", String(state.showMasks));
   renderLegend();
   await loadSections();
+});
+
+/* **Changing the floor changes only the picture.** A chunk is a region and a
+ * region has every plane in it, so the unlocked set, the hull and every panel
+ * are the same on floor 3 as on floor 0 - it is the tiles underneath that
+ * differ. Nothing is reloaded; the tile cache is keyed on the URL, which
+ * carries the plane. */
+el.plane.addEventListener("change", () => {
+  state.plane = Number(el.plane.value) || 0;
+  invalidate();
 });
 
 el.live.addEventListener("click", () => {
@@ -1995,6 +2016,7 @@ function renderAttribution() {
   await loadView();
   await loadTiles();
   fitToCells();
+  if (BOOT.plane) { el.plane.value = BOOT.plane; el.plane.dispatchEvent(new Event("change")); }
   if (BOOT.candidates) el.candidates.click();
   if (BOOT.sections) el.masks.click();
   showTab(BOOT.tab || "tasks");
