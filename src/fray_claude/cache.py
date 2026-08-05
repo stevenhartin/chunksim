@@ -81,7 +81,11 @@ OVERRIDES_FILE_NAME = "overrides.json"
 #: is fetched rather than committed, because all of it is Jagex's artwork -
 #: see `api.WORLD_MAP_URL`.
 ASSET_DIR_NAME = "assets"
-WORLD_MAP_ASSET = "world_map.png"
+#: JPEG, because that is what Jagex publishes. An earlier build took the PNG
+#: upstream keeps a copy of, so a checkout that predates the switch has a
+#: stale `world_map.png` beside this one; it is 8.4MiB of nothing and safe to
+#: delete, and nothing reads it.
+WORLD_MAP_ASSET = "world_map.jpg"
 WORLD_MAP_ENV_VAR = "FRAY_WORLD_MAP"
 
 #: Subdirectories of `assets/` holding the many-small-files kinds: one
@@ -465,6 +469,22 @@ def _str_or_none(value: Any) -> str | None:
     return value if isinstance(value, str) else None
 
 
+#: Everything in `cache/` that is a `*.json` and is **not** a map. Built from
+#: the names themselves rather than written out, because the failure is silent
+#: and one-directional: a blob left off this list becomes a map in every
+#: picker and every `fray maps list`, and picking it fails somewhere further
+#: down. `wiki_rates` and the GUI's window file were both missing when this
+#: was a two-name literal.
+_NOT_MAPS = frozenset(
+    {
+        CHUNKINFO_BLOB_NAME,
+        TASKS_MAP_BLOB_NAME,
+        WIKI_RATES_BLOB_NAME,
+        Path(GUI_WINDOW_FILE).stem,
+    }
+)
+
+
 def _fetched_entries(root: Path | None) -> list[MapEntry]:
     directory = (root or project_root()) / CACHE_DIR_NAME
     if not directory.is_dir():
@@ -472,7 +492,7 @@ def _fetched_entries(root: Path | None) -> list[MapEntry]:
     entries: list[MapEntry] = []
     for path in sorted(directory.glob("*.json")):
         name = path.stem
-        if name in {CHUNKINFO_BLOB_NAME, TASKS_MAP_BLOB_NAME}:
+        if name in _NOT_MAPS:
             continue
         try:
             envelope = _read_json_object(path)
@@ -772,7 +792,8 @@ def world_map_source(override: Path | None = None, root: Path | None = None) -> 
 
     The same precedence `chunkinfo_source` uses, so pointing either at a local
     copy works the same way. Unlike the chunkinfo override there is no envelope
-    to confuse: both paths hold a plain PNG.
+    to confuse: both paths hold a plain image, and `server.py` reads its
+    content type off the suffix so an override may be a PNG.
     """
     path = override
     if path is None:

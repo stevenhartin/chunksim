@@ -17,11 +17,14 @@
 const CANVAS = document.getElementById("canvas");
 const CTX = CANVAS.getContext("2d");
 
-/* Upstream clamps at 0.2, which is too high here: the whole 9216x6528 map needs
- * 0.138 to fit a 1600x900 window, so at 0.2 you could never see the world at
- * once and a sparse map would open already clipped. */
-const MIN_ZOOM = 0.08;
-const MAX_ZOOM = 3.5;
+/* Zoom is a multiplier on a 128-pixel chunk, so these are really "a chunk may
+ * be 15 to 640 screen pixels". Upstream's 0.2 floor was set against a 192-pixel
+ * cell and is too high either way: the whole map needs 0.26 to fit a 1600x900
+ * window, so at 0.2 you could never see the world at once. The ceiling is above
+ * 1.0 on purpose - past there it is upscaling, but reading a chunk's contents
+ * off the picture is worth a soft image. */
+const MIN_ZOOM = 0.12;
+const MAX_ZOOM = 5.0;
 const ZOOM_STEP = 0.15;
 
 /* Upstream's own wash, so a screenshot of either is recognisably the same map. */
@@ -35,10 +38,24 @@ const FOUND_FILL = "rgba(255, 190, 0, 0.30)";
 const GRID_STROKE = "rgba(255, 255, 255, 0.14)";
 const HOVER_FILL = "rgba(255, 255, 255, 0.10)";
 
-/* Section shading, and the two colours the plan asked for. Kept low-alpha
- * because the map underneath is the thing being annotated. */
-const SECTION_REACHED = { fill: "rgba(60, 200, 90, 0.30)", edge: "rgba(90, 255, 130, 0.95)" };
-const SECTION_LOCKED = { fill: "rgba(220, 60, 60, 0.28)", edge: "rgba(255, 110, 110, 0.9)" };
+/* Section shading. Strong enough to read at a glance rather than to be looked
+ * for: this is a mode you turn on to answer one question, and the first pass
+ * at 0.30 alpha over a busy map answered it only if you already knew where to
+ * look. The edge carries no alpha at all, because it is the thing that
+ * separates two adjacent sections that happen to shade the same colour. */
+const SECTION_REACHED = { fill: "rgba(50, 210, 90, 0.52)", edge: "#8dffae" };
+const SECTION_LOCKED = { fill: "rgba(225, 55, 55, 0.50)", edge: "#ff9090" };
+
+/* The section id meaning "the whole square". Must match `server.py`'s
+ * WHOLE_CHUNK_SECTION: an unsplit chunk has no mask to composite, so its one
+ * section is drawn as the square itself. */
+const WHOLE_CHUNK = "*";
+
+/* The ring the mask outline is drawn with, in *mask* pixels. A one-pixel ring
+ * on a 192-pixel canvas is a quarter of a screen pixel once that canvas is
+ * drawn at 44px, which is to say invisible - the outline has to be built at a
+ * width that survives the downscale. */
+const RING = 3;
 
 /* Below this on-screen chunk size the sections inside one square are a few
  * pixels each, so shading them is noise and fetching their masks is waste. */
@@ -72,7 +89,7 @@ const state = {
 
 const el = {};
 for (const id of [
-  "map", "compare", "candidates", "masks", "live", "fit", "counts", "skipped",
+  "map", "compare", "breakdown", "candidates", "masks", "live", "fit", "counts", "skipped",
   "hover", "toggle-panel", "panel", "tabs", "job", "toast", "legend", "tip",
   "overlay", "overlay-title", "overlay-body", "overlay-close",
   "chunk-head", "chunk-chips", "chunk-body", "task-chips", "tasks-body",
@@ -113,9 +130,17 @@ function chunkToGrid(chunkId) {
  * A pan that runs past its mark and settles reads as momentum; a zoom that
  * does the same runs past MAX_ZOOM, gets clamped, and stalls visibly at the
  * end of the move. So the overshoot is applied to the translation and the
- * scale gets a plain decelerating curve. */
+ * scale gets a plain decelerating curve.
+ *
+ * `BACK` is the overshoot's strength, and the textbook 1.7 - which puts the
+ * camera ~10% past its mark - is too much on a map: the thing you asked to
+ * look at leaves the middle of the screen before it comes back. 1.0 overshoots
+ * 3.7%, which still reads as momentum rather than as a snap without ever
+ * losing the target. (The peak is not `BACK` itself and is not linear in it:
+ * 1.2 gives 5.3% and 0.7 gives 1.8%, so it is worth measuring rather than
+ * guessing at.) */
 const GLIDE_MS = 420;
-const BACK = 1.7;
+const BACK = 1.0;
 
 function easeOutBack(t) {
   const u = t - 1;
@@ -203,7 +228,14 @@ function tintMask(image, colours) {
   const ring = document.createElement("canvas");
   ring.width = ring.height = 192;
   const r = ring.getContext("2d");
-  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) r.drawImage(image, dx, dy);
+  /* Eight offsets rather than four: at RING pixels the four-way version leaves
+   * the corners of a diagonal edge stepped, which reads as a jagged mask
+   * rather than as a jagged coastline. */
+  const d = RING, k = Math.round(RING * 0.71);
+  for (const [dx, dy] of [
+    [d, 0], [-d, 0], [0, d], [0, -d],
+    [k, k], [-k, k], [k, -k], [-k, -k],
+  ]) r.drawImage(image, dx, dy);
   r.globalCompositeOperation = "destination-out";
   r.drawImage(image, 0, 0);
   r.globalCompositeOperation = "source-in";
@@ -246,12 +278,35 @@ function maskFor(chunkId, section, reachable) {
   return null;
 }
 
+/* Whether drawing this chunk would put new requests on the wire. A mask
+ * already tinted costs nothing, and one already in flight costs nothing
+ * *again* - `maskCache` holds the Promise under the same key, which is what
+ * makes "has" the right test for both. An unsplit chunk has no mask at all. */
+function maskPending(chunkId, sections) {
+  for (const [section, reachable] of Object.entries(sections)) {
+    if (section === WHOLE_CHUNK) continue;
+    const name = chunkId + "-" + section;
+    if (!maskCache.has(name + (reachable ? ":reached" : ":locked")) && !maskMisses.has(name)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /* Which squares are worth shading: the one you selected, always, plus every
- * split chunk on screen once a chunk is big enough for its sections to be
- * legible. */
+ * chunk on screen once a chunk is big enough for its sections to be legible.
+ *
+ * **The budget counts new fetches, not chunks.** MASK_MAX_CHUNKS exists to
+ * stop one frame asking upstream about hundreds of files - and spending it on
+ * chunks that need nothing is worse than useless: the loop walks
+ * `state.sections` in the same order every frame, so counting already-cached
+ * squares meant the first 48 kept the budget forever and the 49th onwards were
+ * never requested at all. Every screen past about eight chunks wide had a
+ * permanent unshaded remainder that no amount of waiting filled in. */
 function maskTargets() {
   const size = cellSize();
   const wanted = [];
+  let fetching = 0;
   if (state.selected && state.sections[state.selected]) wanted.push(state.selected);
   if (size >= MASK_MIN_CELL) {
     for (const chunkId of Object.keys(state.sections)) {
@@ -259,8 +314,9 @@ function maskTargets() {
       const at = chunkToGrid(chunkId);
       if (!at) continue;
       const [x, y] = toScreen(at[0], at[1]);
-      if (onScreen(x, y, size)) wanted.push(chunkId);
-      if (wanted.length >= MASK_MAX_CHUNKS) break;
+      if (!onScreen(x, y, size)) continue;
+      if (maskPending(chunkId, state.sections[chunkId]) && ++fetching > MASK_MAX_CHUNKS) continue;
+      wanted.push(chunkId);
     }
   }
   return wanted;
@@ -276,23 +332,43 @@ const LAYERS = [
   drawCandidates, drawHull, drawHovered, drawSelected,
 ];
 
+/* The image is placed by its *content* origin, not by its top-left corner:
+ * Jagex's JPEG carries a one-pixel border on its top and right edges, so grid
+ * (0, 0) sits at (origin_x, origin_y) inside the file. Drawing it at the pan
+ * position directly puts every square one pixel out - too little to see and
+ * enough to be wrong. See gui/worldmap.py's IMAGE_ORIGIN_Y. */
 function drawBase() {
   if (!state.image) return;
-  const { image_width: w, image_height: h } = state.view.geometry;
-  CTX.drawImage(state.image, state.panX, state.panY, state.zoom * w, state.zoom * h);
+  const g = state.view.geometry;
+  CTX.drawImage(
+    state.image,
+    state.panX - state.zoom * (g.origin_x || 0),
+    state.panY - state.zoom * (g.origin_y || 0),
+    state.zoom * g.image_width,
+    state.zoom * g.image_height,
+  );
 }
 
 function onScreen(x, y, size) {
   return !(x > CANVAS.clientWidth || y > CANVAS.clientHeight || x + size < 0 || y + size < 0);
 }
 
+/* **The world drawn bright is the *compared* map's, not the base's.** A
+ * comparison asks "what does A become if I take B", so the state you are
+ * looking at has to be B's: a chunk B does not hold is locked *there*, and
+ * leaving it bright because A held it draws a world neither map is in. So a
+ * removed cell is washed like any other locked square and then tinted red on
+ * top - present in the picture as something you would lose, absent from the
+ * world the picture is of. The hull agrees: `build_view` traces it around
+ * everything that is not removed, which is exactly B's set. */
 function drawLockedWash() {
   const { grid_columns: cols, grid_rows: rows } = state.view.geometry;
   const size = cellSize();
   CTX.fillStyle = LOCKED_WASH;
   for (let gx = 0; gx < cols; gx++) {
     for (let gy = 0; gy < rows; gy++) {
-      if (state.cells.has(gx + "," + gy)) continue;
+      const cell = state.cells.get(gx + "," + gy);
+      if (cell && cell.state !== "removed") continue;
       const [x, y] = toScreen(gx, gy);
       if (onScreen(x, y, size)) CTX.fillRect(x, y, size, size);
     }
@@ -348,11 +424,25 @@ function drawStates() {
 function drawMasks() {
   if (!state.showMasks) return;
   const size = cellSize();
+  const inset = Math.max(1, Math.min(3, size / 40));
   for (const chunkId of maskTargets()) {
     const at = chunkToGrid(chunkId);
     if (!at) continue;
     const [x, y] = toScreen(at[0], at[1]);
     for (const [section, reachable] of Object.entries(state.sections[chunkId])) {
+      const colours = reachable ? SECTION_REACHED : SECTION_LOCKED;
+      /* An unsplit chunk is one section and that section is the square, so it
+       * is filled directly. Same fill and same edge as a mask gets, because
+       * the point of drawing it at all is that "not divided" should look like
+       * one section rather than like missing data. */
+      if (section === WHOLE_CHUNK) {
+        CTX.fillStyle = colours.fill;
+        CTX.fillRect(x, y, size, size);
+        CTX.strokeStyle = colours.edge;
+        CTX.lineWidth = inset;
+        CTX.strokeRect(x + inset / 2, y + inset / 2, size - inset, size - inset);
+        continue;
+      }
       const tinted = maskFor(chunkId, section, reachable);
       if (tinted) CTX.drawImage(tinted, x, y, size, size);
     }
@@ -454,8 +544,13 @@ function draw() {
   state.needsDraw = false;
   CTX.clearRect(0, 0, CANVAS.clientWidth, CANVAS.clientHeight);
   if (!state.view) return;
-  /* The map is pixel art at 3px per game tile; smoothing turns it to mush. */
-  CTX.imageSmoothingEnabled = false;
+  /* Smoothing is right in one direction and wrong in the other. The map is 2
+   * pixels per game tile, so magnifying it past 1:1 with smoothing on turns
+   * hand-drawn detail to mush - but *minifying* it with smoothing off aliases
+   * every coastline into a staircase that crawls as you pan. So it follows the
+   * zoom, which is the only thing that decides which of the two is happening.
+   * Same call covers the section masks, which are almost always minified. */
+  CTX.imageSmoothingEnabled = state.zoom < 1;
   for (const layer of LAYERS) layer();
 }
 
@@ -500,20 +595,51 @@ function fitToCells() {
   fitBox(Math.min(...xs), Math.min(...ys), Math.max(...xs) + 1, Math.max(...ys) + 1, cell);
 }
 
-function fitBox(minX, minY, maxX, maxY, cell) {
-  /* Leave room for the bar and the panel, so a fit never puts part of the
-   * shape underneath either of them. */
+/* Where the camera has to be for a grid rectangle to fill the space the bar
+ * and the panel are not covering. Split out from `fitBox` so the same
+ * arithmetic can be glided to rather than jumped to. */
+function boxCamera(minX, minY, maxX, maxY, cell) {
   const availW = CANVAS.clientWidth - panelWidth() - 80;
   const availH = CANVAS.clientHeight - 100;
-  stopGlide();
-  state.zoom = clamp(
+  const zoom = clamp(
     Math.min(availW / ((maxX - minX) * cell), availH / ((maxY - minY) * cell)),
     MIN_ZOOM, MAX_ZOOM,
   );
-  const size = state.zoom * cell;
-  state.panX = (availW - (maxX - minX) * size) / 2 + 40 - minX * size;
-  state.panY = (availH - (maxY - minY) * size) / 2 + 60 - minY * size;
+  const size = zoom * cell;
+  return {
+    panX: (availW - (maxX - minX) * size) / 2 + 40 - minX * size,
+    panY: (availH - (maxY - minY) * size) / 2 + 60 - minY * size,
+    zoom,
+  };
+}
+
+function fitBox(minX, minY, maxX, maxY, cell) {
+  stopGlide();
+  Object.assign(state, boxCamera(minX, minY, maxX, maxY, cell));
   invalidate();
+}
+
+/* Frame every one of `chunkIds`, gliding rather than jumping.
+ *
+ * **A single chunk is not a box worth fitting.** Its bounding rectangle is one
+ * cell, so fitting it means slamming to MAX_ZOOM - which loses every landmark
+ * around the thing you were looking for. One chunk keeps the zoom you were at
+ * and only centres; two or more get the rectangle that holds them all. */
+function frameChunks(chunkIds) {
+  if (!state.view) return false;
+  const placed = chunkIds.map(chunkToGrid).filter(Boolean);
+  if (!placed.length) return false;
+  if (placed.length === 1) {
+    focusChunk(gridToChunk(placed[0][0], placed[0][1]));
+    return true;
+  }
+  const xs = placed.map((p) => p[0]), ys = placed.map((p) => p[1]);
+  glideTo(boxCamera(
+    Math.min(...xs), Math.min(...ys),
+    Math.max(...xs) + 1, Math.max(...ys) + 1,
+    state.view.geometry.pixels_per_chunk,
+  ));
+  return true;
 }
 
 function zoomAt(sx, sy, direction) {
@@ -904,8 +1030,32 @@ const CATEGORY_ICONS = {
   spawn: "spawn", quest: "quest", clue: "clue", diary: "diary",
 };
 
+/* `label()` would give "Npc" and "Diarys". The keys are `_CONTENT_KEYS`
+ * lower-cased, so this is the whole set and there is nothing to fall through
+ * for except the sections chip. */
+const CATEGORY_LABELS = {
+  monster: "Monsters", npc: "NPCs", object: "Objects", shop: "Shops",
+  spawn: "Spawns", quest: "Quests", clue: "Clues", diary: "Diaries",
+  sections: "Sections",
+};
+
+function categoryLabel(key) { return CATEGORY_LABELS[key] || label(key); }
+
+/* The sections chip is a category like the others as far as the strip is
+ * concerned, and it is *not* one of `detail.contents`' keys - which is the
+ * whole bug it used to have. `renderChunk` reset the selection to
+ * `categories[0]` whenever it was not a content key, so clicking Sections
+ * silently landed on whichever category happened to come first (Clue, on a
+ * chunk holding nothing before it). Naming it here makes it a member of the
+ * set the selection is validated against. */
+const SECTIONS_CHIP = "sections";
+
 let chunkDetail = null;
-let chunkCategory = null;
+/* A Set, not a string: the chips are checkboxes, so several categories show
+ * at once and the default is all of them. Kept across renders and across
+ * chunks - if you narrowed to monsters, the next chunk you click means the
+ * same question. */
+let chunkCategories = null;
 
 async function selectChunk(chunkId) {
   state.selected = chunkId;
@@ -950,22 +1100,41 @@ function renderChunk() {
 
   /* Categories as chips rather than as eight headings in one column: at 360px
    * a chunk with monsters, NPCs, objects and shops was four short lists you
-   * had to scroll past each other to compare. */
-  const categories = Object.keys(detail.contents);
-  if (!categories.includes(chunkCategory)) chunkCategory = categories[0] || "sections";
+   * had to scroll past each other to compare. They are *checkboxes*, so the
+   * comparison can also be "monsters and NPCs together". */
+  const categories = [...Object.keys(detail.contents), SECTIONS_CHIP];
+  if (chunkCategories === null) chunkCategories = new Set(categories);
 
-  let chips = categories.map((key) => tmpl`<button class="chip ${key === chunkCategory ? "on" : ""}" data-cat="${key}" title="${key}">
-      ${icon(CATEGORY_ICONS[key] || "dot")}<span class="count">${detail.contents[key].length}</span></button>`).join("");
-  chips += tmpl`<button class="chip ${chunkCategory === "sections" ? "on" : ""}" data-cat="sections" title="Sections">
-      ${icon("sections")}<span class="count">${detail.sections.length}</span></button>`;
-  el["chunk-chips"].innerHTML = chips;
+  el["chunk-chips"].innerHTML = categories.map((key) => {
+    const on = chunkCategories.has(key);
+    const count = key === SECTIONS_CHIP ? detail.sections.length : detail.contents[key].length;
+    return tmpl`<button class="chip ${on ? "on" : ""}" data-cat="${key}" title="${categoryLabel(key)}"
+      role="checkbox" aria-checked="${on}">
+      ${icon(key === SECTIONS_CHIP ? "sections" : (CATEGORY_ICONS[key] || "dot"))}<span class="count">${count}</span></button>`;
+  }).join("");
   for (const chip of el["chunk-chips"].querySelectorAll("[data-cat]")) {
-    chip.onclick = () => { chunkCategory = chip.dataset.cat; renderChunk(); };
+    chip.onclick = () => { toggleIn(chunkCategories, chip.dataset.cat); renderChunk(); };
   }
 
-  el["chunk-body"].innerHTML = chunkCategory === "sections"
-    ? renderSections(detail)
-    : renderCategory(detail, chunkCategory);
+  const showing = categories.filter((key) => chunkCategories.has(key));
+  if (!showing.length) {
+    el["chunk-body"].innerHTML = tmpl`<p class="empty">No categories selected.</p>`;
+    return;
+  }
+  el["chunk-body"].innerHTML = showing.map((key) => {
+    const body = key === SECTIONS_CHIP ? renderSections(detail) : renderCategory(detail, key);
+    /* One category selected is a list; several need saying which is which. */
+    if (showing.length === 1) return body;
+    const count = key === SECTIONS_CHIP ? detail.sections.length : detail.contents[key].length;
+    return tmpl`<h3>${categoryLabel(key)} <span class="num">${count}</span></h3>` + body;
+  }).join("");
+}
+
+/* Checkbox semantics for a chip strip. Deselecting the last one is allowed -
+ * "show me nothing" is a state you pass through on the way to "show me only
+ * that one", and forbidding it makes the strip feel stuck. */
+function toggleIn(set, key) {
+  if (set.has(key)) set.delete(key); else set.add(key);
 }
 
 function renderSections(detail) {
@@ -1024,6 +1193,115 @@ async function previewUnlock(chunkId) {
   }
 }
 
+/* ---- the full comparison ------------------------------------------------ */
+
+/* The map answers "which chunks", in microseconds, from a set difference. This
+ * answers "and what did they give me", which is a question about sections,
+ * tasks, sources and BiS - and there is no way to it that does not derive both
+ * sides. So it is a button rather than something the view carries: about two
+ * seconds cold, and you press it when you want the answer.
+ *
+ * Both `unlock.py`'s preview and this one land in the same dialog on purpose.
+ * They ask nearly the same thing at different scales - one candidate chunk
+ * against one whole map - and giving them two shapes would be two things to
+ * learn for one idea. */
+const DIFF_BRANCHES = [
+  ["chunks", "Chunks"],
+  ["sections", "Sections"],
+  ["tasks", "Skill tasks"],
+  ["bis", "Best in slot"],
+  ["other", "Diaries, quests, extras"],
+  ["sources", "Sources"],
+  ["skills", "Skill winners"],
+  ["unsupported", "Unsupported"],
+];
+
+/* How many names of a branch to print before saying "and N more". A branch can
+ * hold hundreds and the dialog is for reading, not for exporting - `fray diff`
+ * is the tool that prints all of them. */
+const DIFF_SAMPLE = 12;
+
+function diffNames(branch) {
+  /* `sections`, `tasks`, `sources` and `other` are keyed one level deeper -
+   * per chunk, per skill, per category - and a flat list of what changed is
+   * what the dialog reads best. The key is kept as the note, so a task still
+   * says which skill it belongs to. */
+  const added = [], removed = [];
+  const take = (delta, key) => {
+    for (const name of Object.keys(delta.added || {})) added.push([name, key]);
+    for (const name of delta.removed || []) removed.push([name, key]);
+  };
+  if (branch && Array.isArray(branch.removed)) take(branch, "");
+  else for (const [key, inner] of Object.entries(branch || {})) {
+    if (Array.isArray(inner.removed)) take(inner, key);
+    /* `other` is category -> {active, completed} -> BranchDelta. */
+    else for (const [side, delta] of Object.entries(inner || {})) {
+      if (delta && Array.isArray(delta.removed)) take(delta, key + " " + side);
+    }
+  }
+  return { added, removed };
+}
+
+function diffList(rows, kind) {
+  let out = tmpl`<ul class="list ${kind}">`;
+  for (const [name, note] of rows.slice(0, DIFF_SAMPLE)) {
+    out += tmpl`<li><span class="mark">${kind === "gain" ? "+" : "−"}</span>
+      <span class="name">${plain(name)}</span><span class="sub">${plain(note)}</span></li>`;
+  }
+  if (rows.length > DIFF_SAMPLE) {
+    out += tmpl`<li class="more"><span class="name">${rows.length - DIFF_SAMPLE} more</span></li>`;
+  }
+  return out + "</ul>";
+}
+
+async function showBreakdown() {
+  const from = el.map.value, to = el.compare.value;
+  if (!from || !to) return;
+  const title = from + " → " + to;
+  openOverlay(title, tmpl`<p class="empty">Deriving both worlds…</p>`);
+  try {
+    const delta = await getJSON(
+      "/api/diff?map1=" + encodeURIComponent(from) + "&map2=" + encodeURIComponent(to));
+
+    /* The summary first, because "did anything change, and where" is the
+     * question, and eight numbers answer it before any list has to be read. */
+    let out = tmpl`<p class="sub">Everything <b>${to}</b> holds that <b>${from}</b> does not, and the reverse.</p><dl class="kv">`;
+    let anything = false;
+    for (const [key, name] of DIFF_BRANCHES) {
+      const counts = delta.counts[key] || { added: 0, removed: 0 };
+      if (!counts.added && !counts.removed) continue;
+      anything = true;
+      out += tmpl`<dt>${name}</dt><dd><span class="gain">+${counts.added}</span>
+        <span class="loss">−${counts.removed}</span></dd>`;
+    }
+    out += "</dl>";
+    if (!anything) {
+      openOverlay(title, tmpl`<p class="empty">These two derive identically. Every branch agrees.</p>`);
+      return;
+    }
+
+    for (const [key, name] of DIFF_BRANCHES) {
+      const counts = delta.counts[key] || { added: 0, removed: 0 };
+      if (!counts.added && !counts.removed) continue;
+      const { added, removed } = diffNames(delta[key === "bis" ? "bis_tasks" : key]);
+      out += tmpl`<h3>${name} <span class="num">+${counts.added} −${counts.removed}</span></h3>`;
+      if (added.length) out += diffList(added, "gain");
+      if (removed.length) out += diffList(removed, "loss");
+    }
+    openOverlay(title, out);
+  } catch (error) {
+    openOverlay(title, tmpl`<p class="empty">${error.message}</p>`);
+  }
+}
+
+el.breakdown.addEventListener("click", showBreakdown);
+
+/* Nothing to compare is not an error worth a message - it is a button that
+ * does not apply yet. */
+function syncBreakdown() {
+  el.breakdown.disabled = !el.map.value || !el.compare.value;
+}
+
 /* ---- tasks pane -------------------------------------------------------- */
 
 const GROUP_ICONS = {
@@ -1034,7 +1312,10 @@ const GROUP_ICONS = {
 };
 
 let taskPanel = null;
-let taskSection = null;
+/* Checkboxes, defaulting to every category. The five sections answer one
+ * question between them - "what is left" - and picking one at a time made
+ * that five questions. */
+let taskSections = null;
 
 async function loadTasks() {
   if (taskPanel && taskPanel.map_id === el.map.value) return renderTasks();
@@ -1051,39 +1332,54 @@ async function loadTasks() {
 
 function renderTasks() {
   const sections = taskPanel.sections;
-  if (!sections.some((s) => s.key === taskSection)) taskSection = sections[0].key;
+  if (taskSections === null) taskSections = new Set(sections.map((s) => s.key));
 
-  el["task-chips"].innerHTML = sections.map((s) => tmpl`<button class="chip ${s.key === taskSection ? "on" : ""}" data-section="${s.key}">
-      ${s.label}<span class="count">${state.showDone ? s.completed_total : s.active_total}</span></button>`).join("");
+  el["task-chips"].innerHTML = sections.map((s) => {
+    const on = taskSections.has(s.key);
+    return tmpl`<button class="chip ${on ? "on" : ""}" data-section="${s.key}"
+      role="checkbox" aria-checked="${on}">
+      ${s.label}<span class="count">${state.showDone ? s.completed_total : s.active_total}</span></button>`;
+  }).join("");
   for (const chip of el["task-chips"].querySelectorAll("[data-section]")) {
-    chip.onclick = () => { taskSection = chip.dataset.section; renderTasks(); };
+    chip.onclick = () => { toggleIn(taskSections, chip.dataset.section); renderTasks(); };
   }
 
-  const section = sections.find((s) => s.key === taskSection);
   const side = state.showDone ? "completed" : "active";
-  const groups = section.groups.filter((g) => g[side].length);
-  if (!groups.length) {
-    el["tasks-body"].innerHTML = tmpl`<p class="empty">Nothing ${state.showDone ? "completed" : "outstanding"} under ${section.label}.</p>`;
+  const showing = sections.filter((s) => taskSections.has(s.key));
+  if (!showing.length) {
+    el["tasks-body"].innerHTML = tmpl`<p class="empty">No categories selected.</p>`;
     return;
   }
 
   let out = "";
-  for (const group of groups) {
-    /* A single group whose name repeats the heading is a heading twice. */
-    if (groups.length > 1 || group.name !== section.label) {
-      out += tmpl`<h3>${raw(GROUP_ICONS[group.name] ? icon(GROUP_ICONS[group.name]).__raw + " " : "")}${group.name} <span class="num">${group[side].length}</span></h3>`;
+  for (const section of showing) {
+    const groups = section.groups.filter((g) => g[side].length);
+    if (!groups.length) continue;
+    /* The section's own heading, once several are on screen at a time. With
+     * one selected the chip already says which, and repeating it costs a row
+     * of a 360px panel. */
+    if (showing.length > 1) {
+      const total = groups.reduce((n, g) => n + g[side].length, 0);
+      out += tmpl`<h3 class="section">${section.label} <span class="num">${total}</span></h3>`;
     }
-    out += "<ul class='list'>";
-    for (const row of group[side]) {
-      const badge = row.icon
-        ? tmpl`<img class="skill-icon" src="/assets/skill/${row.icon}.png" alt="${row.icon}" title="${row.icon}">`
-        : "";
-      out += tmpl`<li>${raw(badge)}<span class="name">${plain(row.name)}</span>
-        <span class="sub">${plain(row.note || "")}</span></li>`;
+    for (const group of groups) {
+      /* A single group whose name repeats the heading is a heading twice. */
+      if (groups.length > 1 || group.name !== section.label) {
+        out += tmpl`<h3>${raw(GROUP_ICONS[group.name] ? icon(GROUP_ICONS[group.name]).__raw + " " : "")}${group.name} <span class="num">${group[side].length}</span></h3>`;
+      }
+      out += "<ul class='list'>";
+      for (const row of group[side]) {
+        const badge = row.icon
+          ? tmpl`<img class="skill-icon" src="/assets/skill/${row.icon}.png" alt="${row.icon}" title="${row.icon}">`
+          : "";
+        out += tmpl`<li>${raw(badge)}<span class="name">${plain(row.name)}</span>
+          <span class="sub">${plain(row.note || "")}</span></li>`;
+      }
+      out += "</ul>";
     }
-    out += "</ul>";
   }
-  el["tasks-body"].innerHTML = out;
+  el["tasks-body"].innerHTML = out ||
+    tmpl`<p class="empty">Nothing ${state.showDone ? "completed" : "outstanding"} here.</p>`;
 }
 
 el["show-done"].addEventListener("click", () => {
@@ -1118,16 +1414,22 @@ async function loadEstimate() {
 
 /* A donut of stroke-dashed arcs. Four numbers whose whole meaning is their
  * proportion to each other, which is the one thing a column of figures does
- * not show - and it is SVG, so there is still no dependency. */
-function donut(buckets, total) {
+ * not show - and it is SVG, so there is still no dependency.
+ *
+ * **The hours are on the arc, not beside it.** A legend carrying four figures
+ * is a table with a picture next to it, and the picture is then decoration;
+ * the proportions are what the chart is *for*, and the number behind one of
+ * them is a question you ask about a single slice. `fill: none` means only the
+ * stroke takes the pointer, so the ring is the hit area and the hole is not. */
+function donut(ordered, total) {
   const R = 54, C = 2 * Math.PI * R;
   let offset = 0;
   let arcs = `<circle cx="70" cy="70" r="${R}" stroke="#22262f"/>`;
-  for (const [name, value] of Object.entries(buckets)) {
-    if (!value) continue;
+  for (const [name, value] of ordered) {
     const length = (value / total) * C;
-    arcs += `<circle cx="70" cy="70" r="${R}" stroke="${BUCKET_COLOURS[name] || "#858d9c"}"
-      stroke-dasharray="${length} ${C - length}" stroke-dashoffset="${-offset}"/>`;
+    const tip = tmpl`<b>${label(name)}</b><span class="sub">${hours(value)} · ${Math.round((value / total) * 100)}% of the total</span>`;
+    arcs += tmpl`<circle class="slice" cx="70" cy="70" r="${R}" stroke="${BUCKET_COLOURS[name] || "#858d9c"}"
+      stroke-dasharray="${length} ${C - length}" stroke-dashoffset="${-offset}" data-tip="${tip}"/>`;
     offset += length;
   }
   return `<svg class="pie" width="140" height="140" viewBox="0 0 140 140">${arcs}</svg>`;
@@ -1137,34 +1439,73 @@ function renderEstimate(payload) {
   const total = payload.total_hours || 0;
   el["estimate-total"].textContent = hours(total) + " remaining";
 
-  let out = '<div class="pie-row">' + donut(payload.buckets, total || 1) + '<div class="pie-key">';
-  for (const [name, value] of Object.entries(payload.buckets)) {
-    out += tmpl`<span><i class="sw" style="background:${BUCKET_COLOURS[name] || "#858d9c"}"></i>${label(name)}<b>${hours(value)}</b></span>`;
+  /* **One order for the chart, the key and the lists.** `_json` sorts its
+   * keys, so the payload arrives alphabetical - which is an order about
+   * spelling. Biggest first is the order the chart is read in, and it makes
+   * the headings below say the same thing as the wedges above. Empty buckets
+   * are dropped rather than drawn at zero: a swatch with no arc beside it is
+   * a legend entry you go looking for and never find. */
+  const ordered = Object.entries(payload.buckets)
+    .filter(([, value]) => value > 0)
+    .sort((a, b) => b[1] - a[1]);
+
+  let out = '<div class="pie-row">' + donut(ordered, total || 1) + '<div class="pie-key">';
+  for (const [name, value] of ordered) {
+    /* The key names the slices and no more. Hovering either the swatch or the
+     * arc it stands for gives the same figure, so the number is one gesture
+     * away from wherever you happen to be pointing. */
+    const tip = tmpl`<b>${label(name)}</b><span class="sub">${hours(value)} · ${Math.round((value / (total || 1)) * 100)}% of the total</span>`;
+    out += tmpl`<span data-tip="${tip}"><i class="sw" style="background:${BUCKET_COLOURS[name] || "#858d9c"}"></i>${label(name)}</span>`;
   }
   out += "</div></div>";
 
-  /* The buckets say how long; these say *what*, which is the part you can
-   * act on. Name and hours only - the reasoning is real but it is the second
-   * question, so it lives in the tooltip. */
-  const items = (payload.items || []).slice().sort((a, b) => b.hours - a.hours);
-  if (items.length) {
-    out += tmpl`<h3>Longest single items</h3><ul class="list">`;
-    for (const item of items.slice(0, 14)) {
-      const tip = tmpl`<b>${plain(item.item)}</b><span class="sub">${plain(item.detail)}</span><span class="sub">${label(item.bucket)}</span>`;
-      out += tmpl`<li data-tip="${tip}"><span class="name">${plain(item.item)}</span><span class="num">${hours(item.hours)}</span></li>`;
-    }
-    out += "</ul>";
-  }
+  /* **Headed by the bucket, not by "Longest single items".** The pie is four
+   * named slices and this was one undifferentiated list drawn from two of
+   * them, so the eye had nothing to join: an item costing 40h told you
+   * nothing about which wedge it was 40h of. Split by bucket, each list is
+   * the inside of a slice you just looked at. Name and hours only - the
+   * reasoning is real but it is the second question, so it is in the
+   * tooltip. */
+  const byBucket = new Map();
+  const file = (bucket, row) => {
+    if (!byBucket.has(bucket)) byBucket.set(bucket, []);
+    byBucket.get(bucket).push(row);
+  };
+  /* Two shapes, one list. `items` are the unique things you go and get, which
+   * is boss drops and activities; `tasks` is the quest bucket, costed per
+   * quest rather than per item. `estimate.py`'s docstring is the authority on
+   * why those are different units - here they are both "a thing and its
+   * hours". */
+  for (const item of payload.items || []) file(item.bucket, { name: item.item, ...item });
+  for (const task of payload.tasks || []) file(task.bucket, { name: task.task, ...task });
 
-  const skills = (payload.skills || []).slice().sort((a, b) => b.hours - a.hours);
-  if (skills.length) {
-    out += tmpl`<h3>Skilling</h3><ul class="list">`;
-    for (const skill of skills.slice(0, 14)) {
-      out += tmpl`<li><img class="skill-icon" src="/assets/skill/${skill.skill}.png" alt="">
-        <span class="name">${skill.skill}</span>
-        <span class="sub">${skill.current_level} → ${skill.target_level}</span>
-        <span class="num">${hours(skill.hours)}</span></li>`;
+  /* Ordered as the pie is, so the third heading down is the third wedge
+   * round and the swatch beside it is the one you just hovered. */
+  for (const [bucket] of ordered) {
+    const swatch = tmpl`<i class="sw" style="background:${BUCKET_COLOURS[bucket] || "#858d9c"}"></i>`;
+    if (bucket === "skilling") {
+      /* The one bucket whose rows are not things but levels, so it keeps its
+       * own shape: a skill, where it is going, and what that costs. */
+      const skills = (payload.skills || []).slice().sort((a, b) => b.hours - a.hours);
+      if (!skills.length) continue;
+      out += tmpl`<h3>${raw(swatch)}${label(bucket)} <span class="num">${skills.length}</span></h3><ul class="list">`;
+      for (const skill of skills.slice(0, 14)) {
+        out += tmpl`<li><img class="skill-icon" src="/assets/skill/${skill.skill}.png" alt="">
+          <span class="name">${skill.skill}</span>
+          <span class="sub">${skill.current_level} → ${skill.target_level}</span>
+          <span class="num">${hours(skill.hours)}</span></li>`;
+      }
+      out += "</ul>";
+      continue;
     }
+    const rows = (byBucket.get(bucket) || []).slice().sort((a, b) => b.hours - a.hours);
+    if (!rows.length) continue;
+    out += tmpl`<h3>${raw(swatch)}${label(bucket)} <span class="num">${rows.length}</span></h3><ul class="list">`;
+    for (const row of rows.slice(0, 12)) {
+      const tip = tmpl`<b>${plain(row.name)}</b><span class="sub">${plain(row.detail)}</span><span class="sub">${label(row.bucket)}</span>`;
+      out += tmpl`<li data-tip="${tip}"><span class="name">${plain(row.name)}</span><span class="num">${hours(row.hours)}</span></li>`;
+    }
+    if (rows.length > 12) out += tmpl`<li class="more"><span class="name">${rows.length - 12} more</span></li>`;
     out += "</ul>";
   }
 
@@ -1243,17 +1584,22 @@ function highlight(result) {
   invalidate();
   if (!state.found.size) { toast(name + " has no placed source"); return; }
 
-  /* **Fly to a chunk that has a square.** Plenty of ids are underground or
-   * instanced regions off the surface rectangle - an abyssal whip's first
-   * source is one - and centring on one silently does nothing, which reads
-   * as a broken button rather than as "that place is not on this map". */
+  /* **Frame every source, not the first one.** A thing with six sources is
+   * six answers to "where do I get this", and flying to one of them says the
+   * other five are somewhere off screen - which is the question you asked.
+   * `frameChunks` fits the rectangle holding all of them, and falls back to
+   * centring when there is only one.
+   *
+   * It also drops the ids with no square. Plenty are underground or instanced
+   * regions off the surface rectangle - an abyssal whip's first source is one
+   * - and centring on one silently does nothing, which reads as a broken
+   * button rather than as "that place is not on this map". */
   const placed = [...state.found].filter((id) => chunkToGrid(id));
-  if (!placed.length) {
+  if (!frameChunks(placed)) {
     toast(name + ": " + state.found.size + " chunks, none on the surface map");
     return;
   }
-  focusChunk(placed[0]);
-  toast(name + ": " + state.found.size + " chunks");
+  toast(name + ": " + state.found.size + (state.found.size === 1 ? " chunk" : " chunks"));
 }
 
 let findTimer = null;
@@ -1285,8 +1631,17 @@ async function runFind() {
       body.innerHTML = tmpl`<p class="empty">Nothing matches ${term}.</p>`;
       return;
     }
+    /* **Reachable first, then alphabetical.** The server ranks by how well a
+     * name matches, which is the right order for picking the forty results
+     * worth sending and the wrong one for reading them: what you can actually
+     * get to is the answer, and everything else is context for it. Sorting
+     * the page rather than asking the server to sort keeps that ranking doing
+     * the job it is good at - deciding *which* forty. */
+    const results = payload.results.slice().sort((a, b) =>
+      (b.available === true) - (a.available === true) ||
+      plain(a.name).localeCompare(plain(b.name), undefined, { sensitivity: "base" }));
     let out = "<ul class='list'>";
-    payload.results.forEach((result, index) => {
+    results.forEach((result, index) => {
       const chunks = chunksOf(result);
       const note = chunks.length ? chunks.length + (chunks.length === 1 ? " chunk" : " chunks") : "—";
       out += tmpl`<li>
@@ -1296,7 +1651,7 @@ async function runFind() {
     });
     body.innerHTML = out + "</ul>";
     for (const button of body.querySelectorAll("button[data-result]")) {
-      button.onclick = () => highlight(payload.results[Number(button.dataset.result)]);
+      button.onclick = () => highlight(results[Number(button.dataset.result)]);
     }
   } catch (error) {
     if (run === findRun) body.innerHTML = tmpl`<p class="empty">${error.message}</p>`;
@@ -1360,6 +1715,7 @@ async function loadMapsPane() {
         async (result) => {
           await loadMaps();
           el.compare.value = result.open;
+          syncBreakdown();
           await loadView({ refit: true });
           loadMapsPane();
         });
@@ -1472,11 +1828,12 @@ const BOOT = {
 el.map.addEventListener("change", async () => {
   state.selected = null;
   taskPanel = null;
+  syncBreakdown();
   await loadView({ refit: true });
   await loadCandidates();
   await loadSections();
 });
-el.compare.addEventListener("change", () => loadView({ refit: true }));
+el.compare.addEventListener("change", () => { syncBreakdown(); loadView({ refit: true }); });
 el.fit.addEventListener("click", () => fitToCells());
 
 el.candidates.addEventListener("click", async () => {
@@ -1510,13 +1867,16 @@ function loadImage() {
     const image = new Image();
     image.onload = () => { state.image = image; resolve(true); };
     image.onerror = () => { toast("World map image unavailable"); resolve(false); };
-    image.src = "/world_map.png";
+    /* Extensionless: the bytes are Jagex's JPEG, and `FRAY_WORLD_MAP` may
+     * point at a PNG instead. The server decides the content type. */
+    image.src = "/world_map";
   });
 }
 
 (async function start() {
   resize();
   if (!(await loadMaps())) return;
+  syncBreakdown();
   await loadView();
   await loadImage();
   fitToCells();

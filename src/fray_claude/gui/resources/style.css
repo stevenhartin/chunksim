@@ -275,11 +275,18 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 
 .chip:hover { color: var(--text); }
 
+/* **A chip is a checkbox, not a radio button**, and the two need telling
+   apart at a glance: with several on at once, "on" cannot be the only one
+   that looks selected. So off is visibly *off* - dimmed and desaturated -
+   rather than merely not-highlighted. */
 .chip.on {
   color: var(--text);
   border-color: var(--amber);
   background: rgba(255, 190, 0, .12);
 }
+
+.chip[aria-checked="false"] { opacity: .5; }
+.chip[aria-checked="false"]:hover { opacity: .8; }
 
 .chip .count {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -300,6 +307,23 @@ h3 {
 }
 
 h3:first-child { margin-top: 0; }
+
+/* A heading in the panel may carry a swatch, so it lays out as a row. */
+h3 { display: flex; align-items: center; gap: 6px; }
+h3 .num { margin-left: auto; }
+
+/* The section heading above a group heading, when several task categories are
+   shown at once. Louder than the group headings under it, or the hierarchy
+   inverts and every category reads as a sub-list of the one above. */
+h3.section {
+  margin-top: 18px;
+  font-size: 12px;
+  color: var(--text);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 4px;
+}
+
+h3.section:first-child { margin-top: 0; }
 
 .kv {
   display: grid;
@@ -341,6 +365,23 @@ ul.list .num {
 /* Reachability is the one thing greying is allowed to mean here: the row is
    real, the export lists it, and you cannot get to it yet. */
 .unreached { opacity: .45; }
+
+/* A truncated list says so in the same column it truncated, so the count is
+   under the names it stands for rather than beside a heading. */
+li.more .name { color: var(--dim); font-style: italic; }
+
+/* The two directions of a comparison, coloured as the map colours them. */
+.gain { color: var(--gain); }
+.loss { color: var(--loss); }
+
+ul.list .mark {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  width: 1ch;
+  flex: none;
+}
+
+ul.list.gain .mark { color: var(--gain); }
+ul.list.loss .mark { color: var(--loss); }
 
 li .icon { width: 14px; height: 14px; align-self: center; }
 
@@ -387,9 +428,15 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .pie { flex: none; transform: rotate(-90deg); }
 .pie circle { fill: none; stroke-width: 14; }
 
-.pie-key { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
-.pie-key span { display: flex; gap: 7px; align-items: baseline; }
-.pie-key b { font-weight: 600; margin-left: auto; font-family: ui-monospace, Menlo, monospace; }
+/* Only the stroke is painted, so the ring takes the pointer and the hole does
+   not - which is what makes a slice hoverable without the middle of the chart
+   claiming whichever slice happens to be drawn last. */
+.pie .slice { cursor: help; transition: stroke-width .12s ease; }
+.pie .slice:hover { stroke-width: 18; }
+
+.pie-key { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.pie-key span { display: flex; gap: 7px; align-items: center; cursor: help; }
+.pie-key span:hover { color: var(--text); }
 
 /* --- job line, legend, toast, overlay ------------------------------------ */
 

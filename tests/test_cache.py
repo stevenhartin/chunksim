@@ -15,6 +15,9 @@ from typing import Any
 import pytest
 
 from fray_claude.cache import (
+    write_gui_window,
+    WIKI_RATES_BLOB_NAME,
+    WORLD_MAP_ASSET,
     CHUNKINFO_ENV_VAR,
     FETCHED,
     SIMULATED,
@@ -497,9 +500,23 @@ def test_the_world_map_source_prefers_an_override(
 ) -> None:
     """Override, then `FRAY_WORLD_MAP`, then the cache - as `chunkinfo_source`."""
     monkeypatch.delenv("FRAY_WORLD_MAP", raising=False)
-    assert world_map_source(root=tmp_path) == tmp_path / "cache" / "assets" / "world_map.png"
+    assert world_map_source(root=tmp_path) == tmp_path / "cache" / "assets" / WORLD_MAP_ASSET
 
     monkeypatch.setenv("FRAY_WORLD_MAP", "/somewhere/map.png")
     assert world_map_source(root=tmp_path) == Path("/somewhere/map.png")
 
     assert world_map_source(Path("/explicit.png"), root=tmp_path) == Path("/explicit.png")
+
+
+def test_the_blobs_beside_the_maps_are_not_maps(tmp_path: Path) -> None:
+    """`cache/` holds JSON that is not a map, and listing it as one is silent.
+
+    `wiki_rates` and the GUI's window file both ended up in the map picker,
+    where choosing one fails somewhere much further down. The exclusion is
+    built from the blob-name constants so a new blob cannot be forgotten.
+    """
+    write_cache("fray", {"chunks": {"unlocked": {"12850": "12850"}}}, root=tmp_path)
+    write_blob(WIKI_RATES_BLOB_NAME, {"rates": {}}, "https://example.invalid", root=tmp_path)
+    write_gui_window({"width": 800, "height": 600, "x": 0, "y": 0}, root=tmp_path)
+
+    assert [entry.map_id for entry in list_maps(root=tmp_path)] == ["fray"]

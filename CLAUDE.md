@@ -115,7 +115,7 @@ Five things that cut across modules — the first three because each has already
 
 | Module | Owns |
 |---|---|
-| `api.py` | The network. `FetchError`. An unknown map is HTTP 200 + bare `null`, never a 404. Four hosts now: Firebase, upstream's `gh-pages`, the OSRS wiki (which **requires** a `User-Agent`) and one published Google Sheet. |
+| `api.py` | The network. `FetchError`. An unknown map is HTTP 200 + bare `null`, never a 404. Five hosts now: Firebase, upstream's `gh-pages`, **Jagex's own CDN** for the world map image, the OSRS wiki (which **requires** a `User-Agent`) and one published Google Sheet. |
 | `wiki.py` | Wikitext template parsing. Pure. Quest length is in `{{Quest details}}`, **not** `{{Infobox Quest}}` — the tempting wrong template has no `length` and so returns `None` for every quest without erroring. |
 | `experience.py` | The exact 1–99 XP curve, closed-form. **Not a heuristic and not overridable** — that separation from `heuristics.py` is the point of the module. |
 | `heuristics.py` | Every hand-correctable number, and the `defaults < scraped < overrides` merge. Owns the joins and their `exact`/`contained` provenance; **no fuzzy tier**, by measurement — read the docstring before adding one back. |
@@ -276,8 +276,8 @@ delta mode where `--compare`'s gains are green and its losses red. It can also d
 `simulate`, which return a job id and report progress while a thread does the work.
 
 **All fifteen CLI subcommands are reachable from it.** `GET /api/{maps,view,revision,summary,
-neighbours,chunk,sections,unlock,search,estimate,tasks,derived,jobs}` and `POST /api/{fetch,simulate,
-refresh,maps/remove,derived/prune,window}`. The panel's tabs are tasks / chunk / find / estimate /
+neighbours,chunk,sections,unlock,diff,search,estimate,tasks,derived,jobs}` and `POST /api/{fetch,
+simulate,refresh,maps/remove,derived/prune,window}`. The panel's tabs are tasks / chunk / find / estimate /
 maps, and `?map=&compare=&candidates=1&sections=1&tab=` reproduces a view.
 
 Things worth knowing before changing it:
@@ -286,10 +286,16 @@ Things worth knowing before changing it:
   chunk's square is fixed by its id — so there is no `ChunkInfo` parse and no `derive`. Every
   request re-reads the map file, which is what makes a `fray fetch` in another terminal appear in
   the browser two seconds later with no invalidation machinery at all.
-- **The delta uses `delta.diff_names`, not `compare_maps`.** The latter derives *both* sides
+- **The map's delta uses `delta.diff_names`, not `compare_maps`.** The latter derives *both* sides
   whatever `branches` says — the `derive_with(...)` calls are arguments to `compare` — so it would
-  spend ~2s on a set difference. It becomes the right call only when an overlay is keyed on a
-  derived branch.
+  spend ~2s on a set difference. `/api/diff` is where it belongs and the only route allowed to be
+  slow: the **Diff** button asks what those chunks actually *gave* you, which is a question about
+  sections, tasks, sources and BiS and has no cheap answer.
+- **The world drawn bright is the *compared* map's, not the base's.** `added`/`removed` are the same
+  either way, but a comparison asks what the base *becomes* — so the hull traces the compared side's
+  own set (`build_view` outlines everything that is not `removed`) and `app.js` washes a removed
+  square like any other locked one before tinting it red. Leaving it bright draws a world neither
+  map is in.
 - **Two constants cross into JavaScript with nothing enforcing agreement** — the `Edge` bitfield and
   the projection, both plain integers over JSON — so `tests/test_gui_server.py` reads `app.js` and
   asserts them against the Python. The same file asserts the canvas is given an explicit size, since
@@ -300,15 +306,24 @@ Things worth knowing before changing it:
   `task_classification` and `other_tasks` offer three shapes where the panel needs one. Walking
   `Object.keys` over a *category envelope* is what made the first tasks tab print `active_total`
   and `groups` as if they were task names. New shaping goes there, not into the JavaScript.
-- **The map image is fetched, never committed.** It is Jagex's artwork; shipping it in an MIT wheel
-  would imply a sublicence this project has not got. `fray-gui` downloads it to `cache/assets/` on
-  first run exactly as `fray chunkinfo` downloads 10MB, and `FRAY_WORLD_MAP` points at a local copy.
+- **The map image comes from Jagex's CDN and is fetched, never committed.** Upstream keeps a copy
+  and taking it from there worked, but this is the one asset in the project that is somebody else's
+  artwork: the rights holder's own URL relies on no third party's redistribution, is current rather
+  than whenever upstream last synced, and is 2.9MiB of JPEG against 8.4MiB of PNG — 107MB of decoded
+  canvas instead of 240MB. Shipping it in an MIT wheel would still imply a sublicence this project
+  has not got, so `fray-gui` downloads it to `cache/assets/` on first run exactly as `fray chunkinfo`
+  downloads 10MB, and `FRAY_WORLD_MAP` points at a local copy. **That image is 6145×4353 with a
+  one-pixel border**, so the grid starts at `worldmap.IMAGE_ORIGIN_Y = 1` and `drawBase` subtracts
+  it — one pixel is small enough to look right and wrong at every zoom. `api.WORLD_MAP_REVISION`
+  pins the dated render; bumping it means re-checking the asserted geometry.
   **The 1,534 section masks and 24 skill icons are the same argument with a different answer to
   *when*:** they are proxied one file at a time, on the request that first draws them, because a
   chunk has a handful of sections and nobody opens all of them. `cache.section_overlay_path` is the
   **one asset name that reaches the disk from a URL**, so it is matched whole against an alphabet
   holding no `.` and no `/`. A mask's *opaque* pixels are its section — a `tRNS` chunk makes grey 0
-  transparent — which is what lets several composite onto one square.
+  transparent — which is what lets several composite onto one square. An **unsplit** chunk has no
+  mask at all, so `server.WHOLE_CHUNK_SECTION` (`"*"`) tells the browser to fill the square itself;
+  without it the overlay left 664 of the 1,176 placed chunks bare, which reads as missing data.
 - **The window's size is remembered by us, and has to be.** An app window's bounds are stored per
   app id, and Chrome derives that id from the URL — which carries the port and the `?map=` deep
   link, so every launch looks like a new app to it and nothing is ever restored. The page reports

@@ -1,14 +1,14 @@
 """HTTP access to the chunk-picker database and the reference data around it.
 
-Four hosts, no credentials anywhere: the chunk-picker Firebase Realtime
-Database, upstream's `gh-pages` raw files, the OSRS wiki's MediaWiki API, and
-one published Google Sheet. The web app reaches Firebase through the JS SDK,
-but the REST API exposes the same data and the database is world-readable, so
-a plain GET is enough.
+Five hosts, no credentials anywhere: the chunk-picker Firebase Realtime
+Database, upstream's `gh-pages` raw files, Jagex's own CDN for the world map
+image, the OSRS wiki's MediaWiki API, and one published Google Sheet. The web
+app reaches Firebase through the JS SDK, but the REST API exposes the same data
+and the database is world-readable, so a plain GET is enough.
 
 **`User-Agent` differs by host, and the two rules are not in tension.** The
-Firebase and GitHub calls send none: urllib's default identifies neither the
-user nor this project, and adding one would only publish information nobody
+Firebase, GitHub and CDN calls send none: urllib's default identifies neither
+the user nor this project, and adding one would only publish information nobody
 asked for. The wiki calls send `WIKI_USER_AGENT`, because an anonymous request
 there is answered with HTTP 403 - it applies MediaWiki's user-agent policy,
 which asks automated clients to say what they are. Both rules come from the
@@ -40,12 +40,30 @@ MAP_URL = "https://chunkpicker.firebaseio.com/maps/{map_id}.json"
 _UPSTREAM_RAW = "https://raw.githubusercontent.com/source-chunk/chunk-picker-v2/gh-pages/{path}"
 CHUNKINFO_URL = _UPSTREAM_RAW.format(path="chunkpicker-chunkinfo-export.json")
 TASKS_MAP_URL = _UPSTREAM_RAW.format(path="tasksMap.json")
-#: The world map the GUI draws on: 9216x6528, 8.4MiB, one 192-pixel square per
-#: chunk. **Deliberately not committed to this repository** - it is Jagex's
-#: artwork, and upstream publishing it grants no right to redistribute it
-#: inside an MIT-licensed wheel. Fetching it means each user takes their own
-#: copy from upstream, exactly as they already do for the chunkinfo export.
-WORLD_MAP_URL = _UPSTREAM_RAW.format(path="osrs_world_map.png")
+#: The dated render `WORLD_MAP_URL` pins. Jagex publishes each redraw under its
+#: own path, so this is the whole of what changes when the world does - and
+#: pinning it means a new city cannot appear under a user halfway through a
+#: session. Bumping it re-downloads once; check `worldmap.py`'s asserted
+#: geometry still holds, since a different scale would move every square.
+WORLD_MAP_REVISION = "2025-11-18"
+
+#: The world map the GUI draws on: 6145x4353, 2.9MiB, one 128-pixel square per
+#: chunk plus a one-pixel border (see `worldmap.IMAGE_ORIGIN_Y`).
+#:
+#: **Taken from Jagex's own CDN, not from upstream's copy of it.** Both serve
+#: the same artwork and this one serves it from the people who drew it: no
+#: third party's redistribution is relied on, the bytes are current rather
+#: than whenever upstream last synced, and it is 2.9MiB of JPEG against
+#: 8.4MiB of PNG - which is also 107MB of decoded canvas instead of 240MB.
+#: **Still deliberately not committed to this repository**, for the reason
+#: that has not changed: it is Jagex's artwork, and shipping it inside an
+#: MIT-licensed wheel would imply a sublicence this project has not got.
+#: Fetching means each user takes their own copy from the rights holder,
+#: exactly as they already do for the chunkinfo export.
+WORLD_MAP_URL = (
+    "https://cdn.runescape.com/assets/img/external/oldschool/world-map/"
+    f"{WORLD_MAP_REVISION}/osrs_world_map.jpg"
+)
 
 #: The per-section masks the GUI shades a split chunk with, and the skill
 #: icons the tasks panel labels rows with. Same artwork argument as the world
@@ -286,11 +304,12 @@ def _wiki_contents(payload: dict[str, Any], requested: list[str]) -> dict[str, s
 
 
 def fetch_world_map(timeout: float = DEFAULT_TIMEOUT) -> bytes:
-    """Return upstream's world map image (~8.4MiB PNG, static).
+    """Return Jagex's published world map image (~2.9MiB JPEG, static).
 
     Bytes rather than JSON, so it does not go through `_fetch_json_object`. No
-    `User-Agent`, matching every other GitHub call here - see this module's
-    docstring on why the wiki is the exception.
+    `User-Agent`: this is a public CDN asset served to any browser that asks,
+    so there is nothing to identify and the wiki stays the one exception - see
+    this module's docstring.
     """
     return _fetch_bytes(WORLD_MAP_URL, timeout, what="world map image")
 

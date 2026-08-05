@@ -73,18 +73,25 @@ second behaviour if you would rather have your own profile and extensions.
 canvas gives it — the decision the game asks you to make, as a picture rather than a list.
 **Sections** shades the inside of split chunks using source-chunk's own masks: green where you can
 reach, red where you cannot — including chunks you have not unlocked, which is where the question
-matters most.
+matters most. A chunk that is *not* split is shaded whole, since one undivided section is still a
+section.
 
 Click any chunk for its contents, grouped by kind, with anything behind a door you cannot open
 greyed out; for one you do not own yet, **What would this add?** derives both worlds and tells you.
+The category chips are checkboxes, not tabs — all on to begin with, so you can look at monsters and
+NPCs together, or narrow to one.
 
-The panel covers the rest of the CLI. **Tasks** is what you are actually doing — one list per
-category, with a toggle for what is already done; quests show only the step you are on, and
+Comparing two maps shows the *second* one's world: its gains green, what it lost red and washed out
+like anything else you do not hold. **Diff** opens the whole of `fray diff` in a panel — sections,
+tasks, sources and BiS, both directions.
+
+The panel covers the rest of the CLI. **Tasks** is what you are actually doing — checkbox chips per
+category and a toggle for what is already done; quests show only the step you are on, and
 collection-log entries read *Barrows Chests / dharok's greataxe* rather than the raw
-`(Barrows Chests) Obtain a ~|dharok's greataxe|~`. **Estimate** is the hours as a chart, the longest
-single items, and a `?` for where every number came from. **Find** searches the whole world as you
-type and flies the camera to what it finds. **Maps** lists what is cached, with the actions that
-make and remove it.
+`(Barrows Chests) Obtain a ~|dharok's greataxe|~`. **Estimate** is the hours as a donut you hover for
+the figure, then the same buckets again as lists of what is actually in them. **Find** searches the
+whole world as you type, puts what you can reach first, and fits the camera around every place a
+thing comes from. **Maps** lists what is cached, with the actions that make and remove it.
 
 It re-reads the cache as it goes, so a `fray fetch` or `fray simulate` in another terminal appears
 in the browser a couple of seconds later. You can also drive both from the page itself: **fetch**
@@ -104,9 +111,9 @@ guarded by the `Sec-Fetch-Site` and `Host` headers. `--host` will bind elsewhere
 says what that exposes; think before using it on a shared network.
 
 The world map image is **not** part of this repository. It is Jagex's artwork, so `fray-gui`
-downloads it from source-chunk to `cache/assets/` on first run — the same thing `fray chunkinfo`
-already does with the 10MB export — and nothing this project distributes contains it. Point
-`FRAY_WORLD_MAP` at a local copy to skip the download. The section masks and skill icons come the
+downloads it — 2.9MB, from Jagex's own CDN rather than from anyone's copy of it — to `cache/assets/`
+on first run, the same thing `fray chunkinfo` already does with the 10MB export, and nothing this
+project distributes contains it. Point `FRAY_WORLD_MAP` at a local copy to skip the download. The section masks and skill icons come the
 same way, but one file at a time as you first look at them rather than all 1,558 up front.
 
 **This is a genuine, but deliberately partial, reimplementation of source-chunk's own validity logic**

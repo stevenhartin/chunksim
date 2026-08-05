@@ -22,6 +22,7 @@ from fray_claude.api import (
     WIKI_API_URL,
     WIKI_TITLES_PER_REQUEST,
     WIKI_USER_AGENT,
+    WORLD_MAP_REVISION,
     WORLD_MAP_URL,
     FetchError,
     fetch_chunkinfo,
@@ -285,13 +286,25 @@ def test_the_slayer_sheet_url_names_the_tab() -> None:
 
 
 def test_the_world_map_comes_back_as_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A PNG, not JSON, so it does not go through `_fetch_json_object`."""
-    png = b"\x89PNG\r\n\x1a\n" + b"payload"
-    calls = _patch_urlopen(monkeypatch, _responds(png))
+    """An image, not JSON, so it does not go through `_fetch_json_object`."""
+    jpeg = b"\xff\xd8\xff\xe0" + b"payload"
+    calls = _patch_urlopen(monkeypatch, _responds(jpeg))
 
-    assert fetch_world_map() == png
+    assert fetch_world_map() == jpeg
     assert calls[0][0] == WORLD_MAP_URL
-    assert WORLD_MAP_URL.endswith("/osrs_world_map.png")
+    assert WORLD_MAP_URL.endswith("/osrs_world_map.jpg")
+
+
+def test_the_world_map_comes_from_jagex_not_from_upstream() -> None:
+    """The rights holder's own CDN, and a pinned render.
+
+    Upstream keeps a copy and taking it from there worked - but it relied on a
+    third party's redistribution for the one asset in this project that is
+    somebody else's artwork, and served whatever upstream last synced.
+    """
+    assert WORLD_MAP_URL.startswith("https://cdn.runescape.com/")
+    assert WORLD_MAP_REVISION in WORLD_MAP_URL
+    assert "githubusercontent" not in WORLD_MAP_URL
 
 
 def test_an_empty_world_map_is_an_error(monkeypatch: pytest.MonkeyPatch) -> None:

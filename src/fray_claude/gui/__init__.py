@@ -68,12 +68,12 @@ def _ensure_world_map(context: Context, timeout: float) -> None:
 
     A failure here is reported and *not* fatal: the chunk grid, the hull and
     every number still work without the image, and a server that refuses to
-    start because GitHub is unreachable would be worse than one that draws on
+    start because a CDN is unreachable would be worse than one that draws on
     a blank background.
     """
     if context.world_map_path.is_file():
         return
-    print(f"world map not cached, downloading from upstream (~8.4 MiB)...", flush=True)
+    print("world map not cached, downloading from Jagex (~2.9 MiB)...", flush=True)
     try:
         blob = fetch_world_map(timeout)
     except FetchError as exc:

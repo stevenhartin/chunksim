@@ -12,6 +12,7 @@ import pytest
 
 from fray_claude.delta import diff_names
 from fray_claude.gui.worldmap import (
+    BORDER_PIXELS,
     GRID_COLUMNS,
     GRID_ROWS,
     IMAGE_HEIGHT,
@@ -26,7 +27,7 @@ from fray_claude.gui.worldmap import (
     region_xy,
 )
 
-#: Lumbridge. Region (50, 50), grid (35, 15), pixel (6720, 2880).
+#: Lumbridge. Region (50, 50), grid (35, 15), pixel (4480, 1921).
 LUMBRIDGE = "12850"
 
 
@@ -42,7 +43,8 @@ def test_lumbridge_is_where_lumbridge_is() -> None:
 
     assert position is not None
     assert (position.grid_x, position.grid_y) == (35, 15)
-    assert (position.pixel_x, position.pixel_y) == (6720, 2880)
+    # Border-inclusive: grid (0, 0) starts one row down. See IMAGE_ORIGIN_Y.
+    assert (position.pixel_x, position.pixel_y) == (4480, 1921)
 
 
 def test_the_y_axis_is_flipped() -> None:
@@ -62,7 +64,10 @@ def test_the_projection_tiles_the_image_exactly() -> None:
     assert top_left is not None and bottom_right is not None
     assert (top_left.grid_x, top_left.grid_y) == (0, 0)
     assert (bottom_right.grid_x, bottom_right.grid_y) == (GRID_COLUMNS - 1, GRID_ROWS - 1)
-    assert bottom_right.pixel_x + PIXELS_PER_CHUNK == IMAGE_WIDTH
+    # The far edge lands one pixel short of the image, which is the border
+    # the origin does not consume - on the right for x, and already spent
+    # at the top for y.
+    assert bottom_right.pixel_x + PIXELS_PER_CHUNK + BORDER_PIXELS == IMAGE_WIDTH
     assert bottom_right.pixel_y + PIXELS_PER_CHUNK == IMAGE_HEIGHT
 
 

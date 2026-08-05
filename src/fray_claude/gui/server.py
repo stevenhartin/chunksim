@@ -21,13 +21,20 @@ Every request therefore re-reads the map file, and a `fray fetch` or
 invalidation machinery and no restart. `/api/revision` is a `stat`, so polling
 it twice a second costs nothing.
 
-**The delta is a set difference, not `delta.compare_maps`.** That function
-derives *both* sides unconditionally - the two `derive_with(...)` calls are
-arguments to `compare`, so passing `branches={"chunks"}` narrows the comparison
-and not the work - which would spend ~2s to answer something
-`delta.diff_names` answers in microseconds. `compare_maps` becomes the right
-call the day an overlay is keyed on a derived branch; it is the wrong one for
-chunks.
+**The map's delta is a set difference, not `delta.compare_maps`.** That
+function derives *both* sides unconditionally - the two `derive_with(...)`
+calls are arguments to `compare`, so passing `branches={"chunks"}` narrows the
+comparison and not the work - which would spend ~2s to answer something
+`delta.diff_names` answers in microseconds. `/api/view` therefore uses
+`diff_names`, and `/api/diff` is where `compare_maps` belongs: a separate,
+deliberately slow route behind a button, because "what did those chunks give
+me" is a question about sections, tasks, sources and BiS and there is no cheap
+way to it.
+
+**The world drawn bright is the *compared* map's.** `added` and `removed` are
+`diff_names(base, compare)` either way, but a comparison asks what the base
+becomes, so the hull traces the compared side's own set and the browser washes
+a removed square like any other locked one. See `worldmap.build_view`.
 
 **Path traversal is closed by construction rather than by sanitising.** Static
 files come from a fixed allowlist, so no user-supplied string is ever joined
@@ -74,7 +81,7 @@ from fray_claude.api import (
 )
 from fray_claude.batch import RunResult, run_batch
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.delta import diff_names
+from fray_claude.delta import MapSide, compare_maps, diff_names
 from fray_claude.derived_cache import cached_derive
 from fray_claude.estimate import estimate, goal_levels, infer_levels
 from fray_claude.heuristics import Heuristics, merge
@@ -85,7 +92,7 @@ from fray_claude.summary import _mapping, summarise
 from fray_claude.gui.derivation import DerivedState, Derivations, unlocked_of
 from fray_claude.gui.jobs import JobRegistry, JobState, Progress, as_int
 from fray_claude.gui.panels import task_panel
-from fray_claude.gui.worldmap import MapView, build_view
+from fray_claude.gui.worldmap import MapView, build_view, grid_position
 
 #: The port `fray-gui` binds unless told otherwise. Arbitrary, and high enough
 #: to need no privileges.
@@ -302,13 +309,28 @@ def _chunk_detail(state: DerivedState, chunk_id: str, ctx: Context) -> dict[str,
     }
 
 
+#: The section id standing for "this whole square". An unsplit chunk has no
+#: `Sections` branch and upstream drew no mask for it, so there is no shape to
+#: composite - but it still *has* one section, and the overlay that shades
+#: every other square while leaving these ones bare reads as a gap in the data
+#: rather than as "this chunk is not divided". The browser fills the square
+#: instead of fetching `<chunk>-*.png`; `cache.section_overlay_path`'s alphabet
+#: holds no `*`, so a stray request for one is a 400 rather than a fetch.
+WHOLE_CHUNK_SECTION = "*"
+
+
 def _section_states(state: DerivedState) -> dict[str, dict[str, bool]]:
-    """Which sections of each unlocked, split chunk you can reach.
+    """Which sections of each chunk you can reach.
 
     The whole map in one derivation, because the overlay shades every square
-    on screen and asking per chunk would be one request per square. Only
-    *split* chunks appear: an unsplit one has a single implicit section that
-    is the square itself, and upstream drew no mask for it.
+    on screen and asking per chunk would be one request per square.
+
+    **Every chunk with a square appears, split or not.** A split one carries
+    its declared sections; an unsplit one carries the single
+    `WHOLE_CHUNK_SECTION` its square already is, which is reachable exactly
+    when the chunk is unlocked. Ids with no square - named areas, underground
+    regions - are dropped here rather than in the browser, because nothing can
+    shade a chunk it cannot place and 700 of them are most of the payload.
 
     **Locked chunks are included, all-red.** The question the overlay answers
     is "what is behind this square", and that is asked hardest about a square
@@ -318,16 +340,51 @@ def _section_states(state: DerivedState) -> dict[str, dict[str, bool]]:
     reached = state.derived.reachable_sections
     states: dict[str, dict[str, bool]] = {}
     for chunk_id, entry in state.state.chunk_info.chunks.items():
-        declared = _mapping(entry, "Sections")
-        if not declared:
+        if grid_position(chunk_id) is None:
             continue
+        declared = _mapping(entry, "Sections")
         unlocked = chunk_id in state.unlocked
+        if not declared:
+            states[chunk_id] = {WHOLE_CHUNK_SECTION: unlocked}
+            continue
         states[chunk_id] = {
             section: unlocked
             and (section == "0" or bool(reached.get(chunk_id, {}).get(section)))
             for section in sorted(declared, key=_section_order)
         }
     return states
+
+
+def _full_diff(map1: str, map2: str, ctx: Context) -> dict[str, Any]:
+    """`fray diff --map1 --map2`, over every branch.
+
+    **This is the one route that is allowed to be slow, and the one that has
+    to use `compare_maps`.** The map view answers the same question about
+    *chunks* in microseconds with `diff_names`, which is why it does not call
+    this - but "what did those chunks actually give me" is a question about
+    sections, tasks, sources and BiS, and there is no way to it that does not
+    derive both sides. Both go through `cached_derive`, so the second look at
+    a pair either side has been derived against is ~0.3s.
+
+    `counts` is lifted out of `StateDelta.counts()` because a tuple is a JSON
+    array and `[3, 1]` is not readable at the other end.
+    """
+    before = ctx.derivations.load(map1)
+    after = ctx.derivations.load(map2)
+    delta = compare_maps(
+        MapSide(before.state, before.unlocked, map1),
+        MapSide(after.state, after.unlocked, map2),
+        derive_with=lambda st, un: cached_derive(
+            st, un, ctx.derivations.digests(), root=ctx.root
+        ),
+    )
+    return {
+        "counts": {
+            branch: {"added": added, "removed": removed}
+            for branch, (added, removed) in delta.counts().items()
+        },
+        **delta.as_dict(),
+    }
 
 
 def _unlock_preview(state: DerivedState, chunk_id: str, ctx: Context) -> dict[str, Any]:
@@ -443,8 +500,13 @@ def _static(path: str, ctx: Context) -> Response | None:
 def _world_map(ctx: Context, if_none_match: str | None) -> Response:
     """The map image, with an `ETag` so it is fetched over the wire once.
 
-    8.4MiB is worth a conditional request: without one, every reload spends it
-    again on an image that changes only when upstream re-renders the world.
+    2.9MiB is worth a conditional request: without one, every reload spends it
+    again on an image that changes only when Jagex re-renders the world.
+
+    The content type is read off the suffix rather than pinned, because the
+    cached copy is Jagex's JPEG while `FRAY_WORLD_MAP` may well point at
+    upstream's PNG - and a JPEG served as `image/png` is a broken image with
+    no error anywhere to explain it.
     """
     path = ctx.world_map_path
     try:
@@ -456,17 +518,18 @@ def _world_map(ctx: Context, if_none_match: str | None) -> Response:
             HTTPStatus.NOT_FOUND,
         )
 
+    content_type = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
     etag = f'"{stat.st_mtime_ns:x}-{stat.st_size:x}"'
     if if_none_match == etag:
         return Response(
             status=HTTPStatus.NOT_MODIFIED,
-            content_type="image/png",
+            content_type=content_type,
             body=b"",
             headers={"ETag": etag},
         )
     return Response(
         status=HTTPStatus.OK,
-        content_type="image/png",
+        content_type=content_type,
         body=path.read_bytes(),
         headers={"ETag": etag, "Cache-Control": "no-cache"},
     )
@@ -753,7 +816,11 @@ def handle_request(
     if static is not None:
         return static
 
-    if path == "/world_map.png":
+    # Extensionless, because the bytes behind it may be a JPEG or a PNG - the
+    # cached copy is Jagex's JPEG and `FRAY_WORLD_MAP` may point at either.
+    # `/world_map.png` stays a route so an open tab from before the switch
+    # keeps working until it reloads.
+    if path in ("/world_map", "/world_map.png"):
         return _world_map(ctx, if_none_match)
 
     # Both names are validated by `cache.py` against an alphabet with no `.`
@@ -835,6 +902,15 @@ def handle_request(
             return _json(
                 {"map_id": map_id, "chunks": _section_states(ctx.derivations.load(map_id))}
             )
+
+        if path == "/api/diff":
+            map1 = _first(query, "map1")
+            map2 = _first(query, "map2")
+            if map1 is None or map2 is None:
+                return _error(
+                    "missing required parameter 'map1' or 'map2'", HTTPStatus.BAD_REQUEST
+                )
+            return _json({"map1": map1, "map2": map2, **_full_diff(map1, map2, ctx)})
 
         if path == "/api/chunk":
             map_id = _first(query, "map")

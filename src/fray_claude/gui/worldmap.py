@@ -6,9 +6,10 @@ turns a request into a `MapView` and back into bytes, the same way `cli.py`
 holds argparse and nothing else.
 
 **This lives in `gui/` rather than in the library because all of it is about
-one particular image.** The 48x34 grid, the 192-pixel cell and the flipped y
-axis are properties of `osrs_world_map.png`, not facts about the game world
-that the rest of the project could use. The one piece that *is* world knowledge
+one particular image.** The 48x34 grid, the 128-pixel cell, the one-pixel
+border and the flipped y axis are properties of `osrs_world_map.jpg`, not facts
+about the game world that the rest of the project could use. The one piece that
+*is* world knowledge
 is `region_xy`, and `dps_bridge.in_wilderness` already inlines it; if the
 library ever wants that decoder, the move is to push those two functions down
 into the library rather than to host this module up there and have a library
@@ -24,10 +25,10 @@ A chunk id *is* an OSRS region id, so:
 **The y axis is flipped**, which is the one thing here that will look like a
 bug: the image's origin is the world's *north*-west corner and image rows grow
 southward, while OSRS's `region_y` grows *northward*. Lumbridge is chunk 12850
-= region (50, 50) = grid (35, 15) = pixel (6720, 2880), and cropping the real
-image at that rectangle really does show Lumbridge castle - checked, not
-assumed, because every later bug in this module would otherwise look like a
-hull bug.
+= region (50, 50) = grid (35, 15) = pixel (4480, 1921) once the border offset
+is added, and cropping the real image at that rectangle really does show
+Lumbridge castle - checked, not assumed, because every later bug in this module
+would otherwise look like a hull bug.
 
 **Two kinds of chunk id have no square on this map**, and `grid_position`
 returning `None` is how both are reported:
@@ -53,17 +54,32 @@ from dataclasses import dataclass, field
 from enum import IntFlag, StrEnum
 from typing import Any
 
-#: An OSRS region is 64x64 tiles and upstream's map draws each tile 3 pixels
-#: across, so a chunk is a 192-pixel square. Every other number here follows
-#: from that and is asserted below rather than trusted.
+#: An OSRS region is 64x64 tiles and Jagex's published map draws each tile 2
+#: pixels across, so a chunk is a 128-pixel square. Every other number here
+#: follows from that and is asserted below rather than trusted.
 TILES_PER_CHUNK = 64
-PIXELS_PER_TILE = 3
+PIXELS_PER_TILE = 2
 PIXELS_PER_CHUNK = TILES_PER_CHUNK * PIXELS_PER_TILE
 
-#: `osrs_world_map.png`, fetched from upstream's gh-pages root. See
+#: `osrs_world_map.jpg`, fetched from Jagex's own CDN. See
 #: `api.fetch_world_map`.
-IMAGE_WIDTH = 9216
-IMAGE_HEIGHT = 6528
+IMAGE_WIDTH = 6145
+IMAGE_HEIGHT = 4353
+
+#: **The map content does not start at the image's top-left corner.** The
+#: published JPEG carries a one-pixel black border along its top and right
+#: edges, so the 6144x4352 of actual world sits at `(0, 1)`. Measured, not
+#: assumed: the last column means 1.0 and the first row 2.0 against ~55 for
+#: real content, and aligning the whole image against upstream's own render
+#: downscaled to 6144x4352 picks `(0, 1)` over the other three corners. A
+#: renderer that ignores this draws every square one pixel high, which is
+#: invisible at a glance and wrong at every zoom.
+#: One pixel on one side of each axis - the right edge for x, the top for y,
+#: which is why only `IMAGE_ORIGIN_Y` is non-zero. A border after the content
+#: costs the origin nothing and the image size one pixel all the same.
+BORDER_PIXELS = 1
+IMAGE_ORIGIN_X = 0
+IMAGE_ORIGIN_Y = 1
 
 #: The surface rectangle the image covers, in OSRS region coordinates. World
 #: tiles x 960-4031 and y 2048-4223, divided by 64.
@@ -79,11 +95,14 @@ GRID_ROWS = MAX_REGION_Y - MIN_REGION_Y + 1
 #: the high byte, so a step east is +256 and a step *north* is +1.
 REGION_STRIDE = 256
 
-# The projection has to tile the image exactly. If upstream ever re-renders the
-# map at a different scale these stop agreeing, and failing at import is far
-# kinder than drawing every square in the wrong place.
-assert GRID_COLUMNS * PIXELS_PER_CHUNK == IMAGE_WIDTH
-assert GRID_ROWS * PIXELS_PER_CHUNK == IMAGE_HEIGHT
+# The projection has to tile the image exactly, border included. If Jagex ever
+# re-renders the map at a different scale these stop agreeing, and failing at
+# import is far kinder than drawing every square in the wrong place.
+assert GRID_COLUMNS * PIXELS_PER_CHUNK + BORDER_PIXELS == IMAGE_WIDTH
+assert GRID_ROWS * PIXELS_PER_CHUNK + BORDER_PIXELS == IMAGE_HEIGHT
+# The border is on one side or the other, never split across both.
+assert IMAGE_ORIGIN_X in (0, BORDER_PIXELS)
+assert IMAGE_ORIGIN_Y in (0, BORDER_PIXELS)
 
 
 class Edge(IntFlag):
@@ -135,11 +154,13 @@ class GridPos:
 
     @property
     def pixel_x(self) -> int:
-        return self.grid_x * PIXELS_PER_CHUNK
+        """The left edge of this cell *in the image*, border included."""
+        return IMAGE_ORIGIN_X + self.grid_x * PIXELS_PER_CHUNK
 
     @property
     def pixel_y(self) -> int:
-        return self.grid_y * PIXELS_PER_CHUNK
+        """The top edge of this cell *in the image*, border included."""
+        return IMAGE_ORIGIN_Y + self.grid_y * PIXELS_PER_CHUNK
 
 
 def grid_position(chunk_id: str) -> GridPos | None:
@@ -209,6 +230,9 @@ class MapGeometry:
     pixels_per_chunk: int = PIXELS_PER_CHUNK
     grid_columns: int = GRID_COLUMNS
     grid_rows: int = GRID_ROWS
+    #: Where grid (0, 0) sits inside the image. See `IMAGE_ORIGIN_Y`.
+    origin_x: int = IMAGE_ORIGIN_X
+    origin_y: int = IMAGE_ORIGIN_Y
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -217,6 +241,8 @@ class MapGeometry:
             "pixels_per_chunk": self.pixels_per_chunk,
             "grid_columns": self.grid_columns,
             "grid_rows": self.grid_rows,
+            "origin_x": self.origin_x,
+            "origin_y": self.origin_y,
         }
 
 
@@ -321,12 +347,18 @@ def build_view(
     `fray diff --map1 a --map2 b chunks` reports, and a test pins the two
     together.
 
-    **The hull is traced around the base *plus* the additions.** A chunk gained
-    on the compared side extends the outline, so the border shows the shape the
-    comparison would leave you with; a chunk lost sits inside that outline,
-    shaded, because you had it in the base. Tracing the base alone would draw
-    the old shape with green squares hanging outside it, which reads as a
+    **The hull is traced around everything that is not `removed`**, which is
+    exactly the compared map's own set: base plus what it gains, minus what it
+    loses. A comparison asks what the base *becomes*, so the outline is the
+    shape you would end up with, and the browser washes a removed square like
+    any other locked one before tinting it red. Tracing the base alone would
+    draw the old shape with green squares hanging outside it, which reads as a
     rendering error rather than as a gain.
+
+    Which side is passed as `unlocked` therefore does not change the output:
+    `base ∪ added ∪ removed` is the union either way and `added`/`removed`
+    decide every label. Passing the base is simply the honest description of
+    what the caller has.
 
     Every input is membership-tested and never read for its value. The map
     payload stores `chunks.unlocked` as `{"12850": "12850"}` - the id again,
@@ -345,8 +377,9 @@ def build_view(
     for chunk_id in gained:
         states[chunk_id] = CellState.ADDED
     for chunk_id in lost:
-        # A removed chunk is one the base held, so it is already present and
-        # this only relabels it.
+        # Relabels a base chunk, or introduces one the base never had - which
+        # is what happens when the *compared* map is passed as `unlocked`.
+        # Either way a removed square is drawn outside the hull.
         states[chunk_id] = CellState.REMOVED
 
     positions: dict[str, GridPos] = {}
@@ -405,6 +438,8 @@ __all__ = [
     "GRID_COLUMNS",
     "GRID_ROWS",
     "IMAGE_HEIGHT",
+    "IMAGE_ORIGIN_X",
+    "IMAGE_ORIGIN_Y",
     "IMAGE_WIDTH",
     "MAX_REGION_X",
     "MAX_REGION_Y",

@@ -206,32 +206,46 @@ def test_the_packaged_resources_are_served(
 
 
 def test_the_world_map_is_served_with_an_etag(tmp_path: Path) -> None:
-    cache.write_asset(cache.WORLD_MAP_ASSET, b"\x89PNG fake", root=tmp_path)
+    cache.write_asset(cache.WORLD_MAP_ASSET, b"\xff\xd8\xff fake", root=tmp_path)
     ctx = Context(root=tmp_path)
 
-    response = _get("/world_map.png", ctx)
+    response = _get("/world_map", ctx)
 
     assert response.status == HTTPStatus.OK
-    assert response.content_type == "image/png"
-    assert response.body == b"\x89PNG fake"
+    assert response.content_type == "image/jpeg"
+    assert response.body == b"\xff\xd8\xff fake"
     assert response.headers["ETag"]
 
 
-def test_a_matching_etag_is_a_304_with_no_body(tmp_path: Path) -> None:
-    """8.4MiB is worth a conditional request; without one every reload
-    re-sends an image that changes only when upstream re-renders the world."""
-    cache.write_asset(cache.WORLD_MAP_ASSET, b"\x89PNG fake", root=tmp_path)
-    ctx = Context(root=tmp_path)
-    etag = _get("/world_map.png", ctx).headers["ETag"]
+def test_the_content_type_follows_the_suffix(tmp_path: Path) -> None:
+    """The cached copy is Jagex's JPEG; an override may well be a PNG.
 
-    response = handle_request("GET", "/world_map.png", {}, ctx, if_none_match=etag)
+    Pinned rather than assumed, because a JPEG served as `image/png` is a
+    broken image with no error anywhere to explain it.
+    """
+    local = tmp_path / "upstreams-copy.png"
+    local.write_bytes(b"\x89PNG local")
+
+    response = _get("/world_map", Context(root=tmp_path, world_map=local))
+
+    assert response.content_type == "image/png"
+
+
+def test_a_matching_etag_is_a_304_with_no_body(tmp_path: Path) -> None:
+    """2.9MiB is worth a conditional request; without one every reload
+    re-sends an image that changes only when Jagex re-renders the world."""
+    cache.write_asset(cache.WORLD_MAP_ASSET, b"\xff\xd8\xff fake", root=tmp_path)
+    ctx = Context(root=tmp_path)
+    etag = _get("/world_map", ctx).headers["ETag"]
+
+    response = handle_request("GET", "/world_map", {}, ctx, if_none_match=etag)
 
     assert response.status == HTTPStatus.NOT_MODIFIED
     assert response.body == b""
 
 
 def test_a_missing_world_map_says_how_to_get_one(tmp_path: Path) -> None:
-    response = _get("/world_map.png", Context(root=tmp_path))
+    response = _get("/world_map", Context(root=tmp_path))
 
     assert response.status == HTTPStatus.NOT_FOUND
     assert "FRAY_WORLD_MAP" in _body(response)["error"]
@@ -241,7 +255,7 @@ def test_the_world_map_override_is_honoured(tmp_path: Path) -> None:
     local = tmp_path / "elsewhere.png"
     local.write_bytes(b"\x89PNG local")
 
-    response = _get("/world_map.png", Context(root=tmp_path, world_map=local))
+    response = _get("/world_map", Context(root=tmp_path, world_map=local))
 
     assert response.body == b"\x89PNG local"
 
@@ -295,6 +309,38 @@ def test_the_hover_readout_inverts_the_real_projection() -> None:
     # `chunkToGrid`, the same projection run backwards.
     assert re.search(rf"\(id >> 8\) - {MIN_REGION_X}", source)
     assert re.search(rf"{MAX_REGION_Y} - \(id & 0xff\)", source)
+
+
+def test_the_base_image_is_placed_by_its_content_origin() -> None:
+    """Jagex's JPEG has a border, so the image and the grid start elsewhere.
+
+    One pixel, which is small enough that a browser check would not catch it
+    and wrong at every zoom. The geometry carries `origin_x`/`origin_y` and
+    `drawBase` has to subtract them; without that the whole world draws one
+    pixel out and nothing anywhere reports it.
+    """
+    from fray_claude.gui.worldmap import MapGeometry
+
+    assert (MapGeometry().origin_x, MapGeometry().origin_y) != (0, 0)
+    assert set(MapGeometry().as_dict()) >= {"origin_x", "origin_y"}
+    source = _app_js()
+    assert "state.panX - state.zoom * (g.origin_x || 0)" in source
+    assert "state.panY - state.zoom * (g.origin_y || 0)" in source
+
+
+def test_the_whole_chunk_section_sentinel_agrees_across_the_two_languages() -> None:
+    """An unsplit chunk's one section is drawn, not fetched.
+
+    `server.WHOLE_CHUNK_SECTION` is a value the browser has to recognise to
+    know it must fill the square itself. Disagree and it asks for
+    `<chunk>-*.png`, which `cache.section_overlay_path` rejects - so the
+    failure is a shading hole plus a 400 per square, in a mode nothing tests.
+    """
+    from fray_claude.gui.server import WHOLE_CHUNK_SECTION
+
+    match = re.search(r'const WHOLE_CHUNK = "([^"]+)";', _app_js())
+    assert match is not None
+    assert match.group(1) == WHOLE_CHUNK_SECTION
 
 
 # --- the actions -----------------------------------------------------------
@@ -571,6 +617,83 @@ def test_a_locked_chunk_reports_nothing_reachable(
     assert payload["reachable_sections"] == 0
     assert [row["name"] for row in payload["contents"]["monster"]] == ["Cow"]
     assert payload["contents"]["monster"][0]["reachable"] is False
+
+
+def test_every_placed_chunk_gets_a_section_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**An unsplit chunk is one section, and the overlay has to say so.**
+
+    Only split chunks used to appear, so shading the map left every unsplit
+    square bare - which reads as missing data rather than as "this chunk is
+    not divided". They carry `WHOLE_CHUNK_SECTION` instead, because upstream
+    drew no mask for a shape that is the whole square: the browser fills it.
+
+    Locked chunks are in, all-red, since "what is behind this square" is
+    asked hardest about one you have not got.
+    """
+    from fray_claude.gui.server import WHOLE_CHUNK_SECTION
+
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+    ctx = _derived_ctx(
+        tmp_path,
+        monkeypatch,
+        {
+            "chunks": {
+                LUMBRIDGE: {"Sections": {"0": {}, "1": {}}},
+                NORTH: {"Monster": {"Cow": 4}},
+                "Abyss": {"Monster": {"Abyssal leech": 1}},
+            },
+            "sections": {LUMBRIDGE: {"0": [], "1": []}},
+        },
+    )
+
+    chunks = _body(_get("/api/sections", ctx, map="fray"))["chunks"]
+
+    # Split and unlocked: section 0 comes free with the chunk, 1 does not.
+    assert chunks[LUMBRIDGE] == {"0": True, "1": False}
+    # Unsplit and locked: one section, and you cannot reach it.
+    assert chunks[NORTH] == {WHOLE_CHUNK_SECTION: False}
+    # A named area has no square, so there is nothing to shade.
+    assert "Abyss" not in chunks
+
+
+def test_the_full_diff_reports_both_directions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`/api/diff` is `fray diff`, and the one route allowed to derive twice.
+
+    The map view answers the *chunks* question from a set difference in
+    microseconds, which is why it does not call `compare_maps`. This one has
+    to: sections, tasks, sources and BiS have no cheap answer.
+    """
+    _write_map(tmp_path, "before", [LUMBRIDGE])
+    _write_map(tmp_path, "after", [LUMBRIDGE, NORTH])
+    ctx = _derived_ctx(
+        tmp_path,
+        monkeypatch,
+        {
+            "chunks": {LUMBRIDGE: {"Monster": {"Cow": 4}}, NORTH: {"Monster": {"Duck": 11}}},
+            "sections": {},
+        },
+    )
+
+    payload = _body(_get("/api/diff", ctx, map1="before", map2="after"))
+
+    assert payload["counts"]["chunks"] == {"added": 1, "removed": 0}
+    assert list(payload["chunks"]["added"]) == [NORTH]
+    assert payload["chunks"]["removed"] == []
+    # The Duck comes with the chunk, so the sources branch moves too.
+    assert payload["counts"]["sources"]["added"] >= 1
+    assert payload["before_map"] == "before"
+    assert payload["after_map"] == "after"
+
+
+def test_the_full_diff_needs_both_maps(tmp_path: Path) -> None:
+    response = _get("/api/diff", Context(root=tmp_path), map1="before")
+
+    assert response.status == HTTPStatus.BAD_REQUEST
+    assert "map2" in _body(response)["error"]
 
 
 def test_the_summary_answers_what_fray_show_answers(
