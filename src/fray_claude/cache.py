@@ -77,12 +77,23 @@ CHUNKINFO_ENV_VAR = "FRAY_CHUNKINFO"
 HEURISTICS_DIR_NAME = "heuristics"
 OVERRIDES_FILE_NAME = "overrides.json"
 
-#: Binary assets the GUI needs, kept beside the JSON blobs. Only the world map
-#: lives here today; it is fetched rather than committed because it is Jagex's
-#: artwork - see `api.WORLD_MAP_URL`.
+#: Binary assets the GUI needs, kept beside the JSON blobs. Every one of them
+#: is fetched rather than committed, because all of it is Jagex's artwork -
+#: see `api.WORLD_MAP_URL`.
 ASSET_DIR_NAME = "assets"
 WORLD_MAP_ASSET = "world_map.png"
 WORLD_MAP_ENV_VAR = "FRAY_WORLD_MAP"
+
+#: Subdirectories of `assets/` holding the many-small-files kinds: one
+#: 192x192 mask per (chunk, section), and one icon per skill. Both are fetched
+#: lazily, one file at a time, because a chunk has a handful of sections and
+#: nobody opens all 1,534 masks.
+SECTION_OVERLAY_DIR = "section_overlays"
+SKILL_ICON_DIR = "skill_icons"
+
+#: Where the GUI remembers how its window was left. Not a blob: it has no
+#: upstream source, no `fetched_at`, and is rewritten many times a session.
+GUI_WINDOW_FILE = "gui-window.json"
 
 MAP_FILE_NAME = "map.json"
 ROLLS_FILE_NAME = "rolls.json"
@@ -99,6 +110,15 @@ _NAME_RE = re.compile(r"[A-Za-z0-9_.-]+")
 _RUN_RE = re.compile(rf"{RUN_PREFIX}\d+")
 #: A derived-cache key: hex digest plus the suffix its codec claims.
 _DERIVED_KEY_RE = re.compile(r"[0-9a-f]{16,64}\.[a-z0-9.]{1,12}")
+#: A section overlay's identity: `<chunk>-<section>`, where a section is a
+#: number or upstream's `W`-prefixed water variant (`12850-W1`). This is the
+#: one asset name that comes from a URL, so it is matched whole - the digits
+#: and the `W` are the entire alphabet, which leaves `.` and `/` nothing to
+#: hide in.
+_OVERLAY_RE = re.compile(r"\d+-W?\d+")
+#: A skill's name, which indexes an icon. Letters only, so the same argument
+#: applies.
+_SKILL_RE = re.compile(r"[A-Za-z]+")
 
 
 class CacheMissError(Exception):
@@ -662,6 +682,89 @@ def read_asset(name: str, root: Path | None = None) -> bytes | None:
         return asset_path(name, root).read_bytes()
     except FileNotFoundError:
         return None
+
+
+def map_size(map_id: str, root: Path | None = None) -> int:
+    """Bytes one cached map occupies, counting a run's whole directory.
+
+    A simulated run is a `map.json` plus its ledger and metadata, and the
+    ledger is usually the larger of the three - so reporting only the payload
+    would understate what `fray maps rm` reclaims. Missing means `0`: this
+    answers a tooltip, and a map that vanished between listing and stat is not
+    worth an exception.
+    """
+    try:
+        path = resolve_map_path(map_id, root)
+    except CacheMissError:
+        return 0
+    try:
+        if path.name == MAP_FILE_NAME:
+            return sum(f.stat().st_size for f in path.parent.iterdir() if f.is_file())
+        return path.stat().st_size
+    except OSError:
+        return 0
+
+
+def section_overlay_path(name: str, root: Path | None = None) -> Path:
+    """Where one section mask is cached. `name` is `<chunk>-<section>`.
+
+    **This is the only asset name that reaches here from a URL**, so it is
+    validated against `_OVERLAY_RE` in full rather than sanitised. `fullmatch`
+    on an alphabet of digits and one `W` is not a filter that something can be
+    smuggled through - there is no `.`, no `/` and no `%` in the language at
+    all - which is the same argument the GUI's static allowlist makes and the
+    reason neither needs a second check downstream.
+    """
+    if not _OVERLAY_RE.fullmatch(name):
+        raise ValueError(f"not a section overlay name: {name!r}")
+    return asset_path(f"{SECTION_OVERLAY_DIR}/{name}.png", root)
+
+
+def skill_icon_path(skill: str, root: Path | None = None) -> Path:
+    """Where one skill's icon is cached. Validated like `section_overlay_path`."""
+    if not _SKILL_RE.fullmatch(skill):
+        raise ValueError(f"not a skill name: {skill!r}")
+    return asset_path(f"{SKILL_ICON_DIR}/{skill}.png", root)
+
+
+def write_asset_at(path: Path, blob: bytes) -> Path:
+    """`write_asset` for a path already decided, so a name can be validated first.
+
+    The nested-asset case: `write_asset` builds its own path from a constant
+    name, which is right for the world map and wrong for the thousand-odd
+    masks whose names have to be checked before anything joins them onto a
+    directory.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temp.write_bytes(blob)
+    os.replace(temp, path)
+    return path
+
+
+def gui_window_path(root: Path | None = None) -> Path:
+    """Where the GUI's remembered window geometry lives."""
+    return (root or project_root()) / CACHE_DIR_NAME / GUI_WINDOW_FILE
+
+
+def read_gui_window(root: Path | None = None) -> dict[str, Any]:
+    """How the window was last left, or `{}` if it never has been.
+
+    Empty rather than an error for the same reason `read_asset` returns
+    `None`: the caller's response to "no saved geometry" is to pick a default,
+    and a first run is not a fault.
+    """
+    try:
+        return _read_json_object(gui_window_path(root))
+    except (CacheMissError, OSError):
+        return {}
+
+
+def write_gui_window(geometry: dict[str, Any], root: Path | None = None) -> Path:
+    """Remember how the window was left. Atomic, like everything else here."""
+    path = gui_window_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return _atomic_write_json(path, geometry)
 
 
 def world_map_source(override: Path | None = None, root: Path | None = None) -> Path:

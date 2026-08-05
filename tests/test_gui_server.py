@@ -19,6 +19,8 @@ from typing import Any
 import pytest
 
 from fray_claude import cache
+from fray_claude.api import FetchError
+from fray_claude.gui.browser import window_flags
 from fray_claude.gui.server import Context, Response, handle_request
 
 LUMBRIDGE = "12850"
@@ -502,8 +504,9 @@ def test_a_split_chunks_contents_are_found_and_attributed(
     real export's chunks are split - Lumbridge among them - so a top-level
     read reported the castle as empty.
 
-    They are attributed per section rather than pooled, because which section
-    something sits in decides whether you can reach it at all.
+    They are collated into one list per kind, because the question is "what
+    is in this square" - but which section something sits in still decides
+    whether you can reach it, so that survives as a per-entity flag.
     """
     _write_map(tmp_path, "fray", [LUMBRIDGE])
     ctx = _derived_ctx(
@@ -526,10 +529,12 @@ def test_a_split_chunks_contents_are_found_and_attributed(
     payload = _body(_get("/api/chunk", ctx, map="fray", chunk=LUMBRIDGE))
 
     assert payload["nickname"] == "Lumbridge Castle"
-    sections = {s["section"]: s for s in payload["sections"]}
-    assert sections["1"]["contents"]["monster"] == ["Duck"]
-    assert sections["1"]["contents"]["npc"] == ["Hans"]
-    assert sections["2"]["contents"]["monster"] == ["Giant rat"]
+    monsters = {row["name"]: row for row in payload["contents"]["monster"]}
+    assert sorted(monsters) == ["Duck", "Giant rat"]
+    assert monsters["Duck"]["sections"] == ["1"]
+    assert monsters["Giant rat"]["sections"] == ["2"]
+    assert [row["name"] for row in payload["contents"]["npc"]] == ["Hans"]
+    assert {s["section"] for s in payload["sections"]} == {"1", "2"}
 
 
 def test_an_unsplit_chunk_reads_its_top_level(
@@ -544,7 +549,8 @@ def test_an_unsplit_chunk_reads_its_top_level(
 
     payload = _body(_get("/api/chunk", ctx, map="fray", chunk=LUMBRIDGE))
 
-    assert payload["sections"][0]["contents"]["monster"] == ["Cow"]
+    assert [row["name"] for row in payload["contents"]["monster"]] == ["Cow"]
+    assert payload["contents"]["monster"][0]["reachable"] is True
     assert payload["sections"][0]["reachable"] is True
 
 
@@ -563,7 +569,8 @@ def test_a_locked_chunk_reports_nothing_reachable(
 
     assert payload["unlocked"] is False
     assert payload["reachable_sections"] == 0
-    assert payload["sections"][0]["contents"]["monster"] == ["Cow"]
+    assert [row["name"] for row in payload["contents"]["monster"]] == ["Cow"]
+    assert payload["contents"]["monster"][0]["reachable"] is False
 
 
 def test_the_summary_answers_what_fray_show_answers(
@@ -631,3 +638,111 @@ def test_the_page_strips_task_markup_for_display() -> None:
     assert "function plain(" in source
     # Every place a task-ish string reaches innerHTML goes through it.
     assert source.count("plain(") >= 5
+
+
+# --- upstream assets, fetched lazily ---------------------------------------
+
+
+def test_a_section_mask_is_fetched_once_and_then_read_from_disk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The whole point of the proxy: 1,534 masks, and you look at a handful."""
+    calls: list[str] = []
+
+    def fake(name: str, timeout: float = 0.0) -> bytes:
+        calls.append(name)
+        return b"\x89PNG-mask"
+
+    monkeypatch.setattr("fray_claude.gui.server.fetch_section_overlay", fake)
+    ctx = Context(root=tmp_path)
+
+    first = _get("/assets/section/12850-1.png", ctx)
+    second = _get("/assets/section/12850-1.png", ctx)
+
+    assert first.status == HTTPStatus.OK
+    assert first.content_type == "image/png"
+    assert second.body == first.body == b"\x89PNG-mask"
+    assert calls == ["12850-1"], "the second request went back to the network"
+
+
+def test_a_missing_mask_is_a_404_rather_than_an_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Upstream drew masks for the sections it drew; absence is an answer."""
+
+    def fake(name: str, timeout: float = 0.0) -> bytes:
+        raise FetchError("HTTP 404")
+
+    monkeypatch.setattr("fray_claude.gui.server.fetch_section_overlay", fake)
+
+    response = _get("/assets/section/12850-9.png", Context(root=tmp_path))
+
+    assert response.status == HTTPStatus.NOT_FOUND
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["../../../etc/passwd", "12850-1/../../x", "..", "12850-1.png", "12850_1"],
+)
+def test_an_asset_name_cannot_escape_the_cache(tmp_path: Path, name: str) -> None:
+    """**The one asset name that comes from a URL.**
+
+    `cache.section_overlay_path` matches it whole against an alphabet with no
+    `.` and no `/` in it, so there is nothing to smuggle through - and a name
+    that fails is a malformed URL, not a missing file.
+    """
+    response = _get(f"/assets/section/{name}.png", Context(root=tmp_path))
+
+    assert response.status == HTTPStatus.BAD_REQUEST
+
+
+def test_a_skill_icon_takes_the_same_route(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "fray_claude.gui.server.fetch_skill_icon", lambda skill, timeout=0.0: b"icon"
+    )
+
+    response = _get("/assets/skill/Attack.png", Context(root=tmp_path))
+
+    assert response.status == HTTPStatus.OK
+    assert cache.skill_icon_path("Attack", tmp_path).read_bytes() == b"icon"
+
+
+# --- window geometry -------------------------------------------------------
+
+
+def test_the_page_reports_its_window_and_the_next_launch_reads_it_back(
+    tmp_path: Path,
+) -> None:
+    """Chrome will not remember this for us; see `browser.window_flags`."""
+    ctx = Context(root=tmp_path, check_origin=False)
+
+    _post("/api/window", ctx, {"width": 1600, "height": 900, "x": 20, "y": 40})
+
+    assert cache.read_gui_window(tmp_path) == {
+        "width": 1600,
+        "height": 900,
+        "x": 20,
+        "y": 40,
+        "maximised": False,
+    }
+    assert window_flags(cache.read_gui_window(tmp_path)) == [
+        "--window-size=1600,900",
+        "--window-position=20,40",
+    ]
+
+
+def test_a_partial_or_hostile_window_report_is_ignored(tmp_path: Path) -> None:
+    """The file is read back as command-line arguments, so its keys are fixed."""
+    ctx = Context(root=tmp_path, check_origin=False)
+
+    _post("/api/window", ctx, {"width": 800, "evil": "--headless"})
+
+    assert cache.read_gui_window(tmp_path) == {}
+
+
+def test_a_first_run_opens_maximised(tmp_path: Path) -> None:
+    """Not fullscreen: closing the window is how you stop the server, and
+    fullscreen hides the control that does it."""
+    assert window_flags(cache.read_gui_window(tmp_path)) == ["--start-maximized"]

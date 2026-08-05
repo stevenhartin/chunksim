@@ -65,8 +65,11 @@ from fray_claude.api import (
     CHUNKINFO_URL,
     DEFAULT_TIMEOUT,
     TASKS_MAP_URL,
+    FetchError,
     fetch_chunkinfo,
     fetch_map,
+    fetch_section_overlay,
+    fetch_skill_icon,
     fetch_tasks_map,
 )
 from fray_claude.batch import RunResult, run_batch
@@ -81,6 +84,7 @@ from fray_claude.search import build_world_index, search
 from fray_claude.summary import _mapping, summarise
 from fray_claude.gui.derivation import DerivedState, Derivations, unlocked_of
 from fray_claude.gui.jobs import JobRegistry, JobState, Progress, as_int
+from fray_claude.gui.panels import task_panel
 from fray_claude.gui.worldmap import MapView, build_view
 
 #: The port `fray-gui` binds unless told otherwise. Arbitrary, and high enough
@@ -212,6 +216,21 @@ def build_map_view(map_id: str, compare: str | None, ctx: Context) -> MapView:
 _CONTENT_KEYS = ("Monster", "NPC", "Object", "Shop", "Spawn", "Quest", "Clue", "Diary")
 
 
+def _section_order(section_id: str) -> tuple[int, int, str]:
+    """Sort sections `0, 1, 2, 10, W1, W2` rather than `0, 1, 10, 2, W1`.
+
+    Upstream's water sections carry a `W` prefix and its numbered ones are
+    strings, so the obvious `sorted()` puts `10` before `2` and reads as a
+    bug in the panel.
+    """
+    if section_id.isdigit():
+        return (0, int(section_id), "")
+    digits = section_id.lstrip("W")
+    if section_id.startswith("W") and digits.isdigit():
+        return (1, int(digits), "")
+    return (2, 0, section_id)
+
+
 def _chunk_detail(state: DerivedState, chunk_id: str, ctx: Context) -> dict[str, Any]:
     """Everything the panel shows for one chunk.
 
@@ -234,17 +253,9 @@ def _chunk_detail(state: DerivedState, chunk_id: str, ctx: Context) -> dict[str,
     unlocked = chunk_id in state.unlocked
     declared = _mapping(entry, "Sections")
 
-    def contents(source: Mapping[str, Any]) -> dict[str, list[str]]:
-        found = {}
-        for key in _CONTENT_KEYS:
-            names = sorted(_mapping(source, key))
-            if names:
-                found[key.lower()] = names
-        return found
-
     sections: list[dict[str, Any]] = []
     if declared:
-        for section_id in sorted(declared):
+        for section_id in sorted(declared, key=_section_order):
             # Section "0" is reachable the moment the chunk is - which is
             # exactly why `reachable_sections` omits it.
             is_reached = unlocked and (section_id == "0" or bool(reached.get(section_id)))
@@ -252,19 +263,41 @@ def _chunk_detail(state: DerivedState, chunk_id: str, ctx: Context) -> dict[str,
                 {
                     "section": section_id,
                     "reachable": is_reached,
-                    "contents": contents(_mapping(declared, section_id)),
+                    "source": _mapping(declared, section_id),
                 }
             )
     else:
-        sections.append(
-            {"section": "0", "reachable": unlocked, "contents": contents(entry)}
-        )
+        sections.append({"section": "0", "reachable": unlocked, "source": entry})
+
+    # **Collated across the chunk, not nested under each section.** A chunk
+    # with six sections showed six short lists of the same kind of thing, and
+    # the question is "what is in this square", not "how did upstream file
+    # it". Which section something is in still decides whether you can *get*
+    # to it, so that survives as a per-entity flag rather than as structure:
+    # the panel greys an unreachable row instead of hiding a heading.
+    contents: dict[str, list[dict[str, Any]]] = {}
+    for key in _CONTENT_KEYS:
+        rows: dict[str, dict[str, Any]] = {}
+        for section in sections:
+            for name in sorted(_mapping(section["source"], key)):
+                row = rows.setdefault(
+                    name, {"name": name, "reachable": False, "sections": []}
+                )
+                row["sections"].append(section["section"])
+                # Reachable anywhere is reachable: the same monster in a
+                # reached section and an unreached one is one you can fight.
+                row["reachable"] = row["reachable"] or section["reachable"]
+        if rows:
+            contents[key.lower()] = [rows[name] for name in sorted(rows)]
 
     return {
         "chunk_id": chunk_id,
         "nickname": entry.get("Nickname") or entry.get("Name") or None,
         "unlocked": unlocked,
-        "sections": sections,
+        "contents": contents,
+        "sections": [
+            {"section": s["section"], "reachable": s["reachable"]} for s in sections
+        ],
         "reachable_sections": sum(1 for s in sections if s["reachable"]),
     }
 
@@ -411,6 +444,65 @@ def _world_map(ctx: Context, if_none_match: str | None) -> Response:
     )
 
 
+def _cached_upstream_asset(
+    path: Path, fetch: Callable[[], bytes], *, what: str
+) -> Response:
+    """Serve a small upstream image, fetching it once if this machine lacks it.
+
+    **A lazy proxy rather than a download step**, because the two collections
+    behind it are 1,534 section masks and 24 skill icons and nobody looks at
+    all of either. A chunk's masks arrive when you first shade that chunk, and
+    stay; the second visit is a disk read.
+
+    This is the GUI reaching the network, which `api.py` otherwise owns alone -
+    so it does not: the fetch is an `api` function passed in, and the bytes go
+    to disk through `cache.py`. The only thing decided here is *when*.
+
+    A miss is a 404 rather than an error. Upstream has a mask for every
+    section it drew and nothing promises one exists for a section it did not,
+    so "there is no mask" is an ordinary answer the caller draws nothing for.
+    """
+    try:
+        blob: bytes | None = path.read_bytes()
+    except FileNotFoundError:
+        blob = None
+    if blob is None:
+        try:
+            blob = fetch()
+        except FetchError as exc:
+            return _error(f"could not fetch {what}: {exc}", HTTPStatus.NOT_FOUND)
+        cache.write_asset_at(path, blob)
+    return Response(
+        status=HTTPStatus.OK,
+        content_type="image/png",
+        body=blob,
+        # Upstream regenerates these only when it redraws the world, and the
+        # URL carries the identity, so this is genuinely immutable.
+        headers={"Cache-Control": "max-age=31536000, immutable"},
+    )
+
+
+def _window_state(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
+    """Remember the window's shape, so the next launch opens the same one.
+
+    Sent by the page, because only the page can see it: the server launched a
+    browser and has no idea what the user then did to the window. Ignoring
+    anything unrecognised keeps a hostile or stale caller from writing
+    arbitrary JSON into the cache - the file is *read back* as command-line
+    arguments, so its keys are exactly the four this understands.
+    """
+    geometry = {
+        key: int(value)
+        for key in ("width", "height", "x", "y")
+        if isinstance(value := payload.get(key), (int, float))
+    }
+    if len(geometry) == 4 and geometry["width"] > 0 and geometry["height"] > 0:
+        geometry["maximised"] = bool(payload.get("maximised"))
+        cache.write_gui_window(geometry, ctx.root)
+        return {"saved": True}
+    return {"saved": False}
+
+
 def _fetch_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     map_id = str(payload.get("map") or "").strip()
     if not map_id:
@@ -541,6 +633,7 @@ _ACTIONS: dict[str, Callable[[Mapping[str, Any], Context], dict[str, Any]]] = {
     "/api/refresh": _refresh_job,
     "/api/maps/remove": _remove_job,
     "/api/derived/prune": _prune_job,
+    "/api/window": _window_state,
 }
 
 
@@ -635,9 +728,40 @@ def handle_request(
     if path == "/world_map.png":
         return _world_map(ctx, if_none_match)
 
+    # Both names are validated by `cache.py` against an alphabet with no `.`
+    # and no `/` in it, and a `ValueError` there is a malformed URL, not a
+    # missing file - so it is a 400 rather than the 404 a real miss gets.
+    if path.startswith("/assets/section/") and path.endswith(".png"):
+        name = path.removeprefix("/assets/section/").removesuffix(".png")
+        try:
+            target = cache.section_overlay_path(name, ctx.root)
+        except ValueError as exc:
+            return _error(str(exc), HTTPStatus.BAD_REQUEST)
+        return _cached_upstream_asset(
+            target, lambda: fetch_section_overlay(name), what=f"section overlay {name}"
+        )
+
+    if path.startswith("/assets/skill/") and path.endswith(".png"):
+        skill = path.removeprefix("/assets/skill/").removesuffix(".png")
+        try:
+            target = cache.skill_icon_path(skill, ctx.root)
+        except ValueError as exc:
+            return _error(str(exc), HTTPStatus.BAD_REQUEST)
+        return _cached_upstream_asset(
+            target, lambda: fetch_skill_icon(skill), what=f"{skill} icon"
+        )
+
     try:
         if path == "/api/maps":
-            return _json([entry.as_dict() for entry in cache.list_maps(ctx.root, expand_runs=True)])
+            return _json(
+                [
+                    # `size` is the tooltip's, not the library's: `MapEntry`
+                    # describes what a map *is*, and how many bytes it happens
+                    # to occupy is a fact about this disk.
+                    {**entry.as_dict(), "size": cache.map_size(entry.map_id, ctx.root)}
+                    for entry in cache.list_maps(ctx.root, expand_runs=True)
+                ]
+            )
 
         if path == "/api/jobs":
             return _json([job.as_dict() for job in ctx.jobs.recent()])
@@ -702,9 +826,23 @@ def handle_request(
             term = _first(query, "q")
             if term is None:
                 return _error("missing required parameter 'q'", HTTPStatus.BAD_REQUEST)
-            info = ctx.derivations.chunk_info()
             limit = max(1, min(200, int(_first(query, "limit") or 40)))
-            results = search(build_world_index(info), term, limit=limit)
+            # **`unlocked` and `derived` are what make `available` mean
+            # anything.** Without them every hit and every one of its
+            # locations comes back locked, which is not a cheaper answer -
+            # it is a wrong one, and it silently made the whole panel say
+            # "nothing here is reachable". `fray search` has always passed
+            # both; this is the same call.
+            map_id = _first(query, "map")
+            against = ctx.derivations.load(map_id) if map_id else None
+            info = against.state.chunk_info if against else ctx.derivations.chunk_info()
+            results = search(
+                build_world_index(info),
+                term,
+                unlocked=against.unlocked if against else None,
+                derived=against.derived if against else None,
+                limit=limit,
+            )
             return _json({"query": term, "results": [r.as_dict() for r in results]})
 
         if path == "/api/estimate":
@@ -718,14 +856,7 @@ def handle_request(
             if map_id is None:
                 return _error("missing required parameter 'map'", HTTPStatus.BAD_REQUEST)
             state = ctx.derivations.load(map_id)
-            return _json(
-                {
-                    "map_id": map_id,
-                    "skills": state.derived.task_classification.as_dict(),
-                    "other": state.derived.other_tasks.as_dict(),
-                    "bis": state.derived.bis.as_dict(),
-                }
-            )
+            return _json({"map_id": map_id, **task_panel(state.derived)})
 
         if path == "/api/derived":
             return _json(

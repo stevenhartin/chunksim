@@ -37,8 +37,10 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 #: Executables that understand `--app`, most-likely-present first. Edge is
 #: second because it ships with Windows; on Linux the same names are found on
@@ -118,7 +120,40 @@ class AppWindow:
             self.process.kill()
 
 
-def open_app_window(url: str, profile: Path, browser: Path | None = None) -> AppWindow | None:
+def window_flags(geometry: Mapping[str, Any] | None) -> list[str]:
+    """Where to put the window, given what the last session reported.
+
+    **Chrome will not remember this for us, and the reason is our own URL.**
+    An app window's bounds are stored per app id, and the id is derived from
+    the URL - which carries the port and the `?map=` deep link, so it differs
+    between launches and every session looks like a brand new app. Passing the
+    bounds explicitly is what makes "close it maximised, open it maximised"
+    true, and `server._window_state` is where the page reports them.
+
+    With nothing remembered the window opens **maximised, not fullscreen**.
+    Fullscreen on a window whose whole point is that closing it stops the
+    server would hide the control that closes it.
+    """
+    if not geometry:
+        return ["--start-maximized"]
+    if geometry.get("maximised"):
+        return ["--start-maximized"]
+    width, height = geometry.get("width"), geometry.get("height")
+    if not isinstance(width, int) or not isinstance(height, int):
+        return ["--start-maximized"]
+    flags = [f"--window-size={width},{height}"]
+    x, y = geometry.get("x"), geometry.get("y")
+    if isinstance(x, int) and isinstance(y, int):
+        flags.append(f"--window-position={x},{y}")
+    return flags
+
+
+def open_app_window(
+    url: str,
+    profile: Path,
+    browser: Path | None = None,
+    geometry: Mapping[str, Any] | None = None,
+) -> AppWindow | None:
     """Open `url` as an app window, or `None` if no browser can.
 
     The flags are the minimum that makes a launched browser behave like an
@@ -141,6 +176,7 @@ def open_app_window(url: str, profile: Path, browser: Path | None = None) -> App
         # restored; a crash bubble on top of the map would be noise.
         "--disable-session-crashed-bubble",
         "--disable-features=Translate",
+        *window_flags(geometry),
     ]
     try:
         process = subprocess.Popen(
@@ -156,4 +192,4 @@ def open_app_window(url: str, profile: Path, browser: Path | None = None) -> App
     return AppWindow(process=process, browser=executable, profile=profile)
 
 
-__all__ = ["AppWindow", "find_app_browser", "open_app_window"]
+__all__ = ["AppWindow", "find_app_browser", "open_app_window", "window_flags"]

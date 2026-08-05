@@ -1,7 +1,7 @@
 """The GUI app: a local server and a browser front-end for the world map.
 
 `fray` answers in text; this answers in pixels. It is a second app in the same
-distribution rather than a second distribution, because the 27 modules beside
+distribution rather than a second distribution, because the 28 modules beside
 `cli.py` already *are* the library and a `gui/` package completes the picture
 without the cost of inter-package version pinning.
 
@@ -24,6 +24,13 @@ exactly one is armed at a time, so there is never a question of which applies:
 Ctrl-C works in both and exits 0. This is the one command in the project that
 runs until interrupted, and a traceback for the documented way to end it would
 be wrong.
+
+**The window's size is remembered, and has to be, because Chrome will not do
+it.** An app window's saved bounds are keyed on an app id derived from the
+URL, and ours carries the port and the `?map=` deep link - so every launch
+looks like a different app to it. The page reports its own geometry to
+`/api/window` instead, and `browser.window_flags` reads it back. A first run
+opens maximised.
 """
 
 from __future__ import annotations
@@ -174,7 +181,11 @@ def main(argv: list[str] | None = None) -> int:
     # Opened after binding, so nothing can load before the socket listens.
     window = None
     if not args.no_browser and not args.tab:
-        window = open_app_window(url, cache.gui_profile_dir(context.root))
+        window = open_app_window(
+            url,
+            cache.gui_profile_dir(context.root),
+            geometry=cache.read_gui_window(context.root),
+        )
         if window is not None:
             print(f"opened an app window ({window.browser.name}); close it to stop")
     if window is None and not args.no_browser:

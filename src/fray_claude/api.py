@@ -47,6 +47,14 @@ TASKS_MAP_URL = _UPSTREAM_RAW.format(path="tasksMap.json")
 #: copy from upstream, exactly as they already do for the chunkinfo export.
 WORLD_MAP_URL = _UPSTREAM_RAW.format(path="osrs_world_map.png")
 
+#: The per-section masks the GUI shades a split chunk with, and the skill
+#: icons the tasks panel labels rows with. Same artwork argument as the world
+#: map, and the same answer: fetched, never committed. **One file at a time
+#: and only when asked** - there are 1,534 masks and a chunk has a handful of
+#: sections, so anything eager here would spend 14MiB to draw one square.
+SECTION_OVERLAY_URL = _UPSTREAM_RAW.format(path="resources/section_overlays/{name}.png")
+SKILL_ICON_URL = _UPSTREAM_RAW.format(path="resources/{skill}_skill.png")
+
 WIKI_API_URL = "https://oldschool.runescape.wiki/api.php"
 
 #: KodakKid3's OSRS Slayer Spreadsheet, published to the web, read as CSV.
@@ -285,6 +293,26 @@ def fetch_world_map(timeout: float = DEFAULT_TIMEOUT) -> bytes:
     docstring on why the wiki is the exception.
     """
     return _fetch_bytes(WORLD_MAP_URL, timeout, what="world map image")
+
+
+def fetch_section_overlay(name: str, timeout: float = DEFAULT_TIMEOUT) -> bytes:
+    """One section mask: a 192x192 1-bit PNG, `name` being `<chunk>-<section>`.
+
+    The mask's opaque pixels are the section - a `tRNS` chunk makes grey 0
+    transparent, which is what lets upstream composite several of them onto
+    one square. Whoever draws it is relying on that, so it is recorded here
+    rather than only in the JavaScript that depends on it.
+    """
+    return _fetch_bytes(
+        SECTION_OVERLAY_URL.format(name=name), timeout, what=f"section overlay {name}"
+    )
+
+
+def fetch_skill_icon(skill: str, timeout: float = DEFAULT_TIMEOUT) -> bytes:
+    """One skill's icon, as upstream names them (`Attack_skill.png`)."""
+    return _fetch_bytes(
+        SKILL_ICON_URL.format(skill=skill), timeout, what=f"{skill} icon"
+    )
 
 
 def _fetch_bytes(url: str, timeout: float, *, what: str) -> bytes:
