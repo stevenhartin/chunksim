@@ -68,10 +68,21 @@ have (Chrome, Edge, Brave, Chromium…); it is not a dependency, and if you have
 ordinary tab instead and shuts down about fifteen seconds after you close it. `--tab` forces that
 second behaviour if you would rather have your own profile and extensions.
 
+**Candidates** draws the chunks you could roll next, each carrying the number source-chunk's own
+canvas gives it — the decision the game asks you to make, as a picture rather than a list. Click any
+chunk for its sections and contents, and for one you do not own yet, what unlocking it would add.
+
+The panel covers the rest of the CLI: your current goal per skill, the hours estimate with the
+longest single items and every reachable slayer master, a world-wide search that highlights where a
+thing is, and the cached maps with the actions that make and remove them.
+
 It re-reads the cache as it goes, so a `fray fetch` or `fray simulate` in another terminal appears
 in the browser a couple of seconds later. You can also drive both from the page itself: **fetch**
 re-downloads the current map, and **simulate** rolls N chunks, saves each run as a cached map and
 opens the result as a comparison against where you started.
+
+`?map=…&compare=…&candidates=1&tab=estimate` reproduces a view, so a particular question is
+shareable and a screenshot is reproducible.
 
 **It binds `127.0.0.1` and is not authenticated.** A page you have open in another tab cannot read
 anything from it — the same-origin policy stops that — and its `fetch`/`simulate` buttons are

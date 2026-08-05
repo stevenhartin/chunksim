@@ -147,6 +147,8 @@ Five things that cut across modules — the first three because each has already
 | `gui/worldmap.py` | Where a chunk sits on upstream's map image, and which of its sides face outward. Pure. Owns the projection (`grid_x = region_x - 15`, **`grid_y = 65 - region_y`** — the y axis is flipped), the two kinds of id that have no square, and `hull_edges`. In `gui/` because all of it is about one particular image. |
 | `gui/server.py` | Routing, as a **pure `handle_request`** with a `BaseHTTPRequestHandler` adapter over it — so tests reach the whole surface without binding a socket. Owns the static allowlist and the `Sec-Fetch-Site`/`Host` checks. |
 | `gui/jobs.py` | The background job registry the POST actions use. **The only mutable state in the GUI**, kept out of the pure layer deliberately. |
+| `gui/derivation.py` | The boundary between the cheap path and the expensive one. Loads `ChunkInfo` **lazily** — a request that does not need a derivation must not pay for one, and a test asserts the map view never triggers it. |
+| `gui/browser.py` | Finding a Chromium-family browser and opening an app window whose lifetime is the server's. `--user-data-dir` is load-bearing, not tidiness. |
 
 ## Toolchain
 
@@ -271,6 +273,11 @@ between two unlocked chunks — that is `worldmap.hull_edges`), and a delta mode
 gains are green and its losses red. It can also drive `fetch` and `simulate`, which return a job id
 and report progress while a thread does the work.
 
+**All fifteen CLI subcommands are reachable from it.** `GET /api/{maps,view,revision,summary,
+neighbours,chunk,unlock,search,estimate,tasks,derived,jobs}` and `POST /api/{fetch,simulate,refresh,
+maps/remove,derived/prune}`. The panel's tabs are chunk / tasks / estimate / find / maps, and
+`?map=&compare=&candidates=1&tab=` reproduces a view.
+
 Three things worth knowing before changing it:
 
 - **A request is milliseconds, so nothing is cached.** Rendering needs only `chunks.unlocked` — a
@@ -281,6 +288,10 @@ Three things worth knowing before changing it:
   whatever `branches` says — the `derive_with(...)` calls are arguments to `compare` — so it would
   spend ~2s on a set difference. It becomes the right call only when an overlay is keyed on a
   derived branch.
+- **Two constants cross into JavaScript with nothing enforcing agreement** — the `Edge` bitfield and
+  the projection, both plain integers over JSON — so `tests/test_gui_server.py` reads `app.js` and
+  asserts them against the Python. The same file asserts the canvas is given an explicit size, since
+  `inset: 0` does not stretch a replaced element and the failure is silent.
 - **The map image is fetched, never committed.** It is Jagex's artwork; shipping it in an MIT wheel
   would imply a sublicence this project has not got. `fray-gui` downloads it to `cache/assets/` on
   first run exactly as `fray chunkinfo` downloads 10MB, and `FRAY_WORLD_MAP` points at a local copy.
