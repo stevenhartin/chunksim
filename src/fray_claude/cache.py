@@ -619,6 +619,17 @@ def write_derived(key: str, blob: bytes, root: Path | None = None) -> Path:
     return path
 
 
+def gui_profile_dir(root: Path | None = None) -> Path:
+    """The browser profile `fray-gui`'s app window runs in.
+
+    Its own, and not the user's, for a reason that is mechanical rather than
+    tidy: Chrome hands a URL to an already-running instance unless pointed at a
+    separate profile, and the launched process then exits immediately - taking
+    the server with it. See `gui/browser.py`.
+    """
+    return (root or project_root()) / CACHE_DIR_NAME / "gui-profile"
+
+
 def asset_path(name: str, root: Path | None = None) -> Path:
     """Where a binary asset lives. `name` is a fixed constant, never user input."""
     return (root or project_root()) / CACHE_DIR_NAME / ASSET_DIR_NAME / name

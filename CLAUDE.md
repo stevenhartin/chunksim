@@ -284,6 +284,14 @@ Three things worth knowing before changing it:
 - **The map image is fetched, never committed.** It is Jagex's artwork; shipping it in an MIT wheel
   would imply a sublicence this project has not got. `fray-gui` downloads it to `cache/assets/` on
   first run exactly as `fray chunkinfo` downloads 10MB, and `FRAY_WORLD_MAP` points at a local copy.
+- **The window's lifetime is the server's, by one of two mechanisms and never both.** With a
+  Chromium-family browser present (Chrome, Edge, Brave, Chromium, Vivaldi, Opera) it opens an *app
+  window* — `--app` plus its own `--user-data-dir`, the latter being load-bearing rather than tidy:
+  without it Chrome hands the URL to a running instance and the launched process exits at once,
+  stopping the server the moment it started. Otherwise it opens a tab and a **heartbeat** stops the
+  server `IDLE_TIMEOUT_SECONDS` after the last request. Neither is a dependency — `dependencies` is
+  still empty, and a machine with only Firefox takes the second path. A running job holds the server
+  open either way.
 
 **`cache/derived/` is a third thing, and not a map.** It holds `pipeline.derive`'s *results*, one
 zstd-compressed pickle per key (~0.12MB each), so a repeat command costs ~0.15s instead of ~1.05s.

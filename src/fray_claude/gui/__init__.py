@@ -11,9 +11,19 @@ GUI imports the library directly rather than shelling out to `fray` - shelling
 would re-parse the 10MB export per call and trade typed exceptions for exit
 codes.
 
-**Ctrl-C is how you stop it, so Ctrl-C exits 0.** This is the one command in
-the project that runs until interrupted, and a traceback for the documented
-way to end it would be wrong.
+**The window's lifetime is the server's**, because a server you have to
+remember to Ctrl-C is a server you leave running. There are two mechanisms and
+exactly one is armed at a time, so there is never a question of which applies:
+
+- an **app window** was opened, and the server waits on that process. Closing
+  the window stops it. See `gui/browser.py`.
+- no app window, so a **heartbeat**: the page polls every two seconds, and the
+  server stops once nothing has asked for anything in `IDLE_TIMEOUT_SECONDS`.
+  This is the `--no-browser` case and the Firefox-only case.
+
+Ctrl-C works in both and exits 0. This is the one command in the project that
+runs until interrupted, and a traceback for the documented way to end it would
+be wrong.
 """
 
 from __future__ import annotations
@@ -21,12 +31,22 @@ from __future__ import annotations
 import argparse
 import errno
 import sys
+import threading
+import time
 import webbrowser
 from pathlib import Path
 
 from fray_claude import cache
 from fray_claude.api import DEFAULT_TIMEOUT, FetchError, fetch_world_map
-from fray_claude.gui.server import DEFAULT_HOST, DEFAULT_PORT, Context, MapServer
+from fray_claude.gui.browser import open_app_window
+from fray_claude.gui.jobs import JobState
+from fray_claude.gui.server import (
+    DEFAULT_HOST,
+    DEFAULT_PORT,
+    Context,
+    MapServer,
+    should_stop,
+)
 from fray_claude.gui.worldmap import MapView, build_view
 
 __all__ = ["MapView", "build_view", "main"]
@@ -87,7 +107,20 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--no-browser", action="store_true", help="do not open a browser window"
+        "--no-browser",
+        action="store_true",
+        help=(
+            "do not open anything; serve until the last client goes away or "
+            "Ctrl-C"
+        ),
+    )
+    parser.add_argument(
+        "--tab",
+        action="store_true",
+        help=(
+            "open an ordinary tab in your usual browser instead of an app "
+            "window, keeping your profile and extensions"
+        ),
     )
     parser.add_argument(
         "--world-map",
@@ -137,25 +170,59 @@ def main(argv: list[str] | None = None) -> int:
         url += "?" + "&".join(query)
 
     print(f"serving {url}")
-    print("press Ctrl-C to stop")
-    if not args.no_browser:
-        # After binding, so the tab cannot load before the socket listens. A
-        # headless box makes this fail or write to stderr, and neither should
-        # take the server down.
+
+    # Opened after binding, so nothing can load before the socket listens.
+    window = None
+    if not args.no_browser and not args.tab:
+        window = open_app_window(url, cache.gui_profile_dir(context.root))
+        if window is not None:
+            print(f"opened an app window ({window.browser.name}); close it to stop")
+    if window is None and not args.no_browser:
         try:
             webbrowser.open(url, new=2)
         except Exception:  # noqa: BLE001 - opening a browser is best-effort
             pass
+        print("close the tab to stop, or press Ctrl-C")
+    if window is None and args.no_browser:
+        print("open it yourself; it stops when you close it, or on Ctrl-C")
 
+    serving = threading.Thread(target=server.serve_forever, daemon=True)
+    serving.start()
     try:
-        server.serve_forever()
+        if window is not None:
+            window.wait()
+        else:
+            # Poll rather than block, so Ctrl-C is answered promptly.
+            while not should_stop(context):
+                time.sleep(1.0)
     except KeyboardInterrupt:
         print()
     finally:
+        if window is not None:
+            window.close()
         server.shutdown()
         server.server_close()
+
+    _report_abandoned(context)
     print("stopped")
     return 0
+
+
+def _report_abandoned(context: Context) -> None:
+    """Name any job that was still running, and where its output went.
+
+    Job threads are daemons, so shutting down abandons them. `batch.run_batch`
+    claims its directory up front and writes each run atomically, so what is
+    left is a partial batch rather than a corrupt one - but it is a batch
+    nobody asked for, and saying so is the difference between tidying it up
+    and wondering where it came from.
+    """
+    running = [job for job in context.jobs.recent() if job.state is JobState.RUNNING]
+    for job in running:
+        detail = f" ({job.progress})" if job.progress else ""
+        print(f"abandoning {job.action}{detail}", file=sys.stderr)
+    if running:
+        print("any partial output is under cache/sims - fray maps rm removes it", file=sys.stderr)
 
 
 if __name__ == "__main__":  # pragma: no cover - module entry point

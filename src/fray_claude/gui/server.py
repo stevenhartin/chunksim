@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import traceback
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -63,13 +64,20 @@ from fray_claude import cache
 from fray_claude.api import DEFAULT_TIMEOUT, fetch_map
 from fray_claude.batch import RunResult, run_batch
 from fray_claude.delta import diff_names
-from fray_claude.gui.jobs import JobRegistry, Progress, as_int
+from fray_claude.gui.jobs import JobRegistry, JobState, Progress, as_int
 from fray_claude.gui.worldmap import MapView, build_view
 
 #: The port `fray-gui` binds unless told otherwise. Arbitrary, and high enough
 #: to need no privileges.
 DEFAULT_PORT = 8731
 DEFAULT_HOST = "127.0.0.1"
+
+#: How long the server outlives its last client when nothing is holding it
+#: open. The page polls `/api/revision` every 2s, so this is roughly seven
+#: missed polls - long enough to survive a slow reload or a laptop briefly
+#: asleep, short enough that a closed tab does not leave a process behind.
+#: Only armed when no app window was opened; see `gui/browser.py`.
+IDLE_TIMEOUT_SECONDS = 15.0
 
 #: Text assets that ship inside the package. The world map is *not* here - it
 #: is fetched to `cache/assets/` because it is Jagex's artwork; see
@@ -112,6 +120,11 @@ class Context:
     resources: Path = RESOURCE_DIR
     world_map: Path | None = None
     jobs: JobRegistry = field(default_factory=JobRegistry)
+    #: When the last client was heard from, for the idle shutdown. Mutable, so
+    #: it is a one-element list rather than a field on a frozen dataclass -
+    #: the alternative is unfreezing `Context`, and every other field here
+    #: genuinely is constant.
+    last_seen: list[float] = field(default_factory=lambda: [0.0])
     #: Whether the browser-origin checks apply. Off in tests, which have no
     #: browser to send the headers this asserts on.
     check_origin: bool = True
@@ -329,6 +342,45 @@ def _origin_ok(headers: Mapping[str, str]) -> str | None:
     return None
 
 
+def touch(ctx: Context) -> None:
+    """Record that a client is still there."""
+    ctx.last_seen[0] = time.monotonic()
+
+
+def idle_seconds(ctx: Context) -> float:
+    """How long since a client last asked for anything, or `0.0` if never.
+
+    Zero rather than infinity for the never-seen case, and the difference is
+    not academic: `should_stop` compares this against a timeout, so infinity
+    would make a server nobody has opened yet stop *immediately* - which is
+    exactly what `--no-browser` is, for the seconds between binding and the
+    user pasting the URL.
+    """
+    if not ctx.last_seen[0]:
+        return 0.0
+    return time.monotonic() - ctx.last_seen[0]
+
+
+def should_stop(ctx: Context, timeout: float = IDLE_TIMEOUT_SECONDS) -> bool:
+    """Whether the last client has gone and nothing is holding the server open.
+
+    Three things hold it open, and only the first is obvious:
+
+    - a client asked for something within `timeout`;
+    - **nobody has connected yet** - a server waiting to be opened is not an
+      idle one, and `--no-browser` prints a URL for someone to paste;
+    - **a job is running.** Closing the tab that started a simulation should
+      not throw the simulation away; the browser leaving is not a reason to
+      abandon work already begun, which will be in the cache when a window
+      next opens.
+    """
+    if not ctx.last_seen[0]:
+        return False
+    if any(job.state is JobState.RUNNING for job in ctx.jobs.recent()):
+        return False
+    return idle_seconds(ctx) > timeout
+
+
 def handle_request(
     method: str,
     path: str,
@@ -340,6 +392,7 @@ def handle_request(
     headers: Mapping[str, str] | None = None,
 ) -> Response:
     """Route one request. Pure: strings in, a `Response` out."""
+    touch(ctx)
     if method == "POST":
         return _handle_post(path, body, headers or {}, ctx)
     if method not in ("GET", "HEAD"):
@@ -490,7 +543,11 @@ __all__ = [
     "Context",
     "MapHandler",
     "MapServer",
+    "IDLE_TIMEOUT_SECONDS",
     "Response",
     "build_map_view",
     "handle_request",
+    "idle_seconds",
+    "should_stop",
+    "touch",
 ]

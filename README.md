@@ -62,6 +62,12 @@ fray-gui --compare my-sim             # delta mode: gains green, losses red
 fray-gui --no-browser --port 0        # bind an OS-assigned port, open nothing
 ```
 
+It opens as its own window — no tabs, no address bar — and **closing that window stops the server**,
+so there is nothing left running afterwards. That uses whichever Chromium-family browser you already
+have (Chrome, Edge, Brave, Chromium…); it is not a dependency, and if you have none, it opens an
+ordinary tab instead and shuts down about fifteen seconds after you close it. `--tab` forces that
+second behaviour if you would rather have your own profile and extensions.
+
 It re-reads the cache as it goes, so a `fray fetch` or `fray simulate` in another terminal appears
 in the browser a couple of seconds later. You can also drive both from the page itself: **fetch**
 re-downloads the current map, and **simulate** rolls N chunks, saves each run as a cached map and
