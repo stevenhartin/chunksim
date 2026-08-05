@@ -8,7 +8,7 @@ fray-claude is a CLI that reads state from the source-chunk web app, caches it l
 offline operations on that cache. source-chunk is upstream and read-only from here.
 
 **Two apps, one distribution.** `fray` is the CLI; `fray-gui` is a local server plus a browser
-front-end that draws the world map — see the GUI paragraph below Commands. The 27 modules beside
+front-end that draws the world map — see the GUI paragraph below Commands. The 28 modules beside
 `cli.py` are the library both use, which is why there is no separate `core/` package and no second
 distribution: the layering already exists, and three pyprojects would buy independent versioning
 nobody needs.
@@ -143,12 +143,14 @@ Five things that cut across modules — the first three because each has already
 | `search.py` | World-wide fuzzy search over the *raw* export — all 5 item routes, so a strict superset of what `fray sources` can list. |
 | `summary.py` | Pure reductions over a raw payload. Extend this, not `cli.py`. Also home to `_mapping`, the tolerant dict accessor eight other modules import despite the `_` — Firebase omits empty containers, so every lookup anywhere must survive a missing branch. |
 | `dps_bridge.py` | The seam to `osrs-dps`, which prices a kill from the gear `bis.py` reaches instead of a money-making guide. **Optional import** — check `DPS_AVAILABLE`, never assume it. `enrich` is the one entry point a command needs. Owns the export→library conversions (`magic_damage` is a display percentage here and tenths of a percent there), the overhead model, the monster-name join and its `exact`/`variant` provenance, and the refusal of fight *phases* and group bosses. |
-| `cli.py` | argparse subcommands and rendering only; new logic goes in a pure module. |
+| `cli.py` | argparse subcommands and rendering only; new logic goes in a pure module. `gui/server.py` follows the same rule, with `gui/panels.py` as its pure module. |
+| `gui/panels.py` | Shaping `Derived` into what the panel draws — sections of groups of `{key, name, note, icon}`, one shape across all five categories. Pure. Owns the three rules that are domain knowledge rather than formatting: a quest keeps only its **furthest** step, `Extra`'s collection-log rows split source from item, BiS groups by combat style. |
 | `gui/worldmap.py` | Where a chunk sits on upstream's map image, and which of its sides face outward. Pure. Owns the projection (`grid_x = region_x - 15`, **`grid_y = 65 - region_y`** — the y axis is flipped), the two kinds of id that have no square, and `hull_edges`. In `gui/` because all of it is about one particular image. |
-| `gui/server.py` | Routing, as a **pure `handle_request`** with a `BaseHTTPRequestHandler` adapter over it — so tests reach the whole surface without binding a socket. Owns the static allowlist and the `Sec-Fetch-Site`/`Host` checks. |
+| `gui/server.py` | Routing, as a **pure `handle_request`** with a `BaseHTTPRequestHandler` adapter over it — so tests reach the whole surface without binding a socket. Owns the static allowlist, the `Sec-Fetch-Site`/`Host` checks, and the **lazy proxy** for upstream's section masks and skill icons. |
 | `gui/jobs.py` | The background job registry the POST actions use. **The only mutable state in the GUI**, kept out of the pure layer deliberately. |
 | `gui/derivation.py` | The boundary between the cheap path and the expensive one. Loads `ChunkInfo` **lazily** — a request that does not need a derivation must not pay for one, and a test asserts the map view never triggers it. |
-| `gui/browser.py` | Finding a Chromium-family browser and opening an app window whose lifetime is the server's. `--user-data-dir` is load-bearing, not tidiness. |
+| `gui/browser.py` | Finding a Chromium-family browser and opening an app window whose lifetime is the server's. `--user-data-dir` is load-bearing, not tidiness. `window_flags` restores the remembered geometry, which Chrome will not — see the GUI paragraph below Commands. |
+| `gui/__init__.py` | `fray-gui`'s argparse and its socket, and the **arming of exactly one** of the two shutdown mechanisms — never both. Also the one-off world-map download. The GUI imports the library rather than shelling out to `fray`, which would re-parse the 10MB export per call. |
 
 ## Toolchain
 
@@ -194,7 +196,7 @@ mypy                        # strict, over src/ and tests/; run from the repo ro
 FRAY_CHUNKINFO=path .venv/bin/pytest tests/test_sections.py -k real   # opt-in oracle test against a real export
 python -c 'import json;json.dump(json.load(open("cache/chunkinfo.json"))["data"],open("/tmp/raw.json","w"))'
 FRAY_CHUNKINFO=/tmp/raw.json FRAY_MAP_CACHE=1 .venv/bin/pytest   # all six oracles, the real correctness signal
-fray-gui [--map ID] [--compare ID] [--port N] [--no-browser]   # the interactive world map
+fray-gui [--map ID] [--compare ID] [--port N] [--host H] [--no-browser] [--tab] [--world-map PATH]
 pyproject-build && pipx install --force dist/*.whl   # build + reinstall `fray` and `fray-gui`
 python -m zipfile -l dist/*.whl | grep resources     # prove the GUI's html/js/css shipped
 pip install -e ../osrs-dps                           # the optional `dps` extra, into .venv for development
@@ -268,17 +270,17 @@ command runs exactly as before, and `fray show` reports which of the two you are
 they are materially different totals — 3,969h against 2,816h on the real map.
 
 **`fray-gui` is the second app, and it derives nothing.** It draws the world map: unlocked chunks
-bright against a locked wash, a hull outline around the outside of the unlocked blob (no border
-between two unlocked chunks — that is `worldmap.hull_edges`), and a delta mode where `--compare`'s
-gains are green and its losses red. It can also drive `fetch` and `simulate`, which return a job id
-and report progress while a thread does the work.
+bright against a locked wash, a thin grid between every chunk, a hull outline around the outside of
+the unlocked blob (no border between two unlocked chunks — that is `worldmap.hull_edges`), and a
+delta mode where `--compare`'s gains are green and its losses red. It can also drive `fetch` and
+`simulate`, which return a job id and report progress while a thread does the work.
 
 **All fifteen CLI subcommands are reachable from it.** `GET /api/{maps,view,revision,summary,
-neighbours,chunk,unlock,search,estimate,tasks,derived,jobs}` and `POST /api/{fetch,simulate,refresh,
-maps/remove,derived/prune}`. The panel's tabs are chunk / tasks / estimate / find / maps, and
-`?map=&compare=&candidates=1&tab=` reproduces a view.
+neighbours,chunk,sections,unlock,search,estimate,tasks,derived,jobs}` and `POST /api/{fetch,simulate,
+refresh,maps/remove,derived/prune,window}`. The panel's tabs are tasks / chunk / find / estimate /
+maps, and `?map=&compare=&candidates=1&sections=1&tab=` reproduces a view.
 
-Three things worth knowing before changing it:
+Things worth knowing before changing it:
 
 - **A request is milliseconds, so nothing is cached.** Rendering needs only `chunks.unlocked` — a
   chunk's square is fixed by its id — so there is no `ChunkInfo` parse and no `derive`. Every
@@ -291,16 +293,35 @@ Three things worth knowing before changing it:
 - **Two constants cross into JavaScript with nothing enforcing agreement** — the `Edge` bitfield and
   the projection, both plain integers over JSON — so `tests/test_gui_server.py` reads `app.js` and
   asserts them against the Python. The same file asserts the canvas is given an explicit size, since
-  `inset: 0` does not stretch a replaced element and the failure is silent.
+  `inset: 0` does not stretch a replaced element and the failure is silent. A third assertion pins
+  that **no `raw()` interpolation lands inside an attribute**: `data-tip="${raw(...)}"` splices
+  unescaped quotes through the closing quote, and the markup after it appears on screen as text.
+- **`gui/panels.py` is `app.js`'s pure module**, and the reason it exists is that `bis`,
+  `task_classification` and `other_tasks` offer three shapes where the panel needs one. Walking
+  `Object.keys` over a *category envelope* is what made the first tasks tab print `active_total`
+  and `groups` as if they were task names. New shaping goes there, not into the JavaScript.
 - **The map image is fetched, never committed.** It is Jagex's artwork; shipping it in an MIT wheel
   would imply a sublicence this project has not got. `fray-gui` downloads it to `cache/assets/` on
   first run exactly as `fray chunkinfo` downloads 10MB, and `FRAY_WORLD_MAP` points at a local copy.
+  **The 1,534 section masks and 24 skill icons are the same argument with a different answer to
+  *when*:** they are proxied one file at a time, on the request that first draws them, because a
+  chunk has a handful of sections and nobody opens all of them. `cache.section_overlay_path` is the
+  **one asset name that reaches the disk from a URL**, so it is matched whole against an alphabet
+  holding no `.` and no `/`. A mask's *opaque* pixels are its section — a `tRNS` chunk makes grey 0
+  transparent — which is what lets several composite onto one square.
+- **The window's size is remembered by us, and has to be.** An app window's bounds are stored per
+  app id, and Chrome derives that id from the URL — which carries the port and the `?map=` deep
+  link, so every launch looks like a new app to it and nothing is ever restored. The page reports
+  its geometry to `/api/window` and `browser.window_flags` reads it back. A first run opens
+  **maximised, not fullscreen**: closing the window is how you stop the server, and fullscreen hides
+  the control that does it.
 - **The window's lifetime is the server's, by one of two mechanisms and never both.** With a
   Chromium-family browser present (Chrome, Edge, Brave, Chromium, Vivaldi, Opera) it opens an *app
   window* — `--app` plus its own `--user-data-dir`, the latter being load-bearing rather than tidy:
   without it Chrome hands the URL to a running instance and the launched process exits at once,
   stopping the server the moment it started. Otherwise it opens a tab and a **heartbeat** stops the
-  server `IDLE_TIMEOUT_SECONDS` after the last request. Neither is a dependency — `dependencies` is
+  server `IDLE_TIMEOUT_SECONDS` after the last request; `--tab` and `--no-browser` take that second
+  path deliberately, so it is the one to test against. Neither is a dependency — `dependencies` is
   still empty, and a machine with only Firefox takes the second path. A running job holds the server
   open either way.
 
@@ -343,6 +364,10 @@ a silent no-op ("already seems to be installed") — it will not pick up new cod
   file is for what spans modules or can't be discovered from them. When a port turns out to be wrong,
   correct the docstring rather than appending a note: several already record a superseded claim
   explicitly, which is worth keeping only where the wrong version is the tempting one.
+- **`README.md` is the user-facing counterpart and describes every subcommand and most flags**, so a
+  new subcommand, a renamed flag or a changed default lands in three places, not one: the module
+  docstring (why), this file (what spans modules) and the README (what a user types). It is the one
+  that drifts, because nothing in the test suite reads it.
 - Commit after completing a change, and try to push
 - After completing a task, rebuild and reinstall the CLI locally so the `fray` on `PATH` reflects it:
   `pyproject-build && pipx install --force dist/*.whl` (see Commands for why `--force` is required)

@@ -52,9 +52,10 @@ Everything after the initial `fetch`/`chunkinfo` runs offline, against the local
 ## The map (`fray-gui`)
 
 There is a second command. `fray-gui` starts a local server and opens a browser on an interactive
-OSRS world map: your unlocked chunks bright against a greyed-out world, with a thick border traced
-around the *outside* of the unlocked region — no line between two chunks you already hold. Pan by
-dragging, zoom with the wheel, click a chunk to copy its id.
+OSRS world map: your unlocked chunks bright against a greyed-out world, a thin grid showing every
+chunk boundary, and a thick border traced around the *outside* of the unlocked region — no heavy
+line between two chunks you already hold. Pan by dragging, zoom with the wheel, click a chunk to
+open it in the panel. Press <kbd>F</kbd> to fly the camera to whatever is under the cursor.
 
 ```
 fray-gui                              # serve http://127.0.0.1:8731 and open it
@@ -69,20 +70,33 @@ ordinary tab instead and shuts down about fifteen seconds after you close it. `-
 second behaviour if you would rather have your own profile and extensions.
 
 **Candidates** draws the chunks you could roll next, each carrying the number source-chunk's own
-canvas gives it — the decision the game asks you to make, as a picture rather than a list. Click any
-chunk for its sections and contents, and for one you do not own yet, what unlocking it would add.
+canvas gives it — the decision the game asks you to make, as a picture rather than a list.
+**Sections** shades the inside of split chunks using source-chunk's own masks: green where you can
+reach, red where you cannot — including chunks you have not unlocked, which is where the question
+matters most.
 
-The panel covers the rest of the CLI: your current goal per skill, the hours estimate with the
-longest single items and every reachable slayer master, a world-wide search that highlights where a
-thing is, and the cached maps with the actions that make and remove them.
+Click any chunk for its contents, grouped by kind, with anything behind a door you cannot open
+greyed out; for one you do not own yet, **What would this add?** derives both worlds and tells you.
+
+The panel covers the rest of the CLI. **Tasks** is what you are actually doing — one list per
+category, with a toggle for what is already done; quests show only the step you are on, and
+collection-log entries read *Barrows Chests / dharok's greataxe* rather than the raw
+`(Barrows Chests) Obtain a ~|dharok's greataxe|~`. **Estimate** is the hours as a chart, the longest
+single items, and a `?` for where every number came from. **Find** searches the whole world as you
+type and flies the camera to what it finds. **Maps** lists what is cached, with the actions that
+make and remove it.
 
 It re-reads the cache as it goes, so a `fray fetch` or `fray simulate` in another terminal appears
 in the browser a couple of seconds later. You can also drive both from the page itself: **fetch**
 re-downloads the current map, and **simulate** rolls N chunks, saves each run as a cached map and
 opens the result as a comparison against where you started.
 
-`?map=…&compare=…&candidates=1&tab=estimate` reproduces a view, so a particular question is
-shareable and a screenshot is reproducible.
+`?map=…&compare=…&candidates=1&sections=1&tab=estimate` reproduces a view, so a particular question
+is shareable and a screenshot is reproducible.
+
+It remembers the size and position you left the window at. Chrome will not do that for a page whose
+URL changes between launches, which this one's does, so the page reports its own geometry back; the
+first run opens maximised.
 
 **It binds `127.0.0.1` and is not authenticated.** A page you have open in another tab cannot read
 anything from it — the same-origin policy stops that — and its `fetch`/`simulate` buttons are
@@ -92,7 +106,8 @@ says what that exposes; think before using it on a shared network.
 The world map image is **not** part of this repository. It is Jagex's artwork, so `fray-gui`
 downloads it from source-chunk to `cache/assets/` on first run — the same thing `fray chunkinfo`
 already does with the 10MB export — and nothing this project distributes contains it. Point
-`FRAY_WORLD_MAP` at a local copy to skip the download.
+`FRAY_WORLD_MAP` at a local copy to skip the download. The section masks and skill icons come the
+same way, but one file at a time as you first look at them rather than all 1,558 up front.
 
 **This is a genuine, but deliberately partial, reimplementation of source-chunk's own validity logic**
 — not a wrapper around it. `tasks`/`unlock`/`simulate` cover 28 of the 29 challenge categories, plus
