@@ -64,6 +64,11 @@ from fray_claude import cache
 from fray_claude.api import DEFAULT_TIMEOUT, fetch_map
 from fray_claude.batch import RunResult, run_batch
 from fray_claude.delta import diff_names
+from fray_claude.derived_cache import cached_derive
+from fray_claude.neighbours import eligible_neighbours
+from fray_claude.search import build_world_index, search
+from fray_claude.summary import _mapping, summarise
+from fray_claude.gui.derivation import DerivedState, Derivations, unlocked_of
 from fray_claude.gui.jobs import JobRegistry, JobState, Progress, as_int
 from fray_claude.gui.worldmap import MapView, build_view
 
@@ -120,6 +125,9 @@ class Context:
     resources: Path = RESOURCE_DIR
     world_map: Path | None = None
     jobs: JobRegistry = field(default_factory=JobRegistry)
+    #: Loaded on the first request that needs a derivation, never for the map
+    #: view. See `gui/derivation.py`.
+    derivations: Derivations = field(default_factory=Derivations)
     #: When the last client was heard from, for the idle shutdown. Mutable, so
     #: it is a one-element list rather than a field on a frozen dataclass -
     #: the alternative is unfreezing `Context`, and every other field here
@@ -128,6 +136,12 @@ class Context:
     #: Whether the browser-origin checks apply. Off in tests, which have no
     #: browser to send the headers this asserts on.
     check_origin: bool = True
+
+    def __post_init__(self) -> None:
+        # `Derivations` needs the same root the rest of the context reads
+        # from, and a default factory cannot see its siblings.
+        if self.derivations._root is None and self.root is not None:
+            object.__setattr__(self.derivations, "_root", self.root)
 
     @cached_property
     def world_map_path(self) -> Path:
@@ -153,10 +167,8 @@ def _unlocked(map_id: str, ctx: Context) -> tuple[dict[str, Any], int]:
     """
     path = cache.resolve_map_path(map_id, ctx.root)
     envelope = cache.read_cache(map_id, ctx.root)
-    chunks = envelope.get("data", {}).get("chunks", {})
-    unlocked = chunks.get("unlocked") if isinstance(chunks, dict) else None
     revision = path.stat().st_mtime_ns
-    return (unlocked if isinstance(unlocked, dict) else {}), revision
+    return unlocked_of(envelope), revision
 
 
 def build_map_view(map_id: str, compare: str | None, ctx: Context) -> MapView:
@@ -182,6 +194,83 @@ def build_map_view(map_id: str, compare: str | None, ctx: Context) -> MapView:
         # both. Summing is enough - it moves whenever either mtime does.
         revision=revision + other_revision,
     )
+
+
+#: The branches of a chunk entry worth showing, in the order a panel reads
+#: best: what you fight, then who you talk to, then what you interact with.
+_CONTENT_KEYS = ("Monster", "NPC", "Object", "Shop", "Spawn", "Quest", "Clue", "Diary")
+
+
+def _chunk_detail(state: DerivedState, chunk_id: str, ctx: Context) -> dict[str, Any]:
+    """Everything the panel shows for one chunk.
+
+    **A chunk's contents live in one of two places and reading only one of them
+    is wrong.** An unsplit chunk carries `Monster`/`NPC`/`Object` at its top
+    level; a split one carries nothing there and puts each branch inside
+    `Sections`. 512 of the export's chunks are split - Lumbridge among them -
+    so a top-level read reports the castle as empty.
+
+    Attribution is per section rather than pooled, because **which section
+    something is in decides whether you can reach it**. Unlocking a chunk makes
+    section `0` reachable and no more, and `sections.py` works out the rest; a
+    flat list of everything in the square would claim you have access to things
+    behind a door you cannot open. `reachable` on each section is what the
+    panel greys out.
+    """
+    info = state.state.chunk_info
+    entry = info.chunk(chunk_id)
+    reached = state.derived.reachable_sections.get(chunk_id, {})
+    unlocked = chunk_id in state.unlocked
+    declared = _mapping(entry, "Sections")
+
+    def contents(source: Mapping[str, Any]) -> dict[str, list[str]]:
+        found = {}
+        for key in _CONTENT_KEYS:
+            names = sorted(_mapping(source, key))
+            if names:
+                found[key.lower()] = names
+        return found
+
+    sections: list[dict[str, Any]] = []
+    if declared:
+        for section_id in sorted(declared):
+            # Section "0" is reachable the moment the chunk is - which is
+            # exactly why `reachable_sections` omits it.
+            is_reached = unlocked and (section_id == "0" or bool(reached.get(section_id)))
+            sections.append(
+                {
+                    "section": section_id,
+                    "reachable": is_reached,
+                    "contents": contents(_mapping(declared, section_id)),
+                }
+            )
+    else:
+        sections.append(
+            {"section": "0", "reachable": unlocked, "contents": contents(entry)}
+        )
+
+    return {
+        "chunk_id": chunk_id,
+        "nickname": entry.get("Nickname") or entry.get("Name") or None,
+        "unlocked": unlocked,
+        "sections": sections,
+        "reachable_sections": sum(1 for s in sections if s["reachable"]),
+    }
+
+
+def _unlock_preview(state: DerivedState, chunk_id: str, ctx: Context) -> dict[str, Any]:
+    """What unlocking `chunk_id` would add. Two derivations, so ~0.3s warm."""
+    from fray_claude.unlock import tasks_added_by
+
+    delta = tasks_added_by(
+        state.state,
+        state.unlocked,
+        chunk_id,
+        derive_with=lambda st, un: cached_derive(
+            st, un, ctx.derivations.digests(), root=ctx.root
+        ),
+    )
+    return delta.as_dict()
 
 
 def _first(query: Mapping[str, list[str]], name: str) -> str | None:
@@ -417,6 +506,65 @@ def handle_request(
             if job is None:
                 return _error("no such job", HTTPStatus.NOT_FOUND)
             return _json(job.as_dict())
+
+        if path == "/api/summary":
+            map_id = _first(query, "map")
+            if map_id is None:
+                return _error("missing required parameter 'map'", HTTPStatus.BAD_REQUEST)
+            envelope = cache.read_cache(map_id, ctx.root)
+            summary = summarise(envelope["data"])
+            return _json(
+                {
+                    "map_id": map_id,
+                    "kind": "simulated" if envelope.get("is_simulated") else "fetched",
+                    "created_at": envelope.get("fetched_at"),
+                    "unlocked_chunks": summary.unlocked_chunks,
+                    "chunk_order_entries": summary.chunk_order_entries,
+                    "rules_enabled": summary.rules_enabled,
+                    "rules_total": summary.rules_total,
+                    "active_tasks": summary.active_tasks,
+                    "active_task_total": summary.active_task_total,
+                }
+            )
+
+        if path == "/api/neighbours":
+            map_id = _first(query, "map")
+            if map_id is None:
+                return _error("missing required parameter 'map'", HTTPStatus.BAD_REQUEST)
+            state = ctx.derivations.load(map_id)
+            entries = eligible_neighbours(state.state, state.unlocked, state.derived)
+            return _json({"map_id": map_id, "neighbours": [n.as_dict() for n in entries]})
+
+        if path == "/api/chunk":
+            map_id = _first(query, "map")
+            chunk_id = _first(query, "chunk")
+            if map_id is None or chunk_id is None:
+                return _error(
+                    "missing required parameter 'map' or 'chunk'", HTTPStatus.BAD_REQUEST
+                )
+            state = ctx.derivations.load(map_id)
+            return _json(_chunk_detail(state, chunk_id, ctx))
+
+        if path == "/api/unlock":
+            map_id = _first(query, "map")
+            chunk_id = _first(query, "chunk")
+            if map_id is None or chunk_id is None:
+                return _error(
+                    "missing required parameter 'map' or 'chunk'", HTTPStatus.BAD_REQUEST
+                )
+            state = ctx.derivations.load(map_id)
+            if chunk_id in state.unlocked:
+                return _error(f"chunk {chunk_id} is already unlocked", HTTPStatus.BAD_REQUEST)
+            return _json(_unlock_preview(state, chunk_id, ctx))
+
+        if path == "/api/search":
+            term = _first(query, "q")
+            if term is None:
+                return _error("missing required parameter 'q'", HTTPStatus.BAD_REQUEST)
+            info = ctx.derivations.chunk_info()
+            limit = max(1, min(200, int(_first(query, "limit") or 40)))
+            results = search(build_world_index(info), term, limit=limit)
+            return _json({"query": term, "results": [r.as_dict() for r in results]})
 
         if path in ("/api/view", "/api/revision"):
             map_id = _first(query, "map")

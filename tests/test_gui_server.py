@@ -456,3 +456,157 @@ def test_the_canvas_is_given_an_explicit_size() -> None:
     body = canvas_rule.group(1)
     assert re.search(r"\bwidth:\s*100%", body)
     assert re.search(r"\bheight:\s*100%", body)
+
+
+# --- the derivation-backed endpoints ---------------------------------------
+
+
+def _derived_ctx(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, chunkinfo: dict[str, Any]
+) -> Context:
+    """A context whose derivations read a hand-built export.
+
+    Same idiom as `tests/test_cli.py`: patch the reader rather than write a
+    10MB file, so the fixture is the few keys under test.
+    """
+    monkeypatch.setattr(
+        "fray_claude.gui.derivation.cache.read_chunkinfo",
+        lambda override=None, root=None: chunkinfo,
+    )
+    monkeypatch.setattr(
+        "fray_claude.gui.derivation.cache.read_blob",
+        lambda name, root=None, hint=None: {"data": {}},
+    )
+    monkeypatch.setattr(
+        "fray_claude.gui.derivation.cache.file_digest", lambda path: "digest"
+    )
+    monkeypatch.setattr(
+        "fray_claude.gui.derivation.cache.chunkinfo_source", lambda o, r: Path("x")
+    )
+    monkeypatch.setattr("fray_claude.gui.derivation.cache.blob_path", lambda n, r: Path("y"))
+    return Context(root=tmp_path)
+
+
+def test_a_split_chunks_contents_are_found_and_attributed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**Contents live in one of two places and reading one is wrong.**
+
+    An unsplit chunk carries Monster/NPC/Object at its top level; a split one
+    carries nothing there and puts each branch inside `Sections`. 512 of the
+    real export's chunks are split - Lumbridge among them - so a top-level
+    read reported the castle as empty.
+
+    They are attributed per section rather than pooled, because which section
+    something sits in decides whether you can reach it at all.
+    """
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+    ctx = _derived_ctx(
+        tmp_path,
+        monkeypatch,
+        {
+            "chunks": {
+                LUMBRIDGE: {
+                    "Nickname": "Lumbridge Castle",
+                    "Sections": {
+                        "1": {"Monster": {"Duck": 11}, "NPC": {"Hans": 1}},
+                        "2": {"Monster": {"Giant rat": 3}},
+                    },
+                }
+            },
+            "sections": {LUMBRIDGE: {"1": [], "2": []}},
+        },
+    )
+
+    payload = _body(_get("/api/chunk", ctx, map="fray", chunk=LUMBRIDGE))
+
+    assert payload["nickname"] == "Lumbridge Castle"
+    sections = {s["section"]: s for s in payload["sections"]}
+    assert sections["1"]["contents"]["monster"] == ["Duck"]
+    assert sections["1"]["contents"]["npc"] == ["Hans"]
+    assert sections["2"]["contents"]["monster"] == ["Giant rat"]
+
+
+def test_an_unsplit_chunk_reads_its_top_level(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+    ctx = _derived_ctx(
+        tmp_path,
+        monkeypatch,
+        {"chunks": {LUMBRIDGE: {"Monster": {"Cow": 4}}}, "sections": {}},
+    )
+
+    payload = _body(_get("/api/chunk", ctx, map="fray", chunk=LUMBRIDGE))
+
+    assert payload["sections"][0]["contents"]["monster"] == ["Cow"]
+    assert payload["sections"][0]["reachable"] is True
+
+
+def test_a_locked_chunk_reports_nothing_reachable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """You can see what is in a square without being able to get to it."""
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+    ctx = _derived_ctx(
+        tmp_path,
+        monkeypatch,
+        {"chunks": {"13106": {"Monster": {"Cow": 4}}}, "sections": {}},
+    )
+
+    payload = _body(_get("/api/chunk", ctx, map="fray", chunk="13106"))
+
+    assert payload["unlocked"] is False
+    assert payload["reachable_sections"] == 0
+    assert payload["sections"][0]["contents"]["monster"] == ["Cow"]
+
+
+def test_the_summary_answers_what_fray_show_answers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_map(tmp_path, "fray", [LUMBRIDGE, NORTH])
+    ctx = Context(root=tmp_path)
+
+    payload = _body(_get("/api/summary", ctx, map="fray"))
+
+    assert payload["unlocked_chunks"] == 2
+    assert payload["kind"] == "fetched"
+
+
+def test_unlocking_a_chunk_you_already_have_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The question has no meaning, and a zero-delta answer would look like a
+    verdict rather than a category error."""
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+    ctx = _derived_ctx(
+        tmp_path, monkeypatch, {"chunks": {LUMBRIDGE: {}}, "sections": {}}
+    )
+
+    response = _get("/api/unlock", ctx, map="fray", chunk=LUMBRIDGE)
+
+    assert response.status == HTTPStatus.BAD_REQUEST
+    assert "already unlocked" in _body(response)["error"]
+
+
+def test_the_map_view_never_parses_the_export(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The property the whole server is built around.
+
+    Rendering needs only the unlocked set, so a view request must not touch
+    the 10MB export - that is what keeps it milliseconds and why nothing has
+    to be invalidated.
+    """
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+
+    def explode(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("the map view parsed the chunkinfo export")
+
+    monkeypatch.setattr("fray_claude.gui.derivation.cache.read_chunkinfo", explode)
+    ctx = Context(root=tmp_path)
+
+    assert _get("/api/view", ctx, map="fray").status == HTTPStatus.OK
+    assert _get("/api/revision", ctx, map="fray").status == HTTPStatus.OK
+    assert _get("/api/summary", ctx, map="fray").status == HTTPStatus.OK
+    assert not ctx.derivations.loaded
