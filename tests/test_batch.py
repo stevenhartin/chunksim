@@ -276,3 +276,43 @@ def test_caching_states_does_not_change_the_rolls(root: Path) -> None:
 
     assert [r.rolls for r in uncached.runs] == [r.rolls for r in warm.runs]
     assert [r.rolls for r in uncached.runs] == [r.rolls for r in reused.runs]
+
+
+def test_every_run_of_a_batch_carries_the_same_batch_id(root: Path) -> None:
+    """**What makes several runs one job.**
+
+    The directory name cannot answer it: a clash renames the batch and a
+    rename severs the link. The id is minted before any run starts and written
+    into every one of them, so a run answers on its own - and two batches from
+    the same base map and the same seed do not collide.
+    """
+    first = run_batch(name="a", payload=_PAYLOAD, base_map="fray", rolls=1, runs=3, seed=7, root=root)
+    second = run_batch(name="b", payload=_PAYLOAD, base_map="fray", rolls=1, runs=1, seed=7, root=root)
+
+    a = read_sim_batch("a", root)
+    b = read_sim_batch("b", root)
+    ids = {run["batch_id"] for run in a["runs"]}
+
+    assert len(ids) == 1, "runs of one batch disagree about which batch they are"
+    assert a["batch_id"] in ids
+    assert all(run["batch"] == "a" for run in a["runs"])
+    assert all(run["runs_in_batch"] == 3 for run in a["runs"])
+    assert b["batch_id"] != a["batch_id"]
+    assert len(first.runs) == 3 and len(second.runs) == 1
+
+
+def test_an_interrupted_batch_still_knows_it_is_one(root: Path) -> None:
+    """A batch with runs but no summary is what an interrupted one leaves.
+
+    Those runs are perfectly good maps, so the summary is rebuilt from them -
+    and the rebuild has to recover the identity too, or the runs of a killed
+    batch stop being recognisable as siblings.
+    """
+    run_batch(name="killed", payload=_PAYLOAD, base_map="fray", rolls=1, runs=2, seed=1, root=root)
+    (sims_root(root) / "killed" / BATCH_META_FILE_NAME).unlink()
+
+    summary = read_sim_batch("killed", root)
+
+    assert summary["complete"] is False
+    assert summary["batch_id"]
+    assert len({run["batch_id"] for run in summary["runs"]}) == 1

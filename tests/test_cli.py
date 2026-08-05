@@ -44,7 +44,7 @@ def test_fetch_writes_the_cache(project: Path, monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr("fray_claude.cli.fetch_map", fake_fetch_map)
 
     assert main(["fetch"]) == 0
-    assert (project / "cache" / "fray.json").is_file()
+    assert (project / "cache" / "maps" / "fetched" / "fray.json").is_file()
 
 
 def test_show_summarises_the_cached_map(
@@ -148,8 +148,8 @@ def test_chunkinfo_fetches_and_caches_both_blobs(
     )
 
     assert main(["chunkinfo"]) == 0
-    assert (project / "cache" / "chunkinfo.json").is_file()
-    assert (project / "cache" / "tasks_map.json").is_file()
+    assert (project / "cache" / "reference" / "chunkinfo.json").is_file()
+    assert (project / "cache" / "reference" / "tasks_map.json").is_file()
 
 
 def _cache_map_and_chunkinfo(
@@ -450,10 +450,12 @@ def test_unlock_cache_map_saves_a_readable_map(
 
     out = capsys.readouterr().out
     assert "saved as     Candidate" in out
+    # **Its own kind**, not filed under `simulated`: a map made by adding one
+    # chunk by hand is not a simulation, and the picker has to say which.
     envelope = json.loads(
-        (project / "cache" / "sims" / "Candidate" / "run-001" / "map.json").read_text()
+        (project / "cache" / "maps" / "unlocked" / "Candidate" / "run-001" / "map.json").read_text()
     )
-    assert envelope["is_simulated"] is True
+    assert envelope["kind"] == "unlocked"
     assert envelope["source"] == "unlock 101 from 'fray'"
     assert envelope["simulation"]["origin"] == "unlock"
     assert set(envelope["data"]["chunks"]["unlocked"]) == {"100", "101"}
@@ -476,7 +478,7 @@ def test_unlock_cache_map_suffixes_a_name_already_taken(
 
     out = capsys.readouterr().out
     assert "'Candidate' was taken; saved as 'Candidate-2'" in out
-    assert (project / "cache" / "sims" / "Candidate-2" / "run-001" / "map.json").is_file()
+    assert (project / "cache" / "maps" / "unlocked" / "Candidate-2" / "run-001" / "map.json").is_file()
 
 
 def test_unlock_cache_map_export_json_reports_the_name(
@@ -1301,7 +1303,7 @@ def test_simulate_cache_map_writes_a_readable_map(
     out = capsys.readouterr().out
     assert "batch        Demo" in out
     assert "fray tasks --map Demo" in out
-    assert (project / "cache" / "sims" / "Demo" / "run-001" / "map.json").is_file()
+    assert (project / "cache" / "maps" / "simulated" / "Demo" / "run-001" / "map.json").is_file()
 
     # The saved state is a map like any other.
     assert main(["sections", "--map", "Demo"]) == 0
@@ -1319,7 +1321,7 @@ def test_simulate_cache_map_suffixes_a_taken_name(
 
     out = capsys.readouterr().out
     assert "was taken; saved as 'Demo-2'" in out
-    assert (project / "cache" / "sims" / "Demo-2").is_dir()
+    assert (project / "cache" / "maps" / "simulated" / "Demo-2").is_dir()
 
 
 def test_simulate_runs_need_a_cache_to_go_into(
@@ -1403,7 +1405,7 @@ def test_maps_rm_removes_a_simulated_batch(
     capsys.readouterr()
 
     assert main(["maps", "rm", "Demo"]) == 0
-    assert not (project / "cache" / "sims" / "Demo").exists()
+    assert not (project / "cache" / "maps" / "simulated" / "Demo").exists()
 
 
 def test_maps_rm_guards_a_fetched_map(
@@ -1414,10 +1416,10 @@ def test_maps_rm_guards_a_fetched_map(
 
     assert main(["maps", "rm", "fray"]) == 1
     assert "--include-fetched" in capsys.readouterr().err
-    assert (project / "cache" / "fray.json").is_file()
+    assert (project / "cache" / "maps" / "fetched" / "fray.json").is_file()
 
     assert main(["maps", "rm", "fray", "--include-fetched"]) == 0
-    assert not (project / "cache" / "fray.json").exists()
+    assert not (project / "cache" / "maps" / "fetched" / "fray.json").exists()
 
 
 def test_maps_clean_removes_only_simulations(
@@ -1432,9 +1434,9 @@ def test_maps_clean_removes_only_simulations(
 
     out = capsys.readouterr().out
     assert "removed 2 cached maps" in out
-    assert (project / "cache" / "fray.json").is_file()
-    assert (project / "cache" / "chunkinfo.json").is_file()
-    assert list((project / "cache" / "sims").iterdir()) == []
+    assert (project / "cache" / "maps" / "fetched" / "fray.json").is_file()
+    assert (project / "cache" / "reference" / "chunkinfo.json").is_file()
+    assert list((project / "cache" / "maps" / "simulated").iterdir()) == []
 
 
 def test_maps_clean_can_take_the_fetched_maps_too(
@@ -1446,9 +1448,9 @@ def test_maps_clean_can_take_the_fetched_maps_too(
 
     assert main(["maps", "clean", "--include-fetched"]) == 0
 
-    assert not (project / "cache" / "fray.json").exists()
+    assert not (project / "cache" / "maps" / "fetched" / "fray.json").exists()
     # The 10MB blobs are never in scope: re-downloading them is the expensive part.
-    assert (project / "cache" / "chunkinfo.json").is_file()
+    assert (project / "cache" / "reference" / "chunkinfo.json").is_file()
 
 
 def test_maps_on_an_empty_cache_says_so(
@@ -1688,7 +1690,7 @@ def test_heuristics_writes_the_config_and_reports_coverage(
     out = capsys.readouterr().out
     assert "quest pages      1/1" in out
     assert "100% from the wiki" in out
-    config = json.loads((project / "cache" / "wiki_rates.json").read_text())["data"]
+    config = json.loads((project / "cache" / "reference" / "wiki_rates.json").read_text())["data"]
     assert config["quests"]["Cook's Assistant"]["hours"] == 0.17
     assert config["monsters"]["General Graardor"]["value"] == 27.0
 
@@ -1743,7 +1745,7 @@ def test_estimate_works_without_a_scraped_config(
     capsys.readouterr()
 
     assert main(["estimate"]) == 0
-    assert not (project / "cache" / "wiki_rates.json").exists()
+    assert not (project / "cache" / "reference" / "wiki_rates.json").exists()
 
 
 def test_estimate_rejects_an_unknown_bucket(

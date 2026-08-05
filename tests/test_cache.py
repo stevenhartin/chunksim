@@ -15,6 +15,12 @@ from typing import Any
 import pytest
 
 from fray_claude.cache import (
+    CHUNKINFO_BLOB_NAME,
+    _migrated,
+    migrate_layout,
+    kind_root,
+    claim_batch,
+    UNLOCKED,
     section_overlay_path,
     write_asset_at,
     write_gui_window,
@@ -43,7 +49,7 @@ from fray_claude.cache import (
     read_blob,
     read_cache,
     read_chunkinfo,
-    remove_all_simulated,
+    remove_computed,
     remove_map,
     resolve_map_path,
     run_dir,
@@ -77,12 +83,12 @@ def test_write_cache_records_provenance(tmp_path: Path) -> None:
 def test_write_cache_creates_the_cache_directory(tmp_path: Path) -> None:
     path = write_cache("fray", {}, root=tmp_path / "missing")
 
-    assert path == tmp_path / "missing" / "cache" / "fray.json"
+    assert path == tmp_path / "missing" / "cache" / "maps" / "fetched" / "fray.json"
     assert path.is_file()
 
 
 def test_cache_path_is_named_after_the_map(tmp_path: Path) -> None:
-    assert cache_path("other", root=tmp_path) == tmp_path / "cache" / "other.json"
+    assert cache_path("other", root=tmp_path) == tmp_path / "cache" / "maps" / "fetched" / "other.json"
 
 
 def test_read_cache_reports_a_missing_file(tmp_path: Path) -> None:
@@ -146,7 +152,7 @@ def test_write_blob_records_provenance(tmp_path: Path) -> None:
 
 
 def test_blob_path_is_named_after_the_blob(tmp_path: Path) -> None:
-    assert blob_path("tasks_map", root=tmp_path) == tmp_path / "cache" / "tasks_map.json"
+    assert blob_path("tasks_map", root=tmp_path) == tmp_path / "cache" / "reference" / "tasks_map.json"
 
 
 def test_read_blob_reports_a_missing_file(tmp_path: Path) -> None:
@@ -361,7 +367,7 @@ def test_cleaning_removes_simulations_and_nothing_else(tmp_path: Path) -> None:
     _sim(tmp_path, "Demo")
     _sim(tmp_path, "Other")
 
-    assert remove_all_simulated(tmp_path) == ["Demo", "Other"]
+    assert remove_computed(tmp_path) == ["Demo", "Other"]
     assert cache_path("fray", tmp_path).is_file()
     assert blob_path("chunkinfo", tmp_path).is_file()
     assert list(sims_root(tmp_path).iterdir()) == []
@@ -531,3 +537,108 @@ def test_the_blobs_beside_the_maps_are_not_maps(tmp_path: Path) -> None:
     write_gui_window({"width": 800, "height": 600, "x": 0, "y": 0}, root=tmp_path)
 
     assert [entry.map_id for entry in list_maps(root=tmp_path)] == ["fray"]
+
+
+# --- the layout ------------------------------------------------------------
+
+
+def test_only_maps_are_listed_as_maps(tmp_path: Path) -> None:
+    """**The invariant the layout exists for.**
+
+    `list_maps` used to glob `cache/*.json` and skip the names it knew were
+    not maps, so a new blob had to be *remembered* or it turned up in the
+    picker as a map that failed the moment it was chosen - `wiki_rates` and
+    the GUI's window file were both missed exactly that way. It now reads a
+    directory that holds one kind of thing, so there is no list to forget.
+    """
+    write_cache("fray", {"chunks": {"unlocked": {"1": "1"}}}, root=tmp_path)
+    write_blob(CHUNKINFO_BLOB_NAME, {"chunks": {}}, "https://example.invalid", root=tmp_path)
+    write_blob(WIKI_RATES_BLOB_NAME, {"rates": {}}, "https://example.invalid", root=tmp_path)
+    write_tile_version("2026-07-29_a", "https://example.invalid", root=tmp_path)
+    write_gui_window({"width": 8, "height": 8, "x": 0, "y": 0}, root=tmp_path)
+
+    assert [entry.map_id for entry in list_maps(root=tmp_path)] == ["fray"]
+    # And every one of those blobs really was written, under `reference/`.
+    assert (tmp_path / "cache" / "reference" / "chunkinfo.json").is_file()
+    assert (tmp_path / "cache" / "reference" / "wiki_rates.json").is_file()
+    assert (tmp_path / "cache" / "gui" / "window.json").is_file()
+    assert not list((tmp_path / "cache").glob("*.json"))
+
+
+def test_each_kind_has_its_own_directory(tmp_path: Path) -> None:
+    """Three kinds, three directories, and a name belongs to one of them."""
+    assert kind_root(FETCHED, tmp_path).name == "fetched"
+    assert kind_root(SIMULATED, tmp_path).name == "simulated"
+    assert kind_root(UNLOCKED, tmp_path).name == "unlocked"
+    assert kind_root(FETCHED, tmp_path).parent.name == "maps"
+
+    with pytest.raises(ValueError, match="unknown map kind"):
+        kind_root("guessed", tmp_path)
+
+
+def test_a_batch_name_is_claimed_across_every_kind(tmp_path: Path) -> None:
+    """`--map foo` takes a bare name, so only one thing may answer to it.
+
+    Claiming per-kind would let a simulated `foo` and an unlocked `foo` both
+    exist, and `resolve_map_path` would have to guess which was meant.
+    """
+    write_cache("fray", {"chunks": {}}, root=tmp_path)
+    first = claim_batch("run", tmp_path, kind=SIMULATED)
+    second = claim_batch("run", tmp_path, kind=UNLOCKED)
+    fetched_clash = claim_batch("fray", tmp_path, kind=SIMULATED)
+
+    assert first.name == "run"
+    assert second.name == "run-2"          # taken by the simulated one
+    assert fetched_clash.name == "fray-2"  # taken by the fetched map
+
+
+def test_removing_computed_maps_leaves_the_fetched_ones(tmp_path: Path) -> None:
+    write_cache("fray", {"chunks": {}}, root=tmp_path)
+    claim_batch("rolled", tmp_path, kind=SIMULATED)
+    claim_batch("added", tmp_path, kind=UNLOCKED)
+
+    removed = remove_computed(root=tmp_path)
+
+    assert sorted(removed) == ["added", "rolled"]
+    assert [entry.map_id for entry in list_maps(root=tmp_path)] == ["fray"]
+
+
+def test_a_pre_split_cache_is_migrated_rather_than_refetched(tmp_path: Path) -> None:
+    """Some of what is down there is expensive: the chunk export is a 10MB
+    download and `assets/` is fifteen hundred files pulled one at a time.
+
+    A fetched map is identified by elimination here - which is the reasoning
+    the new layout retires - and that is exactly why it happens once, on
+    migration, rather than on every read.
+    """
+    old = tmp_path / "cache"
+    (old / "sims" / "batch" / "run-001").mkdir(parents=True)
+    (old / "sims" / "batch" / "run-001" / "map.json").write_text(
+        json.dumps({"map_id": "batch/run-001", "is_simulated": True, "data": {"chunks": {}}})
+    )
+    (old / "fray.json").write_text(json.dumps({"map_id": "fray", "data": {"chunks": {}}}))
+    (old / "chunkinfo.json").write_text(json.dumps({"name": "chunkinfo", "data": {}}))
+    (old / "gui-window.json").write_text(json.dumps({"width": 800}))
+
+    moved = migrate_layout(tmp_path)
+
+    assert moved, "nothing was migrated"
+    assert (old / "maps" / "fetched" / "fray.json").is_file()
+    assert (old / "maps" / "simulated" / "batch" / "run-001" / "map.json").is_file()
+    assert (old / "reference" / "chunkinfo.json").is_file()
+    assert (old / "gui" / "window.json").is_file()
+    assert not (old / "fray.json").exists()
+
+    # And an envelope written before `kind` existed still reads as one.
+    assert read_cache("fray", root=tmp_path)["kind"] == FETCHED
+    assert read_cache("batch/run-001", root=tmp_path)["kind"] == SIMULATED
+
+
+def test_migrating_twice_changes_nothing(tmp_path: Path) -> None:
+    """It sits on the path of every cache read, so it has to be idempotent."""
+    write_cache("fray", {"chunks": {}}, root=tmp_path)
+    _migrated.discard((tmp_path / "cache").resolve())
+    _migrated.discard(tmp_path / "cache")
+
+    assert migrate_layout(tmp_path) == []
+    assert (tmp_path / "cache" / "maps" / "fetched" / "fray.json").is_file()

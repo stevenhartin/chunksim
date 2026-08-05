@@ -738,14 +738,13 @@ def _remove_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     """Delete cached maps, or every simulated one.
 
     Fetched maps are refused unless `include_fetched` says otherwise, matching
-    `fray maps rm`: a simulated map can be regenerated from its seed, and a
-    fetched one costs a round trip and is the thing everything else is derived
-    from.
+    `fray maps rm`: a computed map records what made it, and a fetched one
+    costs a round trip and is the thing everything else is derived from.
     """
     names = payload.get("names")
     include_fetched = bool(payload.get("include_fetched"))
     if payload.get("all"):
-        removed = cache.remove_all_simulated(ctx.root)
+        removed = cache.remove_computed(ctx.root)
         return {"removed": removed}
     if not isinstance(names, list) or not names:
         raise ValueError("missing 'names' to remove")
@@ -926,7 +925,7 @@ def handle_request(
             return _json(
                 {
                     "map_id": map_id,
-                    "kind": "simulated" if envelope.get("is_simulated") else "fetched",
+                    "kind": envelope.get("kind", cache.FETCHED),
                     "created_at": envelope.get("fetched_at"),
                     "unlocked_chunks": summary.unlocked_chunks,
                     "chunk_order_entries": summary.chunk_order_entries,

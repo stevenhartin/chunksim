@@ -16,7 +16,7 @@ nobody needs.
 Planned: a shortest-path search ("fewest chunk unlocks to reach X" — `graph.py` exists to serve it and
 has no other reason to be a separate module), and heatmaps of likely rolls over N attempts (the
 cached simulation batches are the input, and `gui/resources/app.js`'s `LAYERS` array plus
-`MapView.overlays` is the seam they attach to — see the `cache/sims/` layout under Commands).
+`MapView.overlays` is the seam they attach to — see the `cache/maps/` layout under Commands).
 
 `fray estimate` answers "time to complete the goals" — the export still has no duration source, so
 the numbers come from the OSRS wiki and a community spreadsheet via `fray heuristics`. See the
@@ -121,7 +121,7 @@ Five things that cut across modules — the first three because each has already
 | `heuristics.py` | Every hand-correctable number, and the `defaults < scraped < overrides` merge. Owns the joins and their `exact`/`contained` provenance; **no fuzzy tier**, by measurement — read the docstring before adding one back. |
 | `slayer.py` | Slayer's rate, which is a *distribution* not a chosen method: a time-weighted mean over what a master assigns. Also owns `superior_rolls_per_hour` — the shared `SuperiorDropTable+` is one pool per master, not one per superior. **Masters are gated on their NPC being reachable** — without that it quoted Duradel on a map holding none of him. Reports `coverage`, because renormalising over reachable tasks flatters a sparse map. |
 | `estimate.py` | The four `plan.md` buckets over the **active** set. **Costs the unique *item*, not the task** — one whip answers three tasks — and **clamps per source**, since items off one monster are earned in parallel. Owns the item walk, its bounded `Output` recursion, the `unpriced` list, and **three gates** — monster reachable, slayer task assignable, master reachable. Read the docstring before pricing anything off `WorldIndex`, which spans the whole world. |
-| `cache.py` | The disk. `CacheMissError`, the `map_id`/`fetched_at`/`source`/`is_simulated`/`data` envelope, the `--chunkinfo`/`FRAY_CHUNKINFO` override, and the fetched-vs-simulated map layout below (incl. `--map` resolution, atomic writes and the batch-name claim). |
+| `cache.py` | The disk. `CacheMissError`, the `map_id`/`fetched_at`/`source`/`kind`/`data` envelope, the `--chunkinfo`/`FRAY_CHUNKINFO` override, and the purpose-sorted layout below (incl. `--map` resolution across kinds, atomic writes, the cross-kind batch-name claim and `migrate_layout`). |
 | `firebase.py` | The Firebase-safe string codec, incl. `decode_challenge_keyed`'s mixed `t_N`/literal key handling. Run any payload branch through it before believing it. |
 | `chunkinfo.py` | Typed, tolerant accessors over the parsed export. Build **one** `ChunkInfo` per invocation — parsing the ~7MB export is the expensive part. |
 | `sections.py` | Which sections of the unlocked chunks are reachable, plus named-area unlocking. `sectionsLimits` deliberately lives in `neighbours.py` instead. |
@@ -173,7 +173,7 @@ than fail when the extra is absent, like the `FRAY_CHUNKINFO` oracles.
 
 ```
 pip install -e ".[dev]"     # editable install into .venv; provides the `fray` script
-fray fetch [--map ID]       # GET live state -> cache/<map>.json (default map: fray)
+fray fetch [--map ID]       # GET live state -> cache/maps/fetched/<map>.json (default: fray)
 fray show  [--map ID]       # summarise the cached copy; no network
 fray chunkinfo              # GET upstream's chunk/challenge reference data -> cache/{chunkinfo,tasks_map}.json
 fray heuristics             # GET wiki/spreadsheet rates -> cache/wiki_rates.json (~18 requests)
@@ -227,27 +227,48 @@ are required, and either can name a fetched or a simulated map. It reports **bot
 monotone, and two arbitrary maps are not related that way at all. Read `delta.py` before assuming the
 two commands answer the same question.
 
-**Two kinds of cached map.** A *fetched* map is `cache/<id>.json`; a *simulated* one is anything this
-project computed — `fray simulate --cache-map` and `fray unlock --cache-map` both land here — one
-directory per run under a named batch:
+**`cache/` is sorted by purpose, and `cache/maps/` holds maps and nothing else holds maps.**
+That sentence is the layout's whole point. `list_maps` used to glob `cache/*.json` and skip the
+names it *knew* were not maps, so every new blob had to be remembered or it turned up in the picker
+as a map called `wiki_rates` that failed the moment it was chosen — two were missed exactly that
+way. A directory cannot be forgotten.
 
 ```
-cache/sims/<batch>/batch.json          # every run's seed and rolled chunk ids - the analysis surface
-cache/sims/<batch>/run-001/map.json    # a normal envelope, `is_simulated: true`
-cache/sims/<batch>/run-001/rolls.json  # that run's per-roll ledger
-cache/sims/<batch>/run-001/run.json    # that run's seed/rolls/origin, the summary `maps list` reads
+cache/maps/fetched/<id>.json           # from Firebase; only `fray fetch` writes one
+cache/maps/simulated/<batch>/…         # rolled by `fray simulate`
+cache/maps/unlocked/<batch>/…          # `fray unlock --cache-map`: one chunk added by hand
+cache/reference/                       # chunkinfo, tasks_map, wiki_rates, tile_version
+cache/derived/                         # pipeline.derive results, keyed by content
+cache/assets/                          # section masks, skill icons
+cache/gui/                             # window.json, and the browser profile
 ```
 
-Every subcommand's `--map` takes either kind, because `cache.read_cache` resolves them: a fetched
-`cache/<id>.json` wins, then `<batch>/run-00N`, then a bare `<batch>` holding exactly one run (which is
-what makes `--cache-map X` then `--map X` work). A bare batch name with several runs is an error naming
-them, never a guess. A name that is already taken — by a batch *or* a fetched map — gains `-2`, `-3`,
-… so `--map` is never ambiguous; the claim is a `mkdir(exist_ok=False)`, so parallel writers cannot
-both win it. Counting how often a chunk was rolled means reading `batch.json`, not the payloads.
-An unlock product is a one-run batch that differs only in its envelope `source` and `run.json`'s
-`origin`: `is_simulated` and `MapEntry.kind` stay as they are for a simulation, since both mean "this
-project computed it, upstream never saw it" — see `cache.write_sim_run` for why a third `kind` isn't
-worth what it would cost `maps rm`/`maps clean`.
+A batch, whichever computed kind:
+
+```
+cache/maps/<kind>/<batch>/batch.json          # seeds, rolls, `batch_id` — the analysis surface
+cache/maps/<kind>/<batch>/run-001/map.json    # a normal envelope, carrying `kind`
+cache/maps/<kind>/<batch>/run-001/rolls.json  # that run's per-roll ledger
+cache/maps/<kind>/<batch>/run-001/run.json    # that run's summary, which `maps list` reads
+```
+
+**Three kinds, and `unlocked` used to be filed under `simulated`.** This file argued for that —
+both mean "this project computed it, upstream never saw it", and a third kind would have to be
+taught to every removal path. What that missed is that the picker has to *say* which, and calling a
+map made by adding one chunk by hand a simulation is simply wrong. `COMPUTED_KINDS` is what the
+removal paths take, so a fourth kind is one line rather than a hunt.
+
+**`batch_id` is what makes several runs one job.** Minted once per batch before any run starts and
+written into *every* run, not just the summary — the directory name cannot carry it, because a name
+clash renames the batch and a rename severs the link. `read_batch` recovers it from the runs when
+`batch.json` is missing, so an interrupted batch is still recognisably one job.
+
+A name is claimed across **every** kind (`_name_taken`), so `--map foo` never has to guess which
+directory meant it; a clash gains `-2`, `-3`, … as before. `cache.migrate_layout` moves a
+pre-split cache into this one on first touch — renaming rather than re-fetching, because the chunk
+export is a 10MB download and `assets/` is fifteen hundred files pulled one at a time. It is
+idempotent and identifies an old flat `cache/*.json` as a fetched map by *elimination*, which is
+the reasoning this layout retires — so it happens once, there, and never on a read path.
 
 **The estimator's numbers live in two places, and only one is in `cache/`.** `fray heuristics`
 writes the scrape to `cache/wiki_rates.json` (a normal blob, refetchable, gitignored); hand-written
@@ -423,7 +444,7 @@ stubs — which is why it must run from the repo root and needs the venv to exis
 `dev` extra inside the venv and is **not** on `PATH`, so a bare `pytest` fails with
 "command not found"; call `.venv/bin/pytest` (or activate the venv first).
 
-`cache/` is gitignored — including `cache/sims/` — so a fresh clone has no data and
+`cache/` is gitignored — including `cache/maps/` — so a fresh clone has no data and
 `fray show`/`fray sections` fail until `fray fetch`/`fray chunkinfo` run. `fray chunkinfo` downloads ~10MB; `--chunkinfo PATH` or the
 `FRAY_CHUNKINFO` env var point `fray sections` (and later commands) at an existing local export
 instead.

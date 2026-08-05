@@ -82,6 +82,7 @@ import json
 import sys
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
+from uuid import uuid4
 from pathlib import Path
 from typing import Any
 
@@ -109,7 +110,8 @@ from fray_claude.cache import (
     MapEntry,
     blob_path,
     chunkinfo_source,
-    claim_sim_batch,
+    UNLOCKED,
+    claim_batch,
     file_digest,
     list_derived,
     list_maps,
@@ -119,7 +121,7 @@ from fray_claude.cache import (
     WIKI_RATES_BLOB_NAME,
     read_chunkinfo,
     read_overrides,
-    remove_all_simulated,
+    remove_computed,
     remove_map,
     run_dir,
     write_blob,
@@ -212,7 +214,7 @@ def _cmd_show(args: argparse.Namespace) -> int:
     envelope = read_cache(args.map_id)
     summary = summarise(envelope["data"])
 
-    simulated = envelope.get("is_simulated") is True
+    simulated = envelope.get("kind", FETCHED) != FETCHED
     print(f"map            {args.map_id}")
     if simulated:
         simulation = envelope.get("simulation")
@@ -752,10 +754,13 @@ def _unlock_to_cache(args: argparse.Namespace, delta: UnlockDelta) -> str:
 
     Reuses `simulate.py`'s two pieces rather than growing its own: a one-entry
     ledger drives `simulated_payload` (which reads only `chunk_id` from a
-    record, plus whether there are any), and the run lands in the sims layout
-    so `--map`, `fray maps` and the `-2` clash suffix all work unchanged. What
-    marks it as an unlock is the envelope's `source` line and `run.json`'s
-    `origin` - see `cache.write_sim_run` for why not a third `kind`.
+    record, plus whether there are any), and the run lands in the batch layout
+    so `--map`, `fray maps` and the clash suffix all work unchanged.
+
+    **It is its own kind, under `cache/maps/unlocked/`.** It used to be filed
+    as `simulated` on the grounds that both mean "this project computed it";
+    what that missed is that a picker has to *say* which, and calling a map
+    made by adding one chunk by hand a simulation is simply wrong.
     """
     envelope = read_cache(args.map_id)
     record = UnlockRecord(
@@ -767,11 +772,15 @@ def _unlock_to_cache(args: argparse.Namespace, delta: UnlockDelta) -> str:
         bis_upgrades=delta.bis_upgrades,
     )
     payload = simulated_payload(envelope["data"], [record])
-    directory = claim_sim_batch(args.cache_map)
+    directory = claim_batch(args.cache_map, kind=UNLOCKED)
     run = run_dir(directory, 1)
     held = payload.get("chunks", {}).get("unlocked", {})
+    batch_id = uuid4().hex
     meta: dict[str, Any] = {
         "run": run.name,
+        "batch": directory.name,
+        "batch_id": batch_id,
+        "runs_in_batch": 1,
         "origin": "unlock",
         "chunk": delta.chunk_id,
         "seed": None,
@@ -789,11 +798,14 @@ def _unlock_to_cache(args: argparse.Namespace, delta: UnlockDelta) -> str:
         simulation=meta,
         ledger=[record.as_dict()],
         source=f"unlock {delta.chunk_id} from {args.map_id!r}",
+        kind=UNLOCKED,
     )
     write_sim_batch(
         directory,
         {
             "name": directory.name,
+            "batch_id": batch_id,
+            "kind": UNLOCKED,
             "origin": "unlock",
             "created_at": meta["created_at"],
             "base_map": args.map_id,
@@ -1251,7 +1263,7 @@ def _cmd_maps_rm(args: argparse.Namespace) -> int:
 
 
 def _cmd_maps_clean(args: argparse.Namespace) -> int:
-    removed = remove_all_simulated()
+    removed = remove_computed()
     for name in removed:
         print(f"removed {name}")
     if args.include_fetched:
@@ -1750,7 +1762,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     maps_list = map_verbs.add_parser("list", help="list cached maps (the default)")
     maps_list.add_argument(
-        "--runs", action="store_true", help="also list each simulated batch's individual runs"
+        "--runs", action="store_true", help="also list each batch's individual runs"
     )
     maps_list.add_argument(
         "--export-json",
@@ -1760,14 +1772,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     maps_list.set_defaults(func=_cmd_maps_list)
 
-    maps_rm = map_verbs.add_parser("rm", help="remove a simulated batch, a single run, or a map")
+    maps_rm = map_verbs.add_parser("rm", help="remove a computed batch, a single run, or a map")
     maps_rm.add_argument(
         "names", nargs="+", metavar="NAME", help="map id, e.g. Demo or Demo/run-002"
     )
     maps_rm.add_argument(
         "--include-fetched",
         action="store_true",
-        help="allow removing a fetched map, not just simulated ones",
+        help="allow removing a fetched map, not just computed ones",
     )
     maps_rm.set_defaults(func=_cmd_maps_rm)
 
@@ -1797,7 +1809,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     derived_clean.set_defaults(func=_cmd_derived_clean)
 
-    maps_clean = map_verbs.add_parser("clean", help="remove every simulated map")
+    maps_clean = map_verbs.add_parser(
+        "clean", help="remove every map this project computed (simulated and unlocked)"
+    )
     maps_clean.add_argument(
         "--include-fetched",
         action="store_true",

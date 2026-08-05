@@ -308,7 +308,7 @@ otherwise it's created in whatever directory you're in when you run `fray`.
 5. **Keep a possible future and work against it**, instead of just reading the summary:
 
    ```sh
-   fray simulate --rolls 50 --cache-map Future            # saved as cache/sims/Future/run-001
+   fray simulate --rolls 50 --cache-map Future            # saved as cache/maps/simulated/Future/run-001
    fray unlock --chunk 12082 --cache-map Candidate        # the same, for one chosen chunk
    fray tasks --map Future                                # the same commands, against that world
    fray diff --map1 Candidate --map2 Future               # ... or against each other
@@ -323,7 +323,7 @@ otherwise it's created in whatever directory you're in when you run `fray`.
 
    A batch writes one directory per run, addressable as `--map Sweep/run-007`; a bare `--map Sweep`
    works whenever the batch holds exactly one run. Each run records the seed it used, so any single
-   run can be reproduced on its own with `fray simulate --seed <that>`. `cache/sims/<name>/batch.json`
+   run can be reproduced on its own with `fray simulate --seed <that>`. `cache/maps/simulated/<name>/batch.json`
    holds every run's rolled chunks in one small file, which is what to read for "how often did chunk X
    come up". Naming a batch something already taken saves it alongside as `<name>-2` rather than
    overwriting, and `maps rm`/`maps clean` refuse to touch a *fetched* map unless you pass

@@ -32,10 +32,12 @@ import random
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from uuid import uuid4
 from pathlib import Path
 from typing import Any
 
 from fray_claude.cache import (
+    SIMULATED,
     TASKS_MAP_BLOB_NAME,
     CacheMissError,
     blob_path,
@@ -76,6 +78,9 @@ class RunSpec:
     base_fetched_at: str | None
     chunkinfo_path: Path | None
     root: Path | None
+    #: The identity every run of one batch shares. See `cache.MapEntry`.
+    batch_id: str = ""
+    runs_in_batch: int = 1
     #: Which of this run's derived states to keep - see `CacheBehaviour`.
     cache_behaviour: CacheBehaviour = CacheBehaviour.ALL
 
@@ -177,6 +182,14 @@ def run_one(spec: RunSpec) -> RunResult:
         "base_fetched_at": spec.base_fetched_at,
         "created_at": datetime.now(UTC).isoformat(),
         "unlocked_chunks": len(held),
+        # **What makes these runs one job.** Written into every run, not just
+        # the batch summary, so a run answers it alone - the directory name
+        # cannot, because a clash renames the batch and a rename severs the
+        # link. See `cache.MapEntry.batch_id`.
+        "batch": spec.directory.parent.name,
+        "batch_id": spec.batch_id,
+        "run": spec.name,
+        "runs_in_batch": spec.runs_in_batch,
     }
     write_sim_run(
         spec.directory,
@@ -201,6 +214,7 @@ def _specs(
     chunkinfo_path: Path | None,
     root: Path | None,
     cache_behaviour: CacheBehaviour,
+    batch_id: str,
 ) -> list[RunSpec]:
     specs: list[RunSpec] = []
     for index, seed in enumerate(seeds, start=1):
@@ -216,6 +230,8 @@ def _specs(
                 base_fetched_at=base_fetched_at,
                 chunkinfo_path=chunkinfo_path,
                 root=root,
+                batch_id=batch_id,
+                runs_in_batch=len(seeds),
                 cache_behaviour=cache_behaviour,
             )
         )
@@ -258,9 +274,13 @@ def run_batch(
         raise ValueError("jobs must be at least 1")
 
     directory = claim_sim_batch(name, root)
+    # Minted before any run starts, so every one of them records the same
+    # value and an interrupted batch is still recognisable as one job.
+    batch_id = uuid4().hex
     specs = _specs(
         directory,
         derive_seeds(seed, runs),
+        batch_id=batch_id,
         payload=payload,
         rolls=rolls,
         base_map=base_map,
@@ -304,6 +324,8 @@ def run_batch(
         directory,
         {
             "name": directory.name,
+            "batch_id": batch_id,
+            "kind": SIMULATED,
             "created_at": datetime.now(UTC).isoformat(),
             "base_map": base_map,
             "base_fetched_at": base_fetched_at,

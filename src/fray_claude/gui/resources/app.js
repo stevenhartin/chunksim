@@ -1359,7 +1359,7 @@ async function loadMaps() {
     showTab("maps");
     return false;
   }
-  const options = maps.map((m) => tmpl`<option value="${m.map_id}">${m.map_id}${m.kind === "fetched" ? "" : "  (" + label(m.kind) + ")"}</option>`).join("");
+  const options = maps.map((m) => tmpl`<option value="${m.map_id}">${m.map_id}${m.kind === "fetched" ? "" : "  (" + (KIND_LABELS[m.kind] || label(m.kind)) + ")"}</option>`).join("");
   const keepMap = el.map.value, keepCompare = el.compare.value;
   el.map.innerHTML = options;
   el.compare.innerHTML = "<option value=''>—</option>" + options;
@@ -2151,9 +2151,17 @@ el["find-form"].addEventListener("submit", (e) => { e.preventDefault(); clearTim
 
 /* ---- maps pane --------------------------------------------------------- */
 
+/* What each kind is called on screen. `fetched` is the only one worth leaving
+ * unlabelled - it is the ordinary case and saying so on every row is noise. */
+const KIND_LABELS = {
+  fetched: "Fetched",
+  simulated: "Simulated",
+  unlocked: "Unlocked",
+};
+
 function mapTip(entry) {
   const rows = [
-    ["Kind", label(entry.kind)],
+    ["Kind", KIND_LABELS[entry.kind] || label(entry.kind)],
     ["Created", when(entry.created_at)],
     ["Size", bytes(entry.size)],
     ["Chunks", entry.unlocked_chunks == null ? "—" : entry.unlocked_chunks],
@@ -2162,6 +2170,10 @@ function mapTip(entry) {
   if (entry.runs != null) rows.push(["Runs", entry.runs]);
   if (entry.seed != null) rows.push(["Seed", entry.seed]);
   if (entry.base_map) rows.push(["From", entry.base_map]);
+  /* Which job produced it. Runs of one batch share this; two batches from the
+   * same base map and the same seed do not. */
+  if (entry.batch) rows.push(["Batch", entry.batch]);
+  if (entry.batch_id) rows.push(["Job", entry.batch_id.slice(0, 8)]);
   return rows.map(([k, v]) => tmpl`<span class="sub">${k}: ${v}</span>`).join("");
 }
 
@@ -2185,14 +2197,14 @@ async function loadMapsPane() {
     </div>`;
     out += tmpl`<h3>Cached maps <span class="num">${maps.length}</span></h3><ul class="list">`;
     for (const m of maps) {
-      const note = m.unlocked_chunks == null ? label(m.kind) : m.unlocked_chunks + " chunks";
+      const note = m.unlocked_chunks == null ? (KIND_LABELS[m.kind] || label(m.kind)) : m.unlocked_chunks + " chunks";
       const remove = m.kind === "fetched" ? "" :
         '<button class="link danger" data-rm="' + m.map_id.replace(/"/g, "&quot;") + '">Remove</button>';
       out += tmpl`<li data-tip="${mapTip(m)}"><span class="name">${m.map_id}</span><span class="num">${note}</span>${raw(remove)}</li>`;
     }
     out += `</ul><div class="actions">
       <button id="rm-sims" class="danger" type="button"
-        data-tip="Delete every batch under cache/sims/. Fetched maps are left alone.">Remove All Simulated</button>
+        data-tip="Delete every map this project computed — simulated and unlocked alike. Fetched maps are left alone.">Remove Computed Maps</button>
       <button id="prune" type="button"
         data-tip="Empty cache/derived/. Pure recomputation, so nothing is lost - the next command is just slower.">Clear Derived Cache</button>
     </div>`;
@@ -2236,13 +2248,16 @@ async function loadMapsPane() {
     }
 
     document.getElementById("rm-sims").onclick = async () => {
+      /* Every kind this project computed, not just the rolled ones - an
+       * unlocked map is equally disposable and equally in the way. */
       const doomed = maps.filter((m) => m.kind !== "fetched" && !m.map_id.includes("/"));
-      if (!doomed.length) return toast("No simulated maps to remove");
+      if (!doomed.length) return toast("Nothing to remove — every cached map was fetched");
       const ok = await confirmAction(
-        "Remove " + doomed.length + (doomed.length === 1 ? " simulated map?" : " simulated maps?"),
-        tmpl`<p>Deletes every batch under <code>cache/sims/</code>. Fetched maps are
-          left alone.</p><ul class="list">`
+        "Remove " + doomed.length + (doomed.length === 1 ? " computed map?" : " computed maps?"),
+        tmpl`<p>Deletes every batch under <code>cache/maps/simulated/</code> and
+          <code>cache/maps/unlocked/</code>. Fetched maps are left alone.</p><ul class="list">`
           + doomed.map((m) => tmpl`<li><span class="name">${m.map_id}</span>
+              <span class="sub">${KIND_LABELS[m.kind] || m.kind}</span>
               <span class="num">${m.runs == null ? "" : m.runs + (m.runs === 1 ? " run" : " runs")}</span></li>`).join("")
           + "</ul>",
         "Remove all");
