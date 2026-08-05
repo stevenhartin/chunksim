@@ -423,6 +423,30 @@ def test_the_plane_reaches_the_tile_url_and_nothing_else() -> None:
     assert "loadView" not in body and "getJSON" not in body
 
 
+def test_a_higher_plane_sinks_the_tiles_and_only_the_tiles() -> None:
+    """A plane-N tile is the ground floor re-rendered dim plus this floor over
+    it, so on the surface the ghost shouts louder than what you switched floors
+    to see.
+
+    The scrim goes **immediately after the tiles and before every overlay**:
+    darkening the map is the point, darkening the hull, the area labels and
+    the section masks drawn *about* the map is not. And it is gated on the
+    plane, so the ground floor is untouched.
+    """
+    source = _app_js()
+
+    layers = re.search(r"const LAYERS = \[(.*?)\];", source, re.DOTALL)
+    assert layers is not None
+    order = [n.strip() for n in layers.group(1).replace("\n", " ").split(",") if n.strip()]
+    assert order.index("drawPlaneScrim") == order.index("drawTiles") + 1
+    assert order.index("drawPlaneScrim") < order.index("drawHull")
+    assert order.index("drawPlaneScrim") < order.index("drawAreas")
+
+    body = re.search(r"function drawPlaneScrim\(\) \{(.*?)\n\}", source, re.DOTALL)
+    assert body is not None
+    assert "if (!state.plane) return;" in body.group(1)
+
+
 def test_a_missing_tile_falls_back_to_a_coarser_one() -> None:
     """A tile that is not there should look blurry, not black.
 

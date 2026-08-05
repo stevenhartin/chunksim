@@ -335,7 +335,12 @@ Things worth knowing before changing it:
   region rectangle (x 14–66, y 18–197, 53×180) rather than the surface's, underground sits north of
   the overworld because of the y-flip, and **1,905 of the export's 1,919 numeric ids are placeable
   against 1,176 before**. A plane selector picks the floor; it changes the tiles and nothing else,
-  since a region contains every plane. What is left unplaced: nothing.
+  since a region contains every plane. **Above the ground floor the tiles are sunk under a flat
+  `PLANE_SCRIM`**, because a plane-N tile is the whole ground floor re-rendered dim *plus* this
+  floor's features — on the surface the ghost shouts louder than what you switched floors to see.
+  Flat and not a contrast curve, by measurement: `brightness`/`contrast` turned Lumbridge's ground
+  garish (contrast expands saturation) and clipped Karuulm's faint outline to nothing, where a wash
+  can only dim. What is left unplaced: nothing.
 - **A named area is placed by the export, not by matching its name.** `Abyss` has no coordinates,
   but the export stores such a place *twice* — once under its name holding the contents, and once as
   one or more ordinary numbered chunks carrying `Name` — and a numbered chunk is a region, so it has

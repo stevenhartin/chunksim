@@ -329,9 +329,37 @@ function maskTargets() {
  * one more entry plus one key in view.overlays, and nothing about pan, zoom or
  * the hull has to change. */
 const LAYERS = [
-  drawTiles, drawLockedWash, drawGrid, drawStates, drawMasks, drawFound,
-  drawCandidates, drawHull, drawAreas, drawHovered, drawSelected,
+  drawTiles, drawPlaneScrim, drawLockedWash, drawGrid, drawStates, drawMasks,
+  drawFound, drawCandidates, drawHull, drawAreas, drawHovered, drawSelected,
 ];
+
+/* How far the map sinks on a floor above the ground.
+ *
+ * **A tile for plane N is the whole ground floor re-rendered dim, plus this
+ * floor's own features over it** - so on the surface, where the ground is
+ * bright green and busy, the ghost shouts louder than the castle walls you
+ * switched floors to look at. Sinking the base layer is what lets them
+ * through.
+ *
+ * **Deliberately a flat wash and not a contrast curve.** `brightness`/
+ * `contrast` looked like the smarter answer - crush the dim ghost to black,
+ * keep the bright features - and measuring it on real tiles killed it: at
+ * `brightness(1.1) contrast(1.9)` Lumbridge's ground turned garish yellow
+ * (contrast expands saturation too) and Karuulm's faint outline, already only
+ * a few levels above black, **clipped to nothing**. A wash is monotone: it can
+ * dim something into being hard to see, but it cannot destroy it or invent
+ * colour that was not there.
+ *
+ * It is applied to the tiles alone, before every overlay, so the hull, the
+ * area labels and the section masks stay at full strength. Darkening the map
+ * is the point; darkening what is drawn *about* the map is not. */
+const PLANE_SCRIM = 0.55;
+
+function drawPlaneScrim() {
+  if (!state.plane) return;
+  CTX.fillStyle = `rgba(0, 0, 0, ${PLANE_SCRIM})`;
+  CTX.fillRect(0, 0, CANVAS.clientWidth, CANVAS.clientHeight);
+}
 
 /* Below this on-screen chunk size a name is unreadable and the map is better
  * off without it. */
