@@ -10,58 +10,100 @@
 
 <canvas id="canvas"></canvas>
 
+<!-- One sprite, referenced by `<use href="#i-monster">`. Inline rather than a
+     file because it is a dozen paths and a request is a request; drawn on a
+     24-unit grid with a 2-unit stroke so every icon has the same weight at
+     every size. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="i-monster"><path d="M12 3a7 7 0 0 0-7 7v4l2 2v4h10v-4l2-2v-4a7 7 0 0 0-7-7z"/><circle cx="9.5" cy="11" r="1.4"/><circle cx="14.5" cy="11" r="1.4"/><path d="M10 20v-3M14 20v-3"/></g>
+    <g id="i-npc"><circle cx="12" cy="8" r="3.5"/><path d="M5 21a7 7 0 0 1 14 0"/></g>
+    <g id="i-object"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></g>
+    <g id="i-shop"><path d="M4 8h16l-1.2 12H5.2z"/><path d="M8.5 8V6a3.5 3.5 0 0 1 7 0v2"/></g>
+    <g id="i-spawn"><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><circle cx="12" cy="12" r="3"/></g>
+    <g id="i-quest"><path d="M6 3h9l3 3v15H6z"/><path d="M9 8h6M9 12h6M9 16h4"/></g>
+    <g id="i-clue"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></g>
+    <g id="i-diary"><path d="M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2z"/><path d="M7 20a2 2 0 0 1 0-4h11"/></g>
+    <g id="i-sections"><path d="M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z"/></g>
+    <g id="i-log"><path d="M4 5h12a2 2 0 0 1 2 2v13H6a2 2 0 0 1-2-2z"/><path d="m14 9 1.2 2.4 2.6.4-1.9 1.8.5 2.6-2.4-1.3-2.4 1.3.5-2.6-1.9-1.8 2.6-.4z"/></g>
+    <g id="i-unlock"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 7.5-2"/></g>
+    <g id="i-star"><path d="m12 3 2.6 5.6 6 .8-4.4 4.2 1.1 6.1L12 16.8 6.7 19.7l1.1-6.1L3.4 9.4l6-.8z"/></g>
+    <g id="i-dot"><circle cx="12" cy="12" r="4"/></g>
+    <g id="i-eye"><path d="M2 12s3.8-6.5 10-6.5S22 12 22 12s-3.8 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></g>
+    <g id="i-help"><circle cx="12" cy="12" r="9"/><path d="M9.4 9.2a2.7 2.7 0 0 1 5.2.9c0 1.8-2.6 2.2-2.6 4"/><circle cx="12" cy="17.4" r="1.1" fill="currentColor" stroke="none"/></g>
+    <g id="i-close"><path d="m6 6 12 12M18 6 6 18"/></g>
+    <g id="i-layers"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></g>
+  </defs>
+</svg>
+
 <!-- The bar floats over the map rather than sitting above it, so the world
      keeps the whole window and the pan arithmetic stays in one space. -->
 <header class="bar">
   <span class="brand">fray</span>
 
-  <select id="map" class="pick" aria-label="map"></select>
+  <select id="map" class="pick" aria-label="Map"></select>
   <span class="vs">vs</span>
-  <select id="compare" class="pick" aria-label="compare against"><option value="">—</option></select>
+  <select id="compare" class="pick" aria-label="Compare against"><option value="">—</option></select>
 
   <span class="rule"></span>
 
   <button id="candidates" class="toggle" type="button" aria-pressed="false"
-          title="Show the chunks you could roll next, numbered as the app numbers them">candidates</button>
+          title="Show the chunks you could roll next, numbered as the app numbers them (C)">Candidates</button>
+  <button id="masks" class="toggle" type="button" aria-pressed="false"
+          title="Shade each section of the selected chunk: green reachable, red not (S)">Sections</button>
   <button id="live" class="toggle on" type="button" aria-pressed="true"
-          title="Re-read the cache, so a fray fetch or simulate elsewhere shows up here">live</button>
-  <button id="fit" type="button" title="Fit your chunks to the window">fit</button>
+          title="Re-read the cache, so a fray fetch or simulate elsewhere shows up here">Live</button>
+  <button id="fit" type="button" title="Fit your chunks to the window (Home)">Fit</button>
 
   <span class="counts" id="counts"></span>
   <button id="skipped" class="warn" type="button" hidden></button>
 
   <span class="spacer"></span>
   <span class="hover" id="hover"></span>
-  <button id="toggle-panel" type="button" title="Show or hide the panel">panel</button>
+  <button id="toggle-panel" type="button" title="Show or hide the panel (P)">Panel</button>
 </header>
 
 <aside class="panel" id="panel">
   <nav class="tabs" id="tabs">
-    <button data-tab="chunk" class="on" type="button">chunk</button>
-    <button data-tab="tasks" type="button">tasks</button>
-    <button data-tab="estimate" type="button">estimate</button>
-    <button data-tab="find" type="button">find</button>
-    <button data-tab="maps" type="button">maps</button>
+    <button data-tab="tasks" class="on" type="button">Tasks</button>
+    <button data-tab="chunk" type="button">Chunk</button>
+    <button data-tab="find" type="button">Find</button>
+    <button data-tab="estimate" type="button">Estimate</button>
+    <button data-tab="maps" type="button">Maps</button>
   </nav>
 
-  <section class="pane on" data-pane="chunk">
-    <div id="chunk-body" class="empty">Click a chunk on the map.</div>
-  </section>
-
-  <section class="pane" data-pane="tasks">
+  <section class="pane on" data-pane="tasks">
+    <div class="pane-head">
+      <div class="chips" id="task-chips"></div>
+      <button id="show-done" class="icon-btn" type="button" aria-pressed="false"
+              title="Show what is already done">
+        <svg class="icon" viewBox="0 0 24 24"><use href="#i-eye"/></svg>
+      </button>
+    </div>
     <div id="tasks-body" class="empty">Loading…</div>
   </section>
 
-  <section class="pane" data-pane="estimate">
-    <div id="estimate-body" class="empty">Loading…</div>
+  <section class="pane" data-pane="chunk">
+    <div id="chunk-head"></div>
+    <div class="chips" id="chunk-chips"></div>
+    <div id="chunk-body" class="empty">Click a chunk on the map.</div>
   </section>
 
   <section class="pane" data-pane="find">
     <form id="find-form" class="row">
-      <input id="find-input" type="search" placeholder="item, monster, npc, object…" autocomplete="off">
-      <button type="submit">find</button>
+      <input id="find-input" type="search" placeholder="Item, monster, NPC, object…" autocomplete="off">
     </form>
     <div id="find-body" class="empty">Search the whole world, unlocked or not.</div>
+  </section>
+
+  <section class="pane" data-pane="estimate">
+    <div class="pane-head">
+      <span class="pane-title" id="estimate-total"></span>
+      <button id="estimate-why" class="icon-btn" type="button" title="Where these numbers come from">
+        <svg class="icon" viewBox="0 0 24 24"><use href="#i-help"/></svg>
+      </button>
+    </div>
+    <div id="estimate-body" class="empty">Loading…</div>
   </section>
 
   <section class="pane" data-pane="maps">
@@ -73,6 +115,23 @@
 
 <div class="legend" id="legend"></div>
 <div class="toast" id="toast" hidden></div>
+
+<!-- One dialog, reused. The "what would this add?" answer used to overwrite
+     the chunk panel with no way back; an overlay you dismiss is the shape
+     that fits an answer you asked a question to get. -->
+<div class="overlay" id="overlay" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="overlay-title">
+    <header>
+      <h2 id="overlay-title"></h2>
+      <button id="overlay-close" class="icon-btn" type="button" aria-label="Close">
+        <svg class="icon" viewBox="0 0 24 24"><use href="#i-close"/></svg>
+      </button>
+    </header>
+    <div id="overlay-body"></div>
+  </div>
+</div>
+
+<div class="tip" id="tip" hidden></div>
 
 <script src="/static/app.js"></script>
 </body>

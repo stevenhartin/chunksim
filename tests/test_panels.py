@@ -195,13 +195,26 @@ def test_bis_groups_by_combat_style_and_leads_with_the_item() -> None:
     assert groups["Ranged"]["completed"][0]["name"] == "aranea boots"
 
 
-def test_a_zero_width_space_does_not_become_part_of_a_style() -> None:
-    """Upstream puts one between styles so `Ranged/Magic` wraps."""
+def test_an_item_several_styles_wear_lands_in_one_shared_group() -> None:
+    """Four labels holding one item each say the same thing four ways.
+
+    The zero-width space is upstream's own, put between styles so the label
+    wraps; it is invisible and must not reach a group name either.
+    """
     panel = panels.task_panel(
-        _derived(bis={"active": {"Obtain a ~|ring|~": "Ranged/​Magic BiS ring"}})
+        _derived(
+            bis={
+                "active": {
+                    "Obtain a ~|ring|~": "Ranged/\u200bMagic BiS ring",
+                    "Obtain a ~|cape|~": "Melee/\u200bRanged/\u200bMagic/\u200bPrayer BiS cape",
+                }
+            }
+        )
     )
 
-    assert _section(panel, "bis")["groups"][0]["name"] == "Ranged/Magic"
+    groups = _section(panel, "bis")["groups"]
+    assert [g["name"] for g in groups] == ["Shared"]
+    assert len(groups[0]["active"]) == 2
 
 
 def test_every_skill_lands_in_one_list_carrying_its_icon() -> None:

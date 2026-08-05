@@ -302,6 +302,34 @@ def _chunk_detail(state: DerivedState, chunk_id: str, ctx: Context) -> dict[str,
     }
 
 
+def _section_states(state: DerivedState) -> dict[str, dict[str, bool]]:
+    """Which sections of each unlocked, split chunk you can reach.
+
+    The whole map in one derivation, because the overlay shades every square
+    on screen and asking per chunk would be one request per square. Only
+    *split* chunks appear: an unsplit one has a single implicit section that
+    is the square itself, and upstream drew no mask for it.
+
+    **Locked chunks are included, all-red.** The question the overlay answers
+    is "what is behind this square", and that is asked hardest about a square
+    you have not got yet - a candidate whose interesting half is behind a
+    door is exactly the thing worth seeing before rolling.
+    """
+    reached = state.derived.reachable_sections
+    states: dict[str, dict[str, bool]] = {}
+    for chunk_id, entry in state.state.chunk_info.chunks.items():
+        declared = _mapping(entry, "Sections")
+        if not declared:
+            continue
+        unlocked = chunk_id in state.unlocked
+        states[chunk_id] = {
+            section: unlocked
+            and (section == "0" or bool(reached.get(chunk_id, {}).get(section)))
+            for section in sorted(declared, key=_section_order)
+        }
+    return states
+
+
 def _unlock_preview(state: DerivedState, chunk_id: str, ctx: Context) -> dict[str, Any]:
     """What unlocking `chunk_id` would add. Two derivations, so ~0.3s warm."""
     from fray_claude.unlock import tasks_added_by
@@ -799,6 +827,14 @@ def handle_request(
             state = ctx.derivations.load(map_id)
             entries = eligible_neighbours(state.state, state.unlocked, state.derived)
             return _json({"map_id": map_id, "neighbours": [n.as_dict() for n in entries]})
+
+        if path == "/api/sections":
+            map_id = _first(query, "map")
+            if map_id is None:
+                return _error("missing required parameter 'map'", HTTPStatus.BAD_REQUEST)
+            return _json(
+                {"map_id": map_id, "chunks": _section_states(ctx.derivations.load(map_id))}
+            )
 
         if path == "/api/chunk":
             map_id = _first(query, "map")

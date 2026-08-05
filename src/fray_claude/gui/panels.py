@@ -183,9 +183,17 @@ def _plain_groups(
 
 
 def _bis_style(slot_label: str) -> str:
-    """`Melee BiS weapon` -> `Melee`; anything unparsed keeps its whole label."""
+    """`Melee BiS weapon` -> `Melee`; anything worn by several styles -> `Shared`.
+
+    A Hitpoints cape is `Melee/<zwsp>Ranged/<zwsp>Magic/<zwsp>Prayer BiS cape`,
+    and the real map has four such labels holding one item each. Kept
+    verbatim they are four headings that say "this works for everything" four
+    different ways; collapsed, they are the group that means exactly that.
+    """
     head = slot_label.split(" BiS ")[0].replace(_ZWSP, "")
-    return head or slot_label
+    if not head:
+        return slot_label
+    return "Shared" if "/" in head else head
 
 
 def _bis_groups(bis: Mapping[str, Any]) -> list[dict[str, Any]]:

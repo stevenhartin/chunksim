@@ -746,3 +746,23 @@ def test_a_first_run_opens_maximised(tmp_path: Path) -> None:
     """Not fullscreen: closing the window is how you stop the server, and
     fullscreen hides the control that does it."""
     assert window_flags(cache.read_gui_window(tmp_path)) == ["--start-maximized"]
+
+
+def test_no_unescaped_interpolation_lands_inside_an_attribute() -> None:
+    """**`raw()` is for element content and never for an attribute.**
+
+    Inside `data-tip="${...}"` it splices unescaped quotes straight through
+    the closing quote and the markup after it lands on screen as text - which
+    is what a tooltip built from `<span class="sub">` did. `tmpl` escapes an
+    ordinary interpolation, and the browser decodes it again when
+    `dataset.tip` is read, so the HTML arrives intact having never been able
+    to escape its attribute.
+
+    Cheap to get wrong and invisible in review, so it is asserted rather than
+    remembered.
+    """
+    source = _app_js()
+
+    offenders = re.findall(r'=\s*"\$\{raw\(', source)
+
+    assert not offenders, f"{len(offenders)} raw() interpolations inside an attribute"
