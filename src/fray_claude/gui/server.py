@@ -83,7 +83,7 @@ from fray_claude.api import (
     fetch_skill_icon,
     fetch_tasks_map,
 )
-from fray_claude.batch import RunResult, run_batch, save_unlock
+from fray_claude.batch import RunResult, price_steps, run_batch, save_unlock
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.delta import MapSide, compare_maps, diff_names
 from fray_claude.derived_cache import cached_derive
@@ -924,34 +924,24 @@ def _timeline_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     map_id = str(payload.get("map") or "").strip()
     if not map_id:
         raise ValueError("missing 'map'")
+    jobs = as_int(payload, "jobs", 0)
     steps = _run_steps(map_id, ctx)
 
     def work(progress: Progress) -> dict[str, Any]:
-        info = ctx.derivations.chunk_info()
-        state, _ = ctx.derivations.state_of(map_id)
-        digests = ctx.derivations.digests()
-        heuristics, _ = _heuristics_for(info, ctx.root)
-        world = build_world_index(info)
-        overrides = frozenset(_mapping(cache.read_overrides(ctx.root), "monsters"))
-        levels = infer_levels(state)
+        workers = jobs if jobs > 0 else (os.process_cpu_count() or 1)
 
-        totals: list[float] = []
-        for index, step in enumerate(steps):
-            progress(f"{index}/{len(steps) - 1} rolls - {step.chunk_id or 'start'}")
-            derived = cached_derive(
-                state, dict.fromkeys(step.unlocked, True), digests, root=ctx.root
-            )
-            priced = heuristics
-            if dps_bridge.DPS_AVAILABLE:
-                priced, _ = dps_bridge.enrich(
-                    heuristics,
-                    info,
-                    derived,
-                    goal_levels(state, derived, dict(levels)),
-                    pinned_monsters=overrides,
-                )
-            totals.append(sum(estimate(state, derived, world, priced).buckets.values()))
+        def report(done: int, total: int) -> None:
+            # `k/N` is the shape `app.js`'s `countsIn` parses into a real bar.
+            progress(f"{done}/{total} slices - {workers} workers")
 
+        progress(f"0/1 slices - {workers} workers")
+        totals = price_steps(
+            map_id=map_id,
+            held=[sorted(step.unlocked) for step in steps],
+            jobs=jobs,
+            root=ctx.root,
+            on_progress=report,
+        )
         cache.write_timeline(
             map_id,
             {"stamp": _timeline_stamp(ctx, enriched=dps_bridge.DPS_AVAILABLE), "totals": totals},

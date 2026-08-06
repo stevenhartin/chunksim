@@ -1756,3 +1756,64 @@ def test_rolling_opens_the_result_as_the_map(tmp_path: Path) -> None:
     assert "el.map.value = result.open" in handler.group(0)
     assert 'el.compare.value = ""' in handler.group(0)
     assert "loadTimeline()" in handler.group(0)
+
+
+def test_the_timeline_job_reports_slices_for_the_bar(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**`k/N` is not decoration** - `app.js`'s `countsIn` parses exactly that
+    into a real bar, and anything else leaves it indeterminate. The count is of
+    slices, because a worker cannot report from inside one."""
+    ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
+    ctx = Context(root=tmp_path, check_origin=False, derivations=ctx.derivations)
+    map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
+    seen: list[str] = []
+
+    def fake(**kw: Any) -> list[float]:
+        report = kw["on_progress"]
+        report(1, 2)
+        report(2, 2)
+        return [1.0, 2.0]
+
+    monkeypatch.setattr("fray_claude.gui.server.price_steps", fake)
+    monkeypatch.setattr(
+        "fray_claude.gui.jobs.JobRegistry.submit",
+        lambda self, action, work: _capture(self, action, work, seen),
+    )
+
+    _post("/api/timeline", ctx, {"map": map_id, "jobs": 2})
+
+    assert any(re.fullmatch(r"\d+/\d+ slices - \d+ workers", line) for line in seen), seen
+
+
+def _capture(registry: Any, action: str, work: Any, seen: list[str]) -> Any:
+    """Run a job inline and keep every progress line it emitted."""
+    work(seen.append)
+
+    class _Job:
+        id = "inline"
+
+    return _Job()
+
+
+def test_the_timeline_job_passes_jobs_through(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Omitted means auto, and auto is `price_steps`' call to make - the server
+    must not resolve it to a number and hard-code today's core count into a
+    stored answer."""
+    ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
+    ctx = Context(root=tmp_path, check_origin=False, derivations=ctx.derivations)
+    map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
+    asked: list[int] = []
+
+    def fake(**kw: Any) -> list[float]:
+        asked.append(kw["jobs"])
+        return [1.0, 2.0]
+
+    monkeypatch.setattr("fray_claude.gui.server.price_steps", fake)
+
+    _wait(ctx, _body(_post("/api/timeline", ctx, {"map": map_id, "jobs": 4}))["job"])
+    _wait(ctx, _body(_post("/api/timeline", ctx, {"map": map_id}))["job"])
+
+    assert asked == [4, 0]

@@ -2764,7 +2764,7 @@ function renderTimeline() {
   el["tl-hours"].hidden = payload.has_hours && !payload.can_enrich;
   el["tl-hours"].lastChild.textContent = upgrade ? "Reprice with gear" : "Compute hours";
   el["tl-hours"].dataset.tip = upgrade
-    ? tmpl`<b>Reprice from your gear</b><span class="sub">These hours came from the wiki's rates. The <code>dps</code> extra can cost each kill from the BiS gear this map actually reaches.</span><span class="hint">About a second per roll, stored afterwards</span>`
+    ? tmpl`<b>Reprice from your gear</b><span class="sub">These hours came from the wiki's rates. The <code>dps</code> extra can cost each kill from the BiS gear this map actually reaches.</span><span class="hint">Spread across every core, then stored</span>`
     : tmpl`<b>Cost every step</b><span class="sub">Prices the world after each roll, then stores the answer beside the run.</span><span class="hint">Slow once, instant after</span>`;
 
   el["tl-graph"].innerHTML = tlBars(steps, tlSeries, state.step);

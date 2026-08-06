@@ -15,13 +15,14 @@ from typing import Any
 
 import pytest
 
-from fray_claude.batch import derive_seeds, run_batch, save_unlock
+from fray_claude.batch import derive_seeds, price_steps, run_batch, save_unlock
 from fray_claude.cache import (
     BATCH_META_FILE_NAME,
     UNLOCKED,
     CacheMissError,
     read_batch,
     read_cache,
+    read_rolls,
     read_timeline,
     read_sim_batch,
     sims_root,
@@ -31,6 +32,7 @@ from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.derived_cache import CacheBehaviour
 from fray_claude.pipeline import load_map_state
 from fray_claude.simulate import simulate_rolls
+from fray_claude.timeline import replay
 from fray_claude.unlock import UnlockDelta
 
 #: 100 starts unlocked; 99/101/356 are its grid neighbours (id +/- 1, +/- 256)
@@ -411,3 +413,77 @@ def test_pricing_does_not_change_what_was_rolled(root: Path) -> None:
     priced = run_batch(name="b", payload=_PAYLOAD, base_map="f", rolls=4, seed=8, root=root)
 
     assert unpriced.runs[0].rolls == priced.runs[0].rolls
+
+
+def test_slices_deal_every_step_out_exactly_once() -> None:
+    """**Strided, not contiguous.** A step's cost grows along a run - later
+    states hold more chunks, so more monsters are reachable and there is more
+    to price - so contiguous slices would hand one worker the whole expensive
+    tail and leave it running after the others finished."""
+    from fray_claude.batch import _slices
+
+    parts = _slices([["a"], ["b"], ["c"], ["d"], ["e"]], 2)
+
+    assert [[order for order, _ in part] for part in parts] == [[0, 2, 4], [1, 3]]
+    seen = sorted(order for part in parts for order, _ in part)
+    assert seen == [0, 1, 2, 3, 4]
+
+
+def test_more_slices_than_steps_is_not_an_error() -> None:
+    """Asking for 16 slices of a 3-step run produces 3, not 13 empty ones."""
+    from fray_claude.batch import _slices
+
+    parts = _slices([["a"], ["b"], ["c"]], 16)
+
+    assert len(parts) == 3
+    assert all(part for part in parts)
+
+
+def test_pricing_a_run_is_the_same_answer_on_one_core_or_several(root: Path) -> None:
+    """**The parallelism guarantee, for the second pool.** `--jobs` decides
+    which process a step is priced in and nothing else.
+
+    Equality, not closeness: these are sums of floats computed in a fixed
+    order per step, so any difference would mean the steps had been mixed up
+    rather than that arithmetic had drifted.
+    """
+    write_blob("wiki_rates", {}, "test", root=root)
+    batch = run_batch(name="p", payload=_PAYLOAD, base_map="fray", rolls=3, seed=6, root=root)
+    map_id = f"{batch.name}/{batch.runs[0].name}"
+    steps = replay(read_cache(map_id, root)["data"]["chunks"]["unlocked"],
+                   read_rolls(map_id, root))
+    held = [sorted(step.unlocked) for step in steps]
+
+    serial = price_steps(map_id=map_id, held=held, jobs=1, root=root)
+    pooled = price_steps(map_id=map_id, held=held, jobs=2, root=root)
+
+    assert len(serial) == len(held)
+    assert serial == pooled
+
+
+def test_pricing_reports_progress_per_slice(root: Path) -> None:
+    """A worker cannot report from inside a slice, so the count is of slices.
+    `k/N` is the shape `app.js` parses into a real bar."""
+    write_blob("wiki_rates", {}, "test", root=root)
+    batch = run_batch(name="p", payload=_PAYLOAD, base_map="fray", rolls=2, seed=6, root=root)
+    map_id = f"{batch.name}/{batch.runs[0].name}"
+    steps = replay(read_cache(map_id, root)["data"]["chunks"]["unlocked"],
+                   read_rolls(map_id, root))
+    seen: list[tuple[int, int]] = []
+
+    price_steps(
+        map_id=map_id,
+        held=[sorted(s.unlocked) for s in steps],
+        jobs=1,
+        root=root,
+        on_progress=lambda done, total: seen.append((done, total)),
+    )
+
+    assert seen, "nothing reported"
+    assert [done for done, _ in seen] == list(range(1, len(seen) + 1))
+    assert all(total == seen[-1][0] for _, total in seen)
+
+
+def test_pricing_nothing_is_not_an_error(root: Path) -> None:
+    """An empty run has no steps and no pool to spin up for them."""
+    assert price_steps(map_id="whatever", held=[], root=root) == []

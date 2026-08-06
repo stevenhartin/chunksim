@@ -104,7 +104,10 @@ Five things that cut across modules — the first three because each has already
   *twice* (see below), which is the real version of the optimisation this bullet keeps attracting.
 - **The pure layer must stay process-parallel.** `fray simulate --jobs N` runs simulations in worker
   processes, and a roll costs a full `derive` (~0.76s on the real export, ~100% of the runtime), so
-  this is the only way a heatmap-sized batch finishes. That holds today only because there is **no
+  this is the only way a heatmap-sized batch finishes. `batch.price_steps` leans on the same property
+  from the other direction — it prices a run's steps in workers, and `price_slice` builds everything
+  it needs *inside the task* rather than in a pool `initializer`, precisely so no module ever grows a
+  memo. That holds today only because there is **no
   module-level mutable state anywhere** — no `lru_cache`, no memo dicts, no globals; `_UNARMED_SOURCES`
   and `_UNIVERSAL_PRIMARY` are read-only constants — and because `MapState`/`Derived` are frozen.
   Adding a cache to a "pure" module would break `--jobs` silently, in the form of runs that disagree.
@@ -139,7 +142,7 @@ Five things that cut across modules — the first three because each has already
 | `neighbours.py` | Which chunks are eligible to unlock next, and upstream's canvas numbering (**descending chunk id, 1-based**). Owns the `sectionsLimits` gate. |
 | `timeline.py` | Replaying a run one roll at a time. **A run is self-contained** — the state before roll k is `final − rolls[k:]`, so stepping needs no base map, no export and no `derive`. Owns the delta series and the rule that step 0 is a baseline rather than a roll. |
 | `simulate.py` | Seeded chunk-roll simulation: the bootstrap pool, plus the dispatch to `neighbours.py`. Records are never revisited by a later roll. `simulated_payload` turns a finished ledger back into a map payload — read its docstring before changing which branches it touches. |
-| `batch.py` | N simulations from one state, each cached as its own map. Owns seed derivation and the **only** `ProcessPoolExecutor` in the project. `--jobs` must never change a result. Also `save_unlock` — a batch of one, so the **one** writer of the run metadata both apps read back. |
+| `batch.py` | N simulations from one state, each cached as its own map. Owns seed derivation and **both** `ProcessPoolExecutor`s in the project — `run_batch` for rolling, `price_steps` for costing a timeline. `--jobs` must never change a result, either of them. Also `save_unlock` — a batch of one, so the **one** writer of the run metadata both apps read back. |
 | `derived_cache.py` | The on-disk cache of `derive` results: the key (hash of every input), the zstd+pickle codec, `cached_derive`, and `CacheBehaviour`/`RollCache` — which of a simulation's states to keep. Pure bar the bytes, which `cache.py` writes. |
 | `search.py` | World-wide fuzzy search over the *raw* export — all 5 item routes, so a strict superset of what `fray sources` can list. |
 | `summary.py` | Pure reductions over a raw payload. Extend this, not `cli.py`. Also home to `_mapping`, the tolerant dict accessor eight other modules import despite the `_` — Firebase omits empty containers, so every lookup anywhere must survive a missing branch. |
@@ -315,7 +318,20 @@ nothing about hours.
 **What a simulation does *not* pay for is `dps_bridge.enrich`, at ~1.29s a roll.** That is 13× the
 rest of the pricing and would take a 100×50 batch from 68 minutes to 176, on every batch whether or
 not anyone opens its timeline. So a run stores the wiki-rate answer and `POST /api/timeline` upgrades
-it on request. `timeline.stamp`'s **`enriched` flag records which, and `timeline.matches` deliberately
+it on request — **across cores, via `batch.price_steps`**, since 94% of a step is `osrs_dps`
+simulating 7,335 independent fights and steps do not depend on each other. Measured on 16 steps
+(8 physical cores / 16 logical): 20.0s sequential, 10.3s at 2, 5.5s at 4, 3.1s at 8, 2.7s auto —
+**it plateaus at the physical core count and SMT buys 5%**, so overshooting is free and `jobs=0` can
+take `os.process_cpu_count()` without guessing at the topology. Every job count gives identical
+totals, which `tests/test_batch.py` pins.
+
+**The first repricing of a run cannot reuse the simulation's cached derivations, and that is
+correct.** A simulation derives from the *base* map's `MapState`; the timeline derives from the
+*run's*, and `simulated_payload` moves `checkedChallenges` into `completedChallenges` and drops
+`activeTasks`, so the two hash differently — and **`derive` really does return different objects**
+(the `active_tasks` branch reads `state.active_tasks`), even though `estimate` comes out identical
+to the penny. Excluding those fields from `derivation_key` looks like a free 0.8s a step and would
+be a stale-derivation bug. Measured: a first press is 4.6s against 2.7s warm, on 16 steps. `timeline.stamp`'s **`enriched` flag records which, and `timeline.matches` deliberately
 excludes it from the freshness comparison** — the cheap numbers are a coarser answer, not a stale one,
 and treating them as stale would blank a perfectly good graph the moment the extra was installed.
 Everything else in the stamp *is* compared, including the digest of the checked-in

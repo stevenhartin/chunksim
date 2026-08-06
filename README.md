@@ -116,8 +116,10 @@ adds no work at all, and occasionally it *saves* you some by opening a cheaper r
 already needed. That is the estimate telling the truth, not the graph failing.
 
 If you have the `dps` extra, *Reprice with gear* recomputes those hours from the gear the map
-actually reaches rather than the wiki's assumed setup — about a second per roll, stored afterwards.
-Simulations skip it by default because it would nearly triple a large batch.
+actually reaches rather than the wiki's assumed setup. That is real work — nearly all of it is
+simulating fights — so it runs across every core and is stored afterwards: a 15-roll run takes about
+three seconds on eight cores against thirty on one. Simulations skip it by default because doing it
+inline would nearly triple a large batch, and most batches are never opened.
 
 `?map=…&step=4` deep-links a particular roll.
 

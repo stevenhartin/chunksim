@@ -34,6 +34,7 @@ there is one, and it is the module that already owned the layout.
 
 from __future__ import annotations
 
+import os
 import random
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -55,15 +56,17 @@ from fray_claude.cache import (
     file_digest,
     overrides_path,
     read_blob,
+    read_cache,
     read_chunkinfo,
     read_overrides,
     run_dir,
     write_sim_batch,
     write_sim_run,
 )
+from fray_claude import dps_bridge
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.derived_cache import CacheBehaviour, Digests, RollCache
-from fray_claude.estimate import estimate
+from fray_claude.derived_cache import CacheBehaviour, Digests, RollCache, cached_derive
+from fray_claude.estimate import estimate, goal_levels, infer_levels
 from fray_claude.firebase import reverse_tasks_map
 from fray_claude.heuristics import Heuristics, merge
 from fray_claude.heuristics import load as load_heuristics
@@ -221,7 +224,9 @@ class _Pricer:
         """The `simulate_rolls` callback, bound to the state being rolled."""
 
         def priced(order: int, derived: Derived) -> None:
-            self.totals.append(sum(estimate(state, derived, self.world, self.heuristics).buckets.values()))
+            self.totals.append(
+                sum(estimate(state, derived, self.world, self.heuristics).buckets.values())
+            )
 
         return priced
 
@@ -240,6 +245,162 @@ def _overrides_digest(root: Path | None) -> str:
         return file_digest(overrides_path(root))
     except (OSError, CacheMissError):
         return ""
+
+
+@dataclass(frozen=True)
+class PriceSpec:
+    """One worker's share of a timeline. Picklable, plain data, read-only.
+
+    **It carries chunk *ids*, not states.** A `Derived` pickles to 0.53MB and a
+    `ChunkInfo` to 4.01MB; parsing the export costs 0.052s and reading a
+    derivation out of `cache/derived/` costs 0.003s warm. So the worker rebuilds
+    both rather than receiving either, which is `RunSpec`'s reasoning applied to
+    a smaller task.
+    """
+
+    map_id: str
+    #: `(step index, that step's unlocked chunk ids)`, already sorted.
+    steps: tuple[tuple[int, tuple[str, ...]], ...]
+    root: Path | None
+    chunkinfo_path: Path | None
+
+
+def price_slice(spec: PriceSpec) -> list[tuple[int, float]]:
+    """Price one slice of a run's steps. Runs in a worker process.
+
+    **Sets up once per slice and keeps nothing between calls.** The obvious
+    alternative - a `ProcessPoolExecutor(initializer=...)` filling a module
+    global - would save the ~0.14s of setup per slice and would be the first
+    module-level mutable state in the project, which is the thing that keeps
+    `--jobs` honest. At two slices per worker that 0.14s is ~3% of the slice,
+    so the rule stays absolute for a rounding error.
+
+    `enrich` is handed the monster index explicitly. It loads one itself when
+    it is not given one, which is 0.041s per *step* rather than per slice.
+    """
+    info = ChunkInfo(read_chunkinfo(override=spec.chunkinfo_path, root=spec.root))
+    try:
+        tasks_map = reverse_tasks_map(read_blob(TASKS_MAP_BLOB_NAME, spec.root)["data"])
+    except CacheMissError:
+        tasks_map = {}
+    envelope = read_cache(spec.map_id, spec.root)
+    state, _ = load_map_state(envelope["data"], info, tasks_map)
+    digests = Digests(
+        chunkinfo=file_digest(chunkinfo_source(spec.chunkinfo_path, spec.root)),
+        tasks_map=file_digest(blob_path(TASKS_MAP_BLOB_NAME, spec.root)),
+    )
+    pricer = _Pricer.build(info, spec.root, digests)
+    if pricer is None:
+        raise CacheMissError("no cached wiki rates; run: fray heuristics")
+
+    index = dps_bridge.load_monster_index() if dps_bridge.DPS_AVAILABLE else None
+    pinned = frozenset(_mapping(read_overrides(spec.root), "monsters"))
+    levels = infer_levels(state)
+
+    out: list[tuple[int, float]] = []
+    for order, held in spec.steps:
+        derived = cached_derive(state, dict.fromkeys(held, True), digests, root=spec.root)
+        heuristics = pricer.heuristics
+        if dps_bridge.DPS_AVAILABLE:
+            heuristics, _ = dps_bridge.enrich(
+                heuristics,
+                info,
+                derived,
+                goal_levels(state, derived, dict(levels)),
+                index=index,
+                pinned_monsters=pinned,
+            )
+        out.append((order, sum(estimate(state, derived, pricer.world, heuristics).buckets.values())))
+    return out
+
+
+def _slices(
+    held: Sequence[Sequence[str]], count: int
+) -> list[tuple[tuple[int, tuple[str, ...]], ...]]:
+    """Deal the steps out `count` ways, **strided rather than contiguous**.
+
+    A step's cost grows along a run: later states hold more chunks, so more
+    monsters are reachable and there is more to price. Contiguous slices would
+    hand one worker the whole expensive tail and leave it running long after
+    the others finished. Striding gives every slice a mix.
+
+    Empty slices are dropped, so asking for more slices than there are steps
+    is not an error - it just produces fewer.
+    """
+    work = tuple((order, tuple(ids)) for order, ids in enumerate(held))
+    return [slice_ for k in range(count) if (slice_ := work[k::count])]
+
+
+def price_steps(
+    *,
+    map_id: str,
+    held: Sequence[Sequence[str]],
+    jobs: int = 0,
+    root: Path | None = None,
+    chunkinfo_path: Path | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
+) -> list[float]:
+    """The estimated hours remaining at each of a run's steps, in step order.
+
+    **This is the parallel half of what `_Pricer` does inline.** A simulation
+    prices its own rolls as it goes, because the derivation is already in hand
+    and `estimate` alone is under 5ms. Repricing through `dps_bridge.enrich` is
+    ~1.24s a step, which is a minute on a 50-roll run - and 94% of it is
+    `osrs_dps` simulating fights, pure CPU over independent states. So it goes
+    across cores.
+
+    **Measured on the real export** (8 physical cores, 16 logical), 16 steps:
+    19.9s sequential, 10.4s at 2, 5.4s at 4, 2.9s at 8, 2.8s at 16 - so it
+    **plateaus at the physical core count** and SMT buys 5%. Overshooting is
+    free rather than harmful, which is why `jobs=0` can take the logical count
+    and not have to guess at the topology. Every one of those job counts
+    produced identical totals, which is the property `tests/test_batch.py`
+    pins: **`jobs` must never change a result.**
+
+    `jobs=0` picks `os.process_cpu_count()` - affinity- and cgroup-aware, which
+    `os.cpu_count()` is not, and this can be running inside a container.
+    `jobs=1` runs inline with no pool at all, which is what keeps the test
+    suite in one process.
+
+    `on_progress(done, total)` counts *slices*, not steps: a worker cannot
+    report from inside one. There are two slices per job so a straggler costs
+    half a worker's share rather than all of it, and the bar moves twice per
+    worker.
+    """
+    if not held:
+        return []
+    wanted = jobs if jobs > 0 else (os.process_cpu_count() or 1)
+    parts = _slices(held, max(1, wanted if wanted <= 1 else wanted * 2))
+    specs = [
+        PriceSpec(map_id=map_id, steps=part, root=root, chunkinfo_path=chunkinfo_path)
+        for part in parts
+    ]
+
+    priced: dict[int, float] = {}
+    done = 0
+
+    def landed(result: list[tuple[int, float]]) -> None:
+        nonlocal done
+        priced.update(result)
+        done += 1
+        if on_progress is not None:
+            on_progress(done, len(specs))
+
+    if wanted <= 1 or len(specs) == 1:
+        for spec in specs:
+            landed(price_slice(spec))
+    else:
+        # Imported here for the reason `run_batch` gives: `concurrent.futures`
+        # costs ~12ms to import and only a real pool ever needs it.
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+
+        with ProcessPoolExecutor(max_workers=min(wanted, len(specs))) as pool:
+            futures = [pool.submit(price_slice, spec) for spec in specs]
+            for future in as_completed(futures):
+                landed(future.result())
+
+    # Completion order is scheduling noise; step order is the answer.
+    return [priced[order] for order in sorted(priced)]
 
 
 def run_one(spec: RunSpec) -> RunResult:
