@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from fray_claude.bis import (
+    _STYLE_SEPARATOR,
     article_for,
     bis_display_name,
     bis_task_name,
@@ -531,44 +532,68 @@ def test_display_sorted_puts_this_chunks_acquisitions_first() -> None:
 def test_every_bis_pick_matches_the_live_oracle() -> None:
     """Opt-in oracle: `chunkinfo.activeTasks.BiS` is upstream's *own* last
     computed BiS pick per (style, slot), so every entry must reproduce
-    exactly. All six do.
+    exactly.
 
-    Getting here found four real bugs, each of which showed up as a
-    mismatch on exactly one entry: named-area unlocks were unported
-    (`dragon boots`, `granite gloves`), challenge `Output` items never
-    reached BiS (`granite ring (i)`), `skillItems` activities keyed off a
-    challenge's `Output` were unported (`master wand`), and
-    `backloggedSources` wasn't honoured when seeding those (a backlogged
-    `Uncut onyx` re-entered and displaced `granite gloves`).
+    **Every fetched map in the cache, not just `fray`.** A map is a set of
+    rules a player chose, so a second one is a second set of inputs rather
+    than more of the same - and this test hard-coded `fray` while `verf` had
+    two rules on that nothing in the repo had ever run. Fetch another map and
+    it is covered here for free.
 
-    An earlier version of this test asserted only the one entry that
-    happened to pass, and dismissed the other five as a stale snapshot.
-    They were not stale - the tool was wrong. Assert all six.
+    Getting here found six real bugs. Four on `fray`, each a mismatch on
+    exactly one entry: named-area unlocks were unported (`dragon boots`,
+    `granite gloves`), challenge `Output` items never reached BiS (`granite
+    ring (i)`), `skillItems` activities keyed off a challenge's `Output` were
+    unported (`master wand`), and `backloggedSources` wasn't honoured when
+    seeding those. Two more on `verf`: the `Show Best in Slot 1H and 2H`
+    rule's second slot, and the obsidian set effect.
+
+    An earlier version asserted only the one entry that happened to pass and
+    dismissed the rest as a stale snapshot. They were not stale - the tool
+    was wrong. Assert all of them, on every map.
     """
     assert _REAL_CHUNKINFO is not None
-    from fray_claude.cache import project_root, read_blob, read_cache
+    from fray_claude.cache import list_maps, project_root, read_blob, read_cache
     from fray_claude.firebase import decode_challenge_keyed, reverse_tasks_map
     from fray_claude.pipeline import derive, load_map_state
 
-    data = json.loads(Path(_REAL_CHUNKINFO).read_text(encoding="utf-8"))
-    info = ChunkInfo(data)
+    info = ChunkInfo(json.loads(Path(_REAL_CHUNKINFO).read_text(encoding="utf-8")))
     root = project_root()
-    envelope = read_cache("fray", root)
     tasks_map = reverse_tasks_map(read_blob("tasks_map", root)["data"])
-    state, unlocked = load_map_state(envelope["data"], info, tasks_map)
-    derived = derive(state, unlocked)
-
-    oracle = decode_challenge_keyed(
-        envelope["data"]["chunkinfo"].get("activeTasks"), tasks_map
-    ).get("BiS", {})
-    assert oracle, "no cached BiS picks to compare against"
-
     equipment = info.data["equipment"]
-    for task_name, label in oracle.items():
-        style, _, slot = label.partition(" BiS ")
-        ours = derived.bis.picks.get(f"{style.replace(' ', '_')}-{slot}")
-        assert ours is not None, f"no pick for {label}"
-        assert bis_task_name(ours, equipment.get(ours, {})) == task_name, label
+    fetched = [m.map_id for m in list_maps(root) if m.kind == "fetched"]
+    assert fetched, "no fetched maps cached to compare against"
+
+    checked = 0
+    for map_id in fetched:
+        envelope = read_cache(map_id, root)
+        oracle = decode_challenge_keyed(
+            envelope["data"]["chunkinfo"].get("activeTasks"), tasks_map
+        ).get("BiS", {})
+        if not oracle:
+            continue
+        state, unlocked = load_map_state(envelope["data"], info, tasks_map)
+        derived = derive(state, unlocked)
+        for task_name, label in oracle.items():
+            style, _, slot = label.partition(" BiS ")
+            # **A label can name several styles.** Upstream merges styles
+            # that share a winner into one entry joined by a zero-width
+            # separator (`Prayer/\u200bMagic BiS 2h`), so a whole-string
+            # lookup finds nothing and reads as a missing pick.
+            candidates = [
+                derived.bis.picks.get(f"{one.strip().replace(' ', '_')}-{slot}")
+                for one in style.split(_STYLE_SEPARATOR)
+            ]
+            named = [
+                bis_task_name(pick, equipment.get(pick, {}))
+                for pick in candidates
+                if pick is not None
+            ]
+            assert named, f"{map_id}: no pick for {label}"
+            assert task_name in named, f"{map_id}: {label} -> {named} (want {task_name})"
+            checked += 1
+    assert checked, "every cached map had an empty BiS oracle"
+
 
 
 @pytest.mark.skipif(
@@ -728,3 +753,158 @@ def test_one_hand_plus_shield_wins_on_combined_offence() -> None:
 
     assert result.picks["Melee-weapon"] == "Sword"
     assert result.picks["Melee-shield"] == "Offensive shield"
+
+
+# --- the 1H/2H rule and set effects ----------------------------------------
+
+
+def _weapon(**stats: Any) -> dict[str, Any]:
+    return {"slot": "weapon", "attack_speed": 4, **stats}
+
+
+#: The export's own numbers, because invented ones do not settle this. The
+#: obsidian armour carries 3/3/1 strength, and leaving that out was enough to
+#: make the set lose a comparison it wins on the real map.
+_OBSIDIAN = {
+    "Obsidian helmet": {"slot": "head", "melee_strength": 3},
+    "Obsidian platebody": {"slot": "body", "melee_strength": 3},
+    "Obsidian platelegs": {"slot": "legs", "melee_strength": 1},
+    "Toktz-xil-ak": _weapon(
+        attack_crush=-2, attack_slash=38, attack_stab=47, melee_strength=49
+    ),
+    "Berserker necklace": {
+        "slot": "neck",
+        "attack_crush": -10,
+        "attack_slash": -10,
+        "attack_stab": -10,
+        "melee_strength": 7,
+    },
+}
+
+#: Beats the berserker necklace on raw strength (10 against 7), exactly as it
+#: does in the export. Without the set effect it wins the neck slot, so its
+#: presence is what makes "the necklace won" mean "the set applied".
+_RIVAL_NECK = {"Amulet of strength": {"slot": "neck", "melee_strength": 10}}
+
+#: The slots the set does not claim still contribute, and the comparison is
+#: close enough that they decide it - `verf`'s melee loadout, verbatim.
+_REST = {
+    "Infernal cape": {
+        "slot": "cape", "attack_crush": 4, "attack_slash": 4, "attack_stab": 4,
+        "melee_strength": 8,
+    },
+    "Regen bracelet": {
+        "slot": "hands", "attack_crush": 8, "attack_slash": 8, "attack_stab": 8,
+        "melee_strength": 7,
+    },
+    "Rune boots": {"slot": "feet", "melee_strength": 2},
+    "Toktz-ket-xil": {"slot": "shield", "melee_strength": 5},
+}
+
+_LOADOUT = {**_OBSIDIAN, **_RIVAL_NECK, **_REST}
+_SOURCES = {name: {"Store": "shop"} for name in _LOADOUT}
+
+
+def test_a_set_takes_its_slots_when_the_whole_loadout_scores_better() -> None:
+    """**A strictly worse weapon can be the right pick.** The set's
+    multiplier applies to the loadout, not the item, so upstream picks
+    toktz-xil-ak over a whip that beats it on every raw stat - which is only
+    reachable by scoring the whole thing."""
+    info = _chunk_info(
+        equipment={**_LOADOUT, "Abyssal whip": _weapon(attack_slash=82, melee_strength=82)}
+    )
+    items = {**_SOURCES, "Abyssal whip": {"Store": "shop"}}
+
+    result = compute_bis(info, items, {}, rules={})
+
+    assert result.picks["Melee-weapon"] == "Toktz-xil-ak"
+    # The necklace is what lifts the multiplier, so it comes with the set.
+    assert result.picks["Melee-neck"] == "Berserker necklace"
+    assert result.picks["Melee-head"] == "Obsidian helmet"
+
+
+def test_a_set_missing_a_piece_confers_nothing() -> None:
+    """Upstream's `validWearable` short-circuits on the first piece it cannot
+    wear: three quarters of a set is not a set."""
+    equipment = {k: v for k, v in _LOADOUT.items() if k != "Obsidian platelegs"}
+    info = _chunk_info(
+        equipment={**equipment, "Abyssal whip": _weapon(attack_slash=82, melee_strength=82)}
+    )
+    items = {
+        **{name: {"Store": "shop"} for name in equipment},
+        "Abyssal whip": {"Store": "shop"},
+    }
+
+    result = compute_bis(info, items, {}, rules={})
+
+    assert result.picks["Melee-weapon"] == "Abyssal whip"
+    # The necklace is only ever the pick *as part of the set*: on its own
+    # merits the amulet's 10 strength beats its 7.
+    assert result.picks["Melee-neck"] == "Amulet of strength"
+
+
+def test_a_set_that_loses_on_dps_does_not_apply() -> None:
+    """The comparison is real, not a preference for sets."""
+    info = _chunk_info(
+        equipment={**_LOADOUT, "Godsword": _weapon(attack_slash=900, melee_strength=900)}
+    )
+    items = {**_SOURCES, "Godsword": {"Store": "shop"}}
+
+    result = compute_bis(info, items, {}, rules={})
+
+    assert result.picks["Melee-weapon"] == "Godsword"
+    assert result.picks["Melee-neck"] == "Amulet of strength"
+
+
+def test_the_1h_and_2h_rule_keeps_both_weapons() -> None:
+    """**With the rule off a 2H replaces weapon+shield**, which is what this
+    always did; with it on the loser is kept under its own slot, which is how
+    upstream records a `2h` pick beside a `weapon` one."""
+    info = _chunk_info(
+        equipment={
+            "Rune scimitar": _weapon(attack_slash=45, melee_strength=44),
+            "Rune 2h sword": {
+                "slot": "2h",
+                "attack_speed": 7,
+                "attack_slash": 69,
+                "melee_strength": 71,
+            },
+        }
+    )
+    items = {"Rune scimitar": {"Store": "shop"}, "Rune 2h sword": {"Store": "shop"}}
+
+    off = compute_bis(info, items, {}, rules={})
+    on = compute_bis(info, items, {}, rules={"Show Best in Slot 1H and 2H": True})
+
+    assert "Melee-2h" not in off.picks
+    assert off.picks["Melee-weapon"] in {"Rune scimitar", "Rune 2h sword"}
+    # On: both survive, each in its own slot.
+    assert on.picks["Melee-2h"] == "Rune 2h sword"
+    assert on.picks["Melee-weapon"] == "Rune scimitar"
+
+
+def test_the_losing_weapon_does_not_inflate_the_set_comparison() -> None:
+    """**The order is load-bearing.** Upstream deletes the losing weapon
+    before the set chain and merges it back after, so the loadout scored is
+    the one actually worn. Leaving it in adds a second weapon's bonuses to
+    the non-set baseline - measured at 28% on `verf`, which was enough to
+    stop the obsidian set ever winning.
+    """
+    info = _chunk_info(
+        equipment={
+            **_LOADOUT,
+            "Abyssal whip": _weapon(attack_slash=82, melee_strength=82),
+            "Dragon spear": {
+                "slot": "2h",
+                "attack_speed": 5,
+                "attack_stab": 55,
+                "melee_strength": 40,
+            },
+        }
+    )
+    items = {**_SOURCES, "Abyssal whip": {"Store": "shop"}, "Dragon spear": {"Store": "shop"}}
+
+    result = compute_bis(info, items, {}, rules={"Show Best in Slot 1H and 2H": True})
+
+    assert result.picks["Melee-weapon"] == "Toktz-xil-ak"
+    assert result.picks["Melee-2h"] == "Dragon spear"

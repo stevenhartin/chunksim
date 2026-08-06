@@ -84,11 +84,13 @@ numbers or changing its behaviour.** That is where the design rationale lives; t
 map to it, not a substitute.
 
 **Test against more than one map.** Every rule in `rules` is a number or a flag a *player* set, so a
-second map is a second set of inputs and not just more data. `verf` sets `Secondary Primary Amount`
-to `0`, which reached `rates.parse_ratio` as `"1/0"` and killed `sections`, `sources`, `tasks`,
-`neighbours` and `estimate` outright — JS `1/0` is `Infinity` and raises nothing, Python disagreed,
-and no test or map in the repo had ever produced a zero there. `fray fetch --map <other>` is cheap
-and is the fastest way to find the next one.
+second map is a second set of inputs and not just more data. `verf` alone found three defects nothing
+in the repo could have: `Secondary Primary Amount` of `0` reached `rates.parse_ratio` as `"1/0"` and
+killed every derivation command (JS `1/0` is `Infinity` and raises nothing, Python disagreed); and
+`Show Best in Slot 1H and 2H` plus the **obsidian set effect** were both unported, so 3 of its 10
+recorded BiS picks were wrong. The BiS oracle now runs over **every fetched map in the cache**, so
+`fray fetch --map <other>` is all it costs to widen the signal — and it is the fastest way to find
+the next one.
 
 Five things that cut across modules — the first three because each has already caused a real bug:
 
@@ -140,7 +142,7 @@ Five things that cut across modules — the first three because each has already
 | `rates.py` | OSRS drop-rate string parsing/formatting, matching JS's rounding because the output lands inside task names — **and its division**, so a zero denominator is `inf` rather than a `ZeroDivisionError`. |
 | `sources.py` | What the unlocked chunks make available (`SourceIndex`). Applies `taskUnlocks` to items *and* entities, so availability depends on challenge validity. |
 | `challenges.py` | Which challenges are valid (`ChallengeResult`) — a two-phase fixed point over 28 of 29 categories. **`BiS` is never evaluated here**; read `pipeline.Derived.bis`. Also **where every derivation command spends its time** — read the docstring's static/dynamic gate split before touching the loop. |
-| `bis.py` | Best-in-slot per (combat style, slot). Inherently **non-monotonic**: recomputed fresh per state, never accumulated. |
+| `bis.py` | Best-in-slot per (combat style, slot). Inherently **non-monotonic**: recomputed fresh per state, never accumulated. Scores **set effects** (Obsidian only — the rest are table rows nobody could verify) and honours `Show Best in Slot 1H and 2H`, both of which only a second map exercised. |
 | `active_tasks.py` | Per-skill active/obsolete/completed classification. A *display* winner only — it never changes `ChallengeResult.valid`. |
 | `boosts.py` | Temporary skill boosts. With `rules['Boosting']` on, **every** level comparison upstream makes is boosted, so this is a dependency of `challenges.py`/`active_tasks.py`, not a feature. |
 | `other_tasks.py` | The three non-skill categories, `Diary`/`Quest`/`Extra`. No single winner — upstream renders every valid, uncompleted one. |

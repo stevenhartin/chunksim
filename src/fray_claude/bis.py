@@ -21,20 +21,27 @@ skill just to wield its output" gate `challenges.py` applies to combat
 `Items` requirements. Ties are first-seen-wins; it then resolves
 2H-vs-(1H+shield) and emits an "Obtain a/an X" task name/label per winner.
 
+**Set effects are scored, not ignored** (worker.js:6444-8182). Upstream ranks
+the whole loadout as a synthetic DPS and lets a worn set *replace* the slots it
+claims when that wins, so a strictly worse item can be the right pick: `verf`
+records `toktz-xil-ak` for Melee weapon over an abyssal whip that beats it 82/82
+against 38/49, and `berserker necklace` over the stronger amulet of strength -
+the necklace being what lifts the set's multiplier. See `SetEffect`. **Only the
+Obsidian entry is populated**, because it is the only one a real map exercises
+and so the only one an oracle can check; the other seven are named in that
+table and none of them is ported.
+
 Deliberately not ported (documented, not silently wrong):
-- The set-effect DPS override chain (worker.js:6444-8182, ~1,738 lines: Void,
-  Obsidian, Inquisitor, Verac's, Crystal, Karil's set bonuses) - a
-  self-contained sub-algorithm, out of scope for this increment.
 - Ties-as-alternates (`bestEquipmentAlts`) and the greedy set-cover dedup
   pass (worker.js:8321-8379) that lets one item cover several styles - this
   module picks a single first-seen winner per (style, slot) instead. The
   *ordering* half of that is modelled though: already-obtained equipment is
   iterated first (`_order_completed_first`), so a tie resolves to gear you
   already have rather than proposing an identical item you don't.
-- The `Show Best in Slot 1H and 2H` rule's dual weapon/2h emission: a 2H
-  winner always *replaces* the weapon+shield slots here (upstream's rule-off
-  behaviour); the rule-on case, which additionally keeps the 1H alternative
-  under a second `ammo (2h)` pseudo-slot, is not modelled.
+- The `ammo (2h)` pseudo-slot: with `Show Best in Slot 1H and 2H` on, upstream
+  also splits *ammo* when the 1H and 2H launchers take different kinds. The
+  weapon half of that rule is modelled (see `_finalize_slots`'s `dual`); the
+  ammo half is not.
 - Full `checkPrimaryMethod`/`slayerLocked` (see `sources.py`'s
   `_slayer_skill_items_for` docstring). Skill-requirement gating here is
   `_has_any_valid` - "the skill has *a* valid challenge". Note this is
@@ -121,6 +128,7 @@ entirely because `BiS` was wrongly skipping `t_N` resolution.
 from __future__ import annotations
 
 import re
+import math
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -524,13 +532,26 @@ def _combined_weapon_shield(
 
 
 def _finalize_slots(
-    winners: _SlotWinners, style: StyleSpec, equipment: Mapping[str, Mapping[str, Any]]
-) -> dict[str, tuple[str, "str | None"]]:
+    winners: _SlotWinners,
+    style: StyleSpec,
+    equipment: Mapping[str, Mapping[str, Any]],
+    *,
+    dual: bool = False,
+) -> tuple[dict[str, tuple[str, "str | None"]], dict[str, tuple[str, "str | None"]]]:
     """Port of the 2H-vs-(1H+shield) shootout (worker.js:6220-6443): compare
     the 2H slot's score against weapon+shield combined; the winner replaces
-    both. Ties go to 1H+shield (`>`, not `>=`). The `Show Best in Slot 1H
-    and 2H` rule's dual-emission case (keeping both under `ammo (2h)`) isn't
-    modelled - see the module docstring.
+    both. Ties go to 1H+shield (`>`, not `>=`).
+
+    **`dual` is `Show Best in Slot 1H and 2H`, and it keeps the loser** - as
+    a *second* return value, not folded into the first. Upstream stashes the
+    losing side in `savedWeaponBis`, deletes it from `bestEquipment`, and
+    merges it back only once the set-effect chain has run
+    (worker.js:6435-6461, 8209-8213). The order matters and is not cosmetic:
+    the chain scores the whole loadout, so a loser left in it contributes a
+    second weapon's bonuses to the baseline. Returning both merged put an
+    unequipped Dragon spear alongside an abyssal whip and inflated the
+    non-set score by 28%, which is exactly enough to keep the obsidian set
+    from ever winning.
 
     The `ammo` slot is **not** an independent pick. Upstream overwrites it
     with `bestAmmoSaved[<winning launcher slot>]` - the ammo paired with
@@ -571,18 +592,221 @@ def _finalize_slots(
         if shield is not None:
             weapon_equip = _combined_weapon_shield(weapon_equip, equipment.get(shield[0], {}))
         weapon_shield_power = power(weapon_equip, weapon[1])
+    saved: dict[str, tuple[str, str | None]] = {}
     if two_h is not None and two_h_power > weapon_shield_power:
-        result["weapon"] = (two_h[0], two_h[1])
+        result["2h" if dual else "weapon"] = (two_h[0], two_h[1])
         paired_ammo = two_h[1]
+        if dual:
+            if weapon is not None:
+                saved["weapon"] = (weapon[0], weapon[1])
+            if shield is not None:
+                saved["shield"] = (shield[0], None)
     else:
         paired_ammo = weapon[1] if weapon is not None else None
         if weapon is not None:
             result["weapon"] = (weapon[0], weapon[1])
         if shield is not None:
             result["shield"] = (shield[0], None)
+        if dual and two_h is not None:
+            saved["2h"] = (two_h[0], two_h[1])
     if paired_ammo is not None:
         result["ammo"] = (paired_ammo, None)
-    return result
+    return result, saved
+
+
+# --- set effects (worker.js:6444-8182) -------------------------------------
+
+
+@dataclass(frozen=True)
+class SetEffect:
+    """A worn set whose bonus can beat a strictly better pile of loose gear.
+
+    Upstream scores the whole loadout as a synthetic DPS and lets a set
+    *replace* the slots it claims when that number wins. Without it the
+    picks are whatever maximises each slot on its own, which on a map
+    holding the obsidian set is visibly not upstream's answer: `verf` records
+    `toktz-xil-ak` for Melee weapon where the abyssal whip beats it 82/82
+    against 38/49 on raw stats, and `berserker necklace` for Melee neck over
+    the strictly stronger amulet of strength. The necklace is *why* - it
+    lifts the set's multiplier from `bare` to `amplified`, and it can only
+    claim `neck` as part of the set.
+    """
+
+    name: str
+    armour: tuple[str, ...]
+    weapons: tuple[str, ...]
+    #: The slots the set takes over when it wins.
+    slots: frozenset[str]
+    #: An optional neck that raises the multiplier and claims `neck` too.
+    amplifier: str = ""
+    bare: float = 1.0
+    amplified: float = 1.0
+
+
+#: **Obsidian is the only entry, and the omission is the point.** Upstream
+#: runs eight sets across eleven style branches - Void Melee, Obsidian,
+#: Inquisitor, Void Ranged, Void Magic, Verac's, Crystal and Amulet of the
+#: damned - over nine distinct max-hit formulas. Obsidian is the one a real
+#: map exercises (`verf`), so it is the one that can be checked against an
+#: oracle; porting the other seven from reading alone is how this project's
+#: docstrings say a silently wrong number gets in. Each is a row here and a
+#: formula away, and none of them is ported.
+_SET_EFFECTS = (
+    SetEffect(
+        name="Obsidian",
+        armour=("Obsidian helmet", "Obsidian platebody", "Obsidian platelegs"),
+        weapons=("Toktz-xil-ek", "Toktz-xil-ak", "Tzhaar-ket-em", "Tzhaar-ket-om"),
+        slots=frozenset({"head", "body", "legs", "weapon", "2h"}),
+        amplifier="Berserker necklace",
+        bare=1.1,
+        amplified=1.3,
+    ),
+)
+
+#: Which attack bonus each style's set-effect block reads. The four blocks
+#: are otherwise identical - `Melee` takes the best of the three and the
+#: others take their own. The `Flinch` variants also run these sets upstream
+#: and are deliberately absent: nothing available scores them, so they would
+#: be unverifiable in exactly the way the table above avoids.
+_SET_ATTACK_STATS: dict[str, tuple[str, ...]] = {
+    "Melee": ("attack_crush", "attack_slash", "attack_stab"),
+    "Stab": ("attack_stab",),
+    "Slash": ("attack_slash",),
+    "Crush": ("attack_crush",),
+}
+
+_MELEE_ATTACK_STATS = ("attack_crush", "attack_slash", "attack_stab")
+
+
+def _melee_dps(
+    worn: Mapping[str, Mapping[str, Any]], stats: tuple[str, ...], speed: float, multiplier: float
+) -> float:
+    """Upstream's synthetic melee DPS for a whole loadout (worker.js:6471-6479).
+
+    **These constants are upstream's, not the game's.** `110`, `107`, `578`
+    and the `0.6` tick are what `worker.js` uses to rank loadouts; they are
+    not the wiki's combat maths and correcting them would stop the oracle
+    matching, which is the only thing that says any of this is right.
+    """
+    attack = max(sum(_stat(e, stat) for e in worn.values()) for stat in stats)
+    strength = sum(_stat(e, "melee_strength") for e in worn.values())
+    max_hit = math.floor(math.floor(0.5 + (110 * (strength + 64) / 640)) * multiplier)
+    attack_roll = math.floor(107 * (attack + 64)) * multiplier
+    hit_chance = 1 - (578 / (2 * (attack_roll + 1)))
+    return hit_chance * (max_hit / 2) / ((speed or 4) * 0.6)
+
+
+def _weapon_speed(
+    slots: Mapping[str, tuple[str, "str | None"]], equipment: Mapping[str, Mapping[str, Any]]
+) -> float:
+    """The attack speed the loadout swings at: its 2H, else its weapon, else 4."""
+    for slot in ("2h", "weapon"):
+        held = slots.get(slot)
+        if held is not None:
+            return _stat(equipment.get(held[0], {}), "attack_speed") or 4.0
+    return 4.0
+
+
+def _apply_set_effects(
+    finalized: dict[str, tuple[str, "str | None"]],
+    *,
+    style: StyleSpec,
+    equipment: Mapping[str, Mapping[str, Any]],
+    items: Mapping[str, Mapping[str, str]],
+    candidate_ok: Callable[[str, Mapping[str, Any], Mapping[str, str]], bool],
+) -> dict[str, tuple[str, "str | None"]]:
+    """Let a set take over its slots when the whole loadout scores better.
+
+    Runs after the per-slot winners are chosen and before the labels are
+    emitted, which is upstream's order (worker.js:6465 onwards, against the
+    `bestEquipment` the 2H shootout just settled). Sets are tried in table
+    order and the best DPS wins, so adding a second entry cannot change what
+    the first one does on a map that only holds the first.
+    """
+    stats = _SET_ATTACK_STATS.get(style.name)
+    if stats is None:
+        return finalized
+
+    worn = {slot: equipment.get(item, {}) for slot, (item, _ammo) in finalized.items()}
+    speed = _weapon_speed(finalized, equipment)
+    best_dps = _melee_dps(worn, stats, speed, 1.0)
+    best = finalized
+
+    for effect in _SET_EFFECTS:
+        applied = _score_set(
+            effect,
+            finalized,
+            stats=stats,
+            equipment=equipment,
+            items=items,
+            candidate_ok=candidate_ok,
+        )
+        if applied is None:
+            continue
+        dps, replaced = applied
+        if dps > best_dps:
+            best_dps, best = dps, replaced
+    return best
+
+
+def _score_set(
+    effect: SetEffect,
+    finalized: dict[str, tuple[str, "str | None"]],
+    *,
+    stats: tuple[str, ...],
+    equipment: Mapping[str, Mapping[str, Any]],
+    items: Mapping[str, Mapping[str, str]],
+    candidate_ok: Callable[[str, Mapping[str, Any], Mapping[str, str]], bool],
+) -> "tuple[float, dict[str, tuple[str, str | None]]] | None":
+    """This set's DPS and the slots it would take, or `None` if unwearable.
+
+    **Every armour piece must pass, and at least one weapon** - upstream's
+    `validWearable` short-circuits on the first piece it cannot wear, and a
+    set three-quarters worn confers nothing. The gates are the same ones an
+    ordinary candidate goes through, so an item behind an untrained skill or
+    an unreachable source is refused here for the same reason it is there.
+    """
+    def wearable(name: str) -> bool:
+        sources = items.get(name)
+        return sources is not None and candidate_ok(name, equipment.get(name, {}), sources)
+
+    if not all(wearable(piece) for piece in effect.armour):
+        return None
+
+    usable = [w for w in effect.weapons if wearable(w)]
+    if not usable:
+        return None
+    # Upstream's own tie-break: (best attack + strength + 64) / speed.
+    def weapon_rank(name: str) -> float:
+        e = equipment.get(name, {})
+        best_attack = max(_stat(e, stat) for stat in _MELEE_ATTACK_STATS)
+        return (best_attack + _stat(e, "melee_strength") + 64) / (_stat(e, "attack_speed") or 4)
+
+    weapon = max(usable, key=weapon_rank)
+
+    worn_items = [*effect.armour, weapon]
+    claimed = set(effect.slots)
+    amplified = bool(effect.amplifier) and wearable(effect.amplifier)
+    if amplified:
+        worn_items.append(effect.amplifier)
+        claimed.add("neck")
+
+    # The bonus is this set plus whatever the loadout keeps in the slots the
+    # set does not claim.
+    worn = {slot: equipment.get(item, {}) for slot, (item, _a) in finalized.items() if slot not in claimed}
+    for index, name in enumerate(worn_items):
+        worn[f"set:{index}"] = equipment.get(name, {})
+
+    multiplier = effect.amplified if amplified else effect.bare
+    speed = _stat(equipment.get(weapon, {}), "attack_speed") or 4.0
+    dps = _melee_dps(worn, stats, speed, multiplier)
+
+    replaced = {slot: held for slot, held in finalized.items() if slot not in claimed}
+    for name in worn_items:
+        slot = equipment.get(name, {}).get("slot")
+        if isinstance(slot, str):
+            replaced[slot] = (name, None)
+    return dps, replaced
 
 
 # --- task name/label generation (worker.js:5368-5369, 8208-8235) -----------
@@ -834,7 +1058,15 @@ def compute_bis(
         winners = _best_for_style(
             style, equipment=equipment, items=items, ammo_index=ammo_index, candidate_ok=candidate_ok
         )
-        for slot, (item_name, _ammo) in _finalize_slots(winners, style, equipment).items():
+        dual = rules.get("Show Best in Slot 1H and 2H") is True
+        won, saved = _finalize_slots(winners, style, equipment, dual=dual)
+        finalized = _apply_set_effects(
+            won, style=style, equipment=equipment, items=items, candidate_ok=candidate_ok
+        )
+        # The losing weapon comes back only now, after the set chain has
+        # scored the loadout that is actually worn (worker.js:8209-8213).
+        finalized.update(saved)
+        for slot, (item_name, _ammo) in finalized.items():
             picks[f"{style.name.replace(' ', '_')}-{slot}"] = item_name
             by_slot_item.setdefault((slot, item_name), []).append(style.name)
 
