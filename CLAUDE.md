@@ -617,8 +617,16 @@ a silent no-op ("already seems to be installed") — it will not pick up new cod
   docstring (why), this file (what spans modules) and the README (what a user types). It is the one
   that drifts, because nothing in the test suite reads it.
 - Commit after completing a change, and try to push
-- After completing a task, rebuild and reinstall the CLI locally so the `fray` on `PATH` reflects it:
-  `pyproject-build && pipx install --force dist/*.whl` (see Commands for why `--force` is required)
+- **Always finish a task by rebuilding and reinstalling, then checking it took.** The `fray` and
+  `fray-gui` on `PATH` live in pipx's own venv, so until this runs they are still the *previous*
+  build — and every manual check you or the user then makes is of old code:
+  ```
+  rm -rf dist build && pyproject-build && pipx install --force dist/*.whl
+  diff "$(pipx environment --value PIPX_LOCAL_VENVS)/fray-claude/lib/python3.14/site-packages/fray_claude/cli.py" src/fray_claude/cli.py
+  ```
+  `--force` is not optional (see Commands: the version never moves, so a plain `pipx install` is a
+  silent no-op), and the `diff` is the half that is easy to skip — a build can succeed and still
+  leave `PATH` pointing at yesterday's wheel. It should print nothing.
 - Tests are pytest, in `tests/`, named after the module under test (`tests/test_summary.py`). No test
   touches the network, and none the real `cache/` bar the six oracles that read it through
   `cache.project_root()` (`test_active_tasks`, `test_other_tasks`, `test_neighbours` x2, `test_bis` x2).
