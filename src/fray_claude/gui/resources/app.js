@@ -2744,7 +2744,7 @@ function renderTimeline() {
       : payload.enriched ? "Priced from this map's own gear"
       : "Wiki rates — often zero, most chunks add no work";
     const tip = key === "hours"
-      ? tmpl`<b>Hours added</b><span class="sub">Change in the estimated time to finish, per roll.</span><span class="hint">${provenance}</span>`
+      ? tmpl`<b>Hours added</b><span class="sub">What this roll newly put in front of you, assuming everything before it is done.</span><span class="hint">${provenance}</span>`
       : tmpl`<b>Tasks added</b><span class="sub">Challenges this roll made valid.</span>`;
     return tmpl`<button class="chip ${on ? "on" : ""}" data-series="${key}" data-tip="${tip}"
       role="radio" aria-checked="${on}">${name}</button>`;
@@ -2789,7 +2789,12 @@ function renderTimeline() {
 
 /* Bars on a zero line, in inline SVG - the same idiom as `donut`, and for the
  * same reason: no library, no build step, and the shape is four lines of
- * arithmetic. `viewBox` does the scaling, so the strip can be any width. */
+ * arithmetic. `viewBox` does the scaling, so the strip can be any width.
+ *
+ * The negative half is still drawn *if* anything is negative. Nothing is,
+ * under the current semantics - a bar is what a roll cost and a roll cannot
+ * cost less than nothing - but the axis costs nothing to keep honest and the
+ * tasks series is not the only thing that could ever be plotted here. */
 function tlBars(steps, key, current) {
   const W = 1000, H = 92, TOP = 6, FOOT = 6;
   const cols = steps.length - 1;                    // step 0 is a baseline
@@ -2854,10 +2859,15 @@ function tlTip(row, key) {
   if (row.hours === null || row.hours === undefined) {
     return head + tmpl`<span class="sub">Hours not computed yet</span>`;
   }
+  /* **Never negative under this model**, so there is no minus case to word.
+   * A roll that only made old work cheaper added nothing; the saving is not
+   * something this roll did, because by now that work is behind you. */
   const change = row.hours === 0
-    ? tmpl`<span class="sub">No change to the estimate</span>`
-    : tmpl`<span class="sub">${row.hours > 0 ? "+" : "−"}${hours(Math.abs(row.hours))} to finish</span>`;
-  return head + change + tmpl`<span class="hint">${hours(row.total_hours)} remaining after this roll</span>`;
+    ? tmpl`<span class="sub">Added no work</span>`
+    : tmpl`<span class="sub">${hours(row.hours)} of new work</span>`;
+  const left = row.total_hours == null ? ""
+    : tmpl`<span class="hint">${hours(row.total_hours)} left after this roll</span>`;
+  return head + change + left;
 }
 
 async function setStep(step) {

@@ -111,15 +111,19 @@ the challenges that chunk made valid, with a breakdown per skill on hover. **Hou
 the time left to finish — a simulation prices every roll as it goes, which costs it nothing, since
 the work of deriving each state is what a roll already is.
 
-Be warned that most hour bars are empty and some point downwards: on a mature map a new chunk usually
-adds no work at all, and occasionally it *saves* you some by opening a cheaper route to something you
-already needed. That is the estimate telling the truth, not the graph failing.
+A bar is what that roll *cost you*, assuming everything before it is already done — so most are
+empty, because on a mature map a new chunk usually adds no work at all, and none are negative. A
+chunk that merely opens a cheaper route to something you already needed has added nothing: the saving
+is real, and it is not something that roll did. For the same reason the bars do not add up to the
+figure on the Estimate tab; they are what each roll cost, not a breakdown of what is left.
 
 If you have the `dps` extra, *Reprice with gear* recomputes those hours from the gear the map
 actually reaches rather than the wiki's assumed setup. That is real work — nearly all of it is
-simulating fights — so it runs across every core and is stored afterwards: a 15-roll run takes about
-three seconds on eight cores against thirty on one. Simulations skip it by default because doing it
-inline would nearly triple a large batch, and most batches are never opened.
+simulating fights — so it runs across every core, keeps whatever the previous roll already worked out
+(a chunk roll only ever *adds*, and 94% of kill rates come out identical), and is stored afterwards.
+A 20-roll run takes about half a second once its states are worked out. Simulations skip it by
+default because doing it inline would nearly triple a large batch, and most batches are never
+opened.
 
 `?map=…&step=4` deep-links a particular roll.
 

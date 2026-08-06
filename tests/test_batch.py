@@ -386,9 +386,12 @@ def test_a_run_is_born_with_its_timeline(root: Path) -> None:
 
     stored = read_timeline(f"{batch.name}/{batch.runs[0].name}", root)
 
-    # One total per state: the one it started on, plus one per roll.
+    # One entry per state: the one it started on, plus one per roll.
     assert len(stored["totals"]) == len(batch.runs[0].rolls) + 1
+    assert len(stored["added"]) == len(stored["totals"])
     assert all(isinstance(v, float) for v in stored["totals"])
+    # A roll never *removes* work under this model.
+    assert all(v >= 0 for v in stored["added"])
     # Wiki rates, not gear - `enrich` is ~1.29s a roll and is the upgrade.
     assert stored["stamp"]["enriched"] is False
     assert stored["stamp"]["chunkinfo"] and stored["stamp"]["rates"]
@@ -415,18 +418,28 @@ def test_pricing_does_not_change_what_was_rolled(root: Path) -> None:
     assert unpriced.runs[0].rolls == priced.runs[0].rolls
 
 
-def test_slices_deal_every_step_out_exactly_once() -> None:
-    """**Strided, not contiguous.** A step's cost grows along a run - later
-    states hold more chunks, so more monsters are reachable and there is more
-    to price - so contiguous slices would hand one worker the whole expensive
-    tail and leave it running after the others finished."""
+def test_slices_are_contiguous_and_overlap_by_one() -> None:
+    """**Contiguous, reversing the striding this used to do.**
+
+    Striding was right when every step was priced from scratch: cost grew
+    along a run, so contiguous slices handed one worker the expensive tail.
+    Incremental pricing inverts that - only a slice's *head* is expensive - and
+    a strided slice never holds two consecutive rolls, so no reuse is possible
+    at all.
+
+    The overlap is the baseline: a slice starting mid-run needs the roll
+    before its head to know what its head added.
+    """
     from fray_claude.batch import _slices
 
     parts = _slices([["a"], ["b"], ["c"], ["d"], ["e"]], 2)
 
-    assert [[order for order, _ in part] for part in parts] == [[0, 2, 4], [1, 3]]
-    seen = sorted(order for part in parts for order, _ in part)
-    assert seen == [0, 1, 2, 3, 4]
+    assert [[order for order, _ in part] for part in parts] == [[0, 1, 2], [2, 3, 4]]
+    # Every step is owned by exactly one slice; step 2 is carried twice but
+    # reported once - see `price_slice`.
+    owned = sorted(part[0][0] if i == 0 else part[1][0] for i, part in enumerate(parts))
+    assert min(o for part in parts for o, _ in part) == 0
+    assert max(o for part in parts for o, _ in part) == 4
 
 
 def test_more_slices_than_steps_is_not_an_error() -> None:
@@ -457,7 +470,7 @@ def test_pricing_a_run_is_the_same_answer_on_one_core_or_several(root: Path) -> 
     serial = price_steps(map_id=map_id, held=held, jobs=1, root=root)
     pooled = price_steps(map_id=map_id, held=held, jobs=2, root=root)
 
-    assert len(serial) == len(held)
+    assert len(serial[0]) == len(held) and len(serial[1]) == len(held)
     assert serial == pooled
 
 
@@ -486,4 +499,4 @@ def test_pricing_reports_progress_per_slice(root: Path) -> None:
 
 def test_pricing_nothing_is_not_an_error(root: Path) -> None:
     """An empty run has no steps and no pool to spin up for them."""
-    assert price_steps(map_id="whatever", held=[], root=root) == []
+    assert price_steps(map_id="whatever", held=[], root=root) == ([], [])

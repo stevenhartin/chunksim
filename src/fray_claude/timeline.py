@@ -20,30 +20,35 @@ disjoint from the starting set. `replay` states that as a precondition and
 arithmetic would leave the wrong number of chunks at step 0 rather than
 failing, so the count is checked and reported rather than assumed.
 
-**Hours are not computed here.** A step's *task* delta is already in the
-ledger - `unlock.delta_from` recorded it at roll time - but its *hours* delta
-needs `estimate.estimate` over a full `Derived`, which needs the 10MB export.
-That is the caller's to pay for and cache (`gui/server.py` writes it to
-`timeline.json`), so this module stays pure and instant: `series` takes the
-totals if somebody has them and shapes the deltas either way.
+**Hours are not computed here.** A roll's *task* count is already in the ledger
+- `unlock.delta_from` recorded it at roll time - but its *hours* need
+`estimate.estimate` over a full `Derived`, which needs the 10MB export. That is
+the caller's to pay for and cache (`gui/server.py` writes it to
+`timeline.json`), so this module stays pure and instant. What it does own is
+`added_hours`, which is the arithmetic rather than the computing.
 
-**The hours series is deliberately a delta and is mostly zero.** Measured on
-the real 106-chunk map, ten rolls moved the estimate 2815.7h -> 2817.4h with
-eight steps at exactly 0.0, and on an early map it goes *down* - a new chunk
-can open a cheaper route to something you already needed, or change which task
-is the active winner. Both are true statements about the world and neither is
-a defect; what they mean for a renderer is that an empty step has to read as
-"this chunk added no work" rather than as missing data, and that the axis has
-to have a zero line with room below it.
+**A bar is what the roll cost, not how the total moved.** Those are different
+numbers and the difference is the point. A timeline walks one player's history
+forward, so by the time roll k lands, everything roll k-1 opened is behind
+them; a chunk that only makes old work *cheaper* has added nothing. Subtracting
+totals says otherwise - it reports a saving as negative work, and a measured
+early-game run showed a roll at -2.4h on exactly that. So the bar is the cost
+of what this roll newly put in front of you, it is never negative, and **the
+bars do not sum to the total** on the Estimate tab. They are what each roll
+cost, not a decomposition of what is left.
 """
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fray_claude.summary import _mapping
+
+if TYPE_CHECKING:  # a type only - importing `estimate` here would be a cycle
+    from fray_claude.estimate import EstimateResult
 
 
 @dataclass(frozen=True)
@@ -228,25 +233,75 @@ def matches(stored: Any, current: Mapping[str, Any]) -> bool:
     return all(stored.get(key) == value for key, value in current.items() if key != "enriched")
 
 
-def series(steps: Sequence[Step], totals: Sequence[float] | None = None) -> list[dict[str, Any]]:
-    """The per-step deltas the graph draws.
+def added_hours(previous: "EstimateResult | None", current: "EstimateResult") -> float:
+    """The hours of work this roll *added*, on the assumption the rest is done.
 
-    `totals` is the estimated hours *remaining* at each step, in step order,
-    and is optional because computing it needs the export and this module is
-    pure. Given it, each step reports the change since the step before -
-    which, per the module docstring, is frequently 0.0 and occasionally
-    negative. Given `None`, or a list of the wrong length, `hours` is `None`
-    throughout rather than zero: "not computed" and "added no work" are
-    different answers and a graph that conflates them is lying.
+    **A diff of what is being costed, not of the totals**, and that is the
+    whole of the semantics. A timeline walks one player's history forward, so
+    by the time roll k lands, everything roll k-1 opened is behind them - and
+    a chunk that merely makes old work *cheaper* has added nothing. Subtracting
+    one total from the next says the opposite: it reports the saving as
+    negative work, which on a measured early-game run showed a roll at -2.4h.
+
+    So an item counts when it is in this roll's estimate and was not in the
+    last one. Quests likewise. Skills contribute `max(0, current - previous)`,
+    which is precisely where "we do not care that it got cheaper" is spent.
+
+    **The clamp is the estimator's own.** A filtered `EstimateResult` is built
+    and its `buckets` read, rather than a second implementation of the
+    per-source rule - and clamping *within* the new set is right under this
+    model: if the earlier grind is finished you are not standing there any
+    more, so the new drop pays full price rather than riding along.
+
+    The consequence, which the panel has to own: **these do not sum to the
+    Estimate tab's total.** They are what each roll cost you, not a
+    decomposition of what is left.
     """
-    usable = totals if totals is not None and len(totals) == len(steps) else None
+    if previous is None:
+        return round(sum(current.buckets.values()), 4)
+
+    had_items = {item.item for item in previous.items}
+    had_tasks = {task.task for task in previous.tasks}
+    before = {skill.skill: skill.hours for skill in previous.skills}
+
+    fresh = dataclasses.replace(
+        current,
+        items=tuple(item for item in current.items if item.item not in had_items),
+        tasks=tuple(task for task in current.tasks if task.task not in had_tasks),
+        skills=tuple(
+            dataclasses.replace(skill, hours=max(0.0, skill.hours - before.get(skill.skill, 0.0)))
+            for skill in current.skills
+        ),
+    )
+    return round(sum(fresh.buckets.values()), 4)
+
+
+def series(
+    steps: Sequence[Step],
+    totals: Sequence[float] | None = None,
+    added: Sequence[float] | None = None,
+) -> list[dict[str, Any]]:
+    """The per-roll rows the graph draws.
+
+    `added` is what each roll *cost* - see `added_hours` - and is what the bars
+    show. `totals` is what was left after it, carried alongside because a
+    tooltip reading "and 2,816h to go" is worth having and cannot be recovered
+    from the bars: **the bars deliberately do not sum to the total.**
+
+    Both are optional because computing either needs the export and this module
+    is pure. A list of the wrong length is refused rather than trusted, so
+    `hours` reads `None` - "nobody has computed this" and "this roll added
+    nothing" are different answers and a graph that conflates them is lying.
+    """
+    def fits(values: Sequence[float] | None) -> Sequence[float] | None:
+        return values if values is not None and len(values) == len(steps) else None
+
+    use_added, use_totals = fits(added), fits(totals)
     out: list[dict[str, Any]] = []
     for index, step in enumerate(steps):
         row = step.as_dict()
-        # Step 0 is a baseline, so it has no delta - not a delta of zero.
-        row["hours"] = (
-            None if usable is None or index == 0 else round(usable[index] - usable[index - 1], 2)
-        )
-        row["total_hours"] = None if usable is None else round(usable[index], 2)
+        # Step 0 is the world the run started in, not something it did.
+        row["hours"] = None if use_added is None or index == 0 else round(use_added[index], 2)
+        row["total_hours"] = None if use_totals is None else round(use_totals[index], 2)
         out.append(row)
     return out

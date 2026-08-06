@@ -1355,6 +1355,234 @@ def enrich(
     )
 
 
+@dataclass(frozen=True)
+class PricedFights:
+    """One step's priced fights, and what they were priced against.
+
+    Carried from one roll of a timeline to the next so the next roll can keep
+    what cannot have changed. See `enrich_incremental` for why that is almost
+    everything.
+    """
+
+    signature: tuple[Any, ...]
+    monsters: Mapping[str, Rate]
+    tasks: Mapping[str, Mapping[str, SlayerTask]]
+    wilderness: frozenset[str] = frozenset()
+    #: Per master, the reachable monsters *its own tasks* can name. A master's
+    #: table is decided by that set and nothing wider, so a new monster
+    #: somewhere else on the map leaves it alone - see `_master_candidates`.
+    candidates: Mapping[str, frozenset[str]] = field(default_factory=dict)
+
+
+def fight_signature(
+    picks: Mapping[str, str], levels: Mapping[str, int], kit: Kit
+) -> tuple[Any, ...]:
+    """Everything that can change a kill time except *which monster it is*.
+
+    Two states with the same signature price any given monster identically, so
+    a timeline can carry the previous roll's rates forward instead of
+    re-simulating 7,335 fights to arrive at the same numbers.
+
+    **`kit.items` is deliberately not in here wholesale.** It moved on 17 of 20
+    rolls of a measured run, because it grows with every item the map reaches -
+    and it feeds exactly one thing, `_charged`, which swaps a worn *uncharged
+    wilderness weapon* for its charged form. A new potion appearing cannot
+    change a fight the potion is not in. So what enters is precisely the
+    charge swaps available to the *picked* gear, which is what `build_loadouts`
+    actually reads.
+
+    `wilderness` is excluded for a different reason: it is per monster, not per
+    state, so `enrich_incremental` compares membership itself rather than
+    invalidating every rate because one monster moved.
+    """
+    charged = frozenset(
+        name[: -len(_UNCHARGED_SUFFIX)]
+        for name in picks.values()
+        if name.endswith(_UNCHARGED_SUFFIX)
+        and name[: -len(_UNCHARGED_SUFFIX)] in _WILDERNESS_WEAPONS
+        and name[: -len(_UNCHARGED_SUFFIX)] in kit.items
+    )
+    return (
+        tuple(sorted(picks.items())),
+        tuple(sorted(levels.items())),
+        tuple(sorted(kit.boosts.items())),
+        tuple(sorted((style, tuple(sorted(names))) for style, names in kit.prayers.items())),
+        kit.spell,
+        kit.reductions,
+        charged,
+    )
+
+
+def enrich_incremental(
+    heuristics: Heuristics,
+    chunk_info: ChunkInfo,
+    derived: Derived,
+    levels: Mapping[str, int],
+    *,
+    previous: PricedFights | None = None,
+    index: MonsterIndex | None = None,
+    pinned_monsters: frozenset[str] = frozenset(),
+    pinned_slayer: Mapping[str, frozenset[str]] | None = None,
+) -> tuple[Heuristics, DpsCoverage, PricedFights]:
+    """`enrich`, reusing whatever the previous roll of a timeline already priced.
+
+    **A chunk roll only ever adds.** Measured over a 20-roll run on the real
+    export: the reachable-provider set grew by 0-8 a roll and never shrank, and
+    of 4,094 monster rates recomputed, **3,867 (94%) were byte-identical to the
+    roll before** - 16 of the 20 rolls changed not a single one. Slayer task
+    rates came out at 95%. All the change is concentrated on the two rolls
+    where BiS moved.
+
+    So this prices a monster only when it is new, when its wilderness
+    membership flipped, or when `fight_signature` says the gear, levels,
+    boosts, prayers, spell, defence draining or charge swaps moved. On the
+    measured run that is 5,185 pricings down to 1,000.
+
+    **`enrich` is left alone on purpose.** Only a timeline has a "previous
+    roll"; `fray estimate` and the GUI's panel do not, so the reuse path is
+    confined to the one caller that can use it and every other caller is
+    provably unaffected. The two must agree, and
+    `tests/test_dps_bridge.py` asserts that against a real run rather than
+    trusting the predicate - a wrong one here is *silently* wrong, the numbers
+    staying entirely plausible.
+    """
+    _require()
+    monster_index = load_monster_index() if index is None else index
+    kit = assemble_kit(
+        chunk_info,
+        levels,
+        items=derived.challenges.available_items,
+        source_index=derived.source_index,
+    )
+    loadouts = build_loadouts(chunk_info, derived.bis.picks, levels, kit)
+    signature = fight_signature(derived.bis.picks, levels, kit)
+    bosses = frozenset(_mapping(chunk_info.code_items, "bossMonsters"))
+    reachable = frozenset(derived.source_index.monsters)
+    masters = frozenset(derived.source_index.npcs)
+    if not loadouts:
+        # Nothing priced, and honestly so: the next roll reusing an empty
+        # table is correct, since with the same signature and the same
+        # reachable set it would price nothing either.
+        return heuristics, DpsCoverage(), PricedFights(
+            signature, {}, {}, kit.wilderness, _master_candidates(chunk_info, masters, reachable)
+        )
+
+    priceable = sorted(reachable_providers(derived) & frozenset(chunk_info.drops))
+
+    usable = previous if previous is not None and previous.signature == signature else None
+    if usable is None:
+        stale: frozenset[str] = frozenset(priceable)
+        monsters: dict[str, Rate] = {}
+    else:
+        # Everything the previous roll priced is still right, bar the monsters
+        # that were not there and the ones that changed side of the ditch.
+        flipped = {
+            name
+            for name in usable.monsters
+            if (name in kit.wilderness) != (name in usable.wilderness)
+        }
+        stale = frozenset(name for name in priceable if name not in usable.monsters) | frozenset(
+            flipped
+        )
+        monsters = {
+            name: rate
+            for name, rate in usable.monsters.items()
+            if name not in flipped and name in frozenset(priceable)
+        }
+
+    if stale:
+        monsters.update(
+            price_monsters(
+                chunk_info,
+                derived.bis.picks,
+                levels,
+                sorted(stale),
+                index=monster_index,
+                slayer_monsters=frozenset(chunk_info.slayer_monsters),
+                boss_monsters=bosses,
+                kit=kit,
+            )
+        )
+
+    # **The slayer half is reusable per master, not per task.** A master's
+    # table is decided by which of *its own* assignable monsters are reachable
+    # plus the fight signature, so a new monster elsewhere on the map leaves
+    # it untouched. Gating on the whole reachable set instead recomputed all
+    # three masters on 10 of 20 measured rolls; per master, 50 of 60
+    # master-tables were reusable.
+    candidates = _master_candidates(chunk_info, masters, reachable)
+    if usable is None:
+        stale_masters = set(masters)
+        tasks: dict[str, Mapping[str, SlayerTask]] = {}
+    else:
+        stale_masters = {
+            master
+            for master in masters
+            if candidates.get(master) != usable.candidates.get(master)
+        }
+        tasks = {m: t for m, t in usable.tasks.items() if m in masters and m not in stale_masters}
+    if stale_masters:
+        tasks.update(
+            price_slayer_tasks(
+                chunk_info,
+                derived.bis.picks,
+                levels,
+                heuristics=heuristics,
+                index=monster_index,
+                kit=kit,
+                reachable_masters=frozenset(stale_masters),
+                boss_monsters=bosses,
+                reachable_monsters=reachable,
+            )
+        )
+
+    kept = pinned_slayer or {}
+    pinned_count = sum(1 for name in monsters if name in pinned_monsters) + sum(
+        1
+        for master, names in tasks.items()
+        for name in names
+        if name in kept.get(master, frozenset())
+    )
+    enriched = with_monster_rates(heuristics, monsters, pinned=pinned_monsters)
+    enriched = with_slayer_rates(enriched, tasks, pinned=pinned_slayer)
+    coverage = DpsCoverage(
+        monsters=sum(1 for name in monsters if name not in pinned_monsters),
+        offered=len(priceable),
+        slayer_tasks=sum(
+            1
+            for master, names in tasks.items()
+            for name in names
+            if name not in kept.get(master, frozenset())
+        ),
+        styles=tuple(sorted(loadouts)),
+        pinned=pinned_count,
+    )
+    return enriched, coverage, PricedFights(
+        signature, monsters, tasks, kit.wilderness, candidates
+    )
+
+
+def _master_candidates(
+    chunk_info: ChunkInfo, masters: frozenset[str], reachable: frozenset[str]
+) -> dict[str, frozenset[str]]:
+    """Per master, the reachable monsters its own task list can name.
+
+    The unit a slayer table's reuse turns on. `price_slayer_tasks` picks the
+    best *reachable* monster for each task it assigns, so its answer moves
+    only when that intersection moves - and a chunk full of monsters no master
+    assigns moves nothing at all.
+    """
+    out: dict[str, frozenset[str]] = {}
+    for master, tasks in _mapping(chunk_info.data, "slayerMasterTasks").items():
+        if master not in masters or not isinstance(tasks, dict):
+            continue
+        named: set[str] = set()
+        for task in tasks:
+            named |= task_monsters(chunk_info, task) & reachable
+        out[master] = frozenset(named)
+    return out
+
+
 def library_version() -> str | None:
     """The installed `osrs-dps` version, or `None` when it is absent.
 

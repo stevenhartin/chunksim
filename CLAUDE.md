@@ -140,13 +140,13 @@ Five things that cut across modules — the first three because each has already
 | `unlock.py` | What one candidate unlock adds, by diffing two `derive` calls. **Owns the project's attribution rule** and its one exception. Additions-only, and only over one `MapState` — for two arbitrary maps read `delta.py`. |
 | `delta.py` | The **symmetric** comparison of two derived states, over all six `Derived` branches. Owns the diff primitives `unlock.py` projects down to its one-directional view; the two must agree, which `tests/test_delta.py` asserts. |
 | `neighbours.py` | Which chunks are eligible to unlock next, and upstream's canvas numbering (**descending chunk id, 1-based**). Owns the `sectionsLimits` gate. |
-| `timeline.py` | Replaying a run one roll at a time. **A run is self-contained** — the state before roll k is `final − rolls[k:]`, so stepping needs no base map, no export and no `derive`. Owns the delta series and the rule that step 0 is a baseline rather than a roll. |
+| `timeline.py` | Replaying a run one roll at a time, and `added_hours` — what a roll *cost*, as a diff of what is being costed rather than of the totals. **A run is self-contained** — the state before roll k is `final − rolls[k:]`, so stepping needs no base map, no export and no `derive`. Owns the delta series and the rule that step 0 is a baseline rather than a roll. |
 | `simulate.py` | Seeded chunk-roll simulation: the bootstrap pool, plus the dispatch to `neighbours.py`. Records are never revisited by a later roll. `simulated_payload` turns a finished ledger back into a map payload — read its docstring before changing which branches it touches. |
-| `batch.py` | N simulations from one state, each cached as its own map. Owns seed derivation and **both** `ProcessPoolExecutor`s in the project — `run_batch` for rolling, `price_steps` for costing a timeline. `--jobs` must never change a result, either of them. Also `save_unlock` — a batch of one, so the **one** writer of the run metadata both apps read back. |
+| `batch.py` | N simulations from one state, each cached as its own map. Owns seed derivation and **both** `ProcessPoolExecutor`s in the project — `run_batch` for rolling, `price_steps` for costing a timeline (two rounds: `warm_slice` strided across every core, then `price_slice` over long contiguous slices). `--jobs` must never change a result, either of them. Also `save_unlock` — a batch of one, so the **one** writer of the run metadata both apps read back. |
 | `derived_cache.py` | The on-disk cache of the **two** expensive per-state computations: `cached_derive` and `cached_enrich`. Owns both keys (a hash of every input each reads), the zstd+pickle codec, and `CacheBehaviour`/`RollCache` — which of a simulation's states to keep. Pure bar the bytes, which `cache.py` writes. |
 | `search.py` | World-wide fuzzy search over the *raw* export — all 5 item routes, so a strict superset of what `fray sources` can list. |
 | `summary.py` | Pure reductions over a raw payload. Extend this, not `cli.py`. Also home to `_mapping`, the tolerant dict accessor eight other modules import despite the `_` — Firebase omits empty containers, so every lookup anywhere must survive a missing branch. |
-| `dps_bridge.py` | The seam to `osrs-dps`, which prices a kill from the gear `bis.py` reaches instead of a money-making guide. Prices **only `estimate.reachable_providers`** — 188 of the export's 872, because every `kills_per_hour` lookup is gated on that set and the rest is thrown away. **Optional import** — check `DPS_AVAILABLE`, never assume it. `enrich` is the one entry point a command needs. Owns the export→library conversions (`magic_damage` is a display percentage here and tenths of a percent there), the overhead model, the monster-name join and its `exact`/`variant` provenance, and the refusal of fight *phases* and group bosses. |
+| `dps_bridge.py` | The seam to `osrs-dps`, which prices a kill from the gear `bis.py` reaches instead of a money-making guide. Prices **only `estimate.reachable_providers`** — 188 of the export's 872, because every `kills_per_hour` lookup is gated on that set and the rest is thrown away. `enrich_incremental` + `fight_signature` keep a timeline's previous roll where nothing that decides a kill has moved; `enrich` stays untouched. **Optional import** — check `DPS_AVAILABLE`, never assume it. `enrich` is the one entry point a command needs. Owns the export→library conversions (`magic_damage` is a display percentage here and tenths of a percent there), the overhead model, the monster-name join and its `exact`/`variant` provenance, and the refusal of fight *phases* and group bosses. |
 | `cli.py` | argparse subcommands and rendering only; new logic goes in a pure module. `gui/server.py` follows the same rule, with `gui/panels.py` as its pure module. |
 | `gui/panels.py` | Shaping `Derived` into what the panel draws — sections of groups of `{key, name, note, icon}`, one shape across all five categories. Pure. Owns the three rules that are domain knowledge rather than formatting: a quest keeps only its **furthest** step, `Extra`'s collection-log rows split source from item, BiS groups by combat style. |
 | `gui/worldmap.py` | Where a chunk sits on the map, and which of its sides face outward. Pure. Owns the projection (`grid_x = region_x - 15`, **`grid_y = 65 - region_y`** — the y axis is flipped), the tile pyramid's constants, the two kinds of id that have no square, and `hull_edges`. In `gui/` because all of it is about one particular tiling. |
@@ -351,12 +351,52 @@ Everything else in the stamp *is* compared, including the digest of the checked-
 `heuristics/overrides.json`, which moves without any fetch having happened. A mismatch reads as
 *absent*, so the page offers to recompute rather than refusing to draw.
 
-**The hours bars are mostly empty and sometimes point down, and that is the data.** Measured: ten
-rolls on the real map moved the estimate 2815.7h → 2817.4h with **eight steps at exactly 0.0**, and on
-an early map it *falls* — a new chunk can open a cheaper route to something already needed, or change
-which task is the active winner. The delta was chosen over a cumulative line deliberately. What that
-costs the renderer is that `null` (nobody computed it) and `0.0` (this chunk added no work) must draw
-differently, and the axis needs a zero line with room below it.
+**A bar is what the roll cost, not how the total moved**, and the difference is the point. A timeline
+walks one player's history forward, so by the time roll k lands everything roll k−1 opened is behind
+them; a chunk that only makes old work *cheaper* has added nothing. Subtracting totals says otherwise
+— it reports a saving as negative work, and a measured early-game run showed −2.4h on exactly that.
+`timeline.added_hours` is therefore a **diff of what is being costed**: an item counts when it is in
+this roll's estimate and was not in the last one, quests likewise, skills contribute
+`max(0, current − previous)`. It builds a filtered `EstimateResult` and reads `.buckets`, so the
+per-source clamp is the estimator's own rather than a second copy — and clamping within the new set
+is right here, because if the earlier grind is finished you are not standing there any more.
+**The consequence the panel must own: these do not sum to the Estimate tab's total.** `null` (nobody
+computed it) and `0.0` (this roll added nothing) still have to draw differently.
+
+**A roll only ever adds, and pricing exploits that.** Measured over 20 rolls: the reachable-provider
+set grew by 0–8 a roll and never shrank, and **3,867 of 4,094 kill rates (94%) were byte-identical to
+the roll before** — 16 rolls changed not one — with slayer task rates at 95%. So
+`dps_bridge.enrich_incremental` keeps the previous roll's rates unless `fight_signature` moved, and
+`enrich` itself is left untouched so every non-timeline caller is provably unaffected. **`kit.items`
+is deliberately not in the signature wholesale**: it moved on 17 of 20 rolls because it grows with
+every item the map reaches, and it feeds exactly one thing (`_charged`, swapping a *worn* uncharged
+wilderness weapon), so a new potion cannot change a fight the potion is not in. `wilderness` is
+excluded too — it is per monster, so membership is compared per monster instead of invalidating
+everything. Slayer reuse is **per master**, keyed on which of *that master's* assignable monsters are
+reachable; gating on the whole set recomputed all three masters on 10 of 20 rolls where 50 of 60
+master-tables were reusable. Measured end to end: 14.5s of full pricing against 3.4s, output
+identical, which `tests/test_dps_bridge.py` asserts against the real export.
+
+**`_slices` is contiguous, reversing the striding it used to do.** Striding was right when every step
+was priced from scratch — cost grew along a run, so contiguous slices handed one worker the expensive
+tail. Incrementalism inverts that: only a slice's *head* is expensive, which is both more even and
+the only arrangement where reuse is possible, since a strided slice never holds two consecutive
+rolls. Slices overlap by one step, because a slice starting mid-run needs the roll before its head as
+the baseline `added_hours` measures against.
+
+**Deriving and pricing want opposite shapes, so `price_steps` does two rounds.** A cold `derive` is
+~0.8s, perfectly independent, and wants every core; pricing wants long contiguous slices. Doing both
+in one pass forced a choice and either choice cost more than the pair — short slices left the pricing
+nothing to reuse, long ones left twelve cores idle through the derivations. `warm_slice` fills
+`cache/derived/` across every worker first, strided; then the pricing round reads them back at ~3ms.
+
+**What is left is the derivations, and it is now the whole first press.** With them warm a reprice is
+**0.55s**; cold it is 5.11s, all of it 21 × ~0.8s of `derive` spread over 16 cores. They are cold
+because the timeline derives from the *run's* `MapState` and the simulation derived from the *base
+map's* — see the note above on why those hash differently and why that is correct. Making the
+timeline price against the base state would hit the simulation's own cached derivations and has been
+measured to give an identical estimate, but it would trade away `timeline.py`'s self-containment, so
+it is a decision and not an optimisation.
 
 **A batch of several runs is not a map, and the picker must not offer it as one.**
 `cache.resolve_map_path` refuses to guess which run a bare batch name means, so selecting one 404s

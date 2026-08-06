@@ -1508,7 +1508,7 @@ def test_stored_hours_are_served_and_a_moved_world_discards_them(
     from fray_claude.gui.server import _timeline_stamp
 
     stamp = _timeline_stamp(ctx, enriched=False)
-    cache.write_timeline(map_id, {"stamp": stamp, "totals": [10.0, 12.5]}, tmp_path)
+    cache.write_timeline(map_id, {"stamp": stamp, "added": [0.0, 2.5], "totals": [10.0, 12.5]}, tmp_path)
 
     fresh = _body(_get("/api/timeline", ctx, map=map_id))
     assert fresh["has_hours"] is True
@@ -1516,7 +1516,7 @@ def test_stored_hours_are_served_and_a_moved_world_discards_them(
     assert [row["total_hours"] for row in fresh["steps"]] == [10.0, 12.5]
 
     cache.write_timeline(
-        map_id, {"stamp": {**stamp, "rates": "moved"}, "totals": [10.0, 12.5]}, tmp_path
+        map_id, {"stamp": {**stamp, "rates": "moved"}, "added": [0.0, 2.5], "totals": [10.0, 12.5]}, tmp_path
     )
     stale = _body(_get("/api/timeline", ctx, map=map_id))
 
@@ -1543,7 +1543,7 @@ def test_cheap_hours_are_not_stale_merely_because_dps_is_installed(
 
     cache.write_timeline(
         map_id,
-        {"stamp": _timeline_stamp(ctx, enriched=False), "totals": [10.0, 12.5]},
+        {"stamp": _timeline_stamp(ctx, enriched=False), "added": [0.0, 2.5], "totals": [10.0, 12.5]},
         tmp_path,
     )
     monkeypatch.setattr("fray_claude.gui.server.dps_bridge.DPS_AVAILABLE", True)
@@ -1567,7 +1567,7 @@ def test_enriched_hours_leave_nothing_to_upgrade(
 
     cache.write_timeline(
         map_id,
-        {"stamp": _timeline_stamp(ctx, enriched=True), "totals": [10.0, 12.5]},
+        {"stamp": _timeline_stamp(ctx, enriched=True), "added": [0.0, 2.5], "totals": [10.0, 12.5]},
         tmp_path,
     )
     monkeypatch.setattr("fray_claude.gui.server.dps_bridge.DPS_AVAILABLE", True)
@@ -1588,7 +1588,7 @@ def test_without_the_extra_there_is_nothing_better_to_offer(
 
     cache.write_timeline(
         map_id,
-        {"stamp": _timeline_stamp(ctx, enriched=False), "totals": [10.0, 12.5]},
+        {"stamp": _timeline_stamp(ctx, enriched=False), "added": [0.0, 2.5], "totals": [10.0, 12.5]},
         tmp_path,
     )
     monkeypatch.setattr("fray_claude.gui.server.dps_bridge.DPS_AVAILABLE", False)
@@ -1608,7 +1608,9 @@ def test_a_totals_list_that_does_not_fit_the_run_is_ignored(
     from fray_claude.gui.server import _timeline_stamp
 
     cache.write_timeline(
-        map_id, {"stamp": _timeline_stamp(ctx, enriched=False), "totals": [1.0, 2.0, 3.0, 4.0]}, tmp_path
+        map_id,
+        {"stamp": _timeline_stamp(ctx, enriched=False), "added": [1.0, 2.0, 3.0, 4.0], "totals": [1.0, 2.0, 3.0, 4.0]},
+        tmp_path
     )
 
     assert _body(_get("/api/timeline", ctx, map=map_id))["has_hours"] is False
@@ -1769,11 +1771,11 @@ def test_the_timeline_job_reports_slices_for_the_bar(
     map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
     seen: list[str] = []
 
-    def fake(**kw: Any) -> list[float]:
+    def fake(**kw: Any) -> tuple[list[float], list[float]]:
         report = kw["on_progress"]
         report(1, 2)
         report(2, 2)
-        return [1.0, 2.0]
+        return [0.0, 1.0], [1.0, 2.0]
 
     monkeypatch.setattr("fray_claude.gui.server.price_steps", fake)
     monkeypatch.setattr(
@@ -1807,9 +1809,9 @@ def test_the_timeline_job_passes_jobs_through(
     map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
     asked: list[int] = []
 
-    def fake(**kw: Any) -> list[float]:
+    def fake(**kw: Any) -> tuple[list[float], list[float]]:
         asked.append(kw["jobs"])
-        return [1.0, 2.0]
+        return [0.0, 1.0], [1.0, 2.0]
 
     monkeypatch.setattr("fray_claude.gui.server.price_steps", fake)
 
@@ -1817,3 +1819,27 @@ def test_the_timeline_job_passes_jobs_through(
     _wait(ctx, _body(_post("/api/timeline", ctx, {"map": map_id}))["job"])
 
     assert asked == [4, 0]
+
+
+def test_a_timeline_written_under_the_old_meaning_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**A file with `totals` and no `added` predates the semantics change.**
+
+    The bars used to be a delta of the totals and are now what each roll cost,
+    which is a different number computed a different way. Reading an old file
+    would draw perfectly plausible bars under a meaning nobody computed them
+    for - the worst kind of wrong, because nothing looks broken.
+    """
+    ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
+    map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
+    from fray_claude.gui.server import _timeline_stamp
+
+    cache.write_timeline(
+        map_id, {"stamp": _timeline_stamp(ctx, enriched=False), "totals": [10.0, 12.5]}, tmp_path
+    )
+
+    payload = _body(_get("/api/timeline", ctx, map=map_id))
+
+    assert payload["has_hours"] is False
+    assert all(row["hours"] is None for row in payload["steps"])

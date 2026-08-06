@@ -73,7 +73,7 @@ from fray_claude.derived_cache import (
     cached_enrich,
     pricing_digests,
 )
-from fray_claude.estimate import estimate, goal_levels, infer_levels
+from fray_claude.estimate import EstimateResult, estimate, goal_levels, infer_levels
 from fray_claude.firebase import reverse_tasks_map
 from fray_claude.heuristics import Heuristics, merge
 from fray_claude.heuristics import load as load_heuristics
@@ -81,12 +81,19 @@ from fray_claude.pipeline import Derived, MapState, load_map_state
 from fray_claude.search import WorldIndex, build_world_index
 from fray_claude.simulate import UnlockRecord, simulate_rolls, simulated_payload
 from fray_claude.summary import _mapping
+from fray_claude.timeline import added_hours
 from fray_claude.timeline import stamp as timeline_stamp
 from fray_claude.unlock import UnlockDelta
 
 #: Draw run seeds from, so a batch seed of 1 and a run seed of 1 can't collide
 #: into "the same run twice" by coincidence.
 _SEED_SPACE = 2**63
+
+#: How many rolls a pricing slice should hold before it is worth splitting off
+#: another worker. A slice costs one full `enrich` (~0.66s) for its head and
+#: almost nothing per step after, so short slices buy no wall clock and spend
+#: a lot of CPU. See `price_steps`.
+_MIN_SLICE = 6
 
 
 @dataclass(frozen=True)
@@ -196,6 +203,8 @@ class _Pricer:
     world: WorldIndex
     stamp: dict[str, Any]
     totals: list[float] = field(default_factory=list)
+    added: list[float] = field(default_factory=list)
+    _last: EstimateResult | None = None
 
     @classmethod
     def build(cls, info: ChunkInfo, root: Path | None, digests: Digests) -> _Pricer | None:
@@ -231,9 +240,13 @@ class _Pricer:
         """The `simulate_rolls` callback, bound to the state being rolled."""
 
         def priced(order: int, derived: Derived) -> None:
-            self.totals.append(
-                sum(estimate(state, derived, self.world, self.heuristics).buckets.values())
-            )
+            result = estimate(state, derived, self.world, self.heuristics)
+            # Both series, for the reason `price_steps` gives: the bars are
+            # what a roll cost and the totals are what is left, and neither
+            # recovers the other.
+            self.added.append(added_hours(self._last, result))
+            self.totals.append(sum(result.buckets.values()))
+            self._last = result
 
         return priced
 
@@ -241,7 +254,7 @@ class _Pricer:
         """What to write, or `None` if the run rolled nothing worth graphing."""
         if len(self.totals) < 2:
             return None
-        return {"stamp": self.stamp, "totals": self.totals}
+        return {"stamp": self.stamp, "added": self.added, "totals": self.totals}
 
 
 def _overrides_digest(root: Path | None) -> str:
@@ -272,18 +285,22 @@ class PriceSpec:
     chunkinfo_path: Path | None
 
 
-def price_slice(spec: PriceSpec) -> list[tuple[int, float]]:
-    """Price one slice of a run's steps. Runs in a worker process.
+def price_slice(spec: PriceSpec) -> list[tuple[int, float, float]]:
+    """Price one contiguous slice of a run's rolls. Runs in a worker process.
+
+    Returns `(step, hours this roll added, hours left after it)` per step -
+    **except its first**, which is only there as the baseline the second one
+    is measured against and is dropped on the way out. See `_slices`.
 
     **Sets up once per slice and keeps nothing between calls.** The obvious
     alternative - a `ProcessPoolExecutor(initializer=...)` filling a module
     global - would save the ~0.14s of setup per slice and would be the first
     module-level mutable state in the project, which is the thing that keeps
-    `--jobs` honest. At two slices per worker that 0.14s is ~3% of the slice,
-    so the rule stays absolute for a rounding error.
+    `--jobs` honest.
 
-    `enrich` is handed the monster index explicitly. It loads one itself when
-    it is not given one, which is 0.041s per *step* rather than per slice.
+    The pricing itself walks forward through the slice carrying a
+    `PricedFights`, so only the head pays a full `enrich`; see
+    `dps_bridge.enrich_incremental` for the measurement behind that.
     """
     info = ChunkInfo(read_chunkinfo(override=spec.chunkinfo_path, root=spec.root))
     try:
@@ -305,50 +322,117 @@ def price_slice(spec: PriceSpec) -> list[tuple[int, float]]:
     levels = infer_levels(state)
     pricing = pricing_digests(spec.root)
 
-    out: list[tuple[int, float]] = []
-    for order, held in spec.steps:
+    out: list[tuple[int, float, float]] = []
+    fights: Any = None
+    before: EstimateResult | None = None
+    for position, (order, held) in enumerate(spec.steps):
         unlocked = dict.fromkeys(held, True)
         derived = cached_derive(state, unlocked, digests, root=spec.root)
         heuristics = pricer.heuristics
         if dps_bridge.DPS_AVAILABLE:
             goals = goal_levels(state, derived, dict(levels))
 
-            # Bound as defaults rather than captured: a bare closure over the
-            # loop variables reads whatever they hold *when it is called*,
-            # which is right only because `cached_enrich` calls it inside this
-            # iteration. That is a fact about the callee, not about this code.
-            def price(
-                base: Heuristics = heuristics, at: Derived = derived, lv: dict[str, int] = goals
-            ) -> tuple[Heuristics, Any]:
-                return dps_bridge.enrich(
-                    base, info, at, lv, index=index, pinned_monsters=pinned
-                )
+            # **The two optimisations are for different presses.** A stored
+            # enrichment is ~3ms and wins outright on a repeat; the
+            # incremental walk is what makes the *first* press fast. So the
+            # cache is tried first and the walk fills the misses.
+            #
+            # A hit breaks the chain, because a stored enrichment is the
+            # answer and not the working. `fights = None` says so, and the
+            # next miss simply prices in full - slower than it might have
+            # been, never wrong.
+            carried = fights
+            fights = None
 
-            # Cached like the derivation beside it: two runs of a batch that
-            # pass through the same chunk set price it once between them, and
-            # repricing a run that was already repriced pays nothing.
+            def price(
+                base: Heuristics = heuristics,
+                at: Derived = derived,
+                lv: dict[str, int] = goals,
+                previous: Any = carried,
+            ) -> tuple[Heuristics, Any]:
+                nonlocal fights
+                priced, coverage, fights = dps_bridge.enrich_incremental(
+                    base, info, at, lv, previous=previous, index=index, pinned_monsters=pinned
+                )
+                return priced, coverage
+
             heuristics, _ = cached_enrich(
                 price, state, unlocked, digests, pricing, root=spec.root
             )
-        out.append((order, sum(estimate(state, derived, pricer.world, heuristics).buckets.values())))
+        result = estimate(state, derived, pricer.world, heuristics)
+        # A slice that starts mid-run carries its predecessor purely to have
+        # something to measure the head against; it is not this slice's to
+        # report, and the slice that owns it reports it.
+        baseline = position == 0 and order > 0
+        if not baseline:
+            out.append((order, added_hours(before, result), sum(result.buckets.values())))
+        before = result
     return out
+
+def warm_slice(spec: PriceSpec) -> int:
+    """Derive every state in `spec`, storing each. Runs in a worker process.
+
+    **Deriving and pricing want opposite shapes, so they get separate rounds.**
+    A cold `derive` is ~0.8s a step, is perfectly independent, and gains
+    nothing from being next to its neighbour - it wants every core. Pricing
+    wants the opposite: long contiguous slices, so `enrich_incremental` has a
+    predecessor to carry forward. Doing both in one pass forced a choice, and
+    on a 21-step run either choice cost more than the pair does - short slices
+    left the pricing with nothing to reuse, long ones left twelve cores idle
+    through the derivations.
+
+    So this round warms `cache/derived/` across every worker, and the pricing
+    round then reads those back at ~3ms while keeping its slices long.
+    """
+    info = ChunkInfo(read_chunkinfo(override=spec.chunkinfo_path, root=spec.root))
+    try:
+        tasks_map = reverse_tasks_map(read_blob(TASKS_MAP_BLOB_NAME, spec.root)["data"])
+    except CacheMissError:
+        tasks_map = {}
+    state, _ = load_map_state(read_cache(spec.map_id, spec.root)["data"], info, tasks_map)
+    digests = Digests(
+        chunkinfo=file_digest(chunkinfo_source(spec.chunkinfo_path, spec.root)),
+        tasks_map=file_digest(blob_path(TASKS_MAP_BLOB_NAME, spec.root)),
+    )
+    for _, held in spec.steps:
+        cached_derive(state, dict.fromkeys(held, True), digests, root=spec.root)
+    return len(spec.steps)
 
 
 def _slices(
     held: Sequence[Sequence[str]], count: int
 ) -> list[tuple[tuple[int, tuple[str, ...]], ...]]:
-    """Deal the steps out `count` ways, **strided rather than contiguous**.
+    """Deal the steps out `count` ways, **contiguously**.
 
-    A step's cost grows along a run: later states hold more chunks, so more
-    monsters are reachable and there is more to price. Contiguous slices would
-    hand one worker the whole expensive tail and leave it running long after
-    the others finished. Striding gives every slice a mix.
+    **This used to stride, and the reasoning was right about the old code.**
+    Pricing every step from scratch made a step's cost grow along a run - later
+    states hold more chunks, so more monsters are reachable - and contiguous
+    slices would have handed one worker the whole expensive tail. Striding gave
+    every slice a mix.
+
+    `dps_bridge.enrich_incremental` inverts that profile. A roll only ever
+    *adds*, so within a contiguous slice only the **head** is expensive and the
+    rest reuse it; measured, 94% of kill rates are identical to the roll
+    before. That is both more even than striding was and the only arrangement
+    where the reuse is possible at all - a strided slice never holds two
+    consecutive rolls.
+
+    Each slice also carries the step *before* its head, as a baseline for
+    `timeline.added_hours`; see `price_slice`.
 
     Empty slices are dropped, so asking for more slices than there are steps
     is not an error - it just produces fewer.
     """
-    work = tuple((order, tuple(ids)) for order, ids in enumerate(held))
-    return [slice_ for k in range(count) if (slice_ := work[k::count])]
+    work = [(order, tuple(ids)) for order, ids in enumerate(held)]
+    if count <= 1:
+        return [tuple(work)]
+    size = -(-len(work) // count)
+    out: list[tuple[tuple[int, tuple[str, ...]], ...]] = []
+    for start in range(0, len(work), size):
+        # One step of overlap: a slice head needs its predecessor priced to
+        # know what the head's roll actually added.
+        out.append(tuple(work[max(0, start - 1) : start + size]))
+    return out
 
 
 def price_steps(
@@ -359,8 +443,13 @@ def price_steps(
     root: Path | None = None,
     chunkinfo_path: Path | None = None,
     on_progress: Callable[[int, int], None] | None = None,
-) -> list[float]:
-    """The estimated hours remaining at each of a run's steps, in step order.
+) -> tuple[list[float], list[float]]:
+    """What each roll of a run cost, and what was left after it, in step order.
+
+    Two series because they answer different questions and neither recovers
+    the other: the bars are `timeline.added_hours` - what this roll newly put
+    in front of you - and the totals are what remains, which a tooltip wants
+    and the bars deliberately do not sum to.
 
     **This is the parallel half of what `_Pricer` does inline.** A simulation
     prices its own rolls as it goes, because the derivation is already in hand
@@ -383,25 +472,32 @@ def price_steps(
     suite in one process.
 
     `on_progress(done, total)` counts *slices*, not steps: a worker cannot
-    report from inside one. There are two slices per job so a straggler costs
-    half a worker's share rather than all of it, and the bar moves twice per
-    worker.
+    report from inside one.
+
+    **One slice per job, and never shorter than `_MIN_SLICE`.** Slices are
+    contiguous so each can carry its pricing forward (see `_slices`), which
+    makes every extra slice another full-price head and another duplicated
+    baseline. Twenty-one steps across sixteen workers is two steps a slice and
+    no reuse at all - the same wall clock as before for sixteen times the CPU.
+    Capping the count keeps slices long enough for the carry to pay, and the
+    wall clock barely moves because a slice is one expensive head and a tail
+    of near-free steps either way.
     """
     if not held:
-        return []
+        return [], []
     wanted = jobs if jobs > 0 else (os.process_cpu_count() or 1)
-    parts = _slices(held, max(1, wanted if wanted <= 1 else wanted * 2))
+    parts = _slices(held, max(1, min(wanted, -(-len(held) // _MIN_SLICE))))
     specs = [
         PriceSpec(map_id=map_id, steps=part, root=root, chunkinfo_path=chunkinfo_path)
         for part in parts
     ]
 
-    priced: dict[int, float] = {}
+    priced: dict[int, tuple[float, float]] = {}
     done = 0
 
-    def landed(result: list[tuple[int, float]]) -> None:
+    def landed(result: list[tuple[int, float, float]]) -> None:
         nonlocal done
-        priced.update(result)
+        priced.update({order: (added, total) for order, added, total in result})
         done += 1
         if on_progress is not None:
             on_progress(done, len(specs))
@@ -414,13 +510,26 @@ def price_steps(
         # costs ~12ms to import and only a real pool ever needs it.
         from concurrent.futures import ProcessPoolExecutor, as_completed
 
-        with ProcessPoolExecutor(max_workers=min(wanted, len(specs))) as pool:
+        # Every step once, dealt `wanted` ways so a worker pays its ~0.15s of
+        # setup once rather than once per step. Order is irrelevant here - a
+        # derivation is independent of its neighbours - so this strides, which
+        # is exactly what the *pricing* round cannot do. See `warm_slice`.
+        every = tuple(sorted({step for part in parts for step in part}))
+        warming = [
+            PriceSpec(map_id=map_id, steps=group, root=root, chunkinfo_path=chunkinfo_path)
+            for k in range(wanted)
+            if (group := every[k::wanted])
+        ]
+        with ProcessPoolExecutor(max_workers=wanted) as pool:
+            for _ in pool.map(warm_slice, warming):
+                pass
             futures = [pool.submit(price_slice, spec) for spec in specs]
             for future in as_completed(futures):
                 landed(future.result())
 
     # Completion order is scheduling noise; step order is the answer.
-    return [priced[order] for order in sorted(priced)]
+    order = sorted(priced)
+    return [priced[step][0] for step in order], [priced[step][1] for step in order]
 
 
 def run_one(spec: RunSpec) -> RunResult:

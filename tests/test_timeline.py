@@ -15,8 +15,10 @@ import pytest
 
 from fray_claude.batch import run_batch
 from fray_claude.cache import ROLLS_FILE_NAME, read_cache, sims_root, write_blob, write_cache
+from fray_claude.estimate import EstimateResult, ItemEstimate, SkillEstimate
 from fray_claude.timeline import (
     Step,
+    added_hours,
     count_check,
     replay,
     rolled_chunks,
@@ -137,35 +139,48 @@ def test_a_step_counts_what_its_roll_added() -> None:
     assert step.tasks_added["Slayer"] == ("~|abyssal whip|~",)
 
 
-def test_the_baseline_step_has_no_delta_and_no_chunk() -> None:
+def test_the_baseline_step_has_no_bar_and_no_chunk() -> None:
     """Step 0 is where the run *started*, not something it did."""
     steps = replay({"100", "101"}, [_record(1, "101")])
 
-    rows = series(steps, [10.0, 12.5])
+    rows = series(steps, totals=[10.0, 12.5], added=[0.0, 4.0])
 
     assert rows[0]["chunk"] is None and rows[0]["hours"] is None
-    assert rows[1]["hours"] == 2.5
+    # The bar is what the roll cost; the total is carried for the tooltip.
+    assert rows[1]["hours"] == 4.0
+    assert rows[1]["total_hours"] == 12.5
 
 
 def test_hours_are_none_rather_than_zero_when_nobody_computed_them() -> None:
     """**"Not computed" and "added no work" are different answers.**
 
-    Both are common - eight of ten steps of a real run add exactly 0.0h - so
-    a graph that drew them the same would be unreadable *and* wrong.
+    Both are common - most rolls of a real run add nothing - so a graph that
+    drew them the same would be unreadable *and* wrong.
     """
     steps = replay({"100", "101"}, [_record(1, "101")])
 
     assert [row["hours"] for row in series(steps)] == [None, None]
-    # A totals list that does not line up is refused for the same reason.
-    assert [row["hours"] for row in series(steps, [1.0])] == [None, None]
+    # A list that does not line up is refused for the same reason: a run
+    # re-rolled under one name has a different number of steps.
+    assert [row["hours"] for row in series(steps, added=[1.0])] == [None, None]
 
 
-def test_a_negative_delta_survives() -> None:
-    """The estimate really does go down: a new chunk can open a cheaper route
-    to something already needed. Measured at step 6 of a 12-roll early map."""
+def test_a_falling_total_is_not_negative_work() -> None:
+    """**The semantics the bars were changed to.**
+
+    The estimate really can go down - a new chunk can open a cheaper route to
+    something already needed, measured at -2.4h on step 6 of a 12-roll early
+    map. But a timeline walks one history forward, so by then the earlier work
+    is behind you and the saving is not something this roll *did*. The bar is
+    `added_hours`, which is a diff of what is being costed rather than of the
+    totals, so it never reports a saving as negative work.
+    """
     steps = replay({"100", "101"}, [_record(1, "101")])
 
-    assert series(steps, [17.9, 15.5])[1]["hours"] == -2.4
+    rows = series(steps, totals=[17.9, 15.5], added=[0.0, 0.0])
+
+    assert rows[1]["hours"] == 0.0
+    assert rows[1]["total_hours"] == 15.5, "the total still fell, and still says so"
 
 
 def test_an_empty_ledger_still_has_its_baseline() -> None:
@@ -219,3 +234,74 @@ def test_a_run_replays_with_its_base_map_deleted(root: Path) -> None:
 
     assert steps[0].unlocked == frozenset({"100"})
     assert len(steps) == 4
+
+
+# --- what a roll cost ------------------------------------------------------
+
+
+def _result(*, items: Any = (), tasks: Any = (), skills: Any = ()) -> EstimateResult:
+    return EstimateResult(items=tuple(items), tasks=tuple(tasks), skills=tuple(skills))
+
+
+def _item(name: str, hours: float, source: str = "", bucket: str = "boss drops") -> ItemEstimate:
+    return ItemEstimate(item=name, bucket=bucket, hours=hours, source=source or name)
+
+
+def _skill(name: str, hours: float) -> SkillEstimate:
+    return SkillEstimate(
+        skill=name, goal="g", current_level=1, target_level=99, xp=1,
+        xp_per_hour=1.0, method="m", hours=hours,
+    )
+
+
+def test_a_roll_is_charged_for_what_it_newly_put_in_front_of_you() -> None:
+    before = _result(items=[_item("whip", 10.0)])
+    after = _result(items=[_item("whip", 10.0), _item("tentacle", 4.0)])
+
+    assert added_hours(before, after) == 4.0
+
+
+def test_an_item_you_already_had_to_get_is_not_charged_twice() -> None:
+    """Even if it got cheaper. By the time this roll lands the earlier grind
+    is behind you, so its new price is not something this roll did."""
+    before = _result(items=[_item("whip", 10.0)])
+    after = _result(items=[_item("whip", 2.0)])
+
+    assert added_hours(before, after) == 0.0
+
+
+def test_a_skill_goal_that_moved_up_is_charged_for_the_difference() -> None:
+    before = _result(skills=[_skill("Slayer", 100.0)])
+    after = _result(skills=[_skill("Slayer", 130.0)])
+
+    assert added_hours(before, after) == 30.0
+
+
+def test_a_skill_that_got_cheaper_contributes_nothing_rather_than_a_credit() -> None:
+    """**Where "we do not care that it got cheaper" is actually spent.**"""
+    before = _result(skills=[_skill("Slayer", 100.0)])
+    after = _result(skills=[_skill("Slayer", 60.0)])
+
+    assert added_hours(before, after) == 0.0
+
+
+def test_new_items_off_one_source_are_clamped_together() -> None:
+    """The estimator's own per-source rule, reused rather than reimplemented:
+    two drops off one monster cost the longer of the two, not their sum."""
+    before = _result()
+    after = _result(
+        items=[
+            _item("dagger", 533.0, source="Abyssal demon"),
+            _item("head", 100.0, source="Abyssal demon"),
+        ]
+    )
+
+    assert added_hours(before, after) == 533.0
+
+
+def test_the_first_roll_is_charged_for_everything() -> None:
+    """With nothing before it there is nothing already done, so the baseline
+    step carries the whole outstanding cost."""
+    after = _result(items=[_item("whip", 10.0)], skills=[_skill("Slayer", 5.0)])
+
+    assert added_hours(None, after) == 15.0

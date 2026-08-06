@@ -499,26 +499,37 @@ def _overrides_digest(ctx: Context) -> str:
         return ""
 
 
-def _cached_hours(map_id: str, ctx: Context) -> tuple[list[float] | None, bool]:
-    """A run's stored hours series and whether `dps_bridge` priced it.
+def _floats(value: Any) -> list[float] | None:
+    if not isinstance(value, list) or not all(
+        isinstance(v, (int, float)) and not isinstance(v, bool) for v in value
+    ):
+        return None
+    return [float(v) for v in value]
+
+
+def _cached_hours(
+    map_id: str, ctx: Context
+) -> tuple[list[float] | None, list[float] | None, bool]:
+    """A run's stored hours - what each roll added, what was left - and whether
+    `dps_bridge` priced them.
 
     A stamp mismatch reads as absent rather than as an error: the numbers are
     recomputable, and offering to recompute is a better answer than refusing
-    to draw anything.
+    to draw anything. **A file without `added` is one written under the old
+    delta-of-totals meaning**, and is refused for the same reason - the bars
+    would be drawn under a meaning they were never computed for.
     """
     try:
         stored = cache.read_timeline(map_id, ctx.root)
     except cache.CacheMissError:
-        return None, False
+        return None, None, False
     if not timeline_matches(stored.get("stamp"), _timeline_stamp(ctx, enriched=False)):
-        return None, False
-    totals = stored.get("totals")
-    if not isinstance(totals, list) or not all(
-        isinstance(v, (int, float)) and not isinstance(v, bool) for v in totals
-    ):
-        return None, False
+        return None, None, False
+    added = _floats(stored.get("added"))
+    if added is None:
+        return None, None, False
     enriched = bool(_mapping(stored, "stamp").get("enriched"))
-    return [float(v) for v in totals], enriched
+    return added, _floats(stored.get("totals")), enriched
 
 
 def _timeline_payload(map_id: str, ctx: Context) -> dict[str, Any]:
@@ -531,13 +542,13 @@ def _timeline_payload(map_id: str, ctx: Context) -> dict[str, Any]:
     rather than the file: no `ChunkInfo`, and a test pins it.
     """
     steps = _run_steps(map_id, ctx)
-    hours, enriched = _cached_hours(map_id, ctx)
-    rows = series(steps, hours)
+    added, totals, enriched = _cached_hours(map_id, ctx)
+    rows = series(steps, totals=totals, added=added)
     # **Read back off the shaped rows, not off the stored list.** `series`
     # refuses a totals list that does not fit the run - a run re-rolled under
     # one name has a different number of steps - so asking the store instead
     # would let the flag promise hours the graph never got.
-    has_hours = any(row["total_hours"] is not None for row in rows)
+    has_hours = any(row["hours"] is not None for row in rows)
     return {
         "map_id": map_id,
         "steps": rows,
@@ -944,7 +955,7 @@ def _timeline_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
             progress(f"{done}/{total} slices - {workers} workers")
 
         progress(f"0/1 slices - {workers} workers")
-        totals = price_steps(
+        added, totals = price_steps(
             map_id=map_id,
             held=[sorted(step.unlocked) for step in steps],
             jobs=jobs,
@@ -953,10 +964,14 @@ def _timeline_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
         )
         cache.write_timeline(
             map_id,
-            {"stamp": _timeline_stamp(ctx, enriched=dps_bridge.DPS_AVAILABLE), "totals": totals},
+            {
+                "stamp": _timeline_stamp(ctx, enriched=dps_bridge.DPS_AVAILABLE),
+                "added": added,
+                "totals": totals,
+            },
             ctx.root,
         )
-        return {"map": map_id, "steps": len(totals), "hours": round(totals[-1], 1)}
+        return {"map": map_id, "steps": len(added), "hours": round(totals[-1], 1)}
 
     return {"job": ctx.jobs.submit(f"timeline {map_id}", work).id}
 
