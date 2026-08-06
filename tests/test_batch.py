@@ -20,13 +20,15 @@ from fray_claude.cache import (
     BATCH_META_FILE_NAME,
     UNLOCKED,
     CacheMissError,
+    read_base_payload,
     read_batch,
     read_cache,
     read_rolls,
-    read_timeline,
     read_sim_batch,
+    read_timeline,
     sims_root,
     write_blob,
+    write_cache,
 )
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.derived_cache import CacheBehaviour
@@ -500,3 +502,71 @@ def test_pricing_reports_progress_per_slice(root: Path) -> None:
 def test_pricing_nothing_is_not_an_error(root: Path) -> None:
     """An empty run has no steps and no pool to spin up for them."""
     assert price_steps(map_id="whatever", held=[], root=root) == ([], [])
+
+
+def test_the_three_ways_of_finding_a_base_all_price_the_same(root: Path) -> None:
+    """**The property that makes the fallback a speed decision, not a
+    semantic one.**
+
+    A reprice derives against the payload the run was rolled *from*, found in
+    one of three places: the batch's own `base_payload`, the `base_map` read
+    by name, or - failing both - the run's own saved payload. Only the last
+    misses the derivations the simulation already cached (0 hits against
+    13/13 measured), because `simulated_payload` merges `checkedChallenges`
+    and drops `activeTasks` so the state hashes differently.
+
+    It must be *only* slower. Equality here, not closeness, is what says so.
+    """
+    write_blob("wiki_rates", {}, "test", root=root)
+    write_cache("base", _PAYLOAD, root=root)
+    batch = run_batch(name="p", payload=_PAYLOAD, base_map="base", rolls=3, seed=6, root=root)
+    map_id = f"{batch.name}/{batch.runs[0].name}"
+    steps = replay(read_cache(map_id, root)["data"]["chunks"]["unlocked"], read_rolls(map_id, root))
+    held = [sorted(step.unlocked) for step in steps]
+    meta_path = sims_root(root) / batch.name / BATCH_META_FILE_NAME
+    stored = json.loads(meta_path.read_text())
+
+    with_payload = price_steps(map_id=map_id, held=held, jobs=1, root=root)
+
+    # Drop the stored payload: now it must find the base map by name.
+    meta_path.write_text(json.dumps({k: v for k, v in stored.items() if k != "base_payload"}))
+    by_name = price_steps(map_id=map_id, held=held, jobs=1, root=root)
+
+    # Drop that too: now it falls back to the run's own payload.
+    (root / "cache" / "maps" / "fetched" / "base.json").unlink()
+    from_the_run = price_steps(map_id=map_id, held=held, jobs=1, root=root)
+
+    assert with_payload == by_name
+    assert with_payload == from_the_run
+
+
+def test_a_batch_records_the_base_it_rolled_from(root: Path) -> None:
+    """A name is a pointer that dangles the moment that map is refetched; the
+    payload is what makes a simulation replayable on its own."""
+    write_cache("base", _PAYLOAD, root=root)
+    batch = run_batch(name="p", payload=_PAYLOAD, base_map="base", rolls=2, seed=6, root=root)
+
+    stored = read_sim_batch(batch.name, root)
+
+    assert stored["base_payload"] == _PAYLOAD
+    assert read_base_payload(f"{batch.name}/{batch.runs[0].name}", root) == _PAYLOAD
+
+
+def test_a_base_is_still_found_with_the_map_it_came_from_deleted(root: Path) -> None:
+    """The self-containment claim, asserted the only way that means anything."""
+    write_cache("base", _PAYLOAD, root=root)
+    batch = run_batch(name="p", payload=_PAYLOAD, base_map="base", rolls=2, seed=6, root=root)
+    (root / "cache" / "maps" / "fetched" / "base.json").unlink()
+
+    assert read_base_payload(f"{batch.name}/{batch.runs[0].name}", root) == _PAYLOAD
+
+
+def test_a_batch_with_no_base_at_all_answers_none(root: Path) -> None:
+    """What a batch written before this looks like. `None` means "use the
+    run's own payload", which is what happened then anyway."""
+    batch = run_batch(name="p", payload=_PAYLOAD, base_map="gone", rolls=1, seed=6, root=root)
+    meta = sims_root(root) / batch.name / BATCH_META_FILE_NAME
+    stored = json.loads(meta.read_text())
+    meta.write_text(json.dumps({k: v for k, v in stored.items() if k != "base_payload"}))
+
+    assert read_base_payload(f"{batch.name}/{batch.runs[0].name}", root) is None

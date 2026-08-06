@@ -55,6 +55,7 @@ from fray_claude.cache import (
     claim_sim_batch,
     file_digest,
     overrides_path,
+    read_base_payload,
     read_blob,
     read_cache,
     read_chunkinfo,
@@ -283,6 +284,12 @@ class PriceSpec:
     steps: tuple[tuple[int, tuple[str, ...]], ...]
     root: Path | None
     chunkinfo_path: Path | None
+    #: The payload the run was rolled *from*. Everything is derived against
+    #: this rather than the run's own saved map, which is what lets a reprice
+    #: reuse the derivations the simulation already cached - measured at 13/13
+    #: hits against 0/13. `None` falls back to the run's payload, which is
+    #: slower and not different; see `cache.read_base_payload`.
+    base: Mapping[str, Any] | None = None
 
 
 def price_slice(spec: PriceSpec) -> list[tuple[int, float, float]]:
@@ -307,8 +314,7 @@ def price_slice(spec: PriceSpec) -> list[tuple[int, float, float]]:
         tasks_map = reverse_tasks_map(read_blob(TASKS_MAP_BLOB_NAME, spec.root)["data"])
     except CacheMissError:
         tasks_map = {}
-    envelope = read_cache(spec.map_id, spec.root)
-    state, _ = load_map_state(envelope["data"], info, tasks_map)
+    state, _ = load_map_state(_base_of(spec), info, tasks_map)
     digests = Digests(
         chunkinfo=file_digest(chunkinfo_source(spec.chunkinfo_path, spec.root)),
         tasks_map=file_digest(blob_path(TASKS_MAP_BLOB_NAME, spec.root)),
@@ -369,6 +375,22 @@ def price_slice(spec: PriceSpec) -> list[tuple[int, float, float]]:
         before = result
     return out
 
+def _base_of(spec: PriceSpec) -> Mapping[str, Any]:
+    """The state a slice derives against: the run's base, or the run itself.
+
+    **Both give the same numbers and only one of them is fast.** A run's own
+    payload has been through `simulated_payload`, which merges
+    `checkedChallenges` and drops `activeTasks`, so its `MapState` hashes
+    differently from the base it was rolled from and reaches none of the
+    derivations the simulation cached along the way. Falling back to it is
+    what every batch written before batches recorded their base does.
+    """
+    if spec.base is not None:
+        return spec.base
+    data: Mapping[str, Any] = read_cache(spec.map_id, spec.root)["data"]
+    return data
+
+
 def warm_slice(spec: PriceSpec) -> int:
     """Derive every state in `spec`, storing each. Runs in a worker process.
 
@@ -389,7 +411,7 @@ def warm_slice(spec: PriceSpec) -> int:
         tasks_map = reverse_tasks_map(read_blob(TASKS_MAP_BLOB_NAME, spec.root)["data"])
     except CacheMissError:
         tasks_map = {}
-    state, _ = load_map_state(read_cache(spec.map_id, spec.root)["data"], info, tasks_map)
+    state, _ = load_map_state(_base_of(spec), info, tasks_map)
     digests = Digests(
         chunkinfo=file_digest(chunkinfo_source(spec.chunkinfo_path, spec.root)),
         tasks_map=file_digest(blob_path(TASKS_MAP_BLOB_NAME, spec.root)),
@@ -487,8 +509,13 @@ def price_steps(
         return [], []
     wanted = jobs if jobs > 0 else (os.process_cpu_count() or 1)
     parts = _slices(held, max(1, min(wanted, -(-len(held) // _MIN_SLICE))))
+    # Resolved once in the parent: it is ~36KB of plain data, and every worker
+    # asking the disk for it separately would be the same answer N times.
+    base = read_base_payload(map_id, root)
     specs = [
-        PriceSpec(map_id=map_id, steps=part, root=root, chunkinfo_path=chunkinfo_path)
+        PriceSpec(
+            map_id=map_id, steps=part, root=root, chunkinfo_path=chunkinfo_path, base=base
+        )
         for part in parts
     ]
 
@@ -516,7 +543,9 @@ def price_steps(
         # is exactly what the *pricing* round cannot do. See `warm_slice`.
         every = tuple(sorted({step for part in parts for step in part}))
         warming = [
-            PriceSpec(map_id=map_id, steps=group, root=root, chunkinfo_path=chunkinfo_path)
+            PriceSpec(
+                map_id=map_id, steps=group, root=root, chunkinfo_path=chunkinfo_path, base=base
+            )
             for k in range(wanted)
             if (group := every[k::wanted])
         ]
@@ -722,6 +751,12 @@ def run_batch(
             "kind": SIMULATED,
             "created_at": datetime.now(UTC).isoformat(),
             "base_map": base_map,
+            # **The base itself, not just its name.** A name is a pointer that
+            # dangles the moment that map is refetched or removed; the payload
+            # is what makes a simulation replayable on its own, and what lets
+            # a reprice reach the derivations these rolls already cached. See
+            # `cache.read_base_payload`.
+            "base_payload": dict(payload),
             "base_fetched_at": base_fetched_at,
             "rolls_requested": rolls,
             "seed": seed,
@@ -825,6 +860,7 @@ def save_unlock(
             "origin": "unlock",
             "created_at": created_at,
             "base_map": base_map,
+            "base_payload": dict(payload),
             "base_fetched_at": base_fetched_at,
             "rolls_requested": 1,
             "seed": None,

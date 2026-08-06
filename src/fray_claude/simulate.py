@@ -126,6 +126,16 @@ def simulated_payload(
       what this fixes is the `(Active)` marker, which would otherwise keep
       flagging the *pre-simulation* chunk's tick-offs as "this chunk". With
       no rolls, nothing has committed, so nothing moves.
+    **Two of those four branches make a run's `MapState` hash differently from
+    the base it was rolled from**, which `timeline.py` now depends on knowing:
+    a reprice derives against the *base* precisely so it reaches the
+    derivations these rolls already cached (13/13 hits against 0/13). The
+    numbers are the same either way - `derive` differs only in the
+    `active_tasks` branch, which the estimator does not read - but if this
+    function ever starts touching something `derive` *does* read, that
+    equality stops holding. `tests/test_batch.py` asserts it against a real
+    run, and that is the test which would notice.
+
     - `chunkinfo.activeTasks` and `chunks.selected` are **dropped**. They hold
       upstream's own computed answers for the unlocked set it computed them
       against - this project's oracles (see `active_tasks.py`,

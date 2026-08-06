@@ -654,6 +654,52 @@ def write_sim_batch(directory: Path, meta: dict[str, Any]) -> Path:
     return _atomic_write_json(directory / BATCH_META_FILE_NAME, meta)
 
 
+def read_base_payload(map_id: str, root: Path | None = None) -> dict[str, Any] | None:
+    """The payload a computed map was rolled *from*, or `None`.
+
+    **A simulation is a base and a sequence, and this is the base.** The run
+    directory has always held the sequence (`rolls.json`) and the world it
+    ended in (`map.json`); what it lacked was the thing those rolls started
+    from, which is what anything replaying the run wants to measure against.
+
+    Two places are tried, and **both answer the same question - only the odds
+    of finding it differ**:
+
+    1. `batch.json`'s own `base_payload`, written since batches started
+       recording it. A name is a pointer that can dangle; the payload is the
+       thing, so a batch carrying it replays with nothing else on disk.
+    2. Failing that, `base_map` read by name - which works until that map is
+       refetched or removed.
+
+    `None` means neither was available, and the caller should fall back to the
+    run's own payload. That is **slower and not different**: `simulated_payload`
+    merges `checkedChallenges` and drops `activeTasks`, so a run's `MapState`
+    hashes differently from its base's and reaches none of the derivations the
+    simulation already cached - measured at 0 hits against 13. The numbers come
+    out the same either way; `tests/test_batch.py` asserts that, because a
+    fallback that changed an answer would be a far worse thing to have than a
+    slow one.
+    """
+    name, _ = split_map_id(map_id)
+    directory = _find_batch(name, root)
+    if directory is not None:
+        try:
+            stored = _read_json_object(directory / BATCH_META_FILE_NAME)
+        except CacheMissError:
+            stored = {}
+        payload = stored.get("base_payload")
+        if isinstance(payload, dict):
+            return payload
+        base = stored.get("base_map")
+        if isinstance(base, str) and base:
+            try:
+                data = read_cache(base, root)["data"]
+            except CacheMissError:
+                return None
+            return data if isinstance(data, dict) else None
+    return None
+
+
 def read_batch(name: str, root: Path | None = None, *, kind: str = SIMULATED) -> dict[str, Any]:
     """Return a batch's summary, rebuilt from its runs if `batch.json` is absent.
 

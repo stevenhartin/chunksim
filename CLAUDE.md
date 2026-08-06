@@ -250,9 +250,9 @@ cache/gui/                             # window.json, and the browser profile
 A batch, whichever computed kind:
 
 ```
-cache/maps/<kind>/<batch>/batch.json          # seeds, rolls, `batch_id` — the analysis surface
-cache/maps/<kind>/<batch>/run-001/map.json    # a normal envelope, carrying `kind`
-cache/maps/<kind>/<batch>/run-001/rolls.json  # that run's per-roll ledger
+cache/maps/<kind>/<batch>/batch.json          # seeds, rolls, `batch_id`, and the payload it rolled from
+cache/maps/<kind>/<batch>/run-001/map.json    # a normal envelope carrying `kind` — the *map*, priced in full
+cache/maps/<kind>/<batch>/run-001/rolls.json  # that run's per-roll ledger — with batch.json, the *simulation*
 cache/maps/<kind>/<batch>/run-001/run.json    # that run's summary, which `maps list` reads
 cache/maps/<kind>/<batch>/run-001/timeline.json  # per-step hours, once something paid to compute them
 ```
@@ -390,13 +390,24 @@ in one pass forced a choice and either choice cost more than the pair — short 
 nothing to reuse, long ones left twelve cores idle through the derivations. `warm_slice` fills
 `cache/derived/` across every worker first, strided; then the pricing round reads them back at ~3ms.
 
-**What is left is the derivations, and it is now the whole first press.** With them warm a reprice is
-**0.55s**; cold it is 5.11s, all of it 21 × ~0.8s of `derive` spread over 16 cores. They are cold
-because the timeline derives from the *run's* `MapState` and the simulation derived from the *base
-map's* — see the note above on why those hash differently and why that is correct. Making the
-timeline price against the base state would hit the simulation's own cached derivations and has been
-measured to give an identical estimate, but it would trade away `timeline.py`'s self-containment, so
-it is a decision and not an optimisation.
+**A run directory holds two different objects, and the timeline wants the one it was not reading.**
+A *simulation* is a fixed base plus a sequence of rolls, each read on the assumption that everything
+before it is done — `batch.json` + `rolls.json`. A *map* is a world in its own right that any command
+can price in full against current BiS — `map.json`. The timeline is a question about the first and
+was deriving against the second, so it reached **0 of 13** of the derivations the simulation had
+already cached, against **13/13** from the base.
+
+So `batch.json` records `base_payload`, the payload it rolled from, and `cache.read_base_payload`
+answers with it. **A name is a pointer that can dangle; the payload is the thing** — which makes a
+simulation self-contained in the stronger sense (base plus sequence, replayable with every other file
+gone) rather than trading that property away. Measured: a reprice of a fresh 20-roll simulation went
+5.11s → **2.31s**, and 0.55s with the fetched base map deleted.
+
+**The fallback chain is stored payload → `base_map` by name → the run's own payload, and all three
+give the same numbers.** Only the cache-hit rate differs, so a batch written before this is slower
+and not wrong. That is asserted rather than assumed, because a fallback that changed an answer would
+be a much worse thing to have than a slow one. `map.json` is untouched: `fray tasks --map <run>`, the
+map view and the Estimate tab all still read the full synthetic world.
 
 **A batch of several runs is not a map, and the picker must not offer it as one.**
 `cache.resolve_map_path` refuses to guess which run a bare batch name means, so selecting one 404s

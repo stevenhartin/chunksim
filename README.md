@@ -111,6 +111,11 @@ the challenges that chunk made valid, with a breakdown per skill on hover. **Hou
 the time left to finish — a simulation prices every roll as it goes, which costs it nothing, since
 the work of deriving each state is what a roll already is.
 
+A simulation is stored as the map it started from plus the sequence of rolls, so a run can be
+replayed and re-costed even if the map it came from has since been refetched or removed — and because
+the sequence is measured against that fixed starting point, re-costing it reuses everything the
+simulation already worked out.
+
 A bar is what that roll *cost you*, assuming everything before it is already done — so most are
 empty, because on a mature map a new chunk usually adds no work at all, and none are negative. A
 chunk that merely opens a cheaper route to something you already needed has added nothing: the saving
