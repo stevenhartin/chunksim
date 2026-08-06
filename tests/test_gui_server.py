@@ -845,10 +845,17 @@ def _derived_ctx(
     monkeypatch.setattr(
         "fray_claude.gui.derivation.cache.file_digest", lambda path: "digest"
     )
+    # **Under `tmp_path`, not bare names.** These patch attributes on the
+    # *shared* `cache` module, so anything that later writes through
+    # `blob_path` writes wherever this points - and `Path("y")` is relative,
+    # which put a stray file in the repo root the first time a test using
+    # this fixture wrote a blob for real.
     monkeypatch.setattr(
-        "fray_claude.gui.derivation.cache.chunkinfo_source", lambda o, r: Path("x")
+        "fray_claude.gui.derivation.cache.chunkinfo_source", lambda o, r: tmp_path / "x"
     )
-    monkeypatch.setattr("fray_claude.gui.derivation.cache.blob_path", lambda n, r: Path("y"))
+    monkeypatch.setattr(
+        "fray_claude.gui.derivation.cache.blob_path", lambda n, r: tmp_path / f"{n}.json"
+    )
     return Context(root=tmp_path)
 
 
