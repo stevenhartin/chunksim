@@ -1414,6 +1414,39 @@ def handle_request(
                 ]
             )
 
+        if path == "/api/roll":
+            map_id = _first(query, "map")
+            raw = _first(query, "step")
+            if map_id is None or raw is None:
+                return _error(
+                    "missing required parameter 'map' or 'step'", HTTPStatus.BAD_REQUEST
+                )
+            try:
+                index = int(str(raw))
+            except ValueError:
+                return _error(f"step {raw!r} is not a number", HTTPStatus.BAD_REQUEST)
+            steps = _run_steps(map_id, ctx)
+            if not 0 <= index < len(steps):
+                return _error(
+                    f"step {index} is outside this run's 0..{len(steps) - 1}",
+                    HTTPStatus.BAD_REQUEST,
+                )
+            roll = steps[index]
+            # **The names, which `/api/timeline` deliberately leaves out.** One
+            # roll of the real export opened 239 tasks; sending every name for
+            # every step would be most of a megabyte to draw a bar chart with.
+            # This is the same ledger read, asked for one step at a time.
+            return _json(
+                {
+                    **roll.as_dict(),
+                    "tasks_by_skill_names": {
+                        skill: list(names)
+                        for skill, names in sorted(roll.tasks_added.items())
+                        if names
+                    },
+                }
+            )
+
         if path == "/api/timeline":
             map_id = _first(query, "map")
             if map_id is None:

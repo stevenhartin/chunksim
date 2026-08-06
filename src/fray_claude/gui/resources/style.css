@@ -857,6 +857,12 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .tl-zero { stroke: var(--line-strong); stroke-width: 1; }
 .tl-zero-label { fill: var(--dim); font-size: 10px; font-family: var(--mono); }
 
+/* **The bars are drawn over the hit areas, so they must not take the
+   pointer.** Without this, hovering the very thing you are aiming at - a tall
+   green bar - lands on the bar rather than the slot beneath it and no tooltip
+   appears, while the empty background either side works fine. */
+.tl-bar, .tl-at-mark, .tl-zero, .tl-zero-label, .tl-pending { pointer-events: none; }
+
 .tl-bar { fill: var(--gain); }
 .tl-bar.down { fill: var(--loss); }
 /* A step with nothing to show still gets a hit area, so hovering anywhere

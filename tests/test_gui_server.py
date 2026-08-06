@@ -2012,3 +2012,81 @@ def test_the_progress_card_can_stop_a_job() -> None:
     # Stopped is its own colour, not the loss one.
     assert ".progress.stopped" in css
     assert 'job.state === "cancelled"' in js
+
+
+def test_a_bar_does_not_swallow_its_own_hover() -> None:
+    """**The bars are drawn over the hit areas.** Without `pointer-events:
+    none` the tooltip appeared on the empty background either side of a
+    column but not on the column itself - hovering the very thing you are
+    aiming at did nothing."""
+    _, _, css = _resources()
+
+    rule = re.search(r"\.tl-bar[^{]*\{([^}]*pointer-events[^}]*)\}", css)
+    assert rule is not None, "the bars still take the pointer"
+    assert "none" in rule.group(1)
+
+
+def test_the_roll_tooltip_counts_rolls_not_the_whole_world() -> None:
+    """`unlocked_chunks` counts the base map too, so the first roll of a
+    simulation from a 106-chunk map read "106 chunks after this roll" - true,
+    and not what a timeline is about."""
+    _, js, _ = _resources()
+
+    body = re.search(r"function tlTip\(.*?\n\}\n", js, re.DOTALL)
+    assert body is not None
+    assert "chunks rolled so far" in body.group(0)
+    # The expression, not the prose - the comment above it explains why the
+    # old field is wrong and so necessarily names it.
+    assert "row.unlocked_chunks" not in body.group(0)
+
+
+def test_a_roll_serves_the_task_names_a_step_summary_leaves_out(tmp_path: Path) -> None:
+    """**One roll of the real export opened 239 tasks**, so `/api/timeline`
+    carries counts and this carries names - the same ledger read, one step at
+    a time and only when somebody asks to see it."""
+    ctx = Context(root=tmp_path)
+    map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
+
+    payload = _body(_get("/api/roll", ctx, map=map_id, step="1"))
+
+    assert not ctx.derivations.loaded, "reading one roll parsed the export"
+    assert payload["chunk"] == NORTH
+    assert payload["tasks_by_skill_names"] == {"Slayer": [f"task-{NORTH}"]}
+    # The counts still agree with what the timeline said.
+    assert payload["tasks"] == 1
+
+
+def test_a_roll_outside_the_run_is_a_400(tmp_path: Path) -> None:
+    ctx = Context(root=tmp_path)
+    map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
+
+    assert _get("/api/roll", ctx, map=map_id, step="9").status == HTTPStatus.BAD_REQUEST
+    assert _get("/api/roll", ctx, map=map_id, step="x").status == HTTPStatus.BAD_REQUEST
+    assert _get("/api/roll", ctx, map=map_id).status == HTTPStatus.BAD_REQUEST
+
+
+def test_clicking_a_column_frames_the_chunk_and_details_is_separate() -> None:
+    """**They cannot be the same gesture**: a dialog would cover the map it
+    had just framed. Click takes you to the roll - slider, selection, camera -
+    and the breakdown is its own control."""
+    html, js, _ = _resources()
+
+    assert 'id="tl-details"' in html
+    body = re.search(r"async function goToRoll\(step\) \{(.*?)\n\}", js, re.DOTALL)
+    assert body is not None
+    assert "setStep(step)" in body.group(1)
+    assert "selectChunk(" in body.group(1) and "focusChunk(" in body.group(1)
+    # The overlay is opened by the button, not by the column.
+    assert "slot.onclick = () => goToRoll(" in js
+    assert 'el["tl-details"].addEventListener' in js
+
+
+def test_a_deep_link_to_a_run_falls_back_to_its_batch() -> None:
+    """A one-run batch is offered under its bare name, so `?map=t/run-001` is
+    a valid map id with no option to match - and a `<select>` handed one it
+    does not have blanks silently, landing you on whatever was first."""
+    _, js, _ = _resources()
+
+    body = re.search(r"async function loadMaps\(\) \{(.*?)\n\}", js, re.DOTALL)
+    assert body is not None
+    assert '.split("/")[0]' in body.group(1)

@@ -438,12 +438,19 @@ exactly the ones not yet in the picker; blank means `cache.DEFAULT_MAP_ID`, whic
 constant crossing into JavaScript with a test holding the two in agreement.
 
 **All fifteen CLI subcommands are reachable from it.** `GET /api/{maps,view,revision,summary,
-neighbours,chunk,sections,unlock,diff,search,estimate,tasks,tiles,derived,jobs,timeline,reference}` and
-`POST /api/{fetch,simulate,unlock,timeline,refresh,maps/remove,derived/prune,window}`. The panel's tabs are tasks / chunk / find / estimate /
+neighbours,chunk,sections,unlock,diff,search,estimate,tasks,tiles,derived,jobs,timeline,roll,reference}` and
+`POST /api/{fetch,simulate,unlock,timeline,cancel,refresh,maps/remove,derived/prune,window}`. The panel's tabs are tasks / chunk / find / estimate /
 maps, and `?map=&compare=&candidates=1&sections=1&step=&tab=` reproduces a view.
 
 Things worth knowing before changing it:
 
+- **Clicking a roll frames it; a separate control breaks it down.** They cannot be one gesture - a
+  dialog would cover the map it had just framed - so a click moves the slider, selects the rolled
+  chunk and flies the camera to it, and *Details* opens the overlay. That overlay reads
+  `GET /api/roll`, which carries **task names** where `/api/timeline` carries counts: one roll of the
+  real export opened 239 tasks, so every name for every step would be most of a megabyte spent to draw
+  a bar chart. The bars also need `pointer-events: none` — they are painted over their own hit areas,
+  so without it hovering a tall green column did nothing while the empty background either side worked.
 - **A simulation counts rolls and can be stopped, and stopping keeps what it rolled.** `2/3 runs` on a
   3×100 job is three updates across four minutes, so progress is `X/300 rolls` — `simulate_rolls`
   gained `on_roll` beside the `on_state` pricing uses, which also reports the baseline and would start

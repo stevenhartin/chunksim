@@ -103,7 +103,7 @@ for (const id of [
   "chunk-head", "chunk-chips", "chunk-body", "task-chips", "tasks-body",
   "show-done", "estimate-total", "estimate-why", "estimate-body",
   "find-body", "find-form", "find-input", "maps-body", "attribution",
-  "timeline", "tl-title", "tl-chips", "tl-hours", "tl-collapse", "tl-graph",
+  "timeline", "tl-title", "tl-chips", "tl-hours", "tl-details", "tl-collapse", "tl-graph",
   "tl-prev", "tl-slider", "tl-next", "tl-step",
 ]) el[id] = document.getElementById(id);
 
@@ -1408,6 +1408,14 @@ async function loadMaps() {
   el.map.innerHTML = options;
   el.compare.innerHTML = "<option value=''>—</option>" + options;
   el.map.value = BOOT.map || keepMap || maps[0].map_id;
+  /* **A `<select>` silently blanks on a value it has no option for**, and a
+   * one-run batch is offered under its bare name rather than as
+   * `<batch>/run-001` - so `?map=t/run-001` is a perfectly valid map id with
+   * no option to match, and used to land on whatever was first. Fall back to
+   * the batch it names before giving up on the request entirely. */
+  if (!el.map.value && (BOOT.map || keepMap || "").includes("/")) {
+    el.map.value = (BOOT.map || keepMap).split("/")[0];
+  }
   if (!el.map.value) el.map.value = maps[0].map_id;
   el.compare.value = BOOT.compare || keepCompare || "";
   BOOT.map = BOOT.compare = "";
@@ -2843,8 +2851,12 @@ function renderTimeline() {
 
   el["tl-graph"].innerHTML = tlBars(steps, tlSeries, state.step);
   for (const slot of el["tl-graph"].querySelectorAll("[data-step]")) {
-    slot.onclick = () => setStep(Number(slot.dataset.step));
+    slot.onclick = () => goToRoll(Number(slot.dataset.step));
   }
+
+  /* Step 0 is where the run started; it rolled nothing, so it has nothing to
+   * break down. */
+  el["tl-details"].hidden = !at.chunk;
 
   el["tl-slider"].max = String(last);
   el["tl-slider"].value = String(state.step);
@@ -2925,7 +2937,12 @@ function tlTip(row, key) {
     ? skills.map(([skill, n]) => tmpl`<span class="sub">${skill}: ${n}</span>`).join("")
     : tmpl`<span class="sub">No new tasks</span>`;
   if (key !== "hours") {
-    return head + breakdown + tmpl`<span class="hint">${row.unlocked_chunks} chunks after this roll</span>`;
+    /* **The rolls, not the whole world.** `unlocked_chunks` counts the base
+     * map too, so the first roll of a simulation from a 106-chunk map read
+     * "106 chunks after this roll" - true, and not what the timeline is
+     * about. What this roll is one *of* is the run's own progress. */
+    const rolled = row.step === 1 ? "1 chunk rolled so far" : `${row.step} chunks rolled so far`;
+    return head + breakdown + tmpl`<span class="hint">${rolled}</span>`;
   }
   if (row.hours === null || row.hours === undefined) {
     return head + tmpl`<span class="sub">Hours not computed yet</span>`;
@@ -2939,6 +2956,61 @@ function tlTip(row, key) {
   const left = row.total_hours == null ? ""
     : tmpl`<span class="hint">${hours(row.total_hours)} left after this roll</span>`;
   return head + change + left;
+}
+
+/* Clicking a column is "take me to that roll": the slider moves, the chunk it
+ * rolled is selected, and the camera flies to it. The breakdown is a separate
+ * control rather than this same click, because a dialog would cover the map it
+ * had just framed. */
+async function goToRoll(step) {
+  await setStep(step);
+  const at = state.timeline && state.timeline.steps[step];
+  if (at && at.chunk) {
+    await selectChunk(at.chunk);
+    focusChunk(at.chunk);
+  }
+}
+
+/* **The names are not in `/api/timeline`.** One roll of the real export opened
+ * 239 tasks, so every name for every step would be most of a megabyte spent to
+ * draw a bar chart. `/api/roll` is the same ledger read, one step at a time,
+ * and only when somebody asks to see it. */
+async function showRoll(step) {
+  const title = "Roll " + step;
+  openOverlay(title, tmpl`<p class="empty">Reading the ledger…</p>`);
+  let roll;
+  try {
+    roll = await getJSON("/api/roll?map=" + encodeURIComponent(el.map.value) + "&step=" + step);
+  } catch (error) {
+    return openOverlay(title, tmpl`<p class="empty">${error.message}</p>`);
+  }
+  const groups = Object.entries(roll.tasks_by_skill_names || {});
+  let out = tmpl`<dl class="kv">
+    <dt>Chunk</dt><dd><code>${roll.chunk}</code></dd>
+    <dt>Tasks</dt><dd>${roll.tasks}</dd>
+    <dt>Sections</dt><dd>${roll.sections}</dd>
+    <dt>BiS upgrades</dt><dd>${roll.bis_upgrades}</dd></dl>`;
+  if (!groups.length) {
+    out += tmpl`<p class="empty">This roll opened no new tasks.</p>`;
+  }
+  for (const [skill, names] of groups.sort((a, b) => b[1].length - a[1].length)) {
+    out += tmpl`<h3>${skill} <span class="num">${names.length}</span></h3><ul class="list">`;
+    /* Collapsed past a dozen, like every other long list in the panel - a
+     * category with 239 entries is a scroll, not a reading. */
+    out += withMore(names.slice().sort(), "roll:" + skill, 12, (name) =>
+      tmpl`<li><span class="name">${plain(name)}</span></li>`);
+    out += "</ul>";
+  }
+  openOverlay(
+    "Roll " + step + " · " + roll.chunk,
+    out,
+    tmpl`<button id="roll-focus" type="button">Show on map</button>`,
+  );
+  document.getElementById("roll-focus").onclick = () => {
+    closeOverlay();
+    goToRoll(step);
+  };
+  ownsMore("roll", () => showRoll(step));
 }
 
 async function setStep(step) {
@@ -2958,6 +3030,10 @@ el["tl-collapse"].addEventListener("click", () => {
   el["tl-collapse"].setAttribute("aria-expanded", String(!shut));
   el["tl-collapse"].querySelector("use").setAttribute("href", shut ? "#i-up" : "#i-down");
   document.documentElement.style.setProperty("--strip-h", el.timeline.offsetHeight + "px");
+});
+
+el["tl-details"].addEventListener("click", () => {
+  if (state.timeline && state.step) showRoll(state.step);
 });
 
 el["tl-hours"].addEventListener("click", () => {
