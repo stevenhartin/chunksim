@@ -91,6 +91,8 @@ from fray_claude.estimate import estimate, goal_levels, infer_levels
 from fray_claude.heuristics import Heuristics, merge
 from fray_claude.heuristics import load as load_heuristics
 from fray_claude.neighbours import eligible_neighbours
+from fray_claude.scrape import SOURCE as SCRAPE_SOURCE
+from fray_claude.scrape import scrape
 from fray_claude.search import build_world_index, search
 from fray_claude.summary import _mapping, summarise
 from fray_claude.gui.derivation import DerivedState, Derivations, unlocked_of
@@ -468,6 +470,53 @@ def _unlock_preview(state: DerivedState, chunk_id: str, ctx: Context) -> dict[st
         ),
     )
     return delta.as_dict()
+
+
+#: The reference blobs the page cares whether it has, and what to call them.
+#: `tile_version` is deliberately absent: it is refetched on its own whenever
+#: the wiki moves a render, and nobody would press a button for it.
+#: `(blob, label, what to POST to /api/refresh)`. The page is told the third
+#: rather than deriving it, so "which action refreshes this" is answered in
+#: one place instead of in a lookup table on each side.
+_REFERENCE_BLOBS = (
+    (cache.CHUNKINFO_BLOB_NAME, "Chunk data", "chunkinfo"),
+    (cache.WIKI_RATES_BLOB_NAME, "Wiki rates", "heuristics"),
+)
+
+
+def _reference_state(ctx: Context) -> list[dict[str, Any]]:
+    """What reference data is on disk and when it was fetched.
+
+    **Cheap on purpose** - a `stat` and the envelope's own header, not the
+    payload - because the page asks on boot to decide whether anything is
+    missing. Reading the 10MB chunk export to find out whether it exists
+    would be a poor way to answer the question.
+    """
+    out: list[dict[str, Any]] = []
+    for name, label, refresh in _REFERENCE_BLOBS:
+        path = cache.blob_path(name, ctx.root)
+        fetched_at = None
+        if path.is_file():
+            try:
+                # The envelope's `fetched_at` sits in the first few hundred
+                # bytes; `read_blob` would pull the whole export in.
+                head = path.read_text(encoding="utf-8", errors="replace")[:400]
+                marker = '"fetched_at": "'
+                if marker in head:
+                    fetched_at = head.split(marker, 1)[1].split('"', 1)[0]
+            except OSError:  # pragma: no cover - a file we just stat'd
+                fetched_at = None
+        out.append(
+            {
+                "name": name,
+                "label": label,
+                "refresh": refresh,
+                "cached": path.is_file(),
+                "fetched_at": fetched_at,
+                "size": path.stat().st_size if path.is_file() else 0,
+            }
+        )
+    return out
 
 
 def _timeline_stamp(ctx: Context, *, enriched: bool) -> dict[str, Any]:
@@ -999,9 +1048,13 @@ def _refresh_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
             # one is now wrong. Dropping it is cheaper than reasoning about it.
             ctx.derivations.reset()
             return {"refreshed": "chunkinfo", "chunks": len(info.get("chunks", {}))}
-        raise NotImplementedError(
-            "refreshing the wiki rates from here is not wired up yet; run: fray heuristics"
-        )
+
+        # `fray heuristics`, run through the same function so the two cannot
+        # produce different files. Needs the export parsed - it asks the wiki
+        # about the quests and slayer masters *this* export names.
+        result = scrape(ctx.derivations.chunk_info(), timeout=DEFAULT_TIMEOUT, progress=progress)
+        cache.write_blob(cache.WIKI_RATES_BLOB_NAME, result.config, SCRAPE_SOURCE, ctx.root)
+        return {"refreshed": "heuristics", **result.as_dict()}
 
     return {"job": ctx.jobs.submit(f"refresh {what}", work).id}
 
@@ -1170,6 +1223,9 @@ def handle_request(
                     for entry in cache.list_maps(ctx.root, expand_runs=True)
                 ]
             )
+
+        if path == "/api/reference":
+            return _json({"reference": _reference_state(ctx)})
 
         if path == "/api/areas":
             # Static per export - which region is part of which named place

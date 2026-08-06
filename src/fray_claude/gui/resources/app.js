@@ -2293,6 +2293,47 @@ function mapTip(entry) {
   return rows.map(([k, v]) => tmpl`<span class="sub">${k}: ${v}</span>`).join("");
 }
 
+/* **The two things every number in the panel rests on**, and neither is a map:
+ * the 10MB chunk export (what exists at all) and the wiki rates (what anything
+ * takes). They live in the Maps tab because this is where caching is done, and
+ * they are listed with their age rather than hidden behind two anonymous
+ * buttons - "when did I last scrape this" is the question you actually have.
+ *
+ * `refresh` comes from the server rather than a lookup table here: which action
+ * refreshes which blob is one fact and belongs in one place. */
+async function loadReference() {
+  try {
+    return (await getJSON("/api/reference")).reference || [];
+  } catch {
+    return [];
+  }
+}
+
+function renderReference(rows) {
+  const host = document.getElementById("reference");
+  if (!host) return;
+  host.innerHTML = rows.map((row) => {
+    const state = row.cached
+      ? tmpl`<span class="sub">${when(row.fetched_at)} · ${bytes(row.size)}</span>`
+      : tmpl`<span class="sub warn-text">not cached</span>`;
+    const tip = row.name === "wiki_rates"
+      ? tmpl`<b>Wiki rates</b><span class="sub">Quest lengths, money-making guides, slayer assignments and the community sheet. About eighteen requests.</span><span class="hint">Without it every estimate falls back to a default</span>`
+      : tmpl`<b>Chunk data</b><span class="sub">The 10MB chunk export and the tasks map. Everything derived from them is recomputed after.</span>`;
+    return tmpl`<li data-tip="${tip}"><span class="name">${row.label}</span>${raw(state)}
+      <button class="link" data-refresh="${row.refresh}">${row.cached ? "Refresh" : "Fetch"}</button></li>`;
+  }).join("");
+  for (const button of host.querySelectorAll("[data-refresh]")) {
+    button.onclick = () => refreshReference(button.dataset.refresh);
+  }
+}
+
+function refreshReference(what) {
+  const label = what === "heuristics" ? "Fetch wiki rates" : "Refresh chunk data";
+  return runAction(label, "/api/refresh", { what }, async () => {
+    renderReference(await loadReference());
+  });
+}
+
 async function loadMapsPane() {
   const body = el["maps-body"];
   try {
@@ -2308,10 +2349,7 @@ async function loadMapsPane() {
       <button id="do-fetch" type="button"
         data-tip="<b>Fetch a named map</b><span class='sub'>Read it from source-chunk and write it to cache/maps/fetched/. About a second.</span>">Fetch Named Map</button>
     </div>
-    <div class="actions">
-      <button id="do-refresh" type="button"
-        data-tip="Re-download the 10MB chunk export and the tasks map. Everything derived from them is recomputed after.">Refresh Chunk Data</button>
-    </div>
+    <h3>Reference data</h3><ul class="list" id="reference"></ul>
     <h3>Simulate</h3><div class="row">
       <input id="sim-rolls" type="number" min="1" value="5" style="width:7ch" aria-label="Rolls"
         data-tip="Chunks to roll in each run.">
@@ -2358,8 +2396,7 @@ async function loadMapsPane() {
       event.preventDefault();
       doFetch();
     };
-    document.getElementById("do-refresh").onclick = () =>
-      runAction("Refresh chunk data", "/api/refresh", { what: "chunkinfo" });
+    renderReference(await loadReference());
     document.getElementById("do-sim").onclick = () => {
       const rolls = Number(document.getElementById("sim-rolls").value) || 1;
       const runs = Number(document.getElementById("sim-runs").value) || 1;
@@ -2488,7 +2525,10 @@ function summariseReply(reply) {
   if (reply.map && typeof reply.unlocked_chunks === "number") {
     return reply.map + " — " + reply.unlocked_chunks + " unlocked chunks";
   }
-  if (reply.refreshed) return "Refreshed " + reply.refreshed;
+  /* The scrape knows how much it actually found, and "18 requests, 96 of them
+   * 404s" is the difference between a total worth quoting and one that is
+   * mostly defaults. Say it rather than "done". */
+  if (reply.refreshed) return reply.summary || "Refreshed " + reply.refreshed;
   if (Array.isArray(reply.removed)) {
     return reply.removed.length
       ? "Removed " + reply.removed.length + (reply.removed.length === 1 ? " map" : " maps")
@@ -2963,4 +3003,22 @@ function renderAttribution() {
   if (BOOT.sections) el.masks.click();
   showTab(BOOT.tab || "tasks");
   setInterval(poll, 2000);
+  warmReference();
 })();
+
+/* **Fetch the wiki rates once, on open, if they have never been fetched.**
+ * Without them every hour in the Estimate tab falls back to a default and the
+ * total is thousands of hours light - and the panel would say so in small
+ * print while showing a confident-looking number. Eighteen requests is a fair
+ * price for that not being the first impression.
+ *
+ * Only when *missing*, never on a schedule: a re-scrape is a decision, and the
+ * Maps tab has the button for it. The chunk export is deliberately not fetched
+ * here either - at 10MB it is `fray chunkinfo`'s to start, and the panels that
+ * need it already say so when it is absent. */
+async function warmReference() {
+  const rows = await loadReference();
+  renderReference(rows);
+  const rates = rows.find((row) => row.name === "wiki_rates");
+  if (rates && !rates.cached) await refreshReference("heuristics");
+}

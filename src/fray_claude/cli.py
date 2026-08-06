@@ -87,18 +87,12 @@ from typing import Any
 
 from fray_claude.api import (
     DEFAULT_TIMEOUT,
-    TASK_LENGTHS_TAB,
     CHUNKINFO_URL,
     TASKS_MAP_URL,
-    WIKI_API_URL,
     FetchError,
     fetch_chunkinfo,
     fetch_map,
     fetch_tasks_map,
-    fetch_text,
-    fetch_wiki_page_titles,
-    fetch_wiki_pages,
-    slayer_sheet_url,
 )
 from fray_claude.batch import RunResult, run_batch, save_unlock
 from fray_claude.cache import (
@@ -135,15 +129,7 @@ from fray_claude.estimate import (
     goal_levels,
     infer_levels,
 )
-from fray_claude.heuristics import (
-    Heuristics,
-    build_config,
-    disagreements,
-    load,
-    merge,
-    primary_training_tasks,
-    quest_names,
-)
+from fray_claude.heuristics import Heuristics, disagreements, load, merge
 from fray_claude.derived_cache import (
     CacheBehaviour,
     Digests,
@@ -158,22 +144,14 @@ from fray_claude.neighbours import eligible_neighbours
 from fray_claude.other_tasks import CATEGORIES as OTHER_CATEGORIES
 from fray_claude.other_tasks import CategoryTasks, display_name, task_text
 from fray_claude.pipeline import ConvergenceError, Derived, MapState, load_map_state
+from fray_claude.scrape import SOURCE as SCRAPE_SOURCE
+from fray_claude.scrape import scrape
 from fray_claude.search import TYPES, build_world_index, search
 from fray_claude.sections import describe_sections, expand_chunk_areas
 from fray_claude.simulate import simulate_rolls
-from fray_claude.slayer import SheetFormatError, parse_mob_data, parse_task_lengths
 from fray_claude.sources import CATEGORIES as SOURCE_CATEGORIES
 from fray_claude.summary import _mapping, summarise
 from fray_claude.unlock import UnlockDelta, tasks_added_by
-from fray_claude.wiki import (
-    ASSIGNMENTS_PAGE,
-    Assignment,
-    MMG_PREFIX,
-    SUPERIORS_PAGE,
-    mmg_rates,
-    slayer_assignments,
-    superior_pairs,
-)
 
 DEFAULT_MAP = DEFAULT_MAP_ID
 
@@ -263,88 +241,34 @@ def _cmd_chunkinfo(args: argparse.Namespace) -> int:
 def _cmd_heuristics(args: argparse.Namespace) -> int:
     """`fray heuristics`: rebuild the scraped half of the estimator's numbers.
 
-    ~18 requests, run about as often as `fray chunkinfo`. Coverage is printed
-    per section because it is the honest measure of how much of the estimate
-    is real data and how much is a default waiting to be corrected.
+    ~18 requests, run about as often as `fray chunkinfo`. `scrape.py` does the
+    reading - the GUI's *Refresh Rates* runs the same function, so the two
+    cannot drift - and this prints what it found. Coverage is printed per
+    section because it is the honest measure of how much of the estimate is
+    real data and how much is a default waiting to be corrected.
     """
     info = ChunkInfo(read_chunkinfo(override=args.chunkinfo))
+    result = scrape(info, timeout=args.timeout, progress=lambda step: print(f"  {step}"))
+    if result.sheet_error:
+        print(f"slayer sheet     unavailable ({result.sheet_error})", file=sys.stderr)
+    path = write_blob(WIKI_RATES_BLOB_NAME, result.config, SCRAPE_SOURCE)
 
-    quests = sorted(quest_names(info))
-    quest_pages = fetch_wiki_pages(quests, timeout=args.timeout)
-    print(f"quest pages      {len(quest_pages)}/{len(quests)}")
-
-    titles = [t for t in fetch_wiki_page_titles(MMG_PREFIX, timeout=args.timeout) if t != MMG_PREFIX]
-    guides = fetch_wiki_pages(titles, timeout=args.timeout)
-    mmg = {title: rates for title, text in guides.items() if (rates := mmg_rates(text))}
-    print(f"money guides     {len(mmg)}/{len(titles)}")
-
-    # Only four masters have the `/Slayer assignments` subpage; the other six
-    # keep the table on their own page, so both are asked for and whichever
-    # yields rows wins.
-    masters = sorted(_mapping(info.data, "slayerMasterTasks"))
-    pages = fetch_wiki_pages(
-        [f"{m}/{ASSIGNMENTS_PAGE}" for m in masters] + masters, timeout=args.timeout
-    )
-    assignments: dict[str, list[Assignment]] = {}
-    for master in masters:
-        for title in (f"{master}/{ASSIGNMENTS_PAGE}", master):
-            rows = slayer_assignments(pages.get(title, ""))
-            if rows:
-                assignments[master] = rows
-                break
+    for source, (found, asked) in result.sources.items():
+        print(f"{source:<16} {found}/{asked}")
     print(
-        f"assignment pages {len(assignments)}/{len(masters)}"
-        f" ({sum(len(rows) for rows in assignments.values())} rows)"
+        f"{'slayer sheet':<16} {result.counts['slayer tasks']} tasks,"
+        f" {result.counts['task lengths']} with lengths"
     )
-
-    superior_page = fetch_wiki_pages([SUPERIORS_PAGE], timeout=args.timeout)
-    superiors = superior_pairs(superior_page.get(SUPERIORS_PAGE, ""))
-    print(f"superiors        {len(superiors)}")
-
-    try:
-        mob_data = parse_mob_data(fetch_text(slayer_sheet_url(), what="slayer sheet"))
-        lengths = parse_task_lengths(
-            fetch_text(slayer_sheet_url(sheet=TASK_LENGTHS_TAB), what="task lengths")
-        )
-        print(f"slayer sheet     {len(mob_data)} tasks, {len(lengths)} with lengths")
-    except (FetchError, SheetFormatError) as exc:
-        # A third-party document; losing it costs the Slayer bucket, not the
-        # command. Say so rather than writing a config that prices it at zero.
-        print(f"slayer sheet     unavailable ({exc})", file=sys.stderr)
-        mob_data, lengths = {}, {}
-
-    config = build_config(
-        info,
-        quest_pages=quest_pages,
-        mmg_pages=mmg,
-        assignments=assignments,
-        mob_data=mob_data,
-        task_lengths=lengths,
-        superiors=superiors,
-    )
-    path = write_blob(WIKI_RATES_BLOB_NAME, config, WIKI_API_URL)
+    print(f"{'superiors':<16} {result.counts['superiors']}")
 
     print()
-    _report_coverage(info, config)
-    for line in disagreements(config, read_overrides()):
+    for section, (found, total) in result.coverage.items():
+        share = f"{found / total:.0%} from the wiki" if total else "nothing to price"
+        print(f"{section:<9} {found:>5}/{total:<5} ({share})")
+    for line in disagreements(result.config, read_overrides()):
         print(f"  overridden: {line}")
     print(f"\nwrote {path} ({path.stat().st_size:,} bytes)")
     return 0
-
-
-def _report_coverage(info: ChunkInfo, config: dict[str, Any]) -> None:
-    """What the scrape found, against what the export has to price."""
-    totals = {
-        "quests": len(quest_names(info)),
-        "monsters": len(info.drops),
-        "training": len(primary_training_tasks(info)),
-    }
-    for section, total in totals.items():
-        found = len(config.get(section) or {})
-        share = f"{found / total:.0%} from the wiki" if total else "nothing to price"
-        print(f"{section:<9} {found:>5}/{total:<5} ({share})")
-    priced = sum(len(tasks) for tasks in (config.get("slayer") or {}).values())
-    print(f"{'slayer':<9} {priced:>5}       master/task pairs priced")
 
 
 def _digests(args: argparse.Namespace) -> Digests:

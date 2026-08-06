@@ -98,7 +98,7 @@ collection-log entries read *Barrows Chests / dharok's greataxe* rather than the
 `(Barrows Chests) Obtain a ~|dharok's greataxe|~`. **Estimate** is the hours as a donut you hover for
 the figure, then the same buckets again as lists of what is actually in them. **Find** searches the
 whole world as you type, puts what you can reach first, and fits the camera around every place a
-thing comes from. **Maps** lists what is cached, with the actions that make and remove it.
+thing comes from. **Maps** lists what is cached, with the actions that make and remove it — including the two things every number rests on, the chunk export and the wiki rates, each with the date it was last fetched. The rates are scraped automatically the first time you open the GUI without them, since otherwise every hour in **Estimate** is a fallback default.
 
 A simulated run gets a **timeline**: a strip across the bottom with a slider that steps through the
 rolls, redrawing the world after each one. `fray simulate` has always written every roll down and

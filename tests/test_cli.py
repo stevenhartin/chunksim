@@ -1651,16 +1651,16 @@ def _patch_wiki_sources(
     """Stand in for every network source `fray heuristics` reaches."""
     pages = {**(quest_pages or {}), **(guides or {})}
     monkeypatch.setattr(
-        "fray_claude.cli.fetch_wiki_pages", lambda titles, timeout=DEFAULT_TIMEOUT: {
+        "fray_claude.scrape.fetch_wiki_pages", lambda titles, timeout=DEFAULT_TIMEOUT: {
             title: pages[title] for title in titles if title in pages
         }
     )
     monkeypatch.setattr(
-        "fray_claude.cli.fetch_wiki_page_titles",
+        "fray_claude.scrape.fetch_wiki_page_titles",
         lambda prefix, timeout=DEFAULT_TIMEOUT: sorted(guides or {}),
     )
     monkeypatch.setattr(
-        "fray_claude.cli.fetch_text", lambda url, timeout=DEFAULT_TIMEOUT, what="": sheet
+        "fray_claude.scrape.fetch_text", lambda url, timeout=DEFAULT_TIMEOUT, what="": sheet
     )
 
 
@@ -1703,7 +1703,7 @@ def test_heuristics_survives_the_slayer_sheet_being_unavailable(
     _cache_map_and_chunkinfo(monkeypatch, {"chunks": {"unlocked": {}}}, {})
     _patch_wiki_sources(monkeypatch)
     monkeypatch.setattr(
-        "fray_claude.cli.fetch_text",
+        "fray_claude.scrape.fetch_text",
         lambda url, timeout=DEFAULT_TIMEOUT, what="": (_ for _ in ()).throw(
             FetchError("HTTP 404 fetching slayer sheet")
         ),

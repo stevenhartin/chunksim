@@ -8,7 +8,7 @@ fray-claude is a CLI that reads state from the source-chunk web app, caches it l
 offline operations on that cache. source-chunk is upstream and read-only from here.
 
 **Two apps, one distribution.** `fray` is the CLI; `fray-gui` is a local server plus a browser
-front-end that draws the world map — see the GUI paragraph below Commands. The 29 modules beside
+front-end that draws the world map — see the GUI paragraph below Commands. The 30 modules beside
 `cli.py` are the library both use, which is why there is no separate `core/` package and no second
 distribution: the layering already exists, and three pyprojects would buy independent versioning
 nobody needs.
@@ -121,6 +121,7 @@ Five things that cut across modules — the first three because each has already
 | `api.py` | The network. `FetchError`. An unknown map is HTTP 200 + bare `null`, never a 404. Four hosts: Firebase, upstream's `gh-pages`, the OSRS wiki (which **requires** a `User-Agent`) and one published Google Sheet. **The map tiles are a fifth host it never calls** — `MAP_TILE_URL` is a template the browser uses; see the GUI paragraph. |
 | `wiki.py` | Wikitext template parsing, plus `map_tile_version` over the map page's rendered *HTML*. Pure. Quest length is in `{{Quest details}}`, **not** `{{Infobox Quest}}` — the tempting wrong template has no `length` and so returns `None` for every quest without erroring. |
 | `experience.py` | The exact 1–99 XP curve, closed-form. **Not a heuristic and not overridable** — that separation from `heuristics.py` is the point of the module. |
+| `scrape.py` | The ~18 requests that build the scraped layer, and the coverage it reports. **Both apps run it** — `fray heuristics` and the GUI's Maps tab — so the two cannot write different files. Decides no rate; `heuristics.py` does that. |
 | `heuristics.py` | Every hand-correctable number, and the `defaults < scraped < overrides` merge. Owns the joins and their `exact`/`contained` provenance; **no fuzzy tier**, by measurement — read the docstring before adding one back. |
 | `slayer.py` | Slayer's rate, which is a *distribution* not a chosen method: a time-weighted mean over what a master assigns. Also owns `superior_rolls_per_hour` — the shared `SuperiorDropTable+` is one pool per master, not one per superior. **Masters are gated on their NPC being reachable** — without that it quoted Duradel on a map holding none of him. Reports `coverage`, because renormalising over reachable tasks flatters a sparse map. |
 | `estimate.py` | The four `plan.md` buckets over the **active** set. **Costs the unique *item*, not the task** — one whip answers three tasks — and **clamps per source**, since items off one monster are earned in parallel. Owns the item walk, its bounded `Output` recursion, the `unpriced` list, and **three gates** — monster reachable, slayer task assignable, master reachable. Read the docstring before pricing anything off `WorldIndex`, which spans the whole world. |
@@ -428,12 +429,20 @@ exactly the ones not yet in the picker; blank means `cache.DEFAULT_MAP_ID`, whic
 constant crossing into JavaScript with a test holding the two in agreement.
 
 **All fifteen CLI subcommands are reachable from it.** `GET /api/{maps,view,revision,summary,
-neighbours,chunk,sections,unlock,diff,search,estimate,tasks,tiles,derived,jobs,timeline}` and
+neighbours,chunk,sections,unlock,diff,search,estimate,tasks,tiles,derived,jobs,timeline,reference}` and
 `POST /api/{fetch,simulate,unlock,timeline,refresh,maps/remove,derived/prune,window}`. The panel's tabs are tasks / chunk / find / estimate /
 maps, and `?map=&compare=&candidates=1&sections=1&step=&tab=` reproduces a view.
 
 Things worth knowing before changing it:
 
+- **The wiki rates are fetched on open when they have never been fetched, and only then.** Without
+  them every hour in the Estimate tab falls back to a default and the total is thousands of hours
+  light — the panel would say so in small print beside a confident-looking number, which is a poor
+  first impression to buy for eighteen requests. `warmReference` fires once per page load and only on
+  *absent*; a re-scrape is a decision and the Maps tab has the button. **The 10MB chunk export is
+  deliberately not fetched this way** — that is `fray chunkinfo`'s to start. `GET /api/reference` is
+  what the page asks: a `stat` and the envelope's first few hundred bytes, so finding out whether the
+  export exists never reads it.
 - **A request is milliseconds, so nothing is cached.** Rendering needs only `chunks.unlocked` — a
   chunk's square is fixed by its id — so there is no `ChunkInfo` parse and no `derive`. Every
   request re-reads the map file, which is what makes a `fray fetch` in another terminal appear in

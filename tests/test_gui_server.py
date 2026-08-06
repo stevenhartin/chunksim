@@ -1843,3 +1843,67 @@ def test_a_timeline_written_under_the_old_meaning_is_refused(
 
     assert payload["has_hours"] is False
     assert all(row["hours"] is None for row in payload["steps"])
+
+
+def test_reference_state_is_cheap_and_says_what_is_missing(tmp_path: Path) -> None:
+    """**The page asks this on boot**, so it must not read the 10MB export to
+    find out whether the export exists. A `stat` and the envelope's first few
+    hundred bytes answer it."""
+    ctx = Context(root=tmp_path)
+    cache.write_blob(cache.CHUNKINFO_BLOB_NAME, {"chunks": {}}, "test", tmp_path)
+
+    rows = _body(_get("/api/reference", ctx))["reference"]
+
+    assert not ctx.derivations.loaded, "reading the reference state parsed the export"
+    by_name = {row["name"]: row for row in rows}
+    assert by_name[cache.CHUNKINFO_BLOB_NAME]["cached"] is True
+    assert by_name[cache.CHUNKINFO_BLOB_NAME]["fetched_at"]
+    assert by_name[cache.WIKI_RATES_BLOB_NAME]["cached"] is False
+    # Which action refreshes which blob is answered here, not in the page.
+    assert by_name[cache.WIKI_RATES_BLOB_NAME]["refresh"] == "heuristics"
+    assert by_name[cache.CHUNKINFO_BLOB_NAME]["refresh"] == "chunkinfo"
+
+
+def test_refreshing_the_rates_runs_the_same_scrape_the_cli_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**One scraper, two callers.** `fray heuristics` and this button must
+    write the same file; an eighteen-step sequence kept in two places would
+    not stay the same for long. So this asserts the wiring - that the button
+    reaches `scrape.scrape` - rather than re-testing the scrape."""
+    ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
+    ctx = Context(root=tmp_path, check_origin=False, derivations=ctx.derivations)
+    from fray_claude.scrape import ScrapeResult
+
+    monkeypatch.setattr(
+        "fray_claude.gui.server.scrape",
+        lambda info, timeout=0.0, progress=None: ScrapeResult(
+            config={"quests": {"Cook's Assistant": 5}},
+            coverage={"quests": (1, 1)},
+            sources={"quest pages": (1, 1)},
+        ),
+    )
+
+    job = _wait(ctx, _body(_post("/api/refresh", ctx, {"what": "heuristics"}))["job"])
+
+    assert job["state"] == "done", job.get("error")
+    assert job["result"]["refreshed"] == "heuristics"
+    # Read off disk, not through `cache.read_blob`: `_derived_ctx` patches that
+    # on the shared module, so it would answer with the fixture's stub.
+    written = json.loads(cache.blob_path(cache.WIKI_RATES_BLOB_NAME, tmp_path).read_text())
+    assert written["data"] == {"quests": {"Cook's Assistant": 5}}
+
+
+def test_the_page_fetches_the_rates_once_when_they_are_missing() -> None:
+    """**Without them every hour in the Estimate tab is a default**, and the
+    panel would say so in small print beside a confident-looking number.
+    Eighteen requests is a fair price for that not being the first
+    impression - but only when missing, never on a schedule."""
+    _, js, _ = _resources()
+
+    body = re.search(r"async function warmReference\(\) \{(.*?)\n\}", js, re.DOTALL)
+    assert body is not None
+    assert "!rates.cached" in body.group(1), "it must only fire when they are absent"
+    # The 10MB export is deliberately not fetched on open.
+    assert "chunkinfo" not in body.group(1)
+    assert "warmReference();" in js
