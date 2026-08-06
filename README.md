@@ -100,13 +100,28 @@ the figure, then the same buckets again as lists of what is actually in them. **
 whole world as you type, puts what you can reach first, and fits the camera around every place a
 thing comes from. **Maps** lists what is cached, with the actions that make and remove it.
 
+A simulated run gets a **timeline**: a strip across the bottom with a slider that steps through the
+rolls, redrawing the world after each one. `fray simulate` has always written every roll down and
+nothing ever read it back, so a simulation could tell you where you ended up and not what each roll
+bought you. A run carries its own past, so stepping costs nothing — drag the slider and the map
+follows.
+
+Above it, a bar per roll. **Tasks** is free and immediate: the challenges that chunk made valid, with
+a breakdown per skill on hover. **Hours** is the change in the time left to finish, and it has to be
+computed — press *Compute hours* once and it is stored beside the run for good. Be warned that most
+bars are empty and some point downwards: on a mature map a new chunk usually adds no work at all, and
+occasionally it *saves* you some by opening a cheaper route to something you already needed. That is
+the estimate telling the truth, not the graph failing.
+
+`?map=…&step=4` deep-links a particular roll.
+
 It re-reads the cache as it goes, so a `fray fetch` or `fray simulate` in another terminal appears
 in the browser a couple of seconds later. You can also drive both from the page itself. **Fetch
 Named Map** takes an id rather than the map on screen — every source-chunk map is a public read, so
 you can pull down one you have never cached, or a friend's; leaving the box empty fetches `fray`.
 **Roll** simulates N chunks, saves each run as a cached map and opens the result as a comparison.
 
-`?map=…&compare=…&candidates=1&sections=1&tab=estimate` reproduces a view, so a particular question
+`?map=…&compare=…&candidates=1&sections=1&step=4&tab=estimate` reproduces a view, so a particular question
 is shareable and a screenshot is reproducible.
 
 It remembers the size and position you left the window at. Chrome will not do that for a page whose

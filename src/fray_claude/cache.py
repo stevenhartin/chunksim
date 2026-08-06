@@ -178,6 +178,10 @@ MAP_FILE_NAME = "map.json"
 ROLLS_FILE_NAME = "rolls.json"
 RUN_META_FILE_NAME = "run.json"
 BATCH_META_FILE_NAME = "batch.json"
+#: `timeline.py`'s hours series, once something has paid to compute it. The
+#: one *derived* file in a run directory - see `write_timeline` for why it is
+#: there rather than in `cache/derived/`.
+TIMELINE_FILE_NAME = "timeline.json"
 RUN_PREFIX = "run-"
 
 #: A batch name: no separators, no `..`, nothing the shell or `Path` would
@@ -676,6 +680,54 @@ def read_batch(name: str, root: Path | None = None, *, kind: str = SIMULATED) ->
 def read_sim_batch(name: str, root: Path | None = None) -> dict[str, Any]:
     """`read_batch` for the simulated kind, which is what every caller wants."""
     return read_batch(name, root, kind=SIMULATED)
+
+
+def read_rolls(map_id: str, root: Path | None = None) -> list[dict[str, Any]]:
+    """One run's per-roll ledger, in the order `simulate.py` wrote it.
+
+    Every computed map has one and no fetched map does, which is exactly the
+    test for "can this be stepped through" - so `CacheMissError` here means
+    "not a run", not "something is broken", and `fray-gui` reads it that way.
+
+    Resolved off the *envelope's* path rather than by rebuilding the
+    directory from the kind, so it follows `resolve_map_path`'s rules for
+    free: a bare one-run batch name, an explicit `<batch>/run-00N`, and the
+    kind search across `simulated` and `unlocked` alike.
+    """
+    directory = resolve_map_path(map_id, root).parent
+    rolls = _read_json_object(directory / ROLLS_FILE_NAME).get("rolls")
+    if not isinstance(rolls, list):
+        raise CacheMissError(f"{map_id!r} has no roll ledger")
+    return [entry for entry in rolls if isinstance(entry, dict)]
+
+
+def timeline_path(map_id: str, root: Path | None = None) -> Path:
+    """Where one run's computed timeline hours live: beside its ledger."""
+    return resolve_map_path(map_id, root).parent / TIMELINE_FILE_NAME
+
+
+def read_timeline(map_id: str, root: Path | None = None) -> dict[str, Any]:
+    """One run's cached hours series, or `CacheMissError` if nobody computed it.
+
+    **The caller must check `stamp` before believing the numbers.** This does
+    not, because it has no way to: the digests that date the answer come from
+    the export and the rates, and this module reads neither.
+    """
+    return _read_json_object(timeline_path(map_id, root))
+
+
+def write_timeline(map_id: str, payload: dict[str, Any], root: Path | None = None) -> Path:
+    """Store one run's hours series beside the ledger it belongs to.
+
+    **A derived artefact filed with its inputs**, which is a thing this
+    layout otherwise avoids - `cache/derived/` exists precisely so computed
+    answers do not sit among the things they were computed from. It earns the
+    exception by being per-run rather than content-keyed: it answers "this
+    run's timeline" and there is exactly one, so the run directory is the
+    only place it could be looked up without an index. `maps rm` takes the
+    directory, so it cannot outlive what it describes.
+    """
+    return _atomic_write_json(timeline_path(map_id, root), payload)
 
 
 def _read_run_meta(directory: Path) -> dict[str, Any]:

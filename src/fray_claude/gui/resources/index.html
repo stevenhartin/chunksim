@@ -35,6 +35,9 @@
     <g id="i-layers"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></g>
     <g id="i-down"><path d="m6 9 6 6 6-6"/></g>
     <g id="i-up"><path d="m6 15 6-6 6 6"/></g>
+    <g id="i-prev"><path d="m15 6-6 6 6 6"/></g>
+    <g id="i-next"><path d="m9 6 6 6-6 6"/></g>
+    <g id="i-clock"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></g>
   </defs>
 </svg>
 
@@ -136,6 +139,40 @@
 </div>
 
 <div class="legend" id="legend"></div>
+
+<!-- A simulated run's own history. Absent for every other kind of map, since
+     a fetched one has no sequence to step through: the page asks
+     /api/timeline and a 404 is the honest "nothing to show" rather than an
+     error worth a toast. -->
+<div class="timeline" id="timeline" hidden>
+  <div class="tl-head">
+    <span class="tl-title" id="tl-title"></span>
+    <div class="chips" id="tl-chips"></div>
+    <button id="tl-hours" type="button"
+            data-tip="&lt;b&gt;Cost every step&lt;/b&gt;&lt;span class='sub'&gt;Derives and prices the world after each roll, then stores the answer beside the run.&lt;/span&gt;&lt;span class='hint'&gt;Slow once, instant after&lt;/span&gt;">
+      <svg class="icon" viewBox="0 0 24 24"><use href="#i-clock"/></svg>Compute hours
+    </button>
+    <span class="spacer"></span>
+    <button id="tl-collapse" class="icon-btn" type="button" aria-expanded="true"
+            data-tip="&lt;b&gt;Collapse&lt;/b&gt;&lt;span class='sub'&gt;Keep the slider, hide the graph.&lt;/span&gt;">
+      <svg class="icon" viewBox="0 0 24 24"><use href="#i-down"/></svg>
+    </button>
+  </div>
+  <div class="tl-graph" id="tl-graph"></div>
+  <div class="tl-scrub">
+    <button id="tl-prev" class="icon-btn" type="button" aria-label="Previous roll"
+            data-tip="&lt;b&gt;Back one roll&lt;/b&gt;&lt;span class='hint'&gt;&amp;larr;&lt;/span&gt;">
+      <svg class="icon" viewBox="0 0 24 24"><use href="#i-prev"/></svg>
+    </button>
+    <input id="tl-slider" class="tl-slider" type="range" min="0" max="0" value="0" step="1"
+           aria-label="Roll to show">
+    <button id="tl-next" class="icon-btn" type="button" aria-label="Next roll"
+            data-tip="&lt;b&gt;Forward one roll&lt;/b&gt;&lt;span class='hint'&gt;&amp;rarr;&lt;/span&gt;">
+      <svg class="icon" viewBox="0 0 24 24"><use href="#i-next"/></svg>
+    </button>
+    <span class="tl-step" id="tl-step"></span>
+  </div>
+</div>
 
 <!-- The tiles are the OSRS wiki's, CC BY-NC-SA 3.0, loaded straight from their
      CDN by the browser. Attribution is what that licence asks for and this is

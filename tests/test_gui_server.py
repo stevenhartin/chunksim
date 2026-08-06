@@ -1403,3 +1403,252 @@ def test_the_panel_offers_both_halves_of_the_unlock(tmp_path: Path) -> None:
     assert body is not None
     assert 'getElementById("unlock-name")' in body.group(0)
     assert '"/api/unlock",' in body.group(0)
+
+
+def _write_run(root: Path, batch: str, unlocked: list[str], rolls: list[str]) -> str:
+    """A one-run computed batch: the payload it ended on, and how it got there.
+
+    `unlocked` is the *final* set, `rolls` what the run added - which is the
+    pair a timeline replays. Deliberately does not write the base map, since
+    a run replaying without one is the property under test.
+    """
+    directory = cache.claim_batch(batch, root, kind=cache.SIMULATED)
+    run = cache.run_dir(directory, 1)
+    cache.write_sim_run(
+        run,
+        map_id=f"{directory.name}/{run.name}",
+        data={"chunks": {"unlocked": {chunk: chunk for chunk in unlocked}}},
+        simulation={"run": run.name, "batch": directory.name, "rolls": list(rolls)},
+        ledger=[
+            {
+                "order": index,
+                "chunk_id": chunk,
+                "new_sections": {chunk: {"0": True}},
+                "new_tasks": {"Slayer": {f"task-{chunk}": {}}},
+                "new_unsupported": [],
+                "bis_upgrades": {},
+            }
+            for index, chunk in enumerate(rolls, start=1)
+        ],
+    )
+    return f"{directory.name}/{run.name}"
+
+
+def test_a_timeline_replays_a_run_without_parsing_the_export(tmp_path: Path) -> None:
+    """**The property that makes the slider usable.**
+
+    Dragging it refetches a view per step, so a step that cost a 10MB parse
+    or a `derive` would stutter. The ledger and the saved payload are the
+    whole input - and the base map is deliberately absent here, because a run
+    carries its own past.
+    """
+    ctx = Context(root=tmp_path)
+    map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH, "12852"], [NORTH, "12852"])
+
+    payload = _body(_get("/api/timeline", ctx, map=map_id))
+
+    assert not ctx.derivations.loaded, "the timeline parsed the export"
+    assert [row["step"] for row in payload["steps"]] == [0, 1, 2]
+    assert [row["chunk"] for row in payload["steps"]] == [None, NORTH, "12852"]
+    assert [row["unlocked_chunks"] for row in payload["steps"]] == [1, 2, 3]
+    assert [row["tasks"] for row in payload["steps"]] == [0, 1, 1]
+    # Nobody has paid for the hours, and that is not the same as zero hours.
+    assert payload["has_hours"] is False
+    assert all(row["hours"] is None for row in payload["steps"])
+
+
+def test_a_view_can_be_rewound_to_a_step(tmp_path: Path) -> None:
+    """Everything rolled so far is `added`, so the growth accumulates green
+    against the world the run started from."""
+    ctx = Context(root=tmp_path)
+    map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH, "12852"], [NORTH, "12852"])
+
+    at_zero = _body(_get("/api/view", ctx, map=map_id, step="0"))
+    at_one = _body(_get("/api/view", ctx, map=map_id, step="1"))
+
+    assert not ctx.derivations.loaded
+    assert at_zero["counts"] == {"unlocked": 1, "added": 0, "removed": 0, "skipped": 0}
+    assert at_one["counts"]["added"] == 1
+    assert {cell["chunk_id"] for cell in at_one["cells"]} == {LUMBRIDGE, NORTH}
+    assert at_one["step"] == 1
+
+
+def test_a_step_outside_the_run_is_a_400_not_a_guess(tmp_path: Path) -> None:
+    ctx = Context(root=tmp_path)
+    map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
+
+    assert _get("/api/view", ctx, map=map_id, step="9").status == HTTPStatus.BAD_REQUEST
+    assert _get("/api/view", ctx, map=map_id, step="-1").status == HTTPStatus.BAD_REQUEST
+    assert _get("/api/view", ctx, map=map_id, step="soon").status == HTTPStatus.BAD_REQUEST
+
+
+def test_a_fetched_map_has_no_timeline(tmp_path: Path) -> None:
+    """No ledger, so nothing to step through - and that is the test the page
+    uses to decide whether the strip appears at all."""
+    ctx = Context(root=tmp_path)
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+
+    assert _get("/api/timeline", ctx, map="fray").status == HTTPStatus.NOT_FOUND
+    # A plain view of it is unaffected.
+    assert _get("/api/view", ctx, map="fray").status == HTTPStatus.OK
+
+
+def test_stored_hours_are_served_and_a_moved_world_discards_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**A stamp mismatch reads as absent, not as an error.**
+
+    The numbers are recomputable, so offering to recompute beats refusing to
+    draw. The `dps` flag is part of the stamp because installing the extra
+    changes every figure - 3,969h against 2,816h on the real map - which is a
+    different answer, not a staler one.
+    """
+    ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
+    map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
+    from fray_claude.gui.server import _timeline_stamp
+
+    stamp = _timeline_stamp(ctx)
+    cache.write_timeline(map_id, {"stamp": stamp, "totals": [10.0, 12.5]}, tmp_path)
+
+    fresh = _body(_get("/api/timeline", ctx, map=map_id))
+    assert fresh["has_hours"] is True
+    assert [row["hours"] for row in fresh["steps"]] == [None, 2.5]
+    assert [row["total_hours"] for row in fresh["steps"]] == [10.0, 12.5]
+
+    cache.write_timeline(
+        map_id, {"stamp": {**stamp, "dps": not stamp["dps"]}, "totals": [10.0, 12.5]}, tmp_path
+    )
+    stale = _body(_get("/api/timeline", ctx, map=map_id))
+
+    assert stale["has_hours"] is False
+    assert all(row["hours"] is None for row in stale["steps"])
+
+
+def test_a_totals_list_that_does_not_fit_the_run_is_ignored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A run re-rolled under the same name has a different number of steps.
+    Drawing the old numbers against the new chunks would be silently wrong."""
+    ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
+    map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
+    from fray_claude.gui.server import _timeline_stamp
+
+    cache.write_timeline(
+        map_id, {"stamp": _timeline_stamp(ctx), "totals": [1.0, 2.0, 3.0, 4.0]}, tmp_path
+    )
+
+    assert _body(_get("/api/timeline", ctx, map=map_id))["has_hours"] is False
+
+
+def test_a_timeline_post_without_a_map_is_a_400(tmp_path: Path) -> None:
+    ctx = Context(root=tmp_path, check_origin=False)
+    assert _post("/api/timeline", ctx, {}).status == HTTPStatus.BAD_REQUEST
+    assert _post("/api/timeline", ctx, {"map": "nope"}).status == HTTPStatus.NOT_FOUND
+
+
+def test_the_strip_appears_only_for_a_run() -> None:
+    """The page asks `/api/timeline` and shows the strip on a 200.
+
+    A fetched map 404s, which is the honest answer - there is no sequence -
+    and the strip has to treat that as "nothing to show" rather than as an
+    error, or every fetched map gets a red toast.
+    """
+    _, js, css = _resources()
+
+    assert "/api/timeline" in js
+    assert ".timeline" in css
+    body = re.search(r"async function loadTimeline\(.*?\n\}\n", js, re.DOTALL)
+    assert body is not None
+    assert "catch" in body.group(0), "a map with no ledger must not surface as an error"
+
+
+def test_the_bottom_edge_is_shared_rather_than_stacked() -> None:
+    """**The attribution must not end up behind the timeline strip.**
+
+    CC BY-NC-SA asks for the credit to be visible, so "it is under there
+    somewhere" is not good enough. `--strip-h` is what the bottom-anchored
+    elements clear, and it is 0 whenever the strip is absent - so there is one
+    rule rather than one per state. The legend moved to the top to make room,
+    which is the other half of the same decision.
+    """
+    _, js, css = _resources()
+
+    attribution = re.search(r"\.attribution \{(.*?)\}", css, re.DOTALL)
+    assert attribution is not None
+    assert "var(--strip-h)" in attribution.group(1), "the attribution ignores the strip"
+
+    legend = re.search(r"\.legend \{(.*?)\}", css, re.DOTALL)
+    assert legend is not None
+    assert "top:" in legend.group(1) and "bottom:" not in legend.group(1)
+
+    # The page is what knows how tall the strip actually is.
+    assert '--strip-h' in js
+
+
+def test_a_step_and_a_comparison_are_exclusive() -> None:
+    """Two maps and a rewind would need a third colour for "gained by this
+    roll but lost against the other side", which is nobody's question. The
+    step wins in the query, and the strip hides itself while comparing."""
+    _, js, _ = _resources()
+
+    query = re.search(r"function mapQuery\(\) \{(.*?)\n\}", js, re.DOTALL)
+    assert query is not None
+    assert 'params.set("step"' in query.group(1)
+    assert "else if (el.compare.value)" in query.group(1)
+
+    load = re.search(r"async function loadTimeline\(\) \{(.*?)\n\}", js, re.DOTALL)
+    assert load is not None
+    assert "el.compare.value" in load.group(1)
+
+
+def test_switching_map_forgets_the_step() -> None:
+    """A step index belongs to one run. Carried across, it rewinds the new map
+    to a roll it never had - and the counts quietly disagree with the slider."""
+    _, js, _ = _resources()
+
+    handler = re.search(
+        r'el\.map\.addEventListener\("change".*?\n\}\);', js, re.DOTALL
+    )
+    assert handler is not None
+    assert "state.step = null" in handler.group(0)
+    assert "state.timeline = null" in handler.group(0)
+
+
+def test_an_uncomputed_hours_series_is_not_drawn_as_zero() -> None:
+    """**"Not computed" and "added no work" are different answers**, and both
+    are common - eight of ten steps of a real run add exactly 0.0h. Drawing
+    them the same would make a graph nobody could read."""
+    _, js, _ = _resources()
+
+    bars = re.search(r"function tlBars\(.*?\n\}\n", js, re.DOTALL)
+    assert bars is not None
+    # A null draws no bar at all; a zero still gets one, at a floor height.
+    assert "value !== null && value !== undefined" in bars.group(0)
+    assert "Math.max(1.5," in bars.group(0)
+    # And the axis says so outright when nothing has been priced.
+    assert "Compute hours" in bars.group(0)
+
+
+def test_the_axis_only_reserves_room_for_negatives_when_there_are_some() -> None:
+    """Tasks are never negative and hours usually are not, so a permanently
+    centred zero line spent half the strip on empty space and halved the
+    resolution of the bars actually there."""
+    _, js, _ = _resources()
+
+    bars = re.search(r"function tlBars\(.*?\n\}\n", js, re.DOTALL)
+    assert bars is not None
+    assert "known.some((v) => v < 0)" in bars.group(0)
+    assert "down ? H * 0.62 : H - FOOT" in bars.group(0)
+
+
+def test_the_legend_keys_off_the_counts_not_the_compared_map() -> None:
+    """**A rewound run has green squares and no compared map.** Gating on the
+    map left the chunks a run had rolled in a colour the legend never
+    explained."""
+    _, js, _ = _resources()
+
+    legend = re.search(r"function renderLegend\(\) \{(.*?)\n\}", js, re.DOTALL)
+    assert legend is not None
+    assert "counts.added" in legend.group(1) and "counts.removed" in legend.group(1)
+    # The expression, not the prose - the comment above it says the word too.
+    assert "view.compare_map_id" not in legend.group(1)

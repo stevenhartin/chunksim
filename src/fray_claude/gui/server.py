@@ -97,6 +97,7 @@ from fray_claude.gui.derivation import DerivedState, Derivations, unlocked_of
 from fray_claude.gui.jobs import JobRegistry, JobState, Progress, as_int
 from fray_claude.gui.panels import task_panel
 from fray_claude.gui.worldmap import MapView, build_view, grid_position
+from fray_claude.timeline import Step, replay, series
 
 #: The port `fray-gui` binds unless told otherwise. Arbitrary, and high enough
 #: to need no privileges.
@@ -210,13 +211,23 @@ def _areas_for(unlocked: Mapping[str, Any], ctx: Context) -> dict[str, str] | No
     return ctx.derivations.chunk_info().area_names()
 
 
-def build_map_view(map_id: str, compare: str | None, ctx: Context) -> MapView:
+def build_map_view(
+    map_id: str, compare: str | None, ctx: Context, step: int | None = None
+) -> MapView:
     """The payload for one map, or for one map against another.
 
     `map_id` is the base and `compare` the other side, so `added` is what
     `compare` has and the base does not. That matches
     `fray diff --map1 <base> --map2 <compare> chunks` exactly.
+
+    `step` rewinds a simulated run to the world after that many rolls. It is
+    **exclusive of `compare`** - a comparison asks about two maps and a step
+    asks about one map's past, and answering both at once would need a third
+    colour for "gained by the roll, lost against the other side".
     """
+    if step is not None:
+        return _step_view(map_id, step, ctx)
+
     base, revision = _unlocked(map_id, ctx)
     if compare is None:
         return build_view(
@@ -238,6 +249,39 @@ def build_map_view(map_id: str, compare: str | None, ctx: Context) -> MapView:
         # both. Summing is enough - it moves whenever either mtime does.
         revision=revision + other_revision,
         areas=_areas_for({**base, **other}, ctx),
+    )
+
+
+def _run_steps(map_id: str, ctx: Context) -> tuple[Step, ...]:
+    """One run replayed, or `CacheMissError` when the map is not a run.
+
+    **No export, no derivation** - the ledger and the saved payload are the
+    whole input, which is what makes dragging the slider a JSON read. See
+    `timeline.py`; a test asserts this route never loads `ChunkInfo`.
+    """
+    envelope = cache.read_cache(map_id, ctx.root)
+    return replay(unlocked_of(envelope), cache.read_rolls(map_id, ctx.root))
+
+
+def _step_view(map_id: str, step: int, ctx: Context) -> MapView:
+    """The world after `step` rolls of a simulated run.
+
+    Everything the run has rolled *so far* is `added`, so the simulation's
+    growth accumulates green against the map it started from and the hull
+    traces the world as it stood. No new drawing concept: `added` already
+    means "this side has it and the base does not", and here the base is the
+    run's own past.
+    """
+    steps = _run_steps(map_id, ctx)
+    if not 0 <= step < len(steps):
+        raise ValueError(f"step {step} is outside this run's 0..{len(steps) - 1}")
+    unlocked = {chunk_id: True for chunk_id in sorted(steps[step].unlocked)}
+    return build_view(
+        map_id=map_id,
+        unlocked=unlocked,
+        added=[s.chunk_id for s in steps[1 : step + 1] if s.chunk_id],
+        revision=cache.resolve_map_path(map_id, ctx.root).stat().st_mtime_ns,
+        areas=_areas_for(unlocked, ctx),
     )
 
 
@@ -423,6 +467,78 @@ def _unlock_preview(state: DerivedState, chunk_id: str, ctx: Context) -> dict[st
         ),
     )
     return delta.as_dict()
+
+
+def _timeline_stamp(ctx: Context) -> dict[str, Any]:
+    """What the cached hours were computed against.
+
+    **The `dps` flag is as load-bearing as the digests.** Installing the extra
+    changes every number the estimator produces - 3,969h against 2,816h on the
+    real map - so a timeline computed without it is not a stale version of one
+    computed with it, it is a different question's answer.
+    """
+    digests = ctx.derivations.digests()
+    return {
+        "chunkinfo": digests.chunkinfo,
+        "tasks_map": digests.tasks_map,
+        "rates": cache.file_digest(cache.blob_path(cache.WIKI_RATES_BLOB_NAME, ctx.root)),
+        "overrides": _overrides_digest(ctx),
+        "dps": dps_bridge.DPS_AVAILABLE,
+    }
+
+
+def _overrides_digest(ctx: Context) -> str:
+    """`heuristics/overrides.json` is checked in and hand-edited, so it moves
+    without any fetch having happened - which is exactly the case a digest of
+    the *fetched* inputs alone would miss."""
+    try:
+        return cache.file_digest(cache.overrides_path(ctx.root))
+    except (OSError, cache.CacheMissError):
+        return ""
+
+
+def _cached_hours(map_id: str, ctx: Context) -> list[float] | None:
+    """A run's stored hours series, if it was computed against this world.
+
+    A stamp mismatch reads as absent rather than as an error: the numbers are
+    recomputable, and offering to recompute is a better answer than refusing
+    to draw anything.
+    """
+    try:
+        stored = cache.read_timeline(map_id, ctx.root)
+    except cache.CacheMissError:
+        return None
+    if stored.get("stamp") != _timeline_stamp(ctx):
+        return None
+    totals = stored.get("totals")
+    if not isinstance(totals, list) or not all(
+        isinstance(v, (int, float)) and not isinstance(v, bool) for v in totals
+    ):
+        return None
+    return [float(v) for v in totals]
+
+
+def _timeline_payload(map_id: str, ctx: Context) -> dict[str, Any]:
+    """The cheap half: every step, and the hours only if someone paid for them.
+
+    **This must not parse the export.** The steps come from the ledger and the
+    saved payload, and the hours come off disk or not at all - which is what
+    lets the slider redraw at JSON-read speed. `_cached_hours` reads a digest
+    stamp, which needs `Derivations.digests()`, and that reads file hashes
+    rather than the file: no `ChunkInfo`, and a test pins it.
+    """
+    steps = _run_steps(map_id, ctx)
+    rows = series(steps, _cached_hours(map_id, ctx))
+    return {
+        "map_id": map_id,
+        "steps": rows,
+        # **Read back off the shaped rows, not off the stored list.** `series`
+        # refuses a totals list that does not fit the run - a run re-rolled
+        # under one name has a different number of steps - so asking the
+        # store instead would let the flag promise hours the graph never got.
+        "has_hours": any(row["total_hours"] is not None for row in rows),
+        "dps": dps_bridge.DPS_AVAILABLE,
+    }
 
 
 def _heuristics_for(info: ChunkInfo, root: Path | None) -> tuple[Heuristics, bool]:
@@ -777,6 +893,64 @@ def _unlock_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     return {"job": ctx.jobs.submit(f"unlock {chunk_id}", work).id}
 
 
+def _timeline_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
+    """Price every step of a run, and store the answer beside its ledger.
+
+    **This is the expensive half and it is a job for one reason:
+    `dps_bridge.enrich`.** Measured on the real export, a step costs ~0.01s to
+    derive and estimate when the derivation is cached - and ~1.3s more when
+    the `dps` extra is installed, because the kill rates are recomputed from
+    the map's own BiS gear. A 50-roll run is therefore a minute or so, and
+    skipping `enrich` is not the fix: the Estimate tab uses it, and a timeline
+    that disagreed with the tab beside it would be worse than a slow one.
+
+    So it is paid once. The result goes to `timeline.json` stamped with what
+    it was computed against, and every later viewing is a file read.
+
+    Derivations come from `cached_derive`, so under the default
+    `--cache-behaviour all` every step is already on disk and the derive cost
+    is zero. Under `extremities` or `none` they are recomputed at ~0.9s each -
+    slower, but not an error, and the progress line says which is happening.
+    """
+    map_id = str(payload.get("map") or "").strip()
+    if not map_id:
+        raise ValueError("missing 'map'")
+    steps = _run_steps(map_id, ctx)
+
+    def work(progress: Progress) -> dict[str, Any]:
+        info = ctx.derivations.chunk_info()
+        state, _ = ctx.derivations.state_of(map_id)
+        digests = ctx.derivations.digests()
+        heuristics, _ = _heuristics_for(info, ctx.root)
+        world = build_world_index(info)
+        overrides = frozenset(_mapping(cache.read_overrides(ctx.root), "monsters"))
+        levels = infer_levels(state)
+
+        totals: list[float] = []
+        for index, step in enumerate(steps):
+            progress(f"{index}/{len(steps) - 1} rolls - {step.chunk_id or 'start'}")
+            derived = cached_derive(
+                state, dict.fromkeys(step.unlocked, True), digests, root=ctx.root
+            )
+            priced = heuristics
+            if dps_bridge.DPS_AVAILABLE:
+                priced, _ = dps_bridge.enrich(
+                    heuristics,
+                    info,
+                    derived,
+                    goal_levels(state, derived, dict(levels)),
+                    pinned_monsters=overrides,
+                )
+            totals.append(sum(estimate(state, derived, world, priced).buckets.values()))
+
+        cache.write_timeline(
+            map_id, {"stamp": _timeline_stamp(ctx), "totals": totals}, ctx.root
+        )
+        return {"map": map_id, "steps": len(totals), "hours": round(totals[-1], 1)}
+
+    return {"job": ctx.jobs.submit(f"timeline {map_id}", work).id}
+
+
 def _refresh_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     """Re-download the reference data `fray chunkinfo` and `fray heuristics` get.
 
@@ -841,6 +1015,7 @@ _ACTIONS: dict[str, Callable[[Mapping[str, Any], Context], dict[str, Any]]] = {
     "/api/fetch": _fetch_job,
     "/api/simulate": _simulate_job,
     "/api/unlock": _unlock_job,
+    "/api/timeline": _timeline_job,
     "/api/refresh": _refresh_job,
     "/api/maps/remove": _remove_job,
     "/api/derived/prune": _prune_job,
@@ -1105,15 +1280,29 @@ def handle_request(
                 ]
             )
 
+        if path == "/api/timeline":
+            map_id = _first(query, "map")
+            if map_id is None:
+                return _error("missing required parameter 'map'", HTTPStatus.BAD_REQUEST)
+            return _json(_timeline_payload(map_id, ctx))
+
         if path in ("/api/view", "/api/revision"):
             map_id = _first(query, "map")
             if map_id is None:
                 return _error("missing required parameter 'map'", HTTPStatus.BAD_REQUEST)
             compare = _first(query, "compare")
-            view = build_map_view(map_id, compare, ctx)
+            raw_step = _first(query, "step")
+            try:
+                step = None if raw_step in (None, "") else int(str(raw_step))
+            except ValueError:
+                return _error(f"step {raw_step!r} is not a number", HTTPStatus.BAD_REQUEST)
+            try:
+                view = build_map_view(map_id, compare, ctx, step)
+            except ValueError as exc:
+                return _error(str(exc), HTTPStatus.BAD_REQUEST)
             if path == "/api/revision":
                 return _json({"revision": view.revision})
-            return _json(view.as_dict())
+            return _json({**view.as_dict(), "step": step})
     except cache.CacheMissError as exc:
         # The message already names the command that would fix it, which is
         # exactly what the browser should show.

@@ -115,6 +115,20 @@ class Derivations:
             self._tasks_map = None
             self._digests = None
 
+    def state_of(self, map_id: str) -> tuple[MapState, dict[str, bool]]:
+        """One map parsed but **not** derived.
+
+        For a caller that will derive several *different* unlocked sets off
+        one `MapState` - the timeline prices every step of a run, and only
+        the last of those is the map's own set. Deriving that one first, just
+        to throw the `Derived` away, is a wasted second on a cold cache.
+
+        Still pays the export parse, so this is not the cheap path: the map
+        view uses `unlocked_of` and touches none of this.
+        """
+        envelope = cache.read_cache(map_id, self._root)
+        return load_map_state(envelope["data"], self.chunk_info(), self._reverse_tasks())
+
     def load(self, map_id: str) -> DerivedState:
         """Parse and derive one map.
 

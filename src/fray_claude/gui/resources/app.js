@@ -86,6 +86,11 @@ const state = {
   showMasks: false,
   showDone: false,
   revision: null,
+  /* A simulated run's replay. `step` is null when the map is not a run or the
+   * slider is at the end - which is the same view as not asking for a step at
+   * all, so the query stays clean for the common case. */
+  timeline: null,
+  step: null,
 };
 
 const el = {};
@@ -98,6 +103,8 @@ for (const id of [
   "chunk-head", "chunk-chips", "chunk-body", "task-chips", "tasks-body",
   "show-done", "estimate-total", "estimate-why", "estimate-body",
   "find-body", "find-form", "find-input", "maps-body", "attribution",
+  "timeline", "tl-title", "tl-chips", "tl-hours", "tl-collapse", "tl-graph",
+  "tl-prev", "tl-slider", "tl-next", "tl-step",
 ]) el[id] = document.getElementById(id);
 
 /* ---- geometry ---------------------------------------------------------- */
@@ -1086,6 +1093,10 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "s") el.masks.click();
   else if (e.key === "p") el["toggle-panel"].click();
   else if (e.key === "Home") el.fit.click();
+  /* Only while a run is on screen, so the arrows stay free for whatever the
+   * map wants them for on every other kind of map. */
+  else if (e.key === "ArrowLeft" && state.timeline) setStep((state.step ?? 0) - 1);
+  else if (e.key === "ArrowRight" && state.timeline) setStep((state.step ?? 0) + 1);
 });
 
 function hoveredChunk(sx, sy) {
@@ -1344,7 +1355,13 @@ async function postJSON(path, payload) {
 
 function mapQuery() {
   const params = new URLSearchParams({ map: el.map.value });
-  if (el.compare.value) params.set("compare", el.compare.value);
+  /* **A step and a comparison are exclusive**, and the step wins because it
+   * is the thing you just dragged. Two maps and a rewind would need a third
+   * colour for "gained by this roll but lost against the other side", which
+   * is a question nobody asked. `renderTimeline` hides the strip while a
+   * comparison is up, so this branch is belt and braces. */
+  if (state.step !== null) params.set("step", String(state.step));
+  else if (el.compare.value) params.set("compare", el.compare.value);
   return params.toString();
 }
 
@@ -1412,9 +1429,12 @@ function renderCounts() {
  * claimed gained and lost, even with nothing to compare against. */
 function renderLegend() {
   const items = [["#6f8f5a", "Unlocked"], ["#7e8288", "Locked"]];
-  if (state.view && state.view.compare_map_id) {
-    items.push(["rgba(60,200,90,.75)", "Gained"], ["rgba(220,60,60,.75)", "Lost"]);
-  }
+  /* **Keyed off the counts, not off `compare_map_id`.** A rewound run has
+   * green squares and no compared map, so gating on the map left eight
+   * chunks on screen in a colour the legend never explained. */
+  const counts = (state.view && state.view.counts) || {};
+  if (counts.added) items.push(["rgba(60,200,90,.75)", state.step === null ? "Gained" : "Rolled"]);
+  if (counts.removed) items.push(["rgba(220,60,60,.75)", "Lost"]);
   if (state.showCandidates && state.candidates.size) items.push([CANDIDATE_STROKE, "Candidate"]);
   if (state.showMasks) {
     items.push([SECTION_REACHED.edge, "Section reached"], [SECTION_LOCKED.edge, "Section locked"]);
@@ -2419,6 +2439,9 @@ function summariseReply(reply) {
     return "Rolled " + reply.batch + " — " + reply.runs
       + (reply.runs === 1 ? " run" : " runs");
   }
+  if (typeof reply.steps === "number" && typeof reply.hours === "number") {
+    return "Priced " + reply.steps + " steps — " + hours(reply.hours) + " at the end";
+  }
   if (reply.map && typeof reply.unlocked_chunks === "number") {
     return reply.map + " — " + reply.unlocked_chunks + " unlocked chunks";
   }
@@ -2540,17 +2563,30 @@ const BOOT = {
   sections: PARAMS.get("sections") === "1",
   plane: PARAMS.get("plane") || "",
   tab: PARAMS.get("tab") || "",
+  step: PARAMS.has("step") ? Number(PARAMS.get("step")) : null,
 };
 
 el.map.addEventListener("change", async () => {
   state.selected = null;
   taskPanel = null;
+  /* Cleared *before* the view loads: a step index belongs to one run, and
+   * carrying it across would rewind the new map to a roll it never had. */
+  state.step = null;
+  state.timeline = null;
   syncBreakdown();
+  await loadTimeline();
   await loadView({ refit: true });
   await loadCandidates();
   await loadSections();
 });
-el.compare.addEventListener("change", () => { syncBreakdown(); loadView({ refit: true }); });
+el.compare.addEventListener("change", async () => {
+  syncBreakdown();
+  /* Comparing is a question about two maps and stepping is a question about
+   * one map's past. Picking a comparison answers the first, so the strip goes
+   * and the rewind with it. */
+  await loadTimeline();
+  await loadView({ refit: true });
+});
 el.fit.addEventListener("click", () => fitToCells());
 
 el.candidates.addEventListener("click", async () => {
@@ -2581,6 +2617,215 @@ el.plane.addEventListener("change", () => {
 el.live.addEventListener("click", () => {
   state.live = !state.live;
   el.live.setAttribute("aria-pressed", String(state.live));
+});
+
+/* ---- timeline ---------------------------------------------------------- */
+
+/* **A simulated run's own history, replayed off its ledger.**
+ *
+ * `simulate` writes every roll to `rolls.json` and, until this, nothing read
+ * it back - so a simulation could say where you would end up and not what
+ * each roll bought you. Stepping is a JSON read rather than a derivation
+ * (`timeline.py` recovers each state by subtracting the later rolls off the
+ * final set), which is what lets the slider redraw as you drag it.
+ *
+ * Two series, both **deltas**: what that one roll added.
+ *
+ * - **Tasks** comes free. `unlock.delta_from` recorded it at roll time and it
+ *   is already in the ledger.
+ * - **Hours** does not. It needs `estimate` over a full derivation per step,
+ *   and with the `dps` extra installed that is ~1.3s a step because the kill
+ *   rates are recomputed from the map's own gear. So it is a button, paid
+ *   once, stored beside the run, and a file read every time after.
+ *
+ * **Most hour bars are empty and some point down, and that is the data.**
+ * Measured on the real 106-chunk map, ten rolls moved the estimate 2815.7h ->
+ * 2817.4h with eight steps at exactly 0.0; on an early map it *falls* at one
+ * step, because a new chunk can open a cheaper route to something you already
+ * needed. So the axis draws its zero line and every step gets a hoverable
+ * slot: an empty column has to read as "this chunk added no work" rather than
+ * as a graph that failed to load. `hours: null` - nobody has computed them -
+ * is drawn differently again, because "not computed" and "added nothing" are
+ * different answers. */
+
+const TL_SERIES = [
+  ["tasks", "Tasks"],
+  ["hours", "Hours"],
+];
+
+let tlSeries = "tasks";
+
+async function loadTimeline() {
+  /* A comparison and a rewind are exclusive - see `mapQuery`. */
+  if (!el.map.value || el.compare.value) return hideTimeline();
+  try {
+    state.timeline = await getJSON("/api/timeline?map=" + encodeURIComponent(el.map.value));
+  } catch {
+    /* A fetched map has no ledger, which is the ordinary case rather than a
+     * failure. Anything else here is equally not worth a toast: the map is
+     * still on screen and the strip is an extra. */
+    return hideTimeline();
+  }
+  if (!state.timeline.steps || state.timeline.steps.length < 2) return hideTimeline();
+  if (state.step === null) state.step = state.timeline.steps.length - 1;
+  renderTimeline();
+}
+
+function hideTimeline() {
+  state.timeline = null;
+  state.step = null;
+  el.timeline.hidden = true;
+  document.documentElement.style.setProperty("--strip-h", "0px");
+}
+
+function renderTimeline() {
+  const payload = state.timeline;
+  if (!payload) return hideTimeline();
+  const steps = payload.steps;
+  const last = steps.length - 1;
+  state.step = Math.max(0, Math.min(last, state.step ?? last));
+  const at = steps[state.step];
+
+  el.timeline.hidden = false;
+  /* **The panels describe the map, and a rewound map is not the map.** They
+   * each need a derivation, so following the slider would cost ~1s a drag and
+   * lose the whole reason stepping is instant. Saying which is being shown
+   * beats a screen where the world and the panel beside it quietly disagree. */
+  const behind = state.step < last;
+  el["tl-title"].innerHTML = tmpl`Timeline<span class="sub">${last} ${last === 1 ? "roll" : "rolls"}${
+    behind ? " · panels show the finished run" : ""}</span>`;
+
+  el["tl-chips"].innerHTML = TL_SERIES.map(([key, name]) => {
+    const on = tlSeries === key;
+    const tip = key === "hours"
+      ? tmpl`<b>Hours added</b><span class="sub">Change in the estimated time to finish, per roll.</span><span class="hint">${payload.has_hours ? "Often zero — most chunks add no work" : "Not computed yet"}</span>`
+      : tmpl`<b>Tasks added</b><span class="sub">Challenges this roll made valid.</span>`;
+    return tmpl`<button class="chip ${on ? "on" : ""}" data-series="${key}" data-tip="${tip}"
+      role="radio" aria-checked="${on}">${name}</button>`;
+  }).join("");
+  for (const chip of el["tl-chips"].querySelectorAll("[data-series]")) {
+    chip.onclick = () => { tlSeries = chip.dataset.series; renderTimeline(); };
+  }
+
+  /* Nothing to compute twice: once the hours are stored the button would only
+   * rewrite the same numbers, so it goes away rather than sitting there
+   * offering a minute of work for no change. */
+  el["tl-hours"].hidden = payload.has_hours;
+
+  el["tl-graph"].innerHTML = tlBars(steps, tlSeries, state.step);
+  for (const slot of el["tl-graph"].querySelectorAll("[data-step]")) {
+    slot.onclick = () => setStep(Number(slot.dataset.step));
+  }
+
+  el["tl-slider"].max = String(last);
+  el["tl-slider"].value = String(state.step);
+  el["tl-prev"].disabled = state.step === 0;
+  el["tl-next"].disabled = state.step === last;
+  el["tl-step"].textContent = at.chunk
+    ? `${state.step}/${last} · ${at.chunk}`
+    : `start · ${at.unlocked_chunks}`;
+
+  document.documentElement.style.setProperty(
+    "--strip-h", el.timeline.offsetHeight + "px");
+}
+
+/* Bars on a zero line, in inline SVG - the same idiom as `donut`, and for the
+ * same reason: no library, no build step, and the shape is four lines of
+ * arithmetic. `viewBox` does the scaling, so the strip can be any width. */
+function tlBars(steps, key, current) {
+  const W = 1000, H = 92, TOP = 6, FOOT = 6;
+  const cols = steps.length - 1;                    // step 0 is a baseline
+  if (cols < 1) return "";
+  const width = W / cols;
+  const known = steps.slice(1)
+    .map((row) => row[key])
+    .filter((v) => v !== null && v !== undefined);
+
+  /* **The negative half is only reserved when something is negative.** Tasks
+   * are never negative and hours usually are not, so a permanently centred
+   * axis spent half the strip on empty space and halved the resolution of the
+   * bars that are actually there. */
+  const down = known.some((v) => v < 0);
+  const base = down ? H * 0.62 : H - FOOT;
+  /* Scale to the biggest swing either way, never to zero - an all-zero series
+   * must draw a flat axis rather than divide by nothing. */
+  const peak = Math.max(1e-9, ...known.map((v) => Math.abs(v)));
+  const room = base - TOP;
+
+  let out = tmpl`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"
+    aria-label="${key === "hours" ? "Hours added per roll" : "Tasks added per roll"}">`;
+  steps.slice(1).forEach((row, index) => {
+    const x = index * width;
+    const value = row[key];
+    const at = index + 1 === current;
+    out += tmpl`<rect class="tl-slot ${at ? "at" : ""}" data-step="${index + 1}"
+      x="${x}" y="0" width="${width}" height="${H}" data-tip="${tlTip(row, key)}"/>`;
+    if (value !== null && value !== undefined) {
+      /* A zero still gets a sliver, so the axis reads as a row of steps that
+       * each happened rather than as a gap where the graph stops. */
+      const size = Math.max(1.5, (Math.abs(value) / peak) * room);
+      const negative = value < 0;
+      out += tmpl`<rect class="tl-bar ${negative ? "down" : ""} ${value === 0 ? "flat" : ""}"
+        x="${x + width * 0.18}" y="${negative ? base : base - size}"
+        width="${width * 0.64}" height="${size}" rx="1"/>`;
+    }
+    /* Where you are, as a tick under the column rather than a block over it -
+     * a full-height wash competed with the bars it was meant to point at. */
+    if (at) {
+      out += tmpl`<rect class="tl-at-mark" x="${x + width * 0.12}" y="${H - 3}"
+        width="${width * 0.76}" height="3" rx="1.5"/>`;
+    }
+  });
+  out += tmpl`<line class="tl-zero" x1="0" y1="${base}" x2="${W}" y2="${base}"/>`;
+  if (key === "hours" && !known.length) {
+    out += tmpl`<text class="tl-pending" x="${W / 2}" y="${base - 14}"
+      text-anchor="middle">Press Compute hours to price each roll</text>`;
+  }
+  return out + "</svg>";
+}
+
+function tlTip(row, key) {
+  const head = tmpl`<b>Roll ${row.step} · ${row.chunk}</b>`;
+  const skills = Object.entries(row.tasks_by_skill || {});
+  const breakdown = skills.length
+    ? skills.map(([skill, n]) => tmpl`<span class="sub">${skill}: ${n}</span>`).join("")
+    : tmpl`<span class="sub">No new tasks</span>`;
+  if (key !== "hours") {
+    return head + breakdown + tmpl`<span class="hint">${row.unlocked_chunks} chunks after this roll</span>`;
+  }
+  if (row.hours === null || row.hours === undefined) {
+    return head + tmpl`<span class="sub">Hours not computed yet</span>`;
+  }
+  const change = row.hours === 0
+    ? tmpl`<span class="sub">No change to the estimate</span>`
+    : tmpl`<span class="sub">${row.hours > 0 ? "+" : "−"}${hours(Math.abs(row.hours))} to finish</span>`;
+  return head + change + tmpl`<span class="hint">${hours(row.total_hours)} remaining after this roll</span>`;
+}
+
+async function setStep(step) {
+  if (!state.timeline) return;
+  const last = state.timeline.steps.length - 1;
+  state.step = Math.max(0, Math.min(last, step));
+  renderTimeline();
+  await loadView();
+}
+
+el["tl-slider"].addEventListener("input", () => setStep(Number(el["tl-slider"].value)));
+el["tl-prev"].addEventListener("click", () => setStep((state.step ?? 0) - 1));
+el["tl-next"].addEventListener("click", () => setStep((state.step ?? 0) + 1));
+
+el["tl-collapse"].addEventListener("click", () => {
+  const shut = el.timeline.classList.toggle("shut");
+  el["tl-collapse"].setAttribute("aria-expanded", String(!shut));
+  el["tl-collapse"].querySelector("use").setAttribute("href", shut ? "#i-up" : "#i-down");
+  document.documentElement.style.setProperty("--strip-h", el.timeline.offsetHeight + "px");
+});
+
+el["tl-hours"].addEventListener("click", () => {
+  const map = el.map.value;
+  runAction("Cost " + map, "/api/timeline", { map }, async () => {
+    await loadTimeline();
+  });
 });
 
 async function poll() {
@@ -2635,6 +2880,12 @@ function renderAttribution() {
   resize();
   if (!(await loadMaps())) return;
   syncBreakdown();
+  await loadTimeline();
+  if (BOOT.step !== null && state.timeline) {
+    /* Set rather than `setStep`, which would draw the view a second time. */
+    state.step = Math.max(0, Math.min(state.timeline.steps.length - 1, BOOT.step));
+    renderTimeline();
+  }
   await loadView();
   await loadTiles();
   fitToCells();

@@ -8,7 +8,7 @@ fray-claude is a CLI that reads state from the source-chunk web app, caches it l
 offline operations on that cache. source-chunk is upstream and read-only from here.
 
 **Two apps, one distribution.** `fray` is the CLI; `fray-gui` is a local server plus a browser
-front-end that draws the world map — see the GUI paragraph below Commands. The 28 modules beside
+front-end that draws the world map — see the GUI paragraph below Commands. The 29 modules beside
 `cli.py` are the library both use, which is why there is no separate `core/` package and no second
 distribution: the layering already exists, and three pyprojects would buy independent versioning
 nobody needs.
@@ -137,6 +137,7 @@ Five things that cut across modules — the first three because each has already
 | `unlock.py` | What one candidate unlock adds, by diffing two `derive` calls. **Owns the project's attribution rule** and its one exception. Additions-only, and only over one `MapState` — for two arbitrary maps read `delta.py`. |
 | `delta.py` | The **symmetric** comparison of two derived states, over all six `Derived` branches. Owns the diff primitives `unlock.py` projects down to its one-directional view; the two must agree, which `tests/test_delta.py` asserts. |
 | `neighbours.py` | Which chunks are eligible to unlock next, and upstream's canvas numbering (**descending chunk id, 1-based**). Owns the `sectionsLimits` gate. |
+| `timeline.py` | Replaying a run one roll at a time. **A run is self-contained** — the state before roll k is `final − rolls[k:]`, so stepping needs no base map, no export and no `derive`. Owns the delta series and the rule that step 0 is a baseline rather than a roll. |
 | `simulate.py` | Seeded chunk-roll simulation: the bootstrap pool, plus the dispatch to `neighbours.py`. Records are never revisited by a later roll. `simulated_payload` turns a finished ledger back into a map payload — read its docstring before changing which branches it touches. |
 | `batch.py` | N simulations from one state, each cached as its own map. Owns seed derivation and the **only** `ProcessPoolExecutor` in the project. `--jobs` must never change a result. Also `save_unlock` — a batch of one, so the **one** writer of the run metadata both apps read back. |
 | `derived_cache.py` | The on-disk cache of `derive` results: the key (hash of every input), the zstd+pickle codec, `cached_derive`, and `CacheBehaviour`/`RollCache` — which of a simulation's states to keep. Pure bar the bytes, which `cache.py` writes. |
@@ -250,6 +251,7 @@ cache/maps/<kind>/<batch>/batch.json          # seeds, rolls, `batch_id` — the
 cache/maps/<kind>/<batch>/run-001/map.json    # a normal envelope, carrying `kind`
 cache/maps/<kind>/<batch>/run-001/rolls.json  # that run's per-roll ledger
 cache/maps/<kind>/<batch>/run-001/run.json    # that run's summary, which `maps list` reads
+cache/maps/<kind>/<batch>/run-001/timeline.json  # per-step hours, once something paid to compute them
 ```
 
 **Three kinds, and `unlocked` used to be filed under `simulated`.** This file argued for that —
@@ -294,7 +296,36 @@ they are materially different totals — 3,969h against 2,816h on the real map.
 bright against a locked wash, a thin grid between every chunk, a hull outline around the outside of
 the unlocked blob (no border between two unlocked chunks — that is `worldmap.hull_edges`), and a
 delta mode where `--compare`'s gains are green and its losses red. It can also drive `fetch`,
-`simulate` and `unlock`, which return a job id and report progress while a thread does the work.
+`simulate`, `unlock` and `timeline`, which return a job id and report progress while a thread does the work.
+
+**A simulated run carries its own past, and the timeline is what reads it.** `simulate` writes every
+roll to `rolls.json` and nothing used to read it back, so a simulation could say where you end up and
+not what each roll bought you. The state before roll k is `final − rolls[k:]` — **no base map, no
+export, no `derive`** — so `GET /api/timeline` and `/api/view?step=` are both ~1ms and the slider
+redraws as you drag it. `timeline.py` owns that arithmetic and `tests/test_timeline.py` asserts a run
+replays with its base map *deleted*.
+
+**The hours series is the expensive half, and the cost is `dps_bridge.enrich`.** A step is ~0.01s to
+derive and estimate off `cache/derived/` (which, under the default `--cache-behaviour all`, already
+holds every intermediate — measured 11/11 hits by replaying the ledger into `derivation_key`) and
+**~1.3s more with the `dps` extra installed**, because the kill rates are recomputed per state.
+Dropping `enrich` is not the fix: the Estimate tab uses it, and a timeline disagreeing with the panel
+beside it would be worse than a slow one. So `POST /api/timeline` pays once and writes
+`run-00N/timeline.json`, stamped with the digests **and the `dps` flag** — installing the extra is a
+different answer (3,969h against 2,816h), not a staler one. A stamp mismatch reads as *absent*, so
+the page offers to recompute rather than refusing to draw.
+
+**The hours bars are mostly empty and sometimes point down, and that is the data.** Measured: ten
+rolls on the real map moved the estimate 2815.7h → 2817.4h with **eight steps at exactly 0.0**, and on
+an early map it *falls* — a new chunk can open a cheaper route to something already needed, or change
+which task is the active winner. The delta was chosen over a cumulative line deliberately. What that
+costs the renderer is that `null` (nobody computed it) and `0.0` (this chunk added no work) must draw
+differently, and the axis needs a zero line with room below it.
+
+**A step and a comparison are exclusive.** Two maps and a rewind would want a third colour for
+"gained by this roll but lost against the other side", which is nobody's question — so the step wins
+in `mapQuery` and the strip hides itself while comparing. Switching map clears `state.step` *before*
+the view loads, or the new map is rewound to a roll it never had.
 
 **`GET /api/unlock` and `POST /api/unlock` are the two halves of one thing.** The GET prices a
 candidate and keeps nothing; the POST saves the world it was describing, through `batch.save_unlock`
@@ -304,9 +335,9 @@ exactly the ones not yet in the picker; blank means `cache.DEFAULT_MAP_ID`, whic
 constant crossing into JavaScript with a test holding the two in agreement.
 
 **All fifteen CLI subcommands are reachable from it.** `GET /api/{maps,view,revision,summary,
-neighbours,chunk,sections,unlock,diff,search,estimate,tasks,tiles,derived,jobs}` and `POST /api/
-{fetch,simulate,unlock,refresh,maps/remove,derived/prune,window}`. The panel's tabs are tasks / chunk / find / estimate /
-maps, and `?map=&compare=&candidates=1&sections=1&tab=` reproduces a view.
+neighbours,chunk,sections,unlock,diff,search,estimate,tasks,tiles,derived,jobs,timeline}` and
+`POST /api/{fetch,simulate,unlock,timeline,refresh,maps/remove,derived/prune,window}`. The panel's tabs are tasks / chunk / find / estimate /
+maps, and `?map=&compare=&candidates=1&sections=1&step=&tab=` reproduces a view.
 
 Things worth knowing before changing it:
 
@@ -336,7 +367,7 @@ Things worth knowing before changing it:
   what is on** (holding the selected set froze it at whatever the first chunk happened to contain,
   so a category nobody had seen yet came up unchecked — click narrows to one, shift adds, ctrl
   removes); and **an action's reply shape decides whether it is polled** — `fetch`/`simulate`/
-  `unlock`/`refresh` return a job id, `maps/remove`/`derived/prune`/`window` return the result, and
+  `unlock`/`timeline`/`refresh` return a job id, `maps/remove`/`derived/prune`/`window` return the result, and
   reading `{ job }` off all of them polled `/api/jobs/undefined`, whose 404 silently swallowed the
   refresh callback and left deleted maps on screen. A finished job reports `summariseReply(result)`
   rather than "Finished", because `claim_batch` suffixes a clash and the name that landed is not

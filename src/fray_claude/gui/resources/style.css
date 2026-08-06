@@ -60,6 +60,10 @@
      the right of the *map* reads this rather than `--panel-w`, so it slides
      out with the panel instead of hanging over a gap. `app.js` flips it. */
   --rail: var(--panel-w);
+  /* How much of the bottom edge the timeline strip is occupying. Zero unless
+     the map is a simulated run, so everything anchored to the bottom reads
+     this and needs no second rule for the common case. `app.js` sets it. */
+  --strip-h: 0px;
 
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
@@ -646,11 +650,15 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .progress.failed .progress-fill { background: var(--loss); }
 .progress.failed .progress-detail { color: #ef8080; }
 
+/* **Top left, opposite the progress card** - it used to sit bottom left,
+   which is where the timeline strip now spans the whole width. Up here it
+   also reads in the order you meet things: what the colours mean, then the
+   map, then what the run did. */
 .legend {
   position: fixed;
   z-index: 2;
   left: var(--s4);
-  bottom: var(--s4);
+  top: calc(var(--bar-h) + var(--s4));
   display: flex;
   flex-wrap: wrap;
   gap: var(--s2) var(--s4);
@@ -780,11 +788,14 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 
 /* Bottom-right, opposite the legend, quiet but never hidden: CC BY-NC-SA asks
    for credit and a credit you have to open a menu to find is not one. */
+/* Sits above the timeline strip rather than behind it. This is a licence
+   obligation, not decoration - CC BY-NC-SA asks for the credit to be visible
+   and `--strip-h` is 0 whenever the strip is not there. */
 .attribution {
   position: fixed;
   z-index: 2;
   right: calc(var(--rail) + var(--s4));
-  bottom: var(--s4);
+  bottom: calc(var(--strip-h) + var(--s4));
   padding: var(--s1) 9px;
   border: 1px solid var(--line);
   border-radius: var(--r2);
@@ -796,6 +807,81 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 
 .attribution a { color: inherit; text-decoration: none; }
 .attribution a:hover { color: var(--text); text-decoration: underline; }
+
+/* --- timeline ----------------------------------------------------------- */
+
+/* Spans the map's width rather than the window's, so it stops at the panel
+   the way the attribution does. */
+.timeline {
+  position: fixed;
+  z-index: 3;
+  left: 0;
+  right: var(--rail);
+  bottom: 0;
+  padding: var(--s3) var(--s4);
+  background: rgba(23, 26, 32, .96);
+  border-top: 1px solid var(--line);
+  transition: right .18s ease;
+}
+
+.tl-head {
+  display: flex;
+  gap: var(--s3);
+  align-items: center;
+  margin-bottom: var(--s2);
+}
+
+.tl-title { font-weight: 600; }
+.tl-title .sub { color: var(--dim); font-weight: 400; margin-left: var(--s2); }
+
+.timeline.shut .tl-graph { display: none; }
+.timeline.shut { padding-bottom: var(--s2); }
+
+.tl-graph {
+  height: 92px;
+  margin-bottom: var(--s2);
+}
+
+.tl-graph svg { display: block; width: 100%; height: 100%; }
+
+/* The zero line is drawn, not implied: most steps add nothing, so without it
+   an empty column reads as missing data rather than as "no change". */
+.tl-zero { stroke: var(--line-strong); stroke-width: 1; }
+.tl-zero-label { fill: var(--dim); font-size: 10px; font-family: var(--mono); }
+
+.tl-bar { fill: var(--gain); }
+.tl-bar.down { fill: var(--loss); }
+/* A step with nothing to show still gets a hit area, so hovering anywhere
+   along the axis answers "what happened here" with "nothing". */
+.tl-bar.flat { fill: var(--line-strong); }
+.tl-slot { fill: transparent; }
+.tl-slot:hover { fill: rgba(255, 255, 255, .07); }
+.tl-slot.at { fill: rgba(255, 255, 255, .04); }
+/* Where you are, marked under the column. A full-height wash competed with
+   the bars it was pointing at. */
+.tl-at-mark { fill: var(--gain); }
+
+.tl-pending { fill: var(--dim); font-size: 11px; }
+
+.tl-scrub {
+  display: flex;
+  gap: var(--s3);
+  align-items: center;
+}
+
+.tl-slider {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--gain);
+}
+
+.tl-step {
+  min-width: 12ch;
+  text-align: right;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 12px;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .panel, .progress, .attribution, .chip, .progress-fill { transition: none; }
