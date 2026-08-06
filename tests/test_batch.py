@@ -15,9 +15,11 @@ from typing import Any
 
 import pytest
 
-from fray_claude.batch import derive_seeds, run_batch
+from fray_claude.batch import derive_seeds, run_batch, save_unlock
 from fray_claude.cache import (
     BATCH_META_FILE_NAME,
+    UNLOCKED,
+    read_batch,
     read_cache,
     read_sim_batch,
     sims_root,
@@ -27,6 +29,7 @@ from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.derived_cache import CacheBehaviour
 from fray_claude.pipeline import load_map_state
 from fray_claude.simulate import simulate_rolls
+from fray_claude.unlock import UnlockDelta
 
 #: 100 starts unlocked; 99/101/356 are its grid neighbours (id +/- 1, +/- 256)
 #: and each declares a connection back to it, so a roll has three candidates
@@ -316,3 +319,54 @@ def test_an_interrupted_batch_still_knows_it_is_one(root: Path) -> None:
     assert summary["complete"] is False
     assert summary["batch_id"]
     assert len({run["batch_id"] for run in summary["runs"]}) == 1
+
+
+def _delta(chunk_id: str) -> UnlockDelta:
+    """A delta with nothing in it but the chunk. `simulated_payload` reads only
+    `chunk_id` from a record, so the rest is what the caller would have had."""
+    return UnlockDelta(
+        chunk_id=chunk_id,
+        new_sections={},
+        new_tasks={},
+        new_unsupported=frozenset(),
+        bis_upgrades={},
+    )
+
+
+def test_saving_an_unlock_writes_a_batch_of_one(root: Path) -> None:
+    """**One writer, because two apps save an unlock and one metadata shape
+    reads it back.** `fray unlock --cache-map` and the GUI's chunk panel both
+    land here, and `maps list`, the picker and `read_batch` all read what it
+    writes - so a key added on one path and not the other is a row that goes
+    blank on half the maps in the list.
+    """
+    saved = save_unlock(name="hand", payload=_PAYLOAD, delta=_delta("101"),
+                        base_map="fray", root=root)
+
+    assert saved.name == "hand"
+    assert saved.chunk_id == "101"
+    assert saved.unlocked_chunks == 2
+
+    envelope = read_cache("hand", root)
+    assert envelope["kind"] == UNLOCKED
+    assert set(envelope["data"]["chunks"]["unlocked"]) == {"100", "101"}
+
+    summary = read_batch("hand", root, kind=UNLOCKED)
+    assert summary["origin"] == "unlock" and summary["batch_id"]
+    run = summary["runs"][0]
+    # The same keys `run_batch` writes, so one reader serves both kinds.
+    assert run["batch"] == "hand" and run["batch_id"] == summary["batch_id"]
+    assert run["runs_in_batch"] == 1 and run["rolls"] == ["101"]
+    assert run["base_map"] == "fray" and run["unlocked_chunks"] == 2
+
+
+def test_two_unlocks_of_one_name_do_not_overwrite(root: Path) -> None:
+    """The clash suffix is `claim_batch`'s, and the *claimed* name is what
+    comes back - which is why both apps report it rather than what was asked."""
+    first = save_unlock(name="hand", payload=_PAYLOAD, delta=_delta("101"),
+                        base_map="fray", root=root)
+    second = save_unlock(name="hand", payload=_PAYLOAD, delta=_delta("99"),
+                         base_map="fray", root=root)
+
+    assert (first.name, second.name) == ("hand", "hand-2")
+    assert set(read_cache("hand-2", root)["data"]["chunks"]["unlocked"]) == {"100", "99"}

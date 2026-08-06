@@ -1355,7 +1355,7 @@ async function loadMaps() {
      * dropdown and "missing required parameter 'map'", which is a dead end. */
     el.map.innerHTML = "<option value=''>No maps cached</option>";
     el.counts.textContent = "";
-    el["chunk-body"].innerHTML = tmpl`<p class="empty">Nothing cached yet. Run <code>fray fetch</code> in a terminal, or press <b>Fetch This Map</b> on the Maps tab.</p>`;
+    el["chunk-body"].innerHTML = tmpl`<p class="empty">Nothing cached yet. Run <code>fray fetch</code> in a terminal, or press <b>Fetch Named Map</b> on the Maps tab.</p>`;
     showTab("maps");
     return false;
   }
@@ -1521,15 +1521,28 @@ function renderChunk() {
       ? '<span class="pill candidate">Candidate #' + candidate.number + "</span>"
       : '<span class="pill locked">Locked</span>';
 
+  /* Two verbs for a locked chunk, and the order is the order you want them
+   * in: ask what it gives you, then take it. Both derive twice, so neither is
+   * something to do by accident - which is why "Unlock" opens a dialog naming
+   * what it will write rather than writing it on the click. */
+  const offer = detail.unlocked ? "" : tmpl`
+      <button id="what-if" type="button"
+        data-tip="<b>What would this add?</b><span class='sub'>Sections, tasks and BiS upgrades this chunk would bring, without saving anything.</span>">What would this add?</button>
+      <button id="do-unlock" type="button"
+        data-tip="<b>Unlock this chunk</b><span class='sub'>Save a new map with this chunk added by hand, the way <code>fray unlock --cache-map</code> does.</span>">Unlock</button>`;
+
   el["chunk-head"].innerHTML = tmpl`<h3>${detail.nickname || "Chunk " + detail.chunk_id}</h3>
     <div class="row"><code>${detail.chunk_id}</code>${raw(status)}
       <span class="spacer"></span>
-      <button id="chunk-focus" type="button" title="Centre this chunk (F)">Focus</button>
-      ${raw(detail.unlocked ? "" : '<button id="what-if" type="button">What would this add?</button>')}
+      <button id="chunk-focus" type="button"
+        data-tip="<b>Focus</b><span class='sub'>Centre the map on this chunk.</span><span class='hint'>F</span>">Focus</button>
+      ${raw(offer)}
     </div>`;
   document.getElementById("chunk-focus").onclick = () => focusChunk(detail.chunk_id);
   const whatIf = document.getElementById("what-if");
   if (whatIf) whatIf.onclick = () => previewUnlock(detail.chunk_id);
+  const unlockNow = document.getElementById("do-unlock");
+  if (unlockNow) unlockNow.onclick = () => askUnlock(detail.chunk_id);
 
   /* Categories as chips rather than as eight headings in one column: at 360px
    * a chunk with monsters, NPCs, objects and shops was four short lists you
@@ -1654,11 +1667,59 @@ async function previewUnlock(chunkId) {
       });
       out += "</ul>";
     }
-    openOverlay("If you unlocked " + chunkId, out);
+    /* The answer to "what would this add" is exactly the moment you decide to
+     * take it, so the way to take it is in the footer of the answer. */
+    openOverlay("If you unlocked " + chunkId, out,
+      tmpl`<button id="preview-unlock" type="button">Unlock this chunk</button>`);
+    document.getElementById("preview-unlock").onclick = () => askUnlock(chunkId);
     ownsMore("unlock", () => previewUnlock(chunkId));
   } catch (error) {
     openOverlay("If you unlocked " + chunkId, tmpl`<p class="empty">${error.message}</p>`);
   }
+}
+
+/* **Unlocking writes a map, so it asks for a name first.** The default is the
+ * one thing you would otherwise have to invent, and it is derived rather than
+ * fixed so unlocking two chunks from one map does not collide - `claim_batch`
+ * would suffix the second `-2`, which reads as an accident rather than as a
+ * choice. Whatever name is claimed comes back in the reply either way. */
+function askUnlock(chunkId) {
+  const suggested = (el.map.value || DEFAULT_MAP_ID).replace(/\//g, "-") + "-" + chunkId;
+  openOverlay("Unlock " + chunkId,
+    tmpl`<p>Writes a new map under <code>cache/maps/unlocked/</code> holding
+      everything <b>${el.map.value}</b> holds plus this chunk. Nothing existing
+      is touched, and the derivation takes a second or two.</p>
+      <div class="row"><input id="unlock-name" type="text" value="${suggested}"
+        aria-label="Name for the new map" spellcheck="false" autocomplete="off"
+        data-tip="<b>Name for the new map</b><span class='sub'>A name already in use gains <code>-2</code>, <code>-3</code>, … rather than overwriting.</span>"></div>`,
+    tmpl`<button id="unlock-no" type="button">Cancel</button>
+      <button id="unlock-yes" type="button">Unlock</button>`);
+
+  const field = document.getElementById("unlock-name");
+  const go = () => {
+    const name = field.value.trim() || suggested;
+    closeOverlay();
+    runAction("Unlock " + chunkId, "/api/unlock",
+      { map: el.map.value, chunk: chunkId, name },
+      async (result) => {
+        /* Compare rather than select: what you want to see next is what the
+         * chunk *changed*, and that is the delta against where you started. */
+        await loadMaps();
+        if (result.open) el.compare.value = result.open;
+        syncBreakdown();
+        await loadView();
+        loadMapsPane();
+      });
+  };
+  document.getElementById("unlock-no").onclick = closeOverlay;
+  document.getElementById("unlock-yes").onclick = go;
+  field.onkeydown = (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    go();
+  };
+  field.focus();
+  field.select();
 }
 
 /* ---- the full comparison ------------------------------------------------ */
@@ -2151,6 +2212,11 @@ el["find-form"].addEventListener("submit", (e) => { e.preventDefault(); clearTim
 
 /* ---- maps pane --------------------------------------------------------- */
 
+/* What an empty "fetch a named map" box means. Must match
+ * `cache.DEFAULT_MAP_ID`; `tests/test_gui_server.py` asserts it, because the
+ * only symptom of drift is a placeholder that lies about what blank does. */
+const DEFAULT_MAP_ID = "fray";
+
 /* What each kind is called on screen. `fetched` is the only one worth leaving
  * unlabelled - it is the ordinary case and saying so on every row is noise. */
 const KIND_LABELS = {
@@ -2181,9 +2247,18 @@ async function loadMapsPane() {
   const body = el["maps-body"];
   try {
     const maps = await getJSON("/api/maps");
-    let out = `<h3>Actions</h3><div class="actions">
+    /* **The box is why this is not "Fetch This Map".** Any source-chunk map
+     * id is a public read, so being able to pull down a friend's map - or one
+     * you have never cached and so cannot select above - is the whole point.
+     * Blank means `fray`, the same default every `--map` flag carries. */
+    let out = `<h3>Actions</h3><div class="row">
+      <input id="fetch-name" type="text" placeholder="${DEFAULT_MAP_ID}" autocomplete="off"
+        aria-label="Map id to fetch" spellcheck="false"
+        data-tip="<b>Map id on source-chunk</b><span class='sub'>The <code>?fray</code> part of the app's URL. Any id works, cached or not.</span><span class='hint'>Blank fetches ${DEFAULT_MAP_ID}</span>">
       <button id="do-fetch" type="button"
-        data-tip="Re-read this map from source-chunk and write it to cache/. About a second.">Fetch This Map</button>
+        data-tip="<b>Fetch a named map</b><span class='sub'>Read it from source-chunk and write it to cache/maps/fetched/. About a second.</span>">Fetch Named Map</button>
+    </div>
+    <div class="actions">
       <button id="do-refresh" type="button"
         data-tip="Re-download the 10MB chunk export and the tasks map. Everything derived from them is recomputed after.">Refresh Chunk Data</button>
     </div>
@@ -2210,8 +2285,29 @@ async function loadMapsPane() {
     </div>`;
     body.innerHTML = out;
 
-    document.getElementById("do-fetch").onclick = () =>
-      runAction("Fetch " + el.map.value, "/api/fetch", { map: el.map.value }, () => loadView());
+    const fetchName = document.getElementById("fetch-name");
+    const doFetch = () => {
+      const wanted = fetchName.value.trim() || DEFAULT_MAP_ID;
+      runAction("Fetch " + wanted, "/api/fetch", { map: wanted }, async (result) => {
+        /* A map that was not cached before is now, so the picker is stale -
+         * and selecting what you just asked for is what asking for it meant. */
+        await loadMaps();
+        /* A `<select>` silently blanks when handed a value it has no option
+         * for, and a blank map id is what `loadView` refuses to draw. */
+        if (result.map) el.map.value = result.map;
+        syncBreakdown();
+        await loadView({ refit: true });
+        loadMapsPane();
+      });
+    };
+    document.getElementById("do-fetch").onclick = doFetch;
+    /* Enter in a lone text box means "do the thing next to it". Not a form,
+     * because a form in the panel submits and navigates the whole window. */
+    fetchName.onkeydown = (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      doFetch();
+    };
     document.getElementById("do-refresh").onclick = () =>
       runAction("Refresh chunk data", "/api/refresh", { what: "chunkinfo" });
     document.getElementById("do-sim").onclick = () => {
@@ -2312,6 +2408,21 @@ function countsIn(text) {
 /* What an inline action actually did, in the interface's own words. */
 function summariseReply(reply) {
   if (!reply || typeof reply !== "object") return "Done";
+  /* **The name a save claimed is not always the name it was asked for** -
+   * `claim_batch` suffixes a clash `-2`, `-3`, … - so saying which one landed
+   * is the whole reason a finished job reports anything but "Finished". */
+  if (reply.chunk && reply.name) {
+    return "Saved " + reply.name + " — +" + reply.tasks
+      + (reply.tasks === 1 ? " task" : " tasks");
+  }
+  if (reply.batch) {
+    return "Rolled " + reply.batch + " — " + reply.runs
+      + (reply.runs === 1 ? " run" : " runs");
+  }
+  if (reply.map && typeof reply.unlocked_chunks === "number") {
+    return reply.map + " — " + reply.unlocked_chunks + " unlocked chunks";
+  }
+  if (reply.refreshed) return "Refreshed " + reply.refreshed;
   if (Array.isArray(reply.removed)) {
     return reply.removed.length
       ? "Removed " + reply.removed.length + (reply.removed.length === 1 ? " map" : " maps")
@@ -2366,7 +2477,9 @@ function followJob(id, label, onDone) {
         showProgress(label, { detail: job.error, state: "failed" });
         hideProgress(8000);
       } else {
-        showProgress(label, { detail: "Finished", done: 1, total: 1, state: "done" });
+        showProgress(label, {
+          detail: summariseReply(job.result), done: 1, total: 1, state: "done",
+        });
         hideProgress(3200);
         await onDone?.(job.result);
       }

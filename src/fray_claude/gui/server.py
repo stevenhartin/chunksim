@@ -83,7 +83,7 @@ from fray_claude.api import (
     fetch_skill_icon,
     fetch_tasks_map,
 )
-from fray_claude.batch import RunResult, run_batch
+from fray_claude.batch import RunResult, run_batch, save_unlock
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.delta import MapSide, compare_maps, diff_names
 from fray_claude.derived_cache import cached_derive
@@ -642,9 +642,19 @@ def _window_state(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
 
 
 def _fetch_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
-    map_id = str(payload.get("map") or "").strip()
-    if not map_id:
-        raise ValueError("missing 'map'")
+    """Download any named map from Firebase, not only the one on screen.
+
+    **An empty name means `fray`**, matching every `--map` default in the CLI,
+    because that is the map this project exists for and typing it every time
+    is friction for nothing. `cache.split_map_id` is what makes the name safe
+    to accept from a browser at all - it rejects anything that is not
+    `[A-Za-z0-9_.-]+`, so no second, weaker check belongs here.
+    """
+    map_id = str(payload.get("map") or "").strip() or cache.DEFAULT_MAP_ID
+    if cache.split_map_id(map_id)[1] is not None:
+        # A run is something this project computed. Firebase has never heard
+        # of one, so asking it for `batch/run-001` is a mistake, not a fetch.
+        raise ValueError(f"{map_id!r} names a run, not a map on source-chunk")
 
     def work(progress: Progress) -> dict[str, Any]:
         progress(f"fetching {map_id}")
@@ -702,6 +712,69 @@ def _simulate_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
         }
 
     return {"job": ctx.jobs.submit("simulate", work).id}
+
+
+def _unlock_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
+    """`fray unlock --chunk X --cache-map NAME`: add one chunk by hand.
+
+    **The same path as `GET /api/unlock`, one step further on.** The GET
+    answers "what would this give me" and keeps nothing; this saves the world
+    it was describing. Both derive twice, which is why this is a job rather
+    than an inline action even though the write itself is instant - cold, the
+    export parse alone is a second.
+
+    The eligibility check is deliberately *not* made: `fray unlock` will price
+    any chunk on the map, candidate or not, because "what if I could get
+    there" is a fair question. Already-unlocked is refused, since adding a
+    chunk that is already held would write a copy of the map under a new name
+    and call it an unlock.
+    """
+    map_id = str(payload.get("map") or "").strip()
+    chunk_id = str(payload.get("chunk") or "").strip()
+    if not map_id:
+        raise ValueError("missing 'map'")
+    if not chunk_id:
+        raise ValueError("missing 'chunk'")
+    name = str(payload.get("name") or "").strip() or f"{map_id}-{chunk_id}"
+
+    # Read the base map now, so a bad id fails the POST rather than a job.
+    envelope = cache.read_cache(map_id, ctx.root)
+
+    def work(progress: Progress) -> dict[str, Any]:
+        from fray_claude.unlock import tasks_added_by
+
+        progress(f"deriving {map_id}")
+        state = ctx.derivations.load(map_id)
+        if chunk_id in state.unlocked:
+            raise ValueError(f"chunk {chunk_id} is already unlocked on {map_id}")
+        progress(f"deriving {map_id} with {chunk_id}")
+        delta = tasks_added_by(
+            state.state,
+            state.unlocked,
+            chunk_id,
+            derive_with=lambda st, un: cached_derive(
+                st, un, ctx.derivations.digests(), root=ctx.root
+            ),
+        )
+        saved = save_unlock(
+            name=name,
+            payload=envelope["data"],
+            delta=delta,
+            base_map=map_id,
+            base_fetched_at=envelope.get("fetched_at"),
+            root=ctx.root,
+        )
+        return {
+            **saved.as_dict(),
+            "tasks": delta.task_count,
+            "sections": sum(len(s) for s in delta.new_sections.values()),
+            "bis_upgrades": len(delta.bis_upgrades),
+            # `read_cache` resolves a one-run batch by its bare name, so this
+            # is what the picker should select afterwards.
+            "open": saved.name,
+        }
+
+    return {"job": ctx.jobs.submit(f"unlock {chunk_id}", work).id}
 
 
 def _refresh_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
@@ -767,6 +840,7 @@ def _prune_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
 _ACTIONS: dict[str, Callable[[Mapping[str, Any], Context], dict[str, Any]]] = {
     "/api/fetch": _fetch_job,
     "/api/simulate": _simulate_job,
+    "/api/unlock": _unlock_job,
     "/api/refresh": _refresh_job,
     "/api/maps/remove": _remove_job,
     "/api/derived/prune": _prune_job,

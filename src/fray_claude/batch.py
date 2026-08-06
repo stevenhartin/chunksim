@@ -24,6 +24,12 @@ directly by comparing a `--jobs 1` batch against a `--jobs 2` one.
 
 Every run records the seed it was given, so any single run can be reproduced on
 its own with `fray simulate --seed <that>` without replaying the batch.
+
+**`save_unlock` is here for the metadata, not for the rolling.** A hand-picked
+unlock does no simulation and spawns no process, but it lands on disk in the
+same batch-of-one shape - and `maps list`, the map picker and `read_batch` all
+read that shape. Two writers of it would be two things to keep in agreement, so
+there is one, and it is the module that already owned the layout.
 """
 
 from __future__ import annotations
@@ -39,9 +45,11 @@ from typing import Any
 from fray_claude.cache import (
     SIMULATED,
     TASKS_MAP_BLOB_NAME,
+    UNLOCKED,
     CacheMissError,
     blob_path,
     chunkinfo_source,
+    claim_batch,
     claim_sim_batch,
     file_digest,
     read_blob,
@@ -54,7 +62,8 @@ from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.derived_cache import CacheBehaviour, Digests, RollCache
 from fray_claude.firebase import reverse_tasks_map
 from fray_claude.pipeline import load_map_state
-from fray_claude.simulate import simulate_rolls, simulated_payload
+from fray_claude.simulate import UnlockRecord, simulate_rolls, simulated_payload
+from fray_claude.unlock import UnlockDelta
 
 #: Draw run seeds from, so a batch seed of 1 and a run seed of 1 can't collide
 #: into "the same run twice" by coincidence.
@@ -335,3 +344,106 @@ def run_batch(
         },
     )
     return batch
+
+
+@dataclass(frozen=True)
+class SavedUnlock:
+    """Where a hand-unlocked map landed. See `save_unlock`."""
+
+    name: str
+    chunk_id: str
+    unlocked_chunks: int | None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "chunk": self.chunk_id,
+            "unlocked_chunks": self.unlocked_chunks,
+        }
+
+
+def save_unlock(
+    *,
+    name: str,
+    payload: Mapping[str, Any],
+    delta: UnlockDelta,
+    base_map: str,
+    base_fetched_at: str | None = None,
+    root: Path | None = None,
+) -> SavedUnlock:
+    """Save one hand-picked unlock as a cached map; returns what was claimed.
+
+    **This is a batch of one run and is written as one**, which is the reason
+    it lives beside `run_batch` rather than in `cli.py` where it started. Both
+    apps save an unlock now - `fray unlock --cache-map` and the GUI's chunk
+    panel - and the thing they must not disagree about is the *metadata* shape,
+    since `maps list`, the picker and `read_batch` all read it. One writer is
+    how that is guaranteed rather than hoped for.
+
+    Reuses `simulate.py`'s two pieces rather than growing its own: a one-entry
+    ledger drives `simulated_payload` (which reads only `chunk_id` from a
+    record, plus whether there are any), and the run lands in the batch layout
+    so `--map`, `fray maps` and the clash suffix all work unchanged.
+
+    **It is its own kind, under `cache/maps/unlocked/`.** It used to be filed
+    as `simulated` on the grounds that both mean "this project computed it";
+    what that missed is that a picker has to *say* which, and calling a map
+    made by adding one chunk by hand a simulation is simply wrong.
+    """
+    record = UnlockRecord(
+        order=1,
+        chunk_id=delta.chunk_id,
+        new_sections=delta.new_sections,
+        new_tasks=delta.new_tasks,
+        new_unsupported=delta.new_unsupported,
+        bis_upgrades=delta.bis_upgrades,
+    )
+    unlocked_payload = simulated_payload(payload, [record])
+    directory = claim_batch(name, root, kind=UNLOCKED)
+    run = run_dir(directory, 1)
+    held = unlocked_payload.get("chunks", {}).get("unlocked", {})
+    chunks = len(held) if isinstance(held, dict) else None
+    # Minted here for the same reason `run_batch` mints one: the directory
+    # name cannot carry it, because a clash renames the batch.
+    batch_id = uuid4().hex
+    created_at = datetime.now(UTC).isoformat()
+    meta: dict[str, Any] = {
+        "run": run.name,
+        "batch": directory.name,
+        "batch_id": batch_id,
+        "runs_in_batch": 1,
+        "origin": "unlock",
+        "chunk": delta.chunk_id,
+        "seed": None,
+        "rolls": [delta.chunk_id],
+        "rolls_requested": 1,
+        "base_map": base_map,
+        "base_fetched_at": base_fetched_at,
+        "created_at": created_at,
+        "unlocked_chunks": chunks,
+    }
+    write_sim_run(
+        run,
+        map_id=f"{directory.name}/{run.name}",
+        data=unlocked_payload,
+        simulation=meta,
+        ledger=[record.as_dict()],
+        source=f"unlock {delta.chunk_id} from {base_map!r}",
+        kind=UNLOCKED,
+    )
+    write_sim_batch(
+        directory,
+        {
+            "name": directory.name,
+            "batch_id": batch_id,
+            "kind": UNLOCKED,
+            "origin": "unlock",
+            "created_at": created_at,
+            "base_map": base_map,
+            "base_fetched_at": base_fetched_at,
+            "rolls_requested": 1,
+            "seed": None,
+            "runs": [meta],
+        },
+    )
+    return SavedUnlock(name=directory.name, chunk_id=delta.chunk_id, unlocked_chunks=chunks)

@@ -80,6 +80,12 @@ from fray_claude.api import map_url
 CACHE_DIR_NAME = "cache"
 _ROOT_MARKER = "pyproject.toml"
 
+#: The map id every command falls back to when none is named - upstream's
+#: `?fray`, which is the whole reason this project exists. It lives here
+#: rather than in `cli.py` because both apps need it: the CLI as an argparse
+#: default, the GUI as what an empty "fetch a named map" box means.
+DEFAULT_MAP_ID = "fray"
+
 #: **`cache/maps/` holds maps and nothing else holds maps.** That sentence is
 #: the whole point of the layout, and it replaced a denylist: `list_maps` used
 #: to glob `cache/*.json` and skip the names it knew were not maps, so every

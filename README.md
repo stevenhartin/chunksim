@@ -82,9 +82,11 @@ matters most. A chunk that is *not* split is shaded whole, since one undivided s
 section.
 
 Click any chunk for its contents, grouped by kind, with anything behind a door you cannot open
-greyed out; for one you do not own yet, **What would this add?** derives both worlds and tells you.
-The category chips are checkboxes, not tabs — all on to begin with, so you can look at monsters and
-NPCs together, or narrow to one.
+greyed out; for one you do not own yet, **What would this add?** derives both worlds and tells you,
+and **Unlock** then saves that world as a map of its own — the same thing `fray unlock --cache-map`
+does, named in a dialog and opened as a comparison against where you started. The category chips are
+checkboxes, not tabs — all on to begin with, so you can look at monsters and NPCs together, or
+narrow to one.
 
 Comparing two maps shows the *second* one's world: its gains green, what it lost red and washed out
 like anything else you do not hold. **Diff** opens the whole of `fray diff` in a panel — sections,
@@ -99,9 +101,10 @@ whole world as you type, puts what you can reach first, and fits the camera arou
 thing comes from. **Maps** lists what is cached, with the actions that make and remove it.
 
 It re-reads the cache as it goes, so a `fray fetch` or `fray simulate` in another terminal appears
-in the browser a couple of seconds later. You can also drive both from the page itself: **fetch**
-re-downloads the current map, and **simulate** rolls N chunks, saves each run as a cached map and
-opens the result as a comparison against where you started.
+in the browser a couple of seconds later. You can also drive both from the page itself. **Fetch
+Named Map** takes an id rather than the map on screen — every source-chunk map is a public read, so
+you can pull down one you have never cached, or a friend's; leaving the box empty fetches `fray`.
+**Roll** simulates N chunks, saves each run as a cached map and opens the result as a comparison.
 
 `?map=…&compare=…&candidates=1&sections=1&tab=estimate` reproduces a view, so a particular question
 is shareable and a screenshot is reproducible.

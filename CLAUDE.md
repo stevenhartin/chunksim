@@ -138,7 +138,7 @@ Five things that cut across modules — the first three because each has already
 | `delta.py` | The **symmetric** comparison of two derived states, over all six `Derived` branches. Owns the diff primitives `unlock.py` projects down to its one-directional view; the two must agree, which `tests/test_delta.py` asserts. |
 | `neighbours.py` | Which chunks are eligible to unlock next, and upstream's canvas numbering (**descending chunk id, 1-based**). Owns the `sectionsLimits` gate. |
 | `simulate.py` | Seeded chunk-roll simulation: the bootstrap pool, plus the dispatch to `neighbours.py`. Records are never revisited by a later roll. `simulated_payload` turns a finished ledger back into a map payload — read its docstring before changing which branches it touches. |
-| `batch.py` | N simulations from one state, each cached as its own map. Owns seed derivation and the **only** `ProcessPoolExecutor` in the project. `--jobs` must never change a result. |
+| `batch.py` | N simulations from one state, each cached as its own map. Owns seed derivation and the **only** `ProcessPoolExecutor` in the project. `--jobs` must never change a result. Also `save_unlock` — a batch of one, so the **one** writer of the run metadata both apps read back. |
 | `derived_cache.py` | The on-disk cache of `derive` results: the key (hash of every input), the zstd+pickle codec, `cached_derive`, and `CacheBehaviour`/`RollCache` — which of a simulation's states to keep. Pure bar the bytes, which `cache.py` writes. |
 | `search.py` | World-wide fuzzy search over the *raw* export — all 5 item routes, so a strict superset of what `fray sources` can list. |
 | `summary.py` | Pure reductions over a raw payload. Extend this, not `cli.py`. Also home to `_mapping`, the tolerant dict accessor eight other modules import despite the `_` — Firebase omits empty containers, so every lookup anywhere must survive a missing branch. |
@@ -194,7 +194,7 @@ mypy                        # strict, over src/ and tests/; run from the repo ro
 .venv/bin/pytest            # whole suite
 .venv/bin/pytest tests/test_summary.py::test_summarise_counts_unlocked_chunks   # single test
 FRAY_CHUNKINFO=path .venv/bin/pytest tests/test_sections.py -k real   # opt-in oracle test against a real export
-python -c 'import json;json.dump(json.load(open("cache/chunkinfo.json"))["data"],open("/tmp/raw.json","w"))'
+python -c 'import json;json.dump(json.load(open("cache/reference/chunkinfo.json"))["data"],open("/tmp/raw.json","w"))'
 FRAY_CHUNKINFO=/tmp/raw.json FRAY_MAP_CACHE=1 .venv/bin/pytest   # all six oracles, the real correctness signal
 fray-gui [--map ID] [--compare ID] [--port N] [--host H] [--no-browser] [--tab]
 pyproject-build && pipx install --force dist/*.whl   # build + reinstall `fray` and `fray-gui`
@@ -204,7 +204,7 @@ pip install -e ../osrs-dps                           # the optional `dps` extra,
 ```
 
 Those two lines go together: `FRAY_CHUNKINFO` wants a *raw* export, not `fray chunkinfo`'s
-envelope-wrapped `cache/chunkinfo.json` (hence the extraction — see Conventions for why pointing it at
+envelope-wrapped `cache/reference/chunkinfo.json` (hence the extraction — see Conventions for why pointing it at
 the envelope fails silently), and `FRAY_MAP_CACHE` is presence-only, its value unused.
 
 `--export-json PATH` (or `-` for stdout, replacing the text summary) is carried by the nine
@@ -293,12 +293,19 @@ they are materially different totals — 3,969h against 2,816h on the real map.
 **`fray-gui` is the second app, and it derives nothing.** It draws the world map: unlocked chunks
 bright against a locked wash, a thin grid between every chunk, a hull outline around the outside of
 the unlocked blob (no border between two unlocked chunks — that is `worldmap.hull_edges`), and a
-delta mode where `--compare`'s gains are green and its losses red. It can also drive `fetch` and
-`simulate`, which return a job id and report progress while a thread does the work.
+delta mode where `--compare`'s gains are green and its losses red. It can also drive `fetch`,
+`simulate` and `unlock`, which return a job id and report progress while a thread does the work.
+
+**`GET /api/unlock` and `POST /api/unlock` are the two halves of one thing.** The GET prices a
+candidate and keeps nothing; the POST saves the world it was describing, through `batch.save_unlock`
+so the CLI's `--cache-map` and the panel's **Unlock** write the same metadata. **Fetch takes a typed
+id, not the selected map** — every source-chunk map is a public read, so the ids worth fetching are
+exactly the ones not yet in the picker; blank means `cache.DEFAULT_MAP_ID`, which is the fourth
+constant crossing into JavaScript with a test holding the two in agreement.
 
 **All fifteen CLI subcommands are reachable from it.** `GET /api/{maps,view,revision,summary,
 neighbours,chunk,sections,unlock,diff,search,estimate,tasks,tiles,derived,jobs}` and `POST /api/
-{fetch,simulate,refresh,maps/remove,derived/prune,window}`. The panel's tabs are tasks / chunk / find / estimate /
+{fetch,simulate,unlock,refresh,maps/remove,derived/prune,window}`. The panel's tabs are tasks / chunk / find / estimate /
 maps, and `?map=&compare=&candidates=1&sections=1&tab=` reproduces a view.
 
 Things worth knowing before changing it:
@@ -329,9 +336,11 @@ Things worth knowing before changing it:
   what is on** (holding the selected set froze it at whatever the first chunk happened to contain,
   so a category nobody had seen yet came up unchecked — click narrows to one, shift adds, ctrl
   removes); and **an action's reply shape decides whether it is polled** — `fetch`/`simulate`/
-  `refresh` return a job id, `maps/remove`/`derived/prune`/`window` return the result, and reading
-  `{ job }` off all six polled `/api/jobs/undefined`, whose 404 silently swallowed the refresh
-  callback and left deleted maps on screen.
+  `unlock`/`refresh` return a job id, `maps/remove`/`derived/prune`/`window` return the result, and
+  reading `{ job }` off all of them polled `/api/jobs/undefined`, whose 404 silently swallowed the
+  refresh callback and left deleted maps on screen. A finished job reports `summariseReply(result)`
+  rather than "Finished", because `claim_batch` suffixes a clash and the name that landed is not
+  always the name that was typed.
 - **Every length in `style.css` comes from one scale** (`--s1`…`--s6`, `--r1`…`--r3`), and a test
   asserts no token is used undefined or defined unused. Panes reserve their scrollbar with
   `scrollbar-gutter: stable`, because Chrome's overlay bar sits *on top* of the last characters of a
@@ -489,10 +498,10 @@ a silent no-op ("already seems to be installed") — it will not pick up new cod
   before trusting a change to `sections`/`sources`/`challenges`/`bis`/`active_tasks`/`other_tasks`,
   and treat a failure as a bug in this code rather than a stale oracle.
   `FRAY_CHUNKINFO` must point at a *raw* export file, not this project's own envelope-wrapped
-  `cache/chunkinfo.json` (`fray chunkinfo`'s output) — `cache.read_chunkinfo`'s override path reads it
+  `cache/reference/chunkinfo.json` (`fray chunkinfo`'s output) — `cache.read_chunkinfo`'s override path reads it
   directly with no `["data"]` unwrapping, so pointing it at the envelope silently produces wrong or
   incomplete results rather than an error. Extract the raw export first if working from the cache
-  (`json.load(open("cache/chunkinfo.json"))["data"]`).
+  (`json.load(open("cache/reference/chunkinfo.json"))["data"]`).
 - **`User-Agent` differs by host, deliberately.** Firebase and GitHub get none — those endpoints are
   public and unauthenticated, so there's nothing to disguise and a header would only publish
   information nobody asked for. The **OSRS wiki gets `api.WIKI_USER_AGENT`, and requires it**: an

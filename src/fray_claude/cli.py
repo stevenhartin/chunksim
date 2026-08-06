@@ -82,7 +82,6 @@ import json
 import sys
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
-from uuid import uuid4
 from pathlib import Path
 from typing import Any
 
@@ -101,17 +100,16 @@ from fray_claude.api import (
     fetch_wiki_pages,
     slayer_sheet_url,
 )
-from fray_claude.batch import RunResult, run_batch
+from fray_claude.batch import RunResult, run_batch, save_unlock
 from fray_claude.cache import (
     CHUNKINFO_BLOB_NAME,
     FETCHED,
     TASKS_MAP_BLOB_NAME,
     CacheMissError,
+    DEFAULT_MAP_ID,
     MapEntry,
     blob_path,
     chunkinfo_source,
-    UNLOCKED,
-    claim_batch,
     file_digest,
     list_derived,
     list_maps,
@@ -123,11 +121,8 @@ from fray_claude.cache import (
     read_overrides,
     remove_computed,
     remove_map,
-    run_dir,
     write_blob,
     write_cache,
-    write_sim_batch,
-    write_sim_run,
 )
 from fray_claude.challenges import strip_task_markup
 from fray_claude.chunkinfo import ChunkInfo
@@ -158,7 +153,7 @@ from fray_claude.other_tasks import CategoryTasks, display_name, task_text
 from fray_claude.pipeline import ConvergenceError, Derived, MapState, load_map_state
 from fray_claude.search import TYPES, build_world_index, search
 from fray_claude.sections import describe_sections, expand_chunk_areas
-from fray_claude.simulate import UnlockRecord, simulate_rolls, simulated_payload
+from fray_claude.simulate import simulate_rolls
 from fray_claude.slayer import SheetFormatError, parse_mob_data, parse_task_lengths
 from fray_claude.sources import CATEGORIES as SOURCE_CATEGORIES
 from fray_claude.summary import _mapping, summarise
@@ -173,7 +168,7 @@ from fray_claude.wiki import (
     superior_pairs,
 )
 
-DEFAULT_MAP = "fray"
+DEFAULT_MAP = DEFAULT_MAP_ID
 
 
 def _emit_json(data: Any, destination: str) -> None:
@@ -752,70 +747,19 @@ def _cmd_search(args: argparse.Namespace) -> int:
 def _unlock_to_cache(args: argparse.Namespace, delta: UnlockDelta) -> str:
     """Save the post-unlock state as a cached map; returns the name claimed.
 
-    Reuses `simulate.py`'s two pieces rather than growing its own: a one-entry
-    ledger drives `simulated_payload` (which reads only `chunk_id` from a
-    record, plus whether there are any), and the run lands in the batch layout
-    so `--map`, `fray maps` and the clash suffix all work unchanged.
-
-    **It is its own kind, under `cache/maps/unlocked/`.** It used to be filed
-    as `simulated` on the grounds that both mean "this project computed it";
-    what that missed is that a picker has to *say* which, and calling a map
-    made by adding one chunk by hand a simulation is simply wrong.
+    `batch.save_unlock` does the writing, because the GUI's chunk panel saves
+    one too and the metadata shape is what `maps list` and the picker read -
+    see that function for why there is exactly one writer of it.
     """
     envelope = read_cache(args.map_id)
-    record = UnlockRecord(
-        order=1,
-        chunk_id=delta.chunk_id,
-        new_sections=delta.new_sections,
-        new_tasks=delta.new_tasks,
-        new_unsupported=delta.new_unsupported,
-        bis_upgrades=delta.bis_upgrades,
+    saved = save_unlock(
+        name=args.cache_map,
+        payload=envelope["data"],
+        delta=delta,
+        base_map=args.map_id,
+        base_fetched_at=envelope.get("fetched_at"),
     )
-    payload = simulated_payload(envelope["data"], [record])
-    directory = claim_batch(args.cache_map, kind=UNLOCKED)
-    run = run_dir(directory, 1)
-    held = payload.get("chunks", {}).get("unlocked", {})
-    batch_id = uuid4().hex
-    meta: dict[str, Any] = {
-        "run": run.name,
-        "batch": directory.name,
-        "batch_id": batch_id,
-        "runs_in_batch": 1,
-        "origin": "unlock",
-        "chunk": delta.chunk_id,
-        "seed": None,
-        "rolls": [delta.chunk_id],
-        "rolls_requested": 1,
-        "base_map": args.map_id,
-        "base_fetched_at": envelope.get("fetched_at"),
-        "created_at": datetime.now(UTC).isoformat(),
-        "unlocked_chunks": len(held) if isinstance(held, dict) else None,
-    }
-    write_sim_run(
-        run,
-        map_id=f"{directory.name}/{run.name}",
-        data=payload,
-        simulation=meta,
-        ledger=[record.as_dict()],
-        source=f"unlock {delta.chunk_id} from {args.map_id!r}",
-        kind=UNLOCKED,
-    )
-    write_sim_batch(
-        directory,
-        {
-            "name": directory.name,
-            "batch_id": batch_id,
-            "kind": UNLOCKED,
-            "origin": "unlock",
-            "created_at": meta["created_at"],
-            "base_map": args.map_id,
-            "base_fetched_at": envelope.get("fetched_at"),
-            "rolls_requested": 1,
-            "seed": None,
-            "runs": [meta],
-        },
-    )
-    return directory.name
+    return saved.name
 
 
 def _cmd_unlock(args: argparse.Namespace) -> int:

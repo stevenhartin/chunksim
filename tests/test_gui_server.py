@@ -1269,3 +1269,137 @@ def test_no_unescaped_interpolation_lands_inside_an_attribute() -> None:
     offenders = re.findall(r'=\s*"\$\{raw\(', source)
 
     assert not offenders, f"{len(offenders)} raw() interpolations inside an attribute"
+
+
+def test_a_fetch_can_name_any_map_and_blank_means_the_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**The point of the box is fetching a map you have never cached.**
+
+    Every source-chunk map is a public unauthenticated read, so the id you can
+    type is not limited to the ids already in the picker - which is exactly
+    what "Fetch This Map", driven off the selected option, could not do.
+    """
+    seen: list[str] = []
+
+    def pretend(map_id: str, timeout: float = 0.0) -> dict[str, Any]:
+        seen.append(map_id)
+        return {"chunks": {"unlocked": {LUMBRIDGE: LUMBRIDGE}}}
+
+    monkeypatch.setattr("fray_claude.gui.server.fetch_map", pretend)
+    ctx = Context(root=tmp_path, check_origin=False)
+
+    named = _wait(ctx, _body(_post("/api/fetch", ctx, {"map": "someone-else"}))["job"])
+    blank = _wait(ctx, _body(_post("/api/fetch", ctx, {"map": "  "}))["job"])
+
+    assert seen == ["someone-else", cache.DEFAULT_MAP_ID]
+    assert named["result"]["map"] == "someone-else"
+    assert blank["result"]["map"] == cache.DEFAULT_MAP_ID
+    # Both landed where `fray fetch` puts one, so the picker can see them.
+    assert cache.read_cache("someone-else", tmp_path)["kind"] == cache.FETCHED
+
+
+def test_the_default_map_id_agrees_across_the_two_languages() -> None:
+    """The placeholder promises what blank does, and nothing enforces it.
+
+    A third constant crossing into JavaScript over no wire at all - see the
+    `Edge` bitfield and the projection. The symptom of drift is a box that
+    says `fray` and fetches something else.
+    """
+    _, js, _ = _resources()
+
+    declared = re.search(r'const DEFAULT_MAP_ID = "([^"]+)"', js)
+
+    assert declared is not None
+    assert declared.group(1) == cache.DEFAULT_MAP_ID
+
+
+def test_a_fetch_refuses_to_ask_firebase_for_a_run(tmp_path: Path) -> None:
+    """`batch/run-001` is something this project computed. Upstream has never
+    heard of it, so asking is a mistake rather than a fetch."""
+    ctx = Context(root=tmp_path, check_origin=False)
+
+    response = _post("/api/fetch", ctx, {"map": "sim/run-001"})
+
+    assert response.status == HTTPStatus.BAD_REQUEST
+    assert "run" in _body(response)["error"]
+
+
+def test_unlocking_a_chunk_writes_a_map_of_its_own_kind(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`fray unlock --chunk X --cache-map NAME`, reached from the chunk panel.
+
+    The kind is the assertion that matters: a map made by adding one chunk by
+    hand is `unlocked`, not `simulated`, because the picker has to say which.
+    """
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+    ctx = _derived_ctx(
+        tmp_path,
+        monkeypatch,
+        {"chunks": {LUMBRIDGE: {}, NORTH: {}}, "sections": {}},
+    )
+    ctx = Context(root=tmp_path, check_origin=False, derivations=ctx.derivations)
+
+    job = _wait(ctx, _body(_post("/api/unlock", ctx, {"map": "fray", "chunk": NORTH}))["job"])
+
+    assert job["state"] == "done", job.get("error")
+    saved = job["result"]
+    assert saved["chunk"] == NORTH
+    assert saved["unlocked_chunks"] == 2
+    envelope = cache.read_cache(saved["open"], tmp_path)
+    assert envelope["kind"] == cache.UNLOCKED
+    assert set(envelope["data"]["chunks"]["unlocked"]) == {LUMBRIDGE, NORTH}
+    # One job, recorded on the run as well as the batch - see `batch.py`.
+    assert cache.read_batch(saved["name"], tmp_path, kind=cache.UNLOCKED)["batch_id"]
+
+
+def test_unlocking_a_chunk_you_already_hold_fails_the_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The preview refuses it too. Saving a copy of the map under a new name
+    and calling it an unlock would be the worse answer of the two."""
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+    ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {LUMBRIDGE: {}}, "sections": {}})
+    ctx = Context(root=tmp_path, check_origin=False, derivations=ctx.derivations)
+
+    job = _wait(ctx, _body(_post("/api/unlock", ctx, {"map": "fray", "chunk": LUMBRIDGE}))["job"])
+
+    assert job["state"] == "failed"
+    assert "already unlocked" in job["error"]
+    assert not (tmp_path / "cache" / "maps" / cache.UNLOCKED).exists()
+
+
+def test_an_unlock_against_a_missing_map_fails_the_post_not_the_job(tmp_path: Path) -> None:
+    """Same rule `simulate` follows: a bad base map is answered immediately."""
+    ctx = Context(root=tmp_path, check_origin=False)
+
+    assert _post("/api/unlock", ctx, {"map": "nope", "chunk": NORTH}).status == (
+        HTTPStatus.NOT_FOUND
+    )
+
+
+@pytest.mark.parametrize("payload", [{"chunk": NORTH}, {"map": "fray"}, {}])
+def test_an_unlock_without_its_required_fields_is_a_400(
+    tmp_path: Path, payload: dict[str, Any]
+) -> None:
+    ctx = Context(root=tmp_path, check_origin=False)
+    assert _post("/api/unlock", ctx, payload).status == HTTPStatus.BAD_REQUEST
+
+
+def test_the_panel_offers_both_halves_of_the_unlock(tmp_path: Path) -> None:
+    """**Asking and taking are two verbs and the page carries both.**
+
+    `GET /api/unlock` prices a candidate and keeps nothing; `POST /api/unlock`
+    saves the world it was describing. The preview dialog is where you decide,
+    so the save lives in its footer as well as on the chunk panel.
+    """
+    _, js, _ = _resources()
+
+    assert 'id="do-unlock"' in js and 'id="preview-unlock"' in js
+    assert "function askUnlock(" in js
+    # It asks for a name before writing anything, and posts what it was given.
+    body = re.search(r"function askUnlock\(.*?\n\}\n", js, re.DOTALL)
+    assert body is not None
+    assert 'getElementById("unlock-name")' in body.group(0)
+    assert '"/api/unlock",' in body.group(0)
