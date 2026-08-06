@@ -25,15 +25,31 @@ def parse_ratio(raw: str) -> float:
     `nan` - matching `parseFloat` on a non-numeric JS string. Callers branch
     on `math.isnan` exactly as upstream branches on `isNaN`, to bypass
     rate-threshold checks for unconditional drops.
+
+    **A zero denominator is `inf`, not an exception**, because that is what
+    the code being ported does: JS `1/0` is `Infinity` and `0/0` is `NaN`,
+    neither of which raises. Python disagrees, and the difference is not
+    academic - a real map (`verf`) sets `Secondary Primary Amount` to `0`,
+    which reaches here as `"1/0"` through `build_secondary_primary_num` and
+    took down every derivation command with a `ZeroDivisionError`. An
+    infinite threshold is also the sensible reading of that rule being zero:
+    no rate is ever common enough to pass it, so the rate-based branches
+    simply turn off, and `verf`'s own `activeTasks` oracle agrees with that.
     """
     cleaned = raw.replace("~", "")
     numerator_str, separator, denominator_str = cleaned.partition("/")
     if not separator:
         return math.nan
     try:
-        return float(numerator_str) / float(denominator_str)
+        numerator, denominator = float(numerator_str), float(denominator_str)
     except ValueError:
         return math.nan
+    if denominator == 0:
+        # JS: 1/0 -> Infinity, -1/0 -> -Infinity, 0/0 -> NaN.
+        if numerator == 0:
+            return math.nan
+        return math.inf if numerator > 0 else -math.inf
+    return numerator / denominator
 
 
 def looks_non_numeric(raw: str) -> bool:

@@ -747,7 +747,13 @@ def read_rolls(map_id: str, root: Path | None = None) -> list[dict[str, Any]]:
     kind search across `simulated` and `unlocked` alike.
     """
     directory = resolve_map_path(map_id, root).parent
-    rolls = _read_json_object(directory / ROLLS_FILE_NAME).get("rolls")
+    try:
+        stored = _read_json_object(directory / ROLLS_FILE_NAME)
+    except CacheMissError:
+        # A fetched map has no ledger and that is the ordinary case, so say
+        # what is true rather than naming a path nobody expected to exist.
+        raise CacheMissError(f"{map_id!r} has no roll ledger") from None
+    rolls = stored.get("rolls")
     if not isinstance(rolls, list):
         raise CacheMissError(f"{map_id!r} has no roll ledger")
     return [entry for entry in rolls if isinstance(entry, dict)]

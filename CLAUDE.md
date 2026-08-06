@@ -83,6 +83,13 @@ guess at, with `worker.js`/`index.js` line references — **read it before trust
 numbers or changing its behaviour.** That is where the design rationale lives; this section is a
 map to it, not a substitute.
 
+**Test against more than one map.** Every rule in `rules` is a number or a flag a *player* set, so a
+second map is a second set of inputs and not just more data. `verf` sets `Secondary Primary Amount`
+to `0`, which reached `rates.parse_ratio` as `"1/0"` and killed `sections`, `sources`, `tasks`,
+`neighbours` and `estimate` outright — JS `1/0` is `Infinity` and raises nothing, Python disagreed,
+and no test or map in the repo had ever produced a zero there. `fray fetch --map <other>` is cheap
+and is the fastest way to find the next one.
+
 Five things that cut across modules — the first three because each has already caused a real bug:
 
 - **Reachable items are `ChallengeResult.available_items`, not `SourceIndex.items`.** The latter
@@ -130,7 +137,7 @@ Five things that cut across modules — the first three because each has already
 | `chunkinfo.py` | Typed, tolerant accessors over the parsed export. Build **one** `ChunkInfo` per invocation — parsing the ~7MB export is the expensive part. |
 | `sections.py` | Which sections of the unlocked chunks are reachable, plus named-area unlocking. `sectionsLimits` deliberately lives in `neighbours.py` instead. |
 | `graph.py` | The export's `sections` branch as a **directed** `(chunk, section)` graph, with each edge's `sectionsLimits` gate pre-bound. Shaped for the not-yet-written pathfinding search. |
-| `rates.py` | OSRS drop-rate string parsing/formatting, matching JS's rounding because the output lands inside task names. |
+| `rates.py` | OSRS drop-rate string parsing/formatting, matching JS's rounding because the output lands inside task names — **and its division**, so a zero denominator is `inf` rather than a `ZeroDivisionError`. |
 | `sources.py` | What the unlocked chunks make available (`SourceIndex`). Applies `taskUnlocks` to items *and* entities, so availability depends on challenge validity. |
 | `challenges.py` | Which challenges are valid (`ChallengeResult`) — a two-phase fixed point over 28 of 29 categories. **`BiS` is never evaluated here**; read `pipeline.Derived.bis`. Also **where every derivation command spends its time** — read the docstring's static/dynamic gate split before touching the loop. |
 | `bis.py` | Best-in-slot per (combat style, slot). Inherently **non-monotonic**: recomputed fresh per state, never accumulated. |

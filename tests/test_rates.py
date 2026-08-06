@@ -82,3 +82,31 @@ def test_find_fraction_floors_when_rounded_denominator_is_set() -> None:
 
 def test_find_fraction_returns_nan_for_a_nan_input() -> None:
     assert find_fraction(math.nan) == "NaN"
+
+
+def test_a_zero_denominator_is_infinity_rather_than_an_exception() -> None:
+    """**JS never raises here and Python does**, which took down a real map.
+
+    `verf` sets `Secondary Primary Amount` to `0`, which reaches
+    `parse_ratio` as `"1/0"` through `build_secondary_primary_num`. In the
+    code being ported that is `Infinity`; here it was a `ZeroDivisionError`
+    that killed `sections`, `sources`, `tasks`, `neighbours` and `estimate`
+    on that map - every command that derives.
+
+    `Infinity` is also the sensible reading of the rule being zero: no rate
+    is ever common enough to pass the threshold, so the rate-based branches
+    turn off. Measured on `verf`, no reading of that rule changes a single
+    derived item, so this follows the source rather than guessing.
+    """
+    assert parse_ratio("1/0") == math.inf
+    assert parse_ratio("-1/0") == -math.inf
+    # JS `0/0` is NaN, and so is this.
+    assert math.isnan(parse_ratio("0/0"))
+    assert build_secondary_primary_num("0") == math.inf
+
+
+def test_a_zero_denominator_does_not_disturb_ordinary_rates() -> None:
+    """The guard is a branch on the denominator, not a rewrite of the parse."""
+    assert parse_ratio("1/128") == 1 / 128
+    assert parse_ratio("~1/50") == 1 / 50
+    assert math.isnan(parse_ratio("Always"))
