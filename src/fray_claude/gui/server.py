@@ -96,7 +96,7 @@ from fray_claude.scrape import scrape
 from fray_claude.search import build_world_index, search
 from fray_claude.summary import _mapping, summarise
 from fray_claude.gui.derivation import DerivedState, Derivations, unlocked_of
-from fray_claude.gui.jobs import JobRegistry, JobState, Progress, as_int
+from fray_claude.gui.jobs import JobRegistry, JobState, Progress, StopCheck, as_int
 from fray_claude.gui.panels import task_panel
 from fray_claude.gui.worldmap import MapView, build_view, grid_position
 from fray_claude.timeline import Step, matches as timeline_matches, replay, series
@@ -850,7 +850,7 @@ def _fetch_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
         # of one, so asking it for `batch/run-001` is a mistake, not a fetch.
         raise ValueError(f"{map_id!r} names a run, not a map on source-chunk")
 
-    def work(progress: Progress) -> dict[str, Any]:
+    def work(progress: Progress, _stop: StopCheck) -> dict[str, Any]:
         progress(f"fetching {map_id}")
         data = fetch_map(map_id, timeout=DEFAULT_TIMEOUT)
         path = cache.write_cache(map_id, data, ctx.root)
@@ -876,15 +876,29 @@ def _simulate_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     # Read the base map now, so a bad id fails the POST rather than a job.
     envelope = cache.read_cache(map_id, ctx.root)
 
-    def work(progress: Progress) -> dict[str, Any]:
-        done = 0
+    def work(progress: Progress, stop: StopCheck) -> dict[str, Any]:
+        # **Rolls, not runs.** A run's cost is its rolls, so `2/3 runs` on a
+        # 3x100 job is three updates across four minutes and the two in
+        # between say nothing. `countsIn` in `app.js` reads `k/N` either way.
+        total = rolls * runs
+        rolled = 0
+        finished = 0
+
+        def roll(_run: int, _order: int, chunk_id: str) -> None:
+            nonlocal rolled
+            rolled += 1
+            progress(f"{rolled}/{total} rolls - {chunk_id}" + (" - stopping" if stop() else ""))
 
         def report(result: RunResult) -> None:
-            nonlocal done
-            done += 1
-            progress(f"{done}/{runs} runs - {result.name} -> {result.unlocked_chunks} chunks")
+            nonlocal finished, rolled
+            finished += 1
+            # Pooled runs report nothing per roll, so the count catches up
+            # here; inline it is already there and this only re-states it.
+            rolled = max(rolled, finished * rolls)
+            if jobs > 1:
+                progress(f"{rolled}/{total} rolls - {finished}/{runs} runs")
 
-        progress(f"0/{runs} runs")
+        progress(f"0/{total} rolls")
         batch = run_batch(
             name=name,
             payload=envelope["data"],
@@ -896,13 +910,28 @@ def _simulate_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
             seed=seed,
             root=ctx.root,
             on_complete=report,
+            # Only inline: a worker has no channel back, so `run_batch`
+            # ignores this above `--jobs 1` and reports per run instead.
+            on_roll=roll if jobs == 1 else None,
+            should_stop=stop,
         )
+        kept = sum(len(run.rolls) for run in batch.runs)
         return {
             "batch": batch.name,
             "runs": len(batch.runs),
+            "rolls": kept,
+            "rolls_requested": total,
+            "cancelled": stop(),
             # What to put in the map picker afterwards, resolved the way
-            # `cache.read_cache` resolves a bare batch name.
-            "open": batch.name if len(batch.runs) == 1 else f"{batch.name}/{batch.runs[0].name}",
+            # `cache.read_cache` resolves a bare batch name. A batch stopped
+            # before its first roll finished has no run to open.
+            "open": (
+                ""
+                if not batch.runs
+                else batch.name
+                if len(batch.runs) == 1
+                else f"{batch.name}/{batch.runs[0].name}"
+            ),
         }
 
     return {"job": ctx.jobs.submit("simulate", work).id}
@@ -934,7 +963,7 @@ def _unlock_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     # Read the base map now, so a bad id fails the POST rather than a job.
     envelope = cache.read_cache(map_id, ctx.root)
 
-    def work(progress: Progress) -> dict[str, Any]:
+    def work(progress: Progress, _stop: StopCheck) -> dict[str, Any]:
         from fray_claude.unlock import tasks_added_by
 
         progress(f"deriving {map_id}")
@@ -996,7 +1025,7 @@ def _timeline_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     jobs = as_int(payload, "jobs", 0)
     steps = _run_steps(map_id, ctx)
 
-    def work(progress: Progress) -> dict[str, Any]:
+    def work(progress: Progress, _stop: StopCheck) -> dict[str, Any]:
         workers = jobs if jobs > 0 else (os.process_cpu_count() or 1)
 
         def report(done: int, total: int) -> None:
@@ -1025,6 +1054,29 @@ def _timeline_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     return {"job": ctx.jobs.submit(f"timeline {map_id}", work).id}
 
 
+def _cancel_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
+    """Ask a running job to stop.
+
+    **The id is in the body, not the path**, so this joins `_ACTIONS` like
+    every other action and inherits the `Sec-Fetch-Site`/`Host` checks rather
+    than needing a second dispatch that could forget them.
+
+    **A request, not a kill**, and the reply says so: the work stops where it
+    safely can - `run_batch` finishes the roll it is on - so the job is still
+    `running` when this answers and the page keeps polling. Cancelling a job
+    that has already finished is a no-op rather than an error, because the
+    button and the last poll race and "it had already finished" needs no
+    handling by anyone.
+    """
+    job_id = str(payload.get("job") or "").strip()
+    if not job_id:
+        raise ValueError("missing 'job'")
+    job = ctx.jobs.cancel(job_id)
+    if job is None:
+        raise cache.CacheMissError(f"no such job {job_id!r}")
+    return {"job": job.id, "state": str(job.state), "stopping": job.stopping.is_set()}
+
+
 def _refresh_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     """Re-download the reference data `fray chunkinfo` and `fray heuristics` get.
 
@@ -1036,7 +1088,7 @@ def _refresh_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     if what not in ("chunkinfo", "heuristics"):
         raise ValueError(f"unknown refresh target {what!r}")
 
-    def work(progress: Progress) -> dict[str, Any]:
+    def work(progress: Progress, _stop: StopCheck) -> dict[str, Any]:
         if what == "chunkinfo":
             progress("downloading the chunk export (~10 MiB)")
             info = fetch_chunkinfo(DEFAULT_TIMEOUT)
@@ -1094,6 +1146,7 @@ _ACTIONS: dict[str, Callable[[Mapping[str, Any], Context], dict[str, Any]]] = {
     "/api/simulate": _simulate_job,
     "/api/unlock": _unlock_job,
     "/api/timeline": _timeline_job,
+    "/api/cancel": _cancel_job,
     "/api/refresh": _refresh_job,
     "/api/maps/remove": _remove_job,
     "/api/derived/prune": _prune_job,

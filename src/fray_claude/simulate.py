@@ -258,6 +258,8 @@ def simulate_rolls(
     seed: int | None = None,
     cache: StateCache | None = None,
     on_state: Callable[[int, Derived], None] | None = None,
+    on_roll: Callable[[int, str], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> list[UnlockRecord]:
     """Simulate up to `rolls` chunk unlocks from `unlocked`, stopping early
     if the roll pool is ever empty. Each record's delta is computed against
@@ -270,6 +272,16 @@ def simulate_rolls(
     ends either at `rolls` or the first time the pool comes up empty, and the
     second of those is only visible one iteration later. Deriving it twice to
     find out would cost a second per run, which is the whole saving.
+
+    `on_roll` is told each roll as it lands, which is what a progress bar
+    wants: a run's cost is its rolls, so `2/3 runs` on a 3x100 job is three
+    updates across four minutes. It is separate from `on_state` because that
+    one also reports the baseline the run started on, which is not a roll and
+    would make the count start at one before anything had happened.
+
+    `should_stop` is checked once per roll and ends the run early, leaving a
+    short ledger - **the same shape an exhausted pool already leaves**, which
+    is why `simulated_payload` needs no special case for a cancelled run.
 
     `on_state` sees every state the run passes through, numbered from 0 for
     the one it starts on. **It exists so a caller can measure a state without
@@ -291,6 +303,8 @@ def simulate_rolls(
         on_state(0, before)
 
     for order in range(1, rolls + 1):
+        if should_stop is not None and should_stop():
+            break
         pool = roll_pool(state, current_ids, before, graph=graph)
         if not pool:
             break
@@ -315,6 +329,8 @@ def simulate_rolls(
         before = after
         if on_state is not None:
             on_state(order, after)
+        if on_roll is not None:
+            on_roll(order, chunk_id)
 
     if cache is not None and ledger:
         cache.keep_final(state, current_ids, before)

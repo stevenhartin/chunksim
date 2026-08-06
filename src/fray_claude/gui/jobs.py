@@ -38,6 +38,10 @@ class JobState(StrEnum):
     RUNNING = "running"
     DONE = "done"
     FAILED = "failed"
+    #: Stopped because somebody asked, which is **not** a failure and must
+    #: not be coloured like one. A cancelled simulation keeps every roll it
+    #: had finished; see `batch.run_batch`.
+    CANCELLED = "cancelled"
 
 
 @dataclass
@@ -59,6 +63,11 @@ class Job:
     error: str | None = None
     started_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     finished_at: str | None = None
+    #: Set by `JobRegistry.cancel`. The work checks it and stops where it
+    #: safely can, so this is a *request* and the job stays `RUNNING` until
+    #: the work agrees - which is why the page keeps polling after a cancel
+    #: rather than assuming it is over.
+    stopping: threading.Event = field(default_factory=threading.Event)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -70,6 +79,7 @@ class Job:
             "error": self.error,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
+            "stopping": self.stopping.is_set(),
         }
 
 
@@ -78,8 +88,12 @@ class Job:
 #: deliver to and nowhere for a backlog to build up.
 Progress = Callable[[str], None]
 
+#: Asked, once in a while, whether to stop. Work that has nowhere sensible to
+#: stop simply never calls it.
+StopCheck = Callable[[], bool]
+
 #: The work itself. Returns whatever the browser should see on success.
-Work = Callable[[Progress], dict[str, Any]]
+Work = Callable[[Progress, StopCheck], dict[str, Any]]
 
 
 class JobRegistry:
@@ -103,8 +117,13 @@ class JobRegistry:
 
         def run() -> None:
             try:
-                job.result = work(lambda message: setattr(job, "progress", message))
-                job.state = JobState.DONE
+                job.result = work(
+                    lambda message: setattr(job, "progress", message), job.stopping.is_set
+                )
+                # **Cancelled, not done.** The work returned normally because
+                # it stopped where it was asked to, and a page that coloured
+                # that green would be claiming the batch finished.
+                job.state = JobState.CANCELLED if job.stopping.is_set() else JobState.DONE
             except Exception as exc:  # noqa: BLE001 - the browser gets the message
                 # The traceback goes to the terminal because it names paths on
                 # this machine; the browser gets the one-line reason.
@@ -120,6 +139,21 @@ class JobRegistry:
     def get(self, job_id: str) -> Job | None:
         with self._lock:
             return self._jobs.get(job_id)
+
+    def cancel(self, job_id: str) -> Job | None:
+        """Ask a job to stop. Returns it, or `None` if there is no such job.
+
+        **A request, not a kill.** The work decides where it can safely stop -
+        `batch.run_batch` finishes the roll it is on - so the job stays
+        `RUNNING` until it agrees. Cancelling a finished job is a no-op rather
+        than an error: the button and the last poll race, and the user's
+        answer to "it had already finished" is nothing.
+        """
+        with self._lock:
+            job = self._jobs.get(job_id)
+        if job is not None and job.state is JobState.RUNNING:
+            job.stopping.set()
+        return job
 
     def recent(self) -> list[Job]:
         with self._lock:

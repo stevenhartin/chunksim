@@ -131,6 +131,10 @@ class RunResult:
     seed: int
     rolls: tuple[str, ...]
     unlocked_chunks: int
+    #: True when the run was stopped before it had rolled what it was asked
+    #: for. `written` is false only when it was stopped before rolling at all.
+    cancelled: bool = False
+    written: bool = True
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -138,6 +142,7 @@ class RunResult:
             "seed": self.seed,
             "rolls": list(self.rolls),
             "unlocked_chunks": self.unlocked_chunks,
+            "cancelled": self.cancelled,
         }
 
 
@@ -561,11 +566,26 @@ def price_steps(
     return [priced[step][0] for step in order], [priced[step][1] for step in order]
 
 
-def run_one(spec: RunSpec) -> RunResult:
+def run_one(
+    spec: RunSpec,
+    *,
+    on_roll: Callable[[int, str], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
+) -> RunResult:
     """Execute one run and write its directory. Runs in a worker process.
 
     Loads its own `ChunkInfo` and tasks map - see the module docstring for why
     that is the design rather than a cost.
+
+    **`on_roll` and `should_stop` only reach here inline.** They are keyword
+    arguments rather than `RunSpec` fields because a spec has to pickle and a
+    callable does not; `run_batch` passes them when `jobs` is 1 and leaves
+    them unset when it uses the pool, where a worker has no channel back.
+
+    A stopped run still writes, provided it rolled anything. Its ledger is
+    short in exactly the way an exhausted roll pool already leaves it, so
+    `simulated_payload` needs no special case and the result is an ordinary
+    cached map with fewer chunks.
     """
     info = ChunkInfo(read_chunkinfo(override=spec.chunkinfo_path, root=spec.root))
     try:
@@ -590,7 +610,10 @@ def run_one(spec: RunSpec) -> RunResult:
         seed=spec.seed,
         cache=RollCache(digests, spec.cache_behaviour, spec.root),
         on_state=None if pricer is None else pricer.record(state),
+        on_roll=on_roll,
+        should_stop=should_stop,
     )
+    stopped = should_stop is not None and should_stop()
     payload = simulated_payload(spec.payload, ledger)
     rolled = tuple(record.chunk_id for record in ledger)
     held = payload.get("chunks", {}).get("unlocked", {})
@@ -600,6 +623,10 @@ def run_one(spec: RunSpec) -> RunResult:
         "seed": spec.seed,
         "rolls": list(rolled),
         "rolls_requested": spec.rolls,
+        # **Only `run.json` records this.** The envelope stays an ordinary
+        # map, because a partial run *is* one - fewer chunks, nothing else
+        # different - and `maps list` is where "you stopped this" belongs.
+        "cancelled": stopped,
         "base_map": spec.base_map,
         "base_fetched_at": spec.base_fetched_at,
         "created_at": datetime.now(UTC).isoformat(),
@@ -613,16 +640,24 @@ def run_one(spec: RunSpec) -> RunResult:
         "run": spec.name,
         "runs_in_batch": spec.runs_in_batch,
     }
-    write_sim_run(
-        spec.directory,
-        map_id=f"{spec.directory.parent.name}/{spec.name}",
-        data=payload,
-        simulation=simulation,
-        ledger=[record.as_dict() for record in ledger],
-        timeline=None if pricer is None else pricer.stored(),
-    )
+    # A run stopped before its first roll has nothing to say: writing it
+    # would put a copy of the base map in the batch under a run's name.
+    if ledger:
+        write_sim_run(
+            spec.directory,
+            map_id=f"{spec.directory.parent.name}/{spec.name}",
+            data=payload,
+            simulation=simulation,
+            ledger=[record.as_dict() for record in ledger],
+            timeline=None if pricer is None else pricer.stored(),
+        )
     return RunResult(
-        name=spec.name, seed=spec.seed, rolls=rolled, unlocked_chunks=len(held)
+        name=spec.name,
+        seed=spec.seed,
+        rolls=rolled,
+        unlocked_chunks=len(held),
+        cancelled=stopped,
+        written=bool(ledger),
     )
 
 
@@ -661,6 +696,18 @@ def _specs(
     return specs
 
 
+def _roll_reporter(
+    on_roll: Callable[[int, int, str], None], run_index: int
+) -> Callable[[int, str], None]:
+    """Bind a run's index onto the batch-level callback, so a caller counting
+    rolls across a whole batch knows which run each came from."""
+
+    def report(order: int, chunk_id: str) -> None:
+        on_roll(run_index, order, chunk_id)
+
+    return report
+
+
 def run_batch(
     *,
     name: str,
@@ -675,6 +722,8 @@ def run_batch(
     root: Path | None = None,
     cache_behaviour: CacheBehaviour = CacheBehaviour.ALL,
     on_complete: Callable[[RunResult], None] | None = None,
+    on_roll: Callable[[int, int, str], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> BatchResult:
     """Claim a batch directory, run `runs` simulations into it, and summarise.
 
@@ -688,6 +737,20 @@ def run_batch(
     therefore has run directories but no summary, and `cache.read_sim_batch`
     rebuilds the summary from the runs in that case rather than treating the
     batch as lost.
+
+    **`on_roll` is per roll and only fires inline.** A run's cost is its
+    rolls, so that is what a progress bar should count - `2/3 runs` on a
+    3x100 job is three updates across four minutes. With `jobs > 1` the
+    callback would fire inside a worker with no channel back, so the pooled
+    path reports through `on_complete` alone and the caller says which
+    granularity it is getting. Threading a `multiprocessing.Queue` through
+    `RunSpec` would buy a smoother CLI bar for the one piece of shared state
+    this module is built without.
+
+    `should_stop` ends the batch early. Inline it is checked **per roll**, so
+    a partial run is kept; pooled it is checked **between runs**, because
+    stopping a worker mid-roll needs a signal the pool has no channel for.
+    Either way the batch is summarised from what finished.
     """
     if rolls < 1:
         raise ValueError("rolls must be at least 1")
@@ -715,8 +778,14 @@ def run_batch(
 
     results: list[RunResult] = []
     if jobs == 1 or len(specs) == 1:
-        for spec in specs:
-            result = run_one(spec)
+        for index, spec in enumerate(specs):
+            if should_stop is not None and should_stop():
+                break
+            result = run_one(
+                spec,
+                on_roll=None if on_roll is None else _roll_reporter(on_roll, index),
+                should_stop=should_stop,
+            )
             results.append(result)
             if on_complete is not None:
                 on_complete(result)
@@ -733,9 +802,18 @@ def run_batch(
                 results.append(result)
                 if on_complete is not None:
                     on_complete(result)
+                # Between runs, not within one: a submitted future is already
+                # in a worker and there is no channel to interrupt it.
+                if should_stop is not None and should_stop():
+                    for pending in futures:
+                        pending.cancel()
+                    break
 
     # Completion order is scheduling noise; run order is the reproducible one.
     results.sort(key=lambda result: result.name)
+    # A run stopped before its first roll left nothing on disk, so it must not
+    # appear in a summary that claims to describe the directory.
+    results = [result for result in results if result.written]
     batch = BatchResult(
         name=directory.name,
         directory=directory,
@@ -760,6 +838,7 @@ def run_batch(
             "base_fetched_at": base_fetched_at,
             "rolls_requested": rolls,
             "seed": seed,
+            "cancelled": bool(should_stop is not None and should_stop()),
             "runs": [result.as_dict() for result in results],
         },
     )

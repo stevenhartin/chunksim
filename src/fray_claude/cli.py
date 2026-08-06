@@ -1123,9 +1123,11 @@ def _maps_rows(entries: Iterable[MapEntry]) -> list[str]:
         chunks = "-" if entry.unlocked_chunks is None else str(entry.unlocked_chunks)
         indent = "  " if "/" in entry.map_id else ""
         name = f"{indent}{entry.map_id}"
+        # A stopped batch's `rolls` is what it *asked* for, so without this
+        # the only clue is a run count quietly short of it.
+        age = _format_age(entry.created_at) + (" (stopped)" if entry.cancelled else "")
         rows.append(
-            f"{name:<28} {entry.kind:<10} {runs:>5} {rolls:>6} {chunks:>7}  "
-            f"{_format_age(entry.created_at)}"
+            f"{name:<28} {entry.kind:<10} {runs:>5} {rolls:>6} {chunks:>7}  {age}"
         )
     return rows
 

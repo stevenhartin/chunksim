@@ -570,3 +570,54 @@ def test_a_batch_with_no_base_at_all_answers_none(root: Path) -> None:
     meta.write_text(json.dumps({k: v for k, v in stored.items() if k != "base_payload"}))
 
     assert read_base_payload(f"{batch.name}/{batch.runs[0].name}", root) is None
+
+
+def test_a_stopped_run_keeps_the_rolls_it_finished(root: Path) -> None:
+    """**A partial run is an ordinary map with fewer chunks**, which is the
+    whole reason stopping one is worth doing. Its ledger is short in exactly
+    the way an exhausted roll pool already leaves it, so `simulated_payload`
+    needs no special case and every command reads it unchanged.
+    """
+    rolled: list[str] = []
+    batch = run_batch(
+        name="stop", payload=_PAYLOAD, base_map="fray", rolls=10, seed=4, root=root,
+        on_roll=lambda _run, _order, chunk: rolled.append(chunk),
+        should_stop=lambda: len(rolled) >= 2,
+    )
+
+    assert len(rolled) == 2, "it stopped after the roll it was on, not mid-roll"
+    run = batch.runs[0]
+    assert run.cancelled is True
+    assert len(run.rolls) == 2
+
+    envelope = read_cache(f"{batch.name}/{run.name}", root)
+    held = envelope["data"]["chunks"]["unlocked"]
+    assert set(held) == {"100", *rolled}, "the payload holds exactly what was rolled"
+    assert read_sim_batch(batch.name, root)["cancelled"] is True
+
+
+def test_stopping_before_the_first_roll_writes_nothing(root: Path) -> None:
+    """A run with an empty ledger would be a copy of the base map filed under
+    a run's name - which reads as a simulation that did something."""
+    batch = run_batch(
+        name="stop", payload=_PAYLOAD, base_map="fray", rolls=5, seed=4, root=root,
+        should_stop=lambda: True,
+    )
+
+    assert batch.runs == ()
+    assert not list((sims_root(root) / batch.name).glob("run-*"))
+
+
+def test_on_roll_reports_every_roll_once_with_what_landed(root: Path) -> None:
+    """Progress counts rolls because a run's cost *is* its rolls: `2/3 runs`
+    on a 3x100 job is three updates across four minutes."""
+    seen: list[tuple[int, int, str]] = []
+    batch = run_batch(
+        name="p", payload=_PAYLOAD, base_map="fray", rolls=3, runs=2, seed=4, root=root,
+        on_roll=lambda run, order, chunk: seen.append((run, order, chunk)),
+    )
+
+    rolled = [chunk for run in batch.runs for chunk in run.rolls]
+    assert [chunk for _r, _o, chunk in seen] == rolled
+    # Numbered from 1 within each run, and the run index says which.
+    assert [(r, o) for r, o, _c in seen] == [(0, 1), (0, 2), (0, 3), (1, 1), (1, 2), (1, 3)]

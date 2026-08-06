@@ -98,7 +98,7 @@ for (const id of [
   "map", "compare", "breakdown", "plane", "candidates", "masks", "live", "fit", "counts", "skipped",
   "hover", "toggle-panel", "panel", "tabs", "toast", "legend", "tip",
   "progress", "progress-title", "progress-count", "progress-detail",
-  "progress-track", "progress-fill",
+  "progress-track", "progress-fill", "progress-cancel",
   "overlay", "overlay-title", "overlay-body", "overlay-close", "overlay-actions",
   "chunk-head", "chunk-chips", "chunk-body", "task-chips", "tasks-body",
   "show-done", "estimate-total", "estimate-why", "estimate-body",
@@ -2480,8 +2480,13 @@ async function loadMapsPane() {
  *
  * So the shape of the reply decides: a job id means follow it, anything else
  * *is* the answer. */
-function showProgress(title, { detail = "", done = 0, total = 0, state = "" } = {}) {
+function showProgress(title, { detail = "", done = 0, total = 0, state = "", job = "" } = {}) {
   el.progress.hidden = false;
+  /* **Only while it is running, and only for work that can stop.** A button
+   * that does nothing is worse than none, and the reply shape already tells
+   * us which actions are jobs at all. */
+  el["progress-cancel"].hidden = !job;
+  el["progress-cancel"].dataset.job = job;
   el.progress.className = "progress" + (state ? " " + state : "");
   el["progress-title"].textContent = title;
   el["progress-count"].textContent = total ? done + "/" + total : "";
@@ -2491,6 +2496,19 @@ function showProgress(title, { detail = "", done = 0, total = 0, state = "" } = 
   el["progress-track"].classList.toggle("indeterminate", !total);
   el["progress-fill"].style.width = total ? Math.round((done / total) * 100) + "%" : "";
 }
+
+el["progress-cancel"].addEventListener("click", async () => {
+  const id = el["progress-cancel"].dataset.job;
+  if (!id) return;
+  el["progress-cancel"].hidden = true;
+  /* The work stops where it safely can, so this only *asks* - `followJob`
+   * keeps polling and reports whatever was kept. */
+  try {
+    await postJSON("/api/cancel", { job: id });
+  } catch (error) {
+    toast(error.message);
+  }
+});
 
 function hideProgress(after) {
   clearTimeout(hideProgress.timer);
@@ -2516,6 +2534,10 @@ function summariseReply(reply) {
       + (reply.tasks === 1 ? " task" : " tasks");
   }
   if (reply.batch) {
+    if (reply.cancelled) {
+      return "Stopped after " + reply.rolls + " of " + reply.rolls_requested
+        + " rolls — " + (reply.runs ? reply.batch + " kept" : "nothing to keep");
+    }
     return "Rolled " + reply.batch + " — " + reply.runs
       + (reply.runs === 1 ? " run" : " runs");
   }
@@ -2575,6 +2597,7 @@ function followJob(id, label, onDone) {
       if (job.state === "running") {
         return showProgress(label, {
           detail: job.progress || "Working…",
+          job: job.stopping ? "" : id,
           ...countsIn(job.progress),
         });
       }
@@ -2582,6 +2605,14 @@ function followJob(id, label, onDone) {
       if (job.state === "failed") {
         showProgress(label, { detail: job.error, state: "failed" });
         hideProgress(8000);
+      } else if (job.state === "cancelled") {
+        /* **Stopped is not failed.** The user did this, and what it kept is
+         * cached and openable - so it reads as an outcome, not a red bar. */
+        showProgress(label, {
+          detail: summariseReply(job.result), done: 1, total: 1, state: "stopped",
+        });
+        hideProgress(5000);
+        await onDone?.(job.result);
       } else {
         showProgress(label, {
           detail: summariseReply(job.result), done: 1, total: 1, state: "done",

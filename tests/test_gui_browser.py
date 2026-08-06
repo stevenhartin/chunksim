@@ -131,7 +131,7 @@ def test_a_running_job_holds_it_open() -> None:
     started = threading.Event()
     release = threading.Event()
 
-    def work(progress: Any) -> dict[str, Any]:
+    def work(progress: Any, _stop: Any) -> dict[str, Any]:
         started.set()
         release.wait(timeout=5)
         return {}

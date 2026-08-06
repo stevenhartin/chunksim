@@ -136,7 +136,10 @@ It re-reads the cache as it goes, so a `fray fetch` or `fray simulate` in anothe
 in the browser a couple of seconds later. You can also drive both from the page itself. **Fetch
 Named Map** takes an id rather than the map on screen — every source-chunk map is a public read, so
 you can pull down one you have never cached, or a friend's; leaving the box empty fetches `fray`.
-**Roll** simulates N chunks, saves each run as a cached map and opens the result as a comparison.
+**Roll** simulates N chunks, saves each run as a cached map and opens the result as a comparison. The
+progress card counts rolls rather than runs — `47/300` on a three-run job — and carries a stop button:
+stopping keeps every roll already finished, as an ordinary map you can open, derive and step through.
+`fray maps` marks it `(stopped)` so a run that ended short is not mistaken for one that finished.
 
 `?map=…&compare=…&candidates=1&sections=1&step=4&tab=estimate` reproduces a view, so a particular question
 is shareable and a screenshot is reproducible.

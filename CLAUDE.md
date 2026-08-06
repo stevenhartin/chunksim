@@ -444,6 +444,19 @@ maps, and `?map=&compare=&candidates=1&sections=1&step=&tab=` reproduces a view.
 
 Things worth knowing before changing it:
 
+- **A simulation counts rolls and can be stopped, and stopping keeps what it rolled.** `2/3 runs` on a
+  3×100 job is three updates across four minutes, so progress is `X/300 rolls` — `simulate_rolls`
+  gained `on_roll` beside the `on_state` pricing uses, which also reports the baseline and would start
+  the count at one before anything had happened. **`POST /api/cancel` is a request, not a kill**: the
+  work stops where it safely can (the roll it is on), so the job stays `running` until it agrees and
+  the page keeps polling. It ends `CANCELLED`, which is **not** `FAILED` — the user did it, and what
+  it kept is an ordinary cached map. A partial run's ledger is short in exactly the way an exhausted
+  roll pool already leaves it, so `simulated_payload` needs no special case and `tasks`, `estimate`
+  and the timeline all read it unchanged; only `run.json`/`batch.json` record `cancelled`, which is
+  why `maps list` is where "you stopped this" gets said. **Per roll inline, per run when pooled** —
+  `--jobs > 1` puts the callback in a worker with no channel back, and a `multiprocessing.Queue`
+  through `RunSpec` would buy a smoother CLI bar for the one piece of shared state this module is
+  built without.
 - **The wiki rates are fetched on open when they have never been fetched, and only then.** Without
   them every hour in the Estimate tab falls back to a default and the total is thousands of hours
   light — the panel would say so in small print beside a confident-looking number, which is a poor
@@ -478,9 +491,9 @@ Things worth knowing before changing it:
   what is on** (holding the selected set froze it at whatever the first chunk happened to contain,
   so a category nobody had seen yet came up unchecked — click narrows to one, shift adds, ctrl
   removes); and **an action's reply shape decides whether it is polled** — `fetch`/`simulate`/
-  `unlock`/`timeline`/`refresh` return a job id, `maps/remove`/`derived/prune`/`window` return the result, and
-  reading `{ job }` off all of them polled `/api/jobs/undefined`, whose 404 silently swallowed the
-  refresh callback and left deleted maps on screen. A finished job reports `summariseReply(result)`
+  `unlock`/`timeline`/`refresh` return a job id, `maps/remove`/`derived/prune`/`window`/`cancel` return the
+  result, and reading `{ job }` off all of them polled `/api/jobs/undefined`, whose 404 silently swallowed
+  the refresh callback and left deleted maps on screen. A finished job reports `summariseReply(result)`
   rather than "Finished", because `claim_batch` suffixes a clash and the name that landed is not
   always the name that was typed.
 - **Every length in `style.css` comes from one scale** (`--s1`…`--s6`, `--r1`…`--r3`), and a test

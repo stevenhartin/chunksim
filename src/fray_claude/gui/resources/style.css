@@ -649,6 +649,10 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .progress.done .progress-fill { background: var(--gain); }
 .progress.failed .progress-fill { background: var(--loss); }
 .progress.failed .progress-detail { color: #ef8080; }
+/* Stopped on purpose: the accent, not the loss colour. What it kept is
+   cached and openable, so this is an outcome rather than a fault. */
+.progress.stopped .progress-fill { background: var(--amber); }
+.progress.stopped .progress-detail { color: var(--amber); }
 
 /* **Top left, opposite the progress card** - it used to sit bottom left,
    which is where the timeline strip now spans the whole width. Up here it

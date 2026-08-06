@@ -817,11 +817,18 @@ class MapEntry:
     batch_id: str | None = None
     #: The batch a run belongs to, for a row that is a run rather than a batch.
     batch: str | None = None
+    #: Stopped before it rolled what it was asked for. **Only the metadata
+    #: records this** - a partial run's envelope is an ordinary map with
+    #: fewer chunks, which is the whole reason it stays usable - so a listing
+    #: is where "you stopped this" has to be said, or the only clue is a
+    #: rolls count quietly short of the batch's.
+    cancelled: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "map_id": self.map_id,
             "kind": self.kind,
+            "cancelled": self.cancelled,
             "created_at": self.created_at,
             "unlocked_chunks": self.unlocked_chunks,
             "rolls": self.rolls,
@@ -894,6 +901,7 @@ def _batch_entries(kind: str, root: Path | None, *, expand_runs: bool) -> list[M
                 kind=kind,
                 created_at=_str_or_none(summary.get("created_at")),
                 rolls=_int_or_none(summary.get("rolls_requested")),
+                cancelled=summary.get("cancelled") is True,
                 runs=len(runs),
                 seed=_int_or_none(summary.get("seed")),
                 base_map=_str_or_none(summary.get("base_map")),
@@ -911,6 +919,7 @@ def _batch_entries(kind: str, root: Path | None, *, expand_runs: bool) -> list[M
                     created_at=_str_or_none(run.get("created_at")),
                     unlocked_chunks=_int_or_none(run.get("unlocked_chunks")),
                     rolls=len(rolled) if isinstance(rolled, list) else None,
+                    cancelled=run.get("cancelled") is True,
                     seed=_int_or_none(run.get("seed")),
                     base_map=_str_or_none(run.get("base_map")),
                     batch_id=_str_or_none(run.get("batch_id")),

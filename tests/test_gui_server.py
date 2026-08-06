@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 from http import HTTPStatus
 from pathlib import Path
@@ -668,6 +669,8 @@ class _FakeRun:
     def __init__(self, name: str) -> None:
         self.name = name
         self.unlocked_chunks = 1
+        self.rolls = ("100",)
+        self.cancelled = False
 
 
 def _resources() -> tuple[str, str, str]:
@@ -1797,7 +1800,7 @@ def test_the_timeline_job_reports_slices_for_the_bar(
 
 def _capture(registry: Any, action: str, work: Any, seen: list[str]) -> Any:
     """Run a job inline and keep every progress line it emitted."""
-    work(seen.append)
+    work(seen.append, lambda: False)
 
     class _Job:
         id = "inline"
@@ -1914,3 +1917,98 @@ def test_the_page_fetches_the_rates_once_when_they_are_missing() -> None:
     # The 10MB export is deliberately not fetched on open.
     assert "chunkinfo" not in body.group(1)
     assert "warmReference();" in js
+
+
+def test_cancelling_is_a_request_and_leaves_the_job_running(tmp_path: Path) -> None:
+    """**A request, not a kill.** The work stops where it safely can - a
+    simulation finishes the roll it is on - so the job is still `running`
+    when the cancel answers, and the page has to keep polling rather than
+    assume it is over."""
+    ctx = Context(root=tmp_path, check_origin=False)
+    started, release = threading.Event(), threading.Event()
+
+    def work(progress: Any, stop: Any) -> dict[str, Any]:
+        started.set()
+        while not stop():
+            if release.wait(timeout=0.01):
+                break
+        return {"stopped": stop()}
+
+    job = ctx.jobs.submit("simulate", work)
+    started.wait(timeout=5)
+
+    reply = _body(_post("/api/cancel", ctx, {"job": job.id}))
+
+    assert reply["state"] == "running", "it must not claim to have stopped already"
+    assert reply["stopping"] is True
+    finished = _wait(ctx, job.id)
+    # Stopped on purpose is its own state: a page that coloured this like a
+    # crash would be calling the user's own click a failure.
+    assert finished["state"] == "cancelled"
+    assert finished["error"] is None
+    assert finished["result"] == {"stopped": True}
+
+
+def test_cancelling_a_finished_job_is_not_an_error(tmp_path: Path) -> None:
+    """The button and the last poll race, and "it had already finished" needs
+    no handling by anyone."""
+    ctx = Context(root=tmp_path, check_origin=False)
+    job = ctx.jobs.submit("fetch", lambda _p, _s: {"done": True})
+    _wait(ctx, job.id)
+
+    reply = _body(_post("/api/cancel", ctx, {"job": job.id}))
+
+    assert reply["state"] == "done"
+    assert reply["stopping"] is False
+
+
+def test_cancelling_an_unknown_job_is_a_404(tmp_path: Path) -> None:
+    ctx = Context(root=tmp_path, check_origin=False)
+
+    assert _post("/api/cancel", ctx, {"job": "nope"}).status == HTTPStatus.NOT_FOUND
+    assert _post("/api/cancel", ctx, {}).status == HTTPStatus.BAD_REQUEST
+
+
+def test_simulate_progress_counts_rolls_not_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**`2/3 runs` on a 3x100 job is three updates across four minutes.**
+    The bar should count the thing that takes the time, and `countsIn` reads
+    `k/N` either way."""
+    seen: list[str] = []
+
+    def fake(**kw: Any) -> Any:
+        roll = kw["on_roll"]
+        for run in range(kw["runs"]):
+            for order in range(1, kw["rolls"] + 1):
+                roll(run, order, "12850")
+        return _FakeBatch(kw["name"], kw["runs"], kw["on_complete"])
+
+    monkeypatch.setattr("fray_claude.gui.server.run_batch", fake)
+    monkeypatch.setattr(
+        "fray_claude.gui.jobs.JobRegistry.submit",
+        lambda self, action, work: _capture(self, action, work, seen),
+    )
+    ctx = Context(root=tmp_path, check_origin=False)
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+
+    _post("/api/simulate", ctx, {"map": "fray", "name": "sim", "rolls": 4, "runs": 3})
+
+    assert seen[0] == "0/12 rolls"
+    assert seen[-1].startswith("12/12 rolls")
+    assert not any("runs" in line for line in seen), seen
+
+
+def test_the_progress_card_can_stop_a_job() -> None:
+    """The control only appears while something is running that can stop, and
+    it hides itself once asked - a button that stays lit after you press it
+    reads as not having worked."""
+    html, js, css = _resources()
+
+    assert 'id="progress-cancel"' in html
+    assert '"/api/cancel"' in js
+    # Shown per job id, not unconditionally.
+    assert 'el["progress-cancel"].hidden = !job' in js
+    # Stopped is its own colour, not the loss one.
+    assert ".progress.stopped" in css
+    assert 'job.state === "cancelled"' in js
