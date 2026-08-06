@@ -144,7 +144,14 @@ from fray_claude.heuristics import (
     primary_training_tasks,
     quest_names,
 )
-from fray_claude.derived_cache import CacheBehaviour, Digests, RollCache, cached_derive
+from fray_claude.derived_cache import (
+    CacheBehaviour,
+    Digests,
+    RollCache,
+    cached_derive,
+    cached_enrich,
+    pricing_digests,
+)
 from fray_claude.firebase import reverse_tasks_map
 from fray_claude.graph import build_section_graph
 from fray_claude.neighbours import eligible_neighbours
@@ -931,7 +938,9 @@ def _load_heuristics(args: argparse.Namespace, info: ChunkInfo) -> tuple[Heurist
 
 
 def _apply_dps(
+    args: argparse.Namespace,
     state: MapState,
+    unlocked: Mapping[str, bool],
     derived: Derived,
     heuristics: Heuristics,
     level_overrides: dict[str, int],
@@ -956,14 +965,23 @@ def _apply_dps(
     }
     levels = infer_levels(state)
     levels.update(level_overrides)
-    return dps_bridge.enrich(
-        heuristics,
-        state.chunk_info,
-        derived,
-        goal_levels(state, derived, levels),
-        pinned_monsters=frozenset(_mapping(raw, "monsters")),
-        pinned_slayer=pinned_slayer,
+    goals = goal_levels(state, derived, levels)
+    pinned = frozenset(_mapping(raw, "monsters"))
+    # 662ms against `estimate`'s 3.1ms, and a pure function of inputs the
+    # derivation cache already keys on plus three it does not. `--recompute`
+    # bypasses this the same way it bypasses the derivation.
+    priced, coverage = cached_enrich(
+        lambda: dps_bridge.enrich(
+            heuristics, state.chunk_info, derived, goals,
+            pinned_monsters=pinned, pinned_slayer=pinned_slayer,
+        ),
+        state,
+        unlocked,
+        _digests(args),
+        pricing_digests(),
+        refresh=args.recompute,
     )
+    return priced, coverage
 
 
 def _cmd_estimate(args: argparse.Namespace) -> int:
@@ -979,7 +997,9 @@ def _cmd_estimate(args: argparse.Namespace) -> int:
         for skill, level in overrides.items()
         if isinstance(level, int) and not isinstance(level, bool)
     }
-    heuristics, coverage = _apply_dps(state, derived, heuristics, level_overrides)
+    heuristics, coverage = _apply_dps(
+        args, state, unlocked, derived, heuristics, level_overrides
+    )
     result = estimate(
         state,
         derived,

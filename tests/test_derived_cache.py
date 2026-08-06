@@ -18,13 +18,18 @@ from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.derived_cache import (
     CacheBehaviour,
     Digests,
+    PricingDigests,
     RollCache,
     _structure_digest,
     cached_derive,
+    cached_enrich,
     decode,
+    decode_pricing,
     derivation_key,
     encode,
+    enrichment_key,
 )
+from fray_claude.heuristics import Heuristics, Rate
 from fray_claude.pipeline import MapState, derive
 
 _DIGESTS = Digests(chunkinfo="abc123", tasks_map="def456")
@@ -305,3 +310,89 @@ def test_a_cached_state_is_the_same_derivation_whichever_behaviour_stored_it(
             _state(), {"100": True}, start=True
         )
         assert result.challenges.as_dict() == expected.challenges.as_dict()
+
+
+# --- the enrichment cache --------------------------------------------------
+
+_PRICING = PricingDigests(rates="r1", overrides="o1", library="l1")
+
+
+def test_an_enrichment_can_never_collide_with_a_derivation() -> None:
+    """They share `cache/derived/`, so one `fray derived clean` ages out both.
+    A `kind` tag in the material makes that safe by construction rather than
+    by the two happening to hash differently."""
+    state = _state()
+
+    assert enrichment_key(state, {"100": True}, _DIGESTS, _PRICING) != derivation_key(
+        state, {"100": True}, _DIGESTS
+    )
+
+
+@pytest.mark.parametrize("field", ["rates", "overrides", "library"])
+def test_every_pricing_input_moves_the_key(field: str) -> None:
+    """**The derivation key covers none of these**, which is why an enrichment
+    needs its own. Storing one under the plain derivation key would serve
+    stale kill rates after a `fray heuristics`, an edit to
+    `heuristics/overrides.json` or an `osrs-dps` upgrade - and the symptom
+    would be a total that failed to move, which is invisible."""
+    state = _state()
+    moved = dataclasses.replace(_PRICING, **{field: "changed"})
+
+    assert enrichment_key(state, {"100": True}, _DIGESTS, moved) != enrichment_key(
+        state, {"100": True}, _DIGESTS, _PRICING
+    )
+
+
+def test_a_pricing_digest_is_not_the_library_version(tmp_path: Path) -> None:
+    """`osrs-dps` is installed editable, so its version is `0.0.1` and stays
+    there however much of the calculator changes underneath - and a calculator
+    change moves every kill rate. The digest is of the source, so it moves."""
+    from fray_claude.derived_cache import dps_library_digest
+
+    digest = dps_library_digest()
+
+    # Either the extra is absent (empty) or we got a content hash, never a
+    # version string.
+    assert digest == "" or (len(digest) == 16 and digest != "0.0.1")
+
+
+def test_an_enrichment_is_computed_once_and_then_read(tmp_path: Path) -> None:
+    calls = []
+
+    def price() -> tuple[Heuristics, str]:
+        calls.append(1)
+        return Heuristics(monsters={"Goblin": Rate(42.0)}), "coverage"
+
+    state = _state()
+    first = cached_enrich(price, state, {"100": True}, _DIGESTS, _PRICING, root=tmp_path)
+    second = cached_enrich(price, state, {"100": True}, _DIGESTS, _PRICING, root=tmp_path)
+
+    assert len(calls) == 1
+    assert first[0].kills_per_hour("Goblin").value == 42.0
+    assert second[0].kills_per_hour("Goblin").value == 42.0
+    assert second[1] == "coverage", "the coverage half survives the round trip"
+
+
+def test_refresh_recomputes_an_enrichment(tmp_path: Path) -> None:
+    """`--recompute` has to mean the same thing here as for a derivation."""
+    values = iter([1.0, 2.0])
+
+    def price() -> tuple[Heuristics, None]:
+        return Heuristics(monsters={"Goblin": Rate(next(values))}), None
+
+    state = _state()
+    cached_enrich(price, state, {"100": True}, _DIGESTS, _PRICING, root=tmp_path)
+    again = cached_enrich(
+        price, state, {"100": True}, _DIGESTS, _PRICING, root=tmp_path, refresh=True
+    )
+
+    assert again[0].kills_per_hour("Goblin").value == 2.0
+
+
+def test_a_corrupt_enrichment_is_a_miss_rather_than_a_crash(tmp_path: Path) -> None:
+    """Same posture as a corrupt derivation: every failure mode answers "not
+    there", because the caller's response to all of them is to recompute."""
+    assert decode_pricing(b"not a pickle") is None
+    assert decode_pricing(encode(derive(_state(), {"100": True}))) is None, (
+        "a stored *derivation* must not read back as an enrichment"
+    )

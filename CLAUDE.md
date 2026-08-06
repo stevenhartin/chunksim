@@ -143,7 +143,7 @@ Five things that cut across modules — the first three because each has already
 | `timeline.py` | Replaying a run one roll at a time. **A run is self-contained** — the state before roll k is `final − rolls[k:]`, so stepping needs no base map, no export and no `derive`. Owns the delta series and the rule that step 0 is a baseline rather than a roll. |
 | `simulate.py` | Seeded chunk-roll simulation: the bootstrap pool, plus the dispatch to `neighbours.py`. Records are never revisited by a later roll. `simulated_payload` turns a finished ledger back into a map payload — read its docstring before changing which branches it touches. |
 | `batch.py` | N simulations from one state, each cached as its own map. Owns seed derivation and **both** `ProcessPoolExecutor`s in the project — `run_batch` for rolling, `price_steps` for costing a timeline. `--jobs` must never change a result, either of them. Also `save_unlock` — a batch of one, so the **one** writer of the run metadata both apps read back. |
-| `derived_cache.py` | The on-disk cache of `derive` results: the key (hash of every input), the zstd+pickle codec, `cached_derive`, and `CacheBehaviour`/`RollCache` — which of a simulation's states to keep. Pure bar the bytes, which `cache.py` writes. |
+| `derived_cache.py` | The on-disk cache of the **two** expensive per-state computations: `cached_derive` and `cached_enrich`. Owns both keys (a hash of every input each reads), the zstd+pickle codec, and `CacheBehaviour`/`RollCache` — which of a simulation's states to keep. Pure bar the bytes, which `cache.py` writes. |
 | `search.py` | World-wide fuzzy search over the *raw* export — all 5 item routes, so a strict superset of what `fray sources` can list. |
 | `summary.py` | Pure reductions over a raw payload. Extend this, not `cli.py`. Also home to `_mapping`, the tolerant dict accessor eight other modules import despite the `_` — Firebase omits empty containers, so every lookup anywhere must survive a missing branch. |
 | `dps_bridge.py` | The seam to `osrs-dps`, which prices a kill from the gear `bis.py` reaches instead of a money-making guide. Prices **only `estimate.reachable_providers`** — 188 of the export's 872, because every `kills_per_hour` lookup is gated on that set and the rest is thrown away. **Optional import** — check `DPS_AVAILABLE`, never assume it. `enrich` is the one entry point a command needs. Owns the export→library conversions (`magic_damage` is a display percentage here and tenths of a percent there), the overhead model, the monster-name join and its `exact`/`variant` provenance, and the refusal of fight *phases* and group bosses. |
@@ -505,6 +505,22 @@ Things worth knowing before changing it:
   path deliberately, so it is the one to test against. Neither is a dependency — `dependencies` is
   still empty, and a machine with only Firefox takes the second path. A running job holds the server
   open either way.
+
+**Caching the `EstimateResult` is the obvious move and the wrong one.** Measured on the real map,
+`estimate` over a `Derived` is **3.1ms** and `dps_bridge.enrich` is **662ms** — so caching the answer
+saves 3ms and caching the *pricing* saves 662. `derived_cache.cached_enrich` therefore stores the
+enriched `Heuristics` (21KB) rather than the estimate (which is also only valid for one set of level
+overrides). `fray estimate` goes 1.72s → 0.18s, the GUI's estimate panel 0.81s → 0.03s, and
+repricing a 21-step timeline a second time 5.6s → 0.6s.
+
+**Its key is a strict superset of the derivation's, and has to be.** `enrich` reads the derived
+state *and* the scraped rates, `heuristics/overrides.json` and the calculator itself, none of which
+`derive` has heard of — so `PricingDigests` carries three more digests and `enrichment_key` tags
+itself `enrichment` so it cannot collide with a derivation sharing the directory. **The `osrs-dps`
+version is not usable for the library digest**: it is installed editable, so it reads `0.0.1`
+however much of the calculator changes underneath. `dps_library_digest` hashes its 16 source files
+instead, which costs 3ms and actually moves. Those three digests are deliberately *not* folded into
+`Digests`, or a re-scrape would throw away every stored derivation for nothing.
 
 **`cache/derived/` is a third thing, and not a map.** It holds `pipeline.derive`'s *results*, one
 zstd-compressed pickle per key (~0.12MB each), so a repeat command costs ~0.15s instead of ~1.05s.

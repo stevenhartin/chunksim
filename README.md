@@ -325,6 +325,13 @@ otherwise it's created in whatever directory you're in when you run `fray`.
    redo the work, `fray derived` to see what's stored, and `fray derived clean` to drop entries you
    haven't used in a fortnight (`--all` for the lot). Deleting them only ever costs recomputation.
 
+   The same cache holds the other slow thing, if you have the `dps` extra: recomputing every kill
+   rate from your map's own gear takes about two thirds of a second, and dwarfs the estimate it
+   feeds — so that gets stored too, and `fray estimate` drops from 1.7s to 0.2s on a repeat. It is
+   keyed on the rates, your `heuristics/overrides.json` *and* the calculator's own source, so
+   editing an override or upgrading `osrs-dps` recomputes rather than quietly serving you the old
+   number.
+
    A simulation derives a state per roll, and by default all of them are kept — so re-running a
    seeded batch takes about a quarter of a second instead of eight, at roughly 118 KiB per state.
    `fray simulate --cache-behaviour extremities` keeps only the state each run starts from and the

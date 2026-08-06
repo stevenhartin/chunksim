@@ -86,7 +86,7 @@ from fray_claude.api import (
 from fray_claude.batch import RunResult, price_steps, run_batch, save_unlock
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.delta import MapSide, compare_maps, diff_names
-from fray_claude.derived_cache import cached_derive
+from fray_claude.derived_cache import cached_derive, cached_enrich, pricing_digests
 from fray_claude.estimate import estimate, goal_levels, infer_levels
 from fray_claude.heuristics import Heuristics, merge
 from fray_claude.heuristics import load as load_heuristics
@@ -593,12 +593,21 @@ def _estimate_payload(state: DerivedState, ctx: Context) -> dict[str, Any]:
     if dps_bridge.DPS_AVAILABLE:
         levels = infer_levels(state.state)
         levels.update(level_overrides)
-        heuristics, coverage = dps_bridge.enrich(
-            heuristics,
-            info,
-            state.derived,
-            goal_levels(state.state, state.derived, levels),
-            pinned_monsters=frozenset(_mapping(cache.read_overrides(ctx.root), "monsters")),
+        goals = goal_levels(state.state, state.derived, levels)
+        pinned = frozenset(_mapping(cache.read_overrides(ctx.root), "monsters"))
+        # **Where this panel's time goes.** `estimate` is 3.1ms; `enrich` is
+        # 662ms, because it re-simulates every reachable monster's fight. The
+        # result is a pure function of the same inputs, so it is cached beside
+        # the derivation rather than recomputed each time the tab is opened.
+        heuristics, coverage = cached_enrich(
+            lambda: dps_bridge.enrich(
+                heuristics, info, state.derived, goals, pinned_monsters=pinned
+            ),
+            state.state,
+            state.unlocked,
+            ctx.derivations.digests(),
+            pricing_digests(ctx.root),
+            root=ctx.root,
         )
 
     result = estimate(

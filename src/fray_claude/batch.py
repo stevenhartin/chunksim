@@ -65,7 +65,14 @@ from fray_claude.cache import (
 )
 from fray_claude import dps_bridge
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.derived_cache import CacheBehaviour, Digests, RollCache, cached_derive
+from fray_claude.derived_cache import (
+    CacheBehaviour,
+    Digests,
+    RollCache,
+    cached_derive,
+    cached_enrich,
+    pricing_digests,
+)
 from fray_claude.estimate import estimate, goal_levels, infer_levels
 from fray_claude.firebase import reverse_tasks_map
 from fray_claude.heuristics import Heuristics, merge
@@ -296,19 +303,32 @@ def price_slice(spec: PriceSpec) -> list[tuple[int, float]]:
     index = dps_bridge.load_monster_index() if dps_bridge.DPS_AVAILABLE else None
     pinned = frozenset(_mapping(read_overrides(spec.root), "monsters"))
     levels = infer_levels(state)
+    pricing = pricing_digests(spec.root)
 
     out: list[tuple[int, float]] = []
     for order, held in spec.steps:
-        derived = cached_derive(state, dict.fromkeys(held, True), digests, root=spec.root)
+        unlocked = dict.fromkeys(held, True)
+        derived = cached_derive(state, unlocked, digests, root=spec.root)
         heuristics = pricer.heuristics
         if dps_bridge.DPS_AVAILABLE:
-            heuristics, _ = dps_bridge.enrich(
-                heuristics,
-                info,
-                derived,
-                goal_levels(state, derived, dict(levels)),
-                index=index,
-                pinned_monsters=pinned,
+            goals = goal_levels(state, derived, dict(levels))
+
+            # Bound as defaults rather than captured: a bare closure over the
+            # loop variables reads whatever they hold *when it is called*,
+            # which is right only because `cached_enrich` calls it inside this
+            # iteration. That is a fact about the callee, not about this code.
+            def price(
+                base: Heuristics = heuristics, at: Derived = derived, lv: dict[str, int] = goals
+            ) -> tuple[Heuristics, Any]:
+                return dps_bridge.enrich(
+                    base, info, at, lv, index=index, pinned_monsters=pinned
+                )
+
+            # Cached like the derivation beside it: two runs of a batch that
+            # pass through the same chunk set price it once between them, and
+            # repricing a run that was already repriced pays nothing.
+            heuristics, _ = cached_enrich(
+                price, state, unlocked, digests, pricing, root=spec.root
             )
         out.append((order, sum(estimate(state, derived, pricer.world, heuristics).buckets.values())))
     return out

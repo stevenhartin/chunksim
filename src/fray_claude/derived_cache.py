@@ -1,4 +1,19 @@
-"""Cache `pipeline.derive`'s result on disk, keyed by everything it read.
+"""Cache the two expensive per-state computations on disk, keyed by their inputs.
+
+`pipeline.derive` is one; `dps_bridge.enrich` is the other, and the second was
+added after measuring where an estimate actually goes. The tempting thing to
+cache is the `EstimateResult`, and it would be pointless: on the real map
+`estimate` is **3.1ms** and `enrich` is **662ms**, so caching the answer saves
+3ms and caching the *pricing* saves 662. An `EstimateResult` is also only valid
+for one set of level overrides, where an enriched `Heuristics` serves anything
+that needs a kill rate.
+
+The two share `cache/derived/` and one `fray derived clean` ages out both, but
+they are keyed separately: `derivation_key` and `enrichment_key`, the latter
+carrying a `kind` tag so a collision is impossible by construction rather than
+merely unlikely. **An enrichment's key is a strict superset of a derivation's**,
+because `enrich` reads the derived state *and* the scraped rates, the
+hand-written overrides and the calculator itself - see `PricingDigests`.
 
 `derive` costs ~0.76s on the real map and is ~100% of every derivation command's
 runtime, while its inputs change only when you fetch, roll, or update the
@@ -61,14 +76,31 @@ import json
 import pickle
 import sys
 from enum import StrEnum
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from typing import Any
 from pathlib import Path
 
 from fray_claude.active_tasks import TaskClassification
 from fray_claude.bis import BisResult
-from fray_claude.cache import read_derived, write_derived
+from fray_claude.cache import (
+    WIKI_RATES_BLOB_NAME,
+    CacheMissError,
+    blob_path,
+    file_digest,
+    overrides_path,
+    read_derived,
+    write_derived,
+)
 from fray_claude.challenges import ChallengeResult
+from fray_claude.heuristics import (
+    Heuristics,
+    QuestRate,
+    Rate,
+    SlayerTask,
+    Superior,
+    TaskLength,
+)
 from fray_claude.other_tasks import OtherTasks
 from fray_claude.pipeline import Derived, MapState, derive
 from fray_claude.sources import SourceIndex
@@ -101,6 +133,12 @@ _RESULT_TYPES = (
 )
 
 
+#: The pricing types, hashed the same way and for the same reason. Kept
+#: separate from `_RESULT_TYPES` so a field added to one kind of entry does
+#: not throw away the other.
+_PRICING_TYPES = (Heuristics, Rate, SlayerTask, Superior, QuestRate, TaskLength)
+
+
 @dataclass(frozen=True)
 class Digests:
     """Content hashes of the reference data a derivation was computed against.
@@ -112,6 +150,26 @@ class Digests:
 
     chunkinfo: str
     tasks_map: str = ""
+
+
+@dataclass(frozen=True)
+class PricingDigests:
+    """What an *enrichment* was computed against, beyond the derivation.
+
+    **Deliberately not folded into `Digests`.** A derivation does not depend on
+    any of this - `derive` has never heard of a kill rate - so adding these
+    fields there would throw away every stored derivation whenever the rates
+    were re-scraped, for nothing.
+
+    `library` is the part that is easy to get wrong. `osrs-dps` is installed
+    editable during development, so its *version* is `0.0.1` and stays there
+    however much of the calculator changes underneath. A content digest of its
+    16 source files costs 3ms and actually moves - see `dps_library_digest`.
+    """
+
+    rates: str = ""
+    overrides: str = ""
+    library: str = ""
 
 
 def _structure_digest() -> str:
@@ -162,14 +220,13 @@ def derivation_key(state: MapState, unlocked: Mapping[str, bool], digests: Diges
     return f"{hashlib.sha256(material.encode()).hexdigest()}.{SUFFIX}"
 
 
-def encode(derived: Derived) -> bytes:
-    """Serialise a derivation for storage."""
-    blob = pickle.dumps(derived, protocol=pickle.HIGHEST_PROTOCOL)
+def _pack(value: object) -> bytes:
+    blob = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
     return zstd.compress(blob, _LEVEL) if _COMPRESSED else blob
 
 
-def decode(blob: bytes) -> Derived | None:
-    """Deserialise a stored derivation, or `None` if it is unusable.
+def _unpack(blob: bytes) -> Any:
+    """Whatever was stored, or `None` if the bytes are unusable.
 
     Every failure mode - truncated file, wrong codec, a pickle from an
     incompatible build - answers `None`, because the caller's response to all
@@ -178,10 +235,39 @@ def decode(blob: bytes) -> Derived | None:
     """
     try:
         raw = zstd.decompress(blob) if _COMPRESSED else blob
-        derived = pickle.loads(raw)
+        return pickle.loads(raw)
     except Exception:  # noqa: BLE001 - any failure here means "recompute"
         return None
-    return derived if isinstance(derived, Derived) else None
+
+
+def encode(derived: Derived) -> bytes:
+    """Serialise a derivation for storage."""
+    return _pack(derived)
+
+
+def decode(blob: bytes) -> Derived | None:
+    """Deserialise a stored derivation, or `None` if it is unusable."""
+    value = _unpack(blob)
+    return value if isinstance(value, Derived) else None
+
+
+def encode_pricing(priced: tuple[Heuristics, Any]) -> bytes:
+    """Serialise an enrichment - the heuristics and what it managed to price."""
+    return _pack(priced)
+
+
+def decode_pricing(blob: bytes) -> tuple[Heuristics, Any] | None:
+    """Deserialise an enrichment, or `None` if it is unusable.
+
+    The coverage half is typed `Any` because it is `dps_bridge.DpsCoverage`,
+    and this module must not import that: `dps_bridge` is the GPL-licensed
+    seam and is optional, so importing it here to name a type would make the
+    whole cache depend on an extra that may not be installed.
+    """
+    value = _unpack(blob)
+    if not isinstance(value, tuple) or len(value) != 2:
+        return None
+    return value if isinstance(value[0], Heuristics) else None
 
 
 class CacheBehaviour(StrEnum):
@@ -271,3 +357,137 @@ def cached_derive(
     if store:
         write_derived(key, encode(derived), root)
     return derived
+
+
+def _pricing_structure_digest() -> str:
+    """Hash the pricing dataclasses' shape, so a schema change invalidates."""
+    shape = [
+        (priced.__name__, [field.name for field in dataclasses.fields(priced)])
+        for priced in _PRICING_TYPES
+    ]
+    return hashlib.sha256(json.dumps(shape, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def dps_library_digest() -> str:
+    """A content hash of the installed `osrs-dps`, or `""` when it is absent.
+
+    **The version string is not usable for this.** `osrs-dps` is installed
+    editable during development (`pip install -e ../osrs-dps`), so its version
+    is `0.0.1` and stays there however much of the calculator changes - and a
+    calculator change moves every kill rate. Hashing its 16 source files costs
+    3ms and does move, which is the difference between a cache that notices
+    and one that serves numbers from a library you have since edited.
+    """
+    try:
+        import osrs_dps
+    except ImportError:
+        return ""
+    root = Path(osrs_dps.__file__).resolve().parent
+    digest = hashlib.sha256()
+    for path in sorted(root.rglob("*.py")):
+        digest.update(path.name.encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()[:16]
+
+
+def pricing_digests(root: Path | None = None) -> PricingDigests:
+    """What this machine would price an enrichment against, right now.
+
+    One builder for all three callers - `fray estimate`, the GUI's estimate
+    panel and `batch.price_slice` - because a key computed two ways is a
+    cache that misses for no reason, or worse, hits when it should not.
+
+    A missing rate scrape or overrides file digests as `""` rather than
+    raising: both are optional inputs, and "the file that is not there" is a
+    perfectly good thing for a key to describe.
+    """
+    return PricingDigests(
+        rates=_maybe_digest(lambda: blob_path(WIKI_RATES_BLOB_NAME, root)),
+        overrides=_maybe_digest(lambda: overrides_path(root)),
+        library=dps_library_digest(),
+    )
+
+
+def _maybe_digest(locate: Callable[[], Path]) -> str:
+    try:
+        return file_digest(locate())
+    except (OSError, CacheMissError):
+        return ""
+
+
+def enrichment_key(
+    state: MapState,
+    unlocked: Mapping[str, bool],
+    digests: Digests,
+    pricing: PricingDigests,
+) -> str:
+    """The cache key for `dps_bridge.enrich` over this state.
+
+    **Everything the derivation key covers, plus everything it does not.**
+    `enrich` reads the derived state (so the whole derivation key applies) and
+    also the scraped rates, the hand-written overrides and the calculator
+    itself - none of which `derive` has ever heard of. Storing an enrichment
+    under the plain derivation key would serve stale kill rates after a
+    `fray heuristics`, an edit to `heuristics/overrides.json`, or an upgrade
+    of `osrs-dps`, and the only symptom would be a total that failed to move.
+
+    The `kind` tag makes a collision with a derivation impossible rather than
+    merely unlikely, so the two can share `cache/derived/` and one
+    `fray derived clean` ages out both.
+    """
+    material = json.dumps(
+        {
+            "kind": "enrichment",
+            "format": _FORMAT,
+            "python": f"{sys.version_info[0]}.{sys.version_info[1]}",
+            "structure": _pricing_structure_digest(),
+            "chunkinfo": digests.chunkinfo,
+            "tasks_map": digests.tasks_map,
+            "state": _state_digest(state),
+            "unlocked": sorted(unlocked),
+            "rates": pricing.rates,
+            "overrides": pricing.overrides,
+            "library": pricing.library,
+        },
+        sort_keys=True,
+    )
+    return f"{hashlib.sha256(material.encode()).hexdigest()}.{SUFFIX}"
+
+
+def cached_enrich(
+    compute: Callable[[], tuple[Heuristics, Any]],
+    state: MapState,
+    unlocked: Mapping[str, bool],
+    digests: Digests,
+    pricing: PricingDigests,
+    *,
+    root: Path | None = None,
+    refresh: bool = False,
+    store: bool = True,
+) -> tuple[Heuristics, Any]:
+    """`dps_bridge.enrich`, served from disk when the inputs are unchanged.
+
+    **This is where an estimate's time actually goes**, which is worth stating
+    because the obvious thing to cache is the `EstimateResult` and that would
+    be pointless. Measured on the real map: `estimate` is 3.1ms and `enrich`
+    is 662ms, so caching the answer saves 3ms and caching the *pricing* saves
+    662. Storing 21KB and spending ~11ms to read it back is a 60x win on a
+    repeat; storing an `EstimateResult` would be a rounding error with an
+    extra invalidation problem attached.
+
+    `compute` is a callable rather than the arguments to `enrich`, so this
+    module never imports `dps_bridge` - the GPL-licensed optional extra stays
+    something only its own seam knows about.
+    """
+    key = enrichment_key(state, unlocked, digests, pricing)
+    if not refresh:
+        blob = read_derived(key, root)
+        if blob is not None:
+            hit = decode_pricing(blob)
+            if hit is not None:
+                return hit
+
+    priced = compute()
+    if store:
+        write_derived(key, encode_pricing(priced), root)
+    return priced
