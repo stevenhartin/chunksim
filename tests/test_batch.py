@@ -19,8 +19,10 @@ from fray_claude.batch import derive_seeds, run_batch, save_unlock
 from fray_claude.cache import (
     BATCH_META_FILE_NAME,
     UNLOCKED,
+    CacheMissError,
     read_batch,
     read_cache,
+    read_timeline,
     read_sim_batch,
     sims_root,
     write_blob,
@@ -370,3 +372,42 @@ def test_two_unlocks_of_one_name_do_not_overwrite(root: Path) -> None:
 
     assert (first.name, second.name) == ("hand", "hand-2")
     assert set(read_cache("hand-2", root)["data"]["chunks"]["unlocked"]) == {"100", "99"}
+
+
+def test_a_run_is_born_with_its_timeline(root: Path) -> None:
+    """**Pricing a state the run has already derived is free, so it happens
+    there.** Measured under 5ms against the ~0.82s `derive` the roll pays
+    anyway; rebuilding the series afterwards means paying that again per step.
+    """
+    write_blob("wiki_rates", {}, "test", root=root)
+    batch = run_batch(name="t", payload=_PAYLOAD, base_map="fray", rolls=3, seed=2, root=root)
+
+    stored = read_timeline(f"{batch.name}/{batch.runs[0].name}", root)
+
+    # One total per state: the one it started on, plus one per roll.
+    assert len(stored["totals"]) == len(batch.runs[0].rolls) + 1
+    assert all(isinstance(v, float) for v in stored["totals"])
+    # Wiki rates, not gear - `enrich` is ~1.29s a roll and is the upgrade.
+    assert stored["stamp"]["enriched"] is False
+    assert stored["stamp"]["chunkinfo"] and stored["stamp"]["rates"]
+
+
+def test_without_a_rate_scrape_a_run_stores_no_timeline(root: Path) -> None:
+    """**No hours beats wrong hours.** Without `wiki_rates` every number falls
+    to a default and the total is thousands of hours light - which `fray show`
+    at least prints a caveat beside. A graph carries no caveat, so there
+    isn't one."""
+    batch = run_batch(name="t", payload=_PAYLOAD, base_map="fray", rolls=2, seed=2, root=root)
+
+    with pytest.raises(CacheMissError):
+        read_timeline(f"{batch.name}/{batch.runs[0].name}", root)
+
+
+def test_pricing_does_not_change_what_was_rolled(root: Path) -> None:
+    """The callback observes; it must not steer. A seeded batch has to roll the
+    same chunks whether or not this machine can price them."""
+    unpriced = run_batch(name="a", payload=_PAYLOAD, base_map="f", rolls=4, seed=8, root=root)
+    write_blob("wiki_rates", {}, "test", root=root)
+    priced = run_batch(name="b", payload=_PAYLOAD, base_map="f", rolls=4, seed=8, root=root)
+
+    assert unpriced.runs[0].rolls == priced.runs[0].rolls

@@ -97,7 +97,8 @@ from fray_claude.gui.derivation import DerivedState, Derivations, unlocked_of
 from fray_claude.gui.jobs import JobRegistry, JobState, Progress, as_int
 from fray_claude.gui.panels import task_panel
 from fray_claude.gui.worldmap import MapView, build_view, grid_position
-from fray_claude.timeline import Step, replay, series
+from fray_claude.timeline import Step, matches as timeline_matches, replay, series
+from fray_claude.timeline import stamp as timeline_stamp
 
 #: The port `fray-gui` binds unless told otherwise. Arbitrary, and high enough
 #: to need no privileges.
@@ -469,22 +470,23 @@ def _unlock_preview(state: DerivedState, chunk_id: str, ctx: Context) -> dict[st
     return delta.as_dict()
 
 
-def _timeline_stamp(ctx: Context) -> dict[str, Any]:
-    """What the cached hours were computed against.
+def _timeline_stamp(ctx: Context, *, enriched: bool) -> dict[str, Any]:
+    """What a stored hours series was computed against. See `timeline.stamp`.
 
-    **The `dps` flag is as load-bearing as the digests.** Installing the extra
-    changes every number the estimator produces - 3,969h against 2,816h on the
-    real map - so a timeline computed without it is not a stale version of one
-    computed with it, it is a different question's answer.
+    `enriched` says whether `dps_bridge` priced these numbers. It is recorded
+    but **not compared**, because a simulation prices its own rolls with the
+    estimator alone - free, since the derivation is already done - and paying
+    `enrich`'s ~1.3s a roll would have tripled every batch. So the cheap
+    answer is what a run is born with, and this is the upgrade.
     """
     digests = ctx.derivations.digests()
-    return {
-        "chunkinfo": digests.chunkinfo,
-        "tasks_map": digests.tasks_map,
-        "rates": cache.file_digest(cache.blob_path(cache.WIKI_RATES_BLOB_NAME, ctx.root)),
-        "overrides": _overrides_digest(ctx),
-        "dps": dps_bridge.DPS_AVAILABLE,
-    }
+    return timeline_stamp(
+        chunkinfo=digests.chunkinfo,
+        tasks_map=digests.tasks_map,
+        rates=cache.file_digest(cache.blob_path(cache.WIKI_RATES_BLOB_NAME, ctx.root)),
+        overrides=_overrides_digest(ctx),
+        enriched=enriched,
+    )
 
 
 def _overrides_digest(ctx: Context) -> str:
@@ -497,8 +499,8 @@ def _overrides_digest(ctx: Context) -> str:
         return ""
 
 
-def _cached_hours(map_id: str, ctx: Context) -> list[float] | None:
-    """A run's stored hours series, if it was computed against this world.
+def _cached_hours(map_id: str, ctx: Context) -> tuple[list[float] | None, bool]:
+    """A run's stored hours series and whether `dps_bridge` priced it.
 
     A stamp mismatch reads as absent rather than as an error: the numbers are
     recomputable, and offering to recompute is a better answer than refusing
@@ -507,19 +509,20 @@ def _cached_hours(map_id: str, ctx: Context) -> list[float] | None:
     try:
         stored = cache.read_timeline(map_id, ctx.root)
     except cache.CacheMissError:
-        return None
-    if stored.get("stamp") != _timeline_stamp(ctx):
-        return None
+        return None, False
+    if not timeline_matches(stored.get("stamp"), _timeline_stamp(ctx, enriched=False)):
+        return None, False
     totals = stored.get("totals")
     if not isinstance(totals, list) or not all(
         isinstance(v, (int, float)) and not isinstance(v, bool) for v in totals
     ):
-        return None
-    return [float(v) for v in totals]
+        return None, False
+    enriched = bool(_mapping(stored, "stamp").get("enriched"))
+    return [float(v) for v in totals], enriched
 
 
 def _timeline_payload(map_id: str, ctx: Context) -> dict[str, Any]:
-    """The cheap half: every step, and the hours only if someone paid for them.
+    """The cheap half: every step, plus whatever hours are already on disk.
 
     **This must not parse the export.** The steps come from the ledger and the
     saved payload, and the hours come off disk or not at all - which is what
@@ -528,15 +531,21 @@ def _timeline_payload(map_id: str, ctx: Context) -> dict[str, Any]:
     rather than the file: no `ChunkInfo`, and a test pins it.
     """
     steps = _run_steps(map_id, ctx)
-    rows = series(steps, _cached_hours(map_id, ctx))
+    hours, enriched = _cached_hours(map_id, ctx)
+    rows = series(steps, hours)
+    # **Read back off the shaped rows, not off the stored list.** `series`
+    # refuses a totals list that does not fit the run - a run re-rolled under
+    # one name has a different number of steps - so asking the store instead
+    # would let the flag promise hours the graph never got.
+    has_hours = any(row["total_hours"] is not None for row in rows)
     return {
         "map_id": map_id,
         "steps": rows,
-        # **Read back off the shaped rows, not off the stored list.** `series`
-        # refuses a totals list that does not fit the run - a run re-rolled
-        # under one name has a different number of steps - so asking the
-        # store instead would let the flag promise hours the graph never got.
-        "has_hours": any(row["total_hours"] is not None for row in rows),
+        "has_hours": has_hours,
+        "enriched": enriched and has_hours,
+        # Whether there is a better answer available than the one on screen.
+        # Without the extra there is not, however the numbers were computed.
+        "can_enrich": dps_bridge.DPS_AVAILABLE and not (enriched and has_hours),
         "dps": dps_bridge.DPS_AVAILABLE,
     }
 
@@ -944,7 +953,9 @@ def _timeline_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
             totals.append(sum(estimate(state, derived, world, priced).buckets.values()))
 
         cache.write_timeline(
-            map_id, {"stamp": _timeline_stamp(ctx), "totals": totals}, ctx.root
+            map_id,
+            {"stamp": _timeline_stamp(ctx, enriched=dps_bridge.DPS_AVAILABLE), "totals": totals},
+            ctx.root,
         )
         return {"map": map_id, "steps": len(totals), "hours": round(totals[-1], 1)}
 

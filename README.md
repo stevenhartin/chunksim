@@ -106,12 +106,18 @@ nothing ever read it back, so a simulation could tell you where you ended up and
 bought you. A run carries its own past, so stepping costs nothing — drag the slider and the map
 follows.
 
-Above it, a bar per roll. **Tasks** is free and immediate: the challenges that chunk made valid, with
-a breakdown per skill on hover. **Hours** is the change in the time left to finish, and it has to be
-computed — press *Compute hours* once and it is stored beside the run for good. Be warned that most
-bars are empty and some point downwards: on a mature map a new chunk usually adds no work at all, and
-occasionally it *saves* you some by opening a cheaper route to something you already needed. That is
-the estimate telling the truth, not the graph failing.
+Above it, a bar per roll, and both series are there the moment the simulation finishes. **Tasks** is
+the challenges that chunk made valid, with a breakdown per skill on hover. **Hours** is the change in
+the time left to finish — a simulation prices every roll as it goes, which costs it nothing, since
+the work of deriving each state is what a roll already is.
+
+Be warned that most hour bars are empty and some point downwards: on a mature map a new chunk usually
+adds no work at all, and occasionally it *saves* you some by opening a cheaper route to something you
+already needed. That is the estimate telling the truth, not the graph failing.
+
+If you have the `dps` extra, *Reprice with gear* recomputes those hours from the gear the map
+actually reaches rather than the wiki's assumed setup — about a second per roll, stored afterwards.
+Simulations skip it by default because it would nearly triple a large batch.
 
 `?map=…&step=4` deep-links a particular roll.
 

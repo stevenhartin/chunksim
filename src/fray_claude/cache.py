@@ -608,6 +608,7 @@ def write_sim_run(
     ledger: list[dict[str, Any]],
     source: str | None = None,
     kind: str = SIMULATED,
+    timeline: dict[str, Any] | None = None,
 ) -> Path:
     """Write one synthetic run: its envelope, its ledger, and its metadata.
 
@@ -639,6 +640,11 @@ def write_sim_run(
     }
     _atomic_write_json(directory / ROLLS_FILE_NAME, {"rolls": ledger})
     _atomic_write_json(directory / RUN_META_FILE_NAME, simulation)
+    # The per-roll hours, when whatever produced this run priced them as it
+    # went. Optional because `fray unlock` has nothing to price - one roll of
+    # a hand-picked chunk is a timeline of two points and no progression.
+    if timeline is not None:
+        _atomic_write_json(directory / TIMELINE_FILE_NAME, timeline)
     # Last, so a run directory only reads as usable once the rest is on disk.
     return _atomic_write_json(directory / MAP_FILE_NAME, envelope)
 

@@ -45,7 +45,7 @@ from __future__ import annotations
 
 import random
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -247,6 +247,7 @@ def simulate_rolls(
     rolls: int,
     seed: int | None = None,
     cache: StateCache | None = None,
+    on_state: Callable[[int, Derived], None] | None = None,
 ) -> list[UnlockRecord]:
     """Simulate up to `rolls` chunk unlocks from `unlocked`, stopping early
     if the roll pool is ever empty. Each record's delta is computed against
@@ -259,6 +260,13 @@ def simulate_rolls(
     ends either at `rolls` or the first time the pool comes up empty, and the
     second of those is only visible one iteration later. Deriving it twice to
     find out would cost a second per run, which is the whole saving.
+
+    `on_state` sees every state the run passes through, numbered from 0 for
+    the one it starts on. **It exists so a caller can measure a state without
+    this module learning how**: `batch.py` prices each one for the timeline,
+    which is free there because the derivation has already been paid for, and
+    would be a second a roll if the timeline were rebuilt afterwards. Nothing
+    here knows what an hour is, and nothing it does depends on the callback.
     """
     rng = random.Random(seed)
     current_ids: dict[str, bool] = dict(unlocked)
@@ -269,6 +277,8 @@ def simulate_rolls(
     )
     graph = build_section_graph(state.chunk_info)
     ledger: list[UnlockRecord] = []
+    if on_state is not None:
+        on_state(0, before)
 
     for order in range(1, rolls + 1):
         pool = roll_pool(state, current_ids, before, graph=graph)
@@ -293,6 +303,8 @@ def simulate_rolls(
             )
         )
         before = after
+        if on_state is not None:
+            on_state(order, after)
 
     if cache is not None and ledger:
         cache.keep_final(state, current_ids, before)

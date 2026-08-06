@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import random
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import uuid4
 from pathlib import Path
@@ -46,23 +46,32 @@ from fray_claude.cache import (
     SIMULATED,
     TASKS_MAP_BLOB_NAME,
     UNLOCKED,
+    WIKI_RATES_BLOB_NAME,
     CacheMissError,
     blob_path,
     chunkinfo_source,
     claim_batch,
     claim_sim_batch,
     file_digest,
+    overrides_path,
     read_blob,
     read_chunkinfo,
+    read_overrides,
     run_dir,
     write_sim_batch,
     write_sim_run,
 )
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.derived_cache import CacheBehaviour, Digests, RollCache
+from fray_claude.estimate import estimate
 from fray_claude.firebase import reverse_tasks_map
-from fray_claude.pipeline import load_map_state
+from fray_claude.heuristics import Heuristics, merge
+from fray_claude.heuristics import load as load_heuristics
+from fray_claude.pipeline import Derived, MapState, load_map_state
+from fray_claude.search import WorldIndex, build_world_index
 from fray_claude.simulate import UnlockRecord, simulate_rolls, simulated_payload
+from fray_claude.summary import _mapping
+from fray_claude.timeline import stamp as timeline_stamp
 from fray_claude.unlock import UnlockDelta
 
 #: Draw run seeds from, so a batch seed of 1 and a run seed of 1 can't collide
@@ -150,6 +159,89 @@ def derive_seeds(seed: int | None, runs: int) -> list[int]:
     return [master.randrange(_SEED_SPACE) for _ in range(runs)]
 
 
+@dataclass
+class _Pricer:
+    """Costs each state a run passes through, for the timeline.
+
+    **This is the one place a simulation is worth pricing, because the
+    derivation is already in hand.** `estimate` over a `Derived` is under 5ms;
+    the ~0.82s it would otherwise need is the `derive` this run has just done
+    anyway. Rebuilding the series afterwards means paying that again per step,
+    so a run is born with its timeline rather than earning one later.
+
+    **It stops at the estimator and does not call `dps_bridge.enrich`.** That
+    would add ~1.29s a roll - measured - and take a 100x50 batch from 68
+    minutes to 176, on every batch whether or not anyone opens its timeline.
+    So a run stores the cheap answer and `gui/server.py` upgrades it on
+    request; `timeline.stamp`'s `enriched` flag is what tells the two apart,
+    and `timeline.matches` deliberately ignores it so the cheap numbers do not
+    read as stale.
+
+    The only mutable state in this module, and it never leaves the worker that
+    built it - one instance per `run_one` call, on that call's stack. The
+    process-parallel rule is about *module* state, and there is still none.
+    """
+
+    heuristics: Heuristics
+    world: WorldIndex
+    stamp: dict[str, Any]
+    totals: list[float] = field(default_factory=list)
+
+    @classmethod
+    def build(cls, info: ChunkInfo, root: Path | None, digests: Digests) -> _Pricer | None:
+        """A pricer, or `None` when this machine cannot price anything.
+
+        Without `cache/reference/wiki_rates.json` every number falls back to a
+        default and the total is thousands of hours light - which is a worse
+        answer than no timeline at all, because a graph does not carry the
+        caveat that `fray show` prints beside the figure.
+        """
+        try:
+            scraped = read_blob(WIKI_RATES_BLOB_NAME, root)["data"]
+        except CacheMissError:
+            return None
+        overrides = read_overrides(root)
+        return cls(
+            heuristics=load_heuristics(
+                merge(scraped, overrides),
+                boss_monsters=frozenset(_mapping(info.code_items, "bossMonsters")),
+                slayer_monsters=frozenset(info.slayer_monsters),
+            ),
+            world=build_world_index(info),
+            stamp=timeline_stamp(
+                chunkinfo=digests.chunkinfo,
+                tasks_map=digests.tasks_map,
+                rates=file_digest(blob_path(WIKI_RATES_BLOB_NAME, root)),
+                overrides=_overrides_digest(root),
+                enriched=False,
+            ),
+        )
+
+    def record(self, state: MapState) -> Callable[[int, Derived], None]:
+        """The `simulate_rolls` callback, bound to the state being rolled."""
+
+        def priced(order: int, derived: Derived) -> None:
+            self.totals.append(sum(estimate(state, derived, self.world, self.heuristics).buckets.values()))
+
+        return priced
+
+    def stored(self) -> dict[str, Any] | None:
+        """What to write, or `None` if the run rolled nothing worth graphing."""
+        if len(self.totals) < 2:
+            return None
+        return {"stamp": self.stamp, "totals": self.totals}
+
+
+def _overrides_digest(root: Path | None) -> str:
+    """`heuristics/overrides.json` is checked in and hand-edited, so it moves
+    without any fetch having happened - the case a digest of the fetched
+    inputs alone would miss."""
+    try:
+        return file_digest(overrides_path(root))
+    except (OSError, CacheMissError):
+        return ""
+
+
 def run_one(spec: RunSpec) -> RunResult:
     """Execute one run and write its directory. Runs in a worker process.
 
@@ -171,12 +263,14 @@ def run_one(spec: RunSpec) -> RunResult:
         chunkinfo=file_digest(chunkinfo_source(spec.chunkinfo_path, spec.root)),
         tasks_map=file_digest(blob_path(TASKS_MAP_BLOB_NAME, spec.root)),
     )
+    pricer = _Pricer.build(info, spec.root, digests)
     ledger = simulate_rolls(
         state,
         unlocked,
         rolls=spec.rolls,
         seed=spec.seed,
         cache=RollCache(digests, spec.cache_behaviour, spec.root),
+        on_state=None if pricer is None else pricer.record(state),
     )
     payload = simulated_payload(spec.payload, ledger)
     rolled = tuple(record.chunk_id for record in ledger)
@@ -206,6 +300,7 @@ def run_one(spec: RunSpec) -> RunResult:
         data=payload,
         simulation=simulation,
         ledger=[record.as_dict() for record in ledger],
+        timeline=None if pricer is None else pricer.stored(),
     )
     return RunResult(
         name=spec.name, seed=spec.seed, rolls=rolled, unlocked_chunks=len(held)

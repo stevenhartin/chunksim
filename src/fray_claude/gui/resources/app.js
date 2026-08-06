@@ -1365,6 +1365,33 @@ function mapQuery() {
   return params.toString();
 }
 
+/* **A batch of several runs is not a map and must not be offered as one.**
+ *
+ * `cache.resolve_map_path` refuses to guess which run a bare batch name means
+ * - picking one silently would make the same name describe a different world
+ * as runs were added - so selecting it 404s *every* route and the map goes
+ * blank. `/api/maps` lists the batch and its runs flat, so this nests the runs
+ * under their batch and gives the batch itself no value to select: an
+ * `<optgroup>` is a label, which is exactly what a batch is here.
+ *
+ * A one-run batch stays a plain option, because there its name is unambiguous
+ * and `--map <batch>` resolves to that run everywhere else too. */
+function mapOptions(maps) {
+  const kindOf = (m) => (m.kind === "fetched" ? "" : "  (" + (KIND_LABELS[m.kind] || label(m.kind)) + ")");
+  const option = (m, text) => tmpl`<option value="${m.map_id}">${text}${kindOf(m)}</option>`;
+  const runsOf = (batch) => maps.filter((m) => m.map_id.startsWith(batch + "/"));
+
+  let out = "";
+  for (const m of maps) {
+    if (m.map_id.includes("/")) continue;                 // emitted with its batch
+    if (!(m.runs > 1)) { out += option(m, m.map_id); continue; }
+    out += tmpl`<optgroup label="${m.map_id}${kindOf(m)}">`
+      + runsOf(m.map_id).map((run) => option(run, run.map_id.split("/")[1])).join("")
+      + "</optgroup>";
+  }
+  return out;
+}
+
 async function loadMaps() {
   const maps = await getJSON("/api/maps");
   if (!maps.length) {
@@ -1376,7 +1403,7 @@ async function loadMaps() {
     showTab("maps");
     return false;
   }
-  const options = maps.map((m) => tmpl`<option value="${m.map_id}">${m.map_id}${m.kind === "fetched" ? "" : "  (" + (KIND_LABELS[m.kind] || label(m.kind)) + ")"}</option>`).join("");
+  const options = mapOptions(maps);
   const keepMap = el.map.value, keepCompare = el.compare.value;
   el.map.innerHTML = options;
   el.compare.innerHTML = "<option value=''>—</option>" + options;
@@ -2336,11 +2363,24 @@ async function loadMapsPane() {
       runAction(`Simulate ${rolls} rolls`, "/api/simulate",
         { map: el.map.value, name: el.map.value + "-sim", rolls, runs },
         async (result) => {
+          /* **The result becomes the map, not the comparison.** It used to go
+           * into the compare slot, which is exactly the state that hides the
+           * timeline - so rolling a simulation hid the one thing you rolled it
+           * to see. The base map moves to `compare` instead, which keeps the
+           * "what did I gain" reading and adds the progression to it. */
+          const base = el.map.value;
           await loadMaps();
-          el.compare.value = result.open;
+          el.map.value = result.open;
+          el.compare.value = "";
+          state.step = null;
+          state.timeline = null;
           syncBreakdown();
+          await loadTimeline();
           await loadView({ refit: true });
+          await loadCandidates();
+          await loadSections();
           loadMapsPane();
+          if (base !== result.open) toast("Rolled from " + base + " — drag the slider to replay it");
         });
     };
     /* Whatever was removed, the list on screen is now wrong until it is read
@@ -2697,8 +2737,11 @@ function renderTimeline() {
 
   el["tl-chips"].innerHTML = TL_SERIES.map(([key, name]) => {
     const on = tlSeries === key;
+    const provenance = !payload.has_hours ? "Not computed yet"
+      : payload.enriched ? "Priced from this map's own gear"
+      : "Wiki rates — often zero, most chunks add no work";
     const tip = key === "hours"
-      ? tmpl`<b>Hours added</b><span class="sub">Change in the estimated time to finish, per roll.</span><span class="hint">${payload.has_hours ? "Often zero — most chunks add no work" : "Not computed yet"}</span>`
+      ? tmpl`<b>Hours added</b><span class="sub">Change in the estimated time to finish, per roll.</span><span class="hint">${provenance}</span>`
       : tmpl`<b>Tasks added</b><span class="sub">Challenges this roll made valid.</span>`;
     return tmpl`<button class="chip ${on ? "on" : ""}" data-series="${key}" data-tip="${tip}"
       role="radio" aria-checked="${on}">${name}</button>`;
@@ -2707,10 +2750,22 @@ function renderTimeline() {
     chip.onclick = () => { tlSeries = chip.dataset.series; renderTimeline(); };
   }
 
-  /* Nothing to compute twice: once the hours are stored the button would only
-   * rewrite the same numbers, so it goes away rather than sitting there
-   * offering a minute of work for no change. */
-  el["tl-hours"].hidden = payload.has_hours;
+  /* **Two different offers, and neither is "compute it again".**
+   *
+   * A run now prices its own rolls as it rolls them - free, because the
+   * derivation is already in hand - so `has_hours` is normally true the moment
+   * a simulation finishes. What the button is for is the *upgrade*: with the
+   * `dps` extra installed, `enrich` reprices every kill from the map's own BiS
+   * gear, which costs ~1.3s a roll and is why a simulation does not do it. So
+   * it appears when there is either nothing yet or something better to be had,
+   * and says which. Once the numbers are enriched there is nothing left to
+   * offer and it goes. */
+  const upgrade = payload.has_hours && payload.can_enrich;
+  el["tl-hours"].hidden = payload.has_hours && !payload.can_enrich;
+  el["tl-hours"].lastChild.textContent = upgrade ? "Reprice with gear" : "Compute hours";
+  el["tl-hours"].dataset.tip = upgrade
+    ? tmpl`<b>Reprice from your gear</b><span class="sub">These hours came from the wiki's rates. The <code>dps</code> extra can cost each kill from the BiS gear this map actually reaches.</span><span class="hint">About a second per roll, stored afterwards</span>`
+    : tmpl`<b>Cost every step</b><span class="sub">Prices the world after each roll, then stores the answer beside the run.</span><span class="hint">Slow once, instant after</span>`;
 
   el["tl-graph"].innerHTML = tlBars(steps, tlSeries, state.step);
   for (const slot of el["tl-graph"].querySelectorAll("[data-step]")) {

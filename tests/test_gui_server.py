@@ -1499,15 +1499,15 @@ def test_stored_hours_are_served_and_a_moved_world_discards_them(
     """**A stamp mismatch reads as absent, not as an error.**
 
     The numbers are recomputable, so offering to recompute beats refusing to
-    draw. The `dps` flag is part of the stamp because installing the extra
-    changes every figure - 3,969h against 2,816h on the real map - which is a
-    different answer, not a staler one.
+    draw. A moved export, tasks map, rate scrape or overrides file all count -
+    the last because it is hand-edited and checked in, so it moves without any
+    fetch having happened.
     """
     ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
     map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
     from fray_claude.gui.server import _timeline_stamp
 
-    stamp = _timeline_stamp(ctx)
+    stamp = _timeline_stamp(ctx, enriched=False)
     cache.write_timeline(map_id, {"stamp": stamp, "totals": [10.0, 12.5]}, tmp_path)
 
     fresh = _body(_get("/api/timeline", ctx, map=map_id))
@@ -1516,12 +1516,86 @@ def test_stored_hours_are_served_and_a_moved_world_discards_them(
     assert [row["total_hours"] for row in fresh["steps"]] == [10.0, 12.5]
 
     cache.write_timeline(
-        map_id, {"stamp": {**stamp, "dps": not stamp["dps"]}, "totals": [10.0, 12.5]}, tmp_path
+        map_id, {"stamp": {**stamp, "rates": "moved"}, "totals": [10.0, 12.5]}, tmp_path
     )
     stale = _body(_get("/api/timeline", ctx, map=map_id))
 
     assert stale["has_hours"] is False
     assert all(row["hours"] is None for row in stale["steps"])
+
+
+def test_cheap_hours_are_not_stale_merely_because_dps_is_installed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**`enriched` is recorded and deliberately not compared.**
+
+    A simulation prices its own rolls with the estimator alone, because the
+    derivation is already in hand and costs nothing more; `dps_bridge.enrich`
+    adds ~1.3s a roll and would have tripled every batch. So the cheap answer
+    is what a run is born with. Treating it as *stale* once the extra is
+    installed would blank a graph that is perfectly good - it is a coarser
+    answer, not an out-of-date one, and worth showing until the better one
+    exists.
+    """
+    ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
+    map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
+    from fray_claude.gui.server import _timeline_stamp
+
+    cache.write_timeline(
+        map_id,
+        {"stamp": _timeline_stamp(ctx, enriched=False), "totals": [10.0, 12.5]},
+        tmp_path,
+    )
+    monkeypatch.setattr("fray_claude.gui.server.dps_bridge.DPS_AVAILABLE", True)
+
+    payload = _body(_get("/api/timeline", ctx, map=map_id))
+
+    assert payload["has_hours"] is True, "the cheap numbers were thrown away"
+    assert payload["enriched"] is False
+    # And the page is told there is a better answer to be had.
+    assert payload["can_enrich"] is True
+
+
+def test_enriched_hours_leave_nothing_to_upgrade(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The button costs a minute on a long run, so it goes once it would only
+    rewrite the same numbers."""
+    ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
+    map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
+    from fray_claude.gui.server import _timeline_stamp
+
+    cache.write_timeline(
+        map_id,
+        {"stamp": _timeline_stamp(ctx, enriched=True), "totals": [10.0, 12.5]},
+        tmp_path,
+    )
+    monkeypatch.setattr("fray_claude.gui.server.dps_bridge.DPS_AVAILABLE", True)
+
+    payload = _body(_get("/api/timeline", ctx, map=map_id))
+
+    assert payload["enriched"] is True and payload["can_enrich"] is False
+
+
+def test_without_the_extra_there_is_nothing_better_to_offer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`can_enrich` is about whether a *better* answer exists, so on a machine
+    without the extra it is false however the numbers were computed."""
+    ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
+    map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
+    from fray_claude.gui.server import _timeline_stamp
+
+    cache.write_timeline(
+        map_id,
+        {"stamp": _timeline_stamp(ctx, enriched=False), "totals": [10.0, 12.5]},
+        tmp_path,
+    )
+    monkeypatch.setattr("fray_claude.gui.server.dps_bridge.DPS_AVAILABLE", False)
+
+    payload = _body(_get("/api/timeline", ctx, map=map_id))
+
+    assert payload["has_hours"] is True and payload["can_enrich"] is False
 
 
 def test_a_totals_list_that_does_not_fit_the_run_is_ignored(
@@ -1534,7 +1608,7 @@ def test_a_totals_list_that_does_not_fit_the_run_is_ignored(
     from fray_claude.gui.server import _timeline_stamp
 
     cache.write_timeline(
-        map_id, {"stamp": _timeline_stamp(ctx), "totals": [1.0, 2.0, 3.0, 4.0]}, tmp_path
+        map_id, {"stamp": _timeline_stamp(ctx, enriched=False), "totals": [1.0, 2.0, 3.0, 4.0]}, tmp_path
     )
 
     assert _body(_get("/api/timeline", ctx, map=map_id))["has_hours"] is False
@@ -1652,3 +1726,33 @@ def test_the_legend_keys_off_the_counts_not_the_compared_map() -> None:
     assert "counts.added" in legend.group(1) and "counts.removed" in legend.group(1)
     # The expression, not the prose - the comment above it says the word too.
     assert "view.compare_map_id" not in legend.group(1)
+
+
+def test_a_multi_run_batch_is_a_label_not_a_choice() -> None:
+    """**Selecting one blanks the map**, and did before the timeline existed.
+
+    `cache.resolve_map_path` refuses to guess which run a bare batch name
+    means - picking one silently would make the same name describe a different
+    world as runs were added - so it 404s `/api/view`, `/api/summary` and
+    everything else. The picker offering it as a map was the bug.
+    """
+    _, js, _ = _resources()
+
+    body = re.search(r"function mapOptions\(maps\) \{(.*?)\n\}", js, re.DOTALL)
+    assert body is not None
+    assert "<optgroup" in body.group(1)
+    assert "m.runs > 1" in body.group(1)
+    # A run belongs to its group, not to the top level as well.
+    assert 'm.map_id.includes("/")' in body.group(1)
+
+
+def test_rolling_opens_the_result_as_the_map(tmp_path: Path) -> None:
+    """**It used to land in the compare slot, which is what hides the strip** -
+    so rolling a simulation hid the one thing you rolled it to see."""
+    _, js, _ = _resources()
+
+    handler = re.search(r'runAction\(`Simulate \$\{rolls\} rolls`.*?\n    \};', js, re.DOTALL)
+    assert handler is not None
+    assert "el.map.value = result.open" in handler.group(0)
+    assert 'el.compare.value = ""' in handler.group(0)
+    assert "loadTimeline()" in handler.group(0)

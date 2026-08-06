@@ -305,15 +305,22 @@ export, no `derive`** — so `GET /api/timeline` and `/api/view?step=` are both 
 redraws as you drag it. `timeline.py` owns that arithmetic and `tests/test_timeline.py` asserts a run
 replays with its base map *deleted*.
 
-**The hours series is the expensive half, and the cost is `dps_bridge.enrich`.** A step is ~0.01s to
-derive and estimate off `cache/derived/` (which, under the default `--cache-behaviour all`, already
-holds every intermediate — measured 11/11 hits by replaying the ledger into `derivation_key`) and
-**~1.3s more with the `dps` extra installed**, because the kill rates are recomputed per state.
-Dropping `enrich` is not the fix: the Estimate tab uses it, and a timeline disagreeing with the panel
-beside it would be worse than a slow one. So `POST /api/timeline` pays once and writes
-`run-00N/timeline.json`, stamped with the digests **and the `dps` flag** — installing the extra is a
-different answer (3,969h against 2,816h), not a staler one. A stamp mismatch reads as *absent*, so
-the page offers to recompute rather than refusing to draw.
+**A run is born with its timeline, because pricing a state it has already derived is free.**
+`batch._Pricer` costs each state as `simulate_rolls` passes through it — measured under 5ms against
+the ~0.82s `derive` the roll paid anyway — and `write_sim_run` stores the series as
+`run-00N/timeline.json`. Rebuilding it afterwards would pay that 0.82s per step all over again, which
+is why the callback (`simulate.simulate_rolls`'s `on_state`) exists at all; `simulate.py` still knows
+nothing about hours.
+
+**What a simulation does *not* pay for is `dps_bridge.enrich`, at ~1.29s a roll.** That is 13× the
+rest of the pricing and would take a 100×50 batch from 68 minutes to 176, on every batch whether or
+not anyone opens its timeline. So a run stores the wiki-rate answer and `POST /api/timeline` upgrades
+it on request. `timeline.stamp`'s **`enriched` flag records which, and `timeline.matches` deliberately
+excludes it from the freshness comparison** — the cheap numbers are a coarser answer, not a stale one,
+and treating them as stale would blank a perfectly good graph the moment the extra was installed.
+Everything else in the stamp *is* compared, including the digest of the checked-in
+`heuristics/overrides.json`, which moves without any fetch having happened. A mismatch reads as
+*absent*, so the page offers to recompute rather than refusing to draw.
 
 **The hours bars are mostly empty and sometimes point down, and that is the data.** Measured: ten
 rolls on the real map moved the estimate 2815.7h → 2817.4h with **eight steps at exactly 0.0**, and on
@@ -321,6 +328,12 @@ an early map it *falls* — a new chunk can open a cheaper route to something al
 which task is the active winner. The delta was chosen over a cumulative line deliberately. What that
 costs the renderer is that `null` (nobody computed it) and `0.0` (this chunk added no work) must draw
 differently, and the axis needs a zero line with room below it.
+
+**A batch of several runs is not a map, and the picker must not offer it as one.**
+`cache.resolve_map_path` refuses to guess which run a bare batch name means, so selecting one 404s
+*every* route and the map goes blank — a pre-existing bug the timeline surfaced. `app.js`'s
+`mapOptions` makes a multi-run batch an `<optgroup>` label over its runs. A one-run batch stays
+selectable, since there the name is unambiguous everywhere.
 
 **A step and a comparison are exclusive.** Two maps and a rewind would want a third colour for
 "gained by this roll but lost against the other side", which is nobody's question — so the step wins

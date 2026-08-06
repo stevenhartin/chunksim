@@ -188,6 +188,46 @@ def _tasks_of(entry: Mapping[str, Any]) -> dict[str, tuple[str, ...]]:
     }
 
 
+def stamp(
+    *, chunkinfo: str, tasks_map: str, rates: str, overrides: str, enriched: bool
+) -> dict[str, Any]:
+    """What a stored hours series was computed against.
+
+    Both writers build it here rather than each rolling their own, because a
+    reader compares them field by field: `batch.py` writes one inside a worker
+    as a run finishes, and `gui/server.py` writes one when somebody presses
+    the button. Two spellings of the same idea would make every stored
+    timeline look stale to the other.
+
+    `enriched` records whether `dps_bridge` priced these numbers, and is
+    deliberately **not** part of the freshness comparison - see `matches`.
+    """
+    return {
+        "chunkinfo": chunkinfo,
+        "tasks_map": tasks_map,
+        "rates": rates,
+        "overrides": overrides,
+        "enriched": enriched,
+    }
+
+
+def matches(stored: Any, current: Mapping[str, Any]) -> bool:
+    """Whether a stored stamp still describes the world `current` describes.
+
+    **`enriched` is excluded on purpose.** A simulation prices its rolls with
+    the estimator alone, because the derivation is already in hand and costs
+    nothing extra; `dps_bridge.enrich` costs ~1.3s a roll on top and would
+    have tripled every batch. So the cheap numbers are what a run is born
+    with, and the expensive ones are an upgrade you ask for. Comparing
+    `enriched` would make the cheap ones read as *stale* the moment the extra
+    was installed - which is wrong, they are simply a different, coarser
+    answer, and one is worth showing until the other exists.
+    """
+    if not isinstance(stored, Mapping):
+        return False
+    return all(stored.get(key) == value for key, value in current.items() if key != "enriched")
+
+
 def series(steps: Sequence[Step], totals: Sequence[float] | None = None) -> list[dict[str, Any]]:
     """The per-step deltas the graph draws.
 
