@@ -14,6 +14,7 @@ from fray_claude.estimate import (
     estimate,
     goal_levels,
     infer_levels,
+    reachable_providers,
     task_gated_monsters,
 )
 from fray_claude.heuristics import (
@@ -1096,3 +1097,94 @@ def test_a_task_wanting_a_kill_rather_than_an_item_is_priced_as_one_kill() -> No
     assert result.unpriced == ()
     assert result.items[0].item == "kill Abyssal demon"
     assert result.items[0].hours == pytest.approx(1 / 60)
+
+
+
+def test_every_kill_rate_lookup_is_gated_on_the_providers_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**The property that makes restricting the DPS pricing safe.**
+
+    `dps_bridge.enrich` prices only `reachable_providers(derived)` rather than
+    every monster in the export - 188 against 753 on the real map, which is
+    where most of a repricing's time went. That is sound only because *every*
+    `Heuristics.kills_per_hour` call in this module is gated on the same set:
+    `_kill_hours` takes its provider from it, `_superior_hours` refuses a base
+    outside it, `_required_kills` skips a monster outside it.
+
+    So the assertion is not "the total still matches" - it does, to four
+    decimal places - but "nothing asked about a monster we stopped pricing".
+    A new lookup site that forgot the gate would quietly start reading a
+    scraped rate where it read a computed one, and the only symptom would be
+    a number moving.
+    """
+    info = ChunkInfo(
+        {
+            "drops": {
+                "General Graardor": {"Bandos chestplate": {"1": "1/381"}},
+                "Corporeal Beast": {"Spectral sigil": {"1": "1/1365"}},
+            },
+            "codeItems": {"bossMonsters": {"General Graardor": True, "Corporeal Beast": True}},
+            "challenges": {
+                "Extra": {
+                    "Obtain a ~|bandos chestplate|~": {"Items": ["Bandos chestplate"]},
+                    "Obtain a ~|spectral sigil|~": {"Items": ["Spectral sigil"]},
+                }
+            },
+        }
+    )
+    # Both tasks are active; only one of the two monsters is on this map.
+    derived = _derived(
+        monsters=("General Graardor",),
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra",
+                    groups=(
+                        TaskGroup(
+                            name="Boss",
+                            active=(
+                                "Obtain a ~|bandos chestplate|~",
+                                "Obtain a ~|spectral sigil|~",
+                            ),
+                        ),
+                    ),
+                )
+            }
+        ),
+    )
+    asked: list[str] = []
+    original = Heuristics.kills_per_hour
+
+    def spy(self: Heuristics, monster: str) -> Rate:
+        asked.append(monster)
+        return original(self, monster)
+
+    monkeypatch.setattr(Heuristics, "kills_per_hour", spy)
+
+    _run(info, derived, Heuristics(monsters={"General Graardor": Rate(27.0)}))
+
+    assert asked, "nothing was priced at all, so this would prove nothing"
+    assert not set(asked) - reachable_providers(derived)
+    assert "Corporeal Beast" not in asked
+
+
+def test_the_providers_set_is_the_three_source_branches() -> None:
+    """Monsters alone is the tempting wrong answer and was the first one: a
+    `skillItems` activity is only *usually* a monster, so a monsters-only gate
+    refused `Larran's big chest` - an Object - and the 34 drops behind it."""
+    derived = _derived(
+        monsters=("Abyssal demon",),
+        source_index=SourceIndex(
+            items={},
+            objects={"Larran's big chest": {"100": True}},
+            monsters={"Abyssal demon": {"100": True}},
+            npcs={"Zahur": {"100": True}},
+            shops={},
+            drop_rates={},
+        ),
+    )
+
+    assert reachable_providers(derived) == frozenset(
+        {"Abyssal demon", "Larran's big chest", "Zahur"}
+    )

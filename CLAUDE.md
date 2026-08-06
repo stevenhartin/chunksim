@@ -146,7 +146,7 @@ Five things that cut across modules — the first three because each has already
 | `derived_cache.py` | The on-disk cache of `derive` results: the key (hash of every input), the zstd+pickle codec, `cached_derive`, and `CacheBehaviour`/`RollCache` — which of a simulation's states to keep. Pure bar the bytes, which `cache.py` writes. |
 | `search.py` | World-wide fuzzy search over the *raw* export — all 5 item routes, so a strict superset of what `fray sources` can list. |
 | `summary.py` | Pure reductions over a raw payload. Extend this, not `cli.py`. Also home to `_mapping`, the tolerant dict accessor eight other modules import despite the `_` — Firebase omits empty containers, so every lookup anywhere must survive a missing branch. |
-| `dps_bridge.py` | The seam to `osrs-dps`, which prices a kill from the gear `bis.py` reaches instead of a money-making guide. **Optional import** — check `DPS_AVAILABLE`, never assume it. `enrich` is the one entry point a command needs. Owns the export→library conversions (`magic_damage` is a display percentage here and tenths of a percent there), the overhead model, the monster-name join and its `exact`/`variant` provenance, and the refusal of fight *phases* and group bosses. |
+| `dps_bridge.py` | The seam to `osrs-dps`, which prices a kill from the gear `bis.py` reaches instead of a money-making guide. Prices **only `estimate.reachable_providers`** — 188 of the export's 872, because every `kills_per_hour` lookup is gated on that set and the rest is thrown away. **Optional import** — check `DPS_AVAILABLE`, never assume it. `enrich` is the one entry point a command needs. Owns the export→library conversions (`magic_damage` is a display percentage here and tenths of a percent there), the overhead model, the monster-name join and its `exact`/`variant` provenance, and the refusal of fight *phases* and group bosses. |
 | `cli.py` | argparse subcommands and rendering only; new logic goes in a pure module. `gui/server.py` follows the same rule, with `gui/panels.py` as its pure module. |
 | `gui/panels.py` | Shaping `Derived` into what the panel draws — sections of groups of `{key, name, note, icon}`, one shape across all five categories. Pure. Owns the three rules that are domain knowledge rather than formatting: a quest keeps only its **furthest** step, `Extra`'s collection-log rows split source from item, BiS groups by combat style. |
 | `gui/worldmap.py` | Where a chunk sits on the map, and which of its sides face outward. Pure. Owns the projection (`grid_x = region_x - 15`, **`grid_y = 65 - region_y`** — the y axis is flipped), the tile pyramid's constants, the two kinds of id that have no square, and `hull_edges`. In `gui/` because all of it is about one particular tiling. |
@@ -286,6 +286,19 @@ all, so every number `fray estimate` spends comes from one of those two files or
 a declared cap, `passiveSkill` is what's reachable untrained), so `estimate.infer_levels` reads a
 floor out of the *completed* challenges — a ticked `Buy the Defence cape` proves 99 Defence. `experience.py`'s XP
 curve is the one exact input and is deliberately not overridable.
+
+**`dps_bridge` prices what the estimate can ask about, and nothing else.** `price_monsters` used to
+be handed `sorted(chunk_info.drops)` — all **872** monsters in the export — where **188** are
+reachable providers with drops and, on the real map, **11** were ever consulted. Every
+`Heuristics.kills_per_hour` call in `estimate.py` is gated on `reachable_providers(derived)`
+(`_kill_hours` takes its provider from it, `_superior_hours` refuses a base outside it,
+`_required_kills` skips a monster outside it), so a rate for anything else is computed and can never
+be spent. Restricting it left the answer **identical to four decimal places** — 3969.1204h either
+way, with buckets, per-item hours and `unpriced` all unchanged — and took `enrich` from 1.26s to
+0.69s. `dps_bridge` **imports** `reachable_providers` rather than keeping its own copy, so the gate
+cannot drift from the thing it gates; `tests/test_estimate.py` spies on every lookup to assert
+nothing asks outside it. `DpsCoverage.offered` is reported beside `monsters` because "188 monsters"
+alone reads as poor coverage of the export rather than full coverage of the map.
 
 **With the `dps` extra installed the layering is `defaults < scraped < computed < overrides`.**
 `fray estimate` calls `dps_bridge.enrich`, which recomputes kill rates and slayer task rates from

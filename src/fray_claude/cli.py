@@ -1014,7 +1014,7 @@ def _print_estimate(
     if coverage is not None and coverage.priced_anything:
         pinned = f", {coverage.pinned} pinned" if coverage.pinned else ""
         print(
-            f"dps calc     {coverage.monsters} monsters, "
+            f"dps calc     {coverage.monsters} of {coverage.offered} reachable monsters, "
             f"{coverage.slayer_tasks} slayer tasks ({'/'.join(coverage.styles)}{pinned})"
         )
     for name, hours in result.buckets.items():

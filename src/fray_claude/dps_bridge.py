@@ -140,6 +140,7 @@ from typing import Any
 
 from fray_claude.boosts import combat_boost
 from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.estimate import reachable_providers
 from fray_claude.heuristics import Heuristics, Rate, SlayerTask
 from fray_claude.pipeline import Derived
 from fray_claude.slayer import task_monsters
@@ -1227,6 +1228,12 @@ class DpsCoverage:
     """
 
     monsters: int = 0
+    #: How many monsters were *offered* to be priced - the reachable providers
+    #: that have drops. Reported beside `monsters` because without it the
+    #: count reads as coverage of the whole export, which it deliberately is
+    #: not: pricing anything the estimate cannot ask about is work thrown
+    #: away. See `enrich`.
+    offered: int = 0
     slayer_tasks: int = 0
     #: The BiS styles that produced a usable loadout.
     styles: tuple[str, ...] = ()
@@ -1240,6 +1247,7 @@ class DpsCoverage:
     def as_dict(self) -> dict[str, Any]:
         return {
             "monsters": self.monsters,
+            "offered": self.offered,
             "slayer_tasks": self.slayer_tasks,
             "styles": list(self.styles),
             "pinned": self.pinned,
@@ -1291,11 +1299,21 @@ def enrich(
     reachable = frozenset(derived.source_index.monsters)
     masters = frozenset(derived.source_index.npcs)
 
+    # **Only what the estimate could ever ask about.** Every
+    # `kills_per_hour` lookup in `estimate.py` is gated on this same set, so
+    # a rate for anything outside it is computed and never spent - and on the
+    # real map that was 753 monsters priced against 11 consulted. Restricting
+    # it leaves the answer identical to four decimal places (3969.1204h
+    # either way, buckets, per-item hours and `unpriced` all unchanged) and
+    # makes this call ~3.8x faster. `estimate.reachable_providers` is
+    # imported rather than reproduced so the gate cannot drift from the
+    # thing it is gating.
+    priceable = sorted(reachable_providers(derived) & frozenset(chunk_info.drops))
     monsters = price_monsters(
         chunk_info,
         derived.bis.picks,
         levels,
-        sorted(chunk_info.drops),
+        priceable,
         index=monster_index,
         slayer_monsters=frozenset(chunk_info.slayer_monsters),
         boss_monsters=bosses,
@@ -1325,6 +1343,7 @@ def enrich(
     enriched = with_slayer_rates(enriched, tasks, pinned=pinned_slayer)
     return enriched, DpsCoverage(
         monsters=sum(1 for name in monsters if name not in pinned_monsters),
+        offered=len(priceable),
         slayer_tasks=sum(
             1
             for master, names in tasks.items()

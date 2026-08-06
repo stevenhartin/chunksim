@@ -7,13 +7,15 @@ built by hand; nothing reads the real export or the real cache.
 
 from __future__ import annotations
 
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
 from fray_claude import dps_bridge
 from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.heuristics import Rate
+from fray_claude.heuristics import Heuristics, Rate
+from fray_claude.sources import SourceIndex
 
 pytestmark = pytest.mark.skipif(
     not dps_bridge.DPS_AVAILABLE,
@@ -1149,3 +1151,55 @@ def test_library_version_reports_the_installed_extra() -> None:
 
     assert version is not None
     assert version.count(".") >= 1
+
+
+def test_enrich_prices_only_what_the_estimate_could_ask_about(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**753 monsters priced against 11 consulted, on the real map.**
+
+    Every `Heuristics.kills_per_hour` lookup in `estimate.py` is gated on
+    `reachable_providers`, so a rate for anything outside that set is computed
+    and can never be spent - it was ~60% of a repricing's time. Restricting it
+    left the answer identical to four decimal places (3969.1204h either way,
+    with buckets, per-item hours and `unpriced` all unchanged).
+
+    The set is *imported* from `estimate.py` rather than reproduced here, so
+    the gate cannot drift from the thing it gates. This asserts the wiring:
+    what `enrich` hands to `price_monsters` is the reachable providers and not
+    the export.
+    """
+    info = ChunkInfo(
+        {
+            "drops": {
+                "Abyssal demon": {"Abyssal whip": {"1": "1/512"}},
+                "Corporeal Beast": {"Spectral sigil": {"1": "1/1365"}},
+            }
+        }
+    )
+    derived = SimpleNamespace(
+        source_index=SourceIndex(
+            items={},
+            objects={},
+            monsters={"Abyssal demon": {"100": True}},
+            npcs={},
+            shops={},
+            drop_rates={},
+        ),
+        bis=SimpleNamespace(picks={}),
+        challenges=SimpleNamespace(available_items={}),
+    )
+    seen: list[list[str]] = []
+
+    def record(*args: Any, **kwargs: Any) -> dict[str, Rate]:
+        seen.append(list(args[3]))
+        return {}
+
+    monkeypatch.setattr(dps_bridge, "price_monsters", record)
+    monkeypatch.setattr(dps_bridge, "price_slayer_tasks", lambda *a, **kw: {})
+    monkeypatch.setattr(dps_bridge, "build_loadouts", lambda *a, **kw: {"melee": object()})
+
+    dps_bridge.enrich(Heuristics(), info, cast(Any, derived), {})
+
+    assert seen == [["Abyssal demon"]]
+    assert "Corporeal Beast" not in seen[0], "priced a monster this map cannot reach"

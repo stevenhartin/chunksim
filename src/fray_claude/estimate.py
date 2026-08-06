@@ -880,6 +880,31 @@ def _training_rate(
     return best
 
 
+def reachable_providers(derived: Derived) -> frozenset[str]:
+    """Everything on this map that can *hand you an item*, not just kill you.
+
+    Monsters, objects and NPCs of `SourceIndex` together, all past their
+    `taskUnlocks` gates. Monsters alone is the tempting wrong answer and was
+    the first one: a `skillItems` activity is only *usually* a monster, so a
+    monsters-only gate refused `Larran's big chest` - an Object - and with it
+    the 34 drops behind it.
+
+    **This is `_Walk.available`, and it is also the set worth pricing.**
+    Every `Heuristics.kills_per_hour` lookup in this module is gated on it -
+    `_kill_hours` takes a provider from it, `_superior_hours` refuses a base
+    that is not in it, `_required_kills` skips a monster that is not - so a
+    kill rate for anything outside it can never be spent. `dps_bridge.enrich`
+    imports this rather than keeping its own copy, because the two agreeing
+    is what makes restricting the pricing safe rather than lossy, and
+    `tests/test_dps_bridge.py` pins them together.
+    """
+    return (
+        frozenset(derived.source_index.monsters)
+        | frozenset(derived.source_index.objects)
+        | frozenset(derived.source_index.npcs)
+    )
+
+
 def estimate(
     state: MapState,
     derived: Derived,
@@ -891,10 +916,7 @@ def estimate(
     """Estimate the outstanding active work. See the module docstring first."""
     levels = _levels(state, level_overrides or {})
     reachable = frozenset(derived.source_index.monsters)
-    # Anything that can hand you an item, not just anything you can kill.
-    providers = reachable | frozenset(derived.source_index.objects) | frozenset(
-        derived.source_index.npcs
-    )
+    providers = reachable_providers(derived)
     valid = derived.challenges.valid
     # `derive`'s *settled* expansion, not a fresh one-shot call: areas keep
     # opening as challenges become valid, and expanding once leaves 60 named

@@ -2123,7 +2123,10 @@ el["estimate-why"].addEventListener("click", () => {
   let out = tmpl`<dl class="kv">
     <dt>Wiki rates</dt><dd>${payload.scraped_rates ? "Present" : "Missing"}</dd>`;
   out += payload.dps
-    ? tmpl`<dt>DPS calculator</dt><dd>${payload.dps.monsters} monsters</dd>
+    /* The denominator matters: the count is of *reachable* monsters, not of
+     * the export, because pricing anything the estimate cannot ask about is
+     * work thrown away. Without it the figure reads as poor coverage. */
+    ? tmpl`<dt>DPS calculator</dt><dd>${payload.dps.monsters} of ${payload.dps.offered} reachable monsters</dd>
            <dt></dt><dd>${payload.dps.slayer_tasks} slayer tasks</dd>`
     : tmpl`<dt>DPS calculator</dt><dd>Not installed</dd>`;
   out += "</dl>";
