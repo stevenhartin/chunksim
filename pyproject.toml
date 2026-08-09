@@ -26,9 +26,11 @@ fray-gui = "fray_claude.gui:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-# The GUI's html/js/css. Small, and ours. The world map image is deliberately
-# *not* here - it is Jagex's artwork and gets fetched to cache/assets/ instead,
-# so nothing this project redistributes carries it.
+# The GUI's html/js/css. Small, and ours. The map tiles are deliberately *not*
+# here, and are not fetched either: they are the OSRS wiki's cartography,
+# CC BY-NC-SA 3.0 against this project's MIT, so the browser loads them from
+# the wiki directly and nothing this project ships or caches carries one.
+# cache/assets/ holds section masks and skill icons, not artwork.
 [tool.setuptools.package-data]
 fray_claude = ["gui/resources/*"]
 

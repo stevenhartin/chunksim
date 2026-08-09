@@ -73,7 +73,8 @@ from fray_claude.search import normalise
 from fray_claude.summary import _mapping
 from fray_claude.wiki import Assignment, MmgRates, quest_difficulty, quest_length
 
-#: Quest length word -> hours, as specified in `plan.md`.
+#: Quest length word -> hours. The words are the wiki's own `Length` column
+#: on `Quests/List`; the hours are this project's, the wiki giving no duration.
 LENGTH_HOURS: dict[str, float] = {
     "very short": 0.17,
     "short": 1.0,

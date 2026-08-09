@@ -91,8 +91,8 @@ def _run(info: ChunkInfo, derived: Derived, heuristics: Heuristics, **kwargs: An
 
 
 def test_a_boss_drop_costs_one_over_the_rate_divided_by_kills_per_hour() -> None:
-    # 1/381 at 27 kills an hour is 381/27 = 14.11 hours. The arithmetic from
-    # `plan.md`'s own worked example.
+    # 1/381 at 27 kills an hour is 381/27 = 14.11 hours - the worked example
+    # this estimator was specified against.
     info = ChunkInfo(
         {
             "drops": {"General Graardor": {"Bandos chestplate": {"1": "1/381"}}},

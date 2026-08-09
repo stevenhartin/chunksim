@@ -1,7 +1,7 @@
 """How long the outstanding work would take, in the roughest useful terms.
 
-Four buckets, from `plan.md`: quests, boss drops, activity unlocks, and
-skilling. Every number spent here comes from `heuristics.py` and is a guess;
+Four buckets - quests, boss drops, activity unlocks and skilling, the set
+`BUCKETS` names. Every number spent here comes from `heuristics.py` and is a guess;
 the only exact arithmetic is `experience.py`'s XP curve. Read both before
 quoting a total.
 

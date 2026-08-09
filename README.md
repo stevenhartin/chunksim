@@ -111,6 +111,11 @@ the challenges that chunk made valid, with a breakdown per skill on hover. **Hou
 the time left to finish — a simulation prices every roll as it goes, which costs it nothing, since
 the work of deriving each state is what a roll already is.
 
+Clicking a bar moves the slider to that roll, selects the chunk it rolled and flies the camera to
+it; **Details** then opens that roll in full — every task it made valid, by skill, rather than the
+counts the bars draw. They are two gestures rather than one because a dialog would cover the map
+the click had just framed.
+
 A simulation is stored as the map it started from plus the sequence of rolls, so a run can be
 replayed and re-costed even if the map it came from has since been refetched or removed — and because
 the sequence is measured against that fixed starting point, re-costing it reuses everything the

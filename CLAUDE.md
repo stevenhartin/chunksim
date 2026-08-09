@@ -133,7 +133,7 @@ Five things that cut across modules — the first three because each has already
 | `scrape.py` | The ~18 requests that build the scraped layer, and the coverage it reports. **Both apps run it** — `fray heuristics` and the GUI's Maps tab — so the two cannot write different files. Decides no rate; `heuristics.py` does that. |
 | `heuristics.py` | Every hand-correctable number, and the `defaults < scraped < overrides` merge. Owns the joins and their `exact`/`contained` provenance; **no fuzzy tier**, by measurement — read the docstring before adding one back. |
 | `slayer.py` | Slayer's rate, which is a *distribution* not a chosen method: a time-weighted mean over what a master assigns. Also owns `superior_rolls_per_hour` — the shared `SuperiorDropTable+` is one pool per master, not one per superior. **Masters are gated on their NPC being reachable** — without that it quoted Duradel on a map holding none of him. Reports `coverage`, because renormalising over reachable tasks flatters a sparse map. |
-| `estimate.py` | The four `plan.md` buckets over the **active** set. **Costs the unique *item*, not the task** — one whip answers three tasks — and **clamps per source**, since items off one monster are earned in parallel. Owns the item walk, its bounded `Output` recursion, the `unpriced` list, and **three gates** — monster reachable, slayer task assignable, master reachable. Read the docstring before pricing anything off `WorldIndex`, which spans the whole world. |
+| `estimate.py` | The four buckets — quests, boss drops, activities, skilling — over the **active** set. **Costs the unique *item*, not the task** — one whip answers three tasks — and **clamps per source**, since items off one monster are earned in parallel. Owns the item walk, its bounded `Output` recursion, the `unpriced` list, and **three gates** — monster reachable, slayer task assignable, master reachable. Read the docstring before pricing anything off `WorldIndex`, which spans the whole world. |
 | `cache.py` | The disk. `CacheMissError`, the `map_id`/`fetched_at`/`source`/`kind`/`data` envelope, the `--chunkinfo`/`FRAY_CHUNKINFO` override, and the purpose-sorted layout below (incl. `--map` resolution across kinds, atomic writes, the cross-kind batch-name claim and `migrate_layout`). |
 | `firebase.py` | The Firebase-safe string codec, incl. `decode_challenge_keyed`'s mixed `t_N`/literal key handling. Run any payload branch through it before believing it. |
 | `chunkinfo.py` | Typed, tolerant accessors over the parsed export. Build **one** `ChunkInfo` per invocation — parsing the ~7MB export is the expensive part. |
@@ -438,7 +438,7 @@ exactly the ones not yet in the picker; blank means `cache.DEFAULT_MAP_ID`, whic
 constant crossing into JavaScript with a test holding the two in agreement.
 
 **All fifteen CLI subcommands are reachable from it.** `GET /api/{maps,view,revision,summary,
-neighbours,chunk,sections,unlock,diff,search,estimate,tasks,tiles,derived,jobs,timeline,roll,reference}` and
+neighbours,chunk,sections,unlock,diff,search,estimate,tasks,tiles,areas,derived,jobs,timeline,roll,reference}` and
 `POST /api/{fetch,simulate,unlock,timeline,cancel,refresh,maps/remove,derived/prune,window}`. The panel's tabs are tasks / chunk / find / estimate /
 maps, and `?map=&compare=&candidates=1&sections=1&step=&tab=` reproduces a view.
 

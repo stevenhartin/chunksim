@@ -219,3 +219,6 @@ __marimo__/
 
 # Cached map state fetched by the CLI
 cache/
+
+# `--export-json` output, when it lands in the checkout rather than /tmp
+/*.json
