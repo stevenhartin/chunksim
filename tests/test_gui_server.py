@@ -1866,6 +1866,45 @@ def test_rolling_opens_the_result_as_the_map(tmp_path: Path) -> None:
     assert "loadTimeline()" in handler.group(0)
 
 
+def test_unlocking_opens_the_result_as_the_map() -> None:
+    """**The same bug the Roll button had.** A saved unlock went into the
+    compare slot, and comparing is exactly the state that hides the strip - so
+    the act of unlocking a chunk hid the only record of what it added.
+
+    Nothing is lost by selecting it instead: a saved unlock is a batch of one,
+    so the chunk it added draws green from its own ledger the way a rolled one
+    does, without a comparison being involved at all.
+    """
+    _, js, _ = _resources()
+
+    handler = re.search(r'runAction\("Unlock " \+ chunkId.*?\n      \}\);', js, re.DOTALL)
+    assert handler is not None
+    assert "el.map.value = result.open" in handler.group(0)
+    assert 'el.compare.value = ""' in handler.group(0)
+    assert "loadTimeline()" in handler.group(0)
+
+
+def test_a_run_whose_strip_is_hidden_by_a_comparison_says_so() -> None:
+    """**A silent empty state reads as a broken feature.** The run is still
+    selected and its history is gone, with nothing on screen connecting that to
+    the compare box - which is why the ledger is fetched *before* the
+    comparison is checked, so "no history here" and "history you cannot see
+    from where you are standing" can be told apart.
+    """
+    _, js, css = _resources()
+
+    body = re.search(r"async function loadTimeline\(\) \{(.*?)\n\}", js, re.DOTALL)
+    assert body is not None
+    assert "comparingNotice()" in body.group(1)
+    # Fetched first, or the page cannot tell the two empty states apart.
+    assert body.group(1).index("/api/timeline") < body.group(1).index("el.compare.value")
+    # The way back is one click, and it is in the strip that explains it.
+    assert 'id="tl-uncompare"' in js
+    assert ".timeline.notice .tl-graph" in css
+    # Drawing the real strip has to drop the reduced one.
+    assert 'el.timeline.classList.remove("notice")' in js
+
+
 def test_the_timeline_job_reports_slices_for_the_bar(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

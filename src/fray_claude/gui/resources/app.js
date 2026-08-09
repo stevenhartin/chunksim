@@ -1772,13 +1772,27 @@ function askUnlock(chunkId) {
     runAction("Unlock " + chunkId, "/api/unlock",
       { map: el.map.value, chunk: chunkId, name },
       async (result) => {
-        /* Compare rather than select: what you want to see next is what the
-         * chunk *changed*, and that is the delta against where you started. */
+        /* **Select rather than compare**, for the reason the Roll button was
+         * changed: a comparison is exactly the state that hides the timeline,
+         * so putting the new map there hid the one record of what the unlock
+         * did. Nothing is lost by selecting it - a saved unlock replays its own
+         * single roll, so the chunk it added still draws green from that ledger
+         * rather than from a comparison. */
+        const base = el.map.value;
         await loadMaps();
-        if (result.open) el.compare.value = result.open;
+        if (result.open) {
+          el.map.value = result.open;
+          el.compare.value = "";
+          state.step = null;
+          state.timeline = null;
+        }
         syncBreakdown();
+        await loadTimeline();
         await loadView();
+        await loadCandidates();
+        await loadSections();
         loadMapsPane();
+        if (result.open) toast("Unlocked " + chunkId + " on " + base + " — the strip shows what it added");
       });
   };
   document.getElementById("unlock-no").onclick = closeOverlay;
@@ -2379,7 +2393,7 @@ async function loadMapsPane() {
       <input id="sim-runs" type="number" min="1" value="1" style="width:7ch" aria-label="Runs"
         data-tip="How many times to repeat the whole roll, each with its own seed.">
       <button id="do-sim" type="button"
-        data-tip="Roll from this map and save the result as a new simulated map, opened as a comparison.">Roll</button>
+        data-tip="Roll from this map and save the result as a new simulated map, opened as the map with its timeline.">Roll</button>
     </div>`;
     out += tmpl`<h3>Cached maps <span class="num">${maps.length}</span></h3><ul class="list">`;
     for (const m of maps) {
@@ -2793,19 +2807,45 @@ const TL_SERIES = [
 let tlSeries = "tasks";
 
 async function loadTimeline() {
-  /* A comparison and a rewind are exclusive - see `mapQuery`. */
-  if (!el.map.value || el.compare.value) return hideTimeline();
+  if (!el.map.value) return hideTimeline();
+  let payload;
   try {
-    state.timeline = await getJSON("/api/timeline?map=" + encodeURIComponent(el.map.value));
+    payload = await getJSON("/api/timeline?map=" + encodeURIComponent(el.map.value));
   } catch {
     /* A fetched map has no ledger, which is the ordinary case rather than a
      * failure. Anything else here is equally not worth a toast: the map is
      * still on screen and the strip is an extra. */
     return hideTimeline();
   }
-  if (!state.timeline.steps || state.timeline.steps.length < 2) return hideTimeline();
-  if (state.step === null) state.step = state.timeline.steps.length - 1;
+  if (!payload.steps || payload.steps.length < 2) return hideTimeline();
+  /* **A comparison and a rewind are exclusive** - see `mapQuery` - but hiding
+   * the strip without a word made a working feature look like a broken one:
+   * the run is still selected, its history is gone, and nothing on screen
+   * connects that to the compare box beside it. The run is fetched first for
+   * exactly that reason, so the page can tell "no history here" from "history
+   * you cannot see from where you are standing". */
+  if (el.compare.value) return comparingNotice();
+  state.timeline = payload;
+  if (state.step === null) state.step = payload.steps.length - 1;
   renderTimeline();
+}
+
+/* The strip, reduced to why it is empty and the one click that fills it. */
+function comparingNotice() {
+  state.timeline = null;
+  state.step = null;
+  el.timeline.hidden = false;
+  el.timeline.classList.add("notice");
+  el["tl-title"].innerHTML = tmpl`Timeline<span class="sub">this run has a history, hidden while comparing</span>`;
+  el["tl-chips"].innerHTML = `<button class="chip" id="tl-uncompare" type="button"
+    data-tip="<b>Stop comparing</b><span class='sub'>A rewind and a comparison would need a third colour for &quot;gained by this roll but lost against the other side&quot;, so only one can be on.</span>">Clear comparison</button>`;
+  document.getElementById("tl-uncompare").onclick = async () => {
+    el.compare.value = "";
+    syncBreakdown();
+    await loadTimeline();
+    await loadView();
+  };
+  document.documentElement.style.setProperty("--strip-h", el.timeline.offsetHeight + "px");
 }
 
 function hideTimeline() {
@@ -2824,6 +2864,7 @@ function renderTimeline() {
   const at = steps[state.step];
 
   el.timeline.hidden = false;
+  el.timeline.classList.remove("notice");
   /* **The panels describe the map, and a rewound map is not the map.** They
    * each need a derivation, so following the slider would cost ~1s a drag and
    * lose the whole reason stepping is instant. Saying which is being shown

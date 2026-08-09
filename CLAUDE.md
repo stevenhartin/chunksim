@@ -430,8 +430,17 @@ selectable, since there the name is unambiguous everywhere.
 
 **A step and a comparison are exclusive.** Two maps and a rewind would want a third colour for
 "gained by this roll but lost against the other side", which is nobody's question — so the step wins
-in `mapQuery` and the strip hides itself while comparing. Switching map clears `state.step` *before*
-the view loads, or the new map is rewound to a roll it never had.
+in `mapQuery` and the strip reduces itself while comparing. Switching map clears `state.step` *before*
+the view loads, or the new map is rewound to a roll it never had. **It reduces rather than
+disappears, and the ledger is therefore fetched before the comparison is checked**: a run whose
+history is merely out of view looked exactly like a map that never had one, which is a working
+feature reading as a broken one. The reduced strip says which and carries the one click back.
+
+**Anything that makes a map selects it; nothing puts it in the compare slot.** Roll was fixed for
+this and `POST /api/unlock` was not, so unlocking a chunk from the panel hid the record of what it
+added — the same bug, in the other action. A computed map needs no comparison to show its gains: it
+replays its own ledger, so the chunk it added draws green either way, and only the timeline is lost
+by comparing.
 
 **`GET /api/unlock` and `POST /api/unlock` are the two halves of one thing.** The GET prices a
 candidate and keeps nothing; the POST saves the world it was describing, through `batch.save_unlock`

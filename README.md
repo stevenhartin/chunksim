@@ -85,7 +85,7 @@ section.
 Click any chunk for its contents, grouped by kind, with anything behind a door you cannot open
 greyed out; for one you do not own yet, **What would this add?** derives both worlds and tells you,
 and **Unlock** then saves that world as a map of its own — the same thing `fray unlock --cache-map`
-does, named in a dialog and opened as a comparison against where you started. The category chips are
+does, named in a dialog and then opened, with a one-roll timeline saying what it added. The category chips are
 checkboxes, not tabs — all on to begin with, so you can look at monsters and NPCs together, or
 narrow to one.
 

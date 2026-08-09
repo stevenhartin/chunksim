@@ -839,6 +839,15 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 
 /* --- timeline ----------------------------------------------------------- */
 
+/* Comparing hides the *graph*, not the strip - the strip is where the page
+   says why the graph is gone and offers the way back. Everything that acts on
+   a step goes with it, since there is no step to act on. */
+.timeline.notice .tl-graph,
+.timeline.notice .tl-scrub,
+.timeline.notice #tl-details,
+.timeline.notice #tl-hours,
+.timeline.notice #tl-collapse { display: none; }
+
 /* Spans the map's width rather than the window's, so it stops at the panel
    the way the attribution does. */
 .timeline {
