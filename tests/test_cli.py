@@ -15,7 +15,8 @@ import pytest
 
 from fray_claude.api import DEFAULT_TIMEOUT, FetchError
 from fray_claude.cache import write_blob
-from fray_claude.cli import _format_age, build_parser, main
+from fray_claude.cli import build_parser, main
+from fray_claude.summary import format_age
 
 
 @pytest.fixture
@@ -45,6 +46,44 @@ def test_fetch_writes_the_cache(project: Path, monkeypatch: pytest.MonkeyPatch) 
 
     assert main(["fetch"]) == 0
     assert (project / "cache" / "maps" / "fetched" / "fray.json").is_file()
+
+
+def test_every_command_stamps_which_install_answered(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """**`pipx install` without `--force` is a silent no-op**, so `fray` on
+    `PATH` can be an older build than the checkout and nothing says so. The
+    line goes to **stderr**, because nine subcommands can write their whole
+    answer to stdout with `--export-json -`.
+    """
+    monkeypatch.delenv("FRAY_NO_WATERMARK", raising=False)
+    monkeypatch.setattr(
+        "fray_claude.cli.fetch_map",
+        lambda map_id, timeout=DEFAULT_TIMEOUT: {"chunks": {"unlocked": {"50_50": True}}},
+    )
+
+    assert main(["fetch"]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.err.startswith("fray ")
+    assert "fray " not in captured.out.split("\n")[0]
+
+
+def test_the_stamp_stays_off_the_stream_the_answer_goes_to(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`fray maps list --export-json -` has to stay pipeable into `jq`."""
+    monkeypatch.delenv("FRAY_NO_WATERMARK", raising=False)
+    monkeypatch.setattr(
+        "fray_claude.cli.fetch_map",
+        lambda map_id, timeout=DEFAULT_TIMEOUT: {"chunks": {"unlocked": {"50_50": True}}},
+    )
+    main(["fetch"])
+    capsys.readouterr()
+
+    assert main(["maps", "list", "--export-json", "-"]) == 0
+
+    assert json.loads(capsys.readouterr().out)  # not "fray 0.1.0 ...{"
 
 
 def test_show_summarises_the_cached_map(
@@ -108,7 +147,8 @@ def test_fetch_failure_exits_one(
     monkeypatch.setattr("fray_claude.cli.fetch_map", fake_fetch_map)
 
     assert main(["fetch", "--map", "nope"]) == 1
-    assert capsys.readouterr().err == "error: no such map: 'nope'\n"
+    # `endswith` rather than `==`: the provenance line shares this stream.
+    assert capsys.readouterr().err.endswith("error: no such map: 'nope'\n")
 
 
 @pytest.mark.parametrize(
@@ -122,18 +162,18 @@ def test_fetch_failure_exits_one(
     ],
 )
 def test_format_age_buckets(delta: timedelta, expected: str) -> None:
-    assert _format_age((datetime.now(UTC) - delta).isoformat()) == expected
+    assert format_age((datetime.now(UTC) - delta).isoformat()) == expected
 
 
 def test_format_age_assumes_utc_for_a_naive_timestamp() -> None:
     naive = datetime.now(UTC).replace(tzinfo=None).isoformat()
 
-    assert _format_age(naive) == "0s ago"
+    assert format_age(naive) == "0s ago"
 
 
 @pytest.mark.parametrize("value", ["not a timestamp", None, 1709907279995])
 def test_format_age_reports_unusable_input_as_unknown(value: object) -> None:
-    assert _format_age(value) == "unknown"
+    assert format_age(value) == "unknown"
 
 
 def test_chunkinfo_fetches_and_caches_both_blobs(

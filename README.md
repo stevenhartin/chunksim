@@ -154,6 +154,15 @@ It remembers the size and position you left the window at. Chrome will not do th
 URL changes between launches, which this one's does, so the page reports its own geometry back; the
 first run opens maximised.
 
+**Both apps say which install answered.** `fray` prints one line to stderr before anything else —
+`fray 0.1.0 · installed 3h ago` — and the map carries the same thing as a faint watermark in its
+bottom-left corner, read from the server rather than baked into the page. This is not decoration:
+`pipx install` on a package whose version has not moved is a silent no-op, so the command on your
+`PATH` can be an older build than the checkout it came from and behave exactly as if it were not.
+An editable install says `editable, linked 3h ago` instead, because its date is the age of the link
+and its code is whatever the checkout holds right now. `FRAY_NO_WATERMARK=1` silences the line;
+stderr keeps it clear of `--export-json -` either way.
+
 **It binds `127.0.0.1` and is not authenticated.** A page you have open in another tab cannot read
 anything from it — the same-origin policy stops that — and its `fetch`/`simulate` buttons are
 guarded by the `Sec-Fetch-Site` and `Host` headers. `--host` will bind elsewhere, and the help text

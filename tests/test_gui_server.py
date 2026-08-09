@@ -897,6 +897,31 @@ def test_the_canvas_is_given_an_explicit_size() -> None:
     assert re.search(r"\bheight:\s*100%", body)
 
 
+def test_the_build_route_says_which_install_is_answering(ctx: Context) -> None:
+    """The same question `fray`'s first line answers, asked of the server."""
+    payload = _body(_get("/api/build", ctx))
+
+    assert set(payload) == {"version", "installed_at", "kind", "path"}
+    assert payload["kind"] in ("wheel", "editable", "source")
+
+
+def test_the_page_asks_the_server_which_build_it_is() -> None:
+    """**Baking the stamp into `app.js` would answer the wrong question.**
+
+    The page is served by an install that `--host` may put on a different
+    machine from the checkout anyone is editing, so the answer has to be the
+    server's. And the age is re-rendered on the poll rather than only at boot,
+    or a tab left open all afternoon goes on claiming the install happened a
+    minute ago.
+    """
+    _, js, css = _resources()
+
+    assert '"/api/build"' in js
+    assert ".watermark" in css
+    poll = re.search(r"async function poll\(\) \{(.*?)\n\}", js, re.DOTALL)
+    assert poll is not None and "renderBuild()" in poll.group(1)
+
+
 # --- the derivation-backed endpoints ---------------------------------------
 
 

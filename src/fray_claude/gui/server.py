@@ -84,6 +84,7 @@ from fray_claude.api import (
     fetch_tasks_map,
 )
 from fray_claude.batch import RunResult, price_steps, run_batch, save_unlock
+from fray_claude.build_info import read_build
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.delta import MapSide, compare_maps, diff_names
 from fray_claude.derived_cache import cached_derive, cached_enrich, pricing_digests
@@ -1328,6 +1329,15 @@ def handle_request(
                     for entry in cache.list_maps(ctx.root, expand_runs=True)
                 ]
             )
+
+        if path == "/api/build":
+            # **Which install is answering, for the page to watermark itself
+            # with.** The same question `fray`'s first line answers, asked of
+            # the server rather than of the terminal - and worth asking of the
+            # server, because with `--host` the page may be on a different
+            # machine from the checkout anyone is editing. Two stat calls, on
+            # the package's own metadata; see `build_info.py`.
+            return _json(read_build().as_dict())
 
         if path == "/api/reference":
             return _json({"reference": _reference_state(ctx)})

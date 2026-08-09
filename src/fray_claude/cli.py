@@ -95,6 +95,7 @@ from fray_claude.api import (
     fetch_tasks_map,
 )
 from fray_claude.batch import RunResult, run_batch, save_unlock
+from fray_claude.build_info import print_watermark
 from fray_claude.cache import (
     CHUNKINFO_BLOB_NAME,
     FETCHED,
@@ -150,7 +151,7 @@ from fray_claude.search import TYPES, build_world_index, search
 from fray_claude.sections import describe_sections, expand_chunk_areas
 from fray_claude.simulate import simulate_rolls
 from fray_claude.sources import CATEGORIES as SOURCE_CATEGORIES
-from fray_claude.summary import _mapping, summarise
+from fray_claude.summary import _mapping, format_age, summarise
 from fray_claude.unlock import UnlockDelta, tasks_added_by
 
 DEFAULT_MAP = DEFAULT_MAP_ID
@@ -163,24 +164,6 @@ def _emit_json(data: Any, destination: str) -> None:
         print(text)
     else:
         Path(destination).write_text(text + "\n", encoding="utf-8")
-
-
-def _format_age(fetched_at: Any) -> str:
-    """Render an ISO-8601 timestamp as a rough age."""
-    if not isinstance(fetched_at, str):
-        return "unknown"
-    try:
-        stamp = datetime.fromisoformat(fetched_at)
-    except ValueError:
-        return "unknown"
-    if stamp.tzinfo is None:
-        stamp = stamp.replace(tzinfo=UTC)
-
-    seconds = max(0, int((datetime.now(UTC) - stamp).total_seconds()))
-    for limit, divisor, unit in ((60, 1, "s"), (3600, 60, "m"), (86400, 3600, "h")):
-        if seconds < limit:
-            return f"{seconds // divisor}{unit} ago"
-    return f"{seconds // 86400}d ago"
 
 
 def _cmd_fetch(args: argparse.Namespace) -> int:
@@ -205,7 +188,7 @@ def _cmd_show(args: argparse.Namespace) -> int:
             f"simulated      {rolls} rolls from {provenance.get('base_map')} "
             f"(seed {provenance.get('seed')})"
         )
-    age = _format_age(envelope.get("fetched_at"))
+    age = format_age(envelope.get("fetched_at"))
     print(f"{'created' if simulated else 'fetched'}        {age}")
     print(f"unlocked       {summary.unlocked_chunks} chunks")
     print(f"chunk order    {summary.chunk_order_entries} entries")
@@ -1125,7 +1108,7 @@ def _maps_rows(entries: Iterable[MapEntry]) -> list[str]:
         name = f"{indent}{entry.map_id}"
         # A stopped batch's `rolls` is what it *asked* for, so without this
         # the only clue is a run count quietly short of it.
-        age = _format_age(entry.created_at) + (" (stopped)" if entry.cancelled else "")
+        age = format_age(entry.created_at) + (" (stopped)" if entry.cancelled else "")
         rows.append(
             f"{name:<28} {entry.kind:<10} {runs:>5} {rolls:>6} {chunks:>7}  {age}"
         )
@@ -1185,11 +1168,11 @@ def _cmd_derived_list(args: argparse.Namespace) -> int:
     total = sum(entry.size for entry in entries)
     print(f"entries      {len(entries)}")
     print(f"size         {total / 1_048_576:.1f} MiB")
-    print(f"oldest read  {_format_age(entries[0].accessed_at.isoformat())}")
-    print(f"newest read  {_format_age(entries[-1].accessed_at.isoformat())}")
+    print(f"oldest read  {format_age(entries[0].accessed_at.isoformat())}")
+    print(f"newest read  {format_age(entries[-1].accessed_at.isoformat())}")
     if args.verbose:
         for entry in entries:
-            age = _format_age(entry.accessed_at.isoformat())
+            age = format_age(entry.accessed_at.isoformat())
             print(f"  {entry.key}  {entry.size / 1024:>8.0f} KiB  read {age}")
     return 0
 
@@ -1751,6 +1734,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    # Before the handler, so it is the first thing on screen even when the
+    # command then spends ten seconds deriving - and after parsing, so `--help`
+    # and a usage error stay clean.
+    print_watermark("fray")
     handler: Any = args.func
     try:
         return int(handler(args))

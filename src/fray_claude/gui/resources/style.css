@@ -795,6 +795,27 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 /* Sits above the timeline strip rather than behind it. This is a licence
    obligation, not decoration - CC BY-NC-SA asks for the credit to be visible
    and `--strip-h` is 0 whenever the strip is not there. */
+/* Provenance, not a control - so it is faint until pointed at, and it clears
+   the timeline strip the way everything else anchored to the bottom does.
+   Monospaced because it is a version and a duration, both of which are read
+   rather than skimmed. */
+.watermark {
+  position: fixed;
+  z-index: 2;
+  left: var(--s4);
+  bottom: calc(var(--strip-h) + var(--s4));
+  padding: var(--s1) 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--r2);
+  background: rgba(23, 26, 32, .93);
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  opacity: .62;
+  transition: opacity .18s ease;
+}
+.watermark:hover { opacity: 1; }
+
 .attribution {
   position: fixed;
   z-index: 2;

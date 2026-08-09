@@ -59,6 +59,7 @@ from pathlib import Path
 
 from fray_claude import cache
 from fray_claude.api import DEFAULT_TIMEOUT
+from fray_claude.build_info import print_watermark
 from fray_claude.gui.browser import open_app_window
 from fray_claude.gui.jobs import JobState
 from fray_claude.gui.server import (
@@ -172,6 +173,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    # stdout, unlike `fray`'s: there is no `--export-json -` here to keep clean,
+    # and the other startup lines are here. The page shows the same thing, but
+    # a server started over ssh is often read from a terminal first.
+    print_watermark("fray-gui", sys.stdout)
     # **No map image is downloaded and none is served.** The browser fetches
     # the wiki's tiles itself; all this process resolves is which render to
     # ask for, lazily, on the first `/api/tiles` request. See

@@ -91,6 +91,8 @@ const state = {
    * all, so the query stays clean for the common case. */
   timeline: null,
   step: null,
+  /* Which install is serving this page, for the watermark. Fetched once. */
+  build: null,
 };
 
 const el = {};
@@ -102,7 +104,7 @@ for (const id of [
   "overlay", "overlay-title", "overlay-body", "overlay-close", "overlay-actions",
   "chunk-head", "chunk-chips", "chunk-body", "task-chips", "tasks-body",
   "show-done", "estimate-total", "estimate-why", "estimate-body",
-  "find-body", "find-form", "find-input", "maps-body", "attribution",
+  "find-body", "find-form", "find-input", "maps-body", "attribution", "watermark",
   "timeline", "tl-title", "tl-chips", "tl-hours", "tl-details", "tl-collapse", "tl-graph",
   "tl-prev", "tl-slider", "tl-next", "tl-step",
 ]) el[id] = document.getElementById(id);
@@ -1227,6 +1229,19 @@ function bytes(value) {
   let n = value, i = 0;
   while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
   return (i ? n.toFixed(1) : String(n)) + " " + units[i];
+}
+
+/* The same buckets `summary.format_age` uses, so one install is described the
+ * same way in the terminal and on the page. */
+function ago(iso) {
+  if (!iso) return "unknown";
+  const at = new Date(iso);
+  if (Number.isNaN(at.valueOf())) return "unknown";
+  const seconds = Math.max(0, Math.round((Date.now() - at.getTime()) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  return `${Math.floor(seconds / 86400)}d ago`;
 }
 
 function when(iso) {
@@ -3044,6 +3059,7 @@ el["tl-hours"].addEventListener("click", () => {
 });
 
 async function poll() {
+  renderBuild();
   if (!state.live || !state.view || !el.map.value) return;
   try {
     const { revision } = await getJSON("/api/revision?" + mapQuery());
@@ -3110,6 +3126,7 @@ function renderAttribution() {
   if (BOOT.sections) el.masks.click();
   showTab(BOOT.tab || "tasks");
   setInterval(poll, 2000);
+  loadBuild();
   warmReference();
 })();
 
@@ -3123,6 +3140,32 @@ function renderAttribution() {
  * Maps tab has the button for it. The chunk export is deliberately not fetched
  * here either - at 10MB it is `fray chunkinfo`'s to start, and the panels that
  * need it already say so when it is absent. */
+/* **Which install is serving this page.** `pipx install` without `--force` is
+ * a silent no-op, so the code behind this page can be older than the checkout
+ * it was built from - and nothing on screen would say so. Read from the server
+ * rather than baked into this file at build time, because with `--host` the
+ * browser may be on a different machine from the one being edited: the answer
+ * has to be the *server's*.
+ *
+ * Fetched once. The relative age is re-rendered from the stamp on every poll,
+ * or a tab left open all afternoon would still be claiming the install
+ * happened a minute ago. */
+async function loadBuild() {
+  try { state.build = await getJSON("/api/build"); } catch { return; }
+  renderBuild();
+}
+
+function renderBuild() {
+  const build = state.build;
+  if (!build) return;
+  const age = build.kind === "editable" ? `editable, linked ${ago(build.installed_at)}`
+            : build.kind === "source" ? "uninstalled source"
+            : `installed ${ago(build.installed_at)}`;
+  el.watermark.textContent = `${build.version} · ${age}`;
+  el.watermark.dataset.tip = tmpl`<b>This server's install</b><span class='sub'>${when(build.installed_at)} · ${build.kind}</span><span class='hint'>${build.path}</span>`;
+  el.watermark.hidden = false;
+}
+
 async function warmReference() {
   const rows = await loadReference();
   renderReference(rows);

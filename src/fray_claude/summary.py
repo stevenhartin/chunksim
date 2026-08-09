@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -29,6 +30,31 @@ class Summary:
     @property
     def active_task_total(self) -> int:
         return sum(self.active_tasks.values())
+
+
+def format_age(stamp: Any) -> str:
+    """Render an ISO-8601 timestamp as a rough age, or `"unknown"`.
+
+    Here rather than in `cli.py` because both apps render ages - a map's, a
+    scrape's, and now an install's (`build_info.py`) - and two copies of a
+    bucketing rule is two copies that can disagree about what "3h ago" means.
+    Tolerant of anything unparseable, since every one of those timestamps
+    arrives from a file that something else wrote.
+    """
+    if not isinstance(stamp, str):
+        return "unknown"
+    try:
+        at = datetime.fromisoformat(stamp)
+    except ValueError:
+        return "unknown"
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=UTC)
+
+    seconds = max(0, int((datetime.now(UTC) - at).total_seconds()))
+    for limit, divisor, unit in ((60, 1, "s"), (3600, 60, "m"), (86400, 3600, "h")):
+        if seconds < limit:
+            return f"{seconds // divisor}{unit} ago"
+    return f"{seconds // 86400}d ago"
 
 
 def _mapping(payload: Mapping[str, Any], *keys: str) -> dict[str, Any]:
