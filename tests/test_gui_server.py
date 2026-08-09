@@ -22,7 +22,13 @@ import pytest
 from fray_claude import cache
 from fray_claude.api import FetchError
 from fray_claude.gui.browser import window_flags
-from fray_claude.gui.server import Context, Response, handle_request
+from fray_claude.gui.server import (
+    Context,
+    Response,
+    _origin_ok,
+    handle_request,
+    normalise_host,
+)
 
 LUMBRIDGE = "12850"
 NORTH = "12851"  # one region north of Lumbridge
@@ -648,6 +654,71 @@ def test_a_same_origin_post_is_allowed(ctx: Context, monkeypatch: pytest.MonkeyP
 
     assert response.status == HTTPStatus.ACCEPTED
     assert _wait(ctx, _body(response)["job"])["state"] == "done"
+
+
+def test_a_post_from_an_allowed_host_is_accepted(
+    ctx: Context, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`--host <tailnet address>` has to serve a page that can act.
+
+    Loopback-only left the remote page rendering in full with every button
+    403ing, which reads as a broken GUI rather than as a refusal.
+    """
+    monkeypatch.setattr(
+        "fray_claude.gui.server.fetch_map",
+        lambda map_id, timeout=30.0: {"chunks": {"unlocked": {LUMBRIDGE: LUMBRIDGE}}},
+    )
+    remote = Context(root=ctx.root, allowed_hosts=frozenset({"100.93.219.108"}))
+
+    response = _post(
+        "/api/fetch",
+        remote,
+        {"map": "fray"},
+        **{"Sec-Fetch-Site": "same-origin", "Host": "100.93.219.108:8731"},
+    )
+
+    assert response.status == HTTPStatus.ACCEPTED
+    assert _wait(remote, _body(response)["job"])["state"] == "done"
+
+
+def test_the_allowlist_does_not_open_the_door_to_anything_else(ctx: Context) -> None:
+    """Naming one address is not naming every address: rebinding still fails."""
+    remote = Context(root=ctx.root, allowed_hosts=frozenset({"100.93.219.108"}))
+
+    response = _post(
+        "/api/fetch",
+        remote,
+        {"map": "fray"},
+        **{"Sec-Fetch-Site": "same-origin", "Host": "evil.example.com"},
+    )
+
+    assert response.status == HTTPStatus.FORBIDDEN
+    assert "Host" in _body(response)["error"]
+
+
+def test_loopback_is_accepted_whatever_the_allowlist_holds(ctx: Context) -> None:
+    """An ssh tunnel presents 127.0.0.1, and a bind elsewhere must not stop it."""
+    remote = Context(root=ctx.root, allowed_hosts=frozenset({"100.93.219.108"}))
+
+    assert _origin_ok({"Sec-Fetch-Site": "same-origin", "Host": "127.0.0.1:8731"},
+                      remote.allowed_hosts) is None
+
+
+@pytest.mark.parametrize(
+    ("header", "expected"),
+    [
+        ("127.0.0.1:8731", "127.0.0.1"),
+        ("localhost", "localhost"),
+        ("[::1]:8731", "::1"),
+        ("::1", "::1"),
+        ("Devbox.Tailnet.Ts.Net:8731", "devbox.tailnet.ts.net"),
+    ],
+)
+def test_a_host_header_is_compared_without_its_port_or_case(
+    header: str, expected: str
+) -> None:
+    """A bare IPv6 address keeps its colons; only the bracketed form has a port."""
+    assert normalise_host(header) == expected
 
 
 def test_an_unknown_job_is_a_404(ctx: Context) -> None:

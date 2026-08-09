@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from fray_claude.gui import browser
+from fray_claude.gui import allowed_hosts, browser
 from fray_claude.gui.jobs import JobRegistry
 from fray_claude.gui.server import Context, idle_seconds, should_stop, touch
 
@@ -125,6 +125,16 @@ def test_a_gone_client_lets_it_stop() -> None:
     assert should_stop(context)
 
 
+def test_keep_alive_holds_it_open_with_nobody_there() -> None:
+    """`--keep-alive` is for a server driven over ssh, which outlives the
+    browser that reads it: a closed laptop lid must not leave the user
+    reconnecting to restart it."""
+    context = Context(keep_alive=True)
+    context.last_seen[0] = 1.0  # far in the past on a monotonic clock
+
+    assert not should_stop(context)
+
+
 def test_a_running_job_holds_it_open() -> None:
     """Closing the tab must not throw away a simulation already begun."""
     registry = JobRegistry()
@@ -171,3 +181,30 @@ class _FakeProcess:
     def kill(self) -> None:
         self.killed = True
         self._returncode = -9
+
+
+# --- what names this server ------------------------------------------------
+
+
+def test_the_bind_seeds_the_host_allowlist() -> None:
+    """`--host <tailnet address>` should need no second flag to be usable."""
+    assert allowed_hosts("100.93.219.108") == frozenset({"100.93.219.108"})
+
+
+def test_a_wildcard_bind_names_nothing() -> None:
+    """`0.0.0.0` is every interface, not an address anyone types - so it cannot
+    stand in for the one they will, and actions stay refused until
+    `--allow-host` says what to expect."""
+    assert allowed_hosts("0.0.0.0") == frozenset()
+    assert allowed_hosts("::") == frozenset()
+    assert allowed_hosts("0.0.0.0", ["devbox.tailnet.ts.net"]) == frozenset(
+        {"devbox.tailnet.ts.net"}
+    )
+
+
+def test_loopback_is_never_listed() -> None:
+    """`_origin_ok` accepts it unconditionally, so repeating it here would be a
+    second place for the same rule to live."""
+    assert allowed_hosts("127.0.0.1") == frozenset()
+    assert allowed_hosts("localhost", ["::1"]) == frozenset()
+

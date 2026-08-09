@@ -160,11 +160,11 @@ Five things that cut across modules — the first three because each has already
 | `cli.py` | argparse subcommands and rendering only; new logic goes in a pure module. `gui/server.py` follows the same rule, with `gui/panels.py` as its pure module. |
 | `gui/panels.py` | Shaping `Derived` into what the panel draws — sections of groups of `{key, name, note, icon}`, one shape across all five categories. Pure. Owns the three rules that are domain knowledge rather than formatting: a quest keeps only its **furthest** step, `Extra`'s collection-log rows split source from item, BiS groups by combat style. |
 | `gui/worldmap.py` | Where a chunk sits on the map, and which of its sides face outward. Pure. Owns the projection (`grid_x = region_x - 15`, **`grid_y = 65 - region_y`** — the y axis is flipped), the tile pyramid's constants, the two kinds of id that have no square, and `hull_edges`. In `gui/` because all of it is about one particular tiling. |
-| `gui/server.py` | Routing, as a **pure `handle_request`** with a `BaseHTTPRequestHandler` adapter over it — so tests reach the whole surface without binding a socket. Owns the static allowlist, the `Sec-Fetch-Site`/`Host` checks, and the **lazy proxy** for upstream's section masks and skill icons. |
+| `gui/server.py` | Routing, as a **pure `handle_request`** with a `BaseHTTPRequestHandler` adapter over it — so tests reach the whole surface without binding a socket. Owns the static allowlist, the `Sec-Fetch-Site`/`Host` checks — the latter against `Context.allowed_hosts` rather than loopback, so a non-loopback bind serves a page that can *act* rather than one whose every button 403s — and the **lazy proxy** for upstream's section masks and skill icons. |
 | `gui/jobs.py` | The background job registry the POST actions use. **The only mutable state in the GUI**, kept out of the pure layer deliberately. |
 | `gui/derivation.py` | The boundary between the cheap path and the expensive one. Loads `ChunkInfo` **lazily** — a request that does not need a derivation must not pay for one, and a test asserts the map view never triggers it. |
 | `gui/browser.py` | Finding a Chromium-family browser and opening an app window whose lifetime is the server's. `--user-data-dir` is load-bearing, not tidiness. `window_flags` restores the remembered geometry, which Chrome will not — see the GUI paragraph below Commands. |
-| `gui/__init__.py` | `fray-gui`'s argparse and its socket, and the **arming of exactly one** of the two shutdown mechanisms — never both. Downloads nothing: the map is the browser's to fetch. The GUI imports the library rather than shelling out to `fray`, which would re-parse the 10MB export per call. |
+| `gui/__init__.py` | `fray-gui`'s argparse and its socket, and the **arming of at most one** of the two shutdown mechanisms — never both, and neither under `--keep-alive`. Owns `allowed_hosts`, the pure half of `--host`/`--allow-host`. Downloads nothing: the map is the browser's to fetch. The GUI imports the library rather than shelling out to `fray`, which would re-parse the 10MB export per call. |
 
 ## Toolchain
 
@@ -210,7 +210,8 @@ mypy                        # strict, over src/ and tests/; run from the repo ro
 FRAY_CHUNKINFO=path .venv/bin/pytest tests/test_sections.py -k real   # opt-in oracle test against a real export
 python -c 'import json;json.dump(json.load(open("cache/reference/chunkinfo.json"))["data"],open("/tmp/raw.json","w"))'
 FRAY_CHUNKINFO=/tmp/raw.json FRAY_MAP_CACHE=1 .venv/bin/pytest   # all six oracles, the real correctness signal
-fray-gui [--map ID] [--compare ID] [--port N] [--host H] [--no-browser] [--tab]
+fray-gui [--map ID] [--compare ID] [--port N] [--host H] [--allow-host H] [--keep-alive]
+         [--no-browser] [--tab]
 pyproject-build && pipx install --force dist/*.whl   # build + reinstall `fray` and `fray-gui`
 python -m zipfile -l dist/*.whl | grep resources     # prove the GUI's html/js/css shipped
 pip install -e ../osrs-dps                           # the optional `dps` extra, into .venv for development
@@ -585,7 +586,20 @@ Things worth knowing before changing it:
   its geometry to `/api/window` and `browser.window_flags` reads it back. A first run opens
   **maximised, not fullscreen**: closing the window is how you stop the server, and fullscreen hides
   the control that does it.
-- **The window's lifetime is the server's, by one of two mechanisms and never both.** With a
+- **Serving it beyond loopback needs the `Host` check to know what the bind was named.** The check
+  exists to close DNS rebinding, so it cannot simply be dropped — but hardcoded to loopback it did
+  not refuse a remote page, it *half* served one: every panel rendered and every POST 403'd, which
+  reads as a broken GUI rather than as a policy. `--host` therefore seeds `Context.allowed_hosts`
+  (`gui.allowed_hosts`, pure and tested without a socket), `--allow-host` adds a name the bind does
+  not spell, and a **wildcard bind names nothing** — `0.0.0.0` is every interface, not the address
+  anyone types, so it still refuses until told what to expect. Nothing is resolved on a request path:
+  that would be a network call from the module that makes none, at the request of whoever sent the
+  header. There is still no token, so **the address chosen is the whole of the access control**; an
+  ssh `-L` forward needs none of this and is the better answer when it fits.
+- **The window's lifetime is the server's, by one of two mechanisms and never both** — or by neither,
+  under `--keep-alive`, which is what a server left running over ssh wants: the heartbeat stops it
+  fifteen seconds after a laptop's tab closes, which is right for a closed tab and wrong for a
+  session you mean to come back to. With a
   Chromium-family browser present (Chrome, Edge, Brave, Chromium, Vivaldi, Opera) it opens an *app
   window* — `--app` plus its own `--user-data-dir`, the latter being load-bearing rather than tidy:
   without it Chrome hands the URL to a running instance and the launched process exits at once,

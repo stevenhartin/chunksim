@@ -107,6 +107,15 @@ from fray_claude.timeline import stamp as timeline_stamp
 DEFAULT_PORT = 8731
 DEFAULT_HOST = "127.0.0.1"
 
+#: `Host` values that name this server whatever it bound, so a POST carrying
+#: one is never a rebinding attempt. Anything else has to be named - see
+#: `_origin_ok`.
+LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+#: Binds that name no particular address, so they contribute nothing to the
+#: allowlist: a wildcard is every interface, not a machine anyone types.
+WILDCARD_HOSTS = frozenset({"0.0.0.0", "::", ""})
+
 #: How long the server outlives its last client when nothing is holding it
 #: open. The page polls `/api/revision` every 2s, so this is roughly seven
 #: missed polls - long enough to survive a slow reload or a laptop briefly
@@ -169,6 +178,12 @@ class Context:
     #: Whether the browser-origin checks apply. Off in tests, which have no
     #: browser to send the headers this asserts on.
     check_origin: bool = True
+    #: `Host` values that name this server besides loopback - what `--host`
+    #: and `--allow-host` were given. Empty for an ordinary loopback bind.
+    allowed_hosts: frozenset[str] = frozenset()
+    #: Whether the idle shutdown is disarmed (`--keep-alive`), for a server
+    #: meant to outlive the browser that reads it.
+    keep_alive: bool = False
 
     def __post_init__(self) -> None:
         # `Derivations` needs the same root the rest of the context reads
@@ -1154,7 +1169,26 @@ _ACTIONS: dict[str, Callable[[Mapping[str, Any], Context], dict[str, Any]]] = {
 }
 
 
-def _origin_ok(headers: Mapping[str, str]) -> str | None:
+def normalise_host(value: str) -> str:
+    """A `Host` header or a `--host` value as a bare address, for comparison.
+
+    Strips the port, the brackets an IPv6 literal carries in a URL, and case -
+    hostnames are case-insensitive, so `Devbox.tailnet.ts.net` is the machine
+    `devbox.tailnet.ts.net` is. A bare IPv6 address is left alone: it is only
+    the bracketed form that can carry a port, so `::1` is two colons and not a
+    host with a port on it.
+    """
+    host = value.strip()
+    if host.startswith("["):
+        host = host.partition("]")[0].lstrip("[")
+    elif host.count(":") == 1:
+        host = host.rsplit(":", 1)[0]
+    return host.casefold()
+
+
+def _origin_ok(
+    headers: Mapping[str, str], allowed: frozenset[str] = frozenset()
+) -> str | None:
     """Why this POST should be refused, or `None` if it is fine.
 
     **A loopback bind stops other machines, not other tabs.** Any page you have
@@ -1165,19 +1199,31 @@ def _origin_ok(headers: Mapping[str, str]) -> str | None:
 
     - `Sec-Fetch-Site` must be `same-origin`. Every current browser sends it,
       and a cross-site POST is exactly what it reports.
-    - `Host` must be loopback, which closes DNS rebinding - a hostile domain
-      resolving to 127.0.0.1 so that its page's origin *is* this server.
+    - `Host` must **name this server**, which closes DNS rebinding - a hostile
+      domain resolving to this address so that its page's origin *is* this
+      server.
+
+    **What names this server is loopback plus whatever `--host`/`--allow-host`
+    said**, which is why this takes an allowlist rather than testing for
+    loopback. Serving a tailnet address is a real use - drive the machine over
+    ssh, read the map from a laptop - and hardcoding loopback did not refuse
+    that, it *half* served it: every panel rendered and every button 403'd,
+    which is a worse outcome than either serving it or refusing to.
+
+    The allowlist is **named, never inferred**. A wildcard bind names no
+    address, so `--host 0.0.0.0` alone still refuses; and no name is resolved
+    on a request path, since that would be a network call from the module that
+    makes none, on the request of whoever sent the header.
 
     Deliberately no per-launch token: it would put a secret in the URL and
-    break bookmarking to buy little more than this. `--host` exposing the
-    server beyond loopback is the case where one starts earning its keep, and
-    that flag's help text says so.
+    break bookmarking to buy little more than this. Beyond loopback the address
+    is the whole of the access control, which `--host`'s help text says.
     """
     site = headers.get("Sec-Fetch-Site")
     if site is not None and site != "same-origin":
         return f"cross-site request refused (Sec-Fetch-Site: {site})"
-    host = (headers.get("Host") or "").rsplit(":", 1)[0].strip("[]")
-    if host and host not in ("localhost", "127.0.0.1", "::1"):
+    host = normalise_host(headers.get("Host") or "")
+    if host and host not in LOOPBACK_HOSTS and host not in allowed:
         return f"unexpected Host header {host!r}"
     return None
 
@@ -1213,7 +1259,13 @@ def should_stop(ctx: Context, timeout: float = IDLE_TIMEOUT_SECONDS) -> bool:
       not throw the simulation away; the browser leaving is not a reason to
       abandon work already begun, which will be in the cache when a window
       next opens.
+
+    `--keep-alive` disarms it entirely: a server left running over ssh is meant
+    to outlive the browser that reads it, and stopping fifteen seconds after a
+    laptop's tab closed is a server you have to go back and restart.
     """
+    if ctx.keep_alive:
+        return False
     if not ctx.last_seen[0]:
         return False
     if any(job.state is JobState.RUNNING for job in ctx.jobs.recent()):
@@ -1486,7 +1538,7 @@ def _handle_post(
         return _error(f"no route for {path!r}", HTTPStatus.NOT_FOUND)
 
     if ctx.check_origin:
-        refusal = _origin_ok(headers)
+        refusal = _origin_ok(headers, ctx.allowed_hosts)
         if refusal is not None:
             return _error(refusal, HTTPStatus.FORBIDDEN)
 
@@ -1582,6 +1634,8 @@ class MapHandler(BaseHTTPRequestHandler):
 __all__ = [
     "DEFAULT_HOST",
     "DEFAULT_PORT",
+    "LOOPBACK_HOSTS",
+    "WILDCARD_HOSTS",
     "RESOURCE_DIR",
     "Context",
     "MapHandler",
@@ -1591,6 +1645,7 @@ __all__ = [
     "build_map_view",
     "handle_request",
     "idle_seconds",
+    "normalise_host",
     "should_stop",
     "touch",
 ]

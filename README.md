@@ -66,6 +66,7 @@ open it in the panel. Press <kbd>F</kbd> to fly the camera to whatever is under 
 fray-gui                              # serve http://127.0.0.1:8731 and open it
 fray-gui --compare my-sim             # delta mode: gains green, losses red
 fray-gui --no-browser --port 0        # bind an OS-assigned port, open nothing
+fray-gui --no-browser --keep-alive --host 100.93.219.108   # serve it to another machine
 ```
 
 It opens as its own window — no tabs, no address bar — and **closing that window stops the server**,
@@ -157,6 +158,24 @@ first run opens maximised.
 anything from it — the same-origin policy stops that — and its `fetch`/`simulate` buttons are
 guarded by the `Sec-Fetch-Site` and `Host` headers. `--host` will bind elsewhere, and the help text
 says what that exposes; think before using it on a shared network.
+
+**To drive it over ssh and read it from another machine**, there are two ways and the first needs no
+flags. Forward the port — `ssh -N -L 8731:127.0.0.1:8731 devbox`, then open
+`http://127.0.0.1:8731/` on the laptop — and as far as the server is concerned nothing has changed.
+Or serve the address directly:
+
+```
+fray-gui --no-browser --keep-alive --host 100.93.219.108
+```
+
+`--host` binds it *and* names it, so the page served there can use its buttons rather than rendering
+in full and refusing every action. `--allow-host` adds a name the bind does not spell — a MagicDNS
+name, or anything at all when `--host` is a wildcard, since `0.0.0.0` names no address anyone types.
+`--keep-alive` disarms the idle shutdown, which otherwise stops the server fifteen seconds after the
+last client goes away: right for a closed tab, wrong for a server you left running in tmux. **The
+address is the whole of the access control** — a tailnet address is a very different proposition
+from `0.0.0.0` on a café network — so the startup line says outright when the bind is reachable by
+other machines.
 
 **The map is the OSRS wiki's, and your browser loads it directly from their CDN.** No map image is
 downloaded, cached or served by `fray-gui` — it hands the page a URL and the page uses it. That is
