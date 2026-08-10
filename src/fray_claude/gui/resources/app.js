@@ -3096,14 +3096,12 @@ async function showRoll(step) {
  * number always provokes. Hours are `xp to the goal / xp per hour`, so the
  * tooltip states both halves and then where the rate came from.
  *
- * The interesting case is the floor. `estimate._training_rate` picks the
- * fastest method available at the player's *current* level and applies it to
- * the whole climb; when nothing open at that level has a scraped rate the
- * climb is priced at 1,000 xp/hr - which is how Herblore 1-99 reads 13,034
- * hours on a map that knows eighteen real Herblore methods, the fastest at
- * 315,000/hr from level 90. Naming them is the difference between a number you
- * distrust and one you understand: the floor is deliberately conservative, and
- * `heuristics/overrides.json` is where you disagree with it. */
+ * A climb is priced band by band as methods unlock, so the headline rate is a
+ * *blend* - Herblore's 131,080/hr is nine methods averaged and nobody trains at
+ * it. The bands are therefore the tooltip's main content, each with the level
+ * range it covers and where its rate came from; the band carrying the bulk of
+ * the XP is the one worth arguing with. `heuristics/overrides.json` is where
+ * you disagree with any of them. */
 function skillTip(row) {
   const num = (value) => Math.round(Number(value) || 0).toLocaleString();
   const head = tmpl`<b>${row.skill} · ${hours(row.hours)}</b>`;

@@ -151,8 +151,9 @@ Five things that cut across modules — the first three because each has already
 | `remote/scrape.py` | The ~18 requests that build the scraped layer, and the coverage it reports. **Both apps run it** — `fray heuristics` and the GUI's Maps tab — so the two cannot write different files. Decides no rate; `heuristics.py` does that. |
 | `costing/heuristics.py` | Every hand-correctable number, and the `defaults < scraped < overrides` merge. Owns the joins and their `exact`/`contained` provenance; **no fuzzy tier**, by measurement — read the docstring before adding one back. |
 | `costing/slayer.py` | Slayer's rate, which is a *distribution* not a chosen method: a time-weighted mean over what a master assigns. Also owns `superior_rolls_per_hour` — the shared `SuperiorDropTable+` is one pool per master, not one per superior. **Masters are gated on their NPC being reachable** — without that it quoted Duradel on a map holding none of him. Reports `coverage`, because renormalising over reachable tasks flatters a sparse map. |
-| `costing/estimate.py` | The four buckets — quests, boss drops, activities, skilling — over the **active** set. **Costs the unique *item*, not the task** — one whip answers three tasks — and **clamps per source**, since items off one monster are earned in parallel. Owns the item walk, its bounded `Output` recursion, the `unpriced` list, and **three gates** — monster reachable, slayer task assignable, master reachable. Read the docstring before pricing anything off `WorldIndex`, which spans the whole world. |
+| `costing/estimate.py` | The four buckets — quests, boss drops, activities, skilling — over the **active** set. **Costs the unique *item*, not the task** — one whip answers three tasks — and **clamps per source**, since items off one monster are earned in parallel. Owns the item walk, its bounded `Output` recursion, the `unpriced` list, and **three gates** — monster reachable, slayer task assignable, master reachable. Read the docstring before pricing anything off `WorldIndex`, which spans the whole world. Skilling is `costing/training.py`'s; what stays here is the loop and `unpriced_skills` — Attack, Defence, Hitpoints and Ranged have **no training method anywhere in the export**, and were being costed at zero. |
 | `costing/levels.py` | `infer_levels`/`goal_levels`/`reachable_providers` and the gating helpers. Separate because `dps_bridge`, both apps and `runs/batch.py` want exactly these and were importing the whole estimator to get them. **The map records no skill levels** — `infer_levels` reads a floor out of the completed challenges. |
+| `costing/training.py` | How fast a skill goes, and why. **A climb is priced band by band as methods unlock**, walked on the XP axis so a quest reward shortens it and raises its start in one operation. The step function is a running maximum, so **the floor can only ever be the first band** — which is what keeps it visible. Also `quest_xp_grants`, whose grammar is not just skill names (`Attack\|Defence\|Strengthx4` is four lamps). |
 | `store/cache.py` | The disk. `CacheMissError`, the `map_id`/`fetched_at`/`source`/`kind`/`data` envelope, the `--chunkinfo`/`FRAY_CHUNKINFO` override, and the purpose-sorted layout below (incl. `--map` resolution across kinds, atomic writes, the cross-kind batch-name claim and `migrate_layout`). |
 | `store/build_info.py` | Which install is running, and when it was made: the `*.dist-info` mtime (pip writes those fresh, so it dates the *install*, not the wheel), `wheel`/`editable`/`source`, and the one-line watermark both apps print. Never raises and never guesses a date. |
 | `model/firebase.py` | The Firebase-safe string codec, incl. `decode_challenge_keyed`'s mixed `t_N`/literal key handling. Run any payload branch through it before believing it. |
@@ -331,10 +332,20 @@ survive a re-scrape (`heuristics/README.md`, also checked in, is the guide to wh
 worth correcting and what the three layers are). Overrides win, key by key. The export has *no* durations, rates or XP figures at
 all, so every number `fray estimate` spends comes from one of those two files or a default in
 `heuristics.py` — read that module's docstring on coverage before quoting a total, and
-`estimate.py`'s on what `current level` means: **the map records no skill levels** (`maxSkill` is
-a declared cap, `passiveSkill` is what's reachable untrained), so `estimate.infer_levels` reads a
+`costing/levels.py`'s on what `current level` means: **the map records no skill levels** (`maxSkill` is
+a declared cap, `passiveSkill` is what's reachable untrained), so `infer_levels` reads a
 floor out of the *completed* challenges — a ticked `Buy the Defence cape` proves 99 Defence. `experience.py`'s XP
 curve is the one exact input and is deliberately not overridable.
+
+**A skill is priced band by band, and the bands are the reasoning.** `costing/training.py` walks the
+climb splitting where the rate changes, so Herblore 1→99 is nine methods — cleaning guams at 3 up to
+super combats at 90, 100h — where one rate chosen at the starting level made it 13,034h. Three
+consequences worth knowing before reading a skilling number: the printed `xp_per_hour` is a **blend**
+and nobody trains at it; **the floor can only be the first band**, so `floor_xp` rather than the total
+says how much is guesswork; and **174 of the 248 scraped rates are `contained` joins**, which is why
+every band prints its provenance — `Mix a ~|combat potion|~` matching *Making **super** combat
+potions* is the shape of the failure. Quest XP is taken off the front of the climb, from exactly the
+quests the quests bucket already charges hours for, which is what makes double counting impossible.
 
 **`dps_bridge` prices what the estimate can ask about, and nothing else.** `price_monsters` used to
 be handed `sorted(chunk_info.drops)` — all **872** monsters in the export — where **188** are

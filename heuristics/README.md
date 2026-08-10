@@ -19,11 +19,30 @@ still wins, it just says so rather than winning silently.
 
 Run `fray estimate` and look at what it flags:
 
-- **Skills using the default training rate.** The money-making guides only
-  cover 243 of the export's 2,710 training methods, because most ways of
-  training a skill do not make money and so have no guide. Everything else
-  sits at 1,000 xp/hr, deliberately low so it looks slow rather than free.
-  These are the entries that move a total.
+- **The fastest rate opening the *earliest* band.** A climb is priced method by
+  method as each unlocks, so a wrong rate is charged for every level between
+  where it opens and where something faster does. A bad number at level 36 can
+  cost more than a bad number at 90, which is the opposite of the old advice
+  ("the entries that move a total") and worth re-reading if you learned that
+  one. `fray estimate skilling` prints the bands under each skill with the
+  level range and the XP each covers; the band carrying the most XP is the one
+  to check first.
+- **A `contained` join, when the guide is about a *better* item.** 174 of the
+  248 scraped training rates are `contained` rather than `exact`, and most are
+  fine - "Cleaning grimy torstol" really is the guide for cleaning torstol. The
+  failure looks like this: `Mix a ~|combat potion|~` (level 36) matches
+  *Money making guide/Making **super** combat potions* because its name is
+  contained in that title, and inherits 315,000 xp/hr. Every band is printed
+  with its provenance for exactly this reason. Six skills - Firemaking,
+  Fletching, Hunter, Sailing, Smithing, Woodcutting - have **no** `exact` join
+  at all, so their rates are worth more scepticism than the rest.
+- **Skills still using the default rate.** The money-making guides cover 248 of
+  the export's 2,710 training methods, because most ways of training a skill do
+  not make money and so have no guide. What is left sits at 1,000 xp/hr,
+  deliberately low so it looks slow rather than free. Under the band walk that
+  floor usually applies to the *bottom* of a climb rather than all of it, so
+  look at `floor_xp` (how much XP is unpriced) rather than at the skill's
+  total.
 - **A low slayer coverage figure.** Below about 50%, the master's rate has
   been renormalised over so few reachable tasks that it flatters the map.
 - **Anything in `unpriced`.** Those are tasks whose items have no route this

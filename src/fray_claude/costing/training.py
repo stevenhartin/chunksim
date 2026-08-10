@@ -5,7 +5,8 @@ take the fastest method open at the player's *current* level and apply it to the
 whole climb to 99; when nothing open at that level had a scraped rate the climb
 was priced at `DEFAULT_XP_PER_HOUR`, which is how Herblore 1-99 came out at
 13,034 hours on a map that knew eighteen real Herblore rates. A player does not
-train at one rate: they level into better methods.
+train at one rate: they level into better methods, and the same climb walked
+band by band is 100 hours.
 
 Split out of `estimate.py` because "how fast does this skill go" is a
 self-contained question that two other modules already wanted independently -
@@ -58,18 +59,13 @@ def training_options(
 ) -> tuple[TrainingOption, ...]:
     """Every reachable primary method for `skill` that has a *real* rate.
 
-    **The companion to `_training_rate`, and the answer to "why is this so
-    slow".** That function picks the fastest method available at the player's
-    *current* level and applies it to the whole climb; when the only methods
-    open at that level have no scraped rate, the entire climb is priced at
-    `DEFAULT_XP_PER_HOUR` - which is how Herblore 1-99 comes out at 13,034
-    hours on a map where cleaning herbs would do it in a few hundred.
+    **What `training_bands` builds the climb out of**, and what the tooltip
+    falls back to when a climb has no bands worth showing: the methods a reader
+    could correct.
 
-    That is deliberately conservative rather than wrong: the floor announces
-    itself, where a guessed rate would not. But a number with no visible
-    reasoning behind it is one a reader has to take on trust, so this lists
-    what the estimator knows and could not use - name, level and rate - and
-    the panel puts it in the tooltip. Sorted fastest first.
+    Sorted fastest first. Only methods with a real rate: a list of level-1
+    options all sitting at the floor would say "here are your alternatives"
+    and mean "there are none".
 
     Only methods with a real rate: a list of level-1 options all sitting at the
     floor would say "here are your alternatives" and mean "there are none".

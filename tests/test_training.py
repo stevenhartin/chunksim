@@ -50,8 +50,9 @@ def test_training_options_lists_only_methods_with_a_real_rate() -> None:
     `_training_rate` takes the fastest method available at the *current* level
     and applies it to the whole climb, so when nothing open at that level has a
     scraped rate the climb is priced at the 1,000 xp/hr floor - Herblore 1-99
-    comes out at 13,034 hours on a map that knows real rates for eighteen
-    Herblore methods, none of them reachable at level 1.
+    came out at 13,034 hours on a map that knows real rates for eighteen
+    Herblore methods, none of them reachable at level 1. Walked in bands the
+    same climb is 100 hours.
 
     That is deliberately conservative, but a reader cannot see it. So the panel
     lists what the estimator knew and could not use, and the floor itself is

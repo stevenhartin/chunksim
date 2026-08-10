@@ -217,14 +217,23 @@ no kill rates and no XP figures of any kind, so every number it spends comes fro
 community spreadsheet, or a default — and any of them can be wrong for you. Three things to know
 before believing a total:
 
-- The money-making guides only cover **243 of the 2,710** ways of training a skill, because most
-  training methods don't make money and so have no guide. Everything else sits at a deliberately low
-  1,000 xp/hr so it looks slow rather than free. `fray estimate` prints which skills are on that
-  default; correcting them in `heuristics/overrides.json` is where the accuracy comes from.
+- **A skill is priced method by method as each one unlocks**, not at one rate for the whole climb —
+  Herblore 1→99 on a real map is nine bands, from cleaning guams at level 3 up to super combats at
+  90, and `fray estimate skilling` prints them with the level range and the XP each covers. The
+  money-making guides cover only **248 of the 2,710** ways of training a skill, because most training
+  methods don't make money and so have no guide, and what's left sits at a deliberately low
+  1,000 xp/hr so it looks slow rather than free. Under bands that floor usually applies to the bottom
+  of a climb rather than all of it. Each band prints where its rate came from, because 174 of the 248
+  are matched by *containment* rather than exactly — usually right, occasionally not, and
+  `heuristics/overrides.json` is where you disagree.
 - **Your skill levels aren't in the map.** source-chunk records a level *cap* and a passively
   reachable level, neither of which is where you actually are, so the estimate counts from the
   passive floor unless you set `levels` in the overrides file. Every skill row prints the level it
-  assumed.
+  assumed — with a `*` when quests you can still finish pay experience into it, which the estimate
+  takes off the front of the climb.
+- **Some goals cannot be trained at all.** Attack, Defence, Hitpoints and Ranged carry no training
+  method anywhere in the export — you train them by fighting — so those goals are reported as
+  unpriced rather than being charged a made-up rate, or, as they once were, silently costed at zero.
 - Slayer's rate is averaged over the tasks your master can assign *and* you can reach; the reported
   coverage says how much of the master's task list that was. A low figure means an optimistic number.
 
