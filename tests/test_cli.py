@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 
 from fray_claude.remote.api import DEFAULT_TIMEOUT, FetchError
-from fray_claude.cache import write_blob
+from fray_claude.store.cache import write_blob
 from fray_claude.cli import build_parser, main
 from fray_claude.model.summary import format_age
 
@@ -855,7 +855,7 @@ def test_tasks_category_lists_valid_task_names(
 def test_tasks_skill_category_shows_active_obsolete_and_completed(
     project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from fray_claude.cache import write_blob
+    from fray_claude.store.cache import write_blob
 
     payload: dict[str, Any] = {
         "chunks": {"unlocked": {}},
@@ -890,7 +890,7 @@ def test_tasks_skill_category_shows_active_obsolete_and_completed(
 def test_tasks_skill_category_strips_markup_from_every_section(
     project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from fray_claude.cache import write_blob
+    from fray_claude.store.cache import write_blob
 
     payload: dict[str, Any] = {
         "chunks": {"unlocked": {}},
@@ -936,7 +936,7 @@ def test_tasks_flat_category_strips_markup(
 def test_tasks_skill_category_reports_a_cached_active_task_match(
     project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from fray_claude.cache import write_blob
+    from fray_claude.store.cache import write_blob
 
     payload: dict[str, Any] = {
         "chunks": {"unlocked": {}},
@@ -1520,7 +1520,7 @@ def test_a_second_command_reuses_the_first_ones_derivation(
 
     calls: list[int] = []
     monkeypatch.setattr(
-        "fray_claude.derived_cache.derive",
+        "fray_claude.store.derived_cache.derive",
         lambda *a, **k: calls.append(1),  # never reached on a hit
     )
 
@@ -1670,7 +1670,7 @@ def test_a_simulated_maps_own_state_is_cached_by_its_run(
     stored = len(_derived_entries(project))
 
     monkeypatch.setattr(
-        "fray_claude.derived_cache.derive",
+        "fray_claude.store.derived_cache.derive",
         lambda *a, **k: pytest.fail("the saved map's own state should already be cached"),
     )
 

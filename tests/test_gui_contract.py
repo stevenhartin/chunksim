@@ -25,7 +25,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from fray_claude import cache
+from fray_claude.store import cache
 
 def _app_js() -> str:
     from fray_claude.gui.server import RESOURCE_DIR

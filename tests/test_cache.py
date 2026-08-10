@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from fray_claude.cache import (
+from fray_claude.store.cache import (
     CHUNKINFO_BLOB_NAME,
     _migrated,
     migrate_layout,

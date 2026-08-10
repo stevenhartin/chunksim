@@ -16,7 +16,7 @@ from typing import Any
 import pytest
 
 from fray_claude.batch import derive_seeds, price_steps, run_batch, save_unlock
-from fray_claude.cache import (
+from fray_claude.store.cache import (
     BATCH_META_FILE_NAME,
     UNLOCKED,
     CacheMissError,
@@ -31,7 +31,7 @@ from fray_claude.cache import (
     write_cache,
 )
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.derived_cache import CacheBehaviour
+from fray_claude.store.derived_cache import CacheBehaviour
 from fray_claude.pipeline import load_map_state
 from fray_claude.simulate import simulate_rolls
 from fray_claude.timeline import replay

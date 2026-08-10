@@ -43,7 +43,7 @@ from uuid import uuid4
 from pathlib import Path
 from typing import Any
 
-from fray_claude.cache import (
+from fray_claude.store.cache import (
     SIMULATED,
     TASKS_MAP_BLOB_NAME,
     UNLOCKED,
@@ -66,7 +66,7 @@ from fray_claude.cache import (
 )
 from fray_claude import dps_bridge
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.derived_cache import (
+from fray_claude.store.derived_cache import (
     CacheBehaviour,
     Digests,
     RollCache,

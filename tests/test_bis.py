@@ -544,7 +544,7 @@ def test_every_bis_pick_matches_the_live_oracle(
     dismissed the rest as a stale snapshot. They were not stale - the tool
     was wrong. Assert all of them, on every map.
     """
-    from fray_claude.cache import list_maps, project_root, read_cache
+    from fray_claude.store.cache import list_maps, project_root, read_cache
     from fray_claude.model.firebase import decode_challenge_keyed
     from fray_claude.pipeline import derive, load_map_state
 

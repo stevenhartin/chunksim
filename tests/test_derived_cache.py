@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.derived_cache import (
+from fray_claude.store.derived_cache import (
     CacheBehaviour,
     Digests,
     PricingDigests,
@@ -165,7 +165,7 @@ def test_the_structural_digest_tracks_the_result_classes(monkeypatch: pytest.Mon
         picks: dict[str, str]
         surprise: int
 
-    monkeypatch.setattr("fray_claude.derived_cache._RESULT_TYPES", (Extended,))
+    monkeypatch.setattr("fray_claude.store.derived_cache._RESULT_TYPES", (Extended,))
 
     assert _structure_digest() != before
 
@@ -347,7 +347,7 @@ def test_a_pricing_digest_is_not_the_library_version(tmp_path: Path) -> None:
     """`osrs-dps` is installed editable, so its version is `0.0.1` and stays
     there however much of the calculator changes underneath - and a calculator
     change moves every kill rate. The digest is of the source, so it moves."""
-    from fray_claude.derived_cache import dps_library_digest
+    from fray_claude.store.derived_cache import dps_library_digest
 
     digest = dps_library_digest()
 

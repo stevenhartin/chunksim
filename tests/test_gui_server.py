@@ -19,7 +19,7 @@ from typing import Any
 
 import pytest
 
-from fray_claude import cache
+from fray_claude.store import cache
 from fray_claude.remote.api import FetchError
 from fray_claude.gui.browser import window_flags
 from fray_claude.gui.server import (

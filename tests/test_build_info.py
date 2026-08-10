@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from fray_claude.build_info import (
+from fray_claude.store.build_info import (
     NO_WATERMARK_ENV,
     Build,
     describe,

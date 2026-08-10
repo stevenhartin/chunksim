@@ -32,9 +32,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-from fray_claude import cache, dps_bridge
+from fray_claude import dps_bridge
+from fray_claude.store import cache
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.derived_cache import Digests, cached_enrich, pricing_digests
+from fray_claude.store.derived_cache import Digests, cached_enrich, pricing_digests
 from fray_claude.estimate import EstimateResult, estimate, goal_levels, infer_levels
 from fray_claude.heuristics import Heuristics, load, merge
 from fray_claude.pipeline import Derived, MapState

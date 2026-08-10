@@ -66,7 +66,8 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs, urlsplit
 
-from fray_claude import cache, dps_bridge, estimate_inputs
+from fray_claude import dps_bridge, estimate_inputs
+from fray_claude.store import cache
 from fray_claude.remote.api import (
     CHUNKINFO_URL,
     DEFAULT_TIMEOUT,
@@ -84,10 +85,10 @@ from fray_claude.remote.api import (
     fetch_tasks_map,
 )
 from fray_claude.batch import RunResult, price_steps, run_batch, save_unlock
-from fray_claude.build_info import read_build
+from fray_claude.store.build_info import read_build
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.delta import MapSide, compare_maps, diff_names
-from fray_claude.derived_cache import cached_derive, cached_enrich, pricing_digests
+from fray_claude.store.derived_cache import cached_derive, cached_enrich, pricing_digests
 from fray_claude.estimate import estimate, goal_levels, infer_levels
 from fray_claude.heuristics import Heuristics, merge
 from fray_claude.heuristics import load as load_heuristics

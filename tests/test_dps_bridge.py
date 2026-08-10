@@ -1285,8 +1285,8 @@ def test_incremental_pricing_is_the_same_answer_as_pricing_from_scratch(
     it is 14.5s of full pricing against 3.4s incremental, and the two agreed
     on every one of 4,094 rates.
     """
-    from fray_claude import cache
-    from fray_claude.derived_cache import Digests, cached_derive
+    from fray_claude.store import cache
+    from fray_claude.store.derived_cache import Digests, cached_derive
     from fray_claude.estimate import goal_levels, infer_levels
 
     info = real_export

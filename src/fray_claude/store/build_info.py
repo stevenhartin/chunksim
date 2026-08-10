@@ -142,9 +142,23 @@ def describe(dist: metadata.Distribution, path: Path) -> Build:
     )
 
 
+def _package_dir() -> Path:
+    """The imported `fray_claude` package directory.
+
+    **Not `Path(__file__).parent`**, which is this module's own directory and
+    therefore moved when this module did - it reported `.../fray_claude/store`
+    the moment `build_info.py` was grouped with the rest of the disk layer, and
+    a watermark naming a subdirectory answers a question nobody asked. Asking
+    the top-level package survives any further reshuffling.
+    """
+    import fray_claude
+
+    return Path(fray_claude.__file__ or __file__).resolve().parent
+
+
 def read_build(distribution: str = DISTRIBUTION) -> Build:
     """This process's provenance. Never raises, and never guesses a date."""
-    path = Path(__file__).resolve().parent
+    path = _package_dir()
     try:
         dist = metadata.distribution(distribution)
     except metadata.PackageNotFoundError:

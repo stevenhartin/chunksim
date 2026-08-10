@@ -83,7 +83,7 @@ from pathlib import Path
 
 from fray_claude.active_tasks import TaskClassification
 from fray_claude.bis import BisResult
-from fray_claude.cache import (
+from fray_claude.store.cache import (
     WIKI_RATES_BLOB_NAME,
     CacheMissError,
     blob_path,

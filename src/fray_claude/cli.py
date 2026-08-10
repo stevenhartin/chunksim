@@ -95,8 +95,8 @@ from fray_claude.remote.api import (
     fetch_tasks_map,
 )
 from fray_claude.batch import RunResult, run_batch, save_unlock
-from fray_claude.build_info import print_watermark
-from fray_claude.cache import (
+from fray_claude.store.build_info import print_watermark
+from fray_claude.store.cache import (
     CHUNKINFO_BLOB_NAME,
     FETCHED,
     TASKS_MAP_BLOB_NAME,
@@ -131,7 +131,7 @@ from fray_claude.estimate import (
     infer_levels,
 )
 from fray_claude.heuristics import Heuristics, disagreements, load, merge
-from fray_claude.derived_cache import (
+from fray_claude.store.derived_cache import (
     CacheBehaviour,
     Digests,
     RollCache,
