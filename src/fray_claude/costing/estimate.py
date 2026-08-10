@@ -863,15 +863,24 @@ def _steps_in(derived: Derived, quest: str) -> int:
     )
 
 
-def _has_training_method(chunk_info: ChunkInfo, skill: str) -> bool:
-    """Does the export list *any* way of training `skill`?
+def _has_training_method(chunk_info: ChunkInfo, skill: str, heuristics: Heuristics) -> bool:
+    """Is there *any* way of training `skill`?
 
-    Deliberately asks the export rather than the map: "this map cannot reach a
-    Herblore method yet" is a floor band and a correctable gap, while "nothing
-    anywhere trains Attack" is a different statement and wants a different
-    answer. Measured: Attack 131 challenges and 0 primary, Defence 146/0,
-    Hitpoints 11/0, Ranged 172/0.
+    Two different sources, because the combat skills answer differently. A
+    challenge-based skill asks the export rather than the map: "this map cannot
+    reach a Herblore method yet" is a floor band and a correctable gap, while
+    "nothing anywhere trains Attack" is a different statement wanting a
+    different answer. Measured: Attack 131 challenges and 0 primary, Defence
+    146/0, Hitpoints 11/0, Ranged 172/0.
+
+    **And that used to be the whole answer, which made combat unpriceable.**
+    It is not a gap in the export - combat has no training *task* because it
+    does not need one, it needs a monster. So a computed combat rate counts as
+    a method here, and the five skills leave `unpriced_skills` the moment
+    `costing/combat_xp.py` can reach something to hit.
     """
+    if heuristics.combat.get(skill) is not None:
+        return True
     return any(
         isinstance(challenge, dict) and challenge.get("Primary") is True
         for challenge in _mapping(chunk_info.challenges, skill).values()
@@ -1113,7 +1122,7 @@ def estimate(
         granted = grants.get(skill, 0)
         start_xp = min(xp_for_level(max(1, min(current, MAX_LEVEL))) + granted, target_xp)
         xp = max(0, target_xp - start_xp)
-        if xp > 0 and not _has_training_method(state.chunk_info, skill):
+        if xp > 0 and not _has_training_method(state.chunk_info, skill, heuristics):
             # No `Primary: true` challenge anywhere in the export - the four
             # combat skills, which you train by fighting rather than by an
             # activity the export lists. Refused, not guessed at.

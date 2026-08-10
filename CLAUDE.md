@@ -179,6 +179,9 @@ Five things that cut across modules — the first three because each has already
 | `store/derived_cache.py` | The on-disk cache of the **two** expensive per-state computations: `cached_derive` and `cached_enrich`. Owns both keys (a hash of every input each reads), the zstd+pickle codec, and `CacheBehaviour`/`RollCache` — which of a simulation's states to keep. Pure bar the bytes, which `cache.py` writes. |
 | `derive/search.py` | World-wide fuzzy search over the *raw* export — all 5 item routes, so a strict superset of what `fray sources` can list. |
 | `model/summary.py` | Pure reductions over a raw payload. Extend this, not the CLI. Also home to `format_age` (both apps render ages, and two copies of the bucketing would disagree) and `_mapping`, the tolerant dict accessor eight other modules import despite the `_` — Firebase omits empty containers, so every lookup anywhere must survive a missing branch. |
+| `remote/wikitable.py` | Reading a wikitable. Shared by the two modules that parse them; owns the depth-aware cell splitter (`{{Coins\|{{GEP\|x\|10*13.8}}}}` has four `\|` and none is a cell break) and `column_index`, which resolves a `colspan` header against the width the data actually uses. |
+| `remote/combat.py` | Monster hitpoints and xp multipliers (one `infobox_monster` Bucket query, 1,382 monsters, 361 with a non-zero bonus **as a percentage**), plus the autocastable spells. **`infobox_spell` cannot tell an attack spell from a utility one** - Fire Surge, Charge and Vengeance have identical infoboxes and the categories disagree - so the filter is the wiki's own layout: the table with a max-hit column. Taking the highest-xp "combat" spell picks Charge, at 2.4x. |
+| `costing/combat_xp.py` | Combat XP, which is damage and almost nothing else: 4 per damage melee/Ranged, **2 for Magic**, 1.33 Hitpoints, plus the spell's base xp per cast. Damage per hour is `kills_per_hour * hitpoints`, so it **improves automatically with the `dps` extra**. Refuses a monster whose kill rate is only a default. |
 | `costing/dps_bridge.py` | The seam to `osrs-dps`, which prices a kill from the gear `bis.py` reaches instead of a money-making guide. Prices **only `estimate.reachable_providers`** — 188 of the export's 872, because every `kills_per_hour` lookup is gated on that set and the rest is thrown away. `enrich_incremental` + `fight_signature` keep a timeline's previous roll where nothing that decides a kill has moved; `enrich` stays untouched. **Optional import** — check `DPS_AVAILABLE`, never assume it. `enrich` is the one entry point a command needs. Owns the export→library conversions (`magic_damage` is a display percentage here and tenths of a percent there), the overhead model, the monster-name join and its `exact`/`variant` provenance, and the refusal of fight *phases* and group bosses. |
 | `remote/recipes.py` | `{{Recipe}}` as the wiki's Bucket table serves it: experience per action, tick cost and materials, for 3,889 recipes across 13 skills. Pure parsing. `production_json` is JSON inside JSON, every number is a string, and one page can hold several recipes told apart only by the output's `subtxt`. |
 | `costing/recipe_rates.py` | A recipe turned into an XP rate: `experience * 3600 / (0.6*ticks + materials + overhead)`, joined to a challenge **exactly** on `Output` (93-95% of the processing skills, ~0% of the gathering ones). Owns the layering `defaults < computed < scraped < overrides` - **the one place a computed number does *not* beat the scrape**, and the docstring carries the measurement that says why. An unpriceable material drops the method rather than falling back to ticks. |
@@ -365,6 +368,20 @@ way, with buckets, per-item hours and `unpriced` all unchanged — and took `enr
 cannot drift from the thing it gates; `tests/test_estimate.py` spies on every lookup to assert
 nothing asks outside it. `DpsCoverage.offered` is reported beside `monsters` because "188 monsters"
 alone reads as poor coverage of the export rather than full coverage of the map.
+
+**The combat skills are priced from damage, not from a training method** - they have no
+`Primary: true` challenge anywhere in the export, so there was never a task to join a rate to and
+`Attack`/`Strength`/`Defence`/`Hitpoints`/`Ranged` sat in `unpriced_skills`. They do not need one:
+combat XP is a published constant times a number this project already computes. 4 experience per
+point of damage in melee and Ranged, **2 in Magic** (the easy mistake, and a factor of two on the
+whole climb), 1.33 to Hitpoints, plus the spell's own base experience per cast - which is *two thirds*
+of a Magic rate, so it is not a rounding term. Damage per hour is `kills_per_hour * hitpoints`, which
+means **combat rates improve automatically with the `dps` extra** without `combat_xp.py` knowing it
+exists. Two things to know before quoting one: one damage figure serves all five skills, since
+`kills_per_hour` does not say which style did the killing; and **Hitpoints is double counted against
+whatever else you train**, because in the game it comes free with it - taking that off needs the
+treatment quest XP got and is a scheduling question rather than a rate one. Measured against a known
+figure it did not see: Magic came out at 200,228/hr barraging, where the community quotes 200-250k.
 
 **Agility and Thieving are priced off wiki tables, not guides or recipes** - they are the two skills
 with no `{{Recipe}}` rows at all, and no money-making guide joins their method names, so every one of

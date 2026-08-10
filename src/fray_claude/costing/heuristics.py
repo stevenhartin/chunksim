@@ -72,6 +72,7 @@ from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.derive.search import normalise
 from fray_claude.model.summary import _mapping
 from fray_claude.derive.task_names import strip_task_markup
+from fray_claude.remote.combat import AttackSpell, MonsterStats
 from fray_claude.remote.skill_tables import COURSE_ALIASES, SkillRow
 from fray_claude.remote.wiki import Assignment, MmgRates, quest_difficulty, quest_length
 
@@ -331,6 +332,13 @@ class Heuristics:
     master_skip_costs: dict[str, float] = field(default_factory=dict)
     boss_monsters: frozenset[str] = frozenset()
     slayer_monsters: frozenset[str] = frozenset()
+    #: Monster -> hitpoints and xp multiplier, for `costing/combat_xp.py`.
+    monster_stats: dict[str, MonsterStats] = field(default_factory=dict)
+    #: Autocastable spells, cheapest level first.
+    spells: tuple[AttackSpell, ...] = ()
+    #: Combat skill -> its computed rate. Filled by `inputs.priced_heuristics`
+    #: **after** the kill rates are final, since it multiplies them.
+    combat: dict[str, Rate] = field(default_factory=dict)
 
     def quest_hours(self, quest: str) -> QuestRate:
         return self.quests.get(quest) or QuestRate(hours=DEFAULT_QUEST_HOURS)
@@ -653,6 +661,8 @@ def build_config(
     task_lengths: dict[str, dict[str, TaskLength]] | None = None,
     superiors: list[tuple[str, str]] | None = None,
     skill_tables: Mapping[str, Sequence[SkillRow]] | None = None,
+    monster_stats: Mapping[str, MonsterStats] | None = None,
+    spells: Sequence[AttackSpell] = (),
 ) -> dict[str, Any]:
     """Generate the full config from the export plus everything fetched.
 
@@ -758,6 +768,15 @@ def build_config(
             if superior in known
         },
         "rarities": dict(RARITY_PROBABILITY),
+        # **Only the monsters an estimate could ask about.** The wiki has
+        # 1,382 with hitpoints and the export knows 872; storing the rest
+        # would be a copy of the wiki rather than a config for this map.
+        "monster_stats": {
+            name: entry.as_dict()
+            for name, entry in sorted((monster_stats or {}).items())
+            if name in chunk_info.drops or name in known
+        },
+        "spells": [spell.as_dict() for spell in spells],
     }
 
 
@@ -974,6 +993,24 @@ def load(
         },
         boss_monsters=boss_monsters,
         slayer_monsters=slayer_monsters,
+        monster_stats={
+            name: MonsterStats(
+                name=name,
+                hitpoints=_float(entry.get("hitpoints"), 0.0),
+                experience_bonus=_float(entry.get("experience_bonus"), 0.0),
+            )
+            for name, entry in _entries(config, "monster_stats")
+        },
+        spells=tuple(
+            AttackSpell(
+                name=str(entry.get("name") or ""),
+                level=int(_float(entry.get("level"), 1.0)),
+                experience=_float(entry.get("experience"), 0.0),
+                spellbook=str(entry.get("spellbook") or ""),
+            )
+            for entry in config.get("spells") or ()
+            if isinstance(entry, dict) and entry.get("name")
+        ),
     )
 
 

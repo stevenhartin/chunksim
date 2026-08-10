@@ -32,7 +32,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping
 
-from fray_claude.costing import dps_bridge, recipe_rates
+from fray_claude.costing import combat_xp, dps_bridge, recipe_rates
 from fray_claude.costing.estimate import material_seconds
 from fray_claude.store import cache
 from fray_claude.model.chunkinfo import ChunkInfo
@@ -256,15 +256,28 @@ def priced_heuristics(
 
     def compute() -> tuple[Heuristics, dps_bridge.DpsCoverage | None]:
         priced, _ = recipe_priced(state, derived, index, heuristics, levels, root=root)
-        if not dps_bridge.DPS_AVAILABLE:
-            return priced, None
-        return dps_bridge.enrich(
-            priced,
-            state.chunk_info,
-            derived,
-            goals,
-            pinned_monsters=pinned_monsters,
-            pinned_slayer=pinned_slayer,
+        coverage: dps_bridge.DpsCoverage | None = None
+        if dps_bridge.DPS_AVAILABLE:
+            priced, coverage = dps_bridge.enrich(
+                priced,
+                state.chunk_info,
+                derived,
+                goals,
+                pinned_monsters=pinned_monsters,
+                pinned_slayer=pinned_slayer,
+            )
+        # **Last, because it multiplies the kill rates.** Running this before
+        # `enrich` would price combat off the scraped rates and then throw the
+        # simulated ones away - the numbers would be quietly worse on exactly
+        # the maps where the extra had most to say.
+        return (
+            replace(
+                priced,
+                combat=combat_xp.combat_rates(
+                    derived, priced, priced.monster_stats, priced.spells, goals
+                ),
+            ),
+            coverage,
         )
 
     return cached_enrich(

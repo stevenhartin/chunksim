@@ -355,7 +355,7 @@ otherwise it's created in whatever directory you're in when you run `fray`.
    wiki and both only worth repeating occasionally:
 
    ```sh
-   fray heuristics                     # ~19 requests: guides, quest lengths, Agility/Thieving tables
+   fray heuristics                     # ~21 requests: guides, quest lengths, skill tables, monster hp
    fray recipes                        # 13 requests: xp per action and tick costs, per skill
    ```
 

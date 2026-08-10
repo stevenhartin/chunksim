@@ -48,7 +48,7 @@ from fray_claude.costing.heuristics import (
 from fray_claude.costing.slayer import SheetFormatError, parse_mob_data, parse_task_lengths
 from fray_claude.model.summary import _mapping
 from fray_claude.remote.recipes import parse_recipes, recipe_query
-from fray_claude.remote import skill_tables
+from fray_claude.remote import combat, skill_tables
 from fray_claude.remote.wiki import (
     ASSIGNMENTS_PAGE,
     MMG_PREFIX,
@@ -165,6 +165,14 @@ def scrape(
     table_pages = fetch_wiki_pages(list(skill_tables.PAGES), timeout=timeout)
     tables = skill_tables.parse_pages(table_pages)
 
+    say("monster hitpoints and spell xp")
+    monster_stats = combat.parse_monster_stats(
+        fetch_bucket(combat.monster_query(), timeout=timeout)
+    )
+    spells = combat.parse_attack_spells(
+        fetch_wiki_pages(list(combat.SPELLBOOK_PAGES), timeout=timeout)
+    )
+
     config = build_config(
         info,
         quest_pages=quest_pages,
@@ -174,6 +182,8 @@ def scrape(
         task_lengths=lengths,
         superiors=superiors,
         skill_tables=tables,
+        monster_stats=monster_stats,
+        spells=spells,
     )
     return ScrapeResult(
         config=config,
@@ -190,6 +200,8 @@ def scrape(
             "slayer tasks": len(mob_data),
             "task lengths": len(lengths),
             **{f"{kind} rows": len(rows) for kind, rows in sorted(tables.items())},
+            "monster hitpoints": len(monster_stats),
+            "attack spells": len(spells),
         },
         sheet_error=sheet_error,
     )

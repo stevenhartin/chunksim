@@ -40,9 +40,10 @@ other host, and `costing/` decides what rate a row implies.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
-from typing import Any, Iterator
+from typing import Any
+
+from fray_claude.remote.wikitable import SCP_LEVEL, name_in, names_in, number, rows, table_with
 
 #: The four pages this reads. `Shortcuts` and `Stall/Thievable` are dedicated
 #: transcluded tables; the other two are sections of the skill's own page.
@@ -63,21 +64,14 @@ COURSE_ALIASES: dict[str, str] = {
     "Shayzien Agility Course": "Shayzien Basic Course",
 }
 
-_NUMBER = re.compile(r"^\s*([\d,]+(?:\.\d+)?)")
-_SCP_LEVEL = re.compile(r"\{\{SCP\|(?P<skill>[A-Za-z ]+)\|(?P<level>\d+)")
-_LINK_TARGET = re.compile(r"\[\[([^\]|#]+)")
-_PLINK_NAME = re.compile(r"\{\{(?:plink|chatl)[a-z]*\|([^|}]+)")
-_PLINK_TEXT = re.compile(r"\|txt=([^|}]+)")
-
-
 @dataclass(frozen=True)
 class SkillRow:
     """One row of one of the four tables, already reduced to what is spent.
 
     `xp_per_hour` is set only where the table publishes one - courses and
     stalls do, shortcuts and pickpockets do not, and inventing a cycle time
-    here would put a modelling decision in a parser. `costing/` turns
-    `experience` into a rate for those two.
+    here would put a modelling decision in a parser. `costing/heuristics.py`
+    turns `experience` into a rate for those two.
     """
 
     #: The name to join on: an object for a shortcut or stall, an NPC for a
@@ -96,112 +90,6 @@ class SkillRow:
         }
 
 
-def _split_cells(row: str) -> list[str]:
-    """A table row's cells, respecting `{{...}}` and `[[...]]` nesting.
-
-    Wikitext separates cells with a newline `|` or an inline `||`, and both
-    appear inside templates (`{{Coins|{{GEP|Amylase crystal|10*13.8}}}}`) where
-    they mean nothing of the sort. A depth counter is the difference between
-    reading a level and reading half a template.
-    """
-    cells: list[str] = []
-    current: list[str] = []
-    depth = 0
-    index = 0
-    while index < len(row):
-        pair = row[index : index + 2]
-        if pair in ("{{", "[["):
-            depth += 1
-            current.append(pair)
-            index += 2
-            continue
-        if pair in ("}}", "]]"):
-            depth = max(0, depth - 1)
-            current.append(pair)
-            index += 2
-            continue
-        if depth == 0 and pair == "||":
-            cells.append("".join(current))
-            current = []
-            index += 2
-            continue
-        if depth == 0 and row[index] == "\n" and row[index + 1 : index + 2] == "|":
-            cells.append("".join(current))
-            current = []
-            index += 2
-            continue
-        current.append(row[index])
-        index += 1
-    cells.append("".join(current))
-    return [cell.strip() for cell in cells]
-
-
-def _tables(text: str) -> Iterator[str]:
-    """Every `{| ... |}` block in `text`, outermost only."""
-    depth = 0
-    start = 0
-    for match in re.finditer(r"\{\||\|\}", text):
-        if match.group(0) == "{|":
-            if depth == 0:
-                start = match.start()
-            depth += 1
-        elif depth:
-            depth -= 1
-            if depth == 0:
-                yield text[start : match.end()]
-
-
-def _table_with(text: str, *needles: str) -> str:
-    """The first table whose header mentions all of `needles`."""
-    for table in _tables(text):
-        head = table[: table.find("\n|-") if "\n|-" in table else len(table)]
-        if all(needle in head for needle in needles):
-            return table
-    return ""
-
-
-def _rows(table: str) -> Iterator[list[str]]:
-    """Data rows of `table`, header skipped, as cell lists."""
-    for chunk in table.split("\n|-")[1:]:
-        body = chunk.split("\n|}")[0]
-        cells = [cell for cell in _split_cells(body) if cell]
-        if cells:
-            yield cells
-
-
-def _number(cell: str) -> float | None:
-    found = _NUMBER.match(cell.replace("&nbsp;", " ").strip())
-    return float(found.group(1).replace(",", "")) if found else None
-
-
-def _names_in(cell: str) -> tuple[str, ...]:
-    """Every joinable name a cell offers, in order, deduplicated.
-
-    **Targets, not display text**, because `[[Rocks (Corsair Cove)|Rocks]]`
-    renders as "Rocks" and joins as nothing - the export names the
-    disambiguated object. But `{{plinkt|Warrior (Thieving)|txt=Warrior}}`
-    needs the *other* half too: the page is disambiguated where the export's
-    NPC is not, so both spellings are offered and the caller keeps whichever
-    joins.
-
-    All of them rather than the first, because one cell can name two things -
-    `{{plinkt|Man}}/[[Woman]]` is two NPCs on one row, and taking either alone
-    silently loses a level-1 training method.
-    """
-    found = [
-        *(match.group(1).strip() for match in _PLINK_NAME.finditer(cell)),
-        *(match.group(1).strip() for match in _PLINK_TEXT.finditer(cell)),
-        *(match.group(1).strip() for match in _LINK_TARGET.finditer(cell)),
-    ]
-    return tuple(dict.fromkeys(name for name in found if name))
-
-
-def _name_in(cell: str) -> str:
-    """The first joinable name in a cell, or `""`."""
-    names = _names_in(cell)
-    return names[0] if names else ""
-
-
 def parse_shortcuts(text: str) -> tuple[SkillRow, ...]:
     """`Shortcuts`: the object, its Agility level, and the xp one use pays.
 
@@ -209,18 +97,18 @@ def parse_shortcuts(text: str) -> tuple[SkillRow, ...]:
     grapple shortcut that pays nothing is not a training method, and a zero
     would divide into an infinite rate downstream.
     """
-    table = _table_with(text, "!Level(s)", "!XP")
+    table = table_with(text, "!Level(s)", "!XP")
     found: list[SkillRow] = []
-    for cells in _rows(table):
+    for cells in rows(table):
         if len(cells) < 6:
             continue
         levels = {
             match.group("skill"): int(match.group("level"))
-            for match in _SCP_LEVEL.finditer(cells[0])
+            for match in SCP_LEVEL.finditer(cells[0])
         }
         level = levels.get("Agility")
-        name = _name_in(cells[2])
-        experience = _number(cells[5])
+        name = name_in(cells[2])
+        experience = number(cells[5])
         if level is None or not name or not experience:
             continue
         found.append(SkillRow(name=name, level=level, experience=experience))
@@ -229,12 +117,12 @@ def parse_shortcuts(text: str) -> tuple[SkillRow, ...]:
 
 def parse_courses(text: str) -> tuple[SkillRow, ...]:
     """`Agility`'s full course list: level, course, experience per hour."""
-    table = _table_with(text, "Experience per hour")
+    table = table_with(text, "Experience per hour")
     found: list[SkillRow] = []
-    for cells in _rows(table):
+    for cells in rows(table):
         if len(cells) < 4:
             continue
-        level, name, rate = _number(cells[0]), _name_in(cells[1]), _number(cells[3])
+        level, name, rate = number(cells[0]), name_in(cells[1]), number(cells[3])
         if level is None or not name or not rate:
             continue
         found.append(SkillRow(name=name, level=int(level), xp_per_hour=rate))
@@ -247,11 +135,11 @@ def parse_stalls(text: str) -> tuple[SkillRow, ...]:
     The last column is already `3600 / respawn * xp`, so the arithmetic is
     upstream's rather than a second copy of it here.
     """
-    table = _table_with(text, "Respawn Time")
+    table = table_with(text, "Respawn Time")
     found: list[SkillRow] = []
-    for cells in _rows(table):
-        name = _name_in(cells[0])
-        numbers = [(index, _number(cell)) for index, cell in enumerate(cells[1:], 1)]
+    for cells in rows(table):
+        name = name_in(cells[0])
+        numbers = [(index, number(cell)) for index, cell in enumerate(cells[1:], 1)]
         real = [(index, value) for index, value in numbers if value is not None]
         if not name or len(real) < 2:
             continue
@@ -272,11 +160,11 @@ def parse_stalls(text: str) -> tuple[SkillRow, ...]:
 
 def parse_pickpockets(text: str) -> tuple[SkillRow, ...]:
     """`Thieving`'s thievable NPCs: level and xp per successful pickpocket."""
-    table = _table_with(text, "100% success lvl")
+    table = table_with(text, "100% success lvl")
     found: list[SkillRow] = []
-    for cells in _rows(table):
-        names = _names_in(" ".join(cells[:2]))
-        numbers = [value for cell in cells if (value := _number(cell)) is not None]
+    for cells in rows(table):
+        names = names_in(" ".join(cells[:2]))
+        numbers = [value for cell in cells if (value := number(cell)) is not None]
         if not names or len(numbers) < 2:
             continue
         # One row can name two NPCs (`Man`/`Woman`) and one NPC two ways (a

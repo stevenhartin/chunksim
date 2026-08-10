@@ -70,6 +70,20 @@ def training_options(
     Only methods with a real rate: a list of level-1 options all sitting at the
     floor would say "here are your alternatives" and mean "there are none".
     """
+    # **The combat skills have no `Primary` challenge to join a rate to** -
+    # there is no "Train Strength" task anywhere in the export - so their rate
+    # does not come from a challenge at all. See `costing/combat_xp.py`.
+    combat = heuristics.combat.get(skill)
+    if combat is not None and combat.value > 0:
+        return (
+            TrainingOption(
+                method=combat.source.removeprefix("combat:"),
+                level=None,
+                xp_per_hour=combat.value,
+                match=combat.match,
+            ),
+        )
+
     challenges = _mapping(chunk_info.challenges, skill)
     found: list[TrainingOption] = []
     for name in derived.challenges.valid.get(skill) or {}:
