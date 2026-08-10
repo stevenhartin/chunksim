@@ -11,6 +11,9 @@ from __future__ import annotations
 import pytest
 
 from fray_claude.costing.combat_xp import (
+    MAGIC_XP_PER_DAMAGE,
+    XP_PER_DAMAGE,
+    slayer_credit,
     CAST_SECONDS,
     HITPOINTS_XP_PER_DAMAGE,
     MAGIC_XP_PER_DAMAGE,
@@ -277,3 +280,93 @@ def test_a_monster_with_no_counted_spawn_is_not_capped_at_zero() -> None:
     info = ChunkInfo({"chunks": {"100": {}}})
 
     assert spawn_caps(info, _derived(("Wolf",))) == {}
+
+
+# --- the Slayer credit -----------------------------------------------------
+#
+# **There is no oracle for any of this**, which is what the plan says about
+# Phase 4: nothing upstream records what a shared climb ought to cost. So these
+# are invariants - never more than the need, never more than the damage can
+# pay, deterministic under reordering - rather than numbers someone chose.
+
+
+def test_slayer_pays_hitpoints_alongside_everything_else() -> None:
+    """Hitpoints is never in competition: every point of damage pays it 1.33
+    whatever style dealt the damage."""
+    credit = slayer_credit(1_000_000.0, {"Hitpoints": 10_000_000.0})
+
+    assert credit["Hitpoints"] == pytest.approx(1_000_000.0 * 4 / 3)
+
+
+def test_a_credit_never_exceeds_what_the_climb_still_needs() -> None:
+    """The credit is XP taken off the front of a climb, so a climb that is
+    nearly done cannot be credited past its goal and into another skill."""
+    credit = slayer_credit(1_000_000.0, {"Hitpoints": 500.0, "Defence": 900.0})
+
+    assert credit["Hitpoints"] == 500.0
+    assert credit["Defence"] == 900.0
+
+
+def test_the_attacking_skills_share_the_damage_not_the_experience() -> None:
+    """**A kill is dealt in one style**, so two attacking skills cannot both
+    be paid for the same damage. Sharing the *experience* would hand 4 XP per
+    damage to each of them and pay for two climbs with one fight."""
+    damage = 1_000.0
+    credit = slayer_credit(damage, {"Attack": 800.0, "Defence": 10_000.0})
+
+    # Attack is finished off first and the rest goes to Defence, but the two
+    # together never spend more damage than was dealt.
+    spent = sum(
+        value / XP_PER_DAMAGE for skill, value in credit.items() if skill != "Hitpoints"
+    )
+    assert spent == pytest.approx(damage)
+    assert credit["Attack"] == 800.0
+    assert credit["Defence"] == pytest.approx((damage - 800.0 / XP_PER_DAMAGE) * XP_PER_DAMAGE)
+
+
+def test_magic_converts_at_its_own_rate(
+) -> None:
+    """Magic is 2 XP per damage where melee is 4 - the easy mistake and a
+    factor of two on the whole climb. Sharing damage rather than experience is
+    what keeps that honest instead of averaging the two."""
+    credit = slayer_credit(1_000.0, {"Magic": 10_000.0})
+
+    assert credit["Magic"] == pytest.approx(1_000.0 * MAGIC_XP_PER_DAMAGE)
+
+
+def test_the_allocation_does_not_depend_on_the_input_order() -> None:
+    """**`--jobs` must not move a total.** The allocation is greedy, so the
+    order it considers goals in decides the answer when the damage runs out -
+    which makes determinism a property to pin rather than assume."""
+    import random
+
+    needs = {"Attack": 5_000.0, "Defence": 900_000.0, "Magic": 40_000.0, "Ranged": 7_000.0}
+    expected = slayer_credit(2_000.0, needs)
+    for seed in range(50):
+        items = list(needs.items())
+        random.Random(seed).shuffle(items)
+        assert slayer_credit(2_000.0, dict(items)) == expected
+
+
+def test_more_slayer_never_credits_less() -> None:
+    """Monotonic in the damage, which is the one thing a reader will assume
+    without being told."""
+    needs = {"Hitpoints": 9_000_000.0, "Attack": 300_000.0, "Defence": 12_000_000.0}
+    totals = [sum(slayer_credit(float(d), needs).values()) for d in range(0, 3_000_000, 250_000)]
+
+    assert totals == sorted(totals)
+
+
+def test_no_damage_credits_nothing() -> None:
+    """A map with no Slayer goal must be priced exactly as it was before this
+    existed - the credit is an adjustment, never a floor."""
+    assert slayer_credit(0.0, {"Hitpoints": 1_000.0, "Attack": 1_000.0}) == {}
+
+
+def test_a_finished_skill_takes_none_of_the_pool() -> None:
+    """`w_s = 1 while below goal, 0 after`. A skill already at its target must
+    not consume damage that another skill could still spend."""
+    credit = slayer_credit(1_000.0, {"Attack": 0.0, "Defence": 100_000.0})
+
+    assert "Attack" not in credit
+    assert credit["Defence"] == pytest.approx(1_000.0 * XP_PER_DAMAGE)

@@ -150,7 +150,7 @@ from fray_claude.model.experience import (
     xp_between,
     xp_for_level,
 )
-from fray_claude.costing.combat_xp import hitpoints_credit
+from fray_claude.costing.combat_xp import COMBAT_SKILLS, hitpoints_credit, slayer_credit
 from fray_claude.costing.farming import DEFAULT_HARVESTS_PER_DAY, plan_for as farming_plan
 from fray_claude.costing.training import (
     LampGrant,
@@ -1322,7 +1322,7 @@ def estimate(
 
     skills: list[SkillEstimate] = []
     unpriced_skills: list[UnpricedSkill] = []
-    hitpoints_at: tuple[int, str, int, int, int, int, int] | None = None
+    combat_at: dict[str, tuple[int, str, int, int, int, int, int]] = {}
     grants, lamps = quest_xp_grants(derived, state.chunk_info)
     for skill, classification in sorted(derived.task_classification.skills.items()):
         goal = classification.active
@@ -1432,39 +1432,62 @@ def estimate(
                 effective_level=level_for_xp(start_xp),
             )
         )
-        if skill == "Hitpoints":
-            hitpoints_at = (len(skills) - 1, goal, current, int(target), capped, start_xp, granted)
+        if skill in COMBAT_SKILLS:
+            combat_at[skill] = (
+                len(skills) - 1, goal, current, int(target), capped, start_xp, granted
+            )
+
+    def _rebuild(skill: str, credited: float) -> None:
+        """Re-price one combat climb with `credited` XP taken off its front."""
+        at, goal_, level_, target_, capped_, start_, granted_ = combat_at[skill]
+        target_xp_ = xp_for_level(capped_)
+        moved = int(min(start_ + credited, target_xp_))
+        skills[at] = _skill_estimate(
+            skill,
+            goal_,
+            level_,
+            target_,
+            max(0, target_xp_ - moved),
+            training_bands(
+                training_options(derived, state.chunk_info, heuristics, skill),
+                moved,
+                capped_,
+            ),
+            xp_from_quests=min(granted_, xp_between(level_, capped_)),
+            xp_from_combat=min(credited, float(xp_between(level_, capped_))),
+            effective_level=level_for_xp(moved),
+        )
+
+    # **A Slayer task is a fight, so it pays the combat skills too.** Its XP is
+    # the monster's hitpoints, which makes a Slayer rate a damage rate - and
+    # 394 hours of it on the benchmark map had already earned the Hitpoints,
+    # Defence and Attack climbs being charged for beside it. Credited before
+    # `hitpoints_credit`, so that pass sees the hours that are actually left.
+    slayer_at = next(
+        (i for i, entry in enumerate(skills) if entry.skill == "Slayer"), None
+    )
+    if slayer_at is not None and slayer_rate is not None and combat_at:
+        damage = skills[slayer_at].hours * slayer_rate.xp_per_hour
+        needs = {
+            skill: float(skills[at].xp) for skill, (at, *_) in combat_at.items()
+        }
+        for skill, credited in sorted(slayer_credit(damage, needs).items()):
+            if credited > 0:
+                _rebuild(skill, credited + skills[combat_at[skill][0]].xp_from_combat)
 
     # **Hitpoints is earned by the other combat climbs, not beside them.**
     # Every point of damage paying 4 XP to Strength pays 1.33 to Hitpoints at
     # the same instant, so pricing both climbs in full bills the same hours
     # twice. Done after the loop rather than inside it because the credit
     # depends on skills that sort after `Hitpoints` - Magic, Ranged, Strength.
-    if hitpoints_at is not None and heuristics.combat_damage:
-        at, hp_goal, hp_level, hp_target, hp_capped, hp_start, hp_granted = hitpoints_at
+    if "Hitpoints" in combat_at and heuristics.combat_damage:
+        at = combat_at["Hitpoints"][0]
         credit = hitpoints_credit(
             {entry.skill: entry.hours for entry in skills},
             heuristics.combat_damage,
         )
         if credit > 0:
-            hp_target_xp = xp_for_level(hp_capped)
-            moved = int(min(hp_start + credit, hp_target_xp))
-            skills[at] = _skill_estimate(
-                "Hitpoints",
-                hp_goal,
-                hp_level,
-                hp_target,
-                max(0, hp_target_xp - moved),
-                training_bands(
-                    training_options(derived, state.chunk_info, heuristics, "Hitpoints"),
-                    moved,
-                    hp_capped,
-                ),
-                xp_from_quests=min(hp_granted, xp_between(hp_level, hp_capped)),
-                xp_from_combat=min(credit, float(xp_between(hp_level, hp_capped))),
-                effective_level=level_for_xp(moved),
-            )
-
+            _rebuild("Hitpoints", credit + skills[at].xp_from_combat)
     return EstimateResult(
         unpriced_skills=tuple(unpriced_skills),
         unallocated_quest_xp=lamps,

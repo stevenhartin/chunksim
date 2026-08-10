@@ -25,6 +25,9 @@ from fray_claude.costing.heuristics import (
 from fray_claude.derive.other_tasks import CategoryTasks, OtherTasks, TaskGroup
 from fray_claude.derive.pipeline import Derived, MapState
 from fray_claude.derive.search import build_world_index
+from fray_claude.costing.combat_xp import COMBAT_SKILLS
+from fray_claude.costing.inputs import load_heuristics
+from fray_claude.model.experience import xp_between
 from fray_claude.derive.sources import SourceIndex
 
 
@@ -1649,3 +1652,36 @@ def test_sailing_is_refused_even_though_the_export_can_train_it() -> None:
         ("Sailing", "no published rates for this skill yet")
     ]
     assert result.buckets["skilling"] == 0.0
+
+
+@pytest.mark.real_cache
+def test_a_slayer_climb_pays_for_the_combat_climbs_beside_it(
+    real_state: tuple[MapState, dict[str, bool]], real_derived: Derived
+) -> None:
+    """**A Slayer task is a fight, and the estimate used to charge for it
+    twice.** Slayer XP is the monster's hitpoints, so a Slayer rate in XP per
+    hour *is* a damage rate - and on the benchmark map 394 hours of Slayer had
+    already earned the Hitpoints, Defence and Attack climbs being priced in
+    full beside it: 353 of 1,263 skilling hours.
+
+    An oracle test rather than a fixture, because the credit only has anything
+    to say on a map that holds a Slayer goal *and* a combat goal, and building
+    one by hand would be building the answer. The invariants are in
+    `tests/test_combat_xp.py`; this asserts the two are wired together at all.
+    """
+    state, unlocked = real_state
+    heuristics, _ = load_heuristics(state.chunk_info)
+    result = estimate(state, real_derived, build_world_index(state.chunk_info), heuristics)
+
+    slayer = next((e for e in result.skills if e.skill == "Slayer"), None)
+    combat = [e for e in result.skills if e.skill in COMBAT_SKILLS and e.xp > 0]
+    # **Both halves are needed and the cached map may hold only one.** `fray`
+    # has a Slayer goal and no combat goal, so there is genuinely nothing to
+    # credit there; `verf-sim/run-001` has both and moves 353 hours.
+    if slayer is None or slayer.hours <= 0 or not combat:
+        pytest.skip("this map has no Slayer goal beside a combat goal")
+
+    credited = [e for e in result.skills if e.skill in COMBAT_SKILLS and e.xp_from_combat > 0]
+    assert credited, "a Slayer climb earned no combat experience for anything"
+    for entry in credited:
+        assert entry.xp_from_combat <= xp_between(entry.current_level, entry.target_level)

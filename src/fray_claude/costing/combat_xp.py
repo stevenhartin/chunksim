@@ -299,6 +299,69 @@ def combat_rates(
     return rated, damages
 
 
+def slayer_credit(damage: float, needs: Mapping[str, float]) -> dict[str, float]:
+    """Combat XP earned during the Slayer climb, allocated across its goals.
+
+    **A Slayer task is a fight, and the estimate was charging for it twice.**
+    `hitpoints_credit` deliberately left this out - its docstring says so - on
+    the grounds that an under-estimate is the safe error. On the benchmark map
+    the under-estimate is 353 of 1,263 skilling hours: 394 hours of Slayer
+    deals 8.6M damage, which pays 11.5M Hitpoints XP against a climb needing
+    8.7M, and 34.6M to the attacking styles against a Defence climb needing
+    12.8M. All three were being priced in full beside the Slayer hours that
+    had already earned them.
+
+    **Slayer XP is damage.** A task monster pays Slayer experience equal to its
+    hitpoints, so a Slayer rate in XP per hour *is* a damage rate and needs no
+    separate model - which is what makes this a credit rather than a guess.
+
+    Two different sharing rules, because the game has two:
+
+    - **Hitpoints is free alongside.** Every point of damage pays it 1.33
+      whatever style dealt the damage, so it is never in competition with
+      anything and is credited in full up to what the climb still needs.
+    - **The attacking skills compete**, because a kill is dealt in one style.
+      So it is the *damage* that is shared out, not the experience, and each
+      skill converts its share at its own rate - which is how Magic's 2 per
+      damage stays honest against melee's 4 rather than being averaged in.
+
+    Allocated **smallest remaining need first**, which is deterministic (so
+    `--jobs` cannot move it) and matches the plan's `w_s = 1 while below goal`:
+    finishing the cheap goals first is what maximises the number of goals a
+    fixed quantity of damage closes. Every allocation respecting the caps is
+    realisable by a player switching styles as each goal lands, so this is a
+    choice among correct answers rather than an approximation of one.
+
+    `needs` is the XP each skill still wants *after* quest grants. Returns the
+    XP to credit per skill, never more than the need and never more than the
+    damage can pay.
+    """
+    credit: dict[str, float] = {}
+    if damage <= 0:
+        return credit
+
+    hitpoints = needs.get("Hitpoints", 0.0)
+    if hitpoints > 0:
+        credit["Hitpoints"] = min(hitpoints, HITPOINTS_XP_PER_DAMAGE * damage)
+
+    remaining = damage
+    attacking = sorted(
+        (
+            (need, skill)
+            for skill, need in needs.items()
+            if skill != "Hitpoints" and need > 0
+        )
+    )
+    for need, skill in attacking:
+        if remaining <= 0:
+            break
+        per_damage = MAGIC_XP_PER_DAMAGE if skill == "Magic" else XP_PER_DAMAGE
+        spent = min(remaining, need / per_damage)
+        credit[skill] = spent * per_damage
+        remaining -= spent
+    return credit
+
+
 def hitpoints_credit(hours: Mapping[str, float], damage: Mapping[str, float]) -> float:
     """Hitpoints XP earned for free while training the other combat skills.
 

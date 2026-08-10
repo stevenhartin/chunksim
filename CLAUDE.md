@@ -411,9 +411,9 @@ whole climb), 1.33 to Hitpoints, plus the spell's own base experience per cast -
 of a Magic rate, so it is not a rounding term. Damage per hour is `kills_per_hour * hitpoints`, which
 means **combat rates improve automatically with the `dps` extra** without `combat_xp.py` knowing it
 exists. Two things to know before quoting one: one damage figure serves all five skills, since
-`kills_per_hour` does not say which style did the killing; and **Hitpoints is double counted against
-whatever else you train**, because in the game it comes free with it - taking that off needs the
-treatment quest XP got and is a scheduling question rather than a rate one. Measured against a known
+`kills_per_hour` does not say which style did the killing; and Hitpoints is **not** charged beside
+whatever else you train, because in the game it comes free with it - see `hitpoints_credit` and
+`slayer_credit` below. Measured against a known
 figure it did not see: Magic came out at 200,228/hr barraging, where the community quotes 200-250k.
 
 **Woodcutting is priced off its own training page, and the other three gathering skills are not -
@@ -982,6 +982,34 @@ Things worth knowing before changing it:
   path deliberately, so it is the one to test against. Neither is a dependency — `dependencies` is
   still empty, and a machine with only Firefox takes the second path. A running job holds the server
   open either way.
+
+**A Slayer climb pays for the combat climbs beside it, and not charging for that was the largest
+remaining double count.** Slayer experience is the monster's hitpoints, so a Slayer rate in XP per
+hour **is** a damage rate - no separate model needed, which is what makes this a credit rather than a
+guess. On `verf-sim/run-001` that is 394 hours of Slayer dealing 8.6M damage, against a Hitpoints
+climb needing 8.7M, a Defence climb needing 12.8M and an Attack climb needing 0.3M, all three of
+which were being priced in full beside the hours that had already earned them. Skilling went
+**1,263.3h to 951.0h**; Defence and Attack now cost nothing and Hitpoints 235.3h -> 40.8h.
+
+`combat_xp.slayer_credit` owns the arithmetic, and it is two sharing rules because the game has two:
+
+- **Hitpoints is free alongside** - every point of damage pays it 1.33 whatever style dealt the
+  damage - so it never competes and is credited up to what the climb still needs.
+- **The attacking skills compete**, because a kill is dealt in one style. So it is the *damage* that
+  is shared out and each skill converts its share at its own rate, which is how Magic's 2 per damage
+  stays honest instead of being averaged with melee's 4. Sharing the experience instead would pay for
+  two climbs with one fight.
+
+Allocated **smallest remaining need first**: deterministic, so `--jobs` cannot move a total, and it
+matches the plan's `w_s = 1 while below goal` - finishing the cheap goals first is what maximises how
+many a fixed quantity of damage closes. Every allocation respecting the caps is realisable by a
+player switching styles as each goal lands, so this is a choice among correct answers rather than an
+approximation of one. It runs **before** `hitpoints_credit`, so that pass sees the hours actually
+left rather than crediting the same damage twice.
+
+**There is no oracle for any of this** - nothing upstream records what a shared climb ought to cost -
+so `tests/test_combat_xp.py` pins invariants instead of numbers: never more than the need, never more
+damage spent than dealt, monotonic in the damage, and identical under 50 shuffles of the goal order.
 
 **Caching the `EstimateResult` is the obvious move and the wrong one.** Measured on the real map,
 `estimate` over a `Derived` is **3.1ms** and `dps_bridge.enrich` is **662ms** — so caching the answer
