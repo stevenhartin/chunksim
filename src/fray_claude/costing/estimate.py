@@ -500,6 +500,11 @@ class _Walk:
     #: Monster -> the slayer task you must be on to fight it, where one is
     #: required. Derived from `taskUnlocks`; see `task_gated_monsters`.
     task_gates: dict[str, str] = field(default_factory=dict)
+    #: `codeItems.itemsPlus`: `Air rune[+]` -> the four runes that satisfy it.
+    #: **Upstream's "or anything equivalent" marker**, and the item walk never
+    #: read it - so a task wanting `Air rune[+]` found no item by that name and
+    #: went unpriced, while `Air rune` itself priced in 2.4 seconds.
+    item_families: dict[str, list[str]] = field(default_factory=dict)
     #: The shared superior drop table: item -> its share of one roll.
     superior_table: dict[str, float] = field(default_factory=dict)
     #: `master -> superior-table rolls per hour` while serving that master.
@@ -622,6 +627,29 @@ def _item_hours(
     item = walk.resolve(item)
     if item in seen or depth > _MAX_DEPTH:
         return None
+
+    # **`[+]` means "or anything equivalent", so take the cheapest.** The
+    # family is upstream's own list; picking the best of it is the same
+    # reading `_required_kills` already takes for `monstersPlus`, which stops
+    # at the first *reachable* member. Done before `resolve`, since the family
+    # key is not an item name and will not resolve to one.
+    members = walk.item_families.get(item)
+    if members:
+        cheapest: _Priced | None = None
+        for member in members:
+            if not isinstance(member, str) or member in seen:
+                continue
+            priced = _item_hours(
+                walk,
+                member,
+                quantity=quantity,
+                amortise=amortise,
+                depth=depth + 1,
+                seen=seen | {item},
+            )
+            if priced is not None and (cheapest is None or priced.hours < cheapest.hours):
+                cheapest = priced
+        return cheapest
 
     # **Currency is earned, not fetched.** `Coins` and `Tokkul` are ordinary
     # items to the export - both have ground spawns - so the walk found one
@@ -1124,6 +1152,11 @@ def _setup(
             state.chunk_info, world, frozenset(expanded)
         ),
         masters=gate_masters,
+        item_families={
+            name: members
+            for name, members in _mapping(state.chunk_info.code_items, "itemsPlus").items()
+            if isinstance(members, list)
+        },
         superior_table=superior_table_items(state.chunk_info),
         superior_rolls={
             rate.master: superior_rolls_per_hour(rate, state.chunk_info, heuristics)

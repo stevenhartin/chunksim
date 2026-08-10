@@ -1468,3 +1468,41 @@ def test_a_known_action_time_beats_the_default() -> None:
     priced = _item_hours(walk, "Logs", quantity=10.0)
 
     assert priced is not None and priced.hours == pytest.approx(120 / 3600)
+
+
+def test_an_or_equivalent_item_is_priced_by_its_cheapest_member() -> None:
+    """**`[+]` means "or anything equivalent" and the item walk never read
+    it.** A task wanting `Air rune[+]` found no item by that name and went
+    unpriced, while `Air rune` itself priced in 2.4 seconds. 16 of the 75
+    unpriced items on the benchmark map were this."""
+    info = ChunkInfo(
+        {
+            "codeItems": {
+                "itemsPlus": {"Air rune[+]": ["Air rune", "Dust rune", "Mist rune"]}
+            },
+            "chunks": {"1": {"Spawn": {"Air rune": 1, "Dust rune": 6}}},
+            "challenges": {"Extra": {"Obtain an ~|air rune|~": {"Items": ["Air rune[+]"]}}},
+        }
+    )
+    walk = _walk_for(info)
+    object.__setattr__(
+        walk,
+        "item_families",
+        {"Air rune[+]": ["Air rune", "Dust rune", "Mist rune"]},
+    )
+
+    family = _item_hours(walk, "Air rune[+]", quantity=6.0)
+    dust = _item_hours(walk, "Dust rune", quantity=6.0)
+
+    assert family is not None and dust is not None
+    # Six dust runes a hop against one air rune, so the family takes the dust.
+    assert family.hours == pytest.approx(dust.hours)
+
+
+def test_a_family_whose_members_are_all_unreachable_stays_unpriced() -> None:
+    """Refused, not guessed - the same rule every other route follows."""
+    info = ChunkInfo({"codeItems": {"itemsPlus": {"Nothing[+]": ["Nowhere"]}}, "chunks": {}})
+    walk = _walk_for(info)
+    object.__setattr__(walk, "item_families", {"Nothing[+]": ["Nowhere"]})
+
+    assert _item_hours(walk, "Nothing[+]") is None

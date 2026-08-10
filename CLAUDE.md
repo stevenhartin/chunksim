@@ -428,6 +428,18 @@ Ardougne **at the level the method opens**, which is the conservative end of a r
 success chance). Joined 44 of 112 Agility methods and 39 of 117 Thieving ones - the misses are
 minigames and access-only rows nothing publishes a rate for.
 
+**`[+]` means "or anything equivalent", and the item walk was the one place that did not know.**
+`codeItems.itemsPlus` maps `Air rune[+]` to the four runes that satisfy it, and `_required_kills`
+has always expanded the monster equivalent - but `_item_hours` looked the name up literally, found no
+item called `Air rune[+]`, and reported it unpriced while `Air rune` itself priced in 2.4 seconds.
+That was **16 of the 75 unpriced items** on the benchmark map. The family is expanded before
+`resolve` (the key is not an item name and will not resolve to one) and the **cheapest** member wins,
+which is the same reading `_required_kills` takes when it stops at the first reachable one.
+
+What is left unpriced after that is honest: Graceful and the Carpenter's outfit are bought with marks
+of grace and Mahogany Homes points, currencies `Heuristics.currency_per_hour` deliberately refuses
+rather than inventing a rate for.
+
 **Nothing the estimator reaches is free any more, and that was the largest remaining error.**
 `_route_hours` used to price a shop or a ground spawn at zero seconds on the grounds that both are
 instant. Both are - the transaction is; the *money* and the *respawn* are not - and it stayed harmless
