@@ -16,7 +16,7 @@ import pytest
 
 from fray_claude.gui import allowed_hosts, browser
 from fray_claude.gui.jobs import JobRegistry
-from fray_claude.gui.server import Context, idle_seconds, should_stop, touch
+from fray_claude.gui.http import Context, idle_seconds, should_stop, touch
 
 
 def test_the_search_prefers_what_is_most_likely_installed() -> None:

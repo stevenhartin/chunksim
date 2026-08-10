@@ -62,15 +62,14 @@ from fray_claude.remote.api import DEFAULT_TIMEOUT
 from fray_claude.store.build_info import print_watermark
 from fray_claude.gui.browser import open_app_window
 from fray_claude.gui.jobs import JobState
+from fray_claude.gui.http import Context, should_stop
 from fray_claude.gui.server import (
     DEFAULT_HOST,
     DEFAULT_PORT,
     LOOPBACK_HOSTS,
     WILDCARD_HOSTS,
-    Context,
     MapServer,
     normalise_host,
-    should_stop,
 )
 from fray_claude.gui.worldmap import MapView, build_view
 

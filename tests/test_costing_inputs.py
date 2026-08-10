@@ -21,7 +21,8 @@ import pytest
 from fray_claude.costing import inputs
 from fray_claude.costing import dps_bridge
 from fray_claude.cli import main
-from fray_claude.gui.server import Context, handle_request
+from fray_claude.gui.http import Context
+from fray_claude.gui.server import handle_request
 
 LUMBRIDGE = "12850"
 

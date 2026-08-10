@@ -28,7 +28,7 @@ from pathlib import Path
 from fray_claude.store import cache
 
 def _app_js() -> str:
-    from fray_claude.gui.server import RESOURCE_DIR
+    from fray_claude.gui.http import RESOURCE_DIR
 
     return (RESOURCE_DIR / "app.js").read_text(encoding="utf-8")
 
@@ -205,7 +205,7 @@ def test_the_page_loads_tiles_from_the_wiki_and_not_from_here() -> None:
 
 def test_the_tile_attribution_is_on_screen() -> None:
     """CC BY-NC-SA asks for credit, and a credit behind a menu is not one."""
-    from fray_claude.gui.server import RESOURCE_DIR
+    from fray_claude.gui.http import RESOURCE_DIR
 
     html = (RESOURCE_DIR / "index.html").read_text(encoding="utf-8")
     assert 'id="attribution"' in html
@@ -219,14 +219,14 @@ def test_the_whole_chunk_section_sentinel_agrees_across_the_two_languages() -> N
     `<chunk>-*.png`, which `cache.section_overlay_path` rejects - so the
     failure is a shading hole plus a 400 per square, in a mode nothing tests.
     """
-    from fray_claude.gui.server import WHOLE_CHUNK_SECTION
+    from fray_claude.gui.routes_derived import WHOLE_CHUNK_SECTION
 
     match = re.search(r'const WHOLE_CHUNK = "([^"]+)";', _app_js())
     assert match is not None
     assert match.group(1) == WHOLE_CHUNK_SECTION
 
 def _resources() -> tuple[str, str, str]:
-    from fray_claude.gui.server import RESOURCE_DIR
+    from fray_claude.gui.http import RESOURCE_DIR
 
     return (
         (RESOURCE_DIR / "index.html").read_text(encoding="utf-8"),

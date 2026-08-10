@@ -252,7 +252,7 @@ def test_a_pinned_tile_version_skips_the_network(
     """
     monkeypatch.setenv("FRAY_TILE_VERSION", "2020-01-01_z")
     monkeypatch.setattr(
-        "fray_claude.gui.server.fetch_map_tile_version",
+        "fray_claude.gui.routes_reference.fetch_map_tile_version",
         lambda *a, **k: pytest.fail("a pinned version still scraped the wiki"),
     )
 
@@ -282,7 +282,7 @@ def test_a_failed_scrape_falls_back_to_the_last_known_version(
     def explode(*args: Any, **kwargs: Any) -> str:
         raise FetchError("the wiki is down")
 
-    monkeypatch.setattr("fray_claude.gui.server.fetch_map_tile_version", explode)
+    monkeypatch.setattr("fray_claude.gui.routes_reference.fetch_map_tile_version", explode)
 
     payload = _body(_get("/api/tiles", Context(root=tmp_path)))
 
@@ -304,7 +304,7 @@ def test_no_version_anywhere_is_reported_rather_than_guessed(
     def explode(*args: Any, **kwargs: Any) -> str:
         raise FetchError("the wiki is down")
 
-    monkeypatch.setattr("fray_claude.gui.server.fetch_map_tile_version", explode)
+    monkeypatch.setattr("fray_claude.gui.routes_reference.fetch_map_tile_version", explode)
 
     payload = _body(_get("/api/tiles", Context(root=tmp_path)))
 
@@ -343,7 +343,7 @@ def test_a_simulate_post_returns_a_job_that_finishes(
 ) -> None:
     """The whole point of the job shape: a POST answers before the work does."""
     monkeypatch.setattr(
-        "fray_claude.gui.server.run_batch",
+        "fray_claude.gui.actions.run_batch",
         lambda **kw: _FakeBatch(kw["name"], kw["runs"], kw["on_complete"]),
     )
     ctx = Context(root=tmp_path, check_origin=False)
@@ -364,7 +364,7 @@ def test_a_failing_job_reports_its_reason_without_a_traceback(
     def explode(**kw: Any) -> None:
         raise RuntimeError("the pool caught fire")
 
-    monkeypatch.setattr("fray_claude.gui.server.run_batch", explode)
+    monkeypatch.setattr("fray_claude.gui.actions.run_batch", explode)
     ctx = Context(root=tmp_path, check_origin=False)
     _write_map(tmp_path, "fray", [LUMBRIDGE])
 
@@ -432,7 +432,7 @@ def test_a_rebound_host_is_refused(ctx: Context) -> None:
 
 def test_a_same_origin_post_is_allowed(ctx: Context, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "fray_claude.gui.server.fetch_map",
+        "fray_claude.gui.actions.fetch_map",
         lambda map_id, timeout=30.0: {"chunks": {"unlocked": {LUMBRIDGE: LUMBRIDGE}}},
     )
     response = _post(
@@ -452,7 +452,7 @@ def test_a_post_from_an_allowed_host_is_accepted(
     403ing, which reads as a broken GUI rather than as a refusal.
     """
     monkeypatch.setattr(
-        "fray_claude.gui.server.fetch_map",
+        "fray_claude.gui.actions.fetch_map",
         lambda map_id, timeout=30.0: {"chunks": {"unlocked": {LUMBRIDGE: LUMBRIDGE}}},
     )
     remote = Context(root=ctx.root, allowed_hosts=frozenset({"100.93.219.108"}))
@@ -542,7 +542,7 @@ def test_the_canvas_is_given_an_explicit_size() -> None:
     whole thing unusable, and looking like a rendering bug rather than a
     layout one.
     """
-    from fray_claude.gui.server import RESOURCE_DIR
+    from fray_claude.gui.http import RESOURCE_DIR
 
     css = (RESOURCE_DIR / "style.css").read_text(encoding="utf-8")
     canvas_rule = re.search(r"#canvas\s*\{(.*?)\}", css, re.DOTALL)
@@ -689,7 +689,7 @@ def test_every_placed_chunk_gets_a_section_state(
     Locked chunks are in, all-red, since "what is behind this square" is
     asked hardest about one you have not got.
     """
-    from fray_claude.gui.server import WHOLE_CHUNK_SECTION
+    from fray_claude.gui.routes_derived import WHOLE_CHUNK_SECTION
 
     _write_map(tmp_path, "fray", [LUMBRIDGE])
     ctx = _derived_ctx(
@@ -977,7 +977,7 @@ def test_a_fetch_can_name_any_map_and_blank_means_the_default(
         seen.append(map_id)
         return {"chunks": {"unlocked": {LUMBRIDGE: LUMBRIDGE}}}
 
-    monkeypatch.setattr("fray_claude.gui.server.fetch_map", pretend)
+    monkeypatch.setattr("fray_claude.gui.actions.fetch_map", pretend)
     ctx = Context(root=tmp_path, check_origin=False)
 
     named = _wait(ctx, _body(_post("/api/fetch", ctx, {"map": "someone-else"}))["job"])
@@ -1163,7 +1163,7 @@ def test_stored_hours_are_served_and_a_moved_world_discards_them(
     """
     ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
     map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
-    from fray_claude.gui.server import _timeline_stamp
+    from fray_claude.gui.routes_view import _timeline_stamp
 
     stamp = _timeline_stamp(ctx, enriched=False)
     cache.write_timeline(map_id, {"stamp": stamp, "added": [0.0, 2.5], "totals": [10.0, 12.5]}, tmp_path)
@@ -1197,14 +1197,14 @@ def test_cheap_hours_are_not_stale_merely_because_dps_is_installed(
     """
     ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
     map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
-    from fray_claude.gui.server import _timeline_stamp
+    from fray_claude.gui.routes_view import _timeline_stamp
 
     cache.write_timeline(
         map_id,
         {"stamp": _timeline_stamp(ctx, enriched=False), "added": [0.0, 2.5], "totals": [10.0, 12.5]},
         tmp_path,
     )
-    monkeypatch.setattr("fray_claude.gui.server.dps_bridge.DPS_AVAILABLE", True)
+    monkeypatch.setattr("fray_claude.gui.routes_view.dps_bridge.DPS_AVAILABLE", True)
 
     payload = _body(_get("/api/timeline", ctx, map=map_id))
 
@@ -1221,14 +1221,14 @@ def test_enriched_hours_leave_nothing_to_upgrade(
     rewrite the same numbers."""
     ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
     map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
-    from fray_claude.gui.server import _timeline_stamp
+    from fray_claude.gui.routes_view import _timeline_stamp
 
     cache.write_timeline(
         map_id,
         {"stamp": _timeline_stamp(ctx, enriched=True), "added": [0.0, 2.5], "totals": [10.0, 12.5]},
         tmp_path,
     )
-    monkeypatch.setattr("fray_claude.gui.server.dps_bridge.DPS_AVAILABLE", True)
+    monkeypatch.setattr("fray_claude.gui.routes_view.dps_bridge.DPS_AVAILABLE", True)
 
     payload = _body(_get("/api/timeline", ctx, map=map_id))
 
@@ -1242,14 +1242,14 @@ def test_without_the_extra_there_is_nothing_better_to_offer(
     without the extra it is false however the numbers were computed."""
     ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
     map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
-    from fray_claude.gui.server import _timeline_stamp
+    from fray_claude.gui.routes_view import _timeline_stamp
 
     cache.write_timeline(
         map_id,
         {"stamp": _timeline_stamp(ctx, enriched=False), "added": [0.0, 2.5], "totals": [10.0, 12.5]},
         tmp_path,
     )
-    monkeypatch.setattr("fray_claude.gui.server.dps_bridge.DPS_AVAILABLE", False)
+    monkeypatch.setattr("fray_claude.gui.routes_view.dps_bridge.DPS_AVAILABLE", False)
 
     payload = _body(_get("/api/timeline", ctx, map=map_id))
 
@@ -1263,7 +1263,7 @@ def test_a_totals_list_that_does_not_fit_the_run_is_ignored(
     Drawing the old numbers against the new chunks would be silently wrong."""
     ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
     map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
-    from fray_claude.gui.server import _timeline_stamp
+    from fray_claude.gui.routes_view import _timeline_stamp
 
     cache.write_timeline(
         map_id,
@@ -1297,7 +1297,7 @@ def test_the_timeline_job_reports_slices_for_the_bar(
         report(2, 2)
         return [0.0, 1.0], [1.0, 2.0]
 
-    monkeypatch.setattr("fray_claude.gui.server.price_steps", fake)
+    monkeypatch.setattr("fray_claude.gui.actions.price_steps", fake)
     monkeypatch.setattr(
         "fray_claude.gui.jobs.JobRegistry.submit",
         lambda self, action, work: _capture(self, action, work, seen),
@@ -1333,7 +1333,7 @@ def test_the_timeline_job_passes_jobs_through(
         asked.append(kw["jobs"])
         return [0.0, 1.0], [1.0, 2.0]
 
-    monkeypatch.setattr("fray_claude.gui.server.price_steps", fake)
+    monkeypatch.setattr("fray_claude.gui.actions.price_steps", fake)
 
     _wait(ctx, _body(_post("/api/timeline", ctx, {"map": map_id, "jobs": 4}))["job"])
     _wait(ctx, _body(_post("/api/timeline", ctx, {"map": map_id}))["job"])
@@ -1353,7 +1353,7 @@ def test_a_timeline_written_under_the_old_meaning_is_refused(
     """
     ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
     map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
-    from fray_claude.gui.server import _timeline_stamp
+    from fray_claude.gui.routes_view import _timeline_stamp
 
     cache.write_timeline(
         map_id, {"stamp": _timeline_stamp(ctx, enriched=False), "totals": [10.0, 12.5]}, tmp_path
@@ -1396,7 +1396,7 @@ def test_refreshing_the_rates_runs_the_same_scrape_the_cli_runs(
     from fray_claude.remote.scrape import ScrapeResult
 
     monkeypatch.setattr(
-        "fray_claude.gui.server.scrape",
+        "fray_claude.gui.actions.scrape",
         lambda info, timeout=0.0, progress=None: ScrapeResult(
             config={"quests": {"Cook's Assistant": 5}},
             coverage={"quests": (1, 1)},
@@ -1479,7 +1479,7 @@ def test_simulate_progress_counts_rolls_not_runs(
                 roll(run, order, "12850")
         return _FakeBatch(kw["name"], kw["runs"], kw["on_complete"])
 
-    monkeypatch.setattr("fray_claude.gui.server.run_batch", fake)
+    monkeypatch.setattr("fray_claude.gui.actions.run_batch", fake)
     monkeypatch.setattr(
         "fray_claude.gui.jobs.JobRegistry.submit",
         lambda self, action, work: _capture(self, action, work, seen),
