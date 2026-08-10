@@ -458,6 +458,10 @@ class _Walk:
     #: only usually a monster (`search.py`), and `Larran's big chest` is an
     #: Object, so a monsters-only gate refused its 34 drops outright.
     available: frozenset[str] = frozenset()
+    #: Items this map can actually get hold of - `SourceIndex.items`, which is
+    #: already gated on `taskUnlocks['Shops']`, the minigame rule and the
+    #: backlog. A shop or spawn route is only free if it is *here*.
+    reachable_items: frozenset[str] = frozenset()
     #: Monster -> the slayer task you must be on to fight it, where one is
     #: required. Derived from `taskUnlocks`; see `task_gated_monsters`.
     task_gates: dict[str, str] = field(default_factory=dict)
@@ -476,6 +480,10 @@ class _Walk:
     #: item itself (`Granite ring (i)`), so a case-sensitive lookup silently
     #: fails to price every task reached through its span.
     by_lower: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def reachable_lower(self) -> frozenset[str]:
+        return frozenset(name.lower() for name in self.reachable_items)
 
     def resolve(self, item: str) -> str:
         """The export's spelling of `item`, if it has one."""
@@ -608,6 +616,20 @@ def _route_hours(
     walk: _Walk, item: str, route: str, provider: str, depth: int, seen: frozenset[str]
 ) -> _Priced | None:
     if route in _FREE_ROUTES:
+        # **A shop is only free if you can walk into it.** `WorldIndex` spans
+        # the whole world, so without this any item stocked by any of the
+        # export's 435 shops - or lying on the ground anywhere - priced at zero
+        # and won the `min` outright. Every *kill* route was already hard-gated
+        # on reachability (`_kill_hours`: "availability is not negotiable"), so
+        # this was the one route that could reach off the map.
+        #
+        # It barely moved the item bucket - 4 of 207 items on the real map -
+        # but it is decisive for anything priced *per action*: eye of newt,
+        # grimy guam leaf and snapdragon are all stocked or spawned somewhere,
+        # so an ingredient walk without this gate concludes that every recipe's
+        # inputs are instant.
+        if item.lower() not in walk.reachable_lower:
+            return None
         return _Priced(0.0, f"{route}: {provider}", f"{route}:{provider}")
 
     if route.startswith("task:"):
@@ -892,6 +914,7 @@ def estimate(
         tables=_mapping(state.chunk_info.code_items, "dropTables"),
         by_lower={item.lower(): item for item in world.item_sources},
         available=providers,
+        reachable_items=frozenset(derived.source_index.items),
         task_gates=task_gated_monsters(
             state.chunk_info, world, frozenset(expanded)
         ),

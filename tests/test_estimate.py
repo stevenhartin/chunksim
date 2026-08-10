@@ -1236,3 +1236,42 @@ def test_a_skill_with_no_training_method_anywhere_is_refused_not_priced() -> Non
         ("Attack", 288_199, "no training method exists for this skill")
     ]
     assert result.buckets["skilling"] == 0.0
+
+
+def test_a_shop_is_only_free_if_this_map_can_reach_it() -> None:
+    """**`WorldIndex` spans the whole world, and a shop route did not check.**
+
+    Every *kill* route is hard-gated on reachability - "availability is not
+    negotiable" - but a shop or ground spawn priced at zero wherever it was, so
+    an item stocked by any of the export's 435 shops beat every other route
+    outright. It barely moved the item bucket, and it is decisive for anything
+    priced per action: eye of newt, grimy guam leaf and snapdragon are all
+    stocked or spawned *somewhere*, so an ingredient walk without this gate
+    concludes that every recipe's inputs are instant.
+    """
+    info = ChunkInfo(
+        {
+            "shopItems": {"A shop far away": {"Eye of newt": True}},
+            "challenges": {"Extra": {"Obtain an ~|eye of newt|~": {"Items": ["Eye of newt"]}}},
+        }
+    )
+    derived = _derived(
+        challenges=ChallengeResult(
+            valid={"Extra": {"Obtain an ~|eye of newt|~": True}}, unsupported=frozenset()
+        ),
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra",
+                    groups=(TaskGroup(name="Extra", active=("Obtain an ~|eye of newt|~",)),),
+                )
+            }
+        ),
+    )
+
+    result = _run(info, derived, Heuristics())
+
+    # The shop exists in the export but not on this map, so the item has no
+    # route at all - which is refused, not priced at zero.
+    assert result.buckets["activities"] == 0.0
+    assert "Eye of newt" in result.unpriced
