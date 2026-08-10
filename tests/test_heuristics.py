@@ -8,6 +8,7 @@ import pytest
 
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.costing.heuristics import (
+    DEFAULT_CURRENCY_PER_HOUR,
     PICKPOCKET_CYCLE_SECONDS,
     SHORTCUT_CYCLE_SECONDS,
     DEFAULT_KPH,
@@ -646,3 +647,20 @@ def test_the_vaguer_of_two_contained_claims_loses_the_guide() -> None:
 
     assert "Chop ~|camphor logs|~" in training
     assert "Chop ~|logs|~" not in training
+
+
+def test_every_priced_currency_is_a_stated_figure_someone_can_correct() -> None:
+    """**These are decisions, not measurements**, so they are pinned here: a
+    silent edit to one moves every item bought with it. Marks of grace are the
+    exception and come from the rooftop table, so only its floor is pinned.
+    """
+    assert DEFAULT_CURRENCY_PER_HOUR["Coins"] == 500_000.0
+    assert DEFAULT_CURRENCY_PER_HOUR["Tokkul"] == 25_000.0
+    assert DEFAULT_CURRENCY_PER_HOUR["Abyssal pearls"] == 40.0
+    assert DEFAULT_CURRENCY_PER_HOUR["Tithe"] == 80.0
+    assert DEFAULT_CURRENCY_PER_HOUR["Zeal Tokens"] == 200.0
+    assert DEFAULT_CURRENCY_PER_HOUR["Mahogany Homes Reward Shop:Points"] == 100.0
+    # **Unqualified `Points` must stay unrated.** 127 store lines use the name
+    # and they are not interchangeable; giving it a rate would hand Mage
+    # Training Arena and Pest Control gear Mahogany Homes' pace.
+    assert "Points" not in DEFAULT_CURRENCY_PER_HOUR

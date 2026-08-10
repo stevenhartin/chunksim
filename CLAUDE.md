@@ -436,7 +436,12 @@ That was **16 of the 75 unpriced items** on the benchmark map. The family is exp
 `resolve` (the key is not an item name and will not resolve to one) and the **cheapest** member wins,
 which is the same reading `_required_kills` takes when it stops at the first reachable one.
 
-**Two of those currencies now have rates, and they came from opposite places.** Marks of grace are
+**Six currencies have rates now**, and only one is measured: marks of grace, off the rooftop table.
+The rest are stated figures - 500,000 coins, 25,000 Tokkul, 200 zeal, 100 Mahogany Homes points, 80
+tithe, 40 abyssal pearls an hour - pinned by a test because a silent edit to one moves every item
+bought with it, and tunable under `currencies` in `heuristics/overrides.json`.
+
+**Two of those currencies came from opposite places.** Marks of grace are
 read off the rooftop table's own column - every course pays between 8 and 18 an hour, and that narrow
 spread is what makes one figure honest where a per-map one would be false precision. Mahogany Homes
 points are a stated 100 an hour, tunable like the rest.

@@ -643,6 +643,12 @@ DEFAULT_CURRENCY_PER_HOUR: dict[str, float] = {
     # column; this is the floor if that ever fails to parse. Every course pays
     # between 8 and 18 an hour, so one figure is honest here.
     "Mark of grace": 12.0,
+    # Minigame currencies, each earned at its own activity's pace: Guardians
+    # of the Rift pays pearls, the Tithe Farm points, Soul Wars zeal. Stated
+    # figures rather than measured ones, and tunable like the rest.
+    "Abyssal pearls": 40.0,
+    "Tithe": 80.0,
+    "Zeal Tokens": 200.0,
     # **`Points` is not one currency.** 127 store lines are priced in
     # something called Points and they are not interchangeable - Mahogany
     # Homes, Pest Control and the Barbarian Assault shops each mean their own.
