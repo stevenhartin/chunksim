@@ -50,7 +50,7 @@ def both_apps(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (tmp_path / "pyproject.toml").write_text("", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
-        "fray_claude.cli.app.fetch_map", lambda map_id, timeout=30.0: _PAYLOAD
+        "fray_claude.cli.io_commands.fetch_map", lambda map_id, timeout=30.0: _PAYLOAD
     )
     main(["fetch"])
     monkeypatch.setattr(

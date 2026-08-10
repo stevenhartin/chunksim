@@ -11,8 +11,10 @@ everywhere, so stripping it is a domain decision that belongs beside the
 challenges, not a formatting one.
 """
 
-from __future__ import annotations
 
+
+
+from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 

@@ -7,16 +7,15 @@ about disk rather than correctness, and why its default cut-off is generous.
 """
 
 from __future__ import annotations
-
-import argparse
-
-from fray_claude.model.summary import format_age
-from fray_claude.store.cache import list_derived, prune_derived
-
 #: `fray derived clean`'s default cut-off. Entries are keyed by content, so a
 #: stale one is never *wrong*, only unreachable - ageing them out is about disk,
 #: not correctness, hence a generous default.
 DEFAULT_DERIVED_MAX_AGE_DAYS = 14
+import argparse
+
+
+from fray_claude.model.summary import format_age
+from fray_claude.store.cache import list_derived, prune_derived
 
 
 def _cmd_derived_list(args: argparse.Namespace) -> int:
