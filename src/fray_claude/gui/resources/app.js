@@ -2991,7 +2991,7 @@ function tlBars(steps, key, current) {
 }
 
 function tlTip(row, key) {
-  const head = tmpl`<b>Roll ${row.step} · ${row.chunk}</b>`;
+  const head = tmpl`<b>Roll ${row.step} · ${chunkLabel(row.chunk)}</b>`;
   const skills = Object.entries(row.tasks_by_skill || {});
   const breakdown = skills.length
     ? skills.map(([skill, n]) => tmpl`<span class="sub">${skill}: ${n}</span>`).join("")
@@ -3090,6 +3090,38 @@ async function showRoll(step) {
  * Absent when the server could not price it - no export, no scraped rates, or
  * step 0, which is a baseline and not a roll. The overlay then reads exactly as
  * it did before this existed. */
+/* **Why a skill costs what it costs**, which is the question a four-figure
+ * number always provokes. Hours are `xp to the goal / xp per hour`, so the
+ * tooltip states both halves and then where the rate came from.
+ *
+ * The interesting case is the floor. `estimate._training_rate` picks the
+ * fastest method available at the player's *current* level and applies it to
+ * the whole climb; when nothing open at that level has a scraped rate the
+ * climb is priced at 1,000 xp/hr - which is how Herblore 1-99 reads 13,034
+ * hours on a map that knows eighteen real Herblore methods, the fastest at
+ * 315,000/hr from level 90. Naming them is the difference between a number you
+ * distrust and one you understand: the floor is deliberately conservative, and
+ * `heuristics/overrides.json` is where you disagree with it. */
+function skillTip(row) {
+  const num = (value) => Number(value || 0).toLocaleString();
+  const head = tmpl`<b>${row.skill} · ${hours(row.hours)}</b>`;
+  const climb = tmpl`<span class="sub">Level ${row.current_level} → ${row.target_level} · ${num(row.xp)} xp to earn</span>`;
+  const rate = row.defaulted
+    ? tmpl`<span class="sub">${num(row.xp_per_hour)} xp/hr — the default floor, because nothing trainable at level ${row.current_level} has a known rate</span>`
+    : tmpl`<span class="sub">${num(row.xp_per_hour)} xp/hr via ${row.method}</span>`;
+  const options = row.options || [];
+  if (!options.length) {
+    return head + climb + rate + tmpl`<span class="hint">No method on this map has a rate — set one in heuristics/overrides.json</span>`;
+  }
+  const known = options
+    .map((o) => tmpl`<span class="sub">${num(o.xp_per_hour)}/hr · level ${o.level ?? "?"} · ${o.method}</span>`)
+    .join("");
+  const more = row.options_total > options.length
+    ? tmpl`<span class="hint">${row.options_total} known in all — correct any in heuristics/overrides.json</span>`
+    : tmpl`<span class="hint">Correct any of these in heuristics/overrides.json</span>`;
+  return head + climb + rate + tmpl`<span class="sub">Known methods for this skill:</span>` + known + more;
+}
+
 function rollHours(priced) {
   if (!hours || !priced.total_hours) return "";
   const ordered = Object.entries(priced.buckets)
@@ -3131,7 +3163,7 @@ function rollHours(priced) {
   if (skills.length) {
     out += tmpl`<h3>Skilling <span class="num">${skills.length}</span></h3><ul class="list">`;
     out += withMore(skills, "roll:skills", 10, (row) =>
-      tmpl`<li><span class="name">${row.skill}</span><span class="num">${hours(row.hours)}</span></li>`);
+      tmpl`<li data-tip="${skillTip(row)}"><span class="name">${row.skill}</span><span class="num">${hours(row.hours)}</span></li>`);
     out += "</ul>";
   }
   return out;

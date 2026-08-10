@@ -19,6 +19,12 @@ export and no `derive`, which is what lets the slider redraw as you drag it.
 
 from __future__ import annotations
 
+from fray_claude.costing.estimate import (
+    EstimateResult,
+    TrainingOption,
+    training_options,
+)
+from fray_claude.costing.inputs import load_heuristics
 from fray_claude.derive.task_names import strip_task_markup
 from fray_claude.runs.batch import PriceSpec, price_detail
 from fray_claude.store.cache import CacheMissError
@@ -277,6 +283,7 @@ def roll_detail(map_id: str, index: int, ctx: Context) -> dict[str, Any] | None:
         return None
     if result is None:
         return None
+    options = _training_options_for(result, map_id, ctx)
     # **Two decimals, because `timeline.series` uses two.** The pie sits
     # directly under the bar it explains, so a total that renders as a
     # hundredth apart from it invites the reader to look for a reason there
@@ -301,9 +308,43 @@ def roll_detail(map_id: str, index: int, ctx: Context) -> dict[str, Any] | None:
              "detail": task.detail}
             for task in sorted(result.tasks, key=lambda t: -t.hours)
         ],
+        # **The whole skilling row, not just its hours.** "Herblore 13,034h" is
+        # a number you have to take on trust; the rate, the method it came from
+        # and the levels either side are the reasoning behind it, and `options`
+        # is what the estimator knew about and could not use.
         "skills": [
-            {"skill": skill.skill, "hours": round(skill.hours, 4)}
+            {
+                **skill.as_dict(),
+                "hours": round(skill.hours, 2),
+                "options": [o.as_dict() for o in options.get(skill.skill, ())[:6]],
+                "options_total": len(options.get(skill.skill, ())),
+            }
             for skill in sorted(result.skills, key=lambda s: -s.hours)
             if skill.hours > 0
         ],
+    }
+
+
+def _training_options_for(
+    result: EstimateResult, map_id: str, ctx: Context
+) -> dict[str, tuple[TrainingOption, ...]]:
+    """What else could have trained each skill this roll charged for.
+
+    Needs the derivation and the rates the estimate was made against, which is
+    a second load - so it is done once for the skills actually on screen, and
+    returns `{}` rather than failing when anything is missing. A tooltip is
+    worth a parse; it is not worth an error.
+    """
+    if not result.skills:
+        return {}
+    try:
+        state = ctx.derivations.load(map_id)
+        heuristics, _ = load_heuristics(state.state.chunk_info, ctx.root)
+    except (CacheMissError, OSError):
+        return {}
+    return {
+        skill.skill: training_options(
+            state.derived, state.state.chunk_info, heuristics, skill.skill
+        )
+        for skill in result.skills
     }
