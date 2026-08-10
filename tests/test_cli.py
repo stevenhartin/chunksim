@@ -15,7 +15,7 @@ import pytest
 
 from fray_claude.remote.api import DEFAULT_TIMEOUT, FetchError
 from fray_claude.store.cache import write_blob
-from fray_claude.cli import build_parser, main
+from fray_claude.cli.app import build_parser, main
 from fray_claude.model.summary import format_age
 
 
@@ -42,7 +42,7 @@ def test_fetch_writes_the_cache(project: Path, monkeypatch: pytest.MonkeyPatch) 
     def fake_fetch_map(map_id: str, timeout: float = DEFAULT_TIMEOUT) -> dict[str, Any]:
         return {"chunks": {"unlocked": {"50_50": True}}}
 
-    monkeypatch.setattr("fray_claude.cli.fetch_map", fake_fetch_map)
+    monkeypatch.setattr("fray_claude.cli.app.fetch_map", fake_fetch_map)
 
     assert main(["fetch"]) == 0
     assert (project / "cache" / "maps" / "fetched" / "fray.json").is_file()
@@ -58,7 +58,7 @@ def test_every_command_stamps_which_install_answered(
     """
     monkeypatch.delenv("FRAY_NO_WATERMARK", raising=False)
     monkeypatch.setattr(
-        "fray_claude.cli.fetch_map",
+        "fray_claude.cli.app.fetch_map",
         lambda map_id, timeout=DEFAULT_TIMEOUT: {"chunks": {"unlocked": {"50_50": True}}},
     )
 
@@ -75,7 +75,7 @@ def test_the_stamp_stays_off_the_stream_the_answer_goes_to(
     """`fray maps list --export-json -` has to stay pipeable into `jq`."""
     monkeypatch.delenv("FRAY_NO_WATERMARK", raising=False)
     monkeypatch.setattr(
-        "fray_claude.cli.fetch_map",
+        "fray_claude.cli.app.fetch_map",
         lambda map_id, timeout=DEFAULT_TIMEOUT: {"chunks": {"unlocked": {"50_50": True}}},
     )
     main(["fetch"])
@@ -94,7 +94,7 @@ def test_show_summarises_the_cached_map(
         "rules": {"All Shops": True, "Boosting": False},
     }
     monkeypatch.setattr(
-        "fray_claude.cli.fetch_map", lambda map_id, timeout=DEFAULT_TIMEOUT: payload
+        "fray_claude.cli.app.fetch_map", lambda map_id, timeout=DEFAULT_TIMEOUT: payload
     )
     main(["fetch"])
     capsys.readouterr()
@@ -116,7 +116,7 @@ def test_show_reports_whether_the_dps_calculator_is_installed(
     about to get, so the line is there whichever way it falls.
     """
     monkeypatch.setattr(
-        "fray_claude.cli.fetch_map",
+        "fray_claude.cli.app.fetch_map",
         lambda map_id, timeout=DEFAULT_TIMEOUT: {"chunks": {"unlocked": {"50_50": True}}},
     )
     main(["fetch"])
@@ -144,7 +144,7 @@ def test_fetch_failure_exits_one(
     def fake_fetch_map(map_id: str, timeout: float = DEFAULT_TIMEOUT) -> dict[str, Any]:
         raise FetchError(f"no such map: {map_id!r}")
 
-    monkeypatch.setattr("fray_claude.cli.fetch_map", fake_fetch_map)
+    monkeypatch.setattr("fray_claude.cli.app.fetch_map", fake_fetch_map)
 
     assert main(["fetch", "--map", "nope"]) == 1
     # `endswith` rather than `==`: the provenance line shares this stream.
@@ -180,10 +180,10 @@ def test_chunkinfo_fetches_and_caches_both_blobs(
     project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "fray_claude.cli.fetch_chunkinfo", lambda timeout=DEFAULT_TIMEOUT: {"chunks": {}}
+        "fray_claude.cli.app.fetch_chunkinfo", lambda timeout=DEFAULT_TIMEOUT: {"chunks": {}}
     )
     monkeypatch.setattr(
-        "fray_claude.cli.fetch_tasks_map",
+        "fray_claude.cli.app.fetch_tasks_map",
         lambda timeout=DEFAULT_TIMEOUT: {"Obtain a whip": "t_1"},
     )
 
@@ -196,11 +196,11 @@ def _cache_map_and_chunkinfo(
     monkeypatch: pytest.MonkeyPatch, payload: dict[str, Any], chunkinfo_data: dict[str, Any]
 ) -> None:
     monkeypatch.setattr(
-        "fray_claude.cli.fetch_map", lambda map_id, timeout=DEFAULT_TIMEOUT: payload
+        "fray_claude.cli.app.fetch_map", lambda map_id, timeout=DEFAULT_TIMEOUT: payload
     )
     main(["fetch"])
     monkeypatch.setattr(
-        "fray_claude.cli.read_chunkinfo",
+        "fray_claude.cli.app.read_chunkinfo",
         lambda override=None, root=None: chunkinfo_data,
     )
 
@@ -542,12 +542,12 @@ def _cache_two_maps(
 ) -> None:
     payloads = {"a": first, "b": second}
     monkeypatch.setattr(
-        "fray_claude.cli.fetch_map", lambda map_id, timeout=DEFAULT_TIMEOUT: payloads[map_id]
+        "fray_claude.cli.app.fetch_map", lambda map_id, timeout=DEFAULT_TIMEOUT: payloads[map_id]
     )
     main(["fetch", "--map", "a"])
     main(["fetch", "--map", "b"])
     monkeypatch.setattr(
-        "fray_claude.cli.read_chunkinfo",
+        "fray_claude.cli.app.read_chunkinfo",
         lambda override=None, root=None: chunkinfo_data,
     )
 
@@ -1318,7 +1318,7 @@ def _cache_map_and_chunkinfo_blob(
     """
     monkeypatch.delenv("FRAY_CHUNKINFO", raising=False)
     monkeypatch.setattr(
-        "fray_claude.cli.fetch_map", lambda map_id, timeout=DEFAULT_TIMEOUT: payload
+        "fray_claude.cli.app.fetch_map", lambda map_id, timeout=DEFAULT_TIMEOUT: payload
     )
     main(["fetch"])
     write_blob("chunkinfo", chunkinfo_data, "test")
@@ -1554,7 +1554,7 @@ def test_a_changed_map_is_not_served_the_old_derivation(
     capsys.readouterr()
 
     monkeypatch.setattr(
-        "fray_claude.cli.fetch_map",
+        "fray_claude.cli.app.fetch_map",
         lambda map_id, timeout=DEFAULT_TIMEOUT: {
             "chunks": {"unlocked": {"100": "100", "101": "101"}}
         },
