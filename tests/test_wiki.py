@@ -8,9 +8,12 @@ serves, and each one breaks a naive parse in a different way.
 
 from __future__ import annotations
 
+import pytest
+
 from fray_claude.remote.wiki import (
     mmg_rates,
     monster_slayer_xp,
+    parse_amount,
     parse_number,
     quest_difficulty,
     quest_length,
@@ -275,3 +278,58 @@ def test_a_row_linking_the_monster_directly_still_parses() -> None:
 def test_the_plural_outside_the_link_is_kept() -> None:
     # The export keys on the plural, so the trailing `s` is part of the name.
     assert slayer_assignments(_PLAIN_ASSIGNMENTS)[0].task == "Abyssal demons"
+
+
+def test_a_leading_dot_decimal_is_not_a_whole_number() -> None:
+    """**A ten-thousand-fold error, and it reached an estimate.**
+    `Experience1num = .5273*20 + .4727*30` matched `5273` against a pattern
+    demanding a leading digit, and Fishing came out at 2,604,862 xp/hr."""
+    assert parse_number(".5273") == pytest.approx(0.5273)
+    assert parse_number(".47") == pytest.approx(0.47)
+    assert parse_number("-.5") == pytest.approx(-0.5)
+
+
+def test_an_experience_field_can_be_arithmetic() -> None:
+    """`Catching sardines & herring` is 53% of catches at 20 xp and 47% at 30,
+    written as a sum. Reading the first number gets 0.5273 of a catch."""
+    assert parse_amount(".5273*20 + .4727*30") == pytest.approx(24.727)
+    assert parse_amount("2*3+4") == pytest.approx(10.0)
+    assert parse_amount("143.5") == pytest.approx(143.5)
+
+
+def test_prose_around_a_number_still_falls_back_to_the_first_figure() -> None:
+    """Only a value that is *entirely* arithmetic is evaluated; anything with
+    a letter in it is prose and keeps the old, tolerant reading."""
+    assert parse_amount("27 (30 with cape)") == pytest.approx(27.0)
+    assert parse_amount("{{#switch:x|a=66*10.5}}") == pytest.approx(66.0)
+    assert parse_amount("no numbers here") is None
+
+
+def test_an_expression_is_evaluated_without_eval() -> None:
+    """Reference data from a wiki anyone can edit. A name, a call or an
+    attribute is refused rather than executed."""
+    assert parse_amount("__import__('os')") is None
+    # Entirely arithmetic but unevaluable: refused, not silently read as 1.
+    assert parse_amount("1/0") is None
+
+
+def test_experience_already_per_hour_is_not_multiplied_again() -> None:
+    """`Subduing Tempoross` states 62,000 Fishing xp an hour and 60 permits an
+    hour. Multiplying the two gave 3,720,000."""
+    rates = mmg_rates(
+        "{{Mmgtable|Activity=Subduing Tempoross|kph=60|kph name=Permits per hour"
+        "|Experience1=Fishing|Experience1num=62000|Experience1isph=y}}"
+    )
+
+    assert rates is not None
+    assert rates.experience["Fishing"] == pytest.approx(62_000)
+    assert "Fishing" in rates.per_hour
+
+
+def test_experience_per_kill_is_the_default() -> None:
+    rates = mmg_rates(
+        "{{Mmgtable|Activity=Cutting camphor logs|kph=575"
+        "|Experience1=Woodcutting|Experience1num=143.5}}"
+    )
+
+    assert rates is not None and rates.per_hour == frozenset()

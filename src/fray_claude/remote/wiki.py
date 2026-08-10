@@ -46,6 +46,7 @@ go per master.
 
 from __future__ import annotations
 
+import ast
 import re
 from dataclasses import dataclass, field
 
@@ -75,7 +76,12 @@ _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
 #: The first number in a value, commas allowed (`1,200`), decimals kept
 #: (`422.8`). Anchored nowhere, so it survives trailing markup.
-_NUMBER_RE = re.compile(r"-?\d[\d,]*(?:\.\d+)?")
+#: A number as the wiki writes one. **The leading dot is not optional to
+#: support**: `Experience1num = .5273*20 + .4727*30` is real, and a pattern
+#: demanding a leading digit matched `5273` there - ten thousand times the
+#: intended 0.5273, which reached the estimate as a Fishing rate of
+#: 2,604,862 xp/hr.
+_NUMBER_RE = re.compile(r"-?(?:\d[\d,]*(?:\.\d+)?|\.\d+)")
 
 #: `[[Slayer task/Aberrant spectres|Aberrant Spectres]]` -> the target, which
 #: is the canonical task name; the display half is inconsistently capitalised.
@@ -119,6 +125,12 @@ class MmgRates:
     #: The `kph name` override as written, or `""` when the guide leaves the
     #: column with its default name of `Kills per hour`.
     kph_name: str = ""
+    #: Skills whose `Experience{N}num` is **already per hour**, flagged by the
+    #: template's `Experience{N}isph`. Ten guide-skill pairs across the 1,111
+    #: guides, and one of them mattered a great deal: Subduing Tempoross
+    #: states 62,000 Fishing xp per hour, which multiplied by its 60 permits
+    #: an hour came out as 3,720,000.
+    per_hour: frozenset[str] = frozenset()
 
     @property
     def counts_kills(self) -> bool:
@@ -177,6 +189,67 @@ def parse_number(raw: str) -> float | None:
         return float(match.group(0).replace(",", ""))
     except ValueError:  # pragma: no cover - the regex cannot produce this
         return None
+
+
+#: The characters a value may hold and still be arithmetic rather than prose.
+_EXPRESSION_OK = set("0123456789.+-*/() \t")
+
+#: How the template spells "yes" in its boolean flags.
+_TRUE = {"y", "yes", "true", "1"}
+
+#: The AST nodes `parse_amount` will evaluate. Anything else - a name, a call,
+#: an attribute - is prose that happens to contain digits, and is refused.
+_EXPRESSION_OPS = (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.USub, ast.UAdd)
+
+
+def _evaluate(node: ast.AST) -> float | None:
+    """Evaluate a checked arithmetic node, or `None` if it is not one."""
+    if isinstance(node, ast.Expression):
+        return _evaluate(node.body)
+    if isinstance(node, ast.Constant):
+        return float(node.value) if isinstance(node.value, (int, float)) else None
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, _EXPRESSION_OPS):
+        value = _evaluate(node.operand)
+        return None if value is None else (-value if isinstance(node.op, ast.USub) else value)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, _EXPRESSION_OPS):
+        left, right = _evaluate(node.left), _evaluate(node.right)
+        if left is None or right is None:
+            return None
+        if isinstance(node.op, ast.Add):
+            return left + right
+        if isinstance(node.op, ast.Sub):
+            return left - right
+        if isinstance(node.op, ast.Mult):
+            return left * right
+        return left / right if right else None
+    return None
+
+
+def parse_amount(raw: str) -> float | None:
+    """A wiki numeric field, which is sometimes a sum rather than a number.
+
+    **`Experience1num` is written as arithmetic when a method yields a mix.**
+    `Catching sardines & herring` gives `.5273*20 + .4727*30` - 53% of catches
+    at 20 xp and 47% at 30, so 24.7 xp a catch. Reading the first number out
+    of that gets 0.5273 at best and, before `_NUMBER_RE` learned about leading
+    dots, 5273.
+
+    Evaluated through `ast` with the node types checked rather than with
+    `eval`, and only when the whole value is arithmetic: anything carrying a
+    letter is prose and falls back to `parse_number`, which takes the first
+    figure as before.
+    """
+    stripped = strip_links(raw).strip()
+    if stripped and set(stripped) <= _EXPRESSION_OK:
+        # **A value that is entirely arithmetic is only ever arithmetic**, so
+        # a failure here is refused rather than fed to `parse_number`. That
+        # fallback would read `1/0` as 1 - a wrong number where the honest
+        # answer is that the guide does not say.
+        try:
+            return _evaluate(ast.parse(stripped, mode="eval"))
+        except (SyntaxError, ValueError, ZeroDivisionError):
+            return None
+    return parse_number(stripped)
 
 
 def _template_body(text: str, template: str) -> str | None:
@@ -303,22 +376,26 @@ def mmg_rates(text: str) -> MmgRates | None:
         return None
 
     experience: dict[str, float] = {}
+    per_hour: set[str] = set()
     for index in range(1, 9):
         skill = params.get(f"experience{index}", "").strip()
-        amount = parse_number(params.get(f"experience{index}num", ""))
+        amount = parse_amount(params.get(f"experience{index}num", ""))
         if skill and amount is not None:
             experience[skill] = amount
+            if params.get(f"experience{index}isph", "").strip().lower() in _TRUE:
+                per_hour.add(skill)
 
     return MmgRates(
         # The one value returned cooked rather than raw: `Activity` reads
         # `Killing [[General Graardor]]`, and it exists to be joined against
         # a monster or activity name, so the link markup is never wanted.
         activity=strip_links(params.get("activity", "")).strip(),
-        kph=parse_number(params.get("kph", "")),
+        kph=parse_amount(params.get("kph", "")),
         experience=experience,
         # Note the space: the parameter is `kph name`, not `kphname`, and
         # `template_params` lowercases but does not otherwise normalise keys.
         kph_name=params.get("kph name", ""),
+        per_hour=frozenset(per_hour),
     )
 
 

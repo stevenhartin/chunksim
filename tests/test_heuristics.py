@@ -612,3 +612,37 @@ def test_a_guide_that_names_the_method_exactly_keeps_it() -> None:
     assert entry["value"] == 34_380.0
     assert entry["match"] == "exact"
 
+
+
+def test_the_vaguer_of_two_contained_claims_loses_the_guide() -> None:
+    """**A level-1 method inherited a level-66 rate.** `Chop ~|logs|~` is
+    contained in "Cutting camphor logs" exactly as `Chop ~|camphor logs|~` is,
+    and nothing named that guide exactly - so the existing exact rule never
+    fired and the generic claim kept an 82,512/hr rate from level 1 upwards,
+    which the band walk then applied to the whole climb.
+    """
+    info = ChunkInfo(
+        {
+            "challenges": {
+                "Woodcutting": {
+                    "Chop ~|logs|~": {"Primary": True, "Level": 1},
+                    "Chop ~|camphor logs|~": {"Primary": True, "Level": 66},
+                }
+            }
+        }
+    )
+    guides = {
+        "Cutting camphor logs": MmgRates(
+            activity="Cutting camphor logs",
+            experience={"Woodcutting": 143.5},
+            kph=575.0,
+            kph_name="Logs cut per hour",
+        )
+    }
+
+    training = build_config(
+        info, quest_pages={}, mmg_pages=guides, assignments={}, mob_data={}
+    )["training"]
+
+    assert "Chop ~|camphor logs|~" in training
+    assert "Chop ~|logs|~" not in training

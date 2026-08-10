@@ -427,6 +427,30 @@ Ardougne **at the level the method opens**, which is the conservative end of a r
 success chance). Joined 44 of 112 Agility methods and 39 of 117 Thieving ones - the misses are
 minigames and access-only rows nothing publishes a rate for.
 
+**Three defects in the scraped training rates, all of which the band walk amplified.** A bad rate on
+a *low-level* method is far worse than a bad rate anywhere else, because `training_bands` takes a
+running maximum: a wrong number at level 1 prices the whole climb. All three were found by reading
+the extremes of `wiki_rates.json` rather than by a test, and all three are now pinned:
+
+- **`.5273` parsed as `5273`.** `_NUMBER_RE` demanded a leading digit, so a leading-dot decimal lost
+  its point - a ten-thousand-fold error that reached the estimate as Fishing at **2,604,862 xp/hr**
+  from level 5.
+- **`Experience{N}num` is sometimes arithmetic.** `Catching sardines & herring` writes
+  `.5273*20 + .4727*30` - 53% of catches at 20 xp and 47% at 30, so 24.7 a catch. `wiki.parse_amount`
+  evaluates it through `ast` with the node types checked, never `eval`, and **refuses rather than
+  falling back** when a value that is entirely arithmetic will not evaluate: reading `1/0` as 1 is a
+  wrong number where "the guide does not say" is the honest one.
+- **`Experience{N}isph` says the figure is already per hour.** Ten guide-skill pairs set it, and
+  Subduing Tempoross states 62,000 Fishing xp an hour beside 60 permits an hour - multiplied
+  together, **3,720,000**.
+
+**And the most specific contained claim now wins a guide.** The existing rule only refuses a contained
+claim when some *other* method names the guide exactly, which leaves every guide nobody names exactly
+open to its vaguest claimant: `Chop ~|logs|~` is contained in "Cutting camphor logs" exactly as
+`Chop ~|camphor logs|~` is, and the level **1** method kept an 82,512/hr rate meant for level 66. A
+claim that is a strict substring of another claim on the same guide is the less specific reading and
+is refused. Five joins removed, 311 -> 306.
+
 **Two computed layers, and they sit on opposite sides of the scrape.** `dps_bridge` puts its kill
 rates *above* the guides; `recipe_rates` puts its XP rates *below* them. That is not an
 inconsistency to tidy up - it is measured, and the two are computing different kinds of thing. A

@@ -732,13 +732,43 @@ def build_config(
             continue
         guide, how = found
         title, rates = pool[guide]
-        claims.append((task, skill, guide, how, title, rates.experience[skill] * (rates.kph or 0.0)))
+        # **`Experience{N}isph` means the figure is already hourly.**
+        # Multiplying it by `kph` again is how Tempoross reached 3,720,000
+        # Fishing xp an hour off a guide plainly stating 62,000.
+        per_hour = (
+            rates.experience[skill]
+            if skill in rates.per_hour
+            else rates.experience[skill] * (rates.kph or 0.0)
+        )
+        claims.append((task, skill, guide, how, title, per_hour))
         if how == "exact":
             exact_claims.add(guide)
+
+    # **And the most specific contained claim wins the rest.** The exact rule
+    # above only fires when some method names the guide outright, which leaves
+    # every guide nobody names exactly open to its vaguest claimant:
+    # `Chop ~|logs|~` is contained in "Cutting camphor logs" exactly as
+    # `Chop ~|camphor logs|~` is, and it is a level *1* method that inherited
+    # a 66-Woodcutting rate - which the band walk then applied from level 1
+    # upwards. A claim that is a strict substring of another claim on the same
+    # guide is the less specific reading of it, and is refused.
+    by_guide: dict[str, set[str]] = {}
+    for _, _, guide, how, _, _ in claims:
+        if how != "exact":
+            by_guide.setdefault(guide, set())
+    for task, skill, guide, how, _, _ in claims:
+        if how != "exact" and guide in by_guide:
+            by_guide[guide].add(activity_name(task))
 
     for task, skill, guide, how, title, per_hour in claims:
         if how != "exact" and guide in exact_claims:
             continue
+        if how != "exact":
+            mine = activity_name(task)
+            if any(
+                other != mine and mine in other for other in by_guide.get(guide, ())
+            ):
+                continue
         if per_hour <= 0:
             continue
         training.setdefault(task, {})[skill] = Rate(
