@@ -144,9 +144,16 @@ from fray_claude.costing.levels import (
     _levels,
 )
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.model.experience import MAX_LEVEL, xp_between, xp_for_level
+from fray_claude.model.experience import (
+    MAX_LEVEL,
+    level_for_xp,
+    xp_between,
+    xp_for_level,
+)
 from fray_claude.costing.training import (
+    LampGrant,
     TrainingBand,
+    quest_xp_grants,
     training_bands,
     training_options,
 )
@@ -256,6 +263,12 @@ class SkillEstimate:
     #: How much of `xp` is priced at the floor rather than at a measured rate.
     #: Defaulted so every existing constructor stays valid.
     floor_xp: int = 0
+    #: XP this climb is spared by quests the map can finish. Already removed
+    #: from `xp`, so it is a note about where the head start came from.
+    xp_from_quests: int = 0
+    #: The level the quest XP leaves you at, which is where the climb starts.
+    #: Equal to `current_level` when no quest pays into this skill.
+    effective_level: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -269,6 +282,8 @@ class SkillEstimate:
             "hours": self.hours,
             "defaulted": self.defaulted,
             "floor_xp": self.floor_xp,
+            "xp_from_quests": self.xp_from_quests,
+            "effective_level": self.effective_level,
             "bands": [band.as_dict() for band in self.bands],
         }
 
@@ -339,6 +354,9 @@ class EstimateResult:
     #: Skill goals with no trainable method anywhere in the export. Reported
     #: rather than priced; see `UnpricedSkill`.
     unpriced_skills: tuple[UnpricedSkill, ...] = ()
+    #: Quest XP that may go to one of several skills, left unspent. See
+    #: `training.LampGrant`.
+    unallocated_quest_xp: tuple[LampGrant, ...] = ()
 
     @property
     def buckets(self) -> dict[str, float]:
@@ -422,6 +440,7 @@ class EstimateResult:
             ],
             "unpriced": list(self.unpriced),
             "unpriced_skills": [skill.as_dict() for skill in self.unpriced_skills],
+            "unallocated_quest_xp": [lamp.as_dict() for lamp in self.unallocated_quest_xp],
         }
 
 
@@ -784,6 +803,9 @@ def _skill_estimate(
     target: int,
     xp: int,
     bands: tuple[TrainingBand, ...],
+    *,
+    xp_from_quests: int = 0,
+    effective_level: int = 0,
 ) -> SkillEstimate:
     """One skill's row, summarised from its bands.
 
@@ -814,6 +836,8 @@ def _skill_estimate(
         defaulted=bool(bands) and floor_xp == xp,
         bands=bands,
         floor_xp=floor_xp,
+        xp_from_quests=xp_from_quests,
+        effective_level=effective_level or current,
     )
 
 
@@ -923,6 +947,7 @@ def estimate(
 
     skills: list[SkillEstimate] = []
     unpriced_skills: list[UnpricedSkill] = []
+    grants, lamps = quest_xp_grants(derived, state.chunk_info)
     for skill, classification in sorted(derived.task_classification.skills.items()):
         goal = classification.active
         if goal is None:
@@ -933,7 +958,14 @@ def estimate(
             continue
         current = levels.get(skill, 1)
         capped = min(int(target), MAX_LEVEL)
-        xp = xp_between(current, capped)
+        target_xp = xp_for_level(capped)
+        # **One operation, not two.** Adding the quest reward to the starting
+        # total both removes that XP from the climb and moves the start up the
+        # curve, so there is no separate level adjustment that could disagree
+        # with it. Clamped at the goal: a reward can overshoot.
+        granted = grants.get(skill, 0)
+        start_xp = min(xp_for_level(max(1, min(current, MAX_LEVEL))) + granted, target_xp)
+        xp = max(0, target_xp - start_xp)
         if xp > 0 and not _has_training_method(state.chunk_info, skill):
             # No `Primary: true` challenge anywhere in the export - the four
             # combat skills, which you train by fighting rather than by an
@@ -956,7 +988,7 @@ def estimate(
             # to band.
             bands: tuple[TrainingBand, ...] = (
                 TrainingBand(
-                    level_from=current,
+                    level_from=level_for_xp(start_xp),
                     level_to=capped,
                     xp=xp,
                     xp_per_hour=slayer_rate.xp_per_hour,
@@ -967,13 +999,25 @@ def estimate(
         else:
             bands = training_bands(
                 training_options(derived, state.chunk_info, heuristics, skill),
-                xp_for_level(max(1, min(current, MAX_LEVEL))),
+                start_xp,
                 capped,
             )
-        skills.append(_skill_estimate(skill, goal, current, int(target), xp, bands))
+        skills.append(
+            _skill_estimate(
+                skill,
+                goal,
+                current,
+                int(target),
+                xp,
+                bands,
+                xp_from_quests=min(granted, xp_between(current, capped)),
+                effective_level=level_for_xp(start_xp),
+            )
+        )
 
     return EstimateResult(
         unpriced_skills=tuple(unpriced_skills),
+        unallocated_quest_xp=lamps,
         tasks=tuple(tasks),
         items=tuple(items),
         skills=tuple(skills),

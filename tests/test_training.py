@@ -5,12 +5,17 @@ from __future__ import annotations
 from typing import Any
 
 from fray_claude.costing.heuristics import Heuristics, Rate
-from fray_claude.costing.training import TrainingOption, training_bands, training_options
+from fray_claude.costing.training import (
+    TrainingOption,
+    quest_xp_grants,
+    training_bands,
+    training_options,
+)
 from fray_claude.derive.challenges import ChallengeResult
 from fray_claude.derive.pipeline import Derived
 from fray_claude.derive.active_tasks import TaskClassification
 from fray_claude.derive.bis import BisResult
-from fray_claude.derive.other_tasks import OtherTasks
+from fray_claude.derive.other_tasks import CategoryTasks, OtherTasks, TaskGroup
 from fray_claude.derive.sources import SourceIndex
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.model.experience import MAX_LEVEL, level_for_xp, xp_between, xp_for_level
@@ -174,3 +179,92 @@ def test_starting_mid_band_charges_only_what_is_left() -> None:
     assert bands[0].xp == xp_for_level(90) - inside
     assert bands[0].method == "grimy kwuarm"
     assert sum(b.xp for b in bands) == xp_for_level(99) - inside
+
+
+# --- quest experience ------------------------------------------------------
+
+_DRUIDIC = "~|Druidic Ritual|~ Complete the quest"
+
+_QUEST_INFO = ChunkInfo(
+    {
+        "challenges": {
+            "Quest": {
+                "~|Druidic Ritual|~ 1": {"BaseQuest": "Druidic Ritual"},
+                _DRUIDIC: {"BaseQuest": "Druidic Ritual", "XpReward": {"Herblore": 250}},
+                "~|Dream Mentor|~ Complete the quest": {
+                    "XpReward": {"Strength|Ranged|Magic|Hitpoints|Defence": 150_000}
+                },
+                "~|Dragon Slayer II|~ Complete the quest": {
+                    "XpReward": {"Attack|Defence|Strength|Hitpointsx4": 25_000, "Smithing": 400}
+                },
+                "~|Recipe for Disaster|~ Complete the quest": {"XpReward": {"Anyx6": 20_000}},
+            }
+        }
+    }
+)
+
+
+def _quests(*active: str) -> Derived:
+    return _derived(
+        other_tasks=OtherTasks(
+            categories={
+                "Quest": CategoryTasks(
+                    category="Quest",
+                    groups=(TaskGroup(name="a quest", active=tuple(active)),),
+                )
+            }
+        )
+    )
+
+
+def test_a_completable_quest_pays_its_experience() -> None:
+    grants, lamps = quest_xp_grants(_quests("~|Druidic Ritual|~ 1", _DRUIDIC), _QUEST_INFO)
+
+    assert grants == {"Herblore": 250}
+    assert lamps == ()
+
+
+def test_a_quest_already_done_pays_nothing() -> None:
+    """**The anti-double-count invariant.** A completed quest is not in
+    `active`, and its XP is already reflected in the level `infer_levels` read
+    out of the ledger - granting it again would pay for it twice."""
+    assert quest_xp_grants(_quests(), _QUEST_INFO) == ({}, ())
+
+
+def test_a_choice_of_skills_is_reported_rather_than_spent() -> None:
+    """Dream Mentor pays 150,000 into one of five skills. Spending it well is
+    an optimisation; guessing would quietly shrink the estimate on a choice
+    nobody made."""
+    grants, lamps = quest_xp_grants(_quests("~|Dream Mentor|~ Complete the quest"), _QUEST_INFO)
+
+    assert grants == {}
+    assert [(lamp.skills, lamp.xp, lamp.count) for lamp in lamps] == [
+        (("Strength", "Ranged", "Magic", "Hitpoints", "Defence"), 150_000, 1)
+    ]
+
+
+def test_a_count_suffix_is_several_lamps_and_a_plain_key_beside_it_still_pays() -> None:
+    """Dragon Slayer II hands out four 25,000 lamps *and* 400 flat Smithing."""
+    grants, lamps = quest_xp_grants(
+        _quests("~|Dragon Slayer II|~ Complete the quest"), _QUEST_INFO
+    )
+
+    assert grants == {"Smithing": 400}
+    assert [(lamp.xp, lamp.count) for lamp in lamps] == [(25_000, 4)]
+
+
+def test_any_is_a_lamp_with_no_named_skills() -> None:
+    _, lamps = quest_xp_grants(_quests("~|Recipe for Disaster|~ Complete the quest"), _QUEST_INFO)
+
+    assert [(lamp.skills, lamp.xp, lamp.count) for lamp in lamps] == [((), 20_000, 6)]
+
+
+def test_a_grant_shortens_the_climb_and_skips_the_bands_below_it() -> None:
+    """One operation does both, which is why they cannot disagree: the walk
+    from the granted total is the same object as the walk that skipped the
+    bands."""
+    granted = xp_for_level(54) + 1
+    bands = training_bands(_HERBLORE, granted, 99)
+
+    assert [b.method for b in bands] == ["grimy kwuarm", "super combat potion"]
+    assert sum(b.xp for b in bands) == xp_for_level(99) - granted

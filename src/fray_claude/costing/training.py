@@ -27,6 +27,7 @@ from fray_claude.derive.pipeline import Derived
 from fray_claude.costing.heuristics import Heuristics
 from fray_claude.model.summary import _mapping
 from fray_claude.costing.heuristics import activity_name
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -192,3 +193,90 @@ def training_bands(
             )
         )
     return tuple(bands)
+
+
+@dataclass(frozen=True)
+class LampGrant:
+    """Quest XP you may spend on one of several skills, left unspent.
+
+    `skills` empty means "any skill". `count` is how many separate lamps of
+    `xp` the quest pays - Dragon Slayer II hands out four of 25,000.
+
+    **Deliberately not allocated.** Spending a lamp well is an optimisation
+    (put it where it saves the most hours), and this module does not optimise;
+    guessing would quietly reduce the estimate on the strength of a choice
+    nobody made. They are reported instead, so the reader can see there is
+    experience on the table.
+    """
+
+    quest: str
+    skills: tuple[str, ...]
+    xp: int
+    count: int
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "quest": self.quest,
+            "skills": list(self.skills),
+            "xp": self.xp,
+            "count": self.count,
+        }
+
+
+#: `"Attack|Defence|Strengthx4"` - the trailing `xN` is how many lamps, and the
+#: `|` list is what each may be spent on. 356 of the export's 378 reward keys
+#: are a bare skill name; 17 carry a count and 5 are a choice of one.
+_LAMP_COUNT = re.compile(r"^(?P<names>.+?)x(?P<count>\d+)$")
+
+
+def _reward_key(key: str) -> tuple[tuple[str, ...], int]:
+    """`"Anyx6"` -> `((), 6)`; `"Cooking"` -> `(("Cooking",), 1)`."""
+    match = _LAMP_COUNT.fullmatch(key)
+    names, count = (match["names"], int(match["count"])) if match else (key, 1)
+    parts = tuple(part.strip() for part in names.split("|") if part.strip())
+    return ((), count) if parts == ("Any",) else (parts, count)
+
+
+def quest_xp_grants(
+    derived: Derived, chunk_info: ChunkInfo
+) -> tuple[dict[str, int], tuple[LampGrant, ...]]:
+    """XP from quests this map can finish, by skill, plus the unspent lamps.
+
+    **Exactly the quests the `quests` bucket is already charging you for**, and
+    that is the invariant that makes double counting impossible. The set walked
+    here is `other_tasks`' `active` groups - post-completions, post-superseded,
+    post-backlog - which is the same set `estimate._quest_tasks` prices the
+    hours of. A quest already done is not in it, so its reward cannot be granted
+    twice; a quest that cannot be reached is not in it either.
+
+    **Completability needs no graph walk.** `XpReward` sits on exactly the 209
+    `… Complete the quest` terminals and nowhere else, and challenge validity is
+    transitive through `Tasks` - so the terminal being active *is* "every step
+    is reachable and it is not already done".
+
+    The time and the experience live in different buckets on purpose: the
+    quest's hours are the quests bucket's, its XP is the skilling bucket's. Note
+    the deliberate asymmetry that follows - hours are prorated by how many steps
+    are left, XP is not, because the game pays the reward on completion.
+    """
+    grants: dict[str, int] = {}
+    lamps: list[LampGrant] = []
+    quests = _mapping(chunk_info.challenges, "Quest")
+    category = derived.other_tasks.categories.get("Quest")
+    for group in category.groups if category else ():
+        for name in group.active:
+            entry = quests.get(name)
+            reward = entry.get("XpReward") if isinstance(entry, dict) else None
+            if not isinstance(reward, dict):
+                continue
+            for key, value in reward.items():
+                if not isinstance(value, (int, float)) or isinstance(value, bool):
+                    continue
+                skills, count = _reward_key(str(key))
+                if len(skills) == 1 and count == 1:
+                    grants[skills[0]] = grants.get(skills[0], 0) + int(value)
+                else:
+                    lamps.append(
+                        LampGrant(quest=group.name, skills=skills, xp=int(value), count=count)
+                    )
+    return grants, tuple(sorted(lamps, key=lambda lamp: (lamp.quest, -lamp.xp)))
