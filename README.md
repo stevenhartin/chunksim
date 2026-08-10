@@ -64,7 +64,7 @@ open it in the panel. Press <kbd>F</kbd> to fly the camera to whatever is under 
 
 ```
 fray-gui                              # serve http://127.0.0.1:8731 and open it
-fray-gui --compare my-sim             # delta mode: gains green, losses red
+fray-gui --compare my-sim             # start in diff mode: gains green, losses red
 fray-gui --no-browser --port 0        # bind an OS-assigned port, open nothing
 fray-gui --no-browser --keep-alive --host 100.93.219.108   # serve it to another machine
 ```
@@ -85,13 +85,31 @@ section.
 Click any chunk for its contents, grouped by kind, with anything behind a door you cannot open
 greyed out; for one you do not own yet, **What would this add?** derives both worlds and tells you,
 and **Unlock** then saves that world as a map of its own — the same thing `fray unlock --cache-map`
-does, named in a dialog and then opened, with a one-roll timeline saying what it added. The category chips are
+does, named in a dialog and then opened, with its new chunk drawn green. In edit mode the same button
+reads **Add to edit** instead and costs nothing until you commit. The category chips are
 checkboxes, not tabs — all on to begin with, so you can look at monsters and NPCs together, or
 narrow to one.
 
-Comparing two maps shows the *second* one's world: its gains green, what it lost red and washed out
-like anything else you do not hold. **Diff** opens the whole of `fray diff` in a panel — sections,
-tasks, sources and BiS, both directions.
+### Four modes
+
+A coloured ribbon under the toolbar says which one you are in, with the map named on it.
+
+**Browse** is the map as it is. **Compare** puts you in **Diff**: pick a second map and its world is
+what you see — gains green, what it lost red and washed out like anything else you do not hold — with
+both selectors on the ribbon so the pair is changeable without leaving, and **Breakdown** opening the
+whole of `fray diff` in a panel (sections, tasks, sources and BiS, both directions). A floating
+**Exit diff view** takes you back.
+
+**Edit** is entered by making an edit: click a task in the panel and it asks first. Ticked tasks
+strike through, chunks added from the chunk panel light up amber on the map, and *nothing is
+computed* until you press **Commit** — which writes it all as a new map under `cache/maps/edited/`,
+leaving the one you started from untouched. The ribbon counts what is waiting; leaving the mode or
+changing map asks before discarding it.
+
+**Timeline** is the only mode a simulation is seen in, because a run is fifty worlds rather than one.
+Choosing one asks whether you meant to replay it, and declining leaves you where you were. The strip
+along the bottom is the run's history: drag it, click a bar to fly to the chunk that roll added, or
+press **Details** for what it opened.
 
 The panel covers the rest of the CLI. **Tasks** is what you are actually doing — checkbox chips per
 category and a toggle for what is already done; quests show only the step you are on, and

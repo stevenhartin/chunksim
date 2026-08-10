@@ -76,8 +76,23 @@ _MARKED = re.compile(r"~\|(?P<subject>[^|]+)\|~")
 _ZWSP = "​"
 
 
-def _entry(key: str, name: str, note: str | None = None, icon: str | None = None) -> dict[str, Any]:
-    return {"key": key, "name": name, "note": note, "icon": icon}
+def _entry(
+    key: str,
+    name: str,
+    note: str | None = None,
+    icon: str | None = None,
+    category: str | None = None,
+) -> dict[str, Any]:
+    """One row. `category` is which `completedChallenges` branch it lives in.
+
+    **Not the same thing as the section it is drawn under.** The panel's five
+    sections are a reading order - all 21 skills share one, because a skill
+    contributes at most one active task and 21 headings would be 21 lists of
+    one - where the payload keys ticks by challenge category, one per skill.
+    The GUI's edit mode writes a tick, so it needs the payload's answer rather
+    than the panel's, and the row is the only place both are known.
+    """
+    return {"key": key, "name": name, "note": note, "icon": icon, "category": category}
 
 
 def _group(name: str, active: Sequence[Any], completed: Sequence[Any]) -> dict[str, Any]:
@@ -210,7 +225,7 @@ def _bis_groups(bis: Mapping[str, Any]) -> list[dict[str, Any]]:
             style = _bis_style(str(label))
             note = str(slots.get(key) or label)
             grouped.setdefault(style, {"active": [], "completed": []})[state].append(
-                _entry(key, _subject(key), note)
+                _entry(key, _subject(key), note, category="BiS")
             )
     return [_group(style, rows["active"], rows["completed"]) for style, rows in sorted(grouped.items())]
 
@@ -228,10 +243,24 @@ def _skill_groups(classification: Mapping[str, Any]) -> list[dict[str, Any]]:
     for skill, entry in sorted(classification.items()):
         current = entry.get("active")
         if isinstance(current, str) and current:
-            active.append(_entry(current, _subject(current), skill, icon=skill))
+            active.append(_entry(current, _subject(current), skill, icon=skill, category=skill))
         for done in entry.get("completed", ()):
-            completed.append(_entry(done, _subject(done), skill, icon=skill))
+            completed.append(_entry(done, _subject(done), skill, icon=skill, category=skill))
     return [_group("Skills", active, completed)]
+
+
+def _with_category(groups: Sequence[Any], category: str) -> list[dict[str, Any]]:
+    """Every row in `groups` given `category`, where it has none."""
+    return [
+        {
+            **group,
+            "active": [{**row, "category": row.get("category") or category} for row in group["active"]],
+            "completed": [
+                {**row, "category": row.get("category") or category} for row in group["completed"]
+            ],
+        }
+        for group in groups
+    ]
 
 
 def task_panel(derived: Derived) -> dict[str, Any]:
@@ -252,7 +281,10 @@ def task_panel(derived: Derived) -> dict[str, Any]:
         ("Quest", "Quests", _quest_groups(_mapping(other, "Quest"))),
         ("Extra", "Other", _plain_groups(_mapping(other, "Extra"), split_sources=True)),
     ):
-        sections.append(_section(key, label, groups))
+        # These three are the one case where the section key *is* the payload's
+        # category, so it is stamped here rather than threaded through two
+        # group builders that have no other use for it.
+        sections.append(_section(key, label, _with_category(groups, key)))
     return {"sections": sections}
 
 

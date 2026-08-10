@@ -32,6 +32,10 @@ const LOCKED_WASH = "rgba(150, 150, 150, 0.6)";
 const ADDED_FILL = "rgba(60, 200, 90, 0.45)";
 const REMOVED_FILL = "rgba(220, 60, 60, 0.45)";
 const CANDIDATE_FILL = "rgba(90, 190, 255, 0.34)";
+/* A pending unlock: amber, because it is neither a gain the map has made nor
+   a candidate it could make - it is a claim waiting to be committed. */
+const PENDING_FILL = "rgba(255, 190, 0, 0.42)";
+const PENDING_STROKE = "#ffbe00";
 const CANDIDATE_STROKE = "#5abeff";
 const HULL_STROKE = "#ffbe00";
 const FOUND_FILL = "rgba(255, 190, 0, 0.30)";
@@ -84,6 +88,16 @@ const state = {
   /* `/api/maps` as it came, so `kindOf` can answer what a map *is* without
    * asking the server again. Refreshed by `loadMaps`. */
   maps: [],
+  /* **Edit mode's pending set, held here and nowhere else until Commit.**
+   * That is what makes editing cheap: a tick greys a row and an unlock lights
+   * a square with no derivation at all, and exactly one happens - on the
+   * world that results. A preview that re-derived per click would cost ~0.8s
+   * a tick to answer a question nobody asked half way through.
+   *
+   * `ticked` is category -> Set of raw task keys, keyed the way
+   * `completedChallenges` is rather than the way the panel is grouped - see
+   * `panels._entry`. */
+  edits: { unlocked: new Set(), ticked: new Map() },
   view: null,
   cells: new Map(),        // "gx,gy" -> cell, for the locked-wash complement
   candidates: new Map(),   // chunk id -> neighbour entry
@@ -118,6 +132,7 @@ for (const id of [
   "map", "compare", "breakdown", "plane", "candidates", "masks", "live", "fit", "counts", "skipped",
   "hover", "toggle-panel", "panel", "tabs", "toast", "legend", "tip",
   "ribbon", "ribbon-mode", "ribbon-map", "ribbon-vs", "compare-start", "exit-mode",
+  "ribbon-edits", "do-commit",
   "progress", "progress-title", "progress-count", "progress-detail",
   "progress-track", "progress-fill", "progress-cancel",
   "overlay", "overlay-title", "overlay-body", "overlay-close", "overlay-actions",
@@ -360,7 +375,7 @@ function maskTargets() {
  * the hull has to change. */
 const LAYERS = [
   drawTiles, drawLockedWash, drawGrid, drawStates, drawMasks, drawFound,
-  drawCandidates, drawHull, drawAreas, drawHovered, drawSelected,
+  drawCandidates, drawPending, drawHull, drawAreas, drawHovered, drawSelected,
 ];
 
 /* Below this on-screen chunk size a name is unreadable and the map is better
@@ -795,6 +810,27 @@ function drawFound() {
 /* The one thing this interface is for that a terminal cannot do: the chunks
  * you could roll next, drawn where they are, carrying the number the app's own
  * canvas gives them. The decision the game asks you to make becomes a picture. */
+/* **What Commit would add**, drawn without asking the server anything. Above
+ * the candidates it overlaps and below the area labels, which have to stay
+ * legible over every layer. */
+function drawPending() {
+  if (!state.edits.unlocked.size) return;
+  const size = cellSize();
+  CTX.lineWidth = Math.max(1, 1.5 * state.zoom);
+  for (const chunkId of state.edits.unlocked) {
+    const at = chunkToGrid(chunkId);
+    if (!at) continue;
+    const [x, y] = toScreen(at[0], at[1]);
+    if (!onScreen(x, y, size)) continue;
+    CTX.fillStyle = PENDING_FILL;
+    CTX.fillRect(x, y, size, size);
+    CTX.strokeStyle = PENDING_STROKE;
+    CTX.setLineDash([4, 3]);
+    CTX.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
+    CTX.setLineDash([]);
+  }
+}
+
 function drawCandidates() {
   if (!state.showCandidates || !state.candidates.size) return;
   const size = cellSize();
@@ -1337,6 +1373,7 @@ function confirmAction(title, body, verb, { danger = true } = {}) {
   });
 }
 
+el["do-commit"].addEventListener("click", askCommit);
 el["compare-start"].addEventListener("click", askCompare);
 el["exit-mode"].addEventListener("click", exitMode);
 
@@ -1450,6 +1487,14 @@ function renderRibbon() {
   el["ribbon-mode"].textContent = MODES[mode].label;
   el["ribbon-map"].textContent = state.map || "no map";
   for (const id of ["ribbon-vs", "compare", "breakdown"]) el[id].hidden = mode !== "diff";
+  const count = editCount();
+  el["ribbon-edits"].hidden = mode !== "edit";
+  el["do-commit"].hidden = mode !== "edit";
+  el["do-commit"].disabled = count === 0;
+  if (mode === "edit") {
+    el["ribbon-edits"].textContent = count === 0
+      ? "nothing changed yet" : count + " unsaved change" + (count === 1 ? "" : "s");
+  }
   /* **Comparing from Timeline would show a simulation outside timeline
    * mode**, which is the one thing the modes exist to prevent. The way out is
    * to snapshot the roll you are looking at, so say that rather than leaving a
@@ -1480,6 +1525,16 @@ function baseMapOf(mapId) {
 async function selectMap(id) {
   const previous = state.map;
   const wanted = modeForMap(id);
+  /* **Pending edits belong to the map they were made on.** Carrying them to
+   * another would commit a tick against a world that may not even hold the
+   * task, which is a much worse thing to do quietly than to ask about. */
+  if (state.mode === "edit" && id !== previous && editCount()) {
+    const ok = await confirmAction("Discard " + editCount() + " unsaved change(s)?",
+      tmpl`<p>They were made on <b>${previous}</b> and do not travel to another
+        map. <b>Commit</b> writes them as a new map instead.</p>`, "Discard");
+    if (!ok) { setMap(previous); return false; }
+    clearEdits();
+  }
   if (wanted === "timeline" && state.mode !== "timeline") {
     const ok = await confirmAction("Enter timeline mode?",
       tmpl`<p><b>${id}</b> is a simulation - a sequence of worlds rather than
@@ -1496,6 +1551,87 @@ async function selectMap(id) {
   if (state.map !== previous) { state.step = null; state.timeline = null; }
   setMode(wanted);
   return true;
+}
+
+/* How many changes are waiting. Both halves, because "3 unsaved" has to mean
+ * three things whether they are ticks or chunks. */
+function editCount() {
+  let ticks = 0;
+  for (const names of state.edits.ticked.values()) ticks += names.size;
+  return ticks + state.edits.unlocked.size;
+}
+
+function clearEdits() {
+  state.edits.unlocked.clear();
+  state.edits.ticked.clear();
+}
+
+/* **The entry gesture is the edit itself.** A mode you have to arm before you
+ * can do anything is a mode you forget to arm; asking on the first click is
+ * one question at the moment it means something. Returns whether editing may
+ * proceed, so a declined answer leaves the map untouched. */
+async function ensureEditing() {
+  if (state.mode === "edit") return true;
+  if (state.mode !== "browse") {
+    toast("Editing is a browse-mode thing — leave " + MODES[state.mode].label.toLowerCase() + " first");
+    return false;
+  }
+  const ok = await confirmAction("Enter edit mode?",
+    tmpl`<p>Ticks and unlocks are held in this page until you press
+      <b>Commit</b>, which writes them as a new map under
+      <code>cache/maps/edited/</code>. <b>${state.map}</b> is never touched.</p>`,
+    "Enter edit mode", { danger: false });
+  if (!ok) return false;
+  setMode("edit");
+  return true;
+}
+
+/* **Committing writes a map, so it asks for a name first** - the same shape as
+ * `askUnlock`, and for the same reason: the default is the one thing you would
+ * otherwise have to invent, and whatever name is claimed comes back either
+ * way. */
+function askCommit() {
+  const count = editCount();
+  if (!count) { toast("Nothing to commit"); return; }
+  const suggested = (state.map || DEFAULT_MAP_ID).replace(/\//g, "-") + "-edit";
+  const ticks = count - state.edits.unlocked.size;
+  openOverlay("Commit " + count + " change" + (count === 1 ? "" : "s"),
+    tmpl`<p>Writes a new map holding everything <b>${state.map}</b> holds, with
+      ${ticks} task${ticks === 1 ? "" : "s"} ticked off and
+      ${state.edits.unlocked.size} chunk${state.edits.unlocked.size === 1 ? "" : "s"}
+      unlocked. Nothing existing is touched.</p>
+      <div class="row"><input id="commit-name" type="text" value="${suggested}"
+        aria-label="Name for the new map" spellcheck="false" autocomplete="off"
+        data-tip="<b>Name for the new map</b><span class='sub'>A name already in use gains <code>-2</code>, <code>-3</code>, … rather than overwriting.</span>"></div>`,
+    tmpl`<button id="commit-no" type="button">Cancel</button>
+      <button id="commit-yes" type="button">Commit</button>`);
+
+  const field = document.getElementById("commit-name");
+  const go = () => {
+    const name = field.value.trim() || suggested;
+    const ticked = {};
+    for (const [category, names] of state.edits.ticked) ticked[category] = [...names];
+    closeOverlay();
+    runAction("Commit " + name, "/api/commit",
+      { map: state.map, name, ticked, unlocked: [...state.edits.unlocked] },
+      async (result) => {
+        clearEdits();
+        taskPanel = null;
+        await loadMaps();
+        if (result.open) openMap(result.open);
+        syncBreakdown();
+        await loadTimeline();
+        await loadView({ refit: true });
+        await loadCandidates();
+        await loadSections();
+        loadMapsPane();
+      });
+  };
+  document.getElementById("commit-no").onclick = closeOverlay;
+  document.getElementById("commit-yes").onclick = go;
+  field.onkeydown = (event) => { if (event.key === "Enter") { event.preventDefault(); go(); } };
+  field.focus();
+  field.select();
 }
 
 /* **Anything that makes a map selects it, and the mode follows it in.** No
@@ -1544,6 +1680,13 @@ async function askCompare() {
  * well: the base is a simulation, so staying on it would mean staying in the
  * mode. Going back to the world it was rolled from is the honest answer. */
 async function exitMode() {
+  if (state.mode === "edit" && editCount()) {
+    const ok = await confirmAction("Discard " + editCount() + " unsaved change(s)?",
+      tmpl`<p>They are held in this page only - leaving edit mode throws them
+        away. <b>Commit</b> writes them as a new map instead.</p>`, "Discard");
+    if (!ok) return;
+  }
+  clearEdits();
   if (state.mode === "timeline") {
     const base = baseMapOf(state.map);
     if (!base) { toast("This run does not record what it was rolled from"); return; }
@@ -1707,6 +1850,10 @@ function renderLegend() {
   if (counts.added) items.push(["rgba(60,200,90,.75)", state.step === null ? "Gained" : "Rolled"]);
   if (counts.removed) items.push(["rgba(220,60,60,.75)", "Lost"]);
   if (state.showCandidates && state.candidates.size) items.push([CANDIDATE_STROKE, "Candidate"]);
+  /* A colour on screen the legend does not explain is a colour nobody trusts,
+   * and a pending unlock is the one square that means neither gained nor
+   * available but "waiting to be committed". */
+  if (state.edits.unlocked.size) items.push([PENDING_STROKE, "Unsaved unlock"]);
   if (state.showMasks) {
     items.push([SECTION_REACHED.edge, "Section reached"], [SECTION_LOCKED.edge, "Section locked"]);
   }
@@ -1833,7 +1980,26 @@ function renderChunk() {
   const whatIf = document.getElementById("what-if");
   if (whatIf) whatIf.onclick = () => previewUnlock(detail.chunk_id);
   const unlockNow = document.getElementById("do-unlock");
-  if (unlockNow) unlockNow.onclick = () => askUnlock(detail.chunk_id);
+  /* **Two different verbs behind one button, and the mode decides which.** In
+   * Browse, Unlock derives and writes a map of its own on the spot; in Edit it
+   * joins the pending set with everything else and costs nothing until Commit.
+   * Offering both at once would be two buttons a word apart. */
+  if (unlockNow) unlockNow.onclick = async () => {
+    if (state.mode !== "edit") return askUnlock(detail.chunk_id);
+    if (state.edits.unlocked.has(detail.chunk_id)) state.edits.unlocked.delete(detail.chunk_id);
+    else state.edits.unlocked.add(detail.chunk_id);
+    renderRibbon();
+    renderChunk();
+    renderLegend();
+    invalidate();
+  };
+  if (unlockNow && state.mode === "edit") {
+    const pending = state.edits.unlocked.has(detail.chunk_id);
+    unlockNow.textContent = pending ? "Remove" : "Add to edit";
+    unlockNow.dataset.tip = pending
+      ? "<b>Take it back out</b><span class='sub'>Nothing has been written yet.</span>"
+      : "<b>Unlock it on commit</b><span class='sub'>Held in this page with your other changes until you press Commit.</span>";
+  }
 
   /* Categories as chips rather than as eight headings in one column: at 360px
    * a chunk with monsters, NPCs, objects and shops was four short lists you
@@ -2219,7 +2385,13 @@ function renderTasks() {
         const tip = tmpl`<b>${plain(row.name)}</b>`
           + (row.note ? tmpl`<span class="sub">${plain(row.note)}</span>` : "")
           + tmpl`<span class="hint">${plain(row.key)}</span>`;
-        out += tmpl`<li data-tip="${tip}">${raw(badge)}<span class="name">${plain(row.name)}</span>
+        /* **The row is the gesture.** Ticking is what a person does with a
+         * to-do list, so the list is what they click - and `data-task`/
+         * `data-category` carry the payload's own key rather than the
+         * panel's grouping, which is what `panels._entry` exists to say. */
+        const pending = state.edits.ticked.get(row.category)?.has(row.key) ? " ticked" : "";
+        out += tmpl`<li class="task${pending}" data-tip="${tip}" data-task="${row.key}"
+          data-category="${row.category || ""}">${raw(badge)}<span class="name">${plain(row.name)}</span>
           <span class="sub">${plain(row.note || "")}</span></li>`;
       }
       out += "</ul>";
@@ -2228,6 +2400,25 @@ function renderTasks() {
   el["tasks-body"].innerHTML = out ||
     tmpl`<p class="empty">Nothing ${state.showDone ? "completed" : "outstanding"} here.</p>`;
 }
+
+/* Delegated, so a re-render needs no rewiring - the same reason the tooltips
+ * are. A completed row is not offered: un-ticking is not a thing this writes,
+ * because `completedChallenges` is the player's own record and removing from
+ * it is a claim about their past rather than about their map. */
+el["tasks-body"].addEventListener("click", async (event) => {
+  const row = event.target.closest("li.task[data-task]");
+  if (!row || state.showDone) return;
+  const category = row.dataset.category;
+  if (!category) { toast("This row has no category to tick against"); return; }
+  if (!(await ensureEditing())) return;
+  const names = state.edits.ticked.get(category) || new Set();
+  if (names.has(row.dataset.task)) names.delete(row.dataset.task);
+  else names.add(row.dataset.task);
+  if (names.size) state.edits.ticked.set(category, names);
+  else state.edits.ticked.delete(category);
+  renderRibbon();
+  renderTasks();
+});
 
 el["show-done"].addEventListener("click", () => {
   state.showDone = !state.showDone;

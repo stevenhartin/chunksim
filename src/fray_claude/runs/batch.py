@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import Any
 
 from fray_claude.store.cache import (
+    EDITED,
     SIMULATED,
     TASKS_MAP_BLOB_NAME,
     UNLOCKED,
@@ -76,6 +77,7 @@ from fray_claude.store.derived_cache import (
 )
 from fray_claude.costing.estimate import EstimateResult, estimate
 from fray_claude.costing.levels import goal_levels, infer_levels
+from fray_claude.model.edits import apply_ticks
 from fray_claude.model.firebase import reverse_tasks_map
 from fray_claude.costing.heuristics import Heuristics, merge
 from fray_claude.costing.heuristics import load as load_heuristics
@@ -885,6 +887,24 @@ def run_batch(
 
 
 @dataclass(frozen=True)
+class SavedEdit:
+    """Where a hand-edited map landed. See `save_edit`."""
+
+    name: str
+    ticks: int
+    chunks: list[str]
+    unlocked_chunks: int | None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "ticks": self.ticks,
+            "chunks": self.chunks,
+            "unlocked_chunks": self.unlocked_chunks,
+        }
+
+
+@dataclass(frozen=True)
 class SavedUnlock:
     """Where a hand-unlocked map landed. See `save_unlock`."""
 
@@ -936,10 +956,118 @@ def save_unlock(
         new_unsupported=delta.new_unsupported,
         bis_upgrades=delta.bis_upgrades,
     )
-    unlocked_payload = simulated_payload(payload, [record])
-    directory = claim_batch(name, root, kind=UNLOCKED)
+    written = _write_one_run_batch(
+        name=name,
+        kind=UNLOCKED,
+        origin="unlock",
+        base_payload=payload,
+        data=simulated_payload(payload, [record]),
+        ledger=[record.as_dict()],
+        rolls=[delta.chunk_id],
+        base_map=base_map,
+        base_fetched_at=base_fetched_at,
+        source=f"unlock {delta.chunk_id} from {base_map!r}",
+        extra_meta={"chunk": delta.chunk_id},
+        root=root,
+    )
+    return SavedUnlock(
+        name=written.name, chunk_id=delta.chunk_id, unlocked_chunks=written.unlocked_chunks
+    )
+
+
+def save_edit(
+    *,
+    name: str,
+    payload: Mapping[str, Any],
+    ticked: Mapping[str, Sequence[str]],
+    unlocked: Sequence[str],
+    base_map: str,
+    base_fetched_at: str | None = None,
+    root: Path | None = None,
+) -> SavedEdit:
+    """Save a hand-edited map; returns what was claimed.
+
+    An *edit* is a map a person changed by hand in the GUI - tasks ticked off,
+    chunks unlocked - committed under a new name. It is its own kind rather
+    than an `unlocked` one because that kind means precisely one thing (one
+    candidate chunk, priced by `fray unlock`), and calling a map with six
+    ticked tasks an unlock is the same wrong that split `unlocked` out of
+    `simulated`.
+
+    **Its ledger records the chunks and no attribution.** `simulated_payload`
+    reads only `chunk_id` from a record, so the records here are synthetic and
+    their delta fields are empty - nothing derived them, and inventing a task
+    count for a hand edit would manufacture exactly the kind of number this
+    project refuses elsewhere. Nothing draws it: an edited map browses, where
+    the ledger only pins the step so the view can say which chunks arrived.
+    """
+    records = [
+        UnlockRecord(
+            order=index,
+            chunk_id=chunk_id,
+            new_sections={},
+            new_tasks={},
+            new_unsupported=frozenset(),
+            bis_upgrades={},
+        )
+        for index, chunk_id in enumerate(unlocked, start=1)
+    ]
+    ticks = sum(len(names) for names in ticked.values())
+    data = simulated_payload(apply_ticks(payload, ticked), records)
+    written = _write_one_run_batch(
+        name=name,
+        kind=EDITED,
+        origin="edit",
+        base_payload=payload,
+        data=data,
+        ledger=[record.as_dict() for record in records],
+        rolls=list(unlocked),
+        base_map=base_map,
+        base_fetched_at=base_fetched_at,
+        source=f"edit of {base_map!r}: {ticks} ticked, {len(records)} unlocked",
+        extra_meta={"ticks": ticks},
+        root=root,
+    )
+    return SavedEdit(
+        name=written.name,
+        ticks=ticks,
+        chunks=list(unlocked),
+        unlocked_chunks=written.unlocked_chunks,
+    )
+
+
+@dataclass(frozen=True)
+class _WrittenBatch:
+    name: str
+    unlocked_chunks: int | None
+
+
+def _write_one_run_batch(
+    *,
+    name: str,
+    kind: str,
+    origin: str,
+    base_payload: Mapping[str, Any],
+    data: Mapping[str, Any],
+    ledger: Sequence[dict[str, Any]],
+    rolls: Sequence[str],
+    base_map: str,
+    base_fetched_at: str | None,
+    source: str,
+    extra_meta: Mapping[str, Any] | None = None,
+    root: Path | None = None,
+) -> _WrittenBatch:
+    """The batch-of-one write sequence, shared by every hand-made map.
+
+    Both apps mint these now - `fray unlock --cache-map`, the chunk panel's
+    **Unlock**, the ribbon's **Commit** - and the thing they must not disagree
+    about is the *metadata* shape, since `maps list`, the picker and
+    `read_batch` all read it. One writer is how that is guaranteed rather than
+    hoped for, and the second caller is what made it a function.
+    """
+    directory = claim_batch(name, root, kind=kind)
     run = run_dir(directory, 1)
-    held = unlocked_payload.get("chunks", {}).get("unlocked", {})
+    held = data.get("chunks", {}).get("unlocked", {})
     chunks = len(held) if isinstance(held, dict) else None
     # Minted here for the same reason `run_batch` mints one: the directory
     # name cannot carry it, because a clash renames the batch.
@@ -950,39 +1078,39 @@ def save_unlock(
         "batch": directory.name,
         "batch_id": batch_id,
         "runs_in_batch": 1,
-        "origin": "unlock",
-        "chunk": delta.chunk_id,
+        "origin": origin,
         "seed": None,
-        "rolls": [delta.chunk_id],
-        "rolls_requested": 1,
+        "rolls": list(rolls),
+        "rolls_requested": len(rolls),
         "base_map": base_map,
         "base_fetched_at": base_fetched_at,
         "created_at": created_at,
         "unlocked_chunks": chunks,
+        **dict(extra_meta or {}),
     }
     write_sim_run(
         run,
         map_id=f"{directory.name}/{run.name}",
-        data=unlocked_payload,
+        data=dict(data),
         simulation=meta,
-        ledger=[record.as_dict()],
-        source=f"unlock {delta.chunk_id} from {base_map!r}",
-        kind=UNLOCKED,
+        ledger=list(ledger),
+        source=source,
+        kind=kind,
     )
     write_sim_batch(
         directory,
         {
             "name": directory.name,
             "batch_id": batch_id,
-            "kind": UNLOCKED,
-            "origin": "unlock",
+            "kind": kind,
+            "origin": origin,
             "created_at": created_at,
             "base_map": base_map,
-            "base_payload": dict(payload),
+            "base_payload": dict(base_payload),
             "base_fetched_at": base_fetched_at,
-            "rolls_requested": 1,
+            "rolls_requested": len(rolls),
             "seed": None,
             "runs": [meta],
         },
     )
-    return SavedUnlock(name=directory.name, chunk_id=delta.chunk_id, unlocked_chunks=chunks)
+    return _WrittenBatch(name=directory.name, unlocked_chunks=chunks)

@@ -231,6 +231,7 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 .ribbon[data-mode="timeline"] { --mode-tint: var(--mode-timeline); }
 
 .ribbon-mode { font-weight: 600; }
+.ribbon-edits { opacity: .9; }
 .ribbon-map { opacity: .85; }
 
 /* On a tinted strip the controls have to sit *on* the colour rather than
@@ -266,6 +267,16 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 }
 
 .exit-pill:hover { border-color: var(--amber); }
+
+/* A pending tick, greyed in place. Struck through rather than removed: the
+   list is what you are clicking, and a row that vanished under the cursor
+   would move the next one under it. */
+.list li.task { cursor: default; }
+.list li.task[data-category]:not([data-category=""]) { cursor: pointer; }
+.list li.ticked .name, .list li.ticked .sub {
+  opacity: .5;
+  text-decoration: line-through;
+}
 
 .bar {
   position: fixed;

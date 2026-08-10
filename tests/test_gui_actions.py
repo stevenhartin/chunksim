@@ -1,4 +1,4 @@
-"""Tests for `gui/actions.py`: the nine POSTs and the jobs they hand work to.
+"""Tests for `gui/actions.py`: the ten POSTs and the jobs they hand work to.
 
 `handle_request` is pure - strings in, a `Response` out - so every test
 here exercises the real routing without binding a socket.
@@ -458,3 +458,84 @@ def test_simulate_progress_counts_rolls_not_runs(
     assert seen[0] == "0/12 rolls"
     assert seen[-1].startswith("12/12 rolls")
     assert not any("runs" in line for line in seen), seen
+
+
+def test_committing_an_edit_writes_a_map_of_its_own_kind(ctx: Context) -> None:
+    """**An edit is not an unlock.** That kind means precisely one thing - one
+    candidate chunk, priced - and calling a map with six ticked tasks an
+    unlock is the same wrong that split `unlocked` out of `simulated`."""
+    reply = _body(
+        _post(
+            "/api/commit",
+            ctx,
+            {
+                "map": "fray",
+                "name": "hand-made",
+                "ticked": {"Slayer": ["Kill a ~|goblin|~"], "Diary": ["Varrock Diary#Easy 1"]},
+                "unlocked": [NORTH],
+            },
+        )
+    )
+    job = _wait(ctx, reply["job"])
+    assert job["state"] == "done", job
+    result = job["result"]
+    assert result["open"] == "hand-made"
+    assert result["ticks"] == 2
+    assert result["chunks"] == [NORTH]
+
+    # It lands under its own kind, and resolves by its bare name.
+    root = ctx.root
+    assert root is not None
+    assert (root / "cache" / "maps" / "edited" / "hand-made").is_dir()
+    envelope = cache.read_cache("hand-made", ctx.root)
+    assert envelope["kind"] == "edited"
+    assert NORTH in envelope["data"]["chunks"]["unlocked"]
+
+
+def test_a_committed_tick_reads_back_as_completed(ctx: Context) -> None:
+    """**The one place this can be quietly wrong.** A mis-encoded key writes a
+    tick nothing can read back, and the map derives exactly as though the task
+    had never been ticked - no error anywhere. So the assertion is the round
+    trip through the decoder every derivation actually uses, not the presence
+    of some key."""
+    from fray_claude.model.firebase import decode_challenge_keyed
+
+    name = "Mine 5 ~|iron ore|~ (2/3 of it)"
+    job = _wait(
+        ctx,
+        _body(_post("/api/commit", ctx, {"map": "fray", "name": "ticked", "ticked": {"Mining": [name]}}))["job"],
+    )
+    assert job["state"] == "done", job
+
+    completed = cache.read_cache("ticked", ctx.root)["data"]["chunkinfo"]["completedChallenges"]
+    assert name not in completed["Mining"], "stored raw rather than encoded"
+    assert decode_challenge_keyed(completed, {})["Mining"] == {name: True}
+
+
+def test_a_commit_with_nothing_in_it_is_refused(ctx: Context) -> None:
+    """A map identical to its base under a new name is not an edit."""
+    assert _post("/api/commit", ctx, {"map": "fray"}).status == HTTPStatus.BAD_REQUEST
+    assert _post("/api/commit", ctx, {"map": "fray", "ticked": {}, "unlocked": []}).status == (
+        HTTPStatus.BAD_REQUEST
+    )
+
+
+def test_a_bad_map_fails_the_post_rather_than_the_job(ctx: Context) -> None:
+    """Read eagerly, like every other action that writes: a job that starts
+    and then fails has already told the page it was working."""
+    assert _post("/api/commit", ctx, {"map": "nope", "unlocked": [NORTH]}).status == (
+        HTTPStatus.NOT_FOUND
+    )
+    # And a chunk the map already holds would write a copy under a new name.
+    assert _post("/api/commit", ctx, {"map": "fray", "unlocked": [LUMBRIDGE]}).status == (
+        HTTPStatus.BAD_REQUEST
+    )
+
+
+def test_the_claimed_name_comes_back_when_the_requested_one_collides(ctx: Context) -> None:
+    """`claim_batch` suffixes `-2`, so the name that landed is not always the
+    name that was typed - and the page selects what came back."""
+    first = _wait(ctx, _body(_post("/api/commit", ctx, {"map": "fray", "name": "twice", "unlocked": [NORTH]}))["job"])
+    second = _wait(ctx, _body(_post("/api/commit", ctx, {"map": "fray", "name": "twice", "unlocked": [NORTH]}))["job"])
+    assert first["result"]["open"] == "twice"
+    assert second["result"]["open"] == "twice-2"

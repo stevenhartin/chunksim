@@ -1,12 +1,12 @@
-"""The nine POST actions, and the job registry they hand work to.
+"""The ten POST actions, and the job registry they hand work to.
 
-`fetch`, `simulate`, `unlock`, `timeline`, `cancel`, `refresh`,
+`fetch`, `simulate`, `unlock`, `commit`, `timeline`, `cancel`, `refresh`,
 `maps/remove`, `derived/prune`, `window`. `_ACTIONS` is the dispatch table
 `server._handle_post` looks them up in - it was already a table before this
 split, which is why this module needed no routing invented for it.
 
 **An action's reply shape decides whether the page polls it.**
-`fetch`/`simulate`/`unlock`/`timeline`/`refresh` return a job id and report
+`fetch`/`simulate`/`unlock`/`commit`/`timeline`/`refresh` return a job id and report
 progress while a thread does the work; `maps/remove`/`derived/prune`/`window`/
 `cancel` do the work and return the result. Reading `{ job }` off all of them
 polled `/api/jobs/undefined`, whose 404 silently swallowed the refresh callback
@@ -41,7 +41,7 @@ from fray_claude.remote.api import fetch_tasks_map
 import os
 from fray_claude.runs.batch import price_steps
 from fray_claude.runs.batch import run_batch
-from fray_claude.runs.batch import save_unlock
+from fray_claude.runs.batch import save_edit, save_unlock
 from fray_claude.remote.scrape import scrape
 from fray_claude.gui.http import Context
 from fray_claude.gui.routes_view import _run_steps
@@ -234,6 +234,66 @@ def _unlock_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     return {"job": ctx.jobs.submit(f"unlock {chunk_id}", work).id}
 
 
+def _commit_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
+    """Save the browser's pending edits as a new map.
+
+    **The edits live in the browser until this is pressed**, which is what
+    makes edit mode cheap: a ticked task greys out and an unlocked chunk lights
+    up with no derivation at all, and exactly one derivation happens - here, on
+    the world that results. A preview that re-derived per tick would cost ~0.8s
+    a click and answer a question nobody asked halfway through.
+
+    Job-shaped although it derives nothing itself: the page polls
+    `fetch`/`simulate`/`unlock` and an action that replied differently would be
+    a second protocol for no reason. **The claimed name comes back as `open`**,
+    since `claim_batch` suffixes a clash and the name that landed is not
+    always the name that was typed.
+    """
+    map_id = str(payload.get("map") or "").strip()
+    if not map_id:
+        raise ValueError("missing 'map'")
+    name = str(payload.get("name") or "").strip() or f"{map_id}-edit"
+
+    raw_ticked = payload.get("ticked") or {}
+    if not isinstance(raw_ticked, Mapping):
+        raise ValueError("'ticked' must be an object of category -> task names")
+    ticked = {
+        str(category): [str(task) for task in names]
+        for category, names in raw_ticked.items()
+        if isinstance(names, (list, tuple)) and names
+    }
+    raw_unlocked = payload.get("unlocked") or []
+    if not isinstance(raw_unlocked, (list, tuple)):
+        raise ValueError("'unlocked' must be a list of chunk ids")
+    unlocked = [str(chunk).strip() for chunk in raw_unlocked if str(chunk).strip()]
+    if not ticked and not unlocked:
+        raise ValueError("nothing to commit")
+
+    # Read the base map now, so a bad id fails the POST rather than the job.
+    envelope = cache.read_cache(map_id, ctx.root)
+    held = envelope["data"].get("chunks", {}).get("unlocked", {})
+    if isinstance(held, Mapping):
+        already = [chunk for chunk in unlocked if chunk in held]
+        if already:
+            raise ValueError(f"already unlocked on {map_id}: {', '.join(sorted(already))}")
+
+    def work(progress: Progress, _stop: StopCheck) -> dict[str, Any]:
+        progress(f"writing {name}")
+        saved = save_edit(
+            name=name,
+            payload=envelope["data"],
+            ticked=ticked,
+            unlocked=unlocked,
+            base_map=map_id,
+            base_fetched_at=envelope.get("fetched_at"),
+            root=ctx.root,
+        )
+        return {**saved.as_dict(), "open": saved.name}
+
+    ticks = sum(len(names) for names in ticked.values())
+    return {"job": ctx.jobs.submit(f"commit {ticks} ticks, {len(unlocked)} chunks", work).id}
+
+
 def _timeline_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     """Price every step of a run, and store the answer beside its ledger.
 
@@ -379,6 +439,7 @@ _ACTIONS: dict[str, Callable[[Mapping[str, Any], Context], dict[str, Any]]] = {
     "/api/fetch": _fetch_job,
     "/api/simulate": _simulate_job,
     "/api/unlock": _unlock_job,
+    "/api/commit": _commit_job,
     "/api/timeline": _timeline_job,
     "/api/cancel": _cancel_job,
     "/api/refresh": _refresh_job,

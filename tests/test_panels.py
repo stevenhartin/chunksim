@@ -245,3 +245,35 @@ def test_an_empty_group_is_dropped_but_still_counted_nowhere() -> None:
     section = _section(panel, "Diary")
     assert section["groups"] == []
     assert section["active_total"] == 0
+
+
+def test_every_row_says_which_branch_a_tick_would_land_in() -> None:
+    """**The section a row is drawn under is not the category it is stored
+    under.** All 21 skills share one section, because a skill contributes at
+    most one active task and 21 headings would be 21 lists of one - where the
+    payload keys ticks by challenge category, one per skill. Edit mode writes
+    a tick, so it needs the payload's answer.
+    """
+    panel = panels.task_panel(
+        _derived(
+            skills={"Mining": {"active": "Mine ~|iron ore|~", "completed": []}},
+            bis={"active": {"~|abyssal whip|~": "Melee weapon"}, "slots": {}, "completed": {}},
+            other={
+                "Diary": {
+                    "category": "Diary",
+                    "groups": [
+                        {"name": "Varrock Diary", "active": ["Varrock Diary#Easy 1"], "completed": []}
+                    ],
+                }
+            },
+        )
+    )
+    found = {
+        row["category"]
+        for section in panel["sections"]
+        for group in section["groups"]
+        for row in group["active"]
+    }
+    assert found == {"Mining", "BiS", "Diary"}
+    # Every category named here is one the payload actually keys by.
+    assert "skills" not in found and "bis" not in found

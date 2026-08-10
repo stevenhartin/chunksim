@@ -180,7 +180,8 @@ Five things that cut across modules — the first three because each has already
 | `derive/neighbours.py` | Which chunks are eligible to unlock next, and upstream's canvas numbering (**descending chunk id, 1-based**). Owns the `sectionsLimits` gate. |
 | `runs/timeline.py` | Replaying a run one roll at a time, and `added_hours` — what a roll *cost*, as a diff of what is being costed rather than of the totals. **A run is self-contained** — the state before roll k is `final − rolls[k:]`, so stepping needs no base map, no export and no `derive`. Owns the delta series and the rule that step 0 is a baseline rather than a roll. |
 | `runs/simulate.py` | Seeded chunk-roll simulation: the bootstrap pool, plus the dispatch to `neighbours.py`. Records are never revisited by a later roll. `simulated_payload` turns a finished ledger back into a map payload — read its docstring before changing which branches it touches. |
-| `runs/batch.py` | N simulations from one state, each cached as its own map. Owns seed derivation and **both** `ProcessPoolExecutor`s in the project — `run_batch` for rolling, `price_steps` for costing a timeline (two rounds: `warm_slice` strided across every core, then `price_slice` over long contiguous slices). `--jobs` must never change a result, either of them. Also `save_unlock` — a batch of one, so the **one** writer of the run metadata both apps read back. |
+| `model/edits.py` | A tick written back into a payload — **the one place this project writes to upstream's data rather than reading it.** Pure. The danger is not complexity but silence: a mis-encoded key derives as though the task were never ticked, and nothing errors. Stores by encoded name rather than minting a `t_N` id, because upstream interns lazily and a literal is a shape it already produces. |
+| `runs/batch.py` | N simulations from one state, each cached as its own map. Owns seed derivation and **both** `ProcessPoolExecutor`s in the project — `run_batch` for rolling, `price_steps` for costing a timeline (two rounds: `warm_slice` strided across every core, then `price_slice` over long contiguous slices). `--jobs` must never change a result, either of them. Also `save_unlock` and `save_edit` — batches of one over the shared `_write_one_run_batch`, so there is still exactly **one** writer of the run metadata both apps read back. An edit's ledger records its chunks and **no attribution**: nothing derived them, and inventing a task count for a hand edit would manufacture the kind of number this project refuses everywhere else. |
 | `store/derived_cache.py` | The on-disk cache of the **two** expensive per-state computations: `cached_derive` and `cached_enrich`. Owns both keys (a hash of every input each reads), the zstd+pickle codec, and `CacheBehaviour`/`RollCache` — which of a simulation's states to keep. Pure bar the bytes, which `cache.py` writes. |
 | `derive/search.py` | World-wide fuzzy search over the *raw* export — all 5 item routes, so a strict superset of what `fray sources` can list. |
 | `model/summary.py` | Pure reductions over a raw payload. Extend this, not the CLI. Also home to `format_age` (both apps render ages, and two copies of the bucketing would disagree) and `_mapping`, the tolerant dict accessor eight other modules import despite the `_` — Firebase omits empty containers, so every lookup anywhere must survive a missing branch. |
@@ -197,14 +198,14 @@ Five things that cut across modules — the first three because each has already
 | `cli/common.py` | What every family needs before it can answer: `load_state`, `derive_cached`, `emit_json`, `digests`, `error`, `DEFAULT_MAP`. The names lost their underscore when they crossed a module boundary. |
 | `cli/render.py` | Capping, grouping and stripping for a terminal. Shared by the listing commands and `diff`, which prints the same names either side of a comparison. |
 | `cli/<family>.py` | One per subcommand family — `io_commands`, `listing`, `search`, `unlock`, `diff`, `estimate`, `neighbours`, `simulate`, `maps`, `derived` — each holding its handlers **and** its `add_parser` block, so a flag change edits one file. `tests/test_cli_<family>.py` is the file that checks it. |
-| `gui/panels.py` | Shaping `Derived` into what the panel draws — sections of groups of `{key, name, note, icon}`, one shape across all five categories. Pure. Owns the three rules that are domain knowledge rather than formatting: a quest keeps only its **furthest** step, `Extra`'s collection-log rows split source from item, BiS groups by combat style. |
+| `gui/panels.py` | Shaping `Derived` into what the panel draws — sections of groups of `{key, name, note, icon, category}`, one shape across all five categories. **`category` is not the section**: all 21 skills share one section (a skill has at most one active task, so 21 headings would be 21 lists of one) where the payload keys ticks per skill, and edit mode writes a tick. Pure. Owns the three rules that are domain knowledge rather than formatting: a quest keeps only its **furthest** step, `Extra`'s collection-log rows split source from item, BiS groups by combat style. |
 | `gui/worldmap.py` | Where a chunk sits on the map, and which of its sides face outward. Pure. Owns the projection (`grid_x = region_x - 15`, **`grid_y = 65 - region_y`** — the y axis is flipped), the tile pyramid's constants, the two kinds of id that have no square, and `hull_edges`. In `gui/` because all of it is about one particular tiling. |
 | `gui/server.py` | Routing, as a **pure `handle_request`** with a `BaseHTTPRequestHandler` adapter over it — so tests reach the whole surface without binding a socket. Owns the `Sec-Fetch-Site`/`Host` checks — the latter against `Context.allowed_hosts` rather than loopback, so a non-loopback bind serves a page that can *act* rather than one whose every button 403s. |
 | `gui/http.py` | The vocabulary every route speaks: `Response`, `Context`, `_json`/`_error`, and the heartbeat. **Must stay directly in `gui/`** — `RESOURCE_DIR` is `__file__`-relative, which is why the split is flat rather than a `routes/` package. |
 | `gui/routes_view.py` | The **cheap path**: every route answerable without parsing the export. Nothing here may call `ctx.derivations.load`; `_areas_for` is the one documented exception and has a test. |
 | `gui/routes_derived.py` | The **expensive path**: chunk, sections, diff, unlock, estimate, tasks. `/api/diff` derives both sides and is the one route allowed to be slow. |
 | `gui/routes_reference.py` | Bytes belonging to no map: the static allowlist, blob freshness, the tile *template*, and the lazy proxy for section masks and skill icons. |
-| `gui/actions.py` | The nine POST handlers and `_ACTIONS`. **An action's reply shape decides whether the page polls it** — a job id, or the result. |
+| `gui/actions.py` | The ten POST handlers and `_ACTIONS`. **An action's reply shape decides whether the page polls it** — a job id, or the result. |
 | `gui/jobs.py` | The background job registry the POST actions use. **The only mutable state in the GUI**, kept out of the pure layer deliberately. |
 | `gui/derivation.py` | The boundary between the cheap path and the expensive one. Loads `ChunkInfo` **lazily** — a request that does not need a derivation must not pay for one, and a test asserts the map view never triggers it. |
 | `gui/browser.py` | Finding a Chromium-family browser and opening an app window whose lifetime is the server's. `--user-data-dir` is load-bearing, not tidiness. `window_flags` restores the remembered geometry, which Chrome will not — see the GUI paragraph below Commands. |
@@ -326,12 +327,9 @@ file promised: one entry in `COMPUTED_KINDS`, after which removal, resolution, l
 cross-kind name claiming all followed with no other change. It is distinct from `unlocked` because
 that kind means precisely one thing (one candidate chunk, by `fray unlock --cache-map`), and calling
 a map with six ticked tasks an "unlock" is the same wrong that split `unlocked` out of `simulated`.
-
-**Three kinds, and `unlocked` used to be filed under `simulated`.** This file argued for that —
-both mean "this project computed it, upstream never saw it", and a third kind would have to be
-taught to every removal path. What that missed is that the picker has to *say* which, and calling a
-map made by adding one chunk by hand a simulation is simply wrong. `COMPUTED_KINDS` is what the
-removal paths take, so a fourth kind is one line rather than a hunt.
+`COMPUTED_KINDS` is what every removal path takes, which is what makes a new kind one line rather
+than a hunt — and the argument against splitting (both mean "this project computed it, upstream
+never saw it") loses to the fact that the picker has to *say* which.
 
 **`batch_id` is what makes several runs one job.** Minted once per batch before any run starts and
 written into *every* run, not just the summary — the directory name cannot carry it, because a name
@@ -854,8 +852,60 @@ constant crossing into JavaScript with a test holding the two in agreement.
 
 **All fifteen CLI subcommands are reachable from it.** `GET /api/{maps,view,revision,summary,
 neighbours,chunk,sections,unlock,diff,search,estimate,tasks,tiles,areas,derived,jobs,timeline,roll,reference,build}` and
-`POST /api/{fetch,simulate,unlock,timeline,cancel,refresh,maps/remove,derived/prune,window}`. The panel's tabs are tasks / chunk / find / estimate /
+`POST /api/{fetch,simulate,unlock,commit,timeline,cancel,refresh,maps/remove,derived/prune,window}`. The panel's tabs are tasks / chunk / find / estimate /
 maps, and `?map=&compare=&candidates=1&sections=1&step=&tab=` reproduces a view.
+
+**The page has four modes, and the ribbon says which in colour.** It had three
+already, encoded as mutually exclusive *conditions* — a compare box with
+something in it was Diff, a non-null step was Timeline, neither was Browse —
+which is why `comparingNotice` existed: a function whose whole job was to
+apologise for an interaction the interface refused to name. `state.mode` names
+them, `setMode` is the single transition point, and `mapQuery` switches on what
+the page *is* rather than on which control happens to hold a value. The
+exclusivity stops being a rule the query enforces and becomes a property of the
+modes: **one mode carries a comparison and it is not one of the ones that step.**
+
+| mode | base map | carries | editing |
+|---|---|---|---|
+| Browse | any non-simulated | a pinned step, if the map has one roll | prompts to enter Edit |
+| Edit | any non-simulated | the pending set, and **Commit** | this is the mode |
+| Diff | the browsed map | `compare`, any map at all | disabled |
+| Timeline | **always** a simulation | the strip and the step | disabled |
+
+`mode === "timeline"` ⟺ the base map's kind is `simulated`, and that
+biconditional is what makes the separation real rather than cosmetic: a run is
+fifty worlds, so browsing it as one is the confusion this removes. `selectMap`
+asks before entering and puts the picker back on a decline; `openMap` is the
+unprompted twin for the actions that *make* a map, which select their result
+directly and would otherwise have landed a run in Browse. From Timeline you
+cannot enter Diff or Edit — both would show a simulation outside its mode — and
+the door says so rather than going quietly grey.
+
+**Browse still carries a step, and that is the judgement call.** A batch of one
+— a saved unlock, an edit — has exactly one roll, pinned at its end so
+`/api/view` can say which chunk arrived. That is not a rewind; it is the only
+world the map has. Banning it would have silently lost the green chunk a saved
+unlock exists to show, which is the bug
+`test_unlocking_opens_the_result_as_the_map` was written for — so `hideStrip`
+sits beside `hideTimeline`, because "this map has no history" and "its history
+is not yours to drag from here" were the same call and are two different states.
+
+**An edit is pending until it is committed, and that is what makes it cheap.**
+A ticked row greys in place and an unlocked chunk lights up amber with **no
+derivation at all**; exactly one happens, on the world that results. A preview
+that re-derived per click would cost ~0.8s a tick to answer a question nobody
+asked half way through. The set lives in `state.edits` in the browser and
+nowhere else until **Commit** — so leaving the mode or changing map asks before
+throwing it away. `POST /api/commit` is the only writer, through
+`batch.save_edit`, and returns the **claimed** name because `claim_batch`
+suffixes a clash.
+
+**The one place this can be quietly wrong is the encoder.** A mis-encoded key
+writes a tick `firebase.decode_challenge_keyed` cannot read back, and the map
+then derives exactly as though the task had never been ticked — nothing errors
+anywhere. So the round-trip property over all 49,721 interned names is not
+optional, and `tests/test_gui_actions.py` asserts a committed tick through the
+same decoder every derivation uses rather than asserting some key is present.
 
 Things worth knowing before changing it:
 

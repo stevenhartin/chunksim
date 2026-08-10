@@ -530,6 +530,51 @@ def test_a_simulation_is_only_ever_seen_in_timeline_mode() -> None:
     assert kind is not None
     assert '"simulated"' in kind.group(1) and '"timeline"' in kind.group(1)
 
+def test_an_edit_is_pending_until_it_is_committed() -> None:
+    """**What makes edit mode cheap is that it computes nothing.**
+
+    A ticked row greys in place and an unlocked chunk lights up with no
+    derivation at all; exactly one happens, on the world that results. A
+    preview that re-derived per click would cost ~0.8s a tick to answer a
+    question nobody asked half way through - so the pending set lives in the
+    page, and `POST /api/commit` is the only thing that writes.
+    """
+    _, js, _ = _resources()
+
+    assert "edits: { unlocked: new Set(), ticked: new Map() }" in js
+
+    # The tick gesture asks the server nothing.
+    handler = re.search(
+        r'el\["tasks-body"\]\.addEventListener\("click".*?\n\}\);', js, re.DOTALL
+    )
+    assert handler is not None
+    assert "getJSON" not in handler.group(0) and "postJSON" not in handler.group(0)
+    assert "ensureEditing()" in handler.group(0)
+    # Keyed the payload's way, not the panel's - see `panels._entry`.
+    assert "row.dataset.category" in handler.group(0)
+
+    # And the preview is a layer, drawn under the labels like every other.
+    layers = re.search(r"const LAYERS = \[(.*?)\];", js, re.DOTALL)
+    assert layers is not None
+    order = layers.group(1)
+    assert order.index("drawPending") < order.index("drawAreas")
+
+def test_committing_is_the_only_writer_and_returns_what_it_claimed() -> None:
+    """`claim_batch` suffixes a clash, so the name that landed is not always
+    the name that was typed - and "anything that makes a map selects it"."""
+    _, js, _ = _resources()
+
+    commit = re.search(r"function askCommit\(\) \{(.*?)\n\}\n", js, re.DOTALL)
+    assert commit is not None
+    assert '"/api/commit"' in commit.group(1)
+    assert "openMap(result.open)" in commit.group(1)
+    assert "clearEdits()" in commit.group(1)
+
+    # Leaving with work pending asks rather than dropping it silently.
+    exit_body = re.search(r"async function exitMode\(\) \{(.*?)\n\}", js, re.DOTALL)
+    assert exit_body is not None
+    assert "confirmAction" in exit_body.group(1)
+
 def test_the_mode_palette_is_defined_once() -> None:
     """The canvas constants and the legend's swatches are already two copies
     of this palette with nothing asserting they agree. The modes are not going

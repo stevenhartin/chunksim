@@ -53,6 +53,12 @@
        is changeable without leaving the mode that needed it. -->
   <span id="ribbon-vs" class="vs" hidden>vs</span>
   <select id="compare" class="pick pick-thin" aria-label="Compare against" hidden><option value="">—</option></select>
+  <!-- Edit's own controls: what is waiting, and the one button that writes
+       it. The count is the whole feedback loop for a mode that deliberately
+       computes nothing until you press Commit. -->
+  <span id="ribbon-edits" class="ribbon-edits" hidden></span>
+  <button id="do-commit" type="button" class="thin" hidden
+          data-tip="&lt;b&gt;Write these changes as a new map&lt;/b&gt;&lt;span class='sub'&gt;Under cache/maps/edited/. Nothing existing is touched.&lt;/span&gt;">Commit</button>
   <button id="breakdown" type="button" class="thin" hidden disabled
           data-tip="&lt;b&gt;What these two maps actually differ by&lt;/b&gt;&lt;span class='sub'&gt;Sections, tasks, sources and BiS, both directions.&lt;/span&gt;&lt;span class='hint'&gt;Derives both sides — about two seconds&lt;/span&gt;">Breakdown</button>
 </div>
