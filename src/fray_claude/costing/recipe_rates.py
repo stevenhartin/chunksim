@@ -130,6 +130,16 @@ class ActionRate:
     materials: tuple[str, ...] = ()
 
     @property
+    def performing_seconds(self) -> float:
+        """The action alone: its animation and the overhead, no materials.
+
+        **What `estimate._route_hours` needs and `action_seconds` is not.**
+        The walk charges a conversion's inputs itself, so handing it the whole
+        cycle would bill the materials twice.
+        """
+        return TICK_SECONDS * self.ticks + ACTION_OVERHEAD_SECONDS
+
+    @property
     def action_seconds(self) -> float:
         """The whole cycle: the animation, the materials, and the overhead.
 

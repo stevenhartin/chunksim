@@ -343,6 +343,10 @@ class Heuristics:
     combat: dict[str, Rate] = field(default_factory=dict)
     #: Shop -> item -> what it charges. From `remote/stores.py`.
     shop_prices: dict[str, dict[str, ShopPrice]] = field(default_factory=dict)
+    #: Challenge name -> seconds to perform it once. From a guide's `kph`
+    #: (actions an hour) or a recipe's tick cost; absent means unknown, and
+    #: `estimate.DEFAULT_ACTION_SECONDS` stands in.
+    action_seconds: dict[str, float] = field(default_factory=dict)
     #: Item -> the fee charged to make it, where a conversion has one. The
     #: export models the sawmill and not its price; see `remote/stores.py`.
     conversion_fees: dict[str, ShopPrice] = field(default_factory=dict)
@@ -826,6 +830,12 @@ def build_config(
         if how != "exact" and guide in by_guide:
             by_guide[guide].add(activity_name(task))
 
+    # **A guide's `kph` is actions an hour, which is the only statement of how
+    # long a skilling action takes that this project has for most methods.**
+    # Kept beside the rate rather than derived from it: a rate is xp an hour
+    # and dividing it back out needs the xp per action, which is a second
+    # number and not always the one that joined.
+    actions: dict[str, float] = {}
     for task, skill, guide, how, title, per_hour in claims:
         if how != "exact" and guide in exact_claims:
             continue
@@ -840,6 +850,9 @@ def build_config(
         training.setdefault(task, {})[skill] = Rate(
             value=per_hour, source=f"mmg:{title}", match=how
         ).as_dict()
+        rate_kph = guides[guide][1].kph or 0.0
+        if rate_kph > 0:
+            actions[task] = 3600.0 / rate_kph
 
     # **The Agility and Thieving tables, which no guide covers.** They are
     # joined structurally rather than by name, so they outrank a `contained`
@@ -885,6 +898,7 @@ def build_config(
             for shop, items in sorted((shop_prices or {}).items())
             if shop in chunk_info.data.get("shopItems", {})
         },
+        "actions": dict(sorted(actions.items())),
         "conversions": {
             item: entry.as_dict() for item, entry in sorted((conversion_fees or {}).items())
         },
@@ -1116,6 +1130,11 @@ def load(
             }
             for shop, items in _entries(config, "shops")
             if isinstance(items, dict)
+        },
+        action_seconds={
+            task: _float(value, 0.0)
+            for task, value in _mapping(config, "actions").items()
+            if isinstance(value, (int, float)) and not isinstance(value, bool)
         },
         conversion_fees={
             item: ShopPrice(

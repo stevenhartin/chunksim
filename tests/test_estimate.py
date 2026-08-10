@@ -10,7 +10,7 @@ from fray_claude.derive.active_tasks import SkillClassification, TaskClassificat
 from fray_claude.derive.bis import BisResult
 from fray_claude.derive.challenges import ChallengeResult
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.costing.estimate import _item_hours, estimate
+from fray_claude.costing.estimate import DEFAULT_ACTION_SECONDS, _item_hours, estimate
 from fray_claude.costing.training import training_options
 from fray_claude.costing.levels import goal_levels, infer_levels, reachable_providers, task_gated_monsters
 from fray_claude.remote.stores import ShopPrice
@@ -233,7 +233,10 @@ def test_a_made_item_costs_its_inputs() -> None:
 
     result = _run(info, derived, Heuristics(monsters={"Goblin": Rate(100.0)}))
 
-    assert result.items[0].hours == pytest.approx(10 / 100)
+    # Its inputs **and** the action itself: ten kills at 100/hr to gather the
+    # ingredient, plus one default action to combine them. Performing a
+    # conversion used to be free, which made every gathering chain free.
+    assert result.items[0].hours == pytest.approx(10 / 100 + DEFAULT_ACTION_SECONDS / 3600)
     assert result.items[0].detail.startswith("make:")
 
 
@@ -1428,3 +1431,40 @@ def test_the_pickup_tick_caps_a_generous_spawn() -> None:
     priced = _item_hours(walk, "Coins pile", quantity=6000.0)
 
     assert priced is not None and priced.hours == pytest.approx(1.0)
+
+
+def test_performing_an_action_costs_time_even_with_no_inputs() -> None:
+    """**The last free thing in the walk.** A `task:` route was charged for
+    its inputs and never for performing it, so a chain bottoming out in a
+    gathering action with nothing to consume cost zero: `Plank <- Process logs
+    <- Logs <- Cut logs from roots <- (nothing)`."""
+    info = ChunkInfo(
+        {
+            "challenges": {
+                "Woodcutting": {"Cut ~|logs|~": {"Output": "Logs", "Items": []}}
+            },
+            "chunks": {},
+        }
+    )
+    walk = _walk_for(info)
+
+    priced = _item_hours(walk, "Logs", quantity=10.0)
+
+    assert priced is not None
+    assert priced.hours == pytest.approx(10 * DEFAULT_ACTION_SECONDS / 3600)
+
+
+def test_a_known_action_time_beats_the_default() -> None:
+    """A guide's `kph` and a recipe's tick cost both say how long an action
+    takes; the default is only for when neither does."""
+    info = ChunkInfo(
+        {
+            "challenges": {"Woodcutting": {"Cut ~|logs|~": {"Output": "Logs"}}},
+            "chunks": {},
+        }
+    )
+    walk = _walk_for(info, Heuristics(action_seconds={"Cut ~|logs|~": 12.0}))
+
+    priced = _item_hours(walk, "Logs", quantity=10.0)
+
+    assert priced is not None and priced.hours == pytest.approx(120 / 3600)

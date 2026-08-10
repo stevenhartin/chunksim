@@ -190,6 +190,13 @@ _FREE_ROUTES = frozenset({"shop", "spawn"})
 #: plausible for most of the map.
 SHOP_TRIP_SECONDS = 30.0
 
+#: Seconds one *action* takes when nothing says otherwise. **Performing a
+#: conversion used to be free**, so a chain bottoming out in a gathering action
+#: with no inputs cost nothing at all: `Plank <- Process logs <- Logs <- Cut
+#: logs from roots <- (nothing)`. Four ticks is an ordinary skilling action and
+#: is what stands in until a guide's `kph` or a recipe's tick cost says better.
+DEFAULT_ACTION_SECONDS = 4 * 0.6
+
 #: Seconds to pick one item off the ground. One tick, which caps collection
 #: at 6,000 an hour before anything else is considered.
 SPAWN_PICKUP_SECONDS = 0.6
@@ -792,6 +799,13 @@ def _route_hours(
         # sawmill as a swap of logs for planks and records no price, so a
         # mahogany plank came out costing exactly one mahogany log. The fee is
         # `remote/stores.py`'s and is zero for every conversion that has none.
+        # **And performing it costs time.** A guide's `kph` or a recipe's tick
+        # cost where either is known, and four ticks where neither is.
+        total += (
+            walk.heuristics.action_seconds.get(provider, DEFAULT_ACTION_SECONDS)
+            * quantity
+            / 3600.0
+        )
         made = challenge.get("Output")
         if isinstance(made, str):
             fee = walk.heuristics.conversion_seconds(made) * quantity / 3600.0

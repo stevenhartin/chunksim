@@ -453,11 +453,23 @@ a build is a stack of bought planks, and a menagerie steel dragon reads `Coins x
   spawn. Left free, a `Spawn` of two planks priced a ten-plank wooden fence at nothing and made it
   296,471 Construction xp/hr.
 
-**What is still free is a `make` route's own action.** `_route_hours` charges a `task:` route for its
-*inputs* and never for performing it, so a chain that bottoms out in a gathering action with no inputs
-costs nothing: `Plank <- make: Process logs <- Logs <- make: Cut logs from roots <- (nothing)`. The
-export knows the action exists and not how long it takes, which is the same gap the gathering skills
-have and wants the same answer.
+**Performing an action costs time, which closes the last free route.** `_route_hours` charged a
+`task:` route for its *inputs* and never for doing it, so any chain bottoming out in a gathering
+action with nothing to consume cost zero - `Plank <- Process logs <- Logs <- Cut logs from roots <-
+(nothing)`. The time comes from whichever source knows it: a money-making guide's **`kph` is actions
+an hour** (248 methods, every one of them with a usable figure), a recipe's tick cost covers an order
+of magnitude more, and `DEFAULT_ACTION_SECONDS` - four ticks - stands in for the rest. `ActionRate`
+exposes `performing_seconds` separately from `action_seconds` precisely because the walk charges the
+materials itself and handing it the whole cycle would bill them twice.
+
+**And the sawmill charges.** Upstream models it as seven `Process <X> logs` challenges and records no
+price, so a plank cost exactly one log; `Heuristics.conversion_seconds` adds the fee, keyed by what
+the conversion *makes* because that is what the challenge's `Output` names. It returns **zero** where
+`shop_seconds` returns `None` - a conversion with no recorded fee really is free to perform, and only
+the sawmill charges - while an unknown *currency* is still refused.
+
+Together those took Construction's best computed build from 296,471 xp/hr to 69,121, which puts the
+hand-verified **Mahogany Homes at 165,000 top of the list** where it belongs.
 
 **Construction joins on the task's own name, and it is the only skill that needs to.** Its challenges
 carry `Output Object` - the furniture - where every other skill carries `Output`, so the exact join

@@ -177,8 +177,20 @@ def recipe_priced(
             state, derived, world, heuristics, level_overrides=levels
         ),
     )
+    # **A recipe's tick cost is also a statement of how long the action takes**,
+    # and the item walk needs that separately from the rate: it charges a
+    # conversion's inputs itself, so only the performing half belongs here.
+    # Guides cover 248 methods; recipes cover an order of magnitude more.
+    timed = {
+        **{task: rate.performing_seconds for task, rate in computed.items()},
+        **heuristics.action_seconds,
+    }
     return (
-        replace(heuristics, training=recipe_rates.apply(heuristics.training, computed, pinned)),
+        replace(
+            heuristics,
+            training=recipe_rates.apply(heuristics.training, computed, pinned),
+            action_seconds=timed,
+        ),
         coverage,
     )
 
