@@ -20,6 +20,8 @@ from fray_claude.store.cache import (
     migrate_layout,
     kind_root,
     claim_batch,
+    COMPUTED_KINDS,
+    EDITED,
     UNLOCKED,
     section_overlay_path,
     write_asset_at,
@@ -704,3 +706,21 @@ def test_every_envelope_written_today_states_its_kind(tmp_path: Path) -> None:
     )
 
     assert json.loads((run / "map.json").read_text())["kind"] == SIMULATED
+
+
+def test_a_fourth_kind_costs_one_tuple_entry(tmp_path: Path) -> None:
+    """**The claim this layout was built on, now cashed.** `EDITED` was added
+    for the GUI's edit mode by naming it in `COMPUTED_KINDS` and nothing else -
+    and removal, resolution, listing and cross-kind name claiming all followed.
+
+    A name is claimed across *every* kind, so `--map foo` never has to guess
+    which directory meant it; the clash suffixes rather than collides.
+    """
+    assert EDITED in COMPUTED_KINDS
+    assert kind_root(EDITED, tmp_path).name == "edited"
+
+    first = claim_batch("demo", tmp_path, kind=EDITED)
+    second = claim_batch("demo", tmp_path, kind=SIMULATED)
+
+    assert first.name == "demo"
+    assert second.name == "demo-2"

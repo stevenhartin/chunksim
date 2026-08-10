@@ -60,6 +60,51 @@ def decode_string(value: str) -> str:
     return _apply_sentinels(decoded)
 
 
+def encode_string(value: str) -> str:
+    """The inverse of `decode_string`, for writing a payload back.
+
+    **This module was decode-only until the GUI needed to tick a task.**
+    Reading a map never needs an encoder; writing one does, and
+    `chunkinfo.completedChallenges` is stored encoded.
+
+    **The `%` escape must come first**, because `decode_string` undoes it first
+    (`-_-` -> `%`) and only then applies the sentinel table. Doing it the other
+    way round would let a `%` introduced by the sentinels be escaped a second
+    time.
+
+    **Two literal sequences do not round-trip**, and both are documented rather
+    than defended against: a value containing `-_-` or `-2H` decodes to one
+    holding `%` or `'`, because upstream's own encoding is not injective there.
+    `tests/test_firebase.py` asserts no key in the real cached payload contains
+    either, which is the only claim worth making - guarding a case that cannot
+    arise would be inventing a format upstream does not have.
+
+    `'` has *two* sentinels in the table (`%2H` and `-2H`); the first is
+    canonical and is what this writes.
+    """
+    encoded = value.replace("%", "-_-")
+    for token, character in _SENTINELS:
+        if token.startswith("%"):
+            encoded = encoded.replace(character, token)
+    return encoded
+
+
+def encode_key(key: str) -> str:
+    """The inverse of `decode_key` for a *literal* key.
+
+    **Deliberately does not intern to a `t_N` id.** Upstream's `tasksMap.json`
+    interns lazily - note its `currentNextIndex` counter - so a name it has
+    never seen is stored literally, and a category legitimately mixes the two
+    forms (`completedChallenges.BiS` was 65 ids to 5 literals on real data).
+    Writing a literal is therefore a shape upstream already produces and
+    `decode_challenge_keyed` already reads; minting an id would mean editing
+    the interning table, which is upstream's to own.
+    """
+    if key.isdigit():
+        key = _NUMERIC_KEY_PREFIX + key
+    return encode_string(key)
+
+
 def decode_key(key: str, tasks_map: Mapping[str, str] | None = None) -> str | None:
     """Port of `decodeObject`'s per-key handling.
 

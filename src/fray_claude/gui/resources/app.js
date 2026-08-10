@@ -2316,6 +2316,7 @@ const KIND_LABELS = {
   fetched: "Fetched",
   simulated: "Simulated",
   unlocked: "Unlocked",
+  edited: "Edited",
 };
 
 function mapTip(entry) {

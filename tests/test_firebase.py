@@ -9,7 +9,15 @@ fabricated.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
+import pytest
+
 from fray_claude.model.firebase import (
+    encode_key,
+    encode_string,
+    reverse_tasks_map,
     decode_challenge_keyed,
     decode_key,
     decode_payload,
@@ -192,3 +200,65 @@ def test_decode_challenge_keyed_skips_task_ids_when_asked() -> None:
 def test_decode_challenge_keyed_tolerates_a_missing_branch() -> None:
     assert decode_challenge_keyed(None, {}) == {}
     assert decode_challenge_keyed({}, {}) == {}
+
+
+# --- writing a payload back ------------------------------------------------
+#
+# This module was decode-only until the GUI needed to tick a task off. Reading
+# a map never needs an encoder; writing one does, and a mis-encoded key is the
+# worst kind of defect available here - `decode_challenge_keyed` would simply
+# not see the tick, and the map would derive as though it had never happened.
+
+
+def test_a_string_survives_the_round_trip() -> None:
+    """Every character the codec has a sentinel for, plus the `%` escape that
+    has to be applied first."""
+    for value in ("a.b", "a#b", "a/b", "a'b", "a,b", "a+b", "a!b", "50%", "plain"):
+        assert decode_string(encode_string(value)) == value
+
+
+def test_the_percent_escape_is_applied_before_the_sentinels() -> None:
+    """`decode_string` undoes them in the opposite order - `-_-` to `%` first,
+    then the table - so encoding the other way round would let a `%` the
+    sentinels introduced be escaped a second time."""
+    assert encode_string("100%.") == "100-_-%2E"
+    assert decode_string("100-_-%2E") == "100%."
+
+
+def test_a_numeric_key_regains_its_prefix() -> None:
+    """Firebase cannot hold a purely numeric key, so upstream prefixes one;
+    `decode_key` strips the prefix and this has to put it back."""
+    assert decode_key(encode_key("123"), None) == "123"
+    assert encode_key("123").startswith("*fb*_")
+
+
+def test_an_apostrophe_takes_the_canonical_sentinel() -> None:
+    """The table maps *two* tokens to `'` - `%2H` and `-2H` - because
+    upstream's own encoding is not injective there. The first is canonical."""
+    assert encode_string("craw's bow") == "craw%2Hs bow"
+    assert decode_string("craw-2Hs bow") == "craw's bow"
+
+
+@pytest.mark.real_cache
+def test_every_real_task_name_survives_the_round_trip() -> None:
+    """**The claim that matters, over 49,721 real names.**
+
+    `encode(decode(k)) == k` is deliberately *not* asserted: upstream percent-
+    encodes a space as `%20` and then escapes the `%`, so its keys hold
+    `-_-20` where this writes a plain space. The encoding is not canonical and
+    does not need to be - what a tick requires is that the name this writes
+    reads back as the same name, which is the direction below.
+
+    The two sequences that cannot round-trip (`-_-` and `-2H`, documented on
+    `encode_string`) appear in no real name, which is the only honest defence:
+    guarding a case upstream never produces would be inventing a format.
+    """
+    # This checkout's own cache, not a `tmp_path` - the `real_cache` marker is
+    # exactly the statement that it is populated.
+    root = Path(__file__).resolve().parent.parent
+    blob = json.loads((root / "cache" / "reference" / "tasks_map.json").read_text())
+    names = set(reverse_tasks_map(blob["data"]).values())
+
+    assert len(names) > 1_000, "expected the real interning table"
+    assert [name for name in names if decode_string(encode_string(name)) != name] == []
+    assert [name for name in names if "-_-" in name or "-2H" in name] == []

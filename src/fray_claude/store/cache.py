@@ -106,11 +106,17 @@ MAPS_DIR_NAME = "maps"
 FETCHED = "fetched"
 SIMULATED = "simulated"
 UNLOCKED = "unlocked"
+#: A map a person changed by hand in the GUI - tasks ticked off, chunks
+#: unlocked - and then committed under a new name. Distinct from `unlocked`
+#: because that kind means exactly one thing (one candidate chunk added, by
+#: `fray unlock --cache-map`), and calling a map with six ticked tasks an
+#: "unlock" is the same wrong that split `unlocked` out of `simulated`.
+EDITED = "edited"
 
 #: Everything this project computed, as opposed to fetched. The removal paths
 #: take this rather than naming `SIMULATED`, so adding a fourth kind is one
-#: line here instead of a hunt.
-COMPUTED_KINDS = (SIMULATED, UNLOCKED)
+#: line here instead of a hunt - which is what adding `EDITED` cost.
+COMPUTED_KINDS = (SIMULATED, UNLOCKED, EDITED)
 MAP_KINDS = (FETCHED, *COMPUTED_KINDS)
 
 #: Reference data that is fetched and is *not* a map: the chunk export, the

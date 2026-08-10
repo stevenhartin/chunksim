@@ -162,7 +162,7 @@ Five things that cut across modules — the first three because each has already
 | `costing/training.py` | How fast a skill goes, and why. **A climb is priced band by band as methods unlock**, walked on the XP axis so a quest reward shortens it and raises its start in one operation. The step function is a running maximum, so **the floor can only ever be the first band** — which is what keeps it visible. Also `quest_xp_grants`, whose grammar is not just skill names (`Attack\|Defence\|Strengthx4` is four lamps). |
 | `store/cache.py` | The disk. `CacheMissError`, the `map_id`/`fetched_at`/`source`/`kind`/`data` envelope, the `--chunkinfo`/`FRAY_CHUNKINFO` override, and the purpose-sorted layout below (incl. `--map` resolution across kinds, atomic writes, the cross-kind batch-name claim and `migrate_layout`). |
 | `store/build_info.py` | Which install is running, and when it was made: the `*.dist-info` mtime (pip writes those fresh, so it dates the *install*, not the wheel), `wheel`/`editable`/`source`, and the one-line watermark both apps print. Never raises and never guesses a date. |
-| `model/firebase.py` | The Firebase-safe string codec, incl. `decode_challenge_keyed`'s mixed `t_N`/literal key handling. Run any payload branch through it before believing it. |
+| `model/firebase.py` | The Firebase-safe string codec, both ways. `decode_challenge_keyed`'s mixed `t_N`/literal key handling; and `encode_string`/`encode_key`, which the GUI's edit mode needs to write a tick back. **The encoding is not canonical and does not need to be** - upstream writes a space as `-_-20` where this writes a space - so the property asserted is `decode(encode(name)) == name`, over all 49,721 interned names. `encode_key` deliberately does **not** intern to a `t_N` id: upstream interns lazily, so a literal is a shape it already produces. Run any payload branch through it before believing it. |
 | `model/chunkinfo.py` | Typed, tolerant accessors over the parsed export. Build **one** `ChunkInfo` per invocation — parsing the ~7MB export is the expensive part. |
 | `derive/sections.py` | Which sections of the unlocked chunks are reachable, plus named-area unlocking. `sectionsLimits` deliberately lives in `neighbours.py` instead. |
 | `derive/graph.py` | The export's `sections` branch as a **directed** `(chunk, section)` graph, with each edge's `sectionsLimits` gate pre-bound. Shaped for the not-yet-written pathfinding search. |
@@ -319,6 +319,13 @@ cache/maps/<kind>/<batch>/run-001/rolls.json  # that run's per-roll ledger — w
 cache/maps/<kind>/<batch>/run-001/run.json    # that run's summary, which `maps list` reads
 cache/maps/<kind>/<batch>/run-001/timeline.json  # per-step hours, once something paid to compute them
 ```
+
+**Four kinds, and `unlocked` used to be filed under `simulated`.** The fourth is `edited` - a map a
+person changed by hand in the GUI and committed under a new name - and it cost exactly what this
+file promised: one entry in `COMPUTED_KINDS`, after which removal, resolution, listing and
+cross-kind name claiming all followed with no other change. It is distinct from `unlocked` because
+that kind means precisely one thing (one candidate chunk, by `fray unlock --cache-map`), and calling
+a map with six ticked tasks an "unlock" is the same wrong that split `unlocked` out of `simulated`.
 
 **Three kinds, and `unlocked` used to be filed under `simulated`.** This file argued for that —
 both mean "this project computed it, upstream never saw it", and a third kind would have to be
