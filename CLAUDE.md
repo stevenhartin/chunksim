@@ -153,6 +153,8 @@ Five things that cut across modules — the first three because each has already
 | `remote/stores.py` | What a shop charges and **in what currency**, from the `storeline` Bucket. 6,326 lines, of which 4,438 are coins and 126 Tokkul; the rest are points and tickets nobody converts. The API caps a query at 5,000 rows whatever `limit` says, so it pages with `offset`. Joins 403 of the export's 435 shops and prices 3,798 of its 4,163 stock lines. |
 | `remote/farming.py` | The wiki calculator's crop table, `Module:Skill calc/Farming`, read as raw Lua - 76 crops with level, per-item xp, plant xp, seed and patch type. Parsed by **brace matching, not by splitting on `name =`**: every crop's `materials` has a name of its own, and a split ends each crop before the `type` that says which patch it goes in. |
 | `costing/farming.py` | Farming as a **schedule rather than a rate**. Owns `DEFAULT_HARVESTS_PER_DAY` - fruit tree 1, tree 3, cactus 3, bush 3, allotment 8, herb 8, hardwood 1/3, redwood 1/7 - and reports two numbers that measure different things: `active_hours` (clicking, goes in the bucket) and `days` (calendar, reported beside it and never added). Hops, flowers, belladonna, spirit trees and celastrus are **absent** from the schedule rather than zeroed. |
+| `remote/prayer.py` | What a bone pays and what an altar multiplies it by: `{{Prayer info}}` across its 193 transclusions (41 bones of 195 invocations - the rest are spectral, bonemeal, reanimated or **ashes**, which are scattered rather than buried) plus the seven altar pages. The oak altar states its base as the word *normal*, so an **unstated base is 100%** rather than a parse failure, and the teak page carries a third percentage that is not a multiplier at all. |
+| `costing/prayer.py` | Prayer, where **the rate is not the question and the bone supply is**. Burying is two ticks and an altar one, so an hour is 3,000-6,000 bones whatever else is true; what decides the climb is the *collection*, priced through `estimate.material_seconds` like a recipe's materials. Owns `CHAOS_ALTAR_CHUNK` - **four of the export's five `Chaos altar (Prayer)` objects are prayer-point recharges**, so the training one is pinned to region 11835 by contents rather than by name - and the 7x it works out at (3.5x an offering, 50% bone save, so two offerings a bone). |
 | `costing/heuristics.py` | Every hand-correctable number, and the `defaults < scraped < overrides` merge. Owns the joins and their `exact`/`contained` provenance; **no fuzzy tier**, by measurement — read the docstring before adding one back. |
 | `costing/slayer.py` | Slayer's rate, which is a *distribution* not a chosen method: a time-weighted mean over what a master assigns. Also owns `superior_rolls_per_hour` — the shared `SuperiorDropTable+` is one pool per master, not one per superior. **Masters are gated on their NPC being reachable** — without that it quoted Duradel on a map holding none of him. Reports `coverage`, because renormalising over reachable tasks flatters a sparse map. |
 | `costing/estimate.py` | The four buckets — quests, boss drops, activities, skilling — over the **active** set. **Costs the unique *item*, not the task** — one whip answers three tasks — and **clamps per source**, since items off one monster are earned in parallel. Owns the item walk, its bounded `Output` recursion, the `unpriced` list, and **three gates** — monster reachable, slayer task assignable, master reachable. Read the docstring before pricing anything off `WorldIndex`, which spans the whole world. Skilling is `costing/training.py`'s; what stays here is the loop and `unpriced_skills` — Attack, Defence, Hitpoints and Ranged have **no training method anywhere in the export**, and were being costed at zero. |
@@ -533,6 +535,35 @@ no money-making guide covers the bottom of the skill: the only rated method was 
 hours** across six bands, all `exact`, ending at a hand-entered Wintertodt. The logs are assumed to
 hand, which is how every published Firemaking rate is quoted - charging the walk to gather them would
 price the Woodcutting climb twice on a map training both.
+
+**Prayer is priced from the drop table, because that is what actually limits it.** Burying a bone
+is two ticks and offering one at an altar is one, so an hour of pure clicking is 3,000 or 6,000
+bones whatever else is true - and nobody has 6,000 bones. The whole model is therefore
+`experience_per_bone * 3600 / (offering_seconds + collect_seconds)`, where the collection comes
+through `estimate.material_seconds`, the same closure `recipe_rates.py` prices a recipe's materials
+with. Measured: **Prayer 1 -> 99 is 79.7h on `fray`** (big bones at the Chaos Altar, 163,558/hr,
+against the wiki's own 120-180k/hr for that method) and **150.2h on `verf-sim/run-001`** (a limestone
+altar with both burners), where both sat at the 13,034h floor before.
+
+Three things about it are worth knowing before changing a number:
+
+- **The export has no burying challenge**, so the rate cannot be joined to a task. Prayer's six
+  `Primary` methods offer fish at a shrine and shards at a libation bowl; the thing every player
+  does from level 1 is not modelled at all. So it reaches `training_options` through
+  `Heuristics.computed`, the door `costing/combat_xp.py` already used for the five combat skills -
+  which is why that field is `computed` and not `combat`. It is **added to** the challenge-derived
+  options rather than substituted for them: for combat the two are the same thing, but Prayer's six
+  offering challenges are real alternatives and the band walk should get to pick.
+- **Which chaos altar is the trap.** The export puts `Chaos altar (Prayer)` in five chunks and only
+  the Chaos Temple church in level 38 Wilderness takes bones - Varrock, the Yanille Agility dungeon
+  and the Underground Pass are prayer-point recharges. Keying on the object name would hand a
+  sevenfold rate to any map holding the Varrock one, so `CHAOS_ALTAR_CHUNK` pins region 11835,
+  identified by the contents the wiki's own description of that temple names.
+- **A house altar is gated twice.** Reaching the Construction challenge says the map holds a house;
+  `infer_levels` saying you have the level says you can build the altar. The incense burners are
+  their own challenges at 61-69, so an altar reachable without them takes `base` rather than `lit` -
+  on a gilded altar, 2.5x against 3.5x. Each burner is worth exactly +50 percentage points across
+  all seven altars, which `tests/test_prayer.py` asserts rather than computes from.
 
 **A computed rate slower than the 1,000/hr floor is refused.** The floor is a deliberate stand-in for
 ignorance, not a speed, and a computed number below it says the model is missing something about that

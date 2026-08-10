@@ -70,22 +70,28 @@ def training_options(
     Only methods with a real rate: a list of level-1 options all sitting at the
     floor would say "here are your alternatives" and mean "there are none".
     """
-    # **The combat skills have no `Primary` challenge to join a rate to** -
-    # there is no "Train Strength" task anywhere in the export - so their rate
-    # does not come from a challenge at all. See `costing/combat_xp.py`.
-    combat = heuristics.combat.get(skill)
-    if combat is not None and combat.value > 0:
-        return (
-            TrainingOption(
-                method=combat.source.removeprefix("combat:"),
-                level=None,
-                xp_per_hour=combat.value,
-                match=combat.match,
-            ),
+    # **Some skills have no `Primary` challenge to join a rate to** - there is
+    # no "Train Strength" task anywhere in the export and no "bury a bone"
+    # one either - so their rate does not come from a challenge at all. See
+    # `costing/combat_xp.py` and `costing/prayer.py`, both of which reach here
+    # through `Heuristics.computed`.
+    #: **Added to the challenge-derived list, not substituted for it.** For
+    #: combat that is the same thing - the export has no primary challenge to
+    #: find - but Prayer has six of them, offering fish at a shrine and shards
+    #: at a libation bowl, and a computed bury rate is an *alternative* to
+    #: those rather than a replacement. The band walk picks per level.
+    found: list[TrainingOption] = [
+        TrainingOption(
+            method=option.method,
+            level=option.level,
+            xp_per_hour=option.xp_per_hour,
+            match=option.match,
         )
+        for option in heuristics.computed.get(skill) or ()
+        if option.xp_per_hour > 0
+    ]
 
     challenges = _mapping(chunk_info.challenges, skill)
-    found: list[TrainingOption] = []
     for name in derived.challenges.valid.get(skill) or {}:
         challenge = challenges.get(name)
         if not isinstance(challenge, dict) or challenge.get("Primary") is not True:

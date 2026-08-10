@@ -41,8 +41,8 @@ source-chunk is upstream and read-only from here — `fray-claude` never writes 
 - **`maps`** — list what's cached, fetched and simulated alike; `maps rm NAME` and `maps clean`
   remove them again.
 - **`heuristics`** — pulls the numbers an estimate needs from the OSRS wiki and a public
-  spreadsheet: quest lengths, kills per hour, XP rates, and slayer assignment data. Run about as
-  often as `chunkinfo`.
+  spreadsheet: quest lengths, kills per hour, XP rates, slayer assignment data, and the per-bone
+  and per-altar figures Prayer is priced from. Run about as often as `chunkinfo`.
 - **`estimate`** — roughly how long the outstanding work would take, in four buckets: quests, boss
   drops, activity unlocks and skilling. Deliberately a heuristic — see below.
 - **`derived`** — inspect or clean the cache of computed results (see below).
@@ -363,7 +363,7 @@ otherwise it's created in whatever directory you're in when you run `fray`.
    wiki and both only worth repeating occasionally:
 
    ```sh
-   fray heuristics                     # ~21 requests: guides, quest lengths, skill tables, monster hp
+   fray heuristics                     # ~26 requests: guides, quest lengths, skill tables, monster hp, bones
    fray recipes                        # 13 requests: xp per action and tick costs, per skill
    ```
 

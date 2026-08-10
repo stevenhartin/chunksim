@@ -222,6 +222,43 @@ def fetch_wiki_page_titles(prefix: str, timeout: float = DEFAULT_TIMEOUT) -> lis
             return titles
 
 
+def fetch_wiki_transclusions(template: str, timeout: float = DEFAULT_TIMEOUT) -> list[str]:
+    """Every article-namespace page that transcludes `template`.
+
+    The counterpart to `fetch_wiki_page_titles` for data held in a template
+    rather than under a title prefix: `{{Prayer info}}` is invoked by 193
+    remains pages whose names have nothing in common, so a prefix walk cannot
+    find them and a hardcoded list would go stale silently.
+
+    `einamespace=0` keeps it to articles - the template's own documentation and
+    the sandbox copies transclude it too and carry no data.
+    """
+    titles: list[str] = []
+    cursor: str | None = None
+    while True:
+        query = {
+            "action": "query",
+            "list": "embeddedin",
+            "eititle": template,
+            "einamespace": "0",
+            "eilimit": "500",
+            "format": "json",
+            "formatversion": "2",
+        }
+        if cursor is not None:
+            query["eicontinue"] = cursor
+        payload = _fetch_json_object(
+            _wiki_url(query), timeout, what=f"pages using {template!r}", wiki=True
+        )
+        pages = _listing(payload.get("query"), "embeddedin")
+        titles.extend(str(page["title"]) for page in pages if isinstance(page, dict))
+
+        follow = payload.get("continue")
+        cursor = follow.get("eicontinue") if isinstance(follow, dict) else None
+        if cursor is None:
+            return titles
+
+
 def fetch_wiki_pages(
     titles: Sequence[str], timeout: float = DEFAULT_TIMEOUT
 ) -> dict[str, str]:

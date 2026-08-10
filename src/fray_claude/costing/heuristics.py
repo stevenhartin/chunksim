@@ -81,6 +81,7 @@ from fray_claude.derive.search import normalise
 from fray_claude.model.summary import _mapping
 from fray_claude.derive.task_names import strip_task_markup
 from fray_claude.remote.combat import AttackSpell, MonsterStats
+from fray_claude.remote.prayer import Altar, Bone
 from fray_claude.remote.farming import Crop
 from fray_claude.remote.skill_tables import COURSE_ALIASES, SkillRow
 from fray_claude.remote.stores import ShopPrice
@@ -194,6 +195,36 @@ class Rate:
 
     def as_dict(self) -> dict[str, Any]:
         return {"value": self.value, "source": self.source, "match": self.match}
+
+
+@dataclass(frozen=True)
+class ComputedMethod:
+    """A training method this project computed rather than read off a task.
+
+    **For the skills the export models no training for.** Combat has no
+    "Train Strength" challenge and Prayer has no "bury a bone" one, because
+    neither needs a task in the game - one needs a monster and the other needs
+    a bone. So their rates are computed (`costing/combat_xp.py`,
+    `costing/prayer.py`) and reach `costing/training.py` through
+    `Heuristics.computed` instead of through `Heuristics.training`.
+
+    `level` is the Prayer or Attack level the method opens at, so the band walk
+    can use it exactly as it uses a challenge's `Level`. `None` means "open
+    from the start", which is what a combat rate is.
+    """
+
+    method: str
+    xp_per_hour: float
+    level: int | None = None
+    match: str = "computed"
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "method": self.method,
+            "xp_per_hour": round(self.xp_per_hour, 1),
+            "level": self.level,
+            "match": self.match,
+        }
 
 
 @dataclass(frozen=True)
@@ -349,6 +380,16 @@ class Heuristics:
     #: Combat skill -> its computed rate. Filled by `inputs.priced_heuristics`
     #: **after** the kill rates are final, since it multiplies them.
     combat: dict[str, Rate] = field(default_factory=dict)
+    #: Skill -> the methods this project computed for it, for the skills the
+    #: export models no training task for. Combat's are written **after** the
+    #: kill rates are final; Prayer's in `inputs.recipe_priced`, which is where
+    #: the item walk that prices a bone already exists. Read by
+    #: `costing/training.py` and by nothing else.
+    computed: dict[str, tuple[ComputedMethod, ...]] = field(default_factory=dict)
+    #: Every set of remains the wiki states a burial value for, best first.
+    bones: tuple[Bone, ...] = ()
+    #: The house altars and what each multiplies a bone by.
+    altars: tuple[Altar, ...] = ()
     #: Every crop the wiki's farming calculator knows, for `costing/farming.py`.
     crops: tuple[Crop, ...] = ()
     #: Harvests a day by schedule key, overriding `DEFAULT_HARVESTS_PER_DAY`.
@@ -811,6 +852,8 @@ def build_config(
     conversion_fees: Mapping[str, ShopPrice] | None = None,
     currency_rates: Mapping[str, float] | None = None,
     crops: Sequence[Crop] = (),
+    bones: Sequence[Bone] = (),
+    altars: Sequence[Altar] = (),
 ) -> dict[str, Any]:
     """Generate the full config from the export plus everything fetched.
 
@@ -978,6 +1021,8 @@ def build_config(
         },
         "currencies": {**DEFAULT_CURRENCY_PER_HOUR, **(currency_rates or {})},
         "crops": [crop.as_dict() for crop in crops],
+        "bones": [bone.as_dict() for bone in bones],
+        "altars": [altar.as_dict() for altar in altars],
     }
 
 
@@ -1212,6 +1257,24 @@ def load(
             for key, value in _mapping(config, "farming").items()
             if isinstance(value, (int, float)) and not isinstance(value, bool)
         },
+        bones=tuple(
+            Bone(
+                name=str(entry.get("name") or ""),
+                experience=_float(entry.get("experience"), 0.0),
+                level=int(_float(entry.get("level"), 1.0)),
+            )
+            for entry in config.get("bones") or ()
+            if isinstance(entry, dict) and entry.get("name")
+        ),
+        altars=tuple(
+            Altar(
+                name=str(entry.get("name") or ""),
+                base=_float(entry.get("base"), 1.0),
+                lit=_float(entry.get("lit"), 1.0),
+            )
+            for entry in config.get("altars") or ()
+            if isinstance(entry, dict) and entry.get("name")
+        ),
         shop_prices={
             shop: {
                 item: ShopPrice(

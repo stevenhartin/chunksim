@@ -37,6 +37,7 @@ from fray_claude.remote.api import (
     fetch_text,
     fetch_wiki_page_titles,
     fetch_wiki_pages,
+    fetch_wiki_transclusions,
     slayer_sheet_url,
 )
 from fray_claude.model.chunkinfo import ChunkInfo
@@ -48,7 +49,7 @@ from fray_claude.costing.heuristics import (
 from fray_claude.costing.slayer import SheetFormatError, parse_mob_data, parse_task_lengths
 from fray_claude.model.summary import _mapping
 from fray_claude.remote.recipes import parse_recipes, recipe_query
-from fray_claude.remote import combat, farming, skill_tables, stores
+from fray_claude.remote import combat, farming, prayer, skill_tables, stores
 from fray_claude.remote.wiki import (
     ASSIGNMENTS_PAGE,
     MMG_PREFIX,
@@ -171,6 +172,15 @@ def scrape(
         fetch_wiki_pages([farming.CROPS_PAGE], timeout=timeout).get(farming.CROPS_PAGE, "")
     )
 
+    say("bones and altars")
+    bone_pages = fetch_wiki_pages(
+        fetch_wiki_transclusions(prayer.BONE_TEMPLATE, timeout=timeout), timeout=timeout
+    )
+    bones = prayer.parse_bones(bone_pages)
+    altars = prayer.parse_altars(
+        fetch_wiki_pages(list(prayer.ALTAR_PAGES), timeout=timeout)
+    )
+
     say("monster hitpoints and spell xp")
     monster_stats = combat.parse_monster_stats(
         fetch_bucket(combat.monster_query(), timeout=timeout)
@@ -208,6 +218,8 @@ def scrape(
         conversion_fees=fees,
         currency_rates={"Mark of grace": mark_rate} if mark_rate else {},
         crops=crops,
+        bones=bones,
+        altars=altars,
     )
     return ScrapeResult(
         config=config,
@@ -228,6 +240,8 @@ def scrape(
             "shop prices": sum(len(items) for items in shop_prices.values()),
             "conversion fees": len(fees),
             "farming crops": len(crops),
+            "bones": len(bones),
+            "altars": len(altars),
             "attack spells": len(spells),
         },
         sheet_error=sheet_error,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fray_claude.costing.heuristics import Heuristics, Rate
+from fray_claude.costing.heuristics import ComputedMethod, Heuristics, Rate
 from fray_claude.costing.training import (
     TrainingOption,
     quest_xp_grants,
@@ -269,3 +269,68 @@ def test_a_grant_shortens_the_climb_and_skips_the_bands_below_it() -> None:
 
     assert [b.method for b in bands] == ["grimy kwuarm", "super combat potion"]
     assert sum(b.xp for b in bands) == xp_for_level(99) - granted
+
+
+def test_a_computed_method_reaches_the_band_walk() -> None:
+    """**The door for the skills the export models no training for.** Combat
+    has no "Train Strength" challenge and Prayer has no "bury a bone" one,
+    because neither needs a task in the game - one needs a monster and the
+    other needs a bone. Their rates are computed and arrive through
+    `Heuristics.computed`; without this they sit at the 1,000/hr floor with
+    `(none found)` where a method should be.
+    """
+    heuristics = Heuristics(
+        computed={"Strength": (ComputedMethod("Scurrius", 110_740.0),)}
+    )
+
+    options = training_options(_derived(), ChunkInfo({}), heuristics, "Strength")
+
+    assert [(o.method, o.level, o.xp_per_hour) for o in options] == [
+        ("Scurrius", None, 110_740.0)
+    ]
+
+
+def test_a_computed_method_carries_its_level() -> None:
+    """Prayer's do, where combat's do not: superior dragon bones open at 70,
+    and priced without that the whole climb from level 1 is walked at a rate
+    nothing below 70 can use."""
+    heuristics = Heuristics(
+        computed={
+            "Prayer": (
+                ComputedMethod("Superior dragon bones (Chaos Altar)", 400_000.0, level=70),
+                ComputedMethod("Big bones (Chaos Altar)", 163_558.0, level=1),
+            )
+        }
+    )
+
+    bands = training_bands(
+        training_options(_derived(), ChunkInfo({}), heuristics, "Prayer"), 0, 99
+    )
+
+    assert [(b.level_from, b.level_to, b.method) for b in bands] == [
+        (1, 70, "Big bones (Chaos Altar)"),
+        (70, 99, "Superior dragon bones (Chaos Altar)"),
+    ]
+
+
+def test_a_computed_method_does_not_hide_the_export_s_own() -> None:
+    """Prayer has six `Primary` challenges - offering fish at a shrine, shards
+    at a libation bowl - and a computed bury rate is an *alternative* to them,
+    not a replacement. Returning only the computed one would throw away a
+    method that might be faster."""
+    info = ChunkInfo(
+        {"challenges": {"Prayer": {"Use ~|superior dragon bones|~": {"Primary": True, "Level": 70}}}}
+    )
+    derived = _derived(
+        challenges=ChallengeResult(
+            valid={"Prayer": {"Use ~|superior dragon bones|~": 70}}, unsupported=frozenset()
+        )
+    )
+    heuristics = Heuristics(
+        computed={"Prayer": (ComputedMethod("Big bones (buried)", 12_000.0, level=1),)},
+        training={"Use ~|superior dragon bones|~": {"Prayer": Rate(500_000.0, "mmg", "exact")}},
+    )
+
+    options = training_options(derived, info, heuristics, "Prayer")
+
+    assert [o.method for o in options] == ["superior dragon bones", "Big bones (buried)"]

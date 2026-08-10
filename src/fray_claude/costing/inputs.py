@@ -30,10 +30,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any, Mapping
 
 from fray_claude.costing import combat_xp, dps_bridge, recipe_rates
 from fray_claude.costing.estimate import material_seconds
+from fray_claude.costing import prayer as prayer_costing
+from fray_claude.costing.heuristics import ComputedMethod
 from fray_claude.store import cache
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.store.derived_cache import Digests, cached_enrich, pricing_digests
@@ -166,16 +169,20 @@ def recipe_priced(
     material of every reachable method, and that is the whole expense.
     """
     recipes = load_recipes(root)
+    seconds = material_seconds(state, derived, world, heuristics, level_overrides=levels)
+    # **Prayer is priced here because this is where the item walk is.** Its
+    # rate is a bone's experience over the time to collect one, so it needs
+    # exactly the closure the recipes need and would otherwise build a second
+    # `_Walk` to ask the same question.
+    prayed = _prayer_methods(state, derived, heuristics, levels, seconds)
     if not recipes:
-        return heuristics, recipe_rates.RecipeCoverage()
+        return replace(heuristics, computed=prayed), recipe_rates.RecipeCoverage()
     pinned = frozenset(_mapping(cache.read_overrides(root), "training"))
     computed, coverage = recipe_rates.computed_rates(
         state.chunk_info,
         derived.challenges.valid,
         recipes,
-        material_seconds(
-            state, derived, world, heuristics, level_overrides=levels
-        ),
+        seconds,
     )
     # **A recipe's tick cost is also a statement of how long the action takes**,
     # and the item walk needs that separately from the rate: it charges a
@@ -190,9 +197,45 @@ def recipe_priced(
             heuristics,
             training=recipe_rates.apply(heuristics.training, computed, pinned),
             action_seconds=timed,
+            computed=prayed,
         ),
         coverage,
     )
+
+
+def _prayer_methods(
+    state: MapState,
+    derived: Derived,
+    heuristics: Heuristics,
+    levels: dict[str, int],
+    collect: Callable[[str, float], float | None],
+) -> dict[str, tuple[ComputedMethod, ...]]:
+    """Prayer's computed methods, or `{}` when the scrape has no bone table.
+
+    Empty rather than defaulted: without the wiki's burial values there is
+    nothing to compute, and the six offering challenges the export *does* carry
+    remain the answer. See `costing/prayer.py`.
+    """
+    if not heuristics.bones:
+        return {}
+    found = prayer_costing.prayer_methods(
+        state.chunk_info,
+        derived,
+        heuristics.bones,
+        heuristics.altars,
+        {**infer_levels(state), **levels},
+        collect,
+    )
+    if not found:
+        return {}
+    return {
+        "Prayer": tuple(
+            ComputedMethod(
+                method=method.method, xp_per_hour=method.xp_per_hour, level=method.level
+            )
+            for method in found
+        )
+    }
 
 
 def level_overrides(root: Path | None = None) -> dict[str, int]:
@@ -318,7 +361,27 @@ def priced_heuristics(
             by_style=by_style,
             caps=caps,
         )
-        return replace(priced, combat=rates, combat_damage=damage), coverage
+        # **Merged, not replaced**: `recipe_priced` has already put Prayer's
+        # methods in `computed`, and combat's arrive later because they
+        # multiply the kill rates.
+        merged = {
+            **priced.computed,
+            **{
+                skill: (
+                    ComputedMethod(
+                        method=rate.source.removeprefix("combat:"),
+                        xp_per_hour=rate.value,
+                        match=rate.match,
+                    ),
+                )
+                for skill, rate in rates.items()
+                if rate.value > 0
+            },
+        }
+        return (
+            replace(priced, combat=rates, combat_damage=damage, computed=merged),
+            coverage,
+        )
 
     return cached_enrich(
         compute,
