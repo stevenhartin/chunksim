@@ -19,10 +19,12 @@ from fray_claude.costing.estimate import EstimateResult, ItemEstimate, SkillEsti
 from fray_claude.runs.timeline import (
     Step,
     added_hours,
+    matches as timeline_matches,
     count_check,
     replay,
     rolled_chunks,
     series,
+    stamp as timeline_stamp,
     starting_set,
 )
 
@@ -304,3 +306,25 @@ def test_the_first_roll_is_charged_for_everything() -> None:
     after = _result(items=[_item("whip", 10.0)], skills=[_skill("Slayer", 5.0)])
 
     assert added_hours(None, after) == 15.0
+
+
+def test_a_series_priced_by_an_older_model_reads_as_absent() -> None:
+    """**The stamp is all content digests, and arithmetic is not content.**
+
+    Change how hours are computed and every stored series keeps matching -
+    same export, same rates, same overrides - while the numbers inside are
+    from the model before. `PRICING_MODEL` is the field that notices; a
+    mismatch already reads as absent, and the page offers to recompute an
+    absent series rather than refusing to draw one.
+    """
+    from fray_claude.runs.timeline import PRICING_MODEL
+
+    current = timeline_stamp(
+        chunkinfo="a", tasks_map="b", rates="c", overrides="d", enriched=False
+    )
+    assert current["model"] == PRICING_MODEL
+    assert timeline_matches(current, current)
+
+    # Written before the field existed, and by the model before this one.
+    assert not timeline_matches({k: v for k, v in current.items() if k != "model"}, current)
+    assert not timeline_matches({**current, "model": PRICING_MODEL - 1}, current)

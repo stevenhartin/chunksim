@@ -193,6 +193,19 @@ def _tasks_of(entry: Mapping[str, Any]) -> dict[str, tuple[str, ...]]:
     }
 
 
+#: Bumped whenever the *arithmetic* of pricing changes, as opposed to the data
+#: it reads. Without it a stored series stays "fresh" forever: the stamp is all
+#: content digests, so a change to how hours are computed leaves every one of
+#: them matching while the numbers inside are from the old model. Bumping this
+#: makes them read as absent, and the page already offers to recompute an
+#: absent series.
+#:
+#: `2` is the band walk - a climb priced method by method as it unlocks, with
+#: quest experience taken off the front - which moved a real Herblore row from
+#: 13,034h to 99h. Anything that would move a number like that belongs here.
+PRICING_MODEL = 2
+
+
 def stamp(
     *, chunkinfo: str, tasks_map: str, rates: str, overrides: str, enriched: bool
 ) -> dict[str, Any]:
@@ -208,6 +221,7 @@ def stamp(
     deliberately **not** part of the freshness comparison - see `matches`.
     """
     return {
+        "model": PRICING_MODEL,
         "chunkinfo": chunkinfo,
         "tasks_map": tasks_map,
         "rates": rates,
