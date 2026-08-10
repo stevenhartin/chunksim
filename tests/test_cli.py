@@ -199,10 +199,15 @@ def _cache_map_and_chunkinfo(
         "fray_claude.cli.app.fetch_map", lambda map_id, timeout=DEFAULT_TIMEOUT: payload
     )
     main(["fetch"])
-    monkeypatch.setattr(
-        "fray_claude.cli.app.read_chunkinfo",
-        lambda override=None, root=None: chunkinfo_data,
-    )
+    # **Two readers now, and both must be patched.** `fray chunkinfo` and
+    # `fray heuristics` read the export through `cli.app`; every derivation
+    # command reads it through `cli.common.load_state`. Patching one leaves the
+    # other reading the developer's real cache.
+    for module in ("app", "common"):
+        monkeypatch.setattr(
+            f"fray_claude.cli.{module}.read_chunkinfo",
+            lambda override=None, root=None: chunkinfo_data,
+        )
 
 
 def test_sections_reports_reachable_sections(
@@ -546,10 +551,15 @@ def _cache_two_maps(
     )
     main(["fetch", "--map", "a"])
     main(["fetch", "--map", "b"])
-    monkeypatch.setattr(
-        "fray_claude.cli.app.read_chunkinfo",
-        lambda override=None, root=None: chunkinfo_data,
-    )
+    # **Two readers now, and both must be patched.** `fray chunkinfo` and
+    # `fray heuristics` read the export through `cli.app`; every derivation
+    # command reads it through `cli.common.load_state`. Patching one leaves the
+    # other reading the developer's real cache.
+    for module in ("app", "common"):
+        monkeypatch.setattr(
+            f"fray_claude.cli.{module}.read_chunkinfo",
+            lambda override=None, root=None: chunkinfo_data,
+        )
 
 
 _DIFF_CHUNKINFO: dict[str, Any] = {

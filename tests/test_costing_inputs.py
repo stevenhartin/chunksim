@@ -54,7 +54,7 @@ def both_apps(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     )
     main(["fetch"])
     monkeypatch.setattr(
-        "fray_claude.cli.app.read_chunkinfo", lambda override=None, root=None: _CHUNKINFO
+        "fray_claude.cli.common.read_chunkinfo", lambda override=None, root=None: _CHUNKINFO
     )
     # The same five patches `test_gui_server._derived_ctx` makes: patch the
     # reader rather than write a 10MB export, and point everything that could

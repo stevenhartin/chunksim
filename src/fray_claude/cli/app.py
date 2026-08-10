@@ -2,7 +2,7 @@
 
 A new subcommand keeps its logic in a pure module and calls it from here.
 `main()` funnels `FetchError`, `CacheMissError`, `NotImplementedError` and
-`ConvergenceError` into a stderr message and exit 1; `_load_state`
+`ConvergenceError` into a stderr message and exit 1; `load_state`
 (-> `pipeline.load_map_state`) handles the common cache-read + decode step.
 
 `--export-json PATH` writes a subcommand's full result as JSON to `PATH`, or
@@ -58,7 +58,7 @@ tail of a fuzzy ranking is noise rather than data.
   the common case - see `active_tasks.py`).
 - Anything else keeps the flat valid listing.
 
-Every one of those paths renders through `_display_tasks` ->
+Every one of those paths renders through `display_tasks` ->
 `challenges.strip_task_markup`, which **sorts on the stripped form** so the
 visible order matches the screen; sorting raw would file every marked-up name
 under `~`. `search` strips per hit type (task hits and `task:` routes only),
@@ -122,6 +122,9 @@ from fray_claude.store.cache import (
 from fray_claude.derive.challenges import strip_task_markup
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.derive.delta import BRANCHES, BranchDelta, MapSide, StateDelta, compare_maps
+from fray_claude.cli import derived
+from fray_claude.cli.common import derive_cached, digests, emit_json, error, load_state
+from fray_claude.cli.render import display_tasks, name_or_none, print_capped, print_grouped
 from fray_claude.costing import inputs
 from fray_claude.costing import dps_bridge
 from fray_claude.costing.estimate import (
@@ -156,15 +159,6 @@ from fray_claude.model.summary import _mapping, format_age, summarise
 from fray_claude.derive.unlock import UnlockDelta, tasks_added_by
 
 DEFAULT_MAP = DEFAULT_MAP_ID
-
-
-def _emit_json(data: Any, destination: str) -> None:
-    """Write `data` to `destination`: `-` means stdout, anything else a file path."""
-    text = json.dumps(data, indent=2, sort_keys=True)
-    if destination == "-":
-        print(text)
-    else:
-        Path(destination).write_text(text + "\n", encoding="utf-8")
 
 
 def _cmd_fetch(args: argparse.Namespace) -> int:
@@ -255,62 +249,6 @@ def _cmd_heuristics(args: argparse.Namespace) -> int:
     return 0
 
 
-def _digests(args: argparse.Namespace) -> Digests:
-    """Content hashes of the reference data, for the derived cache's key."""
-    return Digests(
-        chunkinfo=file_digest(chunkinfo_source(override=args.chunkinfo)),
-        tasks_map=file_digest(blob_path(TASKS_MAP_BLOB_NAME)),
-    )
-
-
-def _derive(args: argparse.Namespace, state: MapState, unlocked: Mapping[str, bool]) -> Derived:
-    """`derive` through the on-disk cache - see `derived_cache.py`.
-
-    Every subcommand goes through here rather than calling `derive` directly,
-    so `--recompute` means the same thing everywhere. Tests and the opt-in
-    oracles keep calling `pipeline.derive`, which is what keeps them a
-    cache-free correctness signal.
-    """
-    return cached_derive(state, unlocked, _digests(args), refresh=args.recompute)
-
-
-def _load_state(
-    args: argparse.Namespace,
-    map_id: str | None = None,
-    *,
-    chunk_info: ChunkInfo | None = None,
-) -> tuple[MapState, dict[str, bool]]:
-    """The cached map, decoded into a `MapState` and its unlocked-chunk set.
-
-    `map_id` overrides `args.map_id` and `chunk_info` reuses an already-parsed
-    export, so `fray diff` can load two maps while paying the ~7MB parse once
-    (`chunkinfo.py`: build one `ChunkInfo` per invocation).
-    """
-    envelope = read_cache(map_id if map_id is not None else args.map_id)
-    info = chunk_info or ChunkInfo(read_chunkinfo(override=args.chunkinfo))
-    try:
-        tasks_map = reverse_tasks_map(read_blob(TASKS_MAP_BLOB_NAME)["data"])
-    except CacheMissError:
-        # No cached tasks map (e.g. a bare `--chunkinfo` override with no
-        # `fray chunkinfo` run) - degrade gracefully rather than fail: see
-        # `pipeline.load_map_state`'s docstring for what this costs.
-        tasks_map = {}
-    return load_map_state(envelope["data"], info, tasks_map)
-
-
-def _error(message: str) -> int:
-    print(f"error: {message}", file=sys.stderr)
-    return 1
-
-
-def _display_tasks(names: Iterable[str]) -> list[str]:
-    """Task names sorted for display, markup stripped. Sorting happens on
-    the stripped form so the visible order matches what's on screen -
-    `~|Zamorak|~ ...` would otherwise sort under `~`, i.e. nowhere useful.
-    """
-    return sorted(strip_task_markup(name) for name in names)
-
-
 def _resolve_other_category(category: str | None) -> str | None:
     """Map a user-typed category onto one of `other_tasks.CATEGORIES`.
 
@@ -337,50 +275,9 @@ def _other_lines(tasks: CategoryTasks, chunk_info: ChunkInfo) -> list[str]:
     ]
 
 
-def _print_grouped(
-    tasks: CategoryTasks, chunk_info: ChunkInfo, attr: str, limit: int | None
-) -> None:
-    """A category's groups with headers, each group's tasks indented under it.
-
-    `--limit` caps the *tasks* rather than the groups, so a large category
-    still shows where its work is concentrated; a group with nothing in the
-    requested half is skipped entirely.
-    """
-    challenges = chunk_info.challenges.get(tasks.category) or {}
-    shown = 0
-    for group in tasks.groups:
-        names: tuple[str, ...] = getattr(group, attr)
-        if not names:
-            continue
-        if limit is not None and shown >= limit:
-            remaining = sum(len(getattr(g, attr)) for g in tasks.groups) - shown
-            print(f"  ... and {remaining} more (--limit {shown + remaining} to see all)")
-            return
-        print(f"  {group.name}")
-        for name in names:
-            if limit is not None and shown >= limit:
-                break
-            challenge = challenges.get(name) or {}
-            text = (
-                tasks.completed_text(name, challenge)
-                if attr == "completed"
-                else task_text(name, challenge)
-            )
-            print(f"    {text}")
-            shown += 1
-
-
-def _print_capped(names: list[str], limit: int | None) -> None:
-    shown = names if limit is None else names[:limit]
-    for name in shown:
-        print(f"  {name}")
-    if limit is not None and len(names) > limit:
-        print(f"  ... and {len(names) - limit} more (--limit {len(names)} to see all)")
-
-
 def _cmd_sections(args: argparse.Namespace) -> int:
-    state, unlocked = _load_state(args)
-    result = _derive(args, state, unlocked)
+    state, unlocked = load_state(args)
+    result = derive_cached(args, state, unlocked)
 
     if args.target is None:
         total_sections = sum(len(s) for s in result.reachable_sections.values())
@@ -392,7 +289,7 @@ def _cmd_sections(args: argparse.Namespace) -> int:
             print(f"sectioned chunks   {len(result.reachable_sections)}")
             print(f"reachable sections {total_sections}")
         if args.export_json is not None:
-            _emit_json(
+            emit_json(
                 {
                     "map_id": args.map_id,
                     "unlocked_chunks": len(unlocked),
@@ -416,14 +313,14 @@ def _cmd_sections(args: argparse.Namespace) -> int:
             if args.limit is not None and len(entries) > args.limit:
                 print(f"  ... and {len(entries) - args.limit} more (--limit {len(entries)})")
         if args.export_json is not None:
-            _emit_json(
+            emit_json(
                 {"map_id": args.map_id, "chunks": [e.as_dict() for e in entries]}, args.export_json
             )
         return 0
 
     match = next((e for e in entries if e.chunk_id == args.target), None)
     if match is None:
-        return _error(f"chunk {args.target!r} is not unlocked on map {args.map_id!r}")
+        return error(f"chunk {args.target!r} is not unlocked on map {args.map_id!r}")
     if args.export_json != "-":
         print(f"map       {args.map_id}")
         print(f"chunk     {match.chunk_id}")
@@ -431,13 +328,13 @@ def _cmd_sections(args: argparse.Namespace) -> int:
         print(f"reachable {', '.join(match.reachable)}")
         print(f"locked    {', '.join(match.locked) if match.locked else 'none'}")
     if args.export_json is not None:
-        _emit_json({"map_id": args.map_id, **match.as_dict()}, args.export_json)
+        emit_json({"map_id": args.map_id, **match.as_dict()}, args.export_json)
     return 0
 
 
 def _cmd_sources(args: argparse.Namespace) -> int:
-    state, unlocked = _load_state(args)
-    index = _derive(args, state, unlocked).source_index
+    state, unlocked = load_state(args)
+    index = derive_cached(args, state, unlocked).source_index
 
     if args.category is None:
         if args.export_json != "-":
@@ -448,7 +345,7 @@ def _cmd_sources(args: argparse.Namespace) -> int:
             print(f"npcs       {len(index.npcs)}")
             print(f"shops      {len(index.shops)}")
         if args.export_json is not None:
-            _emit_json({"map_id": args.map_id, **index.as_dict()}, args.export_json)
+            emit_json({"map_id": args.map_id, **index.as_dict()}, args.export_json)
         return 0
 
     contents = index.category(args.category)
@@ -457,9 +354,9 @@ def _cmd_sources(args: argparse.Namespace) -> int:
         print(f"map      {args.map_id}")
         print(f"category {args.category}")
         print(f"count    {len(names)}")
-        _print_capped(names, args.limit)
+        print_capped(names, args.limit)
     if args.export_json is not None:
-        _emit_json(
+        emit_json(
             {"map_id": args.map_id, "category": args.category, args.category: contents},
             args.export_json,
         )
@@ -467,8 +364,8 @@ def _cmd_sources(args: argparse.Namespace) -> int:
 
 
 def _cmd_tasks(args: argparse.Namespace) -> int:
-    state, unlocked = _load_state(args)
-    derived = _derive(args, state, unlocked)
+    state, unlocked = load_state(args)
+    derived = derive_cached(args, state, unlocked)
     result = derived.challenges
 
     if args.category is None:
@@ -490,7 +387,7 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
                 f"skill tasks  active {active_count}, completed {completed_count}, "
                 f"obsolete {obsolete_count} (across {len(classifications)} skill categories)"
             )
-            _print_capped(
+            print_capped(
                 [
                     f"{skill:<13} {strip_task_markup(classification.active)}"
                     for skill, classification in sorted(classifications.items())
@@ -502,7 +399,7 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
             if derived.bis.outdated:
                 bis_line += f", outdated {len(derived.bis.outdated)}"
             print(bis_line)
-            _print_capped(derived.bis.display_sorted(derived.bis.active), args.limit)
+            print_capped(derived.bis.display_sorted(derived.bis.active), args.limit)
             for category in OTHER_CATEGORIES:
                 tasks = derived.other_tasks.categories.get(category)
                 if tasks is None:
@@ -511,9 +408,9 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
                     f"{tasks.label:<12} active {tasks.active_total}, "
                     f"completed {tasks.completed_total}"
                 )
-                _print_capped(_other_lines(tasks, state.chunk_info), args.limit)
+                print_capped(_other_lines(tasks, state.chunk_info), args.limit)
         if args.export_json is not None:
-            _emit_json(
+            emit_json(
                 {
                     "map_id": args.map_id,
                     **result.as_dict(),
@@ -531,15 +428,15 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
             print(f"map       {args.map_id}")
             print("category  BiS")
             print(f"active    {len(bis.active)}")
-            _print_capped(bis.display_sorted(bis.active), args.limit)
+            print_capped(bis.display_sorted(bis.active), args.limit)
             print(f"completed {len(bis.completed)}")
-            _print_capped(bis.display_sorted(bis.completed), args.limit)
+            print_capped(bis.display_sorted(bis.completed), args.limit)
             if bis.outdated:
                 print(f"outdated  {len(bis.outdated)}")
                 for name in sorted(bis.outdated, key=lambda n: (n not in bis.current_chunk, n)):
                     print(f"  {bis.display_name(name)}  ({bis.outdated[name]})")
         if args.export_json is not None:
-            _emit_json({"map_id": args.map_id, "category": "BiS", **bis.as_dict()}, args.export_json)
+            emit_json({"map_id": args.map_id, "category": "BiS", **bis.as_dict()}, args.export_json)
         return 0
 
     other_category = _resolve_other_category(args.category)
@@ -551,11 +448,11 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
             print(f"map      {args.map_id}")
             print(f"category {heading}")
             print(f"active   {tasks.active_total}")
-            _print_grouped(tasks, state.chunk_info, "active", args.limit)
+            print_grouped(tasks, state.chunk_info, "active", args.limit)
             print(f"completed {tasks.completed_total}")
-            _print_grouped(tasks, state.chunk_info, "completed", args.limit)
+            print_grouped(tasks, state.chunk_info, "completed", args.limit)
         if args.export_json is not None:
-            _emit_json({"map_id": args.map_id, **tasks.as_dict()}, args.export_json)
+            emit_json({"map_id": args.map_id, **tasks.as_dict()}, args.export_json)
         return 0
 
     if args.category in derived.task_classification.skills:
@@ -576,11 +473,11 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
             print(f"category {args.category}")
             print(f"active   {active_name}  [{oracle_note}]")
             print(f"completed {len(classification.completed)}")
-            _print_capped(_display_tasks(classification.completed), args.limit)
+            print_capped(display_tasks(classification.completed), args.limit)
             print(f"obsolete {len(classification.obsolete)}")
-            _print_capped(_display_tasks(classification.obsolete), args.limit)
+            print_capped(display_tasks(classification.obsolete), args.limit)
         if args.export_json is not None:
-            _emit_json(
+            emit_json(
                 {
                     "map_id": args.map_id,
                     "category": args.category,
@@ -592,16 +489,16 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
         return 0
 
     if args.category not in state.chunk_info.challenges:
-        return _error(f"unknown task category: {args.category!r}")
+        return error(f"unknown task category: {args.category!r}")
 
     names = sorted(result.valid.get(args.category, {}))
     if args.export_json != "-":
         print(f"map      {args.map_id}")
         print(f"category {args.category}")
         print(f"valid    {len(names)}")
-        _print_capped(_display_tasks(names), args.limit)
+        print_capped(display_tasks(names), args.limit)
     if args.export_json is not None:
-        _emit_json(
+        emit_json(
             {"map_id": args.map_id, "category": args.category, "valid": names},
             args.export_json,
         )
@@ -609,9 +506,9 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
 
 
 def _cmd_search(args: argparse.Namespace) -> int:
-    state, unlocked = _load_state(args)
+    state, unlocked = load_state(args)
     world = build_world_index(state.chunk_info)
-    result = _derive(args, state, unlocked)
+    result = derive_cached(args, state, unlocked)
     hits = search(
         world, args.query, unlocked=unlocked, derived=result, types=args.type, limit=args.limit
     )
@@ -653,7 +550,7 @@ def _cmd_search(args: argparse.Namespace) -> int:
                     print("    provides: " + ", ".join(hit.detail["provides"]))
 
     if args.export_json is not None:
-        _emit_json(
+        emit_json(
             {"query": args.query, "hits": [hit.as_dict() for hit in hits]}, args.export_json
         )
     return 0
@@ -678,12 +575,12 @@ def _unlock_to_cache(args: argparse.Namespace, delta: UnlockDelta) -> str:
 
 
 def _cmd_unlock(args: argparse.Namespace) -> int:
-    state, unlocked = _load_state(args)
+    state, unlocked = load_state(args)
     delta = tasks_added_by(
         state,
         unlocked,
         args.chunk_id,
-        derive_with=lambda s, u: _derive(args, s, u),
+        derive_with=lambda s, u: derive_cached(args, s, u),
     )
     saved = _unlock_to_cache(args, delta) if args.cache_map is not None else None
 
@@ -710,14 +607,14 @@ def _cmd_unlock(args: argparse.Namespace) -> int:
         payload: dict[str, Any] = {"map_id": args.map_id, **delta.as_dict()}
         if saved is not None:
             payload["cached_map"] = saved
-        _emit_json(payload, args.export_json)
+        emit_json(payload, args.export_json)
     return 0
 
 
 def _delta_lines(branch: BranchDelta, *, strip: bool = False) -> list[str]:
     """One `+ name`/`- name` line each, gains before losses."""
-    added = _display_tasks(branch.added) if strip else sorted(branch.added)
-    removed = _display_tasks(branch.removed) if strip else sorted(branch.removed)
+    added = display_tasks(branch.added) if strip else sorted(branch.added)
+    removed = display_tasks(branch.removed) if strip else sorted(branch.removed)
     return [f"+ {name}" for name in added] + [f"- {name}" for name in removed]
 
 
@@ -730,10 +627,6 @@ def _nested_delta_lines(
         lines.append(f"{label}{key}")
         lines.extend(f"  {line}" for line in _delta_lines(branches[key], strip=strip))
     return lines
-
-
-def _name_or_none(name: str | None) -> str:
-    return strip_task_markup(name) if name else "(none)"
 
 
 def _print_diff_branch(delta: StateDelta, branch: str, limit: int | None) -> None:
@@ -753,7 +646,7 @@ def _print_diff_branch(delta: StateDelta, branch: str, limit: int | None) -> Non
         lines = _nested_delta_lines(delta.sources)
     elif branch == "bis":
         lines = [
-            f"{key:<24} {_name_or_none(before)} -> {_name_or_none(after)}"
+            f"{key:<24} {name_or_none(before)} -> {name_or_none(after)}"
             for key, (before, after) in sorted(delta.bis_picks.items())
         ]
         lines.extend(_nested_delta_lines(delta.bis_tasks, strip=True))
@@ -763,7 +656,7 @@ def _print_diff_branch(delta: StateDelta, branch: str, limit: int | None) -> Non
             lines.append(skill)
             if change.active is not None:
                 was, now = change.active
-                lines.append(f"  goal {_name_or_none(was)} -> {_name_or_none(now)}")
+                lines.append(f"  goal {name_or_none(was)} -> {name_or_none(now)}")
             lines.extend(f"  obsolete {line}" for line in _delta_lines(change.obsolete, strip=True))
             lines.extend(
                 f"  completed {line}" for line in _delta_lines(change.completed, strip=True)
@@ -773,7 +666,7 @@ def _print_diff_branch(delta: StateDelta, branch: str, limit: int | None) -> Non
             lines.append(display_name(category))
             for name, changed in sorted(delta.other[category].items()):
                 lines.extend(f"  {name} {line}" for line in _delta_lines(changed, strip=True))
-    _print_capped(lines, limit)
+    print_capped(lines, limit)
 
 
 def _print_diff_summary(delta: StateDelta, branch: str | None) -> None:
@@ -794,18 +687,18 @@ def _print_diff_summary(delta: StateDelta, branch: str | None) -> None:
 
 def _cmd_diff(args: argparse.Namespace) -> int:
     if args.branch is not None and args.branch not in BRANCHES:
-        return _error(f"unknown branch {args.branch!r} (expected one of {', '.join(BRANCHES)})")
+        return error(f"unknown branch {args.branch!r} (expected one of {', '.join(BRANCHES)})")
 
     # One `ChunkInfo` for both sides: parsing the ~10MB export is the expensive
     # part, and the two maps are read against the same world by definition.
     # Taking it from the first side rather than building it up front also keeps
     # a missing *map* the first thing reported, as in every other subcommand.
-    before_state, before_unlocked = _load_state(args, args.map1)
-    after_state, after_unlocked = _load_state(args, args.map2, chunk_info=before_state.chunk_info)
+    before_state, before_unlocked = load_state(args, args.map1)
+    after_state, after_unlocked = load_state(args, args.map2, chunk_info=before_state.chunk_info)
     delta = compare_maps(
         MapSide(before_state, before_unlocked, args.map1),
         MapSide(after_state, after_unlocked, args.map2),
-        derive_with=lambda s, u: _derive(args, s, u),
+        derive_with=lambda s, u: derive_cached(args, s, u),
         branches=None if args.branch is None else frozenset({args.branch}),
     )
 
@@ -814,21 +707,21 @@ def _cmd_diff(args: argparse.Namespace) -> int:
         if args.branch is not None:
             _print_diff_branch(delta, args.branch, args.limit)
     if args.export_json is not None:
-        _emit_json(delta.as_dict(), args.export_json)
+        emit_json(delta.as_dict(), args.export_json)
     return 0
 
 
 def _cmd_estimate(args: argparse.Namespace) -> int:
     if args.bucket is not None and args.bucket not in BUCKETS:
-        return _error(f"unknown bucket {args.bucket!r} (expected one of {', '.join(BUCKETS)})")
+        return error(f"unknown bucket {args.bucket!r} (expected one of {', '.join(BUCKETS)})")
 
-    state, unlocked = _load_state(args)
-    derived = _derive(args, state, unlocked)
+    state, unlocked = load_state(args)
+    derived = derive_cached(args, state, unlocked)
     # Everything about *what* to price lives in `costing.inputs`, shared with
     # the GUI so the two apps cannot answer differently; what is left here is
     # rendering.
     answer = inputs.estimate_answer(
-        state, unlocked, derived, _digests(args), refresh=args.recompute
+        state, unlocked, derived, digests(args), refresh=args.recompute
     )
 
     if args.export_json != "-":
@@ -841,7 +734,7 @@ def _cmd_estimate(args: argparse.Namespace) -> int:
             answer.coverage,
         )
     if args.export_json is not None:
-        _emit_json(answer.as_dict(args.map_id), args.export_json)
+        emit_json(answer.as_dict(args.map_id), args.export_json)
     return 0
 
 
@@ -983,9 +876,9 @@ def _print_estimate_warnings(result: EstimateResult, scraped_found: bool = True)
 
 
 def _cmd_neighbours(args: argparse.Namespace) -> int:
-    state, unlocked = _load_state(args)
+    state, unlocked = load_state(args)
     entries = eligible_neighbours(
-        state, unlocked, _derive(args, state, unlocked), graph=build_section_graph(state.chunk_info)
+        state, unlocked, derive_cached(args, state, unlocked), graph=build_section_graph(state.chunk_info)
     )
 
     if args.export_json != "-":
@@ -1002,7 +895,7 @@ def _cmd_neighbours(args: argparse.Namespace) -> int:
             print(f"  ... and {len(entries) - args.limit} more (--limit {len(entries)} to see all)")
 
     if args.export_json is not None:
-        _emit_json(
+        emit_json(
             {
                 "map_id": args.map_id,
                 "unlocked_chunks": len(unlocked),
@@ -1040,7 +933,7 @@ def _cmd_maps_list(args: argparse.Namespace) -> int:
         else:
             print("no cached maps; run: fray fetch")
     if args.export_json is not None:
-        _emit_json({"maps": [entry.as_dict() for entry in entries]}, args.export_json)
+        emit_json({"maps": [entry.as_dict() for entry in entries]}, args.export_json)
     return 0
 
 
@@ -1066,45 +959,6 @@ def _cmd_maps_clean(args: argparse.Namespace) -> int:
     else:
         plural = "" if len(removed) == 1 else "s"
         print(f"removed {len(removed)} cached map{plural}")
-    return 0
-
-
-#: `fray derived clean`'s default cut-off. Entries are keyed by content, so a
-#: stale one is never *wrong*, only unreachable - ageing them out is about disk,
-#: not correctness, hence a generous default.
-DEFAULT_DERIVED_MAX_AGE_DAYS = 14
-
-
-def _cmd_derived_list(args: argparse.Namespace) -> int:
-    entries = list_derived()
-    if not entries:
-        print("no cached derivations")
-        return 0
-
-    total = sum(entry.size for entry in entries)
-    print(f"entries      {len(entries)}")
-    print(f"size         {total / 1_048_576:.1f} MiB")
-    print(f"oldest read  {format_age(entries[0].accessed_at.isoformat())}")
-    print(f"newest read  {format_age(entries[-1].accessed_at.isoformat())}")
-    if args.verbose:
-        for entry in entries:
-            age = format_age(entry.accessed_at.isoformat())
-            print(f"  {entry.key}  {entry.size / 1024:>8.0f} KiB  read {age}")
-    return 0
-
-
-def _cmd_derived_clean(args: argparse.Namespace) -> int:
-    max_age = None if args.all else args.older_than
-    removed = prune_derived(max_age_days=max_age)
-    if not removed:
-        print("nothing to clean")
-        return 0
-    freed = sum(entry.size for entry in removed)
-    scope = "all" if args.all else f"unread for {args.older_than:g} days"
-    print(
-        f"removed {len(removed)} cached derivations ({scope}), "
-        f"freeing {freed / 1_048_576:.1f} MiB"
-    )
     return 0
 
 
@@ -1138,29 +992,29 @@ def _simulate_to_cache(args: argparse.Namespace) -> int:
         read_as = batch.name if len(batch.runs) == 1 else f"{batch.name}/{batch.runs[0].name}"
         print(f"read with    fray tasks --map {read_as}")
     if args.export_json is not None:
-        _emit_json(batch.as_dict(), args.export_json)
+        emit_json(batch.as_dict(), args.export_json)
     return 0
 
 
 def _cmd_simulate(args: argparse.Namespace) -> int:
     if args.rolls < 1:
-        return _error("--rolls must be at least 1")
+        return error("--rolls must be at least 1")
     if args.runs < 1:
-        return _error("--runs must be at least 1")
+        return error("--runs must be at least 1")
     if args.jobs < 1:
-        return _error("--jobs must be at least 1")
+        return error("--jobs must be at least 1")
     if args.cache_map is not None:
         return _simulate_to_cache(args)
     if args.runs > 1:
-        return _error("--runs needs --cache-map: without it there is nowhere to put the runs")
+        return error("--runs needs --cache-map: without it there is nowhere to put the runs")
 
-    state, unlocked = _load_state(args)
+    state, unlocked = load_state(args)
     ledger = simulate_rolls(
         state,
         unlocked,
         rolls=args.rolls,
         seed=args.seed,
-        cache=RollCache(_digests(args), CacheBehaviour(args.cache_behaviour)),
+        cache=RollCache(digests(args), CacheBehaviour(args.cache_behaviour)),
     )
     total_tasks = sum(len(names) for record in ledger for names in record.new_tasks.values())
     total_bis = sum(len(record.bis_upgrades) for record in ledger)
@@ -1182,7 +1036,7 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
             print(f"total bis upgrades {total_bis}")
 
     if args.export_json is not None:
-        _emit_json(
+        emit_json(
             {
                 "map_id": args.map_id,
                 "seed": args.seed,
@@ -1575,28 +1429,7 @@ def build_parser() -> argparse.ArgumentParser:
     # Same nested shape as `maps`, for the other on-disk cache. No
     # `--include-fetched`-style guard here: a cached derivation is pure derived
     # data, so the worst a wrong `clean` costs is recomputation.
-    derived = subcommands.add_parser("derived", help="inspect or clean the cached derivations")
-    derived.set_defaults(func=_cmd_derived_list, verbose=False)
-    derived_verbs = derived.add_subparsers(dest="derived_command")
-
-    derived_list = derived_verbs.add_parser("list", help="summarise the cache (the default)")
-    derived_list.add_argument(
-        "--verbose", action="store_true", help="list every entry, not just the totals"
-    )
-    derived_list.set_defaults(func=_cmd_derived_list)
-
-    derived_clean = derived_verbs.add_parser("clean", help="drop entries that haven't been read")
-    derived_clean.add_argument(
-        "--older-than",
-        type=float,
-        default=DEFAULT_DERIVED_MAX_AGE_DAYS,
-        metavar="DAYS",
-        help="drop entries not read for this many days (default: %(default)s)",
-    )
-    derived_clean.add_argument(
-        "--all", action="store_true", help="drop every entry, whenever it was last read"
-    )
-    derived_clean.set_defaults(func=_cmd_derived_clean)
+    derived.add_arguments(subcommands)
 
     maps_clean = map_verbs.add_parser(
         "clean", help="remove every map this project computed (simulated and unlocked)"
