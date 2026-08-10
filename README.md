@@ -157,10 +157,10 @@ first run opens maximised.
 **Both apps say which install answered.** `fray` prints one line to stderr before anything else —
 `fray 0.1.0 · installed 3h ago` — and the map carries the same thing as a faint watermark in its
 bottom-left corner, read from the server rather than baked into the page. This is not decoration:
-`pipx install` on a package whose version has not moved is a silent no-op, so the command on your
-`PATH` can be an older build than the checkout it came from and behave exactly as if it were not.
-An editable install says `editable, linked 3h ago` instead, because its date is the age of the link
-and its code is whatever the checkout holds right now. `FRAY_NO_WATERMARK=1` silences the line;
+an install can be older than the checkout it came from and behave exactly as if it were not —
+`pipx install` on a package whose version has not moved is a silent no-op, so a wheel install can sit
+weeks behind with no symptom. An editable install cannot go stale, and says `editable, linked 3h ago`
+instead: its date is the age of the link, its code is whatever the checkout holds right now. `FRAY_NO_WATERMARK=1` silences the line;
 stderr keeps it clear of `--export-json -` either way.
 
 **It binds `127.0.0.1` and is not authenticated.** A page you have open in another tab cannot read
@@ -250,6 +250,18 @@ pip install -e ".[dev]"
 
 This is an editable install: it links the `fray` console script to your checkout and pulls in the
 `dev` extra (`pytest`), so edits take effect immediately without reinstalling.
+
+To get `fray` and `fray-gui` on your `PATH` outside the checkout while still tracking it, install
+them the same way with pipx — once, not per change:
+
+```sh
+pipx install --force --editable .
+```
+
+Everything then follows the source: a Python edit, and equally an edit to the GUI's `app.js` or
+`style.css`, since the server reads those from the checkout too. Nothing needs rebuilding, and the
+watermark reads `editable install` so you can tell at a glance which kind you are running. The
+trade is that the checkout becomes load-bearing — move or delete it and both commands break.
 
 Before committing:
 

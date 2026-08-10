@@ -214,7 +214,8 @@ python -c 'import json;json.dump(json.load(open("cache/reference/chunkinfo.json"
 FRAY_CHUNKINFO=/tmp/raw.json FRAY_MAP_CACHE=1 .venv/bin/pytest   # all six oracles, the real correctness signal
 fray-gui [--map ID] [--compare ID] [--port N] [--host H] [--allow-host H] [--keep-alive]
          [--no-browser] [--tab]
-pyproject-build && pipx install --force dist/*.whl   # build + reinstall `fray` and `fray-gui`
+pipx install --force --editable .    # once: `fray`/`fray-gui` on PATH then track src/
+pyproject-build                      # a wheel, for shipping only — not part of the loop
 python -m zipfile -l dist/*.whl | grep resources     # prove the GUI's html/js/css shipped
 pip install -e ../osrs-dps                           # the optional `dps` extra, into .venv for development
 (cd ../osrs-dps && pyproject-build) && pipx inject --force fray-claude ../osrs-dps/dist/osrs_dps-*.whl
@@ -233,10 +234,12 @@ output) for `sections`/`sources`/`tasks`/`neighbours`/`diff` so piping just work
 
 **The `dps` extra is installed two different ways, one per venv.** `pip install -e ../osrs-dps` puts
 it in `.venv` for development and the test suite; the `fray` on `PATH` lives in pipx's own venv and
-needs `pipx inject` instead. An injected package **survives `pipx install --force`** (measured), so
-the ordinary rebuild loop leaves it alone — but injecting copies a wheel, so a change to `osrs-dps`
-needs its wheel rebuilt and re-injected, and `--force` is required there for the same reason it is
-for `fray`: the version does not move between builds, so a plain `inject` silently no-ops.
+needs `pipx inject` instead. An injected package **survives `pipx install --force`**, including the
+`--editable` reinstall (both measured), so switching this project to an editable install left
+`osrs_dps` in place. Injecting still copies a wheel, though, so a change to *`osrs-dps`* needs its
+wheel rebuilt and re-injected with `--force` — the version does not move between builds, so a plain
+`inject` silently no-ops. That asymmetry is now the whole of the rebuild loop: none for this project,
+one for the optional extra.
 
 `fray diff` is the one subcommand taking two maps, hence `--map1`/`--map2` rather than `--map`; both
 are required, and either can name a fetched or a simulated map. It reports **both directions**, which
@@ -484,10 +487,11 @@ Things worth knowing before changing it:
   deliberately not fetched this way** — that is `fray chunkinfo`'s to start. `GET /api/reference` is
   what the page asks: a `stat` and the envelope's first few hundred bytes, so finding out whether the
   export exists never reads it.
-- **The page watermarks itself with the server's install, not its own.** `pipx install` without
-  `--force` is a silent no-op, so `fray`/`fray-gui` on `PATH` can be an older build than the checkout
-  they came from with nothing on screen to say so — which is what `GET /api/build` and the CLI's
-  first line exist to fix. Baking the stamp into `app.js` at build time would answer about the *page*
+- **The page watermarks itself with the server's install, not its own.** It was built when `PATH`
+  carried a *wheel* that a forgotten `--force` could leave weeks stale; with the editable install
+  there is no stale state left to warn about, and the line now answers a different question — *which
+  checkout is serving me*, which `--host` makes a real question. `GET /api/build` and the CLI's first
+  line are where it is answered. Baking the stamp into `app.js` at build time would answer about the *page*
   where `--host` may put the browser on another machine entirely, so the answer is the server's. The
   relative age is re-rendered on the two-second poll rather than only at boot, or a tab left open all
   afternoon goes on claiming the install happened a minute ago. **An editable install dates the link,
@@ -670,11 +674,13 @@ stubs — which is why it must run from the repo root and needs the venv to exis
 instead.
 
 `pyproject-build` (from the `build` package — `pip install build` or `pipx install build` if it's not
-already on `PATH`) writes `dist/fray_claude-<version>-py3-none-any.whl`, independent of the `.venv`
-editable install. `pipx install` installs that into its own managed venv and puts `fray` on `PATH` for
-use outside this checkout. The `--force` is load-bearing, not optional: the version in `pyproject.toml`
-doesn't change between builds, so a plain `pipx install dist/*.whl` on an already-installed package is
-a silent no-op ("already seems to be installed") — it will not pick up new code.
+already on `PATH`) writes `dist/fray_claude-<version>-py3-none-any.whl`. **Building one is no longer
+part of the development loop** — `pipx install --force --editable .` put `fray` and `fray-gui` on
+`PATH` pointing at `src/` — so there are exactly three reasons left to build a wheel: shipping to
+another machine, proving the packaged `gui/resources` shipped
+(`python -m zipfile -l dist/*.whl | grep resources`), and checking that `packages.find` still
+discovers every subpackage. `tests/test_packaging.py` covers the third in milliseconds, which is the
+only one that could otherwise be missed for weeks.
 
 ## Conventions
 
@@ -688,16 +694,22 @@ a silent no-op ("already seems to be installed") — it will not pick up new cod
   docstring (why), this file (what spans modules) and the README (what a user types). It is the one
   that drifts, because nothing in the test suite reads it.
 - Commit after completing a change, and try to push
-- **Always finish a task by rebuilding and reinstalling, then checking it took.** The `fray` and
-  `fray-gui` on `PATH` live in pipx's own venv, so until this runs they are still the *previous*
-  build — and every manual check you or the user then makes is of old code:
+- **`fray` on `PATH` is an editable install, so there is nothing to rebuild.** This used to end every
+  task: build a wheel, `pipx install --force`, then `diff` the installed file to prove it took, because
+  a plain `pipx install` on an unmoved version is a silent no-op and every manual check afterwards
+  would be of yesterday's code. One command retires all of it:
   ```
-  rm -rf dist build && pyproject-build && pipx install --force dist/*.whl
-  diff "$(pipx environment --value PIPX_LOCAL_VENVS)/fray-claude/lib/python3.14/site-packages/fray_claude/cli.py" src/fray_claude/cli.py
+  pipx install --force --editable .        # once, not per change
   ```
-  `--force` is not optional (see Commands: the version never moves, so a plain `pipx install` is a
-  silent no-op), and the `diff` is the half that is easy to skip — a build can succeed and still
-  leave `PATH` pointing at yesterday's wheel. It should print nothing.
+  pipx's venv now imports `src/` directly, so a Python edit is live in `fray`/`fray-gui` immediately —
+  and so is a `gui/resources/` edit, since `RESOURCE_DIR` is `__file__`-relative and now resolves into
+  the checkout (measured: the served `style.css` is byte-identical to the source file). Editing the
+  front end is edit → reload the tab. The watermark says `editable install, linked …` rather than
+  `installed …`, which is `build_info.py` reporting the change rather than being confused by it.
+  **The cost is that the checkout is now load-bearing**: move or delete it and both commands break.
+  And one failure mode moves rather than disappearing — a new subdirectory without an `__init__.py`
+  imports fine here and is silently absent from any wheel built later, which is what
+  `tests/test_packaging.py` now catches.
 - Tests are pytest, in `tests/`, named after the module under test (`tests/test_summary.py`). No test
   touches the network, and none the real `cache/` bar the six oracles that read it through
   `cache.project_root()` (`test_active_tasks`, `test_other_tasks`, `test_neighbours` x2, `test_bis` x2).
