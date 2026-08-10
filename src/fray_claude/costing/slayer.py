@@ -93,7 +93,7 @@ from typing import Any
 
 from fray_claude.derive.challenges import chunks_requirement_met
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.heuristics import (
+from fray_claude.costing.heuristics import (
     DEFAULT_SLAYER_XP_PER_HOUR,
     streak_factor,
     Heuristics,

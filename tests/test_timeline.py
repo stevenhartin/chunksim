@@ -15,7 +15,7 @@ import pytest
 
 from fray_claude.batch import run_batch
 from fray_claude.store.cache import ROLLS_FILE_NAME, read_cache, sims_root, write_blob, write_cache
-from fray_claude.estimate import EstimateResult, ItemEstimate, SkillEstimate
+from fray_claude.costing.estimate import EstimateResult, ItemEstimate, SkillEstimate
 from fray_claude.timeline import (
     Step,
     added_hours,

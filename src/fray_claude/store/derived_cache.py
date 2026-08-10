@@ -93,7 +93,7 @@ from fray_claude.store.cache import (
     write_derived,
 )
 from fray_claude.derive.challenges import ChallengeResult
-from fray_claude.heuristics import (
+from fray_claude.costing.heuristics import (
     Heuristics,
     QuestRate,
     Rate,

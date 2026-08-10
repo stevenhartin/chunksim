@@ -122,11 +122,11 @@ def test_show_reports_whether_the_dps_calculator_is_installed(
     main(["fetch"])
     capsys.readouterr()
 
-    monkeypatch.setattr("fray_claude.dps_bridge.library_version", lambda: "9.9.9")
+    monkeypatch.setattr("fray_claude.costing.dps_bridge.library_version", lambda: "9.9.9")
     main(["show"])
     assert "dps calc       osrs-dps 9.9.9" in capsys.readouterr().out
 
-    monkeypatch.setattr("fray_claude.dps_bridge.library_version", lambda: None)
+    monkeypatch.setattr("fray_claude.costing.dps_bridge.library_version", lambda: None)
     main(["show"])
     assert "dps calc       not installed" in capsys.readouterr().out
 

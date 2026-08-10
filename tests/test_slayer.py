@@ -12,14 +12,14 @@ from typing import Any
 import pytest
 
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.heuristics import (
+from fray_claude.costing.heuristics import (
     DEFAULT_SLAYER_XP_PER_HOUR,
     streak_factor,
     Heuristics,
     SlayerTask,
     Superior,
 )
-from fray_claude.slayer import (
+from fray_claude.costing.slayer import (
     SheetFormatError,
     best_master,
     master_rates,

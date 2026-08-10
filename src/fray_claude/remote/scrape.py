@@ -38,12 +38,12 @@ from fray_claude.remote.api import (
     slayer_sheet_url,
 )
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.heuristics import (
+from fray_claude.costing.heuristics import (
     build_config,
     primary_training_tasks,
     quest_names,
 )
-from fray_claude.slayer import SheetFormatError, parse_mob_data, parse_task_lengths
+from fray_claude.costing.slayer import SheetFormatError, parse_mob_data, parse_task_lengths
 from fray_claude.model.summary import _mapping
 from fray_claude.remote.wiki import (
     ASSIGNMENTS_PAGE,

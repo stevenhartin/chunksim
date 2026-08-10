@@ -18,7 +18,8 @@ from typing import Any
 
 import pytest
 
-from fray_claude import dps_bridge, estimate_inputs
+from fray_claude.costing import inputs
+from fray_claude.costing import dps_bridge
 from fray_claude.cli import main
 from fray_claude.gui.server import Context, handle_request
 
@@ -133,9 +134,9 @@ def test_both_apps_hand_the_pricer_the_same_pins(
         calls.append(kwargs)
         return real(*args, **kwargs)
 
-    monkeypatch.setattr("fray_claude.dps_bridge.enrich", spy)
+    monkeypatch.setattr("fray_claude.costing.dps_bridge.enrich", spy)
     monkeypatch.setattr(
-        "fray_claude.estimate_inputs.cached_enrich",
+        "fray_claude.costing.inputs.cached_enrich",
         lambda compute, *a, **k: compute(),
     )
     monkeypatch.setenv("FRAY_NO_WATERMARK", "1")
@@ -176,7 +177,7 @@ def test_a_true_level_override_is_not_read_as_level_one(
         json.dumps({"levels": {"Attack": 70, "Defence": True, "Magic": "99"}})
     )
 
-    assert estimate_inputs.level_overrides(tmp_path) == {"Attack": 70}
+    assert inputs.level_overrides(tmp_path) == {"Attack": 70}
 
 
 def test_the_pins_are_read_together(tmp_path: Path) -> None:
@@ -194,7 +195,7 @@ def test_the_pins_are_read_together(tmp_path: Path) -> None:
         )
     )
 
-    monsters, slayer = estimate_inputs.pinned_keys(tmp_path)
+    monsters, slayer = inputs.pinned_keys(tmp_path)
 
     assert monsters == frozenset({"Cow"})
     assert slayer == {"Duradel": frozenset({"Abyssal demon"})}

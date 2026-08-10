@@ -64,7 +64,7 @@ from fray_claude.store.cache import (
     write_sim_batch,
     write_sim_run,
 )
-from fray_claude import dps_bridge
+from fray_claude.costing import dps_bridge
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.store.derived_cache import (
     CacheBehaviour,
@@ -74,10 +74,10 @@ from fray_claude.store.derived_cache import (
     cached_enrich,
     pricing_digests,
 )
-from fray_claude.estimate import EstimateResult, estimate, goal_levels, infer_levels
+from fray_claude.costing.estimate import EstimateResult, estimate, goal_levels, infer_levels
 from fray_claude.model.firebase import reverse_tasks_map
-from fray_claude.heuristics import Heuristics, merge
-from fray_claude.heuristics import load as load_heuristics
+from fray_claude.costing.heuristics import Heuristics, merge
+from fray_claude.costing.heuristics import load as load_heuristics
 from fray_claude.derive.pipeline import Derived, MapState, load_map_state
 from fray_claude.derive.search import WorldIndex, build_world_index
 from fray_claude.simulate import UnlockRecord, simulate_rolls, simulated_payload

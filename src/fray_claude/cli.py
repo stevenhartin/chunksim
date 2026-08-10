@@ -122,15 +122,16 @@ from fray_claude.store.cache import (
 from fray_claude.derive.challenges import strip_task_markup
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.derive.delta import BRANCHES, BranchDelta, MapSide, StateDelta, compare_maps
-from fray_claude import dps_bridge, estimate_inputs
-from fray_claude.estimate import (
+from fray_claude.costing import inputs
+from fray_claude.costing import dps_bridge
+from fray_claude.costing.estimate import (
     BUCKETS,
     EstimateResult,
     estimate,
     goal_levels,
     infer_levels,
 )
-from fray_claude.heuristics import Heuristics, disagreements, load, merge
+from fray_claude.costing.heuristics import Heuristics, disagreements, load, merge
 from fray_claude.store.derived_cache import (
     CacheBehaviour,
     Digests,
@@ -823,10 +824,10 @@ def _cmd_estimate(args: argparse.Namespace) -> int:
 
     state, unlocked = _load_state(args)
     derived = _derive(args, state, unlocked)
-    # Everything about *what* to price lives in `estimate_inputs`, shared with
+    # Everything about *what* to price lives in `costing.inputs`, shared with
     # the GUI so the two apps cannot answer differently; what is left here is
     # rendering.
-    answer = estimate_inputs.estimate_answer(
+    answer = inputs.estimate_answer(
         state, unlocked, derived, _digests(args), refresh=args.recompute
     )
 

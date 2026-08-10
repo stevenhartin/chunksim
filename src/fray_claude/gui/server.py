@@ -66,7 +66,8 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs, urlsplit
 
-from fray_claude import dps_bridge, estimate_inputs
+from fray_claude.costing import inputs
+from fray_claude.costing import dps_bridge
 from fray_claude.store import cache
 from fray_claude.remote.api import (
     CHUNKINFO_URL,
@@ -89,9 +90,9 @@ from fray_claude.store.build_info import read_build
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.derive.delta import MapSide, compare_maps, diff_names
 from fray_claude.store.derived_cache import cached_derive, cached_enrich, pricing_digests
-from fray_claude.estimate import estimate, goal_levels, infer_levels
-from fray_claude.heuristics import Heuristics, merge
-from fray_claude.heuristics import load as load_heuristics
+from fray_claude.costing.estimate import estimate, goal_levels, infer_levels
+from fray_claude.costing.heuristics import Heuristics, merge
+from fray_claude.costing.heuristics import load as load_heuristics
 from fray_claude.derive.neighbours import eligible_neighbours
 from fray_claude.remote.scrape import SOURCE as SCRAPE_SOURCE
 from fray_claude.remote.scrape import scrape
@@ -634,14 +635,14 @@ def _estimate_payload(state: DerivedState, ctx: Context) -> dict[str, Any]:
     computed without are different numbers - and the screen has to be able to
     say which it is showing.
 
-    **The assembly is `estimate_inputs`', not this module's.** It was this
+    **The assembly is `costing.inputs`', not this module's.** It was this
     module's, in a copy of `cli.py`'s that had already lost `pinned_slayer` -
     so the panel and the command could price one map differently, and could
     overwrite each other's answer in `cache/derived/` while doing it. Where
     this panel's time goes is unchanged: `estimate` is 3.1ms and `enrich` is
     662ms, which is why the latter is cached beside the derivation.
     """
-    answer = estimate_inputs.estimate_answer(
+    answer = inputs.estimate_answer(
         state.state,
         state.unlocked,
         state.derived,
