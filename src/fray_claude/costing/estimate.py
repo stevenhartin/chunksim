@@ -185,6 +185,22 @@ _MAX_DEPTH = 3
 #: ground spawn are both "walk there and take it".
 _FREE_ROUTES = frozenset({"shop", "spawn"})
 
+#: Skills this project will not put an hours figure on, whatever the export
+#: says about training them. **A refusal, not a gap in the data** - and the
+#: only entry is `Sailing`, which is new enough that no money-making guide
+#: covers it, `{{Recipe}}` has no rows for it and no wiki table publishes a
+#: rate for any of its 27 primary methods. So every one of them would sit at
+#: the 1,000/hr floor and the climb would read as 13,034 hours, which is not a
+#: conservative estimate but a made-up one wearing a number.
+#:
+#: The condition is deliberately *not* "no method has a rate" - that is
+#: already the floor's job, and the floor is the right answer for a skill this
+#: project simply has not reached yet. This is the narrower statement that the
+#: numbers do not exist anywhere to be found, so a reader waiting for the
+#: scrape to improve is waiting for nothing. Remove a skill from here the day
+#: something publishes rates for it.
+UNRATED_SKILLS = frozenset({"Sailing"})
+
 #: Seconds to reach a shop and get back to where the work happens. **A rough
 #: fixed figure, not a measurement** - the export has no geography to compute
 #: one from, and a bank-to-shop-to-bank run is thirty seconds either side of
@@ -1326,10 +1342,20 @@ def estimate(
         granted = grants.get(skill, 0)
         start_xp = min(xp_for_level(max(1, min(current, MAX_LEVEL))) + granted, target_xp)
         xp = max(0, target_xp - start_xp)
-        if xp > 0 and not _has_training_method(state.chunk_info, skill, heuristics):
+        # **Two different refusals, and the difference is worth saying.** One
+        # is "the export lists nothing that trains this"; the other is "the
+        # export lists plenty and nobody anywhere has timed any of it". Both
+        # end here rather than at the floor, because a four-figure number with
+        # nothing behind it is worse than an admission.
+        refusal = ""
+        if xp > 0 and skill in UNRATED_SKILLS:
+            refusal = "no published rates for this skill yet"
+        elif xp > 0 and not _has_training_method(state.chunk_info, skill, heuristics):
             # No `Primary: true` challenge anywhere in the export - the four
             # combat skills, which you train by fighting rather than by an
             # activity the export lists. Refused, not guessed at.
+            refusal = "no training method exists for this skill"
+        if refusal:
             unpriced_skills.append(
                 UnpricedSkill(
                     skill=skill,
@@ -1337,7 +1363,7 @@ def estimate(
                     current_level=current,
                     target_level=int(target),
                     xp=xp,
-                    reason="no training method exists for this skill",
+                    reason=refusal,
                 )
             )
             continue

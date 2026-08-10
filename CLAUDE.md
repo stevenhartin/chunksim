@@ -565,6 +565,16 @@ Three things about it are worth knowing before changing a number:
   on a gilded altar, 2.5x against 3.5x. Each burner is worth exactly +50 percentage points across
   all seven altars, which `tests/test_prayer.py` asserts rather than computes from.
 
+**Sailing is refused outright, and that is a different statement from the floor.** The floor means
+"this project has not reached that method yet" and is the right answer while a scrape could still
+improve it. Sailing is the narrower case where the numbers do not exist anywhere to be found: it is
+new enough that no money-making guide covers it, `{{Recipe}}` has no rows for it and no wiki table
+publishes a rate for any of its **27 primary methods**, so all of them sit at the floor and the climb
+reads as 13,034 hours - not a conservative estimate but a made-up one wearing a number.
+`estimate.UNRATED_SKILLS` puts it in `unpriced_skills` instead, alongside the combat skills but for
+the opposite reason: those have no training method in the export at all, where Sailing has plenty and
+nobody has timed one. Remove a skill from that set the day something publishes rates for it.
+
 **A computed rate slower than the 1,000/hr floor is refused.** The floor is a deliberate stand-in for
 ignorance, not a speed, and a computed number below it says the model is missing something about that
 method - a bulk action, a faster variant, materials someone already has - far more often than it says

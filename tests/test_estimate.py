@@ -1603,3 +1603,49 @@ def test_an_unlocked_activity_with_no_stated_rate_is_still_refused() -> None:
     result = _run(info, derived, Heuristics())
 
     assert "Rare thing" in result.unpriced
+
+
+def test_sailing_is_refused_even_though_the_export_can_train_it() -> None:
+    """**The other refusal, and the difference from Attack's is the point.**
+    Attack has no training method anywhere in the export; Sailing has 27 of
+    them and nobody has timed a single one - it is new enough that no
+    money-making guide covers it, `{{Recipe}}` has no rows for it and no wiki
+    table publishes a rate for any of its methods.
+
+    So every method sits at the 1,000/hr floor and the climb reads as 13,034
+    hours, which is not a conservative estimate but a made-up one wearing a
+    number. Refused until something publishes rates - see `UNRATED_SKILLS`.
+    """
+    info = ChunkInfo(
+        {
+            "challenges": {
+                "Sailing": {
+                    "Reach ~|Sailing|~ 70": {"Level": 70},
+                    "Complete ~|courier tasks|~": {"Primary": True, "Level": 1},
+                }
+            }
+        }
+    )
+    derived = _derived(
+        challenges=ChallengeResult(
+            valid={
+                "Sailing": {"Reach ~|Sailing|~ 70": 70, "Complete ~|courier tasks|~": 1}
+            },
+            unsupported=frozenset(),
+        ),
+        task_classification=TaskClassification(
+            skills={
+                "Sailing": SkillClassification(
+                    active="Reach ~|Sailing|~ 70", obsolete=frozenset(), completed=frozenset()
+                )
+            }
+        ),
+    )
+
+    result = _run(info, derived, Heuristics(), level_overrides={"Sailing": 1})
+
+    assert result.skills == ()
+    assert [(s.skill, s.reason) for s in result.unpriced_skills] == [
+        ("Sailing", "no published rates for this skill yet")
+    ]
+    assert result.buckets["skilling"] == 0.0
