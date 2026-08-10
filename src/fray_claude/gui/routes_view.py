@@ -19,11 +19,8 @@ export and no `derive`, which is what lets the slider redraw as you drag it.
 
 from __future__ import annotations
 
-from fray_claude.costing.estimate import (
-    EstimateResult,
-    TrainingOption,
-    training_options,
-)
+from fray_claude.costing.estimate import EstimateResult
+from fray_claude.costing.training import TrainingOption, training_options
 from fray_claude.costing.inputs import load_heuristics
 from fray_claude.derive.task_names import strip_task_markup
 from fray_claude.runs.batch import PriceSpec, price_detail

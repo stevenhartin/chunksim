@@ -9,7 +9,12 @@ from __future__ import annotations
 
 import pytest
 
-from fray_claude.model.experience import MAX_LEVEL, xp_between, xp_for_level
+from fray_claude.model.experience import (
+    MAX_LEVEL,
+    level_for_xp,
+    xp_between,
+    xp_for_level,
+)
 
 #: (level, cumulative XP), from the wiki's experience table.
 _PUBLISHED = [
@@ -55,3 +60,32 @@ def test_a_level_above_the_curve_is_clamped_rather_than_raising() -> None:
     # not stop an estimate - see the module docstring.
     assert xp_between(999, 99) == 0
     assert xp_between(0, 2) == 83
+
+
+def test_level_for_xp_is_the_exact_inverse() -> None:
+    """Every threshold round-trips, at every level the curve defines."""
+    assert [level_for_xp(xp_for_level(n)) for n in range(1, MAX_LEVEL + 1)] == list(
+        range(1, MAX_LEVEL + 1)
+    )
+
+
+def test_one_xp_short_of_a_threshold_is_the_level_below() -> None:
+    """The property the band walk rests on: a quest reward that lands you one
+    XP short of 54 has not opened the level-54 method."""
+    assert [level_for_xp(xp_for_level(n) - 1) for n in range(2, MAX_LEVEL + 1)] == list(
+        range(1, MAX_LEVEL)
+    )
+
+
+def test_a_total_off_the_curve_is_clamped_at_both_ends() -> None:
+    """A caller handing this a total is describing a player, and a player
+    cannot be off the curve."""
+    assert level_for_xp(-5) == 1
+    assert level_for_xp(0) == 1
+    assert level_for_xp(10**9) == MAX_LEVEL
+
+
+def test_druidic_ritual_leaves_herblore_at_three() -> None:
+    """The export grants `{"Herblore": 250}` for the quest, and 250 XP is
+    level 3 - which is the whole reason Herblore has any method open at all."""
+    assert level_for_xp(250) == 3

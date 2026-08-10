@@ -10,7 +10,8 @@ from fray_claude.derive.active_tasks import SkillClassification, TaskClassificat
 from fray_claude.derive.bis import BisResult
 from fray_claude.derive.challenges import ChallengeResult
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.costing.estimate import estimate, training_options
+from fray_claude.costing.estimate import estimate
+from fray_claude.costing.training import training_options
 from fray_claude.costing.levels import goal_levels, infer_levels, reachable_providers, task_gated_monsters
 from fray_claude.costing.heuristics import (
     DEFAULT_XP_PER_HOUR,
@@ -1185,51 +1186,3 @@ def test_the_providers_set_is_the_three_source_branches() -> None:
     )
 
 
-def test_training_options_lists_only_methods_with_a_real_rate() -> None:
-    """**The answer to "why is this skill so slow".**
-
-    `_training_rate` takes the fastest method available at the *current* level
-    and applies it to the whole climb, so when nothing open at that level has a
-    scraped rate the climb is priced at the 1,000 xp/hr floor - Herblore 1-99
-    comes out at 13,034 hours on a map that knows real rates for eighteen
-    Herblore methods, none of them reachable at level 1.
-
-    That is deliberately conservative, but a reader cannot see it. So the panel
-    lists what the estimator knew and could not use, and the floor itself is
-    excluded: a list of level-1 options all sitting at 1,000/hr would say "here
-    are your alternatives" and mean "there are none".
-    """
-    info = ChunkInfo(
-        {
-            "challenges": {
-                "Herblore": {
-                    "Mix a ~|super combat potion|~": {"Primary": True, "Level": 90},
-                    "Clean a ~|grimy guam|~": {"Primary": True, "Level": 3},
-                    "Drink a ~|potion|~": {"Primary": False, "Level": 1},
-                }
-            }
-        }
-    )
-    derived = _derived(
-        challenges=ChallengeResult(
-            valid={
-                "Herblore": {
-                    "Mix a ~|super combat potion|~": True,
-                    "Clean a ~|grimy guam|~": True,
-                    "Drink a ~|potion|~": True,
-                }
-            },
-            unsupported=frozenset(),
-        )
-    )
-    heuristics = Heuristics(
-        training={"Mix a ~|super combat potion|~": {"Herblore": Rate(315000.0, "mmg", "exact")}}
-    )
-
-    options = training_options(derived, info, heuristics, "Herblore")
-
-    # The guam has no rate, so it is the floor and says nothing; the potion is
-    # not a training method at all.
-    assert [(o.method, o.level, o.xp_per_hour) for o in options] == [
-        ("super combat potion", 90, 315000.0)
-    ]

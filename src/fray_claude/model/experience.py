@@ -26,6 +26,8 @@ goal is a normal state, not an error.
 
 from __future__ import annotations
 
+from bisect import bisect_right
+
 #: The highest level the curve is defined for. 126 is the Combat-level
 #: ceiling; 99 is only where the *skill* cap sits, and the difference matters
 #: because `max_skill` can hold either.
@@ -54,3 +56,30 @@ def xp_between(current: int, target: int) -> int:
     if target <= current:
         return 0
     return xp_for_level(target) - xp_for_level(max(1, min(current, MAX_LEVEL)))
+
+
+#: Every level's threshold, in order, so `level_for_xp` is a binary search
+#: rather than a loop over the curve.
+#:
+#: **A tuple built at import is a constant, not a cache.** The project's rule is
+#: no module-level *mutable* state - no `lru_cache`, no memo dict - because the
+#: pure layer runs in worker processes and a memo makes `--jobs` disagree. This
+#: is 126 integers computed from a closed form, immutable, identical in every
+#: process, in the same category as `challenges._UNARMED_SOURCES`. For the same
+#: reason `xp_for_level` is deliberately *not* memoised: the band walk calls it
+#: once per training method per skill, which is nothing.
+_THRESHOLDS: tuple[int, ...] = tuple(xp_for_level(level) for level in range(1, MAX_LEVEL + 1))
+
+
+def level_for_xp(xp: int) -> int:
+    """The level `xp` total experience buys: the exact inverse of `xp_for_level`.
+
+    `level_for_xp(xp_for_level(n)) == n` for every level, and one XP short of a
+    threshold is the level below - which is the property that matters, since
+    this exists to answer "where does a quest's experience reward leave me".
+
+    Clamped rather than raising, at both ends: below zero is level 1 and past
+    the curve is `MAX_LEVEL`. A caller handing this a total is describing a
+    player, and a player cannot be off the curve.
+    """
+    return max(1, min(MAX_LEVEL, bisect_right(_THRESHOLDS, xp)))
