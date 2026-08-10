@@ -40,7 +40,7 @@ from fray_claude.store.derived_cache import Digests, cached_enrich, pricing_dige
 from fray_claude.costing.estimate import EstimateResult, estimate
 from fray_claude.derive.search import WorldIndex
 from fray_claude.remote.recipes import Material as RecipeMaterial, Recipe
-from fray_claude.costing.levels import goal_levels, infer_levels
+from fray_claude.costing.levels import goal_levels, infer_levels, reachable_providers
 from fray_claude.costing.heuristics import Heuristics, load, merge
 from fray_claude.derive.pipeline import Derived, MapState
 from fray_claude.derive.search import build_world_index
@@ -270,15 +270,43 @@ def priced_heuristics(
         # `enrich` would price combat off the scraped rates and then throw the
         # simulated ones away - the numbers would be quietly worse on exactly
         # the maps where the extra had most to say.
-        return (
-            replace(
-                priced,
-                combat=combat_xp.combat_rates(
-                    derived, priced, priced.monster_stats, priced.spells, goals
+        caps = combat_xp.spawn_caps(state.chunk_info, derived)
+        by_style: dict[str, dps_bridge.CombatRate] = {}
+        if dps_bridge.DPS_AVAILABLE:
+            # **The kit is not optional here.** Without it the Magic loadout
+            # has no runes and never lands a hit, so `price_combat` returned
+            # melee and ranged only - and Magic fell through to the rough
+            # fallback, which is the inconsistent model this call exists to
+            # replace.
+            by_style = dps_bridge.price_combat(
+                state.chunk_info,
+                derived.bis.picks,
+                goals,
+                sorted(combat_xp.farmable_providers(derived)),
+                kit=dps_bridge.assemble_kit(
+                    state.chunk_info,
+                    goals,
+                    items=derived.challenges.available_items,
+                    source_index=derived.source_index,
                 ),
-            ),
-            coverage,
+                slayer_monsters=frozenset(state.chunk_info.slayer_monsters),
+                boss_monsters=frozenset(_mapping(state.chunk_info.code_items, "bossMonsters")),
+                multipliers={
+                    name: entry.xp_multiplier
+                    for name, entry in priced.monster_stats.items()
+                },
+                caps=caps,
+            )
+        rates, damage = combat_xp.combat_rates(
+            derived,
+            priced,
+            priced.monster_stats,
+            priced.spells,
+            goals,
+            by_style=by_style,
+            caps=caps,
         )
+        return replace(priced, combat=rates, combat_damage=damage), coverage
 
     return cached_enrich(
         compute,

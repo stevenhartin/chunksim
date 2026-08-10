@@ -181,7 +181,7 @@ Five things that cut across modules — the first three because each has already
 | `model/summary.py` | Pure reductions over a raw payload. Extend this, not the CLI. Also home to `format_age` (both apps render ages, and two copies of the bucketing would disagree) and `_mapping`, the tolerant dict accessor eight other modules import despite the `_` — Firebase omits empty containers, so every lookup anywhere must survive a missing branch. |
 | `remote/wikitable.py` | Reading a wikitable. Shared by the two modules that parse them; owns the depth-aware cell splitter (`{{Coins\|{{GEP\|x\|10*13.8}}}}` has four `\|` and none is a cell break) and `column_index`, which resolves a `colspan` header against the width the data actually uses. |
 | `remote/combat.py` | Monster hitpoints and xp multipliers (one `infobox_monster` Bucket query, 1,382 monsters, 361 with a non-zero bonus **as a percentage**), plus the autocastable spells. **`infobox_spell` cannot tell an attack spell from a utility one** - Fire Surge, Charge and Vengeance have identical infoboxes and the categories disagree - so the filter is the wiki's own layout: the table with a max-hit column. Taking the highest-xp "combat" spell picks Charge, at 2.4x. |
-| `costing/combat_xp.py` | Combat XP, which is damage and almost nothing else: 4 per damage melee/Ranged, **2 for Magic**, 1.33 Hitpoints, plus the spell's base xp per cast. Damage per hour is `kills_per_hour * hitpoints`, so it **improves automatically with the `dps` extra**. Refuses a monster whose kill rate is only a default. |
+| `costing/combat_xp.py` | Combat XP, which is damage and almost nothing else: 4 per damage melee/Ranged, **2 for Magic**, 1.33 Hitpoints, plus the spell's base xp per cast. Owns three gates that each removed a wrong answer: `farmable_providers` (**reachable is not farmable** - a raid room is fought once per raid), `spawn_caps` (the export counts spawns per chunk, so a map holding two of something cannot supply 900 kills an hour), and `hitpoints_credit` (**Hitpoints is earned by the other combat climbs, not beside them**). Refuses a monster whose kill rate is only a default. |
 | `costing/dps_bridge.py` | The seam to `osrs-dps`, which prices a kill from the gear `bis.py` reaches instead of a money-making guide. Prices **only `estimate.reachable_providers`** — 188 of the export's 872, because every `kills_per_hour` lookup is gated on that set and the rest is thrown away. `enrich_incremental` + `fight_signature` keep a timeline's previous roll where nothing that decides a kill has moved; `enrich` stays untouched. **Optional import** — check `DPS_AVAILABLE`, never assume it. `enrich` is the one entry point a command needs. Owns the export→library conversions (`magic_damage` is a display percentage here and tenths of a percent there), the overhead model, the monster-name join and its `exact`/`variant` provenance, and the refusal of fight *phases* and group bosses. |
 | `remote/recipes.py` | `{{Recipe}}` as the wiki's Bucket table serves it: experience per action, tick cost and materials, for 3,889 recipes across 13 skills. Pure parsing. `production_json` is JSON inside JSON, every number is a string, and one page can hold several recipes told apart only by the output's `subtxt`. |
 | `costing/recipe_rates.py` | A recipe turned into an XP rate: `experience * 3600 / (0.6*ticks + materials + overhead)`, joined to a challenge **exactly** on `Output` (93-95% of the processing skills, ~0% of the gathering ones). Owns the layering `defaults < computed < scraped < overrides` - **the one place a computed number does *not* beat the scrape**, and the docstring carries the measurement that says why. An unpriceable material drops the method rather than falling back to ticks. |
@@ -368,6 +368,34 @@ way, with buckets, per-item hours and `unpriced` all unchanged — and took `enr
 cannot drift from the thing it gates; `tests/test_estimate.py` spies on every lookup to assert
 nothing asks outside it. `DpsCoverage.offered` is reported beside `monsters` because "188 monsters"
 alone reads as poor coverage of the export rather than full coverage of the map.
+
+**Three things that made combat wrong before they were added, all of them about the *fight* rather
+than the arithmetic.** The XP model is a published constant times damage and was right from the
+start; every error was in what it was multiplied by.
+
+- **A kill rate is paired with the health of the version that was simulated.** `best_kill` picks
+  whichever version dies quickest - `Wolf#Level 11`, 10 health - and the first combat model multiplied
+  that rate by the *wiki's* `Wolf`, 69 health, which is a different animal. `KillEstimate.hitpoints`
+  now carries the library's own figure so the two cannot come apart, and `kills_by_style(prefer=...)`
+  chooses the version by **damage per hour** rather than by kill speed, because for experience the
+  fat wolf is the good one.
+- **Reachable is not farmable.** The export puts 21 monsters in `Chambers of Xeric`, 9 in `Inferno`
+  and 7 in `Fight Caves`, and the derivation is right to call them reachable - all 87 challenges
+  requiring the raid are valid, and its drops really are obtainable. What you cannot do is kill
+  Muttadile repeatedly to train Strength. `INSTANCED_AREAS` gates **only** combat training; excluding
+  them from `reachable_providers` would change item pricing, which is a different and correct answer.
+  A monster reachable in an instance *and* somewhere you can stand stays farmable.
+- **Nothing modelled the wait for the next monster.** `dps_bridge`'s overhead is 1.2s of retarget
+  plus tick waste, and a respawn timer only for bosses - right for "how long until the drop", wrong
+  for a 2-health monster you would run out of. `spawn_caps` reads the per-chunk spawn counts the
+  export already has (`chunks[id]["Monster"]`) and caps the rate at `spawns * 3600 / respawn`. The
+  respawn is the one assumption in the file. It binds on 144 of 793 (monster, style) pairs on the
+  benchmark map and changed the winner in all three styles.
+
+**And the styles are priced separately, because the experience depends on which one you use.**
+`price_combat` returns one target per style, so Ranged is priced on the map's bow rather than on its
+whip. **The kit is not optional in that call** - without it the Magic loadout has no runes, never
+lands a hit, and Magic silently fell back to the rough model this exists to replace.
 
 **The combat skills are priced from damage, not from a training method** - they have no
 `Primary: true` challenge anywhere in the export, so there was never a task to join a rate to and

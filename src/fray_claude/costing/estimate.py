@@ -150,6 +150,7 @@ from fray_claude.model.experience import (
     xp_between,
     xp_for_level,
 )
+from fray_claude.costing.combat_xp import hitpoints_credit
 from fray_claude.costing.training import (
     LampGrant,
     TrainingBand,
@@ -266,6 +267,11 @@ class SkillEstimate:
     #: XP this climb is spared by quests the map can finish. Already removed
     #: from `xp`, so it is a note about where the head start came from.
     xp_from_quests: int = 0
+    #: XP this climb is spared because the *other* combat skills earn it on
+    #: the way. Hitpoints only, and in practice most of the climb - see
+    #: `combat_xp.hitpoints_credit`. Already removed from `xp`, like the
+    #: quest grant beside it.
+    xp_from_combat: float = 0.0
     #: The level the quest XP leaves you at, which is where the climb starts.
     #: Equal to `current_level` when no quest pays into this skill.
     effective_level: int = 0
@@ -283,6 +289,8 @@ class SkillEstimate:
             "defaulted": self.defaulted,
             "floor_xp": self.floor_xp,
             "xp_from_quests": self.xp_from_quests,
+            "xp_from_combat": round(self.xp_from_combat, 1),
+            "xp_from_combat": self.xp_from_combat,
             "effective_level": self.effective_level,
             "bands": [band.as_dict() for band in self.bands],
         }
@@ -896,6 +904,7 @@ def _skill_estimate(
     bands: tuple[TrainingBand, ...],
     *,
     xp_from_quests: int = 0,
+    xp_from_combat: float = 0.0,
     effective_level: int = 0,
 ) -> SkillEstimate:
     """One skill's row, summarised from its bands.
@@ -928,6 +937,7 @@ def _skill_estimate(
         bands=bands,
         floor_xp=floor_xp,
         xp_from_quests=xp_from_quests,
+        xp_from_combat=xp_from_combat,
         effective_level=effective_level or current,
     )
 
@@ -1103,6 +1113,7 @@ def estimate(
 
     skills: list[SkillEstimate] = []
     unpriced_skills: list[UnpricedSkill] = []
+    hitpoints_at: tuple[int, str, int, int, int, int, int] | None = None
     grants, lamps = quest_xp_grants(derived, state.chunk_info)
     for skill, classification in sorted(derived.task_classification.skills.items()):
         goal = classification.active
@@ -1170,6 +1181,38 @@ def estimate(
                 effective_level=level_for_xp(start_xp),
             )
         )
+        if skill == "Hitpoints":
+            hitpoints_at = (len(skills) - 1, goal, current, int(target), capped, start_xp, granted)
+
+    # **Hitpoints is earned by the other combat climbs, not beside them.**
+    # Every point of damage paying 4 XP to Strength pays 1.33 to Hitpoints at
+    # the same instant, so pricing both climbs in full bills the same hours
+    # twice. Done after the loop rather than inside it because the credit
+    # depends on skills that sort after `Hitpoints` - Magic, Ranged, Strength.
+    if hitpoints_at is not None and heuristics.combat_damage:
+        at, hp_goal, hp_level, hp_target, hp_capped, hp_start, hp_granted = hitpoints_at
+        credit = hitpoints_credit(
+            {entry.skill: entry.hours for entry in skills},
+            heuristics.combat_damage,
+        )
+        if credit > 0:
+            hp_target_xp = xp_for_level(hp_capped)
+            moved = int(min(hp_start + credit, hp_target_xp))
+            skills[at] = _skill_estimate(
+                "Hitpoints",
+                hp_goal,
+                hp_level,
+                hp_target,
+                max(0, hp_target_xp - moved),
+                training_bands(
+                    training_options(derived, state.chunk_info, heuristics, "Hitpoints"),
+                    moved,
+                    hp_capped,
+                ),
+                xp_from_quests=min(hp_granted, xp_between(hp_level, hp_capped)),
+                xp_from_combat=min(credit, float(xp_between(hp_level, hp_capped))),
+                effective_level=level_for_xp(moved),
+            )
 
     return EstimateResult(
         unpriced_skills=tuple(unpriced_skills),

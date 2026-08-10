@@ -558,6 +558,11 @@ class KillEstimate:
     #: The winning loadout's attack speed in ticks, already carrying its
     #: stance. Drives the tick quantisation in `overhead`.
     attack_speed: int = 4
+    #: The target's health. **Carried here rather than looked up again**, so
+    #: that anything multiplying a kill rate by hitpoints uses the health of
+    #: the version that was actually simulated. `Wolf` has several versions
+    #: and the wiki's first row is not necessarily the one the library fought.
+    hitpoints: float = 0.0
 
     @property
     def cycle_seconds(self) -> float:
@@ -878,6 +883,87 @@ def candidate_targets(index: MonsterIndex, name: str) -> tuple[tuple[str, Target
     )
 
 
+def kills_by_style(
+    loadouts: Mapping[str, Loadout],
+    name: str,
+    candidates: Iterable[tuple[str, Target]],
+    *,
+    on_slayer_task: bool = False,
+    reductions: DefenceReductions | None = None,
+    wilderness: bool = False,
+    boss: bool = False,
+    prefer: str = "ttk",
+) -> dict[str, KillEstimate]:
+    """The best kill **per combat style**, for every style that can kill.
+
+    `best_kill` is the minimum of this, and used to be the only thing on
+    offer. That was right while the only question was "how long until the
+    drop", where nobody cares which hand held the weapon - and wrong the
+    moment combat *experience* was priced, because training Magic means
+    casting at it even when a whip would be quicker. Collapsing to one style
+    made every combat skill quote the same rate.
+
+    One pass over both axes - style and monster version - keeping a winner for
+    each style, so asking for three costs what asking for one used to.
+
+    **`prefer` decides what "best" means, and the two answers differ by an
+    order of magnitude.** For a drop, the quickest kill wins: `ttk`. For
+    experience, the most *damage per hour* wins - `damage` - because XP is
+    paid per point of health removed. `Wolf` has five versions between 10 and
+    69 health; the level 11 one dies fastest and pays a sixth as much. Pricing
+    combat off the fastest kill and then multiplying by some other version's
+    health is how a wolf came to look like the best training in the game.
+    """
+    _require()
+    pairs = tuple(candidates)
+    if not pairs or not loadouts:
+        return {}
+
+    best: dict[str, KillEstimate] = {}
+    for key, target in pairs:
+        fight = target
+        if on_slayer_task and not target.is_slayer_monster:
+            fight = _slayer_target(target)
+        if reductions is not None:
+            fight = scale(fight, RaidInputs(defence_reductions=reductions))
+        for style, loadout in loadouts.items():
+            armed = _with_buffs(loadout, on_task=on_slayer_task, wilderness=wilderness)
+            try:
+                result = dps(armed, fight)
+            except Unsupported:
+                continue
+            # A zero rate is the library saying "never killed"; its companion
+            # ttk of 0.0 is a convention, not a fast kill. Read the pair.
+            if result.dps <= 0 or result.expected_ttk <= 0:
+                continue
+            found = KillEstimate(
+                monster=key,
+                style=style,
+                ttk=result.expected_ttk,
+                dps=result.dps,
+                max_hit=result.max_hit,
+                accuracy=result.accuracy,
+                match="exact" if key == name else "variant",
+                # Measured against the gear that won, since that is what
+                # the player is standing in while being hit.
+                damage_taken=damage_taken_per_second(armed, fight),
+                is_boss=boss,
+                attack_speed=armed.attack_speed,
+                hitpoints=float(getattr(target, "hitpoints", 0) or 0),
+            )
+            standing = best.get(style)
+            if standing is None or _score(found, prefer) > _score(standing, prefer):
+                best[style] = found
+    return best
+
+
+def _score(kill: KillEstimate, prefer: str) -> float:
+    """How good a kill is, by whichever objective the caller asked for."""
+    if prefer == "damage":
+        return kill.kills_per_hour() * kill.hitpoints
+    return -kill.ttk
+
+
 def best_kill(
     loadouts: Mapping[str, Loadout],
     name: str,
@@ -905,44 +991,16 @@ def best_kill(
     reports with `expected_ttk == 0`), or every pairing refused as
     `Unsupported`. All three are "do not price this", not "price it at zero".
     """
-    _require()
-    pairs = tuple(candidates)
-    if not pairs or not loadouts:
-        return None
-
-    best: KillEstimate | None = None
-    for key, target in pairs:
-        fight = target
-        if on_slayer_task and not target.is_slayer_monster:
-            fight = _slayer_target(target)
-        if reductions is not None:
-            fight = scale(fight, RaidInputs(defence_reductions=reductions))
-        for style, loadout in loadouts.items():
-            armed = _with_buffs(loadout, on_task=on_slayer_task, wilderness=wilderness)
-            try:
-                result = dps(armed, fight)
-            except Unsupported:
-                continue
-            # A zero rate is the library saying "never killed"; its companion
-            # ttk of 0.0 is a convention, not a fast kill. Read the pair.
-            if result.dps <= 0 or result.expected_ttk <= 0:
-                continue
-            if best is None or result.expected_ttk < best.ttk:
-                best = KillEstimate(
-                    monster=key,
-                    style=style,
-                    ttk=result.expected_ttk,
-                    dps=result.dps,
-                    max_hit=result.max_hit,
-                    accuracy=result.accuracy,
-                    match="exact" if key == name else "variant",
-                    # Measured against the gear that won, since that is what
-                    # the player is standing in while being hit.
-                    damage_taken=damage_taken_per_second(armed, fight),
-                    is_boss=boss,
-                    attack_speed=armed.attack_speed,
-                )
-    return best
+    found = kills_by_style(
+        loadouts,
+        name,
+        candidates,
+        on_slayer_task=on_slayer_task,
+        reductions=reductions,
+        wilderness=wilderness,
+        boss=boss,
+    )
+    return min(found.values(), key=lambda kill: kill.ttk, default=None)
 
 
 def _with_buffs(loadout: Loadout, *, on_task: bool, wilderness: bool) -> Loadout:
@@ -966,6 +1024,104 @@ def _with_buffs(loadout: Loadout, *, on_task: bool, wilderness: bool) -> Loadout
 def _slayer_target(target: Target) -> Target:
     """`target` marked as counting for a slayer assignment."""
     return replace(target, is_slayer_monster=True)
+
+
+@dataclass(frozen=True)
+class CombatRate:
+    """The best monster to train one combat style on, and how fast.
+
+    `damage_per_hour` is the whole answer: combat experience is a constant
+    times damage, so this is what `costing/combat_xp.py` multiplies. It pairs
+    **this library's** hitpoints with **this library's** kill rate, which is
+    the reason it lives here rather than being assembled by the caller from
+    two sources that need not agree about which `Wolf` is meant.
+    """
+
+    style: str
+    monster: str
+    damage_per_hour: float
+    kills_per_hour: float
+    hitpoints: float
+    xp_multiplier: float = 1.0
+    match: str = "exact"
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "style": self.style,
+            "monster": self.monster,
+            "damage_per_hour": round(self.damage_per_hour, 1),
+            "kills_per_hour": round(self.kills_per_hour, 2),
+            "hitpoints": self.hitpoints,
+            "xp_multiplier": self.xp_multiplier,
+            "match": self.match,
+        }
+
+
+def price_combat(
+    chunk_info: ChunkInfo,
+    picks: Mapping[str, str],
+    levels: Mapping[str, int],
+    monsters: Iterable[str],
+    *,
+    index: MonsterIndex | None = None,
+    slayer_monsters: frozenset[str] = frozenset(),
+    boss_monsters: frozenset[str] = frozenset(),
+    kit: Kit | None = None,
+    multipliers: Mapping[str, float] | None = None,
+    caps: Mapping[str, float] | None = None,
+) -> dict[str, CombatRate]:
+    """The best training target for each combat style: `{style: CombatRate}`.
+
+    **Per style, because that is what decides the experience.** A map with a
+    whip and no decent bow trains Ranged far more slowly than melee, and one
+    figure for all three said otherwise.
+
+    `caps` limits a monster's kills per hour - see `combat_xp.spawn_caps`,
+    which is how "there are only two of these on the map" reaches a number
+    that otherwise assumes an endless queue of them. `multipliers` is the
+    monster's own experience bonus.
+    """
+    _require()
+    monster_index = load_monster_index() if index is None else index
+    loadouts = build_loadouts(chunk_info, picks, levels, kit)
+    if not loadouts:
+        return {}
+    reductions = kit.reductions if kit is not None else None
+
+    best: dict[str, CombatRate] = {}
+    for name in monsters:
+        if name in GROUP_BOSSES:
+            continue
+        for style, kill in kills_by_style(
+            loadouts,
+            name,
+            candidate_targets(monster_index, name),
+            on_slayer_task=name in slayer_monsters,
+            reductions=reductions,
+            wilderness=name in kit.wilderness if kit is not None else False,
+            boss=name in boss_monsters,
+            prefer="damage",
+        ).items():
+            rate = kill.kills_per_hour()
+            if rate <= 0 or kill.hitpoints <= 0:
+                continue
+            cap = None if caps is None else caps.get(name)
+            if cap is not None and cap > 0:
+                rate = min(rate, cap)
+            multiplier = 1.0 if multipliers is None else multipliers.get(name, 1.0)
+            damage = rate * kill.hitpoints * multiplier
+            standing = best.get(style)
+            if standing is None or damage > standing.damage_per_hour:
+                best[style] = CombatRate(
+                    style=style,
+                    monster=name,
+                    damage_per_hour=damage,
+                    kills_per_hour=rate,
+                    hitpoints=kill.hitpoints,
+                    xp_multiplier=multiplier,
+                    match=kill.match,
+                )
+    return best
 
 
 def price_monsters(
@@ -1599,6 +1755,7 @@ def library_version() -> str | None:
 
 
 __all__ = [
+    "CombatRate",
     "DEFAULT_OVERHEAD_SECONDS",
     "MonsterIndex",
     "DPS_AVAILABLE",
@@ -1614,6 +1771,8 @@ __all__ = [
     "OverheadSample",
     "assemble_kit",
     "best_kill",
+    "kills_by_style",
+    "price_combat",
     "in_wilderness",
     "build_loadouts",
     "candidate_targets",

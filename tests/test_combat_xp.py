@@ -18,6 +18,9 @@ from fray_claude.costing.combat_xp import (
     best_spell,
     best_target,
     combat_rates,
+    farmable_providers,
+    hitpoints_credit,
+    spawn_caps,
 )
 from fray_claude.costing.heuristics import Heuristics, Rate
 from fray_claude.remote.combat import (
@@ -28,6 +31,7 @@ from fray_claude.remote.combat import (
 )
 from fray_claude.derive.active_tasks import TaskClassification
 from fray_claude.derive.bis import BisResult
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.derive.challenges import ChallengeResult
 from fray_claude.derive.other_tasks import OtherTasks
 from fray_claude.derive.pipeline import Derived
@@ -98,7 +102,7 @@ def test_magic_is_two_experience_per_damage_and_the_rest_are_four() -> None:
     heuristics = Heuristics(monsters={"Wolf": Rate(100.0, "test", "exact")})
     damage = 100.0 * 69.0
 
-    rates = combat_rates(derived, heuristics, _STATS, (), {"Magic": 1})
+    rates, _ = combat_rates(derived, heuristics, _STATS, (), {"Magic": 1})
 
     assert rates["Strength"].value == pytest.approx(damage * XP_PER_DAMAGE)
     assert rates["Ranged"].value == pytest.approx(damage * XP_PER_DAMAGE)
@@ -113,7 +117,7 @@ def test_a_cast_pays_its_base_experience_on_top_of_the_damage() -> None:
     heuristics = Heuristics(monsters={"Wolf": Rate(100.0, "test", "exact")})
     spells = (AttackSpell(name="Ice Barrage", level=94, experience=52.0),)
 
-    rates = combat_rates(derived, heuristics, _STATS, spells, {"Magic": 94})
+    rates, _ = combat_rates(derived, heuristics, _STATS, spells, {"Magic": 94})
 
     expected = 100.0 * 69.0 * MAGIC_XP_PER_DAMAGE + 52.0 * 3600.0 / CAST_SECONDS
     assert rates["Magic"].value == pytest.approx(expected)
@@ -212,3 +216,64 @@ def test_a_table_with_no_max_hit_column_contributes_nothing() -> None:
 |}
 """
     assert parse_attack_spells({"Standard spellbook": page}) == ()
+
+
+def test_hitpoints_is_credited_with_what_the_other_climbs_earn() -> None:
+    """**Hitpoints is not a climb you make.** Every point of damage paying 4 XP
+    to Strength pays 1.33 to Hitpoints at the same instant, so charging for
+    both in full bills the same hours twice."""
+    hours = {"Strength": 10.0, "Ranged": 5.0}
+    damage = {"Strength": 40_000.0, "Ranged": 30_000.0}
+
+    credit = hitpoints_credit(hours, damage)
+
+    assert credit == pytest.approx((10.0 * 40_000 + 5.0 * 30_000) * HITPOINTS_XP_PER_DAMAGE)
+
+
+def test_the_hitpoints_climb_does_not_credit_itself() -> None:
+    """Its own hours are the thing being reduced; counting them would be
+    circular and would zero the skill outright."""
+    credit = hitpoints_credit({"Hitpoints": 100.0}, {"Hitpoints": 50_000.0})
+
+    assert credit == 0.0
+
+
+def test_a_monster_you_can_only_meet_inside_a_raid_is_not_a_training_target() -> None:
+    """**Reachable is not farmable.** The export places 21 monsters in
+    `Chambers of Xeric` and the derivation rightly calls them reachable - you
+    really can get their drops by doing the raid. What you cannot do is kill
+    Muttadile over and over to train Strength."""
+    derived = _derived(("Muttadile#Small", "Bloodveld"))
+    object.__setattr__(
+        derived.source_index,
+        "monsters",
+        {
+            "Muttadile#Small": {"Chambers of Xeric": True},
+            "Bloodveld": {"Chambers of Xeric": True, "Catacombs of Kourend": True},
+        },
+    )
+
+    farmable = farmable_providers(derived)
+
+    assert "Muttadile#Small" not in farmable
+    # Reachable in a raid *and* somewhere you can stand: still farmable.
+    assert "Bloodveld" in farmable
+
+
+def test_a_spawn_cap_bounds_a_kill_rate_by_what_the_map_holds() -> None:
+    """A chunk holding two of something cannot supply 900 kills an hour
+    whatever the gear says."""
+    info = ChunkInfo({"chunks": {"100": {"Monster": {"Wolf": 2}}}})
+    derived = _derived(("Wolf",))
+
+    caps = spawn_caps(info, derived, respawn=30.0)
+
+    assert caps["Wolf"] == pytest.approx(2 * 3600 / 30)
+
+
+def test_a_monster_with_no_counted_spawn_is_not_capped_at_zero() -> None:
+    """`skillItems` activities and superiors are reachable providers with no
+    square of their own; capping those at nothing would delete them."""
+    info = ChunkInfo({"chunks": {"100": {}}})
+
+    assert spawn_caps(info, _derived(("Wolf",))) == {}

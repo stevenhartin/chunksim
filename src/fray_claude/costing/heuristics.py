@@ -339,6 +339,10 @@ class Heuristics:
     #: Combat skill -> its computed rate. Filled by `inputs.priced_heuristics`
     #: **after** the kill rates are final, since it multiplies them.
     combat: dict[str, Rate] = field(default_factory=dict)
+    #: Combat skill -> the damage per hour behind that rate. Carried
+    #: separately because it cannot be recovered from the rate: Magic's is
+    #: mostly casting experience. `combat_xp.hitpoints_credit` needs it.
+    combat_damage: dict[str, float] = field(default_factory=dict)
 
     def quest_hours(self, quest: str) -> QuestRate:
         return self.quests.get(quest) or QuestRate(hours=DEFAULT_QUEST_HOURS)
