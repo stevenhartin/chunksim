@@ -681,20 +681,33 @@ at all, and 61 of those declare `Items`.** Only recipe-joined methods get one (`
 not reach is ranked as though its inputs were free - the bias already stated above, with a number on
 it.
 
-**The `*` in `Items` is upstream's `secondary` flag, and this project strips it as noise.**
-`challenges.py` (twice), `estimate.py` (twice) and `heuristics.py` all `replace("*", "")`. Upstream
-does strip it before *looking an item up* - but it reads it first: `worker.js` has
-`let secondary = item.includes('*')`, keys its runtime item index with the marker intact
-(`items[plus + '*']`), and tags sources `secondary-`. So it is a distinction in the data with a name,
-not an annotation. It also happens to be exactly the distinction pricing needs: Woodcutting's methods
+**The `*` in `Items` is upstream's `secondary` marker, and pricing wants it**: Woodcutting's methods
 declare `["Axe[+]"]` with no marker - a tool you buy once, which must not be charged per XP - where
-the foundry's bars carry one and genuinely are consumed.
+the foundry's bars carry one and genuinely are consumed. `worker.js` reads it as
+`let secondary = item.includes('*')` and settles it into `challenges[skill][name]['Secondary']`
+(worker.js:4431).
 
-**Do not act on that reading without checking what the collapse costs the *derivation* first.**
-Charging for `*`-marked `Items` is the obvious fix and is not the whole of it: if secondary sources
-are a separate index upstream and one index here, then `SourceIndex`/`available_items` may already be
-answering a slightly different question than upstream's, which is a correctness matter and outranks a
-ranking one. The oracles are the place that would show it.
+**Whether that marker also belongs in the *derivation* is a closed question, and the answer is no.**
+`challenges.py`'s docstring already said so with the line references; this paragraph exists because
+the reasoning was re-derived from scratch once and should not be a third time. `Secondary` is read at
+eleven upstream sites and only three kinds of thing come of it:
+
+- **`forcedPrimary && Secondary` invalidates** (worker.js:4433) - and `forcedPrimary` has **zero**
+  occurrences in the real export, so the one place it gates validity is dead.
+- **It feeds `checkPrimaryMethod`** (worker.js:5135/5225) - ported as `_check_primary_method`, with
+  the `Secondary` input not threaded through. This is the one live gap and it is named as such.
+- **It picks `primary-<skill>` over `secondary-<Source>` when a valid challenge's `Output` is seeded
+  back as an item** (worker.js:3024-3041). `_seed_items_with_outputs` flattens that to `primary-`,
+  which `active_tasks.py` records for `ForcedSecondary` and this file now records for `Secondary`
+  too. **It cannot reach the one gate that reads those tags**: `_source_quality_ok` rejects a tag
+  whose suffix is a real skill name and treats `primary-Cooking` and `secondary-Cooking` identically,
+  so flipping the prefix changes nothing. The narrow exception worth knowing before touching it is
+  that upstream's secondary tag carries the challenge's `Source` rather than the skill, so a
+  non-skill `Source` would produce a tag that *passes* where this project's `primary-<skill>` fails.
+
+For scale if that gap is ever picked up: 294 valid challenges on `fray` would carry `Secondary` (215
+of them `Primary`) and 333 on `verf` (241), concentrated in Smithing, Nonskill, Fletching, Farming
+and Crafting. The oracle baseline to beat is **1,404 passing**.
 
 **A method is ranked on what it costs, not on what its action costs.** A published rate is quoted
 with the materials to hand - "299,000 an hour at anglerfish" describes the range, not the trip before

@@ -44,11 +44,14 @@ Implemented:
   matching via `codeItems.itemsPlus`, and `AllowedSources`/`NonShop`
   filtering. The `*` secondary marker is stripped and otherwise ignored -
   verified against upstream (worker.js:4046,4064) it does **not** gate
-  validity, only a `Secondary` flag feeding `checkPrimaryMethod` and a
-  `forcedPrimary` gate with zero real-export uses, so it isn't threaded
-  through here. (`checkPrimaryMethod` itself *is* ported, as
-  `_check_primary_method`; it is that `Secondary` **input** to it which
-  isn't.) See `_items_requirement_met`'s docstring. For
+  validity. It sets a `Secondary` flag with exactly three consequences, and
+  none of them lands here: a `forcedPrimary` gate with **zero** real-export
+  uses (worker.js:4433); an input to `checkPrimaryMethod` (worker.js:
+  5135/5225), which is ported as `_check_primary_method` while that input is
+  not - **the one live gap**; and the `primary-`/`secondary-` split on seeded
+  `Output` items (worker.js:3024-3041), which `_seed_items_with_outputs`
+  flattens and which provably cannot move `_source_quality_ok`. See that
+  function and `_items_requirement_met`'s docstring. For
   combat skills and challenges whose `Category` includes `BIS Skilling`, an
   item sourced *only* from another skill's crafted output is additionally
   rejected unless `Not Equip`/`Wield Crafted Items`/a Slayer source/the
@@ -189,6 +192,16 @@ cosmetic: a backlogged `Uncut onyx` otherwise re-enters at a 1/100,000,000
 rate and drags an entire crafting chain in with it. Simplified - everything
 is tagged `primary-` rather than split by drop rate, and the `Rare Drop
 Amount` filter on an activity's items isn't applied; the `bossLogs` gate is.
+Upstream splits that tag on the challenge's `Secondary`/`ForcedSecondary`
+flags as well as on rate (worker.js:3024-3041), which this flattening also
+drops. **Checked, and it cannot change an answer here**: the only consumer of
+those tags is `_source_quality_ok`, which rejects any tag whose suffix is a
+real skill name and so reads `primary-Cooking` and `secondary-Cooking`
+identically. The one case that would differ is upstream tagging
+`secondary-<Source>` where `Source` is not a skill name, which passes that
+gate where `primary-<skill>` fails; no real-export instance has been looked
+for. `active_tasks.py`'s docstring records the same flattening from the
+`ForcedSecondary` side.
 
 **How the fixed point is evaluated, and why it is shaped that way.** This
 module is where every derivation command spends its time - measured on the
@@ -651,10 +664,12 @@ def _items_requirement_met(
     """Port of the `Items` block (worker.js:3899-4121). The `*` secondary
     marker is stripped and otherwise ignored here: verified against upstream
     (worker.js:4046,4064), it does **not** gate validity - it only sets a
-    per-challenge `Secondary` flag that feeds `checkPrimaryMethod` and a
-    `forcedPrimary` gate that has zero real-export uses, so it isn't threaded
-    through here. (`checkPrimaryMethod` is ported, as `_check_primary_method`
-    - it is the `Secondary` input to it that isn't.) `[+]`
+    per-challenge `Secondary` flag, whose three consequences are traced in
+    this module's docstring. Two are inert on real data (`forcedPrimary` has
+    zero export uses; the seeded-`Output` tag split cannot move
+    `_source_quality_ok`); the third, the `Secondary` input to
+    `checkPrimaryMethod`, is a real gap - that function is ported as
+    `_check_primary_method` and this input to it is not. `[+]`
     resolves through `codeItems.itemsPlus`, the same shape `_plus_family`
     already handles for `Chunks`/`Objects`/`Monsters`/`NPCs`/`Mix`.
 
