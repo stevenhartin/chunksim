@@ -788,6 +788,16 @@ def _route_hours(
             if priced is None:
                 return None
             total += priced.hours
+        # **The conversion itself can cost money.** Upstream models the
+        # sawmill as a swap of logs for planks and records no price, so a
+        # mahogany plank came out costing exactly one mahogany log. The fee is
+        # `remote/stores.py`'s and is zero for every conversion that has none.
+        made = challenge.get("Output")
+        if isinstance(made, str):
+            fee = walk.heuristics.conversion_seconds(made) * quantity / 3600.0
+            if not math.isfinite(fee):
+                return None
+            total += fee
         return _Priced(total, f"make: {provider}", f"make:{provider}")
 
     return _kill_hours(walk, provider, item, quantity)

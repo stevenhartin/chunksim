@@ -183,6 +183,9 @@ def scrape(
         if len(page) < stores.PAGE_SIZE:
             break
     shop_prices = stores.parse_storelines(lines)
+    fees = stores.parse_conversion_fees(
+        fetch_wiki_pages([stores.SAWMILL_PAGE], timeout=timeout).get(stores.SAWMILL_PAGE, "")
+    )
 
     config = build_config(
         info,
@@ -196,6 +199,7 @@ def scrape(
         monster_stats=monster_stats,
         spells=spells,
         shop_prices=shop_prices,
+        conversion_fees=fees,
     )
     return ScrapeResult(
         config=config,
@@ -214,6 +218,7 @@ def scrape(
             **{f"{kind} rows": len(rows) for kind, rows in sorted(tables.items())},
             "monster hitpoints": len(monster_stats),
             "shop prices": sum(len(items) for items in shop_prices.values()),
+            "conversion fees": len(fees),
             "attack spells": len(spells),
         },
         sheet_error=sheet_error,

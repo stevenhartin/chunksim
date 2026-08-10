@@ -37,11 +37,27 @@ Pure parsing; `remote/api.py` fetches.
 
 from __future__ import annotations
 
+import re
+from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
+from fray_claude.remote.wikitable import column_index, name_in, rows, table_with
+
 #: How many rows one Bucket query will return, whatever `limit` asks for.
 PAGE_SIZE = 5000
+
+#: The fee inside `{{coins|1500}}`, which is how the wiki writes a price in
+#: running text rather than in a store table.
+_COST_IN_TEMPLATE = re.compile(r"([\d,]+(?:\.\d+)?)")
+
+#: The page listing what a sawmill charges to turn a log into a plank.
+#: **Upstream models the conversion and not its fee** - all seven
+#: `Process <X> logs` challenges list only the logs - so a mahogany plank came
+#: out costing exactly one mahogany log and nothing else. The wiki keeps the
+#: prices in a plain table on the operator's page rather than as store stock,
+#: which is why this is a page parse and not another `storeline` query.
+SAWMILL_PAGE = "Sawmill operator"
 
 
 @dataclass(frozen=True)
@@ -62,6 +78,39 @@ def store_query(limit: int = PAGE_SIZE, offset: int = 0) -> str:
         ".select('sold_by','sold_item','store_sell_price','store_currency')"
         f".limit({limit}).offset({offset}).run()"
     )
+
+
+def parse_conversion_fees(text: str) -> dict[str, ShopPrice]:
+    """`{item: what a sawmill charges to make it}`, from `SAWMILL_PAGE`.
+
+    Keyed by the **output** - `Mahogany plank`, not `Mahogany logs` - because
+    that is what the export's `Process mahogany logs` challenge produces and
+    so what a caller has in hand when it needs the fee.
+
+    Always coins: the sawmill takes nothing else. Kept as a `ShopPrice` anyway
+    so the currency travels with the number and one rate table serves both.
+    """
+    table = table_with(text, "Cost")
+    found: dict[str, ShopPrice] = {}
+    body = list(rows(table))
+    if not body:
+        return found
+    width = Counter(len(cells) for cells in body).most_common(1)[0][0]
+    at_item = column_index(table, "item", width=width)
+    at_cost = column_index(table, "cost", width=width)
+    if at_item is None or at_cost is None:
+        return found
+    for cells in body:
+        if len(cells) <= max(at_item, at_cost):
+            continue
+        item = name_in(cells[at_item])
+        # `{{coins|1500}}`, so the figure has to be dug out of a template -
+        # `_number` above is for Bucket fields, which arrive bare.
+        found_cost = _COST_IN_TEMPLATE.search(cells[at_cost])
+        cost = float(found_cost.group(1).replace(",", "")) if found_cost else None
+        if item and cost is not None and cost >= 0:
+            found[item] = ShopPrice(price=cost, currency="Coins")
+    return found
 
 
 def _number(value: Any) -> float | None:

@@ -80,9 +80,17 @@ def tables(text: str) -> Iterator[str]:
 
 
 def table_with(text: str, *needles: str) -> str:
-    """The first table whose header mentions all of `needles`."""
+    """The first table whose header cells mention all of `needles`.
+
+    **Header lines, not "everything before the first row separator".** A table
+    may open with `|-` and put its `!` lines after it - the sawmill's fee table
+    does - and looking only at the text before that separator finds nothing but
+    the `{| class="wikitable"` line.
+    """
     for table in tables(text):
-        head = table[: table.find("\n|-") if "\n|-" in table else len(table)]
+        head = "\n".join(
+            line for line in table.splitlines() if line.lstrip().startswith("!")
+        )
         if all(needle in head for needle in needles):
             return table
     return ""

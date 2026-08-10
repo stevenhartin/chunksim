@@ -64,6 +64,7 @@ evidence and will be believed. The lower number is the honest one.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence, TypeVar
@@ -342,6 +343,9 @@ class Heuristics:
     combat: dict[str, Rate] = field(default_factory=dict)
     #: Shop -> item -> what it charges. From `remote/stores.py`.
     shop_prices: dict[str, dict[str, ShopPrice]] = field(default_factory=dict)
+    #: Item -> the fee charged to make it, where a conversion has one. The
+    #: export models the sawmill and not its price; see `remote/stores.py`.
+    conversion_fees: dict[str, ShopPrice] = field(default_factory=dict)
     #: Currency -> how much of it can be earned an hour. A currency missing
     #: from here cannot be priced at all - see `DEFAULT_CURRENCY_PER_HOUR`.
     currency_per_hour: dict[str, float] = field(
@@ -386,6 +390,22 @@ class Heuristics:
         rate = self.currency_per_hour.get(entry.currency)
         if rate is None or rate <= 0:
             return None
+        return entry.price * 3600.0 / rate
+
+    def conversion_seconds(self, item: str) -> float:
+        """Seconds of earning to pay the fee for making `item`, or zero.
+
+        **Zero rather than `None`**, unlike `shop_seconds`: a conversion with
+        no recorded fee is free to perform, which is the common case - only
+        the sawmill charges. An unknown *currency* is the exception and is
+        refused, since that is a fee we cannot price rather than none.
+        """
+        entry = self.conversion_fees.get(item)
+        if entry is None:
+            return 0.0
+        rate = self.currency_per_hour.get(entry.currency)
+        if rate is None or rate <= 0:
+            return math.inf
         return entry.price * 3600.0 / rate
 
     def xp_per_hour(self, task: str, skill: str) -> Rate:
@@ -712,6 +732,7 @@ def build_config(
     monster_stats: Mapping[str, MonsterStats] | None = None,
     spells: Sequence[AttackSpell] = (),
     shop_prices: Mapping[str, Mapping[str, ShopPrice]] | None = None,
+    conversion_fees: Mapping[str, ShopPrice] | None = None,
 ) -> dict[str, Any]:
     """Generate the full config from the export plus everything fetched.
 
@@ -863,6 +884,9 @@ def build_config(
             shop: {item: entry.as_dict() for item, entry in sorted(items.items())}
             for shop, items in sorted((shop_prices or {}).items())
             if shop in chunk_info.data.get("shopItems", {})
+        },
+        "conversions": {
+            item: entry.as_dict() for item, entry in sorted((conversion_fees or {}).items())
         },
         "currencies": dict(DEFAULT_CURRENCY_PER_HOUR),
     }
@@ -1092,6 +1116,13 @@ def load(
             }
             for shop, items in _entries(config, "shops")
             if isinstance(items, dict)
+        },
+        conversion_fees={
+            item: ShopPrice(
+                price=_float(entry.get("price"), 0.0),
+                currency=str(entry.get("currency") or ""),
+            )
+            for item, entry in _entries(config, "conversions")
         },
         currency_per_hour={
             **DEFAULT_CURRENCY_PER_HOUR,
