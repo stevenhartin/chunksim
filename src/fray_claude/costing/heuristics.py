@@ -761,6 +761,26 @@ def burning_rate(experience: float) -> float:
     return FIRE_LOGS_PER_TRIP * experience * 3600.0 / trip
 
 
+#: Which tables can answer for which skill, and the cycle a row needs when the
+#: table publishes experience per action rather than per hour.
+#:
+#: **Keyed by skill, and that is load-bearing rather than tidy.** These used to
+#: be tried in one fixed order for every skill, which was harmless only while
+#: no two tables shared a key space. They do: the Firemaking table is keyed on
+#: the *log* (`Burn ~|magic logs|~` joins through `Items`) and so is the
+#: Woodcutting one (`Chop ~|magic logs|~` joins through `Output`), so the first
+#: match won and `Chop ~|magic logs|~` was priced at 394,778/hr - the rate for
+#: *burning* a magic log, on a Woodcutting climb. Woodcutting 1-99 came out at
+#: 35.3 hours, which is roughly a third of what the fastest method in the game
+#: can do.
+TABLE_KINDS: dict[str, tuple[tuple[str, float | None], ...]] = {
+    "Agility": (("courses", None), ("shortcuts", SHORTCUT_CYCLE_SECONDS)),
+    "Thieving": (("stalls", None), ("pickpockets", PICKPOCKET_CYCLE_SECONDS)),
+    "Firemaking": (("burning", None),),
+    "Woodcutting": (("woodcutting", None),),
+}
+
+
 def _table_rates(
     chunk_info: ChunkInfo, tables: Mapping[str, Sequence[SkillRow]]
 ) -> dict[str, dict[str, Rate]]:
@@ -774,25 +794,28 @@ def _table_rates(
 
     The two rates the tables do not publish - a shortcut's and a pickpocket's -
     are `experience / cycle`, with the cycles above.
+
+    **Woodcutting is here for a different reason from the other three.** It is
+    not a skill `{{Recipe}}` cannot describe; it is one whose guide joins reach
+    4 of 53 methods, and whose own training page happens to tabulate an hourly
+    figure per log. Joined on `Output` to the item, all sixteen rows landed and
+    none was left over. Mining, Fishing and Hunter publish experience per
+    *action* in the equivalent tables and no hourly figure at all, so they are
+    deliberately absent rather than approximated from it - see
+    `remote/skill_tables.parse_woodcutting`.
     """
     lookup = {
         kind: {row.name.lower(): row for row in rows} for kind, rows in tables.items()
     }
     rated: dict[str, dict[str, Rate]] = {}
     for task, skill in sorted(primary_training_tasks(chunk_info).items()):
-        if skill not in ("Agility", "Thieving", "Firemaking"):
+        if skill not in TABLE_KINDS:
             continue
         challenge = _mapping(chunk_info.challenges, skill).get(task)
         if not isinstance(challenge, dict):
             continue
         keys = _join_keys(challenge, task, COURSE_ALIASES)
-        for kind, per_hour in (
-            ("courses", None),
-            ("stalls", None),
-            ("burning", None),
-            ("pickpockets", PICKPOCKET_CYCLE_SECONDS),
-            ("shortcuts", SHORTCUT_CYCLE_SECONDS),
-        ):
+        for kind, per_hour in TABLE_KINDS[skill]:
             rows_for = lookup.get(kind, {})
             row = next((rows_for[key] for key in keys if key in rows_for), None)
             if row is None:

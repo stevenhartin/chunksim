@@ -8,6 +8,7 @@ import pytest
 
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.costing.heuristics import (
+    TABLE_KINDS,
     DEFAULT_CURRENCY_PER_HOUR,
     burning_rate,
     PICKPOCKET_CYCLE_SECONDS,
@@ -680,3 +681,58 @@ def test_burning_a_log_is_an_inventory_at_a_time() -> None:
     assert burning_rate(90.0) == pytest.approx(116_952, rel=1e-3)
     # Linear in the log's experience, since only the log varies.
     assert burning_rate(80.0) == pytest.approx(2 * burning_rate(40.0))
+
+
+def test_a_table_answers_only_for_its_own_skill() -> None:
+    """**Two tables are keyed on the same thing and mean different numbers.**
+
+    The Firemaking table is keyed on the log (`Burn ~|magic logs|~` joins
+    through `Items`) and so is the Woodcutting one (`Chop ~|magic logs|~`
+    joins through `Output`). Tried in one fixed order for every skill -
+    which was harmless only while no two tables shared a key space - the
+    first match won, and `Chop ~|magic logs|~` was priced at the rate for
+    *burning* a magic log. Woodcutting 1-99 came out at 35.3 hours against
+    a true 176.4, which is roughly what the fastest method in the game does.
+    """
+    info = _info(
+        challenges={
+            "Woodcutting": {
+                "Chop ~|magic logs|~": {
+                    "Primary": True,
+                    "Level": 75,
+                    "Output": "Magic logs",
+                    "Items": ["Magic logs"],
+                }
+            },
+            "Firemaking": {
+                "Burn ~|magic logs|~": {
+                    "Primary": True,
+                    "Level": 75,
+                    "Items": ["Magic logs"],
+                }
+            },
+        }
+    )
+    tables = {
+        "burning": (SkillRow(name="Magic logs", level=75, experience=303.8),),
+        "woodcutting": (
+            SkillRow(name="Magic logs", level=75, xp_per_hour=27_500.0),
+        ),
+    }
+
+    training = _config(info=info, skill_tables=tables)["training"]
+
+    assert training["Chop ~|magic logs|~"]["Woodcutting"]["source"] == "wiki:woodcutting"
+    assert training["Chop ~|magic logs|~"]["Woodcutting"]["value"] == 27_500.0
+    assert training["Burn ~|magic logs|~"]["Firemaking"]["source"] == "wiki:burning"
+
+
+def test_the_gathering_tables_cover_only_woodcutting() -> None:
+    """**Mining, Fishing and Hunter are absent on purpose.** Their equivalent
+    tables publish experience per *action* - the figure `Module:Skill calc`
+    already carries - and no hourly one, and the implied actions per hour
+    spans 21x within Mining alone (65/hr for runite against 1,400 for a
+    shooting star). So a rate cannot be recovered from them without inventing
+    the missing factor, and they keep their guide joins instead.
+    """
+    assert set(TABLE_KINDS) == {"Agility", "Thieving", "Firemaking", "Woodcutting"}

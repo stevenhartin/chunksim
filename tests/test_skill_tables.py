@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from fray_claude.remote.skill_tables import (
+    parse_woodcutting,
     parse_courses,
     parse_mark_rate,
     parse_pickpockets,
@@ -240,3 +241,88 @@ def test_marks_of_grace_come_from_the_rooftop_table() -> None:
 
 def test_a_page_without_the_column_yields_nothing() -> None:
     assert parse_mark_rate("") is None
+
+
+#: Four real rows of `Pay-to-play Woodcutting training`'s rates table: a plain
+#: one, one whose rate is a range, one carrying footnote markers in both the
+#: level and the rate cell, and one with no rate at all.
+_WOODCUTTING = """
+{| class="wikitable"
+!Log
+!Level
+!Experience
+!Experience per hour
+!Price
+!Members
+|-
+|{{plinkt|Willow logs|txt=Willow}}
+|30
+|67.5
+|74,000
+|{{Coins|1095}}
+|{{Members|No}}
+|-
+|{{plinkt|Teak logs|txt=Teak}}
+|35
+|85
+|90,000–255,000
+|{{Coins|1118}}
+|{{Members|Yes}}
+|-
+|{{plinkt|Maple logs|txt=Maple}}
+|45
+|100<ref group="n">Maple logs yield 110 with the medium Kandarin Diary.</ref>
+|48,000–52,800<ref name=":0" group="n">At Seers' Village.</ref>
+|{{Coins|480}}
+|{{Members|No}}
+|-
+|{{plinkt|Juniper logs|txt=Juniper}}
+|42
+|35
+|
+|{{NA}}
+|{{Members|Yes}}
+|}
+"""
+
+
+def test_a_log_carries_the_hourly_rate_the_guides_miss() -> None:
+    """The money-making guides join 4 of Woodcutting's 53 methods. This table
+    publishes an hourly figure for every log, keyed on the log itself."""
+    rows = {row.name: row for row in parse_woodcutting(_WOODCUTTING)}
+
+    assert (rows["Willow logs"].level, rows["Willow logs"].xp_per_hour) == (30, 74_000.0)
+
+
+def test_a_range_is_read_at_its_bottom() -> None:
+    """Teak reads `90,000-255,000` because the upper figure is 2-tick
+    manipulation, which the page itself calls "difficult and click-intensive"
+    and its own note prices without: "the experience is 90,000 per hour".
+    Quoting the top would price every climb on a technique almost nobody
+    sustains.
+    """
+    rows = {row.name: row for row in parse_woodcutting(_WOODCUTTING)}
+
+    assert rows["Teak logs"].xp_per_hour == 90_000.0
+
+
+def test_footnote_markers_do_not_reach_the_numbers() -> None:
+    """Both the level and the rate cell carry `<ref>` blocks holding digits of
+    their own - a diary name, a village. Read as part of the figure they are
+    an order of magnitude."""
+    rows = {row.name: row for row in parse_woodcutting(_WOODCUTTING)}
+
+    assert (rows["Maple logs"].level, rows["Maple logs"].xp_per_hour) == (45, 48_000.0)
+
+
+def test_a_log_with_no_published_rate_is_dropped() -> None:
+    """Juniper logs have an empty rate cell. A zero would make them the
+    slowest method on the map rather than an unknown one."""
+    assert "Juniper logs" not in {row.name for row in parse_woodcutting(_WOODCUTTING)}
+
+
+def test_the_display_label_is_not_the_join_key() -> None:
+    """`{{plinkt|Willow logs|txt=Willow}}` shows "Willow" and means
+    `Willow logs`, which is what the export's `Output` holds. Joining on the
+    label would match nothing at all."""
+    assert "Willow" not in {row.name for row in parse_woodcutting(_WOODCUTTING)}

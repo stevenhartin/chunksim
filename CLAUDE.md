@@ -149,7 +149,7 @@ Five things that cut across modules — the first three because each has already
 | `remote/wiki.py` | Wikitext template parsing, plus `map_tile_version` over the map page's rendered *HTML*. Pure. Quest length is in `{{Quest details}}`, **not** `{{Infobox Quest}}` — the tempting wrong template has no `length` and so returns `None` for every quest without erroring. |
 | `model/experience.py` | The exact 1–99 XP curve, closed-form. **Not a heuristic and not overridable** — that separation from `heuristics.py` is the point of the module. |
 | `remote/scrape.py` | The ~18 requests that build the scraped layer, and the coverage it reports. **Both apps run it** — `fray heuristics` and the GUI's Maps tab — so the two cannot write different files. Decides no rate; `heuristics.py` does that. |
-| `remote/skill_tables.py` | Agility and Thieving rates, from four wiki tables (`Shortcuts`, `Agility`, `Stall/Thievable`, `Thieving`). Pure wikitext-table parsing with a depth-aware cell splitter, because `{{Coins\|{{GEP\|x\|10*13.8}}}}` is full of `\|` that are not cell breaks. **These are the two skills `{{Recipe}}` cannot describe** - both have zero rows in the wiki's recipe bucket. Owns `COURSE_ALIASES`, the 4 spellings the export gets wrong (`Canafis`). |
+| `remote/skill_tables.py` | Agility, Thieving, Firemaking and **Woodcutting** rates, from the wiki tables (`Shortcuts`, `Agility`, `Stall/Thievable`, `Thieving`). Pure wikitext-table parsing with a depth-aware cell splitter, because `{{Coins\|{{GEP\|x\|10*13.8}}}}` is full of `\|` that are not cell breaks. **These are the two skills `{{Recipe}}` cannot describe** - both have zero rows in the wiki's recipe bucket. Owns `COURSE_ALIASES`, the 4 spellings the export gets wrong (`Canafis`), and `parse_woodcutting`, whose 16 rows join **all 16** on `Output` and take the **bottom** of a published range because the top is 2-tick manipulation. |
 | `remote/stores.py` | What a shop charges and **in what currency**, from the `storeline` Bucket. 6,326 lines, of which 4,438 are coins and 126 Tokkul; the rest are points and tickets nobody converts. The API caps a query at 5,000 rows whatever `limit` says, so it pages with `offset`. Joins 403 of the export's 435 shops and prices 3,798 of its 4,163 stock lines. |
 | `remote/farming.py` | The wiki calculator's crop table, `Module:Skill calc/Farming`, read as raw Lua - 76 crops with level, per-item xp, plant xp, seed and patch type. Parsed by **brace matching, not by splitting on `name =`**: every crop's `materials` has a name of its own, and a split ends each crop before the `type` that says which patch it goes in. |
 | `costing/farming.py` | Farming as a **schedule rather than a rate**. Owns `DEFAULT_HARVESTS_PER_DAY` - fruit tree 1, tree 3, cactus 3, bush 3, allotment 8, herb 8, hardwood 1/3, redwood 1/7 - and reports two numbers that measure different things: `active_hours` (clicking, goes in the bucket) and `days` (calendar, reported beside it and never added). Hops, flowers, belladonna, spirit trees and celastrus are **absent** from the schedule rather than zeroed. |
@@ -415,6 +415,31 @@ exists. Two things to know before quoting one: one damage figure serves all five
 whatever else you train**, because in the game it comes free with it - taking that off needs the
 treatment quest XP got and is a scheduling question rather than a rate one. Measured against a known
 figure it did not see: Magic came out at 200,228/hr barraging, where the community quotes 200-250k.
+
+**Woodcutting is priced off its own training page, and the other three gathering skills are not -
+which is a measurement, not an omission.** The obvious model for a gathering skill is
+`actions_per_hour = f(level, tool_tier, node_count)`, and the export has the node counts. It does not
+survive contact with the data: dividing each already-rated method's xp/hr by the wiki calculator's
+xp-per-action gives an implied actions/hour spanning **6.2x in Woodcutting, 10x in Fishing and 21.5x
+in Mining** (65/hr for runite against 1,400 for a shooting star). A single fitted `f` would be wrong
+by up to twenty-one times and look confident doing it, which is worse than the floor.
+
+The same measurement says what to read instead. Those pairs multiply out to **1.5-3.1x** spreads in
+xp *per hour* - because OSRS balances higher tiers to pay more per action and give proportionally
+fewer - so xp/hr is the quantity the game holds roughly steady and the one worth reading off a page.
+`Pay-to-play Woodcutting training` tabulates exactly that per log, and its `{{plinkt}}` first
+parameter **is** the export's `Output`, so all sixteen rows join exactly and none is left over.
+Woodcutting went from 4 rated methods of 53 and **301.0h** to 17 and **176.4h**, every band `exact`.
+Mining's ore table and Fishing's fish table publish experience per *action* only - the figure
+`Module:Skill calc` already carries - so they stay on their guide joins rather than being given an
+invented factor; their hourly figures exist only in prose keyed by technique name (`Motherlode Mine`,
+`Barbarian Fishing`), which is the fuzzy join this project refuses.
+
+**`TABLE_KINDS` is keyed by skill, and that is load-bearing.** The tables used to be tried in one
+fixed order for every skill, which was harmless only while no two shared a key space. Woodcutting and
+Firemaking do: both join on the log, through `Output` and `Items` respectively. First-match-wins
+priced `Chop ~|magic logs|~` at 394,778/hr - the rate for *burning* one - and put Woodcutting 1-99 at
+35.3 hours, about what the fastest method in the game manages.
 
 **Agility and Thieving are priced off wiki tables, not guides or recipes** - they are the two skills
 with no `{{Recipe}}` rows at all, and no money-making guide joins their method names, so every one of

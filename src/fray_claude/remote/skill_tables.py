@@ -55,6 +55,7 @@ from fray_claude.remote.wikitable import (
     number,
     rows,
     table_with,
+    tables,
 )
 
 #: The four pages this reads. `Shortcuts` and `Stall/Thievable` are dedicated
@@ -65,6 +66,7 @@ STALLS_PAGE = "Stall/Thievable"
 THIEVING_PAGE = "Thieving"
 #: The page whose table gives a log's Firemaking level and experience.
 FIREMAKING_PAGE = "Firemaking"
+WOODCUTTING_PAGE = "Pay-to-play Woodcutting training"
 PAGES: tuple[str, ...] = (
     SHORTCUTS_PAGE,
     AGILITY_PAGE,
@@ -72,6 +74,7 @@ PAGES: tuple[str, ...] = (
     THIEVING_PAGE,
     "Rooftop Agility Courses",
     FIREMAKING_PAGE,
+    WOODCUTTING_PAGE,
 )
 
 #: Export course name -> the wiki's spelling. **Only for the ones that differ.**
@@ -271,6 +274,64 @@ def parse_burning(text: str) -> tuple[SkillRow, ...]:
     return tuple(found)
 
 
+#: `{{plinkt|Willow logs|txt=Willow}}` - the item link that opens every row of
+#: the Woodcutting rates table. The first parameter is the item's real name,
+#: which is what the export's `Output` holds; `txt=` is only how it is
+#: displayed, so a parser reading the label would join nothing.
+_PLINKT = re.compile(r"\{\{plinkt\|([^|}]+)")
+
+#: A footnote marker, which lands inside the level and rate cells alike.
+_REF = re.compile(r"<ref.*?(?:/>|</ref>)", re.DOTALL)
+
+
+def parse_woodcutting(text: str) -> tuple[SkillRow, ...]:
+    """Each log's Woodcutting level and the experience an hour cutting it pays.
+
+    **The one gathering skill the wiki tabulates per item.** Mining's ore table
+    and Fishing's fish table publish experience per *action* and stop there,
+    which is the number `Module:Skill calc` already carries and not the one a
+    rate needs; only `Pay-to-play Woodcutting training` gives an hourly figure
+    for every log. So this reads that table and the other two gathering skills
+    stay on their guide joins - see this module's docstring.
+
+    Joined on the item, `Output` to `{{plinkt}}`'s first parameter, which made
+    all sixteen rows join and left none over. That is a whole-string comparison
+    of two item names, so there is nothing fuzzy here either.
+
+    **The bottom of a range, not the top.** Teak reads `90,000-255,000` because
+    the upper figure is 2-tick manipulation, which the page describes as
+    "difficult and click-intensive"; the same table's own note says "without
+    tick-manipulation, the experience is 90,000 per hour". Quoting the top
+    would price every climb on a technique almost nobody sustains - and it is
+    the opposite of the convention `parse_mark_rate` follows, deliberately: a
+    mark rate's range is which *course* you pick, where this one is how well
+    you click.
+    """
+    found: list[SkillRow] = []
+    for table in tables(text):
+        for cells in rows(table):
+            if len(cells) < 4:
+                continue
+            item = _PLINKT.search(cells[0])
+            if item is None:
+                continue
+            level = number(_REF.sub("", cells[1]))
+            rates = [
+                float(value.replace(",", ""))
+                for value in re.findall(r"[\d,]{4,}", _REF.sub("", cells[3]))
+            ]
+            if level is None or not rates:
+                continue
+            found.append(
+                SkillRow(
+                    name=item.group(1).strip(),
+                    level=int(level),
+                    xp_per_hour=min(rates),
+                )
+            )
+    return tuple(found)
+
+
 def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
     """Every table this module reads, keyed by what it describes."""
     return {
@@ -279,4 +340,5 @@ def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
         "stalls": parse_stalls(pages.get(STALLS_PAGE, "")),
         "pickpockets": parse_pickpockets(pages.get(THIEVING_PAGE, "")),
         "burning": parse_burning(pages.get(FIREMAKING_PAGE, "")),
+        "woodcutting": parse_woodcutting(pages.get(WOODCUTTING_PAGE, "")),
     }
