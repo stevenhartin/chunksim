@@ -36,6 +36,13 @@
         "source": "wiki:Mahogany Homes",
         "match": "exact"
       }
+    },
+    "Burn wood at ~|Wintertodt|~": {
+      "Firemaking": {
+        "value": 400000,
+        "source": "hand: Wintertodt, stated",
+        "match": "exact"
+      }
     }
   },
   "slayer": {},

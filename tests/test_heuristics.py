@@ -9,6 +9,7 @@ import pytest
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.costing.heuristics import (
     DEFAULT_CURRENCY_PER_HOUR,
+    burning_rate,
     PICKPOCKET_CYCLE_SECONDS,
     SHORTCUT_CYCLE_SECONDS,
     DEFAULT_KPH,
@@ -664,3 +665,18 @@ def test_every_priced_currency_is_a_stated_figure_someone_can_correct() -> None:
     # and they are not interchangeable; giving it a rate would hand Mage
     # Training Arena and Pest Control gear Mahogany Homes' pace.
     assert "Points" not in DEFAULT_CURRENCY_PER_HOUR
+
+
+def test_burning_a_log_is_an_inventory_at_a_time() -> None:
+    """**Firemaking is a constant plus a number.** A fire every four ticks,
+    27 logs to an inventory, then a ten-second bank - so normal logs are
+    52,000 an hour and willow 117,000, which is what the skill does.
+
+    Burning is not a `{{Recipe}}` and no guide covers the bottom of the skill,
+    so the only rated method used to be magic logs at level 75 and
+    **Firemaking 1 -> 99 priced at 1,738 hours** with 1,210 of them floored.
+    """
+    assert burning_rate(40.0) == pytest.approx(51_979, rel=1e-3)
+    assert burning_rate(90.0) == pytest.approx(116_952, rel=1e-3)
+    # Linear in the log's experience, since only the log varies.
+    assert burning_rate(80.0) == pytest.approx(2 * burning_rate(40.0))

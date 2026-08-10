@@ -683,6 +683,38 @@ SHORTCUT_CYCLE_SECONDS = 18.0
 PICKPOCKET_CYCLE_SECONDS = 3.5
 
 
+#: Ticks to light one fire. The action is fixed; what varies is the log.
+FIRE_TICKS = 4
+
+#: Logs an inventory carries, one slot going to the tinderbox.
+FIRE_LOGS_PER_TRIP = 27
+
+#: Seconds to bank and come back for the next inventory.
+FIRE_BANK_SECONDS = 10.0
+
+
+def burning_rate(experience: float) -> float:
+    """XP an hour burning a log worth `experience`.
+
+    **Firemaking is the one skill where the whole method is a constant plus a
+    number.** You light a fire every four ticks, twenty-seven of them to an
+    inventory, then bank - so a trip is `27 * 2.4 + 10` seconds and pays
+    `27 * experience`. Normal logs come out at 52,000 an hour and willow at
+    117,000, which is what the skill actually does.
+
+    Burning is not a `{{Recipe}}` and no money-making guide covers the bottom
+    of the skill, so before this the only rated method was magic logs at level
+    75 and **Firemaking 1 -> 99 priced at 1,738 hours**, 1,210 of them at the
+    floor. It is one of the fastest skills in the game.
+
+    The logs are assumed to hand, which is how every published Firemaking rate
+    is quoted. Charging the walk to gather them would price the Woodcutting
+    climb twice over on any map training both.
+    """
+    trip = FIRE_LOGS_PER_TRIP * FIRE_TICKS * 0.6 + FIRE_BANK_SECONDS
+    return FIRE_LOGS_PER_TRIP * experience * 3600.0 / trip
+
+
 def _table_rates(
     chunk_info: ChunkInfo, tables: Mapping[str, Sequence[SkillRow]]
 ) -> dict[str, dict[str, Rate]]:
@@ -702,7 +734,7 @@ def _table_rates(
     }
     rated: dict[str, dict[str, Rate]] = {}
     for task, skill in sorted(primary_training_tasks(chunk_info).items()):
-        if skill not in ("Agility", "Thieving"):
+        if skill not in ("Agility", "Thieving", "Firemaking"):
             continue
         challenge = _mapping(chunk_info.challenges, skill).get(task)
         if not isinstance(challenge, dict):
@@ -711,6 +743,7 @@ def _table_rates(
         for kind, per_hour in (
             ("courses", None),
             ("stalls", None),
+            ("burning", None),
             ("pickpockets", PICKPOCKET_CYCLE_SECONDS),
             ("shortcuts", SHORTCUT_CYCLE_SECONDS),
         ):
@@ -718,7 +751,12 @@ def _table_rates(
             row = next((rows_for[key] for key in keys if key in rows_for), None)
             if row is None:
                 continue
-            value = row.xp_per_hour if per_hour is None else row.experience * 3600.0 / per_hour
+            if kind == "burning":
+                value: float | None = burning_rate(row.experience)
+            elif per_hour is None:
+                value = row.xp_per_hour
+            else:
+                value = row.experience * 3600.0 / per_hour
             if value and value > 0:
                 rated.setdefault(task, {})[skill] = Rate(
                     value=value, source=f"wiki:{kind}", match="exact"
@@ -743,7 +781,9 @@ def _join_keys(challenge: dict[str, Any], task: str, aliases: Mapping[str, str])
     output = challenge.get("Output")
     if isinstance(output, str):
         keys.append(clean(output))
-    for field in ("Objects", "NPCs"):
+    # `Items` for Firemaking, whose `Burn ~|oak logs|~` names the log there
+    # and calls its `Output` "Ashes".
+    for field in ("Objects", "NPCs", "Items"):
         keys += [clean(name) for name in challenge.get(field) or () if isinstance(name, str)]
     spelled = strip_task_markup(task).removeprefix("Access the ").strip()
     keys.append(clean(aliases.get(spelled, spelled)))

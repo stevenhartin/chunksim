@@ -506,6 +506,16 @@ the sawmill charges - while an unknown *currency* is still refused.
 Together those took Construction's best computed build from 296,471 xp/hr to 69,121, which puts the
 hand-verified **Mahogany Homes at 165,000 top of the list** where it belongs.
 
+**Firemaking is a constant plus a number, and that is the whole model.** You light a fire every four
+ticks, twenty-seven to an inventory, then bank - so a trip is `27 x 2.4 + 10` seconds and pays
+`27 x` the log's experience. Normal logs come out at 51,979/hr and willow at 116,952, which is what
+the skill does. **Burning a log is not a `{{Recipe}}`**, so the recipe bucket has only *pyre* logs and
+no money-making guide covers the bottom of the skill: the only rated method was magic logs at level
+75, and **Firemaking 1 → 99 priced at 1,738 hours** with 1,210 of them floored. It is now **33.1
+hours** across six bands, all `exact`, ending at a hand-entered Wintertodt. The logs are assumed to
+hand, which is how every published Firemaking rate is quoted - charging the walk to gather them would
+price the Woodcutting climb twice on a map training both.
+
 **A computed rate slower than the 1,000/hr floor is refused.** The floor is a deliberate stand-in for
 ignorance, not a speed, and a computed number below it says the model is missing something about that
 method - a bulk action, a faster variant, materials someone already has - far more often than it says

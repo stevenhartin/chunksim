@@ -45,7 +45,17 @@ from typing import Any
 
 import re
 
-from fray_claude.remote.wikitable import SCP_LEVEL, name_in, names_in, number, rows, table_with
+from collections import Counter
+
+from fray_claude.remote.wikitable import (
+    SCP_LEVEL,
+    column_index,
+    name_in,
+    names_in,
+    number,
+    rows,
+    table_with,
+)
 
 #: The four pages this reads. `Shortcuts` and `Stall/Thievable` are dedicated
 #: transcluded tables; the other two are sections of the skill's own page.
@@ -53,7 +63,16 @@ SHORTCUTS_PAGE = "Shortcuts"
 AGILITY_PAGE = "Agility"
 STALLS_PAGE = "Stall/Thievable"
 THIEVING_PAGE = "Thieving"
-PAGES: tuple[str, ...] = (SHORTCUTS_PAGE, AGILITY_PAGE, STALLS_PAGE, THIEVING_PAGE, "Rooftop Agility Courses")
+#: The page whose table gives a log's Firemaking level and experience.
+FIREMAKING_PAGE = "Firemaking"
+PAGES: tuple[str, ...] = (
+    SHORTCUTS_PAGE,
+    AGILITY_PAGE,
+    STALLS_PAGE,
+    THIEVING_PAGE,
+    "Rooftop Agility Courses",
+    FIREMAKING_PAGE,
+)
 
 #: Export course name -> the wiki's spelling. **Only for the ones that differ.**
 #: Upstream's `Canafis` is a typo for Canifis, and its Colossal Wyrm courses are
@@ -215,6 +234,43 @@ def parse_mark_rate(text: str) -> float | None:
     return best
 
 
+def parse_burning(text: str) -> tuple[SkillRow, ...]:
+    """Each log's Firemaking level and the experience burning one pays.
+
+    **Burning a log is not a `{{Recipe}}`**, so the recipe bucket has only
+    *pyre* logs and the skill was left with one rated method above level 75.
+    The plain table on the skill's own page has all of them - normal logs 40
+    xp at level 1, oak 60 at 15, willow 90 at 30 - and `costing/heuristics.py`
+    turns that into a rate.
+
+    Keyed by the **log**, which is what the export's `Burn ~|oak logs|~`
+    challenge names in its `Items`.
+    """
+    table = table_with(text, "Experience")
+    found: list[SkillRow] = []
+    body = list(rows(table))
+    if not body:
+        return ()
+    width = Counter(len(cells) for cells in body).most_common(1)[0][0]
+    at_level = column_index(table, "level", width=width)
+    at_item = column_index(table, "item", width=width)
+    at_xp = column_index(table, "experience", width=width)
+    if at_level is None or at_item is None or at_xp is None:
+        return ()
+    for cells in body:
+        if len(cells) <= max(at_level, at_item, at_xp):
+            continue
+        level, name, experience = (
+            number(cells[at_level]),
+            name_in(cells[at_item]),
+            number(cells[at_xp]),
+        )
+        if level is None or not name or not experience:
+            continue
+        found.append(SkillRow(name=name, level=int(level), experience=experience))
+    return tuple(found)
+
+
 def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
     """Every table this module reads, keyed by what it describes."""
     return {
@@ -222,4 +278,5 @@ def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
         "courses": parse_courses(pages.get(AGILITY_PAGE, "")),
         "stalls": parse_stalls(pages.get(STALLS_PAGE, "")),
         "pickpockets": parse_pickpockets(pages.get(THIEVING_PAGE, "")),
+        "burning": parse_burning(pages.get(FIREMAKING_PAGE, "")),
     }
