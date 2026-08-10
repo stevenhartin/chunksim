@@ -134,7 +134,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from fray_claude.costing.levels import (
     goal_levels,
@@ -159,7 +159,7 @@ from fray_claude.costing.training import (
 )
 from fray_claude.costing.heuristics import Heuristics, Superior, activity_name
 from fray_claude.derive.pipeline import Derived, MapState
-from fray_claude.model.rates import parse_ratio
+from fray_claude.model.rates import parse_quantity, parse_ratio
 from fray_claude.derive.search import WorldIndex, normalise
 from fray_claude.costing.slayer import (
     MasterRate,
@@ -503,25 +503,24 @@ def _probability(raw: str, heuristics: Heuristics) -> float | None:
     return heuristics.rarity(raw)
 
 
-def _drop_probability(walk: _Walk, monster: str, item: str) -> float | None:
-    """The chance one kill of `monster` yields `item` at all, tables included.
+def _drop_rates(walk: _Walk, monster: str, item: str) -> tuple[float, float] | None:
+    """`(chance, yield)` for one kill of `monster`: how often `item` drops, and
+    how many arrive when it does.
 
-    **A probability, deliberately not an expected yield.** Every caller is
-    asking how long until the item is *obtained*, and that is one roll of the
-    drop table however much the table then hands over. Hydra drops dragon
-    knives at 1/10,000 in stacks of 200-400: you still have to pass the
-    1/10,000, so it is ten thousand kills and not thirty-three. Folding the
-    count in here divided that by three hundred.
+    **Two numbers because there are two questions.** Obtaining an item at all
+    is one roll of the table however big the stack - Hydra's dragon knives are
+    1/10,000 whether the drop is 200 or 400 - so a *goal* is priced on
+    `chance`. Accumulating a hundred of something is priced on the expected
+    yield, `chance * stack`, because the stack really does amortise. Using
+    either number for the other question is wrong by the stack size, which the
+    export puts as high as 45.
 
-    The stack size is real and `rates.parse_quantity` reads it - but it only
-    answers a different question, "how long to accumulate N of these", which
-    arises when an item is a *material* rather than a goal. That belongs to
-    whatever prices materials, not here; the goals this module walks are each
-    satisfied by one.
+    A range is its mean and a note is the same item; see `rates.parse_quantity`
+    for both, and `_kill_hours` for how the two combine.
 
-    Several rows can offer the same item, so the best chance wins.
+    Several rows can offer the same item, so the best of each wins.
     """
-    best: float | None = None
+    best: tuple[float, float] | None = None
     for source in (walk.chunk_info.drops, *_skill_item_tables(walk)):
         rows = _mapping(source, monster)
         for name, quantities in rows.items():
@@ -531,7 +530,7 @@ def _drop_probability(walk: _Walk, monster: str, item: str) -> float | None:
             table = walk.tables.get(name) if not direct else None
             if not direct and not isinstance(table, dict):
                 continue
-            for raw in quantities.values():
+            for count, raw in quantities.items():
                 chance = _probability(str(raw), walk.heuristics)
                 if chance is None:
                     continue
@@ -540,7 +539,11 @@ def _drop_probability(walk: _Walk, monster: str, item: str) -> float | None:
                     if within is None:
                         continue
                     chance *= within
-                best = chance if best is None else max(best, chance)
+                stack = parse_quantity(str(count)) or 1.0
+                found = (chance, chance * stack)
+                best = found if best is None else (
+                    max(best[0], found[0]), max(best[1], found[1])
+                )
     return best
 
 
@@ -562,31 +565,45 @@ def _table_probability(
 
 
 def _item_hours(
-    walk: _Walk, item: str, *, depth: int = 0, seen: frozenset[str] = frozenset()
+    walk: _Walk,
+    item: str,
+    *,
+    quantity: float = 1.0,
+    depth: int = 0,
+    seen: frozenset[str] = frozenset(),
 ) -> _Priced | None:
-    """Cheapest route to one `item`, as `(hours, why)`, or `None`.
+    """Cheapest route to `quantity` of `item`, as `(hours, why)`, or `None`.
 
     `None` is "no route this module can price", which the caller reports as
     unpriced rather than dropping - an estimate that silently skips its
     expensive half is worse than one that admits a gap.
+
+    **`quantity` defaults to one, which is every goal.** A task wants an
+    abyssal whip, not forty; the parameter exists for *materials*, where a
+    recipe consuming two guam leaves an action is asking a different question
+    and a stacked drop amortises across it. See `_drop_rates`.
     """
     item = walk.resolve(item)
     if item in seen or depth > _MAX_DEPTH:
         return None
 
-    shared = _superior_table_hours(walk, item)
+    shared = _superior_table_hours(walk, item, quantity)
     if shared is not None:
         return shared
 
     best: _Priced | None = None
     for source in walk.world.item_sources.get(item, ()):
-        priced = _route_hours(walk, item, source.route, source.name, depth, seen | {item})
+        priced = _route_hours(
+            walk, item, source.route, source.name, depth, seen | {item}, quantity
+        )
         if priced is not None and (best is None or priced.hours < best.hours):
             best = priced
     return best
 
 
-def _superior_table_hours(walk: _Walk, item: str) -> _Priced | None:
+def _superior_table_hours(
+    walk: _Walk, item: str, quantity: float = 1.0
+) -> _Priced | None:
     """Price one of the four items every superior shares, or `None`.
 
     **Superiors are one source, not thirty-one.** The table is rolled by any
@@ -608,7 +625,7 @@ def _superior_table_hours(walk: _Walk, item: str) -> _Priced | None:
     for master, rolls in walk.superior_rolls.items():
         if rolls <= 0:
             continue
-        hours = (1 / share) / rolls
+        hours = (max(1.0, quantity) / share) / rolls
         if best is None or hours < best[0]:
             best = (hours, master)
     if best is None:
@@ -617,7 +634,8 @@ def _superior_table_hours(walk: _Walk, item: str) -> _Priced | None:
     hours, master = best
     return _Priced(
         hours,
-        f"superior table under {master}, {1 / share:,.1f} rolls at {_rolls_label(walk, master)}",
+        f"superior table under {master},"
+        f" {max(1.0, quantity) / share:,.1f} rolls at {_rolls_label(walk, master)}",
         f"superiors:{master}",
     )
 
@@ -629,7 +647,13 @@ def _rolls_label(walk: _Walk, master: str) -> str:
 
 
 def _route_hours(
-    walk: _Walk, item: str, route: str, provider: str, depth: int, seen: frozenset[str]
+    walk: _Walk,
+    item: str,
+    route: str,
+    provider: str,
+    depth: int,
+    seen: frozenset[str],
+    quantity: float = 1.0,
 ) -> _Priced | None:
     if route in _FREE_ROUTES:
         # **A shop is only free if you can walk into it.** `WorldIndex` spans
@@ -659,17 +683,25 @@ def _route_hours(
         for required in challenge.get("Items") or ():
             if not isinstance(required, str):
                 continue
-            priced = _item_hours(walk, required.replace("*", ""), depth=depth + 1, seen=seen)
+            priced = _item_hours(
+                walk,
+                required.replace("*", ""),
+                quantity=quantity,
+                depth=depth + 1,
+                seen=seen,
+            )
             if priced is None:
                 return None
             total += priced.hours
         return _Priced(total, f"make: {provider}", f"make:{provider}")
 
-    return _kill_hours(walk, provider, item)
+    return _kill_hours(walk, provider, item, quantity)
 
 
-def _kill_hours(walk: _Walk, provider: str, item: str) -> _Priced | None:
-    """Hours of killing `provider` to see one `item`, gates included.
+def _kill_hours(
+    walk: _Walk, provider: str, item: str, quantity: float = 1.0
+) -> _Priced | None:
+    """Hours of killing `provider` for `quantity` of `item`, gates included.
 
     **Availability is checked first and is not negotiable.** `provider` has to
     be a monster this map can actually reach - placed in an unlocked chunk and
@@ -680,17 +712,24 @@ def _kill_hours(walk: _Walk, provider: str, item: str) -> _Priced | None:
     """
     if provider not in walk.available:
         superior = walk.heuristics.superiors.get(provider)
-        return _superior_hours(walk, superior, item) if superior else None
+        return _superior_hours(walk, superior, item, quantity) if superior else None
 
-    chance = _drop_probability(walk, provider, item)
-    if chance is None or chance <= 0:
+    rates = _drop_rates(walk, provider, item)
+    if rates is None or rates[0] <= 0 or rates[1] <= 0:
         return None
+    chance, per_kill = rates
     rate = walk.heuristics.kills_per_hour(provider)
     if rate.value <= 0:
         return None
 
-    kills = 1 / chance
-    detail = f"{provider} at 1/{kills:,.0f}, {rate.value:g}/hr"
+    # **Both bounds, and the binding one wins.** You cannot see the drop in
+    # fewer than `1/chance` kills however large the stack, and once you want
+    # more than one stack it is `quantity/yield`. At `quantity == 1` the first
+    # always binds, which is what keeps a goal priced on the rate alone.
+    kills = max(1 / chance, quantity / per_kill)
+    detail = f"{provider} at 1/{1 / chance:,.0f}, {rate.value:g}/hr"
+    if kills > 1 / chance:
+        detail = f"{provider} x{kills:,.0f} kills, {rate.value:g}/hr"
 
     if provider in walk.task_gates:
         # Mandatory: a task-gated monster priced without its task reads as
@@ -734,8 +773,10 @@ def _task_hours(
     return (best, task) if best is not None else None
 
 
-def _superior_hours(walk: _Walk, superior: Superior, item: str) -> _Priced | None:
-    """Hours to see one `item` from a superior slayer monster.
+def _superior_hours(
+    walk: _Walk, superior: Superior, item: str, quantity: float = 1.0
+) -> _Priced | None:
+    """Hours to obtain `quantity` of `item` from a superior slayer monster.
 
     A superior is never placed in a chunk: it replaces one of its normal
     counterparts on death, only while on task, at roughly 1/200. So its cost
@@ -745,16 +786,19 @@ def _superior_hours(walk: _Walk, superior: Superior, item: str) -> _Priced | Non
     """
     if superior.spawn_rate <= 0 or superior.base not in walk.available:
         return None
-    chance = _drop_probability(walk, superior.name, item)
-    if chance is None or chance <= 0:
+    rates = _drop_rates(walk, superior.name, item)
+    if rates is None or rates[0] <= 0 or rates[1] <= 0:
         return None
+    chance, per_kill = rates
     rate = walk.heuristics.kills_per_hour(superior.base)
     if rate.value <= 0:
         return None
 
-    # Base kills needed: one superior per `1 / spawn_rate`, and one drop per
-    # `1 / chance` superiors.
-    kills = (1 / superior.spawn_rate) * (1 / chance)
+    # Base kills needed: one superior per `1 / spawn_rate`, and the same two
+    # bounds `_kill_hours` takes - the drop has to happen at all, and a stack
+    # amortises once you want more than one.
+    supers = max(1 / chance, quantity / per_kill)
+    kills = (1 / superior.spawn_rate) * supers
     if superior.base in walk.task_gates:
         # Same rule as a direct kill: if the base's task cannot be costed,
         # the route has no price. Falling back to an ungated figure here made
@@ -879,15 +923,30 @@ def _skill_estimate(
     )
 
 
-def estimate(
+@dataclass(frozen=True)
+class _Setup:
+    """The walk, and the three things `estimate` computes on the way to it.
+
+    Built by `_setup` so that pricing a *material* uses the same gates as
+    pricing a goal. Two constructions of `_Walk` would be two answers to
+    "can this map reach a blast furnace", and the second one would be wrong
+    the moment either moved.
+    """
+
+    walk: _Walk
+    levels: dict[str, int]
+    masters: tuple[MasterRate, ...]
+    slayer: MasterRate | None
+
+
+def _setup(
     state: MapState,
     derived: Derived,
     world: WorldIndex,
     heuristics: Heuristics,
-    *,
-    level_overrides: dict[str, int] | None = None,
-) -> EstimateResult:
-    """Estimate the outstanding active work. See the module docstring first."""
+    level_overrides: dict[str, int],
+) -> _Setup:
+    """Everything the item walk needs, assembled once."""
     levels = _levels(state, level_overrides or {})
     reachable = frozenset(derived.source_index.monsters)
     providers = reachable_providers(derived)
@@ -941,7 +1000,56 @@ def estimate(
             for rate in gate_masters
         },
     )
+    return _Setup(
+        walk=walk, levels=levels, masters=reachable_rates, slayer=slayer_rate
+    )
 
+
+def material_seconds(
+    state: MapState,
+    derived: Derived,
+    world: WorldIndex,
+    heuristics: Heuristics,
+    *,
+    level_overrides: dict[str, int] | None = None,
+) -> Callable[[str, float], float | None]:
+    """A callable pricing `quantity` of an item, in seconds, or `None`.
+
+    **What `costing/recipe_rates.py` needs and cannot build for itself.** The
+    item walk lives here, behind a `_Walk` carrying this map's reachability
+    gates; a recipe is a pure fact about the game. So the seam is this
+    closure: `recipe_rates` asks "how long to get two guam leaves" without
+    learning what a `_Walk` is, and `estimate` answers without learning what a
+    recipe is.
+
+    `None` means no route, which the caller must treat as *drop the method*
+    rather than as free - see that module's docstring.
+
+    The closure holds one `_Walk` and is therefore worth reusing across a whole
+    skill's recipes; it is a local, never a module-level cache, so the purity
+    rule that keeps `--jobs` honest is untouched.
+    """
+    walk = _setup(state, derived, world, heuristics, level_overrides or {}).walk
+
+    def seconds(item: str, quantity: float) -> float | None:
+        priced = _item_hours(walk, item, quantity=quantity)
+        return None if priced is None else priced.hours * 3600.0
+
+    return seconds
+
+
+def estimate(
+    state: MapState,
+    derived: Derived,
+    world: WorldIndex,
+    heuristics: Heuristics,
+    *,
+    level_overrides: dict[str, int] | None = None,
+) -> EstimateResult:
+    """Estimate the outstanding active work. See the module docstring first."""
+    setup = _setup(state, derived, world, heuristics, level_overrides or {})
+    walk, levels = setup.walk, setup.levels
+    reachable_rates, slayer_rate = setup.masters, setup.slayer
     tasks: list[TaskEstimate] = list(_quest_tasks(derived, heuristics))
     unpriced: list[str] = []
 

@@ -28,15 +28,18 @@ the pure layer - `cli.py` and `gui/server.py` are its only callers.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping
 
-from fray_claude.costing import dps_bridge
+from fray_claude.costing import dps_bridge, recipe_rates
+from fray_claude.costing.estimate import material_seconds
 from fray_claude.store import cache
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.store.derived_cache import Digests, cached_enrich, pricing_digests
 from fray_claude.costing.estimate import EstimateResult, estimate
+from fray_claude.derive.search import WorldIndex
+from fray_claude.remote.recipes import Material as RecipeMaterial, Recipe
 from fray_claude.costing.levels import goal_levels, infer_levels
 from fray_claude.costing.heuristics import Heuristics, load, merge
 from fray_claude.derive.pipeline import Derived, MapState
@@ -48,6 +51,8 @@ __all__ = [
     "estimate_answer",
     "level_overrides",
     "load_heuristics",
+    "load_recipes",
+    "recipe_priced",
     "pinned_keys",
     "priced_heuristics",
 ]
@@ -107,6 +112,77 @@ def load_heuristics(info: ChunkInfo, root: Path | None = None) -> tuple[Heuristi
     )
 
 
+def load_recipes(root: Path | None = None) -> dict[str, tuple[Recipe, ...]]:
+    """The `fray recipes` blob, back as `Recipe`s, or empty if never fetched.
+
+    Empty is a supported way to run, exactly as an absent rate scrape is: every
+    method simply keeps whatever the guides and defaults gave it. The caller
+    does not have to check - `recipe_rates.apply` over nothing is a no-op.
+    """
+    try:
+        blob = cache.read_blob(cache.RECIPES_BLOB_NAME, root)["data"]
+    except cache.CacheMissError:
+        return {}
+    return {
+        skill: tuple(
+            Recipe(
+                page=str(row.get("page") or ""),
+                output=str(row["output"]),
+                output_quantity=float(row.get("output_quantity") or 1.0),
+                skill=skill,
+                level=int(row.get("level") or 1),
+                experience=float(row["experience"]),
+                ticks=None if row.get("ticks") is None else int(row["ticks"]),
+                materials=tuple(
+                    RecipeMaterial(str(m["name"]), float(m.get("quantity") or 1.0))
+                    for m in row.get("materials") or []
+                    if isinstance(m, dict) and m.get("name")
+                ),
+                variant=str(row.get("variant") or ""),
+            )
+            for row in rows
+            if isinstance(row, dict) and row.get("output") and row.get("experience") is not None
+        )
+        for skill, rows in blob.items()
+        if isinstance(rows, list)
+    }
+
+
+def recipe_priced(
+    state: MapState,
+    derived: Derived,
+    world: WorldIndex,
+    heuristics: Heuristics,
+    levels: dict[str, int],
+    *,
+    root: Path | None = None,
+) -> tuple[Heuristics, recipe_rates.RecipeCoverage]:
+    """`heuristics` with a rate computed for every method the recipes reach.
+
+    **Runs whether or not the DPS extra is installed**, unlike
+    `priced_heuristics` - a recipe is wiki data and the item walk is this
+    project's own, so neither needs `osrs-dps`. It is folded into the same
+    cached call because it costs ~6s on a real map: the walk prices every
+    material of every reachable method, and that is the whole expense.
+    """
+    recipes = load_recipes(root)
+    if not recipes:
+        return heuristics, recipe_rates.RecipeCoverage()
+    pinned = frozenset(_mapping(cache.read_overrides(root), "training"))
+    computed, coverage = recipe_rates.computed_rates(
+        state.chunk_info,
+        derived.challenges.valid,
+        recipes,
+        material_seconds(
+            state, derived, world, heuristics, level_overrides=levels
+        ),
+    )
+    return (
+        replace(heuristics, training=recipe_rates.apply(heuristics.training, computed, pinned)),
+        coverage,
+    )
+
+
 def level_overrides(root: Path | None = None) -> dict[str, int]:
     """The hand-set skill levels from `heuristics/overrides.json`.
 
@@ -146,37 +222,53 @@ def priced_heuristics(
     levels: dict[str, int],
     digests: Digests,
     *,
+    world: WorldIndex | None = None,
     root: Path | None = None,
     refresh: bool = False,
 ) -> tuple[Heuristics, dps_bridge.DpsCoverage | None]:
-    """The computed rates layered over the scraped ones, if the extra is here.
+    """Every rate this machine can compute, layered on and cached as one.
 
-    `None` for the coverage means `osrs-dps` is not installed, which is a
-    supported way to run and a different answer rather than a broken one; both
-    apps say which they are showing.
+    Two computations, deliberately behind one key. `recipe_priced` costs ~6s
+    on a real map and `dps_bridge.enrich` ~0.7s, and both are pure functions of
+    the same inputs, so splitting them into two cache entries would buy nothing
+    and give the two a chance to disagree about which derivation they saw.
+
+    **The recipe half runs with or without the DPS extra**, which is why this
+    no longer returns early when the extra is absent. That path used to skip
+    the cache entirely; now it stores, because without the extra there is still
+    six seconds of item walking to avoid repeating. `None` for the coverage
+    still means `osrs-dps` is not installed - a supported way to run and a
+    different answer rather than a broken one; both apps say which they show.
+
+    **Order matters: recipes first, then fights.** A recipe rate is priced
+    through the item walk, which spends kill rates, so running `enrich` first
+    would change what a material costs. It does not run first, and a comment
+    here is cheaper than the afternoon spent finding out why two runs of the
+    same map disagreed.
 
     The levels are `goal_levels`, the ones the chunk *ends* at, because that is
     what `slayer.py` already judges a master at and pricing the same fight at
     two different levels inside one command would be indefensible.
-
-    662ms against `estimate`'s 3.1ms, and a pure function of inputs the
-    derivation cache already keys on plus three it does not - hence
-    `cached_enrich`, and hence `refresh` (`--recompute`) bypassing it the same
-    way it bypasses the derivation.
     """
-    if not dps_bridge.DPS_AVAILABLE:
-        return heuristics, None
+    index = build_world_index(state.chunk_info) if world is None else world
     pinned_monsters, pinned_slayer = pinned_keys(root)
     goals = goal_levels(state, derived, {**infer_levels(state), **levels})
-    return cached_enrich(
-        lambda: dps_bridge.enrich(
-            heuristics,
+
+    def compute() -> tuple[Heuristics, dps_bridge.DpsCoverage | None]:
+        priced, _ = recipe_priced(state, derived, index, heuristics, levels, root=root)
+        if not dps_bridge.DPS_AVAILABLE:
+            return priced, None
+        return dps_bridge.enrich(
+            priced,
             state.chunk_info,
             derived,
             goals,
             pinned_monsters=pinned_monsters,
             pinned_slayer=pinned_slayer,
-        ),
+        )
+
+    return cached_enrich(
+        compute,
         state,
         unlocked,
         digests,
@@ -203,14 +295,17 @@ def estimate_answer(
     """
     heuristics, scraped_rates = load_heuristics(state.chunk_info, root)
     levels = level_overrides(root)
+    world = build_world_index(state.chunk_info)
     heuristics, coverage = priced_heuristics(
-        state, unlocked, derived, heuristics, levels, digests, root=root, refresh=refresh
-    )
-    result = estimate(
         state,
+        unlocked,
         derived,
-        build_world_index(state.chunk_info),
         heuristics,
-        level_overrides=levels,
+        levels,
+        digests,
+        world=world,
+        root=root,
+        refresh=refresh,
     )
+    result = estimate(state, derived, world, heuristics, level_overrides=levels)
     return EstimateAnswer(result=result, scraped_rates=scraped_rates, coverage=coverage)

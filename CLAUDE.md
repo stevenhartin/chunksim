@@ -179,6 +179,9 @@ Five things that cut across modules — the first three because each has already
 | `derive/search.py` | World-wide fuzzy search over the *raw* export — all 5 item routes, so a strict superset of what `fray sources` can list. |
 | `model/summary.py` | Pure reductions over a raw payload. Extend this, not the CLI. Also home to `format_age` (both apps render ages, and two copies of the bucketing would disagree) and `_mapping`, the tolerant dict accessor eight other modules import despite the `_` — Firebase omits empty containers, so every lookup anywhere must survive a missing branch. |
 | `costing/dps_bridge.py` | The seam to `osrs-dps`, which prices a kill from the gear `bis.py` reaches instead of a money-making guide. Prices **only `estimate.reachable_providers`** — 188 of the export's 872, because every `kills_per_hour` lookup is gated on that set and the rest is thrown away. `enrich_incremental` + `fight_signature` keep a timeline's previous roll where nothing that decides a kill has moved; `enrich` stays untouched. **Optional import** — check `DPS_AVAILABLE`, never assume it. `enrich` is the one entry point a command needs. Owns the export→library conversions (`magic_damage` is a display percentage here and tenths of a percent there), the overhead model, the monster-name join and its `exact`/`variant` provenance, and the refusal of fight *phases* and group bosses. |
+| `remote/recipes.py` | `{{Recipe}}` as the wiki's Bucket table serves it: experience per action, tick cost and materials, for 3,889 recipes across 13 skills. Pure parsing. `production_json` is JSON inside JSON, every number is a string, and one page can hold several recipes told apart only by the output's `subtxt`. |
+| `costing/recipe_rates.py` | A recipe turned into an XP rate: `experience * 3600 / (0.6*ticks + materials + overhead)`, joined to a challenge **exactly** on `Output` (93-95% of the processing skills, ~0% of the gathering ones). Owns the layering `defaults < computed < scraped < overrides` - **the one place a computed number does *not* beat the scrape**, and the docstring carries the measurement that says why. An unpriceable material drops the method rather than falling back to ticks. |
+| `costing/recipe_overhead.py` | The harness that fitted `ACTION_OVERHEAD_SECONDS`. **No caller in `src/`**, like `dps_overhead.py`. Fits only the free-material pairs, because the residuals are bimodal and averaging the two halves means nothing. |
 | `costing/dps_overhead.py` | The harness that fitted the overhead constants. **No caller in `src/`** — it exists to be re-run when someone doubts them, and it is out of `dps_bridge.py` because that file is large for a licence reason, not a structural one. |
 | `costing/inputs.py` | What `fray estimate` and the Estimate tab must agree about, assembled once. The two had already drifted — the CLI applied `pinned_slayer` and the GUI did not — and a shared `cache/derived/` key made that silently order-dependent. |
 | `cli/app.py` | The parser and `main`. Asks each family for its subcommands, dispatches through `args.func`, and turns four exception types into an exit code. **159 lines, from 1,750** — if it is about a particular subcommand it does not belong here. |
@@ -361,6 +364,18 @@ way, with buckets, per-item hours and `unpriced` all unchanged — and took `enr
 cannot drift from the thing it gates; `tests/test_estimate.py` spies on every lookup to assert
 nothing asks outside it. `DpsCoverage.offered` is reported beside `monsters` because "188 monsters"
 alone reads as poor coverage of the export rather than full coverage of the map.
+
+**Two computed layers, and they sit on opposite sides of the scrape.** `dps_bridge` puts its kill
+rates *above* the guides; `recipe_rates` puts its XP rates *below* them. That is not an
+inconsistency to tidy up - it is measured, and the two are computing different kinds of thing. A
+simulated fight and a money-making guide answer the same question, so the better-informed one should
+win. A recipe and a guide do not: where a method's materials price free, tick-math is a median 1.38x
+*above* the guide because the wiki's tick cost is the action and not the cycle (no banking, no
+walking); where they cost something it lands at x0.0011 to x0.024 *below*, because this project
+charges you for fishing the anglerfish where the guide assumes you bought it. So a guide, when there
+is one, keeps the method. What the recipes replace is the **1,000/hr floor** - on the real map 370 of
+417 priced methods had nothing but that, against 47 with a guide. `costing/recipe_overhead.py`
+re-runs the fit behind the one constant this involves.
 
 **With the `dps` extra installed the layering is `defaults < scraped < computed < overrides`.**
 `fray estimate` calls `dps_bridge.enrich`, which recomputes kill rates and slayer task rates from

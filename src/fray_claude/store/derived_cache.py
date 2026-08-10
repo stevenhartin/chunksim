@@ -84,6 +84,7 @@ from pathlib import Path
 from fray_claude.derive.active_tasks import TaskClassification
 from fray_claude.derive.bis import BisResult
 from fray_claude.store.cache import (
+    RECIPES_BLOB_NAME,
     WIKI_RATES_BLOB_NAME,
     CacheMissError,
     blob_path,
@@ -170,6 +171,10 @@ class PricingDigests:
     rates: str = ""
     overrides: str = ""
     library: str = ""
+    #: The `fray recipes` blob. Separate from `rates` because it is a
+    #: different API on a different cadence, and folding the two would
+    #: invalidate every stored enrichment whenever either moved.
+    recipes: str = ""
 
 
 def _structure_digest() -> str:
@@ -405,6 +410,7 @@ def pricing_digests(root: Path | None = None) -> PricingDigests:
         rates=_maybe_digest(lambda: blob_path(WIKI_RATES_BLOB_NAME, root)),
         overrides=_maybe_digest(lambda: overrides_path(root)),
         library=dps_library_digest(),
+        recipes=_maybe_digest(lambda: blob_path(RECIPES_BLOB_NAME, root)),
     )
 
 

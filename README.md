@@ -351,12 +351,18 @@ otherwise it's created in whatever directory you're in when you run `fray`.
    fray chunkinfo
    ```
 
-   If you want `fray estimate`, also pull the rates it spends (~18 requests to the OSRS wiki and one
-   published spreadsheet). Like `chunkinfo`, this only needs repeating occasionally:
+   If you want `fray estimate`, also pull the numbers it spends. Two different sources, both from the
+   wiki and both only worth repeating occasionally:
 
    ```sh
-   fray heuristics
+   fray heuristics                     # ~18 requests: money-making guides and quest lengths
+   fray recipes                        # 13 requests: xp per action and tick costs, per skill
    ```
+
+   The second is what stops most training methods being priced at a flat 1,000 xp/hour: it brings
+   back what one action of a method actually pays and how long it takes, for 3,889 recipes. Where a
+   money-making guide exists it still wins - see `fray estimate skilling`, which prints where each
+   band's rate came from.
 
 3. **Look at what you've got:**
 
