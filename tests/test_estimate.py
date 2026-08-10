@@ -335,7 +335,16 @@ def test_the_fastest_reachable_method_sets_the_rate() -> None:
     assert skill.hours == pytest.approx(skill.xp / 50_000.0)
 
 
-def test_a_method_above_the_current_level_is_passed_over() -> None:
+def test_a_method_above_the_current_level_starts_its_own_band() -> None:
+    """**This test is the defect, inverted.**
+
+    It used to assert that a method needing level 40 was "passed over" at level
+    30 - and it was, for the *whole* climb to 85, which is how a skill came to
+    be priced at a rate it would outgrow within a few hours. You do not train
+    to 85 at the level-30 method; you train to 40 at it and then switch.
+
+    So the level-40 method is not passed over, it opens the second band.
+    """
     heuristics = Heuristics(
         training={
             "Mine ~|slow rocks|~": {"Mining": Rate(10_000.0, "mmg:a", "exact")},
@@ -347,7 +356,17 @@ def test_a_method_above_the_current_level_is_passed_over() -> None:
         _skilling_info(), _skilling_derived(), heuristics, level_overrides={"Mining": 30}
     )
 
-    assert result.skills[0].method == "slow rocks"
+    mining = result.skills[0]
+    assert [(band.level_from, band.level_to, band.method) for band in mining.bands] == [
+        (30, 40, "slow rocks"),
+        (40, 85, "fast rocks"),
+    ]
+    # The blended rate is neither method's, and the hours are the sum.
+    assert mining.hours == sum(band.hours for band in mining.bands)
+    assert 10_000 < mining.xp_per_hour < 50_000
+    # `method` names the band that trains the most XP, so the row still reads
+    # as one line for anyone not opening the bands.
+    assert mining.method == "fast rocks"
 
 
 def test_a_method_that_is_not_valid_is_never_considered() -> None:
@@ -1186,3 +1205,34 @@ def test_the_providers_set_is_the_three_source_branches() -> None:
     )
 
 
+def test_a_skill_with_no_training_method_anywhere_is_refused_not_priced() -> None:
+    """**Attack, Defence, Hitpoints and Ranged carry no `Primary` challenge in
+    the whole export** - you train them by fighting, not by an activity the
+    export lists.
+
+    The old code divided by a zero rate and reported the climb as free: `verf`
+    showed 288,199 Attack XP at 0.0 hours. Pricing it at the floor instead
+    would say 288 hours, wrong the other way and in the headline. So it is
+    refused, the way an item with no route is refused.
+    """
+    info = ChunkInfo({"challenges": {"Attack": {"Reach ~|Attack|~ 70": {"Level": 70}}}})
+    derived = _derived(
+        challenges=ChallengeResult(
+            valid={"Attack": {"Reach ~|Attack|~ 70": 70}}, unsupported=frozenset()
+        ),
+        task_classification=TaskClassification(
+            skills={
+                "Attack": SkillClassification(
+                    active="Reach ~|Attack|~ 70", obsolete=frozenset(), completed=frozenset()
+                )
+            }
+        ),
+    )
+
+    result = _run(info, derived, Heuristics(), level_overrides={"Attack": 65})
+
+    assert result.skills == ()
+    assert [(s.skill, s.xp, s.reason) for s in result.unpriced_skills] == [
+        ("Attack", 288_199, "no training method exists for this skill")
+    ]
+    assert result.buckets["skilling"] == 0.0

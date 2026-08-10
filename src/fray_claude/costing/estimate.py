@@ -144,7 +144,12 @@ from fray_claude.costing.levels import (
     _levels,
 )
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.model.experience import MAX_LEVEL, xp_between
+from fray_claude.model.experience import MAX_LEVEL, xp_between, xp_for_level
+from fray_claude.costing.training import (
+    TrainingBand,
+    training_bands,
+    training_options,
+)
 from fray_claude.costing.heuristics import Heuristics, Superior, activity_name
 from fray_claude.derive.pipeline import Derived, MapState
 from fray_claude.model.rates import parse_ratio
@@ -242,8 +247,15 @@ class SkillEstimate:
     xp_per_hour: float
     method: str
     hours: float
-    #: True when the rate is the un-joined floor, i.e. a guess worth fixing.
+    #: True when the *whole* climb is at the un-joined floor. A climb that is
+    #: only part floored reports `floor_xp` instead - see `_skill_estimate`.
     defaulted: bool = False
+    #: The climb split where the rate changes, in order. Empty for a skill
+    #: already at its goal.
+    bands: tuple[TrainingBand, ...] = ()
+    #: How much of `xp` is priced at the floor rather than at a measured rate.
+    #: Defaulted so every existing constructor stays valid.
+    floor_xp: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -256,6 +268,41 @@ class SkillEstimate:
             "method": self.method,
             "hours": self.hours,
             "defaulted": self.defaulted,
+            "floor_xp": self.floor_xp,
+            "bands": [band.as_dict() for band in self.bands],
+        }
+
+
+@dataclass(frozen=True)
+class UnpricedSkill:
+    """A skill goal this project refuses to put a number on, and why.
+
+    **Not zero, and not the floor.** `Attack`, `Defence`, `Hitpoints` and
+    `Ranged` carry no `Primary: true` challenge anywhere in the export - there
+    is no "train Attack" entry, because you train it by fighting - so the old
+    code divided by a zero rate and reported the climb as **free**, and pricing
+    it at the floor instead would put 288 hours on five levels of Attack, wrong
+    by two orders of magnitude and in the headline.
+
+    Refusing is the posture this module already takes for an item it cannot
+    route (`unpriced`), and it keeps the same total while making it honest.
+    """
+
+    skill: str
+    goal: str
+    current_level: int
+    target_level: int
+    xp: int
+    reason: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "skill": self.skill,
+            "goal": self.goal,
+            "current_level": self.current_level,
+            "target_level": self.target_level,
+            "xp": self.xp,
+            "reason": self.reason,
         }
 
 
@@ -289,6 +336,9 @@ class EstimateResult:
     superior_rolls: dict[str, float] = field(default_factory=dict)
     #: Items with no priceable route - the honest coverage figure.
     unpriced: tuple[str, ...] = ()
+    #: Skill goals with no trainable method anywhere in the export. Reported
+    #: rather than priced; see `UnpricedSkill`.
+    unpriced_skills: tuple[UnpricedSkill, ...] = ()
 
     @property
     def buckets(self) -> dict[str, float]:
@@ -371,6 +421,7 @@ class EstimateResult:
                 for rate in self.slayer_masters
             ],
             "unpriced": list(self.unpriced),
+            "unpriced_skills": [skill.as_dict() for skill in self.unpriced_skills],
         }
 
 
@@ -711,23 +762,59 @@ def _steps_in(derived: Derived, quest: str) -> int:
     )
 
 
-def _training_rate(
-    derived: Derived, chunk_info: ChunkInfo, heuristics: Heuristics, skill: str, level: int
-) -> tuple[float, str, bool]:
-    """The fastest reachable primary method for `skill`: `(rate, name, is default)`."""
-    challenges = _mapping(chunk_info.challenges, skill)
-    best = (0.0, "", True)
-    for name in derived.challenges.valid.get(skill) or {}:
-        challenge = challenges.get(name)
-        if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
-            continue
-        required = challenge.get("Level")
-        if isinstance(required, (int, float)) and required > level:
-            continue
-        rate = heuristics.xp_per_hour(name, skill)
-        if rate.value > best[0]:
-            best = (rate.value, activity_name(name), rate.match == "default")
-    return best
+def _has_training_method(chunk_info: ChunkInfo, skill: str) -> bool:
+    """Does the export list *any* way of training `skill`?
+
+    Deliberately asks the export rather than the map: "this map cannot reach a
+    Herblore method yet" is a floor band and a correctable gap, while "nothing
+    anywhere trains Attack" is a different statement and wants a different
+    answer. Measured: Attack 131 challenges and 0 primary, Defence 146/0,
+    Hitpoints 11/0, Ranged 172/0.
+    """
+    return any(
+        isinstance(challenge, dict) and challenge.get("Primary") is True
+        for challenge in _mapping(chunk_info.challenges, skill).values()
+    )
+
+
+def _skill_estimate(
+    skill: str,
+    goal: str,
+    current: int,
+    target: int,
+    xp: int,
+    bands: tuple[TrainingBand, ...],
+) -> SkillEstimate:
+    """One skill's row, summarised from its bands.
+
+    **`xp_per_hour` is the blended rate and `method` the band that trains the
+    most XP**, which is what keeps this change additive: every existing reader -
+    the CLI's `{xp} xp @ {rate}/hr = {hours}h {method}` line, the panel, the
+    JSON - keeps working and keeps saying something true. The bands carry the
+    detail for anyone who wants it.
+
+    `defaulted` keeps its old meaning too: the *whole* climb is at the floor,
+    i.e. nothing on this map has a measured rate for this skill. A climb that is
+    part floored says so through `floor_xp` instead, which is the more common
+    and more interesting case - on the real map the floor is 1% of Herblore's
+    XP and 56% of its hours.
+    """
+    hours = sum(band.hours for band in bands)
+    floor_xp = sum(band.xp for band in bands if band.match == "default")
+    widest = max(bands, key=lambda band: band.xp, default=None)
+    return SkillEstimate(
+        skill=skill,
+        goal=goal,
+        current_level=current,
+        target_level=target,
+        xp=xp,
+        xp_per_hour=xp / hours if hours > 0 else 0.0,
+        method=(widest.method if widest and widest.method else "(none found)"),
+        hours=hours,
+        defaulted=bool(bands) and floor_xp == xp,
+        bands=bands,
+        floor_xp=floor_xp,
+    )
 
 
 def estimate(
@@ -835,6 +922,7 @@ def estimate(
         )
 
     skills: list[SkillEstimate] = []
+    unpriced_skills: list[UnpricedSkill] = []
     for skill, classification in sorted(derived.task_classification.skills.items()):
         goal = classification.active
         if goal is None:
@@ -844,28 +932,48 @@ def estimate(
         if not isinstance(target, (int, float)) or isinstance(target, bool):
             continue
         current = levels.get(skill, 1)
-        xp = xp_between(current, min(int(target), MAX_LEVEL))
+        capped = min(int(target), MAX_LEVEL)
+        xp = xp_between(current, capped)
+        if xp > 0 and not _has_training_method(state.chunk_info, skill):
+            # No `Primary: true` challenge anywhere in the export - the four
+            # combat skills, which you train by fighting rather than by an
+            # activity the export lists. Refused, not guessed at.
+            unpriced_skills.append(
+                UnpricedSkill(
+                    skill=skill,
+                    goal=goal,
+                    current_level=current,
+                    target_level=int(target),
+                    xp=xp,
+                    reason="no training method exists for this skill",
+                )
+            )
+            continue
         if skill == "Slayer" and slayer_rate is not None and slayer_rate.xp_per_hour > 0:
-            rate, method, defaulted = slayer_rate.xp_per_hour, slayer_rate.master, False
+            # **Slayer is one band by nature.** Its rate is a distribution over
+            # what a master assigns rather than a method you pick and outgrow,
+            # so `slayer.py` answers for the whole climb and there is nothing
+            # to band.
+            bands: tuple[TrainingBand, ...] = (
+                TrainingBand(
+                    level_from=current,
+                    level_to=capped,
+                    xp=xp,
+                    xp_per_hour=slayer_rate.xp_per_hour,
+                    method=slayer_rate.master,
+                    match="slayer",
+                ),
+            )
         else:
-            rate, method, defaulted = _training_rate(
-                derived, state.chunk_info, heuristics, skill, current
+            bands = training_bands(
+                training_options(derived, state.chunk_info, heuristics, skill),
+                xp_for_level(max(1, min(current, MAX_LEVEL))),
+                capped,
             )
-        skills.append(
-            SkillEstimate(
-                skill=skill,
-                goal=goal,
-                current_level=current,
-                target_level=int(target),
-                xp=xp,
-                xp_per_hour=rate,
-                method=method or "(none found)",
-                hours=xp / rate if rate > 0 else 0.0,
-                defaulted=defaulted,
-            )
-        )
+        skills.append(_skill_estimate(skill, goal, current, int(target), xp, bands))
 
     return EstimateResult(
+        unpriced_skills=tuple(unpriced_skills),
         tasks=tuple(tasks),
         items=tuple(items),
         skills=tuple(skills),
