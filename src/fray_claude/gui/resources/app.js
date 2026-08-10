@@ -70,6 +70,13 @@ const MASK_MAX_CHUNKS = 48;
 const TOP = 1, BOTTOM = 2, LEFT = 4, RIGHT = 8;
 
 const state = {
+  /* **What is on screen, as data.** `map`, `compare` and `tab` used to live in
+   * DOM `value`s and be read back out of them in twenty-odd places, which made
+   * the `<select>` the source of truth for what the page was looking at. They
+   * are here instead, and the controls render *from* them - see `setMap`. */
+  map: "",
+  compare: "",
+  tab: "",
   view: null,
   cells: new Map(),        // "gx,gy" -> cell, for the locked-wash complement
   candidates: new Map(),   // chunk id -> neighbour entry
@@ -1255,6 +1262,7 @@ function when(iso) {
 }
 
 function showTab(name) {
+  state.tab = name;
   for (const b of el.tabs.querySelectorAll("button")) {
     b.classList.toggle("on", b.dataset.tab === name);
   }
@@ -1372,15 +1380,32 @@ async function postJSON(path, payload) {
   return parsed;
 }
 
+/* **A `<select>` silently blanks on a value it has no option for**, and that
+ * rule is worth keeping rather than reimplementing: a one-run batch is offered
+ * under its bare name, so `?map=t/run-001` is a valid map id with no option to
+ * match. So the element stays the validator - written to, then read back - and
+ * `state` takes whatever it actually accepted. */
+function setMap(id) {
+  el.map.value = id || "";
+  state.map = el.map.value;
+  return state.map;
+}
+
+function setCompare(id) {
+  el.compare.value = id || "";
+  state.compare = el.compare.value;
+  return state.compare;
+}
+
 function mapQuery() {
-  const params = new URLSearchParams({ map: el.map.value });
+  const params = new URLSearchParams({ map: state.map });
   /* **A step and a comparison are exclusive**, and the step wins because it
    * is the thing you just dragged. Two maps and a rewind would need a third
    * colour for "gained by this roll but lost against the other side", which
    * is a question nobody asked. `renderTimeline` hides the strip while a
    * comparison is up, so this branch is belt and braces. */
   if (state.step !== null) params.set("step", String(state.step));
-  else if (el.compare.value) params.set("compare", el.compare.value);
+  else if (state.compare) params.set("compare", state.compare);
   return params.toString();
 }
 
@@ -1417,32 +1442,33 @@ async function loadMaps() {
     /* An empty screen is an invitation to act. The first build showed a blank
      * dropdown and "missing required parameter 'map'", which is a dead end. */
     el.map.innerHTML = "<option value=''>No maps cached</option>";
+    state.map = "";
     el.counts.textContent = "";
     el["chunk-body"].innerHTML = tmpl`<p class="empty">Nothing cached yet. Run <code>fray fetch</code> in a terminal, or press <b>Fetch Named Map</b> on the Maps tab.</p>`;
     showTab("maps");
     return false;
   }
   const options = mapOptions(maps);
-  const keepMap = el.map.value, keepCompare = el.compare.value;
+  const keepMap = state.map, keepCompare = state.compare;
   el.map.innerHTML = options;
   el.compare.innerHTML = "<option value=''>—</option>" + options;
-  el.map.value = BOOT.map || keepMap || maps[0].map_id;
+  setMap(BOOT.map || keepMap || maps[0].map_id);
   /* **A `<select>` silently blanks on a value it has no option for**, and a
    * one-run batch is offered under its bare name rather than as
    * `<batch>/run-001` - so `?map=t/run-001` is a perfectly valid map id with
    * no option to match, and used to land on whatever was first. Fall back to
    * the batch it names before giving up on the request entirely. */
-  if (!el.map.value && (BOOT.map || keepMap || "").includes("/")) {
-    el.map.value = (BOOT.map || keepMap).split("/")[0];
+  if (!state.map && (BOOT.map || keepMap || "").includes("/")) {
+    setMap((BOOT.map || keepMap).split("/")[0]);
   }
-  if (!el.map.value) el.map.value = maps[0].map_id;
-  el.compare.value = BOOT.compare || keepCompare || "";
+  if (!state.map) setMap(maps[0].map_id);
+  setCompare(BOOT.compare || keepCompare || "");
   BOOT.map = BOOT.compare = "";
   return true;
 }
 
 async function loadView({ refit = false } = {}) {
-  if (!el.map.value) return;
+  if (!state.map) return;
   try {
     const view = await getJSON("/api/view?" + mapQuery());
     state.view = view;
@@ -1504,7 +1530,7 @@ async function loadCandidates() {
     state.candidates = new Map();
   } else {
     try {
-      const payload = await getJSON("/api/neighbours?map=" + encodeURIComponent(el.map.value));
+      const payload = await getJSON("/api/neighbours?map=" + encodeURIComponent(state.map));
       state.candidates = new Map(payload.neighbours.map((n) => [n.chunk_id, n]));
     } catch (error) {
       state.candidates = new Map();
@@ -1517,9 +1543,9 @@ async function loadCandidates() {
 }
 
 async function loadSections() {
-  if (!state.showMasks || !el.map.value) { state.sections = {}; return; }
+  if (!state.showMasks || !state.map) { state.sections = {}; return; }
   try {
-    const payload = await getJSON("/api/sections?map=" + encodeURIComponent(el.map.value));
+    const payload = await getJSON("/api/sections?map=" + encodeURIComponent(state.map));
     state.sections = payload.chunks;
   } catch (error) {
     state.sections = {};
@@ -1578,7 +1604,7 @@ async function selectChunk(chunkId) {
   el["chunk-body"].innerHTML = tmpl`<p class="empty">Reading ${chunkLabel(chunkId)}…</p>`;
   try {
     chunkDetail = await getJSON(
-      "/api/chunk?map=" + encodeURIComponent(el.map.value) +
+      "/api/chunk?map=" + encodeURIComponent(state.map) +
       "&chunk=" + encodeURIComponent(chunkId));
     renderChunk();
   } catch (error) {
@@ -1719,7 +1745,7 @@ async function previewUnlock(chunkId) {
   openOverlay("If you unlocked " + chunkId, tmpl`<p class="empty">Deriving both worlds…</p>`);
   try {
     const delta = await getJSON(
-      "/api/unlock?map=" + encodeURIComponent(el.map.value) +
+      "/api/unlock?map=" + encodeURIComponent(state.map) +
       "&chunk=" + encodeURIComponent(chunkId));
     const tasks = Object.entries(delta.new_tasks).filter(([, v]) => Object.keys(v).length);
     const taskCount = tasks.reduce((n, [, v]) => n + Object.keys(v).length, 0);
@@ -1758,10 +1784,10 @@ async function previewUnlock(chunkId) {
  * would suffix the second `-2`, which reads as an accident rather than as a
  * choice. Whatever name is claimed comes back in the reply either way. */
 function askUnlock(chunkId) {
-  const suggested = (el.map.value || DEFAULT_MAP_ID).replace(/\//g, "-") + "-" + chunkId;
+  const suggested = (state.map || DEFAULT_MAP_ID).replace(/\//g, "-") + "-" + chunkId;
   openOverlay("Unlock " + chunkLabel(chunkId),
     tmpl`<p>Writes a new map under <code>cache/maps/unlocked/</code> holding
-      everything <b>${el.map.value}</b> holds plus this chunk. Nothing existing
+      everything <b>${state.map}</b> holds plus this chunk. Nothing existing
       is touched, and the derivation takes a second or two.</p>
       <div class="row"><input id="unlock-name" type="text" value="${suggested}"
         aria-label="Name for the new map" spellcheck="false" autocomplete="off"
@@ -1774,7 +1800,7 @@ function askUnlock(chunkId) {
     const name = field.value.trim() || suggested;
     closeOverlay();
     runAction("Unlock " + chunkLabel(chunkId), "/api/unlock",
-      { map: el.map.value, chunk: chunkId, name },
+      { map: state.map, chunk: chunkId, name },
       async (result) => {
         /* **Select rather than compare**, for the reason the Roll button was
          * changed: a comparison is exactly the state that hides the timeline,
@@ -1782,11 +1808,11 @@ function askUnlock(chunkId) {
          * did. Nothing is lost by selecting it - a saved unlock replays its own
          * single roll, so the chunk it added still draws green from that ledger
          * rather than from a comparison. */
-        const base = el.map.value;
+        const base = state.map;
         await loadMaps();
         if (result.open) {
-          el.map.value = result.open;
-          el.compare.value = "";
+          setMap(result.open);
+          setCompare("");
           state.step = null;
           state.timeline = null;
         }
@@ -1866,7 +1892,7 @@ function diffList(rows, kind, key) {
 }
 
 async function showBreakdown() {
-  const from = el.map.value, to = el.compare.value;
+  const from = state.map, to = state.compare;
   if (!from || !to) return;
   const title = from + " → " + to;
   openOverlay(title, tmpl`<p class="empty">Deriving both worlds…</p>`);
@@ -1923,7 +1949,7 @@ el.breakdown.addEventListener("click", showBreakdown);
 /* Nothing to compare is not an error worth a message - it is a button that
  * does not apply yet. */
 function syncBreakdown() {
-  el.breakdown.disabled = !el.map.value || !el.compare.value;
+  el.breakdown.disabled = !state.map || !state.compare;
 }
 
 /* ---- tasks pane -------------------------------------------------------- */
@@ -1941,10 +1967,10 @@ let taskPanel = null;
 const taskOff = new Set();
 
 async function loadTasks() {
-  if (taskPanel && taskPanel.map_id === el.map.value) return renderTasks();
+  if (taskPanel && taskPanel.map_id === state.map) return renderTasks();
   el["tasks-body"].innerHTML = tmpl`<p class="empty">Deriving…</p>`;
   try {
-    taskPanel = await getJSON("/api/tasks?map=" + encodeURIComponent(el.map.value));
+    taskPanel = await getJSON("/api/tasks?map=" + encodeURIComponent(state.map));
     renderTasks();
   } catch (error) {
     taskPanel = null;
@@ -2036,7 +2062,7 @@ let estimatePayload = null;
 async function loadEstimate() {
   el["estimate-body"].innerHTML = tmpl`<p class="empty">Pricing the outstanding work…</p>`;
   try {
-    estimatePayload = await getJSON("/api/estimate?map=" + encodeURIComponent(el.map.value));
+    estimatePayload = await getJSON("/api/estimate?map=" + encodeURIComponent(state.map));
     clearExpansions("estimate:");
     renderEstimate(estimatePayload);
   } catch (error) {
@@ -2264,7 +2290,7 @@ async function runFind() {
   try {
     const payload = await getJSON(
       "/api/search?q=" + encodeURIComponent(term) +
-      "&map=" + encodeURIComponent(el.map.value) + "&limit=40");
+      "&map=" + encodeURIComponent(state.map) + "&limit=40");
     if (run !== findRun) return;
     if (!payload.results.length) {
       body.innerHTML = tmpl`<p class="empty">Nothing matches ${term}.</p>`;
@@ -2426,7 +2452,7 @@ async function loadMapsPane() {
         await loadMaps();
         /* A `<select>` silently blanks when handed a value it has no option
          * for, and a blank map id is what `loadView` refuses to draw. */
-        if (result.map) el.map.value = result.map;
+        if (result.map) setMap(result.map);
         syncBreakdown();
         await loadView({ refit: true });
         loadMapsPane();
@@ -2445,17 +2471,17 @@ async function loadMapsPane() {
       const rolls = Number(document.getElementById("sim-rolls").value) || 1;
       const runs = Number(document.getElementById("sim-runs").value) || 1;
       runAction(`Simulate ${rolls} rolls`, "/api/simulate",
-        { map: el.map.value, name: el.map.value + "-sim", rolls, runs },
+        { map: state.map, name: state.map + "-sim", rolls, runs },
         async (result) => {
           /* **The result becomes the map, not the comparison.** It used to go
            * into the compare slot, which is exactly the state that hides the
            * timeline - so rolling a simulation hid the one thing you rolled it
            * to see. The base map moves to `compare` instead, which keeps the
            * "what did I gain" reading and adds the progression to it. */
-          const base = el.map.value;
+          const base = state.map;
           await loadMaps();
-          el.map.value = result.open;
-          el.compare.value = "";
+          setMap(result.open);
+          setCompare("");
           state.step = null;
           state.timeline = null;
           syncBreakdown();
@@ -2725,6 +2751,7 @@ const BOOT = {
 };
 
 el.map.addEventListener("change", async () => {
+  state.map = el.map.value;
   state.selected = null;
   taskPanel = null;
   /* Cleared *before* the view loads: a step index belongs to one run, and
@@ -2738,6 +2765,7 @@ el.map.addEventListener("change", async () => {
   await loadSections();
 });
 el.compare.addEventListener("change", async () => {
+  state.compare = el.compare.value;
   syncBreakdown();
   /* Comparing is a question about two maps and stepping is a question about
    * one map's past. Picking a comparison answers the first, so the strip goes
@@ -2814,10 +2842,10 @@ const TL_SERIES = [
 let tlSeries = "tasks";
 
 async function loadTimeline() {
-  if (!el.map.value) return hideTimeline();
+  if (!state.map) return hideTimeline();
   let payload;
   try {
-    payload = await getJSON("/api/timeline?map=" + encodeURIComponent(el.map.value));
+    payload = await getJSON("/api/timeline?map=" + encodeURIComponent(state.map));
   } catch {
     /* A fetched map has no ledger, which is the ordinary case rather than a
      * failure. Anything else here is equally not worth a toast: the map is
@@ -2831,7 +2859,7 @@ async function loadTimeline() {
    * connects that to the compare box beside it. The run is fetched first for
    * exactly that reason, so the page can tell "no history here" from "history
    * you cannot see from where you are standing". */
-  if (el.compare.value) return comparingNotice();
+  if (state.compare) return comparingNotice();
   state.timeline = payload;
   if (state.step === null) state.step = payload.steps.length - 1;
   renderTimeline();
@@ -2847,7 +2875,7 @@ function comparingNotice() {
   el["tl-chips"].innerHTML = `<button class="chip" id="tl-uncompare" type="button"
     data-tip="<b>Stop comparing</b><span class='sub'>A rewind and a comparison would need a third colour for &quot;gained by this roll but lost against the other side&quot;, so only one can be on.</span>">Clear comparison</button>`;
   document.getElementById("tl-uncompare").onclick = async () => {
-    el.compare.value = "";
+    setCompare("");
     syncBreakdown();
     await loadTimeline();
     await loadView();
@@ -3043,7 +3071,7 @@ async function showRoll(step) {
   openOverlay(title, tmpl`<p class="empty">Reading the ledger…</p>`);
   let roll;
   try {
-    roll = await getJSON("/api/roll?map=" + encodeURIComponent(el.map.value) + "&step=" + step);
+    roll = await getJSON("/api/roll?map=" + encodeURIComponent(state.map) + "&step=" + step);
   } catch (error) {
     return openOverlay(title, tmpl`<p class="empty">${error.message}</p>`);
   }
@@ -3221,7 +3249,7 @@ el["tl-details"].addEventListener("click", () => {
 });
 
 el["tl-hours"].addEventListener("click", () => {
-  const map = el.map.value;
+  const map = state.map;
   runAction("Cost " + map, "/api/timeline", { map }, async () => {
     await loadTimeline();
   });
@@ -3229,7 +3257,7 @@ el["tl-hours"].addEventListener("click", () => {
 
 async function poll() {
   renderBuild();
-  if (!state.live || !state.view || !el.map.value) return;
+  if (!state.live || !state.view || !state.map) return;
   try {
     const { revision } = await getJSON("/api/revision?" + mapQuery());
     if (revision !== state.revision) { taskPanel = null; await loadView(); }

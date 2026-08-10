@@ -486,6 +486,30 @@ def test_the_bottom_edge_is_shared_rather_than_stacked() -> None:
     # The page is what knows how tall the strip actually is.
     assert '--strip-h' in js
 
+def test_the_page_reads_its_identity_from_state_not_the_dom() -> None:
+    """**Which map you are looking at is data, not a `<select>`'s value.**
+
+    It used to be read back out of the element in twenty-odd places, which
+    made the control the source of truth and left no room for a state the
+    controls do not have an option for. `setMap`/`setCompare` are the only
+    writers, and they still write *through* the element - a `<select>` blanks
+    on a value it has no option for, and that validation is worth keeping.
+    """
+    _, js, _ = _resources()
+
+    # Twice in the setter (written, then read back) and once in the change
+    # listener that feeds it. Anywhere else is a reader still asking the DOM.
+    assert js.count("el.map.value") == 3, "a reader is still going to the DOM"
+    assert js.count("el.compare.value") == 3
+
+    for name, control in (("setMap", "el.map"), ("setCompare", "el.compare")):
+        setter = re.search(rf"function {name}\(id\) \{{(.*?)\n\}}", js, re.DOTALL)
+        assert setter is not None
+        # Written to, then read *back*: whatever the element accepted is what
+        # state takes, so an unmatched id still comes out blank.
+        assert f"{control}.value = id" in setter.group(1)
+        assert f"= {control}.value" in setter.group(1)
+
 def test_a_step_and_a_comparison_are_exclusive() -> None:
     """Two maps and a rewind would need a third colour for "gained by this
     roll but lost against the other side", which is nobody's question. The
@@ -495,11 +519,11 @@ def test_a_step_and_a_comparison_are_exclusive() -> None:
     query = re.search(r"function mapQuery\(\) \{(.*?)\n\}", js, re.DOTALL)
     assert query is not None
     assert 'params.set("step"' in query.group(1)
-    assert "else if (el.compare.value)" in query.group(1)
+    assert "else if (state.compare)" in query.group(1)
 
     load = re.search(r"async function loadTimeline\(\) \{(.*?)\n\}", js, re.DOTALL)
     assert load is not None
-    assert "el.compare.value" in load.group(1)
+    assert "state.compare" in load.group(1)
 
 def test_switching_map_forgets_the_step() -> None:
     """A step index belongs to one run. Carried across, it rewinds the new map
@@ -574,8 +598,8 @@ def test_rolling_opens_the_result_as_the_map(tmp_path: Path) -> None:
 
     handler = re.search(r'runAction\(`Simulate \$\{rolls\} rolls`.*?\n    \};', js, re.DOTALL)
     assert handler is not None
-    assert "el.map.value = result.open" in handler.group(0)
-    assert 'el.compare.value = ""' in handler.group(0)
+    assert "setMap(result.open)" in handler.group(0)
+    assert 'setCompare("")' in handler.group(0)
     assert "loadTimeline()" in handler.group(0)
 
 def test_unlocking_opens_the_result_as_the_map() -> None:
@@ -591,8 +615,8 @@ def test_unlocking_opens_the_result_as_the_map() -> None:
 
     handler = re.search(r'runAction\("Unlock " \+ chunkLabel\(chunkId\).*?\n      \}\);', js, re.DOTALL)
     assert handler is not None
-    assert "el.map.value = result.open" in handler.group(0)
-    assert 'el.compare.value = ""' in handler.group(0)
+    assert "setMap(result.open)" in handler.group(0)
+    assert 'setCompare("")' in handler.group(0)
     assert "loadTimeline()" in handler.group(0)
 
 def test_a_run_whose_strip_is_hidden_by_a_comparison_says_so() -> None:
@@ -608,7 +632,7 @@ def test_a_run_whose_strip_is_hidden_by_a_comparison_says_so() -> None:
     assert body is not None
     assert "comparingNotice()" in body.group(1)
     # Fetched first, or the page cannot tell the two empty states apart.
-    assert body.group(1).index("/api/timeline") < body.group(1).index("el.compare.value")
+    assert body.group(1).index("/api/timeline") < body.group(1).index("state.compare")
     # The way back is one click, and it is in the strip that explains it.
     assert 'id="tl-uncompare"' in js
     assert ".timeline.notice .tl-graph" in css
