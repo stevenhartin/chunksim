@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import pathlib
 from typing import Any
 
 import pytest
+
+PROJECT = pathlib.Path(__file__).resolve().parent.parent
 
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.costing.heuristics import (
@@ -736,3 +740,32 @@ def test_the_gathering_tables_cover_only_woodcutting() -> None:
     the missing factor, and they keep their guide joins instead.
     """
     assert set(TABLE_KINDS) == {"Agility", "Thieving", "Firemaking", "Woodcutting"}
+
+
+def test_the_giants_foundry_rates_are_the_wikis_own_alloy_tiers() -> None:
+    """**A minigame the export models and nothing rated.** All six preform
+    challenges are reachable on both cached maps and every one had a `default`
+    rate, so `training_options` dropped them and Smithing 1-99 was walked on
+    recipe tick-math - 874 hours, topped out by a bronze platebody at 24,341/hr.
+
+    The Giants' Foundry page publishes swords per hour against average XP per
+    hour for five alloy tiers, which map onto the export's six preforms
+    (bronze and iron are both "Lowest"). Pinned here because they are a hand
+    entry in `heuristics/overrides.json` rather than something the scrape
+    fetches, and a silent edit moves the whole climb: 874.1h -> 54.5h.
+    """
+    overrides = json.loads((PROJECT / "heuristics" / "overrides.json").read_text())
+    rates = {
+        task.split("Forge a")[-1].split("~|")[0].strip(): entry["Smithing"]["value"]
+        for task, entry in overrides["training"].items()
+        if "Giants' Foundry" in task
+    }
+
+    assert rates == {
+        "bronze": 48_000,
+        "n iron": 48_000,
+        "steel": 85_000,
+        "mithril": 135_000,
+        "n adamant": 195_000,
+        "rune": 276_000,
+    }

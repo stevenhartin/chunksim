@@ -43,6 +43,48 @@
         "source": "hand: Wintertodt, stated",
         "match": "exact"
       }
+    },
+    "Forge a bronze ~|preform|~ in the Giants' Foundry": {
+      "Smithing": {
+        "value": 48000,
+        "source": "wiki:Giants' Foundry",
+        "match": "exact"
+      }
+    },
+    "Forge an iron ~|preform|~ in the Giants' Foundry": {
+      "Smithing": {
+        "value": 48000,
+        "source": "wiki:Giants' Foundry",
+        "match": "exact"
+      }
+    },
+    "Forge a steel ~|preform|~ in the Giants' Foundry": {
+      "Smithing": {
+        "value": 85000,
+        "source": "wiki:Giants' Foundry",
+        "match": "exact"
+      }
+    },
+    "Forge a mithril ~|preform|~ in the Giants' Foundry": {
+      "Smithing": {
+        "value": 135000,
+        "source": "wiki:Giants' Foundry",
+        "match": "exact"
+      }
+    },
+    "Forge an adamant ~|preform|~ in the Giants' Foundry": {
+      "Smithing": {
+        "value": 195000,
+        "source": "wiki:Giants' Foundry",
+        "match": "exact"
+      }
+    },
+    "Forge a rune ~|preform|~ in the Giants' Foundry": {
+      "Smithing": {
+        "value": 276000,
+        "source": "wiki:Giants' Foundry",
+        "match": "exact"
+      }
     }
   },
   "slayer": {},

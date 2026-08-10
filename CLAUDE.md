@@ -655,6 +655,22 @@ open to its vaguest claimant: `Chop ~|logs|~` is contained in "Cutting camphor l
 claim that is a strict substring of another claim on the same guide is the less specific reading and
 is refused. Five joins removed, 311 -> 306.
 
+**The Giants' Foundry is what makes Smithing tractable, and nothing had rated it.** All six
+`Forge a <tier> ~|preform|~` challenges are reachable on both cached maps and every one carried a
+`default` rate, so `training_options` dropped them and the climb was walked on recipe tick-math -
+**874.1 hours**, topped out by a *bronze platebody* at 24,341/hr because it opens at level 18 and the
+running maximum never found better. The wiki's own page publishes swords per hour against average XP
+per hour for five alloy tiers, which map onto the six preforms (bronze and iron are both "Lowest"):
+48,000 / 85,000 / 135,000 / 195,000 / 276,000. Hand entries in `heuristics/overrides.json`, pinned by
+a test, and **Smithing 1 -> 99 is now 54.5h across five tiers, every band `exact`**.
+
+**The caveat is the one the material ranking exists to catch and cannot catch here.** A foundry
+challenge's `Items` is `AdamantMats[+]` - a family placeholder, not an item - and its `Output` is
+`None`, so no recipe joins it and `material_seconds_per_xp` is `0.0`. The rate is therefore the
+wiki's, quoted with the bars to hand, and the bars are not priced. That is optimistic on a chunk map
+in exactly the way `effective_xp_per_hour` was built to prevent, and it is stated here rather than
+hidden because the fix needs `[+]` family expansion in the material walk, not a different number.
+
 **A method is ranked on what it costs, not on what its action costs.** A published rate is quoted
 with the materials to hand - "299,000 an hour at anglerfish" describes the range, not the trip before
 it - and on a chunk map the trip is often most of the cost. Ranking on the published figure picked
