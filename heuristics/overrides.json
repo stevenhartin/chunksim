@@ -1,7 +1,13 @@
 {
   "levels": {},
   "quests": {},
-  "monsters": {},
+  "monsters": {
+    "Evil chicken outfit loot": {
+      "value": 1.0,
+      "source": "hand: bird's egg drop rate, ~1/hr while woodcutting",
+      "match": "exact"
+    }
+  },
   "training": {
     "Complete a beginner contract for ~|Mahogany Homes|~": {
       "Construction": {

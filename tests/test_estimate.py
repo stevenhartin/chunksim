@@ -1529,3 +1529,77 @@ def test_a_currency_can_be_qualified_by_the_shop_that_charges_it() -> None:
     ) == pytest.approx(4 * 3600)
     # The same currency name elsewhere has no rate and is refused.
     assert heuristics.shop_seconds("Other Shop", "Thing") is None
+
+
+def test_an_activity_a_valid_challenge_unlocks_is_a_provider() -> None:
+    """**The export says "doing this gives you a roll on that".** The Evil
+    chicken outfit is `Trade bird's eggs for nests*` at a Shrine, whose
+    `Output` names a `skillItems` table holding the four pieces at 1/1200. The
+    pieces are reachable the moment the trade is, and were unpriced because
+    nothing put the *table* in the provider set beside monsters and objects.
+    """
+    info = ChunkInfo(
+        {
+            "skillItems": {
+                "Nonskill": {"Egg loot": {"Evil chicken head": {"1": "1/1200"}}}
+            },
+            "challenges": {
+                "Nonskill": {"Trade eggs": {"Output": "Egg loot"}},
+                "Extra": {"Obtain an ~|evil chicken head|~": {"Items": ["Evil chicken head"]}},
+            },
+        }
+    )
+    derived = _derived(
+        challenges=ChallengeResult(
+            valid={"Nonskill": {"Trade eggs": True}}, unsupported=frozenset()
+        ),
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra",
+                    groups=(
+                        TaskGroup(name="Extra", active=("Obtain an ~|evil chicken head|~",)),
+                    ),
+                )
+            }
+        ),
+    )
+    heuristics = Heuristics(monsters={"Egg loot": Rate(1.0, "hand", "exact")})
+
+    result = _run(info, derived, heuristics)
+
+    (head,) = [item for item in result.items if item.item == "Evil chicken head"]
+    assert head.hours == pytest.approx(1200.0)
+
+
+def test_an_unlocked_activity_with_no_stated_rate_is_still_refused() -> None:
+    """**The gate that stops this pricing the other 322.** A minigame reward
+    table handed the 60/hr default would make its rarest drop look cheap, and
+    a guessed rate multiplied by a real drop chance is the same mistake
+    `combat_xp.best_target` refuses."""
+    info = ChunkInfo(
+        {
+            "skillItems": {"Nonskill": {"Egg loot": {"Rare thing": {"1": "1/1200"}}}},
+            "challenges": {
+                "Nonskill": {"Trade eggs": {"Output": "Egg loot"}},
+                "Extra": {"Obtain a ~|rare thing|~": {"Items": ["Rare thing"]}},
+            },
+        }
+    )
+    derived = _derived(
+        challenges=ChallengeResult(
+            valid={"Nonskill": {"Trade eggs": True}}, unsupported=frozenset()
+        ),
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra",
+                    groups=(TaskGroup(name="Extra", active=("Obtain a ~|rare thing|~",)),),
+                )
+            }
+        ),
+    )
+
+    result = _run(info, derived, Heuristics())
+
+    assert "Rare thing" in result.unpriced

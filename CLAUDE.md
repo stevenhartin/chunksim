@@ -436,6 +436,17 @@ That was **16 of the 75 unpriced items** on the benchmark map. The family is exp
 `resolve` (the key is not an item name and will not resolve to one) and the **cheapest** member wins,
 which is the same reading `_required_kills` takes when it stops at the first reachable one.
 
+**An activity a valid challenge unlocks is a provider, not just monsters, objects and NPCs.** The
+export models the Evil chicken outfit as `Trade bird's eggs for nests*` at a Shrine, whose `Output`
+names a `skillItems.Nonskill` table holding the four pieces at 1/1200 each - so the pieces are
+reachable the moment the trade is, and they were unpriced because nothing put the *table* in the
+provider set. **Gated on someone having stated a rate for it**, which is what stops the same rule
+pricing the other 322 such tables at the 60/hr default: a minigame reward table given a guessed rate
+makes its rarest drop look cheap, and a guessed rate multiplied by a real drop chance is the mistake
+`combat_xp.best_target` already refuses. The rate itself is a hand entry in
+`heuristics/overrides.json` - a bird's egg is about one an hour while woodcutting, so a piece is
+1,200 hours.
+
 **Six currencies have rates now**, and only one is measured: marks of grace, off the rooftop table.
 The rest are stated figures - 500,000 coins, 25,000 Tokkul, 200 zeal, 100 Mahogany Homes points, 80
 tithe, 40 abyssal pearls an hour - pinned by a test because a silent edit to one moves every item

@@ -1097,6 +1097,26 @@ class _Setup:
     slayer: MasterRate | None
 
 
+def _challenge_outputs(
+    chunk_info: ChunkInfo, valid: Mapping[str, Mapping[str, Any]]
+) -> set[str]:
+    """Everything a *valid* challenge names as its `Output`.
+
+    Usually an item; sometimes the name of a `skillItems` table, which is how
+    the export says "doing this gives you a roll on that".
+    """
+    found: set[str] = set()
+    for category, names in valid.items():
+        challenges = _mapping(chunk_info.challenges, category)
+        for name, ok in names.items():
+            if not ok:
+                continue
+            entry = challenges.get(name)
+            if isinstance(entry, dict) and isinstance(entry.get("Output"), str):
+                found.add(entry["Output"])
+    return found
+
+
 def _setup(
     state: MapState,
     derived: Derived,
@@ -1139,6 +1159,26 @@ def _setup(
     # need a gargoyle task, which needs Slayer 75; at today's level that task
     # is unassignable and the drop would read as unobtainable forever. It
     # isn't - the skilling bucket is already costing the climb.
+    # **An activity a valid challenge unlocks is a provider too.** The export
+    # models the Evil chicken outfit as `Trade bird's eggs for nests*` at a
+    # Shrine, whose `Output` names the `skillItems.Nonskill` table holding the
+    # four pieces at 1/1200 - so the pieces are reachable the moment the trade
+    # is, and were unpriced because nothing put the *table* in the provider
+    # set beside monsters, objects and NPCs.
+    #
+    # **Gated on someone having stated a rate**, which is what keeps this from
+    # pricing the other 322 such tables at the 60/hr default: a minigame reward
+    # table given a guessed rate would make its rarest drop look cheap, and a
+    # guessed rate multiplied by a real drop chance is the mistake
+    # `combat_xp.best_target` already refuses.
+    unlocked_activities = frozenset(
+        name
+        for name in _challenge_outputs(state.chunk_info, valid)
+        if any(name in _mapping(state.chunk_info.skill_items, skill)
+               for skill in state.chunk_info.skill_items)
+        and not heuristics.kills_per_hour(name).source.startswith("default")
+    )
+    providers = providers | unlocked_activities
     gate_masters = reachable_rates
     walk = _Walk(
         chunk_info=state.chunk_info,
