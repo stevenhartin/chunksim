@@ -237,3 +237,31 @@ def test_a_recipe_priced_in_coins_costs_the_time_to_earn_them() -> None:
 
     assert chosen is not None
     assert chosen[2] == pytest.approx(20 * 3600)
+
+
+def test_a_computed_rate_slower_than_the_floor_is_refused() -> None:
+    """**The floor is a stand-in for ignorance, not a speed.** A computed rate
+    *below* it says this model is missing something about the method far more
+    often than it says the method is that slow - and the band walk applies the
+    best available rate to a whole climb, so one bad low-level number prices
+    everything above it.
+
+    Supercompost is the case: 8.5 xp for an action that gathers 15 watermelons,
+    priced at 173 xp/hr, and the only Farming method the recipe data reaches on
+    the benchmark map. It made **Farming 1 -> 99 cost 75,353 hours**.
+    """
+    computed = {
+        "Make ~|supercompost|~": ActionRate(
+            task="Make ~|supercompost|~", skill="Farming", xp_per_hour=173.0,
+            experience=8.5, ticks=60, input_seconds=140.0, output="Supercompost",
+        ),
+        "Cook a ~|shark|~": ActionRate(
+            task="Cook a ~|shark|~", skill="Cooking", xp_per_hour=250_000.0,
+            experience=210.0, ticks=4, input_seconds=0.0, output="Shark",
+        ),
+    }
+
+    merged = apply({}, computed)
+
+    assert "Make ~|supercompost|~" not in merged
+    assert merged["Cook a ~|shark|~"]["Cooking"].value == 250_000.0

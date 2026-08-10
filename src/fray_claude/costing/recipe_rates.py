@@ -59,7 +59,7 @@ from dataclasses import dataclass, field
 import re
 from typing import Any, Callable, Mapping, Sequence
 
-from fray_claude.costing.heuristics import Rate
+from fray_claude.costing.heuristics import DEFAULT_XP_PER_HOUR, Rate
 from fray_claude.derive.task_names import strip_task_markup
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.model.summary import _mapping
@@ -355,6 +355,20 @@ def apply(
             continue
         existing = merged.get(task, {}).get(rate.skill)
         if existing is not None and existing.match != "default":
+            continue
+        # **A computed rate slower than the floor is not evidence.** The floor
+        # is a deliberate stand-in for ignorance, set low so a gap reads as
+        # slow rather than free; a computed number *below* it says this model
+        # is missing something about the method - a bulk action, a faster
+        # variant, materials someone already has - far more often than it says
+        # the method is genuinely glacial.
+        #
+        # It is not hypothetical. Supercompost is the one Farming method the
+        # recipe data reaches on the benchmark map, and 15 watermelons an
+        # action price it at 173 xp/hr, which the band walk then applied to
+        # the whole climb: **Farming 1 -> 99 at 75,353 hours**. 130 of 852
+        # computed rates sit below the floor, across nine skills.
+        if rate.xp_per_hour < DEFAULT_XP_PER_HOUR:
             continue
         merged.setdefault(task, {})[rate.skill] = Rate(
             value=rate.xp_per_hour, source="recipe", match=COMPUTED_MATCH

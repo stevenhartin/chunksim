@@ -506,6 +506,16 @@ the sawmill charges - while an unknown *currency* is still refused.
 Together those took Construction's best computed build from 296,471 xp/hr to 69,121, which puts the
 hand-verified **Mahogany Homes at 165,000 top of the list** where it belongs.
 
+**A computed rate slower than the 1,000/hr floor is refused.** The floor is a deliberate stand-in for
+ignorance, not a speed, and a computed number below it says the model is missing something about that
+method - a bulk action, a faster variant, materials someone already has - far more often than it says
+the method is genuinely glacial. Supercompost is the case that forced the rule: 8.5 xp for an action
+that gathers fifteen watermelons prices at 173 xp/hr, it is the *only* Farming method the recipe data
+reaches on the benchmark map, and the band walk applied it to the whole climb - **Farming 1 → 99 at
+75,353 hours**. 130 of 852 computed rates sit below the floor across nine skills; refusing them puts
+Farming back to 13,034h *marked as defaulted*, which is honestly unknown rather than confidently
+wrong.
+
 **Construction joins on the task's own name, and it is the only skill that needs to.** Its challenges
 carry `Output Object` - the furniture - where every other skill carries `Output`, so the exact join
 reached **28 of its 602** methods. The recipe's output *is* the furniture name and the task says so
