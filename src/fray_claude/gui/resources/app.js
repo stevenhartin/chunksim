@@ -93,6 +93,10 @@ const state = {
   step: null,
   /* Which install is serving this page, for the watermark. Fetched once. */
   build: null,
+  /* Chunk id -> the name a person calls it. Static per export, fetched with
+   * `areas` on boot. Empty until then, which `chunkLabel` treats as "no name
+   * known" rather than as an error. */
+  labels: {},
 };
 
 const el = {};
@@ -1118,10 +1122,10 @@ function showHovered(sx, sy) {
   const at = chunkToGrid(chunkId);
   const cell = at && state.cells.get(at[0] + "," + at[1]);
   const candidate = state.candidates.get(chunkId);
-  const bits = [chunkId];
-  /* The name first among the words, because "Kurask Lair" is what you are
-   * looking for and the id is what you paste into `fray unlock`. */
-  if (state.areas[chunkId]) bits.push(state.areas[chunkId]);
+  /* Name and id together - `chunkLabel` puts the name first, because that is
+   * what you are looking for, and keeps the id, which is what you paste into
+   * `fray unlock`. */
+  const bits = [chunkLabel(chunkId)];
   if (cell) bits.push(cell.state);
   if (candidate) bits.push("#" + candidate.number);
   el.hover.textContent = bits.join("  ");
@@ -1571,7 +1575,7 @@ async function selectChunk(chunkId) {
     return;
   }
   showTab("chunk");
-  el["chunk-body"].innerHTML = tmpl`<p class="empty">Reading ${chunkId}…</p>`;
+  el["chunk-body"].innerHTML = tmpl`<p class="empty">Reading ${chunkLabel(chunkId)}…</p>`;
   try {
     chunkDetail = await getJSON(
       "/api/chunk?map=" + encodeURIComponent(el.map.value) +
@@ -1755,7 +1759,7 @@ async function previewUnlock(chunkId) {
  * choice. Whatever name is claimed comes back in the reply either way. */
 function askUnlock(chunkId) {
   const suggested = (el.map.value || DEFAULT_MAP_ID).replace(/\//g, "-") + "-" + chunkId;
-  openOverlay("Unlock " + chunkId,
+  openOverlay("Unlock " + chunkLabel(chunkId),
     tmpl`<p>Writes a new map under <code>cache/maps/unlocked/</code> holding
       everything <b>${el.map.value}</b> holds plus this chunk. Nothing existing
       is touched, and the derivation takes a second or two.</p>
@@ -1769,7 +1773,7 @@ function askUnlock(chunkId) {
   const go = () => {
     const name = field.value.trim() || suggested;
     closeOverlay();
-    runAction("Unlock " + chunkId, "/api/unlock",
+    runAction("Unlock " + chunkLabel(chunkId), "/api/unlock",
       { map: el.map.value, chunk: chunkId, name },
       async (result) => {
         /* **Select rather than compare**, for the reason the Roll button was
@@ -1792,7 +1796,7 @@ function askUnlock(chunkId) {
         await loadCandidates();
         await loadSections();
         loadMapsPane();
-        if (result.open) toast("Unlocked " + chunkId + " on " + base + " — the strip shows what it added");
+        if (result.open) toast("Unlocked " + chunkLabel(chunkId) + " on " + base + " — the strip shows what it added");
       });
   };
   document.getElementById("unlock-no").onclick = closeOverlay;
@@ -2919,7 +2923,7 @@ function renderTimeline() {
   el["tl-prev"].disabled = state.step === 0;
   el["tl-next"].disabled = state.step === last;
   el["tl-step"].textContent = at.chunk
-    ? `${state.step}/${last} · ${at.chunk}`
+    ? `${state.step}/${last} · ${chunkLabel(at.chunk)}`
     : `start · ${at.unlocked_chunks}`;
 
   document.documentElement.style.setProperty(
@@ -3042,10 +3046,13 @@ async function showRoll(step) {
   }
   const groups = Object.entries(roll.tasks_by_skill_names || {});
   let out = tmpl`<dl class="kv">
-    <dt>Chunk</dt><dd><code>${roll.chunk}</code></dd>
+    <dt>Chunk</dt><dd>${chunkLabel(roll.chunk)}</dd>
     <dt>Tasks</dt><dd>${roll.tasks}</dd>
     <dt>Sections</dt><dd>${roll.sections}</dd>
     <dt>BiS upgrades</dt><dd>${roll.bis_upgrades}</dd></dl>`;
+
+  out += rollHours(roll.hours);
+
   if (!groups.length) {
     out += tmpl`<p class="empty">This roll opened no new tasks.</p>`;
   }
@@ -3058,7 +3065,7 @@ async function showRoll(step) {
     out += "</ul>";
   }
   openOverlay(
-    "Roll " + step + " · " + roll.chunk,
+    "Roll " + step + " · " + chunkLabel(roll.chunk),
     out,
     tmpl`<button id="roll-focus" type="button">Show on map</button>`,
   );
@@ -3067,6 +3074,67 @@ async function showRoll(step) {
     goToRoll(step);
   };
   ownsMore("roll", () => showRoll(step));
+}
+
+/* **What this roll cost, drawn the way the Estimate tab draws the total.**
+ * Same `donut`, same bucket colours, same "biggest first" ordering, because it
+ * is the same estimator answering a narrower question - the buckets here are
+ * `timeline.added_estimate`, this roll's own additions rather than everything
+ * outstanding.
+ *
+ * The per-item rows are what the bar chart cannot show: a roll worth 3,050h is
+ * a number until you see that 343h of it is one harpoon. Items carry the tasks
+ * they answer, because the same drop usually satisfies several and charging it
+ * once is the estimator's own rule.
+ *
+ * Absent when the server could not price it - no export, no scraped rates, or
+ * step 0, which is a baseline and not a roll. The overlay then reads exactly as
+ * it did before this existed. */
+function rollHours(priced) {
+  if (!hours || !priced.total_hours) return "";
+  const ordered = Object.entries(priced.buckets)
+    .filter(([, value]) => value > 0)
+    .sort((a, b) => b[1] - a[1]);
+  if (!ordered.length) return "";
+
+  let out = tmpl`<h3>Hours this roll added <span class="num">${hours(priced.total_hours)}</span></h3>`;
+  out += '<div class="pie-row">' + donut(ordered, priced.total_hours) + '<div class="pie-key">';
+  for (const [name, value] of ordered) {
+    const tip = tmpl`<b>${label(name)}</b><span class="sub">${hours(value)} · ${Math.round((value / priced.total_hours) * 100)}% of this roll</span>`;
+    out += tmpl`<span data-tip="${tip}"><i class="sw" style="background:${BUCKET_COLOURS[name] || "#858d9c"}"></i>${label(name)}</span>`;
+  }
+  out += "</div></div>";
+
+  /* **Per item, not per task**, and the difference is the estimator's: one
+   * whip answers three tasks and you obtain one whip, so charging per task
+   * would triple it. The tasks ride along in the tooltip, which is where "why
+   * am I doing this" belongs. */
+  const rows = (priced.items || []).filter((row) => row.hours > 0);
+  if (rows.length) {
+    out += tmpl`<h3>Longest to obtain <span class="num">${rows.length}</span></h3><ul class="list">`;
+    out += withMore(rows, "roll:hours", 10, (row) => {
+      const tip = tmpl`<b>${row.item}</b><span class="sub">${label(row.bucket)}${row.source ? " · from " + row.source : ""}</span><span class="hint">${row.tasks.join(", ")}</span>`;
+      return tmpl`<li data-tip="${tip}"><span class="name">${row.item}</span><span class="num">${hours(row.hours)}</span></li>`;
+    });
+    out += "</ul>";
+  }
+
+  const quests = (priced.quests || []).filter((row) => row.hours > 0);
+  if (quests.length) {
+    out += tmpl`<h3>Quests <span class="num">${quests.length}</span></h3><ul class="list">`;
+    out += withMore(quests, "roll:quests", 10, (row) =>
+      tmpl`<li data-tip="${tmpl`<b>${row.task}</b><span class="sub">${row.detail || ""}</span>`}"><span class="name">${row.task}</span><span class="num">${hours(row.hours)}</span></li>`);
+    out += "</ul>";
+  }
+
+  const skills = priced.skills || [];
+  if (skills.length) {
+    out += tmpl`<h3>Skilling <span class="num">${skills.length}</span></h3><ul class="list">`;
+    out += withMore(skills, "roll:skills", 10, (row) =>
+      tmpl`<li><span class="name">${row.skill}</span><span class="num">${hours(row.hours)}</span></li>`);
+    out += "</ul>";
+  }
+  return out;
 }
 
 async function setStep(step) {
@@ -3112,11 +3180,30 @@ async function poll() {
  * independent, so it is asked for once and never invalidated - a new export
  * arrives through `fray chunkinfo`, which restarts nothing but does reset
  * `Derivations`, and a reload picks it up. */
+/* **"Mount Karuulm (5179)" wherever a bare id was.** The id is what you paste
+ * into `fray unlock` and what the export keys on, so it never goes away; the
+ * name is what you are actually looking at. Falls back to the bare id when the
+ * export names neither a `Nickname` nor a `Name`, which is most of the sea.
+ *
+ * Not used in the chunk panel: that shows the name as its heading and the id
+ * beneath, so a combined label there would print one of them twice. */
+function chunkLabel(chunkId) {
+  if (!chunkId) return "";
+  const name = state.labels[chunkId];
+  return name ? `${name} (${chunkId})` : String(chunkId);
+}
+
 async function loadAreas() {
   try {
     const payload = await getJSON("/api/areas");
     state.areas = payload.areas || {};
+    state.labels = payload.labels || {};
     invalidate();
+    /* **The names arrive after the first paint**, deliberately - the map draws
+     * without them and boot does not wait on a 30KB read. Anything already on
+     * screen that writes a chunk id has to be told, or the strip keeps the bare
+     * number until the next thing that happens to redraw it. */
+    if (state.timeline) renderTimeline();
   } catch {
     /* Labels are an improvement, not a precondition: the map draws without
      * them and every id still works. */

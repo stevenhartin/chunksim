@@ -83,7 +83,7 @@ from fray_claude.derive.pipeline import Derived, MapState, load_map_state
 from fray_claude.derive.search import WorldIndex, build_world_index
 from fray_claude.runs.simulate import UnlockRecord, simulate_rolls, simulated_payload
 from fray_claude.model.summary import _mapping
-from fray_claude.runs.timeline import added_hours
+from fray_claude.runs.timeline import added_estimate, added_hours
 from fray_claude.runs.timeline import stamp as timeline_stamp
 from fray_claude.derive.unlock import UnlockDelta
 
@@ -296,10 +296,21 @@ class PriceSpec:
     #: hits against 0/13. `None` falls back to the run's payload, which is
     #: slower and not different; see `cache.read_base_payload`.
     base: Mapping[str, Any] | None = None
+    #: Whether to let `dps_bridge` recompute the rates. `True` is what a
+    #: reprice wants; `False` exists so a *breakdown* can be computed under the
+    #: same rates as the series it is breaking down. A run stores the wiki-rate
+    #: answer when it is simulated, so a pie priced from gear beside a bar
+    #: priced from the wiki would be two different questions with one figure
+    #: each, and the smaller number would look like a bug.
+    enrich: bool = True
 
 
-def price_slice(spec: PriceSpec) -> list[tuple[int, float, float]]:
+def _walk(spec: PriceSpec) -> list[tuple[int, EstimateResult, float]]:
     """Price one contiguous slice of a run's rolls. Runs in a worker process.
+
+    A projection of `_walk`: the totals, which are all the bars need and all
+    that is worth pickling back out of a worker. `price_detail` keeps the
+    `EstimateResult` instead.
 
     Returns `(step, hours this roll added, hours left after it)` per step -
     **except its first**, which is only there as the baseline the second one
@@ -334,14 +345,14 @@ def price_slice(spec: PriceSpec) -> list[tuple[int, float, float]]:
     levels = infer_levels(state)
     pricing = pricing_digests(spec.root)
 
-    out: list[tuple[int, float, float]] = []
+    out: list[tuple[int, EstimateResult, float]] = []
     fights: Any = None
     before: EstimateResult | None = None
     for position, (order, held) in enumerate(spec.steps):
         unlocked = dict.fromkeys(held, True)
         derived = cached_derive(state, unlocked, digests, root=spec.root)
         heuristics = pricer.heuristics
-        if dps_bridge.DPS_AVAILABLE:
+        if spec.enrich and dps_bridge.DPS_AVAILABLE:
             goals = goal_levels(state, derived, dict(levels))
 
             # **The two optimisations are for different presses.** A stored
@@ -377,9 +388,36 @@ def price_slice(spec: PriceSpec) -> list[tuple[int, float, float]]:
         # report, and the slice that owns it reports it.
         baseline = position == 0 and order > 0
         if not baseline:
-            out.append((order, added_hours(before, result), sum(result.buckets.values())))
+            out.append((order, added_estimate(before, result), sum(result.buckets.values())))
         before = result
     return out
+
+
+def price_slice(spec: PriceSpec) -> list[tuple[int, float, float]]:
+    """The totals `price_steps` pickles back out of each worker."""
+    return [
+        (order, round(sum(fresh.buckets.values()), 4), total)
+        for order, fresh, total in _walk(spec)
+    ]
+
+
+def price_detail(spec: PriceSpec) -> EstimateResult | None:
+    """The **breakdown** behind one step's bar, rather than its total.
+
+    `price_slice` walks a slice and keeps one number per step; the roll details
+    overlay wants the last step's whole `EstimateResult` - the buckets to draw
+    as a pie, and the items behind them with their hours. Rather than a second
+    pricing loop that could disagree with the bars, this runs the same one and
+    keeps what it normally discards: hand it two steps, `[k-1, k]`, and it
+    returns `added_estimate` for `k`.
+
+    Runs in-process, not in a pool: it is one step, on a click, and the
+    derivations it needs are the ones the timeline already cached.
+    """
+    if not spec.steps:
+        return None
+    walked = _walk(spec)
+    return walked[-1][1] if walked else None
 
 def _base_of(spec: PriceSpec) -> Mapping[str, Any]:
     """The state a slice derives against: the run's base, or the run itself.

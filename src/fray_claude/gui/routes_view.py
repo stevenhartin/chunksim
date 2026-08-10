@@ -19,6 +19,9 @@ export and no `derive`, which is what lets the slider redraw as you drag it.
 
 from __future__ import annotations
 
+from fray_claude.derive.task_names import strip_task_markup
+from fray_claude.runs.batch import PriceSpec, price_detail
+from fray_claude.store.cache import CacheMissError
 from fray_claude.runs.timeline import matches as timeline_matches
 from fray_claude.runs.timeline import stamp as timeline_stamp
 
@@ -229,4 +232,78 @@ def _timeline_payload(map_id: str, ctx: Context) -> dict[str, Any]:
         # Without the extra there is not, however the numbers were computed.
         "can_enrich": dps_bridge.DPS_AVAILABLE and not (enriched and has_hours),
         "dps": dps_bridge.DPS_AVAILABLE,
+    }
+
+
+def roll_detail(map_id: str, index: int, ctx: Context) -> dict[str, Any] | None:
+    """The hours behind one roll, broken down the way the Estimate tab is.
+
+    **Computed on the click, not stored with the run.** `timeline.json` keeps
+    one number per step because that is what the bars need, and a run of the
+    real export opens 239 tasks in a single roll - storing every item and its
+    hours for every step would be most of a megabyte written on every
+    simulation, for a dialog most runs never open.
+
+    So this prices two steps, `k-1` and `k`, through the same `_walk` the bars
+    go through, and keeps the `EstimateResult` that `price_slice` throws away.
+    On a run whose timeline has been computed both derivations are already in
+    `cache/derived/`, which is the case this is fast in.
+
+    `None` rather than an error when it cannot be priced - no export, no
+    scraped rates, or step 0, which is a baseline and not a roll. The overlay
+    then draws what it always drew; the pie is an addition, not a precondition.
+    """
+    steps = _run_steps(map_id, ctx)
+    if not 0 < index < len(steps):
+        return None
+    # **Priced the way the bar was priced.** A run stores the wiki-rate answer
+    # when it is simulated and only a reprice upgrades it, so enriching here
+    # unconditionally would put a gear-priced pie under a wiki-priced bar and
+    # invite the reader to trust the difference.
+    added, _totals, enriched = _cached_hours(map_id, ctx)
+    held = [sorted(steps[index - 1].unlocked), sorted(steps[index].unlocked)]
+    try:
+        result = price_detail(
+            PriceSpec(
+                map_id=map_id,
+                steps=tuple((order, tuple(chunks)) for order, chunks in zip((index - 1, index), held)),
+                root=ctx.root,
+                chunkinfo_path=None,
+                base=cache.read_base_payload(map_id, ctx.root),
+                enrich=enriched if added is not None else True,
+            )
+        )
+    except (CacheMissError, OSError):
+        return None
+    if result is None:
+        return None
+    # **Two decimals, because `timeline.series` uses two.** The pie sits
+    # directly under the bar it explains, so a total that renders as a
+    # hundredth apart from it invites the reader to look for a reason there
+    # is not one.
+    return {
+        "total_hours": round(sum(result.buckets.values()), 2),
+        "buckets": {name: round(value, 2) for name, value in result.buckets.items()},
+        # The rows behind the slices: what this roll actually put in front of
+        # you, longest first, with the tasks each one answers.
+        "items": [
+            {
+                "item": item.item,
+                "hours": round(item.hours, 4),
+                "bucket": item.bucket,
+                "source": item.source,
+                "tasks": [strip_task_markup(name) for name in item.tasks],
+            }
+            for item in sorted(result.items, key=lambda i: -i.hours)
+        ],
+        "quests": [
+            {"task": strip_task_markup(task.task), "hours": round(task.hours, 4),
+             "detail": task.detail}
+            for task in sorted(result.tasks, key=lambda t: -t.hours)
+        ],
+        "skills": [
+            {"skill": skill.skill, "hours": round(skill.hours, 4)}
+            for skill in sorted(result.skills, key=lambda s: -s.hours)
+            if skill.hours > 0
+        ],
     }

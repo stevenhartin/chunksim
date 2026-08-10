@@ -62,7 +62,12 @@ from fray_claude.gui.routes_reference import (
     _static,
     _tile_source,
 )
-from fray_claude.gui.routes_view import _run_steps, _timeline_payload, build_map_view
+from fray_claude.gui.routes_view import (
+    _run_steps,
+    _timeline_payload,
+    build_map_view,
+    roll_detail,
+)
 
 #: The port `fray-gui` binds unless told otherwise. Arbitrary, and high enough
 #: to need no privileges.
@@ -210,7 +215,11 @@ def handle_request(
             # does not depend on any map - so no `map` parameter and no
             # derivation. It does need the export parsed; that is why the
             # browser asks for it once at boot rather than per view.
-            return _json({"areas": ctx.derivations.chunk_info().area_names()})
+            info = ctx.derivations.chunk_info()
+            # `labels` rides along with `areas` because both are static per
+            # export and the page wants them at the same moment - one parse,
+            # one request, ~30KB of names.
+            return _json({"areas": info.area_names(), "labels": info.chunk_labels()})
 
         if path == "/api/tiles":
             return _json(_tile_source(ctx))
@@ -369,6 +378,10 @@ def handle_request(
                         for skill, names in sorted(roll.tasks_added.items())
                         if names
                     },
+                    # The hours behind this one roll, priced on the click. See
+                    # `routes_view.roll_detail`: `None` when it cannot be
+                    # priced, and the overlay simply omits the chart.
+                    "hours": roll_detail(map_id, index, ctx),
                 }
             )
 

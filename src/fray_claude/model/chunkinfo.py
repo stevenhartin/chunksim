@@ -135,6 +135,31 @@ class ChunkInfo:
                 found[chunk_id] = name
         return found
 
+    def chunk_labels(self) -> dict[str, str]:
+        """Chunk id -> the name a person would call it, where there is one.
+
+        **Two fields, and they are complementary rather than alternatives.**
+        `Nickname` names 1,172 ordinary regions (`5179` is Mount Karuulm);
+        `Name` names the 523 places the export stores by name instead of by
+        square (`6727` is Grotesque Guardians' Lair, and has no nickname).
+        Neither covers the other, so the label is the first of the two that is
+        there and the id stands alone when neither is.
+
+        Separate from `area_names`, which answers a different question - which
+        chunks *are* a named place, for putting it on the map. This is for
+        writing "Mount Karuulm (5179)" wherever a bare id was.
+        """
+        found: dict[str, str] = {}
+        for chunk_id, entry in self.chunks.items():
+            if not isinstance(entry, dict):
+                continue
+            for key in ("Nickname", "Name"):
+                label = entry.get(key)
+                if isinstance(label, str) and label:
+                    found[chunk_id] = label
+                    break
+        return found
+
     def _string_list(self, key: str) -> list[str]:
         value = self.data.get(key)
         if not isinstance(value, list):

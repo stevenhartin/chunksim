@@ -587,3 +587,35 @@ def test_a_roll_outside_the_run_is_a_400(tmp_path: Path) -> None:
     assert _get("/api/roll", ctx, map=map_id, step="9").status == HTTPStatus.BAD_REQUEST
     assert _get("/api/roll", ctx, map=map_id, step="x").status == HTTPStatus.BAD_REQUEST
     assert _get("/api/roll", ctx, map=map_id).status == HTTPStatus.BAD_REQUEST
+
+
+def test_a_rolls_breakdown_is_absent_rather_than_wrong_when_it_cannot_be_priced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**The pie is an addition, not a precondition.**
+
+    Pricing one roll needs the export and the scraped rates. A run cached
+    without either still has a ledger, so the overlay must keep showing what it
+    always showed - the chunk, the counts, the task names - with `hours: None`
+    rather than a 500 or a zeroed chart that reads as "this roll cost nothing".
+    """
+    _write_run(tmp_path, "batch", [LUMBRIDGE, NORTH], [NORTH])
+    ctx = Context(root=tmp_path)
+
+    payload = _body(_get("/api/roll", ctx, map="batch", step="1"))
+
+    assert payload["chunk"] == NORTH
+    assert payload["hours"] is None
+
+
+def test_step_zero_has_no_breakdown_because_it_is_not_a_roll(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Step 0 is the state the run started from - a baseline, not a roll - so
+    there is no "hours this roll added" to break down."""
+    _write_run(tmp_path, "batch", [LUMBRIDGE, NORTH], [NORTH])
+
+    payload = _body(_get("/api/roll", Context(root=tmp_path), map="batch", step="0"))
+
+    assert payload["chunk"] is None
+    assert payload["hours"] is None

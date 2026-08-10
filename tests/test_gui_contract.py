@@ -375,9 +375,13 @@ def test_the_area_labels_are_drawn_over_the_hull_and_read_the_same_map() -> None
     assert layers is not None
     order = [n.strip() for n in layers.group(1).replace("\n", " ").split(",") if n.strip()]
     assert order.index("drawAreas") > order.index("drawHull")
-    # The readout and the labels both read `state.areas`, which `/api/areas`
-    # fills - not a second copy that could drift.
-    assert "state.areas[chunkId]" in source
+    # **Two maps, one request, no second copy that could drift.** `/api/areas`
+    # carries `areas` (which regions *are* a named place, for the labels drawn
+    # on the map) and `labels` (what to call a chunk, for every place an id is
+    # written); `loadAreas` fills both and nothing else writes either.
+    assert "state.areas = payload.areas" in source
+    assert "state.labels = payload.labels" in source
+    assert source.count("state.labels[chunkId]") == 1, "chunkLabel is the only reader"
     assert 'getJSON("/api/areas")' in source
 
 def test_the_page_strips_task_markup_for_display() -> None:
@@ -585,7 +589,7 @@ def test_unlocking_opens_the_result_as_the_map() -> None:
     """
     _, js, _ = _resources()
 
-    handler = re.search(r'runAction\("Unlock " \+ chunkId.*?\n      \}\);', js, re.DOTALL)
+    handler = re.search(r'runAction\("Unlock " \+ chunkLabel\(chunkId\).*?\n      \}\);', js, re.DOTALL)
     assert handler is not None
     assert "el.map.value = result.open" in handler.group(0)
     assert 'el.compare.value = ""' in handler.group(0)
@@ -687,3 +691,22 @@ def test_a_deep_link_to_a_run_falls_back_to_its_batch() -> None:
     body = re.search(r"async function loadMaps\(\) \{(.*?)\n\}", js, re.DOTALL)
     assert body is not None
     assert '.split("/")[0]' in body.group(1)
+
+
+def test_every_collapsible_list_has_an_owner_to_redraw_it() -> None:
+    """**`Show 24 more` is wired by a naming convention, not by a handler.**
+
+    The delegated click looks its owner up as `key.split(":")[0]`, so a list
+    keyed `roll-hours` finds nothing and the button does nothing at all - no
+    error, no redraw, just a control that ignores you. Every key `withMore` is
+    given must therefore have a registered prefix before the first colon.
+    """
+    _, js, _ = _resources()
+
+    keys = set(re.findall(r'withMore\([^,]+,\s*"([^"]+)"', js))
+    keys |= {m for m in re.findall(r'withMore\([^,]+,\s*"([^"]+)" \+', js)}
+    owners = set(re.findall(r'ownsMore\("([^"]+)"', js))
+
+    assert owners, "no list owners registered at all"
+    for key in keys:
+        assert key.split(":")[0] in owners, f"{key!r} has no owner to redraw it"

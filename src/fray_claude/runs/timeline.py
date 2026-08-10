@@ -257,14 +257,29 @@ def added_hours(previous: "EstimateResult | None", current: "EstimateResult") ->
     Estimate tab's total.** They are what each roll cost you, not a
     decomposition of what is left.
     """
+    return round(sum(added_estimate(previous, current).buckets.values()), 4)
+
+
+def added_estimate(
+    previous: "EstimateResult | None", current: "EstimateResult"
+) -> "EstimateResult":
+    """The same diff as `added_hours`, kept whole instead of summed.
+
+    `added_hours` needs one number and this needs all of them: the roll
+    details overlay draws the buckets as a pie and lists the items behind
+    them, which is the estimator's own breakdown restricted to what this roll
+    put in front of you. Splitting them means the number under the pie and the
+    number on the bar cannot disagree - they are `sum(...buckets.values())` of
+    one object.
+    """
     if previous is None:
-        return round(sum(current.buckets.values()), 4)
+        return current
 
     had_items = {item.item for item in previous.items}
     had_tasks = {task.task for task in previous.tasks}
     before = {skill.skill: skill.hours for skill in previous.skills}
 
-    fresh = dataclasses.replace(
+    return dataclasses.replace(
         current,
         items=tuple(item for item in current.items if item.item not in had_items),
         tasks=tuple(task for task in current.tasks if task.task not in had_tasks),
@@ -273,7 +288,6 @@ def added_hours(previous: "EstimateResult | None", current: "EstimateResult") ->
             for skill in current.skills
         ),
     )
-    return round(sum(fresh.buckets.values()), 4)
 
 
 def series(
