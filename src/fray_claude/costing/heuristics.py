@@ -81,6 +81,7 @@ from fray_claude.derive.search import normalise
 from fray_claude.model.summary import _mapping
 from fray_claude.derive.task_names import strip_task_markup
 from fray_claude.remote.combat import AttackSpell, MonsterStats
+from fray_claude.remote.farming import Crop
 from fray_claude.remote.skill_tables import COURSE_ALIASES, SkillRow
 from fray_claude.remote.stores import ShopPrice
 from fray_claude.remote.wiki import Assignment, MmgRates, quest_difficulty, quest_length
@@ -348,6 +349,10 @@ class Heuristics:
     #: Combat skill -> its computed rate. Filled by `inputs.priced_heuristics`
     #: **after** the kill rates are final, since it multiplies them.
     combat: dict[str, Rate] = field(default_factory=dict)
+    #: Every crop the wiki's farming calculator knows, for `costing/farming.py`.
+    crops: tuple[Crop, ...] = ()
+    #: Harvests a day by schedule key, overriding `DEFAULT_HARVESTS_PER_DAY`.
+    farming_schedule: dict[str, float] = field(default_factory=dict)
     #: Shop -> item -> what it charges. From `remote/stores.py`.
     shop_prices: dict[str, dict[str, ShopPrice]] = field(default_factory=dict)
     #: Challenge name -> seconds to perform it once. From a guide's `kph`
@@ -805,6 +810,7 @@ def build_config(
     shop_prices: Mapping[str, Mapping[str, ShopPrice]] | None = None,
     conversion_fees: Mapping[str, ShopPrice] | None = None,
     currency_rates: Mapping[str, float] | None = None,
+    crops: Sequence[Crop] = (),
 ) -> dict[str, Any]:
     """Generate the full config from the export plus everything fetched.
 
@@ -971,6 +977,7 @@ def build_config(
             item: entry.as_dict() for item, entry in sorted((conversion_fees or {}).items())
         },
         "currencies": {**DEFAULT_CURRENCY_PER_HOUR, **(currency_rates or {})},
+        "crops": [crop.as_dict() for crop in crops],
     }
 
 
@@ -1187,6 +1194,24 @@ def load(
         },
         boss_monsters=boss_monsters,
         slayer_monsters=slayer_monsters,
+        crops=tuple(
+            Crop(
+                name=str(entry.get("name") or ""),
+                patch=str(entry.get("patch") or ""),
+                level=int(_float(entry.get("level"), 1.0)),
+                experience=_float(entry.get("experience"), 0.0),
+                plant_experience=_float(entry.get("plant_experience"), 0.0),
+                seed=str(entry.get("seed") or ""),
+                seeds_per_patch=_float(entry.get("seeds_per_patch"), 1.0),
+            )
+            for entry in config.get("crops") or ()
+            if isinstance(entry, dict) and entry.get("name")
+        ),
+        farming_schedule={
+            key: _float(value, 0.0)
+            for key, value in _mapping(config, "farming").items()
+            if isinstance(value, (int, float)) and not isinstance(value, bool)
+        },
         shop_prices={
             shop: {
                 item: ShopPrice(

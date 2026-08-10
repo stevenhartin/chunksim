@@ -151,6 +151,7 @@ from fray_claude.model.experience import (
     xp_for_level,
 )
 from fray_claude.costing.combat_xp import hitpoints_credit
+from fray_claude.costing.farming import DEFAULT_HARVESTS_PER_DAY, plan_for as farming_plan
 from fray_claude.costing.training import (
     LampGrant,
     TrainingBand,
@@ -294,6 +295,9 @@ class SkillEstimate:
     #: XP this climb is spared by quests the map can finish. Already removed
     #: from `xp`, so it is a note about where the head start came from.
     xp_from_quests: int = 0
+    #: Calendar days this climb takes, where that is the real constraint
+    #: rather than the hours. Farming only - see `costing/farming.py`.
+    days: float = 0.0
     #: XP this climb is spared because the *other* combat skills earn it on
     #: the way. Hitpoints only, and in practice most of the climb - see
     #: `combat_xp.hitpoints_credit`. Already removed from `xp`, like the
@@ -317,6 +321,7 @@ class SkillEstimate:
             "floor_xp": self.floor_xp,
             "xp_from_quests": self.xp_from_quests,
             "xp_from_combat": round(self.xp_from_combat, 1),
+            "days": round(self.days, 1),
             "xp_from_combat": self.xp_from_combat,
             "effective_level": self.effective_level,
             "bands": [band.as_dict() for band in self.bands],
@@ -1044,6 +1049,7 @@ def _skill_estimate(
     *,
     xp_from_quests: int = 0,
     xp_from_combat: float = 0.0,
+    days: float = 0.0,
     effective_level: int = 0,
 ) -> SkillEstimate:
     """One skill's row, summarised from its bands.
@@ -1077,6 +1083,7 @@ def _skill_estimate(
         floor_xp=floor_xp,
         xp_from_quests=xp_from_quests,
         xp_from_combat=xp_from_combat,
+        days=days,
         effective_level=effective_level or current,
     )
 
@@ -1334,12 +1341,43 @@ def estimate(
                 )
             )
             continue
-        if skill == "Slayer" and slayer_rate is not None and slayer_rate.xp_per_hour > 0:
+        farming_days = 0.0
+        bands: tuple[TrainingBand, ...] = ()
+        if skill == "Farming" and heuristics.crops:
+            # **Farming is days, not hours.** A crop grows while you do
+            # something else, so the schedule - how many harvests a day you
+            # get round to - is what limits it. `active_hours` is the clicking
+            # and goes in the bucket beside every other skill; the calendar is
+            # reported next to it and deliberately not added, because a day of
+            # waiting is not a day of playing.
+            plan = farming_plan(
+                heuristics.crops,
+                capped,
+                harvests_per_day={
+                    **DEFAULT_HARVESTS_PER_DAY,
+                    **heuristics.farming_schedule,
+                },
+            )
+            if plan.xp_per_day > 0 and plan.hours_per_day > 0:
+                farming_days = plan.days_for(xp)
+                bands = (
+                    TrainingBand(
+                        level_from=level_for_xp(start_xp),
+                        level_to=capped,
+                        xp=xp,
+                        xp_per_hour=plan.xp_per_day / plan.hours_per_day,
+                        method=f"{len(plan.runs)} patches, {plan.xp_per_day:,.0f} xp/day",
+                        match="farming",
+                    ),
+                )
+        if farming_days > 0:
+            pass
+        elif skill == "Slayer" and slayer_rate is not None and slayer_rate.xp_per_hour > 0:
             # **Slayer is one band by nature.** Its rate is a distribution over
             # what a master assigns rather than a method you pick and outgrow,
             # so `slayer.py` answers for the whole climb and there is nothing
             # to band.
-            bands: tuple[TrainingBand, ...] = (
+            bands = (
                 TrainingBand(
                     level_from=level_for_xp(start_xp),
                     level_to=capped,
@@ -1364,6 +1402,7 @@ def estimate(
                 xp,
                 bands,
                 xp_from_quests=min(granted, xp_between(current, capped)),
+                days=farming_days,
                 effective_level=level_for_xp(start_xp),
             )
         )

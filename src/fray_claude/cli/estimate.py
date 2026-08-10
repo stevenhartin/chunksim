@@ -105,6 +105,15 @@ def _print_estimate(
                     f"      * {skill.xp_from_quests:,} xp of that climb is paid by quests"
                     f" this map can finish"
                 )
+            if skill.days:
+                # **Said, not added.** Farming's hours are the clicking; the
+                # calendar is what actually constrains it, and the two are not
+                # the same kind of number - so the total keeps the hours and
+                # the reader gets the months.
+                print(
+                    f"      * {skill.days:,.0f} days of calendar time at that schedule"
+                    f" - the hours above are clicking, not waiting"
+                )
         for refused in result.unpriced_skills:
             print(
                 f"  {refused.skill:<13} {refused.current_level:>3} ->"

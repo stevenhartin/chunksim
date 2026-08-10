@@ -48,7 +48,7 @@ from fray_claude.costing.heuristics import (
 from fray_claude.costing.slayer import SheetFormatError, parse_mob_data, parse_task_lengths
 from fray_claude.model.summary import _mapping
 from fray_claude.remote.recipes import parse_recipes, recipe_query
-from fray_claude.remote import combat, skill_tables, stores
+from fray_claude.remote import combat, farming, skill_tables, stores
 from fray_claude.remote.wiki import (
     ASSIGNMENTS_PAGE,
     MMG_PREFIX,
@@ -166,6 +166,11 @@ def scrape(
     tables = skill_tables.parse_pages(table_pages)
     mark_rate = skill_tables.parse_mark_rate(table_pages.get(skill_tables.ROOFTOP_PAGE, ""))
 
+    say("farming crops")
+    crops = farming.parse_crops(
+        fetch_wiki_pages([farming.CROPS_PAGE], timeout=timeout).get(farming.CROPS_PAGE, "")
+    )
+
     say("monster hitpoints and spell xp")
     monster_stats = combat.parse_monster_stats(
         fetch_bucket(combat.monster_query(), timeout=timeout)
@@ -202,6 +207,7 @@ def scrape(
         shop_prices=shop_prices,
         conversion_fees=fees,
         currency_rates={"Mark of grace": mark_rate} if mark_rate else {},
+        crops=crops,
     )
     return ScrapeResult(
         config=config,
@@ -221,6 +227,7 @@ def scrape(
             "monster hitpoints": len(monster_stats),
             "shop prices": sum(len(items) for items in shop_prices.values()),
             "conversion fees": len(fees),
+            "farming crops": len(crops),
             "attack spells": len(spells),
         },
         sheet_error=sheet_error,

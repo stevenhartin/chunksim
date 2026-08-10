@@ -151,6 +151,8 @@ Five things that cut across modules — the first three because each has already
 | `remote/scrape.py` | The ~18 requests that build the scraped layer, and the coverage it reports. **Both apps run it** — `fray heuristics` and the GUI's Maps tab — so the two cannot write different files. Decides no rate; `heuristics.py` does that. |
 | `remote/skill_tables.py` | Agility and Thieving rates, from four wiki tables (`Shortcuts`, `Agility`, `Stall/Thievable`, `Thieving`). Pure wikitext-table parsing with a depth-aware cell splitter, because `{{Coins\|{{GEP\|x\|10*13.8}}}}` is full of `\|` that are not cell breaks. **These are the two skills `{{Recipe}}` cannot describe** - both have zero rows in the wiki's recipe bucket. Owns `COURSE_ALIASES`, the 4 spellings the export gets wrong (`Canafis`). |
 | `remote/stores.py` | What a shop charges and **in what currency**, from the `storeline` Bucket. 6,326 lines, of which 4,438 are coins and 126 Tokkul; the rest are points and tickets nobody converts. The API caps a query at 5,000 rows whatever `limit` says, so it pages with `offset`. Joins 403 of the export's 435 shops and prices 3,798 of its 4,163 stock lines. |
+| `remote/farming.py` | The wiki calculator's crop table, `Module:Skill calc/Farming`, read as raw Lua - 76 crops with level, per-item xp, plant xp, seed and patch type. Parsed by **brace matching, not by splitting on `name =`**: every crop's `materials` has a name of its own, and a split ends each crop before the `type` that says which patch it goes in. |
+| `costing/farming.py` | Farming as a **schedule rather than a rate**. Owns `DEFAULT_HARVESTS_PER_DAY` - fruit tree 1, tree 3, cactus 3, bush 3, allotment 8, herb 8, hardwood 1/3, redwood 1/7 - and reports two numbers that measure different things: `active_hours` (clicking, goes in the bucket) and `days` (calendar, reported beside it and never added). Hops, flowers, belladonna, spirit trees and celastrus are **absent** from the schedule rather than zeroed. |
 | `costing/heuristics.py` | Every hand-correctable number, and the `defaults < scraped < overrides` merge. Owns the joins and their `exact`/`contained` provenance; **no fuzzy tier**, by measurement — read the docstring before adding one back. |
 | `costing/slayer.py` | Slayer's rate, which is a *distribution* not a chosen method: a time-weighted mean over what a master assigns. Also owns `superior_rolls_per_hour` — the shared `SuperiorDropTable+` is one pool per master, not one per superior. **Masters are gated on their NPC being reachable** — without that it quoted Duradel on a map holding none of him. Reports `coverage`, because renormalising over reachable tasks flatters a sparse map. |
 | `costing/estimate.py` | The four buckets — quests, boss drops, activities, skilling — over the **active** set. **Costs the unique *item*, not the task** — one whip answers three tasks — and **clamps per source**, since items off one monster are earned in parallel. Owns the item walk, its bounded `Output` recursion, the `unpriced` list, and **three gates** — monster reachable, slayer task assignable, master reachable. Read the docstring before pricing anything off `WorldIndex`, which spans the whole world. Skilling is `costing/training.py`'s; what stays here is the loop and `unpriced_skills` — Attack, Defence, Hitpoints and Ranged have **no training method anywhere in the export**, and were being costed at zero. |
@@ -505,6 +507,22 @@ the sawmill charges - while an unknown *currency* is still refused.
 
 Together those took Construction's best computed build from 296,471 xp/hr to 69,121, which puts the
 hand-verified **Mahogany Homes at 165,000 top of the list** where it belongs.
+
+**Farming is measured in days, and it is the only skill that is.** A crop grows for hours or days
+while you do something else, so what limits the skill is how many harvests a day you get round to -
+not how fast you click. Priced as a rate it came out at **75,353 hours for 1 → 99**, off the single
+method the recipe data reached (supercompost, 8.5 xp for fifteen watermelons). It is now **145 days
+of calendar and 64 hours of clicking**, and the estimate reports both: the hours go in the bucket
+where they are comparable with every other skill, the days are printed beside them and deliberately
+**not added**, because a day of waiting is not a day of playing.
+
+The schedule *is* the model, and every figure in it is stated rather than measured - redwood at 0.14
+a day is one a week because that is how long it takes to grow. Tunable under `farming` in
+`heuristics/overrides.json`. One input is genuinely missing and is documented where it bites: the
+per-crop `Chance1`/`Chance99` behind the wiki's `ChanceToSave` live in the calculator's JavaScript and
+in no page this can read, so variable-yield crops use the calculator's own published assumed yields
+and a stated six for herbs and allotments. It moves the total very little - a magic tree is 13,914 xp
+against a ranarr's 30, so the trees carry the climb.
 
 **Firemaking is a constant plus a number, and that is the whole model.** You light a fire every four
 ticks, twenty-seven to an inventory, then bank - so a trip is `27 x 2.4 + 10` seconds and pays
