@@ -14,9 +14,9 @@ import pytest
 
 from fray_claude import dps_bridge
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.pipeline import MapState
+from fray_claude.derive.pipeline import MapState
 from fray_claude.heuristics import Heuristics, Rate
-from fray_claude.sources import SourceIndex
+from fray_claude.derive.sources import SourceIndex
 
 pytestmark = pytest.mark.skipif(
     not dps_bridge.DPS_AVAILABLE,

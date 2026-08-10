@@ -133,7 +133,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from fray_claude.challenges import (
+from fray_claude.derive.challenges import (
     CURRENT_CHUNK_SUFFIX,
     _PROCESSING_SKILLS,
     _has_any_valid,

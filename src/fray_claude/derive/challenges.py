@@ -264,9 +264,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from fray_claude import boosts
+from fray_claude.derive import boosts
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.sources import SourceIndex, apply_item_task_unlocks
+from fray_claude.derive.sources import SourceIndex, apply_item_task_unlocks
 from fray_claude.model.summary import _mapping
 
 _MAYBE_PRIMARY = frozenset({"Normal Farming", "Sulphurous Fertiliser", "Shortcut", "InsidePOH Primary"})

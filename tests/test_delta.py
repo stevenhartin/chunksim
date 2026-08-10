@@ -11,11 +11,11 @@ from typing import Any
 
 import pytest
 
-from fray_claude.active_tasks import SkillClassification, TaskClassification
-from fray_claude.bis import BisResult
-from fray_claude.challenges import ChallengeResult
+from fray_claude.derive.active_tasks import SkillClassification, TaskClassification
+from fray_claude.derive.bis import BisResult
+from fray_claude.derive.challenges import ChallengeResult
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.delta import (
+from fray_claude.derive.delta import (
     BRANCHES,
     BranchDelta,
     MapSide,
@@ -25,10 +25,10 @@ from fray_claude.delta import (
     diff_nested,
     diff_picks,
 )
-from fray_claude.other_tasks import CategoryTasks, OtherTasks, TaskGroup
-from fray_claude.pipeline import Derived, MapState, derive
-from fray_claude.sources import SourceIndex
-from fray_claude.unlock import delta_from
+from fray_claude.derive.other_tasks import CategoryTasks, OtherTasks, TaskGroup
+from fray_claude.derive.pipeline import Derived, MapState, derive
+from fray_claude.derive.sources import SourceIndex
+from fray_claude.derive.unlock import delta_from
 
 
 def _chunk_info(**data: Any) -> ChunkInfo:

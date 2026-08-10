@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.sections import (
+from fray_claude.derive.sections import (
     ChunkSections,
     area_connections,
     describe_sections,

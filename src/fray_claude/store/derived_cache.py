@@ -81,8 +81,8 @@ from dataclasses import dataclass
 from typing import Any
 from pathlib import Path
 
-from fray_claude.active_tasks import TaskClassification
-from fray_claude.bis import BisResult
+from fray_claude.derive.active_tasks import TaskClassification
+from fray_claude.derive.bis import BisResult
 from fray_claude.store.cache import (
     WIKI_RATES_BLOB_NAME,
     CacheMissError,
@@ -92,7 +92,7 @@ from fray_claude.store.cache import (
     read_derived,
     write_derived,
 )
-from fray_claude.challenges import ChallengeResult
+from fray_claude.derive.challenges import ChallengeResult
 from fray_claude.heuristics import (
     Heuristics,
     QuestRate,
@@ -101,9 +101,9 @@ from fray_claude.heuristics import (
     Superior,
     TaskLength,
 )
-from fray_claude.other_tasks import OtherTasks
-from fray_claude.pipeline import Derived, MapState, derive
-from fray_claude.sources import SourceIndex
+from fray_claude.derive.other_tasks import OtherTasks
+from fray_claude.derive.pipeline import Derived, MapState, derive
+from fray_claude.derive.sources import SourceIndex
 
 try:  # Python 3.14 stdlib (PEP 784), absent if CPython was built without libzstd.
     from compression import zstd

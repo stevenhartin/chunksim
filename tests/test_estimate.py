@@ -6,9 +6,9 @@ from typing import Any
 
 import pytest
 
-from fray_claude.active_tasks import SkillClassification, TaskClassification
-from fray_claude.bis import BisResult
-from fray_claude.challenges import ChallengeResult
+from fray_claude.derive.active_tasks import SkillClassification, TaskClassification
+from fray_claude.derive.bis import BisResult
+from fray_claude.derive.challenges import ChallengeResult
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.estimate import (
     estimate,
@@ -25,10 +25,10 @@ from fray_claude.heuristics import (
     SlayerTask,
     Superior,
 )
-from fray_claude.other_tasks import CategoryTasks, OtherTasks, TaskGroup
-from fray_claude.pipeline import Derived, MapState
-from fray_claude.search import build_world_index
-from fray_claude.sources import SourceIndex
+from fray_claude.derive.other_tasks import CategoryTasks, OtherTasks, TaskGroup
+from fray_claude.derive.pipeline import Derived, MapState
+from fray_claude.derive.search import build_world_index
+from fray_claude.derive.sources import SourceIndex
 
 
 def _state(info: ChunkInfo, **overrides: Any) -> MapState:

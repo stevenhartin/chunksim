@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from fray_claude.challenges import (
+from fray_claude.derive.challenges import (
     UNSUPPORTED_CATEGORIES,
     _compile_items,
     _item_plan_met,
@@ -18,7 +18,7 @@ from fray_claude.challenges import (
     strip_task_markup,
 )
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.sources import SourceIndex
+from fray_claude.derive.sources import SourceIndex
 
 _EMPTY = SourceIndex(items={}, objects={}, monsters={}, npcs={}, shops={}, drop_rates={})
 

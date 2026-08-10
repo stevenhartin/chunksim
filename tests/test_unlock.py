@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.pipeline import MapState
-from fray_claude.unlock import diff_bis_picks, diff_reachable_sections, diff_valid_tasks, tasks_added_by
+from fray_claude.derive.pipeline import MapState
+from fray_claude.derive.unlock import diff_bis_picks, diff_reachable_sections, diff_valid_tasks, tasks_added_by
 
 
 def _chunk_info(**data: Any) -> ChunkInfo:

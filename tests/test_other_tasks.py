@@ -6,9 +6,9 @@ from typing import Any
 
 import pytest
 
-from fray_claude.pipeline import Derived
+from fray_claude.derive.pipeline import Derived
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.other_tasks import (
+from fray_claude.derive.other_tasks import (
     classify_other_tasks,
     display_name,
     group_of,

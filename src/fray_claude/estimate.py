@@ -139,9 +139,9 @@ from typing import Any
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.model.experience import MAX_LEVEL, xp_between
 from fray_claude.heuristics import Heuristics, Superior, activity_name
-from fray_claude.pipeline import Derived, MapState
+from fray_claude.derive.pipeline import Derived, MapState
 from fray_claude.model.rates import parse_ratio
-from fray_claude.search import WorldIndex, normalise
+from fray_claude.derive.search import WorldIndex, normalise
 from fray_claude.slayer import (
     MasterRate,
     best_master,

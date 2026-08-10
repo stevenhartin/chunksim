@@ -78,13 +78,13 @@ from fray_claude.estimate import EstimateResult, estimate, goal_levels, infer_le
 from fray_claude.model.firebase import reverse_tasks_map
 from fray_claude.heuristics import Heuristics, merge
 from fray_claude.heuristics import load as load_heuristics
-from fray_claude.pipeline import Derived, MapState, load_map_state
-from fray_claude.search import WorldIndex, build_world_index
+from fray_claude.derive.pipeline import Derived, MapState, load_map_state
+from fray_claude.derive.search import WorldIndex, build_world_index
 from fray_claude.simulate import UnlockRecord, simulate_rolls, simulated_payload
 from fray_claude.model.summary import _mapping
 from fray_claude.timeline import added_hours
 from fray_claude.timeline import stamp as timeline_stamp
-from fray_claude.unlock import UnlockDelta
+from fray_claude.derive.unlock import UnlockDelta
 
 #: Draw run seeds from, so a batch seed of 1 and a run seed of 1 can't collide
 #: into "the same run twice" by coincidence.

@@ -30,7 +30,7 @@ from fray_claude.store.derived_cache import (
     enrichment_key,
 )
 from fray_claude.heuristics import Heuristics, Rate
-from fray_claude.pipeline import MapState, derive
+from fray_claude.derive.pipeline import MapState, derive
 
 _DIGESTS = Digests(chunkinfo="abc123", tasks_map="def456")
 

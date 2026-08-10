@@ -7,8 +7,8 @@ from typing import Any
 import pytest
 
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.pipeline import MapState, derive
-from fray_claude.search import ItemSource, build_world_index, normalise, rank, search
+from fray_claude.derive.pipeline import MapState, derive
+from fray_claude.derive.search import ItemSource, build_world_index, normalise, rank, search
 
 
 

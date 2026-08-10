@@ -44,10 +44,10 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from fray_claude.active_tasks import SkillClassification
-from fray_claude.other_tasks import CategoryTasks
-from fray_claude.pipeline import Derived, MapState, derive
-from fray_claude.sources import CATEGORIES as SOURCE_CATEGORIES
+from fray_claude.derive.active_tasks import SkillClassification
+from fray_claude.derive.other_tasks import CategoryTasks
+from fray_claude.derive.pipeline import Derived, MapState, derive
+from fray_claude.derive.sources import CATEGORIES as SOURCE_CATEGORIES
 
 #: The comparable branches, in the order `fray diff` reports them. `bis`
 #: covers `StateDelta.bis_picks` and `bis_tasks` together: they are one

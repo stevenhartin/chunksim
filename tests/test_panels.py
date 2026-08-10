@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 from fray_claude.gui import panels
-from fray_claude.pipeline import Derived
+from fray_claude.derive.pipeline import Derived
 
 
 class _Stub:

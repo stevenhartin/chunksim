@@ -37,7 +37,7 @@ from fray_claude.store import cache
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.store.derived_cache import Digests, cached_derive
 from fray_claude.model.firebase import reverse_tasks_map
-from fray_claude.pipeline import Derived, MapState, load_map_state
+from fray_claude.derive.pipeline import Derived, MapState, load_map_state
 
 
 @dataclass(frozen=True)

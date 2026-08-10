@@ -32,10 +32,10 @@ from fray_claude.store.cache import (
 )
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.store.derived_cache import CacheBehaviour
-from fray_claude.pipeline import load_map_state
+from fray_claude.derive.pipeline import load_map_state
 from fray_claude.simulate import simulate_rolls
 from fray_claude.timeline import replay
-from fray_claude.unlock import UnlockDelta
+from fray_claude.derive.unlock import UnlockDelta
 
 #: 100 starts unlocked; 99/101/356 are its grid neighbours (id +/- 1, +/- 256)
 #: and each declares a connection back to it, so a roll has three candidates

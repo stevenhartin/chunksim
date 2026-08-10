@@ -151,8 +151,8 @@ from collections.abc import Container, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from fray_claude import boosts
-from fray_claude.challenges import _SKILL_NAMES, _check_primary_method
+from fray_claude.derive import boosts
+from fray_claude.derive.challenges import _SKILL_NAMES, _check_primary_method
 
 #: `Combat` is in upstream's `skillNames` - it needs to be, for `Skills:
 #: {Combat: N}` requirements and its own `universalPrimary` line - but it is
@@ -166,7 +166,7 @@ from fray_claude.challenges import _SKILL_NAMES, _check_primary_method
 #: by Slayer's own Level 92 pick.
 _DISPLAY_SKILLS = _SKILL_NAMES - {"Combat"}
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.sources import SourceIndex
+from fray_claude.derive.sources import SourceIndex
 
 _EMPTY_SOURCE_INDEX = SourceIndex(
     items={}, objects={}, monsters={}, npcs={}, shops={}, drop_rates={}

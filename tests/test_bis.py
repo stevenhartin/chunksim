@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from fray_claude.bis import (
+from fray_claude.derive.bis import (
     _STYLE_SEPARATOR,
     article_for,
     bis_display_name,
@@ -16,7 +16,7 @@ from fray_claude.bis import (
     format_equip,
 )
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.pipeline import Derived, MapState
+from fray_claude.derive.pipeline import Derived, MapState
 
 
 
@@ -546,7 +546,7 @@ def test_every_bis_pick_matches_the_live_oracle(
     """
     from fray_claude.store.cache import list_maps, project_root, read_cache
     from fray_claude.model.firebase import decode_challenge_keyed
-    from fray_claude.pipeline import derive, load_map_state
+    from fray_claude.derive.pipeline import derive, load_map_state
 
     info, tasks_map = real_export, real_tasks_map
     root = project_root()

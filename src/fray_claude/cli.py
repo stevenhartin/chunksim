@@ -119,9 +119,9 @@ from fray_claude.store.cache import (
     write_blob,
     write_cache,
 )
-from fray_claude.challenges import strip_task_markup
+from fray_claude.derive.challenges import strip_task_markup
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.delta import BRANCHES, BranchDelta, MapSide, StateDelta, compare_maps
+from fray_claude.derive.delta import BRANCHES, BranchDelta, MapSide, StateDelta, compare_maps
 from fray_claude import dps_bridge, estimate_inputs
 from fray_claude.estimate import (
     BUCKETS,
@@ -140,19 +140,19 @@ from fray_claude.store.derived_cache import (
     pricing_digests,
 )
 from fray_claude.model.firebase import reverse_tasks_map
-from fray_claude.graph import build_section_graph
-from fray_claude.neighbours import eligible_neighbours
-from fray_claude.other_tasks import CATEGORIES as OTHER_CATEGORIES
-from fray_claude.other_tasks import CategoryTasks, display_name, task_text
-from fray_claude.pipeline import ConvergenceError, Derived, MapState, load_map_state
+from fray_claude.derive.graph import build_section_graph
+from fray_claude.derive.neighbours import eligible_neighbours
+from fray_claude.derive.other_tasks import CATEGORIES as OTHER_CATEGORIES
+from fray_claude.derive.other_tasks import CategoryTasks, display_name, task_text
+from fray_claude.derive.pipeline import ConvergenceError, Derived, MapState, load_map_state
 from fray_claude.remote.scrape import SOURCE as SCRAPE_SOURCE
 from fray_claude.remote.scrape import scrape
-from fray_claude.search import TYPES, build_world_index, search
-from fray_claude.sections import describe_sections, expand_chunk_areas
+from fray_claude.derive.search import TYPES, build_world_index, search
+from fray_claude.derive.sections import describe_sections, expand_chunk_areas
 from fray_claude.simulate import simulate_rolls
-from fray_claude.sources import CATEGORIES as SOURCE_CATEGORIES
+from fray_claude.derive.sources import CATEGORIES as SOURCE_CATEGORIES
 from fray_claude.model.summary import _mapping, format_age, summarise
-from fray_claude.unlock import UnlockDelta, tasks_added_by
+from fray_claude.derive.unlock import UnlockDelta, tasks_added_by
 
 DEFAULT_MAP = DEFAULT_MAP_ID
 

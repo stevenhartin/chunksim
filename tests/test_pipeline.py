@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.pipeline import ConvergenceError, MapState, derive, load_map_state
+from fray_claude.derive.pipeline import ConvergenceError, MapState, derive, load_map_state
 
 
 def _chunk_info(**data: Any) -> ChunkInfo:
@@ -193,7 +193,7 @@ def test_derive_refuses_to_return_a_truncated_derivation(
     on exactly the last allowed pass, so a map one link deeper would have got a
     quietly short answer - fewer areas, fewer sources, fewer valid tasks.
     """
-    monkeypatch.setattr("fray_claude.pipeline._MAX_AREA_PASSES", 1)
+    monkeypatch.setattr("fray_claude.derive.pipeline._MAX_AREA_PASSES", 1)
     info = _chunk_info(
         chunks={"100": {"Monster": {"Goblin": True}}},
         drops={"Goblin": {"Bones": {"1": "Always"}}},

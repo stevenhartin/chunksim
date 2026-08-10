@@ -55,8 +55,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from fray_claude.delta import diff_nested, diff_picks
-from fray_claude.pipeline import Derived, MapState, derive
+from fray_claude.derive.delta import diff_nested, diff_picks
+from fray_claude.derive.pipeline import Derived, MapState, derive
 
 
 @dataclass(frozen=True)

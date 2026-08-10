@@ -59,7 +59,7 @@ from difflib import SequenceMatcher
 from typing import Any
 
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.pipeline import Derived
+from fray_claude.derive.pipeline import Derived
 from fray_claude.model.summary import _mapping
 
 _MARKUP = re.compile(r"~\||\|~")

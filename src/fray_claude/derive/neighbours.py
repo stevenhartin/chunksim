@@ -105,7 +105,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from fray_claude.graph import (
+from fray_claude.derive.graph import (
     Edge,
     Node,
     SectionGraph,
@@ -113,7 +113,7 @@ from fray_claude.graph import (
     chunk_sort_key,
     grid_neighbours,
 )
-from fray_claude.pipeline import Derived, MapState
+from fray_claude.derive.pipeline import Derived, MapState
 
 
 @dataclass(frozen=True)

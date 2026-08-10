@@ -91,7 +91,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from fray_claude.challenges import chunks_requirement_met
+from fray_claude.derive.challenges import chunks_requirement_met
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.heuristics import (
     DEFAULT_SLAYER_XP_PER_HOUR,
@@ -102,7 +102,7 @@ from fray_claude.heuristics import (
     stems,
 )
 from fray_claude.model.rates import parse_ratio
-from fray_claude.search import normalise
+from fray_claude.derive.search import normalise
 from fray_claude.model.summary import _mapping
 
 #: Columns `parse_mob_data` needs. Read by name, and their absence is an

@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.delta import diff_names
+from fray_claude.derive.delta import diff_names
 from fray_claude.gui.worldmap import (
     GRID_COLUMNS,
     GRID_ROWS,
