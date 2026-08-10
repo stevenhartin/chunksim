@@ -46,7 +46,7 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
-from fray_claude.derive.challenges import strip_task_markup
+from fray_claude.derive.task_names import strip_task_markup
 from fray_claude.derive.pipeline import Derived
 from fray_claude.model.summary import _mapping
 

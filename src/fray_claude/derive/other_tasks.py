@@ -76,7 +76,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fray_claude.derive.active_tasks import _recorded
-from fray_claude.derive.challenges import CURRENT_CHUNK_SUFFIX, strip_task_markup
+from fray_claude.derive.challenges import CURRENT_CHUNK_SUFFIX
+from fray_claude.derive.task_names import strip_task_markup
 from fray_claude.model.chunkinfo import ChunkInfo
 
 #: The categories this module owns, in the order the CLI prints them.

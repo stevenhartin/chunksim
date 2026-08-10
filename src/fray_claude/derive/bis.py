@@ -137,8 +137,8 @@ from fray_claude.derive.challenges import (
     CURRENT_CHUNK_SUFFIX,
     _PROCESSING_SKILLS,
     _has_any_valid,
-    strip_task_markup,
 )
+from fray_claude.derive.task_names import strip_task_markup
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.model.summary import _mapping
 

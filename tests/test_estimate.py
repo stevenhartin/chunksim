@@ -10,13 +10,8 @@ from fray_claude.derive.active_tasks import SkillClassification, TaskClassificat
 from fray_claude.derive.bis import BisResult
 from fray_claude.derive.challenges import ChallengeResult
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.costing.estimate import (
-    estimate,
-    goal_levels,
-    infer_levels,
-    reachable_providers,
-    task_gated_monsters,
-)
+from fray_claude.costing.estimate import estimate
+from fray_claude.costing.levels import goal_levels, infer_levels, reachable_providers, task_gated_monsters
 from fray_claude.costing.heuristics import (
     DEFAULT_XP_PER_HOUR,
     Heuristics,

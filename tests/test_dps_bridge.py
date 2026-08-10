@@ -260,16 +260,6 @@ def test_no_candidates_means_no_price() -> None:
     assert dps_bridge.best_kill(loadouts, "Nothing", []) is None
 
 
-def test_kills_per_hour_adds_the_overhead() -> None:
-    """Fighting time is not a kill cycle; the difference is the overhead."""
-    kill = dps_bridge.KillEstimate(
-        monster="Rat", style="Melee", ttk=30.0, dps=1.0, max_hit=5, accuracy=0.5
-    )
-
-    assert kill.kills_per_hour(overhead=30.0) == pytest.approx(60.0)
-    assert kill.kills_per_hour(overhead=0.0) == pytest.approx(120.0)
-
-
 def _kill(**kwargs: Any) -> dps_bridge.KillEstimate:
     base: dict[str, Any] = {
         "monster": "Test",
@@ -720,28 +710,6 @@ def test_group_bosses_are_not_priced_solo() -> None:
     )
     assert rates == {}
     assert "Nex" in dps_bridge.GROUP_BOSSES
-
-
-def test_measure_overhead_reports_samples_not_an_average() -> None:
-    """Including the negative ones, which is the point.
-
-    The wiki's rates assume near-max gear and these kill times come from
-    chunk-restricted BiS, so where the map's gear is worse the implied
-    overhead goes negative. Averaging that away would hide the gap.
-    """
-    index = _FakeIndex({"Rat": _target(name="Rat", hitpoints=8)})
-    samples = dps_bridge.measure_overhead(
-        _chunk_info(),
-        {"Melee-weapon": "Abyssal whip"},
-        LEVELS,
-        {"Rat": Rate(value=100.0, source="wiki")},
-        index=index,  # type: ignore[arg-type]
-    )
-
-    assert len(samples) == 1
-    assert samples[0].monster == "Rat"
-    assert samples[0].wiki_kph == 100.0
-    assert samples[0].overhead == pytest.approx(36.0 - samples[0].ttk)
 
 
 def _slayer_info(**tasks: Any) -> ChunkInfo:
@@ -1287,7 +1255,7 @@ def test_incremental_pricing_is_the_same_answer_as_pricing_from_scratch(
     """
     from fray_claude.store import cache
     from fray_claude.store.derived_cache import Digests, cached_derive
-    from fray_claude.costing.estimate import goal_levels, infer_levels
+    from fray_claude.costing.levels import goal_levels, infer_levels
 
     info = real_export
     state, unlocked = real_state

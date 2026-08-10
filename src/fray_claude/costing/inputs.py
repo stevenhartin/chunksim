@@ -36,7 +36,8 @@ from fray_claude.costing import dps_bridge
 from fray_claude.store import cache
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.store.derived_cache import Digests, cached_enrich, pricing_digests
-from fray_claude.costing.estimate import EstimateResult, estimate, goal_levels, infer_levels
+from fray_claude.costing.estimate import EstimateResult, estimate
+from fray_claude.costing.levels import goal_levels, infer_levels
 from fray_claude.costing.heuristics import Heuristics, load, merge
 from fray_claude.derive.pipeline import Derived, MapState
 from fray_claude.derive.search import build_world_index

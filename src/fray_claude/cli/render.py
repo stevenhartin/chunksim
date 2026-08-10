@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from fray_claude.derive.challenges import strip_task_markup
+from fray_claude.derive.task_names import strip_task_markup
 from fray_claude.derive.other_tasks import CategoryTasks, task_text
 from fray_claude.model.chunkinfo import ChunkInfo
 

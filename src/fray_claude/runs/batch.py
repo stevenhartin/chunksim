@@ -74,7 +74,8 @@ from fray_claude.store.derived_cache import (
     cached_enrich,
     pricing_digests,
 )
-from fray_claude.costing.estimate import EstimateResult, estimate, goal_levels, infer_levels
+from fray_claude.costing.estimate import EstimateResult, estimate
+from fray_claude.costing.levels import goal_levels, infer_levels
 from fray_claude.model.firebase import reverse_tasks_map
 from fray_claude.costing.heuristics import Heuristics, merge
 from fray_claude.costing.heuristics import load as load_heuristics

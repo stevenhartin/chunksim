@@ -36,7 +36,7 @@ from typing import Any
 from fray_claude.remote.api import FetchError
 from fray_claude.store.build_info import print_watermark
 from fray_claude.store.cache import CacheMissError
-from fray_claude.derive.challenges import strip_task_markup
+from fray_claude.derive.task_names import strip_task_markup
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.derive.delta import compare_maps
 from fray_claude.cli import (

@@ -16,7 +16,7 @@ import argparse
 from pathlib import Path
 
 from fray_claude.cli.common import DEFAULT_MAP, derive_cached, emit_json, load_state
-from fray_claude.derive.challenges import strip_task_markup
+from fray_claude.derive.task_names import strip_task_markup
 from fray_claude.derive.search import TYPES, build_world_index, search
 
 

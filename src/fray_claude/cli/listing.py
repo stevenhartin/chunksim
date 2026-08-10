@@ -32,7 +32,7 @@ from pathlib import Path
 
 from fray_claude.cli.common import DEFAULT_MAP, derive_cached, emit_json, error, load_state
 from fray_claude.cli.render import display_tasks, print_capped, print_grouped
-from fray_claude.derive.challenges import strip_task_markup
+from fray_claude.derive.task_names import strip_task_markup
 from fray_claude.derive.other_tasks import CATEGORIES as OTHER_CATEGORIES, CategoryTasks, display_name, task_text
 from fray_claude.derive.sections import describe_sections, expand_chunk_areas
 from fray_claude.derive.sources import CATEGORIES as SOURCE_CATEGORIES

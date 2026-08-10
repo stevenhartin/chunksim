@@ -20,9 +20,7 @@ from pathlib import Path
 from fray_claude.cli.common import DEFAULT_MAP, derive_cached, digests, emit_json, error, load_state
 from fray_claude.costing import dps_bridge, inputs
 from fray_claude.costing.estimate import BUCKETS, EstimateResult
-from fray_claude.derive.challenges import strip_task_markup
-
-
+from fray_claude.derive.task_names import strip_task_markup
 def _cmd_estimate(args: argparse.Namespace) -> int:
     if args.bucket is not None and args.bucket not in BUCKETS:
         return error(f"unknown bucket {args.bucket!r} (expected one of {', '.join(BUCKETS)})")
