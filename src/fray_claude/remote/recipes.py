@@ -3,7 +3,7 @@
 **The number the export does not have.** The chunk export says a method exists,
 what it consumes and what it produces, and what level it needs - but nothing
 anywhere in it is an experience figure or a duration. So a rate had to be joined
-from a money-making guide, which covers 237 of 2,657 methods and is a *guess by
+from a money-making guide, which covers 225 of 2,657 methods and is a *guess by
 association* even when it joins.
 
 `{{Recipe}}` on the wiki carries the two missing halves directly - experience per

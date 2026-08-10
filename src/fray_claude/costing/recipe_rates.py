@@ -1,7 +1,7 @@
 """How fast a made thing is made, from the wiki's own per-action numbers.
 
 **The rate this replaces was a guess by association.** `heuristics.py` joins a
-training method to a money-making guide by *name*, which reaches 246 of 2,657
+training method to a money-making guide by *name*, which reaches 225 of 2,657
 methods and, when it reaches, is still only evidence that someone wrote a guide
 with a similar title. `remote/recipes.py` brings back the two numbers that
 actually decide a rate - experience per action and the action's tick cost - for
@@ -329,19 +329,19 @@ def apply(
     question, so the better-informed one should win. A recipe and a guide do
     not:
 
-    - **Where the materials price free, tick-math is a ceiling.** Over the 24
-      methods with both, it runs a median 1.38x above the guide before the
-      overhead is applied, because the wiki's tick cost is the action and not
-      the cycle - no banking, no walking, no inventory.
-    - **Where the materials cost something, it is a floor by a mile.** Those 6
-      methods come out at x0.0011 to x0.024 of the guide - a jade bracelet at
-      596/hr against 72,000 - because this charges you six minutes for the
-      silver bar where the guide assumes you bought it. That is the right model
-      for a chunk account and the wrong number to compare against a guide.
+    - **Where the materials are cheap, tick-math is roughly the guide.** It ran
+      a median 1.38x above when materials were free; now that they cost
+      something the six comparable methods straddle it, x0.68 to x2.73. That
+      is agreement, not evidence either way.
+    - **Where the materials are expensive, it is a floor by a mile.** The other
+      26 span x0.0043 to x2.73, most of them at the bottom, because this
+      charges you six minutes for the silver bar where the guide assumes you
+      bought it. That is the right model for a chunk account and the wrong
+      number to compare against a guide.
 
     So a guide, when there is one, keeps the method. What this replaces is the
     **1,000/hr floor**, which is not evidence of anything, and there are far
-    more of those: 441 methods priced on the benchmark map against 30 with an exact guide.
+    more of those: 852 methods priced on the benchmark map against 58 that had a guide.
 
     `pinned` is the set of task names `heuristics/overrides.json` speaks about;
     a hand pin outranks everything, as it does everywhere else.

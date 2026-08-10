@@ -1,7 +1,7 @@
 """Pricing a kill with the DPS calculator instead of a money-making guide.
 
 `heuristics.py` gets its kills-per-hour from the OSRS wiki's money-making
-guides, which cover **243 of the export's 2,710 training methods** - most ways
+guides, which cover **225 of the export's 2,657 training methods** - most ways
 of killing a thing do not make money and so have no guide. Everything else
 falls back to a flat `DEFAULT_KPH`. This module computes the number instead,
 from the gear `bis.py` says the map can actually reach, using the `osrs-dps`

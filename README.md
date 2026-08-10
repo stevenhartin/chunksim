@@ -219,13 +219,21 @@ before believing a total:
 
 - **A skill is priced method by method as each one unlocks**, not at one rate for the whole climb —
   Herblore 1→99 on a real map is nine bands, from cleaning guams at level 3 up to super combats at
-  90, and `fray estimate skilling` prints them with the level range and the XP each covers. The
-  money-making guides cover only **237 of the 2,710** ways of training a skill, because most training
-  methods don't make money and so have no guide, and what's left sits at a deliberately low
-  1,000 xp/hr so it looks slow rather than free. Under bands that floor usually applies to the bottom
-  of a climb rather than all of it. Each band prints where its rate came from, because 163 of the 237
-  are matched by *containment* rather than exactly — usually right, occasionally not, and
-  `heuristics/overrides.json` is where you disagree.
+  90, and `fray estimate skilling` prints them with the level range and the XP each covers. Rates
+  come from four places and each band says which: a money-making guide (225 of the export's 2,657
+  training methods — most training doesn't make money, so most has no guide), the wiki's own Agility
+  and Thieving tables (85 more), a per-action calculation from the wiki's recipe data, and for the
+  five combat skills the damage you deal. On a real map that prices **943 of the 1,323 methods it
+  can reach**; what is left sits at a deliberately low 1,000 xp/hr so it looks slow rather than free,
+  and under bands that floor usually applies to the bottom of a climb rather than all of it.
+  151 of the guide joins are matched by *containment* rather than exactly — usually right,
+  occasionally not, and `heuristics/overrides.json` is where you disagree.
+- **Getting a thing costs what it costs.** An item is priced by the cheapest route this map has to
+  it, and none of them are free: a shop charges its price at 500,000 gp an hour (or 25,000 Tokkul,
+  or 19.5 marks of grace — all tunable) plus thirty seconds to walk there, a ground spawn is limited
+  by how fast you can hop worlds to a fresh one, and performing an action costs its own time. What
+  cannot be priced is *said* rather than skipped: `fray estimate` lists what it could not cost, and
+  items sold for currencies with no agreed rate stay on that list.
 - **Your skill levels aren't in the map.** source-chunk records a level *cap* and a passively
   reachable level, neither of which is where you actually are, so the estimate counts from the
   passive floor unless you set `levels` in the overrides file. Every skill row prints the level it

@@ -22,9 +22,16 @@ someone pinned by hand - the one thing a silent merge would hide.
 **On coverage, honestly.** The money-making guides are about money, and most
 ways of training a skill do not make any, so they have no guide at all.
 Measured against the real export: 1,015 of 1,111 guides carry a `kph`, and they
-join to **246 of the 2,657** `Primary: true` training methods and **91 of the
+join to **225 of the 2,657** `Primary: true` training methods and **93 of the
 872** monsters with drops. Quests are the exception and come out complete,
 209 of 209.
+
+**They are no longer the only source, which is the point of the layers above.**
+`remote/skill_tables.py` adds 85 Agility and Thieving methods from the wiki's
+own tables, `costing/recipe_rates.py` computes a rate for anything the recipe
+data reaches, and `costing/combat_xp.py` derives the five combat skills from
+damage. On the benchmark map that is **943 of 1,323 reachable methods priced,
+71%**, against the 310 this file's own two layers manage.
 
 That monster count is 91 rather than 106 because **a `kph` is only a kill rate
 when its guide says so**. `Mmgtable` counts whatever its guide is about, so
@@ -611,7 +618,7 @@ def _mmg_index(pages: dict[str, MmgRates]) -> dict[str, tuple[str, MmgRates]]:
 def primary_training_tasks(chunk_info: ChunkInfo) -> dict[str, str]:
     """Every `Primary: true` challenge, mapped to the skill it trains.
 
-    2,710 of them on the real export, across 21 skill categories. These are
+    2,657 of them on the real export, across 21 skill categories. These are
     what set how fast XP arrives; the rest of a skill's challenges are things
     to do *at* a level, not ways of reaching it.
     """

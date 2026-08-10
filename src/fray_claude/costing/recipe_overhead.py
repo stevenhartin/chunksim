@@ -17,16 +17,18 @@ materials cost something are systematically slow by three orders of magnitude
 it). A single constant across both is meaningless, so only the free-input pairs
 are fitted and the split is printed beside the answer.
 
-Measured over `fray`, `verf` and `verf-sim/run-001`: 30 methods have both a
-recipe and an *exactly* joined guide, 24 of them with free materials. Across
-those 24 tick-math alone is a median 1.38x above the guide; 0.4s an action
-brings the median error to 1.14x, and 0.4s is a fixed point of the fit - the
-constant in use does change which recipe variant wins, so re-running with a
-different one in place is part of checking it. The other 6 land at x0.0011 to
-x0.024, which is the split this refuses to average over.
+**What it found when it was written, and what it finds now.** With materials
+priced free, 24 of 30 comparable methods had nothing to pay for their inputs,
+tick-math ran a median 1.38x above the guide, and 0.4s an action brought that
+to 1.14x. Since then shops, ground spawns and actions themselves all gained a
+cost, so no method has free materials: the split is now "materials cheaper than
+the animation", it selects **six** pairs, and the fit is flat - 0.0s scores
+exactly what 0.4s does.
 
-It is also the right order for what it stands in for: 28 items a bank trip at
-~20s a trip is 0.7s an item.
+That is a finding rather than a failure. The constant survives as an assumption
+of the right order (28 items a bank trip at ~20s a trip is 0.7s an item), and
+this harness survives as the thing that would notice if a future change made it
+measurable again - or made it wrong.
 """
 
 from __future__ import annotations
@@ -49,7 +51,12 @@ Pair = tuple[float, float, float]
 
 
 def pairs_for(map_ids: list[str]) -> tuple[list[Pair], list[Pair]]:
-    """Every method with both a recipe and an exact guide, split by input cost."""
+    """Every method with both a recipe and an exact guide, split by input cost.
+
+    The first list is the fittable one - methods whose materials cost no more
+    than the action's own animation, so the tick arithmetic is what is being
+    compared. The second is everything else and is reported, not fitted.
+    """
     info = ChunkInfo(cache.read_chunkinfo())
     tasks_map = reverse_tasks_map(cache.read_blob(cache.TASKS_MAP_BLOB_NAME)["data"])
     recipes = load_recipes()
@@ -74,7 +81,15 @@ def pairs_for(map_ids: list[str]) -> tuple[list[Pair], list[Pair]]:
                 continue
             seen.add(task)
             bare = action.action_seconds - recipe_rates.ACTION_OVERHEAD_SECONDS
-            (free if action.input_seconds <= 0 else paid).append(
+            # **"Cheap materials", not "free materials".** The split was
+            # `input_seconds <= 0` while a shop cost nothing and a ground
+            # spawn cost nothing; both now cost something, so *no* method has
+            # free inputs and the old condition selects an empty set. What the
+            # fit needs is methods whose materials are small beside the action,
+            # since those are the ones where the tick cost is what is being
+            # tested.
+            animation = recipe_rates.TICK_SECONDS * action.ticks
+            (free if action.input_seconds <= animation else paid).append(
                 (action.experience, bare, guide.value)
             )
     return free, paid
