@@ -510,16 +510,63 @@ def test_the_page_reads_its_identity_from_state_not_the_dom() -> None:
         assert f"{control}.value = id" in setter.group(1)
         assert f"= {control}.value" in setter.group(1)
 
+def test_a_simulation_is_only_ever_seen_in_timeline_mode() -> None:
+    """**A run is fifty worlds, not one**, and browsing it as though it were a
+    map is the confusion the modes exist to remove.
+
+    So choosing one asks first, and a declined answer puts the picker back
+    where it was rather than leaving the page half way into a mode nobody
+    agreed to.
+    """
+    _, js, _ = _resources()
+
+    select = re.search(r"async function selectMap\(id\) \{(.*?)\n\}", js, re.DOTALL)
+    assert select is not None
+    assert "await confirmAction(" in select.group(1), "it enters without asking"
+    assert "setMap(previous)" in select.group(1), "declining does not put it back"
+
+    # The biconditional the whole design leans on, in one place.
+    kind = re.search(r"function modeForMap\(mapId\) \{(.*?)\n\}", js, re.DOTALL)
+    assert kind is not None
+    assert '"simulated"' in kind.group(1) and '"timeline"' in kind.group(1)
+
+def test_the_mode_palette_is_defined_once() -> None:
+    """The canvas constants and the legend's swatches are already two copies
+    of this palette with nothing asserting they agree. The modes are not going
+    to be a third: the stylesheet owns the colours and the page owns only
+    which one is on, as an attribute."""
+    html, js, css = _resources()
+
+    for mode in ("browse", "edit", "diff", "timeline"):
+        assert f"--mode-{mode}:" in css, f"{mode} has no colour"
+        assert f'.ribbon[data-mode="{mode}"]' in css, f"{mode} tint is not selected for"
+        assert f'{mode}:' in js, f"{mode} is not a mode the page knows"
+
+    # The page names the mode; it never names a colour.
+    ribbon = re.search(r"function renderRibbon\(\) \{(.*?)\n\}", js, re.DOTALL)
+    assert ribbon is not None
+    assert "dataset.mode" in ribbon.group(1)
+    assert "#" not in ribbon.group(1), "a colour literal has leaked into the page"
+    assert 'id="ribbon"' in html
+
 def test_a_step_and_a_comparison_are_exclusive() -> None:
     """Two maps and a rewind would need a third colour for "gained by this
-    roll but lost against the other side", which is nobody's question. The
-    step wins in the query, and the strip hides itself while comparing."""
+    roll but lost against the other side", which is nobody's question.
+
+    It used to be enforced by an if-ladder over whichever control happened to
+    hold a value. The modes make it structural instead: exactly one of them
+    carries a comparison, and it is not one of the ones that step.
+    """
     _, js, _ = _resources()
 
     query = re.search(r"function mapQuery\(\) \{(.*?)\n\}", js, re.DOTALL)
     assert query is not None
-    assert 'params.set("step"' in query.group(1)
-    assert "else if (state.compare)" in query.group(1)
+    assert "switch (state.mode)" in query.group(1), "the query still infers the mode"
+    diff, rest = query.group(1).split('case "diff":', 1)
+    body, default = rest.split("default:", 1)
+    # The comparison is the diff arm's and the step is everybody else's.
+    assert 'params.set("compare"' in body and 'params.set("step"' not in body
+    assert 'params.set("step"' in default and 'params.set("compare"' not in default
 
     load = re.search(r"async function loadTimeline\(\) \{(.*?)\n\}", js, re.DOTALL)
     assert load is not None
@@ -527,15 +574,25 @@ def test_a_step_and_a_comparison_are_exclusive() -> None:
 
 def test_switching_map_forgets_the_step() -> None:
     """A step index belongs to one run. Carried across, it rewinds the new map
-    to a roll it never had - and the counts quietly disagree with the slider."""
+    to a roll it never had - and the counts quietly disagree with the slider.
+
+    `setMode` cannot be where this happens, because run to run is a map change
+    with no mode change at all - so `selectMap` does it, on the map moving.
+    """
     _, js, _ = _resources()
 
+    select = re.search(r"async function selectMap\(id\) \{(.*?)\n\}", js, re.DOTALL)
+    assert select is not None
+    assert "state.map !== previous" in select.group(1)
+    assert "state.step = null" in select.group(1)
+    assert "state.timeline = null" in select.group(1)
+
+    # And the change listener goes through it rather than round it.
     handler = re.search(
         r'el\.map\.addEventListener\("change".*?\n\}\);', js, re.DOTALL
     )
     assert handler is not None
-    assert "state.step = null" in handler.group(0)
-    assert "state.timeline = null" in handler.group(0)
+    assert "selectMap(el.map.value)" in handler.group(0)
 
 def test_an_uncomputed_hours_series_is_not_drawn_as_zero() -> None:
     """**"Not computed" and "added no work" are different answers**, and both

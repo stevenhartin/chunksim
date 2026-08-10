@@ -77,6 +77,13 @@ const state = {
   map: "",
   compare: "",
   tab: "",
+  /* Which of the four modes the page is in - see `MODES`. The ribbon says so
+   * in colour, and `mapQuery` switches on it rather than on which control
+   * happens to hold a value. */
+  mode: "browse",
+  /* `/api/maps` as it came, so `kindOf` can answer what a map *is* without
+   * asking the server again. Refreshed by `loadMaps`. */
+  maps: [],
   view: null,
   cells: new Map(),        // "gx,gy" -> cell, for the locked-wash complement
   candidates: new Map(),   // chunk id -> neighbour entry
@@ -110,6 +117,7 @@ const el = {};
 for (const id of [
   "map", "compare", "breakdown", "plane", "candidates", "masks", "live", "fit", "counts", "skipped",
   "hover", "toggle-panel", "panel", "tabs", "toast", "legend", "tip",
+  "ribbon", "ribbon-mode", "ribbon-map",
   "progress", "progress-title", "progress-count", "progress-detail",
   "progress-track", "progress-fill", "progress-cancel",
   "overlay", "overlay-title", "overlay-body", "overlay-close", "overlay-actions",
@@ -1316,10 +1324,10 @@ function closeOverlay() {
  * simulated map can be rebuilt from its seed but only if you still know it,
  * and a batch of forty is forty directories. The dialog names what goes
  * rather than asking "are you sure", because the count *is* the question. */
-function confirmAction(title, body, verb) {
+function confirmAction(title, body, verb, { danger = true } = {}) {
   return new Promise((resolve) => {
     openOverlay(title, body, tmpl`<button id="confirm-no" type="button">Cancel</button>
-      <button id="confirm-yes" class="danger" type="button">${verb}</button>`);
+      <button id="confirm-yes" class="${danger ? "danger" : ""}" type="button">${verb}</button>`);
     closeOverlay.pending = resolve;
     const answer = (value) => { closeOverlay.pending = null; el.overlay.hidden = true; resolve(value); };
     document.getElementById("confirm-no").onclick = () => answer(false);
@@ -1380,6 +1388,90 @@ async function postJSON(path, payload) {
   return parsed;
 }
 
+/* **Four modes, and the exclusivity rules are theirs rather than the
+ * controls'.**
+ *
+ * The page had three of these already, encoded as mutually exclusive
+ * *conditions*: a compare box with something in it was Diff, a non-null step
+ * was Timeline, neither was Browse. That works right up to the point where
+ * something has to be explained - which is why `comparingNotice` existed, to
+ * apologise for an interaction the interface refused to name.
+ *
+ * Naming them buys two things. `mapQuery` becomes a switch on what the page
+ * *is* instead of an if-ladder over which control happens to be set, and the
+ * ribbon can say so in colour: a state you can see is one you do not have to
+ * infer from the fact that a button went grey.
+ *
+ * **`timeline` is the mode a simulation is seen in, and the only one.** A run
+ * is fifty worlds rather than one, so browsing it as though it were a map is
+ * the confusion the split exists to remove - `selectMap` asks before entering
+ * and puts the picker back when the answer is no. */
+const MODES = {
+  browse:   { label: "Browse" },
+  edit:     { label: "Edit" },
+  diff:     { label: "Diff" },
+  timeline: { label: "Timeline" },
+};
+
+/* What a map is, from the listing rather than from a second request. Unknown
+ * ids answer `fetched`, which is the shape with no history - the conservative
+ * reading, since it never forces a mode on the strength of a guess. */
+function kindOf(mapId) {
+  const row = state.maps.find((m) => m.map_id === mapId);
+  return row ? row.kind : "fetched";
+}
+
+/* A simulation is a sequence of worlds; everything else is one world. */
+function modeForMap(mapId) {
+  return kindOf(mapId) === "simulated" ? "timeline" : "browse";
+}
+
+/* **The single transition point.** Entry and exit work belongs here rather
+ * than at each caller, or the third caller forgets one - which is how a step
+ * belonging to one run used to survive into another. */
+function setMode(next) {
+  if (!MODES[next]) return state.mode;
+  if (next !== "timeline") { state.step = null; state.timeline = null; }
+  if (next !== "diff") setCompare("");
+  state.mode = next;
+  renderRibbon();
+  return state.mode;
+}
+
+/* Mode in colour, map in words. The tint is a CSS decision keyed off the
+ * attribute - the palette stays in the stylesheet rather than gaining a
+ * fourth copy here beside the canvas constants and the legend's literals. */
+function renderRibbon() {
+  el.ribbon.dataset.mode = state.mode;
+  el["ribbon-mode"].textContent = MODES[state.mode].label;
+  el["ribbon-map"].textContent = state.map || "no map";
+}
+
+/* **The guarded setter.** Choosing a simulation is choosing to replay it, and
+ * that is a bigger move than picking a map - so it is asked about, and a
+ * declined answer leaves the picker exactly where it was rather than half
+ * way into a mode nobody agreed to. */
+async function selectMap(id) {
+  const previous = state.map;
+  const wanted = modeForMap(id);
+  if (wanted === "timeline" && state.mode !== "timeline") {
+    const ok = await confirmAction("Enter timeline mode?",
+      tmpl`<p><b>${id}</b> is a simulation - a sequence of worlds rather than
+        one. Timeline mode shows the strip along the bottom, so you can step
+        through what each roll added.</p>`,
+      "Enter timeline mode", { danger: false });
+    if (!ok) { setMap(previous); return false; }
+  }
+  setMap(id);
+  /* **A step index belongs to one run**, and one run is one map. Carried
+   * across it rewinds the new map to a roll it never had, and the counts
+   * quietly disagree with the slider. `setMode` cannot do this on its own:
+   * run to run is a map change with no mode change at all. */
+  if (state.map !== previous) { state.step = null; state.timeline = null; }
+  setMode(wanted);
+  return true;
+}
+
 /* **A `<select>` silently blanks on a value it has no option for**, and that
  * rule is worth keeping rather than reimplementing: a one-run batch is offered
  * under its bare name, so `?map=t/run-001` is a valid map id with no option to
@@ -1399,13 +1491,21 @@ function setCompare(id) {
 
 function mapQuery() {
   const params = new URLSearchParams({ map: state.map });
-  /* **A step and a comparison are exclusive**, and the step wins because it
-   * is the thing you just dragged. Two maps and a rewind would need a third
-   * colour for "gained by this roll but lost against the other side", which
-   * is a question nobody asked. `renderTimeline` hides the strip while a
-   * comparison is up, so this branch is belt and braces. */
-  if (state.step !== null) params.set("step", String(state.step));
-  else if (state.compare) params.set("compare", state.compare);
+  /* **A step and a comparison are exclusive, and the modes are what make them
+   * so.** Two maps and a rewind would need a third colour for "gained by this
+   * roll but lost against the other side", which is nobody's question - so
+   * only one mode carries a comparison and it is not the one that steps.
+   *
+   * Browse keeps a step because a batch of one has exactly one, pinned at its
+   * end: that is not a rewind but the only world the map has, and it is how
+   * the server is asked which chunk arrived. */
+  switch (state.mode) {
+    case "diff":
+      if (state.compare) params.set("compare", state.compare);
+      break;
+    default:
+      if (state.step !== null) params.set("step", String(state.step));
+  }
   return params.toString();
 }
 
@@ -1438,6 +1538,7 @@ function mapOptions(maps) {
 
 async function loadMaps() {
   const maps = await getJSON("/api/maps");
+  state.maps = maps;
   if (!maps.length) {
     /* An empty screen is an invitation to act. The first build showed a blank
      * dropdown and "missing required parameter 'map'", which is a dead end. */
@@ -1464,6 +1565,10 @@ async function loadMaps() {
   if (!state.map) setMap(maps[0].map_id);
   setCompare(BOOT.compare || keepCompare || "");
   BOOT.map = BOOT.compare = "";
+  /* The mode follows the map rather than the other way round, and no prompt:
+   * nobody chose this, it is where the page already was. */
+  state.mode = state.compare ? "diff" : modeForMap(state.map);
+  renderRibbon();
   return true;
 }
 
@@ -2751,13 +2856,14 @@ const BOOT = {
 };
 
 el.map.addEventListener("change", async () => {
-  state.map = el.map.value;
+  /* **Asked before anything loads.** Declining has to leave the page as it
+   * was, and half a load is not that. */
+  if (!(await selectMap(el.map.value))) return;
   state.selected = null;
   taskPanel = null;
   /* Cleared *before* the view loads: a step index belongs to one run, and
-   * carrying it across would rewind the new map to a roll it never had. */
-  state.step = null;
-  state.timeline = null;
+   * carrying it across would rewind the new map to a roll it never had.
+   * `setMode` does it, and does it for every other way in as well. */
   syncBreakdown();
   await loadTimeline();
   await loadView({ refit: true });
@@ -2765,7 +2871,12 @@ el.map.addEventListener("change", async () => {
   await loadSections();
 });
 el.compare.addEventListener("change", async () => {
-  state.compare = el.compare.value;
+  /* Read before the mode changes: leaving `diff` clears the comparison, which
+   * is right when you are leaving it and would eat the one you just picked. */
+  const chosen = el.compare.value;
+  state.compare = chosen;
+  setMode(chosen ? "diff" : modeForMap(state.map));
+  if (chosen) setCompare(chosen);
   syncBreakdown();
   /* Comparing is a question about two maps and stepping is a question about
    * one map's past. Picking a comparison answers the first, so the strip goes
@@ -3325,6 +3436,7 @@ function renderAttribution() {
 
 (async function start() {
   resize();
+  renderRibbon();
   if (!(await loadMaps())) return;
   syncBreakdown();
   await loadTimeline();

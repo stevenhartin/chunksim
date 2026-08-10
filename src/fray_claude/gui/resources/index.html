@@ -41,6 +41,15 @@
   </defs>
 </svg>
 
+<!-- Which mode, in colour, with the map named on it. The page has always had
+     modes; what it lacked was anywhere to say so, which left the user to infer
+     one from the fact that a button had gone grey. The tint is a CSS decision
+     keyed off `data-mode`, so the palette lives in one file. -->
+<div id="ribbon" class="ribbon" data-mode="browse">
+  <span id="ribbon-mode" class="ribbon-mode">Browse</span>
+  <span id="ribbon-map" class="ribbon-map mono">no map</span>
+</div>
+
 <!-- The bar floats over the map rather than sitting above it, so the world
      keeps the whole window and the pan arithmetic stays in one space. -->
 <header class="bar">

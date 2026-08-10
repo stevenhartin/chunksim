@@ -55,6 +55,16 @@
   --pill: 999px;
 
   --bar-h: 42px;
+  --ribbon-h: 24px;
+  /* **One colour per mode, defined once.** The canvas constants and the
+     legend's swatches are already two copies of this project's palette with
+     nothing asserting they agree; the modes are not going to be a third. JS
+     sets `data-mode` and the rules below pick the tint. */
+  --mode-browse: #4a5262;
+  --mode-edit: #b8860b;
+  --mode-diff: #6b4ea8;
+  --mode-timeline: #1f6f9c;
+  --mode-tint: var(--mode-browse);
   --panel-w: 360px;
   /* How much of the right edge the panel is occupying. Anything anchored to
      the right of the *map* reads this rather than `--panel-w`, so it slides
@@ -194,6 +204,35 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 
 /* --- bar ---------------------------------------------------------------- */
 
+/* --- ribbon -------------------------------------------------------------- */
+
+/* Under the bar and above everything else, so it reads as a property of the
+   whole page rather than as one more control in a row of them. */
+.ribbon {
+  position: fixed;
+  top: var(--bar-h);
+  left: 0;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  gap: var(--s3);
+  align-items: center;
+  height: var(--ribbon-h);
+  padding: 0 var(--s4);
+  background: var(--mode-tint);
+  border-bottom: 1px solid rgba(0, 0, 0, .35);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.ribbon[data-mode="browse"] { --mode-tint: var(--mode-browse); }
+.ribbon[data-mode="edit"] { --mode-tint: var(--mode-edit); }
+.ribbon[data-mode="diff"] { --mode-tint: var(--mode-diff); }
+.ribbon[data-mode="timeline"] { --mode-tint: var(--mode-timeline); }
+
+.ribbon-mode { font-weight: 600; }
+.ribbon-map { opacity: .85; }
+
 .bar {
   position: fixed;
   inset: 0 0 auto 0;
@@ -257,7 +296,7 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 .panel {
   position: fixed;
   z-index: 2;
-  top: var(--bar-h);
+  top: calc(var(--bar-h) + var(--ribbon-h));
   right: 0;
   bottom: 0;
   width: var(--panel-w);
@@ -584,7 +623,7 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .progress {
   position: fixed;
   z-index: 4;
-  top: calc(var(--bar-h) + var(--s4));
+  top: calc(var(--bar-h) + var(--ribbon-h) + var(--s4));
   right: calc(var(--rail) + var(--s4));
   width: 268px;
   padding: var(--s4);
@@ -662,7 +701,7 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   position: fixed;
   z-index: 2;
   left: var(--s4);
-  top: calc(var(--bar-h) + var(--s4));
+  top: calc(var(--bar-h) + var(--ribbon-h) + var(--s4));
   display: flex;
   flex-wrap: wrap;
   gap: var(--s2) var(--s4);
