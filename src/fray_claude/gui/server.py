@@ -85,7 +85,7 @@ from fray_claude.remote.api import (
     fetch_skill_icon,
     fetch_tasks_map,
 )
-from fray_claude.batch import RunResult, price_steps, run_batch, save_unlock
+from fray_claude.runs.batch import RunResult, price_steps, run_batch, save_unlock
 from fray_claude.store.build_info import read_build
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.derive.delta import MapSide, compare_maps, diff_names
@@ -102,8 +102,8 @@ from fray_claude.gui.derivation import DerivedState, Derivations, unlocked_of
 from fray_claude.gui.jobs import JobRegistry, JobState, Progress, StopCheck, as_int
 from fray_claude.gui.panels import task_panel
 from fray_claude.gui.worldmap import MapView, build_view, grid_position
-from fray_claude.timeline import Step, matches as timeline_matches, replay, series
-from fray_claude.timeline import stamp as timeline_stamp
+from fray_claude.runs.timeline import Step, matches as timeline_matches, replay, series
+from fray_claude.runs.timeline import stamp as timeline_stamp
 
 #: The port `fray-gui` binds unless told otherwise. Arbitrary, and high enough
 #: to need no privileges.

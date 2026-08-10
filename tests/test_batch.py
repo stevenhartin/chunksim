@@ -15,7 +15,7 @@ from typing import Any
 
 import pytest
 
-from fray_claude.batch import derive_seeds, price_steps, run_batch, save_unlock
+from fray_claude.runs.batch import derive_seeds, price_steps, run_batch, save_unlock
 from fray_claude.store.cache import (
     BATCH_META_FILE_NAME,
     UNLOCKED,
@@ -33,8 +33,8 @@ from fray_claude.store.cache import (
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.store.derived_cache import CacheBehaviour
 from fray_claude.derive.pipeline import load_map_state
-from fray_claude.simulate import simulate_rolls
-from fray_claude.timeline import replay
+from fray_claude.runs.simulate import simulate_rolls
+from fray_claude.runs.timeline import replay
 from fray_claude.derive.unlock import UnlockDelta
 
 #: 100 starts unlocked; 99/101/356 are its grid neighbours (id +/- 1, +/- 256)
@@ -431,7 +431,7 @@ def test_slices_are_contiguous_and_overlap_by_one() -> None:
     The overlap is the baseline: a slice starting mid-run needs the roll
     before its head to know what its head added.
     """
-    from fray_claude.batch import _slices
+    from fray_claude.runs.batch import _slices
 
     parts = _slices([["a"], ["b"], ["c"], ["d"], ["e"]], 2)
 
@@ -445,7 +445,7 @@ def test_slices_are_contiguous_and_overlap_by_one() -> None:
 
 def test_more_slices_than_steps_is_not_an_error() -> None:
     """Asking for 16 slices of a 3-step run produces 3, not 13 empty ones."""
-    from fray_claude.batch import _slices
+    from fray_claude.runs.batch import _slices
 
     parts = _slices([["a"], ["b"], ["c"]], 16)
 

@@ -12,7 +12,7 @@ from typing import Any
 
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.derive.pipeline import MapState, derive
-from fray_claude.simulate import UnlockRecord, roll_pool, simulate_rolls, simulated_payload
+from fray_claude.runs.simulate import UnlockRecord, roll_pool, simulate_rolls, simulated_payload
 
 
 def _chunk_info(**data: Any) -> ChunkInfo:

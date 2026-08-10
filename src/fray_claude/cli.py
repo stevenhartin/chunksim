@@ -94,7 +94,7 @@ from fray_claude.remote.api import (
     fetch_map,
     fetch_tasks_map,
 )
-from fray_claude.batch import RunResult, run_batch, save_unlock
+from fray_claude.runs.batch import RunResult, run_batch, save_unlock
 from fray_claude.store.build_info import print_watermark
 from fray_claude.store.cache import (
     CHUNKINFO_BLOB_NAME,
@@ -150,7 +150,7 @@ from fray_claude.remote.scrape import SOURCE as SCRAPE_SOURCE
 from fray_claude.remote.scrape import scrape
 from fray_claude.derive.search import TYPES, build_world_index, search
 from fray_claude.derive.sections import describe_sections, expand_chunk_areas
-from fray_claude.simulate import simulate_rolls
+from fray_claude.runs.simulate import simulate_rolls
 from fray_claude.derive.sources import CATEGORIES as SOURCE_CATEGORIES
 from fray_claude.model.summary import _mapping, format_age, summarise
 from fray_claude.derive.unlock import UnlockDelta, tasks_added_by

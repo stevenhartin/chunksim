@@ -80,10 +80,10 @@ from fray_claude.costing.heuristics import Heuristics, merge
 from fray_claude.costing.heuristics import load as load_heuristics
 from fray_claude.derive.pipeline import Derived, MapState, load_map_state
 from fray_claude.derive.search import WorldIndex, build_world_index
-from fray_claude.simulate import UnlockRecord, simulate_rolls, simulated_payload
+from fray_claude.runs.simulate import UnlockRecord, simulate_rolls, simulated_payload
 from fray_claude.model.summary import _mapping
-from fray_claude.timeline import added_hours
-from fray_claude.timeline import stamp as timeline_stamp
+from fray_claude.runs.timeline import added_hours
+from fray_claude.runs.timeline import stamp as timeline_stamp
 from fray_claude.derive.unlock import UnlockDelta
 
 #: Draw run seeds from, so a batch seed of 1 and a run seed of 1 can't collide
