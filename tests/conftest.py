@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -144,3 +145,86 @@ def no_ambient_chunkinfo(monkeypatch: pytest.MonkeyPatch) -> None:
     with it.
     """
     monkeypatch.delenv("FRAY_CHUNKINFO", raising=False)
+
+
+# --- what the CLI tests share --------------------------------------------
+#
+# **Fixtures returning callables, rather than plain functions.** `tests/` is not
+# a package, so a helper module here could only be imported by accident of
+# `sys.path`; a fixture is the mechanism pytest already provides for sharing
+# setup, and it carries `monkeypatch` for free rather than taking it as an
+# argument at every call site.
+
+
+@pytest.fixture
+def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A throwaway project root that `cache.project_root()` will find."""
+    (tmp_path / "pyproject.toml").write_text("", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
+@pytest.fixture
+def cached_map(monkeypatch: pytest.MonkeyPatch) -> Callable[[dict[str, Any], dict[str, Any]], None]:
+    """Fetch a payload into the temporary cache and fake the export.
+
+    **Two readers, and both must be patched.** `fray chunkinfo` and `fray
+    heuristics` read the export through `cli.io_commands`; every derivation
+    command reads it through `cli.common.load_state`. Patching one leaves the
+    other reading the developer's real cache - which is not a failing test but
+    a passing one, computed against the wrong map.
+    """
+    from fray_claude.cli.app import main
+
+    def cache(payload: dict[str, Any], chunkinfo_data: dict[str, Any]) -> None:
+        monkeypatch.setattr(
+            "fray_claude.cli.io_commands.fetch_map",
+            lambda map_id, timeout=30.0: payload,
+        )
+        main(["fetch"])
+        for module in ("io_commands", "common"):
+            monkeypatch.setattr(
+                f"fray_claude.cli.{module}.read_chunkinfo",
+                lambda override=None, root=None: chunkinfo_data,
+            )
+
+    return cache
+
+
+@pytest.fixture
+def simulatable(monkeypatch: pytest.MonkeyPatch) -> Callable[[], None]:
+    """Cache a map and an export that `fray simulate` can actually roll from.
+
+    Writes the export as a *blob* rather than patching the reader, because
+    `batch.run_one` resolves its own copy in a worker process - which is the
+    point of the worker design and would be invisible to a patch made in the
+    parent.
+    """
+    from fray_claude.cli.app import main
+    from fray_claude.store.cache import write_blob
+
+    def prepare() -> None:
+        monkeypatch.delenv("FRAY_CHUNKINFO", raising=False)
+        monkeypatch.setattr(
+            "fray_claude.cli.io_commands.fetch_map",
+            lambda map_id, timeout=30.0: {"chunks": {"unlocked": {"100": "100"}}},
+        )
+        main(["fetch"])
+        write_blob(
+            "chunkinfo",
+            {"sections": {"101": {"0": ["100"]}, "102": {"0": ["101"]}}},
+            "test",
+        )
+
+    return prepare
+
+
+@pytest.fixture
+def derived_entries() -> Callable[[Path], list[Path]]:
+    """Everything `cache/derived/` holds under a project root, or nothing."""
+
+    def entries(project: Path) -> list[Path]:
+        directory = project / "cache" / "derived"
+        return sorted(directory.iterdir()) if directory.is_dir() else []
+
+    return entries
