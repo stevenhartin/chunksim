@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from fray_claude.cache import read_chunkinfo
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.graph import grid_neighbours
 from fray_claude.neighbours import assign_numbers, eligible_neighbours, neighbour_pool
@@ -328,7 +329,7 @@ def _real_state() -> tuple[MapState, dict[str, bool]]:
     from fray_claude.pipeline import load_map_state
 
     assert _REAL_CHUNKINFO is not None
-    info = ChunkInfo(json.loads(Path(_REAL_CHUNKINFO).read_text(encoding="utf-8")))
+    info = ChunkInfo(read_chunkinfo(override=Path(_REAL_CHUNKINFO)))
     root = project_root()
     envelope = read_cache("fray", root)
     tasks_map = reverse_tasks_map(read_blob("tasks_map", root)["data"])
@@ -352,7 +353,7 @@ def test_the_cabin_fever_gate_blocks_its_neighbour_on_the_real_export() -> None:
     the gate is observable at all: it is unreachable from the map's own state.
     """
     assert _REAL_CHUNKINFO is not None
-    info = ChunkInfo(json.loads(Path(_REAL_CHUNKINFO).read_text(encoding="utf-8")))
+    info = ChunkInfo(read_chunkinfo(override=Path(_REAL_CHUNKINFO)))
     state = _state(chunk_info=info)
     unlocked = {"14902": True}
     current = derive(state, unlocked)

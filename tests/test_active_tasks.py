@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from fray_claude.cache import read_chunkinfo
 from fray_claude.active_tasks import SkillClassification, TaskClassification, classify_tasks
 from fray_claude.chunkinfo import ChunkInfo
 
@@ -385,7 +386,7 @@ def test_active_slayer_task_matches_the_live_oracle() -> None:
     from fray_claude.firebase import decode_challenge_keyed, reverse_tasks_map
     from fray_claude.pipeline import derive, load_map_state
 
-    data = json.loads(Path(_REAL_CHUNKINFO).read_text(encoding="utf-8"))
+    data = read_chunkinfo(override=Path(_REAL_CHUNKINFO))
     info = ChunkInfo(data)
     root = project_root()
     envelope = read_cache("fray", root)

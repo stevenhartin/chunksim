@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from fray_claude.cache import read_chunkinfo
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.graph import (
     Node,
@@ -195,7 +196,7 @@ def test_the_real_export_builds_a_graph_matching_its_sections_branch() -> None:
     shape and the docstring needs revisiting.
     """
     assert _REAL_CHUNKINFO is not None
-    info = ChunkInfo(json.loads(Path(_REAL_CHUNKINFO).read_text(encoding="utf-8")))
+    info = ChunkInfo(read_chunkinfo(override=Path(_REAL_CHUNKINFO)))
     graph = build_section_graph(info)
 
     assert set(info.sections) == set(info.walkable_chunks)

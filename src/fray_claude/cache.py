@@ -1258,6 +1258,47 @@ def _read_json_object(path: Path) -> dict[str, Any]:
     return data
 
 
+#: `write_blob`'s exact field set. Matched **whole**, never by "has a `data`
+#: key": an export that happened to carry a top-level `data` branch must pass
+#: through untouched, and a rule loose enough to unwrap it would be a new
+#: version of the bug this constant exists to kill.
+_BLOB_ENVELOPE_KEYS = frozenset({"name", "fetched_at", "source", "data"})
+
+
+def _unwrapped_export(path: Path, data: dict[str, Any]) -> dict[str, Any]:
+    """The raw export, whether `path` holds one or the envelope around one.
+
+    **This was the project's sharpest footgun.** `fray chunkinfo` writes the
+    export inside a provenance envelope, so the file anyone would naturally
+    reach for - `cache/reference/chunkinfo.json` - is *not* what the override
+    path wanted. Pointing `--chunkinfo` or `FRAY_CHUNKINFO` at it did not
+    fail: it returned the envelope, whose four keys contain none of `chunks`,
+    `sections` or `challenges`, so every accessor answered "absent" and the
+    derivation came out empty-but-plausible. The documented workaround was to
+    extract the inner object by hand into a temp file first, which is a step
+    that has to be repeated whenever the temp file is cleaned up, and whose
+    omission is silent.
+
+    Unwrapping here rather than in a test fixture is deliberate: the trap is
+    the *user's* to fall into as much as the suite's, and a fixture-side fix
+    would leave `fray sections --chunkinfo cache/reference/chunkinfo.json`
+    broken in exactly the way it always was.
+
+    A cached *map* is refused rather than unwrapped. It is an envelope too,
+    but its contents are a map payload and not an export, so unwrapping it
+    would trade one silent wrong answer for another.
+    """
+    if set(data) == _BLOB_ENVELOPE_KEYS and isinstance(data.get("data"), dict):
+        inner: dict[str, Any] = data["data"]
+        return inner
+    if "map_id" in data and isinstance(data.get("data"), dict):
+        raise CacheMissError(
+            f"{path} is a cached map, not a chunk export - point --chunkinfo "
+            f"(or {CHUNKINFO_ENV_VAR}) at {CHUNKINFO_BLOB_NAME}.json"
+        )
+    return data
+
+
 def chunkinfo_source(override: Path | None = None, root: Path | None = None) -> Path:
     """The file `read_chunkinfo` would read: override, env var, then the cache."""
     path = override
@@ -1272,13 +1313,18 @@ def read_chunkinfo(override: Path | None = None, root: Path | None = None) -> di
 
     Checks `override`, then the `FRAY_CHUNKINFO` environment variable, before
     falling back to the copy `fray chunkinfo` cached from upstream.
+
+    All three routes answer with the *export*: an overridden path may hold
+    either a raw export or the envelope `fray chunkinfo` wrote around one, and
+    `_unwrapped_export` tells them apart. That is why the oracle runs need no
+    hand-extracted temp file any more.
     """
     path = override
     if path is None:
         env_value = os.environ.get(CHUNKINFO_ENV_VAR)
         path = Path(env_value) if env_value else None
     if path is not None:
-        return _read_json_object(path)
+        return _unwrapped_export(path, _read_json_object(path))
     data: dict[str, Any] = read_blob(CHUNKINFO_BLOB_NAME, root)["data"]
     return data
 

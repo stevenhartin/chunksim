@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from fray_claude.cache import read_chunkinfo
 from fray_claude.bis import (
     _STYLE_SEPARATOR,
     article_for,
@@ -557,7 +558,7 @@ def test_every_bis_pick_matches_the_live_oracle() -> None:
     from fray_claude.firebase import decode_challenge_keyed, reverse_tasks_map
     from fray_claude.pipeline import derive, load_map_state
 
-    info = ChunkInfo(json.loads(Path(_REAL_CHUNKINFO).read_text(encoding="utf-8")))
+    info = ChunkInfo(read_chunkinfo(override=Path(_REAL_CHUNKINFO)))
     root = project_root()
     tasks_map = reverse_tasks_map(read_blob("tasks_map", root)["data"])
     equipment = info.data["equipment"]
@@ -627,7 +628,7 @@ def test_a_real_completed_bis_item_is_never_shown_as_active() -> None:
     from fray_claude.firebase import reverse_tasks_map
     from fray_claude.pipeline import derive, load_map_state
 
-    data = json.loads(Path(_REAL_CHUNKINFO).read_text(encoding="utf-8"))
+    data = read_chunkinfo(override=Path(_REAL_CHUNKINFO))
     info = ChunkInfo(data)
     root = project_root()
     envelope = read_cache("fray", root)

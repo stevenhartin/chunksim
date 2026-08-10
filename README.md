@@ -279,8 +279,12 @@ against source-chunk's own recorded answers, which makes them the suite's real c
 run them before trusting a change to the derivation modules:
 
 ```sh
-FRAY_CHUNKINFO=/path/to/raw-export.json .venv/bin/pytest
+FRAY_CHUNKINFO=cache/reference/chunkinfo.json FRAY_MAP_CACHE=1 .venv/bin/pytest
 ```
+
+That is the whole setup once `fray chunkinfo` and `fray fetch` have run — the variable takes the
+cached file as it is written, or a raw export if you have one. Without the variables the same tests
+skip, so a fresh clone stays green.
 
 See `CLAUDE.md` for the module-by-module architecture and the testing conventions in full.
 

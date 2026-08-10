@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 
+from fray_claude.cache import read_chunkinfo
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.sections import (
     ChunkSections,
@@ -161,7 +162,7 @@ def test_manual_sections_match_a_real_export() -> None:
     the real export, cross-checked by hand when this was written (`fray
     sections` against a cached map with these four chunks unlocked)."""
     assert _REAL_CHUNKINFO is not None
-    data = json.loads(Path(_REAL_CHUNKINFO).read_text(encoding="utf-8"))
+    data = read_chunkinfo(override=Path(_REAL_CHUNKINFO))
     info = ChunkInfo(data)
 
     unlocked = {chunk_id: True for chunk_id in ("13874", "13878", "6705", "8748")}

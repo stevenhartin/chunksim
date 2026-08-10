@@ -210,8 +210,7 @@ mypy                        # strict, over src/ and tests/; run from the repo ro
 .venv/bin/pytest            # whole suite
 .venv/bin/pytest tests/test_summary.py::test_summarise_counts_unlocked_chunks   # single test
 FRAY_CHUNKINFO=path .venv/bin/pytest tests/test_sections.py -k real   # opt-in oracle test against a real export
-python -c 'import json;json.dump(json.load(open("cache/reference/chunkinfo.json"))["data"],open("/tmp/raw.json","w"))'
-FRAY_CHUNKINFO=/tmp/raw.json FRAY_MAP_CACHE=1 .venv/bin/pytest   # all six oracles, the real correctness signal
+FRAY_CHUNKINFO=cache/reference/chunkinfo.json FRAY_MAP_CACHE=1 .venv/bin/pytest   # every oracle, the real signal
 fray-gui [--map ID] [--compare ID] [--port N] [--host H] [--allow-host H] [--keep-alive]
          [--no-browser] [--tab]
 pipx install --force --editable .    # once: `fray`/`fray-gui` on PATH then track src/
@@ -221,9 +220,13 @@ pip install -e ../osrs-dps                           # the optional `dps` extra,
 (cd ../osrs-dps && pyproject-build) && pipx inject --force fray-claude ../osrs-dps/dist/osrs_dps-*.whl
 ```
 
-Those two lines go together: `FRAY_CHUNKINFO` wants a *raw* export, not `fray chunkinfo`'s
-envelope-wrapped `cache/reference/chunkinfo.json` (hence the extraction — see Conventions for why pointing it at
-the envelope fails silently), and `FRAY_MAP_CACHE` is presence-only, its value unused.
+**`FRAY_CHUNKINFO` takes either the raw export or `fray chunkinfo`'s envelope around one**, so the
+oracle run is that one line and needs no temp file. It did need one: the override path read the file
+as-is, so pointing it at the cache's own `chunkinfo.json` returned the four-key envelope, every
+accessor answered "absent", and the derivation came out empty and plausible — silently. Now
+`cache._unwrapped_export` matches the envelope's **whole** key set and unwraps it (a *map* envelope is
+refused outright, being a different thing rather than a wrapped export). `FRAY_MAP_CACHE` is
+presence-only, its value unused.
 
 `--export-json PATH` (or `-` for stdout, replacing the text summary) is carried by the nine
 *derivation* subcommands plus `maps list`, not the four I/O ones (`fetch`/`show`/`chunkinfo`/
@@ -728,11 +731,11 @@ only one that could otherwise be missed for weeks.
   — they compare against upstream's own recorded answers, so run them (with `FRAY_CHUNKINFO` set)
   before trusting a change to `sections`/`sources`/`challenges`/`bis`/`active_tasks`/`other_tasks`,
   and treat a failure as a bug in this code rather than a stale oracle.
-  `FRAY_CHUNKINFO` must point at a *raw* export file, not this project's own envelope-wrapped
-  `cache/reference/chunkinfo.json` (`fray chunkinfo`'s output) — `cache.read_chunkinfo`'s override path reads it
-  directly with no `["data"]` unwrapping, so pointing it at the envelope silently produces wrong or
-  incomplete results rather than an error. Extract the raw export first if working from the cache
-  (`json.load(open("cache/reference/chunkinfo.json"))["data"]`).
+  `FRAY_CHUNKINFO` accepts either form — a raw export, or `fray chunkinfo`'s envelope around one —
+  so `cache/reference/chunkinfo.json` is now the thing to point it at. **Read the export through
+  `cache.read_chunkinfo`, never with `json.loads` on the env var**: nine test sites did the latter and
+  so bypassed the unwrap, which is what made the one-line oracle run fail on seven tests while the
+  hand-extracted file passed. One reader, one answer.
 - **`User-Agent` differs by host, deliberately.** Firebase and GitHub get none — those endpoints are
   public and unauthenticated, so there's nothing to disguise and a header would only publish
   information nobody asked for. The **OSRS wiki gets `api.WIKI_USER_AGENT`, and requires it**: an

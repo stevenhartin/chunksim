@@ -179,6 +179,42 @@ def test_read_chunkinfo_prefers_an_explicit_override(tmp_path: Path) -> None:
     assert read_chunkinfo(override=override, root=tmp_path) == {"chunks": {"local": True}}
 
 
+def test_an_overridden_envelope_is_unwrapped_to_its_export(tmp_path: Path) -> None:
+    """**The project's sharpest footgun, closed.**
+
+    `cache/reference/chunkinfo.json` is the file anyone naturally reaches for,
+    and it is the envelope rather than the export. Pointing the override at it
+    used to return the envelope, whose keys contain no `chunks` and no
+    `sections`, so every accessor answered "absent" and the derivation came out
+    empty and plausible. The documented workaround was to extract the inner
+    object into a temp file by hand.
+    """
+    export: dict[str, Any] = {"chunks": {"12850": {}}, "sections": {}}
+    write_blob("chunkinfo", export, "https://example.invalid/x.json", root=tmp_path)
+    envelope = blob_path("chunkinfo", root=tmp_path)
+
+    assert read_chunkinfo(override=envelope, root=tmp_path) == export
+
+
+def test_an_export_carrying_a_data_branch_is_not_unwrapped(tmp_path: Path) -> None:
+    """The unwrap matches the envelope's **whole** key set, not "has a `data`
+    key" - a looser rule would be a new version of the bug it replaces."""
+    export: dict[str, Any] = {"chunks": {}, "data": {"chunks": {"wrong": True}}}
+    override = tmp_path / "raw.json"
+    override.write_text(json.dumps(export), encoding="utf-8")
+
+    assert read_chunkinfo(override=override, root=tmp_path) == export
+
+
+def test_an_overridden_map_is_refused_rather_than_unwrapped(tmp_path: Path) -> None:
+    """A map is an envelope too, and its contents are not an export. Unwrapping
+    it would trade one silent wrong answer for another."""
+    write_cache("fray", {"chunks": {"unlocked": {}}}, root=tmp_path)
+
+    with pytest.raises(CacheMissError, match="cached map, not a chunk export"):
+        read_chunkinfo(override=cache_path("fray", tmp_path), root=tmp_path)
+
+
 def test_read_chunkinfo_falls_back_to_the_env_var(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

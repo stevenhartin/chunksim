@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from fray_claude.cache import read_chunkinfo
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.pipeline import MapState, derive
 from fray_claude.search import ItemSource, build_world_index, normalise, rank, search
@@ -328,7 +329,7 @@ def test_abyssal_whip_resolves_through_skill_items_to_a_real_chunk() -> None:
     12108. A regression in any of the five item routes breaks this.
     """
     assert _REAL_CHUNKINFO is not None
-    data = json.loads(Path(_REAL_CHUNKINFO).read_text(encoding="utf-8"))
+    data = read_chunkinfo(override=Path(_REAL_CHUNKINFO))
     info = ChunkInfo(data)
     world = build_world_index(info)
 
