@@ -140,7 +140,7 @@ for (const id of [
   "show-done", "estimate-total", "estimate-why", "estimate-body",
   "find-body", "find-form", "find-input", "maps-body", "attribution", "watermark",
   "timeline", "tl-title", "tl-chips", "tl-hours", "tl-details", "tl-collapse", "tl-graph",
-  "tl-prev", "tl-slider", "tl-next", "tl-step",
+  "tl-prev", "tl-slider", "tl-next", "tl-step", "tl-snapshot",
 ]) el[id] = document.getElementById(id);
 
 /* ---- geometry ---------------------------------------------------------- */
@@ -3624,6 +3624,46 @@ el["tl-collapse"].addEventListener("click", () => {
   el["tl-collapse"].setAttribute("aria-expanded", String(!shut));
   el["tl-collapse"].querySelector("use").setAttribute("href", shut ? "#i-up" : "#i-down");
   document.documentElement.style.setProperty("--strip-h", el.timeline.offsetHeight + "px");
+});
+
+/* **A snapshot is the way out of a timeline**, so it asks for a name the way
+ * every other map-making action does and opens what it claimed. Step 0 is a
+ * baseline rather than a roll - it *is* the base map - so it is refused here
+ * rather than writing a copy of something that already exists. */
+el["tl-snapshot"].addEventListener("click", () => {
+  const step = state.step ?? 0;
+  if (!state.timeline || step < 1) { toast("Step 0 is the base map — drag to a roll first"); return; }
+  const suggested = state.map.replace(/\//g, "-") + "-at-" + step;
+  openOverlay("Snapshot roll " + step,
+    tmpl`<p>Writes the world after roll ${step} of <b>${state.map}</b> as a map
+      of its own, carrying that much of the run's history. It browses, edits
+      and diffs like any other map; nothing existing is touched.</p>
+      <div class="row"><input id="snap-name" type="text" value="${suggested}"
+        aria-label="Name for the new map" spellcheck="false" autocomplete="off"
+        data-tip="<b>Name for the new map</b><span class='sub'>A name already in use gains <code>-2</code>, <code>-3</code>, … rather than overwriting.</span>"></div>`,
+    tmpl`<button id="snap-no" type="button">Cancel</button>
+      <button id="snap-yes" type="button">Snapshot</button>`);
+  const field = document.getElementById("snap-name");
+  const go = () => {
+    const name = field.value.trim() || suggested;
+    closeOverlay();
+    runAction("Snapshot " + name, "/api/snapshot", { map: state.map, step, name },
+      async (result) => {
+        await loadMaps();
+        if (result.open) openMap(result.open);
+        syncBreakdown();
+        await loadTimeline();
+        await loadView({ refit: true });
+        await loadCandidates();
+        await loadSections();
+        loadMapsPane();
+      });
+  };
+  document.getElementById("snap-no").onclick = closeOverlay;
+  document.getElementById("snap-yes").onclick = go;
+  field.onkeydown = (event) => { if (event.key === "Enter") { event.preventDefault(); go(); } };
+  field.focus();
+  field.select();
 });
 
 el["tl-details"].addEventListener("click", () => {

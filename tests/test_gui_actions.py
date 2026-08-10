@@ -1,4 +1,4 @@
-"""Tests for `gui/actions.py`: the ten POSTs and the jobs they hand work to.
+"""Tests for `gui/actions.py`: the eleven POSTs and the jobs they hand work to.
 
 `handle_request` is pure - strings in, a `Response` out - so every test
 here exercises the real routing without binding a socket.
@@ -539,3 +539,83 @@ def test_the_claimed_name_comes_back_when_the_requested_one_collides(ctx: Contex
     second = _wait(ctx, _body(_post("/api/commit", ctx, {"map": "fray", "name": "twice", "unlocked": [NORTH]}))["job"])
     assert first["result"]["open"] == "twice"
     assert second["result"]["open"] == "twice-2"
+
+
+def _sim_run(root: Path, batch: str, chunks: list[str]) -> str:
+    """A run directory the snapshot route can read: a base payload, a ledger
+    and a map. Written through `_write_one_run_batch` so the metadata is the
+    real shape rather than a guess at it."""
+    from fray_claude.runs.batch import _write_one_run_batch
+    from fray_claude.runs.simulate import UnlockRecord, simulated_payload
+
+    base = {"chunks": {"unlocked": {LUMBRIDGE: LUMBRIDGE}}}
+    records = [
+        UnlockRecord(
+            order=index,
+            chunk_id=chunk,
+            new_sections={},
+            new_tasks={},
+            new_unsupported=frozenset(),
+            bis_upgrades={},
+        )
+        for index, chunk in enumerate(chunks, start=1)
+    ]
+    written = _write_one_run_batch(
+        name=batch,
+        kind=cache.SIMULATED,
+        origin="simulate",
+        base_payload=base,
+        data=simulated_payload(base, records),
+        ledger=[record.as_dict() for record in records],
+        rolls=chunks,
+        base_map="fray",
+        base_fetched_at=None,
+        source="test",
+        root=root,
+    )
+    return written.name
+
+
+def test_a_snapshot_is_the_run_truncated_at_that_roll(ctx: Context) -> None:
+    """**A truncation, not a replay** - `simulated_payload` reads only
+    `chunk_id`, so the world after k rolls needs no export and no `derive`."""
+    root = ctx.root
+    assert root is not None
+    batch = _sim_run(root, "sim", ["100", "200", "300"])
+
+    job = _wait(ctx, _body(_post("/api/snapshot", ctx, {"map": batch, "step": 2, "name": "half"}))["job"])
+    assert job["state"] == "done", job
+    assert job["result"]["open"] == "half"
+
+    held = cache.read_cache("half", root)["data"]["chunks"]["unlocked"]
+    assert set(held) == {LUMBRIDGE, "100", "200"}, "the third roll came along"
+    # Its own history is the real one, truncated - not a hollowed-out copy.
+    assert [roll["chunk_id"] for roll in cache.read_rolls("half", root)] == ["100", "200"]
+    assert cache.read_cache("half", root)["kind"] == "edited"
+
+
+def test_step_zero_is_the_base_map_rather_than_a_snapshot(ctx: Context) -> None:
+    """Writing it would put a copy of something that already exists on disk
+    under a second name."""
+    root = ctx.root
+    assert root is not None
+    batch = _sim_run(root, "sim", ["100", "200"])
+
+    assert _post("/api/snapshot", ctx, {"map": batch, "step": 0}).status == HTTPStatus.BAD_REQUEST
+    assert _post("/api/snapshot", ctx, {"map": batch, "step": 9}).status == HTTPStatus.BAD_REQUEST
+    assert _post("/api/snapshot", ctx, {"map": batch}).status == HTTPStatus.BAD_REQUEST
+
+
+def test_a_snapshot_of_the_last_roll_is_the_run_itself(ctx: Context) -> None:
+    """The end of the ledger and the stored map are the same world, and the
+    two paths reaching it must agree - one replays the base, the other was
+    written at roll time."""
+    root = ctx.root
+    assert root is not None
+    batch = _sim_run(root, "sim", ["100", "200", "300"])
+
+    _wait(ctx, _body(_post("/api/snapshot", ctx, {"map": batch, "step": 3, "name": "whole"}))["job"])
+    assert (
+        cache.read_cache("whole", root)["data"]["chunks"]["unlocked"]
+        == cache.read_cache(batch, root)["data"]["chunks"]["unlocked"]
+    )

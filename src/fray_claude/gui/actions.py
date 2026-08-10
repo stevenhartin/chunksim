@@ -1,6 +1,7 @@
-"""The ten POST actions, and the job registry they hand work to.
+"""The eleven POST actions, and the job registry they hand work to.
 
-`fetch`, `simulate`, `unlock`, `commit`, `timeline`, `cancel`, `refresh`,
+`fetch`, `simulate`, `unlock`, `commit`, `snapshot`, `timeline`, `cancel`,
+`refresh`,
 `maps/remove`, `derived/prune`, `window`. `_ACTIONS` is the dispatch table
 `server._handle_post` looks them up in - it was already a table before this
 split, which is why this module needed no routing invented for it.
@@ -41,7 +42,7 @@ from fray_claude.remote.api import fetch_tasks_map
 import os
 from fray_claude.runs.batch import price_steps
 from fray_claude.runs.batch import run_batch
-from fray_claude.runs.batch import save_edit, save_unlock
+from fray_claude.runs.batch import save_edit, save_snapshot, save_unlock
 from fray_claude.remote.scrape import scrape
 from fray_claude.gui.http import Context
 from fray_claude.gui.routes_view import _run_steps
@@ -294,6 +295,62 @@ def _commit_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     return {"job": ctx.jobs.submit(f"commit {ticks} ticks, {len(unlocked)} chunks", work).id}
 
 
+def _snapshot_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
+    """Save the world at roll `step` of a run as a map in its own right.
+
+    **This is the way out of a timeline.** A run is a sequence of worlds and
+    can only be seen in timeline mode, which means it cannot be diffed, edited
+    or browsed - so the answer to "I want to work with *this* roll" is to make
+    it a real map, after which it behaves like any other. That is what gives
+    the feature a purpose beyond convenience and lets the invariant stay
+    absolute.
+
+    **No derivation at all.** The state after `k` rolls is the base payload
+    with those rolls applied, and `simulate.simulated_payload` reads only
+    `chunk_id` from a record - so the arithmetic is a truncation, not a
+    replay. `UnlockRecord` has no `from_dict` and `as_dict` is lossy
+    (`bis_upgrades` is reshaped, `new_unsupported` sorted), so the records fed
+    to it are synthetic while the ledger *written out* is the run's own dicts,
+    truncated. That way the snapshot's own timeline is the real one rather
+    than a hollowed-out copy.
+    """
+    map_id = str(payload.get("map") or "").strip()
+    if not map_id:
+        raise ValueError("missing 'map'")
+    try:
+        step = int(payload.get("step"))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        raise ValueError("missing or non-numeric 'step'") from None
+
+    rolls = cache.read_rolls(map_id, ctx.root)
+    if not 0 < step <= len(rolls):
+        # Step 0 is the baseline, which is the base map and not a snapshot.
+        raise ValueError(f"step {step} is outside this run's 1..{len(rolls)}")
+    base = cache.read_base_payload(map_id, ctx.root)
+    if base is None:
+        raise ValueError(f"{map_id} does not record the payload it was rolled from")
+
+    kept = rolls[:step]
+    chunks = [str(roll.get("chunk_id") or "") for roll in kept]
+    if not all(chunks):
+        raise ValueError(f"{map_id}'s ledger has a roll with no chunk")
+    name = str(payload.get("name") or "").strip() or f"{map_id.replace('/', '-')}-at-{step}"
+
+    def work(progress: Progress, _stop: StopCheck) -> dict[str, Any]:
+        progress(f"writing {name}")
+        saved = save_snapshot(
+            name=name,
+            base_payload=base,
+            ledger=kept,
+            chunks=chunks,
+            base_map=map_id,
+            root=ctx.root,
+        )
+        return {**saved.as_dict(), "step": step, "open": saved.name}
+
+    return {"job": ctx.jobs.submit(f"snapshot {map_id} at {step}", work).id}
+
+
 def _timeline_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     """Price every step of a run, and store the answer beside its ledger.
 
@@ -440,6 +497,7 @@ _ACTIONS: dict[str, Callable[[Mapping[str, Any], Context], dict[str, Any]]] = {
     "/api/simulate": _simulate_job,
     "/api/unlock": _unlock_job,
     "/api/commit": _commit_job,
+    "/api/snapshot": _snapshot_job,
     "/api/timeline": _timeline_job,
     "/api/cancel": _cancel_job,
     "/api/refresh": _refresh_job,

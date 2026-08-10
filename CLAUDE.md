@@ -205,7 +205,7 @@ Five things that cut across modules — the first three because each has already
 | `gui/routes_view.py` | The **cheap path**: every route answerable without parsing the export. Nothing here may call `ctx.derivations.load`; `_areas_for` is the one documented exception and has a test. |
 | `gui/routes_derived.py` | The **expensive path**: chunk, sections, diff, unlock, estimate, tasks. `/api/diff` derives both sides and is the one route allowed to be slow. |
 | `gui/routes_reference.py` | Bytes belonging to no map: the static allowlist, blob freshness, the tile *template*, and the lazy proxy for section masks and skill icons. |
-| `gui/actions.py` | The ten POST handlers and `_ACTIONS`. **An action's reply shape decides whether the page polls it** — a job id, or the result. |
+| `gui/actions.py` | The eleven POST handlers and `_ACTIONS`. **An action's reply shape decides whether the page polls it** — a job id, or the result. |
 | `gui/jobs.py` | The background job registry the POST actions use. **The only mutable state in the GUI**, kept out of the pure layer deliberately. |
 | `gui/derivation.py` | The boundary between the cheap path and the expensive one. Loads `ChunkInfo` **lazily** — a request that does not need a derivation must not pay for one, and a test asserts the map view never triggers it. |
 | `gui/browser.py` | Finding a Chromium-family browser and opening an app window whose lifetime is the server's. `--user-data-dir` is load-bearing, not tidiness. `window_flags` restores the remembered geometry, which Chrome will not — see the GUI paragraph below Commands. |
@@ -852,7 +852,7 @@ constant crossing into JavaScript with a test holding the two in agreement.
 
 **All fifteen CLI subcommands are reachable from it.** `GET /api/{maps,view,revision,summary,
 neighbours,chunk,sections,unlock,diff,search,estimate,tasks,tiles,areas,derived,jobs,timeline,roll,reference,build}` and
-`POST /api/{fetch,simulate,unlock,commit,timeline,cancel,refresh,maps/remove,derived/prune,window}`. The panel's tabs are tasks / chunk / find / estimate /
+`POST /api/{fetch,simulate,unlock,commit,snapshot,timeline,cancel,refresh,maps/remove,derived/prune,window}`. The panel's tabs are tasks / chunk / find / estimate /
 maps, and `?map=&compare=&candidates=1&sections=1&step=&tab=` reproduces a view.
 
 **The page has four modes, and the ribbon says which in colour.** It had three
@@ -899,6 +899,17 @@ nowhere else until **Commit** — so leaving the mode or changing map asks befor
 throwing it away. `POST /api/commit` is the only writer, through
 `batch.save_edit`, and returns the **claimed** name because `claim_batch`
 suffixes a clash.
+
+**Snapshot is the way out of a timeline, which is what makes the invariant
+affordable.** A run cannot be diffed, edited or browsed, so "I want to work with
+*this* roll" is answered by making it a real map — and after that it behaves
+like any other. `POST /api/snapshot` derives **nothing**: the world after k
+rolls is the base payload with those k chunks applied, since `simulated_payload`
+reads only `chunk_id`. The records it is handed are synthetic while the ledger
+*written out* is the run's own, truncated, so the snapshot's history is the real
+one rather than a hollowed-out copy. It is filed as `edited` rather than as a
+fifth kind: a kind exists to be *said* in the picker, and "this came out of a
+timeline" and "I ticked some things" are one answer there.
 
 **The one place this can be quietly wrong is the encoder.** A mis-encoded key
 writes a tick `firebase.decode_challenge_keyed` cannot read back, and the map

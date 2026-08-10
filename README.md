@@ -109,7 +109,9 @@ changing map asks before discarding it.
 **Timeline** is the only mode a simulation is seen in, because a run is fifty worlds rather than one.
 Choosing one asks whether you meant to replay it, and declining leaves you where you were. The strip
 along the bottom is the run's history: drag it, click a bar to fly to the chunk that roll added, or
-press **Details** for what it opened.
+press **Details** for what it opened. **Snapshot** saves the world at the roll you are looking at as
+a map in its own right — which is how you get out of a timeline: it browses, edits and diffs like any
+other map, where the run itself cannot.
 
 The panel covers the rest of the CLI. **Tasks** is what you are actually doing — checkbox chips per
 category and a toggle for what is already done; quests show only the step you are on, and

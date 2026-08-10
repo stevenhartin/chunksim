@@ -1036,6 +1036,59 @@ def save_edit(
     )
 
 
+def save_snapshot(
+    *,
+    name: str,
+    base_payload: Mapping[str, Any],
+    ledger: Sequence[dict[str, Any]],
+    chunks: Sequence[str],
+    base_map: str,
+    root: Path | None = None,
+) -> SavedEdit:
+    """Save the world after `len(chunks)` rolls of a run as a map of its own.
+
+    **A truncation, not a replay.** `simulated_payload` reads only `chunk_id`
+    from a record, so the state after k rolls is the base payload with those k
+    chunks applied - no export, no `derive`, the same property `timeline.py`
+    leans on. The records handed to it are therefore synthetic, while the
+    ledger written out is the run's own, truncated: a snapshot's own timeline
+    should be the real history it came from rather than a hollowed-out copy.
+
+    Filed as `edited` rather than as a fourth computed kind. What it is is a
+    map a person made by hand out of a run, which is the same claim `save_edit`
+    files - and a kind exists to be *said* in the picker, where "this came out
+    of a timeline" and "I ticked some things" are one answer.
+    """
+    records = [
+        UnlockRecord(
+            order=index,
+            chunk_id=chunk_id,
+            new_sections={},
+            new_tasks={},
+            new_unsupported=frozenset(),
+            bis_upgrades={},
+        )
+        for index, chunk_id in enumerate(chunks, start=1)
+    ]
+    written = _write_one_run_batch(
+        name=name,
+        kind=EDITED,
+        origin="snapshot",
+        base_payload=base_payload,
+        data=simulated_payload(base_payload, records),
+        ledger=list(ledger),
+        rolls=list(chunks),
+        base_map=base_map,
+        base_fetched_at=None,
+        source=f"snapshot of {base_map!r} at roll {len(records)}",
+        extra_meta={"ticks": 0, "snapshot_of": base_map},
+        root=root,
+    )
+    return SavedEdit(
+        name=written.name, ticks=0, chunks=list(chunks), unlocked_chunks=written.unlocked_chunks
+    )
+
+
 @dataclass(frozen=True)
 class _WrittenBatch:
     name: str
