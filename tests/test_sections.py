@@ -4,14 +4,10 @@
 
 from __future__ import annotations
 
-import json
-import os
-from pathlib import Path
 from typing import Any
 
 import pytest
 
-from fray_claude.cache import read_chunkinfo
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.sections import (
     ChunkSections,
@@ -22,7 +18,6 @@ from fray_claude.sections import (
     unlocked_sections,
 )
 
-_REAL_CHUNKINFO = os.environ.get("FRAY_CHUNKINFO")
 
 
 def _chunk_info(**data: Any) -> ChunkInfo:
@@ -154,16 +149,12 @@ def test_unlocked_sections_tolerates_an_empty_export() -> None:
     assert unlocked_sections({"100": True}, _chunk_info()) == {}
 
 
-@pytest.mark.skipif(
-    not _REAL_CHUNKINFO, reason="set FRAY_CHUNKINFO to a real export to run this"
-)
-def test_manual_sections_match_a_real_export() -> None:
+@pytest.mark.real_export
+def test_manual_sections_match_a_real_export(real_export: ChunkInfo) -> None:
     """Opt-in oracle: a real map's `chunkinfo.manualSections` entries against
     the real export, cross-checked by hand when this was written (`fray
     sections` against a cached map with these four chunks unlocked)."""
-    assert _REAL_CHUNKINFO is not None
-    data = read_chunkinfo(override=Path(_REAL_CHUNKINFO))
-    info = ChunkInfo(data)
+    info = real_export
 
     unlocked = {chunk_id: True for chunk_id in ("13874", "13878", "6705", "8748")}
     manual_sections = {

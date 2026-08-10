@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-import json
-import os
-from pathlib import Path
 from typing import Any
 
 import pytest
 
-from fray_claude.cache import read_chunkinfo
 from fray_claude.bis import (
     _STYLE_SEPARATOR,
     article_for,
@@ -20,9 +16,8 @@ from fray_claude.bis import (
     format_equip,
 )
 from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.pipeline import Derived, MapState
 
-_REAL_CHUNKINFO = os.environ.get("FRAY_CHUNKINFO")
-_REAL_MAP = os.environ.get("FRAY_MAP_CACHE")
 
 
 def _chunk_info(**data: Any) -> ChunkInfo:
@@ -523,14 +518,10 @@ def test_display_sorted_puts_this_chunks_acquisitions_first() -> None:
     ]
 
 
-@pytest.mark.skipif(
-    not (_REAL_CHUNKINFO and _REAL_MAP),
-    reason=(
-        "set FRAY_CHUNKINFO to a raw export and FRAY_MAP_CACHE to anything; the map "
-        "itself is read from the repo's own cache/, so FRAY_MAP_CACHE's value is unused"
-    ),
-)
-def test_every_bis_pick_matches_the_live_oracle() -> None:
+@pytest.mark.real_cache
+def test_every_bis_pick_matches_the_live_oracle(
+    real_export: ChunkInfo, real_tasks_map: dict[str, str]
+) -> None:
     """Opt-in oracle: `chunkinfo.activeTasks.BiS` is upstream's *own* last
     computed BiS pick per (style, slot), so every entry must reproduce
     exactly.
@@ -553,14 +544,12 @@ def test_every_bis_pick_matches_the_live_oracle() -> None:
     dismissed the rest as a stale snapshot. They were not stale - the tool
     was wrong. Assert all of them, on every map.
     """
-    assert _REAL_CHUNKINFO is not None
-    from fray_claude.cache import list_maps, project_root, read_blob, read_cache
-    from fray_claude.firebase import decode_challenge_keyed, reverse_tasks_map
+    from fray_claude.cache import list_maps, project_root, read_cache
+    from fray_claude.firebase import decode_challenge_keyed
     from fray_claude.pipeline import derive, load_map_state
 
-    info = ChunkInfo(read_chunkinfo(override=Path(_REAL_CHUNKINFO)))
+    info, tasks_map = real_export, real_tasks_map
     root = project_root()
-    tasks_map = reverse_tasks_map(read_blob("tasks_map", root)["data"])
     equipment = info.data["equipment"]
     fetched = [m.map_id for m in list_maps(root) if m.kind == "fetched"]
     assert fetched, "no fetched maps cached to compare against"
@@ -597,14 +586,10 @@ def test_every_bis_pick_matches_the_live_oracle() -> None:
 
 
 
-@pytest.mark.skipif(
-    not (_REAL_CHUNKINFO and _REAL_MAP),
-    reason=(
-        "set FRAY_CHUNKINFO to a raw export and FRAY_MAP_CACHE to anything; the map "
-        "itself is read from the repo's own cache/, so FRAY_MAP_CACHE's value is unused"
-    ),
-)
-def test_a_real_completed_bis_item_is_never_shown_as_active() -> None:
+@pytest.mark.real_cache
+def test_a_real_completed_bis_item_is_never_shown_as_active(
+    real_state: tuple[MapState, dict[str, bool]], real_derived: Derived
+) -> None:
     """Opt-in oracle: unlike skill-level `activeTasks` (sparse - see
     `active_tasks.py`'s module docstring), `completedChallenges.BiS` is
     well-populated on the cached map (70 real entries).
@@ -623,18 +608,8 @@ def test_a_real_completed_bis_item_is_never_shown_as_active() -> None:
     fail on a correct improvement - what must never happen is it reappearing
     as something still to obtain.
     """
-    assert _REAL_CHUNKINFO is not None
-    from fray_claude.cache import project_root, read_blob, read_cache
-    from fray_claude.firebase import reverse_tasks_map
-    from fray_claude.pipeline import derive, load_map_state
-
-    data = read_chunkinfo(override=Path(_REAL_CHUNKINFO))
-    info = ChunkInfo(data)
-    root = project_root()
-    envelope = read_cache("fray", root)
-    tasks_map = reverse_tasks_map(read_blob("tasks_map", root)["data"])
-    state, unlocked = load_map_state(envelope["data"], info, tasks_map)
-    derived = derive(state, unlocked)
+    state, _unlocked = real_state
+    derived = real_derived
 
     task_name = "Obtain a ~|black cape|~"
     assert task_name not in derived.bis.active

@@ -2,21 +2,15 @@
 
 from __future__ import annotations
 
-import json
-import os
-from pathlib import Path
 from typing import Any
 
 import pytest
 
-from fray_claude.cache import read_chunkinfo
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.graph import grid_neighbours
 from fray_claude.neighbours import assign_numbers, eligible_neighbours, neighbour_pool
-from fray_claude.pipeline import MapState, derive
+from fray_claude.pipeline import Derived, MapState, derive
 
-_REAL_CHUNKINFO = os.environ.get("FRAY_CHUNKINFO")
-_REAL_MAP = os.environ.get("FRAY_MAP_CACHE")
 
 
 def _chunk_info(**data: Any) -> ChunkInfo:
@@ -323,21 +317,10 @@ def test_neighbour_pool_is_the_sorted_ids_of_the_eligible_neighbours() -> None:
 # --- opt-in, against the real export -----------------------------------------
 
 
-def _real_state() -> tuple[MapState, dict[str, bool]]:
-    from fray_claude.cache import project_root, read_blob, read_cache
-    from fray_claude.firebase import reverse_tasks_map
-    from fray_claude.pipeline import load_map_state
-
-    assert _REAL_CHUNKINFO is not None
-    info = ChunkInfo(read_chunkinfo(override=Path(_REAL_CHUNKINFO)))
-    root = project_root()
-    envelope = read_cache("fray", root)
-    tasks_map = reverse_tasks_map(read_blob("tasks_map", root)["data"])
-    return load_map_state(envelope["data"], info, tasks_map)
-
-
-@pytest.mark.skipif(not _REAL_CHUNKINFO, reason="set FRAY_CHUNKINFO to a raw export to run this")
-def test_the_cabin_fever_gate_blocks_its_neighbour_on_the_real_export() -> None:
+@pytest.mark.real_export
+def test_the_cabin_fever_gate_blocks_its_neighbour_on_the_real_export(
+    real_export: ChunkInfo,
+) -> None:
     """Defect (a)'s real-data regression: the gate must actually fire.
 
     The export's only two `sectionsLimits` entries gate the crossing between
@@ -352,9 +335,7 @@ def test_the_cabin_fever_gate_blocks_its_neighbour_on_the_real_export() -> None:
     hypothetical unlocked set rather than the cached one. That is the only way
     the gate is observable at all: it is unreachable from the map's own state.
     """
-    assert _REAL_CHUNKINFO is not None
-    info = ChunkInfo(read_chunkinfo(override=Path(_REAL_CHUNKINFO)))
-    state = _state(chunk_info=info)
+    state = _state(chunk_info=real_export)
     unlocked = {"14902": True}
     current = derive(state, unlocked)
 
@@ -362,18 +343,14 @@ def test_the_cabin_fever_gate_blocks_its_neighbour_on_the_real_export() -> None:
     assert neighbour_pool(state, unlocked, current) == []
 
 
-@pytest.mark.skipif(
-    not (_REAL_CHUNKINFO and _REAL_MAP),
-    reason=(
-        "set FRAY_CHUNKINFO to a raw export and FRAY_MAP_CACHE to anything; the map "
-        "itself is read from the repo's own cache/, so FRAY_MAP_CACHE's value is unused"
-    ),
-)
-def test_the_real_maps_neighbours_satisfy_the_numbering_invariants() -> None:
+@pytest.mark.real_cache
+def test_the_real_maps_neighbours_satisfy_the_numbering_invariants(
+    real_state: tuple[MapState, dict[str, bool]], real_derived: Derived
+) -> None:
     """Structural rather than golden: a `fray fetch` after a roll changes the
     answer, and breaking the suite for that would be the wrong signal."""
-    state, unlocked = _real_state()
-    result = eligible_neighbours(state, unlocked, derive(state, unlocked))
+    state, unlocked = real_state
+    result = eligible_neighbours(state, unlocked, real_derived)
 
     assert [n.number for n in result] == list(range(1, len(result) + 1))
     assert all(n.chunk_id not in unlocked for n in result)
@@ -384,14 +361,12 @@ def test_the_real_maps_neighbours_satisfy_the_numbering_invariants() -> None:
     assert [int(n.chunk_id) for n in result] == sorted(ids, reverse=True)
 
 
-@pytest.mark.skipif(
-    not (_REAL_CHUNKINFO and _REAL_MAP),
-    reason=(
-        "set FRAY_CHUNKINFO to a raw export and FRAY_MAP_CACHE to anything; the map "
-        "itself is read from the repo's own cache/, so FRAY_MAP_CACHE's value is unused"
-    ),
-)
-def test_neighbour_numbers_match_the_apps_own_answer() -> None:
+@pytest.mark.real_cache
+def test_neighbour_numbers_match_the_apps_own_answer(
+    real_state: tuple[MapState, dict[str, bool]],
+    real_payload: dict[str, Any],
+    real_derived: Derived,
+) -> None:
     """The oracle: `chunks.selected` is upstream's own computed answer.
 
     `setData` writes it plain (no `encodeObject`) as `{chunk_id: number}`
@@ -404,16 +379,14 @@ def test_neighbour_numbers_match_the_apps_own_answer() -> None:
     `tempSelectedChunks` also carries hand-selected chunks, so the oracle is
     only clean if nothing was manually selected before "assign" was pressed.
     """
-    from fray_claude.cache import project_root, read_cache
     from fray_claude.summary import _mapping
 
-    state, unlocked = _real_state()
-    envelope = read_cache("fray", project_root())
-    oracle = _mapping(_mapping(envelope["data"], "chunks"), "selected")
+    state, unlocked = real_state
+    oracle = _mapping(_mapping(real_payload, "chunks"), "selected")
     if not oracle:
         pytest.skip(
             "no chunks.selected recorded; run the app's 'assign' action, then `fray fetch`"
         )
 
-    result = eligible_neighbours(state, unlocked, derive(state, unlocked))
+    result = eligible_neighbours(state, unlocked, real_derived)
     assert {n.chunk_id: n.number for n in result} == {k: int(v) for k, v in oracle.items()}

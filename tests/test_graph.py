@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-import json
-import os
-from pathlib import Path
 from typing import Any
 
 import pytest
 
-from fray_claude.cache import read_chunkinfo
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.graph import (
     Node,
@@ -23,7 +19,6 @@ from fray_claude.graph import (
     section_suffix,
 )
 
-_REAL_CHUNKINFO = os.environ.get("FRAY_CHUNKINFO")
 
 
 def _graph(**data: Any) -> Any:
@@ -185,18 +180,17 @@ def test_a_missing_sections_branch_builds_an_empty_graph() -> None:
     assert graph.unresolved == frozenset()
 
 
-@pytest.mark.skipif(
-    not _REAL_CHUNKINFO, reason="set FRAY_CHUNKINFO to a raw export to run this"
-)
-def test_the_real_export_builds_a_graph_matching_its_sections_branch() -> None:
+@pytest.mark.real_export
+def test_the_real_export_builds_a_graph_matching_its_sections_branch(
+    real_export: ChunkInfo,
+) -> None:
     """Opt-in: the structural facts the module docstring rests on.
 
     These are anchored counts rather than magic numbers - each one is a claim
     the docstring makes, and a change to any of them means the export changed
     shape and the docstring needs revisiting.
     """
-    assert _REAL_CHUNKINFO is not None
-    info = ChunkInfo(read_chunkinfo(override=Path(_REAL_CHUNKINFO)))
+    info = real_export
     graph = build_section_graph(info)
 
     assert set(info.sections) == set(info.walkable_chunks)

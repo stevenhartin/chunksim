@@ -8,10 +8,10 @@ against the real image by cropping it rather than by re-reading the arithmetic.
 
 from __future__ import annotations
 
-import os
 
 import pytest
 
+from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.delta import diff_names
 from fray_claude.gui.worldmap import (
     GRID_COLUMNS,
@@ -470,10 +470,8 @@ def test_a_subdivision_whose_parent_is_unplaceable_too_stays_skipped() -> None:
     assert view.skipped == ("Nowhere#Basement",)
 
 
-@pytest.mark.skipif(
-    not os.environ.get("FRAY_CHUNKINFO"), reason="needs the real ~7MB export"
-)
-def test_the_real_export_has_nothing_left_unplaced() -> None:
+@pytest.mark.real_export
+def test_the_real_export_has_nothing_left_unplaced(real_export: ChunkInfo) -> None:
     """The whole point of the two resolutions, measured on real data.
 
     Named areas resolve through the regions carrying their `Name`, and the
@@ -481,10 +479,7 @@ def test_the_real_export_has_nothing_left_unplaced() -> None:
     export's 2,234 ids lands somewhere, so `skipped` becomes a statement about
     a *map* rather than about the export.
     """
-    from fray_claude import cache
-    from fray_claude.chunkinfo import ChunkInfo
-
-    info = ChunkInfo(cache.read_chunkinfo())
+    info = real_export
     view = build_view(map_id="real", unlocked=list(info.chunks), areas=info.area_names())
 
     assert view.skipped == ()

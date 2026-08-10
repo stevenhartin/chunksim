@@ -2,19 +2,13 @@
 
 from __future__ import annotations
 
-import json
-import os
-from pathlib import Path
 from typing import Any
 
 import pytest
 
-from fray_claude.cache import read_chunkinfo
 from fray_claude.active_tasks import SkillClassification, TaskClassification, classify_tasks
 from fray_claude.chunkinfo import ChunkInfo
-
-_REAL_CHUNKINFO = os.environ.get("FRAY_CHUNKINFO")
-_REAL_MAP = os.environ.get("FRAY_MAP_CACHE")
+from fray_claude.pipeline import Derived, MapState
 
 
 def _chunk_info(**data: Any) -> ChunkInfo:
@@ -354,14 +348,14 @@ def test_a_completed_entry_with_no_level_sets_no_ceiling() -> None:
     assert result.skills["Woodcutting"].active == "Chop magic logs"
 
 
-@pytest.mark.skipif(
-    not (_REAL_CHUNKINFO and _REAL_MAP),
-    reason=(
-        "set FRAY_CHUNKINFO to a raw export and FRAY_MAP_CACHE to anything; the map "
-        "itself is read from the repo's own cache/, so FRAY_MAP_CACHE's value is unused"
-    ),
-)
-def test_active_slayer_task_matches_the_live_oracle() -> None:
+@pytest.mark.real_cache
+def test_active_slayer_task_matches_the_live_oracle(
+    real_export: ChunkInfo,
+    real_payload: dict[str, Any],
+    real_tasks_map: dict[str, str],
+    real_state: tuple[MapState, dict[str, bool]],
+    real_derived: Derived,
+) -> None:
     """Opt-in oracle: `chunkinfo.activeTasks.Slayer` is upstream's *own* last
     computed active Slayer task, so it must reproduce exactly.
 
@@ -381,21 +375,13 @@ def test_active_slayer_task_matches_the_live_oracle() -> None:
     reproducing the *name* depends on getting the boost table, the
     availability lookup or the arithmetic right.
     """
-    assert _REAL_CHUNKINFO is not None
-    from fray_claude.cache import project_root, read_blob, read_cache
-    from fray_claude.firebase import decode_challenge_keyed, reverse_tasks_map
-    from fray_claude.pipeline import derive, load_map_state
+    from fray_claude.firebase import decode_challenge_keyed
 
-    data = read_chunkinfo(override=Path(_REAL_CHUNKINFO))
-    info = ChunkInfo(data)
-    root = project_root()
-    envelope = read_cache("fray", root)
-    tasks_map = reverse_tasks_map(read_blob("tasks_map", root)["data"])
-    state, unlocked = load_map_state(envelope["data"], info, tasks_map)
-    derived = derive(state, unlocked)
+    state, _unlocked = real_state
+    info, derived = real_export, real_derived
 
     oracle = decode_challenge_keyed(
-        envelope["data"]["chunkinfo"].get("activeTasks"), tasks_map
+        real_payload["chunkinfo"].get("activeTasks"), real_tasks_map
     ).get("Slayer", {})
     recorded = next(iter(oracle), None)
 
@@ -404,7 +390,7 @@ def test_active_slayer_task_matches_the_live_oracle() -> None:
 
     from fray_claude import boosts
 
-    challenge = data["challenges"]["Slayer"][recorded]
+    challenge = info.challenges["Slayer"][recorded]
     best, saw = boosts.best_boost(
         "Slayer",
         recorded,

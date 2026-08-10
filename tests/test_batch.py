@@ -55,9 +55,8 @@ _PAYLOAD: dict[str, Any] = {"chunks": {"unlocked": {"100": "100"}}}
 
 
 @pytest.fixture
-def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def root(tmp_path: Path, no_ambient_chunkinfo: None) -> Path:
     """A cache root holding just enough chunkinfo to roll against."""
-    monkeypatch.delenv("FRAY_CHUNKINFO", raising=False)
     write_blob("chunkinfo", _CHUNKINFO, "test", root=tmp_path)
     return tmp_path
 

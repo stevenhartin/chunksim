@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import json
-import os
-from pathlib import Path
 from typing import Any
 
 import pytest
 
-from fray_claude.cache import read_chunkinfo
+from fray_claude.pipeline import Derived
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.other_tasks import (
     classify_other_tasks,
@@ -384,8 +381,6 @@ def test_a_cyclic_chain_terminates() -> None:
     assert result.categories["Quest"].active_total == 0
 
 
-_REAL_CHUNKINFO = os.environ.get("FRAY_CHUNKINFO")
-_REAL_MAP = os.environ.get("FRAY_MAP_CACHE")
 
 
 #: Both categories now reproduce the map's own `activeTasks` exactly, so this
@@ -399,15 +394,14 @@ _KNOWN_ORACLE_DELTA: dict[str, frozenset[str]] = {
 }
 
 
-@pytest.mark.skipif(
-    not (_REAL_CHUNKINFO and _REAL_MAP),
-    reason=(
-        "set FRAY_CHUNKINFO to a raw export and FRAY_MAP_CACHE to anything; the map "
-        "itself is read from the repo's own cache/, so FRAY_MAP_CACHE's value is unused"
-    ),
-)
+@pytest.mark.real_cache
 @pytest.mark.parametrize("category", ["Diary", "Extra"])
-def test_active_tasks_match_the_live_oracle(category: str) -> None:
+def test_active_tasks_match_the_live_oracle(
+    category: str,
+    real_payload: dict[str, Any],
+    real_tasks_map: dict[str, str],
+    real_derived: Derived,
+) -> None:
     """Opt-in oracle: `chunkinfo.activeTasks` records what the panel last
     showed for `Diary` and `Extra`.
 
@@ -419,22 +413,12 @@ def test_active_tasks_match_the_live_oracle(category: str) -> None:
     waved through with a count: an earlier version compared totals and passed
     on `Extra` at 37 == 37 while seven entries were wrong in each direction.
     """
-    assert _REAL_CHUNKINFO is not None
-    from fray_claude.cache import project_root, read_blob, read_cache
-    from fray_claude.firebase import decode_challenge_keyed, reverse_tasks_map
-    from fray_claude.pipeline import derive, load_map_state
+    from fray_claude.firebase import decode_challenge_keyed
 
-    data = read_chunkinfo(override=Path(_REAL_CHUNKINFO))
-    info = ChunkInfo(data)
-    root = project_root()
-    envelope = read_cache("fray", root)
-    tasks_map = reverse_tasks_map(read_blob("tasks_map", root)["data"])
-    state, unlocked = load_map_state(envelope["data"], info, tasks_map)
-    derived = derive(state, unlocked)
-
+    derived = real_derived
     oracle = set(
         decode_challenge_keyed(
-            envelope["data"]["chunkinfo"].get("activeTasks"), tasks_map
+            real_payload["chunkinfo"].get("activeTasks"), real_tasks_map
         ).get(category, {})
     )
     assert oracle, f"the map no longer records active {category} tasks"

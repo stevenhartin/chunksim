@@ -34,6 +34,15 @@ where = ["src"]
 [tool.setuptools.package-data]
 fray_claude = ["gui/resources/*"]
 
+[tool.pytest.ini_options]
+# The opt-in oracles. `conftest.pytest_collection_modifyitems` turns these into
+# skips when their inputs are absent, so a fresh clone stays green; registering
+# them here is what keeps an unknown-marker warning from hiding a typo.
+markers = [
+    "real_export: needs the real chunk export (FRAY_CHUNKINFO)",
+    "real_cache: needs the export and this checkout's own populated cache/ (FRAY_MAP_CACHE)",
+]
+
 [tool.mypy]
 python_version = "3.14"
 strict = true

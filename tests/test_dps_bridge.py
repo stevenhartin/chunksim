@@ -7,7 +7,6 @@ built by hand; nothing reads the real export or the real cache.
 
 from __future__ import annotations
 
-import os
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -15,6 +14,7 @@ import pytest
 
 from fray_claude import dps_bridge
 from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.pipeline import MapState
 from fray_claude.heuristics import Heuristics, Rate
 from fray_claude.sources import SourceIndex
 
@@ -1268,18 +1268,10 @@ def test_wilderness_is_deliberately_not_in_the_signature() -> None:
     ) == dps_bridge.fight_signature(picks, levels, _kit())
 
 
-_REAL_CHUNKINFO = os.environ.get("FRAY_CHUNKINFO")
-_REAL_MAP = os.environ.get("FRAY_MAP_CACHE")
-
-
-@pytest.mark.skipif(
-    not (_REAL_CHUNKINFO and _REAL_MAP),
-    reason=(
-        "set FRAY_CHUNKINFO to a raw export and FRAY_MAP_CACHE to anything; the map "
-        "itself is read from the repo's own cache/, so FRAY_MAP_CACHE's value is unused"
-    ),
-)
-def test_incremental_pricing_is_the_same_answer_as_pricing_from_scratch() -> None:
+@pytest.mark.real_cache
+def test_incremental_pricing_is_the_same_answer_as_pricing_from_scratch(
+    real_export: ChunkInfo, real_state: tuple[MapState, dict[str, bool]]
+) -> None:
     """**The assertion the whole optimisation rests on.**
 
     `enrich_incremental` keeps whatever the previous roll priced when
@@ -1296,12 +1288,9 @@ def test_incremental_pricing_is_the_same_answer_as_pricing_from_scratch() -> Non
     from fray_claude import cache
     from fray_claude.derived_cache import Digests, cached_derive
     from fray_claude.estimate import goal_levels, infer_levels
-    from fray_claude.firebase import reverse_tasks_map
-    from fray_claude.pipeline import load_map_state
 
-    info = ChunkInfo(cache.read_chunkinfo())
-    tasks_map = reverse_tasks_map(cache.read_blob(cache.TASKS_MAP_BLOB_NAME)["data"])
-    state, unlocked = load_map_state(cache.read_cache("fray")["data"], info, tasks_map)
+    info = real_export
+    state, unlocked = real_state
     digests = Digests(
         chunkinfo=cache.file_digest(cache.chunkinfo_source(None, None)),
         tasks_map=cache.file_digest(cache.blob_path(cache.TASKS_MAP_BLOB_NAME)),

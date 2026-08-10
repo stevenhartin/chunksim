@@ -54,8 +54,7 @@ def _record(order: int, chunk_id: str, **kw: Any) -> dict[str, Any]:
 
 
 @pytest.fixture
-def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.delenv("FRAY_CHUNKINFO", raising=False)
+def root(tmp_path: Path, no_ambient_chunkinfo: None) -> Path:
     write_blob("chunkinfo", _CHUNKINFO, "test", root=tmp_path)
     return tmp_path
 

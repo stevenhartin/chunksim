@@ -2,19 +2,14 @@
 
 from __future__ import annotations
 
-import json
-import os
-from pathlib import Path
 from typing import Any
 
 import pytest
 
-from fray_claude.cache import read_chunkinfo
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.pipeline import MapState, derive
 from fray_claude.search import ItemSource, build_world_index, normalise, rank, search
 
-_REAL_CHUNKINFO = os.environ.get("FRAY_CHUNKINFO")
 
 
 def _chunk_info(**data: Any) -> ChunkInfo:
@@ -321,16 +316,16 @@ def test_search_empty_query_returns_nothing() -> None:
     assert search(world, "", limit=10) == []
 
 
-@pytest.mark.skipif(not _REAL_CHUNKINFO, reason="set FRAY_CHUNKINFO to a real export to run this")
-def test_abyssal_whip_resolves_through_skill_items_to_a_real_chunk() -> None:
+@pytest.mark.real_export
+def test_abyssal_whip_resolves_through_skill_items_to_a_real_chunk(
+    real_export: ChunkInfo,
+) -> None:
     """Opt-in oracle: the exact trace this feature was built on - "Abyssal
     whip" is unreachable via `drops` at all (verified when this was
     written), only via `skillItems.Slayer` -> "Abyssal demon" -> chunk
     12108. A regression in any of the five item routes breaks this.
     """
-    assert _REAL_CHUNKINFO is not None
-    data = read_chunkinfo(override=Path(_REAL_CHUNKINFO))
-    info = ChunkInfo(data)
+    info = real_export
     world = build_world_index(info)
 
     sources = world.item_sources["Abyssal whip"]
