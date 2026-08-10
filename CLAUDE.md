@@ -8,10 +8,27 @@ fray-claude is a CLI that reads state from the source-chunk web app, caches it l
 offline operations on that cache. source-chunk is upstream and read-only from here.
 
 **Two apps, one distribution.** `fray` is the CLI; `fray-gui` is a local server plus a browser
-front-end that draws the world map — see the GUI paragraph below Commands. The 30 modules beside
-`cli.py` are the library both use, which is why there is no separate `core/` package and no second
-distribution: the layering already exists, and three pyprojects would buy independent versioning
-nobody needs.
+front-end that draws the world map — see the GUI paragraph below Commands. The library both use is
+six subpackages, and there is still **no `core/` and no second distribution**: three pyprojects would
+buy independent versioning nobody needs, and a subpackage can be lifted out on the day someone
+actually wants to reuse it.
+
+```
+src/fray_claude/
+  model/    what upstream's data *is*, before anything is derived from it
+  remote/   the only outbound network calls
+  store/    the only disk
+  derive/   the pure layer: the derivation chain and everything that walks it
+  costing/  derivation -> hours, and the optional GPL seam to osrs-dps
+  runs/     what a *run* is: a base state, a sequence of rolls, its replay
+  cli/      one module per subcommand family, parser beside handler
+  gui/      the server, split by what each route costs
+```
+
+Each directory's `__init__.py` carries the rule that holds across it and **nothing else** — no
+re-exports, which would rebuild the god-module this layout replaced and put "which tests do I run"
+back to "all of them". The single exception is `cli/__init__.py`, which re-exports `main` because
+`[project.scripts]` names `fray_claude.cli:main`.
 
 Planned: a shortest-path search ("fewest chunk unlocks to reach X" — `graph.py` exists to serve it and
 has no other reason to be a separate module), and heatmaps of likely rolls over N attempts (the
@@ -74,7 +91,8 @@ neither weakens the rule: it is the only module that **accepts inbound** connect
 loopback unless `--host` says otherwise, and the only disk it touches beyond `cache.py` is its own
 packaged read-only resources — every map it reads goes through `cache.read_cache`. The derivation
 chain is
-`sections` -> `sources` -> `challenges` -> `bis` -> `active_tasks`/`other_tasks`, wired by
+`sections` -> `sources` -> `challenges` -> `bis` -> `active_tasks`/`other_tasks` (all in
+`derive/`), wired by
 `pipeline.derive` and reached by every subcommand through it.
 
 **This is a deliberately partial reimplementation of upstream's own logic.** Each module's docstring
@@ -127,41 +145,53 @@ Five things that cut across modules — the first three because each has already
 
 | Module | Owns |
 |---|---|
-| `api.py` | The network. `FetchError`. An unknown map is HTTP 200 + bare `null`, never a 404. Four hosts: Firebase, upstream's `gh-pages`, the OSRS wiki (which **requires** a `User-Agent`) and one published Google Sheet. **The map tiles are a fifth host it never calls** — `MAP_TILE_URL` is a template the browser uses; see the GUI paragraph. |
-| `wiki.py` | Wikitext template parsing, plus `map_tile_version` over the map page's rendered *HTML*. Pure. Quest length is in `{{Quest details}}`, **not** `{{Infobox Quest}}` — the tempting wrong template has no `length` and so returns `None` for every quest without erroring. |
-| `experience.py` | The exact 1–99 XP curve, closed-form. **Not a heuristic and not overridable** — that separation from `heuristics.py` is the point of the module. |
-| `scrape.py` | The ~18 requests that build the scraped layer, and the coverage it reports. **Both apps run it** — `fray heuristics` and the GUI's Maps tab — so the two cannot write different files. Decides no rate; `heuristics.py` does that. |
-| `heuristics.py` | Every hand-correctable number, and the `defaults < scraped < overrides` merge. Owns the joins and their `exact`/`contained` provenance; **no fuzzy tier**, by measurement — read the docstring before adding one back. |
-| `slayer.py` | Slayer's rate, which is a *distribution* not a chosen method: a time-weighted mean over what a master assigns. Also owns `superior_rolls_per_hour` — the shared `SuperiorDropTable+` is one pool per master, not one per superior. **Masters are gated on their NPC being reachable** — without that it quoted Duradel on a map holding none of him. Reports `coverage`, because renormalising over reachable tasks flatters a sparse map. |
-| `estimate.py` | The four buckets — quests, boss drops, activities, skilling — over the **active** set. **Costs the unique *item*, not the task** — one whip answers three tasks — and **clamps per source**, since items off one monster are earned in parallel. Owns the item walk, its bounded `Output` recursion, the `unpriced` list, and **three gates** — monster reachable, slayer task assignable, master reachable. Read the docstring before pricing anything off `WorldIndex`, which spans the whole world. |
-| `cache.py` | The disk. `CacheMissError`, the `map_id`/`fetched_at`/`source`/`kind`/`data` envelope, the `--chunkinfo`/`FRAY_CHUNKINFO` override, and the purpose-sorted layout below (incl. `--map` resolution across kinds, atomic writes, the cross-kind batch-name claim and `migrate_layout`). |
-| `build_info.py` | Which install is running, and when it was made: the `*.dist-info` mtime (pip writes those fresh, so it dates the *install*, not the wheel), `wheel`/`editable`/`source`, and the one-line watermark both apps print. Never raises and never guesses a date. |
-| `firebase.py` | The Firebase-safe string codec, incl. `decode_challenge_keyed`'s mixed `t_N`/literal key handling. Run any payload branch through it before believing it. |
-| `chunkinfo.py` | Typed, tolerant accessors over the parsed export. Build **one** `ChunkInfo` per invocation — parsing the ~7MB export is the expensive part. |
-| `sections.py` | Which sections of the unlocked chunks are reachable, plus named-area unlocking. `sectionsLimits` deliberately lives in `neighbours.py` instead. |
-| `graph.py` | The export's `sections` branch as a **directed** `(chunk, section)` graph, with each edge's `sectionsLimits` gate pre-bound. Shaped for the not-yet-written pathfinding search. |
-| `rates.py` | OSRS drop-rate string parsing/formatting, matching JS's rounding because the output lands inside task names — **and its division**, so a zero denominator is `inf` rather than a `ZeroDivisionError`. |
-| `sources.py` | What the unlocked chunks make available (`SourceIndex`). Applies `taskUnlocks` to items *and* entities, so availability depends on challenge validity. |
-| `challenges.py` | Which challenges are valid (`ChallengeResult`) — a two-phase fixed point over 28 of 29 categories. **`BiS` is never evaluated here**; read `pipeline.Derived.bis`. Also **where every derivation command spends its time** — read the docstring's static/dynamic gate split before touching the loop. |
-| `bis.py` | Best-in-slot per (combat style, slot). Inherently **non-monotonic**: recomputed fresh per state, never accumulated. Scores **set effects** (Obsidian only — the rest are table rows nobody could verify) and honours `Show Best in Slot 1H and 2H`, both of which only a second map exercised. |
-| `active_tasks.py` | Per-skill active/obsolete/completed classification. A *display* winner only — it never changes `ChallengeResult.valid`. |
-| `boosts.py` | Temporary skill boosts. With `rules['Boosting']` on, **every** level comparison upstream makes is boosted, so this is a dependency of `challenges.py`/`active_tasks.py`, not a feature. |
-| `other_tasks.py` | The three non-skill categories, `Diary`/`Quest`/`Extra`. No single winner — upstream renders every valid, uncompleted one. |
-| `pipeline.py` | `MapState` + `derive`. Owns the **loop** where upstream's area-unlock circularity lives, so the modules above stay one-directional. Raises `ConvergenceError` rather than returning a truncated derivation. |
-| `unlock.py` | What one candidate unlock adds, by diffing two `derive` calls. **Owns the project's attribution rule** and its one exception. Additions-only, and only over one `MapState` — for two arbitrary maps read `delta.py`. |
-| `delta.py` | The **symmetric** comparison of two derived states, over all six `Derived` branches. Owns the diff primitives `unlock.py` projects down to its one-directional view; the two must agree, which `tests/test_delta.py` asserts. |
-| `neighbours.py` | Which chunks are eligible to unlock next, and upstream's canvas numbering (**descending chunk id, 1-based**). Owns the `sectionsLimits` gate. |
-| `timeline.py` | Replaying a run one roll at a time, and `added_hours` — what a roll *cost*, as a diff of what is being costed rather than of the totals. **A run is self-contained** — the state before roll k is `final − rolls[k:]`, so stepping needs no base map, no export and no `derive`. Owns the delta series and the rule that step 0 is a baseline rather than a roll. |
-| `simulate.py` | Seeded chunk-roll simulation: the bootstrap pool, plus the dispatch to `neighbours.py`. Records are never revisited by a later roll. `simulated_payload` turns a finished ledger back into a map payload — read its docstring before changing which branches it touches. |
-| `batch.py` | N simulations from one state, each cached as its own map. Owns seed derivation and **both** `ProcessPoolExecutor`s in the project — `run_batch` for rolling, `price_steps` for costing a timeline (two rounds: `warm_slice` strided across every core, then `price_slice` over long contiguous slices). `--jobs` must never change a result, either of them. Also `save_unlock` — a batch of one, so the **one** writer of the run metadata both apps read back. |
-| `derived_cache.py` | The on-disk cache of the **two** expensive per-state computations: `cached_derive` and `cached_enrich`. Owns both keys (a hash of every input each reads), the zstd+pickle codec, and `CacheBehaviour`/`RollCache` — which of a simulation's states to keep. Pure bar the bytes, which `cache.py` writes. |
-| `search.py` | World-wide fuzzy search over the *raw* export — all 5 item routes, so a strict superset of what `fray sources` can list. |
-| `summary.py` | Pure reductions over a raw payload. Extend this, not `cli.py`. Also home to `format_age` (both apps render ages, and two copies of the bucketing would disagree) and `_mapping`, the tolerant dict accessor eight other modules import despite the `_` — Firebase omits empty containers, so every lookup anywhere must survive a missing branch. |
-| `dps_bridge.py` | The seam to `osrs-dps`, which prices a kill from the gear `bis.py` reaches instead of a money-making guide. Prices **only `estimate.reachable_providers`** — 188 of the export's 872, because every `kills_per_hour` lookup is gated on that set and the rest is thrown away. `enrich_incremental` + `fight_signature` keep a timeline's previous roll where nothing that decides a kill has moved; `enrich` stays untouched. **Optional import** — check `DPS_AVAILABLE`, never assume it. `enrich` is the one entry point a command needs. Owns the export→library conversions (`magic_damage` is a display percentage here and tenths of a percent there), the overhead model, the monster-name join and its `exact`/`variant` provenance, and the refusal of fight *phases* and group bosses. |
-| `cli.py` | argparse subcommands and rendering only; new logic goes in a pure module. `gui/server.py` follows the same rule, with `gui/panels.py` as its pure module. |
+| `remote/api.py` | The network. `FetchError`. An unknown map is HTTP 200 + bare `null`, never a 404. Four hosts: Firebase, upstream's `gh-pages`, the OSRS wiki (which **requires** a `User-Agent`) and one published Google Sheet. **The map tiles are a fifth host it never calls** — `MAP_TILE_URL` is a template the browser uses; see the GUI paragraph. |
+| `remote/wiki.py` | Wikitext template parsing, plus `map_tile_version` over the map page's rendered *HTML*. Pure. Quest length is in `{{Quest details}}`, **not** `{{Infobox Quest}}` — the tempting wrong template has no `length` and so returns `None` for every quest without erroring. |
+| `model/experience.py` | The exact 1–99 XP curve, closed-form. **Not a heuristic and not overridable** — that separation from `heuristics.py` is the point of the module. |
+| `remote/scrape.py` | The ~18 requests that build the scraped layer, and the coverage it reports. **Both apps run it** — `fray heuristics` and the GUI's Maps tab — so the two cannot write different files. Decides no rate; `heuristics.py` does that. |
+| `costing/heuristics.py` | Every hand-correctable number, and the `defaults < scraped < overrides` merge. Owns the joins and their `exact`/`contained` provenance; **no fuzzy tier**, by measurement — read the docstring before adding one back. |
+| `costing/slayer.py` | Slayer's rate, which is a *distribution* not a chosen method: a time-weighted mean over what a master assigns. Also owns `superior_rolls_per_hour` — the shared `SuperiorDropTable+` is one pool per master, not one per superior. **Masters are gated on their NPC being reachable** — without that it quoted Duradel on a map holding none of him. Reports `coverage`, because renormalising over reachable tasks flatters a sparse map. |
+| `costing/estimate.py` | The four buckets — quests, boss drops, activities, skilling — over the **active** set. **Costs the unique *item*, not the task** — one whip answers three tasks — and **clamps per source**, since items off one monster are earned in parallel. Owns the item walk, its bounded `Output` recursion, the `unpriced` list, and **three gates** — monster reachable, slayer task assignable, master reachable. Read the docstring before pricing anything off `WorldIndex`, which spans the whole world. |
+| `costing/levels.py` | `infer_levels`/`goal_levels`/`reachable_providers` and the gating helpers. Separate because `dps_bridge`, both apps and `runs/batch.py` want exactly these and were importing the whole estimator to get them. **The map records no skill levels** — `infer_levels` reads a floor out of the completed challenges. |
+| `store/cache.py` | The disk. `CacheMissError`, the `map_id`/`fetched_at`/`source`/`kind`/`data` envelope, the `--chunkinfo`/`FRAY_CHUNKINFO` override, and the purpose-sorted layout below (incl. `--map` resolution across kinds, atomic writes, the cross-kind batch-name claim and `migrate_layout`). |
+| `store/build_info.py` | Which install is running, and when it was made: the `*.dist-info` mtime (pip writes those fresh, so it dates the *install*, not the wheel), `wheel`/`editable`/`source`, and the one-line watermark both apps print. Never raises and never guesses a date. |
+| `model/firebase.py` | The Firebase-safe string codec, incl. `decode_challenge_keyed`'s mixed `t_N`/literal key handling. Run any payload branch through it before believing it. |
+| `model/chunkinfo.py` | Typed, tolerant accessors over the parsed export. Build **one** `ChunkInfo` per invocation — parsing the ~7MB export is the expensive part. |
+| `derive/sections.py` | Which sections of the unlocked chunks are reachable, plus named-area unlocking. `sectionsLimits` deliberately lives in `neighbours.py` instead. |
+| `derive/graph.py` | The export's `sections` branch as a **directed** `(chunk, section)` graph, with each edge's `sectionsLimits` gate pre-bound. Shaped for the not-yet-written pathfinding search. |
+| `model/rates.py` | OSRS drop-rate string parsing/formatting, matching JS's rounding because the output lands inside task names — **and its division**, so a zero denominator is `inf` rather than a `ZeroDivisionError`. |
+| `derive/sources.py` | What the unlocked chunks make available (`SourceIndex`). Applies `taskUnlocks` to items *and* entities, so availability depends on challenge validity. |
+| `derive/challenges.py` | Which challenges are valid (`ChallengeResult`) — a two-phase fixed point over 28 of 29 categories. **`BiS` is never evaluated here**; read `pipeline.Derived.bis`. Also **where every derivation command spends its time** — read the docstring's static/dynamic gate split before touching the loop. |
+| `derive/task_names.py` | `strip_task_markup`: a task name as a person reads it. The raw `~\|...\|~` form is the key everywhere else, so this is display-only and applies to challenge/task names **only** — other branches use `~` and `\|` for real. |
+| `derive/bis.py` | Best-in-slot per (combat style, slot). Inherently **non-monotonic**: recomputed fresh per state, never accumulated. Scores **set effects** (Obsidian only — the rest are table rows nobody could verify) and honours `Show Best in Slot 1H and 2H`, both of which only a second map exercised. |
+| `derive/active_tasks.py` | Per-skill active/obsolete/completed classification. A *display* winner only — it never changes `ChallengeResult.valid`. |
+| `derive/boosts.py` | Temporary skill boosts. With `rules['Boosting']` on, **every** level comparison upstream makes is boosted, so this is a dependency of `challenges.py`/`active_tasks.py`, not a feature. |
+| `derive/other_tasks.py` | The three non-skill categories, `Diary`/`Quest`/`Extra`. No single winner — upstream renders every valid, uncompleted one. |
+| `derive/pipeline.py` | `MapState` + `derive`. Owns the **loop** where upstream's area-unlock circularity lives, so the modules above stay one-directional. Raises `ConvergenceError` rather than returning a truncated derivation. |
+| `derive/unlock.py` | What one candidate unlock adds, by diffing two `derive` calls. **Owns the project's attribution rule** and its one exception. Additions-only, and only over one `MapState` — for two arbitrary maps read `delta.py`. |
+| `derive/delta.py` | The **symmetric** comparison of two derived states, over all six `Derived` branches. Owns the diff primitives `unlock.py` projects down to its one-directional view; the two must agree, which `tests/test_delta.py` asserts. |
+| `derive/neighbours.py` | Which chunks are eligible to unlock next, and upstream's canvas numbering (**descending chunk id, 1-based**). Owns the `sectionsLimits` gate. |
+| `runs/timeline.py` | Replaying a run one roll at a time, and `added_hours` — what a roll *cost*, as a diff of what is being costed rather than of the totals. **A run is self-contained** — the state before roll k is `final − rolls[k:]`, so stepping needs no base map, no export and no `derive`. Owns the delta series and the rule that step 0 is a baseline rather than a roll. |
+| `runs/simulate.py` | Seeded chunk-roll simulation: the bootstrap pool, plus the dispatch to `neighbours.py`. Records are never revisited by a later roll. `simulated_payload` turns a finished ledger back into a map payload — read its docstring before changing which branches it touches. |
+| `runs/batch.py` | N simulations from one state, each cached as its own map. Owns seed derivation and **both** `ProcessPoolExecutor`s in the project — `run_batch` for rolling, `price_steps` for costing a timeline (two rounds: `warm_slice` strided across every core, then `price_slice` over long contiguous slices). `--jobs` must never change a result, either of them. Also `save_unlock` — a batch of one, so the **one** writer of the run metadata both apps read back. |
+| `store/derived_cache.py` | The on-disk cache of the **two** expensive per-state computations: `cached_derive` and `cached_enrich`. Owns both keys (a hash of every input each reads), the zstd+pickle codec, and `CacheBehaviour`/`RollCache` — which of a simulation's states to keep. Pure bar the bytes, which `cache.py` writes. |
+| `derive/search.py` | World-wide fuzzy search over the *raw* export — all 5 item routes, so a strict superset of what `fray sources` can list. |
+| `model/summary.py` | Pure reductions over a raw payload. Extend this, not the CLI. Also home to `format_age` (both apps render ages, and two copies of the bucketing would disagree) and `_mapping`, the tolerant dict accessor eight other modules import despite the `_` — Firebase omits empty containers, so every lookup anywhere must survive a missing branch. |
+| `costing/dps_bridge.py` | The seam to `osrs-dps`, which prices a kill from the gear `bis.py` reaches instead of a money-making guide. Prices **only `estimate.reachable_providers`** — 188 of the export's 872, because every `kills_per_hour` lookup is gated on that set and the rest is thrown away. `enrich_incremental` + `fight_signature` keep a timeline's previous roll where nothing that decides a kill has moved; `enrich` stays untouched. **Optional import** — check `DPS_AVAILABLE`, never assume it. `enrich` is the one entry point a command needs. Owns the export→library conversions (`magic_damage` is a display percentage here and tenths of a percent there), the overhead model, the monster-name join and its `exact`/`variant` provenance, and the refusal of fight *phases* and group bosses. |
+| `costing/dps_overhead.py` | The harness that fitted the overhead constants. **No caller in `src/`** — it exists to be re-run when someone doubts them, and it is out of `dps_bridge.py` because that file is large for a licence reason, not a structural one. |
+| `costing/inputs.py` | What `fray estimate` and the Estimate tab must agree about, assembled once. The two had already drifted — the CLI applied `pinned_slayer` and the GUI did not — and a shared `cache/derived/` key made that silently order-dependent. |
+| `cli/app.py` | The parser and `main`. Asks each family for its subcommands, dispatches through `args.func`, and turns four exception types into an exit code. **159 lines, from 1,750** — if it is about a particular subcommand it does not belong here. |
+| `cli/common.py` | What every family needs before it can answer: `load_state`, `derive_cached`, `emit_json`, `digests`, `error`, `DEFAULT_MAP`. The names lost their underscore when they crossed a module boundary. |
+| `cli/render.py` | Capping, grouping and stripping for a terminal. Shared by the listing commands and `diff`, which prints the same names either side of a comparison. |
+| `cli/<family>.py` | One per subcommand family — `io_commands`, `listing`, `search`, `unlock`, `diff`, `estimate`, `neighbours`, `simulate`, `maps`, `derived` — each holding its handlers **and** its `add_parser` block, so a flag change edits one file. `tests/test_cli_<family>.py` is the file that checks it. |
 | `gui/panels.py` | Shaping `Derived` into what the panel draws — sections of groups of `{key, name, note, icon}`, one shape across all five categories. Pure. Owns the three rules that are domain knowledge rather than formatting: a quest keeps only its **furthest** step, `Extra`'s collection-log rows split source from item, BiS groups by combat style. |
 | `gui/worldmap.py` | Where a chunk sits on the map, and which of its sides face outward. Pure. Owns the projection (`grid_x = region_x - 15`, **`grid_y = 65 - region_y`** — the y axis is flipped), the tile pyramid's constants, the two kinds of id that have no square, and `hull_edges`. In `gui/` because all of it is about one particular tiling. |
-| `gui/server.py` | Routing, as a **pure `handle_request`** with a `BaseHTTPRequestHandler` adapter over it — so tests reach the whole surface without binding a socket. Owns the static allowlist, the `Sec-Fetch-Site`/`Host` checks — the latter against `Context.allowed_hosts` rather than loopback, so a non-loopback bind serves a page that can *act* rather than one whose every button 403s — and the **lazy proxy** for upstream's section masks and skill icons. |
+| `gui/server.py` | Routing, as a **pure `handle_request`** with a `BaseHTTPRequestHandler` adapter over it — so tests reach the whole surface without binding a socket. Owns the `Sec-Fetch-Site`/`Host` checks — the latter against `Context.allowed_hosts` rather than loopback, so a non-loopback bind serves a page that can *act* rather than one whose every button 403s. |
+| `gui/http.py` | The vocabulary every route speaks: `Response`, `Context`, `_json`/`_error`, and the heartbeat. **Must stay directly in `gui/`** — `RESOURCE_DIR` is `__file__`-relative, which is why the split is flat rather than a `routes/` package. |
+| `gui/routes_view.py` | The **cheap path**: every route answerable without parsing the export. Nothing here may call `ctx.derivations.load`; `_areas_for` is the one documented exception and has a test. |
+| `gui/routes_derived.py` | The **expensive path**: chunk, sections, diff, unlock, estimate, tasks. `/api/diff` derives both sides and is the one route allowed to be slow. |
+| `gui/routes_reference.py` | Bytes belonging to no map: the static allowlist, blob freshness, the tile *template*, and the lazy proxy for section masks and skill icons. |
+| `gui/actions.py` | The nine POST handlers and `_ACTIONS`. **An action's reply shape decides whether the page polls it** — a job id, or the result. |
 | `gui/jobs.py` | The background job registry the POST actions use. **The only mutable state in the GUI**, kept out of the pure layer deliberately. |
 | `gui/derivation.py` | The boundary between the cheap path and the expensive one. Loads `ChunkInfo` **lazily** — a request that does not need a derivation must not pay for one, and a test asserts the map view never triggers it. |
 | `gui/browser.py` | Finding a Chromium-family browser and opening an app window whose lifetime is the server's. `--user-data-dir` is load-bearing, not tidiness. `window_flags` restores the remembered geometry, which Chrome will not — see the GUI paragraph below Commands. |
@@ -233,7 +263,7 @@ presence-only, its value unused.
 `heuristics`). `--recompute` is carried by those same nine and nothing else, so it means one thing
 everywhere. `--limit` defaults to `None` (full
 output) for `sections`/`sources`/`tasks`/`neighbours`/`diff` so piping just works, but to `10` for
-`search`. See `cli.py`'s docstring.
+`search`. See `cli/app.py`'s docstring.
 
 **The `dps` extra is installed two different ways, one per venv.** `pip install -e ../osrs-dps` puts
 it in `.venv` for development and the test suite; the `fray` on `PATH` lives in pipx's own venv and
@@ -514,12 +544,12 @@ Things worth knowing before changing it:
   square like any other locked one before tinting it red. Leaving it bright draws a world neither
   map is in.
 - **Two constants cross into JavaScript with nothing enforcing agreement** — the `Edge` bitfield and
-  the projection, both plain integers over JSON — so `tests/test_gui_server.py` reads `app.js` and
+  the projection, both plain integers over JSON — so `tests/test_gui_contract.py` reads `app.js` and
   asserts them against the Python. The same file asserts the canvas is given an explicit size, since
   `inset: 0` does not stretch a replaced element and the failure is silent. A third assertion pins
   that **no `raw()` interpolation lands inside an attribute**: `data-tip="${raw(...)}"` splices
   unescaped quotes through the closing quote, and the markup after it appears on screen as text.
-- **Three interface rules that each replaced a bug**, all pinned by `tests/test_gui_server.py`:
+- **Three interface rules that each replaced a bug**, all pinned by `tests/test_gui_contract.py`:
   **one tooltip system** (`data-tip`, never `title` — both at once shows two tooltips, and only the
   custom one can carry a heading, a note and a key hint); **chip strips record what is *off*, not
   what is on** (holding the selected set froze it at whatever the first chunk happened to contain,
@@ -543,7 +573,7 @@ Things worth knowing before changing it:
   licence decision, not an optimisation: the tiles are CC BY-NC-SA 3.0 against this project's MIT,
   so caching them under `cache/` or re-serving them off loopback would make this a redistributor of
   NonCommercial artwork, where linking makes it a page with a picture on it. `MAP_TILE_ATTRIBUTION`
-  is on screen for the same reason, and `tests/test_gui_server.py` asserts no tile route exists so
+  is on screen for the same reason, and `tests/test_gui_contract.py` asserts no tile route exists so
   a later "let's cache these" cannot pass review by looking like a speed-up.
   **The scheme fits this project almost exactly**: `256 / 2**z` game tiles per 256px tile with y
   counting *northward*, so at `NATIVE_TILE_ZOOM = 2` one tile **is** one chunk and its index is the
@@ -665,6 +695,21 @@ returns**, because a result dataclass gaining a field must invalidate old entrie
 includes a hash of those classes' shapes). `derive` itself stays uncached and pure, which is what
 keeps the opt-in oracles an honest signal.
 
+**Which tests a change needs is now a file, not a judgement.** That is what the split bought, and it
+is the only reason to prefer this layout to the one file it replaced:
+
+```
+.venv/bin/pytest tests/test_cli_estimate.py    # changed cli/estimate.py          0.5s
+.venv/bin/pytest tests/test_gui_view.py        # changed gui/routes_view.py       0.3s
+.venv/bin/pytest tests/test_gui_contract.py    # changed app.js or style.css      0.2s
+.venv/bin/pytest                               # the whole suite, still           2.6s
+```
+
+The last line is the honest caveat: the suite was never slow, so **none of this made the tests
+faster**. What cost time was the ritual around them — a wheel rebuild per change, an oracle setup with
+a hand-extracted temp file — and that is what Phase 0 of this work removed. The split is about how
+much you have to read and re-verify, not about seconds.
+
 `mypy` and `pytest` are invoked differently on purpose: mypy is the *system* install (there is no
 `.venv/bin/mypy`), configured with `python_executable = ".venv/bin/python"` so it can see pytest's
 stubs — which is why it must run from the repo root and needs the venv to exist. pytest is only a
@@ -713,18 +758,34 @@ only one that could otherwise be missed for weeks.
   And one failure mode moves rather than disappearing — a new subdirectory without an `__init__.py`
   imports fine here and is silently absent from any wheel built later, which is what
   `tests/test_packaging.py` now catches.
-- Tests are pytest, in `tests/`, named after the module under test (`tests/test_summary.py`). No test
-  touches the network, and none the real `cache/` bar the six oracles that read it through
-  `cache.project_root()` (`test_active_tasks`, `test_other_tasks`, `test_neighbours` x2, `test_bis` x2).
-  Every one of those is gated on **both** `FRAY_CHUNKINFO` and `FRAY_MAP_CACHE` — the latter is
-  presence-only, a flag saying "this checkout's own `cache/` is populated, read it", since the map is
-  not read from its value. Gating a real-cache test on `FRAY_CHUNKINFO` alone is a bug, not a shortcut:
-  it makes the test *fail* with `CacheMissError` on a fresh clone instead of skipping, which is what
-  the two `test_bis` oracles used to do. To add one, copy an existing pair of decorators verbatim. Pass
-  `cache.py`'s `root` a `tmp_path`, and monkeypatch `urllib.request.urlopen` (`tests/test_api.py`)
-  or `fray_claude.cli.fetch_map` (`tests/test_cli.py`).
-  Any test calling `cache.read_chunkinfo()` without an explicit `override` must
-  `monkeypatch.delenv("FRAY_CHUNKINFO", raising=False)` first, or an ambient env var shadows `tmp_path`
+- Tests are pytest, in `tests/`, **flat and named after the module under test** — `tests/test_summary.py`,
+  `tests/test_cli_estimate.py` for `cli/estimate.py`, `tests/test_gui_view.py` for `gui/routes_view.py`.
+  Flat rather than mirroring the package tree: pytest's default import mode collides on duplicate
+  basenames across directories without `__init__.py`, so `tests/cli/test_estimate.py` beside
+  `tests/costing/test_estimate.py` is a landmine, and `pytest tests/test_cli_*.py` already gives
+  directory-grade selection.
+- **The opt-in oracles are marked, not `skipif`-ed.** Write `@pytest.mark.real_cache` (needs the export
+  *and* this checkout's populated `cache/`) or `@pytest.mark.real_export`;
+  `conftest.pytest_collection_modifyitems` turns them into skips when the inputs are absent, and the
+  markers are registered in `pyproject.toml` so a typo is a warning rather than a silently-never-run
+  test. `tests/` is not a package, so a test file cannot import from `conftest.py` — which is why the
+  gates are markers and the shared setup is fixtures.
+  Gating a real-cache test on the export alone is a bug, not a shortcut: it makes the test *fail* with
+  `CacheMissError` on a fresh clone instead of skipping, which is what two `test_bis` oracles used to do.
+- `conftest.py` holds what more than one file needs and nothing else: the two markers, `project`,
+  `cached_map`, `simulatable`, `derived_entries`, `no_ambient_chunkinfo`, and the **session-scoped**
+  `real_export`/`real_state`/`real_derived`. Those three share one `pipeline.derive` across the twelve
+  oracles — never `cached_derive`, so the oracles stay a cache-free signal. Anything used by one file
+  stays in that file: conftest is depended on by every test in the project, which is the blast radius
+  all of this is trying to shrink.
+- Pass `cache.py`'s `root` a `tmp_path`, and monkeypatch `urllib.request.urlopen` (`tests/test_api.py`)
+  or `fray_claude.cli.io_commands.fetch_map`. **A patch target is a module path, so it moves when code
+  does** — `read_chunkinfo` is read in two places now (`cli/io_commands.py` for `fray chunkinfo`,
+  `cli/common.py` for every derivation command) and patching one leaves the other reading the
+  developer's real cache. That is not a failing test but a passing one computed against the wrong map;
+  `conftest.cached_map` patches both.
+  Any test calling `cache.read_chunkinfo()` without an explicit `override` must take the
+  `no_ambient_chunkinfo` fixture, or an ambient env var shadows `tmp_path`
 - A test that needs the real (~7MB) chunkinfo export is opt-in, not run by default: build fixtures by
   hand for the normal suite, and gate the real-export check on `FRAY_CHUNKINFO` with
   `pytest.mark.skipif`, so a fresh clone stays green. **These are the tests that catch real defects**

@@ -230,8 +230,9 @@ before believing a total:
 
 That list is the short version, and it moves as the port advances. **Each module's docstring carries
 the precise, current statement of what it implements, what it approximates, and what it refuses to
-guess at** — `challenges.py`, `bis.py`, `active_tasks.py`, `other_tasks.py`, `sources.py` and
-`simulate.py` are the ones to read before trusting a number.
+guess at** — `derive/challenges.py`, `derive/bis.py`, `derive/active_tasks.py`,
+`derive/other_tasks.py`, `derive/sources.py` and `runs/simulate.py` are the ones to read before
+trusting a number.
 
 ## Requirements
 
@@ -285,6 +286,12 @@ FRAY_CHUNKINFO=cache/reference/chunkinfo.json FRAY_MAP_CACHE=1 .venv/bin/pytest
 That is the whole setup once `fray chunkinfo` and `fray fetch` have run — the variable takes the
 cached file as it is written, or a raw export if you have one. Without the variables the same tests
 skip, so a fresh clone stays green.
+
+The library is six subpackages under `src/fray_claude/`: `model/` (what upstream's data is),
+`remote/` (the only outbound calls), `store/` (the only disk), `derive/` (the pure layer),
+`costing/` (derivation to hours) and `runs/` (a base state plus a sequence of rolls), with `cli/`
+and `gui/` as the two apps on top. Tests are flat in `tests/` and named for what they cover, so
+`tests/test_cli_estimate.py` goes with `cli/estimate.py`.
 
 See `CLAUDE.md` for the module-by-module architecture and the testing conventions in full.
 
