@@ -130,6 +130,13 @@ TASKS_MAP_BLOB_NAME = "tasks_map"
 #: The scraped half of the estimator's numbers - see `heuristics.py` for why
 #: the hand-edited half lives outside `cache/` instead.
 WIKI_RATES_BLOB_NAME = "wiki_rates"
+
+#: Per-action experience and tick costs from the wiki's `recipe` table.
+#: Its own blob rather than part of `wiki_rates`: a different API, a much
+#: lower refresh cadence, and `derived_cache.PricingDigests` hashes the rates
+#: blob - folding recipes in would throw away every stored enrichment each
+#: time they were refetched.
+RECIPES_BLOB_NAME = "wiki_recipes"
 CHUNKINFO_ENV_VAR = "FRAY_CHUNKINFO"
 
 #: Where hand-written corrections live: checked in, so they are diffable and

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from fray_claude.remote.api import (
@@ -32,6 +33,7 @@ from fray_claude.remote.api import (
     TASK_LENGTHS_TAB,
     WIKI_API_URL,
     FetchError,
+    fetch_bucket,
     fetch_text,
     fetch_wiki_page_titles,
     fetch_wiki_pages,
@@ -45,6 +47,7 @@ from fray_claude.costing.heuristics import (
 )
 from fray_claude.costing.slayer import SheetFormatError, parse_mob_data, parse_task_lengths
 from fray_claude.model.summary import _mapping
+from fray_claude.remote.recipes import parse_recipes, recipe_query
 from fray_claude.remote.wiki import (
     ASSIGNMENTS_PAGE,
     MMG_PREFIX,
@@ -182,6 +185,62 @@ def scrape(
         },
         sheet_error=sheet_error,
     )
+
+
+#: The skills the wiki's `recipe` table actually describes, measured live:
+#: Construction 929 rows, Crafting 696, Cooking 536, Smithing 415, Herblore 399,
+#: Fletching 255, Magic 223, Runecraft 189, Farming 138, Prayer 32, Firemaking
+#: 32, Fishing 18. **Agility and Thieving have none at all** and Mining has two
+#: - a rooftop course is not a recipe, which is why gathering and movement
+#: skills need a different model rather than a wider query here.
+RECIPE_SKILLS: tuple[str, ...] = (
+    "Cooking",
+    "Construction",
+    "Crafting",
+    "Farming",
+    "Firemaking",
+    "Fishing",
+    "Fletching",
+    "Herblore",
+    "Magic",
+    "Prayer",
+    "Runecraft",
+    "Smithing",
+    "Woodcutting",
+)
+
+
+def scrape_recipes(
+    skills: Sequence[str] = RECIPE_SKILLS, timeout: float = DEFAULT_TIMEOUT
+) -> dict[str, Any]:
+    """One Bucket query per skill: experience and tick cost per action.
+
+    A dozen requests, and unlike the money-making guides these are *facts about
+    the game* rather than somebody's estimate of a rate - which is why they get
+    their own blob and their own refresh, and why a method priced from them
+    needs no join at all.
+    """
+    found: dict[str, Any] = {}
+    for skill in skills:
+        rows = fetch_bucket(recipe_query(skill), timeout)
+        found[skill] = [recipe.as_dict() for recipe in parse_recipes(rows, skill)]
+    return found
+
+
+def recipe_coverage(recipes: Mapping[str, Any]) -> dict[str, tuple[int, int]]:
+    """Per skill, `(recipes with a tick cost, recipes)`.
+
+    The tick cost is the half that turns experience into a *rate*, so a skill
+    with recipes and no ticks is covered on paper and not in practice.
+    """
+    return {
+        skill: (
+            sum(1 for recipe in rows if recipe.get("ticks")),
+            len(rows),
+        )
+        for skill, rows in recipes.items()
+        if isinstance(rows, list)
+    }
 
 
 def coverage_of(info: ChunkInfo, config: dict[str, Any]) -> dict[str, tuple[int, int]]:

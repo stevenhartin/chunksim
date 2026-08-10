@@ -223,6 +223,7 @@ fray fetch [--map ID]       # GET live state -> cache/maps/fetched/<map>.json (d
 fray show  [--map ID]       # summarise the cached copy; no network
 fray chunkinfo              # GET upstream's chunk/challenge reference data -> cache/{chunkinfo,tasks_map}.json
 fray heuristics             # GET wiki/spreadsheet rates -> cache/wiki_rates.json (~18 requests)
+fray recipes                # GET per-action xp + tick costs -> cache/reference/wiki_recipes.json (13 requests)
 fray estimate [BUCKET] [--limit N]   # rough hours for the outstanding active tasks
 fray sections [list|CHUNK] [--limit N]   # reachable sections; list/drill down with a positional
 fray sources  [CATEGORY]   [--limit N]   # items/objects/monsters/npcs/shops; list one with a positional
@@ -291,7 +292,7 @@ way. A directory cannot be forgotten.
 cache/maps/fetched/<id>.json           # from Firebase; only `fray fetch` writes one
 cache/maps/simulated/<batch>/…         # rolled by `fray simulate`
 cache/maps/unlocked/<batch>/…          # `fray unlock --cache-map`: one chunk added by hand
-cache/reference/                       # chunkinfo, tasks_map, wiki_rates, tile_version
+cache/reference/                       # chunkinfo, tasks_map, wiki_rates, wiki_recipes, tile_version
 cache/derived/                         # pipeline.derive results, keyed by content
 cache/assets/                          # section masks, skill icons
 cache/gui/                             # window.json, and the browser profile

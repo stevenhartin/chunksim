@@ -26,8 +26,9 @@ from fray_claude.costing.heuristics import disagreements
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.model.summary import format_age, summarise
 from fray_claude.remote.api import CHUNKINFO_URL, DEFAULT_TIMEOUT, TASKS_MAP_URL, fetch_chunkinfo, fetch_map, fetch_tasks_map
-from fray_claude.remote.scrape import SOURCE as SCRAPE_SOURCE, scrape
-from fray_claude.store.cache import CHUNKINFO_BLOB_NAME, FETCHED, TASKS_MAP_BLOB_NAME, WIKI_RATES_BLOB_NAME, read_cache, read_chunkinfo, read_overrides, write_blob, write_cache
+from fray_claude.remote.scrape import SOURCE as SCRAPE_SOURCE
+from fray_claude.remote.scrape import recipe_coverage, scrape, scrape_recipes
+from fray_claude.store.cache import CHUNKINFO_BLOB_NAME, FETCHED, RECIPES_BLOB_NAME, TASKS_MAP_BLOB_NAME, WIKI_RATES_BLOB_NAME, read_cache, read_chunkinfo, read_overrides, write_blob, write_cache
 
 
 def _cmd_fetch(args: argparse.Namespace) -> int:
@@ -118,6 +119,33 @@ def _cmd_heuristics(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_recipes(args: argparse.Namespace) -> int:
+    """`fray recipes`: what one action of a training method pays and costs.
+
+    A dozen Bucket queries, one per skill that has recipes. Separate from
+    `fray heuristics` because it fetches different things from a different API
+    at a different cadence: a money-making guide's kph is somebody's estimate
+    and moves, while "an attack potion is 25 xp and two ticks" is a fact about
+    the game and does not.
+
+    The coverage line that matters is the tick one. Experience alone is half a
+    rate; without the action's duration there is nothing to divide by, so a
+    skill with recipes and no ticks is covered on paper only.
+    """
+    recipes = scrape_recipes(timeout=args.timeout)
+    path = write_blob(RECIPES_BLOB_NAME, recipes, SCRAPE_SOURCE)
+
+    total_rows = total_ticked = 0
+    for skill, (ticked, rows) in sorted(recipe_coverage(recipes).items()):
+        share = f"{ticked / rows:.0%} timed" if rows else "none"
+        print(f"{skill:<14} {rows:>5} recipes  ({share})")
+        total_rows += rows
+        total_ticked += ticked
+    print(f"\n{'total':<14} {total_rows:>5} recipes, {total_ticked} with a tick cost")
+    print(f"wrote {path} ({path.stat().st_size:,} bytes)")
+    return 0
+
+
 def add_arguments(
     subcommands: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
@@ -170,3 +198,15 @@ def add_arguments(
         help="path to a chunkinfo export, overriding the cache and FRAY_CHUNKINFO",
     )
     heuristics.set_defaults(func=_cmd_heuristics)
+
+    recipes = subcommands.add_parser(
+        "recipes",
+        help="download per-action experience and tick costs from the wiki",
+    )
+    recipes.add_argument(
+        "--timeout",
+        type=float,
+        default=DEFAULT_TIMEOUT,
+        help="request timeout in seconds (default: %(default)s)",
+    )
+    recipes.set_defaults(func=_cmd_recipes)

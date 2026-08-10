@@ -258,6 +258,36 @@ def fetch_wiki_pages(
     return fetched
 
 
+def fetch_bucket(query: str, timeout: float = DEFAULT_TIMEOUT) -> list[dict[str, Any]]:
+    """Run one Bucket query against the wiki and return its rows.
+
+    Bucket is the wiki's own structured-data extension - `{{Recipe}}`,
+    `{{Mmgtable}}` and the quest infoboxes all write into it - so one request
+    answers what would otherwise be a page fetch and a wikitext parse per item.
+    `bucket('recipe').select('page_name','production_json').where('uses_skill','Herblore').limit(5000).run()`
+    returns every Herblore recipe with its level, experience, materials and
+    tick cost.
+
+    **A failed query is HTTP 200 with an `error` key**, which is the same trap
+    as Firebase answering an unknown map with a bare `null`: read the status
+    only and a typo in a field name parses as "this skill has no recipes". So
+    the key is checked explicitly and raised as a `FetchError`.
+    """
+    payload = _fetch_json_object(
+        _wiki_url({"action": "bucket", "format": "json", "query": query}),
+        timeout,
+        what="a bucket query",
+        wiki=True,
+    )
+    error = payload.get("error")
+    if error:
+        raise FetchError(f"bucket query refused: {error}")
+    rows = payload.get("bucket")
+    if not isinstance(rows, list):
+        raise FetchError(f"expected rows for a bucket query, got {type(rows).__name__}")
+    return [row for row in rows if isinstance(row, dict)]
+
+
 def fetch_text(
     url: str, timeout: float = DEFAULT_TIMEOUT, *, what: str, wiki: bool = False
 ) -> str:
