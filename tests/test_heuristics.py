@@ -23,7 +23,7 @@ from fray_claude.heuristics import (
     stems,
     streak_factor,
 )
-from fray_claude.wiki import Assignment, MmgRates
+from fray_claude.remote.wiki import Assignment, MmgRates
 
 
 def _info(**data: Any) -> ChunkInfo:

@@ -58,7 +58,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from fray_claude import cache
-from fray_claude.api import DEFAULT_TIMEOUT
+from fray_claude.remote.api import DEFAULT_TIMEOUT
 from fray_claude.build_info import print_watermark
 from fray_claude.gui.browser import open_app_window
 from fray_claude.gui.jobs import JobState

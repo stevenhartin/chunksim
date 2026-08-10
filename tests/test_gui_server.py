@@ -20,7 +20,7 @@ from typing import Any
 import pytest
 
 from fray_claude import cache
-from fray_claude.api import FetchError
+from fray_claude.remote.api import FetchError
 from fray_claude.gui.browser import window_flags
 from fray_claude.gui.server import (
     Context,
@@ -1393,7 +1393,7 @@ def test_refreshing_the_rates_runs_the_same_scrape_the_cli_runs(
     reaches `scrape.scrape` - rather than re-testing the scrape."""
     ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
     ctx = Context(root=tmp_path, check_origin=False, derivations=ctx.derivations)
-    from fray_claude.scrape import ScrapeResult
+    from fray_claude.remote.scrape import ScrapeResult
 
     monkeypatch.setattr(
         "fray_claude.gui.server.scrape",

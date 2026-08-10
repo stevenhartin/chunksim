@@ -75,7 +75,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from fray_claude.api import map_url
+from fray_claude.remote.api import map_url
 
 CACHE_DIR_NAME = "cache"
 _ROOT_MARKER = "pyproject.toml"

@@ -15,7 +15,7 @@ from typing import Any, cast
 
 import pytest
 
-from fray_claude.api import (
+from fray_claude.remote.api import (
     CHUNKINFO_URL,
     DEFAULT_TIMEOUT,
     TASKS_MAP_URL,

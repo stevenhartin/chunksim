@@ -67,7 +67,7 @@ from typing import Any, cast
 from urllib.parse import parse_qs, urlsplit
 
 from fray_claude import cache, dps_bridge, estimate_inputs
-from fray_claude.api import (
+from fray_claude.remote.api import (
     CHUNKINFO_URL,
     DEFAULT_TIMEOUT,
     MAP_TILE_ATTRIBUTION,
@@ -92,8 +92,8 @@ from fray_claude.estimate import estimate, goal_levels, infer_levels
 from fray_claude.heuristics import Heuristics, merge
 from fray_claude.heuristics import load as load_heuristics
 from fray_claude.neighbours import eligible_neighbours
-from fray_claude.scrape import SOURCE as SCRAPE_SOURCE
-from fray_claude.scrape import scrape
+from fray_claude.remote.scrape import SOURCE as SCRAPE_SOURCE
+from fray_claude.remote.scrape import scrape
 from fray_claude.search import build_world_index, search
 from fray_claude.model.summary import _mapping, summarise
 from fray_claude.gui.derivation import DerivedState, Derivations, unlocked_of

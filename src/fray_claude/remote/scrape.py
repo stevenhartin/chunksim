@@ -27,7 +27,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from fray_claude.api import (
+from fray_claude.remote.api import (
     DEFAULT_TIMEOUT,
     TASK_LENGTHS_TAB,
     WIKI_API_URL,
@@ -45,7 +45,7 @@ from fray_claude.heuristics import (
 )
 from fray_claude.slayer import SheetFormatError, parse_mob_data, parse_task_lengths
 from fray_claude.model.summary import _mapping
-from fray_claude.wiki import (
+from fray_claude.remote.wiki import (
     ASSIGNMENTS_PAGE,
     MMG_PREFIX,
     SUPERIORS_PAGE,

@@ -71,7 +71,7 @@ from typing import Any, TypeVar
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.search import normalise
 from fray_claude.model.summary import _mapping
-from fray_claude.wiki import Assignment, MmgRates, quest_difficulty, quest_length
+from fray_claude.remote.wiki import Assignment, MmgRates, quest_difficulty, quest_length
 
 #: Quest length word -> hours. The words are the wiki's own `Length` column
 #: on `Quests/List`; the hours are this project's, the wiki giving no duration.

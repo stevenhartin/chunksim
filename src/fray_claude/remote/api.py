@@ -39,7 +39,7 @@ import json
 from collections.abc import Sequence
 from typing import Any
 
-from fray_claude.wiki import map_tile_version
+from fray_claude.remote.wiki import map_tile_version
 
 MAP_URL = "https://chunkpicker.firebaseio.com/maps/{map_id}.json"
 

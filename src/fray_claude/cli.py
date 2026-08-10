@@ -85,7 +85,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fray_claude.api import (
+from fray_claude.remote.api import (
     DEFAULT_TIMEOUT,
     CHUNKINFO_URL,
     TASKS_MAP_URL,
@@ -145,8 +145,8 @@ from fray_claude.neighbours import eligible_neighbours
 from fray_claude.other_tasks import CATEGORIES as OTHER_CATEGORIES
 from fray_claude.other_tasks import CategoryTasks, display_name, task_text
 from fray_claude.pipeline import ConvergenceError, Derived, MapState, load_map_state
-from fray_claude.scrape import SOURCE as SCRAPE_SOURCE
-from fray_claude.scrape import scrape
+from fray_claude.remote.scrape import SOURCE as SCRAPE_SOURCE
+from fray_claude.remote.scrape import scrape
 from fray_claude.search import TYPES, build_world_index, search
 from fray_claude.sections import describe_sections, expand_chunk_areas
 from fray_claude.simulate import simulate_rolls

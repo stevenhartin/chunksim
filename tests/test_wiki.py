@@ -8,7 +8,7 @@ serves, and each one breaks a naive parse in a different way.
 
 from __future__ import annotations
 
-from fray_claude.wiki import (
+from fray_claude.remote.wiki import (
     mmg_rates,
     monster_slayer_xp,
     parse_number,
