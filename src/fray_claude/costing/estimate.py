@@ -184,6 +184,26 @@ _MAX_DEPTH = 3
 #: ground spawn are both "walk there and take it".
 _FREE_ROUTES = frozenset({"shop", "spawn"})
 
+#: Seconds to reach a shop and get back to where the work happens. **A rough
+#: fixed figure, not a measurement** - the export has no geography to compute
+#: one from, and a bank-to-shop-to-bank run is thirty seconds either side of
+#: plausible for most of the map.
+SHOP_TRIP_SECONDS = 30.0
+
+#: Seconds to pick one item off the ground. One tick, which caps collection
+#: at 6,000 an hour before anything else is considered.
+SPAWN_PICKUP_SECONDS = 0.6
+
+#: How often you can be standing at a fresh spawn, per hour. **A ground item
+#: does not respawn while you wait for it** - the cheap way to collect is to
+#: hop worlds, which costs roughly ten seconds, so six hops a minute is the
+#: realistic ceiling. Multiplied by how many of the item sit at that spawn.
+SPAWN_HOPS_PER_HOUR = 360.0
+
+#: Items one trip can carry back. An inventory is 28 slots and one holds what
+#: you are working with, so a purchase run brings 27.
+SHOP_TRIP_ITEMS = 27.0
+
 
 @dataclass(frozen=True)
 class TaskEstimate:
@@ -577,6 +597,7 @@ def _item_hours(
     item: str,
     *,
     quantity: float = 1.0,
+    amortise: bool = False,
     depth: int = 0,
     seen: frozenset[str] = frozenset(),
 ) -> _Priced | None:
@@ -595,6 +616,17 @@ def _item_hours(
     if item in seen or depth > _MAX_DEPTH:
         return None
 
+    # **Currency is earned, not fetched.** `Coins` and `Tokkul` are ordinary
+    # items to the export - both have ground spawns - so the walk found one
+    # lying about and priced ten million of them at nothing. What money costs
+    # is the time to earn it, at its own rate, and that is true however you
+    # come by it. Checked before the routes so no spawn can undercut it.
+    earned = walk.heuristics.currency_per_hour.get(item)
+    if earned is not None:
+        if earned <= 0:
+            return None
+        return _Priced(quantity / earned, f"earn {quantity:,.0f} {item}", f"currency:{item}")
+
     shared = _superior_table_hours(walk, item, quantity)
     if shared is not None:
         return shared
@@ -602,7 +634,7 @@ def _item_hours(
     best: _Priced | None = None
     for source in walk.world.item_sources.get(item, ()):
         priced = _route_hours(
-            walk, item, source.route, source.name, depth, seen | {item}, quantity
+            walk, item, source.route, source.name, depth, seen | {item}, quantity, amortise
         )
         if priced is not None and (best is None or priced.hours < best.hours):
             best = priced
@@ -662,6 +694,7 @@ def _route_hours(
     depth: int,
     seen: frozenset[str],
     quantity: float = 1.0,
+    amortise: bool = False,
 ) -> _Priced | None:
     if route in _FREE_ROUTES:
         # **A shop is only free if you can walk into it.** `WorldIndex` spans
@@ -678,7 +711,60 @@ def _route_hours(
         # inputs are instant.
         if item.lower() not in walk.reachable_lower:
             return None
-        return _Priced(0.0, f"{route}: {provider}", f"{route}:{provider}")
+        if route == "spawn":
+            # **A ground spawn is cheap, not free.** Picking one up is a tick,
+            # which alone caps collection at 6,000 an hour - and the item does
+            # not come back while you stand there, so the real limit is how
+            # fast you can reach a fresh one. Hopping worlds is the usual
+            # answer at roughly ten seconds a hop, and each hop yields however
+            # many of the item lie at that spawn.
+            #
+            # Left free, a `Spawn` of two planks priced a ten-plank wooden
+            # fence at nothing and made it 296,471 Construction xp/hr.
+            at_spawn = _mapping(
+                _mapping(walk.chunk_info.data, "chunks").get(provider, {}), "Spawn"
+            ).get(item)
+            count = float(at_spawn) if isinstance(at_spawn, (int, float)) else 1.0
+            per_hour = min(
+                3600.0 / SPAWN_PICKUP_SECONDS, SPAWN_HOPS_PER_HOUR * max(1.0, count)
+            )
+            hours = quantity / per_hour if per_hour > 0 else 0.0
+            return _Priced(
+                hours,
+                f"{route}: {provider}"
+                + (f", {quantity:,.0f}x" if quantity > 1 else "")
+                + f" ({count:g} per hop, {per_hour:,.0f}/hr)",
+                f"{route}:{provider}",
+            )
+
+        # **Buying is instant; the money is not.** A shop route costs however
+        # long it takes to earn the price, at the currency's own rate - which
+        # is what stops a Construction build reading `Coins x 10,000,000` from
+        # being the fastest training in the game. A price the wiki does not
+        # list, or one charged in a currency with no rate, is *no route* rather
+        # than a free one.
+        seconds = walk.heuristics.shop_seconds(provider, item)
+        if seconds is None:
+            return None
+        # **The money is not the only cost; the walk there is.** A shop run
+        # brings back one inventory, so buying is priced per *trip* as well as
+        # per coin. `amortise` is the difference between the two questions the
+        # walk is asked: a goal wants one item and pays for the whole trip,
+        # while a recipe wants two planks *per action* and pays its share of a
+        # trip that also supplied the next dozen actions. Charging a full trip
+        # per action put thirty seconds on every cast of every spell.
+        trips = quantity / SHOP_TRIP_ITEMS
+        if not amortise:
+            trips = max(1.0, math.ceil(trips))
+        travel = trips * SHOP_TRIP_SECONDS
+        hours = (seconds * quantity + travel) / 3600.0
+        return _Priced(
+            hours,
+            f"{route}: {provider}"
+            + (f", {quantity:,.0f}x" if quantity > 1 else "")
+            + f" ({seconds * quantity:,.0f}s earning + {travel:,.0f}s travel)",
+            f"{route}:{provider}",
+        )
 
     if route.startswith("task:"):
         # Made rather than found: the cost is its inputs, recursively.
@@ -695,6 +781,7 @@ def _route_hours(
                 walk,
                 required.replace("*", ""),
                 quantity=quantity,
+                amortise=amortise,
                 depth=depth + 1,
                 seen=seen,
             )
@@ -1051,7 +1138,9 @@ def material_seconds(
     walk = _setup(state, derived, world, heuristics, level_overrides or {}).walk
 
     def seconds(item: str, quantity: float) -> float | None:
-        priced = _item_hours(walk, item, quantity=quantity)
+        # `amortise`: a recipe's materials are bought for a run of actions,
+        # not fetched one trip at a time. See `_route_hours`.
+        priced = _item_hours(walk, item, quantity=quantity, amortise=True)
         return None if priced is None else priced.hours * 3600.0
 
     return seconds

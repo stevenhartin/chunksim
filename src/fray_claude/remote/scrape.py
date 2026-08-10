@@ -48,7 +48,7 @@ from fray_claude.costing.heuristics import (
 from fray_claude.costing.slayer import SheetFormatError, parse_mob_data, parse_task_lengths
 from fray_claude.model.summary import _mapping
 from fray_claude.remote.recipes import parse_recipes, recipe_query
-from fray_claude.remote import combat, skill_tables
+from fray_claude.remote import combat, skill_tables, stores
 from fray_claude.remote.wiki import (
     ASSIGNMENTS_PAGE,
     MMG_PREFIX,
@@ -173,6 +173,17 @@ def scrape(
         fetch_wiki_pages(list(combat.SPELLBOOK_PAGES), timeout=timeout)
     )
 
+    say("shop prices")
+    lines: list[dict[str, Any]] = []
+    while True:
+        page = fetch_bucket(stores.store_query(offset=len(lines)), timeout=timeout)
+        lines.extend(page)
+        # The API caps a query at `PAGE_SIZE` whatever `limit` says, so a short
+        # page is the end of the table rather than a reason to ask again.
+        if len(page) < stores.PAGE_SIZE:
+            break
+    shop_prices = stores.parse_storelines(lines)
+
     config = build_config(
         info,
         quest_pages=quest_pages,
@@ -184,6 +195,7 @@ def scrape(
         skill_tables=tables,
         monster_stats=monster_stats,
         spells=spells,
+        shop_prices=shop_prices,
     )
     return ScrapeResult(
         config=config,
@@ -201,6 +213,7 @@ def scrape(
             "task lengths": len(lengths),
             **{f"{kind} rows": len(rows) for kind, rows in sorted(tables.items())},
             "monster hitpoints": len(monster_stats),
+            "shop prices": sum(len(items) for items in shop_prices.values()),
             "attack spells": len(spells),
         },
         sheet_error=sheet_error,

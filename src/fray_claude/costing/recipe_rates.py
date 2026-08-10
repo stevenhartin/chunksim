@@ -72,15 +72,6 @@ TICK_SECONDS = 0.6
 #: `default` - see `apply`, and the measurement behind that in the docstring.
 COMPUTED_MATCH = "computed"
 
-#: Materials this cannot put a time on, so a recipe needing one is dropped.
-#: **Money is the whole of it.** `Coins` is stocked by a ground spawn, so the
-#: item walk prices it at zero seconds - and a Construction recipe reading
-#: `Coins x 10,000,000` came out free, making a steel dragon in the menagerie
-#: the fastest training in the game at 3,348,000 xp/hr. There is no gp-per-hour
-#: model anywhere in this project and inventing one here would be worse than
-#: refusing: 39 recipes name coins, against 3,889 that do not.
-UNPRICEABLE_MATERIALS: frozenset[str] = frozenset({"Coins", "Coin"})
-
 #: The verbs a challenge name starts with, stripped to leave the thing made.
 #: **Construction needs this and almost nothing else does.** Its challenges
 #: carry `Output Object` - the furniture - where every other skill carries
@@ -214,8 +205,6 @@ def material_seconds(
     """
     total = 0.0
     for material in recipe.materials:
-        if material.name in UNPRICEABLE_MATERIALS:
-            return None
         seconds = input_seconds(material.name, material.quantity)
         if seconds is None:
             return None

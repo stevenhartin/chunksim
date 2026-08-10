@@ -150,6 +150,7 @@ Five things that cut across modules — the first three because each has already
 | `model/experience.py` | The exact 1–99 XP curve, closed-form. **Not a heuristic and not overridable** — that separation from `heuristics.py` is the point of the module. |
 | `remote/scrape.py` | The ~18 requests that build the scraped layer, and the coverage it reports. **Both apps run it** — `fray heuristics` and the GUI's Maps tab — so the two cannot write different files. Decides no rate; `heuristics.py` does that. |
 | `remote/skill_tables.py` | Agility and Thieving rates, from four wiki tables (`Shortcuts`, `Agility`, `Stall/Thievable`, `Thieving`). Pure wikitext-table parsing with a depth-aware cell splitter, because `{{Coins\|{{GEP\|x\|10*13.8}}}}` is full of `\|` that are not cell breaks. **These are the two skills `{{Recipe}}` cannot describe** - both have zero rows in the wiki's recipe bucket. Owns `COURSE_ALIASES`, the 4 spellings the export gets wrong (`Canafis`). |
+| `remote/stores.py` | What a shop charges and **in what currency**, from the `storeline` Bucket. 6,326 lines, of which 4,438 are coins and 126 Tokkul; the rest are points and tickets nobody converts. The API caps a query at 5,000 rows whatever `limit` says, so it pages with `offset`. Joins 403 of the export's 435 shops and prices 3,798 of its 4,163 stock lines. |
 | `costing/heuristics.py` | Every hand-correctable number, and the `defaults < scraped < overrides` merge. Owns the joins and their `exact`/`contained` provenance; **no fuzzy tier**, by measurement — read the docstring before adding one back. |
 | `costing/slayer.py` | Slayer's rate, which is a *distribution* not a chosen method: a time-weighted mean over what a master assigns. Also owns `superior_rolls_per_hour` — the shared `SuperiorDropTable+` is one pool per master, not one per superior. **Masters are gated on their NPC being reachable** — without that it quoted Duradel on a map holding none of him. Reports `coverage`, because renormalising over reachable tasks flatters a sparse map. |
 | `costing/estimate.py` | The four buckets — quests, boss drops, activities, skilling — over the **active** set. **Costs the unique *item*, not the task** — one whip answers three tasks — and **clamps per source**, since items off one monster are earned in parallel. Owns the item walk, its bounded `Output` recursion, the `unpriced` list, and **three gates** — monster reachable, slayer task assignable, master reachable. Read the docstring before pricing anything off `WorldIndex`, which spans the whole world. Skilling is `costing/training.py`'s; what stays here is the loop and `unpriced_skills` — Attack, Defence, Hitpoints and Ranged have **no training method anywhere in the export**, and were being costed at zero. |
@@ -426,6 +427,37 @@ rather than measurements (the second is calibrated against the wiki's own 86,000
 Ardougne **at the level the method opens**, which is the conservative end of a rate that climbs with
 success chance). Joined 44 of 112 Agility methods and 39 of 117 Thieving ones - the misses are
 minigames and access-only rows nothing publishes a rate for.
+
+**Nothing the estimator reaches is free any more, and that was the largest remaining error.**
+`_route_hours` used to price a shop or a ground spawn at zero seconds on the grounds that both are
+instant. Both are - the transaction is; the *money* and the *respawn* are not - and it stayed harmless
+only while the estimator asked for one abyssal whip at a time. Pricing Construction made it dominant:
+a build is a stack of bought planks, and a menagerie steel dragon reads `Coins x 10,000,000`.
+
+- **A shop costs the money and the walk.** The price comes from `remote/stores.py` and the time to
+  earn it from `Heuristics.currency_per_hour` - **500,000 coins an hour and 25,000 Tokkul**, both
+  tunable under `currencies` in `heuristics/overrides.json`. The currency is kept rather than
+  flattened to a price because 375 Tokkul is twenty times 375 coins. A currency with **no** rate is
+  refused, not guessed: castle wars tickets and trading sticks have no exchange rate anyone would
+  agree on. On top of the money, `SHOP_TRIP_SECONDS` (30) per `SHOP_TRIP_ITEMS` (27) - and
+  `_item_hours(amortise=)` is the difference between the two questions the walk is asked, since a
+  goal wants one item and pays for a whole trip where a recipe wants two planks *per action* and pays
+  its share of a trip that supplied the next dozen. Charging a full trip per action put thirty
+  seconds on every cast of every spell.
+- **Currency is earned, not fetched.** `Coins` and `Tokkul` are ordinary items to the export - both
+  have ground spawns - so the walk found one lying about and priced ten million at nothing. They are
+  now checked *before* the routes, so no spawn can undercut the rate.
+- **A ground spawn is cheap, not free.** A pickup is one tick, which alone caps collection at 6,000
+  an hour; the real limit is that the item does not return while you stand there, so it is
+  `SPAWN_HOPS_PER_HOUR` (360, six hops a minute at ~10s each) multiplied by how many lie at that
+  spawn. Left free, a `Spawn` of two planks priced a ten-plank wooden fence at nothing and made it
+  296,471 Construction xp/hr.
+
+**What is still free is a `make` route's own action.** `_route_hours` charges a `task:` route for its
+*inputs* and never for performing it, so a chain that bottoms out in a gathering action with no inputs
+costs nothing: `Plank <- make: Process logs <- Logs <- make: Cut logs from roots <- (nothing)`. The
+export knows the action exists and not how long it takes, which is the same gap the gathering skills
+have and wants the same answer.
 
 **Construction joins on the task's own name, and it is the only skill that needs to.** Its challenges
 carry `Output Object` - the furniture - where every other skill carries `Output`, so the exact join

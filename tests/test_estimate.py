@@ -10,9 +10,10 @@ from fray_claude.derive.active_tasks import SkillClassification, TaskClassificat
 from fray_claude.derive.bis import BisResult
 from fray_claude.derive.challenges import ChallengeResult
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.costing.estimate import estimate
+from fray_claude.costing.estimate import _item_hours, estimate
 from fray_claude.costing.training import training_options
 from fray_claude.costing.levels import goal_levels, infer_levels, reachable_providers, task_gated_monsters
+from fray_claude.remote.stores import ShopPrice
 from fray_claude.costing.heuristics import (
     DEFAULT_XP_PER_HOUR,
     Heuristics,
@@ -70,6 +71,25 @@ def _derived(*, monsters: tuple[str, ...] = (), **overrides: Any) -> Derived:
     }
     defaults.update(overrides)
     return Derived(**defaults)
+
+
+
+def _walk_for(info: ChunkInfo, heuristics: Heuristics | None = None) -> Any:
+    """A `_Walk` over `info` with everything it stocks reachable.
+
+    The walk's gates are exercised elsewhere; these tests are about what a
+    route *costs* once it is reachable.
+    """
+    from fray_claude.costing.estimate import _Walk
+
+    world = build_world_index(info)
+    return _Walk(
+        chunk_info=info,
+        world=world,
+        heuristics=heuristics or Heuristics(),
+        by_lower={item.lower(): item for item in world.item_sources},
+        reachable_items=frozenset(world.item_sources),
+    )
 
 
 def _run(info: ChunkInfo, derived: Derived, heuristics: Heuristics, **kwargs: Any) -> Any:
@@ -1315,3 +1335,96 @@ def test_a_stacked_drop_still_has_to_pass_its_drop_rate() -> None:
     (knife,) = [item for item in result.items if item.item == "Dragon knife"]
     assert knife.hours == pytest.approx(10_000 / 60)
     assert "at 1/10,000" in knife.detail
+
+
+def test_a_shop_costs_the_money_and_the_walk() -> None:
+    """**Buying is instant; the money is not, and neither is the trip.** A
+    shop route priced at zero is how a Construction build reading
+    `Coins x 10,000,000` became the fastest training in the game."""
+    info = ChunkInfo(
+        {
+            "shopItems": {"Sawmill": {"Oak plank": True}},
+            "challenges": {
+                "Extra": {"Obtain an ~|oak plank|~": {"Items": ["Oak plank"]}}
+            },
+        }
+    )
+    heuristics = Heuristics(
+        shop_prices={"Sawmill": {"Oak plank": ShopPrice(price=500.0, currency="Coins")}},
+        currency_per_hour={"Coins": 500_000.0},
+    )
+
+    # 500 gp at 500,000/hr is 3.6s, plus one 30s trip.
+    assert heuristics.shop_seconds("Sawmill", "Oak plank") == pytest.approx(3.6)
+
+
+def test_a_currency_with_no_rate_has_no_price_rather_than_a_free_one() -> None:
+    """Castle wars tickets and trading sticks have no exchange rate anyone
+    would agree on, so an item sold only for those is refused."""
+    heuristics = Heuristics(
+        shop_prices={
+            "Shop": {"Thing": ShopPrice(price=10.0, currency="Castle wars ticket")}
+        }
+    )
+
+    assert heuristics.shop_seconds("Shop", "Thing") is None
+
+
+def test_tokkul_is_slower_than_gold_because_it_is_earned_slower() -> None:
+    """The point of keeping the currency: 375 Tokkul is not 375 coins."""
+    heuristics = Heuristics(
+        shop_prices={
+            "TzHaar": {
+                "Obsidian": ShopPrice(price=375.0, currency="Tokkul"),
+                "Bronze": ShopPrice(price=375.0, currency="Coins"),
+            }
+        }
+    )
+
+    obsidian = heuristics.shop_seconds("TzHaar", "Obsidian")
+    bronze = heuristics.shop_seconds("TzHaar", "Bronze")
+
+    assert obsidian is not None and bronze is not None
+    # 500,000 / 25,000 = twenty times as long for the same face value.
+    assert obsidian == pytest.approx(bronze * 20)
+
+
+def test_an_unpriced_shop_item_is_not_free() -> None:
+    """"The wiki does not list it" and "it costs nothing" are the distinction
+    this whole layer exists to preserve."""
+    assert Heuristics().shop_seconds("Nowhere", "Anything") is None
+
+
+def test_a_ground_spawn_is_cheap_but_not_free() -> None:
+    """**Picking one up is a tick and it does not come back while you wait.**
+    The cheap way to collect is to hop worlds, so the ceiling is how often you
+    can stand at a fresh spawn - not how fast you can click. Left free, a
+    `Spawn` of two planks priced a ten-plank wooden fence at nothing."""
+    info = ChunkInfo(
+        {
+            "chunks": {"4912": {"Spawn": {"Plank": 2}}},
+            "challenges": {"Extra": {"Obtain a ~|plank|~": {"Items": ["Plank"]}}},
+        }
+    )
+    walk = _walk_for(info)
+
+    priced = _item_hours(walk, "Plank", quantity=720.0)
+
+    assert priced is not None
+    # Two per hop at 360 hops an hour is 720 an hour, so 720 takes an hour.
+    assert priced.hours == pytest.approx(1.0)
+
+
+def test_the_pickup_tick_caps_a_generous_spawn() -> None:
+    """One tick an item is 6,000 an hour however many lie on the floor."""
+    info = ChunkInfo(
+        {
+            "chunks": {"1": {"Spawn": {"Coins pile": 1000}}},
+            "challenges": {"Extra": {"Obtain a ~|coins pile|~": {"Items": ["Coins pile"]}}},
+        }
+    )
+    walk = _walk_for(info)
+
+    priced = _item_hours(walk, "Coins pile", quantity=6000.0)
+
+    assert priced is not None and priced.hours == pytest.approx(1.0)

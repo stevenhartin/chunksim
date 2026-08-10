@@ -218,17 +218,22 @@ def test_construction_joins_on_the_task_name_where_output_fails() -> None:
     assert priced["Build a ~|mahogany table|~"].experience == 840.0
 
 
-def test_a_recipe_priced_in_coins_is_refused() -> None:
-    """**There is no gp-per-hour model anywhere here.** `Coins` is stocked by
-    a ground spawn, so the item walk prices it at zero seconds - and a
-    Construction recipe reading `Coins x 10,000,000` came out free, making a
-    steel dragon in the menagerie the fastest training in the game at
-    3,348,000 xp/hr."""
+def test_a_recipe_priced_in_coins_costs_the_time_to_earn_them() -> None:
+    """**Money is time, and it used to be free.** `Coins` has a ground spawn,
+    so the item walk found one lying about and priced ten million of them at
+    nothing - making a steel dragon in the menagerie the fastest training in
+    the game at 3,348,000 xp/hr. Now the caller's pricing decides, and at
+    500,000 gp an hour ten million coins is twenty hours."""
     recipe = _recipe(
         "Steel dragon (Construction)",
         skill="Construction",
         materials=(Material("Coins", 10_000_000.0),),
     )
 
-    assert action_seconds(recipe, _free) is None
-    assert rate_for([recipe], _free) is None
+    def earns(item: str, quantity: float) -> float | None:
+        return quantity / 500_000.0 * 3600.0 if item == "Coins" else 0.0
+
+    chosen = rate_for([recipe], earns)
+
+    assert chosen is not None
+    assert chosen[2] == pytest.approx(20 * 3600)

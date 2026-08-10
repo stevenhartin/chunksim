@@ -74,6 +74,7 @@ from fray_claude.model.summary import _mapping
 from fray_claude.derive.task_names import strip_task_markup
 from fray_claude.remote.combat import AttackSpell, MonsterStats
 from fray_claude.remote.skill_tables import COURSE_ALIASES, SkillRow
+from fray_claude.remote.stores import ShopPrice
 from fray_claude.remote.wiki import Assignment, MmgRates, quest_difficulty, quest_length
 
 #: Quest length word -> hours. The words are the wiki's own `Length` column
@@ -339,6 +340,13 @@ class Heuristics:
     #: Combat skill -> its computed rate. Filled by `inputs.priced_heuristics`
     #: **after** the kill rates are final, since it multiplies them.
     combat: dict[str, Rate] = field(default_factory=dict)
+    #: Shop -> item -> what it charges. From `remote/stores.py`.
+    shop_prices: dict[str, dict[str, ShopPrice]] = field(default_factory=dict)
+    #: Currency -> how much of it can be earned an hour. A currency missing
+    #: from here cannot be priced at all - see `DEFAULT_CURRENCY_PER_HOUR`.
+    currency_per_hour: dict[str, float] = field(
+        default_factory=lambda: dict(DEFAULT_CURRENCY_PER_HOUR)
+    )
     #: Combat skill -> the damage per hour behind that rate. Carried
     #: separately because it cannot be recovered from the rate: Magic's is
     #: mostly casting experience. `combat_xp.hitpoints_credit` needs it.
@@ -359,6 +367,26 @@ class Heuristics:
             else "regular"
         )
         return Rate(value=DEFAULT_KPH[kind], source=f"default:{kind}")
+
+    def shop_seconds(self, shop: str, item: str) -> float | None:
+        """Seconds of earning to afford one `item` at `shop`, or `None`.
+
+        `None` is "this cannot be priced" and the caller must treat it as no
+        route - either the wiki does not list the price, or it is charged in a
+        currency with no rate. **Not zero**: a shop route priced at nothing is
+        how a build costing ten million coins became the fastest training in
+        the game.
+
+        Zero *is* returned for a genuinely free item, which the wiki does
+        record - a price of 0 in coins is a giveaway, not a missing figure.
+        """
+        entry = self.shop_prices.get(shop, {}).get(item)
+        if entry is None:
+            return None
+        rate = self.currency_per_hour.get(entry.currency)
+        if rate is None or rate <= 0:
+            return None
+        return entry.price * 3600.0 / rate
 
     def xp_per_hour(self, task: str, skill: str) -> Rate:
         found = self.training.get(task, {}).get(skill)
@@ -569,6 +597,22 @@ def primary_training_tasks(chunk_info: ChunkInfo) -> dict[str, str]:
     return tasks
 
 
+#: How fast a currency can be earned, per hour. **Tunable, and the two that
+#: are here are the two anyone converts.** `Coins` at 500,000 an hour is a
+#: middling money-maker; `Tokkul` at 25,000 is far slower, which is the whole
+#: point of listing it separately - an obsidian weapon at 375 Tokkul costs
+#: fifteen times what its coin price would suggest.
+#:
+#: A currency **absent from this map is refused, not guessed**: castle wars
+#: tickets, trading sticks and the various point currencies have no exchange
+#: rate anyone would agree on, so an item sold only for those has no price
+#: here rather than a free one. Override under `currencies` in
+#: `heuristics/overrides.json`.
+DEFAULT_CURRENCY_PER_HOUR: dict[str, float] = {
+    "Coins": 500_000.0,
+    "Tokkul": 25_000.0,
+}
+
 #: Seconds one shortcut use takes, door to door. **A stated target, not a
 #: measurement**: nothing publishes a shortcut rate, so this is set so that the
 #: best shortcut in the table (25 xp) reaches ~5,000 xp/hr, which is what
@@ -667,6 +711,7 @@ def build_config(
     skill_tables: Mapping[str, Sequence[SkillRow]] | None = None,
     monster_stats: Mapping[str, MonsterStats] | None = None,
     spells: Sequence[AttackSpell] = (),
+    shop_prices: Mapping[str, Mapping[str, ShopPrice]] | None = None,
 ) -> dict[str, Any]:
     """Generate the full config from the export plus everything fetched.
 
@@ -811,6 +856,15 @@ def build_config(
             if name in chunk_info.drops or name in known
         },
         "spells": [spell.as_dict() for spell in spells],
+        # **Only shops the export knows about.** The wiki lists 588 and the
+        # export stocks 435; the rest are a copy of the wiki rather than a
+        # config for this map.
+        "shops": {
+            shop: {item: entry.as_dict() for item, entry in sorted(items.items())}
+            for shop, items in sorted((shop_prices or {}).items())
+            if shop in chunk_info.data.get("shopItems", {})
+        },
+        "currencies": dict(DEFAULT_CURRENCY_PER_HOUR),
     }
 
 
@@ -1027,6 +1081,26 @@ def load(
         },
         boss_monsters=boss_monsters,
         slayer_monsters=slayer_monsters,
+        shop_prices={
+            shop: {
+                item: ShopPrice(
+                    price=_float(entry.get("price"), 0.0),
+                    currency=str(entry.get("currency") or ""),
+                )
+                for item, entry in items.items()
+                if isinstance(entry, dict)
+            }
+            for shop, items in _entries(config, "shops")
+            if isinstance(items, dict)
+        },
+        currency_per_hour={
+            **DEFAULT_CURRENCY_PER_HOUR,
+            **{
+                name: _float(value, 0.0)
+                for name, value in _mapping(config, "currencies").items()
+                if isinstance(value, (int, float)) and not isinstance(value, bool)
+            },
+        },
         monster_stats={
             name: MonsterStats(
                 name=name,
