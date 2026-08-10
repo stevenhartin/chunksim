@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from fray_claude.pipeline import Derived
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.other_tasks import (
     classify_other_tasks,
     display_name,
@@ -413,7 +413,7 @@ def test_active_tasks_match_the_live_oracle(
     waved through with a count: an earlier version compared totals and passed
     on `Extra` at 37 == 37 while seven entries were wrong in each direction.
     """
-    from fray_claude.firebase import decode_challenge_keyed
+    from fray_claude.model.firebase import decode_challenge_keyed
 
     derived = real_derived
     oracle = set(

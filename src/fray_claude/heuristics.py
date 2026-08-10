@@ -68,9 +68,9 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.search import normalise
-from fray_claude.summary import _mapping
+from fray_claude.model.summary import _mapping
 from fray_claude.wiki import Assignment, MmgRates, quest_difficulty, quest_length
 
 #: Quest length word -> hours. The words are the wiki's own `Length` column

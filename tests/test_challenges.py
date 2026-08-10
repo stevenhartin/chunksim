@@ -17,7 +17,7 @@ from fray_claude.challenges import (
     only_shop,
     strip_task_markup,
 )
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.sources import SourceIndex
 
 _EMPTY = SourceIndex(items={}, objects={}, monsters={}, npcs={}, shops={}, drop_rates={})

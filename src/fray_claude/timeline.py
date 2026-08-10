@@ -45,7 +45,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from fray_claude.summary import _mapping
+from fray_claude.model.summary import _mapping
 
 if TYPE_CHECKING:  # a type only - importing `estimate` here would be a cycle
     from fray_claude.estimate import EstimateResult

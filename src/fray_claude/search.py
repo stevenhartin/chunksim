@@ -58,9 +58,9 @@ from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from typing import Any
 
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.pipeline import Derived
-from fray_claude.summary import _mapping
+from fray_claude.model.summary import _mapping
 
 _MARKUP = re.compile(r"~\||\|~")
 _SEPARATORS = re.compile(r"[#_]")

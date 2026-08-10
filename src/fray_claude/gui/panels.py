@@ -48,7 +48,7 @@ from typing import Any
 
 from fray_claude.challenges import strip_task_markup
 from fray_claude.pipeline import Derived
-from fray_claude.summary import _mapping
+from fray_claude.model.summary import _mapping
 
 #: A quest step token, split so `2c10` sorts after `2c4` rather than before
 #: it. Purely lexical: `10` beats `4` only once the digits are read as a

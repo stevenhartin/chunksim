@@ -52,7 +52,7 @@ from typing import Any, Protocol
 from fray_claude.graph import SectionGraph, build_section_graph
 from fray_claude.neighbours import neighbour_pool
 from fray_claude.pipeline import Derived, MapState, derive
-from fray_claude.summary import _mapping
+from fray_claude.model.summary import _mapping
 from fray_claude.unlock import delta_from
 
 _REGION_NAMES = (

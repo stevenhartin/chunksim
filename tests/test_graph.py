@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.graph import (
     Node,
     build_section_graph,

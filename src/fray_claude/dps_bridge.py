@@ -139,12 +139,12 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 from fray_claude.boosts import combat_boost
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.estimate import reachable_providers
 from fray_claude.heuristics import Heuristics, Rate, SlayerTask
 from fray_claude.pipeline import Derived
 from fray_claude.slayer import task_monsters
-from fray_claude.summary import _mapping
+from fray_claude.model.summary import _mapping
 
 try:  # pragma: no cover - exercised by whether the extra is installed
     from osrs_dps import (

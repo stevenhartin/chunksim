@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from fray_claude.experience import MAX_LEVEL, xp_between, xp_for_level
+from fray_claude.model.experience import MAX_LEVEL, xp_between, xp_for_level
 
 #: (level, cumulative XP), from the wiki's experience table.
 _PUBLISHED = [

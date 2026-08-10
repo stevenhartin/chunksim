@@ -37,14 +37,14 @@ from fray_claude.api import (
     fetch_wiki_pages,
     slayer_sheet_url,
 )
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.heuristics import (
     build_config,
     primary_training_tasks,
     quest_names,
 )
 from fray_claude.slayer import SheetFormatError, parse_mob_data, parse_task_lengths
-from fray_claude.summary import _mapping
+from fray_claude.model.summary import _mapping
 from fray_claude.wiki import (
     ASSIGNMENTS_PAGE,
     MMG_PREFIX,

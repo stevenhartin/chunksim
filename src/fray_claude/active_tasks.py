@@ -165,7 +165,7 @@ from fray_claude.challenges import _SKILL_NAMES, _check_primary_method
 #: distinguishing requirement is `Skills: {Slayer: 1}`, long since exceeded
 #: by Slayer's own Level 92 pick.
 _DISPLAY_SKILLS = _SKILL_NAMES - {"Combat"}
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.sources import SourceIndex
 
 _EMPTY_SOURCE_INDEX = SourceIndex(

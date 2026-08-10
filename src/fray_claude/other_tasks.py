@@ -77,7 +77,7 @@ from typing import Any
 
 from fray_claude.active_tasks import _recorded
 from fray_claude.challenges import CURRENT_CHUNK_SUFFIX, strip_task_markup
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 
 #: The categories this module owns, in the order the CLI prints them.
 CATEGORIES = ("Diary", "Quest", "Extra")

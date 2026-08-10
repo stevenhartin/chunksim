@@ -30,7 +30,7 @@ from fray_claude.cache import (
     write_blob,
     write_cache,
 )
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.derived_cache import CacheBehaviour
 from fray_claude.pipeline import load_map_state
 from fray_claude.simulate import simulate_rolls

@@ -120,7 +120,7 @@ from fray_claude.cache import (
     write_cache,
 )
 from fray_claude.challenges import strip_task_markup
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.delta import BRANCHES, BranchDelta, MapSide, StateDelta, compare_maps
 from fray_claude import dps_bridge, estimate_inputs
 from fray_claude.estimate import (
@@ -139,7 +139,7 @@ from fray_claude.derived_cache import (
     cached_enrich,
     pricing_digests,
 )
-from fray_claude.firebase import reverse_tasks_map
+from fray_claude.model.firebase import reverse_tasks_map
 from fray_claude.graph import build_section_graph
 from fray_claude.neighbours import eligible_neighbours
 from fray_claude.other_tasks import CATEGORIES as OTHER_CATEGORIES
@@ -151,7 +151,7 @@ from fray_claude.search import TYPES, build_world_index, search
 from fray_claude.sections import describe_sections, expand_chunk_areas
 from fray_claude.simulate import simulate_rolls
 from fray_claude.sources import CATEGORIES as SOURCE_CATEGORIES
-from fray_claude.summary import _mapping, format_age, summarise
+from fray_claude.model.summary import _mapping, format_age, summarise
 from fray_claude.unlock import UnlockDelta, tasks_added_by
 
 DEFAULT_MAP = DEFAULT_MAP_ID

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fray_claude import boosts
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.sources import SourceIndex
 
 _ON = {"Boosting": True}

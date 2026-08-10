@@ -139,8 +139,8 @@ from fray_claude.challenges import (
     _has_any_valid,
     strip_task_markup,
 )
-from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.summary import _mapping
+from fray_claude.model.chunkinfo import ChunkInfo
+from fray_claude.model.summary import _mapping
 
 _VOWELS = frozenset("aeiou")
 _UNARMED_SOURCES: dict[str, str] = {"Built-in": "secondary-Nonskill"}

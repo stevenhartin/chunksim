@@ -16,7 +16,7 @@ import pytest
 from fray_claude.api import DEFAULT_TIMEOUT, FetchError
 from fray_claude.cache import write_blob
 from fray_claude.cli import build_parser, main
-from fray_claude.summary import format_age
+from fray_claude.model.summary import format_age
 
 
 @pytest.fixture

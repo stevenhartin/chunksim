@@ -41,7 +41,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
-from fray_claude.summary import format_age
+from fray_claude.model.summary import format_age
 
 #: The distribution these two apps ship as. Both `fray` and `fray-gui` are
 #: console scripts of it, so one lookup answers for either.

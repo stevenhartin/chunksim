@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from fray_claude.summary import _mapping
+from fray_claude.model.summary import _mapping
 
 
 @dataclass(frozen=True)

@@ -49,12 +49,12 @@ from typing import Any
 from fray_claude.active_tasks import TaskClassification, classify_tasks
 from fray_claude.bis import BisResult, compute_bis
 from fray_claude.challenges import ChallengeResult, calc_challenges
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.other_tasks import OtherTasks, classify_other_tasks
-from fray_claude.firebase import decode_challenge_keyed, decode_payload
+from fray_claude.model.firebase import decode_challenge_keyed, decode_payload
 from fray_claude.sections import expand_chunk_areas, unlockable_areas, unlocked_sections
 from fray_claude.sources import SourceIndex, gather_chunks_info
-from fray_claude.summary import _mapping
+from fray_claude.model.summary import _mapping
 
 
 @dataclass(frozen=True)

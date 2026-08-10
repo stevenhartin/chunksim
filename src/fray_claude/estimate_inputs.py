@@ -33,13 +33,13 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from fray_claude import cache, dps_bridge
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.derived_cache import Digests, cached_enrich, pricing_digests
 from fray_claude.estimate import EstimateResult, estimate, goal_levels, infer_levels
 from fray_claude.heuristics import Heuristics, load, merge
 from fray_claude.pipeline import Derived, MapState
 from fray_claude.search import build_world_index
-from fray_claude.summary import _mapping
+from fray_claude.model.summary import _mapping
 
 __all__ = [
     "EstimateAnswer",

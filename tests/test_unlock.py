@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.pipeline import MapState
 from fray_claude.unlock import diff_bis_picks, diff_reachable_sections, diff_valid_tasks, tasks_added_by
 

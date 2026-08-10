@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 
 DATA: dict[str, Any] = {
     "chunks": {"3883": {"Nickname": "Lumbridge"}},

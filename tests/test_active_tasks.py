@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from fray_claude.active_tasks import SkillClassification, TaskClassification, classify_tasks
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.pipeline import Derived, MapState
 
 
@@ -375,7 +375,7 @@ def test_active_slayer_task_matches_the_live_oracle(
     reproducing the *name* depends on getting the boost table, the
     availability lookup or the arithmetic right.
     """
-    from fray_claude.firebase import decode_challenge_keyed
+    from fray_claude.model.firebase import decode_challenge_keyed
 
     state, _unlocked = real_state
     info, derived = real_export, real_derived

@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.graph import grid_neighbours
 from fray_claude.neighbours import assign_numbers, eligible_neighbours, neighbour_pool
 from fray_claude.pipeline import Derived, MapState, derive
@@ -379,7 +379,7 @@ def test_neighbour_numbers_match_the_apps_own_answer(
     `tempSelectedChunks` also carries hand-selected chunks, so the oracle is
     only clean if nothing was manually selected before "assign" was pressed.
     """
-    from fray_claude.summary import _mapping
+    from fray_claude.model.summary import _mapping
 
     state, unlocked = real_state
     oracle = _mapping(_mapping(real_payload, "chunks"), "selected")

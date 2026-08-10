@@ -55,9 +55,9 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.sources import SourceIndex
-from fray_claude.summary import _mapping
+from fray_claude.model.summary import _mapping
 
 #: Upstream reads availability out of `baseChunkData`, whose keys are these.
 _CATEGORY_ATTRS = ("items", "objects", "monsters", "npcs", "shops")

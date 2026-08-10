@@ -67,8 +67,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.rates import (
+from fray_claude.model.chunkinfo import ChunkInfo
+from fray_claude.model.rates import (
     build_rare_drop_num,
     build_secondary_primary_num,
     find_fraction,
@@ -76,7 +76,7 @@ from fray_claude.rates import (
     parse_ratio,
     secondary_primary_denominator,
 )
-from fray_claude.summary import _mapping
+from fray_claude.model.summary import _mapping
 
 _RDT_FAMILY = frozenset({"RareDropTable+", "GemDropTable+", "GemDropTableLegends+"})
 _MANUAL_SOURCE = "Manually Added*"

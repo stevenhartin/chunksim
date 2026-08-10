@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.pipeline import MapState, derive
 from fray_claude.simulate import UnlockRecord, roll_pool, simulate_rolls, simulated_payload
 

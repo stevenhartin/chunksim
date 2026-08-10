@@ -13,7 +13,7 @@ from typing import Any, cast
 import pytest
 
 from fray_claude import dps_bridge
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.pipeline import MapState
 from fray_claude.heuristics import Heuristics, Rate
 from fray_claude.sources import SourceIndex

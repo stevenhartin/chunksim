@@ -136,11 +136,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.experience import MAX_LEVEL, xp_between
+from fray_claude.model.chunkinfo import ChunkInfo
+from fray_claude.model.experience import MAX_LEVEL, xp_between
 from fray_claude.heuristics import Heuristics, Superior, activity_name
 from fray_claude.pipeline import Derived, MapState
-from fray_claude.rates import parse_ratio
+from fray_claude.model.rates import parse_ratio
 from fray_claude.search import WorldIndex, normalise
 from fray_claude.slayer import (
     MasterRate,
@@ -150,7 +150,7 @@ from fray_claude.slayer import (
     superior_spawns_per_hour,
     superior_table_items,
 )
-from fray_claude.summary import _mapping
+from fray_claude.model.summary import _mapping
 
 #: The buckets, in the order `fray estimate` reports them.
 BUCKETS = ("quests", "boss drops", "activities", "skilling")

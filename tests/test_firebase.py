@@ -9,7 +9,7 @@ fabricated.
 
 from __future__ import annotations
 
-from fray_claude.firebase import (
+from fray_claude.model.firebase import (
     decode_challenge_keyed,
     decode_key,
     decode_payload,

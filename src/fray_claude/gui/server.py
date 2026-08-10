@@ -85,7 +85,7 @@ from fray_claude.api import (
 )
 from fray_claude.batch import RunResult, price_steps, run_batch, save_unlock
 from fray_claude.build_info import read_build
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.delta import MapSide, compare_maps, diff_names
 from fray_claude.derived_cache import cached_derive, cached_enrich, pricing_digests
 from fray_claude.estimate import estimate, goal_levels, infer_levels
@@ -95,7 +95,7 @@ from fray_claude.neighbours import eligible_neighbours
 from fray_claude.scrape import SOURCE as SCRAPE_SOURCE
 from fray_claude.scrape import scrape
 from fray_claude.search import build_world_index, search
-from fray_claude.summary import _mapping, summarise
+from fray_claude.model.summary import _mapping, summarise
 from fray_claude.gui.derivation import DerivedState, Derivations, unlocked_of
 from fray_claude.gui.jobs import JobRegistry, JobState, Progress, StopCheck, as_int
 from fray_claude.gui.panels import task_panel

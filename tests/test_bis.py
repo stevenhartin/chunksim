@@ -15,7 +15,7 @@ from fray_claude.bis import (
     compute_bis,
     format_equip,
 )
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.pipeline import Derived, MapState
 
 
@@ -545,7 +545,7 @@ def test_every_bis_pick_matches_the_live_oracle(
     was wrong. Assert all of them, on every map.
     """
     from fray_claude.cache import list_maps, project_root, read_cache
-    from fray_claude.firebase import decode_challenge_keyed
+    from fray_claude.model.firebase import decode_challenge_keyed
     from fray_claude.pipeline import derive, load_map_state
 
     info, tasks_map = real_export, real_tasks_map

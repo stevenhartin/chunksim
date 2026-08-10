@@ -106,7 +106,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 
 #: The world grid is 256 chunks tall, so a chunk id is roughly `x * 256 + y`
 #: and its orthogonal neighbours are `id ± 1` / `id ± 256` (index.js:3040-3044).

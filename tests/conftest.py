@@ -48,8 +48,8 @@ from typing import Any
 import pytest
 
 from fray_claude.cache import project_root, read_blob, read_cache, read_chunkinfo
-from fray_claude.chunkinfo import ChunkInfo
-from fray_claude.firebase import reverse_tasks_map
+from fray_claude.model.chunkinfo import ChunkInfo
+from fray_claude.model.firebase import reverse_tasks_map
 from fray_claude.pipeline import Derived, MapState, derive, load_map_state
 
 #: The raw export, or `fray chunkinfo`'s envelope around one - `read_chunkinfo`

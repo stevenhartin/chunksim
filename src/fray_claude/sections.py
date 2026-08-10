@@ -47,7 +47,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 
 # Areas upstream explicitly excludes from cross-chunk connectivity
 # (index.js `unconnectedAreas`) - not present anywhere in the export itself.

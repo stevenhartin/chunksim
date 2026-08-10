@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from fray_claude.rates import (
+from fray_claude.model.rates import (
     build_rare_drop_num,
     build_secondary_primary_num,
     find_fraction,

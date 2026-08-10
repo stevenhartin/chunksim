@@ -9,7 +9,7 @@ import pytest
 from fray_claude.active_tasks import SkillClassification, TaskClassification
 from fray_claude.bis import BisResult
 from fray_claude.challenges import ChallengeResult
-from fray_claude.chunkinfo import ChunkInfo
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.estimate import (
     estimate,
     goal_levels,
