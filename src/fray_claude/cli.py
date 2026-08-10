@@ -122,7 +122,7 @@ from fray_claude.cache import (
 from fray_claude.challenges import strip_task_markup
 from fray_claude.chunkinfo import ChunkInfo
 from fray_claude.delta import BRANCHES, BranchDelta, MapSide, StateDelta, compare_maps
-from fray_claude import dps_bridge
+from fray_claude import dps_bridge, estimate_inputs
 from fray_claude.estimate import (
     BUCKETS,
     EstimateResult,
@@ -817,115 +817,30 @@ def _cmd_diff(args: argparse.Namespace) -> int:
     return 0
 
 
-def _load_heuristics(args: argparse.Namespace, info: ChunkInfo) -> tuple[Heuristics, bool]:
-    """The two layers merged, and whether the scraped one was there at all.
-
-    Returns the flag rather than swallowing it: an estimate with no scrape
-    still produces a plausible-looking total, and the difference is not
-    small. Without it there are no superior mappings and no slayer assignment
-    sizes, so every superior drop and every task-gated boss drop goes
-    unpriced - on the real map, 19 unpriced items against 3, and a total
-    ~3,000 hours light. Printing that quietly would be the worst of both.
-    """
-    try:
-        scraped = read_blob(WIKI_RATES_BLOB_NAME, hint="run: fray heuristics")["data"]
-        scraped_found = True
-    except CacheMissError:
-        # Still usable: everything falls back to a default. That is honest
-        # only if the command says so, which `_print_estimate_warnings` does.
-        scraped, scraped_found = {}, False
-    return (
-        load(
-            merge(scraped, read_overrides()),
-            boss_monsters=frozenset(_mapping(info.code_items, "bossMonsters")),
-            slayer_monsters=frozenset(info.slayer_monsters),
-        ),
-        scraped_found,
-    )
-
-
-def _apply_dps(
-    args: argparse.Namespace,
-    state: MapState,
-    unlocked: Mapping[str, bool],
-    derived: Derived,
-    heuristics: Heuristics,
-    level_overrides: dict[str, int],
-) -> tuple[Heuristics, dps_bridge.DpsCoverage | None]:
-    """The computed rates layered over the scraped ones, if the extra is here.
-
-    `None` for the coverage means `osrs-dps` is not installed, which is a
-    supported way to run and a different answer rather than a broken one -
-    `_print_estimate` says which happened.
-
-    The levels are `goal_levels`, the ones the chunk *ends* at, because that
-    is what `slayer.py` already judges a master at and pricing the same fight
-    at two different levels inside one command would be indefensible.
-    """
-    if not dps_bridge.DPS_AVAILABLE:
-        return heuristics, None
-    raw = read_overrides()
-    pinned_slayer = {
-        master: frozenset(tasks)
-        for master, tasks in _mapping(raw, "slayer").items()
-        if isinstance(tasks, dict)
-    }
-    levels = infer_levels(state)
-    levels.update(level_overrides)
-    goals = goal_levels(state, derived, levels)
-    pinned = frozenset(_mapping(raw, "monsters"))
-    # 662ms against `estimate`'s 3.1ms, and a pure function of inputs the
-    # derivation cache already keys on plus three it does not. `--recompute`
-    # bypasses this the same way it bypasses the derivation.
-    priced, coverage = cached_enrich(
-        lambda: dps_bridge.enrich(
-            heuristics, state.chunk_info, derived, goals,
-            pinned_monsters=pinned, pinned_slayer=pinned_slayer,
-        ),
-        state,
-        unlocked,
-        _digests(args),
-        pricing_digests(),
-        refresh=args.recompute,
-    )
-    return priced, coverage
-
-
 def _cmd_estimate(args: argparse.Namespace) -> int:
     if args.bucket is not None and args.bucket not in BUCKETS:
         return _error(f"unknown bucket {args.bucket!r} (expected one of {', '.join(BUCKETS)})")
 
     state, unlocked = _load_state(args)
     derived = _derive(args, state, unlocked)
-    heuristics, scraped_found = _load_heuristics(args, state.chunk_info)
-    overrides = _mapping(read_overrides(), "levels")
-    level_overrides = {
-        skill: int(level)
-        for skill, level in overrides.items()
-        if isinstance(level, int) and not isinstance(level, bool)
-    }
-    heuristics, coverage = _apply_dps(
-        args, state, unlocked, derived, heuristics, level_overrides
-    )
-    result = estimate(
-        state,
-        derived,
-        build_world_index(state.chunk_info),
-        heuristics,
-        level_overrides=level_overrides,
+    # Everything about *what* to price lives in `estimate_inputs`, shared with
+    # the GUI so the two apps cannot answer differently; what is left here is
+    # rendering.
+    answer = estimate_inputs.estimate_answer(
+        state, unlocked, derived, _digests(args), refresh=args.recompute
     )
 
     if args.export_json != "-":
-        _print_estimate(result, args.map_id, args.bucket, args.limit, scraped_found, coverage)
-    if args.export_json is not None:
-        _emit_json(
-            {
-                "map_id": args.map_id,
-                "dps": coverage.as_dict() if coverage is not None else None,
-                **result.as_dict(),
-            },
-            args.export_json,
+        _print_estimate(
+            answer.result,
+            args.map_id,
+            args.bucket,
+            args.limit,
+            answer.scraped_rates,
+            answer.coverage,
         )
+    if args.export_json is not None:
+        _emit_json(answer.as_dict(args.map_id), args.export_json)
     return 0
 
 

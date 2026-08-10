@@ -66,7 +66,7 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs, urlsplit
 
-from fray_claude import cache, dps_bridge
+from fray_claude import cache, dps_bridge, estimate_inputs
 from fray_claude.api import (
     CHUNKINFO_URL,
     DEFAULT_TIMEOUT,
@@ -626,79 +626,28 @@ def _timeline_payload(map_id: str, ctx: Context) -> dict[str, Any]:
     }
 
 
-def _heuristics_for(info: ChunkInfo, root: Path | None) -> tuple[Heuristics, bool]:
-    """The estimator's two layers, and whether the scrape was there at all.
-
-    Mirrors `cli._load_heuristics`. The flag is returned rather than swallowed
-    for the same reason it is there: without a scrape every number falls to a
-    default and the total is thousands of hours light, which is only honest if
-    the screen says so.
-    """
-    try:
-        scraped = cache.read_blob(cache.WIKI_RATES_BLOB_NAME, root)["data"]
-        found = True
-    except cache.CacheMissError:
-        scraped, found = {}, False
-    return (
-        load_heuristics(
-            merge(scraped, cache.read_overrides(root)),
-            boss_monsters=frozenset(_mapping(info.code_items, "bossMonsters")),
-            slayer_monsters=frozenset(info.slayer_monsters),
-        ),
-        found,
-    )
-
-
 def _estimate_payload(state: DerivedState, ctx: Context) -> dict[str, Any]:
     """`fray estimate`, plus whether the DPS bridge contributed.
 
     The bridge is an optional extra, so an estimate computed with it and one
     computed without are different numbers - and the screen has to be able to
     say which it is showing.
+
+    **The assembly is `estimate_inputs`', not this module's.** It was this
+    module's, in a copy of `cli.py`'s that had already lost `pinned_slayer` -
+    so the panel and the command could price one map differently, and could
+    overwrite each other's answer in `cache/derived/` while doing it. Where
+    this panel's time goes is unchanged: `estimate` is 3.1ms and `enrich` is
+    662ms, which is why the latter is cached beside the derivation.
     """
-    info = state.state.chunk_info
-    heuristics, scraped_found = _heuristics_for(info, ctx.root)
-    overrides = _mapping(cache.read_overrides(ctx.root), "levels")
-    level_overrides = {
-        skill: int(level)
-        for skill, level in overrides.items()
-        if isinstance(level, int) and not isinstance(level, bool)
-    }
-
-    coverage = None
-    if dps_bridge.DPS_AVAILABLE:
-        levels = infer_levels(state.state)
-        levels.update(level_overrides)
-        goals = goal_levels(state.state, state.derived, levels)
-        pinned = frozenset(_mapping(cache.read_overrides(ctx.root), "monsters"))
-        # **Where this panel's time goes.** `estimate` is 3.1ms; `enrich` is
-        # 662ms, because it re-simulates every reachable monster's fight. The
-        # result is a pure function of the same inputs, so it is cached beside
-        # the derivation rather than recomputed each time the tab is opened.
-        heuristics, coverage = cached_enrich(
-            lambda: dps_bridge.enrich(
-                heuristics, info, state.derived, goals, pinned_monsters=pinned
-            ),
-            state.state,
-            state.unlocked,
-            ctx.derivations.digests(),
-            pricing_digests(ctx.root),
-            root=ctx.root,
-        )
-
-    result = estimate(
+    answer = estimate_inputs.estimate_answer(
         state.state,
+        state.unlocked,
         state.derived,
-        build_world_index(info),
-        heuristics,
-        level_overrides=level_overrides,
+        ctx.derivations.digests(),
+        root=ctx.root,
     )
-    return {
-        "map_id": state.map_id,
-        "scraped_rates": scraped_found,
-        "dps": coverage.as_dict() if coverage is not None else None,
-        **result.as_dict(),
-    }
+    return answer.as_dict(state.map_id)
 
 
 def _first(query: Mapping[str, list[str]], name: str) -> str | None:
