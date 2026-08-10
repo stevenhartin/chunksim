@@ -192,12 +192,23 @@ def recipe_priced(
         **{task: rate.performing_seconds for task, rate in computed.items()},
         **heuristics.action_seconds,
     }
+    # **What a method consumes, per XP it pays.** The rate a guide publishes is
+    # quoted with the materials to hand, so it describes the action and not the
+    # trip before it; `costing/training.py` needs both halves to rank a method
+    # on what it actually costs. Taken from the same `ActionRate`s the rates
+    # above come from, so the two cannot disagree about a recipe.
+    per_xp = {
+        task: rate.input_seconds / rate.experience
+        for task, rate in computed.items()
+        if rate.experience > 0 and rate.input_seconds > 0
+    }
     return (
         replace(
             heuristics,
             training=recipe_rates.apply(heuristics.training, computed, pinned),
             action_seconds=timed,
             computed=prayed,
+            material_seconds_per_xp=per_xp,
         ),
         coverage,
     )

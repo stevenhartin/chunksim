@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from fray_claude.costing.heuristics import ComputedMethod, Heuristics, Rate
 from fray_claude.costing.training import (
     TrainingOption,
@@ -334,3 +336,62 @@ def test_a_computed_method_does_not_hide_the_export_s_own() -> None:
     options = training_options(derived, info, heuristics, "Prayer")
 
     assert [o.method for o in options] == ["superior dragon bones", "Big bones (buried)"]
+
+
+def test_a_methods_materials_are_part_of_its_rate() -> None:
+    """**A published rate is quoted with the materials to hand.** "299,000 an
+    hour at anglerfish" describes the range, not the trip before it - and on a
+    chunk map the trip is often the whole cost.
+
+    Ranking on the published figure picked xerician robes for Crafting at
+    167,200/hr on a map where one fabric takes 95 seconds to obtain and a robe
+    needs four: 831/hr once the fabric is counted, and a method no player
+    would touch.
+    """
+    option = TrainingOption("anglerfish", 84, 299_000.0, "exact", material_seconds_per_xp=0.117)
+
+    # 3600/299000 seconds of cooking per xp, plus 0.117 of fishing.
+    assert option.effective_xp_per_hour == pytest.approx(
+        3600.0 / (3600.0 / 299_000.0 + 0.117)
+    )
+    assert option.effective_xp_per_hour < option.xp_per_hour
+
+
+def test_a_method_with_no_materials_keeps_its_published_rate_exactly() -> None:
+    """The common case, and it must not round-trip through the arithmetic:
+    `3600 / (3600 / 50000 + 0)` is 50,000.00000000001, which is a different
+    number in a test and in a rendered total."""
+    option = TrainingOption("fast rocks", 50, 50_000.0, "exact")
+
+    assert option.effective_xp_per_hour == 50_000.0
+
+
+def test_the_cheaper_climb_wins_even_when_the_guide_says_otherwise() -> None:
+    """The whole point: the band walk ranks on what a method costs, not on
+    what its action costs. A slower action with obtainable materials beats a
+    fast one whose inputs are not."""
+    options = (
+        TrainingOption("xerician robe", 1, 167_200.0, "exact", material_seconds_per_xp=4.309),
+        TrainingOption("topaz bracelet", 1, 90_000.0, "exact"),
+    )
+
+    bands = training_bands(options, 0, 99)
+
+    assert [band.method for band in bands] == ["topaz bracelet"]
+
+
+def test_a_band_carries_both_halves_of_its_rate() -> None:
+    """So a reader can see why a 290,000/hr shark reads as 148,000, rather
+    than concluding the rate is wrong."""
+    options = (
+        TrainingOption("shark", 1, 290_000.0, "exact", material_seconds_per_xp=0.0345),
+    )
+
+    (band,) = training_bands(options, 0, 99)
+
+    assert band.published_xp_per_hour == 290_000.0
+    assert band.xp_per_hour < band.published_xp_per_hour
+    assert band.material_hours == pytest.approx(
+        band.xp / band.xp_per_hour - band.xp / 290_000.0
+    )
+    assert band.material_hours + band.xp / 290_000.0 == pytest.approx(band.hours)

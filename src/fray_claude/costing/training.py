@@ -44,12 +44,44 @@ class TrainingOption:
     #: floor. A `default` option is not evidence of anything; it is the absence
     #: of evidence, priced conservatively.
     match: str
+    #: Seconds of gathering per XP, for the materials this method consumes
+    #: that the published rate assumes to hand. `0.0` means either that it
+    #: consumes nothing or that no recipe describes it - see
+    #: `effective_xp_per_hour`.
+    material_seconds_per_xp: float = 0.0
+
+    @property
+    def effective_xp_per_hour(self) -> float:
+        """The rate including the time to obtain what the method consumes.
+
+        **What the climb is ranked and priced on**, where `xp_per_hour` is what
+        a guide publishes. The two differ because a published rate is quoted
+        with the materials to hand - "299,000 an hour at anglerfish" describes
+        the range, not the trip before it - and on a chunk map the trip is
+        often the whole cost. Ranking on the published figure picked xerician
+        robes for Crafting at 167,200/hr on a map where one fabric takes 95
+        seconds to obtain and a robe needs four: 831/hr once the fabric is
+        counted, and a method no player would touch.
+
+        Added as seconds per XP rather than as a ratio so the two halves
+        compose exactly: `3600 / (processing + gathering)`.
+        """
+        if self.xp_per_hour <= 0:
+            return 0.0
+        if self.material_seconds_per_xp <= 0:
+            # Returned unchanged rather than round-tripped through the
+            # arithmetic, which is the common case and would otherwise turn
+            # 50,000 into 50,000.00000000001.
+            return self.xp_per_hour
+        return 3600.0 / (3600.0 / self.xp_per_hour + self.material_seconds_per_xp)
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "method": self.method,
             "level": self.level,
             "xp_per_hour": round(self.xp_per_hour, 1),
+            "effective_xp_per_hour": round(self.effective_xp_per_hour, 1),
+            "material_seconds_per_xp": round(self.material_seconds_per_xp, 4),
             "match": self.match,
         }
 
@@ -106,9 +138,10 @@ def training_options(
                 level=int(level) if isinstance(level, (int, float)) else None,
                 xp_per_hour=rate.value,
                 match=rate.match,
+                material_seconds_per_xp=heuristics.material_seconds_per_xp.get(name, 0.0),
             )
         )
-    return tuple(sorted(found, key=lambda option: -option.xp_per_hour))
+    return tuple(sorted(found, key=lambda option: -option.effective_xp_per_hour))
 
 
 @dataclass(frozen=True)
@@ -124,6 +157,19 @@ class TrainingBand:
     #: rather than per skill because a climb can be part measured and part
     #: guessed, and which part is which is the first thing a reader asks.
     match: str
+    #: What a guide publishes for this method, where `xp_per_hour` is that
+    #: figure *plus* the time to obtain what the method consumes. Equal when
+    #: the method consumes nothing, or when no recipe describes it. Carried so
+    #: a reader can see why a 290,000/hr shark reads as 148,000 - see
+    #: `TrainingOption.effective_xp_per_hour`.
+    published_xp_per_hour: float = 0.0
+
+    @property
+    def material_hours(self) -> float:
+        """The share of this band's hours spent gathering, not performing."""
+        if self.published_xp_per_hour <= 0 or self.xp_per_hour <= 0:
+            return 0.0
+        return self.xp / self.xp_per_hour - self.xp / self.published_xp_per_hour
 
     @property
     def hours(self) -> float:
@@ -134,6 +180,8 @@ class TrainingBand:
             "level_from": self.level_from,
             "level_to": self.level_to,
             "xp": self.xp,
+            "published_xp_per_hour": round(self.published_xp_per_hour, 1),
+            "material_hours": round(self.material_hours, 2),
             "xp_per_hour": round(self.xp_per_hour, 1),
             "method": self.method,
             "match": self.match,
@@ -176,18 +224,29 @@ def training_bands(
     if start_xp >= target_xp:
         return ()
 
+    # **Ranked on `effective_xp_per_hour`, not the published one.** A method
+    # whose materials cost more than the action is not a fast method, however
+    # fast the guide says the action is; see `TrainingOption`.
     ranked = sorted(
-        ((max(1, option.level or 1), option.xp_per_hour, option.method, option.match)
-         for option in options),
+        (
+            (
+                max(1, option.level or 1),
+                option.effective_xp_per_hour,
+                option.method,
+                option.match,
+                option.xp_per_hour,
+            )
+            for option in options
+        ),
         key=lambda entry: (entry[0], -entry[1], entry[2]),
     )
-    steps: list[tuple[int, float, str, str]] = []
+    steps: list[tuple[int, float, str, str, float]] = []
     best = 0.0
-    for level, rate, method, match in ranked:
+    for level, rate, method, match, published in ranked:
         if rate <= best:
             continue
         best = rate
-        steps.append((xp_for_level(level), rate, method, match))
+        steps.append((xp_for_level(level), rate, method, match, published))
 
     edges = sorted(
         {start_xp, target_xp} | {xp for xp, *_ in steps if start_xp < xp < target_xp}
@@ -195,8 +254,8 @@ def training_bands(
     bands: list[TrainingBand] = []
     for lower, upper in zip(edges, edges[1:]):
         open_now = [step for step in steps if step[0] <= lower]
-        rate, method, match = (
-            open_now[-1][1:] if open_now else (floor, "", "default")
+        rate, method, match, published = (
+            open_now[-1][1:] if open_now else (floor, "", "default", floor)
         )
         bands.append(
             TrainingBand(
@@ -206,6 +265,7 @@ def training_bands(
                 xp_per_hour=rate,
                 method=method,
                 match=match,
+                published_xp_per_hour=published,
             )
         )
     return tuple(bands)

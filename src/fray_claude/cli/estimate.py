@@ -100,6 +100,17 @@ def _print_estimate(
                     f" = {band.hours:>7,.1f}h  {band.method}{note}"
                     f"  [{band.match}]"
                 )
+            gathering = sum(band.material_hours for band in skill.bands)
+            if gathering > 0.05:
+                # **Why the rate looks low.** A guide quotes a method with its
+                # materials to hand; on a chunk map obtaining them is often
+                # most of the cost, and the climb is ranked on the total. Say
+                # which half is which rather than leave a familiar figure
+                # looking wrong.
+                print(
+                    f"      * {gathering:,.1f}h of that is gathering what the method"
+                    f" consumes, which published rates assume you have"
+                )
             if skill.xp_from_quests:
                 print(
                     f"      * {skill.xp_from_quests:,} xp of that climb is paid by quests"

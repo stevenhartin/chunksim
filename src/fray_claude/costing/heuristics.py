@@ -386,6 +386,11 @@ class Heuristics:
     #: the item walk that prices a bone already exists. Read by
     #: `costing/training.py` and by nothing else.
     computed: dict[str, tuple[ComputedMethod, ...]] = field(default_factory=dict)
+    #: Training task -> seconds of gathering per XP, for the materials its
+    #: published rate assumes to hand. Filled by `inputs.recipe_priced`, which
+    #: is where the item walk lives; read by `costing/training.py` to rank a
+    #: method on what it really costs. See `TrainingOption.effective_xp_per_hour`.
+    material_seconds_per_xp: dict[str, float] = field(default_factory=dict)
     #: Every set of remains the wiki states a burial value for, best first.
     bones: tuple[Bone, ...] = ()
     #: The house altars and what each multiplies a bone by.

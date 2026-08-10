@@ -655,6 +655,32 @@ open to its vaguest claimant: `Chop ~|logs|~` is contained in "Cutting camphor l
 claim that is a strict substring of another claim on the same guide is the less specific reading and
 is refused. Five joins removed, 311 -> 306.
 
+**A method is ranked on what it costs, not on what its action costs.** A published rate is quoted
+with the materials to hand - "299,000 an hour at anglerfish" describes the range, not the trip before
+it - and on a chunk map the trip is often most of the cost. Ranking on the published figure picked
+`xerician robe` for Crafting at 167,200/hr on a map where one xerician fabric takes 95 seconds to
+obtain and a robe needs four: **831/hr** once the fabric is counted, and a method no player would
+touch. `TrainingOption.effective_xp_per_hour` adds the two halves as seconds per XP
+(`3600 / (processing + gathering)`), `training_bands` ranks and prices on it, and the gathering half
+comes from the same `ActionRate`s the recipe rates do - so the two cannot disagree about a recipe.
+
+Measured on `verf-sim/run-001`: Crafting moved off xerician robes to **topaz bracelet, 46.0h ->
+85.4h**, and Cooking off anglerfish to **shark, 14.3h -> 28.8h** with 13.2h of that named as
+gathering. Skilling 951.0h -> 1,004.9h. The totals rise a little and the *methods* change a lot,
+which is the point: the estimator now avoids a method it cannot supply instead of being charged for
+one it would never pick.
+
+**`TrainingBand` carries both halves** (`published_xp_per_hour` beside `xp_per_hour`, and
+`material_hours` between them), because a familiar 290,000/hr shark reading as 148,000 looks like a
+defect until you can see why. The CLI prints the gathering share as its own line, like farming's
+calendar days.
+
+**The known bias, stated rather than hidden:** only methods a `{{Recipe}}` describes have a material
+cost, so a method with no recipe row is ranked as though its inputs were free and is quietly
+favoured. Coverage is 93-95% on the processing skills and ~0% on the gathering ones, where there is
+usually nothing to consume anyway - but this is the direction to check first when a chosen method
+looks too good.
+
 **Two computed layers, and they sit on opposite sides of the scrape.** `dps_bridge` puts its kill
 rates *above* the guides; `recipe_rates` puts its XP rates *below* them. That is not an
 inconsistency to tidy up - it is measured, and the two are computing different kinds of thing. A
