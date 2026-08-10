@@ -1,0 +1,202 @@
+"""Tests for `remote/skill_tables.py`: Agility and Thieving rates from wikitext.
+
+Every fixture here is a trimmed copy of a real row, keeping the shapes that
+actually caused trouble: a cell naming two NPCs, a template containing `|`, a
+disambiguated page title with display text, and the `{{NA}}`/`0` experience
+that means "this is not a training method".
+"""
+
+from __future__ import annotations
+
+from fray_claude.remote.skill_tables import (
+    parse_courses,
+    parse_pickpockets,
+    parse_shortcuts,
+    parse_stalls,
+)
+
+_SHORTCUTS = """
+{| class="wikitable sortable"
+!Level(s)
+!Icon
+!Shortcut
+!Location
+!Notes
+!XP
+|-
+|{{SCP|Agility|5}}
+|[[File:Agility shortcut climb.png]]
+|[[Climbing rocks (Yanille)|Climbing rocks]]
+|[[Yanille]]
+|One-way out of Yanille.
+|25
+|-
+|{{SCP|Agility|8}}<br/>{{SCP|Strength|19}}<br/>{{SCP|Ranged|37}}
+|{{NA}}
+|[[Broken Raft]]
+|Over the [[River Lum]]
+|Goes both ways.
+|{{NA}}
+|-
+|{{SCP|Agility|10}}
+|{{NA}}
+|[[Rocks (Corsair Cove)|Rocks]]
+|[[Corsair Cove]]
+|Access to [[Feldip Hills]].
+|0
+|}
+"""
+
+_COURSES = """
+{| class="wikitable sortable"
+!{{SCP|Agility}}
+! colspan=2 |Course
+!Category
+!Experience per hour
+!Reward item
+!Notes
+|-
+|1||{{plinkt|Gnome Stronghold Agility Course|pic=Swamp toad (item)}}||Regular Course
+|10,000||{{plinkp|Mark of grace}}||Impossible to fail.
+|-
+|50||{{plinkt|Falador Rooftop Course|pic=Mark of grace}}||Rooftop Agility Course
+|35,000||{{plinkp|Mark of grace}}||
+|}
+"""
+
+_STALLS = """
+{| class="wikitable sortable"
+! colspan=2 | Stall
+!{{SCP|Thieving}}Level
+!Exp.
+!Items
+!Location
+!Respawn Time
+! Max XP/Hr
+!Leagues Region
+|-
+|{{plinkt|Vegetable stall|pic=Cabbage}}
+|2
+|10
+|[[Onion]], [[cabbage]]
+|[[Miscellania]]
+|1.2 seconds
+| 30,000
+|{{leagueRegionIcon|Fremennik}}
+|}
+"""
+
+_PICKPOCKETS = """
+{| class="wikitable sortable"
+!colspan="2"| Name
+!{{SCP|Thieving}} Level
+![[Experience|XP]]
+!{{plinkp|Ardougne cloak 3}} 100% success lvl
+![[Stun (status)|Stun]] damage
+!Notes
+|-
+|{{plinkt|Man|pic=Thief Man}}/[[Woman]]
+| 1 || 8 || 85 || 1
+| Found all around [[Gielinor]].
+|-
+|{{plinkt|Warrior (Thieving)|pic=Thief Warrior|txt=Warrior}}
+|25 || 26 || 93 || 2
+|Commonly found in [[East Ardougne]].
+|}
+"""
+
+
+def test_a_shortcut_carries_its_object_and_the_xp_one_use_pays() -> None:
+    """**The link target, not the display text.** `[[Climbing rocks
+    (Yanille)|Climbing rocks]]` renders as "Climbing rocks" and joins as
+    nothing - the export names the disambiguated object."""
+    (rock,) = parse_shortcuts(_SHORTCUTS)
+
+    assert (rock.name, rock.level, rock.experience) == ("Climbing rocks (Yanille)", 5, 25.0)
+
+
+def test_a_shortcut_paying_nothing_is_not_a_training_method() -> None:
+    """`{{NA}}` and `0` both mean no experience. A zero would divide into an
+    infinite rate; keeping the row would invent a training method out of a
+    door."""
+    names = {row.name for row in parse_shortcuts(_SHORTCUTS)}
+
+    assert "Broken Raft" not in names
+    assert "Rocks (Corsair Cove)" not in names
+
+
+def test_a_shortcut_takes_its_agility_level_not_the_first_one_listed() -> None:
+    """A grapple shortcut lists Agility, Strength and Ranged. Reading the first
+    number on the row gets whichever the wiki happened to write first."""
+    rows = parse_shortcuts(_SHORTCUTS)
+
+    assert all(row.level in (5, 10) for row in rows)
+
+
+def test_a_course_carries_a_published_rate_rather_than_a_per_action_xp() -> None:
+    courses = {row.name: row for row in parse_courses(_COURSES)}
+
+    assert courses["Falador Rooftop Course"].level == 50
+    assert courses["Falador Rooftop Course"].xp_per_hour == 35_000.0
+    assert courses["Gnome Stronghold Agility Course"].xp_per_hour == 10_000.0
+
+
+def test_a_stall_takes_the_wikis_own_max_rate() -> None:
+    """The last column is already `3600 / respawn * xp`, so the arithmetic is
+    upstream's rather than a second copy of it."""
+    (stall,) = parse_stalls(_STALLS)
+
+    assert (stall.name, stall.level, stall.experience) == ("Vegetable stall", 2, 10.0)
+    assert stall.xp_per_hour == 30_000.0
+
+
+def test_one_row_naming_two_npcs_yields_both() -> None:
+    """`{{plinkt|Man}}/[[Woman]]` is two NPCs sharing a rate, and taking either
+    alone silently loses a level-1 training method."""
+    rows = {row.name: row for row in parse_pickpockets(_PICKPOCKETS)}
+
+    assert rows["Man"].experience == 8.0
+    assert rows["Woman"].experience == 8.0
+    assert rows["Man"].level == 1
+
+
+def test_a_disambiguated_npc_offers_both_spellings() -> None:
+    """The wiki page is `Warrior (Thieving)`; the export's NPC is `Warrior`.
+    Both are emitted and only the one the export uses is ever looked up."""
+    rows = {row.name for row in parse_pickpockets(_PICKPOCKETS)}
+
+    assert {"Warrior (Thieving)", "Warrior"} <= rows
+
+
+def test_a_template_containing_a_pipe_is_one_cell() -> None:
+    """`{{Coins|{{GEP|Amylase crystal|10*13.8}}}}` is full of `|` that mean
+    nothing of the sort. Splitting without tracking depth reads a level out of
+    half a template."""
+    table = """
+{| class="wikitable"
+!{{SCP|Agility}}
+! colspan=2 |Course
+!Category
+!Experience per hour
+!Reward item
+!Notes
+|-
+|60||{{plinkt|Seers' Village Rooftop Course|pic=Mark of grace}}||Rooftop Agility Course
+|46,800||{{Coins|{{GEP|Amylase crystal|10*13.8}}}}||Notes here.
+|}
+"""
+    (course,) = parse_courses(table)
+
+    assert (course.name, course.level, course.xp_per_hour) == (
+        "Seers' Village Rooftop Course",
+        60,
+        46_800.0,
+    )
+
+
+def test_an_absent_page_parses_to_nothing_rather_than_raising() -> None:
+    """A page the wiki did not return is a gap in coverage, not a crash."""
+    assert parse_shortcuts("") == ()
+    assert parse_courses("") == ()
+    assert parse_stalls("") == ()
+    assert parse_pickpockets("") == ()

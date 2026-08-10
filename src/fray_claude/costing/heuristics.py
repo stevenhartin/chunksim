@@ -66,11 +66,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, TypeVar
+from typing import Any, Mapping, Sequence, TypeVar
 
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.derive.search import normalise
 from fray_claude.model.summary import _mapping
+from fray_claude.derive.task_names import strip_task_markup
+from fray_claude.remote.skill_tables import COURSE_ALIASES, SkillRow
 from fray_claude.remote.wiki import Assignment, MmgRates, quest_difficulty, quest_length
 
 #: Quest length word -> hours. The words are the wiki's own `Length` column
@@ -555,6 +557,92 @@ def primary_training_tasks(chunk_info: ChunkInfo) -> dict[str, str]:
     return tasks
 
 
+#: Seconds one shortcut use takes, door to door. **A stated target, not a
+#: measurement**: nothing publishes a shortcut rate, so this is set so that the
+#: best shortcut in the table (25 xp) reaches ~5,000 xp/hr, which is what
+#: spamming one actually yields. Most pay 0.5-3 xp and are worth nothing as
+#: training, which is the honest outcome - they exist in the export as *access*,
+#: and pricing them generously would invent a training method out of a door.
+SHORTCUT_CYCLE_SECONDS = 18.0
+
+#: Seconds one pickpocket attempt takes, stuns and failures included.
+#: **Calibrated against the wiki's own published figure**: a Knight of Ardougne
+#: pays 84.3 xp and `Thieving training` quotes 86,000 xp/hr at level 55, which
+#: is 3.5s an attempt. That is the rate at the level the method *opens*, which
+#: is deliberately the conservative end - the same table quotes 240,000 at 95,
+#: because success rate climbs with level and one constant cannot follow it.
+#: A band is priced from where it opens, so this understates the tail rather
+#: than overstating the start.
+PICKPOCKET_CYCLE_SECONDS = 3.5
+
+
+def _table_rates(
+    chunk_info: ChunkInfo, tables: Mapping[str, Sequence[SkillRow]]
+) -> dict[str, dict[str, Rate]]:
+    """Agility and Thieving rates, joined from `remote/skill_tables.py`.
+
+    **Structural joins, so there is no fuzzy tier.** A shortcut, stall or
+    pickpocket challenge names the object or NPC it acts on, and the wiki table
+    names the same thing; a course joins on its own name through
+    `COURSE_ALIASES`. Nothing here matches on a substring, which is why these
+    are recorded as `exact`.
+
+    The two rates the tables do not publish - a shortcut's and a pickpocket's -
+    are `experience / cycle`, with the cycles above.
+    """
+    lookup = {
+        kind: {row.name.lower(): row for row in rows} for kind, rows in tables.items()
+    }
+    rated: dict[str, dict[str, Rate]] = {}
+    for task, skill in sorted(primary_training_tasks(chunk_info).items()):
+        if skill not in ("Agility", "Thieving"):
+            continue
+        challenge = _mapping(chunk_info.challenges, skill).get(task)
+        if not isinstance(challenge, dict):
+            continue
+        keys = _join_keys(challenge, task, COURSE_ALIASES)
+        for kind, per_hour in (
+            ("courses", None),
+            ("stalls", None),
+            ("pickpockets", PICKPOCKET_CYCLE_SECONDS),
+            ("shortcuts", SHORTCUT_CYCLE_SECONDS),
+        ):
+            rows_for = lookup.get(kind, {})
+            row = next((rows_for[key] for key in keys if key in rows_for), None)
+            if row is None:
+                continue
+            value = row.xp_per_hour if per_hour is None else row.experience * 3600.0 / per_hour
+            if value and value > 0:
+                rated.setdefault(task, {})[skill] = Rate(
+                    value=value, source=f"wiki:{kind}", match="exact"
+                )
+            break
+    return rated
+
+
+def _join_keys(challenge: dict[str, Any], task: str, aliases: Mapping[str, str]) -> list[str]:
+    """Every name a challenge offers to join on, lowercased.
+
+    `Output` first because it is the one field every pickpocket carries -
+    `NPCs` is present on only 5 of 33 - then the objects and NPCs, then the
+    task's own words for a course. `[+]`, `*` and `#section` are stripped:
+    upstream uses them to mean "or its variants" and "this part of", neither of
+    which changes which wiki row describes the thing.
+    """
+    def clean(name: str) -> str:
+        return name.split("#")[0].replace("[+]", "").replace("*", "").strip().lower()
+
+    keys: list[str] = []
+    output = challenge.get("Output")
+    if isinstance(output, str):
+        keys.append(clean(output))
+    for field in ("Objects", "NPCs"):
+        keys += [clean(name) for name in challenge.get(field) or () if isinstance(name, str)]
+    spelled = strip_task_markup(task).removeprefix("Access the ").strip()
+    keys.append(clean(aliases.get(spelled, spelled)))
+    return [key for key in dict.fromkeys(keys) if key]
+
+
 def build_config(
     chunk_info: ChunkInfo,
     *,
@@ -564,6 +652,7 @@ def build_config(
     mob_data: dict[str, SlayerTask],
     task_lengths: dict[str, dict[str, TaskLength]] | None = None,
     superiors: list[tuple[str, str]] | None = None,
+    skill_tables: Mapping[str, Sequence[SkillRow]] | None = None,
 ) -> dict[str, Any]:
     """Generate the full config from the export plus everything fetched.
 
@@ -641,6 +730,18 @@ def build_config(
         training.setdefault(task, {})[skill] = Rate(
             value=per_hour, source=f"mmg:{title}", match=how
         ).as_dict()
+
+    # **The Agility and Thieving tables, which no guide covers.** They are
+    # joined structurally rather than by name, so they outrank a `contained`
+    # money-making guide - but an *exact* guide keeps its method, on the same
+    # rule that settles every other contest here: the more specific claim wins,
+    # and a guide that names the method exactly is as specific as it gets.
+    for task, skills in _table_rates(chunk_info, skill_tables or {}).items():
+        for skill, rate in skills.items():
+            existing = training.get(task, {}).get(skill)
+            if existing is not None and existing.get("match") == "exact":
+                continue
+            training.setdefault(task, {})[skill] = rate.as_dict()
 
     # Only superiors the export actually knows about, so the section stays a
     # list of things that can appear in an estimate rather than a copy of the

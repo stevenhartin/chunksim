@@ -48,6 +48,7 @@ from fray_claude.costing.heuristics import (
 from fray_claude.costing.slayer import SheetFormatError, parse_mob_data, parse_task_lengths
 from fray_claude.model.summary import _mapping
 from fray_claude.remote.recipes import parse_recipes, recipe_query
+from fray_claude.remote import skill_tables
 from fray_claude.remote.wiki import (
     ASSIGNMENTS_PAGE,
     MMG_PREFIX,
@@ -160,6 +161,10 @@ def scrape(
         # scrape. Say so rather than writing a config that prices it at zero.
         mob_data, lengths, sheet_error = {}, {}, str(exc)
 
+    say("agility and thieving tables")
+    table_pages = fetch_wiki_pages(list(skill_tables.PAGES), timeout=timeout)
+    tables = skill_tables.parse_pages(table_pages)
+
     config = build_config(
         info,
         quest_pages=quest_pages,
@@ -168,6 +173,7 @@ def scrape(
         mob_data=mob_data,
         task_lengths=lengths,
         superiors=superiors,
+        skill_tables=tables,
     )
     return ScrapeResult(
         config=config,
@@ -176,12 +182,14 @@ def scrape(
             "quest pages": (len(quest_pages), len(quests)),
             "money guides": (len(mmg), len(titles)),
             "assignment pages": (len(assignments), len(masters)),
+            "skill tables": (len(table_pages), len(skill_tables.PAGES)),
         },
         counts={
             "assignment rows": sum(len(rows) for rows in assignments.values()),
             "superiors": len(superiors),
             "slayer tasks": len(mob_data),
             "task lengths": len(lengths),
+            **{f"{kind} rows": len(rows) for kind, rows in sorted(tables.items())},
         },
         sheet_error=sheet_error,
     )

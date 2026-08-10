@@ -8,6 +8,8 @@ import pytest
 
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.costing.heuristics import (
+    PICKPOCKET_CYCLE_SECONDS,
+    SHORTCUT_CYCLE_SECONDS,
     DEFAULT_KPH,
     DEFAULT_QUEST_HOURS,
     DEFAULT_XP_PER_HOUR,
@@ -23,6 +25,7 @@ from fray_claude.costing.heuristics import (
     stems,
     streak_factor,
 )
+from fray_claude.remote.skill_tables import SkillRow
 from fray_claude.remote.wiki import Assignment, MmgRates
 
 
@@ -517,3 +520,95 @@ def test_a_guide_named_exactly_is_not_given_away_by_containment() -> None:
 
     assert "Mix a ~|super combat potion|~" in training
     assert "Mix a ~|combat potion|~" not in training
+
+
+def test_agility_and_thieving_join_the_wiki_tables_structurally() -> None:
+    """**The join no guide could make.** A course joins on its own name, a
+    shortcut and a stall on the object they act on, a pickpocket on the NPC -
+    all exact strings, which is why there is no `contained` tier here."""
+    info = ChunkInfo(
+        {
+            "challenges": {
+                "Agility": {
+                    "Access the ~|Falador Rooftop Course|~": {"Primary": True, "Level": 50},
+                    "Access the Yanille climbing rocks ~|shortcut|~": {
+                        "Primary": True,
+                        "Level": 5,
+                        "Objects": ["Climbing rocks (Yanille)"],
+                    },
+                },
+                "Thieving": {
+                    "Pickpocket a ~|farmer|~": {
+                        "Primary": True,
+                        "Level": 10,
+                        "Output": "Farmer[+]",
+                    },
+                },
+            }
+        }
+    )
+    tables = {
+        "courses": [SkillRow(name="Falador Rooftop Course", level=50, xp_per_hour=35_000.0)],
+        "shortcuts": [SkillRow(name="Climbing rocks (Yanille)", level=5, experience=25.0)],
+        "pickpockets": [SkillRow(name="Farmer", level=10, experience=14.5)],
+    }
+
+    config = build_config(
+        info,
+        quest_pages={},
+        mmg_pages={},
+        assignments={},
+        mob_data={},
+        skill_tables=tables,
+    )
+    training = config["training"]
+
+    assert training["Access the ~|Falador Rooftop Course|~"]["Agility"]["value"] == 35_000.0
+    # A shortcut has no published rate, so it is xp over the stated cycle.
+    assert training["Access the Yanille climbing rocks ~|shortcut|~"]["Agility"][
+        "value"
+    ] == pytest.approx(25.0 * 3600.0 / SHORTCUT_CYCLE_SECONDS)
+    # `Farmer[+]` means "or its variants"; the wiki row is just `Farmer`.
+    assert training["Pickpocket a ~|farmer|~"]["Thieving"]["value"] == pytest.approx(
+        14.5 * 3600.0 / PICKPOCKET_CYCLE_SECONDS
+    )
+    assert training["Pickpocket a ~|farmer|~"]["Thieving"]["match"] == "exact"
+
+
+def test_a_guide_that_names_the_method_exactly_keeps_it() -> None:
+    """The table join outranks a *contained* guess but not an exact one - the
+    same rule that settles every other contest in this module: the more
+    specific claim wins."""
+    info = ChunkInfo(
+        {
+            "challenges": {
+                "Agility": {
+                    "Access the ~|Agility Pyramid|~": {"Primary": True, "Level": 30}
+                }
+            }
+        }
+    )
+    guides = {
+        "Agility Pyramid": MmgRates(
+            activity="Agility Pyramid",
+            experience={"Agility": 1.0},
+            kph=34_380.0,
+            kph_name="Laps per hour",
+        )
+    }
+
+    config = build_config(
+        info,
+        quest_pages={},
+        mmg_pages=guides,
+        assignments={},
+        mob_data={},
+        skill_tables={
+            "courses": [SkillRow(name="Agility Pyramid", level=30, xp_per_hour=44_750.0)]
+        },
+    )
+
+    entry = config["training"]["Access the ~|Agility Pyramid|~"]["Agility"]
+    assert entry["value"] == 34_380.0
+    assert entry["match"] == "exact"
+
