@@ -117,7 +117,7 @@ const el = {};
 for (const id of [
   "map", "compare", "breakdown", "plane", "candidates", "masks", "live", "fit", "counts", "skipped",
   "hover", "toggle-panel", "panel", "tabs", "toast", "legend", "tip",
-  "ribbon", "ribbon-mode", "ribbon-map",
+  "ribbon", "ribbon-mode", "ribbon-map", "ribbon-vs", "compare-start", "exit-mode",
   "progress", "progress-title", "progress-count", "progress-detail",
   "progress-track", "progress-fill", "progress-cancel",
   "overlay", "overlay-title", "overlay-body", "overlay-close", "overlay-actions",
@@ -1337,6 +1337,9 @@ function confirmAction(title, body, verb, { danger = true } = {}) {
   });
 }
 
+el["compare-start"].addEventListener("click", askCompare);
+el["exit-mode"].addEventListener("click", exitMode);
+
 el["overlay-close"].addEventListener("click", closeOverlay);
 el.overlay.addEventListener("click", (e) => { if (e.target === el.overlay) closeOverlay(); });
 
@@ -1407,10 +1410,10 @@ async function postJSON(path, payload) {
  * the confusion the split exists to remove - `selectMap` asks before entering
  * and puts the picker back when the answer is no. */
 const MODES = {
-  browse:   { label: "Browse" },
-  edit:     { label: "Edit" },
-  diff:     { label: "Diff" },
-  timeline: { label: "Timeline" },
+  browse:   { label: "Browse", exit: null },
+  edit:     { label: "Edit", exit: "Discard edits" },
+  diff:     { label: "Diff", exit: "Exit diff view" },
+  timeline: { label: "Timeline", exit: "Exit timeline" },
 };
 
 /* What a map is, from the listing rather than from a second request. Unknown
@@ -1442,9 +1445,32 @@ function setMode(next) {
  * attribute - the palette stays in the stylesheet rather than gaining a
  * fourth copy here beside the canvas constants and the legend's literals. */
 function renderRibbon() {
-  el.ribbon.dataset.mode = state.mode;
-  el["ribbon-mode"].textContent = MODES[state.mode].label;
+  const mode = state.mode;
+  el.ribbon.dataset.mode = mode;
+  el["ribbon-mode"].textContent = MODES[mode].label;
   el["ribbon-map"].textContent = state.map || "no map";
+  for (const id of ["ribbon-vs", "compare", "breakdown"]) el[id].hidden = mode !== "diff";
+  /* **Comparing from Timeline would show a simulation outside timeline
+   * mode**, which is the one thing the modes exist to prevent. The way out is
+   * to snapshot the roll you are looking at, so say that rather than leaving a
+   * grey button with no explanation. */
+  el["compare-start"].disabled = mode === "timeline";
+  el["compare-start"].dataset.tip = mode === "timeline"
+    ? "<b>Not from a timeline</b><span class='sub'>A run is a sequence of worlds, and a comparison is about two. Snapshot the roll you are on and compare that.</span>"
+    : "<b>Compare with another map</b><span class='sub'>Enters diff view: gains green, losses red, both selectors on the ribbon.</span>";
+  const exit = MODES[mode].exit;
+  el["exit-mode"].hidden = !exit;
+  if (exit) el["exit-mode"].textContent = exit;
+}
+
+/* Which map a computed one was made from. The listing carries it on the
+ * *batch* rather than on each run, since every run of a batch rolled from the
+ * same world - so a run asks its batch. */
+function baseMapOf(mapId) {
+  const row = state.maps.find((m) => m.map_id === mapId);
+  if (row && row.base_map) return row.base_map;
+  const batch = state.maps.find((m) => m.map_id === (mapId || "").split("/")[0]);
+  return (batch && batch.base_map) || "";
 }
 
 /* **The guarded setter.** Choosing a simulation is choosing to replay it, and
@@ -1470,6 +1496,66 @@ async function selectMap(id) {
   if (state.map !== previous) { state.step = null; state.timeline = null; }
   setMode(wanted);
   return true;
+}
+
+/* **Anything that makes a map selects it, and the mode follows it in.** No
+ * prompt, unlike `selectMap`: you just rolled this, so being asked whether you
+ * meant to look at it is noise. Rolling produces a simulation, which means
+ * timeline mode - going to Browse instead would put a run on screen outside
+ * the one mode that is allowed to hold one. */
+function openMap(id) {
+  setMap(id);
+  state.step = null;
+  state.timeline = null;
+  setMode(modeForMap(state.map));
+}
+
+/* **Entering Diff is choosing a second map**, so it asks for one rather than
+ * dropping you into a mode with nothing to compare against. Any map may be on
+ * the *compare* side, simulations included: the invariant is about the base -
+ * what you are looking at and can act on - and the other side of a comparison
+ * is neither. */
+async function askCompare() {
+  const options = mapOptions(state.maps.filter((m) => m.map_id !== state.map));
+  openOverlay("Compare " + state.map + " with",
+    tmpl`<p>Gains draw green and losses red, and the hull traces what
+      <b>${state.map}</b> would become. Nothing is written.</p>
+      <div class="row"><select id="compare-pick" class="pick" aria-label="Compare against">`
+      + options + `</select></div>`,
+    tmpl`<button id="compare-no" type="button">Cancel</button>
+      <button id="compare-yes" type="button">Compare</button>`);
+  const pick = document.getElementById("compare-pick");
+  document.getElementById("compare-no").onclick = closeOverlay;
+  document.getElementById("compare-yes").onclick = async () => {
+    const chosen = pick.value;
+    closeOverlay();
+    if (!chosen) return;
+    setMode("diff");
+    setCompare(chosen);
+    renderRibbon();
+    syncBreakdown();
+    await loadTimeline();
+    await loadView({ refit: true });
+  };
+}
+
+/* **The way out is back to what the map itself implies**, which is Browse for
+ * an ordinary map. Leaving a timeline is the one that has to move the map as
+ * well: the base is a simulation, so staying on it would mean staying in the
+ * mode. Going back to the world it was rolled from is the honest answer. */
+async function exitMode() {
+  if (state.mode === "timeline") {
+    const base = baseMapOf(state.map);
+    if (!base) { toast("This run does not record what it was rolled from"); return; }
+    if (!(await selectMap(base))) return;
+  } else {
+    setMode(modeForMap(state.map));
+  }
+  syncBreakdown();
+  await loadTimeline();
+  await loadView({ refit: true });
+  await loadCandidates();
+  await loadSections();
 }
 
 /* **A `<select>` silently blanks on a value it has no option for**, and that
@@ -1916,10 +2002,7 @@ function askUnlock(chunkId) {
         const base = state.map;
         await loadMaps();
         if (result.open) {
-          setMap(result.open);
-          setCompare("");
-          state.step = null;
-          state.timeline = null;
+          openMap(result.open);
         }
         syncBreakdown();
         await loadTimeline();
@@ -1927,7 +2010,7 @@ function askUnlock(chunkId) {
         await loadCandidates();
         await loadSections();
         loadMapsPane();
-        if (result.open) toast("Unlocked " + chunkLabel(chunkId) + " on " + base + " — the strip shows what it added");
+        if (result.open) toast("Unlocked " + chunkLabel(chunkId) + " on " + base + " — the new chunk is green");
       });
   };
   document.getElementById("unlock-no").onclick = closeOverlay;
@@ -2557,7 +2640,7 @@ async function loadMapsPane() {
         await loadMaps();
         /* A `<select>` silently blanks when handed a value it has no option
          * for, and a blank map id is what `loadView` refuses to draw. */
-        if (result.map) setMap(result.map);
+        if (result.map) openMap(result.map);
         syncBreakdown();
         await loadView({ refit: true });
         loadMapsPane();
@@ -2585,10 +2668,7 @@ async function loadMapsPane() {
            * "what did I gain" reading and adds the progression to it. */
           const base = state.map;
           await loadMaps();
-          setMap(result.open);
-          setCompare("");
-          state.step = null;
-          state.timeline = null;
+          openMap(result.open);
           syncBreakdown();
           await loadTimeline();
           await loadView({ refit: true });
@@ -2871,12 +2951,14 @@ el.map.addEventListener("change", async () => {
   await loadSections();
 });
 el.compare.addEventListener("change", async () => {
-  /* Read before the mode changes: leaving `diff` clears the comparison, which
-   * is right when you are leaving it and would eat the one you just picked. */
+  /* Only reachable from inside Diff now, so an empty choice means "leave".
+   * Read before the mode changes: leaving clears the comparison, which is
+   * right when you are leaving and would eat the one you just picked. */
   const chosen = el.compare.value;
-  state.compare = chosen;
-  setMode(chosen ? "diff" : modeForMap(state.map));
-  if (chosen) setCompare(chosen);
+  if (!chosen) return exitMode();
+  setMode("diff");
+  setCompare(chosen);
+  renderRibbon();
   syncBreakdown();
   /* Comparing is a question about two maps and stepping is a question about
    * one map's past. Picking a comparison answers the first, so the strip goes
@@ -2964,39 +3046,38 @@ async function loadTimeline() {
     return hideTimeline();
   }
   if (!payload.steps || payload.steps.length < 2) return hideTimeline();
-  /* **A comparison and a rewind are exclusive** - see `mapQuery` - but hiding
-   * the strip without a word made a working feature look like a broken one:
-   * the run is still selected, its history is gone, and nothing on screen
-   * connects that to the compare box beside it. The run is fetched first for
-   * exactly that reason, so the page can tell "no history here" from "history
-   * you cannot see from where you are standing". */
-  if (state.compare) return comparingNotice();
+  /* **Outside Timeline mode a ledger is a caption, not a history.** A batch of
+   * one - a saved unlock, an edit - has exactly one roll, and its step is
+   * pinned at the end so `/api/view` can say which chunk arrived; there is
+   * nothing to drag, so there is no strip and no `state.timeline` for the
+   * arrow keys to move.
+   *
+   * This is also what replaced `comparingNotice`. Hiding the strip because a
+   * comparison was up made a working feature look broken, and the notice
+   * existed to apologise for it. A simulation can no longer be compared at
+   * all - `renderRibbon` disables the door - so the situation is gone rather
+   * than explained. */
+  if (state.mode !== "timeline") {
+    state.timeline = null;
+    state.step = payload.steps.length - 1;
+    return hideStrip();
+  }
   state.timeline = payload;
   if (state.step === null) state.step = payload.steps.length - 1;
   renderTimeline();
 }
 
-/* The strip, reduced to why it is empty and the one click that fills it. */
-function comparingNotice() {
-  state.timeline = null;
-  state.step = null;
-  el.timeline.hidden = false;
-  el.timeline.classList.add("notice");
-  el["tl-title"].innerHTML = tmpl`Timeline<span class="sub">this run has a history, hidden while comparing</span>`;
-  el["tl-chips"].innerHTML = `<button class="chip" id="tl-uncompare" type="button"
-    data-tip="<b>Stop comparing</b><span class='sub'>A rewind and a comparison would need a third colour for &quot;gained by this roll but lost against the other side&quot;, so only one can be on.</span>">Clear comparison</button>`;
-  document.getElementById("tl-uncompare").onclick = async () => {
-    setCompare("");
-    syncBreakdown();
-    await loadTimeline();
-    await loadView();
-  };
-  document.documentElement.style.setProperty("--strip-h", el.timeline.offsetHeight + "px");
-}
-
+/* No ledger at all: nothing to draw and nothing to remember. */
 function hideTimeline() {
   state.timeline = null;
   state.step = null;
+  hideStrip();
+}
+
+/* The strip goes; whatever step is pinned stays. Split from `hideTimeline`
+ * because "this map has no history" and "its history is not yours to drag
+ * from here" are different states and used to be the same call. */
+function hideStrip() {
   el.timeline.hidden = true;
   document.documentElement.style.setProperty("--strip-h", "0px");
 }
@@ -3010,7 +3091,6 @@ function renderTimeline() {
   const at = steps[state.step];
 
   el.timeline.hidden = false;
-  el.timeline.classList.remove("notice");
   /* **The panels describe the map, and a rewound map is not the map.** They
    * each need a derivation, so following the slider would cost ~1s a drag and
    * lose the whole reason stepping is instant. Saying which is being shown

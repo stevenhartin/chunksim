@@ -233,6 +233,40 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 .ribbon-mode { font-weight: 600; }
 .ribbon-map { opacity: .85; }
 
+/* On a tinted strip the controls have to sit *on* the colour rather than
+   punch a hole in it, or the ribbon reads as two bars. */
+.ribbon .pick-thin, .ribbon .thin {
+  height: 18px;
+  padding: 0 var(--s2);
+  border: 1px solid rgba(255, 255, 255, .28);
+  border-radius: var(--r1);
+  background: rgba(0, 0, 0, .22);
+  color: var(--text);
+  font-size: 11px;
+}
+
+.ribbon .thin:disabled { opacity: .45; }
+
+/* **The way out, over the map and above the strip.** `--strip-h` is 0 unless
+   a strip is up, so this is one rule rather than one per mode. */
+.exit-pill {
+  position: fixed;
+  z-index: 5;
+  left: 50%;
+  bottom: calc(var(--strip-h) + var(--s5));
+  transform: translateX(-50%);
+  padding: var(--s2) 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--pill);
+  background: var(--surface-3);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+}
+
+.exit-pill:hover { border-color: var(--amber); }
+
 .bar {
   position: fixed;
   inset: 0 0 auto 0;
@@ -881,12 +915,6 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 /* Comparing hides the *graph*, not the strip - the strip is where the page
    says why the graph is gone and offers the way back. Everything that acts on
    a step goes with it, since there is no step to act on. */
-.timeline.notice .tl-graph,
-.timeline.notice .tl-scrub,
-.timeline.notice #tl-details,
-.timeline.notice #tl-hours,
-.timeline.notice #tl-collapse { display: none; }
-
 /* Spans the map's width rather than the window's, so it stops at the panel
    the way the attribution does. */
 .timeline {

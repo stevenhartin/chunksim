@@ -48,6 +48,13 @@
 <div id="ribbon" class="ribbon" data-mode="browse">
   <span id="ribbon-mode" class="ribbon-mode">Browse</span>
   <span id="ribbon-map" class="ribbon-map mono">no map</span>
+  <!-- Diff's own controls. The base map keeps the picker it has in every
+       other mode; what the ribbon adds is the other side of the pair, so it
+       is changeable without leaving the mode that needed it. -->
+  <span id="ribbon-vs" class="vs" hidden>vs</span>
+  <select id="compare" class="pick pick-thin" aria-label="Compare against" hidden><option value="">—</option></select>
+  <button id="breakdown" type="button" class="thin" hidden disabled
+          data-tip="&lt;b&gt;What these two maps actually differ by&lt;/b&gt;&lt;span class='sub'&gt;Sections, tasks, sources and BiS, both directions.&lt;/span&gt;&lt;span class='hint'&gt;Derives both sides — about two seconds&lt;/span&gt;">Breakdown</button>
 </div>
 
 <!-- The bar floats over the map rather than sitting above it, so the world
@@ -56,10 +63,11 @@
   <span class="brand">fray</span>
 
   <select id="map" class="pick" aria-label="Map"></select>
-  <span class="vs">vs</span>
-  <select id="compare" class="pick" aria-label="Compare against"><option value="">—</option></select>
-  <button id="breakdown" type="button" disabled
-          data-tip="&lt;b&gt;Compare these two maps&lt;/b&gt;&lt;span class='sub'&gt;Sections, tasks, sources and BiS, both directions.&lt;/span&gt;&lt;span class='hint'&gt;Derives both sides — about two seconds&lt;/span&gt;">Diff</button>
+  <!-- Comparing is a mode, not a second dropdown sitting permanently beside
+       the first. The pair it needs lives in the ribbon, where the mode is
+       announced; this is the door. -->
+  <button id="compare-start" type="button"
+          data-tip="&lt;b&gt;Compare with another map&lt;/b&gt;&lt;span class='sub'&gt;Enters diff view: gains green, losses red, both selectors on the ribbon.&lt;/span&gt;">Compare</button>
 
   <span class="rule"></span>
 
@@ -198,6 +206,11 @@
 <div class="watermark" id="watermark" hidden></div>
 
 <div class="attribution" id="attribution" hidden></div>
+<!-- The way out of a mode, floating over the map rather than hiding in the
+     bar: a mode you can see you are in needs a way out you can see too. It
+     reads `--strip-h`, so it rides above the timeline instead of behind it. -->
+<button class="exit-pill" id="exit-mode" type="button" hidden></button>
+
 <div class="toast" id="toast" hidden></div>
 
 <!-- One dialog, reused. The "what would this add?" answer used to overwrite

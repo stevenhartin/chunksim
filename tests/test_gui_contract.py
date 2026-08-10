@@ -568,9 +568,11 @@ def test_a_step_and_a_comparison_are_exclusive() -> None:
     assert 'params.set("compare"' in body and 'params.set("step"' not in body
     assert 'params.set("step"' in default and 'params.set("compare"' not in default
 
+    # And the strip is the timeline mode's, so it never has to check either.
     load = re.search(r"async function loadTimeline\(\) \{(.*?)\n\}", js, re.DOTALL)
     assert load is not None
-    assert "state.compare" in load.group(1)
+    assert 'state.mode !== "timeline"' in load.group(1)
+    assert "state.compare" not in load.group(1), "the strip is still second-guessing"
 
 def test_switching_map_forgets_the_step() -> None:
     """A step index belongs to one run. Carried across, it rewinds the new map
@@ -650,14 +652,35 @@ def test_a_multi_run_batch_is_a_label_not_a_choice() -> None:
 
 def test_rolling_opens_the_result_as_the_map(tmp_path: Path) -> None:
     """**It used to land in the compare slot, which is what hides the strip** -
-    so rolling a simulation hid the one thing you rolled it to see."""
+    so rolling a simulation hid the one thing you rolled it to see.
+
+    `openMap` rather than `setMap`, because a roll produces a simulation and a
+    simulation belongs in timeline mode: selecting it without the mode would
+    put a run on screen in the one place the modes forbid it.
+    """
     _, js, _ = _resources()
 
     handler = re.search(r'runAction\(`Simulate \$\{rolls\} rolls`.*?\n    \};', js, re.DOTALL)
     assert handler is not None
-    assert "setMap(result.open)" in handler.group(0)
-    assert 'setCompare("")' in handler.group(0)
+    assert "openMap(result.open)" in handler.group(0)
     assert "loadTimeline()" in handler.group(0)
+
+def test_making_a_map_enters_the_mode_that_map_needs() -> None:
+    """**Selecting a simulation without its mode is the invariant's one hole.**
+
+    `selectMap` guards the picker, but rolling one does not go through the
+    picker - it selects the result directly - so a roll would have landed a
+    run in Browse. `openMap` is the unprompted twin: no question, because you
+    just made this, but the same mode arithmetic.
+    """
+    _, js, _ = _resources()
+
+    body = re.search(r"function openMap\(id\) \{(.*?)\n\}", js, re.DOTALL)
+    assert body is not None
+    assert "setMode(modeForMap(state.map))" in body.group(1)
+    # A step belongs to the map it was taken on.
+    assert "state.step = null" in body.group(1)
+    assert "confirmAction" not in body.group(1), "making a map should not ask"
 
 def test_unlocking_opens_the_result_as_the_map() -> None:
     """**The same bug the Roll button had.** A saved unlock went into the
@@ -672,29 +695,60 @@ def test_unlocking_opens_the_result_as_the_map() -> None:
 
     handler = re.search(r'runAction\("Unlock " \+ chunkLabel\(chunkId\).*?\n      \}\);', js, re.DOTALL)
     assert handler is not None
-    assert "setMap(result.open)" in handler.group(0)
-    assert 'setCompare("")' in handler.group(0)
+    assert "openMap(result.open)" in handler.group(0)
     assert "loadTimeline()" in handler.group(0)
 
-def test_a_run_whose_strip_is_hidden_by_a_comparison_says_so() -> None:
-    """**A silent empty state reads as a broken feature.** The run is still
-    selected and its history is gone, with nothing on screen connecting that to
-    the compare box - which is why the ledger is fetched *before* the
-    comparison is checked, so "no history here" and "history you cannot see
-    from where you are standing" can be told apart.
+def test_a_ledger_outside_timeline_mode_is_a_caption_not_a_history() -> None:
+    """**The situation `comparingNotice` explained no longer exists.**
+
+    It hid the strip when a comparison was up and then apologised for it in
+    the strip's own space. A simulation can no longer be compared at all, so
+    there is nothing to apologise for - what is left is the honest case: a
+    batch of one has a ledger of one roll, its step is pinned at the end so
+    the view can say which chunk arrived, and there is nothing to drag.
     """
     _, js, css = _resources()
 
+    assert "function comparingNotice" not in js
+    assert 'id="tl-uncompare"' not in js
+    assert ".timeline.notice" not in css, "the reduced strip's styling outlived it"
+
     body = re.search(r"async function loadTimeline\(\) \{(.*?)\n\}", js, re.DOTALL)
     assert body is not None
-    assert "comparingNotice()" in body.group(1)
-    # Fetched first, or the page cannot tell the two empty states apart.
-    assert body.group(1).index("/api/timeline") < body.group(1).index("state.compare")
-    # The way back is one click, and it is in the strip that explains it.
-    assert 'id="tl-uncompare"' in js
-    assert ".timeline.notice .tl-graph" in css
-    # Drawing the real strip has to drop the reduced one.
-    assert 'el.timeline.classList.remove("notice")' in js
+    assert 'state.mode !== "timeline"' in body.group(1)
+    # Pinned, not dragged: no `state.timeline`, so the arrow keys do nothing.
+    assert "state.timeline = null" in body.group(1)
+    assert "hideStrip()" in body.group(1)
+
+    # "No history" and "not yours to drag from here" are different states.
+    assert "function hideStrip()" in js
+    hide = re.search(r"function hideTimeline\(\) \{(.*?)\n\}", js, re.DOTALL)
+    assert hide is not None
+    assert "state.step = null" in hide.group(1)
+
+def test_diff_is_entered_through_a_door_and_left_through_a_pill() -> None:
+    """A second dropdown sitting permanently beside the first said the page
+    was always half way into a comparison. Diff is a mode: you go in through
+    one control and out through another, and while you are in it the pair is
+    on the ribbon where the mode is announced."""
+    html, js, css = _resources()
+
+    assert 'id="compare-start"' in html
+    assert 'id="exit-mode"' in html
+    # The pair moved onto the ribbon rather than staying in the bar.
+    ribbon = html[html.index('<div id="ribbon"'):html.index("<header class=\"bar\">")]
+    assert 'id="compare"' in ribbon and 'id="breakdown"' in ribbon
+
+    ribbon_js = re.search(r"function renderRibbon\(\) \{(.*?)\n\}", js, re.DOTALL)
+    assert ribbon_js is not None
+    assert 'mode !== "diff"' in ribbon_js.group(1)
+    # Comparing from a timeline would show a simulation outside timeline mode.
+    assert 'mode === "timeline"' in ribbon_js.group(1)
+
+    # The way out rides above the strip rather than behind it.
+    pill = re.search(r"\.exit-pill \{(.*?)\}", css, re.DOTALL)
+    assert pill is not None
+    assert "var(--strip-h)" in pill.group(1)
 
 def test_the_page_fetches_the_rates_once_when_they_are_missing() -> None:
     """**Without them every hour in the Estimate tab is a default**, and the
