@@ -76,10 +76,46 @@ def _print_estimate(
     if bucket == "skilling":
         for skill in sorted(result.skills, key=lambda skill: -skill.hours):
             flag = " (default rate)" if skill.defaulted else ""
+            start = (
+                f"{skill.effective_level:>3}"
+                if skill.effective_level == skill.current_level
+                else f"{skill.effective_level:>3}*"
+            )
             print(
-                f"  {skill.skill:<13} {skill.current_level:>3} -> {skill.target_level:<3}"
+                f"  {skill.skill:<13} {start} -> {skill.target_level:<3}"
                 f" {skill.xp:>10,} xp @ {skill.xp_per_hour:>9,.0f}/hr"
                 f" = {skill.hours:>7,.1f}h  {skill.method}{flag}"
+            )
+            # **The bands are the reasoning, and a blended rate hides it.**
+            # 130,000 xp/hr for Herblore is not a rate anybody trains at; it is
+            # fourteen methods averaged, and which of them covers the 4.1M xp
+            # from 75 to 90 is the number worth arguing with.
+            for band in skill.bands:
+                if len(skill.bands) == 1:
+                    break
+                note = "" if band.method else "  (no rate known)"
+                print(
+                    f"      {band.level_from:>3} -> {band.level_to:<3}"
+                    f" {band.xp:>10,} xp @ {band.xp_per_hour:>9,.0f}/hr"
+                    f" = {band.hours:>7,.1f}h  {band.method}{note}"
+                    f"  [{band.match}]"
+                )
+            if skill.xp_from_quests:
+                print(
+                    f"      * {skill.xp_from_quests:,} xp of that climb is paid by quests"
+                    f" this map can finish"
+                )
+        for refused in result.unpriced_skills:
+            print(
+                f"  {refused.skill:<13} {refused.current_level:>3} ->"
+                f" {refused.target_level:<3} {refused.xp:>10,} xp"
+                f"   not priced: {refused.reason}"
+            )
+        for lamp in result.unallocated_quest_xp:
+            where = ", ".join(lamp.skills) if lamp.skills else "any skill"
+            print(
+                f"  unspent      {lamp.count} x {lamp.xp:,} xp from {lamp.quest}"
+                f" -> {where}"
             )
         _print_slayer_masters(result)
         return

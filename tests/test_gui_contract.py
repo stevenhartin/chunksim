@@ -710,3 +710,24 @@ def test_every_collapsible_list_has_an_owner_to_redraw_it() -> None:
     assert owners, "no list owners registered at all"
     for key in keys:
         assert key.split(":")[0] in owners, f"{key!r} has no owner to redraw it"
+
+
+def test_one_skill_tooltip_serves_both_surfaces() -> None:
+    """The Estimate tab and the roll overlay ask the same question about a
+    skill, so they render it with the same function.
+
+    The tab's own version was three lines - level, target, hours - which said
+    nothing about *why*. One renderer means the bands, the provenance and the
+    quest head start reach both places, and the "one tooltip system" rule keeps
+    meaning what it says.
+    """
+    _, js, _ = _resources()
+
+    assert js.count("function skillTip(") == 1
+    assert js.count("skillTip(skill)") == 1, "the Estimate tab builds its own again"
+    assert js.count("skillTip(row)") >= 1, "the roll overlay stopped using it"
+    # The bands are what the tooltip is for; a blended rate alone hides them.
+    tip = re.search(r"function skillTip\(row\) \{(.*?)\n\}", js, re.DOTALL)
+    assert tip is not None
+    assert "row.bands" in tip.group(1)
+    assert "b.match" in tip.group(1), "provenance must travel with each band"

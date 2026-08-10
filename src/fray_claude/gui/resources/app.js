@@ -2124,7 +2124,9 @@ function renderEstimate(payload) {
       if (!skills.length) continue;
       out += tmpl`<h3>${raw(swatch)}${label(bucket)} <span class="num">${skills.length}</span></h3><ul class="list">`;
       out += withMore(skills, "estimate:skilling", 14, (skill) => {
-        const tip = tmpl`<b>${skill.skill}</b><span class="sub">Level ${skill.current_level} to ${skill.target_level}</span><span class="sub">${hours(skill.hours)} at the rate this map can reach</span>`;
+        /* The same renderer the roll overlay uses - one tooltip system, and
+         * this one was three lines that said much less. */
+        const tip = skillTip(skill);
         return tmpl`<li data-tip="${tip}"><img class="skill-icon" src="/assets/skill/${skill.skill}.png" alt="">
           <span class="name">${skill.skill}</span>
           <span class="sub">${skill.current_level} → ${skill.target_level}</span>
@@ -3103,15 +3105,41 @@ async function showRoll(step) {
  * distrust and one you understand: the floor is deliberately conservative, and
  * `heuristics/overrides.json` is where you disagree with it. */
 function skillTip(row) {
-  const num = (value) => Number(value || 0).toLocaleString();
+  const num = (value) => Math.round(Number(value) || 0).toLocaleString();
   const head = tmpl`<b>${row.skill} · ${hours(row.hours)}</b>`;
-  const climb = tmpl`<span class="sub">Level ${row.current_level} → ${row.target_level} · ${num(row.xp)} xp to earn</span>`;
+  const from = row.effective_level || row.current_level;
+  const climb = tmpl`<span class="sub">Level ${from} → ${row.target_level} · ${num(row.xp)} xp to earn</span>`;
+  /* Only say "starting you at X rather than Y" when the grant actually moves
+   * the level - most of the time it is a few thousand XP into a high skill and
+   * lands in the same band it started in. */
+  const quest = !row.xp_from_quests
+    ? ""
+    : from !== row.current_level
+      ? tmpl`<span class="sub">${num(row.xp_from_quests)} xp of it paid by quests, starting you at ${from} rather than ${row.current_level}</span>`
+      : tmpl`<span class="sub">${num(row.xp_from_quests)} xp of it paid by quests this map can finish</span>`;
+
+  /* **The bands are the answer to "why so long".** A blended rate is not a
+   * rate anybody trains at - Herblore's 131,000/hr is fourteen methods
+   * averaged - so the row that matters is whichever band carries the bulk of
+   * the XP, and the provenance beside it says how much to trust it. */
+  const bands = row.bands || [];
+  if (bands.length > 1) {
+    const rows = bands
+      .map((b) => tmpl`<span class="sub">${b.level_from}–${b.level_to} · ${hours(b.hours)} · ${num(b.xp_per_hour)}/hr · ${b.method || "no rate known"}${b.match === "exact" ? "" : " (" + b.match + ")"}</span>`)
+      .join("");
+    const floored = bands.filter((b) => b.match === "default");
+    const note = floored.length
+      ? tmpl`<span class="hint">${num(row.floor_xp)} xp of this has no known rate and sits at the floor</span>`
+      : tmpl`<span class="hint">Blended ${num(row.xp_per_hour)}/hr across ${bands.length} methods</span>`;
+    return head + climb + quest + rows + note;
+  }
+
   const rate = row.defaulted
-    ? tmpl`<span class="sub">${num(row.xp_per_hour)} xp/hr — the default floor, because nothing trainable at level ${row.current_level} has a known rate</span>`
+    ? tmpl`<span class="sub">${num(row.xp_per_hour)} xp/hr — the default floor, because nothing trainable here has a known rate</span>`
     : tmpl`<span class="sub">${num(row.xp_per_hour)} xp/hr via ${row.method}</span>`;
   const options = row.options || [];
   if (!options.length) {
-    return head + climb + rate + tmpl`<span class="hint">No method on this map has a rate — set one in heuristics/overrides.json</span>`;
+    return head + climb + quest + rate + tmpl`<span class="hint">No method on this map has a rate — set one in heuristics/overrides.json</span>`;
   }
   const known = options
     .map((o) => tmpl`<span class="sub">${num(o.xp_per_hour)}/hr · level ${o.level ?? "?"} · ${o.method}</span>`)
@@ -3119,8 +3147,9 @@ function skillTip(row) {
   const more = row.options_total > options.length
     ? tmpl`<span class="hint">${row.options_total} known in all — correct any in heuristics/overrides.json</span>`
     : tmpl`<span class="hint">Correct any of these in heuristics/overrides.json</span>`;
-  return head + climb + rate + tmpl`<span class="sub">Known methods for this skill:</span>` + known + more;
+  return head + climb + quest + rate + tmpl`<span class="sub">Known methods for this skill:</span>` + known + more;
 }
+
 
 function rollHours(priced) {
   if (!hours || !priced.total_hours) return "";
