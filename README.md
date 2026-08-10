@@ -220,10 +220,10 @@ before believing a total:
 - **A skill is priced method by method as each one unlocks**, not at one rate for the whole climb —
   Herblore 1→99 on a real map is nine bands, from cleaning guams at level 3 up to super combats at
   90, and `fray estimate skilling` prints them with the level range and the XP each covers. The
-  money-making guides cover only **248 of the 2,710** ways of training a skill, because most training
+  money-making guides cover only **237 of the 2,710** ways of training a skill, because most training
   methods don't make money and so have no guide, and what's left sits at a deliberately low
   1,000 xp/hr so it looks slow rather than free. Under bands that floor usually applies to the bottom
-  of a climb rather than all of it. Each band prints where its rate came from, because 174 of the 248
+  of a climb rather than all of it. Each band prints where its rate came from, because 163 of the 237
   are matched by *containment* rather than exactly — usually right, occasionally not, and
   `heuristics/overrides.json` is where you disagree.
 - **Your skill levels aren't in the map.** source-chunk records a level *cap* and a passively

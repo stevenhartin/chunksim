@@ -27,16 +27,17 @@ Run `fray estimate` and look at what it flags:
   one. `fray estimate skilling` prints the bands under each skill with the
   level range and the XP each covers; the band carrying the most XP is the one
   to check first.
-- **A `contained` join, when the guide is about a *better* item.** 174 of the
-  248 scraped training rates are `contained` rather than `exact`, and most are
-  fine - "Cleaning grimy torstol" really is the guide for cleaning torstol. The
-  failure looks like this: `Mix a ~|combat potion|~` (level 36) matches
-  *Money making guide/Making **super** combat potions* because its name is
-  contained in that title, and inherits 315,000 xp/hr. Every band is printed
-  with its provenance for exactly this reason. Six skills - Firemaking,
-  Fletching, Hunter, Sailing, Smithing, Woodcutting - have **no** `exact` join
-  at all, so their rates are worth more scepticism than the rest.
-- **Skills still using the default rate.** The money-making guides cover 248 of
+- **A `contained` join.** 163 of the 237 scraped training rates are `contained`
+  rather than `exact`, and most are fine - "Cleaning grimy torstol" really is
+  the guide for cleaning torstol. The dangerous kind, where the guide is about a
+  *better* item, is now refused automatically: a guide another method names
+  exactly is that method's, so `Mix a ~|combat potion|~` can no longer inherit
+  315,000 xp/hr from *Making **super** combat potions*. That rule removed 11
+  joins, all wrong. What it cannot catch is a guide nobody names exactly that is
+  still about the wrong thing, which is why every band prints its provenance.
+  Six skills - Firemaking, Fletching, Hunter, Sailing, Smithing, Woodcutting -
+  have **no** `exact` join at all, so their rates deserve more scepticism.
+- **Skills still using the default rate.** The money-making guides cover 237 of
   the export's 2,710 training methods, because most ways of training a skill do
   not make money and so have no guide. What is left sits at 1,000 xp/hr,
   deliberately low so it looks slow rather than free. Under the band walk that

@@ -604,18 +604,42 @@ def build_config(
         ).as_dict()
 
     training: dict[str, Any] = {}
+    # **A guide somebody names exactly is not available to anybody else.**
+    # `_best_match`'s containment tier is right far more often than not - a
+    # guide called "Cleaning grimy torstol" really is the one for cleaning
+    # torstol - but it cannot tell a padded title from a *different, better*
+    # item: `Mix a ~|combat potion|~` contains itself in "Making **super**
+    # combat potions" and inherited its 315,000 xp/hr, and `Cut a ~|diamond|~`
+    # took the rate for crafting diamond *bracelets*, which is a different
+    # action entirely.
+    #
+    # The fix needs no word list and no judgement about English: if another
+    # method matches that guide *exactly*, the guide is that method's, and the
+    # contained claim is refused. Measured on the real scrape this is 9 joins,
+    # every one of them wrong: six gem bracelets, chocolate cake, fine fish
+    # offcuts, and the combat potion. What is left has no rate, which is the
+    # honest answer - the floor says so, where a stolen number does not.
+    claims: list[tuple[str, str, str, str, str, float]] = []
+    exact_claims: set[str] = set()
     for task, skill in sorted(primary_training_tasks(chunk_info).items()):
         # Only guides that actually report this skill's XP can price it.
-        pool = {key: value for key, value in guides.items() if skill in value[1].experience}
+        pool = {name: entry for name, entry in guides.items() if skill in entry[1].experience}
         found = _best_match(activity_name(task), pool)
         if found is None:
             continue
-        title, rates = pool[found[0]]
-        per_hour = rates.experience[skill] * (rates.kph or 0.0)
+        guide, how = found
+        title, rates = pool[guide]
+        claims.append((task, skill, guide, how, title, rates.experience[skill] * (rates.kph or 0.0)))
+        if how == "exact":
+            exact_claims.add(guide)
+
+    for task, skill, guide, how, title, per_hour in claims:
+        if how != "exact" and guide in exact_claims:
+            continue
         if per_hour <= 0:
             continue
         training.setdefault(task, {})[skill] = Rate(
-            value=per_hour, source=f"mmg:{title}", match=found[1]
+            value=per_hour, source=f"mmg:{title}", match=how
         ).as_dict()
 
     # Only superiors the export actually knows about, so the section stays a

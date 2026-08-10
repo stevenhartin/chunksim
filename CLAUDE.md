@@ -342,9 +342,10 @@ climb splitting where the rate changes, so Herblore 1→99 is nine methods — c
 super combats at 90, 100h — where one rate chosen at the starting level made it 13,034h. Three
 consequences worth knowing before reading a skilling number: the printed `xp_per_hour` is a **blend**
 and nobody trains at it; **the floor can only be the first band**, so `floor_xp` rather than the total
-says how much is guesswork; and **174 of the 248 scraped rates are `contained` joins**, which is why
-every band prints its provenance — `Mix a ~|combat potion|~` matching *Making **super** combat
-potions* is the shape of the failure. Quest XP is taken off the front of the climb, from exactly the
+says how much is guesswork; and **163 of the 237 scraped rates are `contained` joins**, which is why
+every band prints its provenance — a guide another method names *exactly* is refused to a contained
+claim, which removed 11 wrong joins including `Mix a ~|combat potion|~` taking *Making **super**
+combat potions*. Quest XP is taken off the front of the climb, from exactly the
 quests the quests bucket already charges hours for, which is what makes double counting impossible.
 
 **`dps_bridge` prices what the estimate can ask about, and nothing else.** `price_monsters` used to

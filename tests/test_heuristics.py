@@ -478,3 +478,42 @@ def test_the_threshold_is_conservative_and_says_so() -> None:
     assert not SlayerTask(
         mean_count=150, xp_per_kill=105, kills_per_hour=950
     ).is_multi_target
+
+
+def test_a_guide_named_exactly_is_not_given_away_by_containment() -> None:
+    """**"Combat potion" is not "super combat potion".**
+
+    `_best_match`'s containment tier is right far more often than not - a guide
+    called "Cleaning grimy torstol" really is the one for cleaning torstol - but
+    it cannot tell a padded title from a *different, better* item. `Mix a
+    ~|combat potion|~` contains itself in "Making super combat potions" and
+    inherited its 315,000 xp/hr, which under the band walk would open a
+    315,000/hr band at level 36 and wipe out most of a Herblore climb.
+
+    The rule needs no word list: if another method names that guide exactly,
+    the guide is that method's. What is left has no rate at all, which is the
+    honest answer - a method with no viable route should look like one.
+    """
+    info = ChunkInfo(
+        {
+            "challenges": {
+                "Herblore": {
+                    "Mix a ~|combat potion|~": {"Primary": True, "Level": 36},
+                    "Mix a ~|super combat potion|~": {"Primary": True, "Level": 90},
+                }
+            }
+        }
+    )
+    training = _config(
+        info=info,
+        mmg_pages={
+            "Money making guide/Making super combat potions": MmgRates(
+                kph=1500.0,
+                experience={"Herblore": 210.0},
+                activity="Super combat potion",
+            )
+        },
+    )["training"]
+
+    assert "Mix a ~|super combat potion|~" in training
+    assert "Mix a ~|combat potion|~" not in training
