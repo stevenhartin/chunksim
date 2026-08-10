@@ -670,11 +670,31 @@ per hour for five alloy tiers, which map onto the six preforms (bronze and iron 
 a test, and **Smithing 1 -> 99 is now 54.5h across five tiers, every band `exact`**.
 
 **The caveat is the one the material ranking exists to catch and cannot catch here.** A foundry
-challenge's `Items` is `AdamantMats[+]` - a family placeholder, not an item - and its `Output` is
-`None`, so no recipe joins it and `material_seconds_per_xp` is `0.0`. The rate is therefore the
-wiki's, quoted with the bars to hand, and the bars are not priced. That is optimistic on a chunk map
-in exactly the way `effective_xp_per_hour` was built to prevent, and it is stated here rather than
-hidden because the fix needs `[+]` family expansion in the material walk, not a different number.
+challenge's `Items` is `["AdamantMats[+]*", "BucketOrGloves[+]"]` - family placeholders, not items -
+and its `Output` is `None`, so no recipe joins it and `material_seconds_per_xp` is `0.0`. The rate is
+therefore the wiki's, quoted with the bars to hand, and the bars are not priced. That is optimistic
+on a chunk map in exactly the way `effective_xp_per_hour` was built to prevent.
+
+**Measured, so the size of it is known: 86 of the 477 rated methods on `fray` have no material cost
+at all, and 61 of those declare `Items`.** Only recipe-joined methods get one (`inputs.py` builds
+`material_seconds_per_xp` from `computed_rates` and nowhere else), so a method the recipe data does
+not reach is ranked as though its inputs were free - the bias already stated above, with a number on
+it.
+
+**The `*` in `Items` is upstream's `secondary` flag, and this project strips it as noise.**
+`challenges.py` (twice), `estimate.py` (twice) and `heuristics.py` all `replace("*", "")`. Upstream
+does strip it before *looking an item up* - but it reads it first: `worker.js` has
+`let secondary = item.includes('*')`, keys its runtime item index with the marker intact
+(`items[plus + '*']`), and tags sources `secondary-`. So it is a distinction in the data with a name,
+not an annotation. It also happens to be exactly the distinction pricing needs: Woodcutting's methods
+declare `["Axe[+]"]` with no marker - a tool you buy once, which must not be charged per XP - where
+the foundry's bars carry one and genuinely are consumed.
+
+**Do not act on that reading without checking what the collapse costs the *derivation* first.**
+Charging for `*`-marked `Items` is the obvious fix and is not the whole of it: if secondary sources
+are a separate index upstream and one index here, then `SourceIndex`/`available_items` may already be
+answering a slightly different question than upstream's, which is a correctness matter and outranks a
+ranking one. The oracles are the place that would show it.
 
 **A method is ranked on what it costs, not on what its action costs.** A published rate is quoted
 with the materials to hand - "299,000 an hour at anglerfish" describes the range, not the trip before
