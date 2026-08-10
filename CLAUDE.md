@@ -427,6 +427,27 @@ Ardougne **at the level the method opens**, which is the conservative end of a r
 success chance). Joined 44 of 112 Agility methods and 39 of 117 Thieving ones - the misses are
 minigames and access-only rows nothing publishes a rate for.
 
+**Construction joins on the task's own name, and it is the only skill that needs to.** Its challenges
+carry `Output Object` - the furniture - where every other skill carries `Output`, so the exact join
+reached **28 of its 602** methods. The recipe's output *is* the furniture name and the task says so
+(`Build a ~|mahogany table|~`), so `recipe_rates.join_keys` tries `Output`, then `Output Object`, then
+the task name with its verb stripped. Measured across all thirteen skills that route gains **500
+Construction methods and six elsewhere** - a Construction fix that happens to be expressible
+generally, not a new fuzzy tier, and still an exact comparison of whole strings.
+
+**A recipe priced in coins is refused, because there is no gp-per-hour model here.** `Coins` is
+stocked by a ground spawn, so the item walk prices it at zero seconds - and a Construction recipe
+reading `Coins x 10,000,000` came out free, making a steel dragon in the menagerie the fastest
+training in the game at 3,348,000 xp/hr. 39 recipes name coins against 3,889 that do not.
+
+**What is still wrong with Construction, and it is the same root:** a material stocked by a reachable
+shop costs *nothing* (`estimate._FREE_ROUTES`), so a build whose inputs are all shop-bought is priced
+on ticks alone - `obsidian fence` at 2.9M xp/hr off free Tokkul. The opposite end is as bad: the only
+route to a mahogany plank on the real map is **pickpocketing Gangsters at 1/13**, so a mahogany table
+costs 6 x 307s and reads as 1,638 xp/hr. Both need a shop model (money as time), which is a larger
+decision than a rate fix. **None of it moves a number today** - no cached map has a Construction
+goal - so this is coverage insurance rather than a correction.
+
 **Three defects in the scraped training rates, all of which the band walk amplified.** A bad rate on
 a *low-level* method is far worse than a bad rate anywhere else, because `training_bands` takes a
 running maximum: a wrong number at level 1 prices the whole climb. All three were found by reading

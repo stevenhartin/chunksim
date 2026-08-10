@@ -184,3 +184,51 @@ def test_several_recipes_for_one_output_are_kept_together() -> None:
         "Bronze bar": 2,
         "Tin": 1,
     }
+
+
+def test_construction_joins_on_the_task_name_where_output_fails() -> None:
+    """**Construction names the furniture in `Output Object`, not `Output`.**
+    So the `Output` join reached 28 of its 602 methods while the recipe's own
+    output *is* the furniture, and the task says so: `Build a ~|mahogany
+    table|~`. Still an exact match on a full string - the verb is removed
+    mechanically and the remainder compared whole."""
+    info = ChunkInfo(
+        {
+            "challenges": {
+                "Construction": {
+                    "Build a ~|mahogany table|~": {
+                        "Primary": True,
+                        "Level": 52,
+                        "Output Object": "Mahogany table (built)",
+                    }
+                }
+            }
+        }
+    )
+    recipes = {
+        "Construction": (
+            _recipe("Mahogany table", skill="Construction", level=52, experience=840.0),
+        )
+    }
+    valid = {"Construction": {"Build a ~|mahogany table|~": True}}
+
+    priced, _ = computed_rates(info, valid, recipes, _free)
+
+    assert "Build a ~|mahogany table|~" in priced
+    assert priced["Build a ~|mahogany table|~"].experience == 840.0
+
+
+def test_a_recipe_priced_in_coins_is_refused() -> None:
+    """**There is no gp-per-hour model anywhere here.** `Coins` is stocked by
+    a ground spawn, so the item walk prices it at zero seconds - and a
+    Construction recipe reading `Coins x 10,000,000` came out free, making a
+    steel dragon in the menagerie the fastest training in the game at
+    3,348,000 xp/hr."""
+    recipe = _recipe(
+        "Steel dragon (Construction)",
+        skill="Construction",
+        materials=(Material("Coins", 10_000_000.0),),
+    )
+
+    assert action_seconds(recipe, _free) is None
+    assert rate_for([recipe], _free) is None

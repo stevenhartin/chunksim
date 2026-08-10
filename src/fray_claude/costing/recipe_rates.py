@@ -56,9 +56,11 @@ here reads disk or network and no `_Walk` has to cross a module boundary.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import re
 from typing import Any, Callable, Mapping, Sequence
 
 from fray_claude.costing.heuristics import Rate
+from fray_claude.derive.task_names import strip_task_markup
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.model.summary import _mapping
 from fray_claude.remote.recipes import Recipe
@@ -69,6 +71,48 @@ TICK_SECONDS = 0.6
 #: How this module labels a rate it computed, in `Rate.match`. It beats only
 #: `default` - see `apply`, and the measurement behind that in the docstring.
 COMPUTED_MATCH = "computed"
+
+#: Materials this cannot put a time on, so a recipe needing one is dropped.
+#: **Money is the whole of it.** `Coins` is stocked by a ground spawn, so the
+#: item walk prices it at zero seconds - and a Construction recipe reading
+#: `Coins x 10,000,000` came out free, making a steel dragon in the menagerie
+#: the fastest training in the game at 3,348,000 xp/hr. There is no gp-per-hour
+#: model anywhere in this project and inventing one here would be worse than
+#: refusing: 39 recipes name coins, against 3,889 that do not.
+UNPRICEABLE_MATERIALS: frozenset[str] = frozenset({"Coins", "Coin"})
+
+#: The verbs a challenge name starts with, stripped to leave the thing made.
+#: **Construction needs this and almost nothing else does.** Its challenges
+#: carry `Output Object` - the furniture - where every other skill carries
+#: `Output`, so the `Output` join reached 28 of its 602 methods. The recipe's
+#: own output *is* the furniture name, and `Build a ~|mahogany table|~` says
+#: so in the task name. Measured across all thirteen skills, adding this route
+#: gains **500 Construction methods** and six elsewhere: it is a Construction
+#: fix that happens to be expressible generally, not a new fuzzy tier.
+_VERBS = re.compile(
+    r"^(?:build|craft|cook|mix|smith|smelt|fletch|make|cut|clean|enchant|cast"
+    r"|bake|brew|spin|weave|string|carve|repair)\s+(?:an?\s+|the\s+)?",
+    re.IGNORECASE,
+)
+
+
+def join_keys(challenge: Mapping[str, Any], task: str) -> tuple[str, ...]:
+    """Every name a challenge offers a recipe, most specific first.
+
+    `Output` is upstream's own statement of what the method produces and is
+    tried first. `Output Object` is the same thing for a built object. The
+    task's own words are last and are still an **exact** match - the verb is
+    removed mechanically and the remainder compared whole - so this stays a
+    join on a full string rather than becoming a containment tier.
+    """
+    keys: list[str] = []
+    for field in ("Output", "Output Object"):
+        value = challenge.get(field)
+        if isinstance(value, str) and value.strip():
+            keys.append(value.strip())
+    keys.append(_VERBS.sub("", strip_task_markup(task)).strip())
+    return tuple(key for key in dict.fromkeys(keys) if key)
+
 
 #: Seconds an action costs beyond its own animation: the withdraw, the click,
 #: the walk back. **Fitted, not chosen** - `recipe_overhead.py` re-runs the
@@ -170,6 +214,8 @@ def material_seconds(
     """
     total = 0.0
     for material in recipe.materials:
+        if material.name in UNPRICEABLE_MATERIALS:
+            return None
         seconds = input_seconds(material.name, material.quantity)
         if seconds is None:
             return None
@@ -232,6 +278,10 @@ def computed_rates(
 
     for skill, rows in sorted(recipes.items()):
         by_output = index_recipes(list(rows))
+        # Matched case-insensitively: upstream writes `Build a ~|mahogany
+        # table|~` where the wiki page is `Mahogany table`, and the case is
+        # the only thing between them.
+        by_output = {**{name.lower(): found for name, found in by_output.items()}}
         challenges = _mapping(chunk_info.challenges, skill)
         offered = found = 0
         for task in sorted(valid.get(skill) or {}):
@@ -239,12 +289,11 @@ def computed_rates(
             if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
                 continue
             offered += 1
-            output = challenge.get("Output")
-            if not isinstance(output, str):
+            keys = join_keys(challenge, task)
+            output = next((key for key in keys if key.lower() in by_output), None)
+            if output is None:
                 continue
-            candidates = by_output.get(output)
-            if not candidates:
-                continue
+            candidates = by_output[output.lower()]
             chosen = rate_for(candidates, input_seconds)
             if chosen is None:
                 dropped.append(task)

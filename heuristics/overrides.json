@@ -1,13 +1,37 @@
 {
   "levels": {},
-
   "quests": {},
-
   "monsters": {},
-
-  "training": {},
-
+  "training": {
+    "Complete a beginner contract for ~|Mahogany Homes|~": {
+      "Construction": {
+        "value": 30000,
+        "source": "wiki:Mahogany Homes",
+        "match": "exact"
+      }
+    },
+    "Complete a novice contract for ~|Mahogany Homes|~": {
+      "Construction": {
+        "value": 65000,
+        "source": "wiki:Mahogany Homes",
+        "match": "exact"
+      }
+    },
+    "Complete an adept contract for ~|Mahogany Homes|~": {
+      "Construction": {
+        "value": 130000,
+        "source": "wiki:Mahogany Homes",
+        "match": "exact"
+      }
+    },
+    "Complete an expert contract for ~|Mahogany Homes|~": {
+      "Construction": {
+        "value": 165000,
+        "source": "wiki:Mahogany Homes",
+        "match": "exact"
+      }
+    }
+  },
   "slayer": {},
-
   "rarities": {}
 }
