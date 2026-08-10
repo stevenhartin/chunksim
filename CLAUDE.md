@@ -436,9 +436,16 @@ That was **16 of the 75 unpriced items** on the benchmark map. The family is exp
 `resolve` (the key is not an item name and will not resolve to one) and the **cheapest** member wins,
 which is the same reading `_required_kills` takes when it stops at the first reachable one.
 
-What is left unpriced after that is honest: Graceful and the Carpenter's outfit are bought with marks
-of grace and Mahogany Homes points, currencies `Heuristics.currency_per_hour` deliberately refuses
-rather than inventing a rate for.
+**Two of those currencies now have rates, and they came from opposite places.** Marks of grace are
+read off the rooftop table's own column - every course pays between 8 and 18 an hour, and that narrow
+spread is what makes one figure honest where a per-map one would be false precision. Mahogany Homes
+points are a stated 100 an hour, tunable like the rest.
+
+**`Points` is not one currency**, which is the part worth knowing: 127 store lines are priced in
+something called Points and Mahogany Homes, Pest Control and Barbarian Assault each mean their own.
+So a rate may be qualified as `"<shop>:<currency>"` and that is checked before the bare name - which
+also means the unqualified `Points` still has no rate, and everything else priced in it is still
+refused rather than given Mahogany Homes'.
 
 **Nothing the estimator reaches is free any more, and that was the largest remaining error.**
 `_route_hours` used to price a shop or a ground spawn at zero seconds on the grounds that both are

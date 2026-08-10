@@ -43,6 +43,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import re
+
 from fray_claude.remote.wikitable import SCP_LEVEL, name_in, names_in, number, rows, table_with
 
 #: The four pages this reads. `Shortcuts` and `Stall/Thievable` are dedicated
@@ -51,7 +53,7 @@ SHORTCUTS_PAGE = "Shortcuts"
 AGILITY_PAGE = "Agility"
 STALLS_PAGE = "Stall/Thievable"
 THIEVING_PAGE = "Thieving"
-PAGES: tuple[str, ...] = (SHORTCUTS_PAGE, AGILITY_PAGE, STALLS_PAGE, THIEVING_PAGE)
+PAGES: tuple[str, ...] = (SHORTCUTS_PAGE, AGILITY_PAGE, STALLS_PAGE, THIEVING_PAGE, "Rooftop Agility Courses")
 
 #: Export course name -> the wiki's spelling. **Only for the ones that differ.**
 #: Upstream's `Canafis` is a typo for Canifis, and its Colossal Wyrm courses are
@@ -175,6 +177,42 @@ def parse_pickpockets(text: str) -> tuple[SkillRow, ...]:
             for name in names
         )
     return tuple(found)
+
+
+#: The page whose table carries marks of grace per hour, per course.
+ROOFTOP_PAGE = "Rooftop Agility Courses"
+
+#: `10-13.8`, `16\u201318` - a bare range with no thousands separator. The `t`
+#: guard is load-bearing: the lap-time column two along reads `108\u2013110t`,
+#: and the header spans two rows so the column cannot be found by index.
+_MARK_RANGE = re.compile(r"^(\d+(?:\.\d+)?)\s*[-\u2013]\s*(\d+(?:\.\d+)?)(?![\d.,]|\s*t\b)")
+
+
+def parse_mark_rate(text: str) -> float | None:
+    """Marks of grace an hour, from the rooftop table's own column.
+
+    **The best published figure, and the spread is why one number will do.**
+    Every course pays between 8 and 18 an hour - Canifis is the best at 16-18
+    and Al Kharid the worst at 8-11.5 - so which course a map can reach barely
+    moves the answer, which is what makes a single currency rate honest here
+    where a per-map one would be false precision.
+
+    The top of the range, because a rate is what the best available method
+    pays; that is the convention every other rate in this project follows.
+    """
+    table = table_with(text, "Marks of grace")
+    best: float | None = None
+    for cells in rows(table):
+        for cell in cells:
+            found = _MARK_RANGE.match(cell.strip())
+            if found is None:
+                continue
+            value = float(found.group(2))
+            # Marks are single figures an hour; anything larger is a column
+            # this pattern was not meant to reach.
+            if 0 < value <= 40 and (best is None or value > best):
+                best = value
+    return best
 
 
 def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:

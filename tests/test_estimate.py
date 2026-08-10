@@ -1506,3 +1506,26 @@ def test_a_family_whose_members_are_all_unreachable_stays_unpriced() -> None:
     object.__setattr__(walk, "item_families", {"Nothing[+]": ["Nowhere"]})
 
     assert _item_hours(walk, "Nothing[+]") is None
+
+
+def test_a_currency_can_be_qualified_by_the_shop_that_charges_it() -> None:
+    """**`Points` is not one currency.** 127 store lines are priced in
+    something called Points, and Mahogany Homes, Pest Control and Barbarian
+    Assault each mean their own - so a rate may name the shop, and that is
+    checked before the bare currency."""
+    heuristics = Heuristics(
+        shop_prices={
+            "Mahogany Homes Reward Shop": {
+                "Carpenter's helmet": ShopPrice(price=400.0, currency="Points")
+            },
+            "Other Shop": {"Thing": ShopPrice(price=400.0, currency="Points")},
+        },
+        currency_per_hour={"Mahogany Homes Reward Shop:Points": 100.0},
+    )
+
+    # 400 points at 100 an hour is four hours.
+    assert heuristics.shop_seconds(
+        "Mahogany Homes Reward Shop", "Carpenter's helmet"
+    ) == pytest.approx(4 * 3600)
+    # The same currency name elsewhere has no rate and is refused.
+    assert heuristics.shop_seconds("Other Shop", "Thing") is None

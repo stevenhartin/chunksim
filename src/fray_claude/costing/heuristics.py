@@ -391,7 +391,11 @@ class Heuristics:
         entry = self.shop_prices.get(shop, {}).get(item)
         if entry is None:
             return None
-        rate = self.currency_per_hour.get(entry.currency)
+        # Shop-qualified first: see `DEFAULT_CURRENCY_PER_HOUR` on why
+        # `Points` cannot have one rate.
+        rate = self.currency_per_hour.get(f"{shop}:{entry.currency}")
+        if rate is None:
+            rate = self.currency_per_hour.get(entry.currency)
         if rate is None or rate <= 0:
             return None
         return entry.price * 3600.0 / rate
@@ -635,6 +639,16 @@ def primary_training_tasks(chunk_info: ChunkInfo) -> dict[str, str]:
 DEFAULT_CURRENCY_PER_HOUR: dict[str, float] = {
     "Coins": 500_000.0,
     "Tokkul": 25_000.0,
+    # **Overwritten by the scrape**, which reads the rooftop table's own
+    # column; this is the floor if that ever fails to parse. Every course pays
+    # between 8 and 18 an hour, so one figure is honest here.
+    "Mark of grace": 12.0,
+    # **`Points` is not one currency.** 127 store lines are priced in
+    # something called Points and they are not interchangeable - Mahogany
+    # Homes, Pest Control and the Barbarian Assault shops each mean their own.
+    # So a rate may be qualified by shop, `"<shop>:<currency>"`, and that is
+    # checked before the bare name. Mahogany Homes pays roughly 100 an hour.
+    "Mahogany Homes Reward Shop:Points": 100.0,
 }
 
 #: Seconds one shortcut use takes, door to door. **A stated target, not a
@@ -737,6 +751,7 @@ def build_config(
     spells: Sequence[AttackSpell] = (),
     shop_prices: Mapping[str, Mapping[str, ShopPrice]] | None = None,
     conversion_fees: Mapping[str, ShopPrice] | None = None,
+    currency_rates: Mapping[str, float] | None = None,
 ) -> dict[str, Any]:
     """Generate the full config from the export plus everything fetched.
 
@@ -902,7 +917,7 @@ def build_config(
         "conversions": {
             item: entry.as_dict() for item, entry in sorted((conversion_fees or {}).items())
         },
-        "currencies": dict(DEFAULT_CURRENCY_PER_HOUR),
+        "currencies": {**DEFAULT_CURRENCY_PER_HOUR, **(currency_rates or {})},
     }
 
 

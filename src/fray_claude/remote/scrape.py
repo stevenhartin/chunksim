@@ -164,6 +164,7 @@ def scrape(
     say("agility and thieving tables")
     table_pages = fetch_wiki_pages(list(skill_tables.PAGES), timeout=timeout)
     tables = skill_tables.parse_pages(table_pages)
+    mark_rate = skill_tables.parse_mark_rate(table_pages.get(skill_tables.ROOFTOP_PAGE, ""))
 
     say("monster hitpoints and spell xp")
     monster_stats = combat.parse_monster_stats(
@@ -200,6 +201,7 @@ def scrape(
         spells=spells,
         shop_prices=shop_prices,
         conversion_fees=fees,
+        currency_rates={"Mark of grace": mark_rate} if mark_rate else {},
     )
     return ScrapeResult(
         config=config,

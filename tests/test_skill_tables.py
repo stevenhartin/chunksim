@@ -8,8 +8,11 @@ that means "this is not a training method".
 
 from __future__ import annotations
 
+import pytest
+
 from fray_claude.remote.skill_tables import (
     parse_courses,
+    parse_mark_rate,
     parse_pickpockets,
     parse_shortcuts,
     parse_stalls,
@@ -200,3 +203,40 @@ def test_an_absent_page_parses_to_nothing_rather_than_raising() -> None:
     assert parse_courses("") == ()
     assert parse_stalls("") == ()
     assert parse_pickpockets("") == ()
+
+
+def test_marks_of_grace_come_from_the_rooftop_table() -> None:
+    """**The lap-time column is also a range**, two along, and the header spans
+    two rows so the marks column cannot be found by index. `108-110t` has to be
+    told apart from `16-18` by shape."""
+    table = """
+{| class="wikitable"
+! rowspan="2" |{{SCP|Agility}}
+! rowspan="2" |Course
+! rowspan="2" |Exp. per lap
+! rowspan="2" |Lap time
+! colspan="2" |Hourly rates
+|-
+!Exp. per hour
+!{{plink|Mark of grace|txt=Marks of grace}}
+|-
+|30
+|[[Varrock Rooftop Course]]
+|270
+|108–110t
+|14,000
+|8–11.3
+|-
+|40
+|[[Canifis Rooftop Course]]
+|240
+|73t (43.8s)
+|19,700
+|16–18
+|}
+"""
+    assert parse_mark_rate(table) == pytest.approx(18.0)
+
+
+def test_a_page_without_the_column_yields_nothing() -> None:
+    assert parse_mark_rate("") is None
