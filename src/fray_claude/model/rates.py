@@ -16,6 +16,7 @@ match JS's `Math.round`/`Number.toString` rather than Python's own.
 from __future__ import annotations
 
 import math
+import re
 
 
 def parse_ratio(raw: str) -> float:
@@ -150,3 +151,38 @@ def find_fraction(value: float, rounded_denominator: bool = False) -> str:
     if rounded_denominator:
         ratio = math.floor(ratio)
     return f"1/{_format_js_number(ratio)}"
+
+
+#: Anything in brackets after the number. `(noted)` says the drop arrives as a
+#: bank note and `(F2P)` that the figure is the free-to-play one; neither
+#: changes *how many* you get, which is the only question here.
+_QUANTITY_NOTE = re.compile(r"\([^)]*\)")
+
+
+def parse_quantity(raw: str) -> float | None:
+    """How many of an item one drop yields: `"5-35 (noted)"` -> 20.
+
+    **A range is its mean.** `5-35` is a uniform roll and the estimator asks
+    "how long to accumulate one", which is a question about the average, not
+    about the unlucky end. `1-2` is 1.5, and a single figure is itself.
+
+    **Noted and unnoted are the same drop.** A note is the bankable form of
+    exactly the same item and converts back one for one, so treating them
+    differently would double-count the drop table's own entries - several
+    monsters list both forms.
+
+    `None` for anything that is not a count. The export has one such value in
+    20,742 (`"1/26.79"`, a rate that has wandered into a quantity field), and
+    guessing at it would be worse than pricing the drop as a single unit.
+    """
+    cleaned = _QUANTITY_NOTE.sub("", raw).replace(",", "").strip()
+    if not cleaned:
+        return None
+    bounds = [part.strip() for part in cleaned.split("-") if part.strip()]
+    try:
+        numbers = [float(part) for part in bounds]
+    except ValueError:
+        return None
+    if not numbers or any(number < 0 for number in numbers):
+        return None
+    return sum(numbers) / len(numbers)

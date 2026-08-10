@@ -504,7 +504,23 @@ def _probability(raw: str, heuristics: Heuristics) -> float | None:
 
 
 def _drop_probability(walk: _Walk, monster: str, item: str) -> float | None:
-    """The chance one kill of `monster` yields `item`, tables included."""
+    """The chance one kill of `monster` yields `item` at all, tables included.
+
+    **A probability, deliberately not an expected yield.** Every caller is
+    asking how long until the item is *obtained*, and that is one roll of the
+    drop table however much the table then hands over. Hydra drops dragon
+    knives at 1/10,000 in stacks of 200-400: you still have to pass the
+    1/10,000, so it is ten thousand kills and not thirty-three. Folding the
+    count in here divided that by three hundred.
+
+    The stack size is real and `rates.parse_quantity` reads it - but it only
+    answers a different question, "how long to accumulate N of these", which
+    arises when an item is a *material* rather than a goal. That belongs to
+    whatever prices materials, not here; the goals this module walks are each
+    satisfied by one.
+
+    Several rows can offer the same item, so the best chance wins.
+    """
     best: float | None = None
     for source in (walk.chunk_info.drops, *_skill_item_tables(walk)):
         rows = _mapping(source, monster)

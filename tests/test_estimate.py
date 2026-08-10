@@ -1275,3 +1275,43 @@ def test_a_shop_is_only_free_if_this_map_can_reach_it() -> None:
     # route at all - which is refused, not priced at zero.
     assert result.buckets["activities"] == 0.0
     assert "Eye of newt" in result.unpriced
+
+
+def test_a_stacked_drop_still_has_to_pass_its_drop_rate() -> None:
+    """**A goal is one drop event, however big the stack.** Hydra drops dragon
+    knives at 1/10,000 and 200 to 400 at a time, but you still have to pass the
+    1/10,000 - so it is ten thousand kills, not thirty-three. Dividing the
+    kills by the stack size is the tempting reading of a quantity field and it
+    is wrong for every goal this module walks, because each is satisfied by
+    obtaining the item once.
+    """
+    info = ChunkInfo(
+        {
+            "drops": {"Hydra": {"Dragon knife": {"200-400": "1/10000"}}},
+            "codeItems": {"bossMonsters": {}},
+            "challenges": {
+                "Extra": {"Obtain a ~|dragon knife|~": {"Items": ["Dragon knife"]}}
+            },
+        }
+    )
+    derived = _derived(
+        monsters=("Hydra",),
+        challenges=ChallengeResult(
+            valid={"Extra": {"Obtain a ~|dragon knife|~": True}}, unsupported=frozenset()
+        ),
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra",
+                    groups=(TaskGroup(name="Extra", active=("Obtain a ~|dragon knife|~",)),),
+                )
+            }
+        ),
+    )
+    heuristics = Heuristics(monsters={"Hydra": Rate(60.0, "test", "exact")})
+
+    result = _run(info, derived, heuristics)
+
+    (knife,) = [item for item in result.items if item.item == "Dragon knife"]
+    assert knife.hours == pytest.approx(10_000 / 60)
+    assert "at 1/10,000" in knife.detail

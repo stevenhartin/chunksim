@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 from fray_claude.model.rates import (
     build_rare_drop_num,
     build_secondary_primary_num,
     find_fraction,
     looks_non_numeric,
+    parse_quantity,
     parse_ratio,
     secondary_primary_denominator,
 )
@@ -110,3 +113,32 @@ def test_a_zero_denominator_does_not_disturb_ordinary_rates() -> None:
     assert parse_ratio("1/128") == 1 / 128
     assert parse_ratio("~1/50") == 1 / 50
     assert math.isnan(parse_ratio("Always"))
+
+
+# --- how many one drop yields ---------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("1", 1.0),
+        ("2", 2.0),
+        ("1-2", 1.5),
+        ("5-35 (noted)", 20.0),          # a range is its mean
+        ("1 (noted)", 1.0),              # a note is the same item
+        ("5 (Noted)", 5.0),              # …whatever its capitalisation
+        ("5 (noted) (F2P)", 5.0),        # …and whatever else is annotated
+        ("200-400", 300.0),
+        ("1,000-2,000", 1500.0),         # thousands separators
+    ],
+)
+def test_a_quantity_is_its_mean_and_a_note_is_the_same_item(raw: str, expected: float) -> None:
+    assert parse_quantity(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["1/26.79", "", "   ", "some", "-"])
+def test_a_quantity_that_is_not_a_count_is_refused(raw: str) -> None:
+    """One value in the export's 20,742 is a rate that wandered into a quantity
+    field. Guessing at it would be worse than pricing the drop as a single
+    unit, which is what `None` makes the caller do."""
+    assert parse_quantity(raw) is None
