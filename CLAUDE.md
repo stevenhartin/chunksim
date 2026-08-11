@@ -977,11 +977,29 @@ rather match upstream's answers exactly.
 So the skill was never unreachable in the sense of "unmodelled" - the nine joined barracuda-trial
 rates and the shipwrecks' guide rates are spendable now, on any map that reaches the Shipyard.
 
-**`AnySalvagingHook[+]` was a false alarm and this file said so twice.** It is not a family whose
-value is `null`; it is **not in `itemsPlus` at all**, and **no challenge in the export requires it** -
-so it gates nothing. The hooks themselves are ordinary Construction buildables
-(`Build a ~|bronze salvaging hook|~` through dragon), declaring `Output Object` rather than `Output`
-like every other Construction row.
+**Sailing still does not price, and saying otherwise was this file's third wrong claim about it.**
+Opening the Shipyard makes 174 Sailing challenges valid on the uber map; **9 of them are `Primary`
+and not one has a rate**, so `training_options` returns nothing, the climb reads 13,034h at the floor
+and `UNRATED_SKILLS` goes on refusing it - correctly, since "no *reachable* method has a rate" is
+still exactly true. The rated methods and the reachable methods are disjoint sets, for two unrelated
+reasons:
+
+- **The nine barracuda trials are `Primary` and rated** (`Complete ~|The Gwenith Glide|~ at Marlin
+  rank`, 184,369/hr down to 19,342) **and invalid**, because each gates on a long list of specific
+  *water sections* - the race course - and every one has to be reachable.
+- **The eight shipwrecks are `Primary` and rated** (fremennik 51,708, barracuda 10,230) **and
+  invalid**, because each declares `Objects: ["AnySalvagingHook[+]", "<wreck>"]`.
+
+**`AnySalvagingHook[+]` is real, and the note calling it a false alarm was wrong.** It resolves
+through **`objectsPlus`** - not `itemsPlus`, where it is a stray `null` - to the seven hooks, and
+those are ordinary Construction buildables (`Build a ~|bronze salvaging hook|~` through dragon,
+declaring `Output Object` like every Construction row) wanting a boat, planks, nails, bars and rope.
+The error was searching only `Items` for the family: it is an **`Objects`** requirement, and 8
+challenges carry it. So the chain is sound and simply not yet walked end to end - build a hook and
+the shipwrecks light up with rates already scraped.
+
+That is the shape of the next piece of Sailing work: not a missing rate and not a missing route, but
+a Construction build standing between the two.
 
 **A computed rate slower than the 1,000/hr floor is refused.** The floor is a deliberate stand-in for
 ignorance, not a speed, and a computed number below it says the model is missing something about that
