@@ -149,7 +149,7 @@ Five things that cut across modules — the first three because each has already
 | `remote/wiki.py` | Wikitext template parsing, plus `map_tile_version` over the map page's rendered *HTML*. Pure. Quest length is in `{{Quest details}}`, **not** `{{Infobox Quest}}` — the tempting wrong template has no `length` and so returns `None` for every quest without erroring. |
 | `model/experience.py` | The exact 1–99 XP curve, closed-form. **Not a heuristic and not overridable** — that separation from `heuristics.py` is the point of the module. |
 | `remote/scrape.py` | The ~18 requests that build the scraped layer, and the coverage it reports. **Both apps run it** — `fray heuristics` and the GUI's Maps tab — so the two cannot write different files. Decides no rate; `heuristics.py` does that. |
-| `remote/skill_tables.py` | Agility, Thieving, Firemaking, **Woodcutting**, **Hunter** and four **Fishing** rates, from the wiki tables (`Shortcuts`, `Agility`, `Stall/Thievable`, `Thieving`). Pure wikitext-table parsing with a depth-aware cell splitter, because `{{Coins\|{{GEP\|x\|10*13.8}}}}` is full of `\|` that are not cell breaks. **These are the two skills `{{Recipe}}` cannot describe** - both have zero rows in the wiki's recipe bucket. Owns `COURSE_ALIASES`, the 4 spellings the export gets wrong (`Canafis`), and `parse_woodcutting`, whose 16 rows join **all 16** on `Output` and take the **bottom** of a published range because the top is 2-tick manipulation. `parse_hunter`/`parse_fishing` are the odd ones: their tables are `level -> XP/h` curves keyed by the **section heading** that owns them (`_heading_rates`), so they take the first row and the last column - both the conservative end. Fishing joins only the four headings naming one fish; the rest name techniques covering several. |
+| `remote/skill_tables.py` | Agility, Thieving, Firemaking, **Woodcutting**, **Hunter**, four **Fishing** and three **Mining** rates, from the wiki tables (`Shortcuts`, `Agility`, `Stall/Thievable`, `Thieving`). Pure wikitext-table parsing with a depth-aware cell splitter, because `{{Coins\|{{GEP\|x\|10*13.8}}}}` is full of `\|` that are not cell breaks. **These are the two skills `{{Recipe}}` cannot describe** - both have zero rows in the wiki's recipe bucket. Owns `COURSE_ALIASES`, the 4 spellings the export gets wrong (`Canafis`), and `parse_woodcutting`, whose 16 rows join **all 16** on `Output` and take the **bottom** of a published range because the top is 2-tick manipulation. `parse_hunter`/`parse_fishing` are the odd ones: their tables are `level -> XP/h` curves keyed by the **section heading** that owns them (`_heading_rates`), so they take the first row and the last column - both the conservative end. Fishing joins only the four headings naming one fish; the rest name techniques covering several. |
 | `remote/stores.py` | What a shop charges and **in what currency**, from the `storeline` Bucket. 6,326 lines, of which 4,438 are coins and 126 Tokkul; the rest are points and tickets nobody converts. The API caps a query at 5,000 rows whatever `limit` says, so it pages with `offset`. Joins 403 of the export's 435 shops and prices 3,798 of its 4,163 stock lines. |
 | `remote/farming.py` | The wiki calculator's crop table, `Module:Skill calc/Farming`, read as raw Lua - 76 crops with level, per-item xp, plant xp, seed and patch type. Parsed by **brace matching, not by splitting on `name =`**: every crop's `materials` has a name of its own, and a split ends each crop before the `type` that says which patch it goes in. |
 | `costing/farming.py` | Farming as a **schedule rather than a rate**. Owns `DEFAULT_HARVESTS_PER_DAY` - fruit tree 1, tree 3, cactus 3, bush 3, allotment 8, herb 8, hardwood 1/3, redwood 1/7 - and reports two numbers that measure different things: `active_hours` (clicking, goes in the bucket) and `days` (calendar, reported beside it and never added). Hops, flowers, belladonna, spirit trees and celastrus are **absent** from the schedule rather than zeroed. |
@@ -421,8 +421,8 @@ whatever else you train, because in the game it comes free with it - see `hitpoi
 `slayer_credit` below. Measured against a known
 figure it did not see: Magic came out at 200,228/hr barraging, where the community quotes 200-250k.
 
-**Woodcutting, Hunter and part of Fishing are priced off their own training pages; Mining is not -
-which is a measurement, not an omission.** The obvious model for a gathering skill is
+**All four gathering skills are priced off their own training pages now.** Mining was refused twice
+before that, and both refusals were wrong in the same way - see below. The obvious model for a gathering skill is
 `actions_per_hour = f(level, tool_tier, node_count)`, and the export has the node counts. It does not
 survive contact with the data: dividing each already-rated method's xp/hr by the wiki calculator's
 xp-per-action gives an implied actions/hour spanning **6.2x in Woodcutting, 10x in Fishing and 21.5x
@@ -436,14 +436,19 @@ fewer - so xp/hr is the quantity the game holds roughly steady and the one worth
 parameter **is** the export's `Output`, so all sixteen rows join exactly and none is left over.
 Woodcutting went from 4 rated methods of 53 and **301.0h** to 17 and **176.4h**, every band `exact`.
 Mining's ore table and Fishing's fish table publish experience per *action* only - the figure
-`Module:Skill calc` already carries - so they stay on their guide joins rather than being given an
-invented factor. Their pages *do* carry hourly figures and they still do not join: Mining's are in a
-`! Method ! Levels ! XP/h !` table keyed by a prose technique name (`Motherlode Mine`, 3-tick
-granite), and Fishing's are `level -> XP/h` curves belonging to whichever section they sit in. Both
-are the fuzzy join this project refuses.
+`Module:Skill calc` already carries - so nothing can be recovered from those without inventing the
+missing factor.
 
-**Hunter and four Fishing methods join on the section heading, which is the one part of that shape
-that is structure rather than prose.** `Hunter training` (not `Pay-to-play Hunter training`, which does not exist) keys its
+**Mining was then refused twice on that basis, and the second refusal was a mistake worth recording.**
+Its page carries hourly figures in a `! Method ! Levels ! XP/h !` summary keyed by a prose method
+name, which genuinely does not join - and reading that, this file twice concluded the page was
+unusable. What both passes missed is the shape already proven on Hunter: **three of its section
+headings name a rock the export names** (`Granite`, `Gem rocks`, `Calcified rocks`), each owning a
+`level -> XP/h` table. `MINING_BY_ROCK` is that list. The lesson is narrow and worth keeping: a page
+having one unjoinable table says nothing about its other tables.
+
+**Hunter, four Fishing methods and three Mining ones join on the section heading, which is the one
+part of that shape that is structure rather than prose.** `Hunter training` (not `Pay-to-play Hunter training`, which does not exist) keys its
 tables the same way Fishing's are - `Hunter level -> XP/h` - but the technique is named by the
 wikitext heading owning the table, and four of the six headings name a creature the export names
 too: `Black chinchompas`, `Maniacal monkeys`, `Carnivorous chinchompas`, `Herbiboar`. The join is a
@@ -484,7 +489,15 @@ cover a method: the salmon rate in use is 25,432 against the page's own 25,000 A
 `verf-sim/run-001`'s Fishing 1 -> 99 at **512.7h** is corroborated by a source it does not use. The
 3-tick column says 45,000 and is excluded on the same grounds as Woodcutting's teak.
 
-**It moves nothing today and is coverage insurance rather than a correction**, which is worth saying
+**Mining's iron rate was a *wrong* number rather than a missing one**, and that is the correction
+that moved a total. The scrape joined `Money making guide/Mining iron ore (free-to-play)` and read
+**19,600**, where the pay-to-play page's own summary states 45,000-55,000 below level 60 and
+70,000-80,000 from 60 in the Mining Guild. A hand entry in `heuristics/overrides.json` takes the
+bottom of the below-60 range, per this project's convention on published ranges, and **Mining 1 -> 99
+on `verf-sim/run-001` went 401.8h -> 289.9h**. Granite at 87,000 is not reachable on that map, so
+that figure is the iron fix alone.
+
+**The rest of it moves nothing today and is coverage insurance rather than a correction**, which is worth saying
 plainly: none of the eight is reachable on any cached map, so Hunter still walks at 22,176/hr on
 `verf-sim/run-001` and its 609h stands. That number looks wrong and may well be right - a map with
 no chinchompas, no Herbiboar and no maniacal monkeys really is stuck with butterfly nets, and the

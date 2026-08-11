@@ -1,93 +1,100 @@
 {
+  "currencies": {},
   "levels": {},
-  "quests": {},
   "monsters": {
     "Evil chicken outfit loot": {
-      "value": 1.0,
+      "match": "exact",
       "source": "hand: bird's egg drop rate, ~1/hr while woodcutting",
-      "match": "exact"
+      "value": 1.0
     }
   },
+  "quests": {},
+  "rarities": {},
+  "slayer": {},
   "training": {
+    "Burn wood at ~|Wintertodt|~": {
+      "Firemaking": {
+        "match": "exact",
+        "source": "hand: Wintertodt, stated",
+        "value": 400000
+      }
+    },
     "Complete a beginner contract for ~|Mahogany Homes|~": {
       "Construction": {
-        "value": 30000,
+        "match": "exact",
         "source": "wiki:Mahogany Homes",
-        "match": "exact"
+        "value": 30000
       }
     },
     "Complete a novice contract for ~|Mahogany Homes|~": {
       "Construction": {
-        "value": 65000,
+        "match": "exact",
         "source": "wiki:Mahogany Homes",
-        "match": "exact"
+        "value": 65000
       }
     },
     "Complete an adept contract for ~|Mahogany Homes|~": {
       "Construction": {
-        "value": 130000,
+        "match": "exact",
         "source": "wiki:Mahogany Homes",
-        "match": "exact"
+        "value": 130000
       }
     },
     "Complete an expert contract for ~|Mahogany Homes|~": {
       "Construction": {
-        "value": 165000,
+        "match": "exact",
         "source": "wiki:Mahogany Homes",
-        "match": "exact"
-      }
-    },
-    "Burn wood at ~|Wintertodt|~": {
-      "Firemaking": {
-        "value": 400000,
-        "source": "hand: Wintertodt, stated",
-        "match": "exact"
+        "value": 165000
       }
     },
     "Forge a bronze ~|preform|~ in the Giants' Foundry": {
       "Smithing": {
-        "value": 48000,
+        "match": "exact",
         "source": "wiki:Giants' Foundry",
-        "match": "exact"
-      }
-    },
-    "Forge an iron ~|preform|~ in the Giants' Foundry": {
-      "Smithing": {
-        "value": 48000,
-        "source": "wiki:Giants' Foundry",
-        "match": "exact"
-      }
-    },
-    "Forge a steel ~|preform|~ in the Giants' Foundry": {
-      "Smithing": {
-        "value": 85000,
-        "source": "wiki:Giants' Foundry",
-        "match": "exact"
+        "value": 48000
       }
     },
     "Forge a mithril ~|preform|~ in the Giants' Foundry": {
       "Smithing": {
-        "value": 135000,
+        "match": "exact",
         "source": "wiki:Giants' Foundry",
-        "match": "exact"
-      }
-    },
-    "Forge an adamant ~|preform|~ in the Giants' Foundry": {
-      "Smithing": {
-        "value": 195000,
-        "source": "wiki:Giants' Foundry",
-        "match": "exact"
+        "value": 135000
       }
     },
     "Forge a rune ~|preform|~ in the Giants' Foundry": {
       "Smithing": {
-        "value": 276000,
+        "match": "exact",
         "source": "wiki:Giants' Foundry",
-        "match": "exact"
+        "value": 276000
+      }
+    },
+    "Forge a steel ~|preform|~ in the Giants' Foundry": {
+      "Smithing": {
+        "match": "exact",
+        "source": "wiki:Giants' Foundry",
+        "value": 85000
+      }
+    },
+    "Forge an adamant ~|preform|~ in the Giants' Foundry": {
+      "Smithing": {
+        "match": "exact",
+        "source": "wiki:Giants' Foundry",
+        "value": 195000
+      }
+    },
+    "Forge an iron ~|preform|~ in the Giants' Foundry": {
+      "Smithing": {
+        "match": "exact",
+        "source": "wiki:Giants' Foundry",
+        "value": 48000
+      }
+    },
+    "Mine ~|iron ore|~": {
+      "Mining": {
+        "match": "exact",
+        "source": "wiki:Pay-to-play Mining training, below level 60",
+        "value": 45000
       }
     }
-  },
-  "slayer": {},
-  "rarities": {},
-  "currencies": {}
+  }
 }

@@ -731,21 +731,25 @@ def test_a_table_answers_only_for_its_own_skill() -> None:
     assert training["Burn ~|magic logs|~"]["Firemaking"]["source"] == "wiki:burning"
 
 
-def test_only_mining_is_left_without_a_table() -> None:
-    """**Mining is absent on purpose.** Its per-item table publishes
-    experience per *action* - the figure `Module:Skill calc` already carries -
-    and the implied actions per hour spans 21x within the skill (65/hr for
-    runite against 1,400 for a shooting star). Its page does carry hourly
-    figures, in a `! Method ! Levels ! XP/h !` table keyed by a prose
-    technique name, which joins to nothing structurally.
+def test_every_gathering_skill_now_has_a_table() -> None:
+    """**Mining was refused twice and the refusal was wrong both times.**
 
-    Hunter and Fishing key their rate tables by **section heading**, which is
-    wikitext structure. Every one of Hunter's six names a technique that is a
-    creature; only four of Fishing's twelve name one fish, and
-    `FISHING_BY_FISH` is that list - the rest cover several fish each.
+    Its per-item table publishes experience per *action* (the figure
+    `Module:Skill calc` already carries) and its summary table keys hourly
+    figures by a prose method name - and from those two it was concluded that
+    nothing joined. What that missed is the shape already proven on Hunter:
+    three of its **section headings** name a rock the export names, each
+    owning a `level -> XP/h` table of its own.
+
+    So all four gathering skills have a table now. What differs is how many
+    headings name something the export does: every one of Hunter's six, four
+    of Fishing's twelve (`FISHING_BY_FISH`), three of Mining's six
+    (`MINING_BY_ROCK`). The rest name techniques covering several things each,
+    and are still refused.
     """
     assert set(TABLE_KINDS) == {
         "Agility", "Thieving", "Firemaking", "Woodcutting", "Hunter", "Fishing",
+        "Mining",
     }
 
 

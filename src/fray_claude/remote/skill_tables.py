@@ -69,6 +69,17 @@ FIREMAKING_PAGE = "Firemaking"
 WOODCUTTING_PAGE = "Pay-to-play Woodcutting training"
 HUNTER_PAGE = "Hunter training"
 FISHING_PAGE = "Pay-to-play Fishing training"
+MINING_PAGE = "Pay-to-play Mining training"
+
+#: The Mining headings that name a rock the export also names, mapped to the
+#: export's name for it. `_heading_rates` singularises a heading, so these
+#: keys are the singular forms; the values are what the challenge carries,
+#: which is plural for two of the three.
+MINING_BY_ROCK: dict[str, str] = {
+    "Granite": "Granite",
+    "Gem rock": "Gem rocks",
+    "Calcified rock": "Calcified rocks",
+}
 
 #: The Fishing headings that name one fish rather than a technique, mapped to
 #: the export's name for it. The rest cover several fish each and are
@@ -107,6 +118,7 @@ PAGES: tuple[str, ...] = (
     WOODCUTTING_PAGE,
     HUNTER_PAGE,
     FISHING_PAGE,
+    MINING_PAGE,
 )
 
 #: Export course name -> the wiki's spelling. **Only for the ones that differ.**
@@ -500,6 +512,35 @@ def _barbarian_rows(text: str) -> tuple[SkillRow, ...]:
     return ()
 
 
+def parse_mining(text: str) -> tuple[SkillRow, ...]:
+    """Mining rates, for the three headings that name a rock.
+
+    **An earlier pass refused this page and was wrong.** It reads the ore
+    table (experience per *action*, which `Module:Skill calc` already carries)
+    and the `! Method ! Levels ! XP/h !` summary (prose method names), and
+    concluded from those two that nothing joined. It stopped before the
+    section headings - the one shape already proven to work on Hunter - where
+    `Granite`, `Gem rocks` and `Calcified rocks` each own a `level -> XP/h`
+    table and each names a rock the export names.
+
+    **The tick-manipulated column comes first here**, as it does on the Hunter
+    page and unlike the Fishing one, so `_heading_rates`' last-column rule
+    already picks the honest figure: granite 87,000 rather than the 134,498
+    tick-perfect benchmark, gem rocks 46,000 rather than 93,000, calcified
+    23,500 rather than 40,000.
+
+    Still unjoined and named as such: iron ore, sandstone and Motherlode Mine
+    have their rates only in that summary table's prose, in ranges qualified by
+    level and by gear (`45,000-55,000 below level 60`). Iron's is the one that
+    matters most and is a hand entry in `heuristics/overrides.json` instead.
+    """
+    return tuple(
+        replace(row, name=MINING_BY_ROCK[row.name])
+        for row in _heading_rates(text)
+        if row.name in MINING_BY_ROCK
+    )
+
+
 def parse_hunter(text: str) -> tuple[SkillRow, ...]:
     """What each Hunter technique pays an hour, at the level it opens.
 
@@ -542,4 +583,5 @@ def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
         "woodcutting": parse_woodcutting(pages.get(WOODCUTTING_PAGE, "")),
         "hunter": parse_hunter(pages.get(HUNTER_PAGE, "")),
         "fishing": parse_fishing(pages.get(FISHING_PAGE, "")),
+        "mining": parse_mining(pages.get(MINING_PAGE, "")),
     }

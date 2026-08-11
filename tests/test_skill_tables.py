@@ -12,6 +12,7 @@ import pytest
 
 from fray_claude.remote.skill_tables import (
     parse_fishing,
+    parse_mining,
     parse_hunter,
     parse_woodcutting,
     parse_courses,
@@ -512,3 +513,52 @@ def test_barbarian_fishing_is_three_methods_not_one_curve() -> None:
     # Level 99 has no challenge of its own and is dropped rather than
     # inflating sturgeon past the level it is actually used from.
     assert all(row.level != 99 for row in rows.values())
+
+
+def test_mining_joins_the_headings_that_name_a_rock() -> None:
+    """**An earlier pass refused this page and was wrong.** It read the ore
+    table (experience per action) and the prose summary, and concluded from
+    those two that nothing joined - stopping before the section headings, the
+    one shape already proven on Hunter.
+
+    The tick-manipulated column comes *first* here, as on the Hunter page, so
+    the last-column rule picks the honest figure rather than the benchmark.
+    """
+    text = """
+== Levels 45-99: Granite ==
+{|class="wikitable"
+! {{SCP|Mining}} level
+! {{SCP|Mining}} XP/h
+! {{SCP|Smithing}} XP/h
+|-
+| 45
+| 87,000
+| {{NA}}
+|}
+
+== Levels 40-99: Gem rocks ==
+{|class="wikitable"
+!{{SCP|Mining}} level
+!XP/h (3-tick)
+!XP/h (w/o 3-tick)
+|-
+|50
+|93,000
+|46,000
+|}
+
+== Levels 30-99: Motherlode Mine ==
+{|class="wikitable"
+! {{SCP|Mining}} level
+! XP/h
+|-
+|30
+|30,000
+|}
+"""
+    rows = {row.name: row.xp_per_hour for row in parse_mining(text)}
+    # Named after a rock the export names, under the export's own spelling.
+    assert rows == {"Granite": 87_000.0, "Gem rocks": 46_000.0}
+    # Not the 3-tick column, and not a heading naming a place rather than a rock.
+    assert 93_000.0 not in rows.values()
+    assert not any("motherlode" in name.lower() for name in rows)
