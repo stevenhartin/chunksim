@@ -462,13 +462,40 @@ part of that shape that is structure rather than prose.** `Hunter training` (not
 tables the same way Fishing's are - `Hunter level -> XP/h` - but the technique is named by the
 wikitext heading owning the table, and four of the six headings name a creature the export names
 too: `Black chinchompas`, `Maniacal monkeys`, `Carnivorous chinchompas`, `Herbiboar`. The join is a
-whole-string comparison after two stated normalisations - the `Levels 73-99: ` prefix comes off, and
-a plural `s` does - plus `heuristics._join_keys` dropping the export's ` (Hunter)` skill suffix. The
-two that miss (`Drift net fishing`, `Hunters' Rumours`) are activities with no one creature to name,
-which is a correct miss. **The first row and the last column**, both conservative: the lowest level
-the table quotes is the rate at the level the method opens, and the last `XP/h` column is `Solo`
-rather than `Alt` and `No tick manip.` rather than `Tick manip.` - the same reasoning as
-`parse_woodcutting` taking the bottom of its range.
+whole-string comparison after one stated normalisation - the `Levels 73-99: ` prefix comes off -
+plus `heuristics._join_keys` dropping the export's ` (Hunter)` skill suffix. **A heading is offered
+under both its own spelling and its singular**, because no rule tells the two apart: stripping the
+`s` from `Sapphire glacialis` gives `glaciali`, which joins nothing while looking like it tried.
+The two tabled sections that miss (`Drift net fishing`, `Hunters' Rumours`) are activities with no
+one creature to name, which is a correct miss. **The first row and the last column**, both
+conservative: the lowest level the table quotes is the rate at the level the method opens, and the
+last `XP/h` column is `Solo` rather than `Alt` and `No tick manip.` rather than `Tick manip.` - the
+same reasoning as `parse_woodcutting` taking the bottom of its range.
+
+**Six of the Hunter page's twenty-two sections hold a table, and reading only those was most of why
+Hunter stayed unrated.** The other sixteen state their rate in words - `Players can gain 31,000
+experience per hour with two traps` - so `skill_tables._prose_rates` is the one parser here that
+reads prose. That is a real loss of robustness and it is bounded on purpose: the *heading* still
+supplies the name and the level, so a rephrasing costs a rate rather than mis-joining one; the
+number must sit immediately before the words `experience per hour`; the **lowest** figure a section
+quotes wins, since a section states a range, then a better rate with more traps, then a better one
+with an alt account feeding supplies; and a section holding a table is skipped outright, so the
+table's whole curve always beats the prose's single ceiling (black chinchompas tabulate 145,000 at
+73 and their prose quotes the level-99 cap of 300,000).
+
+**Falconry is a third shape, `_quarry_rows`** - one section covering three kebbits, each with its
+own bullet, level range and rate, where the bullet's wiki link names the creature. Together the
+three readers take Hunter from **4 joined names to 17**, and 10 rated methods of 88 to **27**.
+Measured: **Hunter 1 -> 99 was at the floor on `fray`** - 13,034h, no rated option at all - and is
+now **177.6h**; on `verf-sim/run-001` it goes **609.2h -> 459.8h**.
+
+**Two Hunter misses are deliberate and worth stating, because the obvious fix makes one worse.**
+`Catch an ~|embertailed jerboa|~` carries `Output: Jerboa tail` and no `NPCs`, so nothing it offers
+names the creature; adding the task name's own `~|...|~` span as a join key recovers it and *also*
+joins all four `Hunters' Rumour` tiers to one rate, which is wrong - the wiki tabulates rumours only
+from level 72 and marks the page `{{Incomplete|Missing pre-99 XP rates}}`, so novice and adept have
+no published rate at all. One right join against four confident wrong ones is the trade this project
+refuses everywhere else, so the jerboa stays unrated.
 
 **Fishing gets the same treatment for the four headings that name one fish** - `Monkfish`,
 `Karambwan`, `Infernal eel`, `Sacred eel` - through `FISHING_BY_FISH`, which maps each to the
@@ -507,11 +534,12 @@ bottom of the below-60 range, per this project's convention on published ranges,
 on `verf-sim/run-001` went 401.8h -> 289.9h**. Granite at 87,000 is not reachable on that map, so
 that figure is the iron fix alone.
 
-**The rest of it moves nothing today and is coverage insurance rather than a correction**, which is worth saying
-plainly: none of the eight is reachable on any cached map, so Hunter still walks at 22,176/hr on
-`verf-sim/run-001` and its 609h stands. That number looks wrong and may well be right - a map with
-no chinchompas, no Herbiboar and no maniacal monkeys really is stuck with butterfly nets, and the
-value of the join is that the moment a map reaches one of those, the climb reprices itself.
+**The tabled joins alone moved nothing, which is what the prose walk above then changed.** None of
+the eight was reachable on either cached map, so Hunter went on walking at 22,176/hr on
+`verf-sim/run-001` for 609h - a map with no chinchompas, no Herbiboar and no maniacal monkeys really
+is stuck with butterfly nets. What that showed is that the *rated set was too small to contain a
+map's best method*, not that the joins were wrong; sixteen more creatures is what made the same
+machinery reprice both maps.
 
 **The export's skill suffix is stripped as a *second* join key, never a first.** `Black chinchompa
 (Hunter)` is the creature where the bare name is the item. The suffix list is skill names only, and

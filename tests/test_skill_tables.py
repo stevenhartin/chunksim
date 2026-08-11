@@ -372,7 +372,15 @@ def test_hunter_rates_are_read_off_the_section_headings() -> None:
 |}
 """
     rows = {row.name: row for row in parse_hunter(text)}
-    assert set(rows) == {"Maniacal monkey", "Black chinchompa"}, "the heading is the key"
+    # **Both spellings, because a heading may already be singular.** Stripping
+    # a trailing `s` from `Sapphire glacialis` gives `glaciali`, which joins
+    # nothing while looking like it tried, and no rule tells the two apart.
+    assert set(rows) == {
+        "Maniacal monkey",
+        "Maniacal monkeys",
+        "Black chinchompa",
+        "Black chinchompas",
+    }
 
     # The lowest level the table quotes - the rate at the level it opens,
     # which is the conservative end of a rate that climbs with level.
@@ -597,3 +605,85 @@ def test_herblore_reads_the_potion_and_not_its_ingredients() -> None:
     assert rows["Attack potion"].xp_per_hour == 62_500.0
     assert rows["Attack potion"].level == 3
     assert rows["Attack potion(3)"].xp_per_hour == 62_500.0
+
+
+def test_a_hunter_section_with_no_table_is_read_from_its_prose() -> None:
+    """**Only six of the Hunter page's twenty-two sections hold a table**, so
+    reading tables alone left 10 rated of its 88 methods. The rest state the
+    rate in words, and the heading still supplies the name and the level.
+
+    The lowest figure the section quotes wins - a section states a range, a
+    better rate with more traps, and a better one still with an alt account
+    feeding supplies, and the bottom of a published range is the end this
+    project takes everywhere else.
+    """
+    text = """
+== Levels 21-39: Red crabs ==
+For initial setup bring a [[hammer]], a [[saw]], 2 [[plank]]s and 4 [[nails]].
+Players can gain 31,000 experience per hour with two traps.
+
+== Levels 29-43: Swamp lizards ==
+Players can gain around 20,000-28,000 experience per hour at levels 29-37.
+With three traps, the rates increase to around 40,000-45,000 experience per hour.
+"""
+    rows = {row.name: row for row in parse_hunter(text)}
+
+    assert rows["Red crab"].level == 21, "the heading opens the method"
+    assert rows["Red crab"].xp_per_hour == 31_000.0
+
+    # The low end of the first range, not the high end and not the three-trap
+    # figure the same section also states.
+    assert rows["Swamp lizard"].xp_per_hour == 20_000.0
+
+    # `500 coins` and `4 seconds` are prose too - the words must be adjacent.
+    assert all(row.xp_per_hour != 2.0 for row in rows.values())
+
+
+def test_a_tabled_hunter_section_keeps_its_table_rather_than_its_prose() -> None:
+    """A table resolves a whole curve where the prose states one ceiling, so
+    the two readers must never describe the same technique.
+
+    Black chinchompas are the case: the section tabulates 145,000 at level 73
+    and its prose quotes the level-99 cap of 300,000. Reading the prose there
+    would price the whole climb at a rate reachable only at 99.
+    """
+    text = """
+== Levels 73-99: Black chinchompas ==
+At level 99, the maximum experience rate caps at around 300,000 experience per hour.
+{|class="wikitable"
+! {{SCP|Hunter}} level
+! XP/h
+|-
+|73
+|145,000
+|}
+"""
+    rows = {row.name: row for row in parse_hunter(text)}
+    assert rows["Black chinchompa"].xp_per_hour == 145_000.0
+    assert rows["Black chinchompa"].level == 73
+
+
+def test_falconry_is_three_creatures_in_one_section() -> None:
+    """**The heading names a technique, so it joins nothing** - exactly like
+    Fishing's `Fly fishing`. But each bullet links the kebbit it describes and
+    carries its own level range and rate, and the export has a challenge per
+    kebbit, so the bullet is the row and the link is the name.
+    """
+    text = """
+== Levels 43-49: Falconry ==
+The following rates can be expected while training here:
+* [[Spotted kebbit]]s (43-57) give 60,000 up to 70,000.
+* [[Dark kebbit]]s (57-60+) give 75,000 up to 80,000.
+* [[Dashing kebbit]]s (69+) give 85,000 up to 95,000.
+"""
+    rows = {row.name: row for row in parse_hunter(text)}
+    assert {"Spotted kebbit", "Dark kebbit", "Dashing kebbit"} <= set(rows)
+
+    # The bottom of each published range, and the level the bullet opens at -
+    # including `(69+)`, which states no upper bound.
+    assert rows["Spotted kebbit"].level == 43
+    assert rows["Spotted kebbit"].xp_per_hour == 60_000.0
+    assert rows["Dashing kebbit"].level == 69
+    assert rows["Dashing kebbit"].xp_per_hour == 85_000.0
+
+    assert "Falconry" not in rows, "a technique names no creature"

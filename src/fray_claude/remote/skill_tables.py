@@ -73,9 +73,9 @@ MINING_PAGE = "Pay-to-play Mining training"
 HERBLORE_PAGE = "Herblore training"
 
 #: The Mining headings that name a rock the export also names, mapped to the
-#: export's name for it. `_heading_rates` singularises a heading, so these
-#: keys are the singular forms; the values are what the challenge carries,
-#: which is plural for two of the three.
+#: export's name for it. `_names` offers a heading under both spellings, so
+#: these keys are the singular ones; the values are what the challenge
+#: carries, which is plural for two of the three.
 MINING_BY_ROCK: dict[str, str] = {
     "Granite": "Granite",
     "Gem rock": "Gem rocks",
@@ -385,9 +385,40 @@ _HEADING_LEVELS = re.compile(r"^Levels?\s+[\d/\u2013\u2014-]+\s*:\s*", re.I)
 _HEADING = re.compile(r"^={2,4}\s*(.+?)\s*={2,4}\s*$", re.M)
 
 
-def _singular(name: str) -> str:
-    """`Black chinchompas` -> `Black chinchompa`. Plural `s` only."""
-    return name[:-1] if name.endswith("s") and not name.endswith("ss") else name
+#: A prose rate, and the *low* end where the page publishes a range:
+#: `31,000 experience per hour`, `20,000-28,000 experience per hour`. The
+#: words are required adjacent, so `500 coins` and `4 seconds` cannot match.
+_PROSE_RATE = re.compile(
+    r"([\d,]{3,})(?:\s*[\u2013\u2014-]\s*[\d,]{3,})?\s*"
+    r"(?:experience|xp)\s+per\s+hour",
+    re.I,
+)
+
+#: A falconry bullet: `* [[Spotted kebbit]]s (43-57) give 60,000 up to 70,000.`
+_QUARRY_BULLET = re.compile(r"^\*\s*\[\[([^\]|]+?)(?:\|[^\]]*)?\]\]", re.M)
+
+
+def _names(title: str) -> tuple[str, ...]:
+    """A heading's name and its singular, because a heading may be either.
+
+    `Black chinchompas` is plural and `Sapphire glacialis` is not, and no rule
+    tells them apart - stripping a trailing `s` from the second gives
+    `glaciali`, which joins nothing while looking like it tried. So both
+    spellings are offered and the export picks, the same way `parse_herblore`
+    emits a potion under its bare and its dosed name.
+    """
+    name = _HEADING_LEVELS.sub("", title).strip()
+    bare = name[:-1] if name.endswith("s") and not name.endswith("ss") else name
+    return (name,) if bare == name else (name, bare)
+
+
+def _sections(text: str) -> list[tuple[str, str]]:
+    """Each section of `text`, as (heading, body including the heading)."""
+    marks = [(m.start(), m.group(1)) for m in _HEADING.finditer(text)]
+    return [
+        (title, text[start : marks[index + 1][0] if index + 1 < len(marks) else len(text)])
+        for index, (start, title) in enumerate(marks)
+    ]
 
 
 def _heading_rates(text: str) -> tuple[SkillRow, ...]:
@@ -400,11 +431,8 @@ def _heading_rates(text: str) -> tuple[SkillRow, ...]:
     names - see each caller.
     """
     found: list[SkillRow] = []
-    marks = [(m.start(), m.group(1)) for m in _HEADING.finditer(text)]
-    for index, (start, title) in enumerate(marks):
-        end = marks[index + 1][0] if index + 1 < len(marks) else len(text)
-        name = _singular(_HEADING_LEVELS.sub("", title).strip())
-        for table in tables(text[start:end]):
+    for title, body in _sections(text):
+        for table in tables(body):
             if "XP/h" not in table:
                 continue
             columns = [
@@ -422,7 +450,7 @@ def _heading_rates(text: str) -> tuple[SkillRow, ...]:
                 ]
                 if level is None or not rates or level > 99:
                     continue
-                found.append(
+                found += [
                     SkillRow(
                         name=name,
                         level=int(level),
@@ -430,8 +458,84 @@ def _heading_rates(text: str) -> tuple[SkillRow, ...]:
                         # cell is `{{Coins|...}}` and carries no bare number.
                         xp_per_hour=rates[-1] if len(columns) > 1 else rates[0],
                     )
-                )
+                    for name in _names(title)
+                ]
                 break  # the lowest level the table quotes
+    return tuple(found)
+
+
+def _prose_rates(text: str) -> tuple[SkillRow, ...]:
+    """The rate a section states in words, for the sections holding no table.
+
+    **Hunter publishes most of its rates in prose**, one section per creature:
+    `Players can gain around 13,000 experience per hour.` The heading is still
+    structure - it names the creature and the level the method opens at - and
+    what changes is only where the number is read from, so this walks the same
+    sections `_heading_rates` does and takes the ones it left behind.
+
+    Two rules, both of them the conservative reading this project already
+    takes elsewhere:
+
+    - **The lowest figure the section quotes.** A section states several: a
+      range (`20,000-28,000`), a better rate with more traps, a better one
+      with an alternate account feeding supplies, a level-99 ceiling. Taking
+      the minimum is the same choice as `parse_woodcutting` taking the bottom
+      of a published range and `_heading_rates` taking a table's first row.
+    - **The level the heading opens at**, since there is no table column to
+      read one from. `Levels 29-43: Swamp lizards` is a level 29 method.
+
+    A section holding an `XP/h` table is skipped, so the two readers never
+    describe the same technique and the table - which resolves a whole curve -
+    always wins.
+    """
+    found: list[SkillRow] = []
+    for title, body in _sections(text):
+        levels = _HEADING_LEVELS.match(title)
+        if levels is None or any("XP/h" in table for table in tables(body)):
+            continue
+        opens = re.findall(r"\d+", levels.group(0))
+        rates = [float(value.replace(",", "")) for value in _PROSE_RATE.findall(body)]
+        if not opens or not rates:
+            continue
+        found += [
+            SkillRow(name=name, level=int(opens[0]), xp_per_hour=min(rates))
+            for name in _names(title)
+        ]
+    return tuple(found)
+
+
+def _quarry_rows(text: str) -> tuple[SkillRow, ...]:
+    """Falconry, whose one section is three creatures in a bulleted list.
+
+    `* [[Spotted kebbit]]s (43-57) give 60,000 up to 70,000.` - the heading
+    names the *technique* and so joins nothing, exactly like Fishing's `Fly
+    fishing`, but each bullet links the creature it describes and the export
+    has a challenge per kebbit. So the bullet is the row here and the link is
+    the name, which is wikitext structure rather than prose.
+
+    The level comes from the bullet's own parenthetical range and the rate is
+    the lowest figure in the bullet, both for the reasons `_prose_rates`
+    states. Bullets naming no creature the export knows simply miss.
+    """
+    found: list[SkillRow] = []
+    for _, body in _sections(text):
+        for line in body.splitlines():
+            bullet = _QUARRY_BULLET.match(line)
+            if bullet is None:
+                continue
+            rest = line[bullet.end() :]
+            # `(43-57)`, and `(69+)` for the one with no upper bound.
+            level = re.search(r"\((\d{1,2})\s*[+\u2013\u2014-]", rest)
+            rates = [float(value.replace(",", "")) for value in re.findall(r"[\d,]{5,}", rest)]
+            if level is None or not rates:
+                continue
+            found.append(
+                SkillRow(
+                    name=bullet.group(1).strip(),
+                    level=int(level.group(1)),
+                    xp_per_hour=min(rates),
+                )
+            )
     return tuple(found)
 
 
@@ -613,10 +717,22 @@ def parse_hunter(text: str) -> tuple[SkillRow, ...]:
     the *section heading* that owns the table, which is wikitext structure
     rather than prose, so the join is a whole-string comparison after two
     stated normalisations: the heading's `Levels 73-99: ` prefix comes off,
-    and a plural `s` does. Four of the six join - `Black chinchompas`,
-    `Maniacal monkeys`, `Carnivorous chinchompas`, `Herbiboar` - and the two
-    that do not are activities with no one creature to name (`Drift net
-    fishing`, `Hunters' Rumours`), which is a correct miss rather than a gap.
+    and a plural `s` does. Four of the six tabled sections join - `Black
+    chinchompas`, `Maniacal monkeys`, `Carnivorous chinchompas`, `Herbiboar` -
+    and the two that do not are activities with no one creature to name
+    (`Drift net fishing`, `Hunters' Rumours`), which is a correct miss.
+
+    **But only six of this page's twenty-two sections hold a table at all**,
+    and reading those alone left 10 rated of Hunter's 88 methods. The rest
+    state their rate in words - `Players can gain 31,000 experience per hour
+    with two traps` - which is why this is the one parser here that reads
+    prose, through `_prose_rates`. That is a real loss of robustness and it is
+    bounded deliberately: the *heading* still supplies the name and the level,
+    so a rephrasing costs a rate rather than mis-joining one, and the number
+    must sit immediately before the words `experience per hour`.
+
+    Falconry is the third shape, `_quarry_rows`: one section covering three
+    kebbits, each with its own bullet, its own level range and its own rate.
 
     **The first row and the last column**, both deliberately conservative and
     both matching decisions already made here. The first row is the lowest
@@ -632,7 +748,9 @@ def parse_hunter(text: str) -> tuple[SkillRow, ...]:
     suffix (`Black chinchompa (Hunter)`), which `heuristics._join_keys`
     strips; nothing about that is done here.
     """
-    return _heading_rates(text)
+    # Prose first, so a name a table also describes keeps the *table*'s
+    # figure - `heuristics._table_rates` builds a dict and the last row wins.
+    return _prose_rates(text) + _quarry_rows(text) + _heading_rates(text)
 
 
 def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
