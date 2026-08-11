@@ -8,6 +8,8 @@ not being read as a spell name.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from fray_claude.costing.combat_xp import (
@@ -26,7 +28,11 @@ from fray_claude.costing.combat_xp import (
     spawn_caps,
 )
 from fray_claude.costing.heuristics import Heuristics, Rate
+from fray_claude.costing.heuristics import spell_materials
 from fray_claude.remote.combat import (
+    SpellCost,
+    parse_cost,
+    parse_spell_costs,
     AttackSpell,
     MonsterStats,
     parse_attack_spells,
@@ -370,3 +376,111 @@ def test_a_finished_skill_takes_none_of_the_pool() -> None:
 
     assert "Attack" not in credit
     assert credit["Defence"] == pytest.approx(1_000.0 * XP_PER_DAMAGE)
+
+
+_ARDOUGNE_COST = (
+    '<span style="white-space:nowrap">   <sup>2</sup>'
+    "[[File:Water rune.png|Water|link=Water rune]]       <sup>2</sup>"
+    "[[File:Law rune.png|Law|link=Law rune]]          </span>"
+)
+
+
+def test_a_spell_cost_reads_its_quantities_and_its_items() -> None:
+    assert parse_cost(_ARDOUGNE_COST) == {"Water rune": 2, "Law rune": 2}
+
+
+def test_a_cost_entry_with_no_superscript_is_one() -> None:
+    """8 of the 201 spells write a single rune with no `<sup>` at all."""
+    cost = '<span style="white-space:nowrap">[[File:Law rune.png|Law|link=Law rune]]</span>'
+
+    assert parse_cost(cost) == {"Law rune": 1}
+
+
+def test_only_the_consumed_span_is_read() -> None:
+    """**The restriction that tells a material from a tool.** The wiki puts a
+    spell's runes in a `white-space:nowrap` span and its required equipment in
+    a `plinkp-template` span after it, so reading the whole field charges Iban
+    Blast for a staff it never uses up.
+    """
+    cost = (
+        '<span style="white-space:nowrap"><sup>5</sup>'
+        "[[File:Fire rune.png|Fire|link=Fire rune]]</span>"
+        '<span class="plinkp-template">[[File:Iban\'s staff.png|link=Iban\'s staff]]</span>'
+    )
+
+    assert parse_cost(cost) == {"Fire rune": 5}
+
+
+def test_a_spell_needs_both_halves_to_be_stored() -> None:
+    """Seconds per XP needs a cost *and* an experience figure; a spell missing
+    either is dropped rather than stored as a zero that would price free."""
+    rows = [
+        {"page_name": "Ardougne Teleport", "json": '{"exp": "61", "cost": %s}'
+         % json.dumps(_ARDOUGNE_COST)},
+        {"page_name": "No cost", "json": '{"exp": "61", "cost": ""}'},
+        {"page_name": "No xp", "json": '{"exp": "", "cost": %s}' % json.dumps(_ARDOUGNE_COST)},
+        {"page_name": "Not json", "json": "{"},
+    ]
+
+    costs = parse_spell_costs(rows)
+
+    assert set(costs) == {"Ardougne Teleport"}
+    assert costs["Ardougne Teleport"].experience == 61.0
+    assert costs["Ardougne Teleport"].items == {"Water rune": 2, "Law rune": 2}
+
+
+def test_a_cast_task_joins_the_spell_page_by_its_own_words() -> None:
+    info = ChunkInfo(
+        {"challenges": {"Magic": {
+            "Cast ~|ardougne teleport|~": {"Level": 51},
+            "Cast ~|ardougne teleport|~ from a spell sack": {"Level": 51},
+        }}}
+    )
+    costs = {"Ardougne Teleport": SpellCost("Ardougne Teleport", 61.0, {"Law rune": 2})}
+
+    joined = spell_materials(info, costs)
+
+    assert set(joined) == {"Cast ~|ardougne teleport|~"}
+    assert joined["Cast ~|ardougne teleport|~"].items == {"Law rune": 2}
+
+
+@pytest.mark.parametrize(
+    ("task", "page"),
+    [
+        ("Cast ~|ape atoll teleport|~", "Ape Atoll Teleport (standard)"),
+        ("Cast ~|fenkenstain's castle teleport|~", "Fenkenstrain's Castle Teleport"),
+        ("Cast ~|teleport block|~", "Tele Block"),
+    ],
+)
+def test_the_three_spellings_the_export_and_the_wiki_disagree_on(task: str, page: str) -> None:
+    """One disambiguated page, one wiki abbreviation and one **export
+    misspelling** - three unrelated causes, which is why it is a table."""
+    info = ChunkInfo({"challenges": {"Magic": {task: {"Level": 1}}}})
+
+    assert spell_materials(info, {page: SpellCost(page, 10.0, {"Law rune": 1})}) != {}
+
+
+@pytest.mark.real_cache
+def test_most_of_the_exports_cast_challenges_have_a_rune_cost(real_export: ChunkInfo) -> None:
+    """Pins the join over the scrape that ships, read back through
+    `heuristics.load` so the test exercises the shape rather than the parse.
+
+    The misses are all `... from a spell sack` and `... from a rune pouch`,
+    where the runes come out of a container rather than being supplied - so a
+    miss is the right answer there, not a gap.
+    """
+    from fray_claude.costing.heuristics import load
+    from fray_claude.store.cache import project_root, read_blob
+
+    priced = load(read_blob("wiki_rates", project_root())["data"]).spell_costs
+    casts = {n for n in real_export.challenges["Magic"] if n.startswith("Cast ")}
+
+    assert len(casts) == 214
+    assert len(priced) == 190
+    assert set(priced) <= casts
+    assert all("spell sack" in n or "rune pouch" in n for n in casts - set(priced))
+    assert priced["Cast ~|varrock teleport|~"].items == {
+        "Air rune": 3,
+        "Fire rune": 1,
+        "Law rune": 1,
+    }

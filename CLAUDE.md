@@ -150,7 +150,7 @@ Five things that cut across modules — the first three because each has already
 | `remote/api.py` | The network. `FetchError`. An unknown map is HTTP 200 + bare `null`, never a 404. Four hosts: Firebase, upstream's `gh-pages`, the OSRS wiki (which **requires** a `User-Agent`) and one published Google Sheet. **The map tiles are a fifth host it never calls** — `MAP_TILE_URL` is a template the browser uses; see the GUI paragraph. |
 | `remote/wiki.py` | Wikitext template parsing, plus `map_tile_version` over the map page's rendered *HTML*. Pure. Quest length is in `{{Quest details}}`, **not** `{{Infobox Quest}}` — the tempting wrong template has no `length` and so returns `None` for every quest without erroring. |
 | `model/experience.py` | The exact 1–99 XP curve, closed-form. **Not a heuristic and not overridable** — that separation from `heuristics.py` is the point of the module. |
-| `remote/scrape.py` | The ~18 requests that build the scraped layer, and the coverage it reports. **Both apps run it** — `fray heuristics` and the GUI's Maps tab — so the two cannot write different files. Decides no rate; `heuristics.py` does that. |
+| `remote/scrape.py` | The ~19 requests that build the scraped layer, and the coverage it reports. **Both apps run it** — `fray heuristics` and the GUI's Maps tab — so the two cannot write different files. Decides no rate; `heuristics.py` does that. |
 | `remote/skill_tables.py` | Agility, Thieving, Firemaking, **Woodcutting**, **Hunter**, **Herblore**, four **Fishing** and three **Mining** rates, from the wiki tables (`Shortcuts`, `Agility`, `Stall/Thievable`, `Thieving`). Pure wikitext-table parsing with a depth-aware cell splitter, because `{{Coins\|{{GEP\|x\|10*13.8}}}}` is full of `\|` that are not cell breaks. **These are the two skills `{{Recipe}}` cannot describe** - both have zero rows in the wiki's recipe bucket. Owns `COURSE_ALIASES`, the 4 spellings the export gets wrong (`Canafis`), and `parse_woodcutting`, whose 16 rows join **all 16** on `Output` and take the **bottom** of a published range because the top is 2-tick manipulation. `parse_hunter`/`parse_fishing` are the odd ones: their tables are `level -> XP/h` curves keyed by the **section heading** that owns them (`_heading_rates`), so they take the first row and the last column - both the conservative end. Fishing joins only the four headings naming one fish; the rest name techniques covering several. Hunter reads *prose* on top of that (`_prose_rates`), because only 6 of its 22 sections hold a table at all. `parse_darts` is the other way round again - the one table stating experience per **action** where no hourly figure exists to state. |
 | `remote/stores.py` | What a shop charges and **in what currency**, from the `storeline` Bucket. 6,326 lines, of which 4,438 are coins and 126 Tokkul; the rest are points and tickets nobody converts. The API caps a query at 5,000 rows whatever `limit` says, so it pages with `offset`. Joins 403 of the export's 435 shops and prices 3,798 of its 4,163 stock lines. |
 | `remote/farming.py` | The wiki calculator's crop table, `Module:Skill calc/Farming`, read as raw Lua - 76 crops with level, per-item xp, plant xp, seed and patch type. Parsed by **brace matching, not by splitting on `name =`**: every crop's `materials` has a name of its own, and a split ends each crop before the `type` that says which patch it goes in. |
@@ -188,7 +188,7 @@ Five things that cut across modules — the first three because each has already
 | `derive/search.py` | World-wide fuzzy search over the *raw* export — all 5 item routes, so a strict superset of what `fray sources` can list. |
 | `model/summary.py` | Pure reductions over a raw payload. Extend this, not the CLI. Also home to `format_age` (both apps render ages, and two copies of the bucketing would disagree) and `_mapping`, the tolerant dict accessor eight other modules import despite the `_` — Firebase omits empty containers, so every lookup anywhere must survive a missing branch. |
 | `remote/wikitable.py` | Reading a wikitable. Shared by the two modules that parse them; owns the depth-aware cell splitter (`{{Coins\|{{GEP\|x\|10*13.8}}}}` has four `\|` and none is a cell break) and `column_index`, which resolves a `colspan` header against the width the data actually uses. |
-| `remote/combat.py` | Monster hitpoints and xp multipliers (one `infobox_monster` Bucket query, 1,382 monsters, 361 with a non-zero bonus **as a percentage**), plus the autocastable spells. **`infobox_spell` cannot tell an attack spell from a utility one** - Fire Surge, Charge and Vengeance have identical infoboxes and the categories disagree - so the filter is the wiki's own layout: the table with a max-hit column. Taking the highest-xp "combat" spell picks Charge, at 2.4x. |
+| `remote/combat.py` | Monster hitpoints and xp multipliers (one `infobox_monster` Bucket query, 1,382 monsters, 361 with a non-zero bonus **as a percentage**), plus the autocastable spells **and what every spell's cast consumes** (`parse_spell_costs`, one `infobox_spell` query - the quantity is in a `<sup>` and the item in a `link=`, and only the first `white-space:nowrap` span is read, which is what separates a consumed rune from required equipment). **`infobox_spell` cannot tell an attack spell from a utility one** - Fire Surge, Charge and Vengeance have identical infoboxes and the categories disagree - so the filter is the wiki's own layout: the table with a max-hit column. Taking the highest-xp "combat" spell picks Charge, at 2.4x. |
 | `costing/combat_xp.py` | Combat XP, which is damage and almost nothing else: 4 per damage melee/Ranged, **2 for Magic**, 1.33 Hitpoints, plus the spell's base xp per cast. Owns three gates that each removed a wrong answer: `farmable_providers` (**reachable is not farmable** - a raid room is fought once per raid), `spawn_caps` (the export counts spawns per chunk, so a map holding two of something cannot supply 900 kills an hour), and `hitpoints_credit` (**Hitpoints is earned by the other combat climbs, not beside them**). Refuses a monster whose kill rate is only a default. |
 | `costing/dps_bridge.py` | The seam to `osrs-dps`, which prices a kill from the gear `bis.py` reaches instead of a money-making guide. Prices **only `estimate.reachable_providers`** — 188 of the export's 872, because every `kills_per_hour` lookup is gated on that set and the rest is thrown away. `enrich_incremental` + `fight_signature` keep a timeline's previous roll where nothing that decides a kill has moved; `enrich` stays untouched. **Optional import** — check `DPS_AVAILABLE`, never assume it. `enrich` is the one entry point a command needs. Owns the export→library conversions (`magic_damage` is a display percentage here and tenths of a percent there), the overhead model, the monster-name join and its `exact`/`variant` provenance, and the refusal of fight *phases* and group bosses. |
 | `remote/recipes.py` | `{{Recipe}}` as the wiki's Bucket table serves it: experience per action, tick cost and materials, for 3,889 recipes across 13 skills. Pure parsing. `production_json` is JSON inside JSON, every number is a string, and one page can hold several recipes told apart only by the output's `subtxt`. |
@@ -237,7 +237,7 @@ pip install -e ".[dev]"     # editable install into .venv; provides the `fray` s
 fray fetch [--map ID]       # GET live state -> cache/maps/fetched/<map>.json (default: fray)
 fray show  [--map ID]       # summarise the cached copy; no network
 fray chunkinfo              # GET upstream's chunk/challenge reference data -> cache/{chunkinfo,tasks_map}.json
-fray heuristics             # GET wiki/spreadsheet rates -> cache/wiki_rates.json (~18 requests)
+fray heuristics             # GET wiki/spreadsheet rates -> cache/wiki_rates.json (~19 requests)
 fray recipes                # GET per-action xp + tick costs -> cache/reference/wiki_recipes.json (13 requests)
 fray estimate [BUCKET] [--limit N]   # rough hours for the outstanding active tasks
 fray sections [list|CHUNK] [--limit N]   # reachable sections; list/drill down with a positional
@@ -1368,18 +1368,53 @@ one museum quiz, **none of them `Primary`** - it is the grant `training.quest_xp
 spends, not a rate. So `Items` says a 4-poster needs mahogany planks and never that it needs four of
 them, nor what building one pays.
 
-`{{Recipe}}` is the only place those two numbers exist together *in data this project fetches*, which
-is why `computed_rates` is the only **computed** source of `material_seconds_per_xp` - a consequence
-of the data rather than an oversight to tidy. What it is not is the only source: a person can state
+`{{Recipe}}` is **almost** the only place those two numbers exist together *in data this project
+fetches*, which is why `computed_rates` was for a long time the only **computed** source of
+`material_seconds_per_xp` - a consequence of the data rather than an oversight to tidy. The exception
+is casting, and it is now taken: see the spells paragraph below. What it is not is the only source: a person can state
 the pair, and `heuristics/overrides.json`'s `materials` section is where they do
 (`inputs.hand_material_costs`, added for the Giants' Foundry, whose 28 bars are published and whose
 challenges name no item at all). That is a hand entry per method rather than a rule, which is the
-point - it does not scale to 2,710 challenges and is not meant to. **The narrow case that would work
-without hand entry is a rate source that is itself per action**, where the
-experience is known and one-of-each is a fair assumption: `parse_darts` is exactly that shape and is
-the one family it would close. Firemaking is the other and deliberately declines, since every
+point - it does not scale to 2,710 challenges and is not meant to. **The narrow case that works
+without hand entry is a source that is itself per action**, where the experience and the quantity are
+both published: `infobox_spell` is exactly that shape and closed 190 methods at once (below), and
+`parse_darts` is the same shape for the eight dart tiers. Firemaking is the other and deliberately declines, since every
 published Firemaking rate is quoted with the logs to hand. Anything wider needs a per-action model
 the export does not carry.
+
+**Casting is the one family where the general fix exists, and it changes the whole Magic climb.**
+The bias needs experience per action and quantity per action together, and the export states neither -
+but `infobox_spell` states both, for all 201 spells, in one Bucket query. `remote/combat.parse_spell_costs`
+reads them (`<sup>2</sup>[[File:Law rune.png|...|link=Law rune]]`) and `heuristics.spell_materials`
+joins them onto the export's own words, since a spell challenge names no object, no NPC and usually no
+`Output`. **190 of the export's 214 `Cast` challenges join**; the 24 misses are all `... from a spell
+sack` and `... from a rune pouch`, where the runes come out of a container rather than being supplied,
+so a miss there is the right answer rather than a gap. Three spellings need a table
+(`SPELL_PAGE_ALIASES`) and the three have unrelated causes: a disambiguated page
+(`Ape Atoll Teleport (standard)`), a wiki abbreviation (`Tele Block`), and a **misspelling in the
+export** (`fenkenstain's castle teleport`).
+
+**Only the first `white-space:nowrap` span is read, and that restriction is the whole filter.** The
+wiki puts a spell's consumed runes in that span and its *required equipment* in a `plinkp-template`
+span after it, so reading the field whole charges Iban Blast for a staff and the reanimations for a
+book - the "an axe is not a material" error the `*` marker exists to refuse. Over all 201 spells the
+restriction leaves 17 items and every one is genuinely consumed: fifteen runes, `Unpowered orb` and
+the Ape Atoll `Banana`.
+
+**It sits under the recipes and over nothing.** Ten of the 190 also have a `{{Recipe}}` row - the
+enchants - and that row charges the bolts or the jewellery as well as the runes, so it is both larger
+and righter (`Cast ~|enchant crossbow bolt (opal)|~`: 345.7 s/xp from the recipe against 0.42 from the
+runes alone). Where the two describe the same thing they agree exactly, which is the cross-check worth
+having: a charge-orb cast prices at **0.6162 s/xp either way**.
+
+**`Cast ~|varrock teleport|~` is the case that proved this can win a climb.** It held `fray`'s
+Magic 25 -> 99 at a published 38,500/hr with its 3 air, 1 fire and 1 law runes charged at nothing - and
+a chunk player teleporting eleven hundred times an hour needs eleven hundred law runes an hour.
+Charged it is **11,807 effective** and loses the top band to `ruby ring`, an enchant the recipe data
+was already charging. **Magic 1 -> 99 goes 339.7h -> 1,018.5h on `fray` and 396.7h -> 1,015.4h on
+`verf`**, every rune priced on both maps and no other climb on either map moving. Neither estimate
+total moves, because Magic is not an active goal on either - so this is a climb correction waiting for
+the map that asks for it, which is what the standing measurement above said would happen.
 
 **Herblore is where that bias bites hardest, and it is half-closed rather than absent.** The
 expensive part of the skill is the grimy herb, not the mixing, and the walk *can* price one: on the

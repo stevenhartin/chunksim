@@ -188,6 +188,10 @@ def scrape(
     spells = combat.parse_attack_spells(
         fetch_wiki_pages(list(combat.SPELLBOOK_PAGES), timeout=timeout)
     )
+    # **Every spell, not only the autocastable ones.** `spells` above answers
+    # "what do I barrage with"; this answers "what does a cast eat", and a
+    # teleport deals no damage while still costing three runes.
+    spell_costs = combat.parse_spell_costs(fetch_bucket(combat.spell_query(), timeout=timeout))
 
     say("shop prices")
     lines: list[dict[str, Any]] = []
@@ -214,6 +218,7 @@ def scrape(
         skill_tables=tables,
         monster_stats=monster_stats,
         spells=spells,
+        spell_costs=spell_costs,
         shop_prices=shop_prices,
         conversion_fees=fees,
         currency_rates={"Mark of grace": mark_rate} if mark_rate else {},
@@ -243,6 +248,7 @@ def scrape(
             "bones": len(bones),
             "altars": len(altars),
             "attack spells": len(spells),
+            "spell costs": len(spell_costs),
         },
         sheet_error=sheet_error,
     )

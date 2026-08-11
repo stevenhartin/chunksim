@@ -36,7 +36,7 @@ from typing import Any, Mapping
 from fray_claude.costing import combat_xp, dps_bridge, recipe_rates
 from fray_claude.costing.estimate import material_seconds
 from fray_claude.costing import prayer as prayer_costing
-from fray_claude.costing.heuristics import ComputedMethod
+from fray_claude.costing.heuristics import ComputedMethod, MaterialCost
 from fray_claude.store import cache
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.store.derived_cache import Digests, cached_enrich, pricing_digests
@@ -56,6 +56,8 @@ __all__ = [
     "load_heuristics",
     "load_recipes",
     "hand_material_costs",
+    "priced_materials",
+    "spell_material_costs",
     "recipe_priced",
     "pinned_keys",
     "priced_heuristics",
@@ -181,9 +183,19 @@ def recipe_priced(
     # before the early return: a clone with no `fray recipes` cache still
     # charges the foundry for its bars.
     by_hand = hand_material_costs(overrides, seconds)
+    # **Spells sit under the recipes and over nothing**, which is the one
+    # ordering question this layer has. Ten of the 190 also have a `{{Recipe}}`
+    # - the enchants - and that row charges the jewellery or the bolts as well
+    # as the runes, so it is both larger and righter. Where both describe the
+    # same thing they agree: a charge-orb cast prices at 0.6162 s/xp either way.
+    by_spell = spell_material_costs(heuristics, seconds)
     if not recipes:
         return (
-            replace(heuristics, computed=prayed, material_seconds_per_xp=by_hand),
+            replace(
+                heuristics,
+                computed=prayed,
+                material_seconds_per_xp={**by_spell, **by_hand},
+            ),
             recipe_rates.RecipeCoverage(),
         )
     pinned = frozenset(_mapping(overrides, "training"))
@@ -207,9 +219,12 @@ def recipe_priced(
     # on what it actually costs. Taken from the same `ActionRate`s the rates
     # above come from, so the two cannot disagree about a recipe.
     per_xp = {
-        task: rate.input_seconds / rate.experience
-        for task, rate in computed.items()
-        if rate.experience > 0 and rate.input_seconds > 0
+        **by_spell,
+        **{
+            task: rate.input_seconds / rate.experience
+            for task, rate in computed.items()
+            if rate.experience > 0 and rate.input_seconds > 0
+        },
     }
     per_xp.update(by_hand)
     return (
@@ -222,6 +237,62 @@ def recipe_priced(
         ),
         coverage,
     )
+
+
+def priced_materials(
+    stated: Mapping[str, MaterialCost], collect: Callable[[str, float], float | None]
+) -> dict[str, float]:
+    """`{task: seconds of gathering per XP}`, for methods whose per-action
+    consumption and per-action experience are both known.
+
+    The arithmetic both stated sources share, so a hand entry and a spell's
+    rune cost cannot come out differently: total seconds for one action over
+    the XP that action pays. The granularity cancels - ten darts for ten times
+    the XP is the same number as one for one - so only the ratio has to be
+    right.
+
+    **An item the walk cannot price leaves its method uncharged rather than
+    dropping it.** That is the same direction `recipe_rates` is wrong in with
+    an unpriceable material, and the better failure of the two: dropping would
+    silently remove a method somebody deliberately rated.
+    """
+    costs: dict[str, float] = {}
+    for task, cost in stated.items():
+        if cost.experience <= 0:
+            continue
+        total = 0.0
+        for item, quantity in cost.items.items():
+            if quantity <= 0:
+                continue
+            priced = collect(item, float(quantity))
+            if priced is None:
+                total = -1.0
+                break
+            total += priced
+        if total > 0:
+            costs[task] = total / cost.experience
+    return costs
+
+
+def spell_material_costs(
+    heuristics: Heuristics, collect: Callable[[str, float], float | None]
+) -> dict[str, float]:
+    """`material_seconds_per_xp` for every `Cast ...` task the wiki prices.
+
+    **Casting is the one family where the general fix exists rather than
+    needing a hand entry per method.** The bias `hand_material_costs` describes
+    needs experience per action and quantity per action together, and the export
+    states neither - but `infobox_spell` states both, for all 201 spells, so 190
+    of the export's 214 `Cast` challenges get a real material cost off one Bucket
+    query. See `remote/combat.parse_spell_costs` for what counts as consumed.
+
+    It matters because casting *wins climbs*. On `fray` `Cast ~|varrock
+    teleport|~` held 25 -> 99 at a published 38,500/hr with its 3 air, 1 fire
+    and 1 law charged at nothing; charged, it is 11,807 effective and loses the
+    top band. **Magic 1 -> 99 goes 339.7h -> 1,018.5h on `fray` and 396.7h ->
+    1,015.4h on `verf`.** Every rune prices on both maps.
+    """
+    return priced_materials(heuristics.spell_costs, collect)
 
 
 def hand_material_costs(
@@ -262,24 +333,22 @@ def hand_material_costs(
     bars price on both cached maps - and a drop would silently remove a method
     a person deliberately rated.
     """
-    costs: dict[str, float] = {}
+    stated: dict[str, MaterialCost] = {}
     for task, entry in _mapping(overrides, "materials").items():
         if not isinstance(entry, dict):
             continue
         experience = entry.get("experience")
         if not isinstance(experience, (int, float)) or experience <= 0:
             continue
-        total = 0.0
-        for item, quantity in _mapping(entry, "items").items():
-            if not isinstance(quantity, (int, float)) or quantity <= 0:
-                continue
-            priced = collect(item, float(quantity))
-            if priced is None:
-                total = -1.0
-                break
-            total += priced
-        if total > 0:
-            costs[task] = total / float(experience)
+        stated[task] = MaterialCost(
+            experience=float(experience),
+            items={
+                str(item): int(quantity)
+                for item, quantity in _mapping(entry, "items").items()
+                if isinstance(quantity, (int, float)) and quantity > 0
+            },
+        )
+    costs = priced_materials(stated, collect)
     return costs
 
 

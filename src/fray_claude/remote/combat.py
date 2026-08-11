@@ -33,13 +33,30 @@ puts its attack spells in the one table carrying a **base max hit** column, and
 everything else in tables without one. A spell you can autocast is a spell with
 a max hit, which is as close to a definition as the wiki offers.
 
+**And `infobox_spell` carries the other half a cast costs: its runes.** The
+`cost` field is rendered HTML - `<sup>2</sup>[[File:Law rune.png|...|link=Law
+rune]]` - so the quantity and the item are both there and both machine-readable,
+which is the pair the chunk export states nowhere. That makes casting the one
+family where a per-action material cost can be computed rather than hand-entered
+(see `costing/inputs.py`'s `hand_material_costs`, which is the hand version and
+which this does not replace).
+
+**Only the first `white-space:nowrap` span is read, and that restriction is the
+filter.** The wiki puts a spell's consumed runes in that span and its *required
+equipment* in a `plinkp-template` span after it, so reading the whole field
+charges Iban Blast for a staff and the Dark Lure for a book - the same "an axe is
+not a material" error `costing/estimate.py` refuses through the `*` marker.
+Measured over all 201 spells the restriction leaves 17 items, every one of them
+genuinely consumed: fifteen runes, `Unpowered orb` and the Ape Atoll `Banana`.
+
 Pure parsing; `remote/api.py` fetches.
 """
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from collections import Counter
 from typing import Any, Mapping, Sequence
 
@@ -96,6 +113,29 @@ class AttackSpell:
             "experience": self.experience,
             "spellbook": self.spellbook,
         }
+
+
+@dataclass(frozen=True)
+class SpellCost:
+    """What one cast consumes and what it pays, from `infobox_spell`."""
+
+    name: str
+    experience: float
+    items: dict[str, int] = field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"experience": self.experience, "items": dict(sorted(self.items.items()))}
+
+
+#: The consumed half of a spell's `cost`. The wiki wraps the runes in this span
+#: and the required equipment in a sibling one, so this is what tells a material
+#: from a tool - see the module docstring.
+_CONSUMED_SPAN = re.compile(r'<span style="white-space:nowrap">(.*?)</span>', re.S)
+
+#: One entry inside it: an optional `<sup>` quantity, then a file link whose
+#: `link=` target is the item. A missing `<sup>` means one, which 8 of the 201
+#: spells rely on.
+_COST_ENTRY = re.compile(r"(?:<sup>(\d+)</sup>\s*)?\[\[File:[^\]]*?link=([^\]|]+)\]\]")
 
 
 def monster_query(limit: int = 5000) -> str:
@@ -194,14 +234,45 @@ def parse_attack_spells(pages: Mapping[str, str]) -> tuple[AttackSpell, ...]:
     return tuple(sorted(found, key=lambda spell: (spell.level, spell.name)))
 
 
-def parse_spell_json(bucket_rows: Sequence[Mapping[str, Any]]) -> dict[str, float]:
-    """`{spell: base xp}` from `infobox_spell`, for cross-checking a page parse.
+def spell_query(limit: int = 5000) -> str:
+    """The Bucket query for every spell's experience and rune cost."""
+    return (
+        "bucket('infobox_spell')"
+        ".select('page_name','json')"
+        f".limit({limit})"
+        ".run()"
+    )
 
-    Not the source of truth - it cannot tell an attack spell from a utility one
-    - but it covers every spell, so it is what `parse_attack_spells` is checked
-    against when a spellbook page changes shape.
+
+def parse_cost(cost: str) -> dict[str, int]:
+    """The items one cast consumes, from `infobox_spell`'s rendered `cost`.
+
+    Reads only the first `white-space:nowrap` span, which is what separates a
+    consumed rune from required equipment - see the module docstring. A repeated
+    item is summed rather than overwritten, since nothing promises the wiki
+    lists each only once.
     """
-    found: dict[str, float] = {}
+    span = _CONSUMED_SPAN.search(cost)
+    if span is None:
+        return {}
+    found: dict[str, int] = {}
+    for quantity, item in _COST_ENTRY.findall(span.group(1)):
+        name = item.strip()
+        if name:
+            found[name] = found.get(name, 0) + int(quantity or 1)
+    return found
+
+
+def parse_spell_costs(bucket_rows: Sequence[Mapping[str, Any]]) -> dict[str, SpellCost]:
+    """`{spell page: SpellCost}` from `infobox_spell`.
+
+    Covers **every** spell, attack or utility, which is the opposite of what
+    `parse_attack_spells` wants and exactly what pricing wants: a teleport pays
+    no damage and still costs three runes a cast. A spell with no experience or
+    no cost is dropped rather than stored as a zero - both halves are needed to
+    turn it into seconds per XP.
+    """
+    found: dict[str, SpellCost] = {}
     for row in bucket_rows:
         name, blob = row.get("page_name"), row.get("json")
         if not isinstance(name, str) or not isinstance(blob, str):
@@ -210,9 +281,13 @@ def parse_spell_json(bucket_rows: Sequence[Mapping[str, Any]]) -> dict[str, floa
             parsed = json.loads(blob)
         except json.JSONDecodeError:
             continue
-        experience = parsed.get("exp") if isinstance(parsed, dict) else None
+        if not isinstance(parsed, dict):
+            continue
         try:
-            found[name] = float(str(experience))
+            experience = float(str(parsed.get("exp")))
         except (TypeError, ValueError):
             continue
+        items = parse_cost(str(parsed.get("cost") or ""))
+        if experience > 0 and items:
+            found[name] = SpellCost(name=name, experience=experience, items=items)
     return found

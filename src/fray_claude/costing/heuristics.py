@@ -80,7 +80,7 @@ from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.derive.search import normalise
 from fray_claude.model.summary import _mapping
 from fray_claude.derive.task_names import strip_task_markup
-from fray_claude.remote.combat import AttackSpell, MonsterStats
+from fray_claude.remote.combat import AttackSpell, MonsterStats, SpellCost
 from fray_claude.remote.prayer import Altar, Bone
 from fray_claude.remote.farming import Crop
 from fray_claude.remote.skill_tables import (
@@ -375,6 +375,65 @@ class Superior:
         return {"base": self.base, "spawn_rate": self.spawn_rate}
 
 
+#: The wiki spells three of the export's spells differently, and no rule
+#: separates the three cases: one is a disambiguated page (`(standard)`), one is
+#: an abbreviation the wiki prefers (`Tele Block`), and one is a **misspelling
+#: in the export** (`fenkenstain`). Same shape as `skill_tables.COURSE_ALIASES`.
+SPELL_PAGE_ALIASES: dict[str, str] = {
+    "ape atoll teleport": "Ape Atoll Teleport (standard)",
+    "fenkenstain's castle teleport": "Fenkenstrain's Castle Teleport",
+    "teleport block": "Tele Block",
+}
+
+#: The export's own prefix on a casting challenge. The join runs through the
+#: task's words because a spell challenge names no object, no NPC and usually
+#: no `Output` - the same reason `PLUNDER_BY_LEVEL` does.
+_CAST_PREFIX = "Cast "
+
+
+@dataclass(frozen=True)
+class MaterialCost:
+    """What one action of a method consumes, against the XP that action pays.
+
+    The pair `material_seconds_per_xp` needs and **the export states neither
+    half of** - see `costing/inputs.py`. Two things produce it: a hand entry in
+    `heuristics/overrides.json`, and the wiki's `infobox_spell`, which is the
+    one family where both halves are published per action.
+    """
+
+    experience: float
+    items: dict[str, int] = field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"experience": self.experience, "items": dict(sorted(self.items.items()))}
+
+
+def spell_materials(
+    chunk_info: ChunkInfo, costs: Mapping[str, SpellCost]
+) -> dict[str, MaterialCost]:
+    """Join `infobox_spell`'s rune costs onto the export's `Cast ...` tasks.
+
+    A whole-string comparison of the task's own words against the page name,
+    case-insensitively, plus `SPELL_PAGE_ALIASES` - no fuzzy tier, because
+    there is nothing to be fuzzy about: both vocabularies name the spell.
+
+    Measured on the real export: **190 of its 214 `Cast` challenges join.** The
+    24 that miss are all `... from a spell sack` and `... from a rune pouch`
+    variants, where the runes come out of a container rather than being
+    supplied - so a miss there is the right answer rather than a gap.
+    """
+    joined: dict[str, MaterialCost] = {}
+    by_page = {name.lower(): cost for name, cost in costs.items()}
+    for name in chunk_info.challenges.get("Magic") or {}:
+        if not name.startswith(_CAST_PREFIX):
+            continue
+        spell = strip_task_markup(name).removeprefix(_CAST_PREFIX).strip().lower()
+        cost = by_page.get(spell) or by_page.get(SPELL_PAGE_ALIASES.get(spell, "").lower())
+        if cost is not None:
+            joined[name] = MaterialCost(experience=cost.experience, items=dict(cost.items))
+    return joined
+
+
 @dataclass(frozen=True)
 class Heuristics:
     """Every hand-correctable number, already merged across the two layers."""
@@ -397,6 +456,11 @@ class Heuristics:
     monster_stats: dict[str, MonsterStats] = field(default_factory=dict)
     #: Autocastable spells, cheapest level first.
     spells: tuple[AttackSpell, ...] = ()
+    #: `Cast ...` task -> the runes one cast eats and the XP it pays. Priced by
+    #: `inputs.recipe_priced` into `material_seconds_per_xp`, **below** a
+    #: recipe and above nothing: an enchant has a `{{Recipe}}` that charges the
+    #: jewellery as well, and that is the larger and righter number.
+    spell_costs: dict[str, MaterialCost] = field(default_factory=dict)
     #: Combat skill -> its computed rate. Filled by `inputs.priced_heuristics`
     #: **after** the kill rates are final, since it multiplies them.
     combat: dict[str, Rate] = field(default_factory=dict)
@@ -1079,6 +1143,7 @@ def build_config(
     skill_tables: Mapping[str, Sequence[SkillRow]] | None = None,
     monster_stats: Mapping[str, MonsterStats] | None = None,
     spells: Sequence[AttackSpell] = (),
+    spell_costs: Mapping[str, SpellCost] | None = None,
     shop_prices: Mapping[str, Mapping[str, ShopPrice]] | None = None,
     conversion_fees: Mapping[str, ShopPrice] | None = None,
     currency_rates: Mapping[str, float] | None = None,
@@ -1238,6 +1303,10 @@ def build_config(
             if name in chunk_info.drops or name in known
         },
         "spells": [spell.as_dict() for spell in spells],
+        "spell_costs": {
+            task: cost.as_dict()
+            for task, cost in sorted(spell_materials(chunk_info, spell_costs or {}).items())
+        },
         # **Only shops the export knows about.** The wiki lists 588 and the
         # export stocks 435; the rest are a copy of the wiki rather than a
         # config for this map.
@@ -1556,6 +1625,18 @@ def load(
             for entry in config.get("spells") or ()
             if isinstance(entry, dict) and entry.get("name")
         ),
+        spell_costs={
+            task: MaterialCost(
+                experience=_float(entry.get("experience"), 0.0),
+                items={
+                    str(item): int(_float(quantity, 0.0))
+                    for item, quantity in _mapping(entry, "items").items()
+                    if _float(quantity, 0.0) > 0
+                },
+            )
+            for task, entry in _entries(config, "spell_costs")
+            if isinstance(entry, dict) and _float(entry.get("experience"), 0.0) > 0
+        },
     )
 
 
