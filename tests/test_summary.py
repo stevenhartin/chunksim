@@ -76,3 +76,20 @@ def test_summarise_tolerates_branches_of_the_wrong_type() -> None:
     assert summary.unlocked_chunks == 0
     assert summary.chunk_order_entries == 0
     assert summary.rules_total == 0
+
+
+def test_summarise_reads_a_slayer_lock() -> None:
+    payload = {"chunkinfo": {"slayerLocked": {"level": "42", "monster": "Aberrant spectres"}}}
+
+    assert summarise(payload).slayer_locked == ("Aberrant spectres", 42)
+
+
+def test_summarise_reports_no_lock_when_slayer_is_free() -> None:
+    assert summarise({"chunkinfo": {}}).slayer_locked is None
+
+
+def test_summarise_refuses_a_lock_whose_level_will_not_parse() -> None:
+    """A guessed cap would silently hold Slayer somewhere it is not held."""
+    payload = {"chunkinfo": {"slayerLocked": {"level": "soon", "monster": "Bats"}}}
+
+    assert summarise(payload).slayer_locked is None

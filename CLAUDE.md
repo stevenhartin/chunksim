@@ -156,7 +156,7 @@ Five things that cut across modules — the first three because each has already
 | `remote/prayer.py` | What a bone pays and what an altar multiplies it by: `{{Prayer info}}` across its 193 transclusions (41 bones of 195 invocations - the rest are spectral, bonemeal, reanimated or **ashes**, which are scattered rather than buried) plus the seven altar pages. The oak altar states its base as the word *normal*, so an **unstated base is 100%** rather than a parse failure, and the teak page carries a third percentage that is not a multiplier at all. |
 | `costing/prayer.py` | Prayer, where **the rate is not the question and the bone supply is**. Burying is two ticks and an altar one, so an hour is 3,000-6,000 bones whatever else is true; what decides the climb is the *collection*, priced through `estimate.material_seconds` like a recipe's materials. Owns `CHAOS_ALTAR_CHUNK` - **four of the export's five `Chaos altar (Prayer)` objects are prayer-point recharges**, so the training one is pinned to region 11835 by contents rather than by name - and the 7x it works out at (3.5x an offering, 50% bone save, so two offerings a bone). |
 | `costing/heuristics.py` | Every hand-correctable number, and the `defaults < scraped < overrides` merge. Owns the joins and their `exact`/`contained` provenance; **no fuzzy tier**, by measurement — read the docstring before adding one back. |
-| `costing/slayer.py` | Slayer's rate, which is a *distribution* not a chosen method: a time-weighted mean over what a master assigns. Also owns `superior_rolls_per_hour` — the shared `SuperiorDropTable+` is one pool per master, not one per superior. **Masters are gated on their NPC being reachable** — without that it quoted Duradel on a map holding none of him. Reports `coverage`, because renormalising over reachable tasks flatters a sparse map. |
+| `costing/slayer.py` | Slayer's rate, which is a *distribution* not a chosen method: a time-weighted mean over what a master assigns. Also owns `superior_rolls_per_hour` — the shared `SuperiorDropTable+` is one pool per master, not one per superior. **Masters are gated on their NPC being reachable** — without that it quoted Duradel on a map holding none of him. Reports `coverage`, because renormalising over reachable tasks flatters a sparse map — and `blocked`, because a negative `points_delta` is a countdown to that, not a tax. Owns `RESET_MASTERS`, the way out. |
 | `costing/estimate.py` | The four buckets — quests, boss drops, activities, skilling — over the **active** set. **Costs the unique *item*, not the task** — one whip answers three tasks — and **clamps per source**, since items off one monster are earned in parallel. Owns the item walk, its bounded `Output` recursion, the `unpriced` list, and **three gates** — monster reachable, slayer task assignable, master reachable. Read the docstring before pricing anything off `WorldIndex`, which spans the whole world. Skilling is `costing/training.py`'s; what stays here is the loop and `unpriced_skills` — Attack, Defence, Hitpoints and Ranged have **no training method anywhere in the export**, and were being costed at zero. |
 | `costing/levels.py` | `infer_levels`/`goal_levels`/`reachable_providers` and the gating helpers. Separate because `dps_bridge`, both apps and `runs/batch.py` want exactly these and were importing the whole estimator to get them. **The map records no skill levels** — `infer_levels` reads a floor out of the completed challenges. |
 | `costing/training.py` | How fast a skill goes, and why. **A climb is priced band by band as methods unlock**, walked on the XP axis so a quest reward shortens it and raises its start in one operation. The step function is a running maximum, so **the floor can only ever be the first band** — which is what keeps it visible. Also `quest_xp_grants`, whose grammar is not just skill names (`Attack\|Defence\|Strengthx4` is four lamps). |
@@ -174,7 +174,7 @@ Five things that cut across modules — the first three because each has already
 | `derive/active_tasks.py` | Per-skill active/obsolete/completed classification. A *display* winner only — it never changes `ChallengeResult.valid`. |
 | `derive/boosts.py` | Temporary skill boosts. With `rules['Boosting']` on, **every** level comparison upstream makes is boosted, so this is a dependency of `challenges.py`/`active_tasks.py`, not a feature. |
 | `derive/other_tasks.py` | The three non-skill categories, `Diary`/`Quest`/`Extra`. No single winner — upstream renders every valid, uncompleted one. |
-| `derive/pipeline.py` | `MapState` + `derive`. Owns the **loop** where upstream's area-unlock circularity lives, so the modules above stay one-directional. Raises `ConvergenceError` rather than returning a truncated derivation. |
+| `derive/pipeline.py` | `MapState` + `derive`. Owns `SlayerLock` and `slayer_capped_max_skill` — upstream reads `slayerLocked` at eleven sites and ten are the `maxSkill` test written twice, so it is one fold rather than eleven branches. Owns the **loop** where upstream's area-unlock circularity lives, so the modules above stay one-directional. Raises `ConvergenceError` rather than returning a truncated derivation. |
 | `derive/unlock.py` | What one candidate unlock adds, by diffing two `derive` calls. **Owns the project's attribution rule** and its one exception. Additions-only, and only over one `MapState` — for two arbitrary maps read `delta.py`. |
 | `derive/delta.py` | The **symmetric** comparison of two derived states, over all six `Derived` branches. Owns the diff primitives `unlock.py` projects down to its one-directional view; the two must agree, which `tests/test_delta.py` asserts. |
 | `derive/neighbours.py` | Which chunks are eligible to unlock next, and upstream's canvas numbering (**descending chunk id, 1-based**). Owns the `sectionsLimits` gate. |
@@ -1540,6 +1540,75 @@ Things worth knowing before changing it:
   path deliberately, so it is the one to test against. Neither is a dependency — `dependencies` is
   still empty, and a machine with only Firefox takes the second path. A running job holds the server
   open either way.
+
+**Slayer can stop dead, and the map records it when it has.**
+`chunkinfo.slayerLocked` is `{level, monster}`: a player sitting on an
+assignment they can neither complete nor afford to skip, so Slayer holds at
+`level` until something gives. Four docstrings used to call upstream's
+`slayerLocked` arm inert *on the grounds that neither cached map sets it*,
+which is a statement about two maps rather than about the app — the branch is
+written by a real UI control (index.js:8471) and read at eleven places in
+`worker.js`.
+
+**Ten of those eleven are the `maxSkill` test written a second time**
+(`(!slayerLocked || v <= slayerLocked['level']) && (!maxSkill || v <=
+maxSkill['Slayer'])`, worker.js:987/1290/1893/2093/2777/3272/5331/…), and two
+caps ANDed are one cap at their minimum. So the port is a fold —
+`pipeline.slayer_capped_max_skill` — and `sources`, `challenges`, `bis` and
+`sections` inherit the gate through the mapping they already cap on, with no
+new argument anywhere. It adds no gate upstream lacks: of `worker.js`'s 46
+`maxSkill` lines, all but three carry the `slayerLocked` clause beside them.
+
+**The eleventh is the escape, and it is why the fold *drops* the lock rather
+than easing it.** worker.js:3822 invalidates a Slayer challenge above the
+lock unless `codeItems.slayerTasks[monster]` — the monsters that satisfy the
+blocked assignment — reaches one the map holds. Hit that and the assignment
+can be handed in, so nothing is blocked at all; upstream's own UI agrees and
+nulls the stored state (`checkSlayerLocked`, index.js:9787). `slayer_unblocked`
+reads the **raw contents of the unlocked chunks** where upstream reads a
+`baseChunkData` its loop keeps refining, because doing it properly would make
+the escape a term in the fixed point it gates — Slayer validity deciding
+monster availability deciding Slayer validity — for a branch that clears
+itself. The one case that answers differently is a monster reachable *only*
+through a challenge the lock invalidates.
+
+**It is not a Slayer-only concern, which is the part worth measuring.**
+Injecting a lock into `fray`: at level 72 on `Aberrant spectres` the escape
+fires (the map holds one, and 60 ≤ 72) and **nothing moves**; at level 20 it
+does not, and the map goes 2,701 valid challenges to 2,603, its 48 Slayer
+challenges to 14, and **1,913 reachable items to 1,843**. Seventy items,
+because slayer-gated monsters drop things. Neither cached map sets the branch,
+so this changes no number today and **has no oracle** — it is ported because
+the alternative is a map that derives as though nothing were wrong.
+
+**Walking *into* that state is the estimator's half, and `points_delta`
+already measured it.** It is not a tax you absorb: points do not go below
+zero, so a balance falling every assignment reaches the one you can neither do
+nor cancel. `MasterRate.blocked` says a master will, `best_master` passes over
+one that does (but still returns it, since "the only master here will lock
+you" is worth reading), and `tasks_before_skip` is the runway — **five
+assignments pay no points at all**, so the first cancel is unaffordable long
+after the per-task average says it is paid for. On `fray` that is 7.1 tasks
+under Vannaka and 7.8 under Mazchna.
+
+**The way out is not more points.** Turael and Spria hand out a fresh
+assignment for the asking, so an impossible task costs a walk rather than 30
+points — `heuristics.RESET_MASTERS`, and `reset_available` is a fact about the
+**map** rather than about the master under consideration. Two consequences,
+and the second was a live defect: any master is unblockable while one of the
+two is reachable; and the two are themselves never blocked, where paying
+nothing per task had been read as "can never afford to cancel" and gave
+**Spria, the only reachable master on `verf`, −4.0 points an assignment**. She
+charges nothing to cancel, so it is 0.0. No hourly rate moves on either cached
+map and `best_master` picks the same master on both.
+
+**One deviation is known and deliberate.** Upstream's derivation offers only
+the monster escape, so a locked map derives capped even where a reachable
+Turael would in fact free it. Teaching `slayer_unblocked` about reset masters
+would put an un-oracled invention inside the fixed point the oracles check, so
+the estimator holds that knowledge and the derivation stays upstream's. The
+gap bites only on a map that is *already* locked, which is why `fray show`
+prints the lock rather than leaving it to be inferred from a short task list.
 
 **A Slayer climb pays for the combat climbs beside it, and not charging for that was the largest
 remaining double count.** Slayer experience is the monster's hitpoints, so a Slayer rate in XP per

@@ -398,6 +398,10 @@ otherwise it's created in whatever directory you're in when you run `fray`.
    fray show
    ```
 
+   Counts of unlocked chunks, active tasks and enabled rules. It also prints a `slayer locked` line
+   *when there is one* — the map records the Slayer task you are stuck on and the level it holds you
+   at, and that quietly caps every Slayer requirement in every other answer this tool gives.
+
 4. **Derive things offline**, no network required from here on:
 
    ```sh

@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from fray_claude.model.firebase import decode_payload
+
 
 @dataclass(frozen=True)
 class Summary:
@@ -26,6 +28,12 @@ class Summary:
     active_tasks: dict[str, int]
     rules_enabled: int
     rules_total: int
+    #: The Slayer task the player is stuck on, and the level it holds them
+    #: at, or `None`. Worth a headline of its own because it is the one piece
+    #: of map state that stops a *skill* rather than gating a task, and
+    #: nothing else in the summary would hint at it - see
+    #: `pipeline.SlayerLock` and `costing/slayer.py` on the way out.
+    slayer_locked: tuple[str, int] | None = None
 
     @property
     def active_task_total(self) -> int:
@@ -87,4 +95,21 @@ def summarise(payload: dict[str, Any]) -> Summary:
         },
         rules_enabled=sum(1 for value in rules.values() if value is True),
         rules_total=len(rules),
+        slayer_locked=_slayer_lock(payload),
     )
+
+
+def _slayer_lock(payload: Mapping[str, Any]) -> tuple[str, int] | None:
+    """`chunkinfo.slayerLocked` as `(task, level)`. Parsed the same way
+    `pipeline._slayer_lock` does - the level is a string in the payload, and
+    one that will not parse means no lock rather than a guessed cap."""
+    branch = _mapping(payload, "chunkinfo").get("slayerLocked")
+    if not isinstance(branch, dict):
+        return None
+    monster = decode_payload(branch).get("monster")
+    if not isinstance(monster, str) or not monster:
+        return None
+    try:
+        return monster, int(branch.get("level"))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None

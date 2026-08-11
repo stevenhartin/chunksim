@@ -24,6 +24,7 @@ from fray_claude.cli.common import DEFAULT_MAP
 from fray_claude.costing import dps_bridge
 from fray_claude.costing.heuristics import disagreements
 from fray_claude.model.chunkinfo import ChunkInfo
+from fray_claude.derive.task_names import strip_task_markup
 from fray_claude.model.summary import format_age, summarise
 from fray_claude.remote.api import CHUNKINFO_URL, DEFAULT_TIMEOUT, TASKS_MAP_URL, fetch_chunkinfo, fetch_map, fetch_tasks_map
 from fray_claude.remote.scrape import SOURCE as SCRAPE_SOURCE
@@ -63,6 +64,12 @@ def _cmd_show(args: argparse.Namespace) -> int:
         print(f"active tasks   {summary.active_task_total} ({detail})")
     else:
         print("active tasks   0")
+    if summary.slayer_locked is not None:
+        # Printed only when set, unlike every line above it: an absent lock is
+        # the ordinary case and "slayer unlocked" on every map would read as a
+        # rule rather than as the alarm this is.
+        task, level = summary.slayer_locked
+        print(f"slayer locked  {strip_task_markup(task)} - capped at {level}")
     # Not a property of the map at all, but of this installation - and an
     # estimate computed with the calculator is a different number from one
     # computed without it, which nothing else on this screen would say.
