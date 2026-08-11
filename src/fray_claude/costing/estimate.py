@@ -848,6 +848,49 @@ def _route_hours(
         )
         if not isinstance(challenge, dict):
             return None
+        # **A challenge's `Output` is often a table rather than the item.** 223
+        # of them are: `Catch a ~|raw swordfish|~` yields `Raw swordfish loot`,
+        # `{"Raw swordfish": "Always", "Big swordfish": "1/2500"}`. So doing it
+        # once does not hand over one of whatever you asked for, and the number
+        # of performances is `quantity / chance` - the same arithmetic
+        # `_kill_hours` does for a monster, read off the same `_drop_rates`.
+        #
+        # **`chance`, not the expected yield**, when the walk wants one of
+        # something: obtaining an item at all is one roll of the table however
+        # big the stack. `amortise` is the accumulating question and takes the
+        # yield, exactly as a kill does.
+        #
+        # **Only where the item is certain**, which is the same gate an
+        # activity's own route is under and refused for the same reason. The
+        # time to *perform* a challenge is `DEFAULT_ACTION_SECONDS` where
+        # nothing states it - a default, and multiplying a defaulted pace by a
+        # real drop chance is precisely the mistake `combat_xp.best_target`
+        # refuses. At `Always` there is no multiplication to get wrong: the
+        # action hands the thing over, and four ticks for a fishing action is a
+        # fair stand-in. So `Raw swordfish` prices and the `Big swordfish`
+        # beside it at 1/2500 does not, until someone states a rate for the
+        # fishing spot - at which point the activity route prices it properly.
+        made = challenge.get("Output")
+        if isinstance(made, str) and made != item:
+            # **And only where the pace is stated rather than defaulted.**
+            # `Slay the ~|Alchemical Hydra|~ alt` outputs a table holding
+            # `Hydra bones` at `Always`, so the certainty gate above passes it
+            # - and killing the Alchemical Hydra is not a four-tick action.
+            # Priced at `DEFAULT_ACTION_SECONDS` it put Prayer at 11.3h off
+            # 1,155,000 xp/hr of hydra bones. A kill has a route of its own
+            # (`_kill_hours`, with the gear and the gates), so refusing here
+            # loses nothing; what this route is for is the *action* challenges
+            # whose pace a guide's `kph` actually states - `Catch a ~|raw
+            # swordfish|~` at 18.5s, `Catch a ~|raw shark|~` at 7.5s.
+            if provider not in walk.heuristics.action_seconds:
+                return None
+            rates = _drop_rates(walk, made, item)
+            if rates is None or rates[0] < 1.0:
+                return None
+            share = rates[1] if amortise else rates[0]
+            if share <= 0:
+                return None
+            quantity = quantity / share
         total = 0.0
         for required in challenge.get("Items") or ():
             if not isinstance(required, str):
@@ -1288,7 +1331,13 @@ def _setup(
         tables=_mapping(state.chunk_info.code_items, "dropTables"),
         by_lower={item.lower(): item for item in world.item_sources},
         available=providers,
-        reachable_items=frozenset(derived.source_index.items),
+        # **`available_items`, not `SourceIndex.items`** - the project's first
+        # cross-cutting rule, and this module was the third to get it wrong
+        # after `bis.py` and `boosts.py`. The latter omits anything obtainable
+        # only by *making* it: 1,103 items against 1,918 on `fray`, so 815
+        # reachable items were refused a shop or spawn route on the grounds
+        # that the map could not reach them, when it plainly could.
+        reachable_items=frozenset(derived.challenges.available_items),
         task_gates=task_gated_monsters(
             state.chunk_info, world, frozenset(expanded)
         ),

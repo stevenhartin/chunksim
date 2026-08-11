@@ -1176,11 +1176,54 @@ of Cooking's 71.9h total**. The other seven are the pies, the pizzas and the tun
 blocked on its own uncookable intermediate.
 
 The direction is the perverse one: **an input the walk cannot price at all makes its method the
-fastest in the skill**, because the map cannot supply it. Whatever the fix is - drop the method,
-floor it, or price the intermediate - it is not "charge the dropped cost", since there is no cost to
-charge; that is the point. Pricing the intermediate is the item walk's problem rather than the rate
-layer's, and it is the only one of the three that also fixes `Bake a ~|cake|~`, whose `Uncooked cake`
-nothing on the map makes or sells.
+fastest in the skill**, because the map cannot supply it. It was the item walk's problem rather than
+the rate layer's, and it turned out to be **two defects in the walk**, both now fixed - see below.
+`Bake a ~|cake|~` is genuinely different and stays unpriced: `Uncooked cake` is not in
+`available_items` at all, so nothing on the map makes or sells one and refusing it is right.
+
+**The first is the project's own first rule, broken a third time.** `estimate.py` built the walk's
+reachability gate from `SourceIndex.items`, which the top of this file has said since `bis.py` and
+`boosts.py` made the same mistake is the wrong set: it omits anything obtainable only by *making* it.
+**1,103 items against `available_items`' 1,918 on `fray`** (827 against 1,606 on `verf`), and
+`source_index.items` is a strict *subset* both times - so 815 reachable items were refused a shop or
+spawn route on the grounds that the map could not reach them.
+
+**The second is that a challenge's `Output` is often a table, and only the table got a route.**
+`Catch a ~|raw swordfish|~` outputs `Raw swordfish loot`, which is `{"Raw swordfish": "Always", "Big
+swordfish": "1/2500"}` - **223 challenges** are shaped that way. The fish itself had only
+`ItemSource("Fishing", "Raw swordfish loot")`, and `_kill_hours` refuses that because a table is not
+a monster you can stand in front of. `build_world_index` now seeds the table's *contents* with the
+task route and `_route_hours` divides by the row's own chance, which is the arithmetic a kill already
+does.
+
+**Two gates keep that from pricing every reward table**, and each was written after the measurement
+that demanded it:
+
+- **The row must be certain.** Performing a challenge costs `DEFAULT_ACTION_SECONDS` where nothing
+  states it, and multiplying a defaulted pace by a real drop chance is exactly the mistake the Evil
+  chicken table is already refused for. At `Always` there is no multiplication to get wrong. So the
+  swordfish prices and the `Big swordfish` beside it at 1/2500 does not.
+- **The pace must be stated, not defaulted.** `Slay the ~|Alchemical Hydra|~ alt` outputs a table
+  holding `Hydra bones` at `Always`, and killing the Alchemical Hydra is not a four-tick action -
+  priced as one it made a hydra bone free and put **Prayer at 11.3h off 1,155,000 xp/hr**. A kill has
+  a route of its own with the gear and the gates on it, so refusing here loses nothing. What the
+  route is for is the *action* challenges a guide's `kph` actually times: `Catch a ~|raw swordfish|~`
+  at 18.5s, `Catch a ~|raw shark|~` at 7.5s.
+
+**Measured across every climb on both maps, exactly two moved.** `fray`'s Cooking goes **71.9h ->
+89.9h** and its top band swordfish -> **manta ray**, which is the wrong band being retired; `verf`'s
+Construction 193.3h -> 191.3h off a material that can now be bought. Both estimate totals are
+unchanged, and Prayer is 79.7h on `fray` either way. A change this deep in the walk moving two
+numbers is the result to want.
+
+**One thing the investigation found and did not fix**, because it needs its own decision: the `task:`
+route charges **every** entry in a challenge's `Items`, `*`-marked or not, once per unit produced -
+so an unconsumed *tool* is billed as a material. `Catch a ~|raw swordfish|~` declares
+`["Harpoon[+]"]`, and on `fray` no harpoon is reachable, so the route dies there. That happens to be
+right on `fray` (the challenge is invalid; the map cannot fish swordfish, and the shop route is what
+prices the fish) but the rule is wrong in general - 2,216 unmarked `Items` sit on `Output`-carrying
+challenges against 3,553 marked. The material layer already honours the marker and this file already
+says why ("charging an axe per XP would be a *new* wrong answer").
 
 **And the wider bias is not a residual either.** Counting every rated method that declares consumed
 `Items` and carries no material cost: **32 on `fray`, 31 on `verf`**. Some are correct by

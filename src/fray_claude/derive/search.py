@@ -146,6 +146,9 @@ def build_world_index(chunk_info: ChunkInfo) -> WorldIndex:
                 add_source(item, ItemSource("drop", monster))
 
     skill_items = _mapping(data, "skillItems")
+    #: What each `skillItems` activity yields, kept because a *challenge* can
+    #: name one as its `Output` - see the challenge loop below.
+    table_contents: dict[str, set[str]] = {}
     for skill, activities in skill_items.items():
         if not isinstance(activities, dict):
             continue
@@ -155,6 +158,7 @@ def build_world_index(chunk_info: ChunkInfo) -> WorldIndex:
             for drop in table:
                 for item in _expand_drop(drop, drop_tables):
                     add_source(item, ItemSource(skill, activity))
+                    table_contents.setdefault(activity, set()).add(item)
 
     for shop, items in chunk_info.shop_items.items():
         if not isinstance(items, dict):
@@ -202,6 +206,19 @@ def build_world_index(chunk_info: ChunkInfo) -> WorldIndex:
             output = challenge.get("Output")
             if isinstance(output, str):
                 add_source(output, ItemSource(f"task:{category}", name))
+                # **A challenge's `Output` is often a table, not an item**, and
+                # 223 of them are: `Catch a ~|raw swordfish|~` outputs
+                # `Raw swordfish loot`, which is
+                # `{"Raw swordfish": "Always", "Big swordfish": "1/2500"}`.
+                # Without seeding the *contents* the fish itself had no task
+                # route at all - only `ItemSource("Fishing", "Raw swordfish
+                # loot")`, which `_kill_hours` refuses because a table is not a
+                # monster it can stand in front of. The item was therefore
+                # unpriceable on a map that plainly fishes it, and
+                # `estimate._route_hours` divides by the row's own chance so a
+                # 1/2500 member costs 2,500 performances rather than one.
+                for made in table_contents.get(output, ()):  # noqa: B007
+                    add_source(made, ItemSource(f"task:{category}", name))
 
     boss_monsters = frozenset(_mapping(chunk_info.code_items, "bossMonsters"))
 

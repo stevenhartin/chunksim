@@ -1787,3 +1787,133 @@ def test_an_unrated_skill_is_rechecked_rather_than_refused_on_sight() -> None:
     bands = training_bands((rated,), xp_for_level(72), 99)
     assert bands and bands[-1].method == "The Gwenith Glide at Marlin rank"
     assert all(band.match != "default" for band in bands)
+
+
+# --- the reachability gate and the table route -----------------------------
+
+
+def _table_map(*, rate: str, action_seconds: float | None) -> tuple[Any, Any, Any]:
+    """A map that fishes one thing out of a `skillItems` table."""
+    info = ChunkInfo(
+        {
+            "skillItems": {"Fishing": {"Fish loot": {"Raw thing": {"1": rate}}}},
+            "challenges": {
+                "Fishing": {"Catch a ~|raw thing|~": {"Output": "Fish loot"}},
+                "Extra": {"Obtain a ~|raw thing|~": {"Items": ["Raw thing"]}},
+            },
+        }
+    )
+    derived = _derived(
+        challenges=ChallengeResult(
+            valid={"Fishing": {"Catch a ~|raw thing|~": True}},
+            unsupported=frozenset(),
+            available_items={"Raw thing": {}},
+        ),
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra",
+                    groups=(TaskGroup(name="Extra", active=("Obtain a ~|raw thing|~",)),),
+                )
+            }
+        ),
+    )
+    seconds = {} if action_seconds is None else {"Catch a ~|raw thing|~": action_seconds}
+    return info, derived, Heuristics(action_seconds=seconds)
+
+
+def test_a_challenge_whose_output_is_a_table_prices_the_thing_in_it() -> None:
+    """**223 challenges output a table rather than an item.** `Catch a ~|raw
+    swordfish|~` yields `Raw swordfish loot`, which is `{"Raw swordfish":
+    "Always", "Big swordfish": "1/2500"}` - so the fish had no task route at
+    all, only `ItemSource("Fishing", "Raw swordfish loot")`, which
+    `_kill_hours` refuses because a table is not a monster you can stand in
+    front of.
+
+    That made a fish the map plainly catches unpriceable, and an unpriceable
+    material drops its *recipe* while the scraped rate survives - so
+    `Cook a ~|swordfish|~` kept 182,000/hr with nothing charged and took
+    45 -> 99 of Cooking.
+    """
+    info, derived, heuristics = _table_map(rate="Always", action_seconds=30.0)
+
+    result = _run(info, derived, heuristics)
+
+    (thing,) = [item for item in result.items if item.item == "Raw thing"]
+    assert thing.hours == pytest.approx(30.0 / 3600.0)
+
+
+def test_an_uncertain_table_row_is_refused_the_task_route() -> None:
+    """**The gate that keeps this from pricing every reward table.** The time
+    to perform a challenge is a default where nothing states it, and
+    multiplying a defaulted pace by a real drop chance is the mistake
+    `combat_xp.best_target` refuses and the Evil chicken test above pins.
+
+    At `Always` there is no multiplication to get wrong - the action hands the
+    thing over. Below it there is, so `Big swordfish` at 1/2500 keeps no route
+    from the fishing action that catches its ordinary twin.
+    """
+    info, derived, heuristics = _table_map(rate="1/2500", action_seconds=30.0)
+
+    result = _run(info, derived, heuristics)
+
+    assert "Raw thing" in result.unpriced
+
+
+def test_a_table_route_needs_a_stated_pace_not_a_defaulted_one() -> None:
+    """`Slay the ~|Alchemical Hydra|~ alt` outputs a table holding `Hydra
+    bones` at `Always`, and killing the Alchemical Hydra is not a four-tick
+    action. Priced at `DEFAULT_ACTION_SECONDS` it made a hydra bone free and
+    put Prayer at 11.3h off 1,155,000 xp/hr.
+
+    A kill has a route of its own with the gear and the gates on it, so
+    refusing here loses nothing.
+    """
+    info, derived, heuristics = _table_map(rate="Always", action_seconds=None)
+
+    result = _run(info, derived, heuristics)
+
+    assert "Raw thing" in result.unpriced
+
+
+def test_the_walk_gates_on_available_items_not_on_the_source_index() -> None:
+    """**The project's first cross-cutting rule, and this module was the third
+    to break it** after `bis.py` and `boosts.py`. `SourceIndex.items` omits
+    anything obtainable only by *making* it - 1,103 items against 1,918 on
+    `fray` - so 815 reachable items were refused a shop or spawn route on the
+    grounds that the map could not reach them.
+
+    The fixture is the shape that exposed it: an item nothing on the map
+    *drops*, stocked by a shop, which the derivation calls available.
+    """
+    info = ChunkInfo(
+        {
+            "shopItems": {"Fish Shop": {"Raw thing": True}},
+            "challenges": {"Extra": {"Obtain a ~|raw thing|~": {"Items": ["Raw thing"]}}},
+        }
+    )
+    derived = _derived(
+        challenges=ChallengeResult(
+            valid={},
+            unsupported=frozenset(),
+            # Reachable, and *not* in `source_index.items`, which `_derived`
+            # leaves empty - exactly the case the old gate refused.
+            available_items={"Raw thing": {}},
+        ),
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra",
+                    groups=(TaskGroup(name="Extra", active=("Obtain a ~|raw thing|~",)),),
+                )
+            }
+        ),
+    )
+    heuristics = Heuristics(
+        currency_per_hour={"Coins": 500_000.0},
+        shop_prices={"Fish Shop": {"Raw thing": ShopPrice(price=100.0, currency="Coins")}},
+    )
+
+    result = _run(info, derived, heuristics)
+
+    assert "Raw thing" not in result.unpriced
