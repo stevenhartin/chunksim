@@ -83,7 +83,7 @@ from fray_claude.derive.task_names import strip_task_markup
 from fray_claude.remote.combat import AttackSpell, MonsterStats
 from fray_claude.remote.prayer import Altar, Bone
 from fray_claude.remote.farming import Crop
-from fray_claude.remote.skill_tables import COURSE_ALIASES, SkillRow
+from fray_claude.remote.skill_tables import COURSE_ALIASES, GUARDIAN_SUFFIX, SkillRow
 from fray_claude.remote.stores import ShopPrice
 from fray_claude.remote.wiki import Assignment, MmgRates, quest_difficulty, quest_length
 
@@ -864,7 +864,61 @@ def _table_rates(
                         value=value, source=f"wiki:{kind}", match="exact"
                     )
                 break
+    _add_gotr(chunk_info, tables.get("gotr") or (), rated)
     return rated
+
+
+#: What `_table_rates` calls the Guardians of the Rift join, and what
+#: `costing/training.py` recognises as a rate that has already paid for its
+#: own materials - see `_add_gotr`.
+GOTR_SOURCE = "wiki:gotr"
+
+
+def _add_gotr(
+    chunk_info: ChunkInfo, bands: Sequence[SkillRow], rated: dict[str, dict[str, Rate]]
+) -> None:
+    """Guardians of the Rift, which is one activity behind twelve challenges.
+
+    **The minigame's rate depends on the player's level, not on which rune
+    comes out of it**, so its table has nothing a challenge name joins to and
+    this cannot go through `TABLE_KINDS`' name lookup. What it joins on
+    instead is upstream's own naming: the twelve runes craftable inside the
+    minigame are `Craft a <rune> rune with guardian essence`, and a challenge
+    carrying that suffix *is* the minigame. Each takes the band containing its
+    own level, which is the rate at the level that method opens - the same
+    reading taken everywhere else here.
+
+    **Below the table's first band there is no rate and none is invented.**
+    The minigame opens at 27 and the guide tabulates from 40, so the cosmic
+    (27) and chaos (35) variants keep nothing rather than borrowing the 40-50
+    figure. Above it, nothing in the export sits in the 85+ bands - there is
+    no guardian variant of a wrath rune - so the 65,000 and 70,000 rows are
+    read and never spent, which understates the top of the climb rather than
+    overstating it.
+
+    **It replaces a rate that was wrong twice over.** These challenges used to
+    join the ordinary rune's money-making guide through `Output`, so `Craft a
+    chaos rune with guardian essence` was priced at the chaos altar's own
+    28,475/hr - a figure describing a dedicated altar run with bought essence,
+    which is not this activity - and then charged that rune's essence on top,
+    where the minigame's essence is mined inside it and is already in the
+    published rate.
+    """
+    steps = sorted((row.level, row.xp_per_hour or 0.0) for row in bands)
+    if not steps:
+        return
+    for task, challenge in sorted(_mapping(chunk_info.challenges, "Runecraft").items()):
+        if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
+            continue
+        level = challenge.get("Level")
+        if GUARDIAN_SUFFIX not in strip_task_markup(task) or not isinstance(level, int):
+            continue
+        band = [rate for start, rate in steps if start <= level]
+        if not band or not band[-1]:
+            continue
+        rated.setdefault(task, {})["Runecraft"] = Rate(
+            value=band[-1], source=GOTR_SOURCE, match="exact"
+        )
 
 
 #: The export's "this is the skill's version of that name" suffix, and

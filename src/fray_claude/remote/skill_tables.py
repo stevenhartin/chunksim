@@ -78,6 +78,13 @@ DARTS_PAGE = "Template:Table/Fletching/Darts"
 #: The Thieving *training guide*, not the skill page `THIEVING_PAGE` reads -
 #: the pickpocket table is on the latter and Pyramid Plunder is only here.
 THIEVING_TRAINING_PAGE = "Thieving training"
+#: The Runecraft training guide, read for the Guardians of the Rift table.
+RUNECRAFT_PAGE = "Pay-to-play Runecraft training"
+
+#: The task-name suffix upstream gives the twelve runes craftable inside
+#: Guardians of the Rift. **Upstream's own wording, not a pattern invented
+#: here**, which is what makes the join structural.
+GUARDIAN_SUFFIX = "with guardian essence"
 
 #: The Pyramid Plunder rows the wiki publishes, by the Thieving level each
 #: band opens at, mapped to the export's name for the room that opens there.
@@ -145,6 +152,7 @@ PAGES: tuple[str, ...] = (
     HERBLORE_PAGE,
     DARTS_PAGE,
     THIEVING_TRAINING_PAGE,
+    RUNECRAFT_PAGE,
 )
 
 #: Export course name -> the wiki's spelling. **Only for the ones that differ.**
@@ -849,6 +857,35 @@ def parse_plunder(text: str) -> tuple[SkillRow, ...]:
     return tuple(found)
 
 
+def parse_gotr(text: str) -> tuple[SkillRow, ...]:
+    """The Guardians of the Rift curve, as bands rather than as one figure.
+
+    **A minigame's rate depends on the player's level and not on which rune
+    comes out of it**, so this table is `Runecraft level -> XP/h` over five
+    bands and there is nothing in it to join a challenge name to. The bands
+    are the rows, named after the minigame itself; `heuristics._gotr_rates`
+    is what applies them to the twelve `with guardian essence` challenges.
+
+    Deliberately reading only the Runecraft column. The same table publishes
+    the passive Crafting and Mining the minigame also pays, which are real but
+    belong to those climbs and would be a second, separate join.
+    """
+    section = next(
+        (body for title, body in _sections(text) if "Guardians of the Rift" in title), ""
+    )
+    table = table_with(section, "Runecraft")
+    found: list[SkillRow] = []
+    for cells in rows(table):
+        level = number(cells[0]) if cells else None
+        rate = number(cells[1]) if len(cells) > 1 else None
+        if level is None or not rate or level > 99:
+            continue
+        found.append(
+            SkillRow(name="Guardians of the Rift", level=int(level), xp_per_hour=rate)
+        )
+    return tuple(found)
+
+
 def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
     """Every table this module reads, keyed by what it describes."""
     return {
@@ -864,4 +901,5 @@ def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
         "herblore": parse_herblore(pages.get(HERBLORE_PAGE, "")),
         "darts": parse_darts(pages.get(DARTS_PAGE, "")),
         "plunder": parse_plunder(pages.get(THIEVING_TRAINING_PAGE, "")),
+        "gotr": parse_gotr(pages.get(RUNECRAFT_PAGE, "")),
     }

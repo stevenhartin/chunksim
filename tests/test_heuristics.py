@@ -817,3 +817,76 @@ def test_a_challenge_two_skills_claim_still_joins_for_both() -> None:
 
     assert training["Catch a ~|leaping trout|~"]["Fishing"]["value"] == 23_000.0
     assert training["Catch a ~|leaping trout|~"]["Fishing"]["source"] == "wiki:fishing"
+
+
+def test_the_rift_prices_the_runes_that_are_crafted_inside_it() -> None:
+    """**Upstream's own naming is the join.** The twelve runes craftable in
+    Guardians of the Rift are `Craft a <rune> rune with guardian essence`, and
+    a challenge carrying that suffix *is* the minigame - so each takes the
+    band containing its own level, which is the rate at the level that method
+    opens.
+
+    Below the table's first band nothing is invented: the minigame opens at 27
+    and the guide tabulates from 40, so a variant below that keeps nothing
+    rather than borrowing the 40-50 figure.
+    """
+    from fray_claude.costing.heuristics import GOTR_SOURCE, _table_rates
+    from fray_claude.remote.skill_tables import SkillRow
+
+    chunk_info = ChunkInfo(
+        {
+            "challenges": {
+                "Runecraft": {
+                    "Craft a ~|chaos rune|~ with guardian essence": {
+                        "Level": 35, "Primary": True, "Output": "Chaos rune",
+                    },
+                    "Craft a ~|law rune|~ with guardian essence": {
+                        "Level": 54, "Primary": True, "Output": "Law rune",
+                    },
+                    "Craft a ~|blood rune|~ with guardian essence": {
+                        "Level": 77, "Primary": True, "Output": "Blood rune",
+                    },
+                    # The ordinary altar, which must not be given the
+                    # minigame's rate - it is a different activity and pays
+                    # for its own essence.
+                    "Craft a ~|law rune|~": {
+                        "Level": 54, "Primary": True, "Output": "Law rune",
+                    },
+                }
+            }
+        }
+    )
+    bands = (
+        SkillRow(name="Guardians of the Rift", level=40, xp_per_hour=25_000.0),
+        SkillRow(name="Guardians of the Rift", level=50, xp_per_hour=40_000.0),
+        SkillRow(name="Guardians of the Rift", level=75, xp_per_hour=50_000.0),
+    )
+    rated = _table_rates(chunk_info, {"gotr": bands})
+
+    assert rated["Craft a ~|law rune|~ with guardian essence"]["Runecraft"].value == 40_000.0
+    assert rated["Craft a ~|blood rune|~ with guardian essence"]["Runecraft"].value == 50_000.0
+    assert "Craft a ~|chaos rune|~ with guardian essence" not in rated, "below the table"
+    assert "Craft a ~|law rune|~" not in rated, "the altar is not the minigame"
+
+    source = rated["Craft a ~|law rune|~ with guardian essence"]["Runecraft"].source
+    assert source == GOTR_SOURCE
+
+
+def test_the_rifts_rate_has_already_paid_for_its_own_essence() -> None:
+    """**The essence is mined inside the minigame** - that is most of what the
+    twenty minutes is - and the published figure is what comes out of the
+    whole thing. Charging the rune's essence on top would bill the same work
+    twice, which is the mistake `_material_cost` was written to stop for
+    recipe rates and which the Rift is the second case of.
+    """
+    from fray_claude.costing.heuristics import GOTR_SOURCE, Heuristics, Rate
+    from fray_claude.costing.recipe_rates import RECIPE_SOURCE
+    from fray_claude.costing.training import _ALL_INCLUSIVE_SOURCES, _material_cost
+
+    assert _ALL_INCLUSIVE_SOURCES == {RECIPE_SOURCE, GOTR_SOURCE}
+
+    heuristics = Heuristics(material_seconds_per_xp={"task": 0.3})
+    charged = Rate(value=40_000.0, source="mmg:whatever", match="exact")
+    inclusive = Rate(value=40_000.0, source=GOTR_SOURCE, match="exact")
+    assert _material_cost(heuristics, "task", charged) == 0.3
+    assert _material_cost(heuristics, "task", inclusive) == 0.0

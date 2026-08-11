@@ -25,7 +25,7 @@ from fray_claude.costing.heuristics import DEFAULT_XP_PER_HOUR
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.model.experience import MAX_LEVEL, level_for_xp, xp_for_level
 from fray_claude.derive.pipeline import Derived
-from fray_claude.costing.heuristics import Heuristics, Rate
+from fray_claude.costing.heuristics import GOTR_SOURCE, Heuristics, Rate
 from fray_claude.costing.recipe_rates import RECIPE_SOURCE
 from fray_claude.model.summary import _mapping
 from fray_claude.costing.heuristics import activity_name
@@ -145,6 +145,11 @@ def training_options(
     return tuple(sorted(found, key=lambda option: -option.effective_xp_per_hour))
 
 
+#: Rate sources whose figure already covers getting the materials, so the
+#: walk must not charge for them a second time. See `_material_cost`.
+_ALL_INCLUSIVE_SOURCES = frozenset({RECIPE_SOURCE, GOTR_SOURCE})
+
+
 def _material_cost(heuristics: Heuristics, name: str, rate: Rate) -> float:
     """Gathering seconds per XP, **only where the rate does not already have
     them.**
@@ -165,8 +170,15 @@ def _material_cost(heuristics: Heuristics, name: str, rate: Rate) -> float:
     Keyed on the source rather than on a flag, because the layering is what
     decides it: `recipe_rates.apply` puts a computed rate *below* a scraped
     one, so whichever survives is what the option is priced on.
+
+    **Guardians of the Rift is the second such source, and it is not a recipe
+    at all.** Its essence is mined inside the minigame - that is most of what
+    the twenty minutes is - and the wiki's figure is what comes out of the
+    whole thing, so charging the rune's essence again would bill the same work
+    twice. It is the one activity here where "gather" and "train" are not two
+    steps that could be timed apart.
     """
-    if rate.source == RECIPE_SOURCE:
+    if rate.source in _ALL_INCLUSIVE_SOURCES:
         return 0.0
     return heuristics.material_seconds_per_xp.get(name, 0.0)
 

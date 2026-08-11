@@ -457,6 +457,38 @@ first `{{plinkt}}` in a row is the potion** and the two after it are its base an
 spellings are emitted - the bare name joins 45 challenges and the `pic=` form another 35. **82 joins,
 and Herblore 1 -> 99 on the uber map goes 13,034h (the floor, no rated options at all) to 27.0h.**
 
+**Guardians of the Rift is one activity behind twelve challenges, and it was priced as twelve
+altars.** The export models it as `Craft a <rune> rune with guardian essence`, which joined the
+*ordinary* rune's money-making guide through `Output` - so the guardian chaos rune was quoted at the
+chaos altar's 28,475/hr, a figure describing a dedicated abyss run with bought essence, and was then
+charged that rune's pure essence on top. Both halves were wrong and they were wrong in opposite
+directions.
+
+**The minigame's rate depends on the player's level and not on which rune comes out**, so its table
+is `Runecraft level -> XP/h` over five bands with nothing in it for a challenge name to join to.
+`heuristics._add_gotr` therefore joins on upstream's own naming - the `with guardian essence` suffix
+*is* the minigame - and gives each challenge the band containing its own level, the rate at the level
+that method opens. It cannot go through `TABLE_KINDS`, whose lookup is by name, and it must not go
+through `Output`, which is the plain altar's key as well.
+
+**And its essence is mined inside the minigame, which is what the published figure is measuring.**
+Twenty minutes of mining fragments pays out as one lump of experience at the end; the rate is the
+whole thing divided by the whole time. So `training._ALL_INCLUSIVE_SOURCES` gains `wiki:gotr` beside
+`recipe`, and `_material_cost` charges neither - the second and, so far, last case where "gather" and
+"train" are not two steps that could be timed apart. **Runecraft 1 -> 99 on the uber map goes 462.4h
+-> 271.3h**, with the Rift holding levels 44 to 99, which is what a player with everything unlocked
+would actually do. Both cached maps are unchanged: neither reaches the Temple of the Eye.
+
+Two limits are stated rather than papered over. **Above the table nothing in the export sits in the
+85+ bands** - there is no guardian variant of a wrath rune - so the 65,000 and 70,000 rows are read
+and never spent, understating the top. **Below it the guide tabulates from 40 where the minigame
+opens at 27**, so the eight variants under level 40 keep nothing from this join and fall back to the
+altar rate they always had. That is still the wrong rate for the wrong activity; it changes no number
+because the plain variant of each is present with an identical figure and an identical essence cost,
+so removing them would leave every climb where it is. Fixing it properly means deciding whether a
+guardian variant should be a separate method at all, which is a question about the export's shape
+rather than about a rate.
+
 **Pyramid Plunder resolves into three of its eight rooms, and only three.** The export models the
 minigame as `Access the Nth room of ~|Pyramid Plunder|~` at levels 21 to 91; the guide publishes a
 `Thieving levels -> XP/hour` table over *bands*, which is the shape that makes Fishing's techniques

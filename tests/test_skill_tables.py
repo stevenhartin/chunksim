@@ -15,6 +15,7 @@ from fray_claude.remote.skill_tables import (
     parse_herblore,
     parse_mining,
     parse_darts,
+    parse_gotr,
     parse_hunter,
     parse_plunder,
     parse_woodcutting,
@@ -813,8 +814,8 @@ def test_the_plunder_names_are_the_words_the_export_uses() -> None:
     therefore carries the export's phrasing, the same way `COURSE_ALIASES`
     carries the four course spellings upstream gets wrong.
     """
-    from fray_claude.costing.heuristics import _join_keys, COURSE_ALIASES
-    from fray_claude.remote.skill_tables import PLUNDER_BY_LEVEL
+    from fray_claude.costing.heuristics import _join_keys
+    from fray_claude.remote.skill_tables import COURSE_ALIASES, PLUNDER_BY_LEVEL
 
     keys = _join_keys(
         {"Level": 71, "Primary": True},
@@ -822,3 +823,40 @@ def test_the_plunder_names_are_the_words_the_export_uses() -> None:
         COURSE_ALIASES,
     )
     assert PLUNDER_BY_LEVEL[71].lower() in keys
+
+
+def test_the_rift_is_read_as_a_curve_over_levels() -> None:
+    """**A minigame's rate depends on the player's level, not on which rune
+    comes out of it**, so this table has nothing a challenge name joins to.
+    The rows are bands named after the minigame; applying them is
+    `heuristics._add_gotr`'s job.
+
+    Only the Runecraft column is read. The same table publishes the passive
+    Crafting and Mining the minigame also pays, which are real and belong to
+    those climbs - a second, separate join rather than a free extra here.
+    """
+    text = """
+==Levels 27-99: Guardians of the Rift==
+The rates below assume using the best pouches available.
+{| class="wikitable"
+!{{SCP|Runecraft}} level
+!{{SCP|Runecraft}} XP/h
+!{{SCP|Crafting}} XP/h
+!{{SCP|Mining}} XP/h
+|-
+|40-50
+|25,000
+|2,300
+|1,200
+|-
+|75-85
+|50,000
+|4,700
+|2,500
+|}
+"""
+    rows = {row.level: row for row in parse_gotr(text)}
+    assert set(rows) == {40, 75}
+    assert all(row.name == "Guardians of the Rift" for row in rows.values())
+    assert rows[40].xp_per_hour == 25_000.0
+    assert rows[75].xp_per_hour == 50_000.0, "the Runecraft column, not Crafting's"
