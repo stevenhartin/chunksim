@@ -733,6 +733,22 @@ SHORTCUT_CYCLE_SECONDS = 18.0
 #: than overstating the start.
 PICKPOCKET_CYCLE_SECONDS = 3.5
 
+#: Seconds one dart takes to fletch. **The third assumption in this file, and
+#: the one with the clearest statement of what it is assuming.** Dart fletching
+#: is one of the few actions the tick system does not gate - two clicks make a
+#: whole set of ten - so no page publishes an hourly figure for it and none
+#: could: the rate is however fast a person can click. `Fletching training`
+#: says 2-4 sets a tick is reachable on mobile and declines to turn that into a
+#: number.
+#:
+#: One set a tick is the modelled figure: 10 darts per 0.6s, so 60,000 darts an
+#: hour. That is a fair intensive pace rather than the ceiling, the same
+#: conservative end taken for a published range everywhere else here - the
+#: mobile two-fingered version would be two to four times this. It puts rune
+#: darts at 1,128,000 xp/hr and dragon at 1,500,000, which is what the skill
+#: does at the top.
+DART_CYCLE_SECONDS = 0.6 / 10.0
+
 
 #: Ticks to light one fire. The action is fixed; what varies is the log.
 FIRE_TICKS = 4
@@ -787,6 +803,7 @@ TABLE_KINDS: dict[str, tuple[tuple[str, float | None], ...]] = {
     "Fishing": (("fishing", None),),
     "Mining": (("mining", None),),
     "Herblore": (("herblore", None),),
+    "Fletching": (("darts", DART_CYCLE_SECONDS),),
 }
 
 

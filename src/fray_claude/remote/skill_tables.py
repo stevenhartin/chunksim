@@ -71,6 +71,10 @@ HUNTER_PAGE = "Hunter training"
 FISHING_PAGE = "Pay-to-play Fishing training"
 MINING_PAGE = "Pay-to-play Mining training"
 HERBLORE_PAGE = "Herblore training"
+#: **A transcluded template, not a section.** `Fletching training` writes
+#: `{{Table/Fletching/Darts}}` where the table should be, so the page's own
+#: wikitext holds the prose around it and none of the figures.
+DARTS_PAGE = "Template:Table/Fletching/Darts"
 
 #: The Mining headings that name a rock the export also names, mapped to the
 #: export's name for it. `_names` offers a heading under both spellings, so
@@ -121,6 +125,7 @@ PAGES: tuple[str, ...] = (
     FISHING_PAGE,
     MINING_PAGE,
     HERBLORE_PAGE,
+    DARTS_PAGE,
 )
 
 #: Export course name -> the wiki's spelling. **Only for the ones that differ.**
@@ -753,6 +758,47 @@ def parse_hunter(text: str) -> tuple[SkillRow, ...]:
     return _prose_rates(text) + _quarry_rows(text) + _heading_rates(text)
 
 
+def parse_darts(text: str) -> tuple[SkillRow, ...]:
+    """Each dart tier's Fletching level and the experience one dart pays.
+
+    **Experience per *dart*, never per hour**, which is the whole reason this
+    table can be read at all: dart fletching is one of the few actions in the
+    game the tick system does not gate, so no page publishes an hourly figure
+    for it and none could - the rate is however fast a person can click. The
+    wiki says 2-4 sets a tick is reachable on mobile and declines to turn that
+    into a number. `heuristics.DART_CYCLE_SECONDS` is where that decision is
+    made and stated, the same separation this module already keeps for
+    shortcuts and pickpockets.
+
+    Eight tiers, and their levels are the export's challenge levels exactly -
+    10, 22, 37, 52, 67, 81, 90, 95 - so every row joins on the `{{plinkt}}`
+    name, which is the export's `Output`.
+    """
+    table = table_with(text, "|XP/dart")
+    found: list[SkillRow] = []
+    for cells in rows(table):
+        item = _PLINKT.search(" ".join(cells))
+        level = number(cells[0]) if cells else None
+        # **The first figure after the level, not a resolved column index.**
+        # `column_index` counts a header's `colspan` against the width the
+        # data uses, and here the two genuinely disagree: `{{plinkt}}` expands
+        # to *two* rendered cells (icon, then link), which is what the `Dart`
+        # header's `colspan="2"` is counting, but the wikitext splitter sees
+        # one. Resolving `XP/dart` that way lands on `XP/buy limit` - 23,400
+        # rather than 1.8, and a bronze dart priced at 1.4 billion an hour.
+        # The scan is unambiguous because every cell between the level and the
+        # experience is an item template carrying no bare figure of its own.
+        experience = next(
+            (value for cell in cells[1:] if (value := number(cell)) is not None), None
+        )
+        if level is None or item is None or not experience:
+            continue
+        found.append(
+            SkillRow(name=item.group(1).strip(), level=int(level), experience=experience)
+        )
+    return tuple(found)
+
+
 def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
     """Every table this module reads, keyed by what it describes."""
     return {
@@ -766,4 +812,5 @@ def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
         "fishing": parse_fishing(pages.get(FISHING_PAGE, "")),
         "mining": parse_mining(pages.get(MINING_PAGE, "")),
         "herblore": parse_herblore(pages.get(HERBLORE_PAGE, "")),
+        "darts": parse_darts(pages.get(DARTS_PAGE, "")),
     }

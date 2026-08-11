@@ -14,6 +14,7 @@ from fray_claude.remote.skill_tables import (
     parse_fishing,
     parse_herblore,
     parse_mining,
+    parse_darts,
     parse_hunter,
     parse_woodcutting,
     parse_courses,
@@ -687,3 +688,77 @@ The following rates can be expected while training here:
     assert rows["Dashing kebbit"].xp_per_hour == 85_000.0
 
     assert "Falconry" not in rows, "a technique names no creature"
+
+
+def test_darts_are_read_as_experience_per_dart() -> None:
+    """**Experience per dart, never per hour**, which is why this table can be
+    read at all: dart fletching is one of the few actions the tick system does
+    not gate, so no page publishes an hourly figure and none could. Turning it
+    into a rate is `heuristics.DART_CYCLE_SECONDS`' decision, stated there.
+
+    The column is found by scanning rather than by resolving `XP/dart` against
+    the header, because the two genuinely disagree: `{{plinkt}}` expands to
+    *two* rendered cells, which is what the `Dart` header's `colspan="2"`
+    counts, where the wikitext splitter sees one. Resolving it landed on
+    `XP/buy limit` - 23,400 instead of 1.8, and a bronze dart at 1.4 billion
+    experience an hour.
+    """
+    text = """
+{| class="wikitable sortable"
+! rowspan="2" |{{SCP|Fletching}} Level
+! rowspan="2" colspan="2" class="unsortable" |Dart
+! rowspan="2" class="unsortable" |Materials
+! rowspan="2" |XP/dart
+! rowspan="2" |XP/<br>buy limit
+! colspan="3" |GE Price
+|-
+!GP/dart
+!Profit/dart
+!GP/XP
+|-
+|10
+|{{plinkt|Bronze dart|txt=Bronze}}
+|{{plinkp|Feather}} {{plinkp|Bronze dart tip}}
+|1.8
+|23,400
+|{{Coins|1}}
+|{{Coins|2}}
+|{{Coins|3}}
+|-
+|95
+|{{plinkt|Dragon dart|txt=Dragon}}
+|{{plinkp|Feather}} {{plinkp|Dragon dart tip}}
+|25
+|275,000
+|{{Coins|1}}
+|{{Coins|2}}
+|{{Coins|3}}
+|}
+"""
+    rows = {row.name: row for row in parse_darts(text)}
+    assert set(rows) == {"Bronze dart", "Dragon dart"}, "the plinkt names the item"
+    assert rows["Bronze dart"].level == 10
+    assert rows["Bronze dart"].experience == pytest.approx(1.8)
+    assert rows["Dragon dart"].experience == pytest.approx(25.0)
+
+    # The parser states no rate at all - that separation is the point.
+    assert all(row.xp_per_hour is None for row in rows.values())
+
+
+def test_the_modelled_dart_pace_is_one_set_a_tick() -> None:
+    """**A stated assumption, not a measurement**, like the shortcut and
+    pickpocket cycles beside it - and the only one whose source explicitly
+    declines to publish a number.
+
+    Two clicks make a set of ten and nothing gates the next set, so the rate
+    is however fast a person can click; `Fletching training` says 2-4 sets a
+    tick is reachable on mobile and stops there. One set a tick is the fair
+    intensive pace: 60,000 darts an hour, which puts rune darts at 1,128,000
+    xp/hr and dragon at 1,500,000. Pinned because a silent edit here moves the
+    top of a whole climb.
+    """
+    from fray_claude.costing.heuristics import DART_CYCLE_SECONDS
+
+    assert DART_CYCLE_SECONDS == pytest.approx(0.06), "ten darts per 0.6s tick"
+    assert 3600.0 / DART_CYCLE_SECONDS == pytest.approx(60_000.0)
+    assert 18.8 * 3600.0 / DART_CYCLE_SECONDS == pytest.approx(1_128_000.0), "rune"

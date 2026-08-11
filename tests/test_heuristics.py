@@ -750,6 +750,10 @@ def test_every_gathering_skill_now_has_a_table() -> None:
     assert set(TABLE_KINDS) == {
         "Agility", "Thieving", "Firemaking", "Woodcutting", "Hunter", "Fishing",
         "Mining", "Herblore",
+        # Not a gathering skill and here for the opposite reason: dart
+        # fletching is not tick-gated, so no page publishes an hourly figure
+        # and the table states experience per *dart*.
+        "Fletching",
     }
 
 

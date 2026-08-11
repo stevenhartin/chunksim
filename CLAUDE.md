@@ -149,7 +149,7 @@ Five things that cut across modules — the first three because each has already
 | `remote/wiki.py` | Wikitext template parsing, plus `map_tile_version` over the map page's rendered *HTML*. Pure. Quest length is in `{{Quest details}}`, **not** `{{Infobox Quest}}` — the tempting wrong template has no `length` and so returns `None` for every quest without erroring. |
 | `model/experience.py` | The exact 1–99 XP curve, closed-form. **Not a heuristic and not overridable** — that separation from `heuristics.py` is the point of the module. |
 | `remote/scrape.py` | The ~18 requests that build the scraped layer, and the coverage it reports. **Both apps run it** — `fray heuristics` and the GUI's Maps tab — so the two cannot write different files. Decides no rate; `heuristics.py` does that. |
-| `remote/skill_tables.py` | Agility, Thieving, Firemaking, **Woodcutting**, **Hunter**, **Herblore**, four **Fishing** and three **Mining** rates, from the wiki tables (`Shortcuts`, `Agility`, `Stall/Thievable`, `Thieving`). Pure wikitext-table parsing with a depth-aware cell splitter, because `{{Coins\|{{GEP\|x\|10*13.8}}}}` is full of `\|` that are not cell breaks. **These are the two skills `{{Recipe}}` cannot describe** - both have zero rows in the wiki's recipe bucket. Owns `COURSE_ALIASES`, the 4 spellings the export gets wrong (`Canafis`), and `parse_woodcutting`, whose 16 rows join **all 16** on `Output` and take the **bottom** of a published range because the top is 2-tick manipulation. `parse_hunter`/`parse_fishing` are the odd ones: their tables are `level -> XP/h` curves keyed by the **section heading** that owns them (`_heading_rates`), so they take the first row and the last column - both the conservative end. Fishing joins only the four headings naming one fish; the rest name techniques covering several. |
+| `remote/skill_tables.py` | Agility, Thieving, Firemaking, **Woodcutting**, **Hunter**, **Herblore**, four **Fishing** and three **Mining** rates, from the wiki tables (`Shortcuts`, `Agility`, `Stall/Thievable`, `Thieving`). Pure wikitext-table parsing with a depth-aware cell splitter, because `{{Coins\|{{GEP\|x\|10*13.8}}}}` is full of `\|` that are not cell breaks. **These are the two skills `{{Recipe}}` cannot describe** - both have zero rows in the wiki's recipe bucket. Owns `COURSE_ALIASES`, the 4 spellings the export gets wrong (`Canafis`), and `parse_woodcutting`, whose 16 rows join **all 16** on `Output` and take the **bottom** of a published range because the top is 2-tick manipulation. `parse_hunter`/`parse_fishing` are the odd ones: their tables are `level -> XP/h` curves keyed by the **section heading** that owns them (`_heading_rates`), so they take the first row and the last column - both the conservative end. Fishing joins only the four headings naming one fish; the rest name techniques covering several. Hunter reads *prose* on top of that (`_prose_rates`), because only 6 of its 22 sections hold a table at all. `parse_darts` is the other way round again - the one table stating experience per **action** where no hourly figure exists to state. |
 | `remote/stores.py` | What a shop charges and **in what currency**, from the `storeline` Bucket. 6,326 lines, of which 4,438 are coins and 126 Tokkul; the rest are points and tickets nobody converts. The API caps a query at 5,000 rows whatever `limit` says, so it pages with `offset`. Joins 403 of the export's 435 shops and prices 3,798 of its 4,163 stock lines. |
 | `remote/farming.py` | The wiki calculator's crop table, `Module:Skill calc/Farming`, read as raw Lua - 76 crops with level, per-item xp, plant xp, seed and patch type. Parsed by **brace matching, not by splitting on `name =`**: every crop's `materials` has a name of its own, and a split ends each crop before the `type` that says which patch it goes in. |
 | `costing/farming.py` | Farming as a **schedule rather than a rate**. Owns `DEFAULT_HARVESTS_PER_DAY` - fruit tree 1, tree 3, cactus 3, bush 3, allotment 8, herb 8, hardwood 1/3, redwood 1/7 - and reports two numbers that measure different things: `active_hours` (clicking, goes in the bucket) and `days` (calendar, reported beside it and never added). Hops, flowers, belladonna, spirit trees and celastrus are **absent** from the schedule rather than zeroed. |
@@ -456,6 +456,37 @@ first `{{plinkt}}` in a row is the potion** and the two after it are its base an
 (`attack potion(3)`) where the wiki names the potion and puts the dosed form in `pic=`, so both
 spellings are emitted - the bare name joins 45 challenges and the `pic=` form another 35. **82 joins,
 and Herblore 1 -> 99 on the uber map goes 13,034h (the floor, no rated options at all) to 27.0h.**
+
+**Darts are the one method with no hourly figure anywhere, because nothing gates them.** Two clicks
+make a set of ten and the tick system does not hold the next set, so the rate is however fast a
+person can click - `Fletching training` says 2-4 sets a tick is reachable on mobile and declines to
+turn that into a number, which is why no guide and no `{{Recipe}}` covers it and all eight dart
+tiers sat unrated. Its table publishes **experience per dart**, which is a fact rather than a pace,
+so `parse_darts` reads that and `heuristics.DART_CYCLE_SECONDS` makes the modelling decision
+separately - the same split already keeping `SHORTCUT_CYCLE_SECONDS` and
+`PICKPOCKET_CYCLE_SECONDS` out of the parser, and now the third assumption in that file.
+
+**One set a tick**: 10 darts per 0.6s, 60,000 an hour, which puts rune darts at 1,128,000 xp/hr and
+dragon at 1,500,000. That is a fair intensive pace rather than the ceiling, taking the bottom of a
+published range as everything else here does. The table's eight levels are the export's challenge
+levels exactly (10, 22, 37, 52, 67, 81, 90, 95), so all eight join on `Output`. **Fletching 1 -> 99
+goes 30.0h -> 21.3h on both cached maps and 24.4h -> 11.2h on the uber map.**
+
+**The table itself needs a scan rather than a resolved column, and the reason generalises.**
+`{{plinkt}}` expands to *two* rendered cells - an icon, then the link - which is what the `Dart`
+header's `colspan="2"` is counting, where the wikitext splitter sees one. So `column_index` and the
+data disagree by one from that column on, and resolving `XP/dart` landed on `XP/buy limit`: 23,400
+instead of 1.8, and a bronze dart at 1.4 billion experience an hour. Taking the first figure after
+the level is unambiguous here because every cell between them is an item template carrying no bare
+number - checked, and pinned by a test with the real header shape.
+
+**And darts are where the material bias finally wins a band, which the standing measurement said it
+would not.** `Fletch a ~|dragon dart|~` declares `Items: ["Dragon dart tip*", "Feather[+]*"]` -
+both marked consumed - but `material_seconds_per_xp` is built from `computed_rates` and nothing
+describes dart fletching as a recipe, so the tips price at **zero** and 1,500,000/hr is the whole
+climb's top band. On a chunk map a dart tip is smithed from a bar of its own tier, which is real
+work. It is the general bias below with the case that makes it matter, and closing it is the same
+`Items`-rather-than-recipe work Herblore's herbs need.
 
 **Hunter, four Fishing methods and three Mining ones join on the section heading, which is the one
 part of that shape that is structure rather than prose.** `Hunter training` (not `Pay-to-play Hunter training`, which does not exist) keys its
@@ -884,7 +915,9 @@ guide-rated, and it is worth much more wherever a recipe rate wins a band.
 
 **The known bias, stated rather than hidden:** only methods a `{{Recipe}}` describes have a material
 cost, so a method with no recipe row is ranked as though its inputs were free and is quietly
-favoured.
+favoured. **Fletching's darts are the case that proved this can win a band** - nothing describes
+dart fletching as a recipe, so its tips price at zero and 1,500,000 xp/hr tops the climb; see the
+darts paragraph above.
 
 **Herblore is where that bias bites hardest, and it is half-closed rather than absent.** The
 expensive part of the skill is the grimy herb, not the mixing, and the walk *can* price one: on the
