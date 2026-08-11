@@ -870,11 +870,22 @@ Tantrum's Swordfish rank at 19,342 - and the shipwrecks turn out to have had mon
 rates all along (fremennik 51,708, barracuda 10,230).
 
 **None of it can be spent, because `derive` makes 0 of the export's 243 Sailing challenges valid -
-on the uber map, with every chunk unlocked and every level at 99.** So the gap was never the rates.
-It is upstream of them, in whatever the derivation needs and has not got, and it is *not* a map
-constraint: no map can reach Sailing content today. That is where the next Sailing work goes, and
-until it lands `UNRATED_SKILLS`' recheck keeps the skill refused - correctly, since "no *reachable*
-method has a rate" is exactly true.
+on the uber map, with every chunk unlocked and every level at 99.** So the gap was never the rates,
+and it is not a map constraint either.
+
+**It is that nothing anywhere sources a boat.** Every Sailing challenge gates on one, either
+`Items: ["AnyBoat[+]"]` or a named `["Skiff"]`, and `codeItems.itemsPlus` expands the family to
+`["Raft", "Skiff", "Sloop"]`. **None of those three is in `SourceIndex.items` or in
+`ChallengeResult.available_items` with every chunk in the game unlocked**, so the item gate fails
+243 times out of 243 and everything downstream follows - which is why even `Trim the ~|mast and
+sails|~ on your boat`, level 1 with no chunk requirement at all, is invalid. `AnySalvagingHook[+]`
+is worse: the family is a key in `itemsPlus` whose value is `null`, so it has no members to reach.
+
+So the next piece of Sailing work is a *derivation* question rather than an estimator one: find the
+branch upstream builds a boat in - it is not one `sources.py` walks today - and the 243 challenges,
+their nine joined trial rates and the shipwrecks' guide rates all light up together. Until then
+`UNRATED_SKILLS`' recheck keeps the skill refused, correctly: "no *reachable* method has a rate" is
+exactly true.
 
 **A computed rate slower than the 1,000/hr floor is refused.** The floor is a deliberate stand-in for
 ignorance, not a speed, and a computed number below it says the model is missing something about that
