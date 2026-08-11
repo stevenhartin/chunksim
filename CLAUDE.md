@@ -838,7 +838,18 @@ guide-rated, and it is worth much more wherever a recipe rate wins a band.
 
 **The known bias, stated rather than hidden:** only methods a `{{Recipe}}` describes have a material
 cost, so a method with no recipe row is ranked as though its inputs were free and is quietly
-favoured. Coverage is 93-95% on the processing skills and ~0% on the gathering ones, where there is
+favoured.
+
+**Herblore is where that bias bites hardest, and it is half-closed rather than absent.** The
+expensive part of the skill is the grimy herb, not the mixing, and the walk *can* price one: on the
+uber map a grimy ranarr weed costs **168.9 seconds** and a snapdragon **195.3**, mostly off monster
+drops, which is the right order of magnitude. **48 of the 86 rated and reachable Herblore methods
+carry that cost; the other 38 do not**, because `material_seconds_per_xp` is built from
+`computed_rates` and nowhere else - so a potion the recipe data does not reach is ranked as though
+its herbs were free. That is the general bias above with a number on it, and Herblore is the skill
+where the missing half is most of the true cost. Closing it means giving a method its materials from
+the challenge's own `Items` rather than only from a recipe row, which is the same gap the `*`
+secondary marker was found for - see the Giants' Foundry caveat above. Coverage is 93-95% on the processing skills and ~0% on the gathering ones, where there is
 usually nothing to consume anyway - but this is the direction to check first when a chosen method
 looks too good.
 
