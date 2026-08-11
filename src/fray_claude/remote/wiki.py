@@ -261,14 +261,22 @@ def parse_amount(raw: str) -> float | None:
     return parse_number(stripped)
 
 
-#: `{{#expr: ... }}`, MediaWiki's arithmetic parser function, and nothing
-#: else - the body is exactly the sum this module already evaluates. Anchored
-#: whole, so a value that merely *contains* one is left for the template check.
-_EXPR_CALL = re.compile(r"^\{\{\s*#expr:\s*(.*?)\s*\}\}$", re.S)
+#: `{{#expr: ... }}`, MediaWiki's arithmetic parser function, and
+#: `{{formatnum: ... }}`, which only puts separators in what it wraps. Both
+#: anchored whole, so a value that merely *contains* one is left for the
+#: template check, and both stripped repeatedly because the wiki nests them
+#: (`{{formatnum:{{#expr:(3050 + 1050) round 0}}}}`).
+_EXPR_CALL = re.compile(r"^\{\{\s*(?:#expr|formatnum):\s*(.*?)\s*\}\}$", re.S)
+
+#: MediaWiki's `round` *operator*, which Python's grammar has no equivalent
+#: of: `a round 0` rounds `a` to that many places. Always trailing in the
+#: values here, and dropping it costs less than a unit on figures in the tens
+#: of thousands - where keeping it would mean refusing the value outright.
+_ROUND_OP = re.compile(r"\s+round\s+\d+\s*$")
 
 
 def _unwrap_expr(value: str) -> str:
-    """`{{#expr:67*10}}` -> `67*10`. The wrapper only, never the body.
+    """`{{formatnum:{{#expr:67*10 round 0}}}}` -> `67*10`. Wrappers only.
 
     **A guide writes its arithmetic either way** - the law rune guide says
     `54*9.5` and the death rune one says `{{#expr:67*10}}` - and reading the
@@ -279,8 +287,9 @@ def _unwrap_expr(value: str) -> str:
     (`{{#expr:{{GEP|Blood essence}}}}`) still holds `{{` afterwards and is
     refused by the caller, because a live price is not something to guess at.
     """
-    match = _EXPR_CALL.match(value)
-    return match.group(1) if match else value
+    while (match := _EXPR_CALL.match(value)) is not None:
+        value = match.group(1)
+    return _ROUND_OP.sub("", value)
 
 
 def _template_body(text: str, template: str) -> str | None:

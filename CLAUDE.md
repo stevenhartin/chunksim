@@ -859,12 +859,22 @@ figures is joined the skill prices itself with no edit here.
 
 The pairing is needed in both directions: without the set, "nothing is rated" would refuse any skill
 the scrape has merely not reached yet, where the floor is honest and an improving scrape fixes it;
-without the recheck, a skill stays refused after its numbers arrive. **Nothing is joined yet** - the
-export's nine trial challenges are `Complete ~|The Gwenith Glide|~ at Marlin rank` and the guide's
-figures sit in a `{{formatnum:{{#expr:...round 0}}}}` table, which needs a reader `wiki.py` does not
-have (`_unwrap_expr` takes a bare `#expr` wrapper, not one nested inside `formatnum` with MediaWiki's
-`round` operator). That is the next piece of Sailing work and the export is ready for it: three
-trials at levels 30/55/72, three ranks each, and seven shipwreck tiers from 15 to 87.
+without the recheck, a skill stays refused after its numbers arrive.
+
+**The nine barracuda trials are joined now, and it changed nothing - for a reason worth knowing.**
+`parse_sailing` reads the guide's table, whose every cell is `{{formatnum:{{#expr:... round 0}}}}`
+and holds no bare digits at all, so `wiki._unwrap_expr` learned to peel nested wrappers and drop
+MediaWiki's `round` *operator*, which Python has no equivalent of. All nine land exactly on the
+export's names - `Complete ~|The Gwenith Glide|~ at Marlin rank`, 184,369/hr down to the Tempor
+Tantrum's Swordfish rank at 19,342 - and the shipwrecks turn out to have had money-making-guide
+rates all along (fremennik 51,708, barracuda 10,230).
+
+**None of it can be spent, because `derive` makes 0 of the export's 243 Sailing challenges valid -
+on the uber map, with every chunk unlocked and every level at 99.** So the gap was never the rates.
+It is upstream of them, in whatever the derivation needs and has not got, and it is *not* a map
+constraint: no map can reach Sailing content today. That is where the next Sailing work goes, and
+until it lands `UNRATED_SKILLS`' recheck keeps the skill refused - correctly, since "no *reachable*
+method has a rate" is exactly true.
 
 **A computed rate slower than the 1,000/hr floor is refused.** The floor is a deliberate stand-in for
 ignorance, not a speed, and a computed number below it says the model is missing something about that

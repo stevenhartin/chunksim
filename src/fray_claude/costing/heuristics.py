@@ -813,6 +813,7 @@ TABLE_KINDS: dict[str, tuple[tuple[str, float | None], ...]] = {
     "Mining": (("mining", None),),
     "Herblore": (("herblore", None),),
     "Fletching": (("darts", DART_CYCLE_SECONDS),),
+    "Sailing": (("sailing", None),),
 }
 
 

@@ -755,6 +755,10 @@ def test_every_gathering_skill_now_has_a_table() -> None:
         # fletching is not tick-gated, so no page publishes an hourly figure
         # and the table states experience per *dart*.
         "Fletching",
+        # Sailing is here because its guide caught up - when
+        # `estimate.UNRATED_SKILLS` was written nothing published a rate for
+        # any of its 27 methods, and the barracuda table now does.
+        "Sailing",
     }
 
 

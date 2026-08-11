@@ -47,6 +47,7 @@ import re
 
 from collections import Counter
 
+from fray_claude.remote.wiki import parse_amount
 from fray_claude.remote.wikitable import (
     SCP_LEVEL,
     column_index,
@@ -81,6 +82,20 @@ THIEVING_TRAINING_PAGE = "Thieving training"
 #: The Runecraft training guide, read for the Guardians of the Rift table.
 RUNECRAFT_PAGE = "Pay-to-play Runecraft training"
 FARMING_PAGE = "Farming training"
+SAILING_PAGE = "Sailing training"
+
+#: One `{{formatnum:{{#expr:...}}}}` block. **A cell may hold two** - the
+#: Gwenith Glide's Marlin figure is quoted again with a crystal extractor on
+#: a line of its own - and taking the first is the conservative end, the same
+#: choice as the bottom of a published range everywhere else here. Without
+#: this the cell reads as two templates, which `wiki.parse_amount` correctly
+#: refuses, and the best trial in the game silently goes unrated.
+_FORMATNUM = re.compile(r"\{\{formatnum:\{\{#expr:[^{}]*\}\}\}\}")
+
+#: The three difficulty ranks every Barracuda trial is run at, in the order
+#: the guide's header puts them and the order the export names them. A fixed
+#: game concept rather than a parse, and short enough to read.
+BARRACUDA_RANKS: tuple[str, ...] = ("Swordfish", "Shark", "Marlin")
 
 #: Upstream's own category for the three fruits grown inside the Tithe Farm
 #: minigame, which is what `heuristics._add_tithe` joins on.
@@ -159,6 +174,7 @@ PAGES: tuple[str, ...] = (
     THIEVING_TRAINING_PAGE,
     RUNECRAFT_PAGE,
     FARMING_PAGE,
+    SAILING_PAGE,
 )
 
 #: Export course name -> the wiki's spelling. **Only for the ones that differ.**
@@ -926,6 +942,52 @@ def parse_tithe(text: str) -> tuple[SkillRow, ...]:
     )
 
 
+def parse_sailing(text: str) -> tuple[SkillRow, ...]:
+    """The Barracuda trials, nine rows of trial against rank.
+
+    **The fastest Sailing experience from level 30**, and the reason the skill
+    stopped being refused outright: when `estimate.UNRATED_SKILLS` was written
+    nothing published a rate for any of Sailing's 27 methods, and this table
+    is one of four places that now do.
+
+    Regular in a way that needs no mapping table - `level | trial | (xp/trial,
+    xp/hour) x 3` - so the export's phrasing is a format string rather than a
+    hand-written list: the trial comes from the row's own wiki link and the
+    rank from `BARRACUDA_RANKS`, giving `Complete <trial> at <rank> rank`,
+    which is the challenge name exactly.
+
+    Every figure is `{{formatnum:{{#expr:... round 0}}}}`, which is why this
+    is the one parser here that reaches for `wiki.parse_amount` rather than
+    `wikitable.number` - the cells hold no bare digits at all, and reading the
+    first number out of one would take a component of the sum. **The Gwenith
+    Glide's Marlin cell holds two** figures, the second with a crystal
+    extractor; taking the first is the conservative end, as everywhere else.
+    """
+    table = table_with(text, "XP / Hour")
+    found: list[SkillRow] = []
+    for cells in rows(table):
+        level = number(cells[0]) if cells else None
+        trial = name_in(cells[1]) if len(cells) > 1 else ""
+        if level is None or not trial:
+            continue
+        for index, rank in enumerate(BARRACUDA_RANKS):
+            # The pairs run (xp/trial, xp/hour) from the trial's own column.
+            at_rate = 3 + index * 2
+            cell = cells[at_rate] if at_rate < len(cells) else ""
+            stated = _FORMATNUM.search(cell)
+            rate = parse_amount(stated.group(0) if stated else cell)
+            if not rate:
+                continue
+            found.append(
+                SkillRow(
+                    name=f"Complete {trial} at {rank} rank",
+                    level=int(level),
+                    xp_per_hour=rate,
+                )
+            )
+    return tuple(found)
+
+
 def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
     """Every table this module reads, keyed by what it describes."""
     return {
@@ -943,4 +1005,5 @@ def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
         "plunder": parse_plunder(pages.get(THIEVING_TRAINING_PAGE, "")),
         "gotr": parse_gotr(pages.get(RUNECRAFT_PAGE, "")),
         "tithe": parse_tithe(pages.get(FARMING_PAGE, "")),
+        "sailing": parse_sailing(pages.get(SAILING_PAGE, "")),
     }

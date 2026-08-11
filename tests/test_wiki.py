@@ -371,3 +371,23 @@ def test_a_value_that_is_still_a_template_is_refused() -> None:
     assert parse_amount("{{#switch:{{#var:essence}}|0=66|#default=77}}") is None
     assert parse_amount("{{#expr:{{GEP|Blood essence}}}}") is None, "a live price"
     assert parse_amount("{{GEP|Nature rune}}") is None
+
+
+def test_a_wrapped_sum_survives_formatnum_and_mediawikis_round() -> None:
+    """**The wiki nests its wrappers**, and the Sailing guide's whole
+    barracuda table is `{{formatnum:{{#expr:... round 0}}}}`. Those cells hold
+    no bare digits at all, so the tolerant reader could not even guess wrongly
+    at them - it returned nothing and the best trial in the game went unrated.
+
+    `round` is MediaWiki's *operator* and Python has no equivalent; it always
+    trails, and dropping it costs under a unit on figures in the tens of
+    thousands where keeping it would mean refusing the value outright.
+    """
+    assert parse_amount("{{formatnum:{{#expr:(3050 + 1050) round 0}}}}") == pytest.approx(4100.0)
+    assert parse_amount(
+        "{{formatnum:{{#expr:(3050 + 1050)*60*60/(120+10) round 0}}}}"
+    ) == pytest.approx(113_538, abs=1)
+
+    # A body that is still a template is still refused - a live price is not
+    # something to guess at, however many wrappers are peeled off first.
+    assert parse_amount("{{formatnum:{{#expr:{{GEP|Blood essence}}}}}}") is None

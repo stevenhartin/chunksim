@@ -18,6 +18,7 @@ from fray_claude.remote.skill_tables import (
     parse_gotr,
     parse_hunter,
     parse_plunder,
+    parse_sailing,
     parse_tithe,
     parse_woodcutting,
     parse_courses,
@@ -885,3 +886,62 @@ experience per hour.
     assert rows[0].xp_per_hour == 90_000.0
 
     assert parse_tithe("===Tithe Farm===\nNo figure here.") == ()
+
+
+def test_the_barracuda_trials_are_nine_rows_of_trial_against_rank() -> None:
+    """**The fastest Sailing experience from level 30**, and the reason the
+    skill stopped being refused outright.
+
+    Regular enough to need no mapping table: the trial comes from the row's
+    own wiki link and the rank from `BARRACUDA_RANKS`, giving `Complete
+    <trial> at <rank> rank` - the export's challenge name exactly.
+    """
+    text = """
+== Levels 30-99: Barracuda trials ==
+{| class="wikitable"
+|-
+! rowspan="2" | {{SCP|Sailing}} Level
+! rowspan="2" | Trial
+! colspan="2" | Swordfish
+! colspan="2" | Shark
+! colspan="2" | Marlin
+|-
+!XP / Trial
+!XP / Hour
+!XP / Trial
+!XP / Hour
+!XP / Trial
+!XP / Hour
+|-
+| 72
+| [[The Gwenith Glide]]
+| {{formatnum:{{#expr:(3050 + 1050) round 0}}}}
+| {{formatnum:{{#expr:(3050 + 1050)*60*60/(120+10) round 0}}}}
+| {{formatnum:{{#expr:(7250 + 2065) round 0}}}}
+| {{formatnum:{{#expr:(7250 + 2065)*60*60/(222+10) round 0}}}}
+| {{formatnum:{{#expr:(16050 + 3360) round 0}}}}
+| {{formatnum:{{#expr:(16050 + 3360)*60*60/(369+10) round 0}}}}
+{{formatnum:{{#expr:(16050 + 3360)*60*60/(369+10) + (250*55) round 0}}}} (with [[crystal extractor]])
+|}
+"""
+    rows = {row.name: row for row in parse_sailing(text)}
+    assert set(rows) == {
+        "Complete The Gwenith Glide at Swordfish rank",
+        "Complete The Gwenith Glide at Shark rank",
+        "Complete The Gwenith Glide at Marlin rank",
+    }
+    assert all(row.level == 72 for row in rows.values())
+
+    # Every cell is `{{formatnum:{{#expr:... round 0}}}}` and holds no bare
+    # digits, so reading the first number would take a component of the sum.
+    assert rows["Complete The Gwenith Glide at Swordfish rank"].xp_per_hour == pytest.approx(
+        113_538, abs=1
+    )
+
+    # **The Marlin cell holds two figures**, the second with a crystal
+    # extractor on a line of its own. The first is the conservative end - and
+    # without picking it the cell reads as two templates, which
+    # `wiki.parse_amount` correctly refuses, silently losing the best trial.
+    assert rows["Complete The Gwenith Glide at Marlin rank"].xp_per_hour == pytest.approx(
+        184_369, abs=1
+    )
