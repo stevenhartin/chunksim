@@ -1005,8 +1005,24 @@ The error was searching only `Items` for the family: it is an **`Objects`** requ
 challenges carry it. So the chain is sound and simply not yet walked end to end - build a hook and
 the shipwrecks light up with rates already scraped.
 
-That is the shape of the next piece of Sailing work: not a missing rate and not a missing route, but
-a Construction build standing between the two.
+That is the shape of the next piece of Sailing work, and it is now diagnosed rather than guessed at:
+**`Output Object` is an unported branch of the item-seeding fixed point.**
+
+On the uber map all seven `Build a ~|<tier>|~ salvaging hook|~` challenges are **valid** - they gate
+on chunk `8234-1`, a boat, planks, nails, bars and rope, all of which that map has - and
+`source_index.objects` holds **zero** salvaging hooks, so `AnySalvagingHook[+]` resolves to nothing
+and all 8 shipwrecks stay invalid. Upstream builds `outputObjects` from `Output Object` beside the
+`outputs` map this project ports (worker.js:3036-3045) and merges it into `baseChunkData['objects']`
+unconditionally (worker.js:3255-3262). `_seed_items_with_outputs` ports the first and not the second.
+
+**The port is not a one-liner, and the reason is the static/dynamic split.** `calc_challenges`
+decides the `Objects` gate **once**, in `_static_gates_met`, on the stated grounds that "nothing they
+read changes for the life of this call" - which is what takes 14,692 challenges to 5,935 candidates
+before the sweeps. A seeded output object *does* change during the call, so the gate has to move to
+the dynamic half or the seeding has to be admitted to the static one, and the second is
+over-inclusive in exactly the way the oracles exist to catch. Do it with
+`FRAY_CHUNKINFO=cache/reference/chunkinfo.json FRAY_MAP_CACHE=1` running and the baseline to beat is
+**1,489 passing**.
 
 **A computed rate slower than the 1,000/hr floor is refused.** The floor is a deliberate stand-in for
 ignorance, not a speed, and a computed number below it says the model is missing something about that
