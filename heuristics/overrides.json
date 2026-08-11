@@ -2,6 +2,70 @@
   "currencies": {},
   "levels": {},
   "materials": {
+    "Fletch a ~|bronze dart|~": {
+      "experience": 1.8,
+      "items": {
+        "Bronze dart tip": 1,
+        "Feather[+]": 1
+      },
+      "source": "wiki:Fletching training, darts table"
+    },
+    "Fletch a ~|dragon dart|~": {
+      "experience": 25.0,
+      "items": {
+        "Dragon dart tip": 1,
+        "Feather[+]": 1
+      },
+      "source": "wiki:Fletching training, darts table"
+    },
+    "Fletch a ~|mithril dart|~": {
+      "experience": 11.2,
+      "items": {
+        "Mithril dart tip": 1,
+        "Feather[+]": 1
+      },
+      "source": "wiki:Fletching training, darts table"
+    },
+    "Fletch a ~|rune dart|~": {
+      "experience": 18.8,
+      "items": {
+        "Rune dart tip": 1,
+        "Feather[+]": 1
+      },
+      "source": "wiki:Fletching training, darts table"
+    },
+    "Fletch a ~|steel dart|~": {
+      "experience": 7.5,
+      "items": {
+        "Steel dart tip": 1,
+        "Feather[+]": 1
+      },
+      "source": "wiki:Fletching training, darts table"
+    },
+    "Fletch an ~|adamant dart|~": {
+      "experience": 15.0,
+      "items": {
+        "Adamant dart tip": 1,
+        "Feather[+]": 1
+      },
+      "source": "wiki:Fletching training, darts table"
+    },
+    "Fletch an ~|amethyst dart|~": {
+      "experience": 21.0,
+      "items": {
+        "Amethyst dart tip": 1,
+        "Feather[+]": 1
+      },
+      "source": "wiki:Fletching training, darts table"
+    },
+    "Fletch an ~|iron dart|~": {
+      "experience": 3.8,
+      "items": {
+        "Iron dart tip": 1,
+        "Feather[+]": 1
+      },
+      "source": "wiki:Fletching training, darts table"
+    },
     "Forge a bronze ~|preform|~ in the Giants' Foundry": {
       "experience": 2400,
       "items": {

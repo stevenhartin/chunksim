@@ -848,6 +848,46 @@ def test_the_giants_foundry_charges_28_bars_and_says_so_consistently() -> None:
         assert entry["experience"] * swords_per_hour[tier] == rate, tier
 
 
+def test_the_dart_materials_are_the_published_xp_per_dart() -> None:
+    """**Where the material bias was measured winning a band, and now does not.**
+    Nothing describes dart fletching as a `{{Recipe}}` - two clicks make a set
+    of ten and no guide times it - so the tips priced at zero and dragon darts
+    took the top of Fletching at 1,500,000 xp/hr.
+
+    **The granularity cancels**, which is what makes this statable at all and
+    is the opposite of what this project's notes first assumed: a set is ten
+    darts and ten tips, and `material_seconds_per_xp` is seconds per action
+    over XP per action, so ten-of-each over ten-times-the-XP is the same
+    number as one over one. Only the *ratio* has to be right.
+
+    So the entry is one tip and one feather against the table's published XP
+    per dart - which is `parse_darts`' own figure, and the rate the scrape
+    carries is that times `3600 / DART_CYCLE_SECONDS` (60,000 darts an hour).
+    Measured: `fray` Fletching 21.3h -> 30.0h and `verf` 114.8h -> 244.9h,
+    with dragon darts falling from 1,500,000 published to **197** effective.
+    """
+    overrides = json.loads((PROJECT / "heuristics" / "overrides.json").read_text())
+    darts = {
+        task.split("~|")[1].removesuffix("|~"): entry
+        for task, entry in overrides["materials"].items()
+        if task.startswith("Fletch") and "dart|~" in task
+    }
+
+    assert {tier: entry["experience"] for tier, entry in darts.items()} == {
+        "bronze dart": 1.8,
+        "iron dart": 3.8,
+        "steel dart": 7.5,
+        "mithril dart": 11.2,
+        "adamant dart": 15.0,
+        "rune dart": 18.8,
+        "amethyst dart": 21.0,
+        "dragon dart": 25.0,
+    }
+    #: One tip and one feather a dart, both `*`-marked in the export.
+    for tier, entry in darts.items():
+        assert entry["items"] == {f"{tier.capitalize()} tip": 1, "Feather[+]": 1}, tier
+
+
 @pytest.mark.real_export
 def test_every_hand_material_names_a_task_the_export_carries(
     real_export: ChunkInfo,

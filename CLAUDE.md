@@ -640,11 +640,16 @@ would not.** `Fletch a ~|dragon dart|~` declares `Items: ["Dragon dart tip*", "F
 both marked consumed - but `material_seconds_per_xp` is built from `computed_rates` and nothing
 describes dart fletching as a recipe, so the tips price at **zero** and 1,500,000/hr is the whole
 climb's top band. On a chunk map a dart tip is smithed from a bar of its own tier, which is real
-work. It is the general bias below with the case that makes it matter, and it wants the same
-per-action model Herblore's herbs do - which the export does not carry; see "the obvious fix does
-not exist" below. **A `materials` hand entry could close it now** and deliberately has not: a set is
-ten darts, so the entry would have to state the action's granularity as well as its quantity, and
-inventing that is a different kind of claim from copying a published crucible capacity.
+work. It is the general bias below with the case that made it matter, and it is **closed** by a
+`materials` hand entry - one tip and one feather against the table's published XP per dart.
+
+**The granularity cancels, and a note here said it did not.** A set is ten darts and ten tips, and
+`material_seconds_per_xp` is seconds per action over XP per action - so ten-of-each over ten-times-
+the-XP is the same number as one over one. Only the ratio has to be right, and the export states it
+(`Items: ["Dragon dart tip*", "Feather[+]*"]`, both consumed). Nothing had to be invented.
+**Fletching goes 21.3h -> 30.0h on `fray` and 114.8h -> 244.9h on `verf`**, with dragon darts falling
+from a published 1,500,000 to **197** effective - a tip is 457 seconds on both maps - and broad bolts
+taking 55 -> 99 on `fray` where the darts had it.
 
 **Hunter, four Fishing methods and three Mining ones join on the section heading, which is the one
 part of that shape that is structure rather than prose.** `Hunter training` (not `Pay-to-play Hunter training`, which does not exist) keys its
