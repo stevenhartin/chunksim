@@ -457,6 +457,23 @@ first `{{plinkt}}` in a row is the potion** and the two after it are its base an
 spellings are emitted - the bare name joins 45 challenges and the `pic=` form another 35. **82 joins,
 and Herblore 1 -> 99 on the uber map goes 13,034h (the floor, no rated options at all) to 27.0h.**
 
+**Pyramid Plunder resolves into three of its eight rooms, and only three.** The export models the
+minigame as `Access the Nth room of ~|Pyramid Plunder|~` at levels 21 to 91; the guide publishes a
+`Thieving levels -> XP/hour` table over *bands*, which is the shape that makes Fishing's techniques
+unjoinable - a curve with no one thing to name. It resolves here because **the wiki's breakpoints
+are the export's challenge levels**: 71, 81 and 91 are exactly where the sixth, seventh and eighth
+rooms unlock, so the curve is already three methods (125,000 / 190,000 / 270,000). The same
+coincidence made Barbarian Fishing tractable. The five rooms below keep nothing - the guide calls
+the rates before 91 "much lower" and quotes none, and handing them the level-71 figure would invent
+one. `PLUNDER_BY_LEVEL` carries the export's phrasing because the challenge names no object and no
+NPC, so the join runs through the task's own words.
+
+**It moves no total on any map today**, which is worth saying rather than leaving to be discovered:
+on `fray` the knight (252,900) and Rogues' Castle chest (270,154) already cover those bands, on the
+uber map vyres open at 82 with 315,669, and on `verf-sim/run-001` Sophanem is not reachable. This is
+coverage insurance for the map that has the pyramid and not the alternatives - the same argument the
+Hunter joins were filed under before sixteen more creatures made them bite.
+
 **Darts are the one method with no hourly figure anywhere, because nothing gates them.** Two clicks
 make a set of ten and the tick system does not hold the next set, so the rate is however fast a
 person can click - `Fletching training` says 2-4 sets a tick is reachable on mobile and declines to

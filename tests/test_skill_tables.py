@@ -16,6 +16,7 @@ from fray_claude.remote.skill_tables import (
     parse_mining,
     parse_darts,
     parse_hunter,
+    parse_plunder,
     parse_woodcutting,
     parse_courses,
     parse_mark_rate,
@@ -762,3 +763,62 @@ def test_the_modelled_dart_pace_is_one_set_a_tick() -> None:
     assert DART_CYCLE_SECONDS == pytest.approx(0.06), "ten darts per 0.6s tick"
     assert 3600.0 / DART_CYCLE_SECONDS == pytest.approx(60_000.0)
     assert 18.8 * 3600.0 / DART_CYCLE_SECONDS == pytest.approx(1_128_000.0), "rune"
+
+
+def test_pyramid_plunder_resolves_into_three_of_its_eight_rooms() -> None:
+    """**The wiki's band breakpoints are the export's challenge levels**, which
+    is the same coincidence that made Barbarian Fishing tractable.
+
+    The table is `Thieving levels -> XP/hour` over bands, which is the shape
+    that makes Fishing's techniques unjoinable - a curve with no one thing to
+    name. Here 71, 81 and 91 are exactly where the sixth, seventh and eighth
+    rooms unlock, so it resolves into one rate per challenge with nothing
+    invented. The five rooms below have no published rate: the guide says the
+    rates before 91 are much lower and declines to quote one, so they keep
+    nothing rather than inheriting the level-71 figure.
+    """
+    text = """
+===Levels 91-99: Pyramid Plunder===
+The experience rates below assume soloing and using the sceptre teleport.
+{| class="wikitable"
+! {{SCP|Thieving}} levels
+! XP/hour
+|-
+| 71-80
+| 125,000
+|-
+| 81-90
+| 190,000
+|-
+| 91+
+| 270,000
+|}
+"""
+    rows = {row.name: row for row in parse_plunder(text)}
+    assert set(rows) == {
+        "Sixth room of Pyramid Plunder",
+        "Seventh room of Pyramid Plunder",
+        "Eighth room of Pyramid Plunder",
+    }
+    # The low end of each band, as everywhere else here.
+    assert rows["Sixth room of Pyramid Plunder"].level == 71
+    assert rows["Sixth room of Pyramid Plunder"].xp_per_hour == 125_000.0
+    assert rows["Eighth room of Pyramid Plunder"].xp_per_hour == 270_000.0
+
+
+def test_the_plunder_names_are_the_words_the_export_uses() -> None:
+    """**The challenge names no object and no NPC, having none**, so the join
+    runs through the task's own words - `_join_keys` strips `Access the ` and
+    the markup, leaving `sixth room of Pyramid Plunder`. `PLUNDER_BY_LEVEL`
+    therefore carries the export's phrasing, the same way `COURSE_ALIASES`
+    carries the four course spellings upstream gets wrong.
+    """
+    from fray_claude.costing.heuristics import _join_keys, COURSE_ALIASES
+    from fray_claude.remote.skill_tables import PLUNDER_BY_LEVEL
+
+    keys = _join_keys(
+        {"Level": 71, "Primary": True},
+        "Access the sixth room of ~|Pyramid Plunder|~",
+        COURSE_ALIASES,
+    )
+    assert PLUNDER_BY_LEVEL[71].lower() in keys

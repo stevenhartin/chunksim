@@ -75,6 +75,24 @@ HERBLORE_PAGE = "Herblore training"
 #: `{{Table/Fletching/Darts}}` where the table should be, so the page's own
 #: wikitext holds the prose around it and none of the figures.
 DARTS_PAGE = "Template:Table/Fletching/Darts"
+#: The Thieving *training guide*, not the skill page `THIEVING_PAGE` reads -
+#: the pickpocket table is on the latter and Pyramid Plunder is only here.
+THIEVING_TRAINING_PAGE = "Thieving training"
+
+#: The Pyramid Plunder rows the wiki publishes, by the Thieving level each
+#: band opens at, mapped to the export's name for the room that opens there.
+#: **The wiki's breakpoints are the export's challenge levels** - 71, 81 and
+#: 91 are exactly where the sixth, seventh and eighth rooms unlock - so the
+#: minigame's curve is already three methods and needs no curve support, the
+#: same coincidence that made Barbarian Fishing tractable. The five rooms
+#: below have no published rate at all: the guide says the rates before 91
+#: are "much lower" and declines to quote one, so they are refused rather
+#: than given the level-71 figure.
+PLUNDER_BY_LEVEL: dict[int, str] = {
+    71: "Sixth room of Pyramid Plunder",
+    81: "Seventh room of Pyramid Plunder",
+    91: "Eighth room of Pyramid Plunder",
+}
 
 #: The Mining headings that name a rock the export also names, mapped to the
 #: export's name for it. `_names` offers a heading under both spellings, so
@@ -126,6 +144,7 @@ PAGES: tuple[str, ...] = (
     MINING_PAGE,
     HERBLORE_PAGE,
     DARTS_PAGE,
+    THIEVING_TRAINING_PAGE,
 )
 
 #: Export course name -> the wiki's spelling. **Only for the ones that differ.**
@@ -799,6 +818,37 @@ def parse_darts(text: str) -> tuple[SkillRow, ...]:
     return tuple(found)
 
 
+def parse_plunder(text: str) -> tuple[SkillRow, ...]:
+    """Pyramid Plunder, as the three methods its own table already is.
+
+    The table is `Thieving levels -> XP/hour` over bands rather than one row
+    per thing, which is the shape that made Fishing's techniques unjoinable -
+    except that here the bands' opening levels **are** three of the export's
+    eight `Access the Nth room of Pyramid Plunder` challenges, so it resolves
+    into one rate per challenge with nothing invented.
+
+    `PLUNDER_BY_LEVEL` carries the export's phrasing because the join runs
+    through the task's own words - the challenge names no object and no NPC,
+    having none - and that is the same small auditable table `COURSE_ALIASES`
+    already is. The low end of each band is the level, as everywhere else.
+    """
+    section = next(
+        (body for title, body in _sections(text) if "Pyramid Plunder" in title), ""
+    )
+    table = table_with(section, "XP/hour")
+    found: list[SkillRow] = []
+    for cells in rows(table):
+        level = number(cells[0]) if cells else None
+        rate = number(cells[1]) if len(cells) > 1 else None
+        if level is None:
+            continue
+        name = PLUNDER_BY_LEVEL.get(int(level))
+        if name is None or not rate:
+            continue
+        found.append(SkillRow(name=name, level=int(level), xp_per_hour=rate))
+    return tuple(found)
+
+
 def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
     """Every table this module reads, keyed by what it describes."""
     return {
@@ -813,4 +863,5 @@ def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
         "mining": parse_mining(pages.get(MINING_PAGE, "")),
         "herblore": parse_herblore(pages.get(HERBLORE_PAGE, "")),
         "darts": parse_darts(pages.get(DARTS_PAGE, "")),
+        "plunder": parse_plunder(pages.get(THIEVING_TRAINING_PAGE, "")),
     }

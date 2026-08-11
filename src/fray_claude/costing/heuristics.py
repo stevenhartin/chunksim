@@ -796,7 +796,11 @@ def burning_rate(experience: float) -> float:
 #: can do.
 TABLE_KINDS: dict[str, tuple[tuple[str, float | None], ...]] = {
     "Agility": (("courses", None), ("shortcuts", SHORTCUT_CYCLE_SECONDS)),
-    "Thieving": (("stalls", None), ("pickpockets", PICKPOCKET_CYCLE_SECONDS)),
+    "Thieving": (
+        ("stalls", None),
+        ("pickpockets", PICKPOCKET_CYCLE_SECONDS),
+        ("plunder", None),
+    ),
     "Firemaking": (("burning", None),),
     "Woodcutting": (("woodcutting", None),),
     "Hunter": (("hunter", None),),
