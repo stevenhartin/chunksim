@@ -17,7 +17,7 @@ from fray_claude.derive.challenges import (
     only_shop,
 )
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.derive.sources import SourceIndex
+from fray_claude.derive.sources import SourceIndex, gather_chunks_info
 
 _EMPTY = SourceIndex(items={}, objects={}, monsters={}, npcs={}, shops={}, drop_rates={})
 
@@ -1284,3 +1284,64 @@ def test_a_plus_family_survives_on_a_member_that_is_not_locked_gear() -> None:
     assert plan is not None
     assert _item_plan_met(plan, {"Slayer helmet": {"Shop": "chunk"}}) is True
     assert _item_plan_met(plan, {"Facemask": {"Shop": "chunk"}}) is False
+
+
+def _sources(unlocked: dict[str, bool], info: ChunkInfo) -> SourceIndex:
+    return gather_chunks_info(unlocked, {}, info, rules={})
+
+
+def _quest_world(**extra: Any) -> ChunkInfo:
+    """A completable quest whose reward is a boat, and something that needs
+    the boat - the export's own Pandemonium shape in miniature."""
+    extra.setdefault("chunks", {"100": {"NPC": {"Will": True}}})
+    return _chunk_info(
+        challenges={
+            "Quest": {"Sail 1": {"NPCs": ["Will"], "Reward": ["Raft", "Spyglass"]}},
+            "Nonskill": {"Set sail": {"Items": ["Raft"]}},
+        },
+        **extra,
+    )
+
+
+def test_a_valid_quests_reward_becomes_an_available_item() -> None:
+    """worker.js:3345-3354. `Reward` was read only as a marker meaning "this
+    is a tier or quest completion" and never as a source of items."""
+    result = calc_challenges({"100": True}, {}, _sources({"100": True}, _quest_world()),
+                             _quest_world(), rules={})
+
+    assert "Raft" in result.available_items
+    assert result.valid["Nonskill"] == {"Set sail": True}
+
+
+def test_an_invalid_quest_hands_over_nothing() -> None:
+    info = _quest_world(chunks={"100": {}})
+
+    result = calc_challenges({"100": True}, {}, _sources({"100": True}, info), info, rules={})
+
+    assert "Raft" not in result.available_items
+    assert result.valid.get("Nonskill", {}) == {}
+
+
+def test_a_backlogged_quest_hands_over_nothing() -> None:
+    """Backlogging a quest says you will not do it, so its rewards must not
+    arrive anyway - upstream gates the seed on `backlog[category]`."""
+    info = _quest_world()
+
+    result = calc_challenges(
+        {"100": True}, {}, _sources({"100": True}, info), info,
+        rules={}, backlog={"Quest": {"Sail 1": True}},
+    )
+
+    assert "Raft" not in result.available_items
+
+
+def test_a_backlogged_reward_item_is_left_out_on_its_own() -> None:
+    info = _quest_world()
+
+    result = calc_challenges(
+        {"100": True}, {}, _sources({"100": True}, info), info,
+        rules={}, backlogged_sources={"items": {"Raft": True}},
+    )
+
+    assert "Raft" not in result.available_items
+    assert "Spyglass" in result.available_items

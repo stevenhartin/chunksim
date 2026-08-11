@@ -1188,10 +1188,14 @@ def _seed_items_with_outputs(
     chunk_info: ChunkInfo,
     rules: Mapping[str, Any],
     backlogged_sources: Mapping[str, Any],
+    backlog: Mapping[str, Mapping[str, Any]] = {},
 ) -> dict[str, dict[str, str]]:
     """A valid challenge's `Output` becomes a new item source for the next
     pass - and, when that `Output` names an activity in
     `skillItems[<that skill>]`, so does every item that activity yields.
+
+    **And a valid quest or diary hands over its `Reward`**, which is a
+    separate branch and was unported - see `_seed_rewards`.
 
     The second half is what makes non-Slayer `skillItems` reachable at all.
     Upstream's link (worker.js:2848, index.js:8603) is exactly this: a
@@ -1259,8 +1263,63 @@ def _seed_items_with_outputs(
     # re-runs `gatherChunksInfo` mid-`calcChallenges` so its own pass sees
     # them too. Re-applying here is what keeps a merged drop table's
     # location-specific half out - see `sources.apply_item_task_unlocks`.
+    _seed_rewards(items, valid, challenges, backlog, backlogged_items)
     apply_item_task_unlocks(items, _mapping(chunk_info.data, "taskUnlocks"), valid)
     return items
+
+
+def _seed_rewards(
+    items: dict[str, dict[str, str]],
+    valid: Mapping[str, Mapping[str, Any]],
+    challenges: Mapping[str, Mapping[str, Any]],
+    backlog: Mapping[str, Mapping[str, Any]],
+    backlogged_items: Mapping[str, Any],
+) -> None:
+    """A completed quest or diary tier hands you its `Reward`, in place.
+    Port of worker.js:3345-3354.
+
+    `Reward` was read here only as a *marker* - `other_tasks._is_step_chain`
+    and `_diary_tier_waived` use "has a `Reward`" to mean "this is a tier or
+    quest completion" - and never as what it plainly is: **a source of
+    items**. 227 challenges carry one (98 Quest, 129 Diary) between them
+    naming 206 distinct items, none of which had any route into the index.
+
+    The one that mattered most is `Raft`. Every one of the export's 243
+    Sailing challenges gates on `AnyBoat[+]` -> `Raft`/`Skiff`/`Sloop`, the
+    three `Buy a <boat> from a shipwright` challenges each require
+    `~|Pandemonium|~ Complete the quest` to be *finished*, and that quest's
+    own completion carries `Reward: ["Raft", "Captain's log", "Spyglass"]`.
+    So the boat was always sourced - by the branch nothing walked - and
+    without it Sailing was unreachable on every map including one with every
+    chunk in the game unlocked. There is no circularity: the quest's six
+    steps gate on chunks alone, never on a boat.
+
+    Tagged `secondary-<category>` as upstream tags it, which is deliberately
+    *not* `primary-`: the suffix is `Quest`/`Diary` rather than a skill name,
+    so `_source_quality_ok` lets a reward satisfy a combat requirement -
+    correct, since an anti-dragon shield off a quest is a shield you wear.
+
+    Both backlogs apply, as upstream applies them: the challenge's own
+    (`backlog[category]`, including the `#`/`/` spelling the payload uses for
+    a sub-name) and the item's (`backloggedSources['items']`). A user
+    backlogging a quest is saying they will not do it, so its rewards must
+    not arrive anyway.
+    """
+    for category, names in valid.items():
+        category_challenges = challenges.get(category, {})
+        backlogged = backlog.get(category) or {}
+        for name in names:
+            challenge = category_challenges.get(name)
+            if not isinstance(challenge, dict):
+                continue
+            rewards = challenge.get("Reward")
+            if not isinstance(rewards, list) or not rewards:
+                continue
+            if name in backlogged or name.replace("#", "/") in backlogged:
+                continue
+            for reward in rewards:
+                if isinstance(reward, str) and backlogged_items.get(reward) is not True:
+                    items.setdefault(reward, {})[name] = f"secondary-{category}"
 
 
 def _prune_untrainable_skills(
@@ -1745,7 +1804,13 @@ def calc_challenges(
                 break
             valid = new_valid
             items = _seed_items_with_outputs(
-                source_index.items, valid, challenges, chunk_info, rules, backlogged_sources or {}
+                source_index.items,
+                valid,
+                challenges,
+                chunk_info,
+                rules,
+                backlogged_sources or {},
+                backlog,
             )
 
         # Run once, after convergence, not per pass: deciding trainability from a
@@ -1775,7 +1840,13 @@ def calc_challenges(
             items=items,
         )
         reseeded = _seed_items_with_outputs(
-            source_index.items, valid, challenges, chunk_info, rules, backlogged_sources or {}
+            source_index.items,
+            valid,
+            challenges,
+            chunk_info,
+            rules,
+            backlogged_sources or {},
+            backlog,
         )
         if reseeded == items and valid == settled:
             break

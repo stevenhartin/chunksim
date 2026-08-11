@@ -925,19 +925,52 @@ rates all along (fremennik 51,708, barracuda 10,230).
 on the uber map, with every chunk unlocked and every level at 99.** So the gap was never the rates,
 and it is not a map constraint either.
 
-**It is that nothing anywhere sources a boat.** Every Sailing challenge gates on one, either
-`Items: ["AnyBoat[+]"]` or a named `["Skiff"]`, and `codeItems.itemsPlus` expands the family to
-`["Raft", "Skiff", "Sloop"]`. **None of those three is in `SourceIndex.items` or in
-`ChallengeResult.available_items` with every chunk in the game unlocked**, so the item gate fails
-243 times out of 243 and everything downstream follows - which is why even `Trim the ~|mast and
-sails|~ on your boat`, level 1 with no chunk requirement at all, is invalid. `AnySalvagingHook[+]`
-is worse: the family is a key in `itemsPlus` whose value is `null`, so it has no members to reach.
+**A quest or diary hands over its `Reward`, and that branch was unported.** 227 challenges carry one
+(98 Quest, 129 Diary) naming **206 distinct items** between them, and `Reward` was read here only as
+a *marker* - `other_tasks._is_step_chain` and `_diary_tier_waived` use "has a `Reward`" to mean "this
+is a tier or quest completion" - never as the item source it plainly is. Upstream seeds each into the
+index as `secondary-<category>` (worker.js:3345-3354), and `_seed_rewards` now does the same, under
+both backlogs: the challenge's own and the item's, since backlogging a quest says you will not do it.
 
-So the next piece of Sailing work is a *derivation* question rather than an estimator one: find the
-branch upstream builds a boat in - it is not one `sources.py` walks today - and the 243 challenges,
-their nine joined trial rates and the shipwrecks' guide rates all light up together. Until then
-`UNRATED_SKILLS`' recheck keeps the skill refused, correctly: "no *reachable* method has a rate" is
-exactly true.
+The tag is deliberately `secondary-` and not `primary-`: its suffix is `Quest`/`Diary` rather than a
+skill name, so `_source_quality_ok` lets a reward satisfy a **combat** requirement - correct, because
+an anti-dragon shield off a quest is a shield you wear. Worth **+3 valid challenges and +5 items on
+`fray`** and **+680 valid on the uber map**, with every oracle unmoved.
+
+**It is not, however, what unblocks Sailing** - which is worth stating because it looks like it
+should be. The Pandemonium completion's `Reward` is `["Raft", "Captain's log", "Spyglass"]`, but the
+three `Buy a <boat> from a shipwright` challenges become valid at the same moment and carry
+`Output: "Raft"` anyway, so the boat arrives either way. Measured: with reward seeding disabled the
+uber map still reaches 157 of 243 Sailing challenges. The real blocker is below.
+
+**It is that one section of one chunk has no recorded way in, and it is the Shipyard.** Every
+Sailing challenge gates on a boat (`Items: ["AnyBoat[+]"]` -> `Raft`/`Skiff`/`Sloop`); the boat comes
+from the Pandemonium quest, whose six steps gate on **chunks alone and never on a boat**, so there is
+no circularity. Step 5 - *Build the cargo hold in the Shipyard* - needs `8234-1`, and
+`sections['8234']['1']` is the single-element list `["???"]`, the export's unresolved-neighbour
+placeholder. Upstream filters `???` out of its own connection walk (index.js:7708) exactly as
+`graph.py` does, so **no chunk set reaches that section**, the quest cannot finish, and 243
+challenges follow it down.
+
+**This project cannot fix that and should not try** - it is a hole in upstream's data, one of 55
+sections whose only ref is `???`. What a player does is mark the section by hand, which
+`chunkinfo.manualSections` already carries and `sections.py` already honours. Measured on the uber
+map, one manual entry for `8234-1`:
+
+| | Sailing valid | all valid | items |
+|---|---:|---:|---:|
+| every chunk unlocked | **0** / 243 | 9,690 | 4,908 |
+| ... plus `manualSections: {"8234": {"1": true}}` | **159** / 243 | 10,584 | 5,027 |
+
+So the skill was never unreachable in the sense of "unmodelled" - `UNRATED_SKILLS`' recheck was
+correctly reporting a map fact, and the nine joined barracuda-trial rates and the shipwrecks' guide
+rates are spendable the moment the section is marked.
+
+**`AnySalvagingHook[+]` was a false alarm and this file said so twice.** It is not a family whose
+value is `null`; it is **not in `itemsPlus` at all**, and **no challenge in the export requires it** -
+so it gates nothing. The hooks themselves are ordinary Construction buildables
+(`Build a ~|bronze salvaging hook|~` through dragon), declaring `Output Object` rather than `Output`
+like every other Construction row.
 
 **A computed rate slower than the 1,000/hr floor is refused.** The floor is a deliberate stand-in for
 ignorance, not a speed, and a computed number below it says the model is missing something about that
