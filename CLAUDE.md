@@ -1276,27 +1276,50 @@ the foundry's bars carry one and genuinely are consumed. `worker.js` reads it as
 `let secondary = item.includes('*')` and settles it into `challenges[skill][name]['Secondary']`
 (worker.js:4431).
 
-**Whether that marker also belongs in the *derivation* is a closed question, and the answer is no.**
-`challenges.py`'s docstring already said so with the line references; this paragraph exists because
-the reasoning was re-derived from scratch once and should not be a third time. `Secondary` is read at
-eleven upstream sites and only three kinds of thing come of it:
+**The marker belongs in the *derivation* too, and the one place it does is now ported.** `Secondary`
+is read at eleven upstream sites and only three kinds of thing come of it:
 
+- **It feeds `checkPrimaryMethod`** (worker.js:5135) - `Primary[+]` counts a challenge only when it
+  is `Primary` **and not** `Secondary`. That is the live one, and `_is_secondary` +
+  `_has_primary_task` are the port. The question it asks is worth stating in words: *is one of the
+  things this method consumes obtainable only as somebody else's by-product?* A `*` in `Items` marks
+  a consumed secondary ingredient; if every source that ingredient has is tagged `secondary-`, the
+  method is not a way to train the skill, because you cannot run it on purpose.
 - **`forcedPrimary && Secondary` invalidates** (worker.js:4433) - and `forcedPrimary` has **zero**
   occurrences in the real export, so the one place it gates validity is dead.
-- **It feeds `checkPrimaryMethod`** (worker.js:5135/5225) - ported as `_check_primary_method`, with
-  the `Secondary` input not threaded through. This is the one live gap and it is named as such.
 - **It picks `primary-<skill>` over `secondary-<Source>` when a valid challenge's `Output` is seeded
   back as an item** (worker.js:3024-3041). `_seed_items_with_outputs` flattens that to `primary-`,
-  which `active_tasks.py` records for `ForcedSecondary` and this file now records for `Secondary`
-  too. **It cannot reach the one gate that reads those tags**: `_source_quality_ok` rejects a tag
-  whose suffix is a real skill name and treats `primary-Cooking` and `secondary-Cooking` identically,
-  so flipping the prefix changes nothing. The narrow exception worth knowing before touching it is
-  that upstream's secondary tag carries the challenge's `Source` rather than the skill, so a
-  non-skill `Source` would produce a tag that *passes* where this project's `primary-<skill>` fails.
+  which `active_tasks.py` records for `ForcedSecondary` and this file records for `Secondary` too.
+  **It cannot reach the one gate that reads those tags**: `_source_quality_ok` rejects a tag whose
+  suffix is a real skill name and treats `primary-Cooking` and `secondary-Cooking` identically, so
+  flipping the prefix changes nothing. The narrow exception worth knowing before touching it is that
+  upstream's secondary tag carries the challenge's `Source` rather than the skill, so a non-skill
+  `Source` would produce a tag that *passes* where this project's `primary-<skill>` fails.
 
-For scale if that gap is ever picked up: 294 valid challenges on `fray` would carry `Secondary` (215
-of them `Primary`) and 333 on `verf` (241), concentrated in Smithing, Nonskill, Fletching, Farming
-and Crafting. The oracle baseline to beat is **1,465 passing**.
+**It changes no number on any map, which is the reason to have done it now rather than later.** On
+`fray` 44 valid challenges carry the flag and **7 of them are `Primary`**; on `verf` it is 57 and 7.
+No skill on either map - nor on the uber map - has its *whole* `Primary` set flagged, so nothing
+becomes untrainable and `valid`, `available_items`, `bis` and the reachable sections all come out
+identical. (An earlier version of this paragraph put it at 294 and 333 challenges, 215 and 241 of
+them `Primary`. That was counting challenges that merely *carry* a `*` in `Items`, which is the
+input to the flag and not the flag - the marked ingredient usually has an ordinary source, and then
+the method is primary after all.)
+
+**One ordering detail is load-bearing rather than stylistic.** Upstream writes the whole `Primary[+]`
+condition as a single `&&`, so the terms may be evaluated in any order - but `Secondary` is the only
+one that walks an item's sources, and asking it before the level test ran it on every `Primary`
+challenge in the skill instead of on the one about to answer: **96,191 calls per `derive` and +30% on
+the whole command**. Asked last it is 8,538 calls and within noise.
+
+**And upstream states the source test twice, differently, so it is ported twice.** For a plain item
+(worker.js:4086) the `-Farming` clause is a *conjunct*, so a farmed source leaves the method
+secondary unless `rules['Farming Primary']` is on; for a `[+]` family (worker.js:4014) the same
+clause sits inside a disjunct that `!tag.includes('secondary-')` has already satisfied, so it is
+dead. `_secondary_source_ok` takes a `plus` flag and reproduces both rather than reconciling them:
+which one runs is decided by the shape of the requirement, and assuming upstream meant the stricter
+version everywhere would be inventing a gate. The `Objects` half of the flag (worker.js:4287-4318) is
+deliberately not ported at all, because it *cannot* fire - it filters the object's source **keys**,
+and those are chunk ids or, since `Output Object` was seeded, challenge names.
 
 **A method is ranked on what it costs, not on what its action costs.** A published rate is quoted
 with the materials to hand - "299,000 an hour at anglerfish" describes the range, not the trip before

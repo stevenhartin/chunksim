@@ -10,6 +10,7 @@ from fray_claude.derive.challenges import (
     UNSUPPORTED_CATEGORIES,
     _compile_items,
     _item_plan_met,
+    _is_secondary,
     _items_requirement_met,
     _objects_requirement,
     _seedable_objects,
@@ -740,6 +741,85 @@ def test_a_map_holding_the_shipyard_can_build_a_hook_and_salvage_with_it(
     assert {n for n in derived.challenges.valid["Sailing"] if n.startswith("Salvage at a ")}
     # The point of the port: nothing in an unlocked chunk holds a hook.
     assert not hooks & set(derived.source_index.objects)
+
+
+def test_only_a_marked_ingredient_can_make_a_method_secondary() -> None:
+    """The `*` is upstream's consumed-secondary marker. An unmarked entry is a
+    tool you buy once, and charging the flag to it would call every
+    Woodcutting method a by-product for owning an axe.
+    """
+    info = _chunk_info()
+    by_product = {"Ore": {"Some quest": "secondary-Quest"}}
+
+    assert _is_secondary({"Items": ["Ore*"]}, by_product, info, {}) is True
+    assert _is_secondary({"Items": ["Ore"]}, by_product, info, {}) is False
+    assert _is_secondary({}, by_product, info, {}) is False
+
+
+@pytest.mark.parametrize("tag", ["primary-Mining", "shop"])
+def test_a_real_source_clears_the_secondary_flag(tag: str) -> None:
+    """`primary-<skill>` and `shop` are both ways of *getting* the thing, so
+    neither leaves the method depending on somebody else's leftovers.
+    """
+    assert _is_secondary({"Items": ["Ore*"]}, {"Ore": {"x": tag}}, _chunk_info(), {}) is False
+
+
+def test_one_usable_family_member_clears_the_flag_for_the_whole_family() -> None:
+    info = _chunk_info(codeItems={"itemsPlus": {"Ore[+]": ["Copper ore", "Tin ore"]}})
+    items = {"Copper ore": {"q": "secondary-Quest"}, "Tin ore": {"m": "primary-Mining"}}
+
+    only_by_product = {"Copper ore": items["Copper ore"]}
+
+    assert _is_secondary({"Items": ["Ore[+]*"]}, items, info, {}) is False
+    assert _is_secondary({"Items": ["Ore[+]*"]}, only_by_product, info, {}) is True
+
+
+def test_the_farming_clause_applies_to_a_plain_item_and_not_to_a_family() -> None:
+    """Upstream writes the same test twice and the two are not the same
+    (worker.js:4014 against 4086). In the plain form `-Farming` is a
+    conjunct, so a farmed source leaves the method secondary unless
+    `Farming Primary` is on; in the family form it sits inside a disjunct
+    that has already fired, so it is dead. Ported as written rather than
+    reconciled - see `_secondary_source_ok`.
+    """
+    info = _chunk_info(codeItems={"itemsPlus": {"Herb[+]": ["Guam"]}})
+    farmed = {"Guam": {"patch": "primary-Farming"}}
+
+    assert _is_secondary({"Items": ["Guam*"]}, farmed, info, {}) is True
+    assert _is_secondary({"Items": ["Guam*"]}, farmed, info, {"Farming Primary": True}) is False
+    assert _is_secondary({"Items": ["Herb[+]*"]}, farmed, info, {}) is False
+
+
+def test_a_secondary_primary_method_does_not_make_its_skill_trainable() -> None:
+    """The one live consequence of the marker (worker.js:5135), end to end:
+    a skill whose only training method consumes something obtainable solely
+    as a by-product is untrainable, and an untrainable skill keeps nothing
+    above level 1.
+    """
+    info = _chunk_info(
+        challenges={
+            "Smithing": {
+                "Smelt a bar": {"Level": 1, "Primary": True, "Items": ["Ore*"]},
+                "Smith a sword": {"Level": 50},
+            }
+        }
+    )
+
+    def index(tag: str) -> SourceIndex:
+        return SourceIndex(
+            items={"Ore": {"Somewhere": tag}},
+            objects={},
+            monsters={},
+            npcs={},
+            shops={},
+            drop_rates={},
+        )
+
+    trainable = calc_challenges({}, {}, index("primary-Mining"), info, rules={}).valid
+    by_product = calc_challenges({}, {}, index("secondary-Quest"), info, rules={}).valid
+
+    assert trainable["Smithing"] == {"Smelt a bar": 1, "Smith a sword": 50}
+    assert by_product["Smithing"] == {"Smelt a bar": 1}
 
 
 def test_calc_challenges_tolerates_an_empty_export() -> None:

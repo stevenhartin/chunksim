@@ -42,16 +42,17 @@ Implemented:
   Ritual`, and while that quest is out of reach the skill keeps nothing.
 - `Items` requirements: presence checking, including `[+]`/`[+]xN` family
   matching via `codeItems.itemsPlus`, and `AllowedSources`/`NonShop`
-  filtering. The `*` secondary marker is stripped and otherwise ignored -
-  verified against upstream (worker.js:4046,4064) it does **not** gate
-  validity. It sets a `Secondary` flag with exactly three consequences, and
-  none of them lands here: a `forcedPrimary` gate with **zero** real-export
-  uses (worker.js:4433); an input to `checkPrimaryMethod` (worker.js:
-  5135/5225), which is ported as `_check_primary_method` while that input is
-  not - **the one live gap**; and the `primary-`/`secondary-` split on seeded
-  `Output` items (worker.js:3024-3041), which `_seed_items_with_outputs`
-  flattens and which provably cannot move `_source_quality_ok`. See that
-  function and `_items_requirement_met`'s docstring. For
+  filtering. The `*` secondary marker does **not** gate validity directly -
+  verified against upstream (worker.js:4046,4064) - but it sets a `Secondary`
+  flag with three consequences, and **the one that matters is now ported**:
+  `checkPrimaryMethod` requires `Primary && !Secondary` (worker.js:5135), so
+  a method whose consumed ingredient is only somebody else's by-product does
+  not make its skill trainable. `_is_secondary` computes the flag and
+  `_has_primary_task` applies it. The other two stay unported and are inert:
+  a `forcedPrimary` gate with **zero** real-export uses (worker.js:4433), and
+  the `primary-`/`secondary-` split on seeded `Output` items
+  (worker.js:3024-3041), which `_seed_items_with_outputs` flattens and which
+  provably cannot move `_source_quality_ok`. See those functions. For
   combat skills and challenges whose `Category` includes `BIS Skilling`, an
   item sourced *only* from another skill's crafted output is additionally
   rejected unless `Not Equip`/`Wield Crafted Items`/a Slayer source/the
@@ -807,14 +808,14 @@ def _items_requirement_met(
     rules: Mapping[str, Any],
 ) -> bool:
     """Port of the `Items` block (worker.js:3899-4121). The `*` secondary
-    marker is stripped and otherwise ignored here: verified against upstream
-    (worker.js:4046,4064), it does **not** gate validity - it only sets a
+    marker is stripped and otherwise ignored *here*: verified against upstream
+    (worker.js:4046,4064), it does **not** gate validity - it sets a
     per-challenge `Secondary` flag, whose three consequences are traced in
     this module's docstring. Two are inert on real data (`forcedPrimary` has
     zero export uses; the seeded-`Output` tag split cannot move
-    `_source_quality_ok`); the third, the `Secondary` input to
-    `checkPrimaryMethod`, is a real gap - that function is ported as
-    `_check_primary_method` and this input to it is not. `[+]`
+    `_source_quality_ok`); the third is the `Secondary` input to
+    `checkPrimaryMethod`, which **is** ported - see `_is_secondary` and
+    `_has_primary_task`, not this function. `[+]`
     resolves through `codeItems.itemsPlus`, the same shape `_plus_family`
     already handles for `Chunks`/`Objects`/`Monsters`/`NPCs`/`Mix`.
 
@@ -846,6 +847,80 @@ _UNIVERSAL_PRIMARY: dict[str, tuple[str, ...]] = {
 }
 
 
+def _secondary_source_ok(tag: Any, *, plus: bool, farming_primary: bool) -> bool:
+    """Does one source tag stop the item that carries it reading as a
+    by-product? Ports the two spellings upstream gives this test, which are
+    not the same test.
+
+    The plain-item form (worker.js:4086) is a **conjunction**: a `-Farming`
+    tag never clears the flag unless `rules['Farming Primary']` is on. The
+    family form (worker.js:4014) puts the same clause inside the second
+    disjunct, where `!tag.includes('secondary-')` has already fired for a
+    `primary-Farming` tag - so there it is dead. Both are ported as written
+    rather than reconciled: which one runs is decided by the shape of the
+    requirement, and guessing that upstream meant the stricter one everywhere
+    would be inventing a gate.
+    """
+    if not isinstance(tag, str):
+        return False
+    if not plus and "-Farming" in tag and not farming_primary:
+        return False
+    return not tag.startswith("secondary-") or tag == "shop"
+
+
+def _is_secondary(
+    challenge: Mapping[str, Any],
+    items: Mapping[str, Mapping[str, str]],
+    chunk_info: ChunkInfo,
+    rules: Mapping[str, Any],
+) -> bool:
+    """Upstream's `Secondary` flag (worker.js:3927-4139, settled at 4431):
+    **is one of the things this challenge consumes obtainable only as
+    somebody else's by-product?**
+
+    The `*` in an `Items` entry marks a consumed *secondary* ingredient, and
+    the flag asks whether that ingredient has any source worth the name. A
+    tag of `primary-<skill>` or `shop` says yes and clears it; a tag of
+    `secondary-<source>` alone says the only way to that item is as a
+    side-effect of doing something else, and the challenge inherits the
+    doubt. An unmarked entry - a tool, an `Axe[+]` - can never set it, which
+    is the same reading `costing/estimate.py` takes of the marker.
+
+    Only ever asked of a challenge already known **valid**, which is what
+    lets this be as short as it is: upstream reaches its source test only
+    after the item has passed presence, `NonShop` and `AllowedSources`, and a
+    valid challenge has passed all three by construction.
+
+    The `Objects` half of upstream's flag (worker.js:4287-4318) is
+    deliberately not ported, because it cannot fire: it filters the object's
+    source **keys**, and those are chunk ids or - since `Output Object` was
+    seeded - challenge names. Neither ever contains `secondary-`.
+    """
+    refs = challenge.get("Items")
+    if not isinstance(refs, list):
+        return False
+    farming_primary = rules.get("Farming Primary") is True
+    for ref in refs:
+        if not isinstance(ref, str) or "*" not in ref:
+            continue
+        name = ref.replace("*", "")
+        if "[+]" in name:
+            base_name, marker, _ = name.partition("[+]x")
+            family = _plus_family(chunk_info, "itemsPlus", f"{base_name}[+]" if marker else name)
+            members: tuple[str, ...] = tuple(family) if family is not None else ()
+            plus = True
+        else:
+            members, plus = (name,), False
+        cleared = any(
+            _secondary_source_ok(tag, plus=plus, farming_primary=farming_primary)
+            for member in members
+            for tag in (items.get(member) or {}).values()
+        )
+        if not cleared:
+            return True
+    return False
+
+
 def _has_primary_task(
     skill: str,
     valid: Mapping[str, Mapping[str, Any]],
@@ -865,6 +940,16 @@ def _has_primary_task(
     training method, which can flip a whole skill from untrainable to
     trainable. Upstream additionally allows a `skillQuestXp` floor, which is
     not modelled - no quest-XP state exists anywhere in this codebase.
+
+    **`Primary` is not enough on its own: it has to be `Primary` and not
+    `Secondary`** (worker.js:5135), which is the one live consequence of the
+    `*` marker and was this module's longest-standing named gap. A method
+    whose consumed ingredient is only somebody else's by-product is not a way
+    to train the skill, and counting it as one lets a skill claim a training
+    route it cannot actually run. Measured on both cached maps it moves
+    nothing - 7 valid `Primary` challenges on each are `Secondary`, and no
+    skill's whole `Primary` set is - which is the point of porting it now
+    rather than after a map where it does.
     """
     challenges = chunk_info.challenges.get(skill) or {}
     backlogged = backlog.get(skill) or {}
@@ -876,8 +961,16 @@ def _has_primary_task(
         if challenge.get("Primary") is not True or name in backlogged:
             continue
         level = challenge.get("Level")
+        # `Secondary` is asked last of the three, though upstream writes the
+        # whole condition as one `&&`: it is the only term that walks an
+        # item's sources, and asking it before the level test put it on every
+        # `Primary` challenge in the skill rather than on the one about to
+        # answer. Measured on `fray`, that ordering alone was 96,191 calls a
+        # `derive` and +30% on the whole command.
         if not isinstance(level, (int, float)) or level == 1:
-            return True
+            if not _is_secondary(challenge, items or {}, chunk_info, rules):
+                return True
+            continue
         if isinstance(passive, (int, float)) and passive > 1:
             best, saw = boosts.best_boost(
                 skill,
@@ -889,7 +982,9 @@ def _has_primary_task(
                 items=items,
                 source_index=source_index,
             )
-            if level <= passive + best + saw:
+            if level <= passive + best + saw and not _is_secondary(
+                challenge, items or {}, chunk_info, rules
+            ):
                 return True
     return False
 
