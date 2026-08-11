@@ -192,7 +192,16 @@ exists solely in `skillItems.Nonskill['Pizazz points loot']`, reached via the
 `skillItems` route, a Slayer monster physically present in a chunk.)
 `backloggedSources['items']` is honoured here as upstream does, and it isn't
 cosmetic: a backlogged `Uncut onyx` otherwise re-enters at a 1/100,000,000
-rate and drags an entire crafting chain in with it. Simplified - everything
+rate and drags an entire crafting chain in with it.
+`_seed_objects_with_outputs` is the same feedback for `Output Object`
+(worker.js:3036-3045, merged at 3255-3262) - the furniture, braziers, patches
+and salvaging hooks a valid challenge *builds*. It was unported, and what it
+cost was a whole skill: all seven `Build a ~|<tier>|~ salvaging hook|~`
+challenges declare one, all eight shipwrecks require `AnySalvagingHook[+]`,
+and with no seeding a map could build every hook in the game and hold none.
+On an all-chunks map it is worth **+166 valid challenges, +44 Sailing and +33
+items**; on both cached maps validity is byte-identical and one object
+(`Player fire`) is added. Simplified - everything
 is tagged `primary-` rather than split by drop rate, and the `Rare Drop
 Amount` filter on an activity's items isn't applied; the `bossLogs` gate is.
 Upstream splits that tag on the challenge's `Secondary`/`ForcedSecondary`
@@ -213,15 +222,24 @@ structure is load-bearing, not incidental. A challenge's requirements split
 cleanly in two:
 
 - `_static_gates_met` - level/unsupported, `Category`, `Chunks`,
-  `Objects`/`Monsters`/`NPCs`, `Mix`. Every input (`rules`, `max_skill`,
-  `chunk_ids`, `reachable_sections`, the object/monster/npc indexes) is fixed
-  for the whole `calc_challenges` call, so **nothing the fixed point does can
-  change the answer**. Run once, up front, as a candidate filter: on the real
-  export it takes 14,692 challenges down to 5,935 - the loops used to
-  re-derive those 8,757 rejections on all nine-to-twelve sweeps.
+  `Monsters`/`NPCs`, `Mix`. Every input (`rules`, `max_skill`, `chunk_ids`,
+  `reachable_sections`, the monster/npc indexes) is fixed for the whole
+  `calc_challenges` call, so **nothing the fixed point does can change the
+  answer**. Run once, up front, as a candidate filter: on the real export it
+  takes 14,692 challenges down to 5,935 - the loops used to re-derive those
+  8,757 rejections on all nine-to-twelve sweeps.
 - `_dynamic_gates_met` - `Items`, `Skills`, `Tasks`, which read the item index
   the loop keeps re-seeding and the validity being computed. These must stay
   inside.
+- `_objects_requirement` - **`Objects`, which is neither**, and this is the
+  one place the split is three-way rather than two. Its index moves too, now
+  that `Output Object` is seeded, so the gate cannot stay static; but moving
+  it wholesale into the sweeps would put 1,631 presence checks back on every
+  one of them for the sake of the handful that can actually change. So it is
+  decided against the *base* index and only deferred where a `seedable`
+  object is what is missing - sound because seeding only ever adds, so a met
+  requirement stays met and an unmeetable one stays unmeetable. Measured, the
+  deferral changes neither cached map's runtime (0.88s -> 0.85s on `fray`).
 
 `_ItemPlan`/`_compile_items` carry the same idea one level down: an `Items`
 requirement's *parsing* (`*` stripping, `[+]` detection, `itemsPlus` family
@@ -357,11 +375,20 @@ class ChallengeResult:
     exists solely as the output of an imbue challenge. Deliberately excluded
     from `as_dict`: it's a pipeline artifact (thousands of entries), not part
     of the user-facing task result.
+
+    `available_objects` is the exact twin for `Output Object` - the furniture,
+    braziers, patches and salvaging hooks a valid `Build`/`Light`/`Plant`
+    challenge *makes* - and exists for the same reason: `SourceIndex.objects`
+    holds only what an unlocked chunk already contains, so on the real export
+    it has none of the 94 objects the map can build. Read it, not
+    `SourceIndex.objects`, when the question is "what can I stand in front
+    of". Excluded from `as_dict` on the same grounds.
     """
 
     valid: dict[str, dict[str, int | str | bool]]
     unsupported: frozenset[str]
     available_items: dict[str, dict[str, str]] = field(default_factory=dict)
+    available_objects: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {"valid": self.valid, "unsupported": sorted(self.unsupported)}
@@ -472,6 +499,95 @@ def _presence_requirement_met(
         elif name not in index:
             return False
     return True
+
+
+def _seedable_objects(challenges: Mapping[str, Mapping[str, Any]]) -> frozenset[str]:
+    """Every object any challenge in the export can *build*, whether or not
+    that challenge is reachable here.
+
+    This is a property of the export rather than of a map, so it is what makes
+    the `Objects` gate splittable: an object outside this set can never arrive
+    during a `calc_challenges` call, so its absence is as static as it ever
+    was. 94 objects across 138 challenges - Construction 85, Sailing 24,
+    Firemaking 16, Farming 12, Nonskill 1.
+    """
+    seedable: set[str] = set()
+    for skill_challenges in challenges.values():
+        if not isinstance(skill_challenges, dict):
+            continue
+        for challenge in skill_challenges.values():
+            if isinstance(challenge, dict):
+                output = challenge.get("Output Object")
+                if isinstance(output, str):
+                    seedable.add(output)
+    return frozenset(seedable)
+
+
+def _objects_requirement(
+    challenge: Mapping[str, Any],
+    objects: Mapping[str, Mapping[str, Any]],
+    chunk_info: ChunkInfo,
+    seedable: frozenset[str],
+) -> bool | tuple[tuple[str, ...], ...]:
+    """`Objects` decided against the *base* index, three ways: `True`, `False`,
+    or the groups whose answer has to wait for the seeding.
+
+    `_presence_requirement_met` is the two-way version and stays that for
+    `Monsters`/`NPCs`, whose indexes really are fixed for the call. Objects
+    are not - `_seed_objects_with_outputs` adds to them mid-fixed-point - but
+    the split survives intact, because seeding only ever *adds*:
+
+    - a requirement the base index already meets can never stop being met, so
+      it is decided `True` once, exactly as before;
+    - a requirement it does not meet, whose unmet names are none of them
+      `seedable`, can never come to be met, so it is decided `False` once;
+    - only what is left needs re-checking per sweep, and only against the
+      groups returned here rather than the whole requirement.
+
+    On the real export 621 of the 1,631 `Objects`-carrying challenges name a
+    seedable object, and almost all of those are anvils, furnaces and cooking
+    ranges a map either has from the start or does not - so what actually
+    defers is a handful. That is the whole reason this is a tri-state rather
+    than "move `Objects` into the dynamic half", which would have put 1,631
+    presence checks back on every one of the nine-to-twelve sweeps.
+    """
+    names = challenge.get("Objects")
+    if not isinstance(names, list):
+        return True
+    deferred: list[tuple[str, ...]] = []
+    for name in names:
+        if not isinstance(name, str):
+            continue
+        if "[+]" in name:
+            family = _plus_family(chunk_info, "objectsPlus", name)
+            if family is None:
+                # Same reading as `_presence_requirement_met`: a `[+]` name
+                # with no family table is a dead requirement bar the wildcard,
+                # and no amount of seeding gives it members.
+                if name in _ANY_MEMBER_FAMILIES and objects:
+                    continue
+                return False
+            members = tuple(member for member in family if isinstance(member, str))
+            if any(member in objects for member in members):
+                continue
+            if any(member in seedable for member in members):
+                deferred.append(members)
+                continue
+            return False
+        if name in objects:
+            continue
+        if name in seedable:
+            deferred.append((name,))
+            continue
+        return False
+    return tuple(deferred) if deferred else True
+
+
+def _objects_met(groups: tuple[tuple[str, ...], ...], objects: Mapping[str, Mapping[str, Any]]) -> bool:
+    """The deferred half of `_objects_requirement`, per sweep: every group
+    needs one member present in the seeded index.
+    """
+    return all(any(member in objects for member in group) for group in groups)
 
 
 def _mix_requirement_met(
@@ -1055,7 +1171,6 @@ def _static_gates_met(
     *,
     chunk_ids: Mapping[str, bool],
     reachable_sections: Mapping[str, Mapping[str, bool]],
-    objects: Mapping[str, Mapping[str, Any]],
     monsters: Mapping[str, Mapping[str, Any]],
     npcs: Mapping[str, Mapping[str, Any]],
     chunk_info: ChunkInfo,
@@ -1068,10 +1183,12 @@ def _static_gates_met(
     `calc_challenges` call, so it can be - and is - decided once.
 
     `rules`/`max_skill`/`secondary_primary_amount`/`construction_locked` are
-    per-map constants; `chunk_ids`/`reachable_sections` and the
-    objects/monsters/npcs indexes are arguments to the call and never change
-    inside its loops (only `items` does, via `_seed_items_with_outputs`, which
-    is why `Items` is in `_dynamic_gates_met` instead).
+    per-map constants; `chunk_ids`/`reachable_sections` and the monster/npc
+    indexes are arguments to the call and never change inside its loops.
+    `items` does, via `_seed_items_with_outputs`, which is why `Items` is in
+    `_dynamic_gates_met` - and so, since `Output Object` was ported, do
+    `objects`, which is why `Objects` is decided by `_objects_requirement`
+    beside this rather than in it.
 
     On the real export this rejects **8,757 of 14,692** challenges, and the
     loops used to re-derive every one of those rejections nine to twelve times
@@ -1086,8 +1203,6 @@ def _static_gates_met(
         return False
     if not chunks_requirement_met(challenge, chunk_ids, reachable_sections, chunk_info):
         return False
-    if not _presence_requirement_met(challenge, "Objects", objects, chunk_info, "objectsPlus"):
-        return False
     if not _presence_requirement_met(challenge, "Monsters", monsters, chunk_info, "monstersPlus"):
         return False
     if not _presence_requirement_met(challenge, "NPCs", npcs, chunk_info, "npcsPlus"):
@@ -1101,6 +1216,8 @@ def _dynamic_gates_met(
     *,
     plan: _ItemPlan | None,
     items: Mapping[str, Mapping[str, str]],
+    objects: Mapping[str, Mapping[str, Any]],
+    deferred_objects: tuple[tuple[str, ...], ...],
     valid: Mapping[str, Mapping[str, Any]],
     chunk_info: ChunkInfo,
     rules: Mapping[str, Any],
@@ -1108,13 +1225,17 @@ def _dynamic_gates_met(
     trainable: Mapping[str, bool],
     prev_valid: Mapping[str, Mapping[str, Any]],
 ) -> bool:
-    """The half that has to stay in the loop: `Items` reads the item index the
-    fixed point keeps re-seeding, and `Skills`/`Tasks` read the validity being
-    computed.
+    """The half that has to stay in the loop: `Items` and the buildable half
+    of `Objects` read indexes the fixed point keeps re-seeding, and
+    `Skills`/`Tasks` read the validity being computed.
 
     `plan` is the challenge's `Items` refs already resolved (`_compile_items`),
-    since only the *index* they are checked against changes between sweeps.
+    and `deferred_objects` the `Objects` groups `_objects_requirement` could
+    not settle against the base index - both because only the *index* they are
+    checked against changes between sweeps.
     """
+    if deferred_objects and not _objects_met(deferred_objects, objects):
+        return False
     if plan is not None and not _item_plan_met(plan, items):
         return False
     if not _skills_requirement_met(challenge, max_skill, valid, trainable=trainable):
@@ -1153,7 +1274,6 @@ def _evaluate_challenge(
         challenge,
         chunk_ids=chunk_ids,
         reachable_sections=reachable_sections,
-        objects=objects,
         monsters=monsters,
         npcs=npcs,
         chunk_info=chunk_info,
@@ -1163,6 +1283,15 @@ def _evaluate_challenge(
         construction_locked=construction_locked,
     ):
         return None
+    # Single-challenge entry point, so there is nothing seeded to wait for:
+    # whatever `_objects_requirement` defers is checked against the index it
+    # was handed, which is the two-way answer this used to give.
+    decision = _objects_requirement(
+        challenge, objects, chunk_info, _seedable_objects(chunk_info.challenges)
+    )
+    if decision is False:
+        return None
+    deferred = decision if isinstance(decision, tuple) else ()
     if not _dynamic_gates_met(
         skill,
         challenge,
@@ -1170,6 +1299,8 @@ def _evaluate_challenge(
             challenge, chunk_info, skill=skill, rules=rules, locked_equipment=locked_equipment
         ),
         items=items,
+        objects=objects,
+        deferred_objects=deferred,
         valid=valid,
         chunk_info=chunk_info,
         rules=rules,
@@ -1266,6 +1397,59 @@ def _seed_items_with_outputs(
     _seed_rewards(items, valid, challenges, backlog, backlogged_items)
     apply_item_task_unlocks(items, _mapping(chunk_info.data, "taskUnlocks"), valid)
     return items
+
+
+def _seed_objects_with_outputs(
+    base_objects: Mapping[str, Mapping[str, Any]],
+    valid: Mapping[str, Mapping[str, Any]],
+    challenges: Mapping[str, Mapping[str, Any]],
+    backlog: Mapping[str, Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """A valid challenge's `Output Object` becomes a new *object* for the next
+    pass. Port of worker.js:3036-3045 and its merge at worker.js:3255-3262.
+
+    The twin of `_seed_items_with_outputs`, and unported until the salvaging
+    hooks made its absence visible. Upstream builds `outputObjects` inside the
+    same walk over `newValids` that builds `outputs`, then merges it into
+    `baseChunkData['objects']` unconditionally - unconditionally being correct
+    because the walk only ever saw valid challenges.
+
+    What it opens is a chain the export models end to end and this project
+    could not walk: all seven `Build a ~|<tier>|~ salvaging hook|~` challenges
+    declare `Output Object`, all eight shipwrecks require
+    `AnySalvagingHook[+]` through `objectsPlus`, and with no seeding
+    `source_index.objects` held zero hooks however many were buildable. It is
+    not a Sailing fix - 85 of the 138 challenges carrying an `Output Object`
+    are Construction, and an anvil you build is an anvil you can smith at.
+
+    Both of upstream's gates are here bar one. The challenge's own backlog
+    applies (including the `#`/`/` spelling the payload uses for a sub-name),
+    as it does in `_seed_rewards`: backlogging a build says you will not do
+    it. There is no item-style `backloggedSources['objects']` to honour -
+    upstream has none. What is flattened is the tag: upstream splits
+    `primary-`/`secondary-` on the challenge's `Secondary` flag, which is
+    computed during validity rather than stated in the export, and **no
+    consumer of the objects index reads its tags at all** - every check
+    against it, here and in `sources.py`, is a membership test. The same
+    flattening, for the same reason, is recorded on `_seed_items_with_outputs`.
+    """
+    objects: dict[str, dict[str, Any]] = {
+        name: dict(sources) for name, sources in base_objects.items()
+    }
+    for skill, names in valid.items():
+        skill_challenges = challenges.get(skill, {})
+        backlogged = backlog.get(skill) or {}
+        for name in names:
+            challenge = skill_challenges.get(name)
+            if not isinstance(challenge, dict):
+                continue
+            output = challenge.get("Output Object")
+            if not isinstance(output, str):
+                continue
+            if name in backlogged or name.replace("#", "/") in backlogged:
+                continue
+            objects.setdefault(output, {})[name] = f"primary-{skill}"
+    return objects
 
 
 def _seed_rewards(
@@ -1665,6 +1849,8 @@ def calc_challenges(
     secondary_primary_amount = str(rules.get("Secondary Primary Amount", "1"))
 
     items: Mapping[str, Mapping[str, str]] = source_index.items
+    objects: Mapping[str, Mapping[str, Any]] = source_index.objects
+    seedable_objects = _seedable_objects(challenges)
     valid: dict[str, dict[str, int | str | bool]] = {}
     unsupported: set[str] = set()
     #: The first outer pass converges *without* pruning, so trainability is
@@ -1681,7 +1867,16 @@ def calc_challenges(
     # Each entry carries everything about the challenge that cannot change
     # while this call runs: its compiled `Items` plan and the value it takes
     # when valid. Only the three dynamic gates are left to the sweeps.
-    candidates: list[tuple[str, str, Mapping[str, Any], _ItemPlan | None, int | str | bool]] = []
+    candidates: list[
+        tuple[
+            str,
+            str,
+            Mapping[str, Any],
+            _ItemPlan | None,
+            tuple[tuple[str, ...], ...],
+            int | str | bool,
+        ]
+    ] = []
     for skill, skill_challenges in challenges.items():
         if skill in UNSUPPORTED_CATEGORIES or not isinstance(skill_challenges, dict):
             continue
@@ -1695,7 +1890,6 @@ def calc_challenges(
                     challenge,
                     chunk_ids=chunk_ids,
                     reachable_sections=reachable_sections,
-                    objects=source_index.objects,
                     monsters=source_index.monsters,
                     npcs=source_index.npcs,
                     chunk_info=chunk_info,
@@ -1713,22 +1907,32 @@ def calc_challenges(
                 # of the challenge. See `ChallengeResult.unsupported`.
                 unsupported.add(f"{skill}/{name}")
                 continue
-            if survives:
-                candidates.append(
-                    (
-                        skill,
-                        name,
+            if not survives:
+                continue
+            # `Objects` is the one gate whose index the fixed point moves, so
+            # it is settled here where it can be and deferred where it cannot
+            # - see `_objects_requirement`.
+            decision = _objects_requirement(
+                challenge, source_index.objects, chunk_info, seedable_objects
+            )
+            if decision is False:
+                continue
+            candidates.append(
+                (
+                    skill,
+                    name,
+                    challenge,
+                    _compile_items(
                         challenge,
-                        _compile_items(
-                            challenge,
-                            chunk_info,
-                            skill=skill,
-                            rules=rules,
-                            locked_equipment=locked_equipment,
-                        ),
-                        _challenge_value(challenge, skill),
-                    )
+                        chunk_info,
+                        skill=skill,
+                        rules=rules,
+                        locked_equipment=locked_equipment,
+                    ),
+                    decision if isinstance(decision, tuple) else (),
+                    _challenge_value(challenge, skill),
                 )
+            )
 
     # Outer pass: the post-convergence prunes below *remove* challenges, and a
     # removed challenge's `Output` must stop being an available item - otherwise
@@ -1758,12 +1962,14 @@ def calc_challenges(
                 for skill in _UNIVERSAL_PRIMARY
             }
             new_valid: dict[str, dict[str, int | str | bool]] = {}
-            for skill, name, challenge, plan, value in candidates:
+            for skill, name, challenge, plan, deferred, value in candidates:
                 if _dynamic_gates_met(
                     skill,
                     challenge,
                     plan=plan,
                     items=items,
+                    objects=objects,
+                    deferred_objects=deferred,
                     valid=new_valid,
                     chunk_info=chunk_info,
                     rules=rules,
@@ -1812,6 +2018,9 @@ def calc_challenges(
                 backlogged_sources or {},
                 backlog,
             )
+            objects = _seed_objects_with_outputs(
+                source_index.objects, valid, challenges, backlog
+            )
 
         # Run once, after convergence, not per pass: deciding trainability from a
         # half-seeded item index prunes a skill whose own `Output` chain would
@@ -1848,9 +2057,13 @@ def calc_challenges(
             backlogged_sources or {},
             backlog,
         )
-        if reseeded == items and valid == settled:
+        reseeded_objects = _seed_objects_with_outputs(
+            source_index.objects, valid, challenges, backlog
+        )
+        if reseeded == items and reseeded_objects == objects and valid == settled:
             break
         items = reseeded
+        objects = reseeded_objects
         pruning = True
 
     grouped = _group_processing_skill_challenges(
@@ -1860,4 +2073,5 @@ def calc_challenges(
         valid=grouped,
         unsupported=frozenset(unsupported),
         available_items={item: dict(sources) for item, sources in items.items()},
+        available_objects={name: dict(sources) for name, sources in objects.items()},
     )

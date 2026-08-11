@@ -113,7 +113,9 @@ the next one.
 Five things that cut across modules — the first three because each has already caused a real bug:
 
 - **Reachable items are `ChallengeResult.available_items`, not `SourceIndex.items`.** The latter
-  omits anything obtainable only by *making* it. `bis.py` and `boosts.py` both got this wrong first.
+  omits anything obtainable only by *making* it. `bis.py` and `boosts.py` both got this wrong first,
+  and `estimate.py` a third time. **The same now goes for objects**: `ChallengeResult.available_objects`,
+  not `SourceIndex.objects`, since `Output Object` is seeded - see the Sailing section.
 - **The opt-in oracle tests are the correctness signal.** The cached map records upstream's own
   computed answers (`activeTasks.BiS`, `activeTasks.Slayer`, ...) and the tests assert against them.
   **Treat a mismatch as a defect in this code, not as oracle staleness** — an earlier stage of this
@@ -984,45 +986,59 @@ rather match upstream's answers exactly.
 So the skill was never unreachable in the sense of "unmodelled" - the nine joined barracuda-trial
 rates and the shipwrecks' guide rates are spendable now, on any map that reaches the Shipyard.
 
-**Sailing still does not price, and saying otherwise was this file's third wrong claim about it.**
-Opening the Shipyard makes 174 Sailing challenges valid on the uber map; **9 of them are `Primary`
-and not one has a rate**, so `training_options` returns nothing, the climb reads 13,034h at the floor
-and `UNRATED_SKILLS` goes on refusing it - correctly, since "no *reachable* method has a rate" is
-still exactly true. The rated methods and the reachable methods are disjoint sets, for two unrelated
-reasons:
+**Sailing prices now, and what unblocked it was one unported branch of the fixed point.** Three
+earlier passes of this file each gave a different wrong reason: that the rates were missing (they
+were already scraped), that the boat was missing (it arrives either way), and that the rated methods
+and the reachable methods were disjoint sets. The last was true when it was written, and it was a
+statement about `Output Object` rather than about Sailing.
 
-- **The nine barracuda trials are `Primary` and rated** (`Complete ~|The Gwenith Glide|~ at Marlin
-  rank`, 184,369/hr down to 19,342) **and invalid**, because each gates on a long list of specific
-  *water sections* - the race course - and every one has to be reachable.
-- **The eight shipwrecks are `Primary` and rated** (fremennik 51,708, barracuda 10,230) **and
-  invalid**, because each declares `Objects: ["AnySalvagingHook[+]", "<wreck>"]`.
+**`_seed_objects_with_outputs` is the `Output Object` twin of the item seeding** (worker.js:3036-3045,
+merged at worker.js:3255-3262). A valid challenge's `Output Object` - the furniture, brazier, patch
+or hook it *builds* - becomes an object the next pass can stand in front of. Upstream collects it in
+the same walk over `newValids` that builds `outputs`, and merges it unconditionally because that walk
+only ever saw valid challenges; this project ported the `outputs` half alone, so `source_index.objects`
+held whatever an unlocked chunk contained and nothing a player could make. 138 challenges carry one -
+**Construction 85, Sailing 24, Firemaking 16, Farming 12, Nonskill 1** - so it was never a Sailing
+branch. An anvil you build is an anvil you can smith at.
 
-**`AnySalvagingHook[+]` is real, and the note calling it a false alarm was wrong.** It resolves
-through **`objectsPlus`** - not `itemsPlus`, where it is a stray `null` - to the seven hooks, and
-those are ordinary Construction buildables (`Build a ~|bronze salvaging hook|~` through dragon,
-declaring `Output Object` like every Construction row) wanting a boat, planks, nails, bars and rope.
-The error was searching only `Items` for the family: it is an **`Objects`** requirement, and 8
-challenges carry it. So the chain is sound and simply not yet walked end to end - build a hook and
-the shipwrecks light up with rates already scraped.
+**The static/dynamic split is repaired three ways rather than moved, and that is the part worth
+reading before touching it.** `calc_challenges` decides `Objects` once, in `_static_gates_met`, which
+is what takes 14,692 challenges to 5,935 candidates. A seeded object breaks that premise, and both
+obvious repairs are bad: moving the whole gate into the sweeps puts 1,631 presence checks on each of
+nine to twelve, and admitting the seedable names to the static index is over-inclusive in exactly the
+way the oracles exist to catch. `_objects_requirement` does neither, because **seeding only ever
+adds**: a requirement the base index already meets can never stop being met, so it is decided `True`
+once; one it does not meet whose missing names nothing in the export builds is decided `False` once;
+only a *seedable* absence defers, and it defers as the groups that would satisfy it rather than as
+the whole requirement. 621 of the 1,631 name a seedable object, almost all of them anvils, furnaces
+and cooking ranges a map either starts with or does not, so what actually defers is a handful.
+Measured: `fray` derives in 0.85s against 0.88s before.
 
-That is the shape of the next piece of Sailing work, and it is now diagnosed rather than guessed at:
-**`Output Object` is an unported branch of the item-seeding fixed point.**
+**Both cached maps are byte-identical** - `valid`, `available_items`, `bis` and the reachable sections
+all unchanged, with one object added to each (`Player fire`, off Firemaking). The gain is entirely on
+a map that can build things it does not already have:
 
-On the uber map all seven `Build a ~|<tier>|~ salvaging hook|~` challenges are **valid** - they gate
-on chunk `8234-1`, a boat, planks, nails, bars and rope, all of which that map has - and
-`source_index.objects` holds **zero** salvaging hooks, so `AnySalvagingHook[+]` resolves to nothing
-and all 8 shipwrecks stay invalid. Upstream builds `outputObjects` from `Output Object` beside the
-`outputs` map this project ports (worker.js:3036-3045) and merges it into `baseChunkData['objects']`
-unconditionally (worker.js:3255-3262). `_seed_items_with_outputs` ports the first and not the second.
+| map | valid | Sailing | items | objects |
+|---|---:|---:|---:|---:|
+| `fray` | 2,705 (unchanged) | 0 | 1,918 (unchanged) | 435 -> 436 |
+| `verf` | 2,486 (unchanged) | 0 | 1,606 (unchanged) | 284 -> 285 |
+| uber | 10,944 -> **11,110** | 174 -> **218** / 243 | 5,122 -> **5,155** | 1,799 -> **1,870** |
 
-**The port is not a one-liner, and the reason is the static/dynamic split.** `calc_challenges`
-decides the `Objects` gate **once**, in `_static_gates_met`, on the stated grounds that "nothing they
-read changes for the life of this call" - which is what takes 14,692 challenges to 5,935 candidates
-before the sweeps. A seeded output object *does* change during the call, so the gate has to move to
-the dynamic half or the seeding has to be admitted to the static one, and the second is
-over-inclusive in exactly the way the oracles exist to catch. Do it with
-`FRAY_CHUNKINFO=cache/reference/chunkinfo.json FRAY_MAP_CACHE=1` running and the baseline to beat is
-**1,489 passing**.
+**And `UNRATED_SKILLS` retired itself with no edit here, which is what it was built to do.** The
+refusal holds only while no *reachable* method has a real rate, and `training_options` answers that
+by dropping every `default` - so with the eight shipwrecks and six of the nine barracuda trials valid,
+**Sailing 1 -> 99 on the uber map is 157.4h across five bands** (small shipwreck 2,170/hr from 15,
+The Tempor Tantrum 24,519 from 30, The Jubbly Jive 88,923 from 55) where it read 13,034h at the floor
+and was refused outright. The entry stays in the set: it is again a precondition rather than a
+verdict, and `fray`/`verf` still reach no Sailing method at all.
+
+**The cascade is the measurement that says this is not a Sailing feature.** Of the +44, eight are the
+shipwrecks the hooks unlock and six are trials; the other thirty are dockings, mooring points and sea
+passages that follow through `Tasks` from `Sail through ~|icy seas|~` and its three siblings - each of
+which requires a brazier, and a brazier is a **Construction** `Output Object` (`Build an ~|eternal
+brazier|~`, level 72). A Construction build is what opens the sea. The three Gwenith Glide ranks stay
+invalid on the water sections the earlier note named, which is a map constraint and reads correctly.
+
 
 **A computed rate slower than the 1,000/hr floor is refused.** The floor is a deliberate stand-in for
 ignorance, not a speed, and a computed number below it says the model is missing something about that

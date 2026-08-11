@@ -11,11 +11,14 @@ from fray_claude.derive.challenges import (
     _compile_items,
     _item_plan_met,
     _items_requirement_met,
+    _objects_requirement,
+    _seedable_objects,
     calc_challenges,
     contains_sections,
     has_allowed_source,
     only_shop,
 )
+from fray_claude.derive.pipeline import MapState, derive
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.derive.sources import SourceIndex, gather_chunks_info
 
@@ -592,6 +595,151 @@ def test_a_valid_challenges_output_feeds_the_next_pass_as_a_new_item() -> None:
 
     assert result.valid["Smithing"] == {"Smelt a bronze bar": 1, "Smelt a bar": True}
     assert result.valid["Nonskill"] == {"Use the bar": True}
+
+
+def test_a_valid_challenges_output_object_feeds_the_next_pass_as_a_new_object() -> None:
+    """The `Output Object` twin of the test above, and the whole of the
+    salvaging-hook chain in miniature: nothing on the map holds a hook, one
+    valid challenge builds one, and the challenge requiring one follows.
+    """
+    info = _chunk_info(
+        challenges={
+            "Construction": {
+                "Build a plank": {"Level": 1, "Primary": True},
+                "Build a hook": {"Output Object": "Bronze salvaging hook"},
+            },
+            "Nonskill": {"Salvage a wreck": {"Objects": ["Bronze salvaging hook"]}},
+        }
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert result.valid["Nonskill"] == {"Salvage a wreck": True}
+    assert result.available_objects["Bronze salvaging hook"] == {
+        "Build a hook": "primary-Construction"
+    }
+
+
+def test_a_seeded_object_satisfies_a_family_requirement() -> None:
+    """`AnySalvagingHook[+]` is an `objectsPlus` family, so the deferral has to
+    survive the family expansion as well as the plain name.
+    """
+    info = _chunk_info(
+        challenges={
+            "Construction": {
+                "Build a plank": {"Level": 1, "Primary": True},
+                "Build a hook": {"Output Object": "Rune salvaging hook"},
+            },
+            "Nonskill": {"Salvage a wreck": {"Objects": ["AnyHook[+]"]}},
+        },
+        codeItems={"objectsPlus": {"AnyHook[+]": ["Bronze salvaging hook", "Rune salvaging hook"]}},
+    )
+
+    assert calc_challenges({}, {}, _EMPTY, info, rules={}).valid["Nonskill"] == {
+        "Salvage a wreck": True
+    }
+
+
+def test_a_backlogged_build_does_not_seed_its_object() -> None:
+    """Upstream's own gate (worker.js:3036): backlogging the build says you
+    will not do it, so what it would have made must not arrive anyway.
+    """
+    info = _chunk_info(
+        challenges={
+            "Construction": {
+                "Build a plank": {"Level": 1, "Primary": True},
+                "Build a hook": {"Output Object": "Bronze salvaging hook"},
+            },
+            "Nonskill": {"Salvage a wreck": {"Objects": ["Bronze salvaging hook"]}},
+        }
+    )
+
+    result = calc_challenges(
+        {}, {}, _EMPTY, info, rules={}, backlog={"Construction": {"Build a hook": True}}
+    )
+
+    assert "Nonskill" not in result.valid
+    assert "Bronze salvaging hook" not in result.available_objects
+
+
+def test_an_objects_requirement_no_challenge_builds_is_still_decided_once() -> None:
+    """The tri-state is what keeps `Objects` out of the sweeps, so it is worth
+    asserting rather than inferring from the answers being right: a met
+    requirement and an unbuildable one are both settled against the base
+    index, and only a *seedable* absence defers.
+    """
+    info = _chunk_info(
+        challenges={"Construction": {"Build a hook": {"Output Object": "Bronze salvaging hook"}}}
+    )
+    seedable = _seedable_objects(info.challenges)
+    present = {"Anvil": {"100": True}}
+
+    assert _objects_requirement({"Objects": ["Anvil"]}, present, info, seedable) is True
+    assert _objects_requirement({"Objects": ["Furnace"]}, present, info, seedable) is False
+    assert _objects_requirement({}, present, info, seedable) is True
+    assert _objects_requirement(
+        {"Objects": ["Bronze salvaging hook"]}, present, info, seedable
+    ) == (("Bronze salvaging hook",),)
+
+
+def test_seeding_objects_only_ever_adds() -> None:
+    """The property the split leans on: an `Objects` requirement the base index
+    already meets can never stop being met, which is what lets it be decided
+    once.
+    """
+    index = SourceIndex(
+        items={},
+        objects={"Anvil": {"100": True}},
+        monsters={},
+        npcs={},
+        shops={},
+        drop_rates={},
+    )
+    info = _chunk_info(
+        challenges={"Construction": {"Build a hook": {"Output Object": "Bronze salvaging hook"}}}
+    )
+
+    result = calc_challenges({}, {}, index, info, rules={})
+
+    assert set(result.available_objects) >= set(index.objects)
+
+
+@pytest.mark.real_export
+def test_the_salvaging_hook_chain_is_joined_end_to_end(real_export: ChunkInfo) -> None:
+    """The export's own shape, asserted rather than remembered: every hook is
+    something a challenge *builds*, and the family the shipwrecks require
+    names exactly those. This is the join that was read as broken - the
+    family was looked for in `itemsPlus`, where it is a stray `null`.
+    """
+    seedable = _seedable_objects(real_export.challenges)
+    family = (real_export.code_items.get("objectsPlus") or {})["AnySalvagingHook[+]"]
+
+    assert set(family) <= seedable
+    assert len(family) == 7
+    assert (real_export.code_items.get("itemsPlus") or {}).get("AnySalvagingHook[+]") is None
+
+
+@pytest.mark.real_cache
+def test_a_map_holding_the_shipyard_can_build_a_hook_and_salvage_with_it(
+    real_export: ChunkInfo, real_state: tuple[MapState, dict[str, bool]]
+) -> None:
+    """The end-to-end oracle for `Output Object`, and it needs every chunk:
+    `8234-1` is the Shipyard and no cached map reaches it.
+
+    Before the port `source_index.objects` held **zero** salvaging hooks
+    however many were buildable, so all eight shipwrecks were invalid and 243
+    Sailing challenges followed them down.
+    """
+    state, _ = real_state
+    everywhere = {chunk_id: True for chunk_id in real_export.data.get("chunks", {})}
+
+    derived = derive(state, everywhere)
+
+    hooks = {n for n in derived.challenges.available_objects if n.endswith("salvaging hook")}
+    assert len(hooks) == 7
+    assert {n for n in derived.challenges.valid["Sailing"] if n.startswith("Salvage at a ")}
+    # The point of the port: nothing in an unlocked chunk holds a hook.
+    assert not hooks & set(derived.source_index.objects)
 
 
 def test_calc_challenges_tolerates_an_empty_export() -> None:
