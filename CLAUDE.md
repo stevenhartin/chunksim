@@ -506,10 +506,17 @@ them, so this is a choice between two biases rather than something to fix. On th
 holding the minigame and no usable crop schedule at all - Farming 1 -> 99 on `verf-sim/run-001` goes
 13,034h, the bare floor, to 1,228.9h.
 
-**Noticed while measuring, unfixed:** on the fallback path the uber map prices Farming 1 -> 74 with
-`ultracompost` at **335/hr**, far below the 1,000/hr floor. The floor refusal in `recipe_rates`
-applies to *computed* rates only, and this one is scraped, so nothing catches it. It is the same
-shape as the supercompost case that motivated that rule.
+**Noticed while measuring, and smaller than it looks:** on the fallback path the uber map prices
+Farming 1 -> 74 with `ultracompost` at **335/hr**, far below the 1,000/hr floor. The floor refusal in
+`recipe_rates` applies to *computed* rates only, and this one is scraped, so nothing catches it - the
+same shape as the supercompost case that motivated that rule.
+
+**It cannot bite at the bottom of the skill, which is the part that would matter.** Ultracompost is
+made in a compost bin, and a compost bin comes with an **allotment patch** - the same unlock that
+makes the skill trainable in the first place. So a map that can reach this method can by construction
+also reach an allotment and a herb patch, which is where real Farming training starts; the band walk
+has ordinary crops to rank against it from level 1. A rate below the floor on a method nobody reaches
+before they have better options is a wart rather than a wrong total.
 
 **Guardians of the Rift is one activity behind twelve challenges, and it was priced as twelve
 altars.** The export models it as `Craft a <rune> rune with guardian essence`, which joined the
@@ -537,7 +544,8 @@ Two limits are stated rather than papered over. **Above the table nothing in the
 85+ bands** - there is no guardian variant of a wrath rune - so the 65,000 and 70,000 rows are read
 and never spent, understating the top. **Below it the guide tabulates from 40 where the minigame
 opens at 27**, so the eight variants under level 40 keep nothing from this join and fall back to the
-altar rate they always had. That is still the wrong rate for the wrong activity; it changes no number
+altar rate they always had - air (1), mind (2), water (5), earth (9), fire (14), body (20), cosmic
+(27) and chaos (35), of the twelve `with guardian essence` challenges the export carries. That is still the wrong rate for the wrong activity; it changes no number
 because the plain variant of each is present with an identical figure and an identical essence cost,
 so removing them would leave every climb where it is. Fixing it properly means deciding whether a
 guardian variant should be a separate method at all, which is a question about the export's shape
@@ -954,13 +962,21 @@ stocked by a ground spawn, so the item walk prices it at zero seconds - and a Co
 reading `Coins x 10,000,000` came out free, making a steel dragon in the menagerie the fastest
 training in the game at 3,348,000 xp/hr. 39 recipes name coins against 3,889 that do not.
 
-**What is still wrong with Construction, and it is the same root:** a material stocked by a reachable
-shop costs *nothing* (`estimate._FREE_ROUTES`), so a build whose inputs are all shop-bought is priced
-on ticks alone - `obsidian fence` at 2.9M xp/hr off free Tokkul. The opposite end is as bad: the only
+**Construction's shop half is fixed, and this paragraph used to say otherwise.** It claimed a
+material stocked by a reachable shop costs *nothing* and quoted `obsidian fence` at 2.9M xp/hr off
+free Tokkul - which was true before the shop model above and has not been since: `_route_hours`
+charges the price at `Heuristics.currency_per_hour` (500,000 coins an hour, 25,000 Tokkul, both
+tunable) plus `SHOP_TRIP_SECONDS` of walking, and `_FREE_ROUTES` is now only the name of the routing
+branch rather than a claim about its cost. The stale reading survived because **no cached map has a
+Construction goal at all** - `training_options` returns *zero* reachable methods for it on `fray` -
+so nothing re-measured it. Neither the old figures nor any replacement can be checked here; what can
+be said is that the mechanism they blamed is gone.
+
+What is genuinely still open is the *other* end, and it is a question rather than a defect: the only
 route to a mahogany plank on the real map is **pickpocketing Gangsters at 1/13**, so a mahogany table
-costs 6 x 307s and reads as 1,638 xp/hr. Both need a shop model (money as time), which is a larger
-decision than a rate fix. **None of it moves a number today** - no cached map has a Construction
-goal - so this is coverage insurance rather than a correction.
+costs 6 x 307s. That is expensive because on a chunk map it really is - whether a player would
+instead buy planks depends on a shop this map may not hold, which is what the item walk already
+decides.
 
 **Five defects in the scraped training rates, all of which the band walk amplified.** A bad rate on
 a *low-level* method is far worse than a bad rate anywhere else, because `training_bands` takes a
@@ -1050,11 +1066,20 @@ defect:
   rate with nothing charged. **The bias therefore runs the wrong way: an input too hard to price
   makes its method look cheaper.**
 
-That third one is a genuine defect and it **changes no number today**: 60 methods are dropped this
-way on `fray` and 76 on `verf`, and on both maps **zero of them win a band**. So it is recorded here
-rather than fixed, like the Construction shop model - a fix would move no total and could only
-regress one. The thing that would change that is a map whose Cooking or Crafting climb has nothing
-better, which is exactly when it would start mattering.
+That third one is a genuine defect and it **changes no number today** - but the reason is narrower
+than "no band is won", and worth stating precisely because it is what would change. 60 methods are
+dropped this way on `fray` and 76 on `verf`, and on `fray` **not one of the 60 has a scraped rate
+either**: they are dropped from `computed_rates` and were never in the guides, so they fall to the
+1,000/hr floor and are *honestly unknown* rather than confidently cheap. The bias needs both halves -
+a dropped recipe **and** a surviving scraped rate - and no method on either map has both.
+
+The worked example is `Bake a ~|cake|~`. Its one material is `Uncooked cake`, which the item walk
+cannot price at all (nothing on the map makes or sells one), so `material_seconds(...)` returns
+`None`, `rate_for` refuses the whole recipe, and the method leaves with neither a rate nor a cost.
+Every other dropped method on `fray` is the same shape - the pies, the pizzas, the stuffed potatoes -
+each blocked on its own uncookable intermediate. So the fix is not "charge the dropped cost" (there
+is no cost to charge; that is the point) but "price the intermediate", which is the item walk's
+problem rather than the rate layer's.
 
 **The `*` in `Items` is upstream's `secondary` marker, and pricing wants it**: Woodcutting's methods
 declare `["Axe[+]"]` with no marker - a tool you buy once, which must not be charged per XP - where
@@ -1082,7 +1107,7 @@ eleven upstream sites and only three kinds of thing come of it:
 
 For scale if that gap is ever picked up: 294 valid challenges on `fray` would carry `Secondary` (215
 of them `Primary`) and 333 on `verf` (241), concentrated in Smithing, Nonskill, Fletching, Farming
-and Crafting. The oracle baseline to beat is **1,404 passing**.
+and Crafting. The oracle baseline to beat is **1,465 passing**.
 
 **A method is ranked on what it costs, not on what its action costs.** A published rate is quoted
 with the materials to hand - "299,000 an hour at anglerfish" describes the range, not the trip before
