@@ -324,6 +324,10 @@ def test_the_chip_gestures_are_click_shift_ctrl() -> None:
     assert "off.clear();" in body.group(0)
     # Nothing anywhere holds a positive selection any more.
     assert "chunkCategories" not in js and "taskSections" not in js
+    # Clicking the isolated chip widens back to everything: narrowing to one is
+    # one click, so the way out has to be one click on the same control.
+    assert "let isolated = !off.has(key);" in body.group(0)
+    assert "if (isolated) return;" in body.group(0)
 
 def test_a_truncated_list_can_be_opened() -> None:
     """"17 more" used to be a dead grey line naming what it would not show."""

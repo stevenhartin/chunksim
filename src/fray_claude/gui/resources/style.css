@@ -596,8 +596,17 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   flex: none;
 }
 
+/* A pill is a box around one word, so the word has to sit in the middle of it.
+   Left to `inline` it inherited the body line-height and baseline-aligned
+   inside a row that is itself baseline-aligned, which put the text a pixel
+   high and the border a pixel low. `inline-flex` centres it, and `align-self`
+   opts the pill out of the row's baseline so the box centres too. */
 .pill {
-  padding: 1px var(--s2);
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  line-height: 1;
+  padding: 3px var(--s2);
   border-radius: var(--pill);
   border: 1px solid var(--line);
   font-size: 11px;

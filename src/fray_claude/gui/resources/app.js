@@ -2051,15 +2051,24 @@ function renderChunk() {
  *
  * Plain click narrowing to one is the important half: with everything on by
  * default, "just show me monsters" is the common request and it should not
- * take eight clicks. */
+ * take eight clicks.
+ *
+ * **And clicking the isolated chip again puts everything back**, which is the
+ * other half of the same gesture: narrowing to one is a single click, so
+ * widening from one has to be too. Without it the only way out of "monsters
+ * only" was to shift-click each of the other seven, and the chip you had just
+ * pressed was the one control that did nothing. */
 function applyChipGesture(off, key, keys, event) {
   if (event.shiftKey) return off.delete(key);
   if (event.ctrlKey || event.metaKey) return off.add(key);
+  let isolated = !off.has(key);
+  for (const other of keys) if (other !== key && !off.has(other)) isolated = false;
   off.clear();
+  if (isolated) return;
   for (const other of keys) if (other !== key) off.add(other);
 }
 
-const CHIP_HINT = "Click for only this · shift adds · ctrl removes";
+const CHIP_HINT = "Click for only this, again for all · shift adds · ctrl removes";
 
 function renderSections(detail) {
   if (!detail.sections.length) return tmpl`<p class="empty">This chunk is not split.</p>`;
