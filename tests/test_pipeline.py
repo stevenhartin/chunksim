@@ -14,6 +14,7 @@ from fray_claude.derive.pipeline import (
     derive,
     load_map_state,
     slayer_capped_max_skill,
+    slayer_locked_equipment,
     slayer_unblocked,
 )
 
@@ -338,3 +339,34 @@ def test_load_map_state_refuses_a_malformed_lock_rather_than_guessing(branch: di
     state, _ = load_map_state({"chunkinfo": {"slayerLocked": branch}}, _chunk_info())
 
     assert state.slayer_locked is None
+
+
+def _gear_info(**extra: Any) -> ChunkInfo:
+    extra.setdefault("chunks", {"100": {"Monster": {"Goblin": True}}})
+    return _chunk_info(
+        slayerMonsters={"Aberrant spectre": 40},
+        codeItems={"slayerTasks": {"Aberrant spectres": {"Aberrant spectre": True}}},
+        slayerEquipment={"Facemask": 10, "Nose peg": 60, "Spiny helmet": 35},
+        **extra,
+    )
+
+
+def test_locked_equipment_is_the_gear_above_the_lock() -> None:
+    state = _state(chunk_info=_gear_info(), slayer_locked=SlayerLock(level=35, monster="x"))
+
+    # 35 is not *above* 35, so the spiny helmet stays wearable.
+    assert slayer_locked_equipment(state, {"100": True}) == frozenset({"Nose peg"})
+
+
+def test_no_lock_blocks_no_equipment() -> None:
+    assert slayer_locked_equipment(_state(chunk_info=_gear_info()), {"100": True}) == frozenset()
+
+
+def test_an_escaped_lock_blocks_no_equipment_either() -> None:
+    """The lock lifting lifts all of it - upstream renames the starred keys
+    back in the same pass (worker.js:3275)."""
+    info = _gear_info(chunks={"100": {"Monster": {"Aberrant spectre": True}}})
+    state = _state(chunk_info=info, slayer_locked=SlayerLock(level=50, monster="Aberrant spectres"))
+
+    assert slayer_unblocked(state, {"100": True}) is True
+    assert slayer_locked_equipment(state, {"100": True}) == frozenset()

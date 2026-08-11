@@ -235,6 +235,36 @@ def slayer_capped_max_skill(state: MapState, unlocked: Mapping[str, bool]) -> Ma
     return {**state.max_skill, "Slayer": capped}
 
 
+
+def slayer_locked_equipment(state: MapState, unlocked: Mapping[str, bool]) -> frozenset[str]:
+    """The slayer gear a `slayerLocked` level puts out of reach - port of
+    worker.js:3271-3278.
+
+    `chunkinfo.slayerEquipment` is 17 items with the Slayer level each needs
+    to *wear*, and the ones above the lock are moved to a starred key that
+    satisfies every requirement except a combat skill's. `challenges.py`
+    applies that; this decides the membership.
+
+    **It is not redundant with the cap, which is why it is a separate port.**
+    Twelve of the seventeen also appear in `chunkinfo.equipment` carrying a
+    `requirements.Slayer`, so `bis.py` already refuses them through
+    `slayer_capped_max_skill`. The other five do not: `Facemask`, `Earmuffs`,
+    `Unlit bug lantern` and `Nose peg` are absent from `equipment` entirely
+    and `Spiny helmet` lists only Defence, so **`slayerEquipment` is the only
+    place their Slayer gate is written down**. They are exactly the
+    protective pieces a slayer monster demands, and without this a locked map
+    would happily fight dust devils bare-faced.
+    """
+    lock = state.slayer_locked
+    if lock is None or slayer_unblocked(state, unlocked):
+        return frozenset()
+    return frozenset(
+        item
+        for item, required in _mapping(state.chunk_info.data, "slayerEquipment").items()
+        if isinstance(required, (int, float)) and required > lock.level
+    )
+
+
 def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
     """Run `unlocked_sections` -> `gather_chunks_info` -> `calc_challenges`,
     looping while newly-valid challenges unlock further named areas.
@@ -260,6 +290,7 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
     unlock task hadn't yet justified.
     """
     max_skill = slayer_capped_max_skill(state, unlocked)
+    locked_equipment = slayer_locked_equipment(state, unlocked)
     expanded = expand_chunk_areas(unlocked, manual_areas=state.manual_areas)
     reachable: dict[str, dict[str, bool]] = {}
     index: SourceIndex | None = None
@@ -298,6 +329,7 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
             backlog=state.backlog,
             manual_tasks=state.manual_tasks,
             construction_locked=state.construction_locked,
+            locked_equipment=locked_equipment,
         )
         new_areas = unlockable_areas(
             challenges.valid,

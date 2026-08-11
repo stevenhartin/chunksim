@@ -106,9 +106,12 @@ except where noted as a silent, documented approximation instead:
   `Multi Step Processing` rule's chain-of-crafted-items requirement is not
   checked at all, which can over-include processing-skill tasks when that
   rule is on.
-- Dynamic Max Cape / Quest Point Cape challenge injection, Slayer-lock,
+- Dynamic Max Cape / Quest Point Cape challenge injection and
   Collection Log Clues thresholds: not implemented. (Mahogany Homes *is*
-  now handled - see `_MAHOGANY_HOMES_CONTRACT`.) Shortcut
+  now handled - see `_MAHOGANY_HOMES_CONTRACT`, and the **Slayer lock** is
+  too: its level cap arrives folded into `max_skill` and its equipment half
+  as `_compile_items`' `locked_equipment`, both from
+  `pipeline.slayer_capped_max_skill`/`slayer_locked_equipment`.) Shortcut
   Task / Combat and Teleport Spells / Cleaning Herbs only ever set
   `NeverShow` upstream, a display-only panel filter that never affects
   validity - so it stays out of this module, but it is *not* unused: it
@@ -596,11 +599,32 @@ def _compile_items(
     *,
     skill: str = "",
     rules: Mapping[str, Any] = {},
+    locked_equipment: frozenset[str] = frozenset(),
 ) -> _ItemPlan | None:
-    """Resolve a challenge's `Items` refs, or `None` if it has no `Items`."""
+    """Resolve a challenge's `Items` refs, or `None` if it has no `Items`.
+
+    `locked_equipment` is the slayer gear a `slayerLocked` level puts out of
+    reach (`pipeline.slayer_locked_equipment`). Upstream does not drop those
+    items: it **renames** them, moving `baseChunkData['items'][x]` to
+    `x + '*'` (worker.js:3271-3278), and a starred key satisfies a
+    requirement for every skill *except* a combat one
+    (`!items[x] && (!items[x + '*'] || combatSkills.includes(skill))`,
+    worker.js:4067). That is the game's own distinction between owning a
+    nose peg and being able to wear it - you can still craft, fletch or
+    light one at any Slayer level.
+
+    This project has no starred item index to rename into: `sources.py` and
+    `_seed_items_with_outputs` both key plainly, and flattening that was a
+    deliberate simplification long before this. So the equivalent is applied
+    at compile time and only where the star would have bitten - a blocked
+    member is struck out of the family for a combat skill and left alone for
+    every other. Striking it per *member* rather than refusing the family is
+    what keeps `Facemask[+]` satisfiable by a member that is not slayer gear.
+    """
     item_refs = challenge.get("Items")
     if not isinstance(item_refs, list):
         return None
+    blocked = locked_equipment if skill in _COMBAT_SKILLS else frozenset()
     families: list[tuple[tuple[str, ...] | None, int]] = []
     for item_ref in item_refs:
         if not isinstance(item_ref, str):
@@ -610,10 +634,15 @@ def _compile_items(
             base_name, marker, count_str = name.partition("[+]x")
             family = _plus_family(chunk_info, "itemsPlus", f"{base_name}[+]" if marker else name)
             families.append(
-                (tuple(family) if family is not None else None, int(count_str) if marker else 1)
+                (
+                    tuple(member for member in family if member not in blocked)
+                    if family is not None
+                    else None,
+                    int(count_str) if marker else 1,
+                )
             )
         else:
-            families.append(((name,), 1))
+            families.append((() if name in blocked else (name,), 1))
     applies, waived = _quality_flags(skill, challenge, rules)
     return _ItemPlan(
         families=tuple(families),
@@ -1112,6 +1141,7 @@ def _evaluate_challenge(
     trainable: Mapping[str, bool],
     prev_valid: Mapping[str, Mapping[str, Any]],
     construction_locked: bool,
+    locked_equipment: frozenset[str] = frozenset(),
 ) -> int | str | bool | None:
     """Both halves, in upstream's order. `calc_challenges` runs the halves
     separately (static once, dynamic per pass); this stays as the composed
@@ -1136,7 +1166,9 @@ def _evaluate_challenge(
     if not _dynamic_gates_met(
         skill,
         challenge,
-        plan=_compile_items(challenge, chunk_info, skill=skill, rules=rules),
+        plan=_compile_items(
+            challenge, chunk_info, skill=skill, rules=rules, locked_equipment=locked_equipment
+        ),
         items=items,
         valid=valid,
         chunk_info=chunk_info,
@@ -1560,6 +1592,7 @@ def calc_challenges(
     backlog: Mapping[str, Mapping[str, Any]] | None = None,
     manual_tasks: Mapping[str, Mapping[str, Any]] | None = None,
     construction_locked: bool = False,
+    locked_equipment: frozenset[str] = frozenset(),
     max_iterations: int = 15,
 ) -> ChallengeResult:
     """Port of `calcChallenges`/`calcChallengesWork`'s core fixed point - see
@@ -1627,7 +1660,13 @@ def calc_challenges(
                         skill,
                         name,
                         challenge,
-                        _compile_items(challenge, chunk_info, skill=skill, rules=rules),
+                        _compile_items(
+                            challenge,
+                            chunk_info,
+                            skill=skill,
+                            rules=rules,
+                            locked_equipment=locked_equipment,
+                        ),
                         _challenge_value(challenge, skill),
                     )
                 )

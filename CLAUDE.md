@@ -1581,6 +1581,31 @@ because slayer-gated monsters drop things. Neither cached map sets the branch,
 so this changes no number today and **has no oracle** — it is ported because
 the alternative is a map that derives as though nothing were wrong.
 
+**The lock has a second half, and it is the only place five items' Slayer
+gate is written down.** `chunkinfo.slayerEquipment` is 17 pieces with the
+level each needs to *wear*, and upstream does not remove the ones above the
+lock - it **renames** them, moving `items[x]` to `x + '*'`
+(worker.js:3271-3278), where a starred key satisfies every requirement except
+a combat skill's (worker.js:4067). That is the game's own distinction between
+owning a nose peg and being able to wear one: you can still craft, fletch or
+light the thing at any Slayer level.
+
+This project has no starred index to rename into - `sources.py` and
+`_seed_items_with_outputs` both key plainly, a simplification that long
+predates this - so `_compile_items` strikes a blocked piece out of the family
+**for a combat skill and leaves it for every other**, per member so that
+`Facemask[+]` stays satisfiable by something that is not slayer gear.
+
+**It is not redundant with the cap, which is why it is a separate port.**
+Twelve of the seventeen also carry a `requirements.Slayer` in
+`chunkinfo.equipment`, so `bis.py` already refuses those through the fold.
+The other five do not: `Facemask`, `Earmuffs`, `Unlit bug lantern` and
+`Nose peg` are absent from `equipment` entirely and `Spiny helmet` lists only
+Defence. Measured on `fray` with the cap already applied, the equipment half
+removes **`Wear a ~|spiny helmet|~` and `Cast ~|magic dart|~`** and nothing
+else - two challenges the level cap provably could not reach - while leaving
+`available_items` byte-identical at 1,843, which is the star's whole point.
+
 **Walking *into* that state is the estimator's half, and `points_delta`
 already measured it.** It is not a tax you absorb: points do not go below
 zero, so a balance falling every assignment reaches the one you can neither do

@@ -1238,3 +1238,49 @@ def test_a_static_gate_rejection_never_reaches_the_dynamic_half() -> None:
     result = calc_challenges({"100": True}, {}, _EMPTY, info, rules={})
 
     assert result.valid["Nonskill"] == {"Open the chest": True, "Use it here": True}
+
+
+_SPINY = {"Items": ["Spiny helmet"]}
+_HELD = {"Spiny helmet": {"Somewhere": "chunk"}}
+
+
+def _plan_met(skill: str, challenge: dict[str, Any], blocked: frozenset[str]) -> bool:
+    plan = _compile_items(
+        challenge, _chunk_info(), skill=skill, rules={}, locked_equipment=blocked
+    )
+    assert plan is not None
+    return _item_plan_met(plan, _HELD)
+
+
+def test_locked_slayer_gear_cannot_satisfy_a_combat_requirement() -> None:
+    """worker.js:4067 - a starred item counts for every skill but a combat
+    one, and locked slayer gear is exactly what upstream stars."""
+    assert _plan_met("Defence", _SPINY, frozenset({"Spiny helmet"})) is False
+
+
+def test_locked_slayer_gear_still_satisfies_a_non_combat_requirement() -> None:
+    """You can craft a spiny helmet at any Slayer level; what the lock stops
+    is wearing it. Dropping the item outright would be a stronger gate than
+    upstream has."""
+    assert _plan_met("Crafting", _SPINY, frozenset({"Spiny helmet"})) is True
+
+
+def test_unlocked_slayer_gear_satisfies_a_combat_requirement() -> None:
+    assert _plan_met("Defence", _SPINY, frozenset()) is True
+
+
+def test_a_plus_family_survives_on_a_member_that_is_not_locked_gear() -> None:
+    """`Facemask[+]` is satisfiable by anything in the family, so a blocked
+    member is struck out rather than failing the whole requirement."""
+    info = _chunk_info(codeItems={"itemsPlus": {"Facemask[+]": ["Facemask", "Slayer helmet"]}})
+    plan = _compile_items(
+        {"Items": ["Facemask[+]"]},
+        info,
+        skill="Ranged",
+        rules={},
+        locked_equipment=frozenset({"Facemask"}),
+    )
+
+    assert plan is not None
+    assert _item_plan_met(plan, {"Slayer helmet": {"Shop": "chunk"}}) is True
+    assert _item_plan_met(plan, {"Facemask": {"Shop": "chunk"}}) is False
