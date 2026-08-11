@@ -20,6 +20,7 @@ from fray_claude.costing.heuristics import (
     Superior,
 )
 from fray_claude.costing.slayer import (
+    MasterRate,
     SheetFormatError,
     best_master,
     master_rates,
@@ -899,3 +900,99 @@ def test_an_unlisted_task_falls_back_to_the_word_match() -> None:
     )
 
     assert task_monsters(info, "Warped creatures") == {"Warped creature"}
+
+
+def _blockable(master: str, reachable: frozenset[str]) -> MasterRate:
+    """One master, three quarters of whose list this map cannot reach - so
+    every fourth assignment has to be got rid of somehow."""
+    info = _info(
+        slayerMasterTasks={master: {"Bats": {"Weight": 3}, "Bears": {"Weight": 1}}},
+        slayerMonsters={"Bat": 1, "Bear": 1},
+    )
+    heuristics = _heuristics(
+        Bats=SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=100),
+        Bears=SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=100),
+    )
+    return master_rates(
+        info,
+        heuristics,
+        reachable_masters=reachable,
+        reachable_monsters=frozenset({"Bear"}),
+        valid={},
+        levels={},
+    )[0]
+
+
+def test_a_master_who_runs_out_of_points_is_blocked() -> None:
+    """Vannaka pays 8 a task and a cancel costs 30, so three quarters of the
+    list being unreachable is a balance falling every assignment. With no
+    reset master anywhere, that ends in a task you can neither do nor skip.
+    """
+    rate = _blockable("Vannaka", frozenset({"Vannaka"}))
+
+    assert rate.points_delta < 0
+    assert rate.reset_available is False
+    assert rate.blocked is True
+
+
+def test_a_reachable_turael_unblocks_every_master() -> None:
+    """The way out is not more points, it is a master who reassigns for the
+    asking - so Turael's presence rescues a climb under someone else."""
+    rate = _blockable("Vannaka", frozenset({"Vannaka", "Turael"}))
+
+    assert rate.points_delta < 0
+    assert rate.reset_available is True
+    assert rate.blocked is False
+
+
+def test_a_reset_master_cancels_for_free_and_so_is_never_blocked() -> None:
+    """Spria pays nothing, which used to read as "cannot afford to skip" and
+    gave the only master on a real cached map a negative points balance. She
+    charges nothing either: her whole role is to be re-askable."""
+    rate = _blockable("Spria", frozenset({"Spria"}))
+
+    assert rate.skip_cost == 0.0
+    assert rate.points_delta == 0.0
+    assert rate.blocked is False
+
+
+def test_the_runway_is_five_free_tasks_plus_the_banked_cancel() -> None:
+    """Points start at the sixth task, so a cancel is unaffordable long
+    after the per-task average says it is paid for. Vannaka's 8 a task is
+    14.2 with the streak folded in, so 30 points is 2.1 tasks on top."""
+    rate = _blockable("Vannaka", frozenset({"Vannaka"}))
+
+    assert rate.tasks_before_skip == pytest.approx(5.0 + 30.0 / rate.points_per_task)
+
+
+def test_a_master_with_nothing_to_cancel_needs_no_runway() -> None:
+    info = _info(slayerMasterTasks={"Vannaka": {"Bears": {"Weight": 1}}}, slayerMonsters={"Bear": 1})
+    heuristics = _heuristics(Bears=SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=100))
+
+    rate = master_rates(
+        info,
+        heuristics,
+        reachable_masters=frozenset({"Vannaka"}),
+        reachable_monsters=frozenset({"Bear"}),
+        valid={},
+        levels={},
+    )[0]
+
+    assert rate.skip_rate == 0.0
+    assert rate.tasks_before_skip is None
+
+
+def test_best_master_passes_over_a_blocked_master_for_a_slower_sound_one() -> None:
+    blocked = MasterRate(master="Fast", xp_per_hour=50_000.0, points_delta=-5.0)
+    sound = MasterRate(master="Slow", xp_per_hour=10_000.0, points_delta=+5.0)
+
+    assert best_master([blocked, sound]) is sound
+
+
+def test_best_master_still_answers_when_every_master_is_blocked() -> None:
+    """"The only master here will lock you" is a worse answer than a sound
+    master and a better one than silence."""
+    fast = MasterRate(master="Fast", xp_per_hour=50_000.0, points_delta=-5.0)
+    slow = MasterRate(master="Slow", xp_per_hour=10_000.0, points_delta=-5.0)
+
+    assert best_master([fast, slow]) is fast

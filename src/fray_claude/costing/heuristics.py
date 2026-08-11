@@ -128,8 +128,9 @@ DEFAULT_XP_PER_HOUR = 1000.0
 
 #: Slayer reward points a completed task pays, by master. Not in the export;
 #: these are the wiki's published figures. Turael, Spria and Mortimer pay
-#: nothing by default, which is exactly why they are cheap to train at and
-#: expensive to *skip* at.
+#: nothing by default. For Mortimer that really does make skipping ruinous
+#: (his cancel is 100); for Turael and Spria it makes it *free* - see
+#: `RESET_MASTERS`, which is the distinction this comment used to miss.
 SLAYER_POINTS: dict[str, float] = {
     "Turael": 0.0,
     "Spria": 0.0,
@@ -156,6 +157,20 @@ STREAK_BONUSES: dict[int, float] = {10: 5.0, 50: 15.0, 100: 25.0, 250: 35.0, 100
 #: decision.
 DEFAULT_SKIP_COST = 30.0
 SLAYER_SKIP_COST: dict[str, float] = {"Mortimer": 100.0}
+
+#: The masters who hand out a fresh assignment for the asking, so cancelling
+#: at them costs no points at all. This is the "Turael skip": they are the
+#: bottom of the ladder and their whole role is to be re-askable. It is why
+#: paying nothing does **not** make them expensive to skip at, which is the
+#: opposite of what the note above `SLAYER_POINTS` used to conclude - a
+#: master who pays nothing and charges nothing has no points economy to run
+#: out of, and is the one master who can never lock you.
+RESET_MASTERS: frozenset[str] = frozenset({"Turael", "Spria"})
+
+#: Completed assignments before a master pays points at all - the wiki's own
+#: rule, and the reason a skip is unaffordable long after it looks affordable
+#: on the per-task average.
+TASKS_BEFORE_POINTS = 5.0
 
 #: Kills per hour above which a slayer rate must have been measured with a
 #: multi-target method - chinning or barrage bursting - rather than by
@@ -488,7 +503,13 @@ class Heuristics:
         return self.master_points.get(master, SLAYER_POINTS.get(master, 0.0))
 
     def slayer_skip_cost(self, master: str) -> float:
-        """Points cancelling a task costs."""
+        """Points cancelling a task costs.
+
+        Zero at a `RESET_MASTERS` master: they reassign for the asking, so
+        there is nothing to pay. An override still wins, as everywhere else.
+        """
+        if master in RESET_MASTERS:
+            return self.master_skip_costs.get(master, 0.0)
         return self.master_skip_costs.get(
             master, SLAYER_SKIP_COST.get(master, DEFAULT_SKIP_COST)
         )

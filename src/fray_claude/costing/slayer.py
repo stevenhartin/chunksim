@@ -67,6 +67,30 @@ The surviving weights are then renormalised, and *that flatters a sparse
 map*: a blocked task is still assigned and still eats the time you spend
 cancelling it. `coverage` is what survived, of what was offered.
 
+**A negative `points_delta` is a countdown, not a tax**, which is the half of
+that economy the rate cannot express. Points do not go below zero: a balance
+falling every assignment reaches the point where the next unreachable task
+can be neither done nor cancelled, and Slayer simply stops. Upstream has a
+name for that state - `chunkinfo.slayerLocked`, which `pipeline.py` now
+reads - and this is the model of walking into it. `MasterRate.blocked` says a
+master will, `best_master` passes over one that does, and `tasks_before_skip`
+is how much runway there is first: **five assignments pay no points at all**,
+so the first cancel is unaffordable long after the per-task average says it
+is paid for.
+
+**The way out is not more points.** Turael and Spria hand out a fresh
+assignment for the asking, so a task you cannot finish costs a walk rather
+than 30 points - `heuristics.RESET_MASTERS`, and `reset_available` is a fact
+about the *map* rather than about the master under consideration. Two
+consequences, and the second is a defect this closed: any master is
+unblockable while one of the two is reachable; and the two are themselves
+never blocked, where paying nothing per task previously read as "can never
+afford to cancel" and gave **Spria, the only reachable master on `verf`, a
+points balance of -4.0 an assignment**. She charges nothing to cancel, so it
+is 0.0. No hourly rate moves on either cached map, and `best_master` picks
+the same master on both - what changes is that a map with one Turael-type
+master no longer reads as slowly bleeding points it never had.
+
 **Tasks with no rate data are folded in, not dropped.** They are the
 low-level ones nobody has bothered to measure, and excluding them from a
 master's mixture silently reweights the rest in that master's favour -
@@ -95,6 +119,8 @@ from fray_claude.derive.challenges import chunks_requirement_met
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.costing.heuristics import (
     DEFAULT_SLAYER_XP_PER_HOUR,
+    RESET_MASTERS,
+    TASKS_BEFORE_POINTS,
     streak_factor,
     Heuristics,
     SlayerTask,
@@ -192,6 +218,29 @@ class MasterRate:
     #: the master costs you points to train at, however good the XP looks -
     #: two thirds doable at 10 a task against 30 a skip is `-3.3`.
     points_delta: float = 0.0
+    #: Whether a *reachable* master will reassign for the asking, so a task
+    #: this map cannot do can always be got rid of. Turael and Spria are the
+    #: only two, and this is a property of the map rather than of the master
+    #: - it is the same flag on every entry in one `master_rates` call.
+    reset_available: bool = False
+    #: Assignments that must be completed before the first cancel is
+    #: affordable: five before points are paid at all, then enough to bank
+    #: the cancel cost. `None` when the master pays nothing (so it never
+    #: becomes affordable) or has nothing to cancel.
+    tasks_before_skip: float | None = None
+
+    @property
+    def blocked(self) -> bool:
+        """Whether training here ends in a task you can neither do nor skip.
+
+        A negative `points_delta` is a balance falling by that much every
+        assignment, so it is not a tax you absorb - it is a countdown. What
+        stops it being fatal is a reset master: Turael and Spria hand out a
+        new task for the asking, so the cancel that was unaffordable becomes
+        free. Without one reachable, the map is walking into
+        `chunkinfo.slayerLocked`.
+        """
+        return self.points_delta < 0 and not self.reset_available
 
     @property
     def average_hours(self) -> float:
@@ -229,6 +278,9 @@ class MasterRate:
             "points_per_task": self.points_per_task,
             "skip_cost": self.skip_cost,
             "points_delta": self.points_delta,
+            "reset_available": self.reset_available,
+            "tasks_before_skip": self.tasks_before_skip,
+            "blocked": self.blocked,
             "tasks": [task.as_dict() for task in self.tasks],
         }
 
@@ -538,6 +590,10 @@ def master_rates(
     such master".
     """
     rates: list[MasterRate] = []
+    # A property of the map, not of any one master: whoever you are training
+    # under, a reachable Turael or Spria is the free way out of a task this
+    # map cannot finish.
+    reset_available = bool(RESET_MASTERS & reachable_masters)
     for master, tasks in _mapping(chunk_info.data, "slayerMasterTasks").items():
         if not isinstance(tasks, dict):
             continue
@@ -603,6 +659,7 @@ def master_rates(
                 skipped_weight,
                 heuristics.slayer_points(master),
                 heuristics.slayer_skip_cost(master),
+                reset_available=reset_available,
             )
         )
 
@@ -667,6 +724,7 @@ def _combine(
     skipped_weight: float = 0.0,
     points: float = 0.0,
     skip_cost: float = 0.0,
+    reset_available: bool = False,
 ) -> MasterRate:
     """The time-weighted mean of `tasks` - see the module docstring."""
     surviving = sum(task.weight for task in tasks)
@@ -677,6 +735,14 @@ def _combine(
     # one pays nothing and costs the skip.
     earned = points * streak_factor()
     points_delta = (1 - skip_rate) * earned - skip_rate * skip_cost
+    # Five tasks pay nothing, then the cancel has to be banked out of what a
+    # task nets. A master paying nothing never gets there; one with nothing
+    # to cancel never needs to.
+    tasks_before_skip = (
+        TASKS_BEFORE_POINTS + skip_cost / earned
+        if earned > 0 and skip_cost > 0 and skip_rate > 0
+        else None
+    )
     if not tasks or surviving <= 0:
         return MasterRate(
             master=master,
@@ -687,6 +753,8 @@ def _combine(
             points_per_task=earned,
             skip_cost=skip_cost,
             points_delta=points_delta,
+            reset_available=reset_available,
+            tasks_before_skip=tasks_before_skip,
         )
 
     expected_xp = sum(task.weight * task.xp for task in tasks) / surviving
@@ -702,12 +770,30 @@ def _combine(
         points_per_task=earned,
         skip_cost=skip_cost,
         points_delta=points_delta,
+        reset_available=reset_available,
+        tasks_before_skip=tasks_before_skip,
     )
 
 
 def best_master(rates: list[MasterRate]) -> MasterRate | None:
-    """The fastest master that can train at all, or `None` if none can."""
-    return next((rate for rate in rates if rate.xp_per_hour > 0), None)
+    """The fastest master that can train at all, or `None` if none can.
+
+    **A master who runs you out of points is not an option, however fast.**
+    `blocked` is a falling balance with no reset master to bail it out, so
+    picking it quotes an hourly rate for a climb that stops partway - which
+    is the state `chunkinfo.slayerLocked` records after it has happened.
+    A blocked master is still *returned* by `master_rates`, because "the
+    only master here will lock you" is worth being able to read; it is
+    simply not chosen.
+
+    Blocked masters are considered only if every master is blocked, so a map
+    still gets its least-bad answer rather than nothing at all.
+    """
+    trainable = [rate for rate in rates if rate.xp_per_hour > 0]
+    return next(
+        (rate for rate in trainable if not rate.blocked),
+        next(iter(trainable), None),
+    )
 
 
 def superior_rolls_per_hour(
