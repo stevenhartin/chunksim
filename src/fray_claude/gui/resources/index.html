@@ -38,6 +38,9 @@
     <g id="i-prev"><path d="m15 6-6 6 6 6"/></g>
     <g id="i-next"><path d="m9 6 6 6-6 6"/></g>
     <g id="i-clock"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></g>
+    <g id="i-rr"><path d="m6 6 6 6-6 6M13 6l6 6-6 6"/></g>
+    <g id="i-ll"><path d="m18 6-6 6 6 6M11 6l-6 6 6 6"/></g>
+    <g id="i-live"><circle cx="12" cy="12" r="2.6"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 16.2a6 6 0 0 0 0-8.4"/><path d="M4.9 4.9a10 10 0 0 0 0 14.2M19.1 19.1a10 10 0 0 0 0-14.2"/></g>
   </defs>
 </svg>
 
@@ -77,21 +80,10 @@
 
   <span class="rule"></span>
 
-  <!-- The floor. Every rendered region has up to four, and a dungeon's
-       interesting half is often not on the ground one. -->
-  <select id="plane" class="pick" aria-label="Plane" data-tip="&lt;b&gt;Floor to draw&lt;/b&gt;&lt;span class='sub'&gt;Above ground level the floor below is sunk so this one stands out.&lt;/span&gt;">
-    <option value="0">Plane 0</option>
-    <option value="1">Plane 1</option>
-    <option value="2">Plane 2</option>
-    <option value="3">Plane 3</option>
-  </select>
-
   <button id="candidates" class="toggle" type="button" aria-pressed="false"
           data-tip="&lt;b&gt;Candidates&lt;/b&gt;&lt;span class='sub'&gt;The chunks you could roll next, numbered as source-chunk numbers them.&lt;/span&gt;&lt;span class='hint'&gt;C&lt;/span&gt;">Candidates</button>
   <button id="masks" class="toggle" type="button" aria-pressed="false"
           data-tip="&lt;b&gt;Sections&lt;/b&gt;&lt;span class='sub'&gt;Shade inside each chunk: green where you can reach, red where you cannot.&lt;/span&gt;&lt;span class='hint'&gt;S&lt;/span&gt;">Sections</button>
-  <button id="live" class="toggle on" type="button" aria-pressed="true"
-          data-tip="&lt;b&gt;Live&lt;/b&gt;&lt;span class='sub'&gt;Re-read the cache every two seconds, so a fray fetch in a terminal shows up here.&lt;/span&gt;">Live</button>
   <button id="fit" type="button" data-tip="&lt;b&gt;Fit&lt;/b&gt;&lt;span class='sub'&gt;Frame everything this map holds.&lt;/span&gt;&lt;span class='hint'&gt;Home&lt;/span&gt;">Fit</button>
 
   <span class="counts" id="counts"></span>
@@ -99,10 +91,28 @@
 
   <span class="spacer"></span>
   <span class="hover" id="hover"></span>
-  <button id="toggle-panel" type="button" data-tip="&lt;b&gt;Panel&lt;/b&gt;&lt;span class='sub'&gt;Hide it to give the map the whole window.&lt;/span&gt;&lt;span class='hint'&gt;P&lt;/span&gt;">Panel</button>
 </header>
 
+<!-- The floor, against the map's own top-right rather than in the bar. It is
+     read once when a dungeon looks empty and then left alone, which is not
+     the weight the bar gives everything in it. -->
+<select id="plane" class="pick plane-pick" aria-label="Plane" data-tip="&lt;b&gt;Floor to draw&lt;/b&gt;&lt;span class='sub'&gt;Above ground level the floor below is sunk so this one stands out.&lt;/span&gt;">
+  <option value="0">Plane 0</option>
+  <option value="1">Plane 1</option>
+  <option value="2">Plane 2</option>
+  <option value="3">Plane 3</option>
+</select>
+
 <aside class="panel" id="panel">
+  <!-- **The panel's own handle, on the panel.** A button in the bar labelled
+       "Panel" said what it was about and not what it did, and it sat at the
+       far end of a strip about the map. This rides the panel's left edge, so
+       the control is against the thing it moves, and it points the way the
+       press will send it. -->
+  <button id="panel-pin" class="panel-pin" type="button" aria-expanded="true"
+          data-tip="&lt;b&gt;Hide the panel&lt;/b&gt;&lt;span class='sub'&gt;Gives the map the whole window; a sliver stays to bring it back.&lt;/span&gt;&lt;span class='hint'&gt;P&lt;/span&gt;">
+    <svg class="icon" viewBox="0 0 24 24"><use id="panel-pin-icon" href="#i-rr"/></svg>
+  </button>
   <nav class="tabs" id="tabs">
     <button data-tab="tasks" class="on" type="button">Tasks</button>
     <button data-tab="chunk" type="button">Chunk</button>
@@ -146,6 +156,16 @@
   </section>
 
   <section class="pane" data-pane="maps">
+    <!-- **Live is about the cache, not about the view**, so it belongs beside
+         the list of what is in the cache rather than among the map's own
+         toggles. Nobody reaches for it while looking at the world. -->
+    <div class="pane-head">
+      <span class="pane-title">Maps</span>
+      <button id="live" class="icon-btn" type="button" aria-pressed="true"
+              data-tip="&lt;b&gt;Live&lt;/b&gt;&lt;span class='sub'&gt;Re-read the cache every two seconds, so a fray fetch in a terminal shows up here.&lt;/span&gt;">
+        <svg class="icon" viewBox="0 0 24 24"><use href="#i-live"/></svg>
+      </button>
+    </div>
     <div id="maps-body" class="empty">Loading…</div>
   </section>
 </aside>

@@ -130,7 +130,7 @@ const state = {
 const el = {};
 for (const id of [
   "map", "compare", "breakdown", "plane", "candidates", "masks", "live", "fit", "counts", "skipped",
-  "hover", "toggle-panel", "panel", "tabs", "toast", "legend", "tip",
+  "hover", "panel-pin", "panel-pin-icon", "panel", "tabs", "toast", "legend", "tip",
   "ribbon", "ribbon-mode", "ribbon-map", "ribbon-vs", "compare-start", "exit-mode",
   "ribbon-edits", "do-commit",
   "progress", "progress-title", "progress-count", "progress-detail",
@@ -989,8 +989,14 @@ function resize() {
 
 function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
 
+/* How much of the right edge the panel is actually taking. A put-away panel
+ * still leaves its sliver behind, and the camera has to know: framing to a
+ * width that is 14px wider than the space available puts the edge of the world
+ * under the handle. Read from the stylesheet so the two cannot drift. */
 function panelWidth() {
-  return el.panel.classList.contains("hidden") ? 0 : el.panel.offsetWidth;
+  if (!el.panel.classList.contains("hidden")) return el.panel.offsetWidth;
+  return parseFloat(getComputedStyle(document.documentElement)
+    .getPropertyValue("--sliver")) || 0;
 }
 
 function barHeight() {
@@ -1148,7 +1154,7 @@ document.addEventListener("keydown", (e) => {
     if (chunkId) focusChunk(chunkId);
   } else if (e.key === "c") el.candidates.click();
   else if (e.key === "s") el.masks.click();
-  else if (e.key === "p") el["toggle-panel"].click();
+  else if (e.key === "p") el["panel-pin"].click();
   else if (e.key === "Home") el.fit.click();
   /* Only while a run is on screen, so the arrows stay free for whatever the
    * map wants them for on every other kind of map. */
@@ -1313,7 +1319,7 @@ function showTab(name) {
   for (const p of document.querySelectorAll(".pane")) {
     p.classList.toggle("on", p.dataset.pane === name);
   }
-  el.panel.classList.remove("hidden");
+  if (el.panel.classList.contains("hidden")) el["panel-pin"].click();
   if (name === "tasks") loadTasks();
   if (name === "estimate") loadEstimate();
   if (name === "maps") loadMapsPane();
@@ -1324,12 +1330,20 @@ el.tabs.addEventListener("click", (e) => {
   if (button) showTab(button.dataset.tab);
 });
 
-el["toggle-panel"].addEventListener("click", () => {
+el["panel-pin"].addEventListener("click", () => {
   const hidden = el.panel.classList.toggle("hidden");
   /* Everything anchored to the right of the *map* reads `--rail`, so the
    * progress card and the attribution slide out with the panel instead of
    * hanging over the gap it left. */
   document.body.classList.toggle("no-panel", hidden);
+  /* **The arrow points where the press will send it**, which is the whole of
+   * what a handle has to say. `aria-expanded` says the same thing to a reader
+   * that cannot see which way a chevron faces. */
+  el["panel-pin-icon"].setAttribute("href", hidden ? "#i-ll" : "#i-rr");
+  el["panel-pin"].setAttribute("aria-expanded", hidden ? "false" : "true");
+  el["panel-pin"].dataset.tip = hidden
+    ? "<b>Show the panel</b><span class='sub'>Tasks, chunk contents, search, estimate and maps.</span><span class='hint'>P</span>"
+    : "<b>Hide the panel</b><span class='sub'>Gives the map the whole window; a sliver stays to bring it back.</span><span class='hint'>P</span>";
 });
 
 function toast(message) {
@@ -1444,8 +1458,9 @@ async function postJSON(path, payload) {
  *
  * **`timeline` is the mode a simulation is seen in, and the only one.** A run
  * is fifty worlds rather than one, so browsing it as though it were a map is
- * the confusion the split exists to remove - `selectMap` asks before entering
- * and puts the picker back when the answer is no. */
+ * the confusion the split exists to remove - choosing one out of the picker
+ * *is* choosing to replay it, and the ribbon says so rather than a dialog
+ * asking you to confirm the choice you just made. */
 const MODES = {
   browse:   { label: "Browse", exit: null },
   edit:     { label: "Edit", exit: "Discard edits" },
@@ -1496,13 +1511,12 @@ function renderRibbon() {
       ? "nothing changed yet" : count + " unsaved change" + (count === 1 ? "" : "s");
   }
   /* **Comparing from Timeline would show a simulation outside timeline
-   * mode**, which is the one thing the modes exist to prevent. The way out is
-   * to snapshot the roll you are looking at, so say that rather than leaving a
-   * grey button with no explanation. */
-  el["compare-start"].disabled = mode === "timeline";
-  el["compare-start"].dataset.tip = mode === "timeline"
-    ? "<b>Not from a timeline</b><span class='sub'>A run is a sequence of worlds, and a comparison is about two. Snapshot the roll you are on and compare that.</span>"
-    : "<b>Compare with another map</b><span class='sub'>Enters diff view: gains green, losses red, both selectors on the ribbon.</span>";
+   * mode**, which is the one thing the modes exist to prevent - so the door is
+   * not there rather than there and grey. A disabled control is a promise that
+   * the thing is possible from here and you have not met its condition; this
+   * one is possible from a *different* mode, which is a fact about the bar
+   * rather than about the button. The way out stays Snapshot. */
+  el["compare-start"].hidden = mode === "timeline";
   const exit = MODES[mode].exit;
   el["exit-mode"].hidden = !exit;
   if (exit) el["exit-mode"].textContent = exit;
@@ -1535,14 +1549,14 @@ async function selectMap(id) {
     if (!ok) { setMap(previous); return false; }
     clearEdits();
   }
-  if (wanted === "timeline" && state.mode !== "timeline") {
-    const ok = await confirmAction("Enter timeline mode?",
-      tmpl`<p><b>${id}</b> is a simulation - a sequence of worlds rather than
-        one. Timeline mode shows the strip along the bottom, so you can step
-        through what each roll added.</p>`,
-      "Enter timeline mode", { danger: false });
-    if (!ok) { setMap(previous); return false; }
-  }
+  /* **Entering the timeline is not asked about, and the edit above is.** The
+   * difference is who decided: picking a simulation out of the list is an
+   * explicit choice of that map, and the mode follows from what the map *is*,
+   * so a dialog asks you to confirm the thing you just did. Discarding edits
+   * is the opposite - a side effect of a different action, on work the page
+   * would otherwise throw away silently. The ribbon says which mode you are
+   * in, which is the answer to "what just happened" that a prompt was
+   * standing in for. */
   setMap(id);
   /* **A step index belongs to one run**, and one run is one map. Carried
    * across it rewinds the new map to a roll it never had, and the counts

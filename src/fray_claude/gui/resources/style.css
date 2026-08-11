@@ -66,6 +66,14 @@
   --mode-timeline: #1f6f9c;
   --mode-tint: var(--mode-browse);
   --panel-w: 360px;
+  /* What is left of the panel when it is put away. Not zero: a panel that
+     leaves nothing behind has to be brought back from somewhere else, which is
+     the button in the bar this replaced. A sliver is its own handle. */
+  --sliver: 14px;
+  /* The top edge of anything floating over the *map* rather than over the
+     page: below the bar and the ribbon, inset by a gap. Three things read it,
+     which is two more than a repeated `calc` should serve. */
+  --float-top: calc(var(--bar-h) + var(--ribbon-h) + var(--s4));
   /* How much of the right edge the panel is occupying. Anything anchored to
      the right of the *map* reads this rather than `--panel-w`, so it slides
      out with the panel instead of hanging over a gap. `app.js` flips it. */
@@ -352,7 +360,41 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   transition: transform .18s ease;
 }
 
-.panel.hidden { transform: translateX(100%); }
+.panel.hidden { transform: translateX(calc(100% - var(--sliver))); }
+
+/* **The handle rides the panel's left edge and hangs outside it**, so it is
+   visible whichever side of the transform the panel is on - and when the panel
+   is away, the handle plus the sliver is what you aim at to bring it back. */
+.panel-pin {
+  position: absolute;
+  top: var(--s4);
+  left: calc(var(--s6) * -1);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--s6);
+  height: var(--s6);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-right: 0;
+  border-radius: var(--r2) 0 0 var(--r2);
+  background: rgba(23, 26, 32, .96);
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.panel-pin:hover { color: var(--text); border-color: var(--line-strong); }
+
+/* The floor picker, against the map's top-right. It tracks `--rail` like
+   everything else anchored there, so it slides out with the panel. */
+.plane-pick {
+  position: fixed;
+  z-index: 3;
+  top: var(--float-top);
+  right: calc(var(--rail) + var(--s4));
+  transition: right .18s ease;
+}
 
 .tabs {
   display: flex;
@@ -677,7 +719,8 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .progress {
   position: fixed;
   z-index: 4;
-  top: calc(var(--bar-h) + var(--ribbon-h) + var(--s4));
+  /* Below the floor picker, which owns the top-right corner. */
+  top: calc(var(--float-top) + var(--s6) + var(--s4));
   right: calc(var(--rail) + var(--s4));
   width: 268px;
   padding: var(--s4);

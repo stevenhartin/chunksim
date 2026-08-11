@@ -518,15 +518,18 @@ def test_a_simulation_is_only_ever_seen_in_timeline_mode() -> None:
     """**A run is fifty worlds, not one**, and browsing it as though it were a
     map is the confusion the modes exist to remove.
 
-    So choosing one asks first, and a declined answer puts the picker back
-    where it was rather than leaving the page half way into a mode nobody
-    agreed to.
+    Choosing one out of the picker *is* choosing to replay it, so the mode
+    follows without a dialog asking you to confirm what you just did - the
+    ribbon says which mode you are in. What is still asked about is the one
+    thing that would be lost silently: pending edits, which belong to the map
+    they were made on and do not travel.
     """
     _, js, _ = _resources()
 
     select = re.search(r"async function selectMap\(id\) \{(.*?)\n\}", js, re.DOTALL)
     assert select is not None
-    assert "await confirmAction(" in select.group(1), "it enters without asking"
+    assert "Enter timeline mode" not in select.group(1), "an explicit choice is being confirmed"
+    assert "unsaved change(s)?" in select.group(1), "edits are discarded without asking"
     assert "setMap(previous)" in select.group(1), "declining does not put it back"
 
     # The biconditional the whole design leans on, in one place.
