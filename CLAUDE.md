@@ -190,7 +190,7 @@ Five things that cut across modules — the first three because each has already
 | `costing/combat_xp.py` | Combat XP, which is damage and almost nothing else: 4 per damage melee/Ranged, **2 for Magic**, 1.33 Hitpoints, plus the spell's base xp per cast. Owns three gates that each removed a wrong answer: `farmable_providers` (**reachable is not farmable** - a raid room is fought once per raid), `spawn_caps` (the export counts spawns per chunk, so a map holding two of something cannot supply 900 kills an hour), and `hitpoints_credit` (**Hitpoints is earned by the other combat climbs, not beside them**). Refuses a monster whose kill rate is only a default. |
 | `costing/dps_bridge.py` | The seam to `osrs-dps`, which prices a kill from the gear `bis.py` reaches instead of a money-making guide. Prices **only `estimate.reachable_providers`** — 188 of the export's 872, because every `kills_per_hour` lookup is gated on that set and the rest is thrown away. `enrich_incremental` + `fight_signature` keep a timeline's previous roll where nothing that decides a kill has moved; `enrich` stays untouched. **Optional import** — check `DPS_AVAILABLE`, never assume it. `enrich` is the one entry point a command needs. Owns the export→library conversions (`magic_damage` is a display percentage here and tenths of a percent there), the overhead model, the monster-name join and its `exact`/`variant` provenance, and the refusal of fight *phases* and group bosses. |
 | `remote/recipes.py` | `{{Recipe}}` as the wiki's Bucket table serves it: experience per action, tick cost and materials, for 3,889 recipes across 13 skills. Pure parsing. `production_json` is JSON inside JSON, every number is a string, and one page can hold several recipes told apart only by the output's `subtxt`. |
-| `costing/recipe_rates.py` | A recipe turned into an XP rate: `experience * 3600 / (0.6*ticks + materials + overhead)`, joined to a challenge **exactly** on `Output` (93-95% of the processing skills, ~0% of the gathering ones). Owns the layering `defaults < computed < scraped < overrides` - **the one place a computed number does *not* beat the scrape**, and the docstring carries the measurement that says why. An unpriceable material drops the method rather than falling back to ticks. |
+| `costing/recipe_rates.py` | A recipe turned into an XP rate: `experience * 3600 / (0.6*ticks + materials + overhead)`, joined to a challenge **exactly** on `Output` (93-95% of the processing skills, ~0% of the gathering ones). Owns the layering `defaults < computed < scraped < overrides` - **the one place a computed number does *not* beat the scrape**, and the docstring carries the measurement that says why. An unpriceable material drops the method rather than falling back to ticks - which also drops its *material cost*, so a scraped rate survives uncharged; measured at 60/76 methods and **zero** winning bands on the two cached maps. |
 | `costing/recipe_overhead.py` | The harness that fitted `ACTION_OVERHEAD_SECONDS`. **No caller in `src/`**, like `dps_overhead.py`. Fits only the cheap-material pairs, because the residuals are bimodal and averaging the two halves means nothing - and now reports that six such pairs remain and the fit is flat, which is why that constant is documented as an assumption rather than a measurement. |
 | `costing/dps_overhead.py` | The harness that fitted the overhead constants. **No caller in `src/`** — it exists to be re-run when someone doubts them, and it is out of `dps_bridge.py` because that file is large for a licence reason, not a structural one. |
 | `costing/inputs.py` | What `fray estimate` and the Estimate tab must agree about, assembled once. The two had already drifted — the CLI applied `pinned_slayer` and the GUI did not — and a shared `cache/derived/` key made that silently order-dependent. |
@@ -675,11 +675,27 @@ and its `Output` is `None`, so no recipe joins it and `material_seconds_per_xp` 
 therefore the wiki's, quoted with the bars to hand, and the bars are not priced. That is optimistic
 on a chunk map in exactly the way `effective_xp_per_hour` was built to prevent.
 
-**Measured, so the size of it is known: 86 of the 477 rated methods on `fray` have no material cost
-at all, and 61 of those declare `Items`.** Only recipe-joined methods get one (`inputs.py` builds
-`material_seconds_per_xp` from `computed_rates` and nowhere else), so a method the recipe data does
-not reach is ranked as though its inputs were free - the bias already stated above, with a number on
-it.
+**Measured, and the bias is almost entirely not there.** 86 of the 477 rated methods on `fray` have
+no material cost, and 61 of those declare `Items` - a number an earlier version of this file reported
+as if all 61 were wrong. Broken down, they are three different things and only the third is a
+defect:
+
+- **34 declare only tools** (`["Axe[+]"]` and the like, no `*`). Charging an axe per XP would be a
+  *new* wrong answer, so free is correct - which is the `*` marker earning its keep.
+- **20 state no quantity anywhere**, and are dominated by Firemaking, where materials-free is a
+  deliberate documented choice: every published Firemaking rate is quoted with the logs to hand, and
+  charging the gathering would price the Woodcutting climb twice on a map training both.
+- **7 lose their recipe to an unpriceable input.** `rate_for` returning `None` drops the method from
+  `computed_rates`, which is right for the *computed rate* - tick-math on unpriceable inputs is a
+  made-up number - but it also drops the *material cost*, so a method with a scraped rate keeps that
+  rate with nothing charged. **The bias therefore runs the wrong way: an input too hard to price
+  makes its method look cheaper.**
+
+That third one is a genuine defect and it **changes no number today**: 60 methods are dropped this
+way on `fray` and 76 on `verf`, and on both maps **zero of them win a band**. So it is recorded here
+rather than fixed, like the Construction shop model - a fix would move no total and could only
+regress one. The thing that would change that is a map whose Cooking or Crafting climb has nothing
+better, which is exactly when it would start mattering.
 
 **The `*` in `Items` is upstream's `secondary` marker, and pricing wants it**: Woodcutting's methods
 declare `["Axe[+]"]` with no marker - a tool you buy once, which must not be charged per XP - where

@@ -242,6 +242,16 @@ def rate_for(
     where a shop-bought material should have been exactly zero, and every
     caller asking "did the materials cost anything" got the wrong answer for
     seventeen of twenty-one methods.
+
+    **`None` drops the method, and drops its material cost with it - which
+    biases the wrong way.** Refusing the *rate* is right: tick-math over inputs
+    nothing can price is a made-up number. But `computed_rates` is also the
+    only source of `material_seconds_per_xp`, so a method that keeps a scraped
+    rate then ranks as though its inputs were free - and the inputs in question
+    are precisely the ones too hard to price. Measured on both cached maps (60
+    such methods on `fray`, 76 on `verf`) **not one wins a band**, so this is
+    recorded rather than fixed; it would start to matter on a map whose Cooking
+    or Crafting climb has nothing better to offer.
     """
     best: tuple[Recipe, float, float] | None = None
     for recipe in recipes:
