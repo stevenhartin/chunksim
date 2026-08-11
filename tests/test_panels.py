@@ -145,7 +145,7 @@ def test_a_collection_log_row_splits_its_source_from_its_item() -> None:
     )
 
     row = _section(panel, "Extra")["groups"][0]["active"][0]
-    assert row["name"] == "dharok's greataxe"
+    assert row["name"] == "Dharok's greataxe"
     assert row["note"] == "Barrows Chests"
     # The raw form is what everything else keys by, so it survives untouched.
     assert row["key"] == "(Barrows Chests) Obtain a ~|dharok's greataxe|~"
@@ -190,9 +190,9 @@ def test_bis_groups_by_combat_style_and_leads_with_the_item() -> None:
 
     groups = {g["name"]: g for g in _section(panel, "bis")["groups"]}
     assert sorted(groups) == ["Melee", "Ranged"]
-    assert groups["Melee"]["active"][0]["name"] == "abyssal whip"
+    assert groups["Melee"]["active"][0]["name"] == "Abyssal whip"
     assert groups["Melee"]["active"][0]["note"] == "weapon"
-    assert groups["Ranged"]["completed"][0]["name"] == "aranea boots"
+    assert groups["Ranged"]["completed"][0]["name"] == "Aranea boots"
 
 
 def test_an_item_several_styles_wear_lands_in_one_shared_group() -> None:
@@ -232,7 +232,7 @@ def test_every_skill_lands_in_one_list_carrying_its_icon() -> None:
     assert len(section["groups"]) == 1
     assert section["active_total"] == 1
     row = section["groups"][0]["active"][0]
-    assert (row["name"], row["note"], row["icon"]) == ("araxyte", "Slayer", "Slayer")
+    assert (row["name"], row["note"], row["icon"]) == ("Araxyte", "Slayer", "Slayer")
     assert section["groups"][0]["completed"][0]["icon"] == "Attack"
 
 
@@ -277,3 +277,60 @@ def test_every_row_says_which_branch_a_tick_would_land_in() -> None:
     assert found == {"Mining", "BiS", "Diary"}
     # Every category named here is one the payload actually keys by.
     assert "skills" not in found and "bis" not in found
+
+
+def test_a_diary_row_does_not_repeat_its_own_heading() -> None:
+    """`Combat Achievements#Grandmaster Wasn't Event Close` under a heading
+    that already says Combat Achievements - Grandmaster is the heading printed
+    twice, once in every row under it."""
+    panel = panels.task_panel(_derived(
+        other={
+            "Diary": {
+                "groups": [
+                    {
+                        "name": "Combat Achievements - Grandmaster",
+                        "active": ["~|Combat Achievements#Grandmaster|~ Wasn't Event Close"],
+                        "completed": [],
+                    }
+                ]
+            }
+        }
+    ))
+    (group,) = _section(panel, "Diary")["groups"]
+
+    assert group["active"][0]["name"] == "Wasn't Event Close"
+    assert group["icon"] == "ca:grandmaster"
+
+
+def test_diary_tiers_read_in_difficulty_order() -> None:
+    """Alphabetically, Elite comes before Hard and Grandmaster before Master -
+    which is every tier out of order in a list whose meaning is its order."""
+    panel = panels.task_panel(_derived(
+        other={
+            "Diary": {
+                "groups": [
+                    {"name": f"Varrock Diary - {tier}", "active": ["x"], "completed": []}
+                    for tier in ("Hard", "Easy", "Elite", "Medium")
+                ]
+            }
+        }
+    ))
+
+    assert [g["name"] for g in _section(panel, "Diary")["groups"]] == [
+        "Varrock Diary - Easy",
+        "Varrock Diary - Medium",
+        "Varrock Diary - Hard",
+        "Varrock Diary - Elite",
+    ]
+
+
+def test_a_name_is_capitalised_and_otherwise_left_alone() -> None:
+    """The export writes `unholy symbol` beside `Falador shield 1`, so a column
+    of them starts in two cases. Only the first character is touched:
+    lower-casing the rest destroys `TzHaar-Hur` and `Ardougne`."""
+    from fray_claude.gui.panels import _display_name
+
+    assert _display_name("unholy symbol") == "Unholy symbol"
+    assert _display_name("Falador shield 1") == "Falador shield 1"
+    assert _display_name("TzHaar-Hur") == "TzHaar-Hur"
+    assert _display_name("") == ""

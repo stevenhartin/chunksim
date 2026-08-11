@@ -40,7 +40,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, cast
 from urllib.parse import parse_qs, urlsplit
 from fray_claude.store import cache
-from fray_claude.remote.api import fetch_section_overlay, fetch_skill_icon
+from fray_claude.remote.api import (
+    fetch_ca_tier_icon,
+    fetch_section_overlay,
+    fetch_skill_icon,
+)
 from fray_claude.store.build_info import read_build
 from fray_claude.costing.estimate import estimate
 from fray_claude.derive.neighbours import eligible_neighbours
@@ -174,6 +178,16 @@ def handle_request(
             return _error(str(exc), HTTPStatus.BAD_REQUEST)
         return _cached_upstream_asset(
             target, lambda: fetch_section_overlay(name), what=f"section overlay {name}"
+        )
+
+    if path.startswith("/assets/ca/") and path.endswith(".png"):
+        tier = path.removeprefix("/assets/ca/").removesuffix(".png")
+        try:
+            target = cache.ca_tier_icon_path(tier, ctx.root)
+        except ValueError as exc:
+            return _error(str(exc), HTTPStatus.BAD_REQUEST)
+        return _cached_upstream_asset(
+            target, lambda: fetch_ca_tier_icon(tier), what=f"{tier} tier icon"
         )
 
     if path.startswith("/assets/skill/") and path.endswith(".png"):

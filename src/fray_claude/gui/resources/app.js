@@ -2338,6 +2338,32 @@ const GROUP_ICONS = {
   "Ungrouped": "dot",
 };
 
+/* What `bis.slots` answers with, and the badge for each. The style is already
+ * the heading, so what the row's own icon has to distinguish is a ring from a
+ * pair of boots - which is the slot, not the style. */
+const SLOT_ICONS = {
+  head: "slot-head", cape: "slot-cape", neck: "slot-neck", weapon: "slot-weapon",
+  "2h": "slot-2h", body: "slot-body", shield: "slot-shield", legs: "slot-legs",
+  hands: "slot-hands", feet: "slot-feet", ring: "slot-ring",
+};
+
+/* At most this many rows of any one group before the rest folds into a
+ * control. Nine because a 360px panel shows about that before the next
+ * heading leaves the screen, and a category you cannot see the end of is one
+ * you scroll past rather than read. */
+const TASK_ROWS = 9;
+
+/* A row's badge. Three sources and they do not overlap: a skill's own icon
+ * from upstream, a Combat Achievement tier badge from the wiki, or an inline
+ * slot glyph. `icon` carries which - `ca:easy` names the second. */
+function rowBadge(name) {
+  if (!name) return "";
+  if (name.startsWith("ca:")) {
+    return tmpl`<img class="skill-icon" src="/assets/ca/${name.slice(3)}.png" alt="${name.slice(3)}">`;
+  }
+  return tmpl`<img class="skill-icon" src="/assets/skill/${name}.png" alt="${name}">`;
+}
+
 let taskPanel = null;
 /* Which task categories are switched *off*. The five answer one question
  * between them - "what is left" - so they all show until you say otherwise. */
@@ -2348,6 +2374,7 @@ async function loadTasks() {
   el["tasks-body"].innerHTML = tmpl`<p class="empty">Deriving…</p>`;
   try {
     taskPanel = await getJSON("/api/tasks?map=" + encodeURIComponent(state.map));
+    clearExpansions("tasks:");
     renderTasks();
   } catch (error) {
     taskPanel = null;
@@ -2381,6 +2408,11 @@ function renderTasks() {
     return;
   }
 
+  /* **A heading carries no count.** The chips already carry one each and the
+   * list under a heading is right there to be looked at; three numbers saying
+   * the same thing is what made the pane read as a report rather than a list.
+   * What replaces it is the truncation control, which says how many are
+   * hidden only when some are. */
   let out = "";
   for (const section of showing) {
     const groups = section.groups.filter((g) => g[side].length);
@@ -2388,20 +2420,22 @@ function renderTasks() {
     /* The section's own heading, once several are on screen at a time. With
      * one selected the chip already says which, and repeating it costs a row
      * of a 360px panel. */
-    if (showing.length > 1) {
-      const total = groups.reduce((n, g) => n + g[side].length, 0);
-      out += tmpl`<h3 class="section">${section.label} <span class="num">${total}</span></h3>`;
-    }
+    if (showing.length > 1) out += tmpl`<h3 class="section">${section.label}</h3>`;
     for (const group of groups) {
       /* A single group whose name repeats the heading is a heading twice. */
       if (groups.length > 1 || group.name !== section.label) {
-        out += tmpl`<h3>${raw(GROUP_ICONS[group.name] ? icon(GROUP_ICONS[group.name]).__raw + " " : "")}${group.name} <span class="num">${group[side].length}</span></h3>`;
+        const mark = group.icon
+          ? rowBadge(group.icon)
+          : (GROUP_ICONS[group.name] ? icon(GROUP_ICONS[group.name]).__raw + " " : "");
+        out += tmpl`<h3>${raw(mark)}${group.name}</h3>`;
       }
-      out += "<ul class='list'>";
-      for (const row of group[side]) {
-        const badge = row.icon
-          ? tmpl`<img class="skill-icon" src="/assets/skill/${row.icon}.png" alt="${row.icon}">`
-          : "";
+      const key = "tasks:" + section.key + ":" + group.name + ":" + side;
+      out += "<ul class='list'>" + withMore(group[side], key, TASK_ROWS, (row) => {
+        /* A slot badge *replaces* the note rather than sitting beside it:
+         * the glyph and the word "ring" say one thing, and a 360px row has
+         * no space to say it twice. The tooltip still spells it out. */
+        const slot = SLOT_ICONS[row.note];
+        const badge = rowBadge(row.icon) || (slot ? icon(slot).__raw : "");
         /* The row shows the subject; the tooltip shows the whole task as the
          * export writes it, which is what `fray tasks` prints and what you
          * would search for. */
@@ -2413,15 +2447,15 @@ function renderTasks() {
          * `data-category` carry the payload's own key rather than the
          * panel's grouping, which is what `panels._entry` exists to say. */
         const pending = state.edits.ticked.get(row.category)?.has(row.key) ? " ticked" : "";
-        out += tmpl`<li class="task${pending}" data-tip="${tip}" data-task="${row.key}"
+        return tmpl`<li class="task${pending}" data-tip="${tip}" data-task="${row.key}"
           data-category="${row.category || ""}">${raw(badge)}<span class="name">${plain(row.name)}</span>
-          <span class="sub">${plain(row.note || "")}</span></li>`;
-      }
-      out += "</ul>";
+          <span class="sub">${plain(slot ? "" : row.note || "")}</span></li>`;
+      }) + "</ul>";
     }
   }
   el["tasks-body"].innerHTML = out ||
     tmpl`<p class="empty">Nothing ${state.showDone ? "completed" : "outstanding"} here.</p>`;
+  ownsMore("tasks:", renderTasks);
 }
 
 /* Delegated, so a re-render needs no rewiring - the same reason the tooltips

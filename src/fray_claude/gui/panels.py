@@ -75,6 +75,72 @@ _MARKED = re.compile(r"~\|(?P<subject>[^|]+)\|~")
 #: part of a group name.
 _ZWSP = "​"
 
+#: The tiers a diary-like group can end in, hardest last. Two ladders share
+#: this list because they are the same shape and never collide: achievement
+#: diaries run Easy -> Elite, Combat Achievements Easy -> Grandmaster. Sorting
+#: alphabetically put Elite before Hard and Grandmaster before Master, which
+#: is every tier out of order in a list whose whole meaning is its order.
+_TIERS: tuple[str, ...] = (
+    "easy", "medium", "hard", "elite", "expert", "master", "grandmaster",
+)
+
+#: The badge each Combat Achievement tier draws, served by `/assets/ca/`.
+#: Diaries have no equivalent - the wiki draws them as plain text - so a
+#: non-CA group keeps the diary icon its section already carries.
+_CA_GROUP = "Combat Achievements"
+
+
+def _tier_of(group: str) -> str:
+    """The tier a group name ends in, lower-cased, or `""` if it has none.
+
+    Group names arrive as `<ladder> - <tier>`, which is upstream's own `#`
+    separator rendered by `other_tasks`. Read off the end rather than parsed,
+    because a diary's name can hold anything at all before it (`Lumbridge and
+    Draynor Diary`).
+    """
+    tail = group.rsplit(" - ", 1)[-1].strip().lower()
+    return tail if tail in _TIERS else ""
+
+
+def _group_sort(group: Mapping[str, Any]) -> tuple[str, int, str]:
+    """Ladder first, then tier in difficulty order, then name.
+
+    The ladder is the part before the tier, so every `Varrock Diary` tier sits
+    together and reads Easy to Elite - which is the order the game unlocks
+    them in and the only order the list means anything in.
+    """
+    name = str(group.get("name", ""))
+    tier = _tier_of(name)
+    ladder = name.rsplit(" - ", 1)[0] if tier else name
+    return (ladder, _TIERS.index(tier) if tier else len(_TIERS), name)
+
+
+def _display_name(name: str) -> str:
+    """A task name as a column of them should read.
+
+    Two things, and the second is deliberately conservative. The raw form
+    keeps upstream's `<group>#<tier>` prefix - `Combat Achievements#Grandmaster
+    Wasn't Event Close` - which is the heading repeated in every row under it,
+    so it comes off. And the first character is capitalised, because the export
+    writes `unholy symbol` beside `Falador shield 1` and a column that starts
+    in two cases reads as two lists.
+
+    **Only the first character.** Lower-casing the rest would be the way to
+    make the whole string consistent and it destroys the names it touches:
+    `TzHaar-Hur`, `Ardougne`, `BiS`. Title-casing them is worse the other way.
+    So this makes the *column* consistent and leaves the words as upstream
+    wrote them, which is the split `strip_task_markup` already draws between
+    display and identity.
+    """
+    plain = strip_task_markup(name)
+    head, sep, tail = plain.partition("#")
+    if sep:
+        # `Combat Achievements#Grandmaster Wasn't Event Close` -> the part
+        # after the tier. The tier is one word, so one split does it.
+        rest = tail.split(" ", 1)
+        plain = rest[1] if len(rest) > 1 else tail
+    return plain[:1].upper() + plain[1:] if plain else plain
+
 
 def _entry(
     key: str,
@@ -96,7 +162,10 @@ def _entry(
 
 
 def _group(name: str, active: Sequence[Any], completed: Sequence[Any]) -> dict[str, Any]:
-    return {"name": name, "active": list(active), "completed": list(completed)}
+    """One sub-heading. `icon` is set only where something knows one - a
+    Combat Achievement tier badge - and stays `None` everywhere else rather
+    than the panel guessing from the name."""
+    return {"name": name, "active": list(active), "completed": list(completed), "icon": None}
 
 
 def _section(
@@ -123,6 +192,12 @@ def _subject(name: str) -> str:
     """
     found = _MARKED.search(name)
     return found.group("subject") if found else strip_task_markup(name)
+
+
+def _cased(name: str) -> str:
+    """First character up, the rest exactly as the export wrote it. See
+    `_display_name` for why the rest is left alone."""
+    return name[:1].upper() + name[1:] if name else name
 
 
 def _step_order(step: str) -> tuple[int, list[Any]]:
@@ -178,16 +253,21 @@ def _extra_entry(name: str) -> dict[str, Any]:
     """A collection-log row split into its source and its item, or left whole."""
     found = _LOG_ENTRY.match(name)
     if found is None:
-        return _entry(name, strip_task_markup(name))
-    return _entry(name, _subject(found.group("rest")), found.group("source"))
+        return _entry(name, _display_name(name))
+    return _entry(name, _cased(_subject(found.group("rest"))), found.group("source"))
 
 
 def _plain_groups(
-    category: Mapping[str, Any], *, split_sources: bool = False
+    category: Mapping[str, Any], *, split_sources: bool = False, tiered: bool = False
 ) -> list[dict[str, Any]]:
-    """`Diary` and `Extra`: upstream's own groups, entries formatted per row."""
-    shape = _extra_entry if split_sources else (lambda n: _entry(n, strip_task_markup(n)))
-    return [
+    """`Diary` and `Extra`: upstream's own groups, entries formatted per row.
+
+    `tiered` sorts the groups by difficulty and hands each one its Combat
+    Achievement badge - both facts about a ladder rather than about a list, so
+    `Extra` asks for neither.
+    """
+    shape = _extra_entry if split_sources else (lambda n: _entry(n, _display_name(n)))
+    groups = [
         _group(
             str(group.get("name", "")),
             [shape(name) for name in group.get("active", ())],
@@ -195,6 +275,14 @@ def _plain_groups(
         )
         for group in category.get("groups", [])
     ]
+    if not tiered:
+        return groups
+    groups.sort(key=_group_sort)
+    for group in groups:
+        tier = _tier_of(group["name"])
+        if tier and group["name"].startswith(_CA_GROUP):
+            group["icon"] = "ca:" + tier
+    return groups
 
 
 def _bis_style(slot_label: str) -> str:
@@ -225,7 +313,7 @@ def _bis_groups(bis: Mapping[str, Any]) -> list[dict[str, Any]]:
             style = _bis_style(str(label))
             note = str(slots.get(key) or label)
             grouped.setdefault(style, {"active": [], "completed": []})[state].append(
-                _entry(key, _subject(key), note, category="BiS")
+                _entry(key, _cased(_subject(key)), note, category="BiS")
             )
     return [_group(style, rows["active"], rows["completed"]) for style, rows in sorted(grouped.items())]
 
@@ -243,9 +331,13 @@ def _skill_groups(classification: Mapping[str, Any]) -> list[dict[str, Any]]:
     for skill, entry in sorted(classification.items()):
         current = entry.get("active")
         if isinstance(current, str) and current:
-            active.append(_entry(current, _subject(current), skill, icon=skill, category=skill))
+            active.append(
+                _entry(current, _cased(_subject(current)), skill, icon=skill, category=skill)
+            )
         for done in entry.get("completed", ()):
-            completed.append(_entry(done, _subject(done), skill, icon=skill, category=skill))
+            completed.append(
+                _entry(done, _cased(_subject(done)), skill, icon=skill, category=skill)
+            )
     return [_group("Skills", active, completed)]
 
 
@@ -277,7 +369,7 @@ def task_panel(derived: Derived) -> dict[str, Any]:
         _section("bis", "Best in slot", _bis_groups(derived.bis.as_dict())),
     ]
     for key, label, groups in (
-        ("Diary", "Diaries", _plain_groups(_mapping(other, "Diary"))),
+        ("Diary", "Diaries", _plain_groups(_mapping(other, "Diary"), tiered=True)),
         ("Quest", "Quests", _quest_groups(_mapping(other, "Quest"))),
         ("Extra", "Other", _plain_groups(_mapping(other, "Extra"), split_sources=True)),
     ):

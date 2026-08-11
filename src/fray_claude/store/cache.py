@@ -181,6 +181,12 @@ TILE_VERSION_MAX_AGE_HOURS = 24.0
 #: nobody opens all 1,534 masks.
 SECTION_OVERLAY_DIR = "section_overlays"
 SKILL_ICON_DIR = "skill_icons"
+CA_ICON_DIR = "ca_icons"
+
+#: The six Combat Achievement tiers, in the order the game ranks them. An
+#: allowlist rather than a pattern, because there are six of them for ever -
+#: which also makes it the validation `ca_tier_icon_path` needs.
+CA_TIERS: tuple[str, ...] = ("easy", "medium", "hard", "elite", "master", "grandmaster")
 
 #: Where the GUI remembers how its window was left. Not a blob: it has no
 #: upstream source, no `fetched_at`, and is rewritten many times a session.
@@ -1116,6 +1122,18 @@ def skill_icon_path(skill: str, root: Path | None = None) -> Path:
     if not _SKILL_RE.fullmatch(skill):
         raise ValueError(f"not a skill name: {skill!r}")
     return asset_path(f"{SKILL_ICON_DIR}/{skill}.png", root)
+
+
+def ca_tier_icon_path(tier: str, root: Path | None = None) -> Path:
+    """Where one Combat Achievement tier badge is cached.
+
+    Validated against `CA_TIERS` outright rather than against a pattern: the
+    set is six names and will stay six, so membership is a stronger check than
+    any alphabet - see `section_overlay_path` on why that matters here.
+    """
+    if tier not in CA_TIERS:
+        raise ValueError(f"not a combat achievement tier: {tier!r}")
+    return asset_path(f"{CA_ICON_DIR}/{tier}.png", root)
 
 
 def write_asset_at(path: Path, blob: bytes) -> Path:

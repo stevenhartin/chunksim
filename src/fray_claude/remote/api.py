@@ -104,6 +104,11 @@ MAP_TILE_ATTRIBUTION = "Map tiles © OSRS Wiki (CC BY-NC-SA 3.0)"
 #: sections, so anything eager here would spend 14MiB to draw one square.
 SECTION_OVERLAY_URL = _UPSTREAM_RAW.format(path="resources/section_overlays/{name}.png")
 SKILL_ICON_URL = _UPSTREAM_RAW.format(path="resources/{skill}_skill.png")
+#: The six Combat Achievement tier badges, from the wiki rather than from
+#: upstream - source-chunk ships no icon for them. ~300 bytes each, and the
+#: **wiki**, so this is the one image fetch that needs `WIKI_USER_AGENT`.
+CA_TIER_ICON_URL = "https://oldschool.runescape.wiki/images/Combat_Achievements_-_{tier}_tier_icon.png"
+
 
 WIKI_API_URL = "https://oldschool.runescape.wiki/api.php"
 
@@ -457,12 +462,26 @@ def fetch_skill_icon(skill: str, timeout: float = DEFAULT_TIMEOUT) -> bytes:
     )
 
 
-def _fetch_bytes(url: str, timeout: float, *, what: str) -> bytes:
+def fetch_ca_tier_icon(tier: str, timeout: float = DEFAULT_TIMEOUT) -> bytes:
+    """One Combat Achievement tier badge (`easy` ... `grandmaster`).
+
+    The wiki, not upstream, so it carries `WIKI_USER_AGENT` - an anonymous
+    request for one of these is answered with HTTP 403 (measured).
+    """
+    return _fetch_bytes(
+        CA_TIER_ICON_URL.format(tier=tier), timeout, what=f"{tier} tier icon", wiki=True
+    )
+
+
+def _fetch_bytes(url: str, timeout: float, *, what: str, wiki: bool = False) -> bytes:
     import urllib.error
     import urllib.request
 
+    request = urllib.request.Request(
+        url, headers={"User-Agent": WIKI_USER_AGENT} if wiki else {}
+    )
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             payload: bytes = response.read()
     except urllib.error.HTTPError as exc:
         raise FetchError(f"HTTP {exc.code} fetching {what}") from exc
