@@ -827,6 +827,7 @@ TABLE_KINDS: dict[str, tuple[tuple[str, float | None], ...]] = {
     "Fletching": (("darts", DART_CYCLE_SECONDS),),
     "Sailing": (("sailing", None),),
     "Cooking": (("cooking", COOK_CYCLE_SECONDS),),
+    "Crafting": (("glass", None),),
 }
 
 
@@ -867,9 +868,11 @@ def _table_rates(
             if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
                 continue
             keys = _join_keys(challenge, task, COURSE_ALIASES)
+            made = _output_keys(challenge)
             for kind, per_hour in TABLE_KINDS[skill]:
                 rows_for = lookup.get(kind, {})
-                row = next((rows_for[key] for key in keys if key in rows_for), None)
+                offered = made if kind in OUTPUT_ONLY_KINDS else keys
+                row = next((rows_for[key] for key in offered if key in rows_for), None)
                 if row is None:
                     continue
                 if kind == "burning":
@@ -984,6 +987,31 @@ _DISAMBIGUATOR = re.compile(
     r"|Sailing)\)\s*$",
     re.IGNORECASE,
 )
+
+
+#: Kinds joined on what the challenge *makes* and on nothing else.
+#: **`Items` is a join key** - Firemaking needs it, since `Burn ~|oak logs|~`
+#: names the log there - and for a table of made things that is a trap: the
+#: glass table's `Empty light orb` row matched `Craft a ~|light orb|~`, whose
+#: `Items` are `["Empty light orb*", "Cave goblin wire*"]`. That challenge is
+#: the *assembly* step, not the blowing, and it took the blowing's 122,500/hr
+#: with no glass charged against it - and won the Crafting climb with it.
+OUTPUT_ONLY_KINDS = frozenset({"glass"})
+
+
+def _output_keys(challenge: dict[str, Any]) -> list[str]:
+    """Just what the challenge makes, lowercased - `Output`, then its object
+    form for Construction. The narrow half of `_join_keys`."""
+    made = [
+        challenge.get(field)
+        for field in ("Output", "Output Object")
+        if isinstance(challenge.get(field), str)
+    ]
+    return [
+        name.split("#")[0].replace("[+]", "").replace("*", "").strip().lower()
+        for name in made
+        if isinstance(name, str)
+    ]
 
 
 def _join_keys(challenge: dict[str, Any], task: str, aliases: Mapping[str, str]) -> list[str]:

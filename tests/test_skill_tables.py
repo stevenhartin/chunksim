@@ -17,6 +17,7 @@ from fray_claude.remote.skill_tables import (
     parse_cooking,
     parse_darts,
     parse_gotr,
+    parse_glassblowing,
     parse_hunter,
     parse_plunder,
     parse_sailing,
@@ -1002,3 +1003,38 @@ def test_the_modelled_cooking_pace_is_an_inventory_plus_a_bank_trip() -> None:
 
     assert 3600.0 / COOK_CYCLE_SECONDS == pytest.approx(1305.7, abs=0.1)
     assert 230.0 * 3600.0 / COOK_CYCLE_SECONDS == pytest.approx(300_311, abs=1)
+
+
+def test_glassblowing_is_craftings_one_table_of_plain_figures() -> None:
+    """**Crafting's rates are `{{#var:}}` and `{{#expr:}}` expressions wikitext
+    cannot yield**, which is why the skill has no table here - except this
+    section, whose `XP` and `XP/h` columns are literal, the hourly one stated
+    in a footnote as 1,750 items blown an hour.
+
+    The plinkt names the blown item, which is the export's `Output`.
+    """
+    text = """
+===Levels 1-83/99: Molten glass===
+{| class="wikitable sortable"
+! rowspan="2" |{{SCP|Crafting}} Level
+! colspan="2" rowspan="2" | Item
+! rowspan="2" |XP
+! rowspan="2" |XP/h
+! colspan="3" |GE Price
+|-
+!Buy
+!Sell
+!Diff
+|-
+|46
+|{{plinkt|Unpowered orb}}
+|52.5||91,875
+|{{Coins|{{GEP|Molten glass}}}}
+|{{Coins|{{GEPT|Unpowered orb}}}}
+|{{Coins|1}}
+|}
+"""
+    rows = {row.name: row for row in parse_glassblowing(text)}
+    assert set(rows) == {"Unpowered orb"}
+    assert rows["Unpowered orb"].level == 46
+    assert rows["Unpowered orb"].xp_per_hour == 91_875.0

@@ -762,6 +762,7 @@ def test_every_gathering_skill_now_has_a_table() -> None:
         # Cooking is the third of the per-action kind, after darts and
         # Firemaking: a range's pace does not depend on what is on it.
         "Cooking",
+        "Crafting",
     }
 
 
@@ -985,3 +986,38 @@ def test_tithe_farm_joins_on_upstreams_own_category() -> None:
     assert set(rated) == {"Grow a ~|logavano fruit|~"}
     assert rated["Grow a ~|logavano fruit|~"]["Farming"].value == 90_000.0
     assert rated["Grow a ~|logavano fruit|~"]["Farming"].source == TITHE_SOURCE
+
+
+def test_a_table_of_made_things_joins_on_output_and_not_on_items() -> None:
+    """**`Items` is a join key, and for a table of made things that is a trap.**
+
+    Firemaking needs it - `Burn ~|oak logs|~` names the log there - but the
+    glass table's `Empty light orb` row matched `Craft a ~|light orb|~`, whose
+    `Items` are `["Empty light orb*", "Cave goblin wire*"]`. That challenge is
+    the *assembly* step, not the blowing: it took the blowing's 122,500/hr
+    with no glass charged against it, and won the Crafting climb with it.
+    """
+    from fray_claude.costing.heuristics import OUTPUT_ONLY_KINDS, _table_rates
+    from fray_claude.remote.skill_tables import SkillRow
+
+    chunk_info = ChunkInfo(
+        {
+            "challenges": {
+                "Crafting": {
+                    "Craft an ~|empty light orb|~": {
+                        "Level": 87, "Primary": True, "Output": "Empty light orb",
+                        "Items": ["Molten glass*", "Glassblowing pipe"],
+                    },
+                    "Craft a ~|light orb|~": {
+                        "Level": 87, "Primary": True, "Output": "Light orb",
+                        "Items": ["Empty light orb*", "Cave goblin wire*"],
+                    },
+                }
+            }
+        }
+    )
+    rows = (SkillRow(name="Empty light orb", level=87, xp_per_hour=122_500.0),)
+    rated = _table_rates(chunk_info, {"glass": rows})
+
+    assert "glass" in OUTPUT_ONLY_KINDS
+    assert set(rated) == {"Craft an ~|empty light orb|~"}, "the blowing, not the assembly"

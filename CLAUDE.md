@@ -560,6 +560,28 @@ uber map vyres open at 82 with 315,669, and on `verf-sim/run-001` Sophanem is no
 coverage insurance for the map that has the pyramid and not the alternatives - the same argument the
 Hunter joins were filed under before sixteen more creatures made them bite.
 
+**Glassblowing is the one Crafting table stated in plain figures**, which is why the skill finally
+has one. Its rates are famously `{{#var:}}` and `{{#expr:}}` expressions wikitext cannot yield - the
+molten glass section is the exception, publishing `XP` and `XP/h` literally with the hourly column
+footnoted as 1,750 items blown an hour. Seven of its eight rows join on `Output`; the eighth is the
+wiki's `Empty fishbowl` against the export's `Fishbowl`.
+
+**The preparation is charged and that is most of the method**, exactly as it should be: a chunk
+player buys buckets of sand and soda ash from a charter-ship shop and melts them at a furnace, which
+the export models as `Craft ~|molten glass|~` with both inputs marked consumed. Nothing had to be
+added for it - `stores.py` prices the shop and the item walk does the rest, so `empty light orb` goes
+**122,500/hr published to 37,326 effective** and `unpowered orb` 91,875 to 27,994.
+
+**It moves no total on either cached map, and the first measurement saying otherwise was a wrong
+join.** `Craft a ~|light orb|~` is the *assembly* step - an empty light orb plus cave goblin wire -
+and `_join_keys` offers `Items`, so it matched the `Empty light orb` row, took the blowing's
+122,500/hr with no glass charged, and won the climb; `fray` read 146.3h -> 118.7h on the strength of
+it. `OUTPUT_ONLY_KINDS` restricts a table of *made things* to what the challenge makes, after which
+both maps are unchanged - ruby at 89,184/hr on `fray` and topaz bracelet at 90,000 on `verf-sim`
+still beat glass. **`Items` has to stay a join key in general**, since Firemaking's `Burn ~|oak
+logs|~` names the log there and nowhere else, so this is a per-kind restriction rather than a
+correction to `_join_keys`.
+
 **Cooking is calculable rather than quoted, and the wiki publishes exactly the half that is.** A
 range's pace does not depend on what is on it - four ticks a cook - so there is no hourly figure per
 food and none is needed: `Cooking`'s own `Types of food` gives experience per item, and

@@ -87,6 +87,7 @@ SAILING_PAGE = "Sailing training"
 #: The skill's own page, whose `Types of food` tables are the only place the
 #: experience for cooking one item is written down.
 COOKING_PAGE = "Cooking"
+CRAFTING_PAGE = "Pay-to-play Crafting training"
 
 #: One `{{formatnum:{{#expr:...}}}}` block. **A cell may hold two** - the
 #: Gwenith Glide's Marlin figure is quoted again with a crystal extractor on
@@ -180,6 +181,7 @@ PAGES: tuple[str, ...] = (
     FARMING_PAGE,
     SAILING_PAGE,
     COOKING_PAGE,
+    CRAFTING_PAGE,
 )
 
 #: Export course name -> the wiki's spelling. **Only for the ones that differ.**
@@ -1039,6 +1041,47 @@ def parse_cooking(text: str) -> tuple[SkillRow, ...]:
     return tuple(found)
 
 
+def parse_glassblowing(text: str) -> tuple[SkillRow, ...]:
+    """Glassblowing, which is the one Crafting table stated in plain figures.
+
+    **Crafting's rates are famously `{{#var:}}` and `{{#expr:}}` expressions
+    wikitext cannot yield** - which is why the skill has no table here - but
+    the molten glass section is the exception: its `XP` and `XP/h` columns are
+    literal (`|17.5||30,625`), the hourly one stated in a footnote as 1,750
+    items blown an hour. The plinkt names the blown item, which is the
+    export's `Output`, so every row joins.
+
+    **The published figure assumes the glass to hand**, which is right and is
+    also where the interesting cost is: a chunk player buys buckets of sand
+    and soda ash from a charter-ship shop, melts them at a furnace, and the
+    export models exactly that as `Craft ~|molten glass|~`. Nothing extra is
+    needed for it - the challenge declares both inputs as consumed and
+    `stores.py` prices the shop, so `effective_xp_per_hour` charges the
+    preparation against the blowing on its own.
+    """
+    section = next(
+        (body for title, body in _sections(text) if "Molten glass" in title), ""
+    )
+    table = table_with(section, "XP/h")
+    found: list[SkillRow] = []
+    for cells in rows(table):
+        item = _PLINKT.search(" ".join(cells))
+        level = number(cells[0]) if cells else None
+        # `| 17.5 || 30,625` - experience then the hourly figure built from it.
+        figures = [value for cell in cells[1:] if (value := number(cell)) is not None]
+        if item is None or level is None or len(figures) < 2:
+            continue
+        found.append(
+            SkillRow(
+                name=item.group(1).strip(),
+                level=int(level),
+                experience=figures[0],
+                xp_per_hour=figures[1],
+            )
+        )
+    return tuple(found)
+
+
 def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
     """Every table this module reads, keyed by what it describes."""
     return {
@@ -1058,4 +1101,5 @@ def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
         "tithe": parse_tithe(pages.get(FARMING_PAGE, "")),
         "sailing": parse_sailing(pages.get(SAILING_PAGE, "")),
         "cooking": parse_cooking(pages.get(COOKING_PAGE, "")),
+        "glass": parse_glassblowing(pages.get(CRAFTING_PAGE, "")),
     }
