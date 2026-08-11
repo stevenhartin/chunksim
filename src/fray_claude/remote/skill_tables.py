@@ -80,6 +80,11 @@ DARTS_PAGE = "Template:Table/Fletching/Darts"
 THIEVING_TRAINING_PAGE = "Thieving training"
 #: The Runecraft training guide, read for the Guardians of the Rift table.
 RUNECRAFT_PAGE = "Pay-to-play Runecraft training"
+FARMING_PAGE = "Farming training"
+
+#: Upstream's own category for the three fruits grown inside the Tithe Farm
+#: minigame, which is what `heuristics._add_tithe` joins on.
+TITHE_CATEGORY = "Tithe Farm"
 
 #: The task-name suffix upstream gives the twelve runes craftable inside
 #: Guardians of the Rift. **Upstream's own wording, not a pattern invented
@@ -153,6 +158,7 @@ PAGES: tuple[str, ...] = (
     DARTS_PAGE,
     THIEVING_TRAINING_PAGE,
     RUNECRAFT_PAGE,
+    FARMING_PAGE,
 )
 
 #: Export course name -> the wiki's spelling. **Only for the ones that differ.**
@@ -886,6 +892,40 @@ def parse_gotr(text: str) -> tuple[SkillRow, ...]:
     return tuple(found)
 
 
+def parse_tithe(text: str) -> tuple[SkillRow, ...]:
+    """Tithe Farm's one published rate, from the one sentence stating it.
+
+    **The guide gives a single figure and no table**: "From level 74 onwards,
+    players can get around 90,000-100,000 experience per hour." So this is the
+    second prose reader here after Hunter's, and the narrowest - it wants a
+    level and a rate out of one sentence in one section.
+
+    The bottom of the range and the level it is stated from, both the
+    conservative end as everywhere else. The 34 and 54 fruits are not rated:
+    the guide says only that experience "may be gained" at those levels and
+    quotes no figure, and the minigame's rate climbs steeply with the seed
+    tier, so lending them the level-74 number would be inventing one.
+    """
+    section = next(
+        (body for title, body in _sections(text) if TITHE_CATEGORY in title), ""
+    )
+    stated = re.search(
+        r"[Ff]rom level (\d{1,2}) onwards.{0,120}?"
+        r"([\d,]{3,})(?:\s*[\u2013\u2014-]\s*[\d,]{3,})?\s*(?:experience|xp)\s+per\s+hour",
+        section,
+        re.S,
+    )
+    if stated is None:
+        return ()
+    return (
+        SkillRow(
+            name=TITHE_CATEGORY,
+            level=int(stated.group(1)),
+            xp_per_hour=float(stated.group(2).replace(",", "")),
+        ),
+    )
+
+
 def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
     """Every table this module reads, keyed by what it describes."""
     return {
@@ -902,4 +942,5 @@ def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
         "darts": parse_darts(pages.get(DARTS_PAGE, "")),
         "plunder": parse_plunder(pages.get(THIEVING_TRAINING_PAGE, "")),
         "gotr": parse_gotr(pages.get(RUNECRAFT_PAGE, "")),
+        "tithe": parse_tithe(pages.get(FARMING_PAGE, "")),
     }

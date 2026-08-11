@@ -457,6 +457,38 @@ first `{{plinkt}}` in a row is the potion** and the two after it are its base an
 spellings are emitted - the bare name joins 45 challenges and the `pic=` form another 35. **82 joins,
 and Herblore 1 -> 99 on the uber map goes 13,034h (the floor, no rated options at all) to 27.0h.**
 
+**Tithe Farm is the second minigame joined this way, and `_add_gotr` became `_add_banded` to take
+it.** Both are one activity behind several challenges, both publish a `level -> XP/h` curve with
+nothing in it for a challenge *name* to join to, and both are labelled by upstream itself - a `with
+guardian essence` suffix for the Rift, `Category: ["Tithe Farm"]` for the fruits. The category is
+the better key of the two: one of the three fruits is spelled `Grow a ~|golovanova fruit|~ alt`, a
+spelling no name rule would want to encode.
+
+**One published figure, so one rated fruit.** The guide states "from level 74 onwards, players can
+get around 90,000-100,000 experience per hour" and says of the lower tiers only that experience "may
+be gained"; the rate climbs steeply with the seed tier, so the 34 and 54 fruits keep nothing rather
+than borrowing the level-74 number. Its seeds come out of the minigame, so `wiki:tithe` joins
+`wiki:gotr` and `recipe` in `training._ALL_INCLUSIVE_SOURCES`.
+
+**Where it is spent is the caveat, and it is a real one.** `estimate.py`'s Farming branch uses
+`farming_plan` *exclusively* whenever `heuristics.crops` is non-empty and the plan yields a positive
+xp/day, and falls through to the ordinary band walk only when it does not. So the rate lands on the
+fallback path - a map holding the minigame but no usable crop schedule - where **Farming 1 -> 99 on
+`verf-sim/run-001` goes 13,034h, the bare floor, to 1,228.9h**. On a map whose schedule does work it
+is not consulted at all.
+
+That is not obviously wrong, but it is not obviously right either, and the two are not comparable on
+one axis: the schedule is **64 active hours spread over 145 calendar days**, the minigame about
+**145 hours with no wait at all**. The wiki says as much - you tithe farm *between* the time patches
+take to grow - so the honest answer is neither a `min` nor a sum, and expressing "or finish it in
+hours instead of months" is an output-shape decision rather than a rate fix. Recorded here so the
+next attempt starts from the measurement.
+
+**Noticed while measuring, unfixed:** on the fallback path the uber map prices Farming 1 -> 74 with
+`ultracompost` at **335/hr**, far below the 1,000/hr floor. The floor refusal in `recipe_rates`
+applies to *computed* rates only, and this one is scraped, so nothing catches it. It is the same
+shape as the supercompost case that motivated that rule.
+
 **Guardians of the Rift is one activity behind twelve challenges, and it was priced as twelve
 altars.** The export models it as `Craft a <rune> rune with guardian essence`, which joined the
 *ordinary* rune's money-making guide through `Output` - so the guardian chaos rune was quoted at the

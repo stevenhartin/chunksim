@@ -880,11 +880,18 @@ def test_the_rifts_rate_has_already_paid_for_its_own_essence() -> None:
     twice, which is the mistake `_material_cost` was written to stop for
     recipe rates and which the Rift is the second case of.
     """
-    from fray_claude.costing.heuristics import GOTR_SOURCE, Heuristics, Rate
+    from fray_claude.costing.heuristics import (
+        GOTR_SOURCE,
+        TITHE_SOURCE,
+        Heuristics,
+        Rate,
+    )
     from fray_claude.costing.recipe_rates import RECIPE_SOURCE
     from fray_claude.costing.training import _ALL_INCLUSIVE_SOURCES, _material_cost
 
-    assert _ALL_INCLUSIVE_SOURCES == {RECIPE_SOURCE, GOTR_SOURCE}
+    # Tithe Farm is the third and for the same reason: its seeds come out of
+    # the minigame, so the published figure has already paid for them.
+    assert _ALL_INCLUSIVE_SOURCES == {RECIPE_SOURCE, GOTR_SOURCE, TITHE_SOURCE}
 
     heuristics = Heuristics(material_seconds_per_xp={"task": 0.3})
     charged = Rate(value=40_000.0, source="mmg:whatever", match="exact")
@@ -932,3 +939,42 @@ def test_a_challenge_says_what_a_method_needs_and_never_how_much(
     # `XpReward` exists, but it is a one-off lump on quests and diaries - the
     # grant `training.quest_xp_grants` spends - and never a per-action rate.
     assert rewards == [], "no primary challenge states what one action pays"
+
+
+def test_tithe_farm_joins_on_upstreams_own_category() -> None:
+    """**The export labels the three fruits `Category: ["Tithe Farm"]`**, which
+    is a better key than any name rule - one of them is spelled `Grow a
+    ~|golovanova fruit|~ alt`, a spelling nothing would want to encode.
+
+    Only the level-74 fruit is rated. The guide publishes one figure, "from
+    level 74 onwards, 90,000-100,000 experience per hour", and says of the
+    lower tiers only that experience "may be gained" - and the minigame's rate
+    climbs steeply with the seed tier, so lending them that number would
+    invent one.
+    """
+    from fray_claude.costing.heuristics import TITHE_SOURCE, _table_rates
+    from fray_claude.remote.skill_tables import SkillRow
+
+    chunk_info = ChunkInfo(
+        {
+            "challenges": {
+                "Farming": {
+                    "Grow a ~|golovanova fruit|~ alt": {
+                        "Level": 34, "Primary": True, "Category": ["Tithe Farm"],
+                    },
+                    "Grow a ~|logavano fruit|~": {
+                        "Level": 74, "Primary": True, "Category": ["Tithe Farm"],
+                    },
+                    "Grow a ~|dragonfruit tree|~": {
+                        "Level": 81, "Primary": True, "Category": ["Normal Farming"],
+                    },
+                }
+            }
+        }
+    )
+    bands = (SkillRow(name="Tithe Farm", level=74, xp_per_hour=90_000.0),)
+    rated = _table_rates(chunk_info, {"tithe": bands})
+
+    assert set(rated) == {"Grow a ~|logavano fruit|~"}
+    assert rated["Grow a ~|logavano fruit|~"]["Farming"].value == 90_000.0
+    assert rated["Grow a ~|logavano fruit|~"]["Farming"].source == TITHE_SOURCE

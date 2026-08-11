@@ -18,6 +18,7 @@ from fray_claude.remote.skill_tables import (
     parse_gotr,
     parse_hunter,
     parse_plunder,
+    parse_tithe,
     parse_woodcutting,
     parse_courses,
     parse_mark_rate,
@@ -860,3 +861,27 @@ The rates below assume using the best pouches available.
     assert all(row.name == "Guardians of the Rift" for row in rows.values())
     assert rows[40].xp_per_hour == 25_000.0
     assert rows[75].xp_per_hour == 50_000.0, "the Runecraft column, not Crafting's"
+
+
+def test_tithe_farm_is_one_sentence_rather_than_a_table() -> None:
+    """**The guide publishes a single figure and no table**, so this is the
+    narrowest prose reader here: a level and a rate out of one sentence.
+
+    The bottom of the range and the level it is stated from, both the
+    conservative end. Nothing is returned for the lower tiers, which the guide
+    mentions without quoting a rate for.
+    """
+    text = """
+===Tithe Farm===
+At level 34, experience may be gained at the [[Tithe Farm]] minigame. In this
+way, players can gain significant Farming experience between the time it takes
+patches to grow. From level 74 onwards, players can get around 90,000-100,000
+experience per hour.
+"""
+    rows = parse_tithe(text)
+    assert len(rows) == 1, "one published figure, not one per seed tier"
+    assert rows[0].name == "Tithe Farm"
+    assert rows[0].level == 74
+    assert rows[0].xp_per_hour == 90_000.0
+
+    assert parse_tithe("===Tithe Farm===\nNo figure here.") == ()

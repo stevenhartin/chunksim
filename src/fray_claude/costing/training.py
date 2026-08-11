@@ -25,7 +25,7 @@ from fray_claude.costing.heuristics import DEFAULT_XP_PER_HOUR
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.model.experience import MAX_LEVEL, level_for_xp, xp_for_level
 from fray_claude.derive.pipeline import Derived
-from fray_claude.costing.heuristics import GOTR_SOURCE, Heuristics, Rate
+from fray_claude.costing.heuristics import GOTR_SOURCE, TITHE_SOURCE, Heuristics, Rate
 from fray_claude.costing.recipe_rates import RECIPE_SOURCE
 from fray_claude.model.summary import _mapping
 from fray_claude.costing.heuristics import activity_name
@@ -147,7 +147,7 @@ def training_options(
 
 #: Rate sources whose figure already covers getting the materials, so the
 #: walk must not charge for them a second time. See `_material_cost`.
-_ALL_INCLUSIVE_SOURCES = frozenset({RECIPE_SOURCE, GOTR_SOURCE})
+_ALL_INCLUSIVE_SOURCES = frozenset({RECIPE_SOURCE, GOTR_SOURCE, TITHE_SOURCE})
 
 
 def _material_cost(heuristics: Heuristics, name: str, rate: Rate) -> float:
