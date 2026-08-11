@@ -952,19 +952,30 @@ placeholder. Upstream filters `???` out of its own connection walk (index.js:770
 `graph.py` does, so **no chunk set reaches that section**, the quest cannot finish, and 243
 challenges follow it down.
 
-**This project cannot fix that and should not try** - it is a hole in upstream's data, one of 55
-sections whose only ref is `???`. What a player does is mark the section by hand, which
-`chunkinfo.manualSections` already carries and `sections.py` already honours. Measured on the uber
-map, one manual entry for `8234-1`:
+**So `sections._unresolved_only` opens them, and it is the one place this project overrules the
+export.** The reading that justifies it is narrow: `???` means *no route recorded*, not *sealed*, and
+a section no configuration of the world can enter has no reason to be in the export at all. Counted
+over the whole export - 55 sections list `???`, 4 are section `0` (already free), 18 are rescued by a
+`Connect` named-area link, and **33 are unreachable with every chunk in the game unlocked**. Real
+players already work around it by hand: `verf` carries a `manualSections` entry for `12338-2`, one
+of the 33.
 
-| | Sailing valid | all valid | items |
-|---|---:|---:|---:|
-| every chunk unlocked | **0** / 243 | 9,690 | 4,908 |
-| ... plus `manualSections: {"8234": {"1": true}}` | **159** / 243 | 10,584 | 5,027 |
+**It fires per section rather than off a hardcoded id list, so it retires itself.** One real
+connection appearing in a re-fetched export opts that section back out with no edit here;
+`tests/test_sections.py::test_the_export_still_needs_the_unresolved_workaround` pins the count at 33
+and says to delete the function when it reaches zero. **Overridable both ways**: `manualSections`
+seals or opens any single section and is checked first (upstream's own control, so nothing new was
+invented), and `MapState.unresolved_sections_open` turns the whole thing off for a player who would
+rather match upstream's answers exactly.
 
-So the skill was never unreachable in the sense of "unmodelled" - `UNRATED_SKILLS`' recheck was
-correctly reporting a map fact, and the nine joined barracuda-trial rates and the shipwrecks' guide
-rates are spendable the moment the section is marked.
+| map | valid (sealed -> open) | items | Sailing |
+|---|---|---:|---:|
+| `fray` | 2,704 -> **2,705** | 1,918 | 0 |
+| `verf` | 2,481 -> **2,486** | 1,606 | 0 |
+| uber | 9,690 -> **10,944** | 4,908 -> **5,122** | 0 -> **174** / 243 |
+
+So the skill was never unreachable in the sense of "unmodelled" - the nine joined barracuda-trial
+rates and the shipwrecks' guide rates are spendable now, on any map that reaches the Shipyard.
 
 **`AnySalvagingHook[+]` was a false alarm and this file said so twice.** It is not a family whose
 value is `null`; it is **not in `itemsPlus` at all**, and **no challenge in the export requires it** -

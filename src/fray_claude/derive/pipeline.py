@@ -119,6 +119,14 @@ class MapState:
     #: - Mahogany Homes is gated behind a chunk the player hasn't taken, which
     #: invalidates every contract tier. See `challenges.py`.
     construction_locked: bool = False
+    #: Whether a section whose only recorded connection is the export's
+    #: `"???"` placeholder opens with its chunk - see
+    #: `sections._unresolved_only`. On by default because off makes 33 real
+    #: places, the Pandemonium Shipyard among them, unreachable on every
+    #: possible map. Not read from any payload key: it is this project's
+    #: workaround rather than upstream state, and the per-section control a
+    #: player actually reaches for is `manualSections`.
+    unresolved_sections_open: bool = True
     #: `chunkinfo.slayerLocked`, or `None` when Slayer is not blocked. Read
     #: through `slayer_capped_max_skill` rather than directly: every gate
     #: upstream applies it at is a gate this project already routes through
@@ -305,6 +313,7 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
             manual_sections=state.manual_sections,
             opt_out_sections=state.settings.get("optOutSections") is True,
             opt_out_sections_water=state.settings.get("optOutSectionsWater") is True,
+            unresolved_sections_open=state.unresolved_sections_open,
         )
         index = gather_chunks_info(
             expanded,

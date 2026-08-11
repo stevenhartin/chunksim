@@ -225,8 +225,18 @@ def unlocked_sections(
     manual_sections: Mapping[str, Mapping[str, bool]] | None = None,
     opt_out_sections: bool = False,
     opt_out_sections_water: bool = False,
+    unresolved_sections_open: bool = True,
 ) -> dict[str, dict[str, bool]]:
     """Which sections of `chunk_ids` are reachable, as `{chunk: {section: True}}`.
+
+    `unresolved_sections_open` turns off the `"???"` workaround wholesale -
+    see `_unresolved_only`. It defaults to *on* because leaving it off makes
+    33 real places unreachable on every possible map, including the Shipyard
+    the Pandemonium quest is built in; it exists so a player who would rather
+    match upstream's answers exactly can have them. The finer control is
+    upstream's own and needs nothing from here: `manualSections` overrides
+    any single section in **either** direction, and is checked before this
+    runs, so a `false` entry seals a `???` section the workaround opened.
 
     Runs `expand_chunk_areas` first, then `findConnectedSections`'s fixed
     point: a section becomes reachable once one of its connections is
@@ -277,6 +287,7 @@ def unlocked_sections(
                     chunks_data,
                     opt_out_sections=opt_out_sections,
                     opt_out_sections_water=opt_out_sections_water,
+                    unresolved_sections_open=unresolved_sections_open,
                 ):
                     reachable.setdefault(chunk, {})[section_id] = True
                     added = True
@@ -293,6 +304,7 @@ def _section_is_reachable(
     *,
     opt_out_sections: bool,
     opt_out_sections_water: bool,
+    unresolved_sections_open: bool = True,
 ) -> bool:
     if opt_out_sections_water:
         return True
@@ -300,7 +312,49 @@ def _section_is_reachable(
         return True
     if isinstance(connections, list) and _any_connection_open(connections, chunk_ids, reachable):
         return True
-    return _any_static_connect_open(chunk, section_id, chunk_ids, chunks_data)
+    if _any_static_connect_open(chunk, section_id, chunk_ids, chunks_data):
+        return True
+    return unresolved_sections_open and _unresolved_only(connections)
+
+
+#: The export's unresolved-neighbour placeholder. A section whose connection
+#: list is nothing but this has had no route recorded for it *yet* - it is a
+#: gap in upstream's data rather than a statement that the place is sealed.
+UNRESOLVED_REF = "???"
+
+
+def _unresolved_only(connections: Any) -> bool:
+    """**A workaround for an upstream data gap - delete it when they fill
+    the gap in.** A section whose every connection is `"???"` is treated as
+    reachable the moment its chunk is unlocked, exactly as section `0` is.
+
+    Upstream filters `???` out of its own connection walk (index.js:7708),
+    as `graph.py` does, which leaves such a section reachable by nothing.
+    Measured against the whole export: 55 sections list it, 4 of those are
+    section `0` (already free), 18 more are rescued by a `Connect`
+    named-area link, and **33 remain unreachable with every chunk in the
+    game unlocked**. A section no configuration of the world can enter has
+    no reason to be in the export at all, so the honest reading of `???` is
+    "not recorded", not "sealed".
+
+    The consequence was not academic. Pandemonium step 5 builds the cargo
+    hold in the Shipyard, `8234-1`, which is one of the 33 - so the quest
+    could never complete, its `Raft` reward never arrived, and all 243
+    Sailing challenges stayed invalid on **every** map. Real players already
+    work around it by hand: `verf` carries a `manualSections` entry for
+    `12338-2`, another of the 33.
+
+    **This deliberately fires per section rather than off a hardcoded id
+    list, so it disappears on its own as upstream records the routes** - a
+    section that gains one real connection stops matching here with no edit.
+    `tests/test_sections.py` pins the count of sections still relying on it;
+    when that reaches zero, this function and its call above should go.
+    """
+    return (
+        isinstance(connections, list)
+        and len(connections) > 0
+        and all(isinstance(ref, str) and UNRESOLVED_REF in ref for ref in connections)
+    )
 
 
 def _any_connection_open(

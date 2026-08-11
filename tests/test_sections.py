@@ -348,3 +348,71 @@ def test_unlockable_areas_requires_the_linking_section_reachable() -> None:
     assert unlockable_areas(valid, {"100": True}, {"100": {"1": True}}, info) == {
         "Guardians' Lair": True
     }
+
+
+_UNRESOLVED_WORLD = {
+    "sections": {"500": {"1": ["???"], "2": ["600-1"]}},
+    "chunks": {"500": {}},
+}
+
+
+def test_a_section_with_only_an_unresolved_ref_opens_with_its_chunk() -> None:
+    """The export's `"???"` is "no route recorded", not "sealed" - upstream
+    filters it out of its own walk, which leaves the section reachable by
+    nothing at all. See `sections._unresolved_only`."""
+    info = ChunkInfo(_UNRESOLVED_WORLD)
+
+    assert unlocked_sections({"500": True}, info) == {"500": {"1": True}}
+
+
+def test_a_locked_chunks_unresolved_section_stays_shut() -> None:
+    info = ChunkInfo(_UNRESOLVED_WORLD)
+
+    assert unlocked_sections({}, info) == {}
+
+
+def test_a_player_can_seal_an_unresolved_section_by_hand() -> None:
+    """`manualSections` is the per-section override and it wins - it is
+    checked before the workaround runs."""
+    info = ChunkInfo(_UNRESOLVED_WORLD)
+
+    assert unlocked_sections({"500": True}, info, manual_sections={"500": {"1": False}}) == {}
+
+
+def test_the_whole_workaround_can_be_turned_off() -> None:
+    """For a player who would rather match upstream's answers exactly."""
+    info = ChunkInfo(_UNRESOLVED_WORLD)
+
+    assert unlocked_sections({"500": True}, info, unresolved_sections_open=False) == {}
+
+
+def test_a_section_with_one_real_ref_is_not_treated_as_unresolved() -> None:
+    """The workaround must disappear on its own as upstream records routes,
+    so a single real connection is enough to opt a section back out of it."""
+    info = ChunkInfo({"sections": {"500": {"1": ["???", "600-1"]}}, "chunks": {"500": {}}})
+
+    assert unlocked_sections({"500": True}, info) == {}
+
+
+@pytest.mark.real_export
+def test_the_export_still_needs_the_unresolved_workaround(real_export: ChunkInfo) -> None:
+    """**Delete `sections._unresolved_only` when this reaches zero.** These
+    are sections no configuration of the world can enter, which is what makes
+    treating them as data gaps rather than walls the honest reading.
+    """
+    unlocked = {chunk: True for chunk in real_export.chunks}
+    sealed = unlocked_sections(unlocked, real_export, unresolved_sections_open=False)
+    opened = unlocked_sections(unlocked, real_export)
+
+    rescued = {
+        f"{chunk}-{section}"
+        for chunk, sections in opened.items()
+        for section in sections
+        if not sealed.get(chunk, {}).get(section)
+    }
+
+    assert len(rescued) == 33
+    # The one that made this worth doing: Pandemonium step 5 builds the cargo
+    # hold here, so without it the quest never finishes and all 243 Sailing
+    # challenges stay invalid on every map.
+    assert "8234-1" in rescued
