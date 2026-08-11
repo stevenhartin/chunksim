@@ -1131,6 +1131,15 @@ per-tier costs above matter more than the per-tier rates. **`verf` is unchanged 
 no foundry at all, which is the check that isolates the change. Neither map's *estimate* moves:
 Smithing is not an active goal on either.
 
+**And on the uber map it loses two bands, which says the collapse is structural rather than about a
+map.** With every chunk unlocked and every level at 99, Smithing goes **54.5h -> 144.5h** and steel
+holds **30 all the way to 85** - mithril (32,838 effective) and adamant (48,347) both lose to steel's
+51,998, at the levels they open. So it is not that `fray`'s route to mithril is bad; it is that the
+foundry's mid tiers do not pay for their own bars *anywhere*, because the alloy-tier rate climbs more
+slowly than the metal costs to make. Rune is the exception at both ends - 119,739 effective of a
+published 276,000, still the top band - which is the shape the wiki's own "Profitable" column already
+hints at.
+
 **The rest of Smithing needs nothing.** The ore -> bar -> item chain is already modelled end to end
 by `{{Recipe}}`, with the materials charged: `Smelt a runite bar` at 20,000/hr, steel at 13,562, iron
 at 12,250, and the item half as tick-math over the bars a piece consumes - `Smith a steel platebody`
