@@ -1019,6 +1019,21 @@ and its `Output` is `None`, so no recipe joins it and `material_seconds_per_xp` 
 therefore the wiki's, quoted with the bars to hand, and the bars are not priced. That is optimistic
 on a chunk map in exactly the way `effective_xp_per_hour` was built to prevent.
 
+**And the bars are not cheap, which is what makes this the skill's one real gap.** Measured on
+`fray`: a bronze bar costs **1.2s** to obtain, iron 4.9, steel 7.3, **mithril 44.8, adamantite 65.0
+and runite 14.0**. A foundry preform consumes bars by the inventory, so charging them would cut the
+276,000/hr rune tier by a large multiple and almost certainly cost it the climb - and every band is
+currently the foundry's. The inversion in that list is worth knowing before quoting any of it:
+adamantite costs more than runite on `fray`, because the map's route to one is not the route to the
+other, so a tier's cost does not rise with its tier.
+
+**The rest of Smithing needs nothing.** The ore -> bar -> item chain is already modelled end to end
+by `{{Recipe}}`, with the materials charged: `Smelt a runite bar` at 20,000/hr, steel at 13,562, iron
+at 12,250, and the item half as tick-math over the bars a piece consumes - `Smith a steel platebody`
+at 24,635/hr is five bars paying five times the experience, priced as such. At **221 rated of 298**
+it is the best-covered skill in the export, and the 77 that miss are niche unreachable pieces -
+hastas, javelin heads, keel parts, felling-axe variants - rather than a hole in the model.
+
 **Measured, and the bias is almost entirely not there.** 86 of the 477 rated methods on `fray` have
 no material cost, and 61 of those declare `Items` - a number an earlier version of this file reported
 as if all 61 were wrong. Broken down, they are three different things and only the third is a
