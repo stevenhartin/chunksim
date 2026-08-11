@@ -829,15 +829,33 @@ Three things about it are worth knowing before changing a number:
   on a gilded altar, 2.5x against 3.5x. Each burner is worth exactly +50 percentage points across
   all seven altars, which `tests/test_prayer.py` asserts rather than computes from.
 
-**Sailing is refused outright, and that is a different statement from the floor.** The floor means
-"this project has not reached that method yet" and is the right answer while a scrape could still
-improve it. Sailing is the narrower case where the numbers do not exist anywhere to be found: it is
-new enough that no money-making guide covers it, `{{Recipe}}` has no rows for it and no wiki table
-publishes a rate for any of its **27 primary methods**, so all of them sit at the floor and the climb
-reads as 13,034 hours - not a conservative estimate but a made-up one wearing a number.
+**Sailing is refused while nothing about it is rated, which is a different statement from the
+floor.** The floor means "this project has not reached that method yet" and is the right answer
+while a scrape could still improve it. Sailing was the narrower case where the numbers did not exist
+anywhere to be found: no money-making guide covered it, `{{Recipe}}` has no rows for it and no wiki
+table published a rate for any of its **27 primary methods**, so all of them sat at the floor and the
+climb read as 13,034 hours - not a conservative estimate but a made-up one wearing a number.
 `estimate.UNRATED_SKILLS` puts it in `unpriced_skills` instead, alongside the combat skills but for
 the opposite reason: those have no training method in the export at all, where Sailing has plenty and
-nobody has timed one. Remove a skill from that set the day something publishes rates for it.
+nobody had timed one.
+
+**"Had" is doing work in that sentence, and it is why membership is now a precondition rather than
+the decision.** The entry was a standing claim about the world that nothing rechecked, and the world
+moved: `Sailing training` today publishes barracuda trials from level 30 (Gwenith Glide Marlin at
+**200,000/hr** with a rosewood hull and crystal extractor), courier tasks by port (30,000 at Summer
+Shore through 120,000-145,000 at Lunar Isle), shipwreck salvaging (7,500-8,000 at 55) and sea
+charting (10,000 at 22). So the refusal now holds only while **no reachable method has a real rate**,
+which `training_options` answers already by dropping every `default`, and the day one of those
+figures is joined the skill prices itself with no edit here.
+
+The pairing is needed in both directions: without the set, "nothing is rated" would refuse any skill
+the scrape has merely not reached yet, where the floor is honest and an improving scrape fixes it;
+without the recheck, a skill stays refused after its numbers arrive. **Nothing is joined yet** - the
+export's nine trial challenges are `Complete ~|The Gwenith Glide|~ at Marlin rank` and the guide's
+figures sit in a `{{formatnum:{{#expr:...round 0}}}}` table, which needs a reader `wiki.py` does not
+have (`_unwrap_expr` takes a bare `#expr` wrapper, not one nested inside `formatnum` with MediaWiki's
+`round` operator). That is the next piece of Sailing work and the export is ready for it: three
+trials at levels 30/55/72, three ranks each, and seven shipwreck tiers from 15 to 87.
 
 **A computed rate slower than the 1,000/hr floor is refused.** The floor is a deliberate stand-in for
 ignorance, not a speed, and a computed number below it says the model is missing something about that

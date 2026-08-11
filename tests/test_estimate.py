@@ -1754,3 +1754,35 @@ def test_tithe_farm_is_preferred_above_its_level_though_it_is_slower() -> None:
     # minigame wins have no waiting in them.
     assert days == pytest.approx(plan.days_for(bands[0].xp))
     assert days < plan.days_for(xp_for_level(99))
+
+
+def test_an_unrated_skill_is_rechecked_rather_than_refused_on_sight() -> None:
+    """**Membership of `UNRATED_SKILLS` is a precondition, not the decision.**
+
+    It used to be both, which made it a standing claim about the world that
+    nothing ever rechecked - and the world moved: `Sailing training` now
+    publishes figures for barracuda trials, courier tasks, salvaging and sea
+    charting, where when the entry was written it published none.
+
+    So the refusal holds only while no reachable method has a real rate. The
+    pairing is needed in both directions: without the set, "nothing is rated"
+    would refuse any skill the scrape has merely not reached yet, where the
+    floor is honest and an improving scrape fixes it; without the recheck, a
+    skill stays refused after its numbers arrive.
+    """
+    from fray_claude.costing.estimate import UNRATED_SKILLS
+    from fray_claude.costing.training import TrainingOption, training_bands
+
+    assert "Sailing" in UNRATED_SKILLS
+
+    # With a rate joined, the skill is priced by the ordinary walk rather than
+    # held back - no edit to the set required.
+    rated = TrainingOption(
+        method="The Gwenith Glide at Marlin rank",
+        level=72,
+        xp_per_hour=200_000.0,
+        match="exact",
+    )
+    bands = training_bands((rated,), xp_for_level(72), 99)
+    assert bands and bands[-1].method == "The Gwenith Glide at Marlin rank"
+    assert all(band.match != "default" for band in bands)

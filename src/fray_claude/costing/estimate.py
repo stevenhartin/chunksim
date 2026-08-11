@@ -197,18 +197,27 @@ _FREE_ROUTES = frozenset({"shop", "spawn"})
 
 #: Skills this project will not put an hours figure on, whatever the export
 #: says about training them. **A refusal, not a gap in the data** - and the
-#: only entry is `Sailing`, which is new enough that no money-making guide
-#: covers it, `{{Recipe}}` has no rows for it and no wiki table publishes a
-#: rate for any of its 27 primary methods. So every one of them would sit at
-#: the 1,000/hr floor and the climb would read as 13,034 hours, which is not a
+#: only entry is `Sailing`, which was new enough that no money-making guide
+#: covered it, `{{Recipe}}` had no rows for it and no wiki table published a
+#: rate for any of its 27 primary methods. So every one of them sat at the
+#: 1,000/hr floor and the climb read as 13,034 hours, which is not a
 #: conservative estimate but a made-up one wearing a number.
 #:
-#: The condition is deliberately *not* "no method has a rate" - that is
-#: already the floor's job, and the floor is the right answer for a skill this
-#: project simply has not reached yet. This is the narrower statement that the
-#: numbers do not exist anywhere to be found, so a reader waiting for the
-#: scrape to improve is waiting for nothing. Remove a skill from here the day
-#: something publishes rates for it.
+#: **Membership is now a *precondition*, not the decision.** It used to be
+#: both, which made it a standing claim about the world that nothing rechecked
+#: - and the world has since moved: `Sailing training` now publishes figures
+#: for barracuda trials, courier tasks, salvaging and sea charting. So a skill
+#: named here is refused only while **no reachable method of it has a real
+#: rate**, which `training_options` already answers by dropping every
+#: `default`. The day one of those rates is joined, the skill prices itself
+#: and needs no edit here.
+#:
+#: The pairing matters in both directions. Without the set, "nothing is rated"
+#: would refuse any skill the scrape simply has not reached yet, where the
+#: floor is the honest answer and an improving scrape will fix it. Without the
+#: recheck, a skill stays refused after the numbers arrive. Remove a skill from
+#: here when its rates are not merely published but *joined* - until then the
+#: entry costs nothing and stops a 13,034-hour fiction.
 UNRATED_SKILLS = frozenset({"Sailing"})
 
 #: Seconds to reach a shop and get back to where the work happens. **A rough
@@ -1404,7 +1413,9 @@ def estimate(
         # end here rather than at the floor, because a four-figure number with
         # nothing behind it is worse than an admission.
         refusal = ""
-        if xp > 0 and skill in UNRATED_SKILLS:
+        if xp > 0 and skill in UNRATED_SKILLS and not training_options(
+            derived, state.chunk_info, heuristics, skill
+        ):
             refusal = "no published rates for this skill yet"
         elif xp > 0 and not _has_training_method(state.chunk_info, skill, heuristics):
             # No `Primary: true` challenge anywhere in the export - the four
