@@ -239,7 +239,16 @@ def parse_amount(raw: str) -> float | None:
     letter is prose and falls back to `parse_number`, which takes the first
     figure as before.
     """
-    stripped = strip_links(raw).strip()
+    stripped = _unwrap_expr(strip_links(raw).strip())
+    # **A value still holding a template is not a number.** `{{#switch:}}`,
+    # `{{#var:}}` and `{{GEP|...}}` are evaluated by MediaWiki against page
+    # state and a live price, none of which is here, so the first digit inside
+    # one is whatever the branch happened to be written with. The blood rune
+    # guide is the case: its `Experience1num` is a five-line `{{#switch:}}` and
+    # `parse_number` read 66 out of it, which reached the estimate as 4,620
+    # Runecraft xp an hour.
+    if "{{" in stripped:
+        return None
     if stripped and set(stripped) <= _EXPRESSION_OK:
         # **A value that is entirely arithmetic is only ever arithmetic**, so
         # a failure here is refused rather than fed to `parse_number`. That
@@ -250,6 +259,28 @@ def parse_amount(raw: str) -> float | None:
         except (SyntaxError, ValueError, ZeroDivisionError):
             return None
     return parse_number(stripped)
+
+
+#: `{{#expr: ... }}`, MediaWiki's arithmetic parser function, and nothing
+#: else - the body is exactly the sum this module already evaluates. Anchored
+#: whole, so a value that merely *contains* one is left for the template check.
+_EXPR_CALL = re.compile(r"^\{\{\s*#expr:\s*(.*?)\s*\}\}$", re.S)
+
+
+def _unwrap_expr(value: str) -> str:
+    """`{{#expr:67*10}}` -> `67*10`. The wrapper only, never the body.
+
+    **A guide writes its arithmetic either way** - the law rune guide says
+    `54*9.5` and the death rune one says `{{#expr:67*10}}` - and reading the
+    second as prose took its first number, 67, where the sum is 670. That is a
+    factor of ten on a whole climb, arriving as a plausible rate.
+
+    Unwrapping is all this does: a body that is itself a template
+    (`{{#expr:{{GEP|Blood essence}}}}`) still holds `{{` afterwards and is
+    refused by the caller, because a live price is not something to guess at.
+    """
+    match = _EXPR_CALL.match(value)
+    return match.group(1) if match else value
 
 
 def _template_body(text: str, template: str) -> str | None:

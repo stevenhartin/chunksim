@@ -298,10 +298,17 @@ def test_an_experience_field_can_be_arithmetic() -> None:
 
 
 def test_prose_around_a_number_still_falls_back_to_the_first_figure() -> None:
-    """Only a value that is *entirely* arithmetic is evaluated; anything with
-    a letter in it is prose and keeps the old, tolerant reading."""
+    """Only a value that is *entirely* arithmetic is evaluated; **prose** with
+    a letter in it keeps the tolerant reading.
+
+    A *template* does not, and this test used to assert that it did -
+    `{{#switch:x|a=66*10.5}}` was read as 66 on the grounds that a leading
+    figure is better than nothing. The blood rune guide showed it is not: its
+    `Experience1num` really is a `{{#switch:}}`, and the 66 taken out of it
+    reached the estimate as 4,620 Runecraft xp an hour.
+    """
     assert parse_amount("27 (30 with cape)") == pytest.approx(27.0)
-    assert parse_amount("{{#switch:x|a=66*10.5}}") == pytest.approx(66.0)
+    assert parse_amount("{{#switch:x|a=66*10.5}}") is None
     assert parse_amount("no numbers here") is None
 
 
@@ -333,3 +340,34 @@ def test_experience_per_kill_is_the_default() -> None:
     )
 
     assert rates is not None and rates.per_hour == frozenset()
+
+
+def test_a_wrapped_sum_is_unwrapped_before_it_is_evaluated() -> None:
+    """**A guide writes its arithmetic either bare or wrapped**, and reading
+    the wrapped form as prose takes its first number instead of its sum.
+
+    `Money making guide/Crafting law runes through the Abyss` says `54*9.5`
+    and the death rune one says `{{#expr:67*10}}`. The second was read as 67,
+    so 50 laps an hour came out as 3,350 Runecraft xp where the guide states
+    33,500 - a factor of ten, arriving as a plausible-looking rate.
+    """
+    assert parse_amount("{{#expr:67*10}}") == pytest.approx(670.0)
+    assert parse_amount("54*9.5") == pytest.approx(513.0)
+    assert parse_amount("{{#expr: 2 + 3 }}") == pytest.approx(5.0)
+
+
+def test_a_value_that_is_still_a_template_is_refused() -> None:
+    """**`{{#switch:}}`, `{{#var:}}` and `{{GEP|...}}` are evaluated against
+    page state and a live price, neither of which is here**, so the first
+    digit inside one is whatever branch the editor happened to write first.
+
+    The blood rune guide is the case that forced this: its `Experience1num`
+    is a five-line `{{#switch:}}` over the current price of blood essence, and
+    taking the leading number read 66 - which reached the estimate as 4,620
+    Runecraft xp an hour, quoted with the same confidence as a real figure.
+    Refusing it is the same choice `parse_amount` already makes for arithmetic
+    that will not evaluate: "the guide does not say" is the honest answer.
+    """
+    assert parse_amount("{{#switch:{{#var:essence}}|0=66|#default=77}}") is None
+    assert parse_amount("{{#expr:{{GEP|Blood essence}}}}") is None, "a live price"
+    assert parse_amount("{{GEP|Nature rune}}") is None

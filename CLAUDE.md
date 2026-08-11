@@ -744,7 +744,7 @@ costs 6 x 307s and reads as 1,638 xp/hr. Both need a shop model (money as time),
 decision than a rate fix. **None of it moves a number today** - no cached map has a Construction
 goal - so this is coverage insurance rather than a correction.
 
-**Three defects in the scraped training rates, all of which the band walk amplified.** A bad rate on
+**Five defects in the scraped training rates, all of which the band walk amplified.** A bad rate on
 a *low-level* method is far worse than a bad rate anywhere else, because `training_bands` takes a
 running maximum: a wrong number at level 1 prices the whole climb. All three were found by reading
 the extremes of `wiki_rates.json` rather than by a test, and all three are now pinned:
@@ -760,6 +760,24 @@ the extremes of `wiki_rates.json` rather than by a test, and all three are now p
 - **`Experience{N}isph` says the figure is already per hour.** Ten guide-skill pairs set it, and
   Subduing Tempoross states 62,000 Fishing xp an hour beside 60 permits an hour - multiplied
   together, **3,720,000**.
+- **`{{#expr:...}}` is the same sum with a wrapper on it.** The law rune guide writes `54*9.5` and
+  the death rune one writes `{{#expr:67*10}}`; the second has letters in it, so it fell to
+  `parse_number` and was read as **67** where the sum is 670. `wiki._unwrap_expr` takes the wrapper
+  off and nothing else - a body that is itself a template still holds `{{` and is refused below.
+  Death runes went **3,350/hr -> 33,500**.
+- **A value that is still a template is not a number, and used to be read as one.** `{{#switch:}}`,
+  `{{#var:}}` and `{{GEP|...}}` are evaluated by MediaWiki against page state and a live Grand
+  Exchange price, so the first digit inside one is whichever branch the editor wrote first. The
+  blood rune guide's `Experience1num` is a five-line `{{#switch:}}` over the price of blood essence
+  and yielded **66**, which reached the estimate as **4,620 Runecraft xp an hour** wearing the same
+  confidence as a measurement. Refused now, which is the choice this file already records for
+  arithmetic that will not evaluate. `tests/test_wiki.py` used to *assert* the old reading; that
+  test now asserts the refusal and says why.
+
+Together those two moved **3 rates of 450 and dropped 3**, and nothing outside Runecraft: the whole
+`monsters` section is byte-identical. **Runecraft 1 -> 99 on `verf-sim/run-001` went 762.8h ->
+671.4h** - blood runes falling back to their *computed* recipe rate of 11,118/hr, which is both
+higher than the fabricated scrape and honestly derived.
 
 **And the most specific contained claim now wins a guide.** The existing rule only refuses a contained
 claim when some *other* method names the guide exactly, which leaves every guide nobody names exactly
