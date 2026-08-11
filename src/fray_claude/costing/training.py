@@ -25,7 +25,8 @@ from fray_claude.costing.heuristics import DEFAULT_XP_PER_HOUR
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.model.experience import MAX_LEVEL, level_for_xp, xp_for_level
 from fray_claude.derive.pipeline import Derived
-from fray_claude.costing.heuristics import Heuristics
+from fray_claude.costing.heuristics import Heuristics, Rate
+from fray_claude.costing.recipe_rates import RECIPE_SOURCE
 from fray_claude.model.summary import _mapping
 from fray_claude.costing.heuristics import activity_name
 import re
@@ -138,10 +139,36 @@ def training_options(
                 level=int(level) if isinstance(level, (int, float)) else None,
                 xp_per_hour=rate.value,
                 match=rate.match,
-                material_seconds_per_xp=heuristics.material_seconds_per_xp.get(name, 0.0),
+                material_seconds_per_xp=_material_cost(heuristics, name, rate),
             )
         )
     return tuple(sorted(found, key=lambda option: -option.effective_xp_per_hour))
+
+
+def _material_cost(heuristics: Heuristics, name: str, rate: Rate) -> float:
+    """Gathering seconds per XP, **only where the rate does not already have
+    them.**
+
+    The two rate sources measure different things and adding the same seconds
+    to both counts them twice. A money-making guide quotes a method with its
+    materials to hand - "299,000 an hour at anglerfish" describes the range,
+    not the trip before it - so the gathering has to be added. A
+    `recipe_rates` figure is `experience * 3600 / (0.6*ticks + materials +
+    overhead)`, which already *is* the whole cycle, so adding it again halves
+    the method.
+
+    Measured on `verf-sim/run-001` when this was found: 653 options carried a
+    computed rate and had their materials charged twice, against 58 with a
+    guide rate that were correct. `Build a ~|4-poster|~` read 9,270/hr against
+    a true 18,187.
+
+    Keyed on the source rather than on a flag, because the layering is what
+    decides it: `recipe_rates.apply` puts a computed rate *below* a scraped
+    one, so whichever survives is what the option is priced on.
+    """
+    if rate.source == RECIPE_SOURCE:
+        return 0.0
+    return heuristics.material_seconds_per_xp.get(name, 0.0)
 
 
 @dataclass(frozen=True)

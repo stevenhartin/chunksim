@@ -72,6 +72,11 @@ TICK_SECONDS = 0.6
 #: `default` - see `apply`, and the measurement behind that in the docstring.
 COMPUTED_MATCH = "computed"
 
+#: `Rate.source` for a rate this project computed from a recipe. **Its figure
+#: already includes the materials**, so `training._material_cost` must not add
+#: them a second time - see that function.
+RECIPE_SOURCE = "recipe"
+
 #: The verbs a challenge name starts with, stripped to leave the thing made.
 #: **Construction needs this and almost nothing else does.** Its challenges
 #: carry `Output Object` - the furniture - where every other skill carries
@@ -381,6 +386,6 @@ def apply(
         if rate.xp_per_hour < DEFAULT_XP_PER_HOUR:
             continue
         merged.setdefault(task, {})[rate.skill] = Rate(
-            value=rate.xp_per_hour, source="recipe", match=COMPUTED_MATCH
+            value=rate.xp_per_hour, source=RECIPE_SOURCE, match=COMPUTED_MATCH
         )
     return merged

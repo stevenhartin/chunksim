@@ -395,3 +395,29 @@ def test_a_band_carries_both_halves_of_its_rate() -> None:
         band.xp / band.xp_per_hour - band.xp / 290_000.0
     )
     assert band.material_hours + band.xp / 290_000.0 == pytest.approx(band.hours)
+
+
+def test_a_computed_rate_is_not_charged_for_its_materials_twice() -> None:
+    """**The two rate sources measure different things.**
+
+    A money-making guide quotes a method with its materials to hand, so the
+    gathering has to be added. A `recipe_rates` figure is
+    `experience * 3600 / (0.6*ticks + materials + overhead)` - already the
+    whole cycle - so adding it again halves the method.
+
+    Measured when this was found: 653 options on `verf-sim/run-001` carried a
+    computed rate and were charged twice, against 58 with a guide rate that
+    were correct.
+    """
+    from fray_claude.costing.recipe_rates import RECIPE_SOURCE
+    from fray_claude.costing.training import _material_cost
+
+    heuristics = Heuristics(material_seconds_per_xp={"Build a ~|4-poster|~": 0.05})
+
+    guide = Rate(value=18_187.0, source="mmg:Money making guide/Something", match="exact")
+    computed = Rate(value=18_187.0, source=RECIPE_SOURCE, match="computed")
+
+    # The guide has not paid for its materials, so they are charged.
+    assert _material_cost(heuristics, "Build a ~|4-poster|~", guide) == 0.05
+    # The computed rate already has, so they are not.
+    assert _material_cost(heuristics, "Build a ~|4-poster|~", computed) == 0.0

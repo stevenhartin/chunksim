@@ -815,6 +815,17 @@ one it would never pick.
 defect until you can see why. The CLI prints the gathering share as its own line, like farming's
 calendar days.
 
+**The two rate sources measure different things, and the same seconds must not be added to both.**
+A guide quotes a method with its materials to hand, so `effective_xp_per_hour` adds the gathering.
+A `recipe_rates` figure is `experience * 3600 / (0.6*ticks + materials + overhead)` and already *is*
+the whole cycle, so adding it again halves the method. It did, for a year: **653 options on
+`verf-sim/run-001` carried a computed rate and were charged twice**, against 58 with a guide rate
+that were correct - `Build a ~|4-poster|~` read 9,270/hr against a true 18,187.
+`training._material_cost` keys on `Rate.source`, because the layering is what decides which figure
+survives (`recipe_rates.apply` puts a computed rate *below* a scraped one). Skilling on that map went
+1,004.9h -> 994.7h; the correction is small there only because its winning methods are mostly
+guide-rated, and it is worth much more wherever a recipe rate wins a band.
+
 **The known bias, stated rather than hidden:** only methods a `{{Recipe}}` describes have a material
 cost, so a method with no recipe row is ranked as though its inputs were free and is quietly
 favoured. Coverage is 93-95% on the processing skills and ~0% on the gathering ones, where there is
