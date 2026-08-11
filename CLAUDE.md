@@ -149,7 +149,7 @@ Five things that cut across modules — the first three because each has already
 | `remote/wiki.py` | Wikitext template parsing, plus `map_tile_version` over the map page's rendered *HTML*. Pure. Quest length is in `{{Quest details}}`, **not** `{{Infobox Quest}}` — the tempting wrong template has no `length` and so returns `None` for every quest without erroring. |
 | `model/experience.py` | The exact 1–99 XP curve, closed-form. **Not a heuristic and not overridable** — that separation from `heuristics.py` is the point of the module. |
 | `remote/scrape.py` | The ~18 requests that build the scraped layer, and the coverage it reports. **Both apps run it** — `fray heuristics` and the GUI's Maps tab — so the two cannot write different files. Decides no rate; `heuristics.py` does that. |
-| `remote/skill_tables.py` | Agility, Thieving, Firemaking and **Woodcutting** rates, from the wiki tables (`Shortcuts`, `Agility`, `Stall/Thievable`, `Thieving`). Pure wikitext-table parsing with a depth-aware cell splitter, because `{{Coins\|{{GEP\|x\|10*13.8}}}}` is full of `\|` that are not cell breaks. **These are the two skills `{{Recipe}}` cannot describe** - both have zero rows in the wiki's recipe bucket. Owns `COURSE_ALIASES`, the 4 spellings the export gets wrong (`Canafis`), and `parse_woodcutting`, whose 16 rows join **all 16** on `Output` and take the **bottom** of a published range because the top is 2-tick manipulation. |
+| `remote/skill_tables.py` | Agility, Thieving, Firemaking, **Woodcutting** and **Hunter** rates, from the wiki tables (`Shortcuts`, `Agility`, `Stall/Thievable`, `Thieving`). Pure wikitext-table parsing with a depth-aware cell splitter, because `{{Coins\|{{GEP\|x\|10*13.8}}}}` is full of `\|` that are not cell breaks. **These are the two skills `{{Recipe}}` cannot describe** - both have zero rows in the wiki's recipe bucket. Owns `COURSE_ALIASES`, the 4 spellings the export gets wrong (`Canafis`), and `parse_woodcutting`, whose 16 rows join **all 16** on `Output` and take the **bottom** of a published range because the top is 2-tick manipulation. `parse_hunter` is the odd one: its tables are `level -> XP/h` curves keyed by the **section heading** that owns them, so it takes the first row and the last column - both the conservative end. |
 | `remote/stores.py` | What a shop charges and **in what currency**, from the `storeline` Bucket. 6,326 lines, of which 4,438 are coins and 126 Tokkul; the rest are points and tickets nobody converts. The API caps a query at 5,000 rows whatever `limit` says, so it pages with `offset`. Joins 403 of the export's 435 shops and prices 3,798 of its 4,163 stock lines. |
 | `remote/farming.py` | The wiki calculator's crop table, `Module:Skill calc/Farming`, read as raw Lua - 76 crops with level, per-item xp, plant xp, seed and patch type. Parsed by **brace matching, not by splitting on `name =`**: every crop's `materials` has a name of its own, and a split ends each crop before the `type` that says which patch it goes in. |
 | `costing/farming.py` | Farming as a **schedule rather than a rate**. Owns `DEFAULT_HARVESTS_PER_DAY` - fruit tree 1, tree 3, cactus 3, bush 3, allotment 8, herb 8, hardwood 1/3, redwood 1/7 - and reports two numbers that measure different things: `active_hours` (clicking, goes in the bucket) and `days` (calendar, reported beside it and never added). Hops, flowers, belladonna, spirit trees and celastrus are **absent** from the schedule rather than zeroed. |
@@ -421,7 +421,7 @@ whatever else you train, because in the game it comes free with it - see `hitpoi
 `slayer_credit` below. Measured against a known
 figure it did not see: Magic came out at 200,228/hr barraging, where the community quotes 200-250k.
 
-**Woodcutting is priced off its own training page, and the other three gathering skills are not -
+**Woodcutting and Hunter are priced off their own training pages; Mining and Fishing are not -
 which is a measurement, not an omission.** The obvious model for a gathering skill is
 `actions_per_hour = f(level, tool_tier, node_count)`, and the export has the node counts. It does not
 survive contact with the data: dividing each already-rated method's xp/hr by the wiki calculator's
@@ -437,8 +437,36 @@ parameter **is** the export's `Output`, so all sixteen rows join exactly and non
 Woodcutting went from 4 rated methods of 53 and **301.0h** to 17 and **176.4h**, every band `exact`.
 Mining's ore table and Fishing's fish table publish experience per *action* only - the figure
 `Module:Skill calc` already carries - so they stay on their guide joins rather than being given an
-invented factor; their hourly figures exist only in prose keyed by technique name (`Motherlode Mine`,
-`Barbarian Fishing`), which is the fuzzy join this project refuses.
+invented factor. Their pages *do* carry hourly figures and they still do not join: Mining's are in a
+`! Method ! Levels ! XP/h !` table keyed by a prose technique name (`Motherlode Mine`, 3-tick
+granite), and Fishing's are `level -> XP/h` curves belonging to whichever section they sit in. Both
+are the fuzzy join this project refuses.
+
+**Hunter joins on the section heading, which is the one part of that shape that is structure rather
+than prose.** `Hunter training` (not `Pay-to-play Hunter training`, which does not exist) keys its
+tables the same way Fishing's are - `Hunter level -> XP/h` - but the technique is named by the
+wikitext heading owning the table, and four of the six headings name a creature the export names
+too: `Black chinchompas`, `Maniacal monkeys`, `Carnivorous chinchompas`, `Herbiboar`. The join is a
+whole-string comparison after two stated normalisations - the `Levels 73-99: ` prefix comes off, and
+a plural `s` does - plus `heuristics._join_keys` dropping the export's ` (Hunter)` skill suffix. The
+two that miss (`Drift net fishing`, `Hunters' Rumours`) are activities with no one creature to name,
+which is a correct miss. **The first row and the last column**, both conservative: the lowest level
+the table quotes is the rate at the level the method opens, and the last `XP/h` column is `Solo`
+rather than `Alt` and `No tick manip.` rather than `Tick manip.` - the same reasoning as
+`parse_woodcutting` taking the bottom of its range.
+
+**It moves nothing today and is coverage insurance rather than a correction**, which is worth saying
+plainly: none of the four is reachable on any cached map, so Hunter still walks at 22,176/hr on
+`verf-sim/run-001` and its 609h stands. That number looks wrong and may well be right - a map with
+no chinchompas, no Herbiboar and no maniacal monkeys really is stuck with butterfly nets, and the
+value of the join is that the moment a map reaches one of those, the climb reprices itself.
+
+**The export's skill suffix is stripped as a *second* join key, never a first.** `Black chinchompa
+(Hunter)` is the creature where the bare name is the item. The suffix list is skill names only, and
+deliberately so: the wiki tabulates `Gem stall (Mor Ul Rek)`, `Counter (Gu'Tanoth)` and `Fish stall
+(Port Roberts)` **with** their parentheticals at their own rates, so a blanket strip would fall back
+to a different row's number while still recording the join as `exact`. Measured: the blanket version
+gained two joins in Agility and Thieving that the skill-name rule correctly refuses.
 
 **`TABLE_KINDS` is keyed by skill, and that is load-bearing.** The tables used to be tried in one
 fixed order for every skill, which was harmless only while no two shared a key space. Woodcutting and

@@ -783,6 +783,7 @@ TABLE_KINDS: dict[str, tuple[tuple[str, float | None], ...]] = {
     "Thieving": (("stalls", None), ("pickpockets", PICKPOCKET_CYCLE_SECONDS)),
     "Firemaking": (("burning", None),),
     "Woodcutting": (("woodcutting", None),),
+    "Hunter": (("hunter", None),),
 }
 
 
@@ -839,6 +840,21 @@ def _table_rates(
     return rated
 
 
+#: The export's "this is the skill's version of that name" suffix, and
+#: **only** that. `Black chinchompa (Hunter)` is the creature where the bare
+#: name is the item; `Gem stall (Mor Ul Rek)` and `Counter (Gu'Tanoth)` are
+#: *places*, and the wiki tabulates those separately with the parenthetical
+#: intact - so stripping one of those would quietly fall back to a different
+#: row's rate while still calling the join exact. Skill names only.
+_DISAMBIGUATOR = re.compile(
+    r"\s*\((?:Hunter|Prayer|Construction|Crafting|Cooking|Farming|Firemaking"
+    r"|Fishing|Fletching|Herblore|Magic|Mining|Runecraft|Slayer|Smithing"
+    r"|Thieving|Woodcutting|Agility|Attack|Defence|Strength|Hitpoints|Ranged"
+    r"|Sailing)\)\s*$",
+    re.IGNORECASE,
+)
+
+
 def _join_keys(challenge: dict[str, Any], task: str, aliases: Mapping[str, str]) -> list[str]:
     """Every name a challenge offers to join on, lowercased.
 
@@ -861,6 +877,13 @@ def _join_keys(challenge: dict[str, Any], task: str, aliases: Mapping[str, str])
         keys += [clean(name) for name in challenge.get(field) or () if isinstance(name, str)]
     spelled = strip_task_markup(task).removeprefix("Access the ").strip()
     keys.append(clean(aliases.get(spelled, spelled)))
+    # **The export's skill disambiguator, dropped as a *second* key.**
+    # `Black chinchompa (Hunter)` is the creature where the bare name is the
+    # item, and the wiki names only one of them. Appended after the exact
+    # keys, never instead of them, so a name the wiki does tabulate with its
+    # parenthetical (`Gem stall (Mor Ul Rek)`) still matches itself first and
+    # this can only ever add a join, never redirect one.
+    keys += [_DISAMBIGUATOR.sub("", key).strip() for key in list(keys)]
     return [key for key in dict.fromkeys(keys) if key]
 
 

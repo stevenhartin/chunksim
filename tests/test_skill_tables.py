@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from fray_claude.remote.skill_tables import (
+    parse_hunter,
     parse_woodcutting,
     parse_courses,
     parse_mark_rate,
@@ -326,3 +327,72 @@ def test_the_display_label_is_not_the_join_key() -> None:
     `Willow logs`, which is what the export's `Output` holds. Joining on the
     label would match nothing at all."""
     assert "Willow" not in {row.name for row in parse_woodcutting(_WOODCUTTING)}
+
+
+def test_hunter_rates_are_read_off_the_section_headings() -> None:
+    """**Hunter publishes per technique, not per creature**, and names the
+    technique in the heading that owns the table rather than in a column.
+
+    Four of the six headings name a creature the export also names; the two
+    that do not are activities with no one creature (`Drift net fishing`,
+    `Hunters' Rumours`), which is a correct miss and not a gap.
+    """
+    text = """
+== Levels 60-99: Maniacal monkeys ==
+{|class="wikitable"
+! {{SCP|Hunter}} level
+! XP/h
+|-
+|60
+|51,000
+|-
+|75
+|74,000
+|}
+
+== Levels 73-99: Black chinchompas ==
+{|class="wikitable"
+! rowspan="2" |{{SCP|Hunter}} level
+! colspan="2" |Alt
+! colspan="2" |Solo
+|-
+!XP/h
+!GP/h
+!XP/h
+!GP/h
+|-
+|73
+|157,000
+|{{Coins|1}}
+|145,000
+|{{Coins|2}}
+|}
+"""
+    rows = {row.name: row for row in parse_hunter(text)}
+    assert set(rows) == {"Maniacal monkey", "Black chinchompa"}, "the heading is the key"
+
+    # The lowest level the table quotes - the rate at the level it opens,
+    # which is the conservative end of a rate that climbs with level.
+    assert rows["Maniacal monkey"].level == 60
+    assert rows["Maniacal monkey"].xp_per_hour == 51_000.0
+
+    # And the *last* XP/h column: `Solo` after `Alt`, `No tick manip.` after
+    # `Tick manip.` - the figure without a second account or 2-tick clicking.
+    assert rows["Black chinchompa"].xp_per_hour == 145_000.0
+
+
+def test_a_place_parenthetical_is_not_stripped_from_a_join_key() -> None:
+    """**The export's skill suffix comes off; a place name must not.**
+
+    `Black chinchompa (Hunter)` is the creature where the bare name is the
+    item, so the wiki tabulates only one of them. But the wiki tabulates
+    `Gem stall (Mor Ul Rek)` and `Counter (Gu'Tanoth)` *with* their
+    parentheticals and at their own rates, so stripping those would fall back
+    to a different row's number while still calling the join exact.
+    """
+    from fray_claude.costing.heuristics import _DISAMBIGUATOR
+
+    assert _DISAMBIGUATOR.sub("", "black chinchompa (hunter)") == "black chinchompa"
+    assert _DISAMBIGUATOR.sub("", "chaos altar (prayer)") == "chaos altar"
+    for kept in ("gem stall (mor ul rek)", "counter (gu'tanoth)", "fish stall (port roberts)"):
+        assert _DISAMBIGUATOR.sub("", kept) == kept, kept

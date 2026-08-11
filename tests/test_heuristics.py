@@ -731,15 +731,22 @@ def test_a_table_answers_only_for_its_own_skill() -> None:
     assert training["Burn ~|magic logs|~"]["Firemaking"]["source"] == "wiki:burning"
 
 
-def test_the_gathering_tables_cover_only_woodcutting() -> None:
-    """**Mining, Fishing and Hunter are absent on purpose.** Their equivalent
-    tables publish experience per *action* - the figure `Module:Skill calc`
-    already carries - and no hourly one, and the implied actions per hour
-    spans 21x within Mining alone (65/hr for runite against 1,400 for a
-    shooting star). So a rate cannot be recovered from them without inventing
-    the missing factor, and they keep their guide joins instead.
+def test_mining_and_fishing_have_no_table_and_hunter_does() -> None:
+    """**Mining and Fishing are absent on purpose, and it is not the same
+    reason Hunter used to be.** Their per-item tables publish experience per
+    *action* - the figure `Module:Skill calc` already carries - and no hourly
+    one, and the implied actions per hour spans 21x within Mining alone
+    (65/hr for runite against 1,400 for a shooting star). Their pages *do*
+    carry hourly figures, but keyed by a prose method name (Mining) or by
+    level alone (Fishing), neither of which joins to anything structurally.
+
+    Hunter's page keys its rate tables by **section heading**, which is
+    wikitext structure, and four of the six headings name a creature the
+    export also names. So it has a table now and the other two do not.
     """
-    assert set(TABLE_KINDS) == {"Agility", "Thieving", "Firemaking", "Woodcutting"}
+    assert set(TABLE_KINDS) == {
+        "Agility", "Thieving", "Firemaking", "Woodcutting", "Hunter",
+    }
 
 
 def test_the_giants_foundry_rates_are_the_wikis_own_alloy_tiers() -> None:

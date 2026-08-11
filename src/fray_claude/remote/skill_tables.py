@@ -67,6 +67,7 @@ THIEVING_PAGE = "Thieving"
 #: The page whose table gives a log's Firemaking level and experience.
 FIREMAKING_PAGE = "Firemaking"
 WOODCUTTING_PAGE = "Pay-to-play Woodcutting training"
+HUNTER_PAGE = "Hunter training"
 PAGES: tuple[str, ...] = (
     SHORTCUTS_PAGE,
     AGILITY_PAGE,
@@ -75,6 +76,7 @@ PAGES: tuple[str, ...] = (
     "Rooftop Agility Courses",
     FIREMAKING_PAGE,
     WOODCUTTING_PAGE,
+    HUNTER_PAGE,
 )
 
 #: Export course name -> the wiki's spelling. **Only for the ones that differ.**
@@ -332,6 +334,82 @@ def parse_woodcutting(text: str) -> tuple[SkillRow, ...]:
     return tuple(found)
 
 
+#: A `(Level)` heading's own words, so the technique's name is what is left.
+_HEADING_LEVELS = re.compile(r"^Levels?\s+[\d/\u2013\u2014-]+\s*:\s*", re.I)
+
+#: A wikitext section heading, at any depth.
+_HEADING = re.compile(r"^={2,4}\s*(.+?)\s*={2,4}\s*$", re.M)
+
+
+def _singular(name: str) -> str:
+    """`Black chinchompas` -> `Black chinchompa`. Plural `s` only."""
+    return name[:-1] if name.endswith("s") and not name.endswith("ss") else name
+
+
+def parse_hunter(text: str) -> tuple[SkillRow, ...]:
+    """What each Hunter technique pays an hour, at the level it opens.
+
+    **Hunter publishes a rate per technique, not per creature**, and its
+    tables are `Hunter level -> XP/h` curves rather than one figure per row -
+    a different shape from every other table here. The technique is named by
+    the *section heading* that owns the table, which is wikitext structure
+    rather than prose, so the join is a whole-string comparison after two
+    stated normalisations: the heading's `Levels 73-99: ` prefix comes off,
+    and a plural `s` does. Four of the six join - `Black chinchompas`,
+    `Maniacal monkeys`, `Carnivorous chinchompas`, `Herbiboar` - and the two
+    that do not are activities with no one creature to name (`Drift net
+    fishing`, `Hunters' Rumours`), which is a correct miss rather than a gap.
+
+    **The first row and the last column**, both deliberately conservative and
+    both matching decisions already made here. The first row is the lowest
+    level the table quotes, which is the rate at the level the method opens -
+    the same choice `PICKPOCKET_CYCLE_SECONDS` is calibrated against, for a
+    rate that climbs with level. The last `XP/h` column is the unassisted one
+    where a table splits: black chinchompas quote `Alt` before `Solo` and
+    carnivorous ones `Tick manip.` before `No tick manip.`, so the last column
+    is the figure a player gets without a second account or 2-tick clicking -
+    the same reasoning as `parse_woodcutting` taking the bottom of its range.
+
+    The export disambiguates a creature from its item with a ` (Hunter)`
+    suffix (`Black chinchompa (Hunter)`), which `heuristics._join_keys`
+    strips; nothing about that is done here.
+    """
+    found: list[SkillRow] = []
+    marks = [(m.start(), m.group(1)) for m in _HEADING.finditer(text)]
+    for index, (start, title) in enumerate(marks):
+        end = marks[index + 1][0] if index + 1 < len(marks) else len(text)
+        name = _singular(_HEADING_LEVELS.sub("", title).strip())
+        for table in tables(text[start:end]):
+            if "XP/h" not in table:
+                continue
+            columns = [
+                position
+                for position, cell in enumerate(
+                    header.strip().lstrip("!").strip() for header in table.splitlines() if header.startswith("!")
+                )
+                if cell.startswith("XP/h")
+            ]
+            for cells in rows(table):
+                level = number(_REF.sub("", cells[0])) if cells else None
+                rates = [
+                    float(value.replace(",", ""))
+                    for value in re.findall(r"[\d,]{4,}", " ".join(cells[1:]))
+                ]
+                if level is None or not rates or level > 99:
+                    continue
+                found.append(
+                    SkillRow(
+                        name=name,
+                        level=int(level),
+                        # Last column, and only the plain figures - a `GP/h`
+                        # cell is `{{Coins|...}}` and carries no bare number.
+                        xp_per_hour=rates[-1] if len(columns) > 1 else rates[0],
+                    )
+                )
+                break  # the lowest level the table quotes
+    return tuple(found)
+
+
 def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
     """Every table this module reads, keyed by what it describes."""
     return {
@@ -341,4 +419,5 @@ def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
         "pickpockets": parse_pickpockets(pages.get(THIEVING_PAGE, "")),
         "burning": parse_burning(pages.get(FIREMAKING_PAGE, "")),
         "woodcutting": parse_woodcutting(pages.get(WOODCUTTING_PAGE, "")),
+        "hunter": parse_hunter(pages.get(HUNTER_PAGE, "")),
     }
