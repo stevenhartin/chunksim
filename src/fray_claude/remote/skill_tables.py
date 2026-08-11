@@ -70,6 +70,7 @@ WOODCUTTING_PAGE = "Pay-to-play Woodcutting training"
 HUNTER_PAGE = "Hunter training"
 FISHING_PAGE = "Pay-to-play Fishing training"
 MINING_PAGE = "Pay-to-play Mining training"
+HERBLORE_PAGE = "Herblore training"
 
 #: The Mining headings that name a rock the export also names, mapped to the
 #: export's name for it. `_heading_rates` singularises a heading, so these
@@ -119,6 +120,7 @@ PAGES: tuple[str, ...] = (
     HUNTER_PAGE,
     FISHING_PAGE,
     MINING_PAGE,
+    HERBLORE_PAGE,
 )
 
 #: Export course name -> the wiki's spelling. **Only for the ones that differ.**
@@ -512,6 +514,67 @@ def _barbarian_rows(text: str) -> tuple[SkillRow, ...]:
     return ()
 
 
+#: `{{plinkt|Name|pic=Name(3)}}` - the item, and the dose-suffixed form the
+#: export actually keys by.
+_PLINKT_FULL = re.compile(r"\{\{plinkt\|([^}]+)\}\}")
+
+
+def parse_herblore(text: str) -> tuple[SkillRow, ...]:
+    """What each potion pays an hour, from the per-item tables.
+
+    **The one page where the rate is already tabulated per item and literal.**
+    Unlike Crafting and Fletching, whose figures are MediaWiki `{{#var:}}` and
+    `{{#expr:}}` expressions that wikitext cannot yield, Herblore's tables
+    carry `| 3 | Attack potion | ... | 25 | 62,500 |` outright - so this reads
+    them with no evaluation and no rendered-HTML fetch.
+
+    **The first `{{plinkt}}` in a row is the potion**; the two after it are its
+    base and secondary, which are ingredients rather than methods and must not
+    be emitted. That is why this cannot use a naive "every plinkt is a row"
+    walk the way `parse_woodcutting` does.
+
+    **Both the name and its `pic=` are emitted**, because the export keys by
+    dose - `attack potion(3)` - where the wiki names the potion and puts the
+    dosed form in `pic=`. Measured over the page: the bare name joins 45 of
+    the challenges and the `pic=` form another 35, and emitting both costs a
+    duplicate lookup key rather than a decision about which is right.
+    """
+    found: list[SkillRow] = []
+    for table in tables(text):
+        if "plinkt" not in table:
+            continue
+        body = list(rows(table))
+        if not body:
+            continue
+        width = Counter(len(cells) for cells in body).most_common(1)[0][0]
+        # `header_columns` normalises, so `XP/Hour` arrives as `xp hour`.
+        at_rate = column_index(table, "xp hour", "xp h", width=width)
+        at_level = column_index(table, "level", width=width)
+        if at_rate is None or at_level is None:
+            continue
+        for cells in body:
+            if len(cells) <= max(at_rate, at_level):
+                continue
+            level = number(_REF.sub("", cells[at_level]))
+            rate = number(_REF.sub("", cells[at_rate]))
+            if level is None or rate is None or rate <= 0:
+                continue
+            # The potion, not its ingredients: the *first* plinkt in the row.
+            first = next(
+                (m for cell in cells for m in [_PLINKT_FULL.search(cell)] if m), None
+            )
+            if first is None:
+                continue
+            parts = [part.strip() for part in first.group(1).split("|")]
+            names = [parts[0]]
+            pic = next((p.split("=", 1)[1].strip() for p in parts[1:] if p.startswith("pic=")), None)
+            if pic and pic != parts[0]:
+                names.append(pic)
+            for name in names:
+                found.append(SkillRow(name=name, level=int(level), xp_per_hour=rate))
+    return tuple(found)
+
+
 def parse_mining(text: str) -> tuple[SkillRow, ...]:
     """Mining rates, for the three headings that name a rock.
 
@@ -584,4 +647,5 @@ def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
         "hunter": parse_hunter(pages.get(HUNTER_PAGE, "")),
         "fishing": parse_fishing(pages.get(FISHING_PAGE, "")),
         "mining": parse_mining(pages.get(MINING_PAGE, "")),
+        "herblore": parse_herblore(pages.get(HERBLORE_PAGE, "")),
     }

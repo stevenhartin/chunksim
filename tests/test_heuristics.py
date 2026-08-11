@@ -749,7 +749,7 @@ def test_every_gathering_skill_now_has_a_table() -> None:
     """
     assert set(TABLE_KINDS) == {
         "Agility", "Thieving", "Firemaking", "Woodcutting", "Hunter", "Fishing",
-        "Mining",
+        "Mining", "Herblore",
     }
 
 

@@ -12,6 +12,7 @@ import pytest
 
 from fray_claude.remote.skill_tables import (
     parse_fishing,
+    parse_herblore,
     parse_mining,
     parse_hunter,
     parse_woodcutting,
@@ -562,3 +563,37 @@ def test_mining_joins_the_headings_that_name_a_rock() -> None:
     # Not the 3-tick column, and not a heading naming a place rather than a rock.
     assert 93_000.0 not in rows.values()
     assert not any("motherlode" in name.lower() for name in rows)
+
+
+def test_herblore_reads_the_potion_and_not_its_ingredients() -> None:
+    """**The first `{{plinkt}}` in a row is the potion**; the two after it are
+    its base and secondary, which are ingredients rather than methods.
+
+    Both the name and its `pic=` are emitted, because the export keys by dose
+    (`attack potion(3)`) where the wiki names the potion and puts the dosed
+    form in `pic=`. Over the real page the bare name joins 45 challenges and
+    the `pic=` form another 35.
+    """
+    text = """
+{|class="wikitable"
+! {{SCP|Herblore}} Level
+! Potion
+! Base
+! Secondary
+! XP
+! XP/Hour
+|-
+|3
+|{{plinkt|Attack potion|pic=Attack potion(3)}}
+|{{plinkt|Guam potion (unf)}}
+|{{plinkt|Eye of newt}}
+|25
+|62,500
+|}
+"""
+    rows = {row.name: row for row in parse_herblore(text)}
+    # The potion, under both spellings; never the base or the secondary.
+    assert set(rows) == {"Attack potion", "Attack potion(3)"}
+    assert rows["Attack potion"].xp_per_hour == 62_500.0
+    assert rows["Attack potion"].level == 3
+    assert rows["Attack potion(3)"].xp_per_hour == 62_500.0
