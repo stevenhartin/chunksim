@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+import re
 from typing import Any
 
 import pytest
@@ -890,3 +891,44 @@ def test_the_rifts_rate_has_already_paid_for_its_own_essence() -> None:
     inclusive = Rate(value=40_000.0, source=GOTR_SOURCE, match="exact")
     assert _material_cost(heuristics, "task", charged) == 0.3
     assert _material_cost(heuristics, "task", inclusive) == 0.0
+
+
+@pytest.mark.real_export
+def test_a_challenge_says_what_a_method_needs_and_never_how_much(
+    real_export: ChunkInfo,
+) -> None:
+    """**Why `computed_rates` is the only source of `material_seconds_per_xp`.**
+
+    That figure is `material seconds per action / xp per action`, and a
+    challenge states neither. This pins the measurement, because the tempting
+    fix - "take the materials off the challenge's own `Items` instead of off a
+    recipe row" - reads as a small change and is not possible at all. Three
+    paragraphs of CLAUDE.md used to propose it.
+
+    `{{Recipe}}` is the only place the two numbers exist together, so the
+    limitation is a consequence of the data rather than an oversight. If this
+    test ever fails, upstream has started publishing one of them and the fix
+    becomes real.
+    """
+    quantity = re.compile(r"\sx\s*[\d,]+")
+    quantities: list[str] = []
+    rewards: list[str] = []
+    for skill, group in real_export.challenges.items():
+        if not isinstance(group, dict):
+            continue
+        for task, challenge in group.items():
+            if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
+                continue
+            quantities += [
+                f"{skill}/{task}: {item}"
+                for item in challenge.get("Items") or ()
+                if isinstance(item, str) and quantity.search(item)
+            ]
+            if "XpReward" in challenge:
+                rewards.append(f"{skill}/{task}")
+
+    assert quantities == [], "no primary challenge states how many of anything"
+
+    # `XpReward` exists, but it is a one-off lump on quests and diaries - the
+    # grant `training.quest_xp_grants` spends - and never a per-action rate.
+    assert rewards == [], "no primary challenge states what one action pays"

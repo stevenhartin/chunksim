@@ -534,8 +534,9 @@ would not.** `Fletch a ~|dragon dart|~` declares `Items: ["Dragon dart tip*", "F
 both marked consumed - but `material_seconds_per_xp` is built from `computed_rates` and nothing
 describes dart fletching as a recipe, so the tips price at **zero** and 1,500,000/hr is the whole
 climb's top band. On a chunk map a dart tip is smithed from a bar of its own tier, which is real
-work. It is the general bias below with the case that makes it matter, and closing it is the same
-`Items`-rather-than-recipe work Herblore's herbs need.
+work. It is the general bias below with the case that makes it matter, and it wants the same
+per-action model Herblore's herbs do - which the export does not carry; see "the obvious fix does
+not exist" below.
 
 **Hunter, four Fishing methods and three Mining ones join on the section heading, which is the one
 part of that shape that is structure rather than prose.** `Hunter training` (not `Pay-to-play Hunter training`, which does not exist) keys its
@@ -968,6 +969,24 @@ favoured. **Fletching's darts are the case that proved this can win a band** - n
 dart fletching as a recipe, so its tips price at zero and 1,500,000 xp/hr tops the climb; see the
 darts paragraph above.
 
+**And the obvious fix does not exist, which is worth writing down because three paragraphs used to
+point at it.** "Give a method its materials from the challenge's own `Items` rather than only from a
+recipe row" cannot be done: `material_seconds_per_xp` is `material seconds per action / xp per
+action`, and **a challenge states neither number**. Measured over the whole export - **0 of the
+2,710 primary challenges carry a quantity** anywhere in `Items`, and no per-action experience field
+exists at all. The one experience key is `XpReward`, a *one-off lump* on 177 quests, 54 diaries and
+one museum quiz, **none of them `Primary`** - it is the grant `training.quest_xp_grants` already
+spends, not a rate. So `Items` says a 4-poster needs mahogany planks and never that it needs four of
+them, nor what building one pays.
+
+`{{Recipe}}` is the only place those two numbers exist together, which is why `computed_rates` is the
+sole source of `material_seconds_per_xp` - a consequence of the data rather than an oversight to
+tidy. **The narrow case that would work is a rate source that is itself per action**, where the
+experience is known and one-of-each is a fair assumption: `parse_darts` is exactly that shape and is
+the one family it would close. Firemaking is the other and deliberately declines, since every
+published Firemaking rate is quoted with the logs to hand. Anything wider needs a per-action model
+the export does not carry.
+
 **Herblore is where that bias bites hardest, and it is half-closed rather than absent.** The
 expensive part of the skill is the grimy herb, not the mixing, and the walk *can* price one: on the
 uber map a grimy ranarr weed costs **168.9 seconds** and a snapdragon **195.3**, mostly off monster
@@ -975,11 +994,9 @@ drops, which is the right order of magnitude. **48 of the 86 rated and reachable
 carry that cost; the other 38 do not**, because `material_seconds_per_xp` is built from
 `computed_rates` and nowhere else - so a potion the recipe data does not reach is ranked as though
 its herbs were free. That is the general bias above with a number on it, and Herblore is the skill
-where the missing half is most of the true cost. Closing it means giving a method its materials from
-the challenge's own `Items` rather than only from a recipe row, which is the same gap the `*`
-secondary marker was found for - see the Giants' Foundry caveat above. Coverage is 93-95% on the processing skills and ~0% on the gathering ones, where there is
-usually nothing to consume anyway - but this is the direction to check first when a chosen method
-looks too good.
+where the missing half is most of the true cost. Coverage is 93-95% on the processing skills and ~0%
+on the gathering ones, where there is usually nothing to consume anyway - but this is the direction
+to check first when a chosen method looks too good.
 
 **Two computed layers, and they sit on opposite sides of the scrape.** `dps_bridge` puts its kill
 rates *above* the guides; `recipe_rates` puts its XP rates *below* them. That is not an
