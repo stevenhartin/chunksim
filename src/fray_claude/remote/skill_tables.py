@@ -76,6 +76,21 @@ FISHING_PAGE = "Pay-to-play Fishing training"
 #: `Raw `: two of the four need it and two do not, so a rule would be a rule
 #: with as many exceptions as cases - and this is the same kind of small,
 #: auditable table `COURSE_ALIASES` already is.
+#: Barbarian Fishing's table rows, by the Fishing level each one states, to
+#: the export's name for the fish caught at that level. **The wiki's own
+#: breakpoints are the export's challenge levels** - 48, 58 and 70 are exactly
+#: where leaping trout, salmon and sturgeon unlock - so the technique's curve
+#: is already three methods and needs no curve support to model. Its rows at
+#: 80, 90 and 99 are the sturgeon method again at higher level and have no
+#: challenge of their own; dropping them leaves sturgeon at its level-70
+#: figure, which is the conservative end.
+BARBARIAN_PAGE_HEADING = "Barbarian Fishing"
+BARBARIAN_BY_LEVEL: dict[int, str] = {
+    48: "Leaping trout",
+    58: "Leaping salmon",
+    70: "Leaping sturgeon",
+}
+
 FISHING_BY_FISH: dict[str, str] = {
     "Monkfish": "Raw monkfish",
     "Karambwan": "Raw karambwan",
@@ -428,11 +443,61 @@ def parse_fishing(text: str) -> tuple[SkillRow, ...]:
     AFK at that level - so the guides are not being overridden by a better
     source, only supplemented where they have nothing.
     """
-    return tuple(
+    named = tuple(
         replace(row, name=FISHING_BY_FISH[row.name])
         for row in _heading_rates(text)
         if row.name in FISHING_BY_FISH
     )
+    return named + _barbarian_rows(text)
+
+
+def _barbarian_rows(text: str) -> tuple[SkillRow, ...]:
+    """Barbarian Fishing, as the three methods its own table already is.
+
+    **The wiki's level breakpoints are the export's challenge levels.** The
+    table steps at 48, 58 and 70, which is exactly where leaping trout, salmon
+    and sturgeon unlock, so what looks like one technique with a curve is three
+    challenges with a rate each - and the band walk then uses the right one at
+    the right level with no curve support needed. That correspondence is why
+    this is a structural join rather than a guess: the rows *are* the fish.
+
+    **The AFK column, and this skill's own share of it.** The table gives
+    `XP/h (AFK)` before `XP/h (3-tick)`, so unlike Hunter's `Alt`/`Solo` the
+    conservative group is the *first* rather than the last - which is why this
+    reads the column explicitly instead of reusing `_heading_rates`' position
+    rule. Within it, the `Fishing` column rather than the `Total`: barbarian
+    fishing really does pay Strength and Agility as well (48,000 Fishing
+    against 56,800 total at level 70), but those belong to those skills and
+    crediting them here would price one action into three climbs.
+    """
+    start = text.find("== " + BARBARIAN_PAGE_HEADING)
+    if start < 0:
+        start = text.find(BARBARIAN_PAGE_HEADING)
+    if start < 0:
+        return ()
+    for table in tables(text[start:]):
+        if "XP/h (AFK)" not in table:
+            continue
+        found: list[SkillRow] = []
+        for cells in rows(table):
+            level = number(_REF.sub("", cells[0])) if cells else None
+            if level is None or int(level) not in BARBARIAN_BY_LEVEL:
+                continue
+            rates = [
+                float(value.replace(",", ""))
+                for value in re.findall(r"[\d,]{4,}", " ".join(cells[1:]))
+            ]
+            if not rates:
+                continue
+            found.append(
+                SkillRow(
+                    name=BARBARIAN_BY_LEVEL[int(level)],
+                    level=int(level),
+                    xp_per_hour=rates[0],
+                )
+            )
+        return tuple(found)
+    return ()
 
 
 def parse_hunter(text: str) -> tuple[SkillRow, ...]:

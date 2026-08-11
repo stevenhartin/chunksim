@@ -815,29 +815,32 @@ def _table_rates(
         kind: {row.name.lower(): row for row in rows} for kind, rows in tables.items()
     }
     rated: dict[str, dict[str, Rate]] = {}
-    for task, skill in sorted(primary_training_tasks(chunk_info).items()):
-        if skill not in TABLE_KINDS:
-            continue
-        challenge = _mapping(chunk_info.challenges, skill).get(task)
-        if not isinstance(challenge, dict):
-            continue
-        keys = _join_keys(challenge, task, COURSE_ALIASES)
-        for kind, per_hour in TABLE_KINDS[skill]:
-            rows_for = lookup.get(kind, {})
-            row = next((rows_for[key] for key in keys if key in rows_for), None)
-            if row is None:
+    # **Walked per skill, not through `primary_training_tasks`.** That returns
+    # one skill per task, so a challenge listed under several loses all but the
+    # last - 50 of the export's 2,657 primary challenges are claimed by more
+    # than one skill, and the three barbarian-fishing ones went to `Strength`,
+    # taking their `Output` with them and silently costing Fishing its join.
+    for skill in sorted(TABLE_KINDS):
+        for task, challenge in sorted(_mapping(chunk_info.challenges, skill).items()):
+            if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
                 continue
-            if kind == "burning":
-                value: float | None = burning_rate(row.experience)
-            elif per_hour is None:
-                value = row.xp_per_hour
-            else:
-                value = row.experience * 3600.0 / per_hour
-            if value and value > 0:
-                rated.setdefault(task, {})[skill] = Rate(
-                    value=value, source=f"wiki:{kind}", match="exact"
-                )
-            break
+            keys = _join_keys(challenge, task, COURSE_ALIASES)
+            for kind, per_hour in TABLE_KINDS[skill]:
+                rows_for = lookup.get(kind, {})
+                row = next((rows_for[key] for key in keys if key in rows_for), None)
+                if row is None:
+                    continue
+                if kind == "burning":
+                    value: float | None = burning_rate(row.experience)
+                elif per_hour is None:
+                    value = row.xp_per_hour
+                else:
+                    value = row.experience * 3600.0 / per_hour
+                if value and value > 0:
+                    rated.setdefault(task, {})[skill] = Rate(
+                        value=value, source=f"wiki:{kind}", match="exact"
+                    )
+                break
     return rated
 
 

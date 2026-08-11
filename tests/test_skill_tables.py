@@ -445,3 +445,70 @@ def test_fishing_joins_only_the_headings_that_name_one_fish() -> None:
     assert rows == {"Raw karambwan": 29_000.0, "Sacred eel": 20_000.0}
     # And the technique is refused rather than guessed at.
     assert not any("fly" in name.lower() for name in rows)
+
+
+def test_barbarian_fishing_is_three_methods_not_one_curve() -> None:
+    """**The wiki's level breakpoints are the export's challenge levels.**
+
+    48, 58 and 70 are exactly where leaping trout, salmon and sturgeon unlock,
+    so what reads as one technique with a doubling curve is three challenges
+    with a rate each - and the band walk then uses the right one at the right
+    level with no curve support needed.
+
+    The AFK column, and this skill's own share of it: `XP/h (AFK)` comes
+    *before* `XP/h (3-tick)` here, so unlike Hunter's `Alt`/`Solo` the
+    conservative group is the first. Within it the `Fishing` column and not
+    the `Total`, which folds in Strength and Agility.
+    """
+    text = """
+== Levels 58-71/99: Barbarian Fishing ==
+{|class="wikitable"
+! rowspan="2" | {{SCP|Fishing}} Level
+! colspan="3" | XP/h (AFK)
+! colspan="4" | XP/h (3-tick)
+|-
+! {{SCP|Fishing}}
+! {{SCP|Strength}}/{{SCP|Agility}}
+! {{SCP}} Total
+! {{SCP|Fishing}}
+! {{SCP|Strength}}/{{SCP|Agility}}
+! {{SCP|Cooking}}
+! {{SCP}} Total
+|-
+| 48
+| 23,000
+| 2,300
+| 27,600
+| 41,000
+| 4,100
+| 5,400
+| 54,600
+|-
+| 70
+| 48,000
+| 4,400
+| 56,800
+| 90,000
+| 8,200
+| 13,800
+| 120,200
+|-
+| 99
+| 57,000
+| 5,200
+| 67,400
+| 108,000
+| 9,800
+| 16,800
+| 144,400
+|}
+"""
+    rows = {row.name: row for row in parse_fishing(text)}
+    assert set(rows) == {"Leaping trout", "Leaping sturgeon"}, "a row is a fish"
+    # AFK Fishing, not 3-tick (41,000) and not the AFK total (27,600).
+    assert rows["Leaping trout"].xp_per_hour == 23_000.0
+    assert rows["Leaping trout"].level == 48
+    assert rows["Leaping sturgeon"].xp_per_hour == 48_000.0
+    # Level 99 has no challenge of its own and is dropped rather than
+    # inflating sturgeon past the level it is actually used from.
+    assert all(row.level != 99 for row in rows.values())

@@ -458,10 +458,26 @@ rather than `Alt` and `No tick manip.` rather than `Tick manip.` - the same reas
 **Fishing gets the same treatment for the four headings that name one fish** - `Monkfish`,
 `Karambwan`, `Infernal eel`, `Sacred eel` - through `FISHING_BY_FISH`, which maps each to the
 export's name because two carry a `Raw ` prefix and two do not, so a rule would have as many
-exceptions as cases. The other eight headings are *techniques*: `Fly fishing` catches trout and
-salmon, `Barbarian Fishing` three more, where the export has one challenge per fish. Joining those
-needs a hand-built technique-to-fish table **and** one rate for a curve that doubles across the
-technique's range, so they are refused and keep their guide joins.
+exceptions as cases. The remaining headings are *techniques* covering several fish each - `Fly
+fishing` catches trout and salmon - and are refused, keeping their guide joins.
+
+**Barbarian Fishing is the exception, because its own table is already three methods.** Its rows
+step at **48, 58 and 70**, which is exactly where leaping trout, salmon and sturgeon unlock in the
+export: the wiki's level breakpoints *are* the challenge levels, so the curve that made the other
+techniques unjoinable resolves into one rate per challenge and needs no curve support at all
+(23,000 / 37,000 / 48,000). Its rows at 80, 90 and 99 are the sturgeon method again and have no
+challenge, so they are dropped rather than inflating it past the level it is used from. **The AFK
+column, and the `Fishing` share of it** - `XP/h (AFK)` comes *before* `XP/h (3-tick)` here, so
+unlike Hunter's `Alt`/`Solo` the conservative group is the first, and the `Total` folds in the
+Strength and Agility the technique also pays, which belong to those climbs.
+
+**A challenge two skills claim used to lose its join, and that is what hid this.**
+`primary_training_tasks` returns one skill per task, so a challenge listed under several keeps only
+the last written - **50 of the export's 2,657 primary challenges are claimed by more than one
+skill**. The three barbarian-fishing ones are `Primary` for Agility, Fishing *and* Strength and went
+to Strength, whose copy carries no `Output`, so Fishing had a table row and no way to reach it.
+`_table_rates` walks per skill instead, which also recovered `Barbarian Outpost Agility Course` -
+claimed by Agility and Strength, and silently unrated for the same reason.
 
 **The guides were checked against that page rather than assumed to be worse.** They agree where both
 cover a method: the salmon rate in use is 25,432 against the page's own 25,000 AFK at that level, so

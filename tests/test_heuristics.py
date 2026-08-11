@@ -776,3 +776,36 @@ def test_the_giants_foundry_rates_are_the_wikis_own_alloy_tiers() -> None:
         "n adamant": 195_000,
         "rune": 276_000,
     }
+
+
+def test_a_challenge_two_skills_claim_still_joins_for_both() -> None:
+    """**`primary_training_tasks` keeps one skill per task**, so a challenge
+    listed under several loses all but the last - 50 of the export's 2,657 are
+    claimed by more than one skill.
+
+    The three barbarian-fishing challenges are `Primary` for Agility, Fishing
+    *and* Strength, and went to Strength - whose copy carries no `Output`, so
+    Fishing silently lost a join it had a table row for. `_table_rates` walks
+    per skill instead.
+    """
+    info = _info(
+        challenges={
+            "Fishing": {
+                "Catch a ~|leaping trout|~": {
+                    "Primary": True,
+                    "Level": 48,
+                    "Output": "Leaping trout",
+                }
+            },
+            # Written last, so the task-keyed mapping would answer `Strength`.
+            "Strength": {
+                "Catch a ~|leaping trout|~": {"Primary": True, "Level": 48}
+            },
+        }
+    )
+    tables = {"fishing": (SkillRow(name="Leaping trout", level=48, xp_per_hour=23_000.0),)}
+
+    training = _config(info=info, skill_tables=tables)["training"]
+
+    assert training["Catch a ~|leaping trout|~"]["Fishing"]["value"] == 23_000.0
+    assert training["Catch a ~|leaping trout|~"]["Fishing"]["source"] == "wiki:fishing"
