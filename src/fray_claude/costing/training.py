@@ -50,6 +50,12 @@ class TrainingOption:
     #: consumes nothing or that no recipe describes it - see
     #: `effective_xp_per_hour`.
     material_seconds_per_xp: float = 0.0
+    #: Which rate source won this option, as `Rate.source` spells it. Carried
+    #: so a caller can prefer a *particular* method over a faster one -
+    #: `estimate.py` does exactly that for Tithe Farm, which loses on hours
+    #: and wins on calendar. Not serialised: it is a routing detail, where
+    #: `match` is the thing a reader is being asked to judge.
+    source: str = ""
 
     @property
     def effective_xp_per_hour(self) -> float:
@@ -140,6 +146,7 @@ def training_options(
                 xp_per_hour=rate.value,
                 match=rate.match,
                 material_seconds_per_xp=_material_cost(heuristics, name, rate),
+                source=rate.source,
             )
         )
     return tuple(sorted(found, key=lambda option: -option.effective_xp_per_hour))

@@ -134,7 +134,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 from fray_claude.costing.levels import (
     goal_levels,
@@ -151,15 +151,25 @@ from fray_claude.model.experience import (
     xp_for_level,
 )
 from fray_claude.costing.combat_xp import COMBAT_SKILLS, hitpoints_credit, slayer_credit
-from fray_claude.costing.farming import DEFAULT_HARVESTS_PER_DAY, plan_for as farming_plan
+from fray_claude.costing.farming import (
+    DEFAULT_HARVESTS_PER_DAY,
+    FarmingPlan,
+    plan_for as farming_plan,
+)
 from fray_claude.costing.training import (
     LampGrant,
     TrainingBand,
+    TrainingOption,
     quest_xp_grants,
     training_bands,
     training_options,
 )
-from fray_claude.costing.heuristics import Heuristics, Superior, activity_name
+from fray_claude.costing.heuristics import (
+    TITHE_SOURCE,
+    Heuristics,
+    Superior,
+    activity_name,
+)
 from fray_claude.derive.pipeline import Derived, MapState
 from fray_claude.model.rates import parse_quantity, parse_ratio
 from fray_claude.derive.search import WorldIndex, normalise
@@ -1055,6 +1065,52 @@ def _has_training_method(chunk_info: ChunkInfo, skill: str, heuristics: Heuristi
     )
 
 
+def _farming_bands(
+    plan: FarmingPlan,
+    options: Sequence[TrainingOption],
+    start_xp: int,
+    capped: int,
+) -> tuple[tuple[TrainingBand, ...], float]:
+    """Farming's climb and its calendar, which are two different quantities.
+
+    **The schedule is one method among the skill's others, not the whole
+    answer.** It used to be the whole answer, and that hid Tithe Farm - a
+    minigame with no growing time at all, which the map may or may not reach.
+
+    **Where the minigame is available it is preferred outright, and not
+    because it is faster by the hour.** It is not: the schedule's blended rate
+    counts only the clicking, so it reads several times higher while taking
+    months of calendar to deliver. The axis that decides is the calendar, and
+    on that the minigame wins by roughly six to one - so it is chosen above
+    the level it opens at and the schedule keeps everything below, which is
+    also what a player would really do. The wiki says the same thing from the
+    other side: you tithe farm *between* the time patches take to grow.
+
+    The calendar is charged for the schedule's stretch alone, since the bands
+    the minigame wins have no waiting in them.
+    """
+    schedule = TrainingOption(
+        method=f"{len(plan.runs)} patches, {plan.xp_per_day:,.0f} xp/day",
+        level=1,
+        xp_per_hour=plan.xp_per_day / plan.hours_per_day,
+        match="farming",
+    )
+    active = min(
+        (option.level or 1 for option in options if option.source == TITHE_SOURCE),
+        default=None,
+    )
+    if active is None or active >= capped:
+        bands = training_bands((*options, schedule), start_xp, capped)
+    else:
+        split = max(start_xp, xp_for_level(active))
+        bands = training_bands((*options, schedule), start_xp, level_for_xp(split))
+        # Above the minigame's level the schedule is left out rather than
+        # outranked, which is the whole of "prefer it where you have it".
+        bands += training_bands(options, split, capped)
+    grown = sum(band.xp for band in bands if band.match == "farming")
+    return bands, plan.days_for(grown) if grown > 0 else 0.0
+
+
 def _skill_estimate(
     skill: str,
     goal: str,
@@ -1385,18 +1441,13 @@ def estimate(
                 },
             )
             if plan.xp_per_day > 0 and plan.hours_per_day > 0:
-                farming_days = plan.days_for(xp)
-                bands = (
-                    TrainingBand(
-                        level_from=level_for_xp(start_xp),
-                        level_to=capped,
-                        xp=xp,
-                        xp_per_hour=plan.xp_per_day / plan.hours_per_day,
-                        method=f"{len(plan.runs)} patches, {plan.xp_per_day:,.0f} xp/day",
-                        match="farming",
-                    ),
+                bands, farming_days = _farming_bands(
+                    plan,
+                    training_options(derived, state.chunk_info, heuristics, skill),
+                    start_xp,
+                    capped,
                 )
-        if farming_days > 0:
+        if bands:
             pass
         elif skill == "Slayer" and slayer_rate is not None and slayer_rate.xp_per_hour > 0:
             # **Slayer is one band by nature.** Its rate is a distribution over

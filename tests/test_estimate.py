@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from fray_claude.model.experience import xp_for_level
+
 import pytest
 
 from fray_claude.derive.active_tasks import SkillClassification, TaskClassification
@@ -1685,3 +1687,70 @@ def test_a_slayer_climb_pays_for_the_combat_climbs_beside_it(
     assert credited, "a Slayer climb earned no combat experience for anything"
     for entry in credited:
         assert entry.xp_from_combat <= xp_between(entry.current_level, entry.target_level)
+
+
+def _farming_plan() -> Any:
+    """A one-crop schedule, shaped only to have a rate and a calendar."""
+    from fray_claude.costing.farming import FarmingPlan, FarmingRun
+
+    return FarmingPlan(
+        runs=(
+            FarmingRun(
+                key="Herb", crop="Ranarr weed", level=32,
+                experience=100_000.0, harvests_per_day=1.0,
+            ),
+        )
+    )
+
+
+def test_the_farm_schedule_is_one_method_rather_than_the_whole_answer() -> None:
+    """It used to be the whole answer, which hid Tithe Farm entirely - a
+    minigame with no growing time at all that the map may or may not reach.
+
+    With no minigame available nothing changes: the schedule wins every band
+    and the calendar is charged for the whole climb, exactly as before.
+    """
+    from fray_claude.costing.estimate import _farming_bands
+
+    plan = _farming_plan()
+    bands, days = _farming_bands(plan, (), 0, 99)
+
+    assert [band.match for band in bands] == ["farming"]
+    assert days == pytest.approx(plan.days_for(xp_for_level(99)))
+
+
+def test_tithe_farm_is_preferred_above_its_level_though_it_is_slower() -> None:
+    """**The axis that decides is the calendar, not the hour.** The schedule's
+    blended rate counts only the clicking, so it reads several times higher
+    than the minigame while taking months to deliver; a walk ranking on rate
+    would therefore never pick the minigame.
+
+    So above the level it opens at the schedule is left out rather than
+    outranked, and below it the schedule keeps everything - which is also what
+    a player does. Measured on `verf-sim/run-001`: 64.0h over 145 calendar
+    days becomes 138.0h over 12.2, buying 133 days for 74 hours.
+    """
+    from fray_claude.costing.estimate import _farming_bands
+    from fray_claude.costing.heuristics import TITHE_SOURCE
+    from fray_claude.costing.training import TrainingOption
+
+    plan = _farming_plan()
+    tithe = TrainingOption(
+        method="logavano fruit",
+        level=74,
+        # Deliberately *slower* per hour than the schedule, which is the real
+        # relationship and the reason this cannot be a max().
+        xp_per_hour=plan.xp_per_day / plan.hours_per_day / 2.0,
+        match="exact",
+        source=TITHE_SOURCE,
+    )
+    bands, days = _farming_bands(plan, (tithe,), 0, 99)
+
+    assert [band.match for band in bands] == ["farming", "exact"]
+    assert bands[0].level_to == 74, "the schedule keeps everything below"
+    assert bands[1].method == "logavano fruit"
+
+    # The calendar is charged for the schedule's stretch alone - the bands the
+    # minigame wins have no waiting in them.
+    assert days == pytest.approx(plan.days_for(bands[0].xp))
+    assert days < plan.days_for(xp_for_level(99))

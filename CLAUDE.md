@@ -470,19 +470,32 @@ be gained"; the rate climbs steeply with the seed tier, so the 34 and 54 fruits 
 than borrowing the level-74 number. Its seeds come out of the minigame, so `wiki:tithe` joins
 `wiki:gotr` and `recipe` in `training._ALL_INCLUSIVE_SOURCES`.
 
-**Where it is spent is the caveat, and it is a real one.** `estimate.py`'s Farming branch uses
-`farming_plan` *exclusively* whenever `heuristics.crops` is non-empty and the plan yields a positive
-xp/day, and falls through to the ordinary band walk only when it does not. So the rate lands on the
-fallback path - a map holding the minigame but no usable crop schedule - where **Farming 1 -> 99 on
-`verf-sim/run-001` goes 13,034h, the bare floor, to 1,228.9h**. On a map whose schedule does work it
-is not consulted at all.
+**The schedule is now one method among the skill's others rather than the whole answer**, which is
+what `estimate._farming_bands` exists for. It used to be the whole answer - `farming_plan` ran
+whenever `heuristics.crops` was non-empty and nothing else was consulted - and that hid the minigame
+completely.
 
-That is not obviously wrong, but it is not obviously right either, and the two are not comparable on
-one axis: the schedule is **64 active hours spread over 145 calendar days**, the minigame about
-**145 hours with no wait at all**. The wiki says as much - you tithe farm *between* the time patches
-take to grow - so the honest answer is neither a `min` nor a sum, and expressing "or finish it in
-hours instead of months" is an output-shape decision rather than a rate fix. Recorded here so the
-next attempt starts from the measurement.
+**Where the minigame is reachable it is preferred outright, and not because it is faster by the
+hour.** It is not, and this is the part worth understanding before changing it: the schedule's
+blended rate counts only the *clicking*, so it reads 203,659/hr against the minigame's 90,000 while
+taking months of calendar to deliver. A walk ranking on rate would never pick the minigame. The axis
+that decides is the calendar, so above the level the minigame opens at the schedule is **left out
+rather than outranked**, and below it the schedule keeps everything - which is also what a player
+does, and what the wiki describes from the other side when it says you tithe farm *between* the time
+patches take to grow. The calendar is then charged for the schedule's stretch alone, since the bands
+the minigame wins have no waiting in them.
+
+Measured, and the trade is the whole point:
+
+| map | active hours | calendar days |
+|---|---:|---:|
+| `fray` - no Tithe Farm reachable | 64.0h | 145.0 |
+| `verf-sim/run-001` - reachable | **138.0h** | **12.2** |
+
+So it buys 133 days for 74 hours. **`fray` is byte-identical to before**, which is the check that
+matters: a map without the minigame takes the path it always took. On the *fallback* path - a map
+holding the minigame and no usable crop schedule at all - Farming 1 -> 99 on `verf-sim/run-001` goes
+13,034h, the bare floor, to 1,228.9h.
 
 **Noticed while measuring, unfixed:** on the fallback path the uber map prices Farming 1 -> 74 with
 `ultracompost` at **335/hr**, far below the 1,000/hr floor. The floor refusal in `recipe_rates`
