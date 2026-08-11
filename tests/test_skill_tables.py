@@ -14,6 +14,7 @@ from fray_claude.remote.skill_tables import (
     parse_fishing,
     parse_herblore,
     parse_mining,
+    parse_cooking,
     parse_darts,
     parse_gotr,
     parse_hunter,
@@ -945,3 +946,59 @@ def test_the_barracuda_trials_are_nine_rows_of_trial_against_rank() -> None:
     assert rows["Complete The Gwenith Glide at Marlin rank"].xp_per_hour == pytest.approx(
         184_369, abs=1
     )
+
+
+def test_cooking_reads_meat_and_fish_and_refuses_the_assembled_foods() -> None:
+    """**The restriction is the whole of the judgement here.** A fish on a
+    range is one raw item and the published experience *is* the action, so a
+    per-item table plus one cycle constant describes it. A pie is several
+    ingredients over several steps, where that action is the last and cheapest
+    of them.
+
+    Read whole, the page put `curry` at 365,596/hr with its ingredients free
+    and it topped the climb - the documented material bias picking a method
+    nobody would train on.
+    """
+    text = """
+===Meat / fish===
+{| class="wikitable"
+!Level
+! colspan="2" |Item
+!XP
+!Healing
+|-
+|1||{{plinkt|Shrimps}}||30||3
+|-
+|84||{{plinkt|Anglerfish}}||230||22
+|}
+
+===Pies===
+{| class="wikitable"
+!Level
+! colspan="2" |Item
+!XP
+!Healing
+|-
+|60||{{plinkt|Curry}}||280||19
+|}
+"""
+    rows = {row.name: row for row in parse_cooking(text)}
+    assert set(rows) == {"Shrimps", "Anglerfish"}
+    assert rows["Anglerfish"].level == 84
+    assert rows["Anglerfish"].experience == pytest.approx(230.0)
+    assert all(row.xp_per_hour is None for row in rows.values()), "a fact, not a pace"
+
+
+def test_the_modelled_cooking_pace_is_an_inventory_plus_a_bank_trip() -> None:
+    """**A range's pace is the same whatever is on it** - four ticks a cook -
+    which is why the wiki publishes experience per food and no hourly figure
+    per food. Stated, like the shortcut and dart cycles beside it.
+
+    27 at 2.4s is 64.8s and a bank trip about 10s, so 28 items take 77.2s.
+    Checkable against a figure it did not come from: anglerfish at 230 xp
+    works out at 300,311/hr where the community quotes ~300,000.
+    """
+    from fray_claude.costing.heuristics import COOK_CYCLE_SECONDS
+
+    assert 3600.0 / COOK_CYCLE_SECONDS == pytest.approx(1305.7, abs=0.1)
+    assert 230.0 * 3600.0 / COOK_CYCLE_SECONDS == pytest.approx(300_311, abs=1)

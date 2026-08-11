@@ -754,6 +754,18 @@ PICKPOCKET_CYCLE_SECONDS = 3.5
 #: does at the top.
 DART_CYCLE_SECONDS = 0.6 / 10.0
 
+#: Seconds one cooked item takes, banking included. **The pace of a range is
+#: the same whatever is on it** - four ticks a cook - which is why the wiki
+#: publishes experience per food and no hourly figure per food: one constant
+#: describes the whole skill.
+#:
+#: An inventory of 27 at 2.4s is 64.8s, and a bank trip is about 10s, so a
+#: cycle of 28 items takes 77.2s and an hour is ~1,306 cooks. Stated rather
+#: than measured, like the shortcut and dart cycles beside it, and checkable
+#: against a figure it did not come from: anglerfish at 230 xp works out at
+#: 300,311/hr where the community quotes ~300,000.
+COOK_CYCLE_SECONDS = 77.2 / 28.0
+
 
 #: Ticks to light one fire. The action is fixed; what varies is the log.
 FIRE_TICKS = 4
@@ -814,6 +826,7 @@ TABLE_KINDS: dict[str, tuple[tuple[str, float | None], ...]] = {
     "Herblore": (("herblore", None),),
     "Fletching": (("darts", DART_CYCLE_SECONDS),),
     "Sailing": (("sailing", None),),
+    "Cooking": (("cooking", COOK_CYCLE_SECONDS),),
 }
 
 

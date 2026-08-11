@@ -759,6 +759,9 @@ def test_every_gathering_skill_now_has_a_table() -> None:
         # `estimate.UNRATED_SKILLS` was written nothing published a rate for
         # any of its 27 methods, and the barracuda table now does.
         "Sailing",
+        # Cooking is the third of the per-action kind, after darts and
+        # Firemaking: a range's pace does not depend on what is on it.
+        "Cooking",
     }
 
 

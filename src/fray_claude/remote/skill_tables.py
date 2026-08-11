@@ -51,6 +51,7 @@ from fray_claude.remote.wiki import parse_amount
 from fray_claude.remote.wikitable import (
     SCP_LEVEL,
     column_index,
+    header_columns,
     name_in,
     names_in,
     number,
@@ -83,6 +84,9 @@ THIEVING_TRAINING_PAGE = "Thieving training"
 RUNECRAFT_PAGE = "Pay-to-play Runecraft training"
 FARMING_PAGE = "Farming training"
 SAILING_PAGE = "Sailing training"
+#: The skill's own page, whose `Types of food` tables are the only place the
+#: experience for cooking one item is written down.
+COOKING_PAGE = "Cooking"
 
 #: One `{{formatnum:{{#expr:...}}}}` block. **A cell may hold two** - the
 #: Gwenith Glide's Marlin figure is quoted again with a crystal extractor on
@@ -175,6 +179,7 @@ PAGES: tuple[str, ...] = (
     RUNECRAFT_PAGE,
     FARMING_PAGE,
     SAILING_PAGE,
+    COOKING_PAGE,
 )
 
 #: Export course name -> the wiki's spelling. **Only for the ones that differ.**
@@ -988,6 +993,52 @@ def parse_sailing(text: str) -> tuple[SkillRow, ...]:
     return tuple(found)
 
 
+def parse_cooking(text: str) -> tuple[SkillRow, ...]:
+    """What one cooked item pays, from the skill page's `Types of food`.
+
+    **Experience per action, like `parse_darts`, and for a related reason**:
+    nothing publishes an hourly figure per food because the pace is the same
+    for all of them. It is the range's, not the item's - four ticks a cook -
+    so one table plus one constant describes the whole skill, and
+    `heuristics.COOK_CYCLE_SECONDS` is where that constant is stated.
+
+    **Only the `Meat / fish` section, and that restriction is the whole of the
+    judgement here.** Those foods are one raw item on a range: the published
+    experience *is* the action, and the raw fish is priced by the item walk.
+    The page's other tables are pies, cakes and stews - several ingredients
+    assembled over several steps, where the range action this constant
+    describes is the last and cheapest of them. Read whole, the table put
+    `curry` at **365,596/hr with its ingredients free** and it topped the
+    climb, which is the documented material bias picking a method nobody would
+    train on. So they are refused rather than flattered.
+
+    The `{{plinkt}}` names the *cooked* item, which is what the export's
+    `Output` holds.
+    """
+    section = next(
+        (body for title, body in _sections(text) if "Meat / fish" in title), ""
+    )
+    found: list[SkillRow] = []
+    for table in tables(section):
+        headers = header_columns(table)
+        if "level" not in headers or "xp" not in headers:
+            continue
+        for cells in rows(table):
+            item = _PLINKT.search(" ".join(cells))
+            level = number(cells[0]) if cells else None
+            experience = next(
+                (value for cell in cells[1:] if (value := number(cell)) is not None), None
+            )
+            if item is None or level is None or not experience or level > 99:
+                continue
+            found.append(
+                SkillRow(
+                    name=item.group(1).strip(), level=int(level), experience=experience
+                )
+            )
+    return tuple(found)
+
+
 def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
     """Every table this module reads, keyed by what it describes."""
     return {
@@ -1006,4 +1057,5 @@ def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
         "gotr": parse_gotr(pages.get(RUNECRAFT_PAGE, "")),
         "tithe": parse_tithe(pages.get(FARMING_PAGE, "")),
         "sailing": parse_sailing(pages.get(SAILING_PAGE, "")),
+        "cooking": parse_cooking(pages.get(COOKING_PAGE, "")),
     }

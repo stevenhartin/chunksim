@@ -560,6 +560,28 @@ uber map vyres open at 82 with 315,669, and on `verf-sim/run-001` Sophanem is no
 coverage insurance for the map that has the pyramid and not the alternatives - the same argument the
 Hunter joins were filed under before sixteen more creatures made them bite.
 
+**Cooking is calculable rather than quoted, and the wiki publishes exactly the half that is.** A
+range's pace does not depend on what is on it - four ticks a cook - so there is no hourly figure per
+food and none is needed: `Cooking`'s own `Types of food` gives experience per item, and
+`heuristics.COOK_CYCLE_SECONDS` supplies the rest. 27 items at 2.4s is 64.8s and a bank trip about
+10s, so 28 take 77.2s and an hour is **~1,306 cooks**. Stated like the shortcut and dart cycles
+beside it, and checkable against a figure it did not come from: anglerfish at 230 xp works out at
+**300,311/hr** where the community quotes ~300,000.
+
+**Only the `Meat / fish` section is read, and that restriction is the judgement.** Those foods are
+one raw item on a range, so the published experience *is* the action and the raw fish is priced by
+the item walk. The page's other tables are pies, cakes and stews - several ingredients over several
+steps, where this constant describes the last and cheapest of them. Read whole, the table put
+**`curry` at 365,596/hr with its ingredients free and it topped the climb**, which is the documented
+material bias picking a method nobody would train on. 67 rows survive the restriction against 129.
+
+**What it bought is coverage at the bottom rather than a faster top**, and the top is the more
+interesting result: on `fray` the climb is **unchanged at 71.9h** - every band the new table could
+have won was already held by an `exact` money-making-guide join it agrees with - and on
+`verf-sim/run-001` it goes **92.4h -> 89.8h**, moving the last band from shark to manta ray. A
+per-item model built from the skill page and a stated cycle reproducing the guides' own numbers is a
+cross-check worth more than the 2.6 hours it moved.
+
 **Darts are the one method with no hourly figure anywhere, because nothing gates them.** Two clicks
 make a set of ten and the tick system does not hold the next set, so the rate is however fast a
 person can click - `Fletching training` says 2-4 sets a tick is reachable on mobile and declines to
