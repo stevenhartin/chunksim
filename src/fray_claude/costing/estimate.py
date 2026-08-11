@@ -1095,8 +1095,19 @@ def _farming_bands(
     also what a player would really do. The wiki says the same thing from the
     other side: you tithe farm *between* the time patches take to grow.
 
-    The calendar is charged for the schedule's stretch alone, since the bands
-    the minigame wins have no waiting in them.
+    **And where the minigame is reachable the calendar is not reported at
+    all.** It opens at level 34, so from there on the growing time in the
+    schedule's rate is a *choice* rather than a constraint, and what the
+    player spends is hours. When the minigame is locked the calendar stands,
+    because then the waiting is the skill.
+
+    The limit of that, stated because it is a real one: the stretch below the
+    minigame's rated level is still priced at the schedule's blended rate,
+    which is only achievable by waiting - so those hours understate it. On
+    `verf-sim/run-001` that is 5.4h of 138.0h. The alternative is to charge
+    the level-74 figure from 34, which overstates the lower fruit tiers by as
+    much again in the other direction; there is no published rate for them,
+    which is what makes this a choice between two biases rather than a fix.
     """
     schedule = TrainingOption(
         method=f"{len(plan.runs)} patches, {plan.xp_per_day:,.0f} xp/day",
@@ -1116,6 +1127,8 @@ def _farming_bands(
         # Above the minigame's level the schedule is left out rather than
         # outranked, which is the whole of "prefer it where you have it".
         bands += training_bands(options, split, capped)
+    if active is not None and any(band.match != "farming" for band in bands):
+        return bands, 0.0
     grown = sum(band.xp for band in bands if band.match == "farming")
     return bands, plan.days_for(grown) if grown > 0 else 0.0
 

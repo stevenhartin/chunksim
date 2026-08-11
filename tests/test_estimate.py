@@ -1750,10 +1750,11 @@ def test_tithe_farm_is_preferred_above_its_level_though_it_is_slower() -> None:
     assert bands[0].level_to == 74, "the schedule keeps everything below"
     assert bands[1].method == "logavano fruit"
 
-    # The calendar is charged for the schedule's stretch alone - the bands the
-    # minigame wins have no waiting in them.
-    assert days == pytest.approx(plan.days_for(bands[0].xp))
-    assert days < plan.days_for(xp_for_level(99))
+    # **No calendar at all where the minigame is reachable.** It opens at 34,
+    # so from there the growing time is a choice rather than a constraint and
+    # what the player spends is hours; when it is locked the waiting *is* the
+    # skill and the calendar stands.
+    assert days == 0.0
 
 
 def test_an_unrated_skill_is_rechecked_rather_than_refused_on_sight() -> None:

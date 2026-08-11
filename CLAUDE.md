@@ -485,15 +485,24 @@ does, and what the wiki describes from the other side when it says you tithe far
 patches take to grow. The calendar is then charged for the schedule's stretch alone, since the bands
 the minigame wins have no waiting in them.
 
-Measured, and the trade is the whole point:
+**Where the minigame is reachable the calendar is not reported at all**, which is the other half of
+the same decision. It opens at level 34, so from there the growing time in the schedule's rate is a
+*choice* rather than a constraint and what the player spends is hours; where it is locked the waiting
+**is** the skill and the calendar stands. So the two branches answer in different units on purpose:
 
 | map | active hours | calendar days |
 |---|---:|---:|
 | `fray` - no Tithe Farm reachable | 64.0h | 145.0 |
-| `verf-sim/run-001` - reachable | **138.0h** | **12.2** |
+| `verf-sim/run-001` - reachable | **138.0h** | **none** |
 
-So it buys 133 days for 74 hours. **`fray` is byte-identical to before**, which is the check that
-matters: a map without the minigame takes the path it always took. On the *fallback* path - a map
+**`fray` is byte-identical to before**, which is the check that matters: a map without the minigame
+takes the path it always took.
+
+The limit of that, stated because it is real: the stretch below the minigame's *rated* level is
+still priced at the schedule's blended rate, which is only achievable by waiting - so those hours
+understate it, by 5.4h of the 138.0h above. Charging the level-74 figure from 34 instead would
+overstate the lower fruit tiers by about as much the other way, and nothing publishes a rate for
+them, so this is a choice between two biases rather than something to fix. On the *fallback* path - a map
 holding the minigame and no usable crop schedule at all - Farming 1 -> 99 on `verf-sim/run-001` goes
 13,034h, the bare floor, to 1,228.9h.
 
