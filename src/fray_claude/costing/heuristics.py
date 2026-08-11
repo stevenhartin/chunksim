@@ -784,6 +784,7 @@ TABLE_KINDS: dict[str, tuple[tuple[str, float | None], ...]] = {
     "Firemaking": (("burning", None),),
     "Woodcutting": (("woodcutting", None),),
     "Hunter": (("hunter", None),),
+    "Fishing": (("fishing", None),),
 }
 
 

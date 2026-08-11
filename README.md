@@ -242,7 +242,7 @@ before believing a total:
   90, and `fray estimate skilling` prints them with the level range and the XP each covers. Rates
   come from four places and each band says which: a money-making guide (225 of the export's 2,657
   training methods — most training doesn't make money, so most has no guide), the wiki's own skill
-  and training-page tables (Agility, Thieving, Firemaking, Woodcutting and Hunter), a per-action
+  and training-page tables (Agility, Thieving, Firemaking, Woodcutting, Hunter and part of Fishing), a per-action
   calculation from the wiki's recipe data, and for the five combat skills the damage you deal. On a real map that prices **943 of the 1,323 methods it
   can reach**; what is left sits at a deliberately low 1,000 xp/hr so it looks slow rather than free,
   and under bands that floor usually applies to the bottom of a climb rather than all of it.

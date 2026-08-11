@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from fray_claude.remote.skill_tables import (
+    parse_fishing,
     parse_hunter,
     parse_woodcutting,
     parse_courses,
@@ -396,3 +397,51 @@ def test_a_place_parenthetical_is_not_stripped_from_a_join_key() -> None:
     assert _DISAMBIGUATOR.sub("", "chaos altar (prayer)") == "chaos altar"
     for kept in ("gem stall (mor ul rek)", "counter (gu'tanoth)", "fish stall (port roberts)"):
         assert _DISAMBIGUATOR.sub("", kept) == kept, kept
+
+
+def test_fishing_joins_only_the_headings_that_name_one_fish() -> None:
+    """**A technique is not a fish**, and most of that page's headings are
+    techniques: `Fly fishing` catches trout *and* salmon, `Barbarian Fishing`
+    three more, where the export has one challenge per fish. Joining those
+    would need a hand-built technique-to-fish table *and* one rate for a curve
+    that doubles across the technique's range.
+
+    Four headings name a single fish, and `FISHING_BY_FISH` maps each to the
+    export's name for it - two of which carry a `Raw ` prefix and two of which
+    do not, which is why it is a table and not a rule.
+    """
+    text = """
+== Levels 20-47/58: Fly fishing ==
+{|class="wikitable"
+! {{SCP|Fishing}} level
+! XP/h (AFK)
+! XP/h (3-tick)
+|-
+|20
+|13,000
+|23,000
+|}
+
+== Levels 65-99: Karambwan ==
+{|class="wikitable"
+! {{SCP|Fishing}} level
+! XP/h
+|-
+|65
+|29,000
+|}
+
+== Levels 87-99: Sacred eel ==
+{|class="wikitable"
+! {{SCP|Fishing}} level
+! XP/h
+|-
+|87
+|20,000
+|}
+"""
+    rows = {row.name: row.xp_per_hour for row in parse_fishing(text)}
+    # Named after one fish, under the export's own name for it.
+    assert rows == {"Raw karambwan": 29_000.0, "Sacred eel": 20_000.0}
+    # And the technique is refused rather than guessed at.
+    assert not any("fly" in name.lower() for name in rows)

@@ -40,7 +40,7 @@ other host, and `costing/` decides what rate a row implies.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import re
@@ -68,6 +68,20 @@ THIEVING_PAGE = "Thieving"
 FIREMAKING_PAGE = "Firemaking"
 WOODCUTTING_PAGE = "Pay-to-play Woodcutting training"
 HUNTER_PAGE = "Hunter training"
+FISHING_PAGE = "Pay-to-play Fishing training"
+
+#: The Fishing headings that name one fish rather than a technique, mapped to
+#: the export's name for it. The rest cover several fish each and are
+#: deliberately not joined. Written out rather than derived by stripping
+#: `Raw `: two of the four need it and two do not, so a rule would be a rule
+#: with as many exceptions as cases - and this is the same kind of small,
+#: auditable table `COURSE_ALIASES` already is.
+FISHING_BY_FISH: dict[str, str] = {
+    "Monkfish": "Raw monkfish",
+    "Karambwan": "Raw karambwan",
+    "Infernal eel": "Infernal eel",
+    "Sacred eel": "Sacred eel",
+}
 PAGES: tuple[str, ...] = (
     SHORTCUTS_PAGE,
     AGILITY_PAGE,
@@ -77,6 +91,7 @@ PAGES: tuple[str, ...] = (
     FIREMAKING_PAGE,
     WOODCUTTING_PAGE,
     HUNTER_PAGE,
+    FISHING_PAGE,
 )
 
 #: Export course name -> the wiki's spelling. **Only for the ones that differ.**
@@ -346,33 +361,14 @@ def _singular(name: str) -> str:
     return name[:-1] if name.endswith("s") and not name.endswith("ss") else name
 
 
-def parse_hunter(text: str) -> tuple[SkillRow, ...]:
-    """What each Hunter technique pays an hour, at the level it opens.
+def _heading_rates(text: str) -> tuple[SkillRow, ...]:
+    """Every `level -> XP/h` table in `text`, keyed by the heading above it.
 
-    **Hunter publishes a rate per technique, not per creature**, and its
-    tables are `Hunter level -> XP/h` curves rather than one figure per row -
-    a different shape from every other table here. The technique is named by
-    the *section heading* that owns the table, which is wikitext structure
-    rather than prose, so the join is a whole-string comparison after two
-    stated normalisations: the heading's `Levels 73-99: ` prefix comes off,
-    and a plural `s` does. Four of the six join - `Black chinchompas`,
-    `Maniacal monkeys`, `Carnivorous chinchompas`, `Herbiboar` - and the two
-    that do not are activities with no one creature to name (`Drift net
-    fishing`, `Hunters' Rumours`), which is a correct miss rather than a gap.
-
-    **The first row and the last column**, both deliberately conservative and
-    both matching decisions already made here. The first row is the lowest
-    level the table quotes, which is the rate at the level the method opens -
-    the same choice `PICKPOCKET_CYCLE_SECONDS` is calibrated against, for a
-    rate that climbs with level. The last `XP/h` column is the unassisted one
-    where a table splits: black chinchompas quote `Alt` before `Solo` and
-    carnivorous ones `Tick manip.` before `No tick manip.`, so the last column
-    is the figure a player gets without a second account or 2-tick clicking -
-    the same reasoning as `parse_woodcutting` taking the bottom of its range.
-
-    The export disambiguates a creature from its item with a ` (Hunter)`
-    suffix (`Black chinchompa (Hunter)`), which `heuristics._join_keys`
-    strips; nothing about that is done here.
+    Shared by Hunter and Fishing, whose training pages are the same shape and
+    unlike every other table here: the rate is a curve down the page and the
+    *technique* is named by the section heading rather than by a column. What
+    differs is how many of those headings name something the export also
+    names - see each caller.
     """
     found: list[SkillRow] = []
     marks = [(m.start(), m.group(1)) for m in _HEADING.finditer(text)]
@@ -410,6 +406,66 @@ def parse_hunter(text: str) -> tuple[SkillRow, ...]:
     return tuple(found)
 
 
+def parse_fishing(text: str) -> tuple[SkillRow, ...]:
+    """Fishing rates, for the four techniques that are named after a fish.
+
+    **Most of this page cannot be joined and that is the finding, not a
+    shortfall.** Its headings name *techniques* - `Fly fishing`, `Barbarian
+    Fishing`, `Drift net fishing`, `Tempoross`, `Minnows` - and a technique
+    covers several fish where the export has one challenge per fish. Mapping
+    `Fly fishing` onto both `Raw trout` and `Raw salmon` would be a hand-built
+    table of exactly the kind `COURSE_ALIASES` is, and it would still have to
+    choose one rate for a curve that doubles across the technique's range.
+
+    Four headings do name one fish, and those join like Hunter's: `Monkfish`,
+    `Karambwan`, `Infernal eel`, `Sacred eel`. Their curves are nearly flat
+    (karambwan 29,000 at 65 to 31,000 at 99), which is what makes taking the
+    lowest row honest here where it would not be for fly fishing.
+
+    Everything else keeps its money-making-guide join. Checked rather than
+    assumed: the guides' figures agree with this page where both cover a
+    method - the salmon rate in use is 25,432 against the page's own 25,000
+    AFK at that level - so the guides are not being overridden by a better
+    source, only supplemented where they have nothing.
+    """
+    return tuple(
+        replace(row, name=FISHING_BY_FISH[row.name])
+        for row in _heading_rates(text)
+        if row.name in FISHING_BY_FISH
+    )
+
+
+def parse_hunter(text: str) -> tuple[SkillRow, ...]:
+    """What each Hunter technique pays an hour, at the level it opens.
+
+    **Hunter publishes a rate per technique, not per creature**, and its
+    tables are `Hunter level -> XP/h` curves rather than one figure per row -
+    a different shape from every other table here. The technique is named by
+    the *section heading* that owns the table, which is wikitext structure
+    rather than prose, so the join is a whole-string comparison after two
+    stated normalisations: the heading's `Levels 73-99: ` prefix comes off,
+    and a plural `s` does. Four of the six join - `Black chinchompas`,
+    `Maniacal monkeys`, `Carnivorous chinchompas`, `Herbiboar` - and the two
+    that do not are activities with no one creature to name (`Drift net
+    fishing`, `Hunters' Rumours`), which is a correct miss rather than a gap.
+
+    **The first row and the last column**, both deliberately conservative and
+    both matching decisions already made here. The first row is the lowest
+    level the table quotes, which is the rate at the level the method opens -
+    the same choice `PICKPOCKET_CYCLE_SECONDS` is calibrated against, for a
+    rate that climbs with level. The last `XP/h` column is the unassisted one
+    where a table splits: black chinchompas quote `Alt` before `Solo` and
+    carnivorous ones `Tick manip.` before `No tick manip.`, so the last column
+    is the figure a player gets without a second account or 2-tick clicking -
+    the same reasoning as `parse_woodcutting` taking the bottom of its range.
+
+    The export disambiguates a creature from its item with a ` (Hunter)`
+    suffix (`Black chinchompa (Hunter)`), which `heuristics._join_keys`
+    strips; nothing about that is done here.
+    """
+    return _heading_rates(text)
+
+
 def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
     """Every table this module reads, keyed by what it describes."""
     return {
@@ -420,4 +476,5 @@ def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
         "burning": parse_burning(pages.get(FIREMAKING_PAGE, "")),
         "woodcutting": parse_woodcutting(pages.get(WOODCUTTING_PAGE, "")),
         "hunter": parse_hunter(pages.get(HUNTER_PAGE, "")),
+        "fishing": parse_fishing(pages.get(FISHING_PAGE, "")),
     }

@@ -731,21 +731,21 @@ def test_a_table_answers_only_for_its_own_skill() -> None:
     assert training["Burn ~|magic logs|~"]["Firemaking"]["source"] == "wiki:burning"
 
 
-def test_mining_and_fishing_have_no_table_and_hunter_does() -> None:
-    """**Mining and Fishing are absent on purpose, and it is not the same
-    reason Hunter used to be.** Their per-item tables publish experience per
-    *action* - the figure `Module:Skill calc` already carries - and no hourly
-    one, and the implied actions per hour spans 21x within Mining alone
-    (65/hr for runite against 1,400 for a shooting star). Their pages *do*
-    carry hourly figures, but keyed by a prose method name (Mining) or by
-    level alone (Fishing), neither of which joins to anything structurally.
+def test_only_mining_is_left_without_a_table() -> None:
+    """**Mining is absent on purpose.** Its per-item table publishes
+    experience per *action* - the figure `Module:Skill calc` already carries -
+    and the implied actions per hour spans 21x within the skill (65/hr for
+    runite against 1,400 for a shooting star). Its page does carry hourly
+    figures, in a `! Method ! Levels ! XP/h !` table keyed by a prose
+    technique name, which joins to nothing structurally.
 
-    Hunter's page keys its rate tables by **section heading**, which is
-    wikitext structure, and four of the six headings name a creature the
-    export also names. So it has a table now and the other two do not.
+    Hunter and Fishing key their rate tables by **section heading**, which is
+    wikitext structure. Every one of Hunter's six names a technique that is a
+    creature; only four of Fishing's twelve name one fish, and
+    `FISHING_BY_FISH` is that list - the rest cover several fish each.
     """
     assert set(TABLE_KINDS) == {
-        "Agility", "Thieving", "Firemaking", "Woodcutting", "Hunter",
+        "Agility", "Thieving", "Firemaking", "Woodcutting", "Hunter", "Fishing",
     }
 
 
