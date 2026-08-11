@@ -122,7 +122,8 @@ def _skills_needed_met(
     `chunkinfo`), and `unlockable_areas` isn't handed the `SourceIndex`/rules
     it needs regardless - so this stays the looser test, and is looser than
     the gate `challenges.py` applies to the same skill. The `slayerLocked`
-    clause isn't modelled (no live slayer-assignment state exists here).
+    clause arrives folded into `max_skill['Slayer']`
+    (`pipeline.slayer_capped_max_skill`), so `cap` already carries it.
     """
     for skill, level in needed.items():
         if not isinstance(level, (int, float)):

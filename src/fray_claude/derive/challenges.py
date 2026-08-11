@@ -1356,8 +1356,11 @@ def _drop_unreachable_subskills(
     things whose own `Output` chain would have justified them - see
     `calc_challenges` for why both halves of that are needed.
 
-    Upstream's `slayerLocked` arm is inert - no real map payload carries that
-    branch - and is not reproduced.
+    Upstream's `slayerLocked` arm reaches this gate as a cap on
+    `max_skill['Slayer']`, folded in by `pipeline.slayer_capped_max_skill`
+    before any of this runs - so it needs no branch here. An earlier version
+    of this docstring called that arm inert because no cached map sets it;
+    that is a statement about two maps, not about the app.
     """
     for category in sorted(_NON_SKILL_CATEGORIES & set(new_valid)):
         category_challenges = chunk_info.challenges.get(category)

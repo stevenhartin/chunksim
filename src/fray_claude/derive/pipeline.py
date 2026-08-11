@@ -34,6 +34,19 @@ as well, feeding `compute_bis`'s `checked_bis` - but it is a **display view,
 not a second source of truth**: every completion *test* reads the merged
 `completed_challenges`, of which it is a strict subset.
 
+**Slayer can be blocked, and that is a cap rather than a special case.**
+`chunkinfo.slayerLocked` records a player stuck on an assignment they cannot
+complete and cannot afford to skip. Upstream reads it at eleven sites and ten
+of them are the `maxSkill` test written a second time, so
+`slayer_capped_max_skill` folds it into `max_skill['Slayer']` once and every
+module below inherits the gate unchanged - no new argument, no new branch in
+`sources.py`, `challenges.py`, `bis.py` or `sections.py`, all four of which
+already cap on that mapping. The eleventh site is the escape: reach a monster
+that satisfies the blocked task and the lock lifts entirely
+(`slayer_unblocked`). Neither cached map sets the branch, so **this changes no
+number today and has no oracle** - it is ported because the alternative is a
+map that derives Slayer as though nothing were wrong.
+
 Those fields need the optional `tasks_map` argument (the reverse map from
 `firebase.reverse_tasks_map`) to resolve `t_N` ids. Without one, every
 `t_N`-keyed entry is *dropped* rather than kept raw, so they decode empty -
@@ -55,6 +68,23 @@ from fray_claude.model.firebase import decode_challenge_keyed, decode_payload
 from fray_claude.derive.sections import expand_chunk_areas, unlockable_areas, unlocked_sections
 from fray_claude.derive.sources import SourceIndex, gather_chunks_info
 from fray_claude.model.summary import _mapping
+
+
+@dataclass(frozen=True)
+class SlayerLock:
+    """`chunkinfo.slayerLocked`: the player is sitting on a Slayer assignment
+    they cannot complete and cannot afford to skip, so Slayer stops at
+    `level` until the block clears.
+
+    Upstream stores `{'level': <string>, 'monster': <task name>}` - the level
+    comes off a text input, so it is a **string** in the payload and
+    `worker.js:3446` `parseInt`s it. `monster` is a key of
+    `codeItems.slayerTasks` (`'Aberrant spectres'`), which is the *task*
+    name rather than any one monster's.
+    """
+
+    level: int
+    monster: str
 
 
 @dataclass(frozen=True)
@@ -89,6 +119,11 @@ class MapState:
     #: - Mahogany Homes is gated behind a chunk the player hasn't taken, which
     #: invalidates every contract tier. See `challenges.py`.
     construction_locked: bool = False
+    #: `chunkinfo.slayerLocked`, or `None` when Slayer is not blocked. Read
+    #: through `slayer_capped_max_skill` rather than directly: every gate
+    #: upstream applies it at is a gate this project already routes through
+    #: `max_skill`. See the module docstring.
+    slayer_locked: SlayerLock | None = None
 
 
 @dataclass(frozen=True)
@@ -130,6 +165,76 @@ class ConvergenceError(RuntimeError):
 _MAX_AREA_PASSES = 32
 
 
+
+def slayer_unblocked(state: MapState, unlocked: Mapping[str, bool]) -> bool:
+    """Whether the blocked assignment can be handed in after all - port of
+    the escape at worker.js:3824.
+
+    A lock names a *task* (`'Aberrant spectres'`); `codeItems.slayerTasks`
+    expands it to the monsters that satisfy it (`Aberrant spectre`,
+    `Deviant spectre`). Reach any one of them and the assignment can be
+    completed, so the block lifts.
+
+    **Approximated by the raw contents of the unlocked chunks** where
+    upstream reads its live `baseChunkData['monsters']`, which the derivation
+    loop goes on refining (worker.js:665-668 deletes a monster whose own
+    unlock task turned out invalid, 718-720 adds one a task unlocked). Doing
+    this properly would make the escape a term in the very fixed point it
+    gates - Slayer validity deciding monster availability deciding Slayer
+    validity - for a branch upstream's own UI clears the moment it fires
+    (`checkSlayerLocked`, index.js:9787, nulls `slayerLocked` and saves). So
+    the raw set is read once, before the loop, and the one case it answers
+    differently is a monster reachable *only* through a challenge this lock
+    invalidates.
+    """
+    lock = state.slayer_locked
+    if lock is None:
+        return False
+    satisfying = state.chunk_info.slayer_tasks.get(lock.monster)
+    if not isinstance(satisfying, dict):
+        return False
+    slayer_monsters = state.chunk_info.slayer_monsters
+    for chunk_id in unlocked:
+        present = _mapping(state.chunk_info.chunk(chunk_id), "Monster")
+        for monster in present:
+            if monster not in satisfying:
+                continue
+            # index.js:9790 - a monster you cannot be assigned at this level
+            # does not lift the block.
+            required = slayer_monsters.get(monster)
+            if isinstance(required, (int, float)) and required > lock.level:
+                continue
+            return True
+    return False
+
+
+def slayer_capped_max_skill(state: MapState, unlocked: Mapping[str, bool]) -> Mapping[str, int]:
+    """`state.max_skill` with `slayerLocked` folded in as a second cap on
+    Slayer.
+
+    Upstream reads `slayerLocked` at eleven sites and ten of them are
+    literally the `maxSkill` test written twice: `(!slayerLocked || value <=
+    slayerLocked['level']) && (!maxSkill || value <= maxSkill['Slayer'])`
+    (worker.js:987, 1290, 1893, 2093, 2777, 3272, 5331, ...). Two caps ANDed
+    are one cap at their minimum, so folding here reproduces all ten at the
+    sites this project already routes `max_skill` through, and adds no gate
+    upstream lacks - every `maxSkill` gate in `worker.js` bar three carries
+    the `slayerLocked` clause beside it.
+
+    The eleventh site is worker.js:3822, which invalidates a Slayer challenge
+    whose own `Level` exceeds the lock. That is `_level_gates_met`'s
+    `maxSkill` arm (worker.js:3712) applied to Slayer, so the fold reproduces
+    it too - **except** for the escape it carries, which is why an unblocked
+    lock is dropped here rather than capped.
+    """
+    lock = state.slayer_locked
+    if lock is None or slayer_unblocked(state, unlocked):
+        return state.max_skill
+    existing = state.max_skill.get("Slayer")
+    capped = lock.level if not isinstance(existing, (int, float)) else min(existing, lock.level)
+    return {**state.max_skill, "Slayer": capped}
+
+
 def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
     """Run `unlocked_sections` -> `gather_chunks_info` -> `calc_challenges`,
     looping while newly-valid challenges unlock further named areas.
@@ -154,6 +259,7 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
     runs ungated, so a gate can only ever *remove* a source that its own
     unlock task hadn't yet justified.
     """
+    max_skill = slayer_capped_max_skill(state, unlocked)
     expanded = expand_chunk_areas(unlocked, manual_areas=state.manual_areas)
     reachable: dict[str, dict[str, bool]] = {}
     index: SourceIndex | None = None
@@ -177,7 +283,7 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
             backlogged_sources=state.backlogged_sources,
             manual_monsters=state.manual_monsters,
             manual_equipment=state.manual_equipment,
-            max_skill=state.max_skill,
+            max_skill=max_skill,
             valid_tasks=valid_tasks,
         )
         challenges = calc_challenges(
@@ -186,7 +292,7 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
             index,
             state.chunk_info,
             rules=state.rules,
-            max_skill=state.max_skill,
+            max_skill=max_skill,
             backlogged_sources=state.backlogged_sources,
             passive_skill=state.passive_skill,
             backlog=state.backlog,
@@ -199,7 +305,7 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
             reachable,
             state.chunk_info,
             manual_areas=state.manual_areas,
-            max_skill=state.max_skill,
+            max_skill=max_skill,
             passive_skill=state.passive_skill,
         )
         if not new_areas and challenges.valid == valid_tasks:
@@ -223,7 +329,7 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
         challenges.available_items,
         challenges.valid,
         rules=state.rules,
-        max_skill=state.max_skill,
+        max_skill=max_skill,
         passive_skill=state.passive_skill,
         completed_bis=state.completed_challenges.get("BiS", {}),
         checked_bis=state.checked_challenges.get("BiS", {}),
@@ -266,6 +372,33 @@ def _merge_challenge_keyed(
         for category, entries in branch.items():
             merged.setdefault(category, {}).update(entries)
     return merged
+
+
+
+def _slayer_lock(chunkinfo_branch: Mapping[str, Any]) -> SlayerLock | None:
+    """Decode `chunkinfo.slayerLocked`, or `None` when Slayer is not blocked.
+
+    The level arrives as a string off a text input (index.js:8484), so it is
+    parsed here rather than at every read. The monster is **not** touched: the
+    dropdown's values are raw `codeItems.slayerTasks` keys (index.js:9590), so
+    the stored string already is the lookup key - plus the sentinel
+    `'Manually Locked'`, which is in no table and so never lifts, which is
+    what "locked with no particular task in mind" should do. A level that will
+    not parse is treated as no lock: upstream's own input handler refuses to store one
+    (index.js:8481), so a payload holding one is corrupt rather than
+    meaningful, and guessing a cap would silently invalidate Slayer.
+    """
+    branch = chunkinfo_branch.get("slayerLocked")
+    if not isinstance(branch, dict):
+        return None
+    monster = decode_payload(branch).get("monster")
+    if not isinstance(monster, str) or not monster:
+        return None
+    try:
+        level = int(branch.get("level"))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return SlayerLock(level=level, monster=monster)
 
 
 def load_map_state(
@@ -320,5 +453,6 @@ def load_map_state(
         backlog=decode_challenge_keyed(_mapping(chunkinfo_branch, "backlog"), tasks_map),
         active_tasks=decode_challenge_keyed(_mapping(chunkinfo_branch, "activeTasks"), tasks_map),
         construction_locked=bool(chunkinfo_branch.get("constructionLocked")),
+        slayer_locked=_slayer_lock(chunkinfo_branch),
     )
     return state, unlocked

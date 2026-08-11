@@ -382,11 +382,13 @@ def _slayer_skill_items_for(
 
     Simplified vs. upstream's `isSlayerValid`: gated only on the monster's
     required Slayer level (`slayerMonsters`) against `max_skill['Slayer']`,
-    when both are present. Upstream additionally requires `checkPrimaryMethod`
-    ("is Slayer trainable at all") and, for a slayer-locked monster, a live
-    slayer assignment (`slayerLocked`) plus that monster's own Slayer task
-    already being valid - a genuine circularity (item availability depending
-    on challenge validity) that this project's one-directional
+    when both are present. `slayerLocked` is in that cap already
+    (`pipeline.slayer_capped_max_skill`), which is the whole of upstream's
+    `(!slayerLocked || slayerMonsters[monster] <= slayerLocked['level'])`
+    clause at worker.js:987. What is still missing is `checkPrimaryMethod`
+    ("is Slayer trainable at all") and that monster's own Slayer task already
+    being valid - a genuine circularity (item availability depending on
+    challenge validity) that this project's one-directional
     sources -> challenges pipeline can't express, so it isn't modelled here.
     """
     table = skill_items_slayer.get(monster)

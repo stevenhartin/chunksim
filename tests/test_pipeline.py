@@ -7,7 +7,15 @@ from typing import Any
 import pytest
 
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.derive.pipeline import ConvergenceError, MapState, derive, load_map_state
+from fray_claude.derive.pipeline import (
+    ConvergenceError,
+    MapState,
+    SlayerLock,
+    derive,
+    load_map_state,
+    slayer_capped_max_skill,
+    slayer_unblocked,
+)
 
 
 def _chunk_info(**data: Any) -> ChunkInfo:
@@ -214,3 +222,119 @@ def test_derive_converges_well_inside_the_cap_on_a_simple_state() -> None:
     result = derive(_state(chunk_info=info), {"100": True})
 
     assert "Bones" in result.source_index.items
+
+
+def _slayer_locked_info(**extra: Any) -> ChunkInfo:
+    """A world where Slayer is trainable, two tasks need it at 20 and 80, and
+    the two monsters satisfying the blocked `Aberrant spectres` task sit in
+    chunks of their own - one assignable at the locked level and one not.
+    """
+    return _chunk_info(
+        chunks={
+            "100": {"Monster": {"Goblin": True}},
+            "200": {"Monster": {"Aberrant spectre": True}},
+            "300": {"Monster": {"Deviant spectre": True}},
+        },
+        drops={"Goblin": {"Bones": {"1": "Always"}}},
+        slayerMonsters={"Aberrant spectre": 40, "Deviant spectre": 91},
+        codeItems={
+            "slayerTasks": {
+                "Aberrant spectres": {"Aberrant spectre": True, "Deviant spectre": True}
+            }
+        },
+        challenges={
+            "Slayer": {"Train slayer": {"Items": ["Bones"], "Primary": True}},
+            "Nonskill": {
+                "Needs 20 slayer": {"Items": ["Bones"], "Skills": {"Slayer": 20}},
+                "Needs 80 slayer": {"Items": ["Bones"], "Skills": {"Slayer": 80}},
+            },
+        },
+        **extra,
+    )
+
+
+_LOCK = SlayerLock(level=50, monster="Aberrant spectres")
+
+
+def test_a_slayer_lock_blocks_what_needs_more_slayer_than_it_allows() -> None:
+    state = _state(chunk_info=_slayer_locked_info(), slayer_locked=_LOCK)
+
+    valid = derive(state, {"100": True}).challenges.valid
+
+    assert valid["Nonskill"].keys() == {"Needs 20 slayer"}
+
+
+def test_no_slayer_lock_leaves_every_slayer_requirement_alone() -> None:
+    valid = derive(_state(chunk_info=_slayer_locked_info()), {"100": True}).challenges.valid
+
+    assert valid["Nonskill"].keys() == {"Needs 20 slayer", "Needs 80 slayer"}
+
+
+def test_reaching_a_monster_that_satisfies_the_blocked_task_lifts_the_lock() -> None:
+    """worker.js:3824 / index.js:9788 - the assignment can be handed in, so
+    Slayer is not blocked at all and the cap disappears rather than easing."""
+    state = _state(chunk_info=_slayer_locked_info(), slayer_locked=_LOCK)
+
+    assert slayer_unblocked(state, {"100": True, "200": True}) is True
+    assert derive(state, {"100": True, "200": True}).challenges.valid["Nonskill"].keys() == {
+        "Needs 20 slayer",
+        "Needs 80 slayer",
+    }
+
+
+def test_a_satisfying_monster_above_the_locked_level_does_not_lift_it() -> None:
+    """index.js:9790 - `Deviant spectre` needs 91 Slayer and the lock caps at
+    50, so reaching it changes nothing: you still cannot be assigned it."""
+    state = _state(chunk_info=_slayer_locked_info(), slayer_locked=_LOCK)
+
+    assert slayer_unblocked(state, {"100": True, "300": True}) is False
+
+
+def test_a_lock_naming_no_known_task_never_lifts() -> None:
+    """`'Manually Locked'` is a sentinel upstream offers beside the real task
+    names (index.js:9590); it is in no table, so nothing can satisfy it."""
+    state = _state(chunk_info=_slayer_locked_info(), slayer_locked=SlayerLock(level=50, monster="Manually Locked"))
+
+    assert slayer_unblocked(state, {"100": True, "200": True, "300": True}) is False
+
+
+def test_a_slayer_lock_takes_the_lower_of_itself_and_max_skill() -> None:
+    info = _slayer_locked_info()
+    lock = _LOCK
+
+    assert slayer_capped_max_skill(_state(chunk_info=info, slayer_locked=lock, max_skill={"Slayer": 30}), {})["Slayer"] == 30
+    assert slayer_capped_max_skill(_state(chunk_info=info, slayer_locked=lock, max_skill={"Slayer": 70}), {})["Slayer"] == 50
+    assert slayer_capped_max_skill(_state(chunk_info=info, slayer_locked=lock), {})["Slayer"] == 50
+
+
+def test_a_slayer_lock_leaves_every_other_skill_alone() -> None:
+    lock = _LOCK
+    state = _state(chunk_info=_slayer_locked_info(), slayer_locked=lock, max_skill={"Mining": 40})
+
+    assert slayer_capped_max_skill(state, {}) == {"Mining": 40, "Slayer": 50}
+
+
+def test_load_map_state_reads_a_slayer_lock() -> None:
+    """The level is a string in the payload - it comes off a text input
+    (index.js:8484) - and the monster is a raw `slayerTasks` key."""
+    payload = {"chunkinfo": {"slayerLocked": {"level": "42", "monster": "Aberrant spectres"}}}
+
+    state, _ = load_map_state(payload, _chunk_info())
+
+    assert state.slayer_locked == SlayerLock(level=42, monster="Aberrant spectres")
+
+
+def test_load_map_state_reads_no_lock_when_slayer_is_unblocked() -> None:
+    state, _ = load_map_state({"chunkinfo": {}}, _chunk_info())
+
+    assert state.slayer_locked is None
+
+
+@pytest.mark.parametrize("branch", [{"monster": "Aberrant spectres"}, {"level": "", "monster": "x"}, {"level": "50"}])
+def test_load_map_state_refuses_a_malformed_lock_rather_than_guessing(branch: dict[str, Any]) -> None:
+    """Upstream's own input handler will not store one (index.js:8481), so a
+    payload holding one is corrupt - and a guessed cap would silently
+    invalidate Slayer."""
+    state, _ = load_map_state({"chunkinfo": {"slayerLocked": branch}}, _chunk_info())
+
+    assert state.slayer_locked is None

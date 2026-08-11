@@ -42,8 +42,11 @@ Deliberately not ported (documented, not silently wrong):
   also splits *ammo* when the 1H and 2H launchers take different kinds. The
   weapon half of that rule is modelled (see `_finalize_slots`'s `dual`); the
   ammo half is not.
-- Full `checkPrimaryMethod`/`slayerLocked` (see `sources.py`'s
-  `_slayer_skill_items_for` docstring). Skill-requirement gating here is
+- Full `checkPrimaryMethod` (see `sources.py`'s
+  `_slayer_skill_items_for` docstring). `slayerLocked` *is* honoured, as a cap
+  on `max_skill['Slayer']` that `pipeline.slayer_capped_max_skill` applies
+  before `_requirements_ok` ever sees the mapping - which is upstream's own
+  `slayerLocked` clause at worker.js:5331. Skill-requirement gating here is
   `_has_any_valid` - "the skill has *a* valid challenge". Note this is
   **weaker than `challenges.py`'s own gate**, which stopped sharing it once
   `_check_primary_method` was ported: a skill that is untrainable but still
