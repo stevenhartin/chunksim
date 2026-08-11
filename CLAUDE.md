@@ -1163,20 +1163,32 @@ defect:
   rate with nothing charged. **The bias therefore runs the wrong way: an input too hard to price
   makes its method look cheaper.**
 
-That third one is a genuine defect and it **changes no number today** - but the reason is narrower
-than "no band is won", and worth stating precisely because it is what would change. 60 methods are
-dropped this way on `fray` and 76 on `verf`, and on `fray` **not one of the 60 has a scraped rate
-either**: they are dropped from `computed_rates` and were never in the guides, so they fall to the
-1,000/hr floor and are *honestly unknown* rather than confidently cheap. The bias needs both halves -
-a dropped recipe **and** a surviving scraped rate - and no method on either map has both.
+That third one is a genuine defect, and **this file twice said it changed no number. It decides
+almost the whole Cooking climb.** The retracted claim was that "the bias needs both halves - a
+dropped recipe *and* a surviving scraped rate - and no method on either map has both". Re-measured
+on `fray`: a recipe row reaches **512** valid primary methods, **40** are dropped by an unpriceable
+input, and **8 of those 40 carry a real scraped rate** - every one of them Cooking.
 
-The worked example is `Bake a ~|cake|~`. Its one material is `Uncooked cake`, which the item walk
-cannot price at all (nothing on the map makes or sells one), so `material_seconds(...)` returns
-`None`, `rate_for` refuses the whole recipe, and the method leaves with neither a rate nor a cost.
-Every other dropped method on `fray` is the same shape - the pies, the pizzas, the stuffed potatoes -
-each blocked on its own uncookable intermediate. So the fix is not "charge the dropped cost" (there
-is no cost to charge; that is the point) but "price the intermediate", which is the item walk's
-problem rather than the rate layer's.
+**`Cook a ~|swordfish|~` is the case that matters.** Raw swordfish has no route on `fray`, so
+`material_seconds` returns `None`, `rate_for` refuses the recipe, and the method leaves without its
+*cost* while the guide's **182,000/hr** survives untouched. It then wins **45 -> 99, which is 71.3h
+of Cooking's 71.9h total**. The other seven are the pies, the pizzas and the tuna potato, each
+blocked on its own uncookable intermediate.
+
+The direction is the perverse one: **an input the walk cannot price at all makes its method the
+fastest in the skill**, because the map cannot supply it. Whatever the fix is - drop the method,
+floor it, or price the intermediate - it is not "charge the dropped cost", since there is no cost to
+charge; that is the point. Pricing the intermediate is the item walk's problem rather than the rate
+layer's, and it is the only one of the three that also fixes `Bake a ~|cake|~`, whose `Uncooked cake`
+nothing on the map makes or sells.
+
+**And the wider bias is not a residual either.** Counting every rated method that declares consumed
+`Items` and carries no material cost: **32 on `fray`, 31 on `verf`**. Some are correct by
+construction - Firemaking is the documented deliberate choice, and the Giants' Foundry's six are now
+hand-charged - but the rest win the dominant band on three skills. On `fray`: Cooking's swordfish
+71.3h of 71.9h, Magic's Varrock teleport tablets **338.4h of 339.7h**, Fletching's broad bolts and
+darts 15.1h of 21.3h. On `verf`, Crafting's topaz bracelet is **144.5h of 145.0h**. Read any of those
+four totals as a lower bound.
 
 **The `*` in `Items` is upstream's `secondary` marker, and pricing wants it**: Woodcutting's methods
 declare `["Axe[+]"]` with no marker - a tool you buy once, which must not be charged per XP - where
