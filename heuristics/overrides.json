@@ -1,6 +1,50 @@
 {
   "currencies": {},
   "levels": {},
+  "materials": {
+    "Forge a bronze ~|preform|~ in the Giants' Foundry": {
+      "experience": 2400,
+      "items": {
+        "Bronze bar": 28
+      },
+      "source": "wiki:Giants' Foundry"
+    },
+    "Forge a mithril ~|preform|~ in the Giants' Foundry": {
+      "experience": 9000,
+      "items": {
+        "Mithril bar": 28
+      },
+      "source": "wiki:Giants' Foundry"
+    },
+    "Forge a rune ~|preform|~ in the Giants' Foundry": {
+      "experience": 23000,
+      "items": {
+        "Runite bar": 28
+      },
+      "source": "wiki:Giants' Foundry"
+    },
+    "Forge a steel ~|preform|~ in the Giants' Foundry": {
+      "experience": 5000,
+      "items": {
+        "Steel bar": 28
+      },
+      "source": "wiki:Giants' Foundry"
+    },
+    "Forge an adamant ~|preform|~ in the Giants' Foundry": {
+      "experience": 15000,
+      "items": {
+        "Adamantite bar": 28
+      },
+      "source": "wiki:Giants' Foundry"
+    },
+    "Forge an iron ~|preform|~ in the Giants' Foundry": {
+      "experience": 2400,
+      "items": {
+        "Iron bar": 28
+      },
+      "source": "wiki:Giants' Foundry"
+    }
+  },
   "monsters": {
     "Evil chicken outfit loot": {
       "match": "exact",

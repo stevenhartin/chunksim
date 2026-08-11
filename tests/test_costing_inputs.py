@@ -200,3 +200,75 @@ def test_the_pins_are_read_together(tmp_path: Path) -> None:
 
     assert monsters == frozenset({"Cow"})
     assert slayer == {"Duradel": frozenset({"Abyssal demon"})}
+
+
+def test_a_hand_stated_material_is_charged_per_xp() -> None:
+    """**The one way to charge a method the recipes cannot describe.**
+
+    `material_seconds_per_xp` otherwise comes only from `computed_rates`,
+    because that is the only place per-action experience and per-action
+    quantity exist together - the export carries neither. So a method with a
+    scraped or hand-entered rate and no recipe row was ranked as though its
+    inputs were free, which is what let the Giants' Foundry spend 276,000/hr
+    with its 28 bars costing nothing.
+    """
+    asked: list[tuple[str, float]] = []
+
+    def collect(item: str, quantity: float) -> float | None:
+        asked.append((item, quantity))
+        return {"Runite bar": 14.0, "Coal": 2.0}[item] * quantity
+
+    costs = inputs.hand_material_costs(
+        {
+            "materials": {
+                "Forge something": {
+                    "experience": 23_000,
+                    "items": {"Runite bar": 28, "Coal": 1},
+                }
+            }
+        },
+        collect,
+    )
+
+    assert asked == [("Runite bar", 28.0), ("Coal", 1.0)]
+    assert costs == {"Forge something": (28 * 14.0 + 2.0) / 23_000}
+
+
+def test_an_unpriceable_hand_material_leaves_the_method_uncharged() -> None:
+    """`None` from the walk means *no route*, and the choice here is the same
+    one `recipe_rates` makes with an unpriceable material and wrong in the same
+    direction: the method keeps its rate with nothing charged.
+
+    Dropping it instead would silently remove a method a person deliberately
+    rated, which is the worse of the two failures. It cannot bite on either
+    cached map - all six foundry bars price - so this pins the behaviour rather
+    than a number.
+    """
+    costs = inputs.hand_material_costs(
+        {"materials": {"Forge something": {"experience": 100, "items": {"Ghost bar": 1}}}},
+        lambda item, quantity: None,
+    )
+
+    assert costs == {}
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"items": {"Runite bar": 28}},
+        {"experience": 0, "items": {"Runite bar": 28}},
+        {"experience": 100},
+        {"experience": 100, "items": {"Runite bar": 0}},
+        "not an object",
+    ],
+)
+def test_an_incomplete_hand_material_entry_is_ignored(entry: Any) -> None:
+    """Both numbers are needed and neither can be guessed: seconds per XP is
+    seconds per action over XP per action. A half-written entry contributes
+    nothing rather than a fraction of a cost.
+    """
+    costs = inputs.hand_material_costs(
+        {"materials": {"Forge something": entry}}, lambda item, quantity: 1.0
+    )
+
+    assert costs == {}

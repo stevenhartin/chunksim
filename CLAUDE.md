@@ -642,7 +642,9 @@ describes dart fletching as a recipe, so the tips price at **zero** and 1,500,00
 climb's top band. On a chunk map a dart tip is smithed from a bar of its own tier, which is real
 work. It is the general bias below with the case that makes it matter, and it wants the same
 per-action model Herblore's herbs do - which the export does not carry; see "the obvious fix does
-not exist" below.
+not exist" below. **A `materials` hand entry could close it now** and deliberately has not: a set is
+ten darts, so the entry would have to state the action's granularity as well as its quantity, and
+inventing that is a different kind of claim from copying a published crucible capacity.
 
 **Hunter, four Fishing methods and three Mining ones join on the section heading, which is the one
 part of that shape that is structure rather than prose.** `Hunter training` (not `Pay-to-play Hunter training`, which does not exist) keys its
@@ -1089,21 +1091,45 @@ is refused. Five joins removed, 311 -> 306.
 running maximum never found better. The wiki's own page publishes swords per hour against average XP
 per hour for five alloy tiers, which map onto the six preforms (bronze and iron are both "Lowest"):
 48,000 / 85,000 / 135,000 / 195,000 / 276,000. Hand entries in `heuristics/overrides.json`, pinned by
-a test, and **Smithing 1 -> 99 is now 54.5h across five tiers, every band `exact`**.
+a test, and Smithing 1 -> 99 went 874.1h to 54.5h across five tiers, every band `exact`.
 
-**The caveat is the one the material ranking exists to catch and cannot catch here.** A foundry
-challenge's `Items` is `["AdamantMats[+]*", "BucketOrGloves[+]"]` - family placeholders, not items -
-and its `Output` is `None`, so no recipe joins it and `material_seconds_per_xp` is `0.0`. The rate is
-therefore the wiki's, quoted with the bars to hand, and the bars are not priced. That is optimistic
-on a chunk map in exactly the way `effective_xp_per_hour` was built to prevent.
+**And then the bars were charged, which is what that figure was missing.** A foundry challenge's
+`Items` is `["AdamantMats[+]*", "BucketOrGloves[+]"]` - family placeholders, not items - and its
+`Output` is `None`, so no recipe joins it and `material_seconds_per_xp` was `0.0`: the wiki's rate,
+quoted with the bars to hand, spent as though the metal were free. On a chunk map it is not. Measured
+on `fray`, one bar costs **bronze 1.2s, iron 4.9, steel 7.4, mithril 44.8, adamantite 33.4, runite
+14.0** - and the inversion there is worth knowing before quoting any of it: adamantite costs more
+than runite, and mithril more than both, because the map's route to one is not the route to another,
+so a tier's cost does not rise with its tier. (An earlier version of this paragraph put adamantite at
+65.0 on `fray`; that is `verf`'s figure, where steel is 4.8 and iron 4.8. The costs are per map, which
+is the whole point of walking for them.)
 
-**And the bars are not cheap, which is what makes this the skill's one real gap.** Measured on
-`fray`: a bronze bar costs **1.2s** to obtain, iron 4.9, steel 7.3, **mithril 44.8, adamantite 65.0
-and runite 14.0**. A foundry preform consumes bars by the inventory, so charging them would cut the
-276,000/hr rune tier by a large multiple and almost certainly cost it the climb - and every band is
-currently the foundry's. The inversion in that list is worth knowing before quoting any of it:
-adamantite costs more than runite on `fray`, because the map's route to one is not the route to the
-other, so a tier's cost does not rise with its tier.
+**The wiki states both numbers the export refuses to.** The crucible "needs to be filled with 28 bars
+worth of metal" - a published capacity, not a modelling choice - and the alloy-tier table's *average
+XP per sword* times its *swords per hour* is exactly the hourly rate already pinned (20 x 2,400 =
+48,000, ..., 12 x 23,000 = 276,000). So the quantity and the experience corroborate the rate rather
+than being a second guess beside it, which is what `tests/test_heuristics.py` asserts as an identity
+between the two blocks. **Bars rather than the family's smithed members**, which the crucible also
+takes: an item contributes one bar *less* than it cost to smith, so it is strictly worse per bar of
+value and no player would feed one in.
+
+**`inputs.hand_material_costs` is the mechanism, and it is general.** `material_seconds_per_xp` comes
+only from `computed_rates`, because a `{{Recipe}}` is the only place per-action experience and
+per-action quantity exist together - the export carries neither, which is the "obvious fix does not
+exist" paragraph above. A `materials` section in `heuristics/overrides.json` is the hand-stated half:
+`{"experience": 23000, "items": {"Runite bar": 28}}`, priced through the same item walk a recipe's
+materials go through, so the two cannot disagree about what a bar costs on this map. An unpriceable
+item leaves its method **uncharged** rather than dropping it - the same direction of wrongness
+`recipe_rates` already has, and the better failure, since dropping would silently remove a method
+someone deliberately rated.
+
+**Smithing 1 -> 99 on `fray` goes 54.5h -> 155.4h, and the mithril band disappears.** Nine bands
+become eight: mithril forging drops to 21,695 effective against steel's 43,108, so the running
+maximum holds steel from 30 all the way to 70. That is the band walk doing exactly what
+`effective_xp_per_hour` was built for - refusing a method this map cannot supply - and it is why the
+per-tier costs above matter more than the per-tier rates. **`verf` is unchanged at 488.2h**, holding
+no foundry at all, which is the check that isolates the change. Neither map's *estimate* moves:
+Smithing is not an active goal on either.
 
 **The rest of Smithing needs nothing.** The ore -> bar -> item chain is already modelled end to end
 by `{{Recipe}}`, with the materials charged: `Smelt a runite bar` at 20,000/hr, steel at 13,562, iron
@@ -1218,9 +1244,14 @@ one museum quiz, **none of them `Primary`** - it is the grant `training.quest_xp
 spends, not a rate. So `Items` says a 4-poster needs mahogany planks and never that it needs four of
 them, nor what building one pays.
 
-`{{Recipe}}` is the only place those two numbers exist together, which is why `computed_rates` is the
-sole source of `material_seconds_per_xp` - a consequence of the data rather than an oversight to
-tidy. **The narrow case that would work is a rate source that is itself per action**, where the
+`{{Recipe}}` is the only place those two numbers exist together *in data this project fetches*, which
+is why `computed_rates` is the only **computed** source of `material_seconds_per_xp` - a consequence
+of the data rather than an oversight to tidy. What it is not is the only source: a person can state
+the pair, and `heuristics/overrides.json`'s `materials` section is where they do
+(`inputs.hand_material_costs`, added for the Giants' Foundry, whose 28 bars are published and whose
+challenges name no item at all). That is a hand entry per method rather than a rule, which is the
+point - it does not scale to 2,710 challenges and is not meant to. **The narrow case that would work
+without hand entry is a rate source that is itself per action**, where the
 experience is known and one-of-each is a fair assumption: `parse_darts` is exactly that shape and is
 the one family it would close. Firemaking is the other and deliberately declines, since every
 published Firemaking rate is quoted with the logs to hand. Anything wider needs a per-action model

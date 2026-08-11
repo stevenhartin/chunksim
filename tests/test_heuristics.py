@@ -795,6 +795,79 @@ def test_the_giants_foundry_rates_are_the_wikis_own_alloy_tiers() -> None:
     }
 
 
+def test_the_giants_foundry_charges_28_bars_and_says_so_consistently() -> None:
+    """**The rate was being spent with the bars free**, which is the material
+    bias with a minigame behind it. A foundry challenge declares
+    `Items: ["AdamantMats[+]*", "BucketOrGloves[+]"]` - family placeholders,
+    not items - and `Output: None`, so no recipe joins it and nothing charged
+    for the metal. Smithing 1-99 on `fray` read 54.5h.
+
+    The wiki states both numbers the export does not. The crucible "needs to be
+    filled with 28 bars worth of metal", and the alloy-tier table's *average XP
+    per sword* times its *swords per hour* is exactly the hourly figure pinned
+    above - so the quantity and the experience corroborate the rate rather than
+    being a second, independent guess. That identity is what this asserts:
+    edit one column and the two blocks disagree.
+
+    **Bars rather than the family's smithed members**, which the crucible also
+    accepts: an item contributes one bar *less* than it cost to smith, so it is
+    strictly worse per bar of value.
+    """
+    overrides = json.loads((PROJECT / "heuristics" / "overrides.json").read_text())
+    materials = {
+        task: entry
+        for task, entry in overrides["materials"].items()
+        if "Giants' Foundry" in task
+    }
+
+    assert {
+        task: entry["items"] for task, entry in materials.items()
+    } == {
+        "Forge a bronze ~|preform|~ in the Giants' Foundry": {"Bronze bar": 28},
+        "Forge an iron ~|preform|~ in the Giants' Foundry": {"Iron bar": 28},
+        "Forge a steel ~|preform|~ in the Giants' Foundry": {"Steel bar": 28},
+        "Forge a mithril ~|preform|~ in the Giants' Foundry": {"Mithril bar": 28},
+        "Forge an adamant ~|preform|~ in the Giants' Foundry": {"Adamantite bar": 28},
+        "Forge a rune ~|preform|~ in the Giants' Foundry": {"Runite bar": 28},
+    }
+
+    #: The wiki's own "Swords per hour" column, which appears nowhere else -
+    #: it is the third figure in a row whose other two are already pinned, so
+    #: it is what makes the identity checkable.
+    swords_per_hour = {
+        "bronze": 20,
+        "n iron": 20,
+        "steel": 17,
+        "mithril": 15,
+        "n adamant": 13,
+        "rune": 12,
+    }
+    for task, entry in materials.items():
+        tier = task.split("Forge a")[-1].split("~|")[0].strip()
+        rate = overrides["training"][task]["Smithing"]["value"]
+        assert entry["experience"] * swords_per_hour[tier] == rate, tier
+
+
+@pytest.mark.real_export
+def test_every_hand_material_names_a_task_the_export_carries(
+    real_export: ChunkInfo,
+) -> None:
+    """A materials entry is keyed by the export's own task name, markup and
+    all, and a typo would be silent: `material_seconds_per_xp` is looked up by
+    that key, misses, and the method keeps its rate with nothing charged -
+    exactly the state this file exists to fix.
+    """
+    overrides = json.loads((PROJECT / "heuristics" / "overrides.json").read_text())
+    known = {
+        name
+        for tasks in real_export.challenges.values()
+        if isinstance(tasks, dict)
+        for name in tasks
+    }
+
+    assert set(overrides["materials"]) <= known
+
+
 def test_a_challenge_two_skills_claim_still_joins_for_both() -> None:
     """**`primary_training_tasks` keeps one skill per task**, so a challenge
     listed under several loses all but the last - 50 of the export's 2,657 are

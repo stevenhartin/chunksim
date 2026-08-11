@@ -55,6 +55,7 @@ __all__ = [
     "level_overrides",
     "load_heuristics",
     "load_recipes",
+    "hand_material_costs",
     "recipe_priced",
     "pinned_keys",
     "priced_heuristics",
@@ -175,9 +176,17 @@ def recipe_priced(
     # exactly the closure the recipes need and would otherwise build a second
     # `_Walk` to ask the same question.
     prayed = _prayer_methods(state, derived, heuristics, levels, seconds)
+    overrides = cache.read_overrides(root)
+    # **The hand materials do not depend on the recipes**, so they are read
+    # before the early return: a clone with no `fray recipes` cache still
+    # charges the foundry for its bars.
+    by_hand = hand_material_costs(overrides, seconds)
     if not recipes:
-        return replace(heuristics, computed=prayed), recipe_rates.RecipeCoverage()
-    pinned = frozenset(_mapping(cache.read_overrides(root), "training"))
+        return (
+            replace(heuristics, computed=prayed, material_seconds_per_xp=by_hand),
+            recipe_rates.RecipeCoverage(),
+        )
+    pinned = frozenset(_mapping(overrides, "training"))
     computed, coverage = recipe_rates.computed_rates(
         state.chunk_info,
         derived.challenges.valid,
@@ -202,6 +211,7 @@ def recipe_priced(
         for task, rate in computed.items()
         if rate.experience > 0 and rate.input_seconds > 0
     }
+    per_xp.update(by_hand)
     return (
         replace(
             heuristics,
@@ -212,6 +222,65 @@ def recipe_priced(
         ),
         coverage,
     )
+
+
+def hand_material_costs(
+    overrides: Mapping[str, Any], collect: Callable[[str, float], float | None]
+) -> dict[str, float]:
+    """`material_seconds_per_xp` for the methods a `{{Recipe}}` cannot describe.
+
+    **The one way to charge a method for what it consumes when the export does
+    not say how much.** `recipe_priced` derives that figure from
+    `computed_rates`, which is the only place experience-per-action and
+    quantity-per-action exist together - the export carries neither (0 of its
+    2,710 primary challenges state a quantity anywhere in `Items`, and its one
+    experience field is a quest's one-off lump). So a method with a scraped or
+    hand-entered rate and no recipe row is ranked as though its inputs were
+    free, which is the documented material bias.
+
+    This is the hand-stated half of that pair, in the file hand-stated numbers
+    already live in. An entry is `{"experience": <per action>, "items":
+    {<name>: <quantity>}}`; the seconds come from the same item walk a recipe's
+    do, so the two cannot disagree about what a bar costs on this map.
+
+    **The Giants' Foundry is what it was written for and is the whole of it
+    today.** Its six challenges declare `Items: ["AdamantMats[+]*", ...]` -
+    family placeholders, not items - with `Output: None`, so nothing joins them
+    and the wiki's 276,000/hr was being spent with the bars free. The wiki
+    states both missing numbers outright: the crucible "needs to be filled with
+    28 bars worth of metal", and the alloy-tier table's average XP per sword is
+    exactly the hourly figure divided by its swords per hour, so the quantity
+    and the experience corroborate the rate already in `training`.
+
+    **Bars rather than the family's smithed members**, which the crucible also
+    takes: a smithed item contributes one bar *less* than it cost to make, so
+    it is strictly worse per bar of value and no player would use one.
+
+    An item the walk cannot price at all leaves its method uncharged rather
+    than dropping it, which is what `recipe_rates` does with an unpriceable
+    material and is wrong in the same direction. It cannot bite here - all six
+    bars price on both cached maps - and a drop would silently remove a method
+    a person deliberately rated.
+    """
+    costs: dict[str, float] = {}
+    for task, entry in _mapping(overrides, "materials").items():
+        if not isinstance(entry, dict):
+            continue
+        experience = entry.get("experience")
+        if not isinstance(experience, (int, float)) or experience <= 0:
+            continue
+        total = 0.0
+        for item, quantity in _mapping(entry, "items").items():
+            if not isinstance(quantity, (int, float)) or quantity <= 0:
+                continue
+            priced = collect(item, float(quantity))
+            if priced is None:
+                total = -1.0
+                break
+            total += priced
+        if total > 0:
+            costs[task] = total / float(experience)
+    return costs
 
 
 def _prayer_methods(

@@ -62,6 +62,7 @@ here, then edit the value.
 | `quests` | quest name | `{"hours": 4.0}` |
 | `monsters` | monster name | `{"value": 27.0}` — kills per hour |
 | `training` | the full task name | `{"<skill>": {"value": 50000.0}}` — XP per hour |
+| `materials` | the full task name | `{"experience": 23000, "items": {"Runite bar": 28}}` — what one action pays and consumes |
 | `slayer` | **master**, then task | `{"mean_count": 165, "xp_per_kill": 106, "kills_per_hour": 340, "extended": false}` |
 | `rarities` | a rate word | a probability, e.g. `{"varies": 0.02}` |
 
@@ -91,6 +92,43 @@ Example:
 
 The task names in `training` are the export's own, markup included. Copy them
 verbatim from `cache/wiki_rates.json` rather than retyping them.
+
+## Materials a recipe cannot describe
+
+A published rate is quoted with the materials to hand — "299,000 an hour at
+anglerfish" describes the range, not the trip before it — so the estimator adds
+the gathering before it ranks a method. It can only do that where a
+`{{Recipe}}` says how much the action consumes and how much experience it pays,
+because **the export states neither**: not one of its 2,710 primary challenges
+carries a quantity anywhere in `Items`, and its only experience field is a
+quest's one-off lump. A method with no recipe row is therefore ranked as though
+its inputs were free.
+
+`materials` is the hand-written half. An entry states the two missing numbers
+for one task:
+
+```json
+{
+  "materials": {
+    "Forge a rune ~|preform|~ in the Giants' Foundry": {
+      "experience": 23000,
+      "items": {"Runite bar": 28},
+      "source": "wiki:Giants' Foundry"
+    }
+  }
+}
+```
+
+The seconds come from the same item walk a recipe's materials go through, so
+the cost is this map's — a runite bar is 14s on `fray` and unreachable on a map
+without a route to one. An item the walk cannot price at all leaves the method
+**uncharged** rather than dropping it.
+
+Worth adding where a method's rate is `exact` and its ingredients are obviously
+expensive on a chunk map. The Giants' Foundry is the case it was written for:
+its challenges declare family placeholders (`AdamantMats[+]*`) rather than
+items, so nothing joined and 276,000 xp/hr was being spent with 28 rune bars
+costing nothing.
 
 ## Slayer masters
 
