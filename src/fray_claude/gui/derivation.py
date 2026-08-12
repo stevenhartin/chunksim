@@ -12,9 +12,10 @@ is: **a request that does not need a derivation must not pay for one.**
 `server.py` calls `view_state` for the map and `derived_state` only for the
 panels.
 
-**`ChunkInfo` is loaded once and held**, because parsing the export takes about
-a second and a panel that costs a second every time it opens is a panel nobody
-opens twice. That makes this the first cached mutable state in the server, and
+**`ChunkInfo` is loaded once and held**, because a request that parses it pays
+~50ms for the export, ~20ms more for the tasks map and ~7ms to digest both -
+and it is not one request but every one that touches a derivation, on a server
+that lives as long as the window does. That makes this the first cached mutable state in the server, and
 it is worth naming rather than discovering: the pure layer's no-module-state
 rule is about `simulate --jobs` running it in worker processes, and none of
 this is on that path. The cache lives on a `Context` instance, not in a module
@@ -148,7 +149,7 @@ class Derivations:
         Called when `fray chunkinfo` refreshes the file underneath us. The
         alternative - reasoning about which parts of a parsed export a new one
         invalidates - is the invalidation problem this server was built to
-        avoid, and dropping the lot costs one second.
+        avoid, and dropping the lot costs the ~50ms to parse it again.
         """
         with self._lock:
             self._info = None

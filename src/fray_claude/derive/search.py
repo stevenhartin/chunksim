@@ -99,7 +99,7 @@ class WorldIndex:
     """Reverse indexes over the whole chunkinfo export, independent of any
     particular map's unlocked state. Build once per process, like
     `ChunkInfo` itself - it's a full pass over the export, though a cheap
-    one (~0.02s on the real ~7MB file, on top of parsing it).
+    one (~0.03s on the real ~10MB file, on top of parsing it).
     """
 
     item_sources: dict[str, list[ItemSource]]

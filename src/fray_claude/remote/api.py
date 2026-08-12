@@ -180,7 +180,7 @@ def fetch_map(map_id: str, timeout: float = DEFAULT_TIMEOUT) -> dict[str, Any]:
 
 
 def fetch_chunkinfo(timeout: float = DEFAULT_TIMEOUT) -> dict[str, Any]:
-    """Return upstream's chunk/section/challenge reference data (~7MB, static)."""
+    """Return upstream's chunk/section/challenge reference data (~10MB, static)."""
     return _fetch_json_object(CHUNKINFO_URL, timeout, what="chunkinfo export")
 
 

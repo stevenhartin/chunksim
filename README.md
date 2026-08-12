@@ -312,7 +312,7 @@ The two are invoked differently on purpose: `mypy` is a *system* install pointed
 `.venv/bin/python` for stubs, so it needs the repo root and an existing virtualenv, while `pytest`
 comes from the `dev` extra and so isn't on `PATH` at all.
 
-Tests that check against a real ~7MB chunkinfo export are opt-in and skipped by default. They compare
+Tests that check against a real ~10MB chunkinfo export are opt-in and skipped by default. They compare
 against source-chunk's own recorded answers, which makes them the suite's real correctness signal —
 run them before trusting a change to the derivation modules:
 

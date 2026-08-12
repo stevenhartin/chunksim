@@ -86,7 +86,7 @@ def load_state(
     """The cached map, decoded into a `MapState` and its unlocked-chunk set.
 
     `map_id` overrides `args.map_id` and `chunk_info` reuses an already-parsed
-    export, so `fray diff` can load two maps while paying the ~7MB parse once
+    export, so `fray diff` can load two maps while paying the ~10MB parse once
     (`chunkinfo.py`: build one `ChunkInfo` per invocation).
     """
     envelope = read_cache(map_id if map_id is not None else args.map_id)

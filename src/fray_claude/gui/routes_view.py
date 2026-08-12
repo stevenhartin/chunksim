@@ -69,7 +69,7 @@ def _areas_for(unlocked: Mapping[str, Any], ctx: Context) -> dict[str, str] | No
     that. So the parse is conditional on the map actually holding a
     non-numeric id: every ordinary map has none, keeps the fast path, and a
     test pins that. A map that *does* hold one has no cheaper way to be drawn
-    correctly, and pays about a second, once.
+    correctly, and pays the ~50ms parse, once.
     """
     if not any(not chunk_id.isdigit() for chunk_id in unlocked):
         return None

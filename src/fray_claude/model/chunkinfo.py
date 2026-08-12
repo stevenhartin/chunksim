@@ -1,7 +1,7 @@
 """Typed, tolerant access to the upstream chunk/section/challenge reference data.
 
 Pure and I/O-free: `cache.read_chunkinfo` is the disk-touching counterpart
-that supplies the parsed dict this module wraps. Parsing the ~7MB export is
+that supplies the parsed dict this module wraps. Parsing the ~10MB export is
 the expensive part, not attribute access, so callers should build one
 `ChunkInfo` per command invocation and pass it down rather than re-parsing.
 """
