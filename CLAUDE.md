@@ -107,10 +107,21 @@ Each of the first three has already caused a real bug.
   oracles. `completedChallenges` is the player's ticked list, an *input*. What `cache/derived/` avoids
   is computing the derivation *twice*, which is the real version of this optimisation.
 - **The pure layer must stay process-parallel, so there is no module-level mutable state anywhere** —
-  no `lru_cache`, no memo dicts, no globals; `MapState`/`Derived` are frozen. `fray simulate --jobs N`
-  and `runs/batch.price_steps` both depend on it, and a cache added to a "pure" module would break
-  `--jobs` silently, as runs that disagree. `cache/derived/` is content-keyed, so two workers racing
-  on one key write identical bytes and the atomic rename makes either winner correct.
+  no `lru_cache`, no module-level memo dicts, no globals; `MapState`/`Derived` are frozen. `fray
+  simulate --jobs N` and `runs/batch.price_steps` both depend on it, and a cache added to a "pure"
+  module would break `--jobs` silently, as runs that disagree. `cache/derived/` is content-keyed, so
+  two workers racing on one key write identical bytes and the atomic rename makes either winner
+  correct.
+
+  **The rule is about *module* scope, and caching within one call is how the hot paths are fast.**
+  Four shapes are sanctioned, in increasing scope: a `cached_property` or dict on a frozen bundle
+  built per call and passed down (`costing/estimate.py`'s `_Walk`, which carries three and is 93x
+  because of them); a dict captured by a closure (`estimate.material_seconds`); a previous result
+  passed in *and* returned, never stored (`dps_bridge.PricedFights`); and content-keyed disk
+  (`store/derived_cache.py`). All four die with the call or travel as data, so a worker cannot
+  inherit one. The test is not "is there a dict" but "could two processes see different contents" —
+  and where a memo outlives a request, as the GUI's `ReferenceBlobs` does, it must be validated
+  against what it caches rather than merely remembered.
 
 ### Test against more than one map
 
@@ -165,7 +176,7 @@ The table says what each module **owns**; its docstring says why.
 | `costing/slayer.py` | Slayer's rate, which is a *distribution* not a chosen method, and the points economy that decides where you train. |
 | `costing/prayer.py`, `costing/farming.py` | The two skills whose limit is not a rate: bone supply, and a **schedule** measured in calendar days beside its active hours. |
 | `costing/levels.py` | `infer_levels`/`goal_levels`/`reachable_providers` and the gating helpers. **The map records no skill levels** — the floor is read out of completed challenges. |
-| `costing/inputs.py` | What `fray estimate` and the Estimate tab must agree about, assembled once. The two had already drifted. |
+| `costing/inputs.py` | What `fray estimate` and the Estimate tab must agree about, assembled once. The two had already drifted. Also `ReferenceBlobs`: the reference files read **once per invocation** and threaded, rather than four times by four callers. |
 | `costing/dps_bridge.py` | The seam to `osrs-dps`. **Optional import** — check `DPS_AVAILABLE`, never assume it. Prices only `reachable_providers`, which it imports rather than copying. |
 | `costing/*_overhead.py` | The harnesses that fitted the overhead constants. **No caller in `src/`** — they exist to be re-run when someone doubts them. |
 | `store/cache.py` | The disk. The envelope, the `--chunkinfo`/`FRAY_CHUNKINFO` override, `--map` resolution across kinds, atomic writes, the cross-kind name claim and `migrate_layout`. |
@@ -183,8 +194,8 @@ The table says what each module **owns**; its docstring says why.
 | `gui/routes_derived.py` | The **expensive path**. `/api/diff` derives both sides and is the one route allowed to be slow. |
 | `gui/routes_reference.py` | Bytes belonging to no map: the static allowlist, blob freshness, the tile *template*, and the lazy asset proxy. |
 | `gui/actions.py` | The POST handlers. **An action's reply shape decides whether the page polls it** — a job id, or the result. |
-| `gui/jobs.py` | The background job registry. **The only mutable state in the GUI**, kept out of the pure layer deliberately. |
-| `gui/derivation.py` | The boundary between the cheap path and the expensive one. Loads `ChunkInfo` **lazily**. |
+| `gui/jobs.py` | The background job registry. **The only mutable state in the GUI**, kept out of the pure layer deliberately. Also `claim_once`, which is what stops the page's boot warm-up re-scraping the wiki on every reload. |
+| `gui/derivation.py` | The boundary between the cheap path and the expensive one. Loads `ChunkInfo` **lazily**, and holds the `ReferenceBlobs` — the one memo here validated against the files' mtimes, because stale overrides key the enrichment cache. |
 | `gui/panels.py` | Shaping `Derived` into what the panel draws — one shape across all five categories. Pure. **New shaping goes here, not into the JavaScript.** |
 | `gui/worldmap.py` | Where a chunk sits on the map and which sides face outward. Owns the projection (the y axis is flipped) and `hull_edges`. |
 | `gui/browser.py` | Finding a Chromium-family browser and opening an app window whose lifetime is the server's. `--user-data-dir` is load-bearing, not tidiness. |
