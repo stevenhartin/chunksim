@@ -308,6 +308,11 @@ def test_a_timeline_replays_a_run_without_parsing_the_export(tmp_path: Path) -> 
     or a `derive` would stutter. The ledger and the saved payload are the
     whole input - and the base map is deliberately absent here, because a run
     carries its own past.
+
+    `/api/timeline` itself is fetched once when a run is *opened*, and does
+    pay the parse where there is a base map to measure a roll's tasks against
+    - see `roll_panels`. This run has none, so the whole route stays cold; the
+    per-drag route below is the one that must never warm it.
     """
     ctx = Context(root=tmp_path)
     map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH, "12852"], [NORTH, "12852"])
@@ -694,3 +699,63 @@ def test_a_roll_hides_a_skill_the_base_map_has_already_passed(
     )
 
     assert skills["groups"] == [], "a task below the completed ceiling is not news"
+
+
+def test_the_graph_counts_what_the_overlay_lists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**A column that says 2 and opens to show 1 is worse than either.**
+
+    The bars measured `Step.task_count` - the raw ledger - while the overlay
+    under them showed the filtered set, so hovering said `Cooking: 3` on a
+    roll whose panel was empty. Both now come from `roll_panels`, one walk.
+    """
+    export = {
+        "chunks": {LUMBRIDGE: {}, NORTH: {}},
+        "challenges": {
+            "Cooking": {
+                "Buy the ~|cooking cape|~": {"Level": 99},
+                "Cook a ~|cup of tea|~": {"Level": 20},
+            },
+            "Thieving": {"Rob a ~|gem stall|~": {"Level": 75}},
+        },
+    }
+    ctx = _derived_ctx(tmp_path, monkeypatch, export)
+    directory = cache.claim_batch("sim", tmp_path, kind=cache.SIMULATED)
+    run = cache.run_dir(directory, 1)
+    cache.write_sim_run(
+        run,
+        map_id=f"{directory.name}/{run.name}",
+        data={"chunks": {"unlocked": {LUMBRIDGE: LUMBRIDGE, NORTH: NORTH}}},
+        simulation={"run": run.name, "batch": directory.name, "rolls": [NORTH]},
+        ledger=[{
+            "order": 1,
+            "chunk_id": NORTH,
+            "new_sections": {},
+            "new_tasks": {
+                "Cooking": {"Cook a ~|cup of tea|~": 20},
+                "Thieving": {"Rob a ~|gem stall|~": 75},
+            },
+            "new_unsupported": [],
+            "bis_upgrades": {},
+        }],
+    )
+    cache.write_sim_batch(
+        directory,
+        {"base_payload": {
+            "chunks": {"unlocked": {LUMBRIDGE: LUMBRIDGE}},
+            "chunkinfo": {"completedChallenges": {"Cooking": {"Buy the ~|cooking cape|~": True}}},
+        }},
+    )
+    map_id = f"{directory.name}/{run.name}"
+
+    graph = _body(_get("/api/timeline", ctx, map=map_id))["steps"][1]
+    overlay = _body(_get("/api/roll", ctx, map=map_id, step="1"))
+
+    # Two tasks in the ledger, one of them behind a 99 Cooking cape.
+    assert graph["tasks"] == 1
+    assert graph["tasks_by_group"] == {"Skills": 1}
+    assert (overlay["tasks"], overlay["tasks_by_group"]) == (graph["tasks"], graph["tasks_by_group"])
+    # And the breakdown names the overlay's headings, not the skills - after
+    # the filter a skill contributes at most one row.
+    assert "Cooking" not in graph["tasks_by_group"]

@@ -67,8 +67,8 @@ from fray_claude.gui.routes_reference import (
     _tile_source,
 )
 from fray_claude.gui.routes_view import (
-    roll_baseline,
-    roll_record,
+    panel_counts,
+    roll_panels,
     _run_steps,
     _timeline_payload,
     build_map_view,
@@ -386,18 +386,19 @@ def handle_request(
             # roll of the real export opened 239 tasks; sending every name for
             # every step would be most of a megabyte to draw a bar chart with.
             # This is the same ledger read, asked for one step at a time.
+            # **The Tasks tab's own shape, over this roll's additions.** Two
+            # views of the same names spelled two ways is what this replaces -
+            # see `panels.roll_panel`. `roll_panels` is the same walk the graph
+            # measures, so the column you hovered and the panel you opened
+            # cannot disagree.
+            panel = roll_panels(map_id, ctx)[index]
+            total, by_group = panel_counts(panel)
             return _json(
                 {
                     **roll.as_dict(),
-                    # **The Tasks tab's own shape, over this roll's
-                    # additions.** Two views of the same names spelled two
-                    # ways is what this replaces - see `panels.roll_panel`,
-                    # which reconstructs the panel's inputs rather than
-                    # re-implementing its rules.
-                    "panel": roll_panel(
-                        roll_record(map_id, roll.chunk_id or "", ctx),
-                        roll_baseline(map_id, index, ctx),
-                    ),
+                    "tasks": total,
+                    "tasks_by_group": by_group,
+                    "panel": panel,
                     # The hours behind this one roll, priced on the click. See
                     # `routes_view.roll_detail`: `None` when it cannot be
                     # priced, and the overlay simply omits the chart.

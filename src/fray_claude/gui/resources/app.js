@@ -3833,10 +3833,16 @@ function tlBars(steps, key, current) {
 
 function tlTip(row, key) {
   const head = tmpl`<b>Roll ${row.step} · ${chunkLabel(row.chunk)}</b>`;
-  const skills = Object.entries(row.tasks_by_skill || {});
-  const breakdown = skills.length
-    ? skills.map(([skill, n]) => tmpl`<span class="sub">${skill}: ${n}</span>`).join("")
-    : tmpl`<span class="sub">No new tasks</span>`;
+  /* **The overlay's own headings, with the overlay's own counts.** This read
+   * the raw ledger per skill while the panel under it showed the filtered
+   * set, so a column said `Cooking: 3` and opening it showed nothing at all.
+   * After the filter a skill contributes at most one row, so per-skill would
+   * be a list of ones anyway - the sections are what a reader is matching up.
+   * See `routes_view.panel_counts`. */
+  const groups = Object.entries(row.tasks_by_group || {});
+  const breakdown = groups.length
+    ? groups.map(([name, n]) => tmpl`<span class="sub">${name}: ${n}</span>`).join("")
+    : tmpl`<span class="sub">Nothing new here</span>`;
   if (key !== "hours") {
     /* **The rolls, not the whole world.** `unlocked_chunks` counts the base
      * map too, so the first roll of a simulation from a 106-chunk map read

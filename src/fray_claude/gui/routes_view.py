@@ -29,6 +29,7 @@ from fray_claude.runs.timeline import matches as timeline_matches
 from fray_claude.runs.timeline import stamp as timeline_stamp
 
 from typing import Any
+from fray_claude.gui.panels import roll_panel
 from fray_claude.gui.worldmap import MapView
 from collections.abc import Mapping
 from fray_claude.runs.timeline import Step
@@ -143,6 +144,62 @@ def roll_record(map_id: str, chunk_id: str, ctx: Context) -> dict[str, Any]:
     return {}
 
 
+def roll_panels(map_id: str, ctx: Context) -> list[dict[str, Any]]:
+    """Every roll of a run, shaped the way the Tasks tab shapes a map.
+
+    **One pass, one answer, three readers.** The overlay draws one of these,
+    the graph's bars measure them and the tooltip breaks one down - and until
+    they came from here the graph counted the raw ledger while the overlay
+    showed the filtered set, so hovering a column said 18 and opening it showed
+    two rows.
+
+    The ceiling is carried forward as the walk goes: a roll is filtered against
+    everything before it, then folds its own levels in for the rolls after. It
+    is the same arithmetic `roll_baseline` does for a single step, done once
+    for the run instead of once per step - which is the only reason this can
+    sit on `/api/timeline` at all.
+
+    Index-aligned with `replay`'s steps, so `[0]` is the baseline and empty.
+    """
+    ledger = cache.read_rolls(map_id, ctx.root)
+    by_chunk = {
+        str(entry["chunk_id"]): entry
+        for entry in ledger
+        if isinstance(entry.get("chunk_id"), str)
+    }
+    ceiling = _completed_levels(map_id, ctx)
+    panels: list[dict[str, Any]] = [roll_panel({})]
+    for chunk_id in rolled_chunks(ledger):
+        record = by_chunk.get(chunk_id, {})
+        panels.append(roll_panel(record, ceiling))
+        _raise_ceiling(ceiling, record)
+    return panels
+
+
+def _raise_ceiling(ceiling: dict[str, float], record: Mapping[str, Any]) -> None:
+    """Fold one roll's levels into the running high-water mark, in place."""
+    for skill, tasks in _mapping(record, "new_tasks").items():
+        for level in (tasks or {}).values():
+            if isinstance(level, (int, float)) and not isinstance(level, bool):
+                ceiling[skill] = max(ceiling.get(skill, 0.0), float(level))
+
+
+def panel_counts(panel: Mapping[str, Any]) -> tuple[int, dict[str, int]]:
+    """A shaped roll as the graph reads it: a total, and a total per section.
+
+    **Per section rather than per skill**, which the tooltip used to print.
+    After the filter a skill contributes at most one row, so a per-skill
+    breakdown is a list of ones; the sections are the headings the overlay
+    actually draws, which is what "the numbers match" has to mean.
+    """
+    by_group = {
+        str(section["label"]): int(section["active_total"])
+        for section in panel.get("sections", ())
+        if section.get("active_total")
+    }
+    return sum(by_group.values()), by_group
+
+
 def roll_baseline(map_id: str, step: int, ctx: Context) -> dict[str, float]:
     """Per skill, the level a run had already reached before roll `step`.
 
@@ -164,12 +221,18 @@ def roll_baseline(map_id: str, step: int, ctx: Context) -> dict[str, float]:
       already opened a level-70 one, which is the same rule applied to the
       run's own past.
 
+    **The parse is the cheap half of the export, which is why this is
+    affordable.** `ChunkInfo`'s accessors are lazy, so reading `challenges` off
+    a fresh one is 0.07s measured on the real 10MB file - not the ~1s a
+    `derive` costs. A run with no recorded base map answers `{}` without
+    touching it at all.
+
     The one approximation is stated rather than hidden: the level read is the
     challenge's face value where `active_tasks._highest_completed_level` uses
     `boosts.completed_ceiling`, which is *lower* when a boost was needed. So
     this baseline can be a few levels high and hide a marginal task. Porting
-    the boost arithmetic here would need a `SourceIndex`, which means a
-    derivation, which is the second a click-to-open panel should not cost.
+    the boost arithmetic here would need a `SourceIndex`, and that means a
+    derivation - an order of magnitude more than this whole route costs.
     """
     highest = _completed_levels(map_id, ctx)
     ledger = cache.read_rolls(map_id, ctx.root)
@@ -181,10 +244,7 @@ def roll_baseline(map_id: str, step: int, ctx: Context) -> dict[str, float]:
     # Ordered as `replay` orders them, so "before this step" means the same
     # thing here as it does to the slider.
     for chunk_id in rolled_chunks(ledger)[: max(0, step - 1)]:
-        for skill, tasks in _mapping(by_chunk.get(chunk_id, {}), "new_tasks").items():
-            for level in (tasks or {}).values():
-                if isinstance(level, (int, float)) and not isinstance(level, bool):
-                    highest[skill] = max(highest.get(skill, 0.0), float(level))
+        _raise_ceiling(highest, by_chunk.get(chunk_id, {}))
     return highest
 
 
@@ -291,17 +351,36 @@ def _cached_hours(
 
 
 def _timeline_payload(map_id: str, ctx: Context) -> dict[str, Any]:
-    """The cheap half: every step, plus whatever hours are already on disk.
+    """Every step, plus whatever hours are already on disk.
 
-    **This must not parse the export.** The steps come from the ledger and the
-    saved payload, and the hours come off disk or not at all - which is what
-    lets the slider redraw at JSON-read speed. `_cached_hours` reads a digest
-    stamp, which needs `Derivations.digests()`, and that reads file hashes
-    rather than the file: no `ChunkInfo`, and a test pins it.
+    **Fetched once when a run is opened, not per drag** - which is the thing
+    to keep in mind about its cost. The slider redraws from the rows this
+    returns; nothing here runs again while you scrub.
+
+    That is what pays for `roll_panels`, and it is a change from what this
+    docstring used to promise. The steps and the hours still come from the
+    ledger, the saved payload and the disk - but the *counts* are now the
+    filtered ones the overlay draws, and filtering needs the base map's
+    completed levels, which live in the export. A graph counting one thing
+    while the panel under it listed another was the worse answer, and the bill
+    is small: **0.09s cold and 0.01s warm** on a 50-roll run of the real map,
+    because reading `challenges` off a `ChunkInfo` is lazy and cheap where
+    deriving from one is not.
+
+    `_cached_hours` still reads a digest stamp rather than the file it
+    describes, so the hours half remains free.
     """
     steps = _run_steps(map_id, ctx)
     added, totals, enriched = _cached_hours(map_id, ctx)
     rows = series(steps, totals=totals, added=added)
+    # **The bars measure what the overlay lists.** `Step.task_count` is the raw
+    # ledger; these are the same rolls after the Tasks tab's own rules.
+    # `tasks_by_skill` goes rather than sitting beside the new field: it is a
+    # perfectly good answer to a different question, and a payload carrying two
+    # counts of "this roll's tasks" is one where somebody reads the wrong one.
+    for row, panel in zip(rows, roll_panels(map_id, ctx)):
+        row["tasks"], row["tasks_by_group"] = panel_counts(panel)
+        row.pop("tasks_by_skill", None)
     # **Read back off the shaped rows, not off the stored list.** `series`
     # refuses a totals list that does not fit the run - a run re-rolled under
     # one name has a different number of steps - so asking the store instead

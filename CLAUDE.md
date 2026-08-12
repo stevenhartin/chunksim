@@ -1458,9 +1458,11 @@ delta mode where `--compare`'s gains are green and its losses red. It can also d
 **A simulated run carries its own past, and the timeline is what reads it.** `simulate` writes every
 roll to `rolls.json` and nothing used to read it back, so a simulation could say where you end up and
 not what each roll bought you. The state before roll k is `final − rolls[k:]` — **no base map, no
-export, no `derive`** — so `GET /api/timeline` and `/api/view?step=` are both ~1ms and the slider
-redraws as you drag it. `timeline.py` owns that arithmetic and `tests/test_timeline.py` asserts a run
-replays with its base map *deleted*.
+export, no `derive`** — so `/api/view?step=` is ~1ms and the slider redraws as you drag it.
+`timeline.py` owns that arithmetic and `tests/test_timeline.py` asserts a run replays with its base
+map *deleted*. `GET /api/timeline` is fetched **once when a run is opened**, not per drag, and does
+read the export — see the roll-filtering bullet below; measured at 0.09s cold and 0.01s warm on a
+50-roll run, because reading `challenges` off a `ChunkInfo` is lazy where deriving from one is not.
 
 **A run is born with its timeline, because pricing a state it has already derived is free.**
 `batch._Pricer` costs each state as `simulate_rolls` passes through it — measured under 5ms against
@@ -1735,12 +1737,22 @@ Things worth knowing before changing it:
   rolls** opened. Measured on `fray-sim/run-001`, 1 of the first 20 rolls opens
   a genuinely new skill goal; before the filter every one of them listed
   something.
-  **This is the one thing that costs the export on this route**, and the trade
-  is worth stating: the completed set needs levelling, levels live in the
-  export, and a run with no recorded base map still answers without parsing.
-  The slider's own routes (`/api/timeline`, `/api/view?step=`) still never
-  touch it - a click can afford a second where a drag cannot, and warm it is
-  0.25s. **Only skills are filtered**: a quest step, a diary task and a
+  **And the graph counts what the overlay lists**, which is the other half of
+  the same fix: the bars measured `Step.task_count`, the raw ledger, while the
+  panel under them showed the filtered set - so a column read `Cooking: 3` and
+  opened to nothing. `roll_panels` walks the run once carrying the ceiling
+  forward, and the bar height, the tooltip's breakdown and the overlay all read
+  it. The breakdown is **per section, not per skill**: after the filter a skill
+  contributes at most one row, so per-skill would be a list of ones, where the
+  sections are the headings a reader is matching up. `tasks_by_skill` is gone
+  from the payload rather than left beside `tasks_by_group` - two counts of
+  "this roll's tasks" is a payload where somebody reads the wrong one.
+  **This is what costs the export on these two routes**, and the trade is worth
+  stating: the completed set needs levelling and levels live in the export. It
+  is much cheaper than a derivation - `ChunkInfo`'s accessors are lazy, so this
+  is 0.07s against ~0.8s - and a run with no recorded base map answers without
+  parsing at all. **`/api/view?step=`, the one route a drag hits, still never
+  touches it.** **Only skills are filtered**: a quest step, a diary task and a
   collection-log row are each their own thing with no ladder to be behind on.
   The one approximation is stated in `roll_baseline` - a face `Level` where
   `active_tasks` uses `boosts.completed_ceiling`, which needs a `SourceIndex`
