@@ -47,7 +47,6 @@ from fray_claude.store.cache import (
     EDITED,
     SIMULATED,
     TASKS_MAP_BLOB_NAME,
-    UNLOCKED,
     WIKI_RATES_BLOB_NAME,
     CacheMissError,
     blob_path,
@@ -943,10 +942,13 @@ def save_unlock(
     record, plus whether there are any), and the run lands in the batch layout
     so `--map`, `fray maps` and the clash suffix all work unchanged.
 
-    **It is its own kind, under `cache/maps/unlocked/`.** It used to be filed
-    as `simulated` on the grounds that both mean "this project computed it";
-    what that missed is that a picker has to *say* which, and calling a map
-    made by adding one chunk by hand a simulation is simply wrong.
+    **It lands under `cache/maps/edited/`, beside a hand-committed map.** It
+    had a kind of its own for a while, on the grounds that "one candidate
+    chunk, priced" and "six ticked tasks" are different things - which is true
+    and decides nothing: both are a map this project made by hand from another
+    one, both remove the same way, both browse the same way. What is worth
+    keeping is *which* chunk and that it came from `unlock`, and that is in the
+    batch metadata rather than in the kind.
     """
     record = UnlockRecord(
         order=1,
@@ -958,7 +960,7 @@ def save_unlock(
     )
     written = _write_one_run_batch(
         name=name,
-        kind=UNLOCKED,
+        kind=EDITED,
         origin="unlock",
         base_payload=payload,
         data=simulated_payload(payload, [record]),

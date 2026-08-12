@@ -22,7 +22,6 @@ from fray_claude.store.cache import (
     claim_batch,
     COMPUTED_KINDS,
     EDITED,
-    UNLOCKED,
     section_overlay_path,
     write_asset_at,
     write_gui_window,
@@ -607,7 +606,7 @@ def test_each_kind_has_its_own_directory(tmp_path: Path) -> None:
     """Three kinds, three directories, and a name belongs to one of them."""
     assert kind_root(FETCHED, tmp_path).name == "fetched"
     assert kind_root(SIMULATED, tmp_path).name == "simulated"
-    assert kind_root(UNLOCKED, tmp_path).name == "unlocked"
+    assert kind_root(EDITED, tmp_path).name == "edited"
     assert kind_root(FETCHED, tmp_path).parent.name == "maps"
 
     with pytest.raises(ValueError, match="unknown map kind"):
@@ -617,12 +616,12 @@ def test_each_kind_has_its_own_directory(tmp_path: Path) -> None:
 def test_a_batch_name_is_claimed_across_every_kind(tmp_path: Path) -> None:
     """`--map foo` takes a bare name, so only one thing may answer to it.
 
-    Claiming per-kind would let a simulated `foo` and an unlocked `foo` both
+    Claiming per-kind would let a simulated `foo` and an edited `foo` both
     exist, and `resolve_map_path` would have to guess which was meant.
     """
     write_cache("fray", {"chunks": {}}, root=tmp_path)
     first = claim_batch("run", tmp_path, kind=SIMULATED)
-    second = claim_batch("run", tmp_path, kind=UNLOCKED)
+    second = claim_batch("run", tmp_path, kind=EDITED)
     fetched_clash = claim_batch("fray", tmp_path, kind=SIMULATED)
 
     assert first.name == "run"
@@ -633,7 +632,7 @@ def test_a_batch_name_is_claimed_across_every_kind(tmp_path: Path) -> None:
 def test_removing_computed_maps_leaves_the_fetched_ones(tmp_path: Path) -> None:
     write_cache("fray", {"chunks": {}}, root=tmp_path)
     claim_batch("rolled", tmp_path, kind=SIMULATED)
-    claim_batch("added", tmp_path, kind=UNLOCKED)
+    claim_batch("added", tmp_path, kind=EDITED)
 
     removed = remove_computed(root=tmp_path)
 
@@ -724,3 +723,27 @@ def test_a_fourth_kind_costs_one_tuple_entry(tmp_path: Path) -> None:
 
     assert first.name == "demo"
     assert second.name == "demo-2"
+
+
+def test_the_retired_unlocked_kind_migrates_into_edited(tmp_path: Path) -> None:
+    """**Two kinds that decided nothing become one.** `unlocked` and `edited`
+    both mean "this project made this by hand from another map"; they removed
+    the same way, browsed the same way, and the picker saying which made a
+    reader work out a distinction with no consequence.
+
+    A per-batch move rather than a directory rename, since both may exist -
+    and a name cannot clash, because `_name_taken` has always claimed across
+    every kind.
+    """
+    legacy = tmp_path / "cache" / "maps" / "unlocked" / "Candidate" / "run-001"
+    legacy.mkdir(parents=True)
+    (legacy / "map.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "cache" / "maps" / "edited" / "kept").mkdir(parents=True)
+
+    moved = migrate_layout(tmp_path)
+
+    assert "unlocked/Candidate -> edited/Candidate" in moved
+    assert (tmp_path / "cache" / "maps" / "edited" / "Candidate" / "run-001" / "map.json").is_file()
+    assert (tmp_path / "cache" / "maps" / "edited" / "kept").is_dir()
+    assert not (tmp_path / "cache" / "maps" / "unlocked").exists()
+    assert "unlocked" not in COMPUTED_KINDS

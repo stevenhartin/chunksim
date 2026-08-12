@@ -70,6 +70,62 @@ def _window_state(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     return {"saved": False}
 
 
+#: **A development escape hatch, deliberately unadvertised.** Typed into the
+#: fetch box it builds a map with every chunk in the export unlocked, which is
+#: the map several of this project's measurements are quoted against - "with
+#: every chunk unlocked and every level at 99" appears half a dozen times in
+#: `CLAUDE.md` and was, until now, a Python snippet somebody had to rewrite
+#: each time.
+#:
+#: It is not in the README, not in the placeholder and not in any tooltip, and
+#: it is refused unless the server is bound to loopback alone - `allowed_hosts`
+#: is empty exactly then, since `--host`/`--allow-host` are the only things
+#: that fill it. So it is available where the person running the server is the
+#: person reading the page, and nowhere else. That is the whole of the guard
+#: and it is worth being clear about: it is not a permission system, it is a
+#: statement that this is a local tool.
+UBER_MAP_SENTINEL = "__UBER__"
+
+
+def _uber_map(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
+    """Every chunk in the export, unlocked, on top of whichever map is open.
+
+    The base matters and is not `fray`: a map carries the player's `rules`,
+    their `maxSkill` and their completed challenges, and an "everything
+    unlocked" map is only useful as *this* map with the chunk constraint
+    removed. Written as an ordinary edit, because that is what it is - a map
+    this project made by hand from another one - so it removes, browses,
+    diffs and edits like any other.
+    """
+    if ctx.allowed_hosts:
+        raise ValueError("the uber map is a loopback-only development tool")
+    base = str(payload.get("base") or "").strip() or cache.DEFAULT_MAP_ID
+    envelope = cache.read_cache(base, ctx.root)
+    info = ctx.derivations.chunk_info()
+    chunks = [
+        chunk_id
+        for chunk_id in info.data.get("chunks", {})
+        if chunk_id not in (envelope["data"].get("chunks", {}).get("unlocked") or {})
+    ]
+    if not chunks:
+        raise ValueError(f"{base!r} already holds every chunk")
+
+    def work(progress: Progress, _stop: StopCheck) -> dict[str, Any]:
+        progress(f"unlocking {len(chunks)} chunks")
+        saved = save_edit(
+            name=f"{base.replace('/', '-')}-uber",
+            payload=envelope["data"],
+            ticked={},
+            unlocked=chunks,
+            base_map=base,
+            base_fetched_at=envelope.get("fetched_at"),
+            root=ctx.root,
+        )
+        return {**saved.as_dict(), "map": saved.name, "open": saved.name}
+
+    return {"job": ctx.jobs.submit(f"uber map from {base}", work).id}
+
+
 def _fetch_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     """Download any named map from Firebase, not only the one on screen.
 
@@ -80,6 +136,8 @@ def _fetch_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     `[A-Za-z0-9_.-]+`, so no second, weaker check belongs here.
     """
     map_id = str(payload.get("map") or "").strip() or cache.DEFAULT_MAP_ID
+    if map_id == UBER_MAP_SENTINEL:
+        return _uber_map(payload, ctx)
     if cache.split_map_id(map_id)[1] is not None:
         # A run is something this project computed. Firebase has never heard
         # of one, so asking it for `batch/run-001` is a mistake, not a fetch.

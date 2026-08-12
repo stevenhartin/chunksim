@@ -322,10 +322,10 @@ def test_unlocking_a_chunk_writes_a_map_of_its_own_kind(
     assert saved["chunk"] == NORTH
     assert saved["unlocked_chunks"] == 2
     envelope = cache.read_cache(saved["open"], tmp_path)
-    assert envelope["kind"] == cache.UNLOCKED
+    assert envelope["kind"] == cache.EDITED
     assert set(envelope["data"]["chunks"]["unlocked"]) == {LUMBRIDGE, NORTH}
     # One job, recorded on the run as well as the batch - see `batch.py`.
-    assert cache.read_batch(saved["name"], tmp_path, kind=cache.UNLOCKED)["batch_id"]
+    assert cache.read_batch(saved["name"], tmp_path, kind=cache.EDITED)["batch_id"]
 
 
 def test_unlocking_a_chunk_you_already_hold_fails_the_job(
@@ -341,7 +341,7 @@ def test_unlocking_a_chunk_you_already_hold_fails_the_job(
 
     assert job["state"] == "failed"
     assert "already unlocked" in job["error"]
-    assert not (tmp_path / "cache" / "maps" / cache.UNLOCKED).exists()
+    assert not (tmp_path / "cache" / "maps" / cache.EDITED).exists()
 
 
 def test_an_unlock_against_a_missing_map_fails_the_post_not_the_job(tmp_path: Path) -> None:

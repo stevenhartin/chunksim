@@ -664,3 +664,38 @@ def test_an_edited_map_can_be_edited_again(ctx: Context) -> None:
     # And it records what it was actually made from.
     batch = cache.read_batch("step-2", ctx.root, kind=cache.EDITED)
     assert batch.get("base_map") == "step-1"
+
+
+def test_the_uber_sentinel_builds_every_chunk_onto_the_open_map(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**A development escape hatch, and the base is the interesting half.**
+
+    A map carries the player's rules, their `maxSkill` and their completed
+    challenges, so "everything unlocked" is only useful as *this* map with the
+    chunk constraint removed - which is exactly the map half of `CLAUDE.md`'s
+    measurements are quoted against.
+    """
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+    derived = _derived_ctx(tmp_path, monkeypatch, {"chunks": {LUMBRIDGE: {}, NORTH: {}}})
+    ctx = Context(root=tmp_path, check_origin=False, derivations=derived.derivations)
+
+    job = _wait(ctx, _body(_post("/api/fetch", ctx, {"map": "__UBER__", "base": "fray"}))["job"])
+    assert job["state"] == "done", job
+
+    envelope = cache.read_cache(job["result"]["open"], ctx.root)
+    assert envelope["kind"] == "edited"
+    assert set(envelope["data"]["chunks"]["unlocked"]) == {LUMBRIDGE, NORTH}
+
+
+def test_the_uber_sentinel_is_refused_off_loopback(ctx: Context) -> None:
+    """It is not a permission system; it is a statement that this is a local
+    tool. `allowed_hosts` is non-empty exactly when `--host`/`--allow-host`
+    was passed, which is the only way this server is reachable from elsewhere.
+    """
+    remote = Context(root=ctx.root, allowed_hosts=frozenset({"box.tailnet"}))
+
+    reply = _post("/api/fetch", remote, {"map": "__UBER__", "base": "fray"})
+
+    assert reply.status == HTTPStatus.BAD_REQUEST
+    assert b"loopback-only" in reply.body

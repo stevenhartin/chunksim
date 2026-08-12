@@ -81,7 +81,7 @@ def test_unlock_cache_map_suffixes_a_name_already_taken(
 
     out = capsys.readouterr().out
     assert "'Candidate' was taken; saved as 'Candidate-2'" in out
-    assert (project / "cache" / "maps" / "unlocked" / "Candidate-2" / "run-001" / "map.json").is_file()
+    assert (project / "cache" / "maps" / "edited" / "Candidate-2" / "run-001" / "map.json").is_file()
 
 
 def test_unlock_cache_map_export_json_reports_the_name(

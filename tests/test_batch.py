@@ -17,8 +17,8 @@ import pytest
 
 from fray_claude.runs.batch import derive_seeds, price_steps, run_batch, save_unlock
 from fray_claude.store.cache import (
+    EDITED,
     BATCH_META_FILE_NAME,
-    UNLOCKED,
     CacheMissError,
     read_base_payload,
     read_batch,
@@ -353,10 +353,10 @@ def test_saving_an_unlock_writes_a_batch_of_one(root: Path) -> None:
     assert saved.unlocked_chunks == 2
 
     envelope = read_cache("hand", root)
-    assert envelope["kind"] == UNLOCKED
+    assert envelope["kind"] == EDITED
     assert set(envelope["data"]["chunks"]["unlocked"]) == {"100", "101"}
 
-    summary = read_batch("hand", root, kind=UNLOCKED)
+    summary = read_batch("hand", root, kind=EDITED)
     assert summary["origin"] == "unlock" and summary["batch_id"]
     run = summary["runs"][0]
     # The same keys `run_batch` writes, so one reader serves both kinds.

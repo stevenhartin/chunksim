@@ -288,9 +288,9 @@ def test_unlock_cache_map_saves_a_readable_map(
     # **Its own kind**, not filed under `simulated`: a map made by adding one
     # chunk by hand is not a simulation, and the picker has to say which.
     envelope = json.loads(
-        (project / "cache" / "maps" / "unlocked" / "Candidate" / "run-001" / "map.json").read_text()
+        (project / "cache" / "maps" / "edited" / "Candidate" / "run-001" / "map.json").read_text()
     )
-    assert envelope["kind"] == "unlocked"
+    assert envelope["kind"] == "edited"
     assert envelope["source"] == "unlock 101 from 'fray'"
     assert envelope["simulation"]["origin"] == "unlock"
     assert set(envelope["data"]["chunks"]["unlocked"]) == {"100", "101"}

@@ -659,10 +659,10 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 }
 
 /* **What kind a map is, as a tint rather than as another word to read.**
-   Four kinds meaning four different provenances looked alike as a column of
+   Three kinds meaning three different provenances looked alike as a column of
    names. The colours are the palette already on screen - blue is what a
-   candidate is drawn in, green is a gain, amber is the accent - and `fetched`
-   is deliberately untinted, being the one that came from somewhere real. */
+   candidate is drawn in, amber is the accent - and `fetched` is deliberately
+   untinted, being the one that came from somewhere real. */
 .tag {
   display: inline-flex;
   align-items: center;
@@ -677,7 +677,6 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 }
 
 .tag[data-kind="simulated"] { color: var(--candidate); }
-.tag[data-kind="unlocked"] { color: var(--gain); }
 .tag[data-kind="edited"] { color: var(--amber); }
 
 .pill.reachable { color: var(--gain); border-color: var(--gain); }

@@ -2912,7 +2912,6 @@ const DEFAULT_MAP_ID = "fray";
 const KIND_LABELS = {
   fetched: "Fetched",
   simulated: "Simulated",
-  unlocked: "Unlocked",
   edited: "Edited",
 };
 
@@ -3014,8 +3013,13 @@ async function loadMapsPane() {
       const note = runs.length > 1
         ? runs.length + " runs"
         : (m.unlocked_chunks == null ? "" : m.unlocked_chunks + " chunks");
-      const remove = m.kind === "fetched" ? "" :
-        '<button class="link danger" data-rm="' + m.map_id.replace(/"/g, "&quot;") + '">Remove</button>';
+      /* **A fetched map is removable too, and asks a harder question.** It
+       * is upstream's state rather than something recomputable from what is
+       * beside it, so the only way back is the network - which is a fine
+       * answer and not a reason to leave the row without the control every
+       * other row has. `include_fetched` is what the API wants to hear. */
+      const remove = '<button class="link danger" data-rm="'
+        + m.map_id.replace(/"/g, "&quot;") + '">Remove</button>';
       out += tmpl`<li data-tip="${mapTip(m)}"><span class="tag" data-kind="${m.kind}">${KIND_LABELS[m.kind] || label(m.kind)}</span>
         <span class="name">${m.map_id}</span><span class="num">${note}</span>${raw(remove)}</li>`;
     }
@@ -3030,7 +3034,12 @@ async function loadMapsPane() {
     const fetchName = document.getElementById("fetch-name");
     const doFetch = () => {
       const wanted = fetchName.value.trim() || DEFAULT_MAP_ID;
-      runAction("Fetch " + wanted, "/api/fetch", { map: wanted }, async (result) => {
+      /* `base` is ignored by an ordinary fetch - source-chunk has never heard
+       * of whatever is open here - and read by exactly one thing, which is
+       * `actions.UBER_MAP_SENTINEL`. Sent always so the box stays one control
+       * rather than growing a mode. */
+      runAction("Fetch " + wanted, "/api/fetch", { map: wanted, base: state.map },
+        async (result) => {
         /* A map that was not cached before is now, so the picker is stale -
          * and selecting what you just asked for is what asking for it meant. */
         await loadMaps();
@@ -3083,7 +3092,9 @@ async function loadMapsPane() {
     };
 
     for (const button of body.querySelectorAll("button[data-rm]")) {
-      button.onclick = () => askRemoveBatch(button.dataset.rm, runsOfBatch(button.dataset.rm), afterRemoval);
+      const kind = (batches.find((m) => m.map_id === button.dataset.rm) || {}).kind;
+      button.onclick = () =>
+        askRemoveBatch(button.dataset.rm, runsOfBatch(button.dataset.rm), afterRemoval, kind);
     }
 
     document.getElementById("rm-sims").onclick = async () => {
@@ -3116,14 +3127,22 @@ async function loadMapsPane() {
  * handful; "Remove verf-sim?" offered all or nothing, which meant keeping the
  * other thirty-nine to save one. Each run keeps the tooltip it has in the
  * list, so hovering says what that run holds before you tick it. */
-async function askRemoveBatch(name, runs, afterRemoval) {
+async function askRemoveBatch(name, runs, afterRemoval, kind) {
+  const fetched = kind === "fetched";
   if (runs.length < 2) {
     const ok = await confirmAction(
       "Remove " + name + "?",
-      tmpl`<p>Deletes its directory under <code>cache/maps/</code>. A simulated
-        map can be rebuilt by running its seed again; nothing else brings it back.</p>`,
+      fetched
+        ? tmpl`<p>Deletes <code>cache/maps/fetched/${name}.json</code>. This one
+            came from source-chunk rather than from anything here, so the only
+            way back is <b>Fetch Named Map</b>.</p>`
+        : tmpl`<p>Deletes its directory under <code>cache/maps/</code>. A simulated
+            map can be rebuilt by running its seed again; nothing else brings it back.</p>`,
       "Remove");
-    if (ok) runAction("Remove " + name, "/api/maps/remove", { names: [name] }, afterRemoval);
+    if (ok) {
+      runAction("Remove " + name, "/api/maps/remove",
+        { names: [name], include_fetched: fetched }, afterRemoval);
+    }
     return;
   }
   const body = tmpl`<p><b>${name}</b> holds ${runs.length} runs. Removing all of

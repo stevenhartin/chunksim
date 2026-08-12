@@ -105,18 +105,26 @@ MAPS_DIR_NAME = "maps"
 #: needed and what that argument did not weigh.
 FETCHED = "fetched"
 SIMULATED = "simulated"
-UNLOCKED = "unlocked"
-#: A map a person changed by hand in the GUI - tasks ticked off, chunks
-#: unlocked - and then committed under a new name. Distinct from `unlocked`
-#: because that kind means exactly one thing (one candidate chunk added, by
-#: `fray unlock --cache-map`), and calling a map with six ticked tasks an
-#: "unlock" is the same wrong that split `unlocked` out of `simulated`.
+#: A map a person changed by hand and committed under a new name - tasks
+#: ticked off, chunks unlocked, one at a time or six at once.
 EDITED = "edited"
 
+#: **Retired, and kept only so the migration can find it.** `unlocked` was
+#: split out of `simulated` because a picker has to say which, and then
+#: `edited` was split out of *it* on the grounds that "one candidate chunk by
+#: `fray unlock`" and "six ticked tasks" are different things. Used, they are
+#: not: both are a map this project made by hand from another one, both are
+#: removed the same way, both browse the same way, and the picker saying
+#: "Unlocked" against "Edited" made a reader work out a distinction that
+#: decides nothing. What is actually worth keeping - *which* chunk, and that
+#: it came from `unlock` - is in the batch metadata (`origin`, `chunk`) and
+#: stays there.
+_LEGACY_UNLOCKED = "unlocked"
+
 #: Everything this project computed, as opposed to fetched. The removal paths
-#: take this rather than naming `SIMULATED`, so adding a fourth kind is one
-#: line here instead of a hunt - which is what adding `EDITED` cost.
-COMPUTED_KINDS = (SIMULATED, UNLOCKED, EDITED)
+#: take this rather than naming `SIMULATED`, so a new kind is one line here
+#: instead of a hunt.
+COMPUTED_KINDS = (SIMULATED, EDITED)
 MAP_KINDS = (FETCHED, *COMPUTED_KINDS)
 
 #: Reference data that is fetched and is *not* a map: the chunk export, the
@@ -322,6 +330,28 @@ def migrate_layout(root: Path | None = None) -> list[str]:
         return []
 
     moved: list[str] = []
+    # **`unlocked` merged into `edited`**, which is a per-batch move rather than
+    # a directory rename: both may exist, and a plain rename would refuse. A
+    # name cannot clash, because `_name_taken` has always claimed across every
+    # kind - so nothing here has to decide a winner.
+    legacy = base / MAPS_DIR_NAME / _LEGACY_UNLOCKED
+    if legacy.is_dir():
+        target_dir = base / MAPS_DIR_NAME / EDITED
+        for batch in sorted(legacy.iterdir()):
+            target = target_dir / batch.name
+            if target.exists():
+                continue
+            target_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                batch.rename(target)
+            except OSError:
+                continue
+            moved.append(f"{_LEGACY_UNLOCKED}/{batch.name} -> {EDITED}/{batch.name}")
+        try:
+            legacy.rmdir()
+        except OSError:
+            pass
+
     for old_name, new_name in _MOVES:
         old, new = base / old_name, base / new_name
         if not old.exists() or new.exists():
