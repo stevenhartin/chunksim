@@ -125,6 +125,23 @@ def _run_steps(map_id: str, ctx: Context) -> tuple[Step, ...]:
     return replay(unlocked_of(envelope), cache.read_rolls(map_id, ctx.root))
 
 
+def roll_record(map_id: str, chunk_id: str, ctx: Context) -> dict[str, Any]:
+    """The **ledger entry** one roll wrote, as opposed to its timeline `Step`.
+
+    `Step.tasks_added` is names per skill and `Step.bis_upgrades` a count -
+    which is right for a fifty-step series and not enough to shape one roll
+    the way the Tasks tab shapes a map. The record still carries what was
+    thrown away: each challenge's value (its `Level`, or an `Extra`'s `Label`)
+    and which item each BiS slot gained. See `panels.roll_panel`.
+
+    Still no export and no derivation, so `/api/roll` stays a JSON read.
+    """
+    for entry in cache.read_rolls(map_id, ctx.root):
+        if entry.get("chunk_id") == chunk_id:
+            return dict(entry)
+    return {}
+
+
 def _step_view(map_id: str, step: int, ctx: Context) -> MapView:
     """The world after `step` rolls of a simulated run.
 

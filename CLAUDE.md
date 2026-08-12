@@ -1707,13 +1707,23 @@ Things worth knowing before changing it:
   in the README, the placeholder or any tooltip - and refused unless
   `allowed_hosts` is empty, which is exactly when the server is loopback-only.
   Not a permission system; a statement that this is a local tool.
-- **The roll overlay is shaped by `panels.py`, like everything else.** It read
-  the ledger raw, so one task was `Combat Achievements#Grandmaster Wasn't Event
-  Close` there and `Wasn't Event Close` under a Combat Achievements heading two
-  panes away, and a skill's rows had an icon in one place and not the other.
-  `roll_groups` is the same three rules over a different input. **A row with no
-  badge is padded to where one would be** (`ICON_GAP`), or a list steps left
-  and right down the column and the eye loses the edge it reads names against.
+- **The roll overlay is the Tasks tab, over a filtered list.** It read the
+  ledger raw - every new task, flat, one heading per skill - so unlocking a
+  Construction chunk listed sixty builds where the tab shows the furthest one,
+  and `Combat Achievements#Grandmaster Wasn't Event Close` kept a prefix the
+  tab drops. `panels.roll_panel` reconstructs the *inputs* the panel's own
+  builders take and calls them, so there is one implementation of the rules and
+  one `Panel` envelope; `renderTaskGroups` draws both. **The ledger is what
+  makes that possible without the 10MB export**: it records each challenge's
+  value beside its name - the `Level` for a skill task, the `Label` for an
+  `Extra` one - which is exactly the two things the shaping needs, so
+  `/api/roll` stays a millisecond. It reads the *record* rather than the
+  timeline `Step`, which keeps names and counts only. `Nonskill` is dropped
+  because the tab drops it (`other_tasks.CATEGORIES` is Diary/Quest/Extra) and
+  inventing a section here would be the inconsistency this removes. **A row
+  with no badge is padded to where one would be** (`ICON_GAP`), or a list steps
+  left and right down the column and the eye loses the edge it reads names
+  against.
 - **The Maps list is one entry per batch, tinted by kind**, and removing a
   multi-run batch is choosing which runs. Forty rows for a forty-run batch all
   said the one thing the batch says, and "Remove verf-sim?" was all or nothing -

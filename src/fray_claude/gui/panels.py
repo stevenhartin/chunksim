@@ -47,6 +47,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from fray_claude.derive.task_names import strip_task_markup
+from fray_claude.derive.other_tasks import CATEGORIES, group_of
 from fray_claude.derive.pipeline import Derived
 from fray_claude.model.summary import _mapping
 
@@ -355,48 +356,123 @@ def _with_category(groups: Sequence[Any], category: str) -> list[dict[str, Any]]
     ]
 
 
-#: What the panel calls each non-skill category, so the roll overlay and the
-#: Tasks tab use one vocabulary rather than two. A skill is its own name.
-_CATEGORY_LABELS = {"Diary": "Diaries", "Quest": "Quests", "Extra": "Other"}
+#: A roll's ledger records a challenge's *value* beside its name, which is
+#: `challenges._challenge_value`: the `Level` for a skill task, the `Label` for
+#: an `Extra` one, and `True` for the rest. That is exactly the two things the
+#: shaping below needs - which skill task is furthest, and which `Extra` group
+#: a row belongs to - so a roll can be shaped without the 10MB export.
+_SKILL_EXCLUDED = frozenset({*CATEGORIES, "Nonskill", "BiS"})
 
 
-def roll_groups(tasks_added: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """What one roll opened, shaped the way the Tasks tab shapes everything.
+def _roll_level(value: Any) -> int:
+    """A ledger value read as a level. `True` is a task with no `Level` at
+    all, which sorts below every numbered one rather than above them."""
+    return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0
 
-    **The overlay was reading the ledger raw**, so the same task appeared as
-    `Combat Achievements#Grandmaster Wasn't Event Close` here and as
-    `Wasn't Event Close` under a Combat Achievements heading two panes away -
-    and a skill's rows had no icon in one place and one in the other. There is
-    no second set of rules to write: the three that decide how a name reads
-    (`_display_name`, `_extra_entry`, `_subject`) already live here, so this is
-    the same shaping over a different input.
 
-    Grouped by the challenge's own category rather than by the panel's five
-    sections, because the question is "what did this roll open" and the answer
-    really is per skill. Largest group first: on a real roll one skill usually
-    dominates and burying it under an alphabetical run of ones is the shape
-    that made this list hard to read.
+def _roll_classification(added: Mapping[str, Any]) -> dict[str, Any]:
+    """`task_classification`'s shape, over one roll's additions.
+
+    **One task per skill, the furthest one**, which is upstream's own display
+    rule and the whole reason the Tasks tab is readable: unlocking a
+    Construction chunk opens sixty build tasks and you care about the one at
+    the top. The overlay used to list all sixty.
+
+    Ties break on the name so two additions at the same level cannot make the
+    answer depend on dictionary order.
     """
-    groups: list[dict[str, Any]] = []
-    for category, names in tasks_added.items():
-        rows = [name for name in names if isinstance(name, str)]
-        if not rows:
+    classified: dict[str, Any] = {}
+    for category, tasks in added.items():
+        if category in _SKILL_EXCLUDED or not isinstance(tasks, dict) or not tasks:
             continue
-        skill = category not in _CATEGORY_LABELS and category not in ("Nonskill", "BiS")
-        shape = _extra_entry if category == "Extra" else (
-            (lambda n: _entry(n, _cased(_subject(n)), icon=category))
-            if skill
-            else (lambda n: _entry(n, _display_name(n)))
-        )
-        groups.append(
-            {
-                "name": _CATEGORY_LABELS.get(category, category),
-                "icon": category if skill else None,
-                "rows": [shape(name) for name in sorted(rows)],
-            }
-        )
-    groups.sort(key=lambda group: (-len(group["rows"]), group["name"]))
-    return groups
+        winner = max(tasks.items(), key=lambda item: (_roll_level(item[1]), item[0]))
+        classified[category] = {"active": winner[0], "completed": []}
+    return classified
+
+
+def _roll_challenge(category: str, name: str, value: Any) -> dict[str, Any]:
+    """The two export fields `group_of` reads, recovered from the ledger.
+
+    `Extra`'s group *is* its `Label`, which the ledger already carries as the
+    value; a quest's is its `BaseQuest`, which is the name's own marked span;
+    and a diary tier's comes out of the name unaided. So the export's own
+    grouping function does the work here rather than a second copy of it.
+    """
+    if category == "Extra":
+        return {"Label": value} if isinstance(value, str) else {}
+    if category == "Quest":
+        return {"BaseQuest": _subject(name)}
+    return {}
+
+
+def _roll_category(added: Mapping[str, Any], category: str) -> dict[str, Any]:
+    """`other_tasks`' category shape, over one roll's additions."""
+    tasks = added.get(category)
+    grouped: dict[str, list[str]] = {}
+    for name, value in (tasks or {}).items():
+        if isinstance(name, str):
+            grouped.setdefault(
+                group_of(category, name, _roll_challenge(category, name, value)), []
+            ).append(name)
+    return {
+        "groups": [
+            {"name": group, "active": sorted(names), "completed": []}
+            for group, names in sorted(grouped.items())
+        ]
+    }
+
+
+def _roll_bis(upgrades: Mapping[str, Any]) -> dict[str, Any]:
+    """`bis.as_dict()`'s shape, over one roll's upgrades.
+
+    The ledger keys them `<style>-<slot>` and records what each replaced;
+    `_bis_groups` wants the label upstream writes (`Melee BiS shield`) and the
+    bare slot beside it, which is the same pair spelled differently.
+    """
+    active: dict[str, str] = {}
+    slots: dict[str, str] = {}
+    for key, change in upgrades.items():
+        gained = change.get("new") if isinstance(change, dict) else None
+        style, _, slot = str(key).partition("-")
+        if not isinstance(gained, str) or not slot:
+            continue
+        active[gained] = f"{style} BiS {slot}"
+        slots[gained] = slot
+    return {"active": active, "completed": {}, "slots": slots}
+
+
+def roll_panel(record: Mapping[str, Any]) -> dict[str, Any]:
+    """What one roll opened, in `task_panel`'s exact shape.
+
+    **The same rules, over a filtered list.** The overlay used to render the
+    ledger raw - every new task, flat, one heading per skill - which made it a
+    different interface answering the same question two panes away: a
+    Construction chunk listed sixty builds where the Tasks tab shows the
+    furthest one, and `Combat Achievements#Grandmaster Wasn't Event Close`
+    kept a prefix the tab drops.
+
+    Nothing here re-implements those rules; it reconstructs the *inputs* the
+    panel's own builders take and calls them. That is possible without the
+    10MB export because the ledger records each challenge's value alongside
+    its name - see `_SKILL_EXCLUDED` - which is what keeps `/api/roll` at a
+    millisecond.
+
+    `Nonskill` is dropped, as the Tasks tab drops it: `other_tasks.CATEGORIES`
+    is `Diary`/`Quest`/`Extra`, so there is no section for it to land in and
+    inventing one here would be the inconsistency this replaces.
+    """
+    added = _mapping(record, "new_tasks")
+    sections = [
+        _section("skills", "Skills", _skill_groups(_roll_classification(added))),
+        _section("bis", "Best in slot", _bis_groups(_roll_bis(_mapping(record, "bis_upgrades")))),
+    ]
+    for key, label, groups in (
+        ("Diary", "Diaries", _plain_groups(_roll_category(added, "Diary"), tiered=True)),
+        ("Quest", "Quests", _quest_groups(_roll_category(added, "Quest"))),
+        ("Extra", "Other", _plain_groups(_roll_category(added, "Extra"), split_sources=True)),
+    ):
+        sections.append(_section(key, label, _with_category(groups, key)))
+    return {"sections": sections}
 
 
 def task_panel(derived: Derived) -> dict[str, Any]:
@@ -424,4 +500,4 @@ def task_panel(derived: Derived) -> dict[str, Any]:
     return {"sections": sections}
 
 
-__all__ = ["roll_groups", "task_panel"]
+__all__ = ["roll_panel", "task_panel"]

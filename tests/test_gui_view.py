@@ -575,22 +575,21 @@ def test_a_roll_serves_the_task_names_a_step_summary_leaves_out(tmp_path: Path) 
 
     assert not ctx.derivations.loaded, "reading one roll parsed the export"
     assert payload["chunk"] == NORTH
-    # **Shaped by `panels.py`, not raw.** The overlay and the Tasks tab are two
-    # views of the same names and used to spell them differently - a skill's
-    # rows carried its icon in one and not the other.
-    assert payload["groups"] == [
+    # **The Tasks tab's own shape, over this roll's additions.** The overlay
+    # used to render the ledger raw - every new task, flat, one heading per
+    # skill - which listed sixty Construction builds where the tab shows the
+    # furthest one. `panels.roll_panel` reconstructs the panel's inputs rather
+    # than re-implementing its rules, so both draw from one `Panel` envelope.
+    skills = next(s for s in payload["panel"]["sections"] if s["key"] == "skills")
+    assert skills["active_total"] == 1
+    (group,) = skills["groups"]
+    assert group["active"] == [
         {
-            "name": "Slayer",
+            "key": f"task-{NORTH}",
+            "name": f"Task-{NORTH}",
+            "note": "Slayer",
             "icon": "Slayer",
-            "rows": [
-                {
-                    "key": f"task-{NORTH}",
-                    "name": f"Task-{NORTH}",
-                    "note": None,
-                    "icon": "Slayer",
-                    "category": None,
-                }
-            ],
+            "category": "Slayer",
         }
     ]
     # The counts still agree with what the timeline said.

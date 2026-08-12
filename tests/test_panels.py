@@ -334,3 +334,74 @@ def test_a_name_is_capitalised_and_otherwise_left_alone() -> None:
     assert _display_name("Falador shield 1") == "Falador shield 1"
     assert _display_name("TzHaar-Hur") == "TzHaar-Hur"
     assert _display_name("") == ""
+
+
+_CONSTRUCTION_ROLL = {
+    "new_tasks": {
+        "Construction": {
+            "Build a ~|crude wooden chair|~": 1,
+            "Build an ~|oak dining table|~": 22,
+            "Build a ~|mahogany table|~": 52,
+        },
+        "Diary": {"~|Varrock Diary#Elite|~ Task 3": True},
+        "Quest": {
+            "~|Cook's Assistant|~ 1": True,
+            "~|Cook's Assistant|~ Complete the quest": True,
+        },
+        "Extra": {"(Barrows Chests) Obtain ~|dharok's greataxe|~": "Collection Log"},
+        "Nonskill": {"Pick onion*": True},
+    },
+    "bis_upgrades": {"Melee-shield": {"previous": "Rune kiteshield", "new": "Mooleta"}},
+}
+
+
+def test_a_roll_shows_one_task_per_skill_and_it_is_the_furthest() -> None:
+    """**The complaint this exists for.** Unlocking a Construction chunk opens
+    sixty builds and you care about the one at the top; the overlay listed all
+    sixty, one heading per skill, where the Tasks tab shows a single row.
+    """
+    skills = _section(panels.roll_panel(_CONSTRUCTION_ROLL), "skills")
+
+    assert skills["active_total"] == 1
+    (group,) = skills["groups"]
+    assert group["name"] == "Skills"
+    assert group["active"][0]["name"] == "Mahogany table"
+    assert group["active"][0]["note"] == "Construction"
+
+
+def test_a_roll_is_shaped_by_the_panels_own_rules() -> None:
+    """Not a second implementation: `roll_panel` rebuilds the *inputs* the
+    panel's builders take, so a quest keeps only its furthest step, a diary
+    row drops the heading it repeats, and `Extra` splits source from item."""
+    panel = panels.roll_panel(_CONSTRUCTION_ROLL)
+
+    (quests,) = _section(panel, "Quest")["groups"]
+    assert [row["name"] for row in quests["active"]] == ["Cook's Assistant"]
+    assert quests["active"][0]["note"] == "Complete the quest"
+
+    (diary,) = _section(panel, "Diary")["groups"]
+    assert diary["name"] == "Varrock Diary - Elite"
+    assert diary["active"][0]["name"] == "Task 3"
+
+    (extra,) = _section(panel, "Extra")["groups"]
+    assert extra["name"] == "Collection Log"
+    assert (extra["active"][0]["name"], extra["active"][0]["note"]) == (
+        "Dharok's greataxe",
+        "Barrows Chests",
+    )
+
+    (bis,) = _section(panel, "bis")["groups"]
+    assert bis["name"] == "Melee"
+    assert (bis["active"][0]["name"], bis["active"][0]["note"]) == ("Mooleta", "shield")
+
+
+def test_a_roll_drops_nonskill_because_the_tasks_tab_does() -> None:
+    """`other_tasks.CATEGORIES` is Diary/Quest/Extra, so there is no section
+    for `Nonskill` to land in - and inventing one here would be the
+    inconsistency this whole shape exists to remove."""
+    panel = panels.roll_panel(_CONSTRUCTION_ROLL)
+
+    assert [section["key"] for section in panel["sections"]] == [
+        "skills", "bis", "Diary", "Quest", "Extra",
+    ]
+    assert all("Pick onion*" not in str(section) for section in panel["sections"])

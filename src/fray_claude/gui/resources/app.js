@@ -2683,19 +2683,37 @@ function renderTasks() {
     return;
   }
 
-  /* **A heading carries no count.** The chips already carry one each and the
-   * list under a heading is right there to be looked at; three numbers saying
-   * the same thing is what made the pane read as a report rather than a list.
-   * What replaces it is the truncation control, which says how many are
-   * hidden only when some are. */
+  const out = renderTaskGroups(showing, side, "tasks", { tickable: true });
+  el["tasks-body"].innerHTML = out ||
+    tmpl`<p class="empty">Nothing ${state.showDone ? "completed" : "outstanding"} here.</p>`;
+  ownsMore("tasks", renderTasks);
+}
+
+/* **One renderer, two surfaces.** The Tasks tab and a roll's Details overlay
+ * ask the same question of the same shape - `panels.py` hands both a `Panel`
+ * envelope - so they draw with the same code rather than with two copies that
+ * drift. They already had: the overlay printed sixty Construction builds where
+ * the tab shows the furthest one, and kept a `<group>#<tier>` prefix the tab
+ * drops.
+ *
+ * `tickable` is the one real difference. Ticking writes to
+ * `completedChallenges` on the map you are looking at; a roll's rows are a
+ * record of what a *past* state opened, so clicking one has nothing to write.
+ *
+ * **A heading carries no count.** The chips already carry one each and the
+ * list under a heading is right there to be looked at; three numbers saying
+ * the same thing is what made the pane read as a report rather than a list.
+ * What replaces it is the truncation control, which says how many are hidden
+ * only when some are. */
+function renderTaskGroups(sections, side, keyPrefix, { tickable = false } = {}) {
   let out = "";
-  for (const section of showing) {
+  for (const section of sections) {
     const groups = section.groups.filter((g) => g[side].length);
     if (!groups.length) continue;
     /* The section's own heading, once several are on screen at a time. With
      * one selected the chip already says which, and repeating it costs a row
      * of a 360px panel. */
-    if (showing.length > 1) out += tmpl`<h3 class="section">${section.label}</h3>`;
+    if (sections.length > 1) out += tmpl`<h3 class="section">${section.label}</h3>`;
     for (const group of groups) {
       /* A single group whose name repeats the heading is a heading twice. */
       if (groups.length > 1 || group.name !== section.label) {
@@ -2704,7 +2722,7 @@ function renderTasks() {
           : (GROUP_ICONS[group.name] ? icon(GROUP_ICONS[group.name]).__raw + " " : "");
         out += tmpl`<h3>${raw(mark)}${group.name}</h3>`;
       }
-      const key = "tasks:" + section.key + ":" + group.name + ":" + side;
+      const key = keyPrefix + ":" + section.key + ":" + group.name + ":" + side;
       out += "<ul class='list'>" + withMore(group[side], key, TASK_ROWS, (row) => {
         /* A slot badge *replaces* the note rather than sitting beside it:
          * the glyph and the word "ring" say one thing, and a 360px row has
@@ -2721,16 +2739,17 @@ function renderTasks() {
          * to-do list, so the list is what they click - and `data-task`/
          * `data-category` carry the payload's own key rather than the
          * panel's grouping, which is what `panels._entry` exists to say. */
-        const pending = state.edits.ticked.get(row.category)?.has(row.key) ? " ticked" : "";
-        return tmpl`<li class="task${pending}" data-tip="${tip}" data-task="${row.key}"
-          data-category="${row.category || ""}">${raw(badge)}<span class="name">${plain(row.name)}</span>
+        const pending = tickable && state.edits.ticked.get(row.category)?.has(row.key)
+          ? " ticked" : "";
+        const hooks = tickable
+          ? tmpl` data-task="${row.key}" data-category="${row.category || ""}"`
+          : "";
+        return tmpl`<li class="task${pending}" data-tip="${tip}"${raw(hooks)}>${raw(badge)}<span class="name">${plain(row.name)}</span>
           <span class="sub">${plain(slot ? "" : row.note || "")}</span></li>`;
       }) + "</ul>";
     }
   }
-  el["tasks-body"].innerHTML = out ||
-    tmpl`<p class="empty">Nothing ${state.showDone ? "completed" : "outstanding"} here.</p>`;
-  ownsMore("tasks", renderTasks);
+  return out;
 }
 
 /* Delegated, so a re-render needs no rewiring - the same reason the tooltips
@@ -3866,7 +3885,7 @@ async function showRoll(step) {
   } catch (error) {
     return openOverlay(title, tmpl`<p class="empty">${error.message}</p>`);
   }
-  const groups = roll.groups || [];
+  const sections = (roll.panel || {}).sections || [];
   let out = tmpl`<dl class="kv">
     <dt>Chunk</dt><dd>${chunkLabel(roll.chunk)}</dd>
     <dt>Tasks</dt><dd>${roll.tasks}</dd>
@@ -3875,22 +3894,13 @@ async function showRoll(step) {
 
   out += rollHours(roll.hours);
 
-  if (!groups.length) {
-    out += tmpl`<p class="empty">This roll opened no new tasks.</p>`;
-  }
-  /* **The same names the Tasks tab shows, spelled the same way.** The shaping
-   * is `panels.roll_groups`, so the icons, the heading vocabulary and the
-   * dropped `<group>#<tier>` prefixes are one implementation rather than a
-   * copy that drifts. Headings carry no count and lists stop at nine, like
-   * every other list in the panel. */
-  for (const group of groups) {
-    out += tmpl`<h3>${raw(group.icon ? rowBadge(group.icon) : "")}${group.name}</h3><ul class="list">`;
-    out += withMore(group.rows, "roll:" + group.name, TASK_ROWS, (row) =>
-      tmpl`<li data-tip="${tmpl`<b>${plain(row.name)}</b><span class="hint">${plain(row.key)}</span>`}">
-        ${raw(rowBadge(row.icon))}<span class="name">${plain(row.name)}</span>
-        <span class="sub">${plain(row.note || "")}</span></li>`);
-    out += "</ul>";
-  }
+  /* **The Tasks tab's own renderer, over this roll's additions.** Same
+   * envelope from `panels.py`, same `renderTaskGroups` drawing it - so a
+   * Construction chunk shows the furthest build rather than all sixty, and a
+   * name is spelled the way the tab spells it. Not tickable: these rows
+   * record what a past state opened, so there is nothing to write. */
+  const shaped = renderTaskGroups(sections, "active", "roll");
+  out += shaped || tmpl`<p class="empty">This roll opened no new tasks.</p>`;
   openOverlay(
     "Roll " + step + " · " + chunkLabel(roll.chunk),
     out,
