@@ -47,6 +47,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from fray_claude.derive.task_names import strip_task_markup
+from fray_claude.derive.active_tasks import _wins_tie
 from fray_claude.derive.other_tasks import CATEGORIES, group_of
 from fray_claude.derive.pipeline import Derived
 from fray_claude.model.summary import _mapping
@@ -379,7 +380,9 @@ def _roll_level(value: Any) -> float | None:
 
 
 def _roll_classification(
-    added: Mapping[str, Any], surpassed: Mapping[str, float]
+    added: Mapping[str, Any],
+    surpassed: Mapping[str, float],
+    challenges: Mapping[str, Mapping[str, Any]] = {},
 ) -> dict[str, Any]:
     """`task_classification`'s shape, over one roll's additions.
 
@@ -399,8 +402,14 @@ def _roll_classification(
     `routes_view.roll_baseline`. A skill whose whole addition sits under it
     contributes nothing rather than a row nobody wanted.
 
-    Ties break on the name so two additions at the same level cannot make the
-    answer depend on dictionary order.
+    **Ties break the way `active_tasks` breaks them**, given the export:
+    `_wins_tie` is upstream's two-branch `Priority`/`Primary` rule and is
+    imported rather than approximated. It matters - `Burn ~|redwood logs|~`
+    and `Burn ~|redwood logs|~ at a fire` are both Firemaking 90, and a
+    name-ordered tie-break picked the other one from the panel two panes away.
+    Without the export (the unit tests, and any caller with no `ChunkInfo` to
+    hand) it falls back to the name, which is at least stable against
+    dictionary order.
     """
     classified: dict[str, Any] = {}
     for category, tasks in added.items():
@@ -413,8 +422,16 @@ def _roll_classification(
         ]
         if not better:
             continue
-        winner = max(better, key=lambda item: (_roll_level(item[1]) or 0.0, item[0]))
-        classified[category] = {"active": winner[0], "completed": []}
+        known = challenges.get(category) or {}
+        winner, winner_level = "", float("-inf")
+        for name, value in sorted(better):
+            level = _roll_level(value) or 0.0
+            if level > winner_level or (
+                level == winner_level
+                and _wins_tie(known.get(name) or {}, known.get(winner) or {})
+            ):
+                winner, winner_level = name, level
+        classified[category] = {"active": winner, "completed": []}
     return classified
 
 
@@ -470,7 +487,9 @@ def _roll_bis(upgrades: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def roll_panel(
-    record: Mapping[str, Any], surpassed: Mapping[str, float] = {}
+    record: Mapping[str, Any],
+    surpassed: Mapping[str, float] = {},
+    challenges: Mapping[str, Mapping[str, Any]] = {},
 ) -> dict[str, Any]:
     """What one roll opened, in `task_panel`'s exact shape.
 
@@ -498,7 +517,11 @@ def roll_panel(
     """
     added = _mapping(record, "new_tasks")
     sections = [
-        _section("skills", "Skills", _skill_groups(_roll_classification(added, surpassed))),
+        _section(
+            "skills",
+            "Skills",
+            _skill_groups(_roll_classification(added, surpassed, challenges)),
+        ),
         _section("bis", "Best in slot", _bis_groups(_roll_bis(_mapping(record, "bis_upgrades")))),
     ]
     for key, label, groups in (

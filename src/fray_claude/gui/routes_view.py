@@ -22,6 +22,7 @@ from __future__ import annotations
 from fray_claude.costing.estimate import EstimateResult
 from fray_claude.costing.training import TrainingOption, training_options
 from fray_claude.costing.inputs import load_heuristics
+from fray_claude.derive.active_tasks import _level_proven_elsewhere
 from fray_claude.derive.task_names import strip_task_markup
 from fray_claude.runs.batch import PriceSpec, price_detail
 from fray_claude.store.cache import CacheMissError
@@ -168,10 +169,11 @@ def roll_panels(map_id: str, ctx: Context) -> list[dict[str, Any]]:
         if isinstance(entry.get("chunk_id"), str)
     }
     ceiling = _completed_levels(map_id, ctx)
+    challenges = ctx.derivations.chunk_info().challenges if ceiling else {}
     panels: list[dict[str, Any]] = [roll_panel({})]
     for chunk_id in rolled_chunks(ledger):
         record = by_chunk.get(chunk_id, {})
-        panels.append(roll_panel(record, ceiling))
+        panels.append(roll_panel(record, ceiling, challenges))
         _raise_ceiling(ceiling, record)
     return panels
 
@@ -249,20 +251,52 @@ def roll_baseline(map_id: str, step: int, ctx: Context) -> dict[str, float]:
 
 
 def _completed_levels(map_id: str, ctx: Context) -> dict[str, float]:
-    """The highest completed level per skill on the map a run was rolled from."""
+    """The level each skill had already reached on the map a run was rolled from.
+
+    **Two contributions, and both were found by playing a run out by hand.**
+    The check is the one this is here to satisfy: take the base map, tick off
+    every task it is currently showing, unlock the chunk the simulation rolled,
+    derive, and see whether the newly-active task is the one the roll panel
+    named. Two disagreements came out of it and each is a term below.
+
+    - **What a completion proves, including elsewhere in the export.** Real
+      data files a task under the skill it exercises while defining it in
+      another category: `completedChallenges.Thieving` holds `~|Wilderness
+      Diary#Elite|~ Task 5`, which lives in `challenges.Diary` with
+      `Skills: {Thieving: 84}`. Reading only `challenges['Thieving']` put the
+      ceiling at 58, and a level-75 gem stall three rolls later read as news
+      where `active_tasks` - which has `_level_proven_elsewhere` - called it
+      obsolete. That function is imported rather than reimplemented.
+    - **What the map is already working on.** A skill's *active* task is the
+      highest-level valid one it has; a roll opening something below it changes
+      nothing, and the played-out check says so by ticking that task off before
+      the roll. This is the term that costs a derivation - `base_derived`,
+      through the same on-disk cache, ~0.15s where the run left its base state
+      behind and ~0.8s where it did not.
+    """
     payload = cache.read_base_payload(map_id, ctx.root)
     if payload is None:
         return {}
     challenges = ctx.derivations.chunk_info().challenges
     state = ctx.derivations.base_state(payload)
     highest: dict[str, float] = {}
-    for skill, names in state.completed_challenges.items():
+
+    def raise_to(skill: str, name: str) -> None:
         known = challenges.get(skill) or {}
+        challenge = known.get(name)
+        level = challenge.get("Level") if isinstance(challenge, dict) else None
+        if not isinstance(level, (int, float)) or isinstance(level, bool):
+            level = _level_proven_elsewhere(skill, name, challenges)
+        if isinstance(level, (int, float)) and not isinstance(level, bool):
+            highest[skill] = max(highest.get(skill, 0.0), float(level))
+
+    for skill, names in state.completed_challenges.items():
         for name in names:
-            challenge = known.get(name)
-            level = challenge.get("Level") if isinstance(challenge, dict) else None
-            if isinstance(level, (int, float)) and not isinstance(level, bool):
-                highest[skill] = max(highest.get(skill, 0.0), float(level))
+            raise_to(skill, name)
+    for skill, entry in ctx.derivations.base_derived(payload).task_classification.as_dict().items():
+        current = entry.get("active")
+        if isinstance(current, str) and current:
+            raise_to(skill, current)
     return highest
 
 

@@ -8,7 +8,10 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+import pytest
+
 from fray_claude.gui import panels
+from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.derive.pipeline import Derived
 
 
@@ -440,3 +443,105 @@ def test_a_task_with_no_level_is_never_filtered_out() -> None:
     (group,) = _section(panels.roll_panel(roll, {"Slayer": 99.0}), "skills")["groups"]
 
     assert [row["key"] for row in group["active"]] == ["Slay something"]
+
+
+@pytest.mark.real_cache
+def test_a_roll_panel_matches_playing_the_run_out(
+    real_export: ChunkInfo, real_tasks_map: dict[str, str]
+) -> None:
+    """**The equivalence the roll panel exists to state.**
+
+    A simulation projects a future in which you rolled these chunks and did
+    the work each one opened. So the panel for roll k should name exactly what
+    you would find if you played it: take the base map, tick off every task it
+    is currently showing, unlock the chunk the run rolled, derive, and read the
+    newly-active task per skill.
+
+    Both sides derive with today's code. That matters: a *cached* run's ledger
+    was written by whatever build rolled it, and `verf-sim`'s predates several
+    derivation ports - re-deriving its sixth roll yields 71 new tasks against
+    the 54 stored, `Chop ~|redwood logs|~` among them. Comparing against the
+    stored ledger would therefore be a test of the cache's age. `delta_from`
+    here is the same call `simulate.py` makes.
+
+    Two real defects came out of this check and both are asserted by it:
+    a completion proves a level even when the challenge lives in another
+    category (`_level_proven_elsewhere`), and equal-level ties break on
+    `Priority`/`Primary` rather than on the name.
+    """
+    from dataclasses import replace
+
+    from fray_claude.derive.active_tasks import _level_proven_elsewhere
+    from fray_claude.derive.pipeline import derive, load_map_state
+    from fray_claude.derive.unlock import delta_from
+    from fray_claude.store.cache import project_root, read_base_payload, read_rolls
+
+    run = "verf-sim/run-001"
+    base = read_base_payload(run, project_root())
+    if base is None:
+        pytest.skip(f"{run} records no base payload")
+    rolls = [
+        entry["chunk_id"]
+        for entry in read_rolls(run, project_root())
+        if isinstance(entry.get("chunk_id"), str)
+    # **Six, because the sixth is the one with anything in it.** Five empty
+    # rolls agreeing is a weak statement; `4922` opens redwood logs for two
+    # skills at once and is what the tie-break and the ceiling both bite on.
+    ][:6]
+    assert rolls, "the run rolled nothing to compare"
+
+    state, unlocked = load_map_state(base, real_export, real_tasks_map)
+    challenges = real_export.challenges
+
+    def actives(derived: Any) -> dict[str, str]:
+        return {
+            skill: entry["active"]
+            for skill, entry in derived.task_classification.as_dict().items()
+            if isinstance(entry.get("active"), str) and entry["active"]
+        }
+
+    ceiling: dict[str, float] = {}
+
+    def raise_to(skill: str, name: str) -> None:
+        known = challenges.get(skill) or {}
+        challenge = known.get(name)
+        level = challenge.get("Level") if isinstance(challenge, dict) else None
+        if not isinstance(level, (int, float)) or isinstance(level, bool):
+            level = _level_proven_elsewhere(skill, name, challenges)
+        if isinstance(level, (int, float)) and not isinstance(level, bool):
+            ceiling[skill] = max(ceiling.get(skill, 0.0), float(level))
+
+    completed = {skill: dict(names) for skill, names in state.completed_challenges.items()}
+    for skill, names in completed.items():
+        for name in names:
+            raise_to(skill, name)
+    rolled = derive(state, unlocked)
+    before = actives(rolled)
+    for skill, name in before.items():
+        completed.setdefault(skill, {})[name] = True
+        raise_to(skill, name)
+
+    held = dict(unlocked)
+    for chunk_id in rolls:
+        held[chunk_id] = True
+        after = derive(state, held)
+        record = delta_from(rolled, after, chunk_id).as_dict()
+        rolled = after
+
+        played = derive(replace(state, completed_challenges=completed), held)
+        now = actives(played)
+        opened = {skill: name for skill, name in now.items() if before.get(skill) != name}
+
+        section = _section(panels.roll_panel(record, ceiling, challenges), "skills")
+        said = {row["note"]: row["key"] for g in section["groups"] for row in g["active"]}
+
+        assert said == opened, f"roll on {chunk_id}"
+
+        before = now
+        for skill, name in now.items():
+            completed.setdefault(skill, {})[name] = True
+            raise_to(skill, name)
+        for skill, tasks in (record.get("new_tasks") or {}).items():
+            for level in (tasks or {}).values():
+                if isinstance(level, (int, float)) and not isinstance(level, bool):
+                    ceiling[skill] = max(ceiling.get(skill, 0.0), float(level))

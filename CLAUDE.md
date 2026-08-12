@@ -1757,6 +1757,28 @@ Things worth knowing before changing it:
   The one approximation is stated in `roll_baseline` - a face `Level` where
   `active_tasks` uses `boosts.completed_ceiling`, which needs a `SourceIndex`
   and therefore a derivation.
+  **The check that makes all of this a claim rather than a hope is playing the
+  run out**, and it is `tests/test_panels.py::test_a_roll_panel_matches_playing_the_run_out`:
+  take the base map, tick off every task it is showing, unlock the chunk the
+  run rolled, derive, and read the newly-active task per skill. That is what a
+  simulation *is* - a projection of having rolled these chunks and done the
+  work - so the panel for roll k has to name the same thing. It found two
+  defects and now asserts both: a completion proves a level even where the
+  challenge lives in another category (`active_tasks._level_proven_elsewhere`,
+  which is imported rather than approximated - a completed Wilderness Elite
+  diary task filed under `Thieving` proves 84 where that skill's own completed
+  set only reaches 58), and equal-level ties break on `Priority`/`Primary`
+  (`_wins_tie`) rather than on the name - `Burn ~|redwood logs|~` and `Burn
+  ~|redwood logs|~ at a fire` are both Firemaking 90 and the panel picked the
+  other one.
+  **Both sides derive with today's code, and that is the point rather than a
+  detail.** A cached run's ledger was written by whatever build rolled it:
+  re-deriving `verf-sim/run-001`'s sixth roll yields **71 new tasks against the
+  54 stored**, redwood among them, because that run predates several
+  derivation ports. Comparing the panel against the stored ledger would have
+  been a test of the cache's age. It also means **a run rolled by an older
+  build shows an older answer**, which is a property of the ledger being a
+  record rather than something the panel can fix.
 - **The Maps list is one entry per batch, tinted by kind**, and removing a
   multi-run batch is choosing which runs. Forty rows for a forty-run batch all
   said the one thing the batch says, and "Remove verf-sim?" was all or nothing -

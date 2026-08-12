@@ -129,6 +129,16 @@ class Derivations:
         envelope = cache.read_cache(map_id, self._root)
         return load_map_state(envelope["data"], self.chunk_info(), self._reverse_tasks())
 
+    def base_derived(self, payload: Mapping[str, Any]) -> Derived:
+        """A raw payload derived, through the same on-disk cache `load` uses.
+
+        A run's base is very often already in `cache/derived/` - the
+        simulation derived it to roll from - so this is ~0.15s warm against
+        the ~0.8s it costs cold.
+        """
+        state, unlocked = load_map_state(payload, self.chunk_info(), self._reverse_tasks())
+        return cached_derive(state, unlocked, self.digests(), root=self._root)
+
     def base_state(self, payload: Mapping[str, Any]) -> MapState:
         """A raw payload parsed but not derived, and not read from the cache.
 
