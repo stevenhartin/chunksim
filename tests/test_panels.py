@@ -405,3 +405,38 @@ def test_a_roll_drops_nonskill_because_the_tasks_tab_does() -> None:
         "skills", "bis", "Diary", "Quest", "Extra",
     ]
     assert all("Pick onion*" not in str(section) for section in panel["sections"])
+
+
+def test_a_skill_already_past_the_new_task_shows_nothing() -> None:
+    """**What makes a roll's list mean "news".**
+
+    A Crafting chunk opens `Cook a ~|cup of tea (porcelain)|~` at Cooking 20;
+    on a map that has already ticked the 99 Cooking cape that is not a Cooking
+    goal, and the Tasks tab does not show it. The overlay listed it anyway.
+    """
+    roll = {"new_tasks": {"Cooking": {"Cook a ~|cup of tea (porcelain)|~": 20}}}
+
+    assert _section(panels.roll_panel(roll), "skills")["active_total"] == 1
+    assert _section(panels.roll_panel(roll, {"Cooking": 99.0}), "skills")["groups"] == []
+
+
+def test_the_winner_is_the_furthest_task_still_ahead() -> None:
+    """The ceiling filters *then* the highest of what is left wins - not the
+    other way round, which would drop the skill whenever its top addition
+    happened to be one you had already passed."""
+    roll = {"new_tasks": {"Construction": {"a": 10, "b": 40, "c": 70}}}
+
+    (group,) = _section(panels.roll_panel(roll, {"Construction": 40.0}), "skills")["groups"]
+
+    assert [row["key"] for row in group["active"]] == ["c"]
+
+
+def test_a_task_with_no_level_is_never_filtered_out() -> None:
+    """A task with no `Level` is not a task at level 0 - it has **no ladder**,
+    so nothing can be ahead of it. Collapsing the two hid every levelless
+    skill task the moment a skill had any ceiling at all."""
+    roll = {"new_tasks": {"Slayer": {"Slay something": True}}}
+
+    (group,) = _section(panels.roll_panel(roll, {"Slayer": 99.0}), "skills")["groups"]
+
+    assert [row["key"] for row in group["active"]] == ["Slay something"]

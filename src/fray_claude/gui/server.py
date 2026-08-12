@@ -67,6 +67,7 @@ from fray_claude.gui.routes_reference import (
     _tile_source,
 )
 from fray_claude.gui.routes_view import (
+    roll_baseline,
     roll_record,
     _run_steps,
     _timeline_payload,
@@ -393,7 +394,10 @@ def handle_request(
                     # ways is what this replaces - see `panels.roll_panel`,
                     # which reconstructs the panel's inputs rather than
                     # re-implementing its rules.
-                    "panel": roll_panel(roll_record(map_id, roll.chunk_id or "", ctx)),
+                    "panel": roll_panel(
+                        roll_record(map_id, roll.chunk_id or "", ctx),
+                        roll_baseline(map_id, index, ctx),
+                    ),
                     # The hours behind this one roll, priced on the click. See
                     # `routes_view.roll_detail`: `None` when it cannot be
                     # priced, and the overlay simply omits the chart.

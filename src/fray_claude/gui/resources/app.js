@@ -3900,7 +3900,15 @@ async function showRoll(step) {
    * name is spelled the way the tab spells it. Not tickable: these rows
    * record what a past state opened, so there is nothing to write. */
   const shaped = renderTaskGroups(sections, "active", "roll");
-  out += shaped || tmpl`<p class="empty">This roll opened no new tasks.</p>`;
+  /* **"Opened nothing" and "opened nothing better" are different answers**,
+   * and on a mature map the second is the common one - the header says
+   * `Tasks 12` either way, so one message for both reads as a contradiction.
+   * See `panels._roll_classification` for what "better" means. */
+  out += shaped || (roll.tasks
+    ? tmpl`<p class="empty">Nothing this roll opened is ahead of what the run
+        already had — ${roll.tasks} task${roll.tasks === 1 ? "" : "s"}, all of
+        them at or below a level it has already passed.</p>`
+    : tmpl`<p class="empty">This roll opened no new tasks.</p>`);
   openOverlay(
     "Roll " + step + " · " + chunkLabel(roll.chunk),
     out,

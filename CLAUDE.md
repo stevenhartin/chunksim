@@ -1714,16 +1714,37 @@ Things worth knowing before changing it:
   tab drops. `panels.roll_panel` reconstructs the *inputs* the panel's own
   builders take and calls them, so there is one implementation of the rules and
   one `Panel` envelope; `renderTaskGroups` draws both. **The ledger is what
-  makes that possible without the 10MB export**: it records each challenge's
-  value beside its name - the `Level` for a skill task, the `Label` for an
-  `Extra` one - which is exactly the two things the shaping needs, so
-  `/api/roll` stays a millisecond. It reads the *record* rather than the
-  timeline `Step`, which keeps names and counts only. `Nonskill` is dropped
+  makes most of that possible**: it records each challenge's value beside its
+  name - the `Level` for a skill task, the `Label` for an `Extra` one - which
+  is what says *which* build is furthest and which group a collection-log row
+  belongs to. It reads the *record* rather than the timeline `Step`, which
+  keeps names and counts only. `Nonskill` is dropped
   because the tab drops it (`other_tasks.CATEGORIES` is Diary/Quest/Extra) and
   inventing a section here would be the inconsistency this removes. **A row
   with no badge is padded to where one would be** (`ICON_GAP`), or a list steps
   left and right down the column and the eye loses the edge it reads names
   against.
+- **A roll's tasks are filtered against what the run had already reached**,
+  which is what makes the list mean *news* rather than *changes*. Unlocking a
+  Crafting chunk opens `Cook a ~|cup of tea (porcelain)|~` at Cooking 20; on a
+  map that has ticked the 99 Cooking cape that is not a Cooking goal, and the
+  Tasks tab does not show it - `active_tasks` gates candidacy on
+  `highestChallengeLevelArr`, the highest level among a skill's *completed*
+  challenges. `routes_view.roll_baseline` is that ceiling per skill and has two
+  halves: what the **base payload** had already completed, and what **earlier
+  rolls** opened. Measured on `fray-sim/run-001`, 1 of the first 20 rolls opens
+  a genuinely new skill goal; before the filter every one of them listed
+  something.
+  **This is the one thing that costs the export on this route**, and the trade
+  is worth stating: the completed set needs levelling, levels live in the
+  export, and a run with no recorded base map still answers without parsing.
+  The slider's own routes (`/api/timeline`, `/api/view?step=`) still never
+  touch it - a click can afford a second where a drag cannot, and warm it is
+  0.25s. **Only skills are filtered**: a quest step, a diary task and a
+  collection-log row are each their own thing with no ladder to be behind on.
+  The one approximation is stated in `roll_baseline` - a face `Level` where
+  `active_tasks` uses `boosts.completed_ceiling`, which needs a `SourceIndex`
+  and therefore a derivation.
 - **The Maps list is one entry per batch, tinted by kind**, and removing a
   multi-run batch is choosing which runs. Forty rows for a forty-run batch all
   said the one thing the batch says, and "Remove verf-sim?" was all or nothing -

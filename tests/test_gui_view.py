@@ -573,7 +573,11 @@ def test_a_roll_serves_the_task_names_a_step_summary_leaves_out(tmp_path: Path) 
 
     payload = _body(_get("/api/roll", ctx, map=map_id, step="1"))
 
-    assert not ctx.derivations.loaded, "reading one roll parsed the export"
+    # **No export here**, because this run records no base map: without one
+    # there is nothing to have already surpassed, so `roll_baseline` answers
+    # empty without parsing. A run with a base *does* pay the parse once - see
+    # `roll_baseline`, and note the slider's own routes still never do.
+    assert not ctx.derivations.loaded
     assert payload["chunk"] == NORTH
     # **The Tasks tab's own shape, over this roll's additions.** The overlay
     # used to render the ledger raw - every new task, flat, one heading per
@@ -635,3 +639,58 @@ def test_step_zero_has_no_breakdown_because_it_is_not_a_roll(
 
     assert payload["chunk"] is None
     assert payload["hours"] is None
+
+
+def test_a_roll_hides_a_skill_the_base_map_has_already_passed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**A roll's list has to mean "news".**
+
+    Unlocking a chunk opens a Cooking task at level 20; a base map that has
+    already ticked the 99 Cooking cape is not looking for one, and the Tasks
+    tab would not show it. The ceiling comes from the base payload's completed
+    challenges, levelled through the export - which is why this route parses
+    it, and why the slider's routes still do not.
+    """
+    export = {
+        "chunks": {LUMBRIDGE: {}, NORTH: {}},
+        "challenges": {
+            "Cooking": {
+                "Buy the ~|cooking cape|~": {"Level": 99},
+                "Cook a ~|cup of tea|~": {"Level": 20},
+            }
+        },
+    }
+    ctx = _derived_ctx(tmp_path, monkeypatch, export)
+    directory = cache.claim_batch("sim", tmp_path, kind=cache.SIMULATED)
+    run = cache.run_dir(directory, 1)
+    cache.write_sim_run(
+        run,
+        map_id=f"{directory.name}/{run.name}",
+        data={"chunks": {"unlocked": {LUMBRIDGE: LUMBRIDGE, NORTH: NORTH}}},
+        simulation={"run": run.name, "batch": directory.name, "rolls": [NORTH]},
+        ledger=[{
+            "order": 1,
+            "chunk_id": NORTH,
+            "new_sections": {},
+            "new_tasks": {"Cooking": {"Cook a ~|cup of tea|~": 20}},
+            "new_unsupported": [],
+            "bis_upgrades": {},
+        }],
+    )
+    cache.write_sim_batch(
+        directory,
+        {"base_payload": {
+            "chunks": {"unlocked": {LUMBRIDGE: LUMBRIDGE}},
+            "chunkinfo": {"completedChallenges": {"Cooking": {"Buy the ~|cooking cape|~": True}}},
+        }},
+    )
+    map_id = f"{directory.name}/{run.name}"
+
+    skills = next(
+        section
+        for section in _body(_get("/api/roll", ctx, map=map_id, step="1"))["panel"]["sections"]
+        if section["key"] == "skills"
+    )
+
+    assert skills["groups"] == [], "a task below the completed ceiling is not news"

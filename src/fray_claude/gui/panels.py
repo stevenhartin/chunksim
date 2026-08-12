@@ -364,19 +364,40 @@ def _with_category(groups: Sequence[Any], category: str) -> list[dict[str, Any]]
 _SKILL_EXCLUDED = frozenset({*CATEGORIES, "Nonskill", "BiS"})
 
 
-def _roll_level(value: Any) -> int:
-    """A ledger value read as a level. `True` is a task with no `Level` at
-    all, which sorts below every numbered one rather than above them."""
-    return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0
+def _roll_level(value: Any) -> float | None:
+    """A ledger value read as a level, or `None` where the challenge has none.
+
+    The two are different answers and collapsing them was a bug: a task with
+    no `Level` is not a task at level 0, it is a task with **no ladder** - so
+    nothing can be ahead of it and `surpassed` must not filter it out.
+    `_highest_completed_level` draws the same distinction from the other side,
+    where a levelless completion proves nothing.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
 
 
-def _roll_classification(added: Mapping[str, Any]) -> dict[str, Any]:
+def _roll_classification(
+    added: Mapping[str, Any], surpassed: Mapping[str, float]
+) -> dict[str, Any]:
     """`task_classification`'s shape, over one roll's additions.
 
-    **One task per skill, the furthest one**, which is upstream's own display
-    rule and the whole reason the Tasks tab is readable: unlocking a
-    Construction chunk opens sixty build tasks and you care about the one at
-    the top. The overlay used to list all sixty.
+    **One task per skill, the furthest one, and only if it is further than
+    what you already had.** Two rules, and the overlay had neither.
+
+    The first is upstream's display rule and the whole reason the Tasks tab is
+    readable: unlocking a Construction chunk opens sixty build tasks and you
+    care about the one at the top.
+
+    The second is what makes a roll's list mean "news". A Crafting chunk opens
+    `Cook a ~|cup of tea (porcelain)|~` at Cooking 20, and on a map that has
+    already ticked the 99 Cooking cape that is not a Cooking goal - the Tasks
+    tab does not show it, because `active_tasks` gates candidacy on the
+    highest level among a skill's *completed* challenges. `surpassed` is that
+    ceiling per skill, carrying the run's own earlier rolls as well; see
+    `routes_view.roll_baseline`. A skill whose whole addition sits under it
+    contributes nothing rather than a row nobody wanted.
 
     Ties break on the name so two additions at the same level cannot make the
     answer depend on dictionary order.
@@ -385,7 +406,14 @@ def _roll_classification(added: Mapping[str, Any]) -> dict[str, Any]:
     for category, tasks in added.items():
         if category in _SKILL_EXCLUDED or not isinstance(tasks, dict) or not tasks:
             continue
-        winner = max(tasks.items(), key=lambda item: (_roll_level(item[1]), item[0]))
+        ceiling = surpassed.get(category, 0.0)
+        better = [
+            item for item in tasks.items()
+            if (_roll_level(item[1]) or 0.0) > ceiling or _roll_level(item[1]) is None
+        ]
+        if not better:
+            continue
+        winner = max(better, key=lambda item: (_roll_level(item[1]) or 0.0, item[0]))
         classified[category] = {"active": winner[0], "completed": []}
     return classified
 
@@ -441,7 +469,9 @@ def _roll_bis(upgrades: Mapping[str, Any]) -> dict[str, Any]:
     return {"active": active, "completed": {}, "slots": slots}
 
 
-def roll_panel(record: Mapping[str, Any]) -> dict[str, Any]:
+def roll_panel(
+    record: Mapping[str, Any], surpassed: Mapping[str, float] = {}
+) -> dict[str, Any]:
     """What one roll opened, in `task_panel`'s exact shape.
 
     **The same rules, over a filtered list.** The overlay used to render the
@@ -457,13 +487,18 @@ def roll_panel(record: Mapping[str, Any]) -> dict[str, Any]:
     its name - see `_SKILL_EXCLUDED` - which is what keeps `/api/roll` at a
     millisecond.
 
+    `surpassed` is the level each skill had already reached before this roll,
+    and a skill task at or below it is not news - see `_roll_classification`.
+    Only skills have it: a quest step, a diary task and a collection-log row
+    are each their own thing, with no ladder to be behind on.
+
     `Nonskill` is dropped, as the Tasks tab drops it: `other_tasks.CATEGORIES`
     is `Diary`/`Quest`/`Extra`, so there is no section for it to land in and
     inventing one here would be the inconsistency this replaces.
     """
     added = _mapping(record, "new_tasks")
     sections = [
-        _section("skills", "Skills", _skill_groups(_roll_classification(added))),
+        _section("skills", "Skills", _skill_groups(_roll_classification(added, surpassed))),
         _section("bis", "Best in slot", _bis_groups(_roll_bis(_mapping(record, "bis_upgrades")))),
     ]
     for key, label, groups in (

@@ -129,6 +129,16 @@ class Derivations:
         envelope = cache.read_cache(map_id, self._root)
         return load_map_state(envelope["data"], self.chunk_info(), self._reverse_tasks())
 
+    def base_state(self, payload: Mapping[str, Any]) -> MapState:
+        """A raw payload parsed but not derived, and not read from the cache.
+
+        `state_of` takes a map id; a run's *base* is a payload stored inside
+        `batch.json`, which is deliberately not a map anyone can name - a name
+        is a pointer that can dangle and the payload is the thing. So the two
+        differ only in where the bytes come from.
+        """
+        return load_map_state(payload, self.chunk_info(), self._reverse_tasks())[0]
+
     def load(self, map_id: str) -> DerivedState:
         """Parse and derive one map.
 

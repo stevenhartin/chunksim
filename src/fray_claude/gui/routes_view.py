@@ -38,6 +38,7 @@ from fray_claude.store import cache
 from fray_claude.derive.delta import diff_names
 from fray_claude.costing import dps_bridge
 from fray_claude.runs.timeline import replay
+from fray_claude.runs.timeline import rolled_chunks
 from fray_claude.runs.timeline import series
 
 
@@ -140,6 +141,69 @@ def roll_record(map_id: str, chunk_id: str, ctx: Context) -> dict[str, Any]:
         if entry.get("chunk_id") == chunk_id:
             return dict(entry)
     return {}
+
+
+def roll_baseline(map_id: str, step: int, ctx: Context) -> dict[str, float]:
+    """Per skill, the level a run had already reached before roll `step`.
+
+    **What makes a roll's tasks news is that they are *better*.** Unlocking a
+    Crafting chunk opens `Cook a ~|cup of tea (porcelain)|~` at Cooking 20;
+    on a map that has already ticked the 99 Cooking cape that is not a new
+    Cooking goal, and the Tasks tab does not show it - `active_tasks` gates
+    candidacy on `highestChallengeLevelArr`, the highest level among a skill's
+    *completed* challenges. The roll overlay had no such gate and listed it.
+
+    Two contributions, and the run's ledger only carries one of them:
+
+    - **What the base map had already proved**, which is the case above and
+      the reason this route now parses the export. A completed challenge's
+      level comes from `challenges[skill][name]['Level']`, and the completed
+      set itself from the base payload - constant for the whole run, since
+      rolling adds chunks and never ticks anything.
+    - **What earlier rolls opened.** A level-20 task is not news if roll three
+      already opened a level-70 one, which is the same rule applied to the
+      run's own past.
+
+    The one approximation is stated rather than hidden: the level read is the
+    challenge's face value where `active_tasks._highest_completed_level` uses
+    `boosts.completed_ceiling`, which is *lower* when a boost was needed. So
+    this baseline can be a few levels high and hide a marginal task. Porting
+    the boost arithmetic here would need a `SourceIndex`, which means a
+    derivation, which is the second a click-to-open panel should not cost.
+    """
+    highest = _completed_levels(map_id, ctx)
+    ledger = cache.read_rolls(map_id, ctx.root)
+    by_chunk = {
+        str(entry["chunk_id"]): entry
+        for entry in ledger
+        if isinstance(entry.get("chunk_id"), str)
+    }
+    # Ordered as `replay` orders them, so "before this step" means the same
+    # thing here as it does to the slider.
+    for chunk_id in rolled_chunks(ledger)[: max(0, step - 1)]:
+        for skill, tasks in _mapping(by_chunk.get(chunk_id, {}), "new_tasks").items():
+            for level in (tasks or {}).values():
+                if isinstance(level, (int, float)) and not isinstance(level, bool):
+                    highest[skill] = max(highest.get(skill, 0.0), float(level))
+    return highest
+
+
+def _completed_levels(map_id: str, ctx: Context) -> dict[str, float]:
+    """The highest completed level per skill on the map a run was rolled from."""
+    payload = cache.read_base_payload(map_id, ctx.root)
+    if payload is None:
+        return {}
+    challenges = ctx.derivations.chunk_info().challenges
+    state = ctx.derivations.base_state(payload)
+    highest: dict[str, float] = {}
+    for skill, names in state.completed_challenges.items():
+        known = challenges.get(skill) or {}
+        for name in names:
+            challenge = known.get(name)
+            level = challenge.get("Level") if isinstance(challenge, dict) else None
+            if isinstance(level, (int, float)) and not isinstance(level, bool):
+                highest[skill] = max(highest.get(skill, 0.0), float(level))
+    return highest
 
 
 def _step_view(map_id: str, step: int, ctx: Context) -> MapView:
