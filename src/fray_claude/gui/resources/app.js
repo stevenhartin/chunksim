@@ -27,6 +27,17 @@ const MIN_ZOOM = 0.06;
 const MAX_ZOOM = 2.5;
 const ZOOM_STEP = 0.15;
 
+/* **How close focusing gets you, when you were further out than this.** At
+ * 0.06 a chunk is fifteen pixels and centring on one puts a speck in the
+ * middle of the screen - technically the answer, and no use. 0.5 is a 128px
+ * chunk: its own tiles are readable and its neighbours are still on screen,
+ * which is what "look at this one" means on a map made of squares.
+ *
+ * It is a floor and not a target. Someone already at 1.8 asked to be there,
+ * and hauling them back out to 0.5 because they clicked a row would be the
+ * camera overriding a decision rather than serving one. */
+const FOCUS_ZOOM = 0.5;
+
 /* Upstream's own wash, so a screenshot of either is recognisably the same map. */
 const LOCKED_WASH = "rgba(150, 150, 150, 0.6)";
 const ADDED_FILL = "rgba(60, 200, 90, 0.45)";
@@ -106,6 +117,9 @@ const state = {
   areas: {},               // chunk id -> named area, for labels and the readout
   selected: null,
   hovered: null,
+  /* Which section a hovered row in the Chunk tab is about, painted on the map
+   * by `drawHoverSection`. `{chunk, sections[], reachable}` or null. */
+  hoverSection: null,
   panX: 0, panY: 0, zoom: 0.5,
   plane: 0,
   needsDraw: false,
@@ -193,6 +207,12 @@ function easeOutBack(t) {
   return 1 + (BACK + 1) * u * u * u + BACK * u * u;
 }
 
+/* How far past 1 `easeOutBack` actually goes, which decides whether the zoom
+ * can afford it. `f'(t) = 6u^2 + 2u` is zero at `u = -1/3`, and `f(-1/3)` is
+ * `1 + 2(-1/27) + 1/9`. Derived rather than measured, so changing `BACK`
+ * without changing this is a bug that shows up as a stall. */
+const GLIDE_PEAK = 1 + 2 * Math.pow(-1 / 3, 3) + Math.pow(-1 / 3, 2);
+
 function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
 let glide = null;
@@ -215,8 +235,15 @@ function glideTo(target) {
 function stepGlide(now) {
   if (!glide) return;
   const t = Math.min(1, (now - glide.started) / GLIDE_MS);
-  const pan = easeOutBack(t), scale = easeOutCubic(t);
   const { from, to } = glide;
+  /* **The zoom gets the overshoot too, when it can afford it.** The rule the
+   * comment above states is about the *clamp*, not about the curve: a scale
+   * that runs past `MAX_ZOOM` is held there and the move stalls visibly at the
+   * end. So the peak is computed and the curve chosen per glide - which means
+   * a focus from far out, the common case, moves the way the pan does. */
+  const peak = from.zoom + (to.zoom - from.zoom) * GLIDE_PEAK;
+  const canBack = peak <= MAX_ZOOM && peak >= MIN_ZOOM;
+  const pan = easeOutBack(t), scale = canBack ? easeOutBack(t) : easeOutCubic(t);
   state.panX = from.panX + (to.panX - from.panX) * pan;
   state.panY = from.panY + (to.panY - from.panY) * pan;
   state.zoom = from.zoom + (to.zoom - from.zoom) * scale;
@@ -242,7 +269,11 @@ function centredOn(chunkId, zoom) {
 
 function focusChunk(chunkId, { zoom } = {}) {
   if (!state.view) return;
-  const target = centredOn(chunkId, clamp(zoom || state.zoom, MIN_ZOOM, MAX_ZOOM));
+  /* Focusing pulls you *in* to `FOCUS_ZOOM` and never pushes you out: further
+   * than that and a chunk is a speck, closer and you are already looking at
+   * what you asked for. An explicit `zoom` overrides both. */
+  const wanted = zoom || Math.max(state.zoom, FOCUS_ZOOM);
+  const target = centredOn(chunkId, clamp(wanted, MIN_ZOOM, MAX_ZOOM));
   if (target) glideTo(target);
 }
 
@@ -374,7 +405,7 @@ function maskTargets() {
  * one more entry plus one key in view.overlays, and nothing about pan, zoom or
  * the hull has to change. */
 const LAYERS = [
-  drawTiles, drawLockedWash, drawGrid, drawStates, drawMasks, drawFound,
+  drawTiles, drawLockedWash, drawGrid, drawStates, drawMasks, drawHoverSection, drawFound,
   drawCandidates, drawPending, drawHull, drawAreas, drawHovered, drawSelected,
 ];
 
@@ -792,6 +823,39 @@ function drawMasks() {
       const tinted = maskFor(chunkId, section, reachable);
       if (tinted) CTX.drawImage(tinted, x, y, size, size);
     }
+  }
+}
+
+/* **Which section a row in the Chunk tab is talking about, drawn where it
+ * is.** The panel can say "Section 3" all it likes; the question a person
+ * actually has is *which part of the square*, and the answer is a shape. So
+ * hovering a row paints that section - green where you can reach it, red
+ * where you cannot, the same two colours the Sections toggle uses so the
+ * hover is a preview of that layer rather than a third vocabulary.
+ *
+ * Drawn whether or not the toggle is on: the hover is a question about one
+ * section, and answering it should not need a mode turned on first. */
+function drawHoverSection() {
+  const hover = state.hoverSection;
+  if (!hover) return;
+  const at = chunkToGrid(hover.chunk);
+  if (!at) return;
+  const size = cellSize();
+  const [x, y] = toScreen(at[0], at[1]);
+  const inset = Math.max(1, Math.min(3, size / 40));
+  for (const section of hover.sections) {
+    const reachable = hover.reachable;
+    const colours = reachable ? SECTION_REACHED : SECTION_LOCKED;
+    if (section === WHOLE_CHUNK) {
+      CTX.fillStyle = colours.fill;
+      CTX.fillRect(x, y, size, size);
+      CTX.strokeStyle = colours.edge;
+      CTX.lineWidth = inset;
+      CTX.strokeRect(x + inset / 2, y + inset / 2, size - inset, size - inset);
+      continue;
+    }
+    const tinted = maskFor(hover.chunk, section, reachable);
+    if (tinted) CTX.drawImage(tinted, x, y, size, size);
   }
 }
 
@@ -1977,17 +2041,23 @@ function renderChunk() {
    * in: ask what it gives you, then take it. Both derive twice, so neither is
    * something to do by accident - which is why "Unlock" opens a dialog naming
    * what it will write rather than writing it on the click. */
+  /* **Three verbs as icons rather than as a sentence each.** "What would this
+   * add?" is a question printed in full on a 360px header, and beside "Focus"
+   * and "Unlock" it made a three-line wrap out of a row. What each does lives
+   * in the tooltip, which is where every other control in this interface keeps
+   * it - and the order is the order you want them in: look at it, ask what it
+   * gives you, take it. */
   const offer = detail.unlocked ? "" : tmpl`
-      <button id="what-if" type="button"
-        data-tip="<b>What would this add?</b><span class='sub'>Sections, tasks and BiS upgrades this chunk would bring, without saving anything.</span>">What would this add?</button>
-      <button id="do-unlock" type="button"
-        data-tip="<b>Unlock this chunk</b><span class='sub'>Save a new map with this chunk added by hand, the way <code>fray unlock --cache-map</code> does.</span>">Unlock</button>`;
+      <button id="what-if" class="icon-btn" type="button" aria-label="What would this add?"
+        data-tip="<b>What would this add?</b><span class='sub'>Sections, tasks and BiS upgrades this chunk would bring, without saving anything.</span>">${icon("help")}</button>
+      <button id="do-unlock" class="icon-btn" type="button" aria-label="Unlock"
+        data-tip="<b>Unlock this chunk</b><span class='sub'>Save a new map with this chunk added by hand, the way <code>fray unlock --cache-map</code> does.</span>">${icon("unlock")}</button>`;
 
   el["chunk-head"].innerHTML = tmpl`<h3>${detail.nickname || "Chunk " + detail.chunk_id}</h3>
     <div class="row"><code>${detail.chunk_id}</code>${raw(status)}
       <span class="spacer"></span>
-      <button id="chunk-focus" type="button"
-        data-tip="<b>Focus</b><span class='sub'>Centre the map on this chunk.</span><span class='hint'>F</span>">Focus</button>
+      <button id="chunk-focus" class="icon-btn" type="button" aria-label="Focus"
+        data-tip="<b>Focus</b><span class='sub'>Centre the map on this chunk.</span><span class='hint'>F</span>">${icon("focus")}</button>
       ${raw(offer)}
     </div>`;
   document.getElementById("chunk-focus").onclick = () => focusChunk(detail.chunk_id);
@@ -2008,8 +2078,11 @@ function renderChunk() {
     invalidate();
   };
   if (unlockNow && state.mode === "edit") {
+    /* An icon has no label to swap, so the state is said in the tooltip and
+     * shown by the button being pressed - which is what `aria-pressed` means
+     * and what `.icon-btn[aria-pressed="true"]` already tints amber. */
     const pending = state.edits.unlocked.has(detail.chunk_id);
-    unlockNow.textContent = pending ? "Remove" : "Add to edit";
+    unlockNow.setAttribute("aria-pressed", pending ? "true" : "false");
     unlockNow.dataset.tip = pending
       ? "<b>Take it back out</b><span class='sub'>Nothing has been written yet.</span>"
       : "<b>Unlock it on commit</b><span class='sub'>Held in this page with your other changes until you press Commit.</span>";
@@ -2093,7 +2166,8 @@ function renderSections(detail) {
       : (section.reachable
           ? "Opened by a link from a section you already reach."
           : "Needs a link from somewhere you have not unlocked yet.");
-    out += tmpl`<li data-tip="${tip}"><span class="name">Section ${section.section}</span>
+    out += tmpl`<li data-tip="${tip}" data-sections="${section.section}"
+      data-reachable="${section.reachable ? "1" : ""}"><span class="name">Section ${section.section}</span>
       <span class="pill ${section.reachable ? "reachable" : "locked"}">${section.reachable ? "Reachable" : "Unreached"}</span></li>`;
   }
   return out + "</ul>";
@@ -2107,18 +2181,45 @@ function renderCategory(detail, key) {
   if (!rows.length) return tmpl`<p class="empty">Nothing recorded here.</p>`;
   let out = "<ul class='list'>";
   for (const row of rows) {
-    const where = row.sections.length > 1 || row.sections[0] !== "0"
-      ? row.sections.join(", ") : "";
     const tip = tmpl`<b>${plain(row.name)}</b><span class="sub">${
       row.sections.length === 1 ? "Section " + row.sections[0] : "Sections " + row.sections.join(", ")
     }</span><span class="sub">${row.reachable
       ? "You can reach this"
       : "Behind a section you have not opened"}</span>`;
-    out += tmpl`<li class="${row.reachable ? "" : "unreached"}" data-tip="${tip}">
-      <span class="name">${plain(row.name)}</span>
-      <span class="num">${where}</span></li>`;
+    /* **The section number is gone from the row and drawn on the map
+     * instead.** A column of `3`, `1, 4`, `0` beside forty names is the
+     * busiest thing in the panel and answers a question - *which part of the
+     * square* - that a number cannot answer at all. Hovering the row paints
+     * the shape; the tooltip still spells the numbers out for anyone who
+     * wants them. */
+    out += tmpl`<li class="${row.reachable ? "" : "unreached"}" data-tip="${tip}"
+      data-sections="${row.sections.join(" ")}" data-reachable="${row.reachable ? "1" : ""}">
+      <span class="name">${plain(row.name)}</span></li>`;
   }
   return out + "</ul>";
+}
+
+/* Delegated over the whole pane, so every list gets the behaviour by emitting
+ * `data-sections` and nothing has to be wired up per render. */
+el["chunk-body"].addEventListener("mouseover", (event) => {
+  const row = event.target.closest("li[data-sections]");
+  if (!row || !chunkDetail) return hoverSection(null);
+  hoverSection({
+    chunk: chunkDetail.chunk_id,
+    sections: row.dataset.sections.split(" ").filter(Boolean),
+    reachable: row.dataset.reachable === "1",
+  });
+});
+
+el["chunk-body"].addEventListener("mouseleave", () => hoverSection(null));
+
+function hoverSection(next) {
+  const before = state.hoverSection;
+  if (before === next) return;
+  if (before && next && before.chunk === next.chunk && before.reachable === next.reachable
+      && before.sections.join(" ") === next.sections.join(" ")) return;
+  state.hoverSection = next;
+  invalidate();
 }
 
 async function previewUnlock(chunkId) {
