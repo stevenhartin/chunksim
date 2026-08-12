@@ -295,7 +295,7 @@ name, and how upstream renders them isn't something this project has located.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -709,6 +709,26 @@ class _ItemPlan:
     quality_applies: bool
     quality_waived: bool
 
+    @property
+    def simple(self) -> bool:
+        """Does `_item_usable` reduce to "the index has this item at all"?
+
+        True when none of the three gates can refuse anything: `_item_source_ok`
+        is then `sources is not None` (`non_shop` off, and `has_allowed_source`
+        returns `True` unconditionally unless `allowed_sources` is a *non-empty
+        list*), and `_source_quality_ok` returns `True` on its first line when
+        the gate does not apply. So the whole predicate is a presence check.
+
+        Worth deciding because `_item_usable` runs 677,231 times a derivation
+        and the overwhelming majority of plans are this shape - see
+        `_item_plan_met`, which is the only reader.
+        """
+        return (
+            not self.non_shop
+            and not self.quality_applies
+            and not (isinstance(self.allowed_sources, list) and self.allowed_sources)
+        )
+
 
 def _compile_items(
     challenge: Mapping[str, Any],
@@ -770,6 +790,31 @@ def _compile_items(
     )
 
 
+def _cached_plan(
+    plans: MutableMapping[tuple[str, str], _ItemPlan | None],
+    skill: str,
+    name: str,
+    challenge: Mapping[str, Any],
+    chunk_info: ChunkInfo,
+    *,
+    rules: Mapping[str, Any],
+    locked_equipment: frozenset[str],
+) -> _ItemPlan | None:
+    """`_compile_items` against a table, keyed by `(skill, name)`.
+
+    `None` is a real plan - "this challenge has no `Items`" - so this asks
+    `in`, never a falsy default.
+    """
+    key = (skill, name)
+    if key in plans:
+        return plans[key]
+    plan = _compile_items(
+        challenge, chunk_info, skill=skill, rules=rules, locked_equipment=locked_equipment
+    )
+    plans[key] = plan
+    return plan
+
+
 def _item_plan_met(plan: _ItemPlan, items: Mapping[str, Mapping[str, str]]) -> bool:
     """Check a compiled plan against the current item index.
 
@@ -778,19 +823,31 @@ def _item_plan_met(plan: _ItemPlan, items: Mapping[str, Mapping[str, str]]) -> b
     what runs here per sweep is dictionary lookups and nothing more. Counting
     stops at `needed` because the answer cannot change after that, which the
     uncompiled `sum()` had no way to do.
+
+    A `plan.simple` plan skips `_item_usable` for the presence check it
+    provably reduces to; see that property. Same predicate, one call instead
+    of four, on the hottest line in the derivation.
     """
+    simple = plan.simple
     for family, needed in plan.families:
         if family is None:
             return False
         matches = 0
         for member in family:
-            if _item_usable(
-                items.get(member),
-                non_shop=plan.non_shop,
-                allowed_sources=plan.allowed_sources,
-                applies=plan.quality_applies,
-                waived=plan.quality_waived,
-            ):
+            # `.get(...) is not None`, not `in`: a present-but-`None` entry is
+            # not a usable item, and that is what `_item_usable` would say.
+            usable = (
+                items.get(member) is not None
+                if simple
+                else _item_usable(
+                    items.get(member),
+                    non_shop=plan.non_shop,
+                    allowed_sources=plan.allowed_sources,
+                    applies=plan.quality_applies,
+                    waived=plan.quality_waived,
+                )
+            )
+            if usable:
                 matches += 1
                 if matches >= needed:
                     break
@@ -1932,9 +1989,18 @@ def calc_challenges(
     construction_locked: bool = False,
     locked_equipment: frozenset[str] = frozenset(),
     max_iterations: int = 15,
+    item_plans: MutableMapping[tuple[str, str], _ItemPlan | None] | None = None,
 ) -> ChallengeResult:
     """Port of `calcChallenges`/`calcChallengesWork`'s core fixed point - see
     the module docstring for exactly what is and is not implemented.
+
+    `item_plans` is an optional table of compiled `Items` plans to fill and
+    reuse. A plan depends only on the challenge, the export, the skill, the
+    rules and `locked_equipment` - none of which move while `pipeline.derive`
+    loops - so `derive` hands the same table to all eight of its passes rather
+    than recompiling 6,300 plans on each. Omitted, this call keeps its own, and
+    behaves exactly as it did before the table existed. It is a parameter and
+    never a module global, so `--jobs` is untouched.
     """
     challenges = chunk_info.challenges
     max_skill = max_skill or {}
@@ -1942,6 +2008,8 @@ def calc_challenges(
     backlog = backlog or {}
     manual_tasks = manual_tasks or {}
     secondary_primary_amount = str(rules.get("Secondary Primary Amount", "1"))
+
+    plans = item_plans if item_plans is not None else {}
 
     items: Mapping[str, Mapping[str, str]] = source_index.items
     objects: Mapping[str, Mapping[str, Any]] = source_index.objects
@@ -2017,10 +2085,12 @@ def calc_challenges(
                     skill,
                     name,
                     challenge,
-                    _compile_items(
+                    _cached_plan(
+                        plans,
+                        skill,
+                        name,
                         challenge,
                         chunk_info,
-                        skill=skill,
                         rules=rules,
                         locked_equipment=locked_equipment,
                     ),

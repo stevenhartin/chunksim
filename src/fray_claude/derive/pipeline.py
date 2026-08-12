@@ -61,7 +61,7 @@ from typing import Any
 
 from fray_claude.derive.active_tasks import TaskClassification, classify_tasks
 from fray_claude.derive.bis import BisResult, compute_bis
-from fray_claude.derive.challenges import ChallengeResult, calc_challenges
+from fray_claude.derive.challenges import ChallengeResult, _ItemPlan, calc_challenges
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.derive.other_tasks import OtherTasks, classify_other_tasks
 from fray_claude.model.firebase import decode_challenge_keyed, decode_payload
@@ -305,6 +305,11 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
     challenges: ChallengeResult | None = None
     valid_tasks: dict[str, dict[str, int | str | bool]] = {}
     converged = False
+    # Compiled `Items` plans, shared by every pass. They depend on the export,
+    # the rules, the skill and `locked_equipment` - all fixed above this loop -
+    # so recompiling them per pass was 50,090 calls a derivation for 6,300
+    # distinct answers. A local table, passed in; see `calc_challenges`.
+    item_plans: dict[tuple[str, str], _ItemPlan | None] = {}
 
     for _ in range(_MAX_AREA_PASSES):
         reachable = unlocked_sections(
@@ -339,6 +344,7 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
             manual_tasks=state.manual_tasks,
             construction_locked=state.construction_locked,
             locked_equipment=locked_equipment,
+            item_plans=item_plans,
         )
         new_areas = unlockable_areas(
             challenges.valid,
