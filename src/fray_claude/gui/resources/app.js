@@ -846,7 +846,12 @@ function drawHoverSection() {
   for (const section of hover.sections) {
     const reachable = hover.reachable;
     const colours = reachable ? SECTION_REACHED : SECTION_LOCKED;
-    if (section === WHOLE_CHUNK) {
+    /* **A chunk with one section has no mask, and that is not a miss.**
+     * Upstream draws an overlay only where a square is *divided*; an undivided
+     * one is the square, which is the same `WHOLE_CHUNK` case `drawMasks`
+     * already has. Asking for `12339-0.png` gets an honest 404 and would leave
+     * the hover silently drawing nothing on most of the map. */
+    if (section === WHOLE_CHUNK || hover.whole) {
       CTX.fillStyle = colours.fill;
       CTX.fillRect(x, y, size, size);
       CTX.strokeStyle = colours.edge;
@@ -2041,6 +2046,7 @@ async function selectChunk(chunkId) {
     chunkDetail = await getJSON(
       "/api/chunk?map=" + encodeURIComponent(state.map) +
       "&chunk=" + encodeURIComponent(chunkId));
+    clearExpansions("chunk:");
     renderChunk();
   } catch (error) {
     el["chunk-body"].innerHTML = tmpl`<p class="empty">${error.message}</p>`;
@@ -2134,11 +2140,13 @@ function renderChunk() {
   }
   el["chunk-body"].innerHTML = showing.map((key) => {
     const body = key === SECTIONS_CHIP ? renderSections(detail) : renderCategory(detail, key);
-    /* One category selected is a list; several need saying which is which. */
+    /* One category selected is a list; several need saying which is which.
+     * No count on the heading: the chip above it already carries one, and the
+     * truncation control below says how many are hidden when any are. */
     if (showing.length === 1) return body;
-    const count = key === SECTIONS_CHIP ? detail.sections.length : detail.contents[key].length;
-    return tmpl`<h3>${categoryLabel(key)} <span class="num">${count}</span></h3>` + body;
+    return tmpl`<h3>${categoryLabel(key)}</h3>` + body;
   }).join("");
+  ownsMore("chunk", renderChunk);
 }
 
 /* **A chip strip records what is *off*, not what is on**, and that is the fix
@@ -2198,8 +2206,8 @@ function renderSections(detail) {
 function renderCategory(detail, key) {
   const rows = detail.contents[key] || [];
   if (!rows.length) return tmpl`<p class="empty">Nothing recorded here.</p>`;
-  let out = "<ul class='list'>";
-  for (const row of rows) {
+  return "<ul class='list'>" + withMore(rows, "chunk:" + detail.chunk_id + ":" + key,
+    TASK_ROWS, (row) => {
     const tip = tmpl`<b>${plain(row.name)}</b><span class="sub">${
       row.sections.length === 1 ? "Section " + row.sections[0] : "Sections " + row.sections.join(", ")
     }</span><span class="sub">${row.reachable
@@ -2211,11 +2219,10 @@ function renderCategory(detail, key) {
      * square* - that a number cannot answer at all. Hovering the row paints
      * the shape; the tooltip still spells the numbers out for anyone who
      * wants them. */
-    out += tmpl`<li class="${row.reachable ? "" : "unreached"}" data-tip="${tip}"
+    return tmpl`<li class="${row.reachable ? "" : "unreached"}" data-tip="${tip}"
       data-sections="${row.sections.join(" ")}" data-reachable="${row.reachable ? "1" : ""}">
       <span class="name">${plain(row.name)}</span></li>`;
-  }
-  return out + "</ul>";
+  }) + "</ul>";
 }
 
 /* Delegated over the whole pane, so every list gets the behaviour by emitting
@@ -2227,6 +2234,7 @@ el["chunk-body"].addEventListener("mouseover", (event) => {
     chunk: chunkDetail.chunk_id,
     sections: row.dataset.sections.split(" ").filter(Boolean),
     reachable: row.dataset.reachable === "1",
+    whole: chunkDetail.sections.length <= 1,
   });
 });
 
@@ -2236,6 +2244,7 @@ function hoverSection(next) {
   const before = state.hoverSection;
   if (before === next) return;
   if (before && next && before.chunk === next.chunk && before.reachable === next.reachable
+      && before.whole === next.whole
       && before.sections.join(" ") === next.sections.join(" ")) return;
   state.hoverSection = next;
   invalidate();
@@ -2575,7 +2584,7 @@ function renderTasks() {
   }
   el["tasks-body"].innerHTML = out ||
     tmpl`<p class="empty">Nothing ${state.showDone ? "completed" : "outstanding"} here.</p>`;
-  ownsMore("tasks:", renderTasks);
+  ownsMore("tasks", renderTasks);
 }
 
 /* Delegated, so a re-render needs no rewiring - the same reason the tooltips

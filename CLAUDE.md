@@ -1576,7 +1576,8 @@ exactly the ones not yet in the picker; blank means `cache.DEFAULT_MAP_ID`, whic
 constant crossing into JavaScript with a test holding the two in agreement.
 
 **All fifteen CLI subcommands are reachable from it.** `GET /api/{maps,view,revision,summary,
-neighbours,chunk,sections,unlock,diff,search,estimate,tasks,tiles,areas,derived,jobs,timeline,roll,reference,build}` and
+neighbours,chunk,sections,unlock,diff,search,estimate,tasks,tiles,areas,derived,jobs,timeline,roll,reference,build}`
+plus `/assets/{section,skill,ca}/<name>.png`, and
 `POST /api/{fetch,simulate,unlock,commit,snapshot,timeline,cancel,refresh,maps/remove,derived/prune,window}`. The panel's tabs are tasks / chunk / find / estimate /
 maps, and `?map=&compare=&candidates=1&sections=1&step=&tab=` reproduces a view.
 
@@ -1597,6 +1598,16 @@ modes: **one mode carries a comparison and it is not one of the ones that step.*
 | Diff | the browsed map | `compare`, any map at all | disabled |
 | Timeline | **always** a simulation | the strip and the step | disabled |
 
+**Only one of the two transitions asks, and which one is the point.** Choosing a
+simulation out of the picker *is* choosing to replay it, so a dialog there
+confirms the thing you have just done - the ribbon says which mode you are in,
+which is the answer the prompt was standing in for. Discarding pending edits is
+the opposite: a side effect of a different action, on work the page would
+otherwise throw away silently. So `selectMap` prompts for edits and not for the
+timeline, and the Compare door is *hidden* in Timeline rather than greyed - a
+disabled control promises the thing is possible from here, where this one is
+possible from a different mode.
+
 `mode === "timeline"` ⟺ the base map's kind is `simulated`, and that
 biconditional is what makes the separation real rather than cosmetic: a run is
 fifty worlds, so browsing it as one is the confusion this removes. `selectMap`
@@ -1614,6 +1625,18 @@ unlock exists to show, which is the bug
 `test_unlocking_opens_the_result_as_the_map` was written for — so `hideStrip`
 sits beside `hideTimeline`, because "this map has no history" and "its history
 is not yours to drag from here" were the same call and are two different states.
+
+**An edited map is editable, which is what "cached maps are immutable" has to
+mean.** Fetching gives you upstream's state and nothing here writes over it, so
+the first change forks it - and the fork has to be an ordinary map, or you could
+plan one chunk ahead and no further. Nothing in the write path was ever
+kind-specific, so this is a property `tests/test_gui_actions.py` pins rather than
+a feature: two commits in a row, the second applied *to* the first. What did need
+deciding is the name, since editing is iterative: `<map>-edit` per round gives
+`fray-edit-edit-edit`, naming the number of rounds. An edit of an edit reuses its
+family name and lets `claim_batch` number it - `fray-edit`, `fray-edit-2` - with
+the trailing number stripped rather than incremented, because only the server
+knows what is taken.
 
 **An edit is pending until it is committed, and that is what makes it cheap.**
 A ticked row greys in place and an unlocked chunk lights up amber with **no
@@ -1645,6 +1668,55 @@ same decoder every derivation uses rather than asserting some key is present.
 
 Things worth knowing before changing it:
 
+- **The panel carries its own handle, and a put-away panel leaves a sliver.** A
+  button in the bar labelled "Panel" said what it was about rather than what it
+  did and sat at the far end of a strip about the map; the pin rides the panel's
+  left edge and points the way the press will send it. `panelWidth` reads
+  `--sliver` out of the stylesheet, or the camera frames to a width wider than
+  the space it has. Two more controls left the bar for the same reason: **Live**
+  is about the cache, so it is an icon in the Maps pane head, and the floor
+  picker floats against the map's own top-right, tracking `--rail` like
+  everything else anchored there.
+- **The Maps list is one entry per batch, tinted by kind**, and removing a
+  multi-run batch is choosing which runs. Forty rows for a forty-run batch all
+  said the one thing the batch says, and "Remove verf-sim?" was all or nothing -
+  which meant keeping thirty-nine to save one. Selecting every run removes the
+  *batch*, or its directory is left behind with a `batch.json` naming runs that
+  are gone. The tints are the palette already on screen (blue simulated, green
+  unlocked, amber edited) rather than four new tokens, and `fetched` is plain,
+  being the one that came from somewhere real.
+- **A row in the Chunk tab answers "which section" with a shape.** The column of
+  `3`, `1, 4`, `0` beside forty names was the busiest thing in the panel and
+  could not answer the question anyone actually has, which is *which part of the
+  square*; hovering a row paints that section - green reachable, red not, the
+  Sections layer's own two colours - whether or not that toggle is on. **A chunk
+  with one section has no mask and that is not a miss**: upstream draws an
+  overlay only where a square is divided, so an undivided one is drawn as the
+  square, the same `WHOLE_CHUNK` case `drawMasks` already has.
+- **Headings carry no counts, and no list runs past nine rows.** The chips
+  already carry a count each and the list is under the heading to be looked at;
+  what replaces the number is `withMore`, which says how much is hidden only
+  when some is. **A registered `ownsMore` prefix must not include the colon** -
+  the delegated lookup is `key.split(":")[0]`, so `ownsMore("tasks:")` reads
+  right beside `clearExpansions("tasks:")`, which does want it, and registers an
+  owner nothing can find.
+- **Three panel-text rules, each domain knowledge rather than formatting.** A
+  diary row drops the heading it repeats (`Combat Achievements#Grandmaster
+  Wasn't Event Close` under a heading already saying so); diary groups sort by
+  difficulty, one ladder serving both since diaries run Easy to Elite and Combat
+  Achievements Easy to Grandmaster; and a name is capitalised and **otherwise
+  left exactly as the export wrote it** - lower-casing the rest to finish the job
+  destroys `TzHaar-Hur` and `Ardougne`, so the *column* is made consistent and
+  the words stay upstream's. Combat Achievement groups carry the wiki's own tier
+  badge through `/assets/ca/`, the third family on the lazy asset route and the
+  only image fetch needing `WIKI_USER_AGENT`.
+- **Focusing pulls you in to a floor rather than centring where you were.** At
+  0.06 a chunk is fifteen pixels, so "focus" put a speck in the middle of the
+  screen; `FOCUS_ZOOM` is 0.5, a 128px chunk with its neighbours still visible,
+  and it is a floor rather than a target because someone already at 1.8 asked to
+  be there. The zoom gets the pan's overshoot **when it can afford it** - the
+  rule against it was about the *clamp*, so `GLIDE_PEAK` is derived from the
+  curve and compared against `MAX_ZOOM` per glide.
 - **Clicking a roll frames it; a separate control breaks it down.** They cannot be one gesture - a
   dialog would cover the map it had just framed - so a click moves the slider, selects the rolled
   chunk and flies the camera to it, and *Details* opens the overlay. That overlay reads

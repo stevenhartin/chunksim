@@ -897,6 +897,11 @@ def test_every_collapsible_list_has_an_owner_to_redraw_it() -> None:
     assert owners, "no list owners registered at all"
     for key in keys:
         assert key.split(":")[0] in owners, f"{key!r} has no owner to redraw it"
+    # **A registered prefix must be the part before the colon, not including
+    # it.** `ownsMore("tasks:")` looks right beside `clearExpansions("tasks:")`
+    # - which does want the colon, being a prefix match over whole keys - and
+    # registers an owner the lookup can never find.
+    assert not any(name.endswith(":") for name in owners), f"trailing colon: {sorted(owners)}"
 
 
 def test_one_skill_tooltip_serves_both_surfaces() -> None:

@@ -387,12 +387,14 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 .panel-pin:hover { color: var(--text); border-color: var(--line-strong); }
 
 /* The floor picker, against the map's top-right. It tracks `--rail` like
-   everything else anchored there, so it slides out with the panel. */
+   everything else anchored there, so it slides out with the panel - plus the
+   panel's own handle, which hangs into the same corner and must not be sat
+   on. */
 .plane-pick {
   position: fixed;
   z-index: 3;
   top: var(--float-top);
-  right: calc(var(--rail) + var(--s4));
+  right: calc(var(--rail) + var(--s6) + var(--s4));
   transition: right .18s ease;
 }
 
