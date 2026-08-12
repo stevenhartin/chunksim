@@ -1471,6 +1471,30 @@ the ~0.82s `derive` the roll paid anyway — and `write_sim_run` stores the seri
 is why the callback (`simulate.simulate_rolls`'s `on_state`) exists at all; `simulate.py` still knows
 nothing about hours.
 
+**The timeline is priced by `inputs.priced_heuristics`, like everything else — and was not.**
+`batch._walk` layered its own: `load_heuristics` plus `dps_bridge.enrich_incremental`, and nothing
+more. What that left out was `recipe_priced` — every computed rate and every material cost — and the
+combat rates that follow it, so a run's totals were a materially different number from the Estimate
+tab's for the same map: **17,928h against 5,093h** on `fray-sim/run-001`, now 5,092.65 either way.
+Worse than the disagreement was where it was stored: both paths key `cached_enrich` on
+`PricingDigests`, so **two different computations shared one entry and the last writer won** —
+opening the Estimate tab could change what a timeline drew. That is what `costing/inputs.py` was
+extracted to prevent, reappearing because this module assembled its own inputs rather than asking for
+them. A key can only separate *inputs*, never computations, which is why `derived_cache` now carries
+`_PRICING_MODEL` beside the digests — and why `pricing.recipes`, which `PricingDigests` had carried
+and `enrichment_key` had never read, is in the key at last: a `fray recipes` landing after an
+estimate left every stored enrichment holding the recipe-free rates, through the very fetch that
+fixes them.
+
+**One enrichment for the whole series, computed on the state the run ends in.** Per-step is the ideal
+and is not affordable: `recipe_priced` walks the item graph for every rated method, **63.7s** on a
+mid-run state of `fray-sim/run-001`, so fifty of them is the better part of an hour against 24s for
+the lot. What it costs is that an early roll is priced at the rates the run ends with, which
+understates a grind you would really have done with worse gear — a stated approximation rather than
+an inconsistency, since every bar is measured on one basis and the bars exist to be compared with
+each other. The last step *is* the map, so its total is the Estimate tab's to the penny, which is the
+property the disagreement was about.
+
 **What a simulation does *not* pay for is `dps_bridge.enrich`, at ~1.29s a roll.** That is 13× the
 rest of the pricing and would take a 100×50 batch from 68 minutes to 176, on every batch whether or
 not anyone opens its timeline. So a run stores the wiki-rate answer and `POST /api/timeline` upgrades
@@ -1636,6 +1660,17 @@ unlock exists to show, which is the bug
 `test_unlocking_opens_the_result_as_the_map` was written for — so `hideStrip`
 sits beside `hideTimeline`, because "this map has no history" and "its history
 is not yours to drag from here" were the same call and are two different states.
+
+**An edited map is edited in place; a fetched one forks.** Upstream's state is immutable here, so
+the first change has to write somewhere new — but every change after that is a change to *your* map,
+and minting `-2`, `-3`, `-4` down the chunk you were planning is a new map per click rather than a
+map you are working on. `save_edit(replace=True)` writes over the existing batch, and what makes it a
+map rather than a snapshot is that the history accumulates: the batch keeps the payload and the
+`base_map` it was **originally** forked from, and the ledger grows, so it still replays every chunk
+you have ever added by hand. Taking `base_map` from the caller would make the map its own origin on
+the second commit. `replace` is a *request* — `_commit_job` checks the kind, because a browser cannot
+be the authority on what it may overwrite — and **Save as a copy** is the second button for when you
+do want to branch.
 
 **An edited map is editable, which is what "cached maps are immutable" has to
 mean.** Fetching gives you upstream's state and nothing here writes over it, so

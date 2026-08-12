@@ -468,6 +468,11 @@ def roll_detail(map_id: str, index: int, ctx: Context) -> dict[str, Any] | None:
                 chunkinfo_path=None,
                 base=cache.read_base_payload(map_id, ctx.root),
                 enrich=enriched if added is not None else True,
+                # **The same basis the bars were priced on**, which is the
+                # run's own last state - see `batch._walk`. Pricing this pair
+                # against themselves would put a pie under a bar that measured
+                # something else.
+                final=tuple(sorted(steps[-1].unlocked)),
             )
         )
     except (CacheMissError, OSError):

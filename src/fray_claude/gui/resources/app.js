@@ -1660,10 +1660,18 @@ async function ensureEditing() {
     toast("Editing is a browse-mode thing — leave " + MODES[state.mode].label.toLowerCase() + " first");
     return false;
   }
+  /* The promise differs by what you are editing, and saying the wrong one is
+   * worse than saying nothing: a fetched map really is never touched, and an
+   * edited one really is the thing being changed. */
   const ok = await confirmAction("Enter edit mode?",
-    tmpl`<p>Ticks and unlocks are held in this page until you press
-      <b>Commit</b>, which writes them as a new map under
-      <code>cache/maps/edited/</code>. <b>${state.map}</b> is never touched.</p>`,
+    kindOf(state.map) === "edited"
+      ? tmpl`<p>Ticks and unlocks are held in this page until you press
+          <b>Commit</b>, which updates <b>${state.map}</b> in place. The map it
+          was forked from is never touched, and <b>Save as a copy</b> is on the
+          commit dialog if you would rather branch.</p>`
+      : tmpl`<p>Ticks and unlocks are held in this page until you press
+          <b>Commit</b>, which writes them as a new map under
+          <code>cache/maps/edited/</code>. <b>${state.map}</b> is never touched.</p>`,
     "Enter edit mode", { danger: false });
   if (!ok) return false;
   setMode("edit");
@@ -1693,30 +1701,57 @@ function defaultEditName(mapId) {
   return base + "-edit";
 }
 
+/* **An edited map is edited; a fetched one forks.** Upstream's state is
+ * immutable here, so the first change has to write somewhere new - but every
+ * change after that is a change to *your* map, and minting `-2`, `-3`, `-4`
+ * down the chunk you were planning is a new map per click rather than a map
+ * you are working on. So Commit updates in place once the base is an edit,
+ * and "Save as a copy" is the second button rather than the only one. */
 function askCommit() {
   const count = editCount();
   if (!count) { toast("Nothing to commit"); return; }
+  const editing = kindOf(state.map) === "edited";
   const suggested = defaultEditName(state.map);
   const ticks = count - state.edits.unlocked.size;
+  const what = tmpl`${ticks} task${ticks === 1 ? "" : "s"} ticked off and
+      ${state.edits.unlocked.size} chunk${state.edits.unlocked.size === 1 ? "" : "s"} unlocked`;
   openOverlay("Commit " + count + " change" + (count === 1 ? "" : "s"),
-    tmpl`<p>Writes a new map holding everything <b>${state.map}</b> holds, with
-      ${ticks} task${ticks === 1 ? "" : "s"} ticked off and
-      ${state.edits.unlocked.size} chunk${state.edits.unlocked.size === 1 ? "" : "s"}
-      unlocked. Nothing existing is touched.</p>
-      <div class="row"><input id="commit-name" type="text" value="${suggested}"
+    (editing
+      ? tmpl`<p>Updates <b>${state.map}</b> in place: ${what}. Its history keeps
+          every chunk you have added by hand, and the map it was originally
+          forked from is untouched.</p>`
+      : tmpl`<p>Writes a new map holding everything <b>${state.map}</b> holds, with
+          ${what}. Nothing existing is touched.</p>`)
+      + tmpl`<div class="row" id="commit-as" ${raw(editing ? "hidden" : "")}>
+        <input id="commit-name" type="text" value="${suggested}"
         aria-label="Name for the new map" spellcheck="false" autocomplete="off"
         data-tip="<b>Name for the new map</b><span class='sub'>A name already in use gains <code>-2</code>, <code>-3</code>, … rather than overwriting.</span>"></div>`,
-    tmpl`<button id="commit-no" type="button">Cancel</button>
-      <button id="commit-yes" type="button">Commit</button>`);
+    tmpl`<button id="commit-no" type="button">Cancel</button>`
+      + (editing ? tmpl`<button id="commit-copy" type="button">Save as a copy</button>` : "")
+      + tmpl`<button id="commit-yes" type="button">${editing ? "Update " + state.map : "Commit"}</button>`);
 
   const field = document.getElementById("commit-name");
+  let replace = editing;
+  const copy = document.getElementById("commit-copy");
+  if (copy) {
+    /* Revealing the name field *is* the choice, so the second press commits
+     * rather than asking again - a button that only shows a box is a button
+     * you have to press twice to do anything. */
+    copy.onclick = () => {
+      replace = false;
+      document.getElementById("commit-as").hidden = false;
+      document.getElementById("commit-yes").textContent = "Commit";
+      field.focus();
+      field.select();
+    };
+  }
   const go = () => {
-    const name = field.value.trim() || suggested;
+    const name = replace ? state.map : (field.value.trim() || suggested);
     const ticked = {};
     for (const [category, names] of state.edits.ticked) ticked[category] = [...names];
     closeOverlay();
-    runAction("Commit " + name, "/api/commit",
-      { map: state.map, name, ticked, unlocked: [...state.edits.unlocked] },
+    runAction((replace ? "Update " : "Commit ") + name, "/api/commit",
+      { map: state.map, name, replace, ticked, unlocked: [...state.edits.unlocked] },
       async (result) => {
         clearEdits();
         taskPanel = null;

@@ -52,6 +52,9 @@ from fray_claude.store.cache import (
     blob_path,
     chunkinfo_source,
     claim_batch,
+    kind_root,
+    read_batch,
+    read_rolls,
     claim_sim_batch,
     file_digest,
     overrides_path,
@@ -64,18 +67,15 @@ from fray_claude.store.cache import (
     write_sim_batch,
     write_sim_run,
 )
-from fray_claude.costing import dps_bridge
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.store.derived_cache import (
     CacheBehaviour,
     Digests,
     RollCache,
     cached_derive,
-    cached_enrich,
-    pricing_digests,
 )
 from fray_claude.costing.estimate import EstimateResult, estimate
-from fray_claude.costing.levels import goal_levels, infer_levels
+from fray_claude.costing.inputs import level_overrides, priced_heuristics
 from fray_claude.model.edits import apply_ticks
 from fray_claude.model.firebase import reverse_tasks_map
 from fray_claude.costing.heuristics import Heuristics, merge
@@ -297,13 +297,17 @@ class PriceSpec:
     #: hits against 0/13. `None` falls back to the run's payload, which is
     #: slower and not different; see `cache.read_base_payload`.
     base: Mapping[str, Any] | None = None
-    #: Whether to let `dps_bridge` recompute the rates. `True` is what a
+    #: Whether to price through `inputs.priced_heuristics`. `True` is what a
     #: reprice wants; `False` exists so a *breakdown* can be computed under the
-    #: same rates as the series it is breaking down. A run stores the wiki-rate
-    #: answer when it is simulated, so a pie priced from gear beside a bar
-    #: priced from the wiki would be two different questions with one figure
-    #: each, and the smaller number would look like a bug.
+    #: same rates as the series it is breaking down. A run stores the cheap
+    #: answer when it is simulated, so a pie priced one way beside a bar priced
+    #: the other would be two different questions with one figure each, and the
+    #: smaller number would look like a bug.
     enrich: bool = True
+    #: The unlocked set the run *ends* in - the rates every step is priced
+    #: against. See `_walk`: one basis for the whole series, and it is the
+    #: run's own last state so the last total is the Estimate tab's number.
+    final: tuple[str, ...] = ()
 
 
 def _walk(spec: PriceSpec) -> list[tuple[int, EstimateResult, float]]:
@@ -323,9 +327,38 @@ def _walk(spec: PriceSpec) -> list[tuple[int, EstimateResult, float]]:
     module-level mutable state in the project, which is the thing that keeps
     `--jobs` honest.
 
-    The pricing itself walks forward through the slice carrying a
-    `PricedFights`, so only the head pays a full `enrich`; see
-    `dps_bridge.enrich_incremental` for the measurement behind that.
+    **Priced through `inputs.priced_heuristics`, which is the whole point of
+    that module.** This used to layer its own: `load_heuristics` and then
+    `dps_bridge.enrich_incremental`, and nothing else. What that left out was
+    `recipe_priced` - every computed rate and every material cost - and the
+    combat rates that come after it, so the timeline's totals were a
+    materially different number from the Estimate tab's for the same map:
+    **17,928h against 5,093h** on `fray-sim/run-001`.
+
+    Worse than the disagreement was where it was stored. Both paths key
+    `cached_enrich` on `PricingDigests`, so the two computations shared one
+    entry and the last writer won - opening the Estimate tab could change what
+    a timeline drew, and the other way round. That is the exact bug
+    `costing/inputs.py` was extracted to prevent, reappearing here because this
+    module assembled its own inputs rather than asking for them.
+
+    **One enrichment for the whole series, computed on the state the run ends
+    in.** Pricing each step against its own is the ideal and is not affordable:
+    `recipe_priced` walks the item graph for every rated method, measured at
+    **63.7s** on a mid-run state of `fray-sim/run-001`, so fifty of them is
+    the better part of an hour. One is a minute, cached after, and it buys the
+    property the disagreement was about - the last step *is* the map, so its
+    total is the Estimate tab's to the penny.
+
+    What it costs is that an early roll is priced at the rates the run ends
+    with, which understates a grind you would really have done with worse gear
+    and no recipes for half of it. That is a real approximation and it is
+    stated rather than hidden; what it is not is an inconsistency, because
+    every bar is measured on the same basis and the bars exist to be compared
+    with each other.
+
+    The other casualty is `enrich_incremental`: `priced_heuristics` calls
+    `enrich`, and there is now only one call to make anyway.
     """
     info = ChunkInfo(read_chunkinfo(override=spec.chunkinfo_path, root=spec.root))
     try:
@@ -341,49 +374,33 @@ def _walk(spec: PriceSpec) -> list[tuple[int, EstimateResult, float]]:
     if pricer is None:
         raise CacheMissError("no cached wiki rates; run: fray heuristics")
 
-    index = dps_bridge.load_monster_index() if dps_bridge.DPS_AVAILABLE else None
-    pinned = frozenset(_mapping(read_overrides(spec.root), "monsters"))
-    levels = infer_levels(state)
-    pricing = pricing_digests(spec.root)
+    levels = level_overrides(spec.root)
+    heuristics = pricer.heuristics
+    if spec.enrich and spec.final:
+        # The run's last state, not this slice's - every worker has to reach
+        # the same rates or two slices of one graph disagree at their seam.
+        ending = dict.fromkeys(spec.final, True)
+        heuristics, _ = priced_heuristics(
+            state,
+            ending,
+            cached_derive(state, ending, digests, root=spec.root),
+            heuristics,
+            levels,
+            digests,
+            world=pricer.world,
+            root=spec.root,
+        )
 
     out: list[tuple[int, EstimateResult, float]] = []
-    fights: Any = None
     before: EstimateResult | None = None
     for position, (order, held) in enumerate(spec.steps):
         unlocked = dict.fromkeys(held, True)
         derived = cached_derive(state, unlocked, digests, root=spec.root)
-        heuristics = pricer.heuristics
-        if spec.enrich and dps_bridge.DPS_AVAILABLE:
-            goals = goal_levels(state, derived, dict(levels))
-
-            # **The two optimisations are for different presses.** A stored
-            # enrichment is ~3ms and wins outright on a repeat; the
-            # incremental walk is what makes the *first* press fast. So the
-            # cache is tried first and the walk fills the misses.
-            #
-            # A hit breaks the chain, because a stored enrichment is the
-            # answer and not the working. `fights = None` says so, and the
-            # next miss simply prices in full - slower than it might have
-            # been, never wrong.
-            carried = fights
-            fights = None
-
-            def price(
-                base: Heuristics = heuristics,
-                at: Derived = derived,
-                lv: dict[str, int] = goals,
-                previous: Any = carried,
-            ) -> tuple[Heuristics, Any]:
-                nonlocal fights
-                priced, coverage, fights = dps_bridge.enrich_incremental(
-                    base, info, at, lv, previous=previous, index=index, pinned_monsters=pinned
-                )
-                return priced, coverage
-
-            heuristics, _ = cached_enrich(
-                price, state, unlocked, digests, pricing, root=spec.root
-            )
-        result = estimate(state, derived, pricer.world, heuristics)
+        # `level_overrides` reaches the estimator too, exactly as
+        # `inputs.estimate_answer` passes it - a rate priced at one level and
+        # spent at another is the kind of disagreement this call exists to
+        # remove.
+        result = estimate(state, derived, pricer.world, heuristics, level_overrides=levels)
         # A slice that starts mid-run carries its predecessor purely to have
         # something to measure the head against; it is not this slice's to
         # report, and the slice that owns it reports it.
@@ -559,7 +576,12 @@ def price_steps(
     base = read_base_payload(map_id, root)
     specs = [
         PriceSpec(
-            map_id=map_id, steps=part, root=root, chunkinfo_path=chunkinfo_path, base=base
+            map_id=map_id,
+            steps=part,
+            root=root,
+            chunkinfo_path=chunkinfo_path,
+            base=base,
+            final=tuple(held[-1]),
         )
         for part in parts
     ]
@@ -985,6 +1007,7 @@ def save_edit(
     unlocked: Sequence[str],
     base_map: str,
     base_fetched_at: str | None = None,
+    replace: bool = False,
     root: Path | None = None,
 ) -> SavedEdit:
     """Save a hand-edited map; returns what was claimed.
@@ -1002,7 +1025,33 @@ def save_edit(
     count for a hand edit would manufacture exactly the kind of number this
     project refuses elsewhere. Nothing draws it: an edited map browses, where
     the ledger only pins the step so the view can say which chunks arrived.
+
+    **`replace` edits `name` in place**, which is what an already-edited map
+    wants: the first change to a fetched map forks it, and every change after
+    that is a change to *your* map rather than a new one beside it. The
+    accumulated history is what makes that work - the batch keeps the payload
+    it was originally forked from and the ledger grows, so the map still
+    replays every chunk you have ever added by hand rather than only the last
+    click's.
     """
+    history: list[dict[str, Any]] = []
+    origin_payload: Mapping[str, Any] = payload
+    keep_id: str | None = None
+    if replace:
+        # **Where it came from is where it came from.** An edit of an edit is
+        # still forked from the map the *first* one forked from, so the base
+        # payload, the base map's name and the batch id all stay put; only the
+        # world and the ledger move. Taking `base_map` from the caller would
+        # make the map its own origin on the second commit.
+        summary = read_batch(name, root, kind=EDITED)
+        stored = summary.get("base_payload")
+        if isinstance(stored, Mapping):
+            origin_payload = stored
+        keep_id = summary.get("batch_id") or None
+        base_map = str(summary.get("base_map") or base_map)
+        base_fetched_at = summary.get("base_fetched_at") or base_fetched_at
+        history = list(read_rolls(name, root))
+
     records = [
         UnlockRecord(
             order=index,
@@ -1012,7 +1061,7 @@ def save_edit(
             new_unsupported=frozenset(),
             bis_upgrades={},
         )
-        for index, chunk_id in enumerate(unlocked, start=1)
+        for index, chunk_id in enumerate(unlocked, start=len(history) + 1)
     ]
     ticks = sum(len(names) for names in ticked.values())
     data = simulated_payload(apply_ticks(payload, ticked), records)
@@ -1020,14 +1069,16 @@ def save_edit(
         name=name,
         kind=EDITED,
         origin="edit",
-        base_payload=payload,
+        base_payload=origin_payload,
         data=data,
-        ledger=[record.as_dict() for record in records],
-        rolls=list(unlocked),
+        ledger=history + [record.as_dict() for record in records],
+        rolls=[str(entry.get("chunk_id")) for entry in history] + list(unlocked),
         base_map=base_map,
         base_fetched_at=base_fetched_at,
         source=f"edit of {base_map!r}: {ticks} ticked, {len(records)} unlocked",
         extra_meta={"ticks": ticks},
+        replace=replace,
+        batch_id=keep_id,
         root=root,
     )
     return SavedEdit(
@@ -1110,6 +1161,8 @@ def _write_one_run_batch(
     base_fetched_at: str | None,
     source: str,
     extra_meta: Mapping[str, Any] | None = None,
+    replace: bool = False,
+    batch_id: str | None = None,
     root: Path | None = None,
 ) -> _WrittenBatch:
     """The batch-of-one write sequence, shared by every hand-made map.
@@ -1119,14 +1172,27 @@ def _write_one_run_batch(
     about is the *metadata* shape, since `maps list`, the picker and
     `read_batch` all read it. One writer is how that is guaranteed rather than
     hoped for, and the second caller is what made it a function.
+
+    **`replace` writes over an existing batch instead of claiming a name**,
+    which is what makes an edited map editable rather than merely forkable.
+    A fetched map is upstream's and immutable, so the first change forks it;
+    what follows is that the fork is an ordinary map you keep working on, and
+    a Commit that minted `fray-edit-2`, `-3`, `-4` down the chunk you were
+    planning was a new map per click rather than a map you were editing.
+    Everything else is unchanged, including `batch_id` when the caller passes
+    the one already there - it is the same map, not a new job.
     """
-    directory = claim_batch(name, root, kind=kind)
+    directory = (
+        kind_root(kind, root) / name if replace else claim_batch(name, root, kind=kind)
+    )
+    if replace and not directory.is_dir():
+        raise CacheMissError(f"no {kind} map {name!r} to update; run: fray maps list")
     run = run_dir(directory, 1)
     held = data.get("chunks", {}).get("unlocked", {})
     chunks = len(held) if isinstance(held, dict) else None
     # Minted here for the same reason `run_batch` mints one: the directory
     # name cannot carry it, because a clash renames the batch.
-    batch_id = uuid4().hex
+    batch_id = batch_id or uuid4().hex
     created_at = datetime.now(UTC).isoformat()
     meta: dict[str, Any] = {
         "run": run.name,

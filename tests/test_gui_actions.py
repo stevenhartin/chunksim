@@ -699,3 +699,56 @@ def test_the_uber_sentinel_is_refused_off_loopback(ctx: Context) -> None:
 
     assert reply.status == HTTPStatus.BAD_REQUEST
     assert b"loopback-only" in reply.body
+
+
+def test_an_edited_map_is_updated_in_place_rather_than_forked_again(ctx: Context) -> None:
+    """**A fetched map is immutable and an edited one is not.**
+
+    The first change to upstream's state has to write somewhere new; every
+    change after that is a change to *your* map. Forking each time minted
+    `-2`, `-3`, `-4` down the chunk you were planning - a new map per click
+    rather than a map you were working on.
+
+    The accumulated history is what makes it a map rather than a snapshot: the
+    batch keeps the payload it was originally forked from and the ledger
+    grows, so it still replays every chunk added by hand.
+    """
+    from fray_claude.model.firebase import decode_challenge_keyed
+
+    first = _wait(ctx, _body(_post("/api/commit", ctx, {
+        "map": "fray", "name": "mine", "ticked": {"Mining": ["Mine ~|copper ore|~"]},
+    }))["job"])
+    assert first["state"] == "done", first
+
+    second = _wait(ctx, _body(_post("/api/commit", ctx, {
+        "map": "mine", "replace": True,
+        "ticked": {"Mining": ["Mine ~|tin ore|~"]}, "unlocked": [NORTH],
+    }))["job"])
+    assert second["state"] == "done", second
+    assert second["result"]["open"] == "mine", "it forked instead of updating"
+
+    root = ctx.root
+    assert root is not None
+    assert not (root / "cache" / "maps" / "edited" / "mine-2").exists()
+
+    envelope = cache.read_cache("mine", ctx.root)
+    ticked = decode_challenge_keyed(envelope["data"]["chunkinfo"]["completedChallenges"], {})
+    assert ticked["Mining"] == {"Mine ~|copper ore|~": True, "Mine ~|tin ore|~": True}
+    assert NORTH in envelope["data"]["chunks"]["unlocked"]
+    # Still forked from `fray`, not from itself, and the same job throughout.
+    batch = cache.read_batch("mine", ctx.root, kind=cache.EDITED)
+    assert batch["base_map"] == "fray"
+    assert batch["base_payload"]["chunks"]["unlocked"] == {LUMBRIDGE: LUMBRIDGE}
+
+
+def test_only_an_edited_map_can_be_replaced(ctx: Context) -> None:
+    """`replace` is a request, and the kind is the answer: a browser cannot be
+    the authority on what it may overwrite, and upstream's own state is the
+    one thing nothing here writes to."""
+    job = _wait(ctx, _body(_post("/api/commit", ctx, {
+        "map": "fray", "replace": True, "ticked": {"Mining": ["Mine ~|copper ore|~"]},
+    }))["job"])
+
+    assert job["state"] == "done", job
+    assert job["result"]["open"] == "fray-edit", "a fetched map was overwritten"
+    assert cache.read_cache("fray", ctx.root)["kind"] == "fetched"

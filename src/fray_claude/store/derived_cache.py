@@ -118,6 +118,19 @@ except ImportError:  # pragma: no cover - depends on the interpreter build
 #: Bump when the encoding changes in a way the structural digest can't see.
 _FORMAT = "1"
 
+#: Bumped when the *arithmetic* behind an enrichment changes, as opposed to the
+#: data it reads. Every other term in `enrichment_key` is a content digest, so a
+#: change to what `priced_heuristics` computes leaves every stored entry looking
+#: fresh while holding numbers from the old model - and the only symptom is a
+#: total that will not move. `runs/timeline.py` carries the same idea for the
+#: series it stores, and for the same reason.
+#:
+#: 2: the timeline stopped layering its own rates. It had `load_heuristics` plus
+#: `dps_bridge.enrich_incremental` where the estimate has `recipe_priced`,
+#: `enrich` and the combat rates - two different computations behind one key,
+#: last writer winning.
+_PRICING_MODEL = "2"
+
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.
 _LEVEL = 3
@@ -440,6 +453,15 @@ def enrichment_key(
     The `kind` tag makes a collision with a derivation impossible rather than
     merely unlikely, so the two can share `cache/derived/` and one
     `fray derived clean` ages out both.
+
+    **A key can only separate inputs, never computations**, which is worth
+    stating because this cache has already been used for two. The timeline
+    layered `enrich_incremental` alone where the estimate layered recipes,
+    fights and combat; both wrote here, and the last one to run decided what
+    the other read back. Nothing in a digest could have caught that - the
+    inputs really were identical - so the rule is that one function computes
+    an enrichment (`inputs.priced_heuristics`) and `_PRICING_MODEL` retires
+    what an older one left behind.
     """
     material = json.dumps(
         {
@@ -454,6 +476,13 @@ def enrichment_key(
             "rates": pricing.rates,
             "overrides": pricing.overrides,
             "library": pricing.library,
+            # **`recipes` was missing here while `PricingDigests` carried it.**
+            # So `fray recipes` landing after an estimate had been computed
+            # left every stored enrichment holding the recipe-free rates - a
+            # skill priced at the 1,000/hr floor staying there through the very
+            # fetch that fixes it.
+            "recipes": pricing.recipes,
+            "model": _PRICING_MODEL,
         },
         sort_keys=True,
     )

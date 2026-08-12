@@ -312,7 +312,17 @@ def _commit_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     map_id = str(payload.get("map") or "").strip()
     if not map_id:
         raise ValueError("missing 'map'")
-    name = str(payload.get("name") or "").strip() or f"{map_id}-edit"
+    # **An edited map is edited, not re-forked.** A fetched map is upstream's
+    # and immutable, so the first change forks it; every change after that is
+    # a change to the map you made, and minting `-2`, `-3`, `-4` down a chunk
+    # you were planning is a new map per click rather than a map you are
+    # working on. The page asks for `replace` when the base is already an
+    # edit, and the kind is checked here because a browser cannot be the
+    # authority on what it is allowed to overwrite.
+    replace = bool(payload.get("replace")) and cache.read_cache(
+        map_id, ctx.root
+    ).get("kind") == cache.EDITED
+    name = map_id if replace else (str(payload.get("name") or "").strip() or f"{map_id}-edit")
 
     raw_ticked = payload.get("ticked") or {}
     if not isinstance(raw_ticked, Mapping):
@@ -346,6 +356,7 @@ def _commit_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
             unlocked=unlocked,
             base_map=map_id,
             base_fetched_at=envelope.get("fetched_at"),
+            replace=replace,
             root=ctx.root,
         )
         return {**saved.as_dict(), "open": saved.name}
