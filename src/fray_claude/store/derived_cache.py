@@ -322,14 +322,25 @@ class RollCache:
     digests: Digests
     behaviour: CacheBehaviour = CacheBehaviour.ALL
     root: Path | None = None
+    #: Whether this run is carrying areas between rolls (`pipeline.derive`).
+    #: A carried state is read from the cache but never written to it, so
+    #: turning this on quietly turns the writing half off.
+    carry_areas: bool = False
 
     def derive_state(
-        self, state: MapState, unlocked: Mapping[str, bool], *, start: bool
+        self,
+        state: MapState,
+        unlocked: Mapping[str, bool],
+        *,
+        start: bool,
+        carry: Mapping[str, bool] | None = None,
     ) -> Derived:
         if self.behaviour is CacheBehaviour.NONE:
-            return derive(state, unlocked)
-        store = self.behaviour is CacheBehaviour.ALL or start
-        return cached_derive(state, unlocked, self.digests, root=self.root, store=store)
+            return derive(state, unlocked, carry_areas=carry)
+        store = (self.behaviour is CacheBehaviour.ALL or start) and carry is None
+        return cached_derive(
+            state, unlocked, self.digests, root=self.root, store=store, carry_areas=carry
+        )
 
     def keep_final(
         self, state: MapState, unlocked: Mapping[str, bool], derived: Derived
@@ -342,7 +353,9 @@ class RollCache:
         loop, so it cannot be flagged when it is derived without deriving it
         twice.
         """
-        if self.behaviour is not CacheBehaviour.EXTREMITIES:
+        if self.behaviour is not CacheBehaviour.EXTREMITIES or self.carry_areas:
+            # Carrying, the final state was computed with a seed and is not
+            # this key's answer to give - see `cached_derive`.
             return
         key = derivation_key(state, unlocked, self.digests)
         write_derived(key, encode(derived), self.root)
@@ -356,13 +369,35 @@ def cached_derive(
     root: Path | None = None,
     refresh: bool = False,
     store: bool = True,
+    carry_areas: Mapping[str, bool] | None = None,
 ) -> Derived:
     """`derive`, served from disk when the inputs are unchanged.
 
     `refresh` ignores any stored entry and rewrites it (`--recompute`);
     `store` off computes without writing, which is how `simulate` avoids
     filling the cache with per-roll states nothing will ask for again.
+
+    **A carried derivation may be read from the cache but never written to
+    it**, and this refuses the combination rather than trusting a caller to
+    remember. `carry_areas` is an unproven optimisation (`pipeline.derive`),
+    so a result computed with one is not necessarily the answer this key
+    names - and the key cannot be made to name it either: the carry is a
+    function of the whole roll history, so folding it in would make every
+    roll's key unique and destroy the cross-run sharing that is the point of
+    this cache, while breaking the module's own rule that **a key separates
+    inputs, never computations**. Storing it anyway would be worse: an
+    unverified answer would sit under the key naming the verified one, and
+    every later `fray tasks`, `fray estimate` and GUI panel would read it.
+
+    Reading is not merely allowed but wanted: a stored entry is by definition
+    the cold answer, so a hit both skips the work and re-anchors the carry
+    chain on a verified state.
     """
+    if carry_areas is not None and store:
+        raise ValueError(
+            "a carried derivation is not the computation this key names; "
+            "pass store=False, and see pipeline.derive on why it is unproven"
+        )
     key = derivation_key(state, unlocked, digests)
     if not refresh:
         blob = read_derived(key, root)
@@ -371,7 +406,7 @@ def cached_derive(
             if hit is not None:
                 return hit
 
-    derived = derive(state, unlocked)
+    derived = derive(state, unlocked, carry_areas=carry_areas)
     if store:
         write_derived(key, encode(derived), root)
     return derived

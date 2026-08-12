@@ -8,7 +8,10 @@ persisting a payload is `tests/test_batch.py`'s.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
+
+import pytest
 
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.derive.pipeline import MapState, derive
@@ -253,3 +256,52 @@ def test_simulated_payload_drops_upstreams_recorded_answers() -> None:
     assert "selected" not in payload["chunks"]
     assert "activeTasks" not in payload["chunkinfo"]
     assert payload["chunkinfo"]["maxSkill"] == {"Mining": 70}
+
+
+@pytest.mark.slow
+@pytest.mark.real_cache
+@pytest.mark.parametrize("map_id", ["fray", "verf"])
+def test_carrying_areas_reaches_the_same_states_as_deriving_cold(
+    real_export: ChunkInfo, real_tasks_map: dict[str, str], map_id: str
+) -> None:
+    """**The whole evidence for `--carry-areas`, and it is measurement.**
+
+    Carrying the previous roll's discovered areas takes a derivation from
+    eight passes to four, and cannot be proved to reach the same answer: the
+    area loop is circular by design, so a seeded start could hold an area that
+    justifies itself. What can be done is to run a full simulation both ways
+    and compare every state it passes through - not just the ledger, which
+    would hide a difference inside a roll that changed no task.
+
+    Both cached maps, because a rule is a number a player set and a second map
+    is a second set of inputs; and `cache=None` on both halves, so neither can
+    be served from disk and the comparison is of two real computations.
+
+    Minutes, not seconds - hence `slow`. If this ever fails, the flag is
+    wrong, not the test: the cold half is the definition.
+    """
+    from fray_claude.derive.pipeline import load_map_state
+    from fray_claude.store.cache import project_root, read_cache
+
+    envelope = read_cache(map_id, root=project_root())
+    state, unlocked = load_map_state(envelope["data"], real_export, real_tasks_map)
+
+    seen: dict[bool, list[Any]] = {}
+    ledgers: dict[bool, tuple[str, ...]] = {}
+    for carry in (False, True):
+        states: list[Any] = []
+        ledger = simulate_rolls(
+            state,
+            unlocked,
+            rolls=50,
+            seed=4_242_424_242,
+            on_state=lambda _order, derived: states.append(derived),
+            carry_areas=carry,
+        )
+        seen[carry] = states
+        ledgers[carry] = tuple(record.chunk_id for record in ledger)
+
+    assert ledgers[True] == ledgers[False], f"{map_id}: the runs diverged"
+    assert len(seen[True]) == len(seen[False]) > 1
+    for order, (cold, carried) in enumerate(zip(seen[False], seen[True])):
+        assert carried == cold, f"{map_id}: state {order} differs"

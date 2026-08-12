@@ -396,3 +396,41 @@ def test_a_corrupt_enrichment_is_a_miss_rather_than_a_crash(tmp_path: Path) -> N
     assert decode_pricing(encode(derive(_state(), {"100": True}))) is None, (
         "a stored *derivation* must not read back as an enrichment"
     )
+
+
+def test_a_carried_derivation_refuses_to_be_stored(tmp_path: Path) -> None:
+    """**A key names inputs, never a computation.**
+
+    `carry_areas` is unproven (`pipeline.derive`), so what it returns is not
+    necessarily the answer `derivation_key` names - and the carry cannot be
+    folded into the key either, since it is a function of the whole roll
+    history and would make every roll unique, destroying the cross-run
+    sharing this cache exists for. Storing it anyway would put an unverified
+    answer under the verified one's key, where every later command would read
+    it. So the combination raises rather than relying on callers to remember.
+    """
+    state = _state()
+
+    with pytest.raises(ValueError, match="not the computation this key names"):
+        cached_derive(
+            state, {"100": True}, _DIGESTS, root=tmp_path, carry_areas={"Area": True}
+        )
+
+
+def test_a_carrying_roll_cache_reads_but_never_writes(tmp_path: Path) -> None:
+    """Reading is wanted - a stored entry is by definition the cold answer, so
+    a hit both skips the work and re-anchors the carry chain on a verified
+    state. Writing is what must not happen."""
+    state = _state()
+    unlocked = {"100": True}
+    cache = RollCache(_DIGESTS, CacheBehaviour.ALL, tmp_path, True)
+
+    cache.derive_state(state, unlocked, start=True, carry={"Area": True})
+
+    assert _entries(tmp_path) == [], "a carried state was stored"
+
+    # ... and the same cache still serves an entry somebody else wrote.
+    plain = RollCache(_DIGESTS, CacheBehaviour.ALL, tmp_path)
+    stored = plain.derive_state(state, unlocked, start=True)
+    assert len(_entries(tmp_path)) == 1, "the uncarried path should store"
+    assert cache.derive_state(state, unlocked, start=False, carry={"Area": True}) == stored

@@ -428,3 +428,83 @@ def test_derive_keeps_going_while_a_gated_task_is_still_moving(
 
     with pytest.raises(ConvergenceError, match="did not settle in 1 passes"):
         derive(_state(chunk_info=info), {"100": True})
+
+
+def test_a_carried_chunk_id_is_refused() -> None:
+    """**The dangerous failure, and the reason the carry is filtered.**
+
+    A carry is a `Derived.expanded_chunks` from the roll before, which holds
+    chunk ids as well as areas. Believing it wholesale would let a stale or
+    wrong carry unlock a chunk this run never rolled - a bigger world, more
+    valid tasks, and nothing to say where it came from. So only names that
+    `unlockable_areas` itself could have produced survive.
+    """
+    info = _chunk_info(
+        chunks={"100": {"Monster": {"Goblin": True}}, "999": {"Monster": {"Dragon": True}}},
+        drops={"Goblin": {"Bones": {"1": "Always"}}, "Dragon": {"Dragon bones": {"1": "Always"}}},
+        challenges={"Prayer": {"Bury bones": {"Items": ["Bones"], "Level": 1}}},
+    )
+    state = _state(chunk_info=info)
+
+    carried = derive(state, {"100": True}, carry_areas={"999": True})
+
+    assert "999" not in carried.expanded_chunks
+    assert carried == derive(state, {"100": True})
+
+
+def test_a_carried_name_that_unlocks_nothing_is_refused() -> None:
+    """Only a `Nonskill` challenge with `UnlocksArea` names an area, which is
+    `unlockable_areas`' own predicate - so anything else in a carry is not
+    something this loop could have produced."""
+    info = _chunk_info(
+        chunks={"100": {"Monster": {"Goblin": True}}},
+        challenges={"Nonskill": {"Some Place": {"UnlocksArea": False}}},
+    )
+    state = _state(chunk_info=info)
+
+    carried = derive(state, {"100": True}, carry_areas={"Some Place": True})
+
+    assert "Some Place" not in carried.expanded_chunks
+
+
+def test_a_carried_area_the_player_switched_off_stays_off() -> None:
+    """`manualAreas: False` is a deliberate choice and must outrank a carry.
+
+    This is why the survivors go back through `expand_chunk_areas` rather than
+    being merged after it - merged afterwards, the carry would resurrect an
+    area the player had explicitly turned off.
+    """
+    info = _chunk_info(
+        chunks={
+            "100": {"Connect": {"6727": True}},
+            "6727": {"Name": "Guardians' Lair", "Connect": {"100": True}},
+            "Guardians' Lair": {"Monster": {"Grotesque Guardians": True}},
+        },
+        challenges={"Nonskill": {"Guardians' Lair": {"UnlocksArea": True}}},
+    )
+    state = _state(chunk_info=info, manual_areas={"Guardians' Lair": False})
+
+    carried = derive(state, {"100": True}, carry_areas={"Guardians' Lair": True})
+
+    assert "Guardians' Lair" not in carried.expanded_chunks
+
+
+def test_carrying_the_settled_areas_reaches_the_same_answer() -> None:
+    """The property the flag is for: handing back what the loop already found
+    changes how many passes it takes, not what it decides."""
+    info = _chunk_info(
+        chunks={
+            "100": {"Monster": {"Goblin": True}, "Connect": {"6727": True}},
+            "6727": {"Name": "Guardians' Lair", "Connect": {"100": True}},
+            "Guardians' Lair": {"Monster": {"Grotesque Guardians": True}},
+        },
+        drops={"Goblin": {"Bones": {"1": "Always"}}},
+        challenges={
+            "Prayer": {"Bury bones": {"Items": ["Bones"], "Level": 1}},
+            "Nonskill": {"Guardians' Lair": {"UnlocksArea": True}},
+        },
+    )
+    state = _state(chunk_info=info)
+    cold = derive(state, {"100": True})
+
+    assert derive(state, {"100": True}, carry_areas=cold.expanded_chunks) == cold

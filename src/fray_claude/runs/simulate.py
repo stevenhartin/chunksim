@@ -239,9 +239,19 @@ class StateCache(Protocol):
     """
 
     def derive_state(
-        self, state: MapState, unlocked: Mapping[str, bool], *, start: bool
+        self,
+        state: MapState,
+        unlocked: Mapping[str, bool],
+        *,
+        start: bool,
+        carry: Mapping[str, bool] | None = None,
     ) -> Derived:
-        """Derive `unlocked`, storing it or not as the policy sees fit."""
+        """Derive `unlocked`, storing it or not as the policy sees fit.
+
+        `carry` is the previous roll's discovered areas, when the run is
+        carrying them - an implementation must pass it to `derive` and must
+        not store what comes back. See `pipeline.derive`.
+        """
 
     def keep_final(
         self, state: MapState, unlocked: Mapping[str, bool], derived: Derived
@@ -260,6 +270,7 @@ def simulate_rolls(
     on_state: Callable[[int, Derived], None] | None = None,
     on_roll: Callable[[int, str], None] | None = None,
     should_stop: Callable[[], bool] | None = None,
+    carry_areas: bool = False,
 ) -> list[UnlockRecord]:
     """Simulate up to `rolls` chunk unlocks from `unlocked`, stopping early
     if the roll pool is ever empty. Each record's delta is computed against
@@ -292,6 +303,8 @@ def simulate_rolls(
     """
     rng = random.Random(seed)
     current_ids: dict[str, bool] = dict(unlocked)
+    # Roll 0 is always cold: there is no previous roll to carry from, so the
+    # chain is anchored on a derivation computed the ordinary way.
     before = (
         cache.derive_state(state, current_ids, start=True)
         if cache is not None
@@ -310,10 +323,16 @@ def simulate_rolls(
             break
         chunk_id = rng.choice(pool)
         current_ids = {**current_ids, chunk_id: True}
+        # **The whole of the carry.** A roll adds one chunk, and the ~70 named
+        # areas the last derivation settled on are almost always still the
+        # answer - so handing them back saves rediscovering them from nothing.
+        # Unproven and therefore opt-in; `pipeline.derive` says why, and
+        # filters what it is given before believing it.
+        carry = dict(before.expanded_chunks) if carry_areas else None
         after = (
-            cache.derive_state(state, current_ids, start=False)
+            cache.derive_state(state, current_ids, start=False, carry=carry)
             if cache is not None
-            else derive(state, current_ids)
+            else derive(state, current_ids, carry_areas=carry)
         )
         delta = delta_from(before, after, chunk_id)
         ledger.append(

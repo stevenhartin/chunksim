@@ -53,6 +53,7 @@ def _simulate_to_cache(args: argparse.Namespace) -> int:
         seed=args.seed,
         chunkinfo_path=args.chunkinfo,
         cache_behaviour=CacheBehaviour(args.cache_behaviour),
+        carry_areas=args.carry_areas,
         on_complete=None if quiet else report,
     )
 
@@ -86,7 +87,10 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
         unlocked,
         rolls=args.rolls,
         seed=args.seed,
-        cache=RollCache(digests(args), CacheBehaviour(args.cache_behaviour)),
+        cache=RollCache(
+            digests(args), CacheBehaviour(args.cache_behaviour), None, args.carry_areas
+        ),
+        carry_areas=args.carry_areas,
     )
     total_tasks = sum(len(names) for record in ledger for names in record.new_tasks.values())
     total_bis = sum(len(record.bis_upgrades) for record in ledger)
@@ -152,6 +156,15 @@ def add_arguments(
         choices=[behaviour.value for behaviour in CacheBehaviour],
         default=CacheBehaviour.ALL.value,
         help="which derived states to keep in the derivation cache (default: %(default)s)",
+    )
+    simulate.add_argument(
+        "--carry-areas",
+        action="store_true",
+        help=(
+            "experimental: carry each roll's discovered areas into the next "
+            "roll's derivation (~1.8x faster, not provably identical; the run "
+            "then caches none of its derived states - see pipeline.derive)"
+        ),
     )
     simulate.add_argument(
         "--jobs",

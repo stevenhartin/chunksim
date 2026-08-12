@@ -126,6 +126,11 @@ class RunSpec:
     runs_in_batch: int = 1
     #: Which of this run's derived states to keep - see `CacheBehaviour`.
     cache_behaviour: CacheBehaviour = CacheBehaviour.ALL
+    #: Carry each roll's discovered areas into the next roll's derivation.
+    #: Experimental and unproven - `pipeline.derive` explains why - so it is
+    #: off unless somebody typed `--carry-areas`, and a run using it stores
+    #: none of its derivations.
+    carry_areas: bool = False
 
 
 @dataclass(frozen=True)
@@ -719,7 +724,8 @@ def run_one(
         unlocked,
         rolls=spec.rolls,
         seed=spec.seed,
-        cache=RollCache(digests, spec.cache_behaviour, spec.root),
+        cache=RollCache(digests, spec.cache_behaviour, spec.root, spec.carry_areas),
+        carry_areas=spec.carry_areas,
         on_state=None if pricer is None else pricer.record(state),
         on_roll=on_roll,
         should_stop=should_stop,
@@ -783,6 +789,7 @@ def _specs(
     chunkinfo_path: Path | None,
     root: Path | None,
     cache_behaviour: CacheBehaviour,
+    carry_areas: bool = False,
     batch_id: str,
 ) -> list[RunSpec]:
     specs: list[RunSpec] = []
@@ -802,6 +809,7 @@ def _specs(
                 batch_id=batch_id,
                 runs_in_batch=len(seeds),
                 cache_behaviour=cache_behaviour,
+                carry_areas=carry_areas,
             )
         )
     return specs
@@ -832,6 +840,7 @@ def run_batch(
     chunkinfo_path: Path | None = None,
     root: Path | None = None,
     cache_behaviour: CacheBehaviour = CacheBehaviour.ALL,
+    carry_areas: bool = False,
     on_complete: Callable[[RunResult], None] | None = None,
     on_roll: Callable[[int, int, str], None] | None = None,
     should_stop: Callable[[], bool] | None = None,
@@ -900,6 +909,7 @@ def run_batch(
         chunkinfo_path=chunkinfo_path,
         root=root,
         cache_behaviour=cache_behaviour,
+        carry_areas=carry_areas,
     )
 
     results: list[RunResult] = []

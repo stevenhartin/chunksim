@@ -65,8 +65,17 @@ REAL_CACHE = os.environ.get("FRAY_MAP_CACHE")
 #: The map the oracles are recorded against.
 ORACLE_MAP = "fray"
 
+#: Presence-only, like `REAL_CACHE`. Gates the oracles measured in minutes -
+#: today the carry equality run, which simulates both cached maps twice over.
+#: Kept off the ordinary oracle run so that stays worth typing.
+SLOW_ORACLES = os.environ.get("FRAY_SLOW_ORACLES")
+
 _NO_EXPORT = pytest.mark.skip(
     reason="set FRAY_CHUNKINFO to a chunk export (raw or the cached envelope) to run this"
+)
+
+_NO_SLOW = pytest.mark.skip(
+    reason="set FRAY_SLOW_ORACLES (with FRAY_CHUNKINFO and FRAY_MAP_CACHE) to run this"
 )
 
 _NO_CACHE = pytest.mark.skip(
@@ -86,7 +95,9 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     would say something untrue about the code.
     """
     for item in items:
-        if item.get_closest_marker("real_cache") and not (REAL_EXPORT and REAL_CACHE):
+        if item.get_closest_marker("slow") and not (REAL_EXPORT and REAL_CACHE and SLOW_ORACLES):
+            item.add_marker(_NO_SLOW)
+        elif item.get_closest_marker("real_cache") and not (REAL_EXPORT and REAL_CACHE):
             item.add_marker(_NO_CACHE)
         elif item.get_closest_marker("real_export") and not REAL_EXPORT:
             item.add_marker(_NO_EXPORT)

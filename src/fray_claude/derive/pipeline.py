@@ -274,6 +274,33 @@ def slayer_locked_equipment(state: MapState, unlocked: Mapping[str, bool]) -> fr
 
 
 
+
+def _carried_areas(
+    carried: Mapping[str, bool] | None, state: MapState
+) -> dict[str, bool]:
+    """The subset of `carried` this loop could have produced itself.
+
+    **Filtered rather than trusted**, because refusing rather than
+    approximating applies to a parameter as much as to a payload. The
+    predicate is `unlockable_areas`' own: a key naming a `Nonskill` challenge
+    with `UnlocksArea`. So a stale or wrong carry cannot introduce a *chunk
+    id* - which is the dangerous failure, since that would silently unlock a
+    chunk the run never rolled - and cannot name anything that is not an area.
+
+    The survivors go back through `expand_chunk_areas` rather than being
+    merged after it, so a `manualAreas` entry set to `False` still wins. Merged
+    afterwards, a carry would resurrect an area the player switched off.
+    """
+    nonskill = state.chunk_info.challenges.get("Nonskill") or {}
+    return {
+        area: True
+        for area, held in (carried or {}).items()
+        if held
+        and isinstance(nonskill.get(area), dict)
+        and nonskill[area].get("UnlocksArea") is True
+    }
+
+
 def _gates_agree(
     pairs: frozenset[tuple[str, str]],
     valid: Mapping[str, Mapping[str, Any]],
@@ -290,7 +317,12 @@ def _gates_agree(
     )
 
 
-def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
+def derive(
+    state: MapState,
+    unlocked: Mapping[str, bool],
+    *,
+    carry_areas: Mapping[str, bool] | None = None,
+) -> Derived:
     """Run `unlocked_sections` -> `gather_chunks_info` -> `calc_challenges`,
     looping while newly-valid challenges unlock further named areas.
 
@@ -332,10 +364,31 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
     **This says nothing about warm-starting `valid` itself**, which
     `challenges.py` refuses and still should: this argument turns on the
     *index* being identical, and needs no monotonicity anywhere.
+
+    **`carry_areas` is the one thing here that is measured rather than
+    proved.** A simulation rolls one chunk at a time and every roll
+    rediscovers the same ~70 named areas from scratch; handing in the areas
+    the previous roll settled on takes this loop from eight passes to four,
+    0.87s to 0.47s, and produced an identical `expanded` and `valid` on every
+    roll of a fifteen-roll trial. It is *not* provable: the loop is circular
+    by design - an area's sources can validate the challenge that unlocks it -
+    so a seeded start could in principle hold a self-justifying area that
+    starting from the base would never reach. Nothing cheap distinguishes
+    that from the right answer; the check is the cold run.
+
+    So it is opt-in (`fray simulate --carry-areas`), off by default, the carry
+    is filtered by `_carried_areas` before it is believed, and a derivation
+    computed this way is **never written to `cache/derived/`** - see
+    `derived_cache.cached_derive`, which refuses the combination outright.
+    `tests/test_simulate.py`'s carry oracle is the evidence, and it runs a
+    full simulation on both cached maps.
     """
     max_skill = slayer_capped_max_skill(state, unlocked)
     locked_equipment = slayer_locked_equipment(state, unlocked)
-    expanded = expand_chunk_areas(unlocked, manual_areas=state.manual_areas)
+    expanded = expand_chunk_areas(
+        {**unlocked, **_carried_areas(carry_areas, state)} if carry_areas else unlocked,
+        manual_areas=state.manual_areas,
+    )
     reachable: dict[str, dict[str, bool]] = {}
     index: SourceIndex | None = None
     challenges: ChallengeResult | None = None

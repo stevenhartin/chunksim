@@ -41,6 +41,7 @@ fray_claude = ["gui/resources/*"]
 markers = [
     "real_export: needs the real chunk export (FRAY_CHUNKINFO)",
     "real_cache: needs the export and this checkout's own populated cache/ (FRAY_MAP_CACHE)",
+    "slow: minutes rather than seconds; also needs FRAY_SLOW_ORACLES",
 ]
 
 [tool.mypy]
