@@ -2774,6 +2774,12 @@ const DEFAULT_MAP_ID = "fray";
 
 /* What each kind is called on screen. `fetched` is the only one worth leaving
  * unlabelled - it is the ordinary case and saying so on every row is noise. */
+/* **Which kind a map is, said in colour as well as in a word.** Four kinds
+ * that mean four very different things - one came from source-chunk, three
+ * this project made up - and a list of names alone made them look alike. The
+ * tint comes from the palette already on screen rather than from four new
+ * tokens: blue is what candidates are drawn in, green is a gain, amber is the
+ * accent, and a fetched map is the plain case with no tint at all. */
 const KIND_LABELS = {
   fetched: "Fetched",
   simulated: "Simulated",
@@ -2864,12 +2870,25 @@ async function loadMapsPane() {
       <button id="do-sim" type="button"
         data-tip="Roll from this map and save the result as a new simulated map, opened as the map with its timeline.">Roll</button>
     </div>`;
-    out += tmpl`<h3>Cached maps <span class="num">${maps.length}</span></h3><ul class="list">`;
-    for (const m of maps) {
-      const note = m.unlocked_chunks == null ? (KIND_LABELS[m.kind] || label(m.kind)) : m.unlocked_chunks + " chunks";
+    /* **A batch is one entry, not one per run.** `verf-sim/run-001` through
+     * `run-040` is forty rows saying one thing, and the thing they say - "I
+     * rolled this" - is the batch. The runs are still selectable in the
+     * picker, which is where you go to look at one; here what you do with a
+     * batch is remove it, and removing means choosing which runs. */
+    const batches = maps.filter((m) => !m.map_id.includes("/"));
+    const runsOfBatch = (id) => maps.filter((m) => m.map_id.startsWith(id + "/"));
+    out += tmpl`<h3>Cached maps <span class="num">${batches.length}</span></h3><ul class="list">`;
+    for (const m of batches) {
+      const runs = runsOfBatch(m.map_id);
+      /* Only a real batch says how many runs. A batch of one is a map as far
+       * as anyone reading this list is concerned, so it says what a map says. */
+      const note = runs.length > 1
+        ? runs.length + " runs"
+        : (m.unlocked_chunks == null ? "" : m.unlocked_chunks + " chunks");
       const remove = m.kind === "fetched" ? "" :
         '<button class="link danger" data-rm="' + m.map_id.replace(/"/g, "&quot;") + '">Remove</button>';
-      out += tmpl`<li data-tip="${mapTip(m)}"><span class="name">${m.map_id}</span><span class="num">${note}</span>${raw(remove)}</li>`;
+      out += tmpl`<li data-tip="${mapTip(m)}"><span class="tag" data-kind="${m.kind}">${KIND_LABELS[m.kind] || label(m.kind)}</span>
+        <span class="name">${m.map_id}</span><span class="num">${note}</span>${raw(remove)}</li>`;
     }
     out += `</ul><div class="actions">
       <button id="rm-sims" class="danger" type="button"
@@ -2935,15 +2954,7 @@ async function loadMapsPane() {
     };
 
     for (const button of body.querySelectorAll("button[data-rm]")) {
-      button.onclick = async () => {
-        const name = button.dataset.rm;
-        const ok = await confirmAction(
-          "Remove " + name + "?",
-          tmpl`<p>Deletes its directory under <code>cache/sims/</code>. A simulated
-            map can be rebuilt by running its seed again; nothing else brings it back.</p>`,
-          "Remove");
-        if (ok) runAction("Remove " + name, "/api/maps/remove", { names: [name] }, afterRemoval);
-      };
+      button.onclick = () => askRemoveBatch(button.dataset.rm, runsOfBatch(button.dataset.rm), afterRemoval);
     }
 
     document.getElementById("rm-sims").onclick = async () => {
@@ -2969,6 +2980,52 @@ async function loadMapsPane() {
   } catch (error) {
     body.innerHTML = tmpl`<p class="empty">${error.message}</p>`;
   }
+}
+
+/* **Removing a batch is choosing which runs**, once there is more than one.
+ * A forty-run batch is forty worlds and the interesting ones are usually a
+ * handful; "Remove verf-sim?" offered all or nothing, which meant keeping the
+ * other thirty-nine to save one. Each run keeps the tooltip it has in the
+ * list, so hovering says what that run holds before you tick it. */
+async function askRemoveBatch(name, runs, afterRemoval) {
+  if (runs.length < 2) {
+    const ok = await confirmAction(
+      "Remove " + name + "?",
+      tmpl`<p>Deletes its directory under <code>cache/maps/</code>. A simulated
+        map can be rebuilt by running its seed again; nothing else brings it back.</p>`,
+      "Remove");
+    if (ok) runAction("Remove " + name, "/api/maps/remove", { names: [name] }, afterRemoval);
+    return;
+  }
+  const body = tmpl`<p><b>${name}</b> holds ${runs.length} runs. Removing all of
+      them removes the batch.</p>
+    <div class="row"><button id="rm-all" class="link" type="button">Select all</button>
+      <button id="rm-none" class="link" type="button">Select none</button></div>
+    <ul class="list" id="rm-runs">`
+    + runs.map((r) => tmpl`<li data-tip="${mapTip(r)}">
+        <input type="checkbox" class="rm-run" value="${r.map_id}" aria-label="${r.map_id}">
+        <span class="name">${r.map_id.split("/")[1] || r.map_id}</span>
+        <span class="num">${r.unlocked_chunks == null ? "" : r.unlocked_chunks + " chunks"}</span></li>`).join("")
+    + "</ul>";
+  const chosen = () => [...document.querySelectorAll("#rm-runs .rm-run:checked")].map((b) => b.value);
+  const answer = confirmAction("Remove runs from " + name + "?", body, "Remove selected");
+  /* Wired after the overlay is on screen: `confirmAction` renders it
+   * synchronously and hands back a promise, so the nodes exist now. */
+  const setAll = (on) => {
+    for (const box of document.querySelectorAll("#rm-runs .rm-run")) box.checked = on;
+  };
+  document.getElementById("rm-all").onclick = () => setAll(true);
+  document.getElementById("rm-none").onclick = () => setAll(false);
+  if (!(await answer)) return;
+  /* Read while the overlay is still in the DOM - hidden, not replaced. */
+  const names = chosen();
+  if (!names.length) return toast("Nothing selected");
+  /* **All of them is the batch.** Removing every run one by one leaves the
+   * batch directory behind with its `batch.json`, which then lists runs that
+   * are gone. */
+  const doomed = names.length === runs.length ? [name] : names;
+  runAction("Remove " + doomed.length + " from " + name, "/api/maps/remove",
+    { names: doomed }, afterRemoval);
 }
 
 /* ---- jobs -------------------------------------------------------------- */
