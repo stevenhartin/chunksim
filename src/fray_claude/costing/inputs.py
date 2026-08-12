@@ -39,7 +39,12 @@ from fray_claude.costing import prayer as prayer_costing
 from fray_claude.costing.heuristics import ComputedMethod, MaterialCost
 from fray_claude.store import cache
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.store.derived_cache import Digests, cached_enrich, pricing_digests
+from fray_claude.store.derived_cache import (
+    Digests,
+    PricingDigests,
+    cached_enrich,
+    pricing_digests,
+)
 from fray_claude.costing.estimate import EstimateResult, estimate
 from fray_claude.derive.search import WorldIndex
 from fray_claude.remote.recipes import Material as RecipeMaterial, Recipe
@@ -51,6 +56,8 @@ from fray_claude.model.summary import _mapping
 
 __all__ = [
     "EstimateAnswer",
+    "ReferenceBlobs",
+    "load_reference",
     "estimate_answer",
     "level_overrides",
     "load_heuristics",
@@ -62,6 +69,67 @@ __all__ = [
     "pinned_keys",
     "priced_heuristics",
 ]
+
+
+@dataclass(frozen=True)
+class ReferenceBlobs:
+    """The reference files, read once and carried.
+
+    **One invocation, one read of each.** `heuristics/overrides.json` was read
+    four times to answer a single `fray estimate` - by `load_heuristics`, by
+    `level_overrides`, by `pinned_keys` and by `recipe_priced` - and the rate
+    scrape three times to answer one `/api/roll`. None of them is expensive
+    alone; what they were was a habit of asking disk for something the caller
+    already had, which is also how the two apps came to answer differently.
+
+    Nothing here needs the export, which is what lets a long-running
+    `fray-gui` build it before it has parsed one. The half that does need the
+    export is `Heuristics`, which `load_heuristics` still assembles, because
+    `bossMonsters` and `slayerMonsters` come off the `ChunkInfo`.
+
+    Frozen and passed as an argument, never a module global - a stale copy of
+    this is a wrong number rather than a slow one, so the GUI's memo of it is
+    validated against the files' own mtimes (`gui/derivation.py`).
+    """
+
+    #: `cache/reference/wiki_rates.json`, or `{}` when never fetched.
+    scraped: dict[str, Any]
+    #: Whether that scrape was there at all - see `load_heuristics`.
+    scraped_found: bool
+    #: `heuristics/overrides.json`, the checked-in hand corrections.
+    overrides: dict[str, Any]
+    #: `cache/reference/wiki_recipes.json`, parsed back into `Recipe`s.
+    recipes: Mapping[str, tuple[Recipe, ...]]
+    #: What this machine would price against, for the enrichment cache key.
+    pricing: PricingDigests
+
+    @property
+    def levels(self) -> dict[str, int]:
+        """The hand-set skill levels; see `level_overrides`."""
+        return _levels_from(self.overrides)
+
+    @property
+    def pinned(self) -> tuple[frozenset[str], dict[str, frozenset[str]]]:
+        """The hand-written rates the computed layer must not overwrite."""
+        return _pinned_from(self.overrides)
+
+
+def load_reference(root: Path | None = None) -> ReferenceBlobs:
+    """Read every reference file once. See `ReferenceBlobs`."""
+    try:
+        scraped: dict[str, Any] = cache.read_blob(
+            cache.WIKI_RATES_BLOB_NAME, root, hint="run: fray heuristics"
+        )["data"]
+        scraped_found = True
+    except cache.CacheMissError:
+        scraped, scraped_found = {}, False
+    return ReferenceBlobs(
+        scraped=scraped,
+        scraped_found=scraped_found,
+        overrides=cache.read_overrides(root),
+        recipes=_recipes_from(_recipe_blob(root)),
+        pricing=pricing_digests(root),
+    )
 
 
 @dataclass(frozen=True)
@@ -89,7 +157,11 @@ class EstimateAnswer:
         }
 
 
-def load_heuristics(info: ChunkInfo, root: Path | None = None) -> tuple[Heuristics, bool]:
+def load_heuristics(
+    info: ChunkInfo,
+    root: Path | None = None,
+    reference: ReferenceBlobs | None = None,
+) -> tuple[Heuristics, bool]:
     """The two layers merged, and whether the scraped one was there at all.
 
     Returns the flag rather than swallowing it: an estimate with no scrape
@@ -99,22 +171,14 @@ def load_heuristics(info: ChunkInfo, root: Path | None = None) -> tuple[Heuristi
     the real map, 19 unpriced items against 3, and a total ~3,000 hours light.
     Printing that quietly would be the worst of both.
     """
-    try:
-        scraped = cache.read_blob(
-            cache.WIKI_RATES_BLOB_NAME, root, hint="run: fray heuristics"
-        )["data"]
-        scraped_found = True
-    except cache.CacheMissError:
-        # Still usable: everything falls back to a default. That is honest
-        # only if the caller says so, which both of them do.
-        scraped, scraped_found = {}, False
+    blobs = load_reference(root) if reference is None else reference
     return (
         load(
-            merge(scraped, cache.read_overrides(root)),
+            merge(blobs.scraped, blobs.overrides),
             boss_monsters=frozenset(_mapping(info.code_items, "bossMonsters")),
             slayer_monsters=frozenset(info.slayer_monsters),
         ),
-        scraped_found,
+        blobs.scraped_found,
     )
 
 
@@ -125,10 +189,20 @@ def load_recipes(root: Path | None = None) -> dict[str, tuple[Recipe, ...]]:
     method simply keeps whatever the guides and defaults gave it. The caller
     does not have to check - `recipe_rates.apply` over nothing is a no-op.
     """
+    return _recipes_from(_recipe_blob(root))
+
+
+def _recipe_blob(root: Path | None = None) -> Mapping[str, Any]:
+    """The raw recipes blob, or `{}` when never fetched."""
     try:
-        blob = cache.read_blob(cache.RECIPES_BLOB_NAME, root)["data"]
+        found: Mapping[str, Any] = cache.read_blob(cache.RECIPES_BLOB_NAME, root)["data"]
     except cache.CacheMissError:
         return {}
+    return found
+
+
+def _recipes_from(blob: Mapping[str, Any]) -> dict[str, tuple[Recipe, ...]]:
+    """`load_recipes` over bytes already read."""
     return {
         skill: tuple(
             Recipe(
@@ -162,6 +236,7 @@ def recipe_priced(
     levels: dict[str, int],
     *,
     root: Path | None = None,
+    reference: ReferenceBlobs | None = None,
 ) -> tuple[Heuristics, recipe_rates.RecipeCoverage]:
     """`heuristics` with a rate computed for every method the recipes reach.
 
@@ -171,14 +246,15 @@ def recipe_priced(
     cached call because it costs ~1.6s on a real map: the walk prices every
     material of every reachable method, and that is the whole expense.
     """
-    recipes = load_recipes(root)
+    blobs = load_reference(root) if reference is None else reference
+    recipes = dict(blobs.recipes)
     seconds = material_seconds(state, derived, world, heuristics, level_overrides=levels)
     # **Prayer is priced here because this is where the item walk is.** Its
     # rate is a bone's experience over the time to collect one, so it needs
     # exactly the closure the recipes need and would otherwise build a second
     # `_Walk` to ask the same question.
     prayed = _prayer_methods(state, derived, heuristics, levels, seconds)
-    overrides = cache.read_overrides(root)
+    overrides = blobs.overrides
     # **The hand materials do not depend on the recipes**, so they are read
     # before the early return: a clone with no `fray recipes` cache still
     # charges the foundry for its bars.
@@ -393,10 +469,14 @@ def level_overrides(root: Path | None = None) -> dict[str, int]:
     `isinstance(level, bool)` is excluded deliberately - `True` is an `int` in
     Python, and a stray `"Attack": true` would otherwise become level 1.
     """
-    overrides = _mapping(cache.read_overrides(root), "levels")
+    return _levels_from(cache.read_overrides(root))
+
+
+def _levels_from(raw: Mapping[str, Any]) -> dict[str, int]:
+    """`level_overrides` over bytes already read."""
     return {
         skill: int(level)
-        for skill, level in overrides.items()
+        for skill, level in _mapping(raw, "levels").items()
         if isinstance(level, int) and not isinstance(level, bool)
     }
 
@@ -408,7 +488,11 @@ def pinned_keys(root: Path | None = None) -> tuple[frozenset[str], dict[str, fro
     they come from one read and are passed to one call - splitting them is how
     the GUI came to pass the first and forget the second.
     """
-    raw = cache.read_overrides(root)
+    return _pinned_from(cache.read_overrides(root))
+
+
+def _pinned_from(raw: Mapping[str, Any]) -> tuple[frozenset[str], dict[str, frozenset[str]]]:
+    """`pinned_keys` over bytes already read."""
     monsters = frozenset(_mapping(raw, "monsters"))
     slayer = {
         master: frozenset(tasks)
@@ -429,6 +513,7 @@ def priced_heuristics(
     world: WorldIndex | None = None,
     root: Path | None = None,
     refresh: bool = False,
+    reference: ReferenceBlobs | None = None,
 ) -> tuple[Heuristics, dps_bridge.DpsCoverage | None]:
     """Every rate this machine can compute, layered on and cached as one.
 
@@ -455,11 +540,14 @@ def priced_heuristics(
     two different levels inside one command would be indefensible.
     """
     index = build_world_index(state.chunk_info) if world is None else world
-    pinned_monsters, pinned_slayer = pinned_keys(root)
+    blobs = load_reference(root) if reference is None else reference
+    pinned_monsters, pinned_slayer = blobs.pinned
     goals = goal_levels(state, derived, {**infer_levels(state), **levels})
 
     def compute() -> tuple[Heuristics, dps_bridge.DpsCoverage | None]:
-        priced, _ = recipe_priced(state, derived, index, heuristics, levels, root=root)
+        priced, _ = recipe_priced(
+            state, derived, index, heuristics, levels, root=root, reference=blobs
+        )
         coverage: dps_bridge.DpsCoverage | None = None
         if dps_bridge.DPS_AVAILABLE:
             priced, coverage = dps_bridge.enrich(
@@ -537,7 +625,7 @@ def priced_heuristics(
         state,
         unlocked,
         digests,
-        pricing_digests(root),
+        blobs.pricing,
         root=root,
         refresh=refresh,
     )
@@ -551,15 +639,21 @@ def estimate_answer(
     *,
     root: Path | None = None,
     refresh: bool = False,
+    reference: ReferenceBlobs | None = None,
 ) -> EstimateAnswer:
     """The whole estimate, assembled once for whichever app asked.
 
     Everything above, in the one order both apps used: load the layers, read
     the level overrides, let the computed rates beat the scraped ones, then
     price. What is left at the call sites is rendering.
+
+    `reference` is the reference files already read - pass one in a process
+    that will ask more than once, which is the GUI. Omitted, this reads them,
+    which is what a one-shot CLI invocation wants.
     """
-    heuristics, scraped_rates = load_heuristics(state.chunk_info, root)
-    levels = level_overrides(root)
+    blobs = load_reference(root) if reference is None else reference
+    heuristics, scraped_rates = load_heuristics(state.chunk_info, root, blobs)
+    levels = blobs.levels
     world = build_world_index(state.chunk_info)
     heuristics, coverage = priced_heuristics(
         state,
@@ -571,6 +665,7 @@ def estimate_answer(
         world=world,
         root=root,
         refresh=refresh,
+        reference=blobs,
     )
     result = estimate(state, derived, world, heuristics, level_overrides=levels)
     return EstimateAnswer(result=result, scraped_rates=scraped_rates, coverage=coverage)

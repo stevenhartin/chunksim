@@ -232,5 +232,6 @@ def _estimate_payload(state: DerivedState, ctx: Context) -> dict[str, Any]:
         state.derived,
         ctx.derivations.digests(),
         root=ctx.root,
+        reference=ctx.derivations.reference(),
     )
     return answer.as_dict(state.map_id)

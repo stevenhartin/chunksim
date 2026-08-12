@@ -1390,6 +1390,33 @@ def read_chunkinfo(override: Path | None = None, root: Path | None = None) -> di
     return data
 
 
+def reference_stamp(root: Path | None = None) -> tuple[tuple[int, int], ...]:
+    """`(mtime_ns, size)` per reference file, for spotting an edit cheaply.
+
+    **Not a content hash, and not a substitute for one.** `file_digest` keys
+    the caches, where being wrong means serving numbers computed against data
+    that has since changed; this only decides whether an in-process memo of
+    those files is still worth keeping, where being wrong once in a while
+    means re-reading 2.5MB. Three `stat` calls against ~9ms of hashing is what
+    makes it worth having a separate answer.
+
+    A missing file stamps as `(0, 0)`, so appearing or vanishing both move it.
+    """
+    stamps: list[tuple[int, int]] = []
+    for path in (
+        blob_path(WIKI_RATES_BLOB_NAME, root),
+        blob_path(RECIPES_BLOB_NAME, root),
+        overrides_path(root),
+    ):
+        try:
+            info = path.stat()
+        except OSError:
+            stamps.append((0, 0))
+        else:
+            stamps.append((info.st_mtime_ns, info.st_size))
+    return tuple(stamps)
+
+
 def file_digest(path: Path) -> str:
     """A content hash of `path`, or `""` if it isn't readable.
 

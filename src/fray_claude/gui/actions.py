@@ -531,6 +531,11 @@ def _refresh_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
             progress("downloading per-action recipe data")
             recipes = scrape_recipes(timeout=DEFAULT_TIMEOUT)
             cache.write_blob(cache.RECIPES_BLOB_NAME, recipes, SCRAPE_SOURCE, ctx.root)
+            # Paired with the write on purpose. `Derivations.reference` would
+            # notice on its own - it stamps the files - but a refresh that
+            # forgets to say so is exactly how a memo starts serving numbers
+            # from before it.
+            ctx.derivations.forget_reference()
             return {"refreshed": "recipes", "skills": len(recipes)}
 
         # `fray heuristics`, run through the same function so the two cannot
@@ -538,6 +543,7 @@ def _refresh_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
         # about the quests and slayer masters *this* export names.
         result = scrape(ctx.derivations.chunk_info(), timeout=DEFAULT_TIMEOUT, progress=progress)
         cache.write_blob(cache.WIKI_RATES_BLOB_NAME, result.config, SCRAPE_SOURCE, ctx.root)
+        ctx.derivations.forget_reference()
         return {"refreshed": "heuristics", **result.as_dict()}
 
     return {"job": ctx.jobs.submit(f"refresh {what}", work).id}

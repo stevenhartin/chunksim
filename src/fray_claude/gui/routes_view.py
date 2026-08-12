@@ -526,16 +526,19 @@ def _training_options_for(
 ) -> dict[str, tuple[TrainingOption, ...]]:
     """What else could have trained each skill this roll charged for.
 
-    Needs the derivation and the rates the estimate was made against, which is
-    a second load - so it is done once for the skills actually on screen, and
-    returns `{}` rather than failing when anything is missing. A tooltip is
-    worth a parse; it is not worth an error.
+    Needs the derivation and the rates the estimate was made against. Both
+    come off the context rather than off disk - the rates used to be a second
+    read of `wiki_rates.json` in a request that had already made two - and it
+    still returns `{}` rather than failing when anything is missing. A tooltip
+    is worth a lookup; it is not worth an error.
     """
     if not result.skills:
         return {}
     try:
         state = ctx.derivations.load(map_id)
-        heuristics, _ = load_heuristics(state.state.chunk_info, ctx.root)
+        heuristics, _ = load_heuristics(
+            state.state.chunk_info, ctx.root, ctx.derivations.reference()
+        )
     except (CacheMissError, OSError):
         return {}
     return {

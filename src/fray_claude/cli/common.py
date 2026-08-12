@@ -53,15 +53,28 @@ def digests(args: argparse.Namespace) -> Digests:
     )
 
 
-def derive_cached(args: argparse.Namespace, state: MapState, unlocked: Mapping[str, bool]) -> Derived:
+def derive_cached(
+    args: argparse.Namespace,
+    state: MapState,
+    unlocked: Mapping[str, bool],
+    known: Digests | None = None,
+) -> Derived:
     """`derive` through the on-disk cache - see `derived_cache.py`.
 
     Every subcommand goes through here rather than calling `derive` directly,
     so `--recompute` means the same thing everywhere. Tests and the opt-in
     oracles keep calling `pipeline.derive`, which is what keeps them a
     cache-free correctness signal.
+
+    `known` is a `Digests` the caller already has. Computing one hashes the
+    10.3MB export and the 3.0MB tasks map, which costs about as much as a warm
+    `cached_derive` returns in - so the handlers that derive twice, or that
+    derive and then estimate, pass one rather than paying for it again.
+    `gui/derivation.py` and `runs/batch.py` already worked this way.
     """
-    return cached_derive(state, unlocked, digests(args), refresh=args.recompute)
+    return cached_derive(
+        state, unlocked, digests(args) if known is None else known, refresh=args.recompute
+    )
 
 
 def load_state(

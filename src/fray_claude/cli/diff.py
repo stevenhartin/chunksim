@@ -16,7 +16,7 @@ import argparse
 from collections.abc import Mapping
 from pathlib import Path
 
-from fray_claude.cli.common import derive_cached, emit_json, error, load_state
+from fray_claude.cli.common import derive_cached, digests, emit_json, error, load_state
 from fray_claude.cli.render import display_tasks, name_or_none, print_capped
 from fray_claude.derive.delta import BRANCHES, BranchDelta, MapSide, StateDelta, compare_maps
 from fray_claude.derive.other_tasks import display_name
@@ -104,12 +104,14 @@ def _cmd_diff(args: argparse.Namespace) -> int:
     # part, and the two maps are read against the same world by definition.
     # Taking it from the first side rather than building it up front also keeps
     # a missing *map* the first thing reported, as in every other subcommand.
+    # Both sides derive against the same reference data, so hash it once.
+    known = digests(args)
     before_state, before_unlocked = load_state(args, args.map1)
     after_state, after_unlocked = load_state(args, args.map2, chunk_info=before_state.chunk_info)
     delta = compare_maps(
         MapSide(before_state, before_unlocked, args.map1),
         MapSide(after_state, after_unlocked, args.map2),
-        derive_with=lambda s, u: derive_cached(args, s, u),
+        derive_with=lambda s, u: derive_cached(args, s, u, known),
         branches=None if args.branch is None else frozenset({args.branch}),
     )
 

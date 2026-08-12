@@ -38,6 +38,7 @@ from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.store.derived_cache import Digests, cached_derive
 from fray_claude.model.firebase import reverse_tasks_map
 from fray_claude.derive.pipeline import Derived, MapState, load_map_state
+from fray_claude.costing.inputs import ReferenceBlobs, load_reference
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,8 @@ class Derivations:
         self._info: ChunkInfo | None = None
         self._tasks_map: dict[str, str] | None = None
         self._digests: Digests | None = None
+        self._reference: ReferenceBlobs | None = None
+        self._reference_stamp: tuple[tuple[int, int], ...] = ()
 
     @property
     def loaded(self) -> bool:
@@ -102,6 +105,34 @@ class Derivations:
                 )
             return self._digests
 
+    def reference(self) -> ReferenceBlobs:
+        """The reference files, read once and re-read only when they move.
+
+        **The one memo here that can go stale into a wrong answer.** The
+        export is replaced by an explicit `fray chunkinfo`, which calls
+        `reset`; `heuristics/overrides.json` is a checked-in file someone
+        edits by hand, and the loop that makes it worth editing is save, then
+        reload the tab. A plain memo would serve the old numbers until the
+        server restarted, and - worse - `ReferenceBlobs.pricing` keys the
+        enrichment cache, so a stale copy would file fresh numbers under a
+        pre-edit key.
+
+        So it is validated, not just remembered: three `stat` calls per
+        access against re-reading 2.5MB. See `cache.reference_stamp`.
+        """
+        with self._lock:
+            stamp = cache.reference_stamp(self._root)
+            if self._reference is None or stamp != self._reference_stamp:
+                self._reference = load_reference(self._root)
+                self._reference_stamp = stamp
+            return self._reference
+
+    def forget_reference(self) -> None:
+        """Drop the reference memo, for a caller that just rewrote a blob."""
+        with self._lock:
+            self._reference = None
+            self._reference_stamp = ()
+
     def reset(self) -> None:
         """Forget the parsed export, so the next request reloads it.
 
@@ -114,6 +145,8 @@ class Derivations:
             self._info = None
             self._tasks_map = None
             self._digests = None
+            self._reference = None
+            self._reference_stamp = ()
 
     def state_of(self, map_id: str) -> tuple[MapState, dict[str, bool]]:
         """One map parsed but **not** derived.

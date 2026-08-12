@@ -38,6 +38,8 @@ from fray_claude.store.cache import (
     derived_path,
     derived_root,
     file_digest,
+    overrides_path,
+    reference_stamp,
     list_derived,
     prune_derived,
     read_derived,
@@ -747,3 +749,41 @@ def test_the_retired_unlocked_kind_migrates_into_edited(tmp_path: Path) -> None:
     assert (tmp_path / "cache" / "maps" / "edited" / "kept").is_dir()
     assert not (tmp_path / "cache" / "maps" / "unlocked").exists()
     assert "unlocked" not in COMPUTED_KINDS
+
+
+def test_reference_stamp_moves_when_a_blob_is_written(tmp_path: Path) -> None:
+    """**The guard on the GUI's reference memo, and the only thing under it.**
+
+    `Derivations.reference` keeps the rate scrape, the recipes and the
+    checked-in overrides in memory for the life of the server, and those
+    overrides are a file someone edits by hand. So the memo is validated
+    against this rather than merely remembered - a stale copy would not just
+    be old, it would key the enrichment cache, filing fresh numbers under a
+    pre-edit key.
+    """
+    empty = reference_stamp(tmp_path)
+    assert empty == ((0, 0), (0, 0), (0, 0)), "nothing on disk stamps as absent"
+
+    write_blob(WIKI_RATES_BLOB_NAME, {"a": 1}, "test", tmp_path)
+    written = reference_stamp(tmp_path)
+    assert written != empty
+
+    overrides = overrides_path(tmp_path)
+    overrides.parent.mkdir(parents=True, exist_ok=True)
+    overrides.write_text(json.dumps({"levels": {"Attack": 70}}), encoding="utf-8")
+    assert reference_stamp(tmp_path) != written
+
+
+def test_reference_stamp_notices_a_same_size_edit(tmp_path: Path) -> None:
+    """Size alone would miss this, which is why the stamp carries mtime too:
+    correcting a rate in place is exactly the edit that keeps the byte count.
+    """
+    overrides = overrides_path(tmp_path)
+    overrides.parent.mkdir(parents=True, exist_ok=True)
+    overrides.write_text('{"levels": {"Attack": 70}}', encoding="utf-8")
+    before = reference_stamp(tmp_path)
+
+    os.utime(overrides, ns=(0, 0))
+    overrides.write_text('{"levels": {"Attack": 71}}', encoding="utf-8")
+
+    assert reference_stamp(tmp_path) != before

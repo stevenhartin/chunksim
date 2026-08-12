@@ -15,7 +15,7 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-from fray_claude.cli.common import DEFAULT_MAP, derive_cached, emit_json, load_state
+from fray_claude.cli.common import DEFAULT_MAP, derive_cached, digests, emit_json, load_state
 from fray_claude.derive.unlock import UnlockDelta, tasks_added_by
 from fray_claude.runs.batch import save_unlock
 from fray_claude.store.cache import read_cache
@@ -41,11 +41,13 @@ def _unlock_to_cache(args: argparse.Namespace, delta: UnlockDelta) -> str:
 
 def _cmd_unlock(args: argparse.Namespace) -> int:
     state, unlocked = load_state(args)
+    # `tasks_added_by` derives twice - before and after - so hash once.
+    known = digests(args)
     delta = tasks_added_by(
         state,
         unlocked,
         args.chunk_id,
-        derive_with=lambda s, u: derive_cached(args, s, u),
+        derive_with=lambda s, u: derive_cached(args, s, u, known),
     )
     saved = _unlock_to_cache(args, delta) if args.cache_map is not None else None
 

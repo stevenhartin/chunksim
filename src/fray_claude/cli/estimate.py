@@ -26,12 +26,15 @@ def _cmd_estimate(args: argparse.Namespace) -> int:
         return error(f"unknown bucket {args.bucket!r} (expected one of {', '.join(BUCKETS)})")
 
     state, unlocked = load_state(args)
-    derived = derive_cached(args, state, unlocked)
+    # One `Digests` for the derivation and the estimate below: building it
+    # hashes 13MB, and this handler used to do that twice.
+    known = digests(args)
+    derived = derive_cached(args, state, unlocked, known)
     # Everything about *what* to price lives in `costing.inputs`, shared with
     # the GUI so the two apps cannot answer differently; what is left here is
     # rendering.
     answer = inputs.estimate_answer(
-        state, unlocked, derived, digests(args), refresh=args.recompute
+        state, unlocked, derived, known, refresh=args.recompute
     )
 
     if args.export_json != "-":
