@@ -7,7 +7,12 @@ from typing import Any
 import pytest
 
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.derive.sources import CATEGORIES, apply_item_task_unlocks, gather_chunks_info
+from fray_claude.derive.sources import (
+    CATEGORIES,
+    apply_item_task_unlocks,
+    gather_chunks_info,
+    task_unlock_pairs,
+)
 
 
 def _chunk_info(**data: Any) -> ChunkInfo:
@@ -363,3 +368,64 @@ def test_item_task_unlocks_ignores_a_key_without_a_monster() -> None:
     apply_item_task_unlocks(items, {"Items": {"Climbing boots": [{"A task": "Nonskill"}]}}, {})
 
     assert items["Climbing boots"] == {"Shop": "shop"}
+
+
+def test_task_unlock_pairs_finds_a_gate_at_any_depth() -> None:
+    """**The set has to be a superset or the loop stops too early.**
+
+    The entity branches nest location -> list -> `{task: skill}`, `Items` is
+    flat, and both readers skip a non-`str` skill. A walk that emits every
+    `str`-valued entry catches all of it without knowing a branch name.
+    """
+    info = ChunkInfo({
+        "taskUnlocks": {
+            "Shops": {"White Knight Armoury": {"100": [{"Wanted!": "Quest"}]}},
+            "Items": {"Brimstone key^Abyssal demon": [{"Konar task": "Nonskill"}]},
+            "Monsters": {"Lava dragon": {"100-1": [{"F2P Only": "Extra"}]}},
+        }
+    })
+
+    assert task_unlock_pairs(info) == frozenset({
+        ("Quest", "Wanted!"),
+        ("Nonskill", "Konar task"),
+        ("Extra", "F2P Only"),
+    })
+
+
+def test_task_unlock_pairs_ignores_an_entry_whose_skill_is_not_a_name() -> None:
+    """Matching both readers, which `continue` past a non-`str` skill rather
+    than looking it up - so a pair that can never be consulted is not one."""
+    info = ChunkInfo({"taskUnlocks": {"Shops": {"Shop": {"100": [{"Task": ["Quest"]}]}}}})
+
+    assert task_unlock_pairs(info) == frozenset()
+
+
+def test_task_unlock_pairs_is_empty_when_the_export_gates_nothing() -> None:
+    """Which is a real answer, not a degenerate one: with no gate, validity
+    never reaches `gather_chunks_info`, so one settled pass is the whole
+    derivation - see `pipeline.derive`'s exit test."""
+    assert task_unlock_pairs(ChunkInfo({})) == frozenset()
+
+
+@pytest.mark.real_export
+def test_every_real_gate_is_in_the_pair_set(real_export: ChunkInfo) -> None:
+    """The completeness property, against the export itself.
+
+    Walks `taskUnlocks` the way `_task_unlocked` and `_any_task_valid` do -
+    down to the `{task: skill}` dicts they read - and asserts each pair is in
+    the set. This is the test that fails if a future export nests a gate
+    somewhere the walk does not reach, which is the failure the branch-name
+    version of this would have made silent.
+    """
+    pairs = task_unlock_pairs(real_export)
+    seen = 0
+    for branch in (real_export.data.get("taskUnlocks") or {}).values():
+        for entry in (branch or {}).values():
+            lists = entry.values() if isinstance(entry, dict) else [entry]
+            for required in lists:
+                for item in required if isinstance(required, list) else []:
+                    for task, skill in (item or {}).items() if isinstance(item, dict) else []:
+                        if isinstance(skill, str):
+                            assert (skill, task) in pairs, f"{skill}/{task} missing"
+                            seen += 1
+    assert seen > 100, "the export should carry hundreds of gate references"

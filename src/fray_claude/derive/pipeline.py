@@ -66,7 +66,7 @@ from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.derive.other_tasks import OtherTasks, classify_other_tasks
 from fray_claude.model.firebase import decode_challenge_keyed, decode_payload
 from fray_claude.derive.sections import expand_chunk_areas, unlockable_areas, unlocked_sections
-from fray_claude.derive.sources import SourceIndex, gather_chunks_info
+from fray_claude.derive.sources import SourceIndex, gather_chunks_info, task_unlock_pairs
 from fray_claude.model.summary import _mapping
 
 
@@ -273,6 +273,23 @@ def slayer_locked_equipment(state: MapState, unlocked: Mapping[str, bool]) -> fr
     )
 
 
+
+def _gates_agree(
+    pairs: frozenset[tuple[str, str]],
+    valid: Mapping[str, Mapping[str, Any]],
+    previous: Mapping[str, Mapping[str, Any]],
+) -> bool:
+    """Do these two validity maps agree everywhere `taskUnlocks` can look?
+
+    Weaker than `valid == previous` and sufficient for the loop to stop - see
+    `derive`. Subsumes equality: equal maps agree on every projection.
+    """
+    return all(
+        (task in valid.get(skill, ())) == (task in previous.get(skill, ()))
+        for skill, task in pairs
+    )
+
+
 def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
     """Run `unlocked_sections` -> `gather_chunks_info` -> `calc_challenges`,
     looping while newly-valid challenges unlock further named areas.
@@ -296,6 +313,25 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
     the same answer without a mutate-after-the-fact step). The first pass
     runs ungated, so a gate can only ever *remove* a source that its own
     unlock task hadn't yet justified.
+
+    **The loop stops on what the next pass could actually read, not on
+    equality**, which is worth one whole pass in eight. `valid == valid_tasks`
+    is sufficient but far stronger than needed: `calc_challenges` does not
+    take `valid_tasks` at all, so last pass's validity reaches this one only
+    through the two gates above, and both ask *membership* of a
+    `(skill, task)` pair - never a value. So with the areas settled, the four
+    steps chain: no new areas means `expanded` is unchanged, so
+    `unlocked_sections` returns the same `reachable`; agreeing on every pair
+    `sources.task_unlock_pairs` names means `gather_chunks_info` is handed
+    identical inputs and builds an identical index; `calc_challenges` is a
+    deterministic function of those; so the next pass would reproduce this one
+    exactly, including the strict condition. Measured on the real map, the
+    loop leaves at pass 7 where it used to run a pass 8 that was a
+    byte-identical repeat - **0.10s of 0.87s.**
+
+    **This says nothing about warm-starting `valid` itself**, which
+    `challenges.py` refuses and still should: this argument turns on the
+    *index* being identical, and needs no monotonicity anywhere.
     """
     max_skill = slayer_capped_max_skill(state, unlocked)
     locked_equipment = slayer_locked_equipment(state, unlocked)
@@ -310,6 +346,9 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
     # so recompiling them per pass was 50,090 calls a derivation for 6,300
     # distinct answers. A local table, passed in; see `calc_challenges`.
     item_plans: dict[tuple[str, str], _ItemPlan | None] = {}
+    # The only pairs whose validity the next pass could read back; see the
+    # exit test below and `sources.task_unlock_pairs`.
+    gate_pairs = task_unlock_pairs(state.chunk_info)
 
     for _ in range(_MAX_AREA_PASSES):
         reachable = unlocked_sections(
@@ -355,7 +394,7 @@ def derive(state: MapState, unlocked: Mapping[str, bool]) -> Derived:
             max_skill=max_skill,
             passive_skill=state.passive_skill,
         )
-        if not new_areas and challenges.valid == valid_tasks:
+        if not new_areas and _gates_agree(gate_pairs, challenges.valid, valid_tasks):
             converged = True
             break
         valid_tasks = challenges.valid

@@ -498,6 +498,50 @@ def _task_unlocked(
     return True
 
 
+def task_unlock_pairs(chunk_info: ChunkInfo) -> frozenset[tuple[str, str]]:
+    """Every `(skill, task)` the `taskUnlocks` gates could ever consult.
+
+    **What `pipeline.derive` needs to know it has converged a pass early.**
+    Validity reaches `gather_chunks_info` only through `_task_unlocked` and
+    `_any_task_valid`, and both ask `task_name in valid_tasks.get(skill, {})`
+    - a membership test, never a value. So once the areas have settled, two
+    passes whose validity agrees on *these* pairs build an identical index,
+    and the second pass can only reproduce the first. See that loop for the
+    argument in full.
+
+    **Walked rather than enumerated by branch, deliberately.** Both readers
+    pull their pair out of a `{task name: task skill}` dict nested somewhere
+    under `taskUnlocks`, and both skip an entry whose skill is not a `str`.
+    Descending everything and emitting each `str`-valued entry is therefore a
+    superset of what either can ask about, whatever the nesting - it covers
+    `Items`' flat `"<item>^<monster>"` keys for free, because
+    `apply_item_task_unlocks` consults the list *before* it partitions the
+    key, and it survives the export growing a seventh branch. Naming the six
+    branches instead would fail silently and in the dangerous direction: a
+    gate this set missed is a pass skipped that should have run.
+
+    Over-approximating is safe in one direction only, and this is that
+    direction - a pair nothing consults can only make the exit fire less
+    often, never wrongly. On the real export: 334 pairs, 0.55ms to build, so
+    `derive` builds one per call and keeps it in a local.
+    """
+    found: set[tuple[str, str]] = set()
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if isinstance(value, str):
+                    found.add((value, key))
+                else:
+                    walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(_mapping(chunk_info.data, "taskUnlocks"))
+    return frozenset(found)
+
+
 def _any_task_valid(
     required: list[Any], valid_tasks: Mapping[str, Mapping[str, Any]]
 ) -> bool:

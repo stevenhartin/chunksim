@@ -201,12 +201,24 @@ def test_derive_refuses_to_return_a_truncated_derivation(
     """The loop used to stop silently at its cap. On the real map it converges
     on exactly the last allowed pass, so a map one link deeper would have got a
     quietly short answer - fewer areas, fewer sources, fewer valid tasks.
+
+    **The map has to actually need a second pass**, which means an area that
+    only opens once a challenge is valid: the exit test asks whether the next
+    pass could differ, so a state that has genuinely settled now leaves on the
+    first pass rather than spending a second one proving it.
     """
     monkeypatch.setattr("fray_claude.derive.pipeline._MAX_AREA_PASSES", 1)
     info = _chunk_info(
-        chunks={"100": {"Monster": {"Goblin": True}}},
+        chunks={
+            "100": {"Monster": {"Goblin": True}, "Connect": {"6727": True}},
+            "6727": {"Name": "Guardians' Lair", "Connect": {"100": True}},
+            "Guardians' Lair": {"Monster": {"Grotesque Guardians": True}},
+        },
         drops={"Goblin": {"Bones": {"1": "Always"}}},
-        challenges={"Prayer": {"Bury bones": {"Items": ["Bones"], "Level": 1}}},
+        challenges={
+            "Prayer": {"Bury bones": {"Items": ["Bones"], "Level": 1}},
+            "Nonskill": {"Guardians' Lair": {"UnlocksArea": True}},
+        },
     )
 
     with pytest.raises(ConvergenceError, match="did not settle in 1 passes"):
@@ -370,3 +382,49 @@ def test_an_escaped_lock_blocks_no_equipment_either() -> None:
 
     assert slayer_unblocked(state, {"100": True}) is True
     assert slayer_locked_equipment(state, {"100": True}) == frozenset()
+
+
+def test_derive_stops_once_the_gates_agree_rather_than_the_whole_map(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**The pass this saves is a byte-identical repeat of the one before.**
+
+    Validity reaches the next pass only through `taskUnlocks`, so once the
+    areas have settled and those pairs agree, another pass can only rebuild
+    the same index and recompute the same answer. Here nothing is gated at
+    all, so a single settled pass is the entire derivation - where the old
+    equality test spent a second one proving `valid != {}` had stopped being
+    true.
+    """
+    monkeypatch.setattr("fray_claude.derive.pipeline._MAX_AREA_PASSES", 1)
+    info = _chunk_info(
+        chunks={"100": {"Monster": {"Goblin": True}}},
+        drops={"Goblin": {"Bones": {"1": "Always"}}},
+        challenges={"Prayer": {"Bury bones": {"Items": ["Bones"], "Level": 1}}},
+    )
+
+    result = derive(_state(chunk_info=info), {"100": True})
+
+    assert result.challenges.valid["Prayer"] == {"Bury bones": 1}
+
+
+def test_derive_keeps_going_while_a_gated_task_is_still_moving(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The other direction, and the one that would be a wrong answer.
+
+    `Bury bones` is named by a `taskUnlocks` gate here, so its validity *is*
+    readable by the next pass's `gather_chunks_info` - the loop must not
+    leave on the pass that first made it valid. Capped at one pass, that is
+    the difference between a `ConvergenceError` and a quietly short answer.
+    """
+    monkeypatch.setattr("fray_claude.derive.pipeline._MAX_AREA_PASSES", 1)
+    info = _chunk_info(
+        chunks={"100": {"Monster": {"Goblin": True}, "Shop": {"General Store": True}}},
+        drops={"Goblin": {"Bones": {"1": "Always"}}},
+        challenges={"Prayer": {"Bury bones": {"Items": ["Bones"], "Level": 1}}},
+        taskUnlocks={"Shops": {"General Store": {"100": [{"Bury bones": "Prayer"}]}}},
+    )
+
+    with pytest.raises(ConvergenceError, match="did not settle in 1 passes"):
+        derive(_state(chunk_info=info), {"100": True})
