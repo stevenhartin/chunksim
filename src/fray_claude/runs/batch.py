@@ -842,7 +842,17 @@ def run_batch(
     common single-run case (and the test suite) in one process. Above 1, runs
     are dispatched to a `ProcessPoolExecutor`; `on_complete` fires in *this*
     process as each finishes, so progress can be reported without any worker
-    holding a handle to the caller.
+    holding a handle to the caller. `jobs` of 0 means every core this process
+    is allowed to use, resolved by `os.process_cpu_count()`.
+
+    **This default is 1 while `fray simulate`'s is 0, deliberately.** A run is
+    ~40s of `derive` and a batch is embarrassingly parallel, so somebody
+    typing the command wants their cores used. A *library* default that forks
+    sixteen processes is a different matter: the GUI calls this from a job
+    thread, and fifteen tests call it with `runs` of two to five and no
+    `jobs`, where a real `forkserver` pool would cost more than the batch. So
+    the wide default lives at the edge that a person typed, and this one stays
+    where a caller can see it.
 
     `batch.json` is written last, by this process alone. An interrupted batch
     therefore has run directories but no summary, and `cache.read_sim_batch`
@@ -867,8 +877,13 @@ def run_batch(
         raise ValueError("rolls must be at least 1")
     if runs < 1:
         raise ValueError("runs must be at least 1")
-    if jobs < 1:
-        raise ValueError("jobs must be at least 1")
+    if jobs < 0:
+        raise ValueError("jobs must not be negative")
+    # Resolved once, here, so the inline/pooled choice below and the pool's
+    # own width agree about what `0` meant. `process_cpu_count` is affinity-
+    # and cgroup-aware where `cpu_count` is not, and this can be in a
+    # container - the same call `price_steps` makes for the same reason.
+    workers = jobs if jobs > 0 else (os.process_cpu_count() or 1)
 
     directory = claim_sim_batch(name, root)
     # Minted before any run starts, so every one of them records the same
@@ -888,7 +903,7 @@ def run_batch(
     )
 
     results: list[RunResult] = []
-    if jobs == 1 or len(specs) == 1:
+    if workers == 1 or len(specs) == 1:
         for index, spec in enumerate(specs):
             if should_stop is not None and should_stop():
                 break
@@ -906,7 +921,7 @@ def run_batch(
         # module on every command while only `--jobs > 1` ever needs a pool.
         from concurrent.futures import ProcessPoolExecutor, as_completed
 
-        with ProcessPoolExecutor(max_workers=min(jobs, len(specs))) as pool:
+        with ProcessPoolExecutor(max_workers=min(workers, len(specs))) as pool:
             futures = [pool.submit(run_one, spec) for spec in specs]
             for future in as_completed(futures):
                 result = future.result()

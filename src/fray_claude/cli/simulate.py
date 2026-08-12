@@ -5,6 +5,14 @@ it, `--runs N` asks for N independent simulations, and `--jobs N` spreads them
 over worker processes. `runs/batch.py` owns all three; `store/cache.py` owns
 the layout they land in.
 
+**`--jobs` defaults to 0, meaning every core this process may use.** A roll is
+a full derivation and the runs are independent, so the serial default this
+used to carry made a ten-run batch of fifty rolls a six-minute wait on a
+machine that could do it in under one. `--jobs 1` is how to ask for a single
+process back. `runs/batch.py`'s own default stays at 1, since a *library* that
+forks the machine behind a GUI thread is a different proposition - its
+docstring says so.
+
 **`--runs` without `--cache-map` is an error rather than a silent single
 run** - there would be nowhere to put the other N-1. `--cache-behaviour`
 chooses how much of a run's derived state to keep (all of it by default, so
@@ -65,8 +73,8 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
         return error("--rolls must be at least 1")
     if args.runs < 1:
         return error("--runs must be at least 1")
-    if args.jobs < 1:
-        return error("--jobs must be at least 1")
+    if args.jobs < 0:
+        return error("--jobs must not be negative")
     if args.cache_map is not None:
         return _simulate_to_cache(args)
     if args.runs > 1:
@@ -148,8 +156,11 @@ def add_arguments(
     simulate.add_argument(
         "--jobs",
         type=int,
-        default=1,
-        help="worker processes to spread the runs over (default: %(default)s)",
+        default=0,
+        help=(
+            "worker processes to spread the runs over; 0 uses every core this "
+            "process may use, 1 runs them inline (default: %(default)s)"
+        ),
     )
     simulate.add_argument(
         "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"

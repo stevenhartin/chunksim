@@ -137,18 +137,26 @@ def test_a_recorded_run_seed_reproduces_that_run_on_its_own(root: Path) -> None:
 
 
 def test_jobs_changes_where_runs_execute_and_nothing_else(root: Path) -> None:
-    """The parallelism guarantee: `--jobs` must not move a single roll."""
+    """The parallelism guarantee: `--jobs` must not move a single roll.
+
+    Three arms, because there are three ways to say how wide: inline, an
+    explicit width, and **`0`, which is what `fray simulate` now sends by
+    default** - so the value a user actually gets is the one under test.
+    """
     serial = run_batch(
         name="Serial", payload=_PAYLOAD, base_map="fray", rolls=3, runs=4, seed=5, jobs=1, root=root
     )
     parallel = run_batch(
         name="Pool", payload=_PAYLOAD, base_map="fray", rolls=3, runs=4, seed=5, jobs=2, root=root
     )
+    every_core = run_batch(
+        name="Wide", payload=_PAYLOAD, base_map="fray", rolls=3, runs=4, seed=5, jobs=0, root=root
+    )
 
-    assert [(r.name, r.seed, r.rolls) for r in serial.runs] == [
-        (r.name, r.seed, r.rolls) for r in parallel.runs
-    ]
-    assert _rolls(root, "Serial") == _rolls(root, "Pool")
+    expected = [(r.name, r.seed, r.rolls) for r in serial.runs]
+    assert [(r.name, r.seed, r.rolls) for r in parallel.runs] == expected
+    assert [(r.name, r.seed, r.rolls) for r in every_core.runs] == expected
+    assert _rolls(root, "Serial") == _rolls(root, "Pool") == _rolls(root, "Wide")
 
 
 def test_a_name_clash_saves_alongside_rather_than_overwriting(root: Path) -> None:
@@ -222,7 +230,7 @@ def test_an_unseeded_batch_still_records_the_seeds_it_used(root: Path) -> None:
     )["seed"] is None
 
 
-@pytest.mark.parametrize(("rolls", "runs", "jobs"), [(0, 1, 1), (1, 0, 1), (1, 1, 0)])
+@pytest.mark.parametrize(("rolls", "runs", "jobs"), [(0, 1, 1), (1, 0, 1), (1, 1, -1)])
 def test_batch_rejects_nonsense_counts(root: Path, rolls: int, runs: int, jobs: int) -> None:
     with pytest.raises(ValueError):
         run_batch(

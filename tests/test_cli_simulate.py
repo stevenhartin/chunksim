@@ -107,7 +107,7 @@ def test_simulate_runs_need_a_cache_to_go_into(
     assert "--runs needs --cache-map" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("flag", ["--rolls", "--runs", "--jobs"])
+@pytest.mark.parametrize("flag", ["--rolls", "--runs"])
 def test_simulate_rejects_counts_below_one(
     project: Path, simulatable: Callable[[], None],
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], flag: str
@@ -118,6 +118,26 @@ def test_simulate_rejects_counts_below_one(
 
     assert main(argv) == 1
     assert f"{flag} must be at least 1" in capsys.readouterr().err
+
+
+def test_simulate_reads_jobs_zero_as_every_core(
+    project: Path, simulatable: Callable[[], None],
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """**Zero is the default and means "use the machine", not "no workers".**
+
+    A run is tens of seconds of `derive` and the runs are independent, so
+    somebody who typed the command wants their cores; `--jobs 1` is how you
+    ask for one process back. That makes zero the one count here that is not
+    nonsense, which is why it is out of the rejection list above.
+    """
+    simulatable()
+    capsys.readouterr()
+
+    assert main(["simulate", "--rolls", "1", "--jobs", "0"]) == 0
+
+    assert main(["simulate", "--rolls", "1", "--jobs", "-1"]) == 1
+    assert "--jobs must not be negative" in capsys.readouterr().err
 
 
 def test_simulate_export_json_describes_the_whole_batch(

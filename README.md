@@ -37,7 +37,8 @@ source-chunk is upstream and read-only from here — `fray-claude` never writes 
 - **`simulate --rolls N`** — simulate N chunk rolls in sequence and accumulate what each one adds,
   with a `--seed` for reproducible runs. Add `--cache-map NAME` to keep each simulated future as a
   cached map you can point every other command at (`fray tasks --map NAME`), `--runs R` to generate a
-  batch of them, and `--jobs J` to spread that batch over worker processes.
+  batch of them, and `--jobs J` to control how wide it runs (it already uses every core; `--jobs 1`
+  makes it serial).
 - **`maps`** — list what's cached, fetched and simulated alike; `maps rm NAME` and `maps clean`
   remove them again.
 - **`heuristics`** — pulls the numbers an estimate needs from the OSRS wiki and a public
@@ -460,7 +461,7 @@ otherwise it's created in whatever directory you're in when you run `fray`.
    fray unlock --chunk 12082 --cache-map Candidate        # the same, for one chosen chunk
    fray tasks --map Future                                # the same commands, against that world
    fray diff --map1 Candidate --map2 Future               # ... or against each other
-   fray simulate --rolls 50 --cache-map Sweep --runs 100 --jobs 8   # a batch, 8 processes wide
+   fray simulate --rolls 50 --cache-map Sweep --runs 100    # a batch, as wide as the machine
    fray maps                                              # what's cached, fetched and simulated
    fray maps rm Sweep                                     # ... and remove one again
    fray maps clean                                        # remove every simulated map
@@ -477,9 +478,10 @@ otherwise it's created in whatever directory you're in when you run `fray`.
    overwriting, and `maps rm`/`maps clean` refuse to touch a *fetched* map unless you pass
    `--include-fetched` (they never touch the chunk-info download).
 
-   A roll costs a full derivation — a few seconds — so a 50-roll run takes a couple of minutes and
-   `--jobs` is how a large batch finishes in a reasonable time. `--jobs` only changes which process a
-   run executes in: the same seed gives the same rolls either way.
+   A roll costs a full derivation — most of a second — so a 50-roll run is around forty seconds of
+   CPU, and a batch spreads its runs over every core by default. `--jobs 1` makes it serial again if
+   you'd rather have the machine back; `--jobs` only changes which process a run executes in, and the
+   same seed gives the same rolls either way.
 
 Run `fray <command> --help` for the full option list of any command, or `fray --help` for the list of
 commands.
