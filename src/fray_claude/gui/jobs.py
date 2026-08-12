@@ -108,6 +108,23 @@ class JobRegistry:
         self._lock = threading.Lock()
         self._jobs: dict[str, Job] = {}
         self._limit = limit
+        self._attempted: set[str] = set()
+
+    def claim_once(self, what: str) -> bool:
+        """True the first time this process is asked to do `what`.
+
+        For work the *page* starts rather than the user: the front end warms
+        the reference blobs on boot, and without this a reload during a failed
+        scrape starts another one. Attempted, not succeeded - a scrape that
+        fails should report and stop, not retry itself every time somebody
+        opens a tab. An explicit press is a different request and never comes
+        through here.
+        """
+        with self._lock:
+            if what in self._attempted:
+                return False
+            self._attempted.add(what)
+            return True
 
     def submit(self, action: str, work: Work) -> Job:
         job = Job(id=uuid.uuid4().hex[:12], action=action)

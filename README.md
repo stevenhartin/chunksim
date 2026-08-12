@@ -383,7 +383,7 @@ otherwise it's created in whatever directory you're in when you run `fray`.
    wiki and both only worth repeating occasionally:
 
    ```sh
-   fray heuristics                     # ~27 requests: guides, quest lengths, skill tables, monster hp, bones
+   fray heuristics                     # 30+ requests: guides, quest lengths, skill tables, monster hp, bones
    fray recipes                        # 13 requests: xp per action and tick costs, per skill
    ```
 

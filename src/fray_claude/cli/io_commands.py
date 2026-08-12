@@ -96,7 +96,7 @@ def _cmd_chunkinfo(args: argparse.Namespace) -> int:
 def _cmd_heuristics(args: argparse.Namespace) -> int:
     """`fray heuristics`: rebuild the scraped half of the estimator's numbers.
 
-    ~18 requests, run about as often as `fray chunkinfo`. `scrape.py` does the
+    Thirty-odd requests, run about as often as `fray chunkinfo`. `scrape.py` does the
     reading - the GUI's *Refresh Rates* runs the same function, so the two
     cannot drift - and this prints what it found. Coverage is printed per
     section because it is the honest measure of how much of the estimate is

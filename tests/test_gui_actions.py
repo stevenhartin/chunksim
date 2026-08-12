@@ -354,7 +354,7 @@ def test_refreshing_the_rates_runs_the_same_scrape_the_cli_runs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """**One scraper, two callers.** `fray heuristics` and this button must
-    write the same file; an eighteen-step sequence kept in two places would
+    write the same file; a sixteen-step sequence kept in two places would
     not stay the same for long. So this asserts the wiring - that the button
     reaches `scrape.scrape` - rather than re-testing the scrape."""
     ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
@@ -752,3 +752,48 @@ def test_only_an_edited_map_can_be_replaced(ctx: Context) -> None:
     assert job["state"] == "done", job
     assert job["result"]["open"] == "fray-edit", "a fetched map was overwritten"
     assert cache.read_cache("fray", ctx.root)["kind"] == "fetched"
+
+
+def test_an_auto_refresh_is_refused_once_the_blob_is_there(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**The page warms the reference blobs on boot; a press is a decision.**
+
+    `warmReference` asks for both wiki scrapes when they are missing, which is
+    worth about sixty requests on a fresh cache and worth none on every reload
+    after. `auto` marks the request as the page's idea so the server can say
+    no; a button sends no `auto` and is never refused.
+    """
+    ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
+    ctx = Context(root=tmp_path, check_origin=False, derivations=ctx.derivations)
+    cache.write_blob(cache.RECIPES_BLOB_NAME, {"Cooking": []}, "test", tmp_path)
+
+    reply = _body(_post("/api/refresh", ctx, {"what": "recipes", "auto": True}))
+
+    assert reply == {"skipped": "recipes", "why": "cached"}
+
+
+def test_an_auto_refresh_does_not_retry_a_scrape_that_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**Attempted, not succeeded.** A scrape that fails should report and
+    stop. Keying the guard on the blob alone would restart it on every reload
+    - which is the same thirty-odd requests again, against a wiki that just said
+    no - so the second ask is refused by this run having tried.
+    """
+    ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
+    ctx = Context(root=tmp_path, check_origin=False, derivations=ctx.derivations)
+
+    def explode(timeout: float = 0.0) -> dict[str, Any]:
+        raise OSError("the wiki said no")
+
+    monkeypatch.setattr("fray_claude.gui.actions.scrape_recipes", explode)
+
+    first = _body(_post("/api/refresh", ctx, {"what": "recipes", "auto": True}))
+    job = _wait(ctx, first["job"])
+    second = _body(_post("/api/refresh", ctx, {"what": "recipes", "auto": True}))
+
+    assert job["state"] == "failed"
+    assert second == {"skipped": "recipes", "why": "attempted"}
+    # The button still works: it is a decision, and the user can see the error.
+    assert "job" in _body(_post("/api/refresh", ctx, {"what": "recipes"}))

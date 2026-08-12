@@ -1,4 +1,4 @@
-"""The ~18 requests that build the estimator's scraped layer.
+"""The sixteen stages that build the estimator's scraped layer.
 
 **The export carries no durations, rates or XP figures at all**, so every hour
 `fray estimate` spends comes from `heuristics/overrides.json`, a default in
@@ -8,7 +8,7 @@ published Google Sheet, and hands the lot to `heuristics.build_config`.
 
 **It lives here rather than in `cli.py` because both apps run it**, which is
 `batch.save_unlock`'s reasoning applied again: `fray heuristics` and the GUI's
-*Refresh Rates* must produce the same file, and two copies of an eighteen-step
+*Refresh Rates* must produce the same file, and two copies of a sixteen-step
 sequence would not stay the same for long.
 
 `api.py` still owns every socket and `heuristics.py` every judgement about what
@@ -115,9 +115,13 @@ def scrape(
 ) -> ScrapeResult:
     """Read every source the estimator's scraped layer comes from.
 
-    Roughly eighteen requests and a few seconds. `progress` is called with a
-    human sentence before each stage, so a caller has something to print or
-    draw; it is optional and nothing here depends on it.
+    Sixteen stages and a few seconds. **Stages are not requests**: titles are
+    asked for `api.WIKI_TITLES_PER_REQUEST` at a time, so the quest stage alone
+    is 5 and the money-making guides at least 11 - counted from the real
+    export and the stored scrape, the floor is 31, and the two paginated
+    listings and the shop table push the real figure past it. `progress` is
+    called with a human sentence before each stage, so a caller has something
+    to print or draw; it is optional and nothing here depends on it.
     """
     say = progress or (lambda _message: None)
 

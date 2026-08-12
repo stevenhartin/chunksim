@@ -498,6 +498,18 @@ def _cancel_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     return {"job": job.id, "state": str(job.state), "stopping": job.stopping.is_set()}
 
 
+
+def _blob_present(what: str, ctx: Context) -> bool:
+    """Is the blob an `auto` refresh would fetch already on disk?
+
+    A `stat`, not a read: the question is whether to start a scrape, and
+    parsing 1.7MB of recipes to answer it would cost more than the answer is
+    worth. `routes_reference._reference_state` takes the same line.
+    """
+    name = cache.WIKI_RATES_BLOB_NAME if what == "heuristics" else cache.RECIPES_BLOB_NAME
+    return cache.blob_path(name, ctx.root).is_file()
+
+
 def _refresh_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     """Re-download the reference data `fray chunkinfo`, `fray heuristics` and
     `fray recipes` get.
@@ -510,6 +522,19 @@ def _refresh_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     what = str(payload.get("what") or "chunkinfo")
     if what not in ("chunkinfo", "heuristics", "recipes"):
         raise ValueError(f"unknown refresh target {what!r}")
+
+    # **An `auto` refresh is the page's idea, not the user's.** The front end
+    # warms the two wiki blobs on boot so a fresh cache does not open on
+    # fallback numbers, which is worth about sixty requests once. It is not
+    # worth them again on every reload, and a scrape that fails should say so
+    # and stop rather than restart itself each time a tab opens - so this
+    # answers "already there" or "already tried" without starting a job. A
+    # button press sends no `auto` and is never refused.
+    if payload.get("auto") is True:
+        if what != "chunkinfo" and _blob_present(what, ctx):
+            return {"skipped": what, "why": "cached"}
+        if not ctx.jobs.claim_once(f"refresh {what}"):
+            return {"skipped": what, "why": "attempted"}
 
     def work(progress: Progress, _stop: StopCheck) -> dict[str, Any]:
         if what == "chunkinfo":

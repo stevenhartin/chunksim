@@ -3155,7 +3155,7 @@ async function loadReference() {
  * these are the inputs whose absence changes an estimate silently. */
 const REFERENCE_TIPS = {
   chunkinfo: "<b>Chunk data</b><span class='sub'>The 10MB chunk export and the tasks map. Everything derived from them is recomputed after.</span>",
-  wiki_rates: "<b>Wiki rates</b><span class='sub'>Quest lengths, money-making guides, slayer assignments and the community sheet. About eighteen requests.</span><span class='hint'>Without it every estimate falls back to a default</span>",
+  wiki_rates: "<b>Wiki rates</b><span class='sub'>Quest lengths, money-making guides, slayer assignments and the community sheet. Thirty-odd requests.</span><span class='hint'>Without it every estimate falls back to a default</span>",
   wiki_recipes: "<b>Wiki recipes</b><span class='sub'>What one action of a training method pays and costs, per skill. Thirteen requests.</span><span class='hint'>Without it Construction has no rated method at all — 13,034h rather than 191h</span>",
 };
 
@@ -3184,6 +3184,24 @@ const REFRESH_LABELS = {
 function refreshReference(what) {
   const label = REFRESH_LABELS[what] || "Refresh reference data";
   return runAction(label, "/api/refresh", { what }, async () => {
+    renderReference(await loadReference());
+  });
+}
+
+/* **The boot warm-up, which is the page's idea rather than a press.**
+ * `auto` lets the server refuse it - the blob is already there, or this server
+ * run has tried once and failed - and a refusal must be silent, because
+ * nobody asked. When it is *not* refused there is a real scrape behind it, so
+ * that gets the same progress bar the button does. */
+async function autoRefresh(what) {
+  let reply;
+  try {
+    reply = await postJSON("/api/refresh", { what, auto: true });
+  } catch (error) {
+    return;
+  }
+  if (!reply || !reply.job) return;
+  await followJob(reply.job, REFRESH_LABELS[what] || "Refresh reference data", async () => {
     renderReference(await loadReference());
   });
 }
@@ -4323,10 +4341,14 @@ async function warmReference() {
    * falls back to a default; without the recipes Construction has no rated
    * method at all and reads 13,034h. Either way the panel would put small
    * print beside a confident-looking number, which is a poor first impression
-   * to buy for thirty-one requests. The 10MB export is still deliberately not
-   * fetched this way - that is `fray chunkinfo`'s to start. */
+   * to buy for one fetch. The 10MB export is still deliberately not fetched
+   * this way - that is `fray chunkinfo`'s to start.
+   *
+   * The `!row.cached` test is a courtesy, not the guard: it saves a round
+   * trip, but reloading the tab mid-scrape would still ask again, so the
+   * decision is the server's. See `autoRefresh` and `actions._refresh_job`. */
   for (const [name, what] of [["wiki_rates", "heuristics"], ["wiki_recipes", "recipes"]]) {
     const row = rows.find((entry) => entry.name === name);
-    if (row && !row.cached) await refreshReference(what);
+    if (row && !row.cached) await autoRefresh(what);
   }
 }

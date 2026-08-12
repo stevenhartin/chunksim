@@ -138,7 +138,7 @@ The table says what each module **owns**; its docstring says why.
 | `remote/api.py` | The network. Four hosts. An unknown map is HTTP 200 + bare `null`, never a 404. **The map tiles are a fifth host it never calls.** |
 | `remote/wiki.py` | Wikitext template parsing and numeric-value extraction (arithmetic, `{{#expr:}}`, and what to refuse). |
 | `remote/wikitable.py` | Reading a wikitable: the depth-aware cell splitter and `column_index`'s `colspan` resolution. |
-| `remote/scrape.py` | The ~19 requests that build the scraped layer, and its coverage. **Both apps run it**, so the two cannot write different files. Decides no rate. |
+| `remote/scrape.py` | The sixteen stages (thirty-odd requests) that build the scraped layer, and its coverage. **Both apps run it**, so the two cannot write different files. Decides no rate. |
 | `remote/skill_tables.py` | Rates from wiki tables, headings and prose for the skills `{{Recipe}}` and the guides cannot describe. |
 | `remote/recipes.py` | `{{Recipe}}` as the wiki's Bucket serves it: experience, ticks and materials per action. |
 | `remote/stores.py` | What a shop charges and **in what currency**. |
@@ -235,7 +235,7 @@ pip install -e ".[dev]"     # editable install into .venv; provides the `fray` s
 fray fetch [--map ID]       # GET live state -> cache/maps/fetched/<map>.json (default: fray)
 fray show  [--map ID]       # summarise the cached copy; no network
 fray chunkinfo              # GET upstream's chunk/challenge reference data (~10MB)
-fray heuristics             # GET wiki/spreadsheet rates -> cache/reference/wiki_rates.json (~19 requests)
+fray heuristics             # GET wiki/spreadsheet rates -> cache/reference/wiki_rates.json (30+ requests)
 fray recipes                # GET per-action xp + tick costs -> cache/reference/wiki_recipes.json
 fray estimate [BUCKET] [--limit N]                 # rough hours for the outstanding active tasks
 fray sections [list|CHUNK] [--limit N]             # reachable sections
