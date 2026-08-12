@@ -256,7 +256,7 @@ fray unlock   --chunk ID [--cache-map NAME]        # what one candidate chunk wo
 fray diff --map1 A --map2 B [BRANCH] [--limit N]   # symmetric comparison of two cached maps
 fray neighbours [--limit N]                        # chunks eligible to unlock next
 fray simulate --rolls N [--seed S] [--cache-map NAME] [--runs R] [--jobs J]
-              [--cache-behaviour all|extremities|none]
+              [--cache-behaviour all|extremities|none] [--carry-areas]
 fray maps [list [--runs]] | maps rm NAME... [--include-fetched] | maps clean [--include-fetched]
 fray derived [list [--verbose]] | derived clean [--older-than DAYS] [--all]
 fray search   QUERY [--type T ...] [--limit N]
@@ -268,7 +268,8 @@ mypy                         # strict, over src/ and tests/; run from the repo r
 ```
 
 Env vars: `FRAY_CHUNKINFO` (an export, or `fray chunkinfo`'s envelope around one), `FRAY_MAP_CACHE`
-(presence-only), `FRAY_NO_WATERMARK`, `FRAY_TILE_VERSION`, `FRAY_GUI_VERBOSE`.
+(presence-only), `FRAY_SLOW_ORACLES` (presence-only), `FRAY_NO_WATERMARK`, `FRAY_TILE_VERSION`,
+`FRAY_GUI_VERBOSE`.
 
 **Flag conventions, so each means one thing everywhere.** `--export-json PATH` (or `-` for stdout) and
 `--recompute` are carried by the nine *derivation* subcommands and nothing else (`--export-json` also
@@ -351,6 +352,7 @@ directory-grade selection.
 ```
 .venv/bin/pytest                                                              # whole suite, ~2.6s
 FRAY_CHUNKINFO=cache/reference/chunkinfo.json FRAY_MAP_CACHE=1 .venv/bin/pytest   # every oracle
+FRAY_CHUNKINFO=… FRAY_MAP_CACHE=1 FRAY_SLOW_ORACLES=1 .venv/bin/pytest            # + the slow ones
 ```
 
 Run those before trusting a change to `sections`/`sources`/`challenges`/`bis`/`active_tasks`/
@@ -358,7 +360,9 @@ Run those before trusting a change to `sections`/`sources`/`challenges`/`bis`/`a
 a green `.venv/bin/pytest` as a change being verified.
 
 - **The oracles are marked, not `skipif`-ed.** `@pytest.mark.real_cache` (needs the export *and* this
-  checkout's populated `cache/`) or `@pytest.mark.real_export`; `conftest.pytest_collection_modifyitems`
+  checkout's populated `cache/`), `@pytest.mark.real_export`, or `@pytest.mark.slow` (minutes, and
+  gated on `FRAY_SLOW_ORACLES` so the ordinary oracle run stays worth typing — today that is the
+  `--carry-areas` equality run, which is the only evidence that flag has); `conftest.pytest_collection_modifyitems`
   turns them into skips when the inputs are absent, and the markers are registered in `pyproject.toml`
   so a typo is a warning rather than a silently-never-run test. Gating a real-cache test on the export
   alone is a bug, not a shortcut: it makes the test *fail* with `CacheMissError` on a fresh clone

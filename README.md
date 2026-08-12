@@ -483,6 +483,12 @@ otherwise it's created in whatever directory you're in when you run `fray`.
    you'd rather have the machine back; `--jobs` only changes which process a run executes in, and the
    same seed gives the same rolls either way.
 
+   `--carry-areas` is an experimental extra roughly twice as fast again: each roll hands the areas it
+   discovered to the next one instead of rediscovering them. It's off by default because it can't be
+   *proved* to reach the same answer, only measured to — it agrees with the ordinary path on every
+   roll of a 50-roll run on both test maps. A run using it caches none of its derived states, so a
+   later `fray tasks --map <that run>` recomputes.
+
 Run `fray <command> --help` for the full option list of any command, or `fray --help` for the list of
 commands.
 
