@@ -417,20 +417,50 @@ def test_a_carried_derivation_refuses_to_be_stored(tmp_path: Path) -> None:
         )
 
 
-def test_a_carrying_roll_cache_reads_but_never_writes(tmp_path: Path) -> None:
-    """Reading is wanted - a stored entry is by definition the cold answer, so
-    a hit both skips the work and re-anchors the carry chain on a verified
-    state. Writing is what must not happen."""
+def test_a_carrying_roll_cache_holds_its_states_until_the_run_checks_out(
+    tmp_path: Path,
+) -> None:
+    """**Held, then released - not discarded.**
+
+    A carried state is not this key's answer to give until the run has checked
+    itself against a cold derivation, so it waits in memory. `keep_final` is
+    the run saying it checked out, and that is when the lot is written.
+    """
     state = _state()
-    unlocked = {"100": True}
     cache = RollCache(_DIGESTS, CacheBehaviour.ALL, tmp_path, True)
 
-    cache.derive_state(state, unlocked, start=True, carry={"Area": True})
+    first = cache.derive_state(state, {"100": True}, start=True, carry={"Area": True})
+    cache.derive_state(state, {"100": True, "101": True}, start=False, carry={"Area": True})
 
-    assert _entries(tmp_path) == [], "a carried state was stored"
+    assert _entries(tmp_path) == [], "a carried state reached disk before the check"
 
-    # ... and the same cache still serves an entry somebody else wrote.
+    cache.keep_final(state, {"100": True, "101": True}, first)
+
+    assert len(_entries(tmp_path)) == 2, "the checked run should release what it held"
+
+
+def test_a_run_that_never_checks_out_writes_nothing(tmp_path: Path) -> None:
+    """The reason the buffer exists rather than a write-then-retract. A run
+    that diverges raises before `keep_final`, so the states it computed are
+    still only in memory and go with it."""
+    state = _state()
+    cache = RollCache(_DIGESTS, CacheBehaviour.ALL, tmp_path, True)
+
+    cache.derive_state(state, {"100": True}, start=True, carry={"Area": True})
+    del cache  # what `simulate_rolls` raising amounts to
+
+    assert _entries(tmp_path) == []
+
+
+def test_a_carrying_roll_cache_still_reads_what_is_already_there(tmp_path: Path) -> None:
+    """Reading is wanted - a stored entry is by definition the cold answer, so
+    a hit both skips the work and re-anchors the carry chain on a verified
+    state."""
+    state = _state()
+    unlocked = {"100": True}
     plain = RollCache(_DIGESTS, CacheBehaviour.ALL, tmp_path)
     stored = plain.derive_state(state, unlocked, start=True)
-    assert len(_entries(tmp_path)) == 1, "the uncarried path should store"
-    assert cache.derive_state(state, unlocked, start=False, carry={"Area": True}) == stored
+    assert len(_entries(tmp_path)) == 1
+
+    carrying = RollCache(_DIGESTS, CacheBehaviour.ALL, tmp_path, True)
+    assert carrying.derive_state(state, unlocked, start=False, carry={"Area": True}) == stored

@@ -392,13 +392,13 @@ def derive(
 
     That is an argument about *this* export, not a proof about any export -
     which is why every carried run still checks itself. The state a run
-    finishes on is re-derived cold and compared; a mismatch raises rather than
-    being saved, and the verified copy is what reaches `cache/derived/`. So
-    the thing this project persists is never the unproven one, and a
-    divergence surfaces on real data rather than waiting for someone to run
-    the oracle. See `simulate.simulate_rolls`, and
-    `tests/test_simulate.py`'s carry oracle, which replays a full simulation
-    on both maps.
+    finishes on is re-derived cold and compared, and a mismatch raises rather
+    than being saved. Because an area cannot be lost and a spurious one cannot
+    heal, that single check covers every state the run passed through, so a
+    run that checks out may keep all of them - `simulate.simulate_rolls` sets
+    out the argument and `derived_cache.RollCache` holds the states until it
+    lands. See also `tests/test_simulate.py`'s carry oracle, which replays a
+    full simulation on both maps and compares every state.
     """
     max_skill = slayer_capped_max_skill(state, unlocked)
     locked_equipment = slayer_locked_equipment(state, unlocked)

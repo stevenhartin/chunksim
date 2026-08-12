@@ -365,13 +365,33 @@ def simulate_rolls(
             on_roll(order, chunk_id)
 
     if carry_areas and ledger:
-        # **Every carried run checks itself, on real data.** The carry is
-        # measured rather than proved (`pipeline.derive`), so the state the
-        # run finishes on - the one the saved map holds and every later
-        # command reads - is re-derived the ordinary way and compared. One
-        # cold derivation against a run of fifty is a few percent, and it buys
-        # both a verified thing to persist and a divergence that surfaces
-        # here rather than waiting for somebody to run the oracle.
+        # **One check at the end covers every state the run passed through.**
+        # Two facts make that so, both about the areas the carry seeds:
+        #
+        #   - A carried run can never hold *fewer* areas than a cold one. The
+        #     only term in the fixed point that removes anything as validity
+        #     grows is `_drop_superseded_backups`, and on this export no
+        #     `UnlocksArea` challenge depends on what it removes - not on a
+        #     backup task, and not on any of the ten items only a dropped
+        #     backup outputs, through a `tasksPlus`/`itemsPlus` family or
+        #     otherwise. The prunes and the `taskUnlocks` gates both move the
+        #     other way: more sources means fewer prunes, more valid means
+        #     fewer withdrawals.
+        #   - A carried run holding an area it should not is stuck with it.
+        #     The carry is cumulative and `expanded` only ever grows, so a
+        #     spurious area at roll k is still there at roll n, and comparing
+        #     the finishing state finds it.
+        #
+        # Together: if the last state matches, no roll ever held a spurious
+        # area, no roll was ever missing one, so every intermediate `expanded`
+        # matched - and `derive` is a function of that. So the states this run
+        # held back are safe to write, which is what `keep_final` then does.
+        #
+        # Measured to match, on both cached maps: 80 rolls with every
+        # intermediate state compared, zero differences and zero rolls where
+        # carrying lost an area. One cold derivation against a run of fifty is
+        # a few percent, and it buys a divergence that surfaces on real data
+        # rather than waiting for somebody to run the oracle.
         verified = derive(state, current_ids)
         if verified != before:
             raise CarryDivergedError(

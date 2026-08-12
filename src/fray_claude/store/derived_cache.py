@@ -77,7 +77,7 @@ import pickle
 import sys
 from enum import StrEnum
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from pathlib import Path
 
@@ -323,10 +323,12 @@ class RollCache:
     behaviour: CacheBehaviour = CacheBehaviour.ALL
     root: Path | None = None
     #: Whether this run is carrying areas between rolls (`pipeline.derive`).
-    #: A carried state is read from the cache but never written to it, so
-    #: this turns the per-roll writing off; `keep_final` then stores the one
-    #: state the run has checked against a cold derivation.
     carry_areas: bool = False
+    #: Encoded states a carrying run has computed but not yet earned the right
+    #: to write. Mutable, but per-run and inside the worker that made it -
+    #: nothing is shared, which is what keeps `--jobs` honest. ~118KiB a state,
+    #: so a fifty-roll run holds about 6MB before it flushes.
+    _pending: list[tuple[str, bytes]] = field(default_factory=list)
 
     def derive_state(
         self,
@@ -338,10 +340,23 @@ class RollCache:
     ) -> Derived:
         if self.behaviour is CacheBehaviour.NONE:
             return derive(state, unlocked, carry_areas=carry)
-        store = (self.behaviour is CacheBehaviour.ALL or start) and carry is None
-        return cached_derive(
-            state, unlocked, self.digests, root=self.root, store=store, carry_areas=carry
+        wanted = self.behaviour is CacheBehaviour.ALL or start
+        if carry is None:
+            return cached_derive(
+                state, unlocked, self.digests, root=self.root, store=wanted
+            )
+        # **Held, not written.** A carried state is not this key's answer to
+        # give until the run has checked itself (`simulate.simulate_rolls`), so
+        # it waits in memory and `keep_final` releases it. A run that diverges
+        # raises before that, and the buffer dies with it.
+        derived = cached_derive(
+            state, unlocked, self.digests, root=self.root, store=False, carry_areas=carry
         )
+        if wanted:
+            self._pending.append(
+                (derivation_key(state, unlocked, self.digests), encode(derived))
+            )
+        return derived
 
     def keep_final(
         self, state: MapState, unlocked: Mapping[str, bool], derived: Derived
@@ -355,15 +370,18 @@ class RollCache:
         twice.
         """
         if self.behaviour is CacheBehaviour.NONE:
+            self._pending.clear()
             return
+        # The run checked out, so everything it held is released. See
+        # `simulate_rolls` for why one check at the end covers every state.
+        for key, blob in self._pending:
+            write_derived(key, blob, self.root)
+        self._pending.clear()
         if self.behaviour is not CacheBehaviour.EXTREMITIES and not self.carry_areas:
             # `ALL` already stored it on the way past.
             return
-        # Carrying, nothing was stored on the way past - and what arrives here
-        # is the *cold* re-derivation `simulate_rolls` checks the run against,
-        # not the carried one, so it is this key's answer to give. That is the
-        # whole reason the check exists: the run keeps its speed, and the one
-        # state anything else will read is a verified one.
+        # What arrives here is the *cold* re-derivation the run checked itself
+        # against, so it is written last and is the copy that stands.
         key = derivation_key(state, unlocked, self.digests)
         write_derived(key, encode(derived), self.root)
 
