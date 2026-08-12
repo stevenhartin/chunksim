@@ -1668,10 +1668,29 @@ async function ensureEditing() {
  * `askUnlock`, and for the same reason: the default is the one thing you would
  * otherwise have to invent, and whatever name is claimed comes back either
  * way. */
+/* **What to call the next edit, given what this one is called.**
+ *
+ * A cached map is upstream's and immutable; an edit forks it. What follows is
+ * that editing is iterative - unlock a chunk, tick what it opened, unlock the
+ * next - and each round has to be named. `<map>-edit` per round gives
+ * `fray-edit-edit-edit`, which names the *number of rounds* and nothing you
+ * would look for.
+ *
+ * So an edit of an edit reuses its own family name and lets `claim_batch`
+ * number it: `fray-edit`, `fray-edit-2`, `fray-edit-3`. The trailing number is
+ * stripped rather than incremented here, because the server is the only thing
+ * that knows what is taken - suggesting `-4` when `-4` exists would be a name
+ * the dialog promises and does not deliver. */
+function defaultEditName(mapId) {
+  const base = (mapId || DEFAULT_MAP_ID).replace(/\//g, "-");
+  if (kindOf(mapId) === "edited") return base.replace(/-\d+$/, "");
+  return base + "-edit";
+}
+
 function askCommit() {
   const count = editCount();
   if (!count) { toast("Nothing to commit"); return; }
-  const suggested = (state.map || DEFAULT_MAP_ID).replace(/\//g, "-") + "-edit";
+  const suggested = defaultEditName(state.map);
   const ticks = count - state.edits.unlocked.size;
   openOverlay("Commit " + count + " change" + (count === 1 ? "" : "s"),
     tmpl`<p>Writes a new map holding everything <b>${state.map}</b> holds, with

@@ -619,3 +619,48 @@ def test_a_snapshot_of_the_last_roll_is_the_run_itself(ctx: Context) -> None:
         cache.read_cache("whole", root)["data"]["chunks"]["unlocked"]
         == cache.read_cache(batch, root)["data"]["chunks"]["unlocked"]
     )
+
+
+def test_an_edited_map_can_be_edited_again(ctx: Context) -> None:
+    """**A cached map is immutable and an edit is not.**
+
+    Fetching gives you upstream's state, which nothing here may write over -
+    so the first change forks it. What has to follow from that is that the
+    fork is an ordinary map: you cannot plan a chunk run by committing one
+    edit and then being told the result is read-only.
+
+    Nothing in the write path was ever kind-specific, so this is a property to
+    pin rather than a feature to add - the risk is a later "only fetched maps
+    can be edited" guard, which would look like tidiness and remove the point.
+    """
+    from fray_claude.model.firebase import decode_challenge_keyed
+
+    first = _wait(
+        ctx,
+        _body(_post("/api/commit", ctx, {
+            "map": "fray", "name": "step-1",
+            "ticked": {"Mining": ["Mine ~|copper ore|~"]},
+        }))["job"],
+    )
+    assert first["state"] == "done", first
+
+    second = _wait(
+        ctx,
+        _body(_post("/api/commit", ctx, {
+            "map": "step-1", "name": "step-2",
+            "ticked": {"Mining": ["Mine ~|tin ore|~"]},
+            "unlocked": [NORTH],
+        }))["job"],
+    )
+    assert second["state"] == "done", second
+
+    envelope = cache.read_cache("step-2", ctx.root)
+    assert envelope["kind"] == "edited"
+    # Both edits are present: the second was applied *to* the first rather
+    # than to whatever the first was forked from.
+    ticked = decode_challenge_keyed(envelope["data"]["chunkinfo"]["completedChallenges"], {})
+    assert ticked["Mining"] == {"Mine ~|copper ore|~": True, "Mine ~|tin ore|~": True}
+    assert NORTH in envelope["data"]["chunks"]["unlocked"]
+    # And it records what it was actually made from.
+    batch = cache.read_batch("step-2", ctx.root, kind=cache.EDITED)
+    assert batch.get("base_map") == "step-1"

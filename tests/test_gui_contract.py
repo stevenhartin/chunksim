@@ -918,3 +918,20 @@ def test_one_skill_tooltip_serves_both_surfaces() -> None:
     assert tip is not None
     assert "row.bands" in tip.group(1)
     assert "b.match" in tip.group(1), "provenance must travel with each band"
+
+def test_an_edit_of_an_edit_keeps_the_family_name() -> None:
+    """**A cached map is immutable and an edit is not**, so editing is
+    iterative - unlock a chunk, tick what it opened, unlock the next.
+    `<map>-edit` per round gives `fray-edit-edit-edit`, which names the number
+    of rounds and nothing anyone would look for.
+
+    The trailing number is stripped rather than incremented, because only the
+    server knows what is taken: suggesting `-4` when `-4` exists would be a
+    name the dialog promises and `claim_batch` then changes.
+    """
+    _, js, _ = _resources()
+
+    body = re.search(r"function defaultEditName\(mapId\) \{(.*?)\n\}", js, re.DOTALL)
+    assert body is not None
+    assert '"edited"' in body.group(1)
+    assert "replace(/-\\d+$/" in body.group(1)
