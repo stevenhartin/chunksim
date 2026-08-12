@@ -343,12 +343,20 @@ def _walk(spec: PriceSpec) -> list[tuple[int, EstimateResult, float]]:
     module assembled its own inputs rather than asking for them.
 
     **One enrichment for the whole series, computed on the state the run ends
-    in.** Pricing each step against its own is the ideal and is not affordable:
-    `recipe_priced` walks the item graph for every rated method, measured at
-    **63.7s** on a mid-run state of `fray-sim/run-001`, so fifty of them is
-    the better part of an hour. One is a minute, cached after, and it buys the
+    in.** Pricing each step against its own is the ideal, and it is the cheaper
+    of the two by far: `recipe_priced` walks the item graph for every rated
+    method, measured at **2.7s** on a mid-run state of `fray-sim/run-001`, and
+    `enrich` adds ~0.7s - so fifty steps is about three minutes against one
+    step's three seconds. One is what this does, cached after, and it buys the
     property the disagreement was about - the last step *is* the map, so its
     total is the Estimate tab's to the penny.
+
+    **That margin used to be a thousandfold and is now fiftyfold**, because
+    `_Walk.reachable_lower` and `skill_tables` stopped being rebuilt per route
+    (see `costing/estimate.py`); the same measurement read 63.7s before. The
+    approximation below is therefore a good deal cheaper to remove than it was,
+    and is kept because it is *correct enough and simpler*, not because
+    per-step pricing is out of reach.
 
     What it costs is that an early roll is priced at the rates the run ends
     with, which understates a grind you would really have done with worse gear

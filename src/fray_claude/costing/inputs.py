@@ -168,7 +168,7 @@ def recipe_priced(
     **Runs whether or not the DPS extra is installed**, unlike
     `priced_heuristics` - a recipe is wiki data and the item walk is this
     project's own, so neither needs `osrs-dps`. It is folded into the same
-    cached call because it costs ~6s on a real map: the walk prices every
+    cached call because it costs ~1.6s on a real map: the walk prices every
     material of every reachable method, and that is the whole expense.
     """
     recipes = load_recipes(root)
@@ -432,8 +432,8 @@ def priced_heuristics(
 ) -> tuple[Heuristics, dps_bridge.DpsCoverage | None]:
     """Every rate this machine can compute, layered on and cached as one.
 
-    Two computations, deliberately behind one key. `recipe_priced` costs ~6s
-    on a real map and `dps_bridge.enrich` ~0.7s, and both are pure functions of
+    Two computations, deliberately behind one key. `recipe_priced` costs
+    ~1.6s on a real map and `dps_bridge.enrich` ~0.7s, and both are pure functions of
     the same inputs, so splitting them into two cache entries would buy nothing
     and give the two a chance to disagree about which derivation they saw.
 

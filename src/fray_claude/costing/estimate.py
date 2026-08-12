@@ -134,6 +134,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from functools import cached_property
 from typing import Any, Callable, Sequence
 
 from fray_claude.costing.levels import (
@@ -561,9 +562,37 @@ class _Walk:
     #: fails to price every task reached through its span.
     by_lower: dict[str, str] = field(default_factory=dict)
 
-    @property
+    @cached_property
     def reachable_lower(self) -> frozenset[str]:
+        """`reachable_items` lowercased, for the free-route gate.
+
+        **Cached because `_route_hours` asks per route, not per item.** Built
+        fresh it is a 1,918-name `frozenset` comprehension, and the shop/spawn
+        gate reads it once for every one of the map's ~5,550 free sources - so
+        as a plain property it cost `computed_rates` 47.9s of its 60.6s.
+        Caching it is 9x on the recipe walk and moves no number.
+
+        Per-instance, on a `_Walk` built per `_setup` call - the same local
+        cache `material_seconds`' closure is, never module-level, so the
+        purity rule that keeps `--jobs` honest is untouched. `_Walk` is frozen
+        but has a `__dict__` (no `slots=True`), which is what lets
+        `cached_property` write through; `dataclasses.replace` yields a fresh
+        instance with an empty cache, so the field cannot outlive its input.
+        """
         return frozenset(name.lower() for name in self.reachable_items)
+
+    @cached_property
+    def skill_tables(self) -> tuple[dict[str, Any], ...]:
+        """`skillItems` flattened to the same `{activity: {item: {qty: rate}}}`.
+
+        Cached for the same reason and on the same terms as `reachable_lower`:
+        it is a pure function of `chunk_info` that `_drop_rates` rebuilt on
+        every call, once per drop route per item.
+        """
+        return tuple(
+            _mapping(self.chunk_info.skill_items, skill)
+            for skill in self.chunk_info.skill_items
+        )
 
     def resolve(self, item: str) -> str:
         """The export's spelling of `item`, if it has one."""
@@ -601,7 +630,7 @@ def _drop_rates(walk: _Walk, monster: str, item: str) -> tuple[float, float] | N
     Several rows can offer the same item, so the best of each wins.
     """
     best: tuple[float, float] | None = None
-    for source in (walk.chunk_info.drops, *_skill_item_tables(walk)):
+    for source in (walk.chunk_info.drops, *walk.skill_tables):
         rows = _mapping(source, monster)
         for name, quantities in rows.items():
             if not isinstance(quantities, dict):
@@ -625,14 +654,6 @@ def _drop_rates(walk: _Walk, monster: str, item: str) -> tuple[float, float] | N
                     max(best[0], found[0]), max(best[1], found[1])
                 )
     return best
-
-
-def _skill_item_tables(walk: _Walk) -> list[dict[str, Any]]:
-    """`skillItems` flattened to the same `{activity: {item: {qty: rate}}}`."""
-    return [
-        _mapping(walk.chunk_info.skill_items, skill)
-        for skill in walk.chunk_info.skill_items
-    ]
 
 
 def _table_probability(
@@ -1381,14 +1402,35 @@ def material_seconds(
     The closure holds one `_Walk` and is therefore worth reusing across a whole
     skill's recipes; it is a local, never a module-level cache, so the purity
     rule that keeps `--jobs` honest is untouched.
+
+    **It also remembers, and `(item, quantity)` is the whole key.** Every call
+    reaches `_item_hours` with the same `walk` and the same `depth=0`,
+    `seen=frozenset()`, `amortise=True`, so nothing else can vary the answer -
+    and the recipes ask the same question about three times over (1,235 calls
+    over 451 distinct pairs pricing `fray`'s methods), because `Cosmic rune`
+    is a material of dozens of them. Worth ~4x on the recipe walk.
+
+    The memo belongs *here* and nowhere deeper: `_item_hours`' own result
+    depends on `seen` and `depth`, so a memo inside it would be wrong, and
+    silently - the walk would answer a nested question with an outer answer.
     """
     walk = _setup(state, derived, world, heuristics, level_overrides or {}).walk
+    memo: dict[tuple[str, float], float | None] = {}
 
     def seconds(item: str, quantity: float) -> float | None:
+        # Keyed on the export's own spelling, since `_item_hours` resolves
+        # anyway and two spellings of one item are one question.
+        key = (walk.resolve(item), quantity)
+        if key in memo:
+            # `None` is a real answer here - "no route", which the caller must
+            # treat as *drop the method* - so this asks `in`, never `or`.
+            return memo[key]
         # `amortise`: a recipe's materials are bought for a run of actions,
         # not fetched one trip at a time. See `_route_hours`.
         priced = _item_hours(walk, item, quantity=quantity, amortise=True)
-        return None if priced is None else priced.hours * 3600.0
+        found = None if priced is None else priced.hours * 3600.0
+        memo[key] = found
+        return found
 
     return seconds
 
