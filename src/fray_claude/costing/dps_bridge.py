@@ -845,7 +845,27 @@ def load_monster_index() -> MonsterIndex:
     return load_monsters()
 
 
-def candidate_targets(index: MonsterIndex, name: str) -> tuple[tuple[str, Target], ...]:
+def version_index(index: MonsterIndex) -> dict[str, tuple[str, ...]]:
+    """`bare name -> the library's versioned keys for it`, in index order.
+
+    `candidate_targets` otherwise scans all ~1,382 keys per bare name, and
+    `price_slayer_tasks` asks about the same names once per master per task.
+    Built in one pass and threaded in; the order matches the scan it replaces,
+    which is what keeps `best_kill`'s tie-break identical.
+    """
+    found: dict[str, list[str]] = {}
+    for key in index:
+        bare, sep, _ = key.partition("#")
+        if sep:
+            found.setdefault(bare, []).append(key)
+    return {bare: tuple(keys) for bare, keys in found.items()}
+
+
+def candidate_targets(
+    index: MonsterIndex,
+    name: str,
+    versions_by_name: Mapping[str, tuple[str, ...]] | None = None,
+) -> tuple[tuple[str, Target], ...]:
     """Every monster `name` could mean, as `(key, target)` pairs.
 
     The library indexes exact names only and refuses to guess: `Abyssal demon`
@@ -868,7 +888,11 @@ def candidate_targets(index: MonsterIndex, name: str) -> tuple[tuple[str, Target
         return ((name, exact),)
 
     prefix = f"{name}#"
-    versions = [key for key in index if key.startswith(prefix)]
+    versions = (
+        list(versions_by_name.get(name, ()))
+        if versions_by_name is not None
+        else [key for key in index if key.startswith(prefix)]
+    )
     if any(
         marker in key[len(prefix) :].casefold()
         for key in versions
@@ -919,6 +943,15 @@ def kills_by_style(
     if not pairs or not loadouts:
         return {}
 
+    # The buffs depend on the loadout and the fight's *context*, neither of
+    # which varies across `pairs` - so arm each style once rather than once
+    # per version. `_with_buffs` is a pure `replace`, so these are the same
+    # objects the loop used to build.
+    armed_by_style = {
+        style: _with_buffs(loadout, on_task=on_slayer_task, wilderness=wilderness)
+        for style, loadout in loadouts.items()
+    }
+
     best: dict[str, KillEstimate] = {}
     for key, target in pairs:
         fight = target
@@ -926,8 +959,7 @@ def kills_by_style(
             fight = _slayer_target(target)
         if reductions is not None:
             fight = scale(fight, RaidInputs(defence_reductions=reductions))
-        for style, loadout in loadouts.items():
-            armed = _with_buffs(loadout, on_task=on_slayer_task, wilderness=wilderness)
+        for style, armed in armed_by_style.items():
             try:
                 result = dps(armed, fight)
             except Unsupported:
@@ -1083,6 +1115,7 @@ def price_combat(
     """
     _require()
     monster_index = load_monster_index() if index is None else index
+    versions = version_index(monster_index)
     loadouts = build_loadouts(chunk_info, picks, levels, kit)
     if not loadouts:
         return {}
@@ -1095,7 +1128,7 @@ def price_combat(
         for style, kill in kills_by_style(
             loadouts,
             name,
-            candidate_targets(monster_index, name),
+            candidate_targets(monster_index, name, versions),
             on_slayer_task=name in slayer_monsters,
             reductions=reductions,
             wilderness=name in kit.wilderness if kit is not None else False,
@@ -1149,6 +1182,7 @@ def price_monsters(
     """
     _require()
     monster_index = load_monster_index() if index is None else index
+    versions = version_index(monster_index)
     loadouts = build_loadouts(chunk_info, picks, levels, kit)
     if not loadouts:
         return {}
@@ -1161,7 +1195,7 @@ def price_monsters(
         kill = best_kill(
             loadouts,
             name,
-            candidate_targets(monster_index, name),
+            candidate_targets(monster_index, name, versions),
             on_slayer_task=name in slayer_monsters,
             reductions=reductions,
             wilderness=name in kit.wilderness if kit is not None else False,
@@ -1248,6 +1282,7 @@ def price_slayer_tasks(
     """
     _require()
     monster_index = load_monster_index() if index is None else index
+    versions = version_index(monster_index)
     loadouts = build_loadouts(chunk_info, picks, levels, kit)
     if not loadouts:
         return {}
@@ -1280,7 +1315,7 @@ def price_slayer_tasks(
             best_xp_per_hour = 0.0
             for monster in sorted(candidates_for):
                 bare = monster.split("#")[0]
-                candidates = candidate_targets(monster_index, bare)
+                candidates = candidate_targets(monster_index, bare, versions)
                 kill = best_kill(
                     loadouts,
                     bare,
@@ -1624,10 +1659,13 @@ def enrich_incremental(
         )
 
     priceable = sorted(reachable_providers(derived) & frozenset(chunk_info.drops))
+    # Built once: the membership test below is inside a comprehension over a
+    # thousand-odd monsters, so rebuilding it per item was quadratic.
+    priced_set = frozenset(priceable)
 
     usable = previous if previous is not None and previous.signature == signature else None
     if usable is None:
-        stale: frozenset[str] = frozenset(priceable)
+        stale: frozenset[str] = priced_set
         monsters: dict[str, Rate] = {}
     else:
         # Everything the previous roll priced is still right, bar the monsters
@@ -1643,7 +1681,7 @@ def enrich_incremental(
         monsters = {
             name: rate
             for name, rate in usable.monsters.items()
-            if name not in flipped and name in frozenset(priceable)
+            if name not in flipped and name in priced_set
         }
 
     if stale:
