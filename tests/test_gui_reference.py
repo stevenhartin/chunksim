@@ -213,3 +213,23 @@ def test_reference_state_is_cheap_and_says_what_is_missing(tmp_path: Path) -> No
     # Which action refreshes which blob is answered here, not in the page.
     assert by_name[cache.WIKI_RATES_BLOB_NAME]["refresh"] == "heuristics"
     assert by_name[cache.CHUNKINFO_BLOB_NAME]["refresh"] == "chunkinfo"
+
+
+def test_the_recipe_blob_is_one_of_the_reference_rows(tmp_path: Path) -> None:
+    """**Its absence floors a whole skill and says nothing.**
+
+    Every one of Construction's 227 rated methods comes from a `{{Recipe}}`
+    row, so a cache without this blob prices the skill at the 1,000/hr default
+    - 13,034h against 191h, with `(none found)` as its method. Every other
+    skill degrades partially; this one degrades completely, which reads as a
+    modelling gap rather than as missing data. The page could not say it was
+    missing and offered no way to fetch it.
+    """
+    ctx = Context(root=tmp_path)
+
+    rows = _body(_get("/api/reference", ctx))["reference"]
+
+    entry = next(row for row in rows if row["name"] == cache.RECIPES_BLOB_NAME)
+    assert entry["cached"] is False
+    assert entry["refresh"] == "recipes"
+    assert not ctx.derivations.loaded, "asking what is cached parsed the export"

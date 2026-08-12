@@ -1494,6 +1494,13 @@ Everything else in the stamp *is* compared, including the digest of the checked-
 `heuristics/overrides.json`, which moves without any fetch having happened. A mismatch reads as
 *absent*, so the page offers to recompute rather than refusing to draw.
 
+**The hours axis stops at 1,000, and that is about resolution rather than honesty.** One roll
+opening a 2,000-hour grind sets the scale for all fifty and every other bar becomes a line a pixel
+tall, so the graph answers "which roll was the big one" — which the tooltip already said — and
+nothing else. A roll past the cap draws full height in amber and its tooltip says the bar is clipped,
+because a bar *at* the top and one off the end are different facts. Tasks are not capped: 239 against
+2 is a range worth seeing.
+
 **A bar is what the roll cost, not how the total moved**, and the difference is the point. A timeline
 walks one player's history forward, so by the time roll k lands everything roll k−1 opened is behind
 them; a chunk that only makes old work *cheaper* has added nothing. Subtracting totals says otherwise
@@ -1839,11 +1846,18 @@ Things worth knowing before changing it:
   `--jobs > 1` puts the callback in a worker with no channel back, and a `multiprocessing.Queue`
   through `RunSpec` would buy a smoother CLI bar for the one piece of shared state this module is
   built without.
-- **The wiki rates are fetched on open when they have never been fetched, and only then.** Without
-  them every hour in the Estimate tab falls back to a default and the total is thousands of hours
-  light — the panel would say so in small print beside a confident-looking number, which is a poor
-  first impression to buy for eighteen requests. `warmReference` fires once per page load and only on
-  *absent*; a re-scrape is a decision and the Maps tab has the button. **The 10MB chunk export is
+- **Both scrapes are fetched on open when they have never been fetched, and only then.** Without the
+  rates every hour in the Estimate tab falls back to a default and the total is thousands of hours
+  light. **Without the recipes a whole skill goes to the floor**: every one of Construction's 227
+  rated methods comes from a `{{Recipe}}` row, so a cache holding no `wiki_recipes.json` prices it at
+  the 1,000/hr default — **13,034h against 191h**, with `(none found)` as its method. Every other
+  skill degrades partially; that one degrades completely, which is exactly the shape that reads as a
+  modelling gap rather than as missing data — and it was invisible, because `_REFERENCE_BLOBS` listed
+  only the export and the rates, so the page could not say the recipes were absent and offered no way
+  to fetch them. It is easy to hit from this workspace: `cache/` at `~/dev/repos/steven` has no
+  recipe blob, so a `fray` run from *there* floors Construction while the same command in the
+  checkout prices it. `warmReference` fires once per page load and only on *absent*; a re-scrape is a
+  decision and the Maps tab has the button. **The 10MB chunk export is
   deliberately not fetched this way** — that is `fray chunkinfo`'s to start. `GET /api/reference` is
   what the page asks: a `stat` and the envelope's first few hundred bytes, so finding out whether the
   export exists never reads it.

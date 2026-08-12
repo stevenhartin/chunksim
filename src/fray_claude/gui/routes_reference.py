@@ -49,6 +49,13 @@ from fray_claude.gui.http import _error
 _REFERENCE_BLOBS = (
     (cache.CHUNKINFO_BLOB_NAME, "Chunk data", "chunkinfo"),
     (cache.WIKI_RATES_BLOB_NAME, "Wiki rates", "heuristics"),
+    # **Absent, this floors a whole skill and says nothing.** Every one of
+    # Construction's 227 rated methods comes from a `{{Recipe}}` row, so a
+    # cache without this blob prices the skill at the 1,000/hr default -
+    # 13,034h against 191h - with `(none found)` as its method. Every other
+    # skill degrades partially; this one degrades completely, which is exactly
+    # the shape that reads as a modelling gap rather than as missing data.
+    (cache.RECIPES_BLOB_NAME, "Wiki recipes", "recipes"),
 )
 
 

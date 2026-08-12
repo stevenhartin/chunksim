@@ -21,6 +21,7 @@ job stays `running` until it agrees, and it ends `CANCELLED` rather than
 from __future__ import annotations
 
 from fray_claude.remote.scrape import SOURCE as SCRAPE_SOURCE
+from fray_claude.remote.scrape import scrape_recipes
 
 from typing import Any
 from fray_claude.remote.api import CHUNKINFO_URL
@@ -487,14 +488,16 @@ def _cancel_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
 
 
 def _refresh_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
-    """Re-download the reference data `fray chunkinfo` and `fray heuristics` get.
+    """Re-download the reference data `fray chunkinfo`, `fray heuristics` and
+    `fray recipes` get.
 
-    Both in one action because they are one decision - the chunkinfo export and
-    the wiki rates are the two static inputs, and refreshing one without the
-    other leaves the estimator quoting numbers against a world that moved.
+    One action because they are one decision - the export, the scraped rates
+    and the per-action recipe data are the static inputs, and refreshing one
+    without the others leaves the estimator quoting numbers against a world
+    that moved.
     """
     what = str(payload.get("what") or "chunkinfo")
-    if what not in ("chunkinfo", "heuristics"):
+    if what not in ("chunkinfo", "heuristics", "recipes"):
         raise ValueError(f"unknown refresh target {what!r}")
 
     def work(progress: Progress, _stop: StopCheck) -> dict[str, Any]:
@@ -509,6 +512,15 @@ def _refresh_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
             # one is now wrong. Dropping it is cheaper than reasoning about it.
             ctx.derivations.reset()
             return {"refreshed": "chunkinfo", "chunks": len(info.get("chunks", {}))}
+
+        if what == "recipes":
+            # `fray recipes`, through the same function for the same reason.
+            # Needs no export: a Bucket query per skill and nothing joined
+            # until something prices with it.
+            progress("downloading per-action recipe data")
+            recipes = scrape_recipes(timeout=DEFAULT_TIMEOUT)
+            cache.write_blob(cache.RECIPES_BLOB_NAME, recipes, SCRAPE_SOURCE, ctx.root)
+            return {"refreshed": "recipes", "skills": len(recipes)}
 
         # `fray heuristics`, run through the same function so the two cannot
         # produce different files. Needs the export parsed - it asks the wiki

@@ -1150,6 +1150,12 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 /* A step with nothing to show still gets a hit area, so hovering anywhere
    along the axis answers "what happened here" with "nothing". */
 .tl-bar.flat { fill: var(--line-strong); }
+
+/* **A bar that ran off the top of the axis, not one that reached it.** The
+   hours axis is capped so a single enormous roll cannot flatten the other
+   forty-nine; a roll past the cap is drawn full height with its top edge cut
+   back, which reads as "continues" rather than as "this is the maximum". */
+.tl-bar.over { fill: var(--amber); }
 .tl-slot { fill: transparent; }
 .tl-slot:hover { fill: rgba(255, 255, 255, .07); }
 .tl-slot.at { fill: rgba(255, 255, 255, .04); }

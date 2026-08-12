@@ -811,18 +811,26 @@ def test_diff_is_entered_through_a_door_and_left_through_a_pill() -> None:
     assert pill is not None
     assert "var(--strip-h)" in pill.group(1)
 
-def test_the_page_fetches_the_rates_once_when_they_are_missing() -> None:
-    """**Without them every hour in the Estimate tab is a default**, and the
-    panel would say so in small print beside a confident-looking number.
-    Eighteen requests is a fair price for that not being the first
-    impression - but only when missing, never on a schedule."""
+def test_the_page_fetches_both_scrapes_once_when_they_are_missing() -> None:
+    """**Without them the Estimate tab is confidently wrong**, and the panel
+    would say so in small print beside the number.
+
+    Without the rates every hour falls back to a default; without the recipes
+    Construction has no rated method at all and reads 13,034h against 191h,
+    which looks like a modelling gap rather than like missing data. Thirty-one
+    requests is a fair price for that not being the first impression - but only
+    when missing, never on a schedule.
+    """
     _, js, _ = _resources()
 
     body = re.search(r"async function warmReference\(\) \{(.*?)\n\}", js, re.DOTALL)
     assert body is not None
-    assert "!rates.cached" in body.group(1), "it must only fire when they are absent"
-    # The 10MB export is deliberately not fetched on open.
-    assert "chunkinfo" not in body.group(1)
+    assert '"wiki_rates", "heuristics"' in body.group(1)
+    assert '"wiki_recipes", "recipes"' in body.group(1)
+    assert "!row.cached" in body.group(1), "it must only fire when they are absent"
+    # The 10MB export is deliberately not fetched on open. Quoted, because the
+    # comment above the loop names it in prose to say exactly that.
+    assert '"chunkinfo"' not in body.group(1)
     assert "warmReference();" in js
 
 def test_the_progress_card_can_stop_a_job() -> None:

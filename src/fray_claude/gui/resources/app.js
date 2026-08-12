@@ -3114,6 +3114,16 @@ async function loadReference() {
   }
 }
 
+/* What each reference blob is and what its absence costs, keyed by the blob's
+ * own name rather than by an if-ladder - three of them was one too many for
+ * the ternary this replaces. The "without it" line is the important half:
+ * these are the inputs whose absence changes an estimate silently. */
+const REFERENCE_TIPS = {
+  chunkinfo: "<b>Chunk data</b><span class='sub'>The 10MB chunk export and the tasks map. Everything derived from them is recomputed after.</span>",
+  wiki_rates: "<b>Wiki rates</b><span class='sub'>Quest lengths, money-making guides, slayer assignments and the community sheet. About eighteen requests.</span><span class='hint'>Without it every estimate falls back to a default</span>",
+  wiki_recipes: "<b>Wiki recipes</b><span class='sub'>What one action of a training method pays and costs, per skill. Thirteen requests.</span><span class='hint'>Without it Construction has no rated method at all — 13,034h rather than 191h</span>",
+};
+
 function renderReference(rows) {
   const host = document.getElementById("reference");
   if (!host) return;
@@ -3121,9 +3131,7 @@ function renderReference(rows) {
     const state = row.cached
       ? tmpl`<span class="sub">${when(row.fetched_at)} · ${bytes(row.size)}</span>`
       : tmpl`<span class="sub warn-text">not cached</span>`;
-    const tip = row.name === "wiki_rates"
-      ? tmpl`<b>Wiki rates</b><span class="sub">Quest lengths, money-making guides, slayer assignments and the community sheet. About eighteen requests.</span><span class="hint">Without it every estimate falls back to a default</span>`
-      : tmpl`<b>Chunk data</b><span class="sub">The 10MB chunk export and the tasks map. Everything derived from them is recomputed after.</span>`;
+    const tip = REFERENCE_TIPS[row.name] || tmpl`<b>${row.label}</b>`;
     return tmpl`<li data-tip="${tip}"><span class="name">${row.label}</span>${raw(state)}
       <button class="link" data-refresh="${row.refresh}">${row.cached ? "Refresh" : "Fetch"}</button></li>`;
   }).join("");
@@ -3132,8 +3140,14 @@ function renderReference(rows) {
   }
 }
 
+const REFRESH_LABELS = {
+  heuristics: "Fetch wiki rates",
+  recipes: "Fetch wiki recipes",
+  chunkinfo: "Refresh chunk data",
+};
+
 function refreshReference(what) {
-  const label = what === "heuristics" ? "Fetch wiki rates" : "Refresh chunk data";
+  const label = REFRESH_LABELS[what] || "Refresh reference data";
   return runAction(label, "/api/refresh", { what }, async () => {
     renderReference(await loadReference());
   });
@@ -3646,6 +3660,12 @@ el.live.addEventListener("click", () => {
  * is drawn differently again, because "not computed" and "added nothing" are
  * different answers. */
 
+/* Where the hours axis stops. A thousand is an hour figure you can still
+ * reason about - a chunk worth 300h against one worth 900h - where the rolls
+ * above it are all just "enormous" and their exact heights say nothing a
+ * reader is comparing. See `tlBars`. */
+const HOURS_CAP = 1000;
+
 const TL_SERIES = [
   ["tasks", "Tasks"],
   ["hours", "Hours"],
@@ -3795,8 +3815,21 @@ function tlBars(steps, key, current) {
   const down = known.some((v) => v < 0);
   const base = down ? H * 0.62 : H - FOOT;
   /* Scale to the biggest swing either way, never to zero - an all-zero series
-   * must draw a flat axis rather than divide by nothing. */
-  const peak = Math.max(1e-9, ...known.map((v) => Math.abs(v)));
+   * must draw a flat axis rather than divide by nothing.
+   *
+   * **And the hours axis stops at `HOURS_CAP`.** One roll opening a
+   * 2,000-hour grind sets the scale for all fifty, and every other bar
+   * becomes a line one pixel tall - the graph then answers "which roll was
+   * the big one", which you could already see, and nothing else. Capping
+   * makes the axis about the range a reader is comparing within; the rolls
+   * past it are drawn full height and marked, because a bar that is merely
+   * *at* the top and one that is off the end are different facts and the
+   * tooltip carries the real number either way.
+   *
+   * Tasks are not capped: a roll opening 239 of them is a count in the same
+   * units as a roll opening 2, and nothing about that range is unreadable. */
+  const cap = key === "hours" ? HOURS_CAP : Infinity;
+  const peak = Math.min(cap, Math.max(1e-9, ...known.map((v) => Math.abs(v))));
   const room = base - TOP;
 
   let out = tmpl`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"
@@ -3810,9 +3843,10 @@ function tlBars(steps, key, current) {
     if (value !== null && value !== undefined) {
       /* A zero still gets a sliver, so the axis reads as a row of steps that
        * each happened rather than as a gap where the graph stops. */
-      const size = Math.max(1.5, (Math.abs(value) / peak) * room);
+      const over = Math.abs(value) > peak;
+      const size = Math.max(1.5, Math.min(1, Math.abs(value) / peak) * room);
       const negative = value < 0;
-      out += tmpl`<rect class="tl-bar ${negative ? "down" : ""} ${value === 0 ? "flat" : ""}"
+      out += tmpl`<rect class="tl-bar ${negative ? "down" : ""} ${value === 0 ? "flat" : ""} ${over ? "over" : ""}"
         x="${x + width * 0.18}" y="${negative ? base : base - size}"
         width="${width * 0.64}" height="${size}" rx="1"/>`;
     }
@@ -3860,9 +3894,13 @@ function tlTip(row, key) {
   const change = row.hours === 0
     ? tmpl`<span class="sub">Added no work</span>`
     : tmpl`<span class="sub">${hours(row.hours)} of new work</span>`;
+  /* The bar is as tall as the axis goes and the number is not - say so, or a
+   * roll at exactly the cap and one at four times it look identical. */
+  const clipped = Math.abs(row.hours) > HOURS_CAP
+    ? tmpl`<span class="sub">Bar clipped at ${hours(HOURS_CAP)}</span>` : "";
   const left = row.total_hours == null ? ""
     : tmpl`<span class="hint">${hours(row.total_hours)} left after this roll</span>`;
-  return head + change + left;
+  return head + change + clipped + left;
 }
 
 /* Clicking a column is "take me to that roll": the slider moves, the chunk it
@@ -4246,6 +4284,14 @@ function renderBuild() {
 async function warmReference() {
   const rows = await loadReference();
   renderReference(rows);
-  const rates = rows.find((row) => row.name === "wiki_rates");
-  if (rates && !rates.cached) await refreshReference("heuristics");
+  /* **Both scrapes, and for the same reason.** Without the rates every hour
+   * falls back to a default; without the recipes Construction has no rated
+   * method at all and reads 13,034h. Either way the panel would put small
+   * print beside a confident-looking number, which is a poor first impression
+   * to buy for thirty-one requests. The 10MB export is still deliberately not
+   * fetched this way - that is `fray chunkinfo`'s to start. */
+  for (const [name, what] of [["wiki_rates", "heuristics"], ["wiki_recipes", "recipes"]]) {
+    const row = rows.find((entry) => entry.name === name);
+    if (row && !row.cached) await refreshReference(what);
+  }
 }
