@@ -575,7 +575,24 @@ def test_a_roll_serves_the_task_names_a_step_summary_leaves_out(tmp_path: Path) 
 
     assert not ctx.derivations.loaded, "reading one roll parsed the export"
     assert payload["chunk"] == NORTH
-    assert payload["tasks_by_skill_names"] == {"Slayer": [f"task-{NORTH}"]}
+    # **Shaped by `panels.py`, not raw.** The overlay and the Tasks tab are two
+    # views of the same names and used to spell them differently - a skill's
+    # rows carried its icon in one and not the other.
+    assert payload["groups"] == [
+        {
+            "name": "Slayer",
+            "icon": "Slayer",
+            "rows": [
+                {
+                    "key": f"task-{NORTH}",
+                    "name": f"Task-{NORTH}",
+                    "note": None,
+                    "icon": "Slayer",
+                    "category": None,
+                }
+            ],
+        }
+    ]
     # The counts still agree with what the timeline said.
     assert payload["tasks"] == 1
 

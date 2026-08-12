@@ -310,6 +310,100 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 }
 
 .pick { max-width: 20ch; }
+
+/* --- the map picker ----------------------------------------------------- */
+
+/* **A dot rather than a coloured name.** Tinting the text would make the map's
+   *provenance* compete with its name for the one thing a name is for, and at
+   12px a blue word beside a grey one reads as emphasis rather than as a
+   category. The dot carries the kind and the name stays plain. Same three
+   colours as the Maps tab's tags, from the same palette. */
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--pill);
+  flex: none;
+  border: 1px solid var(--dim);
+}
+
+.dot[data-kind="simulated"] { background: var(--candidate); border-color: var(--candidate); }
+.dot[data-kind="edited"] { background: var(--amber); border-color: var(--amber); }
+
+.picker { position: relative; }
+
+.pick-button {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 20ch;
+  text-align: left;
+}
+
+.pick-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+.menu {
+  position: absolute;
+  z-index: 6;
+  top: calc(100% + var(--s1));
+  left: 0;
+  min-width: 100%;
+  max-height: 60vh;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: var(--s1);
+  border: 1px solid var(--line);
+  border-radius: var(--r2);
+  background: var(--surface-3);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+}
+
+.menu-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  padding: var(--s2) var(--s3);
+  border: 0;
+  border-radius: var(--r1);
+  background: none;
+  color: var(--text);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.menu-row:hover { background: rgba(255, 255, 255, .06); }
+.menu-row.on { color: var(--amber); }
+.menu-row .name { flex: 1; }
+
+/* **The runs open beside their batch, which is the whole point of nesting.**
+   Ten runs in the main list is the pile the batch entry exists to collapse;
+   to the side they cost one row until asked for. Opened by a class rather than
+   by `:hover`, so pressing the batch row works too - a submenu only a pointer
+   can reach is one a keyboard cannot.
+
+   **`position: fixed`, and placed by `app.js`.** The menu that holds it
+   scrolls, and a scroll container clips its children in *both* axes - CSS
+   computes `overflow-x` to `auto` when `overflow-y` is not `visible`, so an
+   absolutely-positioned submenu hanging out of the side is simply cut off.
+   It read exactly like the submenu not existing. Fixed positioning escapes
+   the clip; the cost is that the coordinates cannot come from here. */
+.menu-nest { position: relative; }
+
+.submenu {
+  display: none;
+  position: fixed;
+  max-height: 60vh;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: var(--s1);
+  border: 1px solid var(--line);
+  border-radius: var(--r2);
+  background: var(--surface-3);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+}
+
+.menu-nest.open .submenu { display: block; }
 .vs { color: var(--dim); }
 .rule { width: 1px; height: 20px; background: var(--line); flex: none; }
 .spacer { flex: 1; }
@@ -630,6 +724,11 @@ ul.list.gain .mark { color: var(--gain); }
 ul.list.loss .mark { color: var(--loss); }
 
 li .icon { width: 14px; height: 14px; align-self: center; }
+
+/* Where a badge would be, on a row that has none. A list whose names start in
+   two different columns depending on whether the thing happens to have an icon
+   is one the eye has to re-find its edge in on every row. */
+.icon-gap { width: 15px; flex: none; }
 
 /* Upstream's own skill icons, which are 25px sprites of pixel art. */
 .skill-icon {

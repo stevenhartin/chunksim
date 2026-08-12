@@ -50,7 +50,7 @@ from fray_claude.costing.estimate import estimate
 from fray_claude.derive.neighbours import eligible_neighbours
 from fray_claude.derive.search import build_world_index, search
 from fray_claude.model.summary import summarise
-from fray_claude.gui.panels import task_panel
+from fray_claude.gui.panels import roll_groups, task_panel
 from fray_claude.gui.actions import _ACTIONS
 from fray_claude.gui.http import Context, Response, _error, _first, _json, touch
 from fray_claude.gui.routes_derived import (
@@ -387,11 +387,10 @@ def handle_request(
             return _json(
                 {
                     **roll.as_dict(),
-                    "tasks_by_skill_names": {
-                        skill: list(names)
-                        for skill, names in sorted(roll.tasks_added.items())
-                        if names
-                    },
+                    # Shaped by `panels.py`, not sent raw: the overlay and
+                    # the Tasks tab are two views of the same names and used
+                    # to spell them differently. See `panels.roll_groups`.
+                    "groups": roll_groups(roll.tasks_added),
                     # The hours behind this one roll, priced on the click. See
                     # `routes_view.roll_detail`: `None` when it cannot be
                     # priced, and the overlay simply omits the chart.

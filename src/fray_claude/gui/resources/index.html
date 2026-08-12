@@ -87,7 +87,19 @@
 <header class="bar">
   <span class="brand">fray</span>
 
-  <select id="map" class="pick" aria-label="Map"></select>
+  <!-- **Not a `<select>`.** Two things it cannot do: colour a row, and nest a
+       batch's runs beside it rather than inside it. `<optgroup>` puts ten runs
+       in the same scroll as every other map, which is the list the batch entry
+       exists to collapse. -->
+  <div class="picker">
+    <button id="map-pick" class="pick pick-button" type="button"
+            aria-haspopup="listbox" aria-expanded="false" aria-label="Map">
+      <span class="dot" id="map-pick-dot"></span>
+      <span class="pick-name" id="map-pick-name">…</span>
+      <svg class="icon" viewBox="0 0 24 24"><use href="#i-down"/></svg>
+    </button>
+    <div class="menu" id="map-menu" role="listbox" hidden></div>
+  </div>
   <!-- Comparing is a mode, not a second dropdown sitting permanently beside
        the first. The pair it needs lives in the ribbon, where the mode is
        announced; this is the door. -->

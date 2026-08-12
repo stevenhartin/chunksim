@@ -21,7 +21,7 @@ way. A directory cannot be forgotten::
 
     cache/maps/fetched/<id>.json      # from Firebase; only `fray fetch` writes one
     cache/maps/simulated/<batch>/     # rolled by `fray simulate`
-    cache/maps/unlocked/<batch>/      # `fray unlock --cache-map`
+    cache/maps/edited/<batch>/        # made by hand: `fray unlock --cache-map`, or the GUI
     cache/reference/                  # chunkinfo, tasks_map, wiki_rates, tile_version
     cache/derived/                    # `pipeline.derive` results, content-keyed
     cache/assets/                     # section masks, skill icons

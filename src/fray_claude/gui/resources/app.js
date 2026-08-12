@@ -143,7 +143,8 @@ const state = {
 
 const el = {};
 for (const id of [
-  "map", "compare", "breakdown", "plane", "candidates", "masks", "live", "fit", "counts", "skipped",
+  "map-pick", "map-pick-dot", "map-pick-name", "map-menu",
+  "compare", "breakdown", "plane", "candidates", "masks", "live", "fit", "counts", "skipped",
   "hover", "panel-pin", "panel-pin-icon", "panel", "tabs", "toast", "legend", "tip",
   "ribbon", "ribbon-mode", "ribbon-map", "ribbon-vs", "compare-start", "exit-mode",
   "ribbon-edits", "do-commit",
@@ -1808,10 +1809,28 @@ async function exitMode() {
  * under its bare name, so `?map=t/run-001` is a valid map id with no option to
  * match. So the element stays the validator - written to, then read back - and
  * `state` takes whatever it actually accepted. */
+/* **The listing is the validator now that the picker is not a `<select>`.**
+ * An element that silently blanks on an unknown value was doing real work -
+ * `?map=made-up` landed nowhere rather than on a wrong map - so the check is
+ * kept and made explicit: a map id is accepted when `/api/maps` lists it, and
+ * refused otherwise. A **multi-run batch is refused too**, for the reason
+ * `mapMenu` nests them: `resolve_map_path` will not guess which run a bare
+ * batch name means, so selecting one 404s every route and the map goes blank. */
 function setMap(id) {
-  el.map.value = id || "";
-  state.map = el.map.value;
+  const wanted = id || "";
+  const row = state.maps.find((m) => m.map_id === wanted);
+  state.map = row && !(row.runs > 1) ? wanted : "";
+  renderMapPick();
   return state.map;
+}
+
+/* What the button shows: the kind's dot, and the name with its batch. */
+function renderMapPick() {
+  const kind = state.map ? kindOf(state.map) : "";
+  el["map-pick-dot"].dataset.kind = kind;
+  el["map-pick-dot"].hidden = !state.map;
+  el["map-pick-name"].textContent = state.map || "No maps cached";
+  el["map-pick"].disabled = !state.maps.length;
 }
 
 function setCompare(id) {
@@ -1867,29 +1886,150 @@ function mapOptions(maps) {
   return out;
 }
 
+/* **Ordered by what a map is, then by name.** The three kinds answer three
+ * different questions - what upstream holds, what a roll would give you, what
+ * you changed by hand - and interleaving them alphabetically made the list a
+ * lucky dip. Fetched first because everything else is derived from one. */
+const KIND_ORDER = ["fetched", "simulated", "edited"];
+
+function byKindThenName(a, b) {
+  const order = KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind);
+  return order || a.map_id.localeCompare(b.map_id);
+}
+
+/* **A batch's runs open beside it, not inside it.**
+ *
+ * `cache.resolve_map_path` refuses to guess which run a bare batch name means,
+ * so a multi-run batch is a heading rather than a choice - and putting its ten
+ * runs in the main list, which is what `<optgroup>` does, buries every other
+ * map under them. A submenu says "this is one thing with parts" and costs one
+ * row until you ask.
+ *
+ * A one-run batch stays a plain row: there the name is unambiguous and
+ * `--map <batch>` resolves to that run everywhere else too. */
+function renderMapMenu() {
+  const runsOf = (batch) => state.maps.filter((m) => m.map_id.startsWith(batch + "/"));
+  const row = (m, text, extra = "") => tmpl`<button class="menu-row ${
+      m.map_id === state.map ? "on" : ""}" type="button" role="option" data-map="${m.map_id}"
+      aria-selected="${m.map_id === state.map}" data-tip="${mapTip(m)}">
+      <span class="dot" data-kind="${m.kind}"></span>
+      <span class="name">${text}</span>${raw(extra)}</button>`;
+
+  let out = "";
+  for (const m of [...state.maps].filter((x) => !x.map_id.includes("/")).sort(byKindThenName)) {
+    const runs = runsOf(m.map_id);
+    if (runs.length < 2) { out += row(m, m.map_id); continue; }
+    /* **The batch row carries no tooltip**, and that is not an oversight: it
+     * would open in exactly the space the submenu needs and cover the runs it
+     * is meant to introduce. What a batch is worth knowing about is per run,
+     * and each run keeps its own. */
+    out += tmpl`<div class="menu-nest" data-batch="${m.map_id}">
+      <button class="menu-row" type="button" aria-haspopup="true" aria-expanded="false">
+        <span class="dot" data-kind="${m.kind}"></span>
+        <span class="name">${m.map_id}</span>
+        <span class="num">${runs.length} runs</span>
+        ${icon("next")}</button>
+      <div class="submenu">` + runs.map((r) => row(r, r.map_id.split("/")[1])).join("")
+      + "</div></div>";
+  }
+  el["map-menu"].innerHTML = out;
+  for (const button of el["map-menu"].querySelectorAll("[data-map]")) {
+    button.onclick = () => { closeMapMenu(); chooseMap(button.dataset.map); };
+  }
+  /* **Hover previews it, a press pins it**, which is one mechanism with two
+   * ways in rather than two mechanisms. Hover alone is the fast path and is
+   * also the fragile one - it closes the moment the pointer wanders, and
+   * there is no hover at all on a touch screen or from a keyboard. Pinning is
+   * what makes the runs reachable without a steady hand.
+   *
+   * Only one nest is open at a time, or two submenus land in the same strip
+   * of screen. */
+  let pinned = null;
+  for (const nest of el["map-menu"].querySelectorAll(".menu-nest")) {
+    const open = (on) => {
+      for (const other of el["map-menu"].querySelectorAll(".menu-nest")) {
+        const showing = (on && other === nest) || other === pinned;
+        other.classList.toggle("open", showing);
+        other.firstElementChild.setAttribute("aria-expanded", String(showing));
+        if (showing) placeSubmenu(other);
+      }
+    };
+    nest.addEventListener("mouseenter", () => { if (!pinned) open(true); });
+    nest.addEventListener("mouseleave", () => { if (!pinned) open(false); });
+    nest.firstElementChild.onclick = () => {
+      pinned = pinned === nest ? null : nest;
+      open(pinned === nest);
+    };
+  }
+}
+
+/* Where the submenu goes, since the stylesheet cannot say: it is `fixed` to
+ * escape the scrolling menu's clip, so its coordinates are the batch row's
+ * own, read at the moment it opens. Flips to the left when the right would
+ * run off the window - the picker is at the left edge, so that is the rare
+ * side, but a narrow window makes it the only one. */
+function placeSubmenu(nest) {
+  const submenu = nest.querySelector(".submenu");
+  const row = nest.firstElementChild.getBoundingClientRect();
+  const gap = 4;
+  submenu.style.top = row.top + "px";
+  submenu.style.left = "";
+  submenu.style.right = "";
+  const width = submenu.offsetWidth || 160;
+  if (row.right + gap + width <= window.innerWidth) {
+    submenu.style.left = row.right + gap + "px";
+  } else {
+    submenu.style.right = window.innerWidth - row.left + gap + "px";
+  }
+}
+
+function openMapMenu() {
+  renderMapMenu();
+  el["map-menu"].hidden = false;
+  el["map-pick"].setAttribute("aria-expanded", "true");
+}
+
+function closeMapMenu() {
+  el["map-menu"].hidden = true;
+  el["map-pick"].setAttribute("aria-expanded", "false");
+}
+
+el["map-pick"].addEventListener("click", () => {
+  if (el["map-menu"].hidden) openMapMenu(); else closeMapMenu();
+});
+
+/* Anywhere else closes it, including the map - a menu that needs its own
+ * button pressed again to go away is one you fight. */
+document.addEventListener("pointerdown", (event) => {
+  if (el["map-menu"].hidden) return;
+  if (event.target.closest("#map-menu, #map-pick")) return;
+  closeMapMenu();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !el["map-menu"].hidden) closeMapMenu();
+});
+
 async function loadMaps() {
   const maps = await getJSON("/api/maps");
   state.maps = maps;
   if (!maps.length) {
     /* An empty screen is an invitation to act. The first build showed a blank
      * dropdown and "missing required parameter 'map'", which is a dead end. */
-    el.map.innerHTML = "<option value=''>No maps cached</option>";
     state.map = "";
+    renderMapPick();
     el.counts.textContent = "";
     el["chunk-body"].innerHTML = tmpl`<p class="empty">Nothing cached yet. Run <code>fray fetch</code> in a terminal, or press <b>Fetch Named Map</b> on the Maps tab.</p>`;
     showTab("maps");
     return false;
   }
-  const options = mapOptions(maps);
   const keepMap = state.map, keepCompare = state.compare;
-  el.map.innerHTML = options;
-  el.compare.innerHTML = "<option value=''>—</option>" + options;
+  el.compare.innerHTML = "<option value=''>—</option>" + mapOptions(maps);
   setMap(BOOT.map || keepMap || maps[0].map_id);
-  /* **A `<select>` silently blanks on a value it has no option for**, and a
-   * one-run batch is offered under its bare name rather than as
-   * `<batch>/run-001` - so `?map=t/run-001` is a perfectly valid map id with
-   * no option to match, and used to land on whatever was first. Fall back to
-   * the batch it names before giving up on the request entirely. */
+  /* **`setMap` refuses an id the listing does not hold**, and a one-run batch
+   * is listed under its bare name rather than as `<batch>/run-001` - so
+   * `?map=t/run-001` is a perfectly valid map id the listing has no row for.
+   * Fall back to the batch it names before giving up on the request. */
   if (!state.map && (BOOT.map || keepMap || "").includes("/")) {
     setMap((BOOT.map || keepMap).split("/")[0]);
   }
@@ -2295,7 +2435,7 @@ async function previewUnlock(chunkId) {
 function askUnlock(chunkId) {
   const suggested = (state.map || DEFAULT_MAP_ID).replace(/\//g, "-") + "-" + chunkId;
   openOverlay("Unlock " + chunkLabel(chunkId),
-    tmpl`<p>Writes a new map under <code>cache/maps/unlocked/</code> holding
+    tmpl`<p>Writes a new map under <code>cache/maps/edited/</code> holding
       everything <b>${state.map}</b> holds plus this chunk. Nothing existing
       is touched, and the derivation takes a second or two.</p>
       <div class="row"><input id="unlock-name" type="text" value="${suggested}"
@@ -2485,8 +2625,14 @@ const TASK_ROWS = 9;
 /* A row's badge. Three sources and they do not overlap: a skill's own icon
  * from upstream, a Combat Achievement tier badge from the wiki, or an inline
  * slot glyph. `icon` carries which - `ca:easy` names the second. */
+/* **A row with no badge is padded to where one would be.** Skills carry an
+ * icon and diaries do not, so an unpadded list stepped left and right down the
+ * column and the eye lost the edge it reads names against. The width is the
+ * badge's, and it is one place because two would drift. */
+const ICON_GAP = '<span class="icon-gap"></span>';
+
 function rowBadge(name) {
-  if (!name) return "";
+  if (!name) return ICON_GAP;
   if (name.startsWith("ca:")) {
     return tmpl`<img class="skill-icon" src="/assets/ca/${name.slice(3)}.png" alt="${name.slice(3)}">`;
   }
@@ -2564,7 +2710,7 @@ function renderTasks() {
          * the glyph and the word "ring" say one thing, and a 360px row has
          * no space to say it twice. The tooltip still spells it out. */
         const slot = SLOT_ICONS[row.note];
-        const badge = rowBadge(row.icon) || (slot ? icon(slot).__raw : "");
+        const badge = row.icon ? rowBadge(row.icon) : (slot ? icon(slot).__raw : ICON_GAP);
         /* The row shows the subject; the tooltip shows the whole task as the
          * export writes it, which is what `fray tasks` prints and what you
          * would search for. */
@@ -3105,7 +3251,7 @@ async function loadMapsPane() {
       const ok = await confirmAction(
         "Remove " + doomed.length + (doomed.length === 1 ? " computed map?" : " computed maps?"),
         tmpl`<p>Deletes every batch under <code>cache/maps/simulated/</code> and
-          <code>cache/maps/unlocked/</code>. Fetched maps are left alone.</p><ul class="list">`
+          <code>cache/maps/edited/</code>. Fetched maps are left alone.</p><ul class="list">`
           + doomed.map((m) => tmpl`<li><span class="name">${m.map_id}</span>
               <span class="sub">${KIND_LABELS[m.kind] || m.kind}</span>
               <span class="num">${m.runs == null ? "" : m.runs + (m.runs === 1 ? " run" : " runs")}</span></li>`).join("")
@@ -3388,10 +3534,10 @@ const BOOT = {
   step: PARAMS.has("step") ? Number(PARAMS.get("step")) : null,
 };
 
-el.map.addEventListener("change", async () => {
+async function chooseMap(id) {
   /* **Asked before anything loads.** Declining has to leave the page as it
    * was, and half a load is not that. */
-  if (!(await selectMap(el.map.value))) return;
+  if (!(await selectMap(id))) return;
   state.selected = null;
   taskPanel = null;
   /* Cleared *before* the view loads: a step index belongs to one run, and
@@ -3402,7 +3548,8 @@ el.map.addEventListener("change", async () => {
   await loadView({ refit: true });
   await loadCandidates();
   await loadSections();
-});
+}
+
 el.compare.addEventListener("change", async () => {
   /* Only reachable from inside Diff now, so an empty choice means "leave".
    * Read before the mode changes: leaving clears the comparison, which is
@@ -3719,7 +3866,7 @@ async function showRoll(step) {
   } catch (error) {
     return openOverlay(title, tmpl`<p class="empty">${error.message}</p>`);
   }
-  const groups = Object.entries(roll.tasks_by_skill_names || {});
+  const groups = roll.groups || [];
   let out = tmpl`<dl class="kv">
     <dt>Chunk</dt><dd>${chunkLabel(roll.chunk)}</dd>
     <dt>Tasks</dt><dd>${roll.tasks}</dd>
@@ -3731,12 +3878,17 @@ async function showRoll(step) {
   if (!groups.length) {
     out += tmpl`<p class="empty">This roll opened no new tasks.</p>`;
   }
-  for (const [skill, names] of groups.sort((a, b) => b[1].length - a[1].length)) {
-    out += tmpl`<h3>${skill} <span class="num">${names.length}</span></h3><ul class="list">`;
-    /* Collapsed past a dozen, like every other long list in the panel - a
-     * category with 239 entries is a scroll, not a reading. */
-    out += withMore(names.slice().sort(), "roll:" + skill, 12, (name) =>
-      tmpl`<li><span class="name">${plain(name)}</span></li>`);
+  /* **The same names the Tasks tab shows, spelled the same way.** The shaping
+   * is `panels.roll_groups`, so the icons, the heading vocabulary and the
+   * dropped `<group>#<tier>` prefixes are one implementation rather than a
+   * copy that drifts. Headings carry no count and lists stop at nine, like
+   * every other list in the panel. */
+  for (const group of groups) {
+    out += tmpl`<h3>${raw(group.icon ? rowBadge(group.icon) : "")}${group.name}</h3><ul class="list">`;
+    out += withMore(group.rows, "roll:" + group.name, TASK_ROWS, (row) =>
+      tmpl`<li data-tip="${tmpl`<b>${plain(row.name)}</b><span class="hint">${plain(row.key)}</span>`}">
+        ${raw(rowBadge(row.icon))}<span class="name">${plain(row.name)}</span>
+        <span class="sub">${plain(row.note || "")}</span></li>`);
     out += "</ul>";
   }
   openOverlay(

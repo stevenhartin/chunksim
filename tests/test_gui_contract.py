@@ -491,28 +491,35 @@ def test_the_bottom_edge_is_shared_rather_than_stacked() -> None:
     assert '--strip-h' in js
 
 def test_the_page_reads_its_identity_from_state_not_the_dom() -> None:
-    """**Which map you are looking at is data, not a `<select>`'s value.**
+    """**Which map you are looking at is data, not a control's value.**
 
-    It used to be read back out of the element in twenty-odd places, which
+    It used to be read back out of a `<select>` in twenty-odd places, which
     made the control the source of truth and left no room for a state the
-    controls do not have an option for. `setMap`/`setCompare` are the only
-    writers, and they still write *through* the element - a `<select>` blanks
-    on a value it has no option for, and that validation is worth keeping.
+    controls do not have an option for.
+
+    The map picker is now a menu rather than a `<select>`, so the validation
+    that element was quietly doing - blanking on a value it has no option for -
+    has to be explicit: `setMap` accepts an id the listing holds and refuses
+    the rest, including a multi-run batch, which `resolve_map_path` will not
+    guess a run for.
     """
     _, js, _ = _resources()
 
-    # Twice in the setter (written, then read back) and once in the change
-    # listener that feeds it. Anywhere else is a reader still asking the DOM.
-    assert js.count("el.map.value") == 3, "a reader is still going to the DOM"
+    assert "el.map.value" not in js, "a reader is still going to the DOM"
+    setter = re.search(r"function setMap\(id\) \{(.*?)\n\}", js, re.DOTALL)
+    assert setter is not None
+    assert "state.maps.find((m) => m.map_id === wanted)" in setter.group(1)
+    assert "row.runs > 1" in setter.group(1), "a multi-run batch is selectable"
+    # `compare` is still a `<select>`, and still validates by being one.
     assert js.count("el.compare.value") == 3
 
-    for name, control in (("setMap", "el.map"), ("setCompare", "el.compare")):
-        setter = re.search(rf"function {name}\(id\) \{{(.*?)\n\}}", js, re.DOTALL)
-        assert setter is not None
-        # Written to, then read *back*: whatever the element accepted is what
-        # state takes, so an unmatched id still comes out blank.
-        assert f"{control}.value = id" in setter.group(1)
-        assert f"= {control}.value" in setter.group(1)
+    # `setCompare` still writes to its element and reads *back*: whatever the
+    # `<select>` accepted is what state takes, so an unmatched id comes out
+    # blank. `setMap` does the same job against the listing instead.
+    setter = re.search(r"function setCompare\(id\) \{(.*?)\n\}", js, re.DOTALL)
+    assert setter is not None
+    assert "el.compare.value = id" in setter.group(1)
+    assert "= el.compare.value" in setter.group(1)
 
 def test_a_simulation_is_only_ever_seen_in_timeline_mode() -> None:
     """**A run is fifty worlds, not one**, and browsing it as though it were a
@@ -641,12 +648,14 @@ def test_switching_map_forgets_the_step() -> None:
     assert "state.step = null" in select.group(1)
     assert "state.timeline = null" in select.group(1)
 
-    # And the change listener goes through it rather than round it.
-    handler = re.search(
-        r'el\.map\.addEventListener\("change".*?\n\}\);', js, re.DOTALL
-    )
-    assert handler is not None
-    assert "selectMap(el.map.value)" in handler.group(0)
+    # And every way in goes through it rather than round it. The picker is a
+    # menu rather than a `<select>` - two things a `<select>` cannot do,
+    # colour a row and nest a batch's runs beside it - so what the rows call
+    # is `chooseMap`, and that is the only caller of `selectMap` there is.
+    chooser = re.search(r"async function chooseMap\(id\) \{(.*?)\n\}", js, re.DOTALL)
+    assert chooser is not None
+    assert "await selectMap(id)" in chooser.group(1)
+    assert 'button.onclick = () => { closeMapMenu(); chooseMap(button.dataset.map); };' in js
 
 def test_an_uncomputed_hours_series_is_not_drawn_as_zero() -> None:
     """**"Not computed" and "added no work" are different answers**, and both

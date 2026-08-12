@@ -306,7 +306,7 @@ way. A directory cannot be forgotten.
 ```
 cache/maps/fetched/<id>.json           # from Firebase; only `fray fetch` writes one
 cache/maps/simulated/<batch>/…         # rolled by `fray simulate`
-cache/maps/unlocked/<batch>/…          # `fray unlock --cache-map`: one chunk added by hand
+cache/maps/edited/<batch>/…            # made by hand: `fray unlock --cache-map`, or the GUI
 cache/reference/                       # chunkinfo, tasks_map, wiki_rates, wiki_recipes, tile_version
 cache/derived/                         # pipeline.derive results, keyed by content
 cache/assets/                          # section masks, skill icons
@@ -323,15 +323,17 @@ cache/maps/<kind>/<batch>/run-001/run.json    # that run's summary, which `maps 
 cache/maps/<kind>/<batch>/run-001/timeline.json  # per-step hours, once something paid to compute them
 ```
 
-**Four kinds, and `unlocked` used to be filed under `simulated`.** The fourth is `edited` - a map a
-person changed by hand in the GUI and committed under a new name - and it cost exactly what this
-file promised: one entry in `COMPUTED_KINDS`, after which removal, resolution, listing and
-cross-kind name claiming all followed with no other change. It is distinct from `unlocked` because
-that kind means precisely one thing (one candidate chunk, by `fray unlock --cache-map`), and calling
-a map with six ticked tasks an "unlock" is the same wrong that split `unlocked` out of `simulated`.
-`COMPUTED_KINDS` is what every removal path takes, which is what makes a new kind one line rather
-than a hunt — and the argument against splitting (both mean "this project computed it, upstream
-never saw it") loses to the fact that the picker has to *say* which.
+**Three kinds, and there were four.** `unlocked` was split out of `simulated` because a picker has
+to *say* which, and then `edited` was split out of **it** on the grounds that "one candidate chunk by
+`fray unlock --cache-map`" and "six ticked tasks" are different things. Used, they are not: both are
+a map this project made by hand from another one, both remove the same way, both browse the same
+way, and the picker saying "Unlocked" against "Edited" made a reader work out a distinction that
+decides nothing. So `unlocked` is retired into `edited`, and what is actually worth keeping - which
+chunk, and that it came from `unlock` - stays in the batch metadata (`origin`, `chunk`) where it
+always was. `migrate_layout` moves an existing one a batch at a time rather than renaming the
+directory, since both may exist; a name cannot clash because `_name_taken` has always claimed across
+every kind. `COMPUTED_KINDS` is what every removal path takes, which is what made both the addition
+and the removal one line rather than a hunt.
 
 **`batch_id` is what makes several runs one job.** Minted once per batch before any run starts and
 written into *every* run, not just the summary — the directory name cannot carry it, because a name
@@ -1677,6 +1679,41 @@ Things worth knowing before changing it:
   is about the cache, so it is an icon in the Maps pane head, and the floor
   picker floats against the map's own top-right, tracking `--rail` like
   everything else anchored there.
+- **The map picker is a menu rather than a `<select>`**, because a `<select>`
+  cannot do the two things this one has to: colour a row, and put a batch's
+  runs *beside* it instead of inside it. `<optgroup>` buries every other map
+  under ten runs, which is the pile the batch entry exists to collapse. The
+  list is ordered by kind then name - fetched first, since everything else is
+  derived from one - and a row's kind is a **dot** rather than a tinted name,
+  so provenance does not compete with the name for the one thing a name is
+  for. `setMap` is now the validator the element used to be: it accepts an id
+  the listing holds and refuses the rest, **including a multi-run batch**,
+  which `resolve_map_path` will not guess a run for. The submenu is
+  `position: fixed` and placed by `app.js` - the menu that holds it scrolls,
+  and a scroll container clips its children in *both* axes, which read exactly
+  like the submenu not existing. Hover previews it and a press pins it: hover
+  alone closes the moment the pointer wanders and does not exist at all on a
+  touch screen.
+- **A fetched map is removable**, like every other row. It is upstream's state
+  rather than something recomputable from what sits beside it, so the only way
+  back is the network - a fine answer, and not a reason to withhold the
+  control. The request carries `include_fetched`, which is what the API always
+  wanted to hear.
+- **`__UBER__` in the fetch box builds an all-chunks map** on top of whichever
+  map is open, which is the map half this file's measurements are quoted
+  against. The base matters and is not `fray`: a map carries the player's
+  rules and completed challenges, so "everything unlocked" is only useful as
+  *this* map with the chunk constraint removed. Deliberately unadvertised - not
+  in the README, the placeholder or any tooltip - and refused unless
+  `allowed_hosts` is empty, which is exactly when the server is loopback-only.
+  Not a permission system; a statement that this is a local tool.
+- **The roll overlay is shaped by `panels.py`, like everything else.** It read
+  the ledger raw, so one task was `Combat Achievements#Grandmaster Wasn't Event
+  Close` there and `Wasn't Event Close` under a Combat Achievements heading two
+  panes away, and a skill's rows had an icon in one place and not the other.
+  `roll_groups` is the same three rules over a different input. **A row with no
+  badge is padded to where one would be** (`ICON_GAP`), or a list steps left
+  and right down the column and the eye loses the edge it reads names against.
 - **The Maps list is one entry per batch, tinted by kind**, and removing a
   multi-run batch is choosing which runs. Forty rows for a forty-run batch all
   said the one thing the batch says, and "Remove verf-sim?" was all or nothing -

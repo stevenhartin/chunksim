@@ -355,6 +355,50 @@ def _with_category(groups: Sequence[Any], category: str) -> list[dict[str, Any]]
     ]
 
 
+#: What the panel calls each non-skill category, so the roll overlay and the
+#: Tasks tab use one vocabulary rather than two. A skill is its own name.
+_CATEGORY_LABELS = {"Diary": "Diaries", "Quest": "Quests", "Extra": "Other"}
+
+
+def roll_groups(tasks_added: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """What one roll opened, shaped the way the Tasks tab shapes everything.
+
+    **The overlay was reading the ledger raw**, so the same task appeared as
+    `Combat Achievements#Grandmaster Wasn't Event Close` here and as
+    `Wasn't Event Close` under a Combat Achievements heading two panes away -
+    and a skill's rows had no icon in one place and one in the other. There is
+    no second set of rules to write: the three that decide how a name reads
+    (`_display_name`, `_extra_entry`, `_subject`) already live here, so this is
+    the same shaping over a different input.
+
+    Grouped by the challenge's own category rather than by the panel's five
+    sections, because the question is "what did this roll open" and the answer
+    really is per skill. Largest group first: on a real roll one skill usually
+    dominates and burying it under an alphabetical run of ones is the shape
+    that made this list hard to read.
+    """
+    groups: list[dict[str, Any]] = []
+    for category, names in tasks_added.items():
+        rows = [name for name in names if isinstance(name, str)]
+        if not rows:
+            continue
+        skill = category not in _CATEGORY_LABELS and category not in ("Nonskill", "BiS")
+        shape = _extra_entry if category == "Extra" else (
+            (lambda n: _entry(n, _cased(_subject(n)), icon=category))
+            if skill
+            else (lambda n: _entry(n, _display_name(n)))
+        )
+        groups.append(
+            {
+                "name": _CATEGORY_LABELS.get(category, category),
+                "icon": category if skill else None,
+                "rows": [shape(name) for name in sorted(rows)],
+            }
+        )
+    groups.sort(key=lambda group: (-len(group["rows"]), group["name"]))
+    return groups
+
+
 def task_panel(derived: Derived) -> dict[str, Any]:
     """Every task the panel shows, in one shape.
 
@@ -380,4 +424,4 @@ def task_panel(derived: Derived) -> dict[str, Any]:
     return {"sections": sections}
 
 
-__all__ = ["task_panel"]
+__all__ = ["roll_groups", "task_panel"]
