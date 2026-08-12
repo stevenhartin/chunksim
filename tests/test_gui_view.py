@@ -12,6 +12,7 @@ import time
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 import pytest
 
@@ -569,6 +570,37 @@ def test_a_timeline_written_under_the_old_meaning_is_refused(
     assert all(row["hours"] is None for row in payload["steps"])
 
 
+@pytest.mark.real_export
+def test_two_roll_clicks_parse_the_export_once(tmp_path: Path) -> None:
+    """**The click used to bring its own 10MB export, and throw it away.**
+
+    `roll_detail` prices through `batch._walk`, which loads the export, the
+    tasks map and the rate scrape for itself - correct in a pool worker, where
+    under `forkserver` the parent's copy would not be shared anyway, and pure
+    waste in the server process, which is holding all three already. So the
+    in-process caller hands `_walk` a `_Prepared` and the parse is the one the
+    context did, however many rolls somebody opens.
+    """
+    reads: list[str] = []
+    real = cache.read_chunkinfo
+
+    def counting(*args: Any, **kwargs: Any) -> Any:
+        reads.append("parse")
+        return real(*args, **kwargs)
+
+    ctx = Context(root=tmp_path)
+    map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH, "12852"], [NORTH, "12852"])
+
+    with mock.patch("fray_claude.gui.derivation.cache.read_chunkinfo", counting), \
+         mock.patch("fray_claude.runs.batch.read_chunkinfo", counting):
+        _get("/api/roll", ctx, map=map_id, step="1")
+        first = len(reads)
+        _get("/api/roll", ctx, map=map_id, step="2")
+
+    assert first <= 1, "the first roll parsed the export more than once"
+    assert len(reads) == first, "the second roll parsed it again"
+
+
 def test_a_roll_serves_the_task_names_a_step_summary_leaves_out(tmp_path: Path) -> None:
     """**One roll of the real export opened 239 tasks**, so `/api/timeline`
     carries counts and this carries names - the same ledger read, one step at
@@ -578,11 +610,10 @@ def test_a_roll_serves_the_task_names_a_step_summary_leaves_out(tmp_path: Path) 
 
     payload = _body(_get("/api/roll", ctx, map=map_id, step="1"))
 
-    # **No export here**, because this run records no base map: without one
-    # there is nothing to have already surpassed, so `roll_baseline` answers
-    # empty without parsing. A run with a base *does* pay the parse once - see
-    # `roll_baseline`, and note the slider's own routes still never do.
-    assert not ctx.derivations.loaded
+    # Whether this warms the context's export depends on whether there is one
+    # to warm, so that question lives in its own test below rather than here -
+    # `roll_baseline` needs no export for a run with no base map, but
+    # `roll_detail` prices, and pricing walks the item graph.
     assert payload["chunk"] == NORTH
     # **The Tasks tab's own shape, over this roll's additions.** The overlay
     # used to render the ledger raw - every new task, flat, one heading per

@@ -24,7 +24,7 @@ from fray_claude.costing.training import TrainingOption, training_options
 from fray_claude.costing.inputs import load_heuristics
 from fray_claude.derive.active_tasks import _level_proven_elsewhere
 from fray_claude.derive.task_names import strip_task_markup
-from fray_claude.runs.batch import PriceSpec, price_detail
+from fray_claude.runs.batch import PriceSpec, _Prepared, price_detail
 from fray_claude.store.cache import CacheMissError
 from fray_claude.runs.timeline import matches as timeline_matches
 from fray_claude.runs.timeline import stamp as timeline_stamp
@@ -473,7 +473,17 @@ def roll_detail(map_id: str, index: int, ctx: Context) -> dict[str, Any] | None:
                 # against themselves would put a pie under a bar that measured
                 # something else.
                 final=tuple(sorted(steps[-1].unlocked)),
-            )
+            ),
+            # Everything this needs is already parsed on the context - the
+            # export, its tasks map, its digests and the reference blobs - so
+            # the click does not re-read 13MB to rebuild them. The pool
+            # workers still load their own; see `batch._Prepared`.
+            _Prepared(
+                info=ctx.derivations.chunk_info(),
+                tasks_map=ctx.derivations.tasks_map(),
+                digests=ctx.derivations.digests(),
+                reference=ctx.derivations.reference(),
+            ),
         )
     except (CacheMissError, OSError):
         return None

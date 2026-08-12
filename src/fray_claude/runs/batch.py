@@ -75,7 +75,12 @@ from fray_claude.store.derived_cache import (
     cached_derive,
 )
 from fray_claude.costing.estimate import EstimateResult, estimate
-from fray_claude.costing.inputs import level_overrides, priced_heuristics
+from fray_claude.costing.inputs import (
+    ReferenceBlobs,
+    level_overrides,
+    load_reference,
+    priced_heuristics,
+)
 from fray_claude.model.edits import apply_ticks
 from fray_claude.model.firebase import reverse_tasks_map
 from fray_claude.costing.heuristics import Heuristics, merge
@@ -215,7 +220,13 @@ class _Pricer:
     _last: EstimateResult | None = None
 
     @classmethod
-    def build(cls, info: ChunkInfo, root: Path | None, digests: Digests) -> _Pricer | None:
+    def build(
+        cls,
+        info: ChunkInfo,
+        root: Path | None,
+        digests: Digests,
+        reference: ReferenceBlobs | None = None,
+    ) -> _Pricer | None:
         """A pricer, or `None` when this machine cannot price anything.
 
         Without `cache/reference/wiki_rates.json` every number falls back to a
@@ -223,14 +234,12 @@ class _Pricer:
         answer than no timeline at all, because a graph does not carry the
         caveat that `fray show` prints beside the figure.
         """
-        try:
-            scraped = read_blob(WIKI_RATES_BLOB_NAME, root)["data"]
-        except CacheMissError:
+        blobs = load_reference(root) if reference is None else reference
+        if not blobs.scraped_found:
             return None
-        overrides = read_overrides(root)
         return cls(
             heuristics=load_heuristics(
-                merge(scraped, overrides),
+                merge(blobs.scraped, blobs.overrides),
                 boss_monsters=frozenset(_mapping(info.code_items, "bossMonsters")),
                 slayer_monsters=frozenset(info.slayer_monsters),
             ),
@@ -238,8 +247,8 @@ class _Pricer:
             stamp=timeline_stamp(
                 chunkinfo=digests.chunkinfo,
                 tasks_map=digests.tasks_map,
-                rates=file_digest(blob_path(WIKI_RATES_BLOB_NAME, root)),
-                overrides=_overrides_digest(root),
+                rates=blobs.pricing.rates,
+                overrides=blobs.pricing.overrides,
                 enriched=False,
             ),
         )
@@ -310,7 +319,9 @@ class PriceSpec:
     final: tuple[str, ...] = ()
 
 
-def _walk(spec: PriceSpec) -> list[tuple[int, EstimateResult, float]]:
+def _walk(
+    spec: PriceSpec, prepared: _Prepared | None = None
+) -> list[tuple[int, EstimateResult, float]]:
     """Price one contiguous slice of a run's rolls. Runs in a worker process.
 
     A projection of `_walk`: the totals, which are all the bars need and all
@@ -368,21 +379,29 @@ def _walk(spec: PriceSpec) -> list[tuple[int, EstimateResult, float]]:
     The other casualty is `enrich_incremental`: `priced_heuristics` calls
     `enrich`, and there is now only one call to make anyway.
     """
-    info = ChunkInfo(read_chunkinfo(override=spec.chunkinfo_path, root=spec.root))
-    try:
-        tasks_map = reverse_tasks_map(read_blob(TASKS_MAP_BLOB_NAME, spec.root)["data"])
-    except CacheMissError:
-        tasks_map = {}
-    state, _ = load_map_state(_base_of(spec), info, tasks_map)
-    digests = Digests(
-        chunkinfo=file_digest(chunkinfo_source(spec.chunkinfo_path, spec.root)),
-        tasks_map=file_digest(blob_path(TASKS_MAP_BLOB_NAME, spec.root)),
-    )
-    pricer = _Pricer.build(info, spec.root, digests)
+    if prepared is None:
+        info = ChunkInfo(read_chunkinfo(override=spec.chunkinfo_path, root=spec.root))
+        try:
+            tasks_map: Mapping[str, str] = reverse_tasks_map(
+                read_blob(TASKS_MAP_BLOB_NAME, spec.root)["data"]
+            )
+        except CacheMissError:
+            tasks_map = {}
+        digests = Digests(
+            chunkinfo=file_digest(chunkinfo_source(spec.chunkinfo_path, spec.root)),
+            tasks_map=file_digest(blob_path(TASKS_MAP_BLOB_NAME, spec.root)),
+        )
+        reference = load_reference(spec.root)
+    else:
+        info, tasks_map = prepared.info, prepared.tasks_map
+        digests, reference = prepared.digests, prepared.reference
+
+    state, _ = load_map_state(_base_of(spec), info, dict(tasks_map))
+    pricer = _Pricer.build(info, spec.root, digests, reference)
     if pricer is None:
         raise CacheMissError("no cached wiki rates; run: fray heuristics")
 
-    levels = level_overrides(spec.root)
+    levels = reference.levels
     heuristics = pricer.heuristics
     if spec.enrich and spec.final:
         # The run's last state, not this slice's - every worker has to reach
@@ -397,6 +416,7 @@ def _walk(spec: PriceSpec) -> list[tuple[int, EstimateResult, float]]:
             digests,
             world=pricer.world,
             root=spec.root,
+            reference=reference,
         )
 
     out: list[tuple[int, EstimateResult, float]] = []
@@ -427,7 +447,29 @@ def price_slice(spec: PriceSpec) -> list[tuple[int, float, float]]:
     ]
 
 
-def price_detail(spec: PriceSpec) -> EstimateResult | None:
+@dataclass(frozen=True)
+class _Prepared:
+    """The per-process setup `_walk` would otherwise do for itself.
+
+    **For the in-process caller only.** `price_slice` and `warm_slice` run in
+    pool workers, where loading the export from disk is deliberate: at ~0.1s
+    against a multi-minute run it is cheaper than pickling 10MB, and under
+    `forkserver` a parent-parsed export would not be shared anyway (see the
+    module docstring). Neither passes one of these.
+
+    The GUI is the opposite case. `roll_detail` runs `_walk` on a click, in
+    the server process, next to a `Derivations` already holding the parsed
+    export, its tasks map and its digests - so it was re-reading 13MB and the
+    rate scrape to rebuild what it was sitting on.
+    """
+
+    info: ChunkInfo
+    tasks_map: Mapping[str, str]
+    digests: Digests
+    reference: ReferenceBlobs
+
+
+def price_detail(spec: PriceSpec, prepared: _Prepared | None = None) -> EstimateResult | None:
     """The **breakdown** behind one step's bar, rather than its total.
 
     `price_slice` walks a slice and keeps one number per step; the roll details
@@ -442,7 +484,7 @@ def price_detail(spec: PriceSpec) -> EstimateResult | None:
     """
     if not spec.steps:
         return None
-    walked = _walk(spec)
+    walked = _walk(spec, prepared)
     return walked[-1][1] if walked else None
 
 def _base_of(spec: PriceSpec) -> Mapping[str, Any]:

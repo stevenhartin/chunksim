@@ -84,6 +84,15 @@ class Derivations:
                 )
             return self._info
 
+    def tasks_map(self) -> dict[str, str]:
+        """The reversed `t_N` -> task-name map, loaded on first use.
+
+        Public because `routes_view` hands it to `batch._Prepared`; the
+        underscore version stayed private while this class was its only
+        reader.
+        """
+        return self._reverse_tasks()
+
     def _reverse_tasks(self) -> dict[str, str]:
         with self._lock:
             if self._tasks_map is None:
