@@ -263,16 +263,32 @@ the result. Verified as such at every step - the real map's full derivation is
 byte-identical throughout, and the opt-in oracles still pass. Together they took
 `derive` from 2.68s to ~0.76s.
 
-What is *not* done, deliberately: warm-starting this fixed point from the
-previous outer pass's `valid` instead of from `{}`. It would cut the nine-to-
-thirteen sweeps per call to two or three - by far the largest remaining win -
-and the usual argument (a monotone operator started below its least fixed point
-converges to that same fixed point) would make it safe. The operator is not
-monotone: `_drop_superseded_backups` *removes* a barehanded-catch challenge once
-the method it backs up becomes valid, so more validity can mean less. Same trap
-sits under skipping the static prefilter on later outer passes, since
-`taskUnlocks` gating can withdraw a source. Both would have to be justified by
-agreement on one map, which this project has learnt not to accept as proof.
+What is *not* done: warm-starting this fixed point from a previous `valid`
+instead of from `{}`. This file used to call that "by far the largest
+remaining win" and refuse it on safety grounds. **Both halves of that were
+wrong, and the measurement is the interesting half.**
+
+It is not a win at all. Built and measured against a real map, seeding `valid`
+made `derive` 0.730s -> 0.803s - a 9% *loss*. Nothing about a seed reduces the
+work: `new_valid` is rebuilt from the whole candidate list on every sweep
+regardless of where it starts, so a seed cannot remove a candidate, only
+change the trajectory - while making the first sweep's `_seed_items_with_outputs`
+larger. The sweep count barely moves. (The ~2x available to a simulation is
+`pipeline.derive`'s `carry_areas`, which is a different thing: it seeds the
+*area* loop, whose passes each cost a full `calc_challenges`.)
+
+Nor is it as fragile as the refusal implied. Seeded with every one of the
+14,694 challenges - maximally wrong - it still converged on exactly the cold
+answer, and over 24 real rolls across both cached maps it never once differed.
+The reason is structural: the `Tasks` dependency graph is **acyclic** (0 cycles
+among the 4,831 challenges carrying `Tasks`), so a spuriously seeded task has
+nothing to support it and disappears on the next sweep.
+
+The non-monotonicity is real - `_drop_superseded_backups` *removes* a
+barehanded-catch challenge once the method it backs up becomes valid, so more
+validity can mean less - and it is why the usual "monotone operator from below"
+argument does not apply. It is just not what makes warm-starting a bad idea.
+Being pointless is.
 
 `strip_task_markup` lives here too, the display-side counterpart to
 `search.normalise`: it drops a task name's `~|...|~` delimiters without

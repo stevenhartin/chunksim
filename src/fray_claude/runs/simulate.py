@@ -71,6 +71,19 @@ _REGION_NAMES = (
 )
 
 
+
+class CarryDivergedError(RuntimeError):
+    """A carried run did not agree with deriving cold.
+
+    Raised rather than returned, and rather than quietly preferring one
+    answer: `carry_areas` is an optimisation that is only worth having while
+    it changes nothing, so the moment it does the run is not a cheaper
+    version of the real thing - it is a different thing, and the caller has
+    to know. See `pipeline.derive` for what the carry is and why it cannot be
+    proved, and `simulate_rolls` for where this is checked.
+    """
+
+
 @dataclass(frozen=True)
 class UnlockRecord:
     """One roll's result: the delta it produced, snapshotted at roll time
@@ -270,7 +283,7 @@ def simulate_rolls(
     on_state: Callable[[int, Derived], None] | None = None,
     on_roll: Callable[[int, str], None] | None = None,
     should_stop: Callable[[], bool] | None = None,
-    carry_areas: bool = False,
+    carry_areas: bool = True,
 ) -> list[UnlockRecord]:
     """Simulate up to `rolls` chunk unlocks from `unlocked`, stopping early
     if the roll pool is ever empty. Each record's delta is computed against
@@ -350,6 +363,23 @@ def simulate_rolls(
             on_state(order, after)
         if on_roll is not None:
             on_roll(order, chunk_id)
+
+    if carry_areas and ledger:
+        # **Every carried run checks itself, on real data.** The carry is
+        # measured rather than proved (`pipeline.derive`), so the state the
+        # run finishes on - the one the saved map holds and every later
+        # command reads - is re-derived the ordinary way and compared. One
+        # cold derivation against a run of fifty is a few percent, and it buys
+        # both a verified thing to persist and a divergence that surfaces
+        # here rather than waiting for somebody to run the oracle.
+        verified = derive(state, current_ids)
+        if verified != before:
+            raise CarryDivergedError(
+                "carrying areas reached a different derivation from deriving "
+                f"cold after {len(ledger)} rolls; re-run without --carry-areas, "
+                "and see pipeline.derive"
+            )
+        before = verified
 
     if cache is not None and ledger:
         cache.keep_final(state, current_ids, before)

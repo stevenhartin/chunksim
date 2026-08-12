@@ -324,7 +324,8 @@ class RollCache:
     root: Path | None = None
     #: Whether this run is carrying areas between rolls (`pipeline.derive`).
     #: A carried state is read from the cache but never written to it, so
-    #: turning this on quietly turns the writing half off.
+    #: this turns the per-roll writing off; `keep_final` then stores the one
+    #: state the run has checked against a cold derivation.
     carry_areas: bool = False
 
     def derive_state(
@@ -353,10 +354,16 @@ class RollCache:
         loop, so it cannot be flagged when it is derived without deriving it
         twice.
         """
-        if self.behaviour is not CacheBehaviour.EXTREMITIES or self.carry_areas:
-            # Carrying, the final state was computed with a seed and is not
-            # this key's answer to give - see `cached_derive`.
+        if self.behaviour is CacheBehaviour.NONE:
             return
+        if self.behaviour is not CacheBehaviour.EXTREMITIES and not self.carry_areas:
+            # `ALL` already stored it on the way past.
+            return
+        # Carrying, nothing was stored on the way past - and what arrives here
+        # is the *cold* re-derivation `simulate_rolls` checks the run against,
+        # not the carried one, so it is this key's answer to give. That is the
+        # whole reason the check exists: the run keeps its speed, and the one
+        # state anything else will read is a verified one.
         key = derivation_key(state, unlocked, self.digests)
         write_derived(key, encode(derived), self.root)
 

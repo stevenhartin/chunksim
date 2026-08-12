@@ -242,9 +242,13 @@ def test_maps_clean_can_take_the_fetched_maps_too(
 @pytest.mark.parametrize(
     ("behaviour", "expected"),
     [
-        # The fixture leaves one candidate per roll, so all three runs walk the
-        # same two states: start, +101, +102.
-        ("all", 3),
+        # **Two, not three, because carrying is the default.** The fixture
+        # leaves one candidate per roll, so all three runs walk the same
+        # states - start, +101, +102 - but a carried run only ever checks the
+        # state it finishes on, so that and the start are the only two this
+        # project is entitled to persist. `--no-carry-areas` derives every
+        # roll the ordinary way and keeps all three; see `pipeline.derive`.
+        ("all", 2),
         # Start and finish only - and the finish is the state the saved map
         # holds, so `--map S/run-001` is served from disk afterwards.
         ("extremities", 2),
@@ -274,14 +278,23 @@ def test_cache_behaviour_decides_which_roll_states_are_kept(
     assert len(derived_entries(project)) == expected
 
 
-def test_simulate_caches_every_state_by_default(
+def test_simulate_caches_every_state_when_it_derives_them_cold(
     project: Path, simulatable: Callable[[], None],
     derived_entries: Callable[[Path], list[Path]],
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """`--no-carry-areas` is what "keep every state" now means.
+
+    Carrying trades those per-roll entries for roughly half the run time: only
+    the finishing state is checked against a cold derivation, so it is the
+    only one worth writing under a key that promises the cold answer. Anything
+    that will later *reprice* a run wants them, since `batch.warm_slice` reads
+    exactly these back - so that is the case for turning carrying off.
+    """
     simulatable()
     capsys.readouterr()
 
-    assert main(["simulate", "--rolls", "2", "--seed", "1", "--cache-map", "S"]) == 0
+    argv = ["simulate", "--rolls", "2", "--seed", "1", "--cache-map", "S"]
+    assert main([*argv, "--no-carry-areas"]) == 0
 
     assert len(derived_entries(project)) == 3

@@ -256,7 +256,7 @@ fray unlock   --chunk ID [--cache-map NAME]        # what one candidate chunk wo
 fray diff --map1 A --map2 B [BRANCH] [--limit N]   # symmetric comparison of two cached maps
 fray neighbours [--limit N]                        # chunks eligible to unlock next
 fray simulate --rolls N [--seed S] [--cache-map NAME] [--runs R] [--jobs J]
-              [--cache-behaviour all|extremities|none] [--carry-areas]
+              [--cache-behaviour all|extremities|none] [--no-carry-areas]
 fray maps [list [--runs]] | maps rm NAME... [--include-fetched] | maps clean [--include-fetched]
 fray derived [list [--verbose]] | derived clean [--older-than DAYS] [--all]
 fray search   QUERY [--type T ...] [--limit N]
@@ -362,7 +362,8 @@ a green `.venv/bin/pytest` as a change being verified.
 - **The oracles are marked, not `skipif`-ed.** `@pytest.mark.real_cache` (needs the export *and* this
   checkout's populated `cache/`), `@pytest.mark.real_export`, or `@pytest.mark.slow` (minutes, and
   gated on `FRAY_SLOW_ORACLES` so the ordinary oracle run stays worth typing — today that is the
-  `--carry-areas` equality run, which is the only evidence that flag has); `conftest.pytest_collection_modifyitems`
+  `--carry-areas` equality run, which is that default's standing evidence — every carried run
+  also checks itself against a cold derivation, so a divergence surfaces on real data too); `conftest.pytest_collection_modifyitems`
   turns them into skips when the inputs are absent, and the markers are registered in `pyproject.toml`
   so a typo is a warning rather than a silently-never-run test. Gating a real-cache test on the export
   alone is a bug, not a shortcut: it makes the test *fail* with `CacheMissError` on a fresh clone

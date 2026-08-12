@@ -365,23 +365,40 @@ def derive(
     `challenges.py` refuses and still should: this argument turns on the
     *index* being identical, and needs no monotonicity anywhere.
 
-    **`carry_areas` is the one thing here that is measured rather than
-    proved.** A simulation rolls one chunk at a time and every roll
-    rediscovers the same ~70 named areas from scratch; handing in the areas
-    the previous roll settled on takes this loop from eight passes to four,
-    0.87s to 0.47s, and produced an identical `expanded` and `valid` on every
-    roll of a fifteen-roll trial. It is *not* provable: the loop is circular
-    by design - an area's sources can validate the challenge that unlocks it -
-    so a seeded start could in principle hold a self-justifying area that
-    starting from the base would never reach. Nothing cheap distinguishes
-    that from the right answer; the check is the cold run.
+    **`carry_areas` is measured rather than proved, and the mechanism is
+    worth stating exactly.** A simulation rolls one chunk at a time and every
+    roll rediscovers the same ~70 named areas from nothing; handing back the
+    areas the previous roll settled on takes this loop from eight passes to
+    four, 0.87s to 0.47s.
 
-    So it is opt-in (`fray simulate --carry-areas`), off by default, the carry
-    is filtered by `_carried_areas` before it is believed, and a derivation
-    computed this way is **never written to `cache/derived/`** - see
-    `derived_cache.cached_derive`, which refuses the combination outright.
-    `tests/test_simulate.py`'s carry oracle is the evidence, and it runs a
-    full simulation on both cached maps.
+    The risk is *not* that the loop converges somewhere odd. It is that
+    **`expanded` only ever grows, so a carried area is never re-validated at
+    all** - the loop adds areas and never removes one, so whatever the carry
+    puts in stays in, unchecked. Demonstrated: handing `verf` a carry naming
+    `Kalphite Queen's Lair`, which that map cannot unlock, keeps it unlocked
+    and adds 26 valid tasks and 15 items. `_carried_areas` does not catch that
+    one - the lair really is a `Nonskill`/`UnlocksArea` challenge - so the
+    filter is a guard against a *malformed* carry, not a stale one.
+
+    For a stale carry to arise, a roll would have to **lose** an area, which
+    needs `valid` to move backwards somewhere an area unlock reads. On this
+    export it cannot: no `UnlocksArea` challenge carries a `BackupParent`
+    (all 17 backups are Hunter, all 315 area unlocks are Nonskill); none of
+    them requires a task a backup could supply, through a `tasksPlus` family
+    or otherwise; and none requires one of the ten items only a dropped backup
+    outputs, through an `itemsPlus` family or otherwise. Measured to match:
+    across 180 rolls over six seeds and both cached maps, an area is never
+    lost.
+
+    That is an argument about *this* export, not a proof about any export -
+    which is why every carried run still checks itself. The state a run
+    finishes on is re-derived cold and compared; a mismatch raises rather than
+    being saved, and the verified copy is what reaches `cache/derived/`. So
+    the thing this project persists is never the unproven one, and a
+    divergence surfaces on real data rather than waiting for someone to run
+    the oracle. See `simulate.simulate_rolls`, and
+    `tests/test_simulate.py`'s carry oracle, which replays a full simulation
+    on both maps.
     """
     max_skill = slayer_capped_max_skill(state, unlocked)
     locked_equipment = slayer_locked_equipment(state, unlocked)

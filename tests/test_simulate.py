@@ -8,6 +8,7 @@ persisting a payload is `tests/test_batch.py`'s.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +16,13 @@ import pytest
 
 from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.derive.pipeline import MapState, derive
-from fray_claude.runs.simulate import UnlockRecord, roll_pool, simulate_rolls, simulated_payload
+from fray_claude.runs.simulate import (
+    CarryDivergedError,
+    UnlockRecord,
+    roll_pool,
+    simulate_rolls,
+    simulated_payload,
+)
 
 
 def _chunk_info(**data: Any) -> ChunkInfo:
@@ -305,3 +312,58 @@ def test_carrying_areas_reaches_the_same_states_as_deriving_cold(
     assert len(seen[True]) == len(seen[False]) > 1
     for order, (cold, carried) in enumerate(zip(seen[False], seen[True])):
         assert carried == cold, f"{map_id}: state {order} differs"
+
+
+def test_a_carried_run_checks_itself_against_a_cold_derivation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**What makes carrying safe enough to be the default.**
+
+    The carry is measured rather than proved, so a run does not merely trust
+    it: the state it finishes on is re-derived the ordinary way and compared,
+    and that verified copy is the only one anything else gets to read. Here
+    the cold re-derivation is made to disagree, and the run refuses rather
+    than saving a number it cannot stand behind.
+    """
+    info = _chunk_info(sections={"101": {"0": ["100"]}})
+    state = _state(chunk_info=info)
+
+    assert simulate_rolls(state, {"100": True}, rolls=1, seed=1), "the fixture should roll"
+
+    # Make the *verifying* derivation differ from the carried one.
+    from fray_claude.runs import simulate as module
+
+    calls = {"n": 0}
+    original = derive
+
+    def unstable(*args: Any, **kwargs: Any) -> Any:
+        calls["n"] += 1
+        out = original(*args, **kwargs)
+        if kwargs.get("carry_areas") is None and calls["n"] > 2:
+            return replace(out, expanded_chunks={**out.expanded_chunks, "999": True})
+        return out
+
+    monkeypatch.setattr(module, "derive", unstable)
+
+    with pytest.raises(CarryDivergedError, match="different derivation"):
+        simulate_rolls(state, {"100": True}, rolls=1, seed=1)
+
+
+def test_not_carrying_skips_the_check_entirely(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The cold path is the definition, so it has nothing to check against -
+    and must not pay for a second derivation of its own answer."""
+    info = _chunk_info(sections={"101": {"0": ["100"]}})
+    state = _state(chunk_info=info)
+    from fray_claude.runs import simulate as module
+
+    calls = {"n": 0}
+    original = derive
+
+    def counted(*args: Any, **kwargs: Any) -> Any:
+        calls["n"] += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(module, "derive", counted)
+    simulate_rolls(state, {"100": True}, rolls=1, seed=1, carry_areas=False)
+
+    assert calls["n"] == 2, "one derivation per state, and no verifying third"

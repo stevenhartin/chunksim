@@ -159,11 +159,12 @@ def add_arguments(
     )
     simulate.add_argument(
         "--carry-areas",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help=(
-            "experimental: carry each roll's discovered areas into the next "
-            "roll's derivation (~1.8x faster, not provably identical; the run "
-            "then caches none of its derived states - see pipeline.derive)"
+            "carry each roll's discovered areas into the next roll's "
+            "derivation, and check the finished run against a cold one "
+            "(~1.8x faster; --no-carry-areas derives every roll from scratch)"
         ),
     )
     simulate.add_argument(

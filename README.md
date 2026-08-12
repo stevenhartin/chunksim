@@ -483,11 +483,16 @@ otherwise it's created in whatever directory you're in when you run `fray`.
    you'd rather have the machine back; `--jobs` only changes which process a run executes in, and the
    same seed gives the same rolls either way.
 
-   `--carry-areas` is an experimental extra roughly twice as fast again: each roll hands the areas it
-   discovered to the next one instead of rediscovering them. It's off by default because it can't be
-   *proved* to reach the same answer, only measured to — it agrees with the ordinary path on every
-   roll of a 50-roll run on both test maps. A run using it caches none of its derived states, so a
-   later `fray tasks --map <that run>` recomputes.
+   Each roll also hands the map areas it discovered to the next one instead of rediscovering them,
+   which is most of another 2× — 10×50 rolls take about 48 seconds rather than 84. That can't be
+   *proved* to reach the same answer, only measured to, so every run checks itself: the state it
+   finishes on is re-derived the ordinary way and compared, and the run fails loudly rather than
+   saving a number it can't stand behind. `--no-carry-areas` turns it off and derives every roll from
+   scratch.
+
+   The one thing that costs: a carried run only caches the state it finishes on, where a cold one
+   caches every roll. That matters if you're going to **reprice** the run's timeline in the GUI,
+   which reads those per-roll states back — pass `--no-carry-areas` when you intend to.
 
 Run `fray <command> --help` for the full option list of any command, or `fray --help` for the list of
 commands.

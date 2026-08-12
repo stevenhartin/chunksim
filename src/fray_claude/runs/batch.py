@@ -127,10 +127,10 @@ class RunSpec:
     #: Which of this run's derived states to keep - see `CacheBehaviour`.
     cache_behaviour: CacheBehaviour = CacheBehaviour.ALL
     #: Carry each roll's discovered areas into the next roll's derivation.
-    #: Experimental and unproven - `pipeline.derive` explains why - so it is
-    #: off unless somebody typed `--carry-areas`, and a run using it stores
-    #: none of its derivations.
-    carry_areas: bool = False
+    #: Roughly twice as fast, and measured rather than proved - which is why
+    #: `simulate_rolls` re-derives the finished state cold and compares before
+    #: anything is saved. See `pipeline.derive`.
+    carry_areas: bool = True
 
 
 @dataclass(frozen=True)
@@ -789,7 +789,7 @@ def _specs(
     chunkinfo_path: Path | None,
     root: Path | None,
     cache_behaviour: CacheBehaviour,
-    carry_areas: bool = False,
+    carry_areas: bool = True,
     batch_id: str,
 ) -> list[RunSpec]:
     specs: list[RunSpec] = []
@@ -840,7 +840,7 @@ def run_batch(
     chunkinfo_path: Path | None = None,
     root: Path | None = None,
     cache_behaviour: CacheBehaviour = CacheBehaviour.ALL,
-    carry_areas: bool = False,
+    carry_areas: bool = True,
     on_complete: Callable[[RunResult], None] | None = None,
     on_roll: Callable[[int, int, str], None] | None = None,
     should_stop: Callable[[], bool] | None = None,
