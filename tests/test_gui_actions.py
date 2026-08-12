@@ -435,7 +435,12 @@ def test_simulate_progress_counts_rolls_not_runs(
 ) -> None:
     """**`2/3 runs` on a 3x100 job is three updates across four minutes.**
     The bar should count the thing that takes the time, and `countsIn` reads
-    `k/N` either way."""
+    `k/N` either way.
+
+    Asked of the inline path, which is the one that can report per roll: a
+    worker has no channel back, so a pooled batch catches the count up per
+    run instead - see the test below.
+    """
     seen: list[str] = []
 
     def fake(**kw: Any) -> Any:
@@ -453,11 +458,50 @@ def test_simulate_progress_counts_rolls_not_runs(
     ctx = Context(root=tmp_path, check_origin=False)
     _write_map(tmp_path, "fray", [LUMBRIDGE])
 
-    _post("/api/simulate", ctx, {"map": "fray", "name": "sim", "rolls": 4, "runs": 3})
+    _post(
+        "/api/simulate", ctx,
+        {"map": "fray", "name": "sim", "rolls": 4, "runs": 3, "jobs": 1},
+    )
 
     assert seen[0] == "0/12 rolls"
     assert seen[-1].startswith("12/12 rolls")
     assert not any("runs" in line for line in seen), seen
+
+
+def test_a_pooled_simulation_still_counts_rolls_and_asks_for_no_roll_callback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**The default is wide now, so this is the path a user actually gets.**
+
+    `run_batch` cannot call back per roll from a worker, so the page must not
+    ask it to - and the bar still has to read in rolls, which it does by
+    catching up as each run lands. The old `jobs > 1` test for this would have
+    left `jobs=0` reporting as if it were inline, freezing the bar at zero.
+    """
+    seen: list[str] = []
+    asked: dict[str, Any] = {}
+
+    def fake(**kw: Any) -> Any:
+        asked.update(kw)
+        return _FakeBatch(kw["name"], kw["runs"], kw["on_complete"])
+
+    monkeypatch.setattr("fray_claude.gui.actions.run_batch", fake)
+    # Pinned: whether this reports per roll or per run depends on how many
+    # cores the batch will really get, and a test must not.
+    monkeypatch.setattr("fray_claude.gui.actions.os.process_cpu_count", lambda: 8)
+    monkeypatch.setattr(
+        "fray_claude.gui.jobs.JobRegistry.submit",
+        lambda self, action, work: _capture(self, action, work, seen),
+    )
+    ctx = Context(root=tmp_path, check_origin=False)
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+
+    _post("/api/simulate", ctx, {"map": "fray", "name": "sim", "rolls": 4, "runs": 3})
+
+    assert asked["jobs"] == 0, "the page should ask for every core"
+    assert asked["on_roll"] is None, "a pooled run cannot report per roll"
+    assert seen[0] == "0/12 rolls"
+    assert seen[-1].startswith("12/12 rolls"), seen
 
 
 def test_committing_an_edit_writes_a_map_of_its_own_kind(ctx: Context) -> None:

@@ -155,6 +155,16 @@ def _fetch_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
 
 
 def _simulate_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
+    """Roll a batch of simulated futures, as a job the page polls.
+
+    **Wide by default, like the command line**, because a run is tens of
+    seconds of `derive` and the runs do not depend on each other. What that
+    costs is the Stop button's precision: `run_batch` can only check between
+    runs once it pools, since a submitted future is already inside a worker
+    with no channel back. So stopping a 10x50 batch lands within a run rather
+    than within a roll - a handful of seconds, not instant. A single run still
+    executes inline and still stops on the roll.
+    """
     map_id = str(payload.get("map") or "").strip()
     name = str(payload.get("name") or "").strip()
     if not map_id:
@@ -163,7 +173,15 @@ def _simulate_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
         raise ValueError("missing 'name' for the simulated map")
     rolls = as_int(payload, "rolls", 1)
     runs = as_int(payload, "runs", 1)
-    jobs = as_int(payload, "jobs", 1)
+    # **0, the same default the command line carries.** A run is tens of
+    # seconds of `derive` and the runs are independent, so a batch started
+    # from the page should use the machine; `runs/batch.py` keeps the
+    # conservative default for callers who did not ask.
+    jobs = as_int(payload, "jobs", 0)
+    # Resolved the way `run_batch` resolves it, so the page reports at the
+    # granularity the batch actually runs at rather than guessing.
+    workers = jobs if jobs > 0 else (os.process_cpu_count() or 1)
+    inline = workers == 1 or runs == 1
     seed_raw = payload.get("seed")
     seed = None if seed_raw in (None, "") else as_int({"s": seed_raw}, "s", 0) or None
 
@@ -189,7 +207,7 @@ def _simulate_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
             # Pooled runs report nothing per roll, so the count catches up
             # here; inline it is already there and this only re-states it.
             rolled = max(rolled, finished * rolls)
-            if jobs > 1:
+            if not inline:
                 progress(f"{rolled}/{total} rolls - {finished}/{runs} runs")
 
         progress(f"0/{total} rolls")
@@ -205,8 +223,10 @@ def _simulate_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
             root=ctx.root,
             on_complete=report,
             # Only inline: a worker has no channel back, so `run_batch`
-            # ignores this above `--jobs 1` and reports per run instead.
-            on_roll=roll if jobs == 1 else None,
+            # ignores this when it pools and reports per run instead. Asked
+            # about `inline` rather than `jobs`, since `jobs=0` means "as wide
+            # as the machine" and a single run still executes here.
+            on_roll=roll if inline else None,
             should_stop=stop,
         )
         kept = sum(len(run.rolls) for run in batch.runs)
