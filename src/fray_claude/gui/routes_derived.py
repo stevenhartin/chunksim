@@ -223,8 +223,8 @@ def _estimate_payload(state: DerivedState, ctx: Context) -> dict[str, Any]:
     module's, in a copy of `cli.py`'s that had already lost `pinned_slayer` -
     so the panel and the command could price one map differently, and could
     overwrite each other's answer in `cache/derived/` while doing it. Where
-    this panel's time goes is unchanged: `estimate` is 8.8ms and `enrich` is
-    662ms, which is why the latter is cached beside the derivation.
+    this panel's time goes is unchanged: `estimate` is 7.9ms and `enrich` is
+    699ms, which is why the latter is cached beside the derivation.
     """
     answer = inputs.estimate_answer(
         state.state,

@@ -74,6 +74,25 @@ and nechryaels feeding one pool - and does it **per master**, because you
 serve one at a time and combining two would describe nobody's game. A
 superior's *own* drops stay attributed to its base monster.
 
+**Where the time goes, and what was tried.** Pricing every reachable
+method's materials was 60.6s on `fray` and is 0.6s, entirely from three
+caches that live on the `_Walk` or the `material_seconds` closure and die
+with the call: `reachable_lower` and `skill_tables`, which were rebuilt per
+*route*, and `_drop_rates`, whose answers do not depend on the quantity being
+priced though the walk asks once per quantity - 134,451 calls for 3,661
+distinct questions, one pair asked 754 times.
+
+What is *not* done, having been measured: skipping a route whose cheapest
+possible cost already exceeds the best found so far. It is sound - every
+class has an admissible bound, `1/kills_per_hour` for a kill and
+`action_seconds` for a `task:` - but it must skip on a strict `>` and must
+not reorder, because the winner is the *first* route achieving the minimum
+and `EstimateResult.buckets` clamps per source, so a changed tie-break moves
+a bucket total. With the caches in place the profile is flat - no single
+function is above a quarter of it - and the remaining upside is a fraction of
+0.6s for the only change here that would need that proof. The bound is
+written down so the next person measures before building it.
+
 **Two deliberate limits, both of which would otherwise bite.**
 
 - *An item made from other items recurses*, and can cycle: A is the output of
@@ -555,6 +574,16 @@ class _Walk:
     #: rate: different masters assign different things, and Krystilia being
     #: fastest overall is no help at all when the task you need is gargoyles.
     masters: tuple[MasterRate, ...] = ()
+    #: `(monster, item)` -> `_drop_rates`' answer for this walk. The rates are
+    #: a fact about the export and the config, so they do not vary with the
+    #: quantity being priced - but `_item_hours` is called once per quantity,
+    #: and each of those re-walks the same routes asking the same question.
+    #: Measured pricing `fray`'s methods: 134,451 calls, 3,661 distinct, one
+    #: pair asked 754 times. Filled lazily rather than built up front, since a
+    #: single `estimate` touches a fraction of the export's monsters.
+    drop_rates: dict[tuple[str, str], tuple[float, float] | None] = field(
+        default_factory=dict
+    )
     #: Lowercased item name -> the export's own spelling. Task names carry
     #: the item in lower case inside their `~|...|~` span
     #: (`Obtain a ~|granite ring (i)|~`) while `item_sources` is keyed by the
@@ -628,7 +657,18 @@ def _drop_rates(walk: _Walk, monster: str, item: str) -> tuple[float, float] | N
     for both, and `_kill_hours` for how the two combine.
 
     Several rows can offer the same item, so the best of each wins.
+
+    Memoised on the walk - see `_Walk.drop_rates` for why the same question
+    arrives dozens of times, and the module docstring for why a cache that
+    lives on a stack-local object is not the module state the purity rule
+    forbids.
     """
+    key = (monster, item)
+    if key in walk.drop_rates:
+        # `None` is an answer: "this monster does not drop it". Asking `in`
+        # rather than `get` keeps that from being recomputed every time.
+        return walk.drop_rates[key]
+
     best: tuple[float, float] | None = None
     for source in (walk.chunk_info.drops, *walk.skill_tables):
         rows = _mapping(source, monster)
@@ -653,6 +693,7 @@ def _drop_rates(walk: _Walk, monster: str, item: str) -> tuple[float, float] | N
                 best = found if best is None else (
                     max(best[0], found[0]), max(best[1], found[1])
                 )
+    walk.drop_rates[key] = best
     return best
 
 

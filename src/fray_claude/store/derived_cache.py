@@ -3,7 +3,7 @@
 `pipeline.derive` is one; `dps_bridge.enrich` is the other, and the second was
 added after measuring where an estimate actually goes. The tempting thing to
 cache is the `EstimateResult`, and it would be pointless: on the real map
-`estimate` is **8.8ms** and `enrich` is **662ms**, so caching the answer saves
+`estimate` is **7.9ms** and `enrich` is **699ms**, so caching the answer saves
 3ms and caching the *pricing* saves 662. An `EstimateResult` is also only valid
 for one set of level overrides, where an enriched `Heuristics` serves anything
 that needs a kill rate.
@@ -504,9 +504,9 @@ def cached_enrich(
 
     **This is where an estimate's time actually goes**, which is worth stating
     because the obvious thing to cache is the `EstimateResult` and that would
-    be pointless. Measured on the real map: `estimate` is 8.8ms and `enrich`
-    is 662ms, so caching the answer saves 3ms and caching the *pricing* saves
-    662. Storing 21KB and spending ~11ms to read it back is a 60x win on a
+    be pointless. Measured on the real map: `estimate` is 7.9ms and `enrich`
+    is 699ms, so caching the answer saves 8ms and caching the *pricing* saves
+    699. Storing 21KB and spending ~11ms to read it back is a 60x win on a
     repeat; storing an `EstimateResult` would be a rounding error with an
     extra invalidation problem attached.
 
