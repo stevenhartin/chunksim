@@ -29,21 +29,39 @@ with the `dps` extra** - `dps_bridge.enrich` replaces the kill rates with ones
 simulated from the map's own BiS gear, and these rates follow without knowing
 the extra exists.
 
-Three things worth knowing before quoting a number:
+**Every error this model has had was in what the constant was multiplied by,
+never in the constant.** So the four things worth knowing are all about the
+fight rather than the arithmetic:
 
-- **One damage figure serves all five skills.** `kills_per_hour` does not say
-  which style did the killing, so the Magic rate assumes you kill as fast with
-  a spell as with a whip. That flatters Magic on a map with good melee gear.
-  Correcting it needs a per-style DPS, which `dps_bridge` could give and this
-  deliberately does not ask for yet.
+- **The styles are priced separately**, because the experience depends on
+  which one you use. With the `dps` extra the caller passes
+  `dps_bridge.price_combat`, which reports one target per style - so Ranged is
+  priced on the map's bow rather than on its whip - and pairs each kill rate
+  with the health of the *version it simulated*. Without the extra, one damage
+  figure serves all five skills, which flatters whichever style the map is
+  worst at. See `combat_rates`.
+- **Reachable is not farmable.** A raid room is fought once per raid, so a
+  monster reachable only inside an instance cannot be ground for experience -
+  see `farmable_providers` and `INSTANCED_AREAS`. The gate gets combat
+  training *only*: excluding those monsters from item pricing would change a
+  different and correct answer.
+- **Nothing waits for the next monster unless something makes it.** A 2-health
+  monster is one you would run out of, so `spawn_caps` reads the export's own
+  per-chunk spawn counts and caps the rate at what they can supply. The
+  respawn time is the one assumption in the file.
 - **A monster with only a *default* kill rate is refused.** `kills_per_hour`
   falls back to a per-kind constant, and multiplying a guessed rate by real
   hitpoints produces a confident-looking fabrication. The same rule
   `training_options` already applies to `default` scraped rates.
-- **Hitpoints is double counted against whatever else you train**, because in
-  the game it is free. Pricing the climbs separately overstates the total by
-  however much they overlap; taking it off would need the same treatment quest
-  XP got, and is a scheduling question rather than a rate one.
+
+**Hitpoints and Slayer are credits, not climbs priced beside the others.**
+Every point of damage pays Hitpoints 1.33 whatever style dealt it, and a
+Slayer climb's XP per hour *is* a damage rate - so charging for those hours
+separately bills the same fighting twice. `slayer_credit` shares the damage
+out (it runs first, so `hitpoints_credit` sees the hours actually left), and
+both take the XP off the front of the climb the way `quest_xp_grants` does.
+Nothing upstream records what a shared climb ought to cost, so
+`tests/test_combat_xp.py` pins invariants rather than numbers.
 """
 
 from __future__ import annotations
