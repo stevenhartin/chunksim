@@ -2968,8 +2968,22 @@ function renderEstimate(payload) {
     if (!rows.length) continue;
     out += tmpl`<h3>${raw(swatch)}${label(bucket)} <span class="num">${rows.length}</span></h3><ul class="list">`;
     out += withMore(rows, "estimate:" + bucket, 12, (row) => {
-      const tip = tmpl`<b>${plain(row.name)}</b><span class="sub">${plain(row.detail)}</span><span class="sub">${label(row.bucket)}</span>`;
-      return tmpl`<li data-tip="${tip}"><span class="name">${plain(row.name)}</span><span class="num">${hours(row.hours)}</span></li>`;
+      /* **A row with knobs is a control; one without is a line of text.**
+       * Every route the walk takes records what it read (`_Priced.knobs`),
+       * and a ground spawn honestly records nothing - so making every row
+       * clickable would offer an editor for numbers that do not exist. The
+       * tooltip says which it is, because a thing you can press has to look
+       * like one before you press it. */
+      const knobs = row.knobs || [];
+      const arguable = knobs.length
+        ? tmpl`<span class="hint">Click to see the ${String(knobs.length)} ${knobs.length === 1 ? "number" : "numbers"} behind this</span>`
+        : tmpl`<span class="hint">Priced without a rate — nothing here to correct</span>`;
+      const tip = tmpl`<b>${plain(row.name)}</b><span class="sub">${plain(row.detail)}</span><span class="sub">${label(row.bucket)}</span>` + arguable;
+      if (!knobs.length) {
+        return tmpl`<li data-tip="${tip}"><span class="name">${plain(row.name)}</span><span class="num">${hours(row.hours)}</span></li>`;
+      }
+      return tmpl`<li class="arguable" data-tip="${tip}" data-knobs="${knobs.join("\u241f")}"
+        data-row="${plain(row.name)}" role="button" tabindex="0"><span class="name">${plain(row.name)}</span><span class="num">${hours(row.hours)}</span></li>`;
     });
     out += "</ul>";
   }
@@ -2982,6 +2996,11 @@ function renderEstimate(payload) {
     out += "</ul>";
   }
   el["estimate-body"].innerHTML = out;
+  for (const row of el["estimate-body"].querySelectorAll("[data-knobs]")) {
+    const open = () => editKnobs(row.dataset.row, row.dataset.knobs.split("\u241f"));
+    row.onclick = open;
+    row.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } };
+  }
   ownsMore("estimate", () => renderEstimate(estimatePayload));
 }
 
@@ -4155,6 +4174,117 @@ function editBands() {
    * opposite of a reset - so the request has to say which key to forget. */
   document.getElementById("band-reset").onclick = () => applyBands({ reset: ["hours_bands"] });
   document.getElementById("band-save").onclick = () => applyBands({ hours_bands: read() });
+}
+
+/* ---- the numbers behind an estimate ------------------------------------ */
+
+/* **Which file a correction goes in is decided by where you are standing.**
+ *
+ * Browse is the standing opinion about the game - the abyssal whip drops at
+ * the same rate on every map - so it writes `heuristics/overrides.json`, which
+ * is checked in and travels. Timeline and Edit are about one map, and what you
+ * learn there is about that run, so it writes the map's own file. Nobody has
+ * to choose; the mode already said which question was being asked. */
+function knobScope() {
+  return state.mode === "browse" ? "site" : "map";
+}
+
+function knobScopeLabel() {
+  return knobScope() === "site"
+    ? "every map (heuristics/overrides.json)"
+    : "this map only";
+}
+
+/* One knob's stack, weakest layer first. A layer holding nothing is drawn as
+ * a dash rather than omitted: "the scrape has no opinion here" is an answer,
+ * and a row that vanished would read as a rendering fault. */
+function knobLayers(knob) {
+  const seen = knob.layers || {};
+  const named = { scraped: "Wiki scrape", site: "Site override", map: "This map" };
+  return Object.keys(named).map((key) => {
+    const held = seen[key] || {};
+    const shown = held.number === null || held.number === undefined
+      ? (held.value === null || held.value === undefined ? "—" : "set")
+      : String(held.number);
+    return tmpl`<div class="knob-layer ${knob.layer === key ? "on" : ""}">
+      <span class="knob-layer-name">${named[key]}</span>
+      <span class="knob-layer-value">${shown}</span></div>`;
+  }).join("");
+}
+
+/* **Fetched on opening rather than carried on the row.** The row knows which
+ * knobs it read; where each value came from is three files, and sending that
+ * with every one of thirty rows would be most of the payload for a dialog
+ * nobody has opened. `/api/heuristic` is on the cheap path for the same
+ * reason - it is a few stats, not a derivation. */
+async function editKnobs(name, paths) {
+  openOverlay(name, tmpl`<p class="empty">Reading what priced this…</p>`);
+  let knobs;
+  try {
+    knobs = await Promise.all(paths.map((path) =>
+      getJSON("/api/heuristic?path=" + encodeURIComponent(path) + "&" + mapQuery())));
+  } catch (error) {
+    return openOverlay(name, tmpl`<p class="empty">${error.message}</p>`);
+  }
+
+  const rows = knobs.map((knob, index) => {
+    /* **An uneditable knob is shown, not hidden.** `slayer/Duradel` is what
+     * the superior shared table reads, and the number came off the master's
+     * whole assignment table - so there is no single entry to put in a box,
+     * and saying so is more use than pretending the row is not there. */
+    const field = knob.editable
+      ? tmpl`<input class="knob-value" data-index="${String(index)}" type="number" min="0"
+             step="any" value="${knob.number === null ? "" : String(knob.number)}"
+             placeholder="default" aria-label="${knob.path}">`
+      : tmpl`<span class="knob-fixed">read from the whole branch</span>`;
+    return tmpl`<div class="knob">
+      <code class="knob-path">${knob.path}</code>
+      <div class="knob-layers">${raw(knobLayers(knob))}</div>
+      ${raw(field)}
+    </div>`;
+  }).join("");
+
+  openOverlay(name, tmpl`<p class="hint">These are the numbers this estimate was
+    read off. Blank means no override — the estimator falls back to the scrape or its
+    own default. Saving writes to ${knobScopeLabel()}.</p>` + `<div class="knob-edit">${rows}</div>`,
+    tmpl`<button id="knob-cancel" type="button">Cancel</button>
+      <button id="knob-save" type="button">Save</button>`);
+
+  document.getElementById("knob-cancel").onclick = closeOverlay;
+  document.getElementById("knob-save").onclick = () => applyKnobs(knobs);
+}
+
+/* **Only what moved is sent.** Posting every knob would rewrite entries the
+ * reader never touched - stamping a `source` on them and burying the real
+ * edit in the diff of a checked-in file. An emptied box is a deletion and is
+ * sent as `null`, which is how a correction is taken back. */
+async function applyKnobs(knobs) {
+  const changes = [];
+  knobs.forEach((knob, index) => {
+    const field = document.querySelector(`.knob-value[data-index="${index}"]`);
+    if (field === null) return;
+    const typed = field.value.trim();
+    const wanted = typed === "" ? null : Number(typed);
+    const held = knob.number === undefined ? null : knob.number;
+    if (wanted !== held) changes.push({ path: knob.path, value: wanted });
+  });
+  if (!changes.length) return closeOverlay();
+
+  try {
+    for (const change of changes) {
+      await postJSON("/api/heuristic",
+        { ...change, scope: knobScope(), map: state.map });
+    }
+  } catch (error) {
+    /* The server refuses out loud - a bad path or a value that is not a
+     * positive number is a 400 - so this is the message, not a guess. */
+    toast(String(error.message || error));
+    return;
+  }
+  closeOverlay();
+  toast(changes.length === 1 ? "Saved — repricing" : changes.length + " saved — repricing");
+  estimatePayload = null;
+  loadEstimate();
 }
 
 /* **A refusal has to be visible, and the server refuses silently by design.**

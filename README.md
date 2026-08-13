@@ -126,7 +126,13 @@ The panel covers the rest of the CLI. **Tasks** is what you are actually doing �
 category and a toggle for what is already done; quests show only the step you are on, and
 collection-log entries read *Barrows Chests / dharok's greataxe* rather than the raw
 `(Barrows Chests) Obtain a ~|dharok's greataxe|~`. **Estimate** is the hours as a donut you hover for
-the figure, then the same buckets again as lists of what is actually in them. **Find** searches the
+the figure, then the same buckets again as lists of what is actually in them. **Click a row to see
+the numbers it was priced off** — the kill rate, the shop price, the slayer table — with the layer
+each came from, and correct any of them in place. A row priced entirely from constants, like a ground
+spawn, says so rather than offering an editor for a number that does not exist. Where the correction
+is saved depends on where you are: in **Browse** it goes to `heuristics/overrides.json`, which is
+checked in and applies to every map; in **Timeline** or **Edit** it belongs to that map alone, in
+`cache/overrides/`. Emptying the box takes the correction back out. **Find** searches the
 whole world as you type, puts what you can reach first, and fits the camera around every place a
 thing comes from. **Maps** lists what is cached, with the actions that make and remove it — including the two things every number rests on, the chunk export and the wiki rates, each with the date it was last fetched. The rates are scraped automatically the first time you open the GUI without them, since otherwise every hour in **Estimate** is a fallback default.
 

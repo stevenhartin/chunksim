@@ -410,6 +410,14 @@ def _atomic_write_json(path: Path, payload: dict[str, Any]) -> Path:
 
     The temp file is created in the destination directory so `os.replace` is a
     same-filesystem rename, which is what makes it atomic.
+
+    **Insertion order, never sorted.** `heuristics/overrides.json` is checked
+    in and hand-maintained, and its nested keys carry meaning a sort destroys -
+    a recipe lists its tip before its feather. Sorting it turned a one-line
+    correction into a twelve-line diff of unrelated reorderings, which is the
+    unreviewable diff the sorting was added to avoid. Copying the config and
+    editing in place already gives a minimal diff, because a dict keeps the
+    order it was built in.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
@@ -618,6 +626,22 @@ def read_overrides(root: Path | None = None) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise CacheMissError(f"{path} should hold an object, got {type(parsed).__name__}")
     return parsed
+
+
+def write_overrides(overrides: Mapping[str, Any], root: Path | None = None) -> Path:
+    """Replace the checked-in corrections, atomically.
+
+    **This is the one file in the project that is written *and* tracked by
+    git**, which is the point of it: a correction is meant to be diffable and
+    to survive a re-scrape. `knobs.written` copies what is there and edits in
+    place, so the diff is the correction and nothing else - see
+    `_atomic_write_json` for why sorting it is not the way to get that.
+
+    Unlike a map's own, an empty config is written rather than deleted: the
+    file is checked in, so removing it would be a deletion in someone's
+    working tree rather than the absence of data.
+    """
+    return _atomic_write_json(overrides_path(root), dict(overrides))
 
 
 def map_overrides_path(map_id: str, root: Path | None = None) -> Path:

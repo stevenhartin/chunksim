@@ -45,10 +45,11 @@ from fray_claude.runs.batch import price_steps
 from fray_claude.runs.batch import run_batch
 from fray_claude.runs.batch import save_edit, save_snapshot, save_unlock
 from fray_claude.remote.scrape import scrape
-from fray_claude.gui import settings
+from fray_claude.gui import knobs, settings
 from fray_claude.gui.http import Context
 from fray_claude.gui.routes_view import _run_steps
 from fray_claude.gui.routes_view import _timeline_stamp
+from fray_claude.gui.routes_view import resolve_knob
 
 
 def _window_state(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
@@ -86,6 +87,47 @@ def _settings_state(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     settled = settings.sanitise(payload, cache.read_gui_settings(ctx.root))
     cache.write_gui_settings(settled, ctx.root)
     return settled
+
+
+def _heuristic_state(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
+    """Write one override, and answer with the knob as it now stands.
+
+    **Answers inline**, for `_settings_state`'s reason: `app.js` polls any
+    reply carrying a `job` key.
+
+    `scope` decides which file, and the page decides `scope` from its mode -
+    Browse is the standing opinion and writes `heuristics/overrides.json`;
+    Timeline and Edit are about one map and write its own. Both are ordinary
+    merged config, so the same path addresses the same thing in either.
+
+    The reply is the *resolved* knob rather than an acknowledgement, so the
+    page redraws from what was stored. A refused value raises, which
+    `_handle_post` turns into a 400 - visible, where a 200 saying nothing
+    happened is the silent-refusal failure `settings.py` already records.
+    """
+    path = str(payload.get("path") or "")
+    scope = str(payload.get("scope") or "")
+    if scope not in knobs.SCOPES:
+        raise ValueError(f"scope must be one of {', '.join(knobs.SCOPES)}")
+    raw = payload.get("value")
+    if raw is not None and (isinstance(raw, bool) or not isinstance(raw, (int, float))):
+        raise ValueError("value must be a number, or null to clear the override")
+    number = None if raw is None else float(raw)
+
+    if scope == "site":
+        current = cache.read_overrides(ctx.root)
+        cache.write_overrides(knobs.written(path, number, current), ctx.root)
+    else:
+        map_id = str(payload.get("map") or "")
+        if not map_id:
+            raise ValueError("a map-scoped override needs a map")
+        current = cache.read_map_overrides(map_id, ctx.root)
+        cache.write_map_overrides(map_id, knobs.written(path, number, current), ctx.root)
+    # The memo watches both files' mtimes, but dropping it here means the very
+    # next request cannot race the stat's resolution - this is the one writer,
+    # so it is the one place that knows for certain something moved.
+    ctx.derivations.forget_reference()
+    return resolve_knob(path, str(payload.get("map") or ""), ctx)
 
 
 #: **A development escape hatch, deliberately unadvertised.** Typed into the
@@ -657,4 +699,5 @@ _ACTIONS: dict[str, Callable[[Mapping[str, Any], Context], dict[str, Any]]] = {
     "/api/derived/prune": _prune_job,
     "/api/window": _window_state,
     "/api/settings": _settings_state,
+    "/api/heuristic": _heuristic_state,
 }

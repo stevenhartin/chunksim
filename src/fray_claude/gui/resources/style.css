@@ -1258,6 +1258,36 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .band-under, .band-unit, .band-open { color: var(--dim); font-size: 11px; }
 .band-open { margin-left: auto; }
 
+/* The numbers behind a priced row. Same scale and the same shape as the band
+ * editor above - one dialog idiom, not two. */
+.knob-edit { display: grid; gap: var(--s3); }
+
+.knob {
+  display: grid;
+  gap: var(--s1);
+  padding: var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--r1);
+}
+
+.knob-path { color: var(--dim); font-size: 11px; overflow-wrap: anywhere; }
+
+.knob-layers { display: flex; flex-wrap: wrap; gap: var(--s2); }
+
+.knob-layer { display: flex; gap: var(--s1); font-size: 11px; color: var(--dim); }
+/* The layer in force, which is the one answering the question "why is it
+ * that number". Weight rather than hue: the palette here already means
+ * bucket, and a fifth meaning for a colour is how a legend stops working. */
+.knob-layer.on { color: var(--text); font-weight: 600; }
+
+.knob-value { width: 12ch; text-align: right; }
+.knob-fixed { color: var(--dim); font-size: 11px; }
+
+/* A row you can press. The cursor is the affordance; the tooltip says what
+ * pressing does. */
+.arguable { cursor: pointer; }
+.arguable:hover .name, .arguable:focus-visible .name { color: var(--amber); }
+
 .tl-scrub {
   display: flex;
   gap: var(--s3);

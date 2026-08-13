@@ -23,6 +23,7 @@ from fray_claude.costing.estimate import EstimateResult
 from fray_claude.costing.training import TrainingOption, training_options
 from fray_claude.costing.inputs import load_heuristics
 from fray_claude.derive import boosts
+from fray_claude.gui import knobs
 from fray_claude.derive.active_tasks import _level_proven_elsewhere
 from fray_claude.derive.task_names import strip_task_markup
 from fray_claude.runs.batch import PriceSpec, _Prepared, price_detail
@@ -342,6 +343,28 @@ def _completed_levels(map_id: str, ctx: Context) -> dict[str, float]:
         if isinstance(current, str) and current:
             raise_to(skill, current)
     return highest
+
+
+def resolve_knob(path: str, map_id: str, ctx: Context) -> dict[str, Any]:
+    """One override path, at every layer, for the panel that edits it.
+
+    **On the cheap path deliberately.** It reads the three config files and
+    nothing else - `ReferenceBlobs` needs no export, which is what lets a
+    long-running server build one before it has parsed 10MB - so opening the
+    dialog on a row costs a few stats, not a derivation. The row already had
+    the number; what this adds is where the number came from.
+
+    `map_id` may be empty, for a page not looking at a map. The map layer is
+    then absent, which is the honest answer rather than a guess at which map
+    was meant.
+    """
+    blobs = ctx.derivations.reference()
+    return knobs.resolve(
+        path,
+        scraped=blobs.scraped,
+        site=cache.read_overrides(ctx.root),
+        map_overrides=cache.read_map_overrides(map_id, ctx.root) if map_id else {},
+    )
 
 
 def _step_view(map_id: str, step: int, ctx: Context) -> MapView:

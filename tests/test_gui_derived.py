@@ -400,3 +400,97 @@ def test_every_derivation_route_takes_the_same_step(ctx: Context) -> None:
     ):
         response = _get(path, ctx, map="fray", step="1", **extra)
         assert response.status == HTTPStatus.BAD_REQUEST, f"{path} ignored the step"
+
+
+def _knob(ctx: Context, path: str, map_id: str = "fray") -> Response:
+    """`/api/heuristic`, whose own parameter is called `path` - which collides
+    with `_get`'s first argument, hence a helper rather than a keyword."""
+    return handle_request(
+        "GET", "/api/heuristic", {"path": [path], "map": [map_id]}, ctx
+    )
+
+
+def test_a_knob_reports_where_its_number_came_from(ctx: Context) -> None:
+    """The row already had the number; what the dialog adds is the layer."""
+    cache.write_overrides({"monsters": {"Goblin": {"value": 200.0}}}, ctx.root)
+
+    body = _body(_knob(ctx, "monsters/Goblin"))
+
+    assert body["layer"] == "site"
+    assert body["number"] == 200.0
+    assert body["editable"] is True
+
+
+def test_a_knob_nobody_has_set_is_still_offered(ctx: Context) -> None:
+    """Otherwise the only numbers you could correct are the corrected ones."""
+    body = _body(_knob(ctx, "monsters/Goblin"))
+
+    assert body["layer"] is None and body["editable"] is True
+
+
+def test_a_knob_path_that_is_not_a_branch_is_a_400(ctx: Context) -> None:
+    """These paths address a file that is read back and parsed."""
+    response = _knob(ctx, "nonsense/Goblin")
+
+    assert response.status == HTTPStatus.BAD_REQUEST
+    assert "not an override branch" in _body(response)["error"]
+
+
+def test_writing_a_map_scoped_override_moves_that_map_only(ctx: Context) -> None:
+    """**Which file is the page's decision, carried as `scope`.** Browse is the
+    standing opinion and writes the checked-in file; a map's own is what
+    somebody learned about that map."""
+    reply = _body(
+        _post(
+            "/api/heuristic",
+            ctx,
+            {"path": "monsters/Goblin", "value": 250.0, "scope": "map", "map": "fray"},
+        )
+    )
+
+    assert reply["layer"] == "map" and reply["number"] == 250.0
+    assert cache.read_map_overrides("fray", ctx.root)["monsters"]["Goblin"]["value"] == 250.0
+    assert cache.read_overrides(ctx.root) == {}
+
+
+def test_clearing_an_override_removes_the_file(ctx: Context) -> None:
+    """"No corrections" stays one state on disk rather than two that price
+    identically - see `cache.write_map_overrides`."""
+    _post(
+        "/api/heuristic",
+        ctx,
+        {"path": "monsters/Goblin", "value": 250.0, "scope": "map", "map": "fray"},
+    )
+
+    reply = _body(
+        _post(
+            "/api/heuristic",
+            ctx,
+            {"path": "monsters/Goblin", "value": None, "scope": "map", "map": "fray"},
+        )
+    )
+
+    assert reply["layer"] is None
+    assert not cache.map_overrides_path("fray", ctx.root).exists()
+
+
+@pytest.mark.parametrize(
+    "payload,expected",
+    [
+        ({"path": "nonsense/x", "value": 1.0, "scope": "map", "map": "fray"}, "branch"),
+        ({"path": "monsters/Goblin", "value": -5.0, "scope": "map", "map": "fray"}, "positive"),
+        ({"path": "monsters/Goblin", "value": 1.0, "scope": "nope", "map": "fray"}, "scope"),
+        ({"path": "monsters/Goblin", "value": 1.0, "scope": "map"}, "needs a map"),
+        ({"path": "monsters/Goblin", "value": "fast", "scope": "map", "map": "fray"}, "number"),
+    ],
+)
+def test_a_refused_override_is_a_400_rather_than_a_quiet_no_op(
+    ctx: Context, payload: dict[str, Any], expected: str
+) -> None:
+    """**Visible refusal.** A 200 saying nothing happened is the silent failure
+    `gui/settings.py` already records having shipped once."""
+    response = _post("/api/heuristic", ctx, payload)
+
+    assert response.status == HTTPStatus.BAD_REQUEST
+    assert expected in _body(response)["error"]
+    assert not cache.map_overrides_path("fray", ctx.root).exists()

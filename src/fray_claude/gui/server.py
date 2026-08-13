@@ -53,7 +53,7 @@ from fray_claude.model.summary import summarise
 from fray_claude.gui.derivation import DerivedState
 from fray_claude.gui.panels import roll_panel, task_panel
 from fray_claude.gui.actions import _ACTIONS
-from fray_claude.gui import settings
+from fray_claude.gui import knobs, settings
 from fray_claude.gui.http import Context, Response, _error, _first, _json, touch
 from fray_claude.gui.routes_derived import (
     _chunk_detail,
@@ -74,6 +74,7 @@ from fray_claude.gui.routes_view import (
     _run_steps,
     _timeline_payload,
     build_map_view,
+    resolve_knob,
     roll_detail,
 )
 
@@ -395,6 +396,19 @@ def handle_request(
             if isinstance(at, Response):
                 return at
             return _json({"map_id": map_id, "step": at.step, **task_panel(at.derived)})
+
+        if path == "/api/heuristic":
+            # **The cheap path, on purpose.** A knob is three config files;
+            # the row that opened the dialog already carried the number, and
+            # what this adds is which layer it came from. See
+            # `routes_view.resolve_knob`.
+            knob = _first(query, "path")
+            if knob is None:
+                return _error("missing required parameter 'path'", HTTPStatus.BAD_REQUEST)
+            try:
+                return _json(resolve_knob(knob, _first(query, "map") or "", ctx))
+            except (knobs.KnobError, cache.CacheMissError) as exc:
+                return _error(str(exc), HTTPStatus.BAD_REQUEST)
 
         if path == "/api/settings":
             # **Whole, never a patch.** `sanitise` fills every key it knows
