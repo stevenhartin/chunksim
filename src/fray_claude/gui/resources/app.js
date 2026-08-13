@@ -2089,19 +2089,19 @@ function renderMapMenu() {
   for (const button of el["map-menu"].querySelectorAll("[data-map]")) {
     button.onclick = () => { closeMapMenu(); chooseMap(button.dataset.map); };
   }
-  /* **Hover previews it, a press pins it**, which is one mechanism with two
-   * ways in rather than two mechanisms. Hover alone is the fast path and is
-   * also the fragile one - it closes the moment the pointer wanders, and
-   * there is no hover at all on a touch screen or from a keyboard. Pinning is
-   * what makes the runs reachable without a steady hand.
+  /* **Hover previews the runs; a press asks about them.** Hover is the fast
+   * path and the fragile one - it closes when the pointer wanders and does
+   * not exist on a touch screen or from a keyboard - so the press used to pin
+   * the strip open to make the runs reachable at all. `showSimulations` is a
+   * better answer to that: it lists every run *and* what happened in it, in a
+   * dialog that stays put.
    *
    * Only one nest is open at a time, or two submenus land in the same strip
    * of screen. */
-  let pinned = null;
   for (const nest of el["map-menu"].querySelectorAll(".menu-nest")) {
     const open = (on) => {
       for (const other of el["map-menu"].querySelectorAll(".menu-nest")) {
-        const showing = (on && other === nest) || other === pinned;
+        const showing = on && other === nest;
         other.classList.toggle("open", showing);
         other.firstElementChild.setAttribute("aria-expanded", String(showing));
         if (showing) placeSubmenu(other);
@@ -2116,17 +2116,114 @@ function renderMapMenu() {
      * aim at and one you catch. */
     nest.addEventListener("mouseenter", () => {
       clearTimeout(nest.closing);
-      if (!pinned) open(true);
+      open(true);
     });
     nest.addEventListener("mouseleave", () => {
       clearTimeout(nest.closing);
-      if (!pinned) nest.closing = setTimeout(() => open(false), SUBMENU_GRACE);
+      nest.closing = setTimeout(() => open(false), SUBMENU_GRACE);
     });
     nest.firstElementChild.onclick = () => {
-      pinned = pinned === nest ? null : nest;
-      open(pinned === nest);
+      closeMapMenu();
+      showSimulations(nest.dataset.batch);
     };
   }
+}
+
+/* **A batch is a question the picker had no room for.** Ten runs of one map
+ * are ten futures, and what you want to know before opening one is which was
+ * kind and which was brutal - a submenu of names cannot say that. So the batch
+ * row opens this instead: one line per run, its rolls counted by band, and
+ * what it would take to finish the world it ended in.
+ *
+ * It also carries the runs, which is why the row no longer pins the submenu:
+ * pinning existed to make the runs reachable without a steady hand, and a
+ * dialog does that better than a strip that closes when you breathe on it.
+ */
+async function showSimulations(batch) {
+  const runs = state.maps.filter((m) => m.map_id.startsWith(batch + "/"));
+  openOverlay(batch, tmpl`<p class="empty">Reading ${String(runs.length)} runs…</p>`);
+  const timelines = await Promise.all(runs.map((run) =>
+    getJSON("/api/timeline?map=" + encodeURIComponent(run.map_id)).catch(() => null)));
+  renderSimulations(batch, runs, timelines);
+}
+
+/* One run's rolls, counted into the bands they fall in. `null` where the run
+ * was never priced - which is a different thing from a run of nothing, and
+ * has to read differently. */
+function runBands(timeline) {
+  const bands = tlBands();
+  if (!timeline || !timeline.has_hours || !bands) return null;
+  const counts = bands.map(() => 0);
+  for (const step of timeline.steps.slice(1)) {
+    if (step.hours === null || step.hours === undefined) continue;
+    counts[bandOf(step.hours, bands)] += 1;
+  }
+  return counts;
+}
+
+/* What finishing the world a run ended in would take: the outstanding total
+ * after its last roll. **Not the sum of the bars** - those are what each roll
+ * *added*, and adding them counts the work the run started with once per
+ * roll. See `runs/timeline.py` on why the two differ. */
+function runOutstanding(timeline) {
+  if (!timeline || !timeline.has_hours) return null;
+  const last = timeline.steps[timeline.steps.length - 1];
+  return last && last.total_hours !== null && last.total_hours !== undefined
+    ? last.total_hours : null;
+}
+
+function renderSimulations(batch, runs, timelines) {
+  const bands = tlBands();
+  const unpriced = runs.filter((r, i) => !runBands(timelines[i])).length;
+  /* Swatch *and* name: the strip's own key is not on screen here, so a column
+   * of colours would be five questions. `data-tip` rather than `title`,
+   * because the page has one tooltip system and this is not the exception. */
+  const head = bands
+    ? bands.map((band, index) => tmpl`<th data-tip="${
+        tmpl`<b>${band.name}</b><span class="sub">${bandRange(bands, index)}</span>`
+      }"><span class="sim-band"><i class="tl-sw" data-band="${String(index)}"></i>${
+        band.name}</span></th>`).join("")
+    : "";
+  const rows = runs.map((run, index) => {
+    const counts = runBands(timelines[index]);
+    const outstanding = runOutstanding(timelines[index]);
+    const cells = bands
+      ? bands.map((band, at) => tmpl`<td class="${counts && counts[at] ? "" : "nil"}">${
+          counts ? String(counts[at]) : "—"}</td>`).join("")
+      : "";
+    return tmpl`<tr><td class="sim-name"><button class="link" type="button"
+        data-open="${run.map_id}">${run.map_id.split("/")[1]}</button></td>
+      ${raw(cells)}
+      <td class="sim-total">${outstanding === null ? "not priced" : hours(outstanding)}</td></tr>`;
+  }).join("");
+
+  openOverlay(batch, tmpl`<p class="hint">One row per run: how many of its rolls
+    landed in each band, and what finishing the world it ended in would take.</p>`
+    + `<table class="sim-table"><thead><tr><th>Run</th>${head}<th>To finish</th></tr></thead>`
+    + `<tbody>${rows}</tbody></table>`,
+    unpriced
+      ? tmpl`<button id="sim-cost" type="button">Compute hours for ${String(unpriced)} ${
+          unpriced === 1 ? "run" : "runs"}</button>`
+      : "");
+
+  for (const button of document.querySelectorAll("[data-open]")) {
+    button.onclick = () => { closeOverlay(); chooseMap(button.dataset.open); };
+  }
+  const cost = document.getElementById("sim-cost");
+  if (cost) cost.onclick = () => costSimulations(batch, runs, timelines);
+}
+
+/* **One run at a time.** Each pricing job already spreads itself across every
+ * core (`batch.price_steps`), so starting ten at once would have them fight
+ * over the same cores and finish no sooner - and the progress card can only
+ * describe one thing. */
+async function costSimulations(batch, runs, timelines) {
+  closeOverlay();
+  for (let index = 0; index < runs.length; index++) {
+    if (runBands(timelines[index])) continue;
+    await runAction("Cost " + runs[index].map_id, "/api/timeline", { map: runs[index].map_id });
+  }
+  showSimulations(batch);
 }
 
 /* Where the submenu goes, since the stylesheet cannot say: it is `fixed` to

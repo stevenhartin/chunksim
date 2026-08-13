@@ -1292,3 +1292,38 @@ def test_a_submenu_survives_the_gap_between_it_and_its_row() -> None:
     assert "setTimeout" in leave and "SUBMENU_GRACE" in leave
     enter = _match(r'nest\.addEventListener\("mouseenter", \(\) => \{(.*?)\n    \}\)', js)
     assert "clearTimeout" in enter, "arriving anywhere in the nest must cancel the close"
+
+
+def test_a_batch_row_asks_about_its_runs_rather_than_pinning_a_strip() -> None:
+    """**Ten runs of one map are ten futures**, and what you want to know
+    before opening one is which was kind and which was brutal - a submenu of
+    names cannot say that.
+
+    The press used to pin the submenu open, which existed to make the runs
+    reachable without a steady hand. The dialog does that better and carries
+    the answer as well, so the pin is gone rather than duplicated.
+    """
+    _, js, css = _resources()
+
+    assert "showSimulations(nest.dataset.batch)" in js
+    # Replaced, not kept alongside - the word survives in unrelated prose
+    # ("pinned at either end" of a zoom), so this looks for the state itself.
+    assert "let pinned" not in js and "pinned = nest" not in js
+
+    # The bars are what each roll *added*; the finish line is the outstanding
+    # total after the last one, and the two are not the same sum.
+    body = _match(r"function runOutstanding\(timeline\) \{(.*?)\n\}", js)
+    assert "total_hours" in body
+
+    styles = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    assert ".sim-table" in styles
+
+
+def test_costing_a_batch_runs_one_at_a_time() -> None:
+    """Each pricing job already spreads itself across every core, so starting
+    ten at once has them fight over the same cores and finish no sooner - and
+    the progress card can only describe one thing."""
+    _, js, _ = _resources()
+
+    body = _match(r"async function costSimulations\(batch, runs, timelines\) \{(.*?)\n\}", js)
+    assert "await runAction(" in body and "for (let index" in body
