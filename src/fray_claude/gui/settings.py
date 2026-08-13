@@ -49,7 +49,7 @@ DEFAULT_BANDS: tuple[dict[str, Any], ...] = (
     {"name": "Free", "upto": 1.0},
     {"name": "Quick", "upto": 10.0},
     {"name": "Grind", "upto": 100.0},
-    {"name": "Minor Death", "upto": 300.0},
+    {"name": "Brutal", "upto": 300.0},
     {"name": "Death", "upto": None},
 )
 
@@ -127,6 +127,40 @@ def _bands(value: Any) -> list[dict[str, Any]] | None:
 #: something no other part of this module has heard of.
 KEYS: tuple[str, ...] = ("hours_scale", "hours_bands")
 
+#: Band names that were once the default and are not any more, and the bound
+#: they shipped with. **Both halves are the check**: a stored band matching
+#: name *and* edge is one nobody chose - it was written out because settings
+#: are stored whole, not because anyone typed it - where the same name over a
+#: moved edge is a deliberate choice and is left alone.
+#:
+#: Renaming a default is otherwise invisible to everyone who has already
+#: opened the page, since their file holds the old one and this module has no
+#: way to tell "the default, saved" from "what I picked". This is the
+#: narrowest thing that fixes that, and it stops applying once it has applied.
+_SUPERSEDED_NAMES: Mapping[tuple[str, float], str] = {
+    ("Minor Death", 300.0): "Brutal",
+}
+
+
+def _renamed(current: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
+    """`current` with superseded default band names brought up to date."""
+    bands = (current or {}).get("hours_bands")
+    if current is None or not isinstance(bands, list):
+        return current
+    updated: list[Any] = []
+    for band in bands:
+        renamed = None
+        if isinstance(band, dict):
+            name, upto = band.get("name"), band.get("upto")
+            if (
+                isinstance(name, str)
+                and isinstance(upto, (int, float))
+                and not isinstance(upto, bool)
+            ):
+                renamed = _SUPERSEDED_NAMES.get((name, float(upto)))
+        updated.append({**band, "name": renamed} if renamed else band)
+    return {**current, "hours_bands": updated}
+
 
 def sanitise(payload: Mapping[str, Any], current: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """The settings to store, given what was sent and what is already there.
@@ -143,6 +177,7 @@ def sanitise(payload: Mapping[str, Any], current: Mapping[str, Any] | None = Non
     arrive as its own instruction rather than as an absence.
     """
     settled = defaults()
+    current = _renamed(current)
     reset = payload.get("reset")
     dropped = (
         {key for key in reset if key in KEYS}

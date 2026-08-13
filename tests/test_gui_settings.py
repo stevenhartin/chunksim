@@ -24,7 +24,7 @@ def test_nothing_sent_gives_the_defaults_whole() -> None:
     settled = settings.sanitise({})
     assert settled["hours_scale"] == "log"
     assert [band["name"] for band in settled["hours_bands"]] == [
-        "Free", "Quick", "Grind", "Minor Death", "Death"
+        "Free", "Quick", "Grind", "Brutal", "Death"
     ]
     assert [band["upto"] for band in settled["hours_bands"]] == [1.0, 10.0, 100.0, 300.0, None]
 
@@ -150,3 +150,44 @@ def test_a_reset_and_a_value_for_the_same_key_takes_the_value() -> None:
     stored = settings.sanitise({"hours_scale": "linear"})
     settled = settings.sanitise({"reset": ["hours_scale"], "hours_scale": "linear"}, stored)
     assert settled["hours_scale"] == "linear"
+
+
+def test_a_band_still_carrying_a_superseded_default_name_is_brought_up_to_date() -> None:
+    """**Renaming a default is otherwise invisible to anyone who has opened
+    the page**, because settings are stored whole: the old name is already in
+    their file, and nothing here can tell "the default, saved" from "what I
+    picked". Matching the *edge* as well is what makes the difference - a
+    stored band at the old name and the old bound is one nobody chose.
+    """
+    stored = {
+        "hours_scale": "log",
+        "hours_bands": [
+            {"name": "Free", "upto": 1.0},
+            {"name": "Quick", "upto": 10.0},
+            {"name": "Grind", "upto": 100.0},
+            {"name": "Minor Death", "upto": 300.0},
+            {"name": "Death", "upto": None},
+        ],
+    }
+
+    settled = settings.sanitise({}, stored)
+
+    assert [band["name"] for band in settled["hours_bands"]][3] == "Brutal"
+
+
+def test_the_same_name_over_a_moved_edge_is_a_choice_and_is_kept() -> None:
+    """Someone who typed it, or moved it, meant it."""
+    stored = {
+        "hours_scale": "log",
+        "hours_bands": [
+            {"name": "Free", "upto": 1.0},
+            {"name": "Quick", "upto": 10.0},
+            {"name": "Grind", "upto": 100.0},
+            {"name": "Minor Death", "upto": 250.0},
+            {"name": "Death", "upto": None},
+        ],
+    }
+
+    settled = settings.sanitise({}, stored)
+
+    assert [band["name"] for band in settled["hours_bands"]][3] == "Minor Death"

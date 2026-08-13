@@ -4063,17 +4063,23 @@ function tlBars(steps, key, current) {
   /* **Under the bars, so a decade line never cuts across one.** Drawn before
    * the slots too, which keeps the hit areas on top of everything and the
    * tooltip working over a gridline. */
+  /* **The lines are SVG and their labels are not**, which is the whole of why
+   * this is two loops. The graph draws with `preserveAspectRatio="none"` so a
+   * bar fills its column at any panel width - and that scales the *glyphs*
+   * too, by whatever ratio the strip happens to be, which is why the decade
+   * labels came out stretched. A line does not care; text does. So the labels
+   * are HTML positioned over the graph, where a percentage of the height is
+   * still a percentage of the height and 10px is 10px. */
+  const overlay = [];
   if (log) {
     for (const tick of HOURS_TICKS) {
       const y = base - logFrac(tick) * room;
       out += tmpl`<line class="tl-grid" x1="0" y1="${y}" x2="${W}" y2="${y}"/>`;
-      /* The top line sits at `TOP`, so its label has nowhere to go above it -
-       * it would render outside the viewBox and be cut in half. Only that one
-       * hangs below its line; the rest sit on top, where they do not collide
-       * with the line above. */
-      const above = y - TOP > 10;
-      out += tmpl`<text class="tl-zero-label" x="4" y="${above ? y - 2 : y + 9}">${
-        tick >= 1000 ? `${tick / 1000}k` : String(tick)}h</text>`;
+      /* The top line has nowhere to put a label above it, so that one sits
+       * under its line; the rest ride on top of theirs, clear of the line
+       * above. */
+      overlay.push(tmpl`<span class="tl-tick ${y - TOP > 10 ? "" : "below"}"
+        style="top:${(y / H) * 100}%">${tick >= 1000 ? `${tick / 1000}k` : String(tick)}h</span>`);
     }
   }
   steps.slice(1).forEach((row, index) => {
@@ -4093,6 +4099,16 @@ function tlBars(steps, key, current) {
         data-band="${band === null ? "" : String(band)}"
         x="${x + width * 0.18}" y="${negative ? base : base - size}"
         width="${width * 0.64}" height="${size}" rx="1"/>`;
+      /* **A mark on the worst band, above the bar rather than on it.** The
+       * death colour is near-black on a near-black strip, so the bar that
+       * matters most is the one hardest to pick out - the skull is what
+       * finds it. In the overlay, because the graph's scaling would stretch
+       * it exactly as it stretched the decade labels. */
+      if (bands !== null && band === bands.length - 1 && !negative) {
+        overlay.push(tmpl`<svg class="tl-skull" viewBox="0 0 24 24"
+          style="left:${((x + width / 2) / W) * 100}%; top:${((base - size) / H) * 100}%"
+          aria-hidden="true"><use href="#i-skull"/></svg>`);
+      }
     }
     /* Where you are, as a tick under the column rather than a block over it -
      * a full-height wash competed with the bars it was meant to point at. */
@@ -4106,7 +4122,7 @@ function tlBars(steps, key, current) {
     out += tmpl`<text class="tl-pending" x="${W / 2}" y="${base - 14}"
       text-anchor="middle">Press Compute hours to price each roll</text>`;
   }
-  return out + "</svg>";
+  return out + "</svg>" + (overlay.length ? `<div class="tl-over">${overlay.join("")}</div>` : "");
 }
 
 /* **The key to the colours, and the way into changing them.**

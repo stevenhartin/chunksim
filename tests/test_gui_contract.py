@@ -1049,7 +1049,7 @@ def test_the_band_palette_is_defined_once_and_the_page_names_only_the_band() -> 
     """The same division the mode tints keep: the stylesheet owns the colours
     and the page owns which one is on, as a data attribute."""
     _, js, css = _resources()
-    for band in ("free", "quick", "grind", "minor", "death"):
+    for band in ("free", "quick", "grind", "brutal", "death"):
         assert f"--band-{band}:" in css
         assert f"var(--band-{band})" in css
     for index in range(5):
@@ -1066,7 +1066,7 @@ def test_the_bands_are_positional_so_a_renamed_band_keeps_its_colour() -> None:
     assert 'data-band="${band === null ? "" : String(band)}"' in js
     # Comments may name a band; a *selector* may not.
     rules = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
-    for name in ("Free", "Quick", "Grind", "Minor Death", "Death"):
+    for name in ("Free", "Quick", "Grind", "Brutal", "Death"):
         assert name not in rules
 
 
@@ -1170,3 +1170,48 @@ def test_an_overridden_knob_is_marked_and_can_be_reverted() -> None:
 
     styles = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
     assert ".knob.mine" in styles and ".knob-flag" in styles
+
+
+def test_glyphs_are_drawn_outside_the_stretched_graph() -> None:
+    """**`preserveAspectRatio="none"` is right for a bar and wrong for a
+    glyph.**
+
+    It lets a column fill its width at any panel size, and scales every letter
+    by the same ratio on the way - which is why the decade labels came out
+    stretched. Lines do not care and text does, so anything with a shape of
+    its own lives in an HTML overlay where a percentage is still a percentage
+    and 10px is 10px.
+    """
+    _, js, css = _resources()
+
+    assert 'preserveAspectRatio="none"' in js, "the bars still fill their columns"
+    body = _match(r"function tlBars\(steps, key, current\) \{(.*?)\n\}", js)
+    # The label is a span in the overlay, not a <text> in the graph.
+    assert "tl-tick" in body and '<text class="tl-zero-label"' not in body
+    assert 'class="tl-over"' in body
+
+    styles = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    assert ".tl-over" in styles and ".tl-tick" in styles
+    # The overlay is positioned against the graph, so the graph has to be a
+    # containing block. Matched on the rule that sizes it, since `.tl-graph`
+    # also appears in a collapsed-strip rule that only sets `display`.
+    assert "position: relative" in _match(
+        r"\.tl-graph \{([^}]*height: 92px[^}]*)\}", styles
+    )
+
+
+def test_the_worst_band_is_marked_where_its_colour_cannot_be_seen() -> None:
+    """The death bar is near-black on a near-black strip, so the bar that
+    matters most is the one hardest to pick out."""
+    html, js, css = _resources()
+
+    assert 'id="i-skull"' in html
+    body = _match(r"function tlBars\(steps, key, current\) \{(.*?)\n\}", js)
+    assert "#i-skull" in body
+    # Guarded, or the Tasks series - which has no bands at all - throws.
+    assert "bands !== null && band === bands.length - 1" in body
+    styles = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    assert ".tl-skull" in styles
+    # **The graph's own `svg` rule must not reach the overlay's.** `.tl-graph
+    # svg` out-specifies `.tl-skull` and sized every skull to the whole strip.
+    assert ".tl-graph > svg" in styles and ".tl-graph svg" not in styles

@@ -51,8 +51,12 @@
   --band-free: #4cc38a;
   --band-quick: #d8c341;
   --band-grind: #e08c3c;
-  --band-minor: #d6453f;
+  --band-brutal: #d6453f;
   --band-death: #16181d;
+  /* The death bar is near-black against a near-black strip, so its mark is
+     drawn in the outline colour the bar already wears rather than in the
+     fill, which would be invisible on it. */
+  --band-death-mark: #d6453f;
 
   /* Spacing. Four-based, because every border here is a hairline and the
      smallest gap that reads as a gap at 13px type is 4. */
@@ -1160,11 +1164,67 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .timeline.shut { padding-bottom: var(--s2); }
 
 .tl-graph {
+  position: relative;
   height: 92px;
   margin-bottom: var(--s2);
 }
 
-.tl-graph svg { display: block; width: 100%; height: 100%; }
+/* **The direct child, not any `svg` inside.** The overlay's skulls are `svg`
+   too, and `.tl-graph svg` out-specifies `.tl-skull` - which sized each one to
+   the whole strip. */
+.tl-graph > svg { display: block; width: 100%; height: 100%; }
+
+/* **Where anything that must not be stretched goes.** The graph draws with
+   `preserveAspectRatio="none"`, which is right for a bar - it should fill its
+   column at any panel width - and wrong for every glyph, which comes out
+   scaled by whatever ratio the strip happens to be. So the decade labels and
+   the skulls sit here, in ordinary layout, positioned by percentage. */
+.tl-over {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.tl-tick {
+  position: absolute;
+  left: var(--s1);
+  transform: translateY(-50%);
+  padding-right: var(--s1);
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1;
+  /* The axis runs over the first column, so a label can land on a bar. Haloed
+     in the page's own background rather than boxed: a chip would draw a shape
+     where there is nothing, and these have to read as ruling. */
+  text-shadow: 0 0 3px var(--bg), 0 0 3px var(--bg), 0 0 2px var(--bg);
+}
+/* The top line has nothing above it to hold a label. */
+.tl-tick.below { transform: translateY(2px); }
+
+/* The mark on a roll that costs more than a working month. Sized in `em` off
+   the tick text beside it, so the two stay in proportion. */
+.tl-skull {
+  position: absolute;
+  width: 1.15em;
+  height: 1.15em;
+  /* Centred on the bar and lifted clear of its top edge, so it labels the bar
+     rather than sitting inside it - a near-black glyph on a near-black bar
+     would be the thing it is there to fix. */
+  margin-left: -0.575em;
+  margin-top: -1.35em;
+  color: var(--band-death-mark);
+  font-size: 13px;
+  /* **Drawn like every other icon**, which `.icon` would have given it for
+     free were it not also carrying that class's 16px. Without these the sprite
+     falls back to a filled black shape - which on this strip is a dark blob
+     with two red eyes. */
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 
 /* The zero line is drawn, not implied: most steps add nothing, so without it
    an empty column reads as missing data rather than as "no change". */
@@ -1194,7 +1254,7 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .tl-bar[data-band="0"], .tl-sw[data-band="0"] { fill: var(--band-free); background: var(--band-free); }
 .tl-bar[data-band="1"], .tl-sw[data-band="1"] { fill: var(--band-quick); background: var(--band-quick); }
 .tl-bar[data-band="2"], .tl-sw[data-band="2"] { fill: var(--band-grind); background: var(--band-grind); }
-.tl-bar[data-band="3"], .tl-sw[data-band="3"] { fill: var(--band-minor); background: var(--band-minor); }
+.tl-bar[data-band="3"], .tl-sw[data-band="3"] { fill: var(--band-brutal); background: var(--band-brutal); }
 .tl-bar[data-band="4"], .tl-sw[data-band="4"] { fill: var(--band-death); background: var(--band-death); }
 /* The darkest band needs an edge or it is a hole rather than a bar. */
 .tl-bar[data-band="4"] { stroke: var(--line-strong); stroke-width: 1; }
