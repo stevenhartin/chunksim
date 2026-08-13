@@ -60,6 +60,8 @@
 
   /* Spacing. Four-based, because every border here is a hairline and the
      smallest gap that reads as a gap at 13px type is 4. */
+  /* Kept equal to `SUBMENU_GAP` in `app.js` by a contract test. */
+  --submenu-gap: 4px;
   --s1: 4px;
   --s2: 6px;
   --s3: 8px;
@@ -486,9 +488,6 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 .submenu {
   display: none;
   position: fixed;
-  max-height: 60vh;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
   padding: var(--s1);
   border: 1px solid var(--line);
   border-radius: var(--r2);
@@ -496,7 +495,36 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
 }
 
+/* **The scrolling is one level in, and that is the point.** A scroll container
+   clips its children in both axes, pseudo-elements included - so with
+   `overflow-y` on `.submenu` itself the bridge below was computed, painted
+   nowhere and hit-tested as the menu behind it. The same trap that put the
+   submenu on `position: fixed` in the first place, one element further in. */
+.submenu-body {
+  max-height: 60vh;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
 .menu-nest.open .submenu { display: block; }
+
+/* **The gap is part of the submenu, even though it looks like nothing.**
+   The submenu is placed `--submenu-gap` clear of its row so the two read as
+   separate strips - and a pointer travelling straight across was over neither
+   element, which fired `mouseleave` on the nest and started the close. This
+   pseudo-element hangs off the facing side and fills exactly that clearance:
+   it is generated content *inside* the submenu, so the pointer never leaves.
+   `app.js` decides the side, since only it knows which way the menu flipped. */
+.submenu::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--submenu-gap);
+}
+
+.submenu[data-side="right"]::before { right: 100%; }
+.submenu[data-side="left"]::before { left: 100%; }
 .vs { color: var(--dim); }
 .rule { width: 1px; height: 20px; background: var(--line); flex: none; }
 .spacer { flex: 1; }

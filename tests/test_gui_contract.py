@@ -1284,14 +1284,56 @@ def test_a_submenu_survives_the_gap_between_it_and_its_row() -> None:
     """**The gap belongs to neither.** The submenu is placed a few pixels clear
     of its row so the two read as separate strips, so travelling into it leaves
     the nest on the way - and closing on that `mouseleave` meant crossing in a
-    single frame or not at all."""
-    _, js, _ = _resources()
+    single frame or not at all.
+
+    The grace alone was not enough: a pointer that *rested* in those pixels ran
+    the clock out and lost the menu. So the clearance is bridged by the
+    submenu's own `::before`, and the width of that bridge is the number
+    `app.js` places the submenu by. A narrower bridge leaves a hole; a wider one
+    reaches over the row beside it.
+    """
+    _, js, css = _resources()
 
     assert "const SUBMENU_GRACE" in js
     leave = _match(r'nest\.addEventListener\("mouseleave", \(\) => \{(.*?)\n    \}\)', js)
     assert "setTimeout" in leave and "SUBMENU_GRACE" in leave
     enter = _match(r'nest\.addEventListener\("mouseenter", \(\) => \{(.*?)\n    \}\)', js)
     assert "clearTimeout" in enter, "arriving anywhere in the nest must cancel the close"
+
+    bridge = _match(r"\.submenu::before \{(.*?)\}", css)
+    assert "width: var(--submenu-gap)" in bridge
+    # And the bridge must not be inside a scroll container, which clips it in
+    # both axes and leaves it painted nowhere - the trap that put the submenu on
+    # `position: fixed` to begin with.
+    assert "overflow" not in _match(r"\n\.submenu \{(.*?)\}", css)
+    assert "overflow-y: auto" in _match(r"\.submenu-body \{(.*?)\}", css)
+    assert '.submenu[data-side="right"]::before' in css
+    assert '.submenu[data-side="left"]::before' in css
+    assert "submenu.dataset.side" in js, "the bridge needs the side app.js chose"
+    assert _match(r"--submenu-gap: (\d+)px", css) == _match(
+        r"const SUBMENU_GAP = (\d+);", js
+    ), "the bridge must be exactly as wide as the clearance it covers"
+
+
+def test_a_closing_submenu_takes_no_other_one_with_it() -> None:
+    """**Moving between two neighbouring batches lost the submenu.**
+
+    Hiding was one sweep over every nest, so the close pending for the nest just
+    left ran a fifth of a second later and shut the one just arrived at. The
+    pointer was by then inside the row that owned it, so no `mouseenter` was
+    coming to bring it back - you had to leave every batch and return.
+
+    A nest may only hide itself; showing one is what hides the rest, and it
+    cancels their pending closes on the way so none can fire behind it.
+    """
+    _, js, _ = _resources()
+
+    show = _match(r"const show = \(nest, on\) => \{(.*?)\n  \};", js)
+    assert "querySelectorAll" not in show, "hiding must not sweep the other nests"
+
+    enter = _match(r'nest\.addEventListener\("mouseenter", \(\) => \{(.*?)\n    \}\)', js)
+    assert "clearTimeout(other.closing)" in enter, "a close left pending outlives the arrival"
+    assert "show(other, false)" in enter and "show(nest, true)" in enter
 
 
 def test_a_batch_row_asks_about_its_runs_rather_than_pinning_a_strip() -> None:

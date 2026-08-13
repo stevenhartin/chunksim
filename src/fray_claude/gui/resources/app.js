@@ -2159,8 +2159,9 @@ function renderMapMenu() {
         <span class="name">${m.map_id}</span>
         <span class="num">${runs.length} runs</span>
         ${icon("next")}</button>
-      <div class="submenu">` + runs.map((r) => row(r, r.map_id.split("/")[1])).join("")
-      + "</div></div>";
+      <div class="submenu"><div class="submenu-body">`
+      + runs.map((r) => row(r, r.map_id.split("/")[1])).join("")
+      + "</div></div></div>";
   }
   el["map-menu"].innerHTML = out;
   for (const button of el["map-menu"].querySelectorAll("[data-map]")) {
@@ -2175,29 +2176,41 @@ function renderMapMenu() {
    *
    * Only one nest is open at a time, or two submenus land in the same strip
    * of screen. */
-  for (const nest of el["map-menu"].querySelectorAll(".menu-nest")) {
-    const open = (on) => {
-      for (const other of el["map-menu"].querySelectorAll(".menu-nest")) {
-        const showing = on && other === nest;
-        other.classList.toggle("open", showing);
-        other.firstElementChild.setAttribute("aria-expanded", String(showing));
-        if (showing) placeSubmenu(other);
-      }
-    };
+  const nests = () => el["map-menu"].querySelectorAll(".menu-nest");
+  /* **A nest shows and hides only itself.** This was one `open(on)` that swept
+   * every nest, which read as "only one at a time" and was - right up until a
+   * pending close belonging to the nest you *left* fired and swept the one you
+   * had just arrived at. Moving between two neighbouring batches therefore shut
+   * the submenu a fifth of a second after opening it, and the pointer was
+   * already inside the row it belonged to, so no further `mouseenter` was
+   * coming to bring it back: you had to leave every batch row and return. */
+  const show = (nest, on) => {
+    nest.classList.toggle("open", on);
+    nest.firstElementChild.setAttribute("aria-expanded", String(on));
+    if (on) placeSubmenu(nest);
+  };
+  for (const nest of nests()) {
     /* **The close waits, because there is a gap to cross.** The submenu is
-     * placed a few pixels clear of its row so the two read as separate
-     * strips, and those pixels belong to neither - so travelling into the
-     * submenu leaves the nest on the way, and an immediate close meant
-     * getting there in a single frame or not at all. A short grace, cancelled
-     * by arriving anywhere in the nest, is the difference between a menu you
-     * aim at and one you catch. */
+     * placed a few pixels clear of its row so the two read as separate strips,
+     * and those pixels belong to neither - so travelling into the submenu left
+     * the nest on the way, and an immediate close meant getting there in a
+     * single frame or not at all. The gap is now bridged by the submenu's own
+     * hit area (`style.css`), so the straight path across never leaves; the
+     * grace is what covers the paths the bridge cannot, like clipping the
+     * corner of the row above on the way in.
+     *
+     * Arriving anywhere in *any* nest cancels *every* pending close, because
+     * the nest being left must never outlive the one being entered. */
     nest.addEventListener("mouseenter", () => {
-      clearTimeout(nest.closing);
-      open(true);
+      for (const other of nests()) {
+        clearTimeout(other.closing);
+        if (other !== nest) show(other, false);
+      }
+      show(nest, true);
     });
     nest.addEventListener("mouseleave", () => {
       clearTimeout(nest.closing);
-      nest.closing = setTimeout(() => open(false), SUBMENU_GRACE);
+      nest.closing = setTimeout(() => show(nest, false), SUBMENU_GRACE);
     });
     nest.firstElementChild.onclick = () => {
       closeMapMenu();
@@ -2307,24 +2320,36 @@ async function costSimulations(batch, runs, timelines) {
  * escape the scrolling menu's clip, so its coordinates are the batch row's
  * own, read at the moment it opens. Flips to the left when the right would
  * run off the window - the picker is at the left edge, so that is the rare
- * side, but a narrow window makes it the only one. */
-/* How long a submenu survives the pointer leaving its row. Long enough to
- * cross a 4px gap at any speed a hand moves, short enough that a menu left
- * behind does not linger. */
+ * side, but a narrow window makes it the only one.
+ *
+ * **Which side it opened is written back onto the element**, because the
+ * bridge covering the gap has to sit on the side facing the row and only this
+ * function knows which side that turned out to be. */
+/* How long a submenu survives the pointer leaving its row. The gap itself is
+ * bridged, so this is not what makes the straight path across work; it covers
+ * the pointer clipping a neighbouring row on the way, and is short enough that
+ * a menu left behind does not linger. */
 const SUBMENU_GRACE = 220;
+
+/* The visual clearance between a row and its submenu, and the width of the
+ * bridge that makes it crossable. `--submenu-gap` in `style.css` is the same
+ * number; a contract test keeps them equal, since a bridge narrower than the
+ * gap is a hole and a wider one covers the row beside it. */
+const SUBMENU_GAP = 4;
 
 function placeSubmenu(nest) {
   const submenu = nest.querySelector(".submenu");
   const row = nest.firstElementChild.getBoundingClientRect();
-  const gap = 4;
   submenu.style.top = row.top + "px";
   submenu.style.left = "";
   submenu.style.right = "";
   const width = submenu.offsetWidth || 160;
-  if (row.right + gap + width <= window.innerWidth) {
-    submenu.style.left = row.right + gap + "px";
+  if (row.right + SUBMENU_GAP + width <= window.innerWidth) {
+    submenu.style.left = row.right + SUBMENU_GAP + "px";
+    submenu.dataset.side = "right";
   } else {
-    submenu.style.right = window.innerWidth - row.left + gap + "px";
+    submenu.style.right = window.innerWidth - row.left + SUBMENU_GAP + "px";
+    submenu.dataset.side = "left";
   }
 }
 
