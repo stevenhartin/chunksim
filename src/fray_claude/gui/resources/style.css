@@ -39,6 +39,21 @@
   --gain: #3cc85a;
   --loss: #dc3c3c;
 
+  /* **The time bands, and why they are their own family.** `--gain` and
+     `--loss` already mean *gained* and *lost*, so a bar coloured `--gain`
+     because it is cheap would be saying something it does not mean. These five
+     say how much of your life a roll costs, cheapest first, and the page never
+     names the hue - it sets `data-band` and the rules below pick the colour,
+     the same division the mode tints keep.
+
+     Death is not `#000`: on `--bg` a black bar is a bar-shaped hole. It is the
+     darkest thing here that still has an edge, and it is given one. */
+  --band-free: #4cc38a;
+  --band-quick: #d8c341;
+  --band-grind: #e08c3c;
+  --band-minor: #d6453f;
+  --band-death: #16181d;
+
   /* Spacing. Four-based, because every border here is a hairline and the
      smallest gap that reads as a gap at 13px type is 4. */
   --s1: 4px;
@@ -309,7 +324,8 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   color: var(--amber);
 }
 
-.pick { max-width: 20ch; }
+/* The two `<select>`s. `.pick-button` sets its own width - see below. */
+.pick:not(.pick-button) { max-width: 20ch; }
 
 /* --- the map picker ----------------------------------------------------- */
 
@@ -331,15 +347,31 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 
 .picker { position: relative; }
 
+/* **It grows to fit the name rather than wrapping.** `.pick` caps the two
+   `<select>`s that share the class at 20ch; a button holding a batch's run name
+   needs more than that and used to get it in the worst way - `text-overflow`
+   only applies to a line box that does not wrap, so without `nowrap` below the
+   name broke at the `-` in `verf-sim/run-012`, made the button two lines tall,
+   and overflowed `.bar`'s fixed `--bar-h` instead of ellipsising. So: size to
+   the content, floored so short names do not make a stub of a control and
+   ceilinged so a long one cannot push the rest of the bar off the edge. */
 .pick-button {
   display: flex;
   align-items: center;
   gap: var(--s2);
+  width: max-content;
   min-width: 20ch;
+  max-width: 34ch;
   text-align: left;
 }
 
-.pick-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pick-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .menu {
   position: absolute;
@@ -1145,8 +1177,27 @@ li .icon { width: 14px; height: 14px; align-self: center; }
    appears, while the empty background either side works fine. */
 .tl-bar, .tl-at-mark, .tl-zero, .tl-zero-label, .tl-pending { pointer-events: none; }
 
+/* The decade lines of the log axis. Dashed, and dim enough to read as ruling
+   rather than as data - they are there to be measured against, not looked at. */
+.tl-grid {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  pointer-events: none;
+}
+
 .tl-bar { fill: var(--gain); }
 .tl-bar.down { fill: var(--loss); }
+
+/* **Positional, because the names move and the colours do not.** `bandOf`
+   hands back an index; what that band is called is the user's business. */
+.tl-bar[data-band="0"], .tl-sw[data-band="0"] { fill: var(--band-free); background: var(--band-free); }
+.tl-bar[data-band="1"], .tl-sw[data-band="1"] { fill: var(--band-quick); background: var(--band-quick); }
+.tl-bar[data-band="2"], .tl-sw[data-band="2"] { fill: var(--band-grind); background: var(--band-grind); }
+.tl-bar[data-band="3"], .tl-sw[data-band="3"] { fill: var(--band-minor); background: var(--band-minor); }
+.tl-bar[data-band="4"], .tl-sw[data-band="4"] { fill: var(--band-death); background: var(--band-death); }
+/* The darkest band needs an edge or it is a hole rather than a bar. */
+.tl-bar[data-band="4"] { stroke: var(--line-strong); stroke-width: 1; }
 /* A step with nothing to show still gets a hit area, so hovering anywhere
    along the axis answers "what happened here" with "nothing". */
 .tl-bar.flat { fill: var(--line-strong); }
@@ -1164,6 +1215,48 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .tl-at-mark { fill: var(--gain); }
 
 .tl-pending { fill: var(--dim); font-size: 11px; }
+
+/* **A second chip group, and it has to read as one.** It qualifies the Hours
+   chip rather than joining the row of series, so without a rule between them
+   "Tasks Hours Log Linear" reads as four choices of one thing. */
+.tl-scale {
+  padding-left: var(--s3);
+  border-left: 1px solid var(--line);
+}
+
+/* The colour key, under the graph it describes. Wraps rather than scrolls: at
+   five entries it fits every width the strip is drawn at, and a scrollbar on a
+   legend is a control that looks like it hides something. */
+.tl-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+  align-items: center;
+  margin-bottom: var(--s2);
+  color: var(--dim);
+  font-size: 11px;
+}
+
+.tl-band { display: flex; align-items: center; gap: var(--s2); }
+
+.tl-sw {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--r1);
+  border: 1px solid var(--line);
+  flex: none;
+}
+
+.tl-band-edit { font-size: 11px; }
+
+.band-edit { display: grid; gap: var(--s2); }
+
+.band-row { display: flex; align-items: center; gap: var(--s2); }
+
+.band-name { flex: 1; min-width: 0; }
+.band-upto { width: 9ch; text-align: right; }
+.band-under, .band-unit, .band-open { color: var(--dim); font-size: 11px; }
+.band-open { margin-left: auto; }
 
 .tl-scrub {
   display: flex;

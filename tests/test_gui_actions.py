@@ -302,6 +302,37 @@ def test_the_page_reports_its_window_and_the_next_launch_reads_it_back(
     ]
 
 
+def test_settings_round_trip_through_the_disk(tmp_path: Path) -> None:
+    ctx = Context(root=tmp_path, check_origin=False)
+    reply = _post("/api/settings", ctx, {"hours_scale": "linear"})
+    assert _body(reply)["hours_scale"] == "linear"
+    assert cache.read_gui_settings(tmp_path)["hours_scale"] == "linear"
+
+
+def test_saving_settings_answers_inline_rather_than_with_a_job(tmp_path: Path) -> None:
+    """`app.js` polls any reply carrying a `job` key, so a handler that has
+    already finished must not look like one that has not started."""
+    ctx = Context(root=tmp_path, check_origin=False)
+    assert "job" not in _body(_post("/api/settings", ctx, {"hours_scale": "log"}))
+
+
+def test_the_reply_is_what_was_stored_not_what_was_sent(tmp_path: Path) -> None:
+    """A refusal has to be visible, and `sanitise` refuses by keeping the old
+    value - so the page redraws from the answer rather than from its request."""
+    ctx = Context(root=tmp_path, check_origin=False)
+    _post("/api/settings", ctx, {"hours_scale": "linear"})
+    reply = _body(_post("/api/settings", ctx, {"hours_scale": "sqrt"}))
+    assert reply["hours_scale"] == "linear"
+
+
+def test_a_hostile_settings_payload_writes_nothing_it_invented(tmp_path: Path) -> None:
+    ctx = Context(root=tmp_path, check_origin=False)
+    _post("/api/settings", ctx, {"evil": "--headless", "hours_bands": "nonsense"})
+    stored = cache.read_gui_settings(tmp_path)
+    assert "evil" not in stored
+    assert [band["upto"] for band in stored["hours_bands"]] == [1.0, 10.0, 100.0, 300.0, None]
+
+
 def test_a_partial_or_hostile_window_report_is_ignored(tmp_path: Path) -> None:
     """The file is read back as command-line arguments, so its keys are fixed."""
     ctx = Context(root=tmp_path, check_origin=False)

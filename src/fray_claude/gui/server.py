@@ -52,6 +52,7 @@ from fray_claude.derive.search import build_world_index, search
 from fray_claude.model.summary import summarise
 from fray_claude.gui.panels import roll_panel, task_panel
 from fray_claude.gui.actions import _ACTIONS
+from fray_claude.gui import settings
 from fray_claude.gui.http import Context, Response, _error, _first, _json, touch
 from fray_claude.gui.routes_derived import (
     _chunk_detail,
@@ -351,6 +352,13 @@ def handle_request(
                 return _error("missing required parameter 'map'", HTTPStatus.BAD_REQUEST)
             state = ctx.derivations.load(map_id)
             return _json({"map_id": map_id, **task_panel(state.derived)})
+
+        if path == "/api/settings":
+            # **Whole, never a patch.** `sanitise` fills every key it knows
+            # about, so the page gets a complete settings object and does not
+            # have to carry a second copy of the defaults to fall back on -
+            # which is how the two would come to disagree.
+            return _json(settings.sanitise({}, cache.read_gui_settings(ctx.root)))
 
         if path == "/api/derived":
             return _json(

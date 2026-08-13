@@ -25,6 +25,10 @@ from fray_claude.store.cache import (
     section_overlay_path,
     write_asset_at,
     write_gui_window,
+    gui_settings_path,
+    gui_window_path,
+    read_gui_settings,
+    write_gui_settings,
     WIKI_RATES_BLOB_NAME,
     TILE_VERSION_BLOB_NAME,
     CHUNKINFO_ENV_VAR,
@@ -787,3 +791,34 @@ def test_reference_stamp_notices_a_same_size_edit(tmp_path: Path) -> None:
     overrides.write_text('{"levels": {"Attack": 71}}', encoding="utf-8")
 
     assert reference_stamp(tmp_path) != before
+
+
+def test_settings_read_as_empty_before_anything_saves_them(tmp_path: Path) -> None:
+    """A first run is not a fault - the caller's answer to "nothing saved" is
+    `gui.settings.DEFAULTS`."""
+    assert read_gui_settings(tmp_path) == {}
+
+
+def test_settings_round_trip(tmp_path: Path) -> None:
+    write_gui_settings({"hours_scale": "linear"}, tmp_path)
+    assert read_gui_settings(tmp_path) == {"hours_scale": "linear"}
+
+
+def test_settings_live_beside_the_window_geometry_and_not_among_the_maps(
+    tmp_path: Path,
+) -> None:
+    """`cache/maps/` holds maps and nothing else holds maps - a preference is
+    not one, and must never turn up in the picker."""
+    write_cache("fray", {"chunks": {}}, root=tmp_path)
+    write_gui_settings({"hours_scale": "log"}, tmp_path)
+    assert gui_settings_path(tmp_path).parent == gui_window_path(tmp_path).parent
+    assert [entry.map_id for entry in list_maps(root=tmp_path)] == ["fray"]
+
+
+def test_an_unreadable_settings_file_reads_as_empty(tmp_path: Path) -> None:
+    """Tolerant on the way in; `gui.settings.sanitise` is what refuses."""
+    path = gui_settings_path(tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("not json at all", encoding="utf-8")
+    assert read_gui_settings(tmp_path) == {}
+

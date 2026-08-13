@@ -139,6 +139,10 @@ const state = {
    * `areas` on boot. Empty until then, which `chunkLabel` treats as "no name
    * known" rather than as an error. */
   labels: {},
+
+  /* The interface's own preferences, from `GET /api/settings`. `null` until
+   * they land or if they cannot be read - see `tlBands`. */
+  settings: null,
 };
 
 const el = {};
@@ -154,7 +158,8 @@ for (const id of [
   "chunk-head", "chunk-chips", "chunk-body", "task-chips", "tasks-body",
   "show-done", "estimate-total", "estimate-why", "estimate-body",
   "find-body", "find-form", "find-input", "maps-body", "attribution", "watermark",
-  "timeline", "tl-title", "tl-chips", "tl-hours", "tl-details", "tl-collapse", "tl-graph",
+  "timeline", "tl-title", "tl-chips", "tl-scale", "tl-key",
+  "tl-hours", "tl-details", "tl-collapse", "tl-graph",
   "tl-prev", "tl-slider", "tl-next", "tl-step", "tl-snapshot",
 ]) el[id] = document.getElementById(id);
 
@@ -3713,18 +3718,79 @@ el.live.addEventListener("click", () => {
  * is drawn differently again, because "not computed" and "added nothing" are
  * different answers. */
 
-/* Where the hours axis stops. A thousand is an hour figure you can still
- * reason about - a chunk worth 300h against one worth 900h - where the rolls
- * above it are all just "enormous" and their exact heights say nothing a
+/* Where the *linear* hours axis stops. A thousand is an hour figure you can
+ * still reason about - a chunk worth 300h against one worth 900h - where the
+ * rolls above it are all just "enormous" and their exact heights say nothing a
  * reader is comparing. See `tlBars`. */
 const HOURS_CAP = 1000;
+
+/* Where the *log* axis stops, and the decade lines drawn across it. Four
+ * decades is the range the data actually occupies: measured over a 50-roll run
+ * of the real map, rolls land anywhere from 0h to a few thousand, and a linear
+ * axis spends the whole strip on the largest one. Ten thousand is past every
+ * roll measured, so the clamp is a guard rather than a routine event. */
+const HOURS_MAX = 10000;
+const HOURS_TICKS = [10, 100, 1000, 10000];
+
+/* **`log10(1 + v)`, not `log10(v)`.** Most rolls add exactly nothing and a
+ * true log has nowhere to put them: `log10(0)` is minus infinity, and flooring
+ * it at some epsilon would make "added nothing" and "added six minutes" the
+ * same height. Adding one before the log lands 0 on the zero line honestly and
+ * costs only that the first decade is slightly compressed - 10h sits at .26 of
+ * the height rather than .25. The tick lines are drawn through this same
+ * function, so what they mark is where the axis really is. */
+function logFrac(value) {
+  return Math.log10(1 + Math.min(Math.abs(value), HOURS_MAX)) / Math.log10(1 + HOURS_MAX);
+}
 
 const TL_SERIES = [
   ["tasks", "Tasks"],
   ["hours", "Hours"],
 ];
 
+const TL_SCALES = [
+  ["log", "Log"],
+  ["linear", "Linear"],
+];
+
 let tlSeries = "tasks";
+
+/* **Positional, not name-derived**, because the names are the user's to change
+ * and a colour must not move when a label does. The stylesheet owns the five
+ * hues and the page owns only which band a bar is in - the same division
+ * `renderRibbon` keeps for the mode tints. */
+function bandOf(value, bands) {
+  if (!bands || !bands.length) return null;
+  const magnitude = Math.abs(value);
+  for (let index = 0; index < bands.length; index += 1) {
+    const upto = bands[index].upto;
+    if (upto === null || upto === undefined || magnitude < upto) return index;
+  }
+  return bands.length - 1;
+}
+
+/* The settings the server holds, or `null` until they arrive. **Null means no
+ * banding and the linear axis**, rather than a second copy of the defaults
+ * living here: two copies is how the page and the server come to disagree
+ * about what "Grind" means. */
+function tlSettings() { return state.settings; }
+function tlBands() { return state.settings ? state.settings.hours_bands : null; }
+function tlScale() { return state.settings ? state.settings.hours_scale : "linear"; }
+
+async function loadSettings() {
+  try {
+    state.settings = await getJSON("/api/settings");
+  } catch {
+    /* A page that cannot read its preferences still draws; it just draws the
+     * older axis with no colours. This is not worth a toast. */
+    state.settings = null;
+  }
+}
+
+async function saveSettings(patch) {
+  state.settings = await postJSON("/api/settings", patch);
+  renderTimeline();
+}
 
 async function loadTimeline() {
   if (!state.map) return hideTimeline();
@@ -3806,6 +3872,28 @@ function renderTimeline() {
     chip.onclick = () => { tlSeries = chip.dataset.series; renderTimeline(); };
   }
 
+  /* **Only while hours are up**, because a log axis over a task count is an
+   * answer to a question nobody asked - the counts share one unit and one
+   * decade. The choice is stored rather than held here: it is a way of reading
+   * the graph, not a place in it, so it should survive a reload. */
+  const scaling = tlSeries === "hours" && tlSettings() !== null;
+  el["tl-scale"].hidden = !scaling;
+  if (scaling) {
+    el["tl-scale"].innerHTML = TL_SCALES.map(([key, name]) => {
+      const on = tlScale() === key;
+      const tip = key === "log"
+        ? tmpl`<b>Logarithmic</b><span class="sub">Four decades across the strip, so a 3h roll and a 300h roll are both readable.</span><span class="hint">Lines mark 10h, 100h, 1,000h and 10,000h</span>`
+        : tmpl`<b>Linear</b><span class="sub">Scaled to the tallest bar, clipped at ${hours(HOURS_CAP)}.</span><span class="hint">One enormous roll flattens the rest</span>`;
+      return tmpl`<button class="chip ${on ? "on" : ""}" data-scale="${key}" data-tip="${tip}"
+        role="radio" aria-checked="${on}">${name}</button>`;
+    }).join("");
+    for (const chip of el["tl-scale"].querySelectorAll("[data-scale]")) {
+      chip.onclick = () => saveSettings({ hours_scale: chip.dataset.scale });
+    }
+  }
+
+  renderBandKey();
+
   /* **Two different offers, and neither is "compute it again".**
    *
    * A run now prices its own rolls as it rolls them - free, because the
@@ -3884,9 +3972,36 @@ function tlBars(steps, key, current) {
   const cap = key === "hours" ? HOURS_CAP : Infinity;
   const peak = Math.min(cap, Math.max(1e-9, ...known.map((v) => Math.abs(v))));
   const room = base - TOP;
+  /* **Log for hours, linear for everything else.** Tasks are a count in one
+   * unit and nothing about their range is unreadable; hours span four decades
+   * within one run, which is the whole reason the axis had a cap to begin
+   * with. `logFrac` returns a fraction of `room` directly, so there is no peak
+   * to divide by and one enormous roll no longer sets the scale for fifty. */
+  const log = key === "hours" && tlScale() === "log";
+  const ceiling = log ? HOURS_MAX : peak;
+  const height = (value) => (log
+    ? logFrac(value) * room
+    : Math.min(1, Math.abs(value) / peak) * room);
+  const bands = key === "hours" ? tlBands() : null;
 
   let out = tmpl`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"
     aria-label="${key === "hours" ? "Hours added per roll" : "Tasks added per roll"}">`;
+  /* **Under the bars, so a decade line never cuts across one.** Drawn before
+   * the slots too, which keeps the hit areas on top of everything and the
+   * tooltip working over a gridline. */
+  if (log) {
+    for (const tick of HOURS_TICKS) {
+      const y = base - logFrac(tick) * room;
+      out += tmpl`<line class="tl-grid" x1="0" y1="${y}" x2="${W}" y2="${y}"/>`;
+      /* The top line sits at `TOP`, so its label has nowhere to go above it -
+       * it would render outside the viewBox and be cut in half. Only that one
+       * hangs below its line; the rest sit on top, where they do not collide
+       * with the line above. */
+      const above = y - TOP > 10;
+      out += tmpl`<text class="tl-zero-label" x="4" y="${above ? y - 2 : y + 9}">${
+        tick >= 1000 ? `${tick / 1000}k` : String(tick)}h</text>`;
+    }
+  }
   steps.slice(1).forEach((row, index) => {
     const x = index * width;
     const value = row[key];
@@ -3896,10 +4011,12 @@ function tlBars(steps, key, current) {
     if (value !== null && value !== undefined) {
       /* A zero still gets a sliver, so the axis reads as a row of steps that
        * each happened rather than as a gap where the graph stops. */
-      const over = Math.abs(value) > peak;
-      const size = Math.max(1.5, Math.min(1, Math.abs(value) / peak) * room);
+      const over = Math.abs(value) > ceiling;
+      const size = Math.max(1.5, height(value));
       const negative = value < 0;
+      const band = bands === null ? null : bandOf(value, bands);
       out += tmpl`<rect class="tl-bar ${negative ? "down" : ""} ${value === 0 ? "flat" : ""} ${over ? "over" : ""}"
+        data-band="${band === null ? "" : String(band)}"
         x="${x + width * 0.18}" y="${negative ? base : base - size}"
         width="${width * 0.64}" height="${size}" rx="1"/>`;
     }
@@ -3916,6 +4033,110 @@ function tlBars(steps, key, current) {
       text-anchor="middle">Press Compute hours to price each roll</text>`;
   }
   return out + "</svg>";
+}
+
+/* **The key to the colours, and the way into changing them.**
+ *
+ * It is its own strip under the graph rather than an entry in `#legend`: that
+ * one belongs to the map, is anchored to the top of the window, and
+ * `test_the_bottom_edge_is_shared_rather_than_stacked` pins it there. This one
+ * belongs to a graph that is only sometimes on screen.
+ *
+ * The swatches carry no colour of their own - each is `data-band="n"` and the
+ * stylesheet fills it, which is the same division the ribbon's mode tints
+ * keep. A user-editable *palette* is the thing that would break it, and is why
+ * the bands are five with movable edges rather than a list you can extend. */
+function renderBandKey() {
+  const bands = tlBands();
+  const showing = tlSeries === "hours" && bands !== null;
+  el["tl-key"].hidden = !showing;
+  if (!showing) return;
+  el["tl-key"].innerHTML = bands.map((band, index) => tmpl`<span class="tl-band"
+    data-tip="${tmpl`<b>${band.name}</b><span class="sub">${bandRange(bands, index)}</span><span class="hint">Click to change the thresholds</span>`}"
+    ><i class="tl-sw" data-band="${String(index)}"></i>${band.name}</span>`).join("")
+    + tmpl`<button id="tl-bands" class="tl-band-edit" type="button"
+      data-tip="${tmpl`<b>Time bands</b><span class="sub">Where each colour starts and what it is called.</span>`}"
+      >Edit</button>`;
+  document.getElementById("tl-bands").onclick = editBands;
+}
+
+/* "10h - 100h", and the two ends said in words rather than with a dangling
+ * bound: the first band has no floor to name and the last has no ceiling. */
+function bandRange(bands, index) {
+  const below = index === 0 ? null : bands[index - 1].upto;
+  const upto = bands[index].upto;
+  if (upto === null || upto === undefined) return `${hours(below)} and up`;
+  if (below === null) return `Under ${hours(upto)}`;
+  return `${hours(below)} to ${hours(upto)}`;
+}
+
+/* **The thresholds, edited as the ordered partition they are.** The last band
+ * has no bound to edit - it is what everything above the fourth threshold
+ * falls into - so it gets its name and nothing else. The server validates all
+ * of this again and refuses the lot if any of it is wrong; this half exists to
+ * make that refusal rare rather than to be trusted. */
+function editBands() {
+  const bands = tlBands();
+  if (!bands) return;
+  /* **`raw` because this is element content, never an attribute.** The bound
+   * half is markup either way - a `<span>` or an `<input>` - and `tmpl` would
+   * escape it into the visible text of the dialog. Everything user-supplied
+   * inside it is still interpolated by the inner `tmpl`, which escapes it. */
+  const bound = (band, index) => (band.upto === null || band.upto === undefined
+    ? tmpl`<span class="band-open">and above</span>`
+    : tmpl`<span class="band-under">under</span><input class="band-upto" data-index="${String(index)}"
+         type="number" min="0" step="any" value="${String(band.upto)}"
+         aria-label="Band ${index + 1} upper bound"><span class="band-unit">h</span>`);
+  const rows = bands.map((band, index) => tmpl`<div class="band-row">
+    <i class="tl-sw" data-band="${String(index)}"></i>
+    <input class="band-name" data-index="${String(index)}" type="text" maxlength="24"
+           value="${band.name}" aria-label="Band ${index + 1} name">
+    ${raw(bound(band, index))}
+  </div>`).join("");
+  openOverlay("Time bands", tmpl`<p class="hint">Each band ends where the next begins, so the
+    numbers must climb. The colours are fixed; the names and the edges are not.</p>`
+    + `<div class="band-edit">${rows}</div>`,
+    tmpl`<button id="band-reset" type="button">Reset</button>
+      <button id="band-cancel" type="button">Cancel</button>
+      <button id="band-save" type="button">Save</button>`);
+
+  const read = () => bands.map((band, index) => {
+    const name = document.querySelector(`.band-name[data-index="${index}"]`).value;
+    const bound = document.querySelector(`.band-upto[data-index="${index}"]`);
+    return { name, upto: bound === null ? null : Number(bound.value) };
+  });
+  document.getElementById("band-cancel").onclick = closeOverlay;
+  /* **Asked for by name, not by sending an empty list.** A list `sanitise`
+   * refuses leaves the stored bands exactly where they were, which is the
+   * opposite of a reset - so the request has to say which key to forget. */
+  document.getElementById("band-reset").onclick = () => applyBands({ reset: ["hours_bands"] });
+  document.getElementById("band-save").onclick = () => applyBands({ hours_bands: read() });
+}
+
+/* **A refusal has to be visible, and the server refuses silently by design.**
+ * `settings.sanitise` keeps the stored value when a new one does not validate,
+ * which is right - it will not clamp what you typed into something you did not
+ * ask for - but it answers 200 either way. So the reply is compared with what
+ * was sent, and a patch that did not take keeps the dialog open with the
+ * reason. Closing on a no-op would look exactly like success. */
+async function applyBands(patch) {
+  try {
+    await saveSettings(patch);
+    const wanted = patch.hours_bands;
+    if (wanted && !sameBands(wanted, tlBands())) {
+      toast("Thresholds must climb, and each band needs a name");
+      return;
+    }
+    closeOverlay();
+  } catch (error) {
+    toast(String(error.message || error));
+  }
+}
+
+function sameBands(a, b) {
+  return Array.isArray(a) && Array.isArray(b) && a.length === b.length
+    && a.every((band, index) => band.name.trim().slice(0, 24) === b[index].name
+      && (band.upto ?? null) === (b[index].upto ?? null));
 }
 
 function tlTip(row, key) {
@@ -3944,16 +4165,26 @@ function tlTip(row, key) {
   /* **Never negative under this model**, so there is no minus case to word.
    * A roll that only made old work cheaper added nothing; the saving is not
    * something this roll did, because by now that work is behind you. */
+  const bands = tlBands();
+  const band = bands === null ? null : bands[bandOf(row.hours, bands)];
   const change = row.hours === 0
     ? tmpl`<span class="sub">Added no work</span>`
-    : tmpl`<span class="sub">${hours(row.hours)} of new work</span>`;
+    : tmpl`<span class="sub">${hours(row.hours)} of new work${
+        band ? ` \u00b7 ${band.name}` : ""}</span>`;
   /* The bar is as tall as the axis goes and the number is not - say so, or a
    * roll at exactly the cap and one at four times it look identical. */
-  const clipped = Math.abs(row.hours) > HOURS_CAP
-    ? tmpl`<span class="sub">Bar clipped at ${hours(HOURS_CAP)}</span>` : "";
-  const left = row.total_hours == null ? ""
-    : tmpl`<span class="hint">${hours(row.total_hours)} left after this roll</span>`;
-  return head + change + clipped + left;
+  const ceiling = tlScale() === "log" ? HOURS_MAX : HOURS_CAP;
+  const clipped = Math.abs(row.hours) > ceiling
+    ? tmpl`<span class="sub">Bar clipped at ${hours(ceiling)}</span>` : "";
+  /* **"Open", not "left".** This is the whole outstanding estimate for the
+   * world after this roll - the Estimate tab's own number - so it *grows*
+   * along a run, because unlocking a chunk adds work. Worded as "left" it read
+   * as a burn-down and looked like a sign error; it is not one, and the only
+   * thing that ever brings it down is a chunk opening a cheaper route to work
+   * you already had. */
+  const open = row.total_hours == null ? ""
+    : tmpl`<span class="hint">${hours(row.total_hours)} of work open after this roll</span>`;
+  return head + change + clipped + open;
 }
 
 /* Clicking a column is "take me to that roll": the slider moves, the chunk it
@@ -4277,6 +4508,10 @@ function renderAttribution() {
 (async function start() {
   resize();
   renderRibbon();
+  /* Before `loadTimeline`, because the graph reads the scale and the bands out
+   * of them and would otherwise draw once uncoloured and again a moment
+   * later. */
+  await loadSettings();
   if (!(await loadMaps())) return;
   syncBreakdown();
   await loadTimeline();

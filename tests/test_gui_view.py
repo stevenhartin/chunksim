@@ -790,3 +790,28 @@ def test_the_graph_counts_what_the_overlay_lists(
     # And the breakdown names the overlay's headings, not the skills - after
     # the filter a skill contributes at most one row.
     assert "Cooking" not in graph["tasks_by_group"]
+
+
+def test_settings_are_served_whole_even_when_nothing_is_stored(ctx: Context) -> None:
+    """The page carries no defaults of its own, so a first run must still get a
+    complete settings object rather than an empty one."""
+    body = _body(_get("/api/settings", ctx))
+    assert body["hours_scale"] == "log"
+    assert len(body["hours_bands"]) == 5
+    assert body["hours_bands"][-1]["upto"] is None
+
+
+def test_reading_settings_never_parses_the_export(ctx: Context) -> None:
+    _get("/api/settings", ctx)
+    assert not ctx.derivations.loaded
+
+
+def test_a_hand_edited_settings_file_is_validated_on_the_way_out(ctx: Context) -> None:
+    """`read_gui_settings` is deliberately tolerant, so the nonsense has to be
+    caught here - otherwise editing the file by hand goes round the POST
+    handler and puts an unusable band into the page."""
+    cache.write_gui_settings({"hours_scale": "sqrt", "hours_bands": []}, ctx.root)
+    body = _body(_get("/api/settings", ctx))
+    assert body["hours_scale"] == "log"
+    assert len(body["hours_bands"]) == 5
+

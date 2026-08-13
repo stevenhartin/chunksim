@@ -957,3 +957,128 @@ def test_an_edit_of_an_edit_keeps_the_family_name() -> None:
     assert body is not None
     assert '"edited"' in body.group(1)
     assert "replace(/-\\d+$/" in body.group(1)
+
+
+def _match(pattern: str, source: str) -> str:
+    """The one capture of `pattern`, or a failure naming what was not found.
+
+    The file already spells this out inline a dozen times; the tests below are
+    dense enough in it to be worth the helper."""
+    found = re.search(pattern, source, re.DOTALL)
+    assert found is not None, f"nothing in the source matches {pattern!r}"
+    return found.group(1)
+
+
+def test_the_log_axis_ticks_agree_with_the_clamp() -> None:
+    """A tick line above `HOURS_MAX` would be drawn on top of the clamp and
+    read as an axis that continues past where it stops."""
+    _, js, _ = _resources()
+    ceiling = int(_match(r"const HOURS_MAX = (\d+);", js))
+    ticks = [int(v) for v in _match(r"const HOURS_TICKS = \[([^\]]+)\]", js).split(",")]
+    assert ticks == sorted(ticks)
+    assert max(ticks) == ceiling
+
+
+def test_the_hours_axis_is_logarithmic_by_default() -> None:
+    """The default lives in Python, and the page must not carry a second copy
+    of it - `tlScale` falls back to the older axis only when settings are
+    unreadable, which is a different thing from a default."""
+    from fray_claude.gui import settings
+
+    assert settings.DEFAULTS["hours_scale"] == "log"
+    _, js, _ = _resources()
+    assert 'state.settings ? state.settings.hours_scale : "linear"' in js
+    assert 'const log = key === "hours" && tlScale() === "log"' in js
+
+
+def test_the_log_curve_can_place_a_roll_that_added_nothing() -> None:
+    """`log10(0)` is minus infinity and most rolls add exactly nothing, so the
+    curve has to be `log10(1 + v)`. Losing the `1 +` would put every empty
+    column off the bottom of the strip."""
+    _, js, _ = _resources()
+    curve = _match(r"function logFrac\(value\) \{(.*?)\n\}", js)
+    assert "Math.log10(1 + Math.min(" in curve
+    assert "Math.log10(1 + HOURS_MAX)" in curve
+
+
+def test_the_band_palette_is_defined_once_and_the_page_names_only_the_band() -> None:
+    """The same division the mode tints keep: the stylesheet owns the colours
+    and the page owns which one is on, as a data attribute."""
+    _, js, css = _resources()
+    for band in ("free", "quick", "grind", "minor", "death"):
+        assert f"--band-{band}:" in css
+        assert f"var(--band-{band})" in css
+    for index in range(5):
+        assert f'.tl-bar[data-band="{index}"]' in css
+    # `bandOf` returns an index, never a colour.
+    body = _match(r"function bandOf\(value, bands\) \{(.*?)\n\}", js)
+    assert "#" not in body, "a colour literal has leaked into the page"
+
+
+def test_the_bands_are_positional_so_a_renamed_band_keeps_its_colour() -> None:
+    """Names are the user's to change; a colour that followed the name would
+    move when a label did."""
+    _, js, css = _resources()
+    assert 'data-band="${band === null ? "" : String(band)}"' in js
+    # Comments may name a band; a *selector* may not.
+    rules = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    for name in ("Free", "Quick", "Grind", "Minor Death", "Death"):
+        assert name not in rules
+
+
+def test_the_band_count_agrees_across_the_two_languages() -> None:
+    from fray_claude.gui import settings
+
+    _, _, css = _resources()
+    selectors = re.findall(r'\.tl-bar\[data-band="(\d+)"\]', css)
+    assert sorted({int(v) for v in selectors}) == list(range(settings.BAND_COUNT))
+
+
+def test_the_band_name_length_agrees_across_the_two_languages() -> None:
+    """The input's `maxlength` and the server's trim must be the same number,
+    or typing to the limit produces a name the page did not show you."""
+    from fray_claude.gui import settings
+
+    _, js, _ = _resources()
+    assert f'maxlength="{settings.MAX_BAND_NAME}"' in js
+    assert f"slice(0, {settings.MAX_BAND_NAME})" in js
+
+
+def test_the_hours_key_is_not_the_map_legend() -> None:
+    """`#legend` describes the map and is anchored to the top of the window
+    (see `test_the_bottom_edge_is_shared_rather_than_stacked`). The bar key
+    belongs to a graph that comes and goes, so it is its own element."""
+    html, js, css = _resources()
+    assert 'id="tl-key"' in html
+    assert ".tl-key {" in css
+    key = _match(r"function renderBandKey\(\) \{(.*?)\n\}", js)
+    assert "legend" not in key
+    assert "#" not in key, "a colour literal has leaked into the page"
+
+
+def test_a_refused_band_edit_is_not_reported_as_a_save() -> None:
+    """`settings.sanitise` refuses by keeping the stored value and still
+    answers 200, so the page has to compare the reply with what it sent."""
+    _, js, _ = _resources()
+    body = _match(r"async function applyBands\(patch\) \{(.*?)\n\}", js)
+    assert "sameBands(" in body
+    assert "toast(" in body
+
+
+def test_a_reset_asks_for_the_key_by_name() -> None:
+    """An empty band list is refused, so sending one leaves the stored bands
+    exactly where they were - the opposite of a reset."""
+    from fray_claude.gui import settings
+
+    _, js, _ = _resources()
+    assert 'reset: ["hours_bands"]' in js
+    assert "hours_bands" in settings.KEYS
+
+
+def test_saving_a_setting_redraws_from_the_answer() -> None:
+    """Not from the request - which is the only way a refusal shows up."""
+    _, js, _ = _resources()
+    body = _match(r"async function saveSettings\(patch\) \{(.*?)\n\}", js)
+    assert "state.settings = await postJSON" in body
+    assert "renderTimeline()" in body
+

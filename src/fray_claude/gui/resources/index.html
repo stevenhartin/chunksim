@@ -223,6 +223,9 @@
   <div class="tl-head">
     <span class="tl-title" id="tl-title"></span>
     <div class="chips" id="tl-chips"></div>
+    <!-- How the hours axis maps a number to a height. Beside the series chips
+         because it qualifies one of them, and hidden while the other is up. -->
+    <div class="chips tl-scale" id="tl-scale" hidden></div>
     <button id="tl-details" type="button"
             data-tip="&lt;b&gt;What this roll opened&lt;/b&gt;&lt;span class='sub'&gt;Every task the selected roll made valid, by category.&lt;/span&gt;">Details</button>
     <!-- The way out of a timeline. A run can only be seen in timeline mode, so
@@ -240,6 +243,10 @@
     </button>
   </div>
   <div class="tl-graph" id="tl-graph"></div>
+  <!-- What the bar colours mean, and the way into changing where they start.
+       Not part of #legend: that one describes the map and is anchored to the
+       top of the window, where this belongs to a graph that comes and goes. -->
+  <div class="tl-key" id="tl-key" hidden></div>
   <div class="tl-scrub">
     <button id="tl-prev" class="icon-btn" type="button" aria-label="Previous roll"
             data-tip="&lt;b&gt;Back one roll&lt;/b&gt;&lt;span class='hint'&gt;&amp;larr;&lt;/span&gt;">

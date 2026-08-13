@@ -129,9 +129,16 @@ bought you. A run carries its own past, so stepping costs nothing — drag the s
 follows.
 
 Above it, a bar per roll, and both series are there the moment the simulation finishes. **Tasks** is
-the challenges that chunk made valid, with a breakdown per skill on hover. **Hours** is the change in
-the time left to finish — a simulation prices every roll as it goes, which costs it nothing, since
-the work of deriving each state is what a roll already is.
+the challenges that chunk made valid, with a breakdown per skill on hover. **Hours** is what that
+roll newly put in front of you — a simulation prices every roll as it goes, which costs it almost
+nothing, since the work of deriving each state is what a roll already is.
+
+The hours axis is **logarithmic** by default, ruled at 10, 100, 1,000 and 10,000 hours, because a
+run's rolls span four decades and a linear axis spends the whole strip on the largest one; **Linear**
+beside it is the older behaviour. The bars are coloured by how much of your life a roll costs —
+*Free*, *Quick*, *Grind*, *Minor Death*, *Death* — and **Edit** under the graph moves those edges and
+renames them. That is a preference rather than data about a map, so it is kept in
+`cache/gui/settings.json` beside the window geometry, and applies to every map you open.
 
 Clicking a bar moves the slider to that roll, selects the chunk it rolled and flies the camera to
 it; **Details** then opens that roll in full — every task it made valid, by skill, rather than the

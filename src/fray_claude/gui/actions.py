@@ -45,6 +45,7 @@ from fray_claude.runs.batch import price_steps
 from fray_claude.runs.batch import run_batch
 from fray_claude.runs.batch import save_edit, save_snapshot, save_unlock
 from fray_claude.remote.scrape import scrape
+from fray_claude.gui import settings
 from fray_claude.gui.http import Context
 from fray_claude.gui.routes_view import _run_steps
 from fray_claude.gui.routes_view import _timeline_stamp
@@ -69,6 +70,22 @@ def _window_state(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
         cache.write_gui_window(geometry, ctx.root)
         return {"saved": True}
     return {"saved": False}
+
+
+def _settings_state(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
+    """Save the interface's preferences and answer with what was saved.
+
+    **Answers inline rather than with a job id**, which is not a style choice:
+    `app.js` polls any reply carrying a `job` key, so a handler that finishes
+    its work immediately must not look like one that has not started.
+
+    The reply is the *stored* settings, not the payload - `settings.sanitise`
+    may have refused part of what was sent, and the page redrawing from the
+    answer is what makes that visible rather than silent.
+    """
+    settled = settings.sanitise(payload, cache.read_gui_settings(ctx.root))
+    cache.write_gui_settings(settled, ctx.root)
+    return settled
 
 
 #: **A development escape hatch, deliberately unadvertised.** Typed into the
@@ -636,4 +653,5 @@ _ACTIONS: dict[str, Callable[[Mapping[str, Any], Context], dict[str, Any]]] = {
     "/api/maps/remove": _remove_job,
     "/api/derived/prune": _prune_job,
     "/api/window": _window_state,
+    "/api/settings": _settings_state,
 }

@@ -199,6 +199,13 @@ CA_TIERS: tuple[str, ...] = ("easy", "medium", "hard", "elite", "master", "grand
 #: Where the GUI remembers how its window was left. Not a blob: it has no
 #: upstream source, no `fetched_at`, and is rewritten many times a session.
 GUI_WINDOW_FILE = "window.json"
+
+#: The interface's own preferences - which axis the hours graph draws, where the
+#: time bands sit. A sibling of `window.json` for the same reasons, plus one:
+#: it belongs to the *person*, not to any map, so it must not live under
+#: `cache/maps/`. What it means is `gui/settings.py`'s; this module only knows
+#: it is JSON on disk.
+GUI_SETTINGS_FILE = "settings.json"
 GUI_PROFILE_DIR = "profile"
 
 MAP_FILE_NAME = "map.json"
@@ -1207,6 +1214,33 @@ def write_gui_window(geometry: dict[str, Any], root: Path | None = None) -> Path
     path = gui_window_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     return _atomic_write_json(path, geometry)
+
+
+def gui_settings_path(root: Path | None = None) -> Path:
+    """Where the interface's preferences live."""
+    return gui_root(root) / GUI_SETTINGS_FILE
+
+
+def read_gui_settings(root: Path | None = None) -> dict[str, Any]:
+    """What the user has changed, or `{}` if they never have.
+
+    Empty rather than an error, exactly as `read_gui_window` is: the caller's
+    answer to "nothing saved" is `gui.settings.DEFAULTS`, and a first run is
+    not a fault. **Unvalidated** - this returns whatever object is on disk and
+    `gui.settings.sanitise` decides what any of it means, so a hand-edited file
+    cannot put a nonsense band into the page by going round the POST handler.
+    """
+    try:
+        return _read_json_object(gui_settings_path(root))
+    except (CacheMissError, OSError):
+        return {}
+
+
+def write_gui_settings(settings: dict[str, Any], root: Path | None = None) -> Path:
+    """Remember the interface's preferences. Atomic, like everything else here."""
+    path = gui_settings_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return _atomic_write_json(path, settings)
 
 
 def tile_version_override() -> str | None:

@@ -312,9 +312,16 @@ def series(
     """The per-roll rows the graph draws.
 
     `added` is what each roll *cost* - see `added_hours` - and is what the bars
-    show. `totals` is what was left after it, carried alongside because a
-    tooltip reading "and 2,816h to go" is worth having and cannot be recovered
-    from the bars: **the bars deliberately do not sum to the total.**
+    show. `totals` is what is **outstanding** after it - the whole estimate for
+    that state, which is the Estimate tab's own quantity - carried alongside
+    because it cannot be recovered from the bars: **the bars deliberately do
+    not sum to the total.**
+
+    **Outstanding, not remaining**, and the panel has to say so. It goes *up*
+    along a run, because a chunk unlocks work rather than completing it; the
+    only thing that brings it down is a chunk opening a cheaper route to work
+    already in the set. Worded as "left" it reads as a burn-down and looks like
+    a sign error.
 
     Both are optional because computing either needs the export and this module
     is pure. A list of the wrong length is refused rather than trusted, so

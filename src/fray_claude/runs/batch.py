@@ -333,7 +333,7 @@ def _walk(
     that is worth pickling back out of a worker. `price_detail` keeps the
     `EstimateResult` instead.
 
-    Returns `(step, hours this roll added, hours left after it)` per step -
+    Returns `(step, hours this roll added, hours outstanding after it)` per step -
     **except its first**, which is only there as the baseline the second one
     is measured against and is dropped on the way out. See `_slices`.
 
@@ -582,12 +582,14 @@ def price_steps(
     chunkinfo_path: Path | None = None,
     on_progress: Callable[[int, int], None] | None = None,
 ) -> tuple[list[float], list[float]]:
-    """What each roll of a run cost, and what was left after it, in step order.
+    """What each roll of a run cost, and what is outstanding after it, in step
+    order.
 
     Two series because they answer different questions and neither recovers
     the other: the bars are `timeline.added_hours` - what this roll newly put
-    in front of you - and the totals are what remains, which a tooltip wants
-    and the bars deliberately do not sum to.
+    in front of you - and the totals are the whole estimate for that state,
+    which a tooltip wants and the bars deliberately do not sum to. See
+    `timeline.series` on why the second one climbs.
 
     **This is the parallel half of what `_Pricer` does inline.** A simulation
     prices its own rolls as it goes, because the derivation is already in hand
