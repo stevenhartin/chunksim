@@ -61,7 +61,9 @@ export knows about has a square, including the ones it stores only by name. Your
 unlocked chunks are bright against a greyed-out world, with a thin grid showing every chunk
 boundary, and a thick border traced around the *outside* of the unlocked region — no heavy
 line between two chunks you already hold. Pan by dragging, zoom with the wheel, click a chunk to
-open it in the panel. Press <kbd>F</kbd> to fly the camera to whatever is under the cursor.
+open it in the panel. Press <kbd>F</kbd> to fly the camera to whatever is under the cursor, or
+<kbd>U</kbd> to unlock it — which saves a new map in Browse, and joins the pending set in Edit.
+An **edited** map opens in Edit mode, since editing in place is what it is for.
 
 ```
 fray-gui                              # serve http://127.0.0.1:8731 and open it

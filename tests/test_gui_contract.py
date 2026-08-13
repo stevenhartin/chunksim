@@ -252,6 +252,17 @@ def test_every_element_the_page_reaches_for_exists() -> None:
     assert asked, "the boot loop found no ids at all"
     assert asked <= ids, f"asked for but not in the markup: {sorted(asked - ids)}"
 
+def test_the_reachable_blue_is_one_colour() -> None:
+    """The canvas outlines a reachable area with `REACHABLE_STROKE` and the Find
+    dialog borders the same square with `--reachable`. Two literals for one
+    meaning is how they come to disagree."""
+    _, js, css = _resources()
+
+    assert _match(r"--reachable: (#[0-9a-f]{6});", css) == _match(
+        r'const REACHABLE_STROKE = "(#[0-9a-f]{6})";', js
+    )
+
+
 def test_every_style_token_is_defined() -> None:
     """The stylesheet's lengths all come from one scale.
 
@@ -497,29 +508,21 @@ def test_the_page_reads_its_identity_from_state_not_the_dom() -> None:
     made the control the source of truth and left no room for a state the
     controls do not have an option for.
 
-    The map picker is now a menu rather than a `<select>`, so the validation
-    that element was quietly doing - blanking on a value it has no option for -
-    has to be explicit: `setMap` accepts an id the listing holds and refuses
-    the rest, including a multi-run batch, which `resolve_map_path` will not
-    guess a run for.
+    Neither picker is a `<select>` any more, so the validation those elements
+    were quietly doing - blanking on a value they have no option for - has to
+    be explicit on **both** sides of the pair: an id is accepted when the
+    listing holds it and refused otherwise, multi-run batches included, which
+    `resolve_map_path` will not guess a run for.
     """
     _, js, _ = _resources()
 
     assert "el.map.value" not in js, "a reader is still going to the DOM"
-    setter = re.search(r"function setMap\(id\) \{(.*?)\n\}", js, re.DOTALL)
-    assert setter is not None
-    assert "state.maps.find((m) => m.map_id === wanted)" in setter.group(1)
-    assert "row.runs > 1" in setter.group(1), "a multi-run batch is selectable"
-    # `compare` is still a `<select>`, and still validates by being one.
-    assert js.count("el.compare.value") == 3
-
-    # `setCompare` still writes to its element and reads *back*: whatever the
-    # `<select>` accepted is what state takes, so an unmatched id comes out
-    # blank. `setMap` does the same job against the listing instead.
-    setter = re.search(r"function setCompare\(id\) \{(.*?)\n\}", js, re.DOTALL)
-    assert setter is not None
-    assert "el.compare.value = id" in setter.group(1)
-    assert "= el.compare.value" in setter.group(1)
+    assert "el.compare.value" not in js, "a reader is still going to the DOM"
+    for name in ("setMap", "setCompare"):
+        setter = re.search(rf"function {name}\(id\) \{{(.*?)\n\}}", js, re.DOTALL)
+        assert setter is not None, name
+        assert "state.maps.find((m) => m.map_id === wanted)" in setter.group(1), name
+        assert "row.runs > 1" in setter.group(1), f"{name}: a multi-run batch is selectable"
 
 def test_a_simulation_is_only_ever_seen_in_timeline_mode() -> None:
     """**A run is fifty worlds, not one**, and browsing it as though it were a
@@ -655,7 +658,11 @@ def test_switching_map_forgets_the_step() -> None:
     chooser = re.search(r"async function chooseMap\(id\) \{(.*?)\n\}", js, re.DOTALL)
     assert chooser is not None
     assert "await selectMap(id)" in chooser.group(1)
-    assert 'button.onclick = () => { closeMapMenu(); chooseMap(button.dataset.map); };' in js
+    # A picker row calls whatever its spec named, and the base map's spec names
+    # `chooseMap` - so there is still exactly one way in.
+    assert "spec.onChoose(button.dataset.map)" in js
+    spec = _match(r'initPicker\(el\["map-picker"\], \{(.*?)\n\}\)', js)
+    assert "onChoose: chooseMap" in spec
 
 def test_an_uncomputed_hours_series_is_not_drawn_as_zero() -> None:
     """**"Not computed" and "added no work" are different answers**, and both
@@ -704,12 +711,13 @@ def test_a_multi_run_batch_is_a_label_not_a_choice() -> None:
     """
     _, js, _ = _resources()
 
-    body = re.search(r"function mapOptions\(maps\) \{(.*?)\n\}", js, re.DOTALL)
-    assert body is not None
-    assert "<optgroup" in body.group(1)
-    assert "m.runs > 1" in body.group(1)
-    # A run belongs to its group, not to the top level as well.
-    assert 'm.map_id.includes("/")' in body.group(1)
+    body = _match(r"function renderPickerMenu\(root\) \{(.*?)\n\}\n", js)
+    # The batch is a heading with a submenu under it, never a row you can
+    # choose: only `row()` carries `data-map`, and a batch does not go through
+    # it. A run belongs to its batch, not to the top level as well.
+    assert "runs.length < 2" in body
+    assert 'x.map_id.includes("/")' in body
+    assert 'data-batch=' in body and 'aria-haspopup="true"' in body
 
 def test_rolling_opens_the_result_as_the_map(tmp_path: Path) -> None:
     """**It used to land in the compare slot, which is what hides the strip** -
@@ -1336,6 +1344,76 @@ def test_a_closing_submenu_takes_no_other_one_with_it() -> None:
     assert "show(other, false)" in enter and "show(nest, true)" in enter
 
 
+def test_every_map_is_chosen_through_one_picker() -> None:
+    """**Three places choose a map and only one of them was a real picker.**
+
+    The comparison on the ribbon and the one in the Compare dialog were
+    `<select>`s: no dot for the kind, no submenu for a batch's runs, and a popup
+    drawn in the platform's own colours - dark text on light grey inside a dark
+    page, capped at 20ch. So all three are the same component now, and the
+    dialog builds its markup from the same function rather than a copy.
+    """
+    html, js, _ = _resources()
+
+    assert re.findall(r'<select\s+id="([a-z-]+)"', html) == ["plane"], (
+        "a map is being chosen through a <select> again"
+    )
+    # One builder, and the dialog's copy comes out of it rather than by hand.
+    assert js.count("initPicker(") == 4, "a picker built without the component"
+    assert "pickerMarkup(" in _match(r"async function askCompare\(\) \{(.*?)\n\}", js)
+
+    # The menu escapes its container the way the submenu does, because one of
+    # the three opens inside `.sheet > div`, which scrolls.
+    assert "position: fixed" in _match(r"\n\.menu \{(.*?)\}", _resources()[2])
+    assert "function placeMenu" in js
+
+
+def test_a_pane_never_outlives_the_world_it_describes() -> None:
+    """**Choosing another map left the Tasks pane showing the previous one's
+    list.** The memo was dropped and the pane was not reloaded, so the rows on
+    screen were about a map you were no longer on - and pressing "Show more"
+    re-rendered from a null payload, threw, and swallowed the click. It read as
+    the button being stuck, and swapping tabs "fixed" it because that is what
+    refetched.
+
+    Every way the world moves under the panes goes through one function now.
+    """
+    _, js, _ = _resources()
+
+    reload = _match(r"async function reloadPanels\(\) \{(.*?)\n\}", js)
+    assert "taskPanel = null" in reload and "estimatePayload = null" in reload
+    for tab in ("tasks", "estimate", "find", "chunk"):
+        assert f'state.tab === "{tab}"' in reload, tab
+
+    # The three ways the world moves: a step, a map, and the file changing
+    # under a live page.
+    for caller in (r"async function commitStep\(step\) \{(.*?)\n\}",
+                   r"async function chooseMap\(id\) \{(.*?)\n\}",
+                   r"async function poll\(\) \{(.*?)\n\}"):
+        assert "reloadPanels()" in _match(caller, js)
+
+    # And a pane asked to draw with no payload fetches one rather than throwing.
+    assert "if (!taskPanel) return loadTasks();" in js
+
+
+def test_a_bar_past_the_cap_keeps_the_band_it_is_in() -> None:
+    """**The two axes cap at different heights**, so recolouring an overflowing
+    bar made the same roll two different colours depending on the scale: a
+    death-band roll of 1,400 hours came out black on the log axis, whose ceiling
+    it never reached, and amber on the linear one.
+
+    Which band a roll is in is a fact about the roll; running off the end is a
+    fact about the axis. So the band keeps the fill and the overflow takes the
+    outline.
+    """
+    _, _, css = _resources()
+
+    over = _match(r"\n\.tl-bar\.over \{(.*?)\}", css)
+    assert "stroke:" in over and "fill:" not in over
+    # Except where there is no band to protect, which is the unbanded page.
+    assert '.tl-bar.over[data-band=""] { fill: var(--amber); }' in css
+
+
 def test_a_batch_row_asks_about_its_runs_rather_than_pinning_a_strip() -> None:
     """**Ten runs of one map are ten futures**, and what you want to know
     before opening one is which was kind and which was brutal - a submenu of
@@ -1347,7 +1425,8 @@ def test_a_batch_row_asks_about_its_runs_rather_than_pinning_a_strip() -> None:
     """
     _, js, css = _resources()
 
-    assert "showSimulations(nest.dataset.batch)" in js
+    assert "spec.onBatch(nest.dataset.batch)" in js
+    assert "onBatch: showSimulations" in js
     # Replaced, not kept alongside - the word survives in unrelated prose
     # ("pinned at either end" of a zoom), so this looks for the state itself.
     assert "let pinned" not in js and "pinned = nest" not in js

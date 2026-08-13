@@ -154,7 +154,7 @@ const state = {
 
 const el = {};
 for (const id of [
-  "map-pick", "map-pick-dot", "map-pick-name", "map-menu",
+  "map-picker",
   "compare", "breakdown", "plane", "candidates", "masks", "live", "fit", "counts", "skipped",
   "hover", "panel-pin", "panel-pin-icon", "panel", "tabs", "toast", "legend", "tip",
   "ribbon", "ribbon-mode", "ribbon-map", "ribbon-vs", "compare-start", "exit-mode",
@@ -1299,6 +1299,19 @@ document.addEventListener("keydown", (e) => {
      * selected - so it works both while pointing and after clicking. */
     const chunkId = state.hovered || state.selected;
     if (chunkId) focusChunk(chunkId);
+  } else if (e.key === "u" || e.key === "U") {
+    /* **The same hovered-or-selected rule `F` uses**, so the two keys are one
+     * gesture: point at a square and take it, or click it and take it. A
+     * chunk the map already holds is refused out loud rather than silently -
+     * pressing a key and having nothing happen reads as the key not
+     * existing. */
+    const chunkId = state.hovered || state.selected;
+    if (!chunkId) return;
+    if (chunkStatus(chunkId).state !== "locked") {
+      toast(chunkLabel(chunkId) + " is already on this map");
+      return;
+    }
+    unlockChunk(chunkId);
   } else if (e.key === "c") el.candidates.click();
   else if (e.key === "s") el.masks.click();
   else if (e.key === "p") el["panel-pin"].click();
@@ -1703,9 +1716,17 @@ function kindOf(mapId) {
   return row ? row.kind : "fetched";
 }
 
-/* A simulation is a sequence of worlds; everything else is one world. */
+/* **What a map is decides the mode it opens in.** A simulation is a sequence
+ * of worlds, so it opens on the strip. An *edited* map is the one kind this
+ * page may write to in place, and opening it in Browse meant the first unlock
+ * asked to enter edit mode and then offered to fork it into yet another map -
+ * two questions to do the thing the map exists for. Everything else is one
+ * world nobody may change, which is Browse. */
 function modeForMap(mapId) {
-  return kindOf(mapId) === "simulated" ? "timeline" : "browse";
+  const kind = kindOf(mapId);
+  if (kind === "simulated") return "timeline";
+  if (kind === "edited") return "edit";
+  return "browse";
 }
 
 /* **The single transition point.** Entry and exit work belongs here rather
@@ -1959,27 +1980,55 @@ function openMap(id) {
  * what you are looking at and can act on - and the other side of a comparison
  * is neither. */
 async function askCompare() {
-  const options = mapOptions(state.maps.filter((m) => m.map_id !== state.map));
+  let chosen = "";
   openOverlay("Compare " + state.map + " with",
     tmpl`<p>Gains draw green and losses red, and the hull traces what
       <b>${state.map}</b> would become. Nothing is written.</p>
-      <div class="row"><select id="compare-pick" class="pick" aria-label="Compare against">`
-      + options + `</select></div>`,
+      <div class="row">` + pickerMarkup("compare-pick", "Pick a map") + `</div>`,
     tmpl`<button id="compare-no" type="button">Cancel</button>
-      <button id="compare-yes" type="button">Compare</button>`);
-  const pick = document.getElementById("compare-pick");
+      <button id="compare-yes" type="button" disabled>Compare</button>`);
+  const go = document.getElementById("compare-yes");
+  /* **The same picker the ribbon uses, not a `<select>` that looks like one.**
+   * The dialog is where you choose the *first* time, so it is the worst place
+   * to show a different, worse list of the same maps. */
+  initPicker(document.getElementById("compare-pick"), {
+    empty: "Pick a map",
+    maps: () => state.maps.filter((m) => m.map_id !== state.map),
+    selected: () => chosen,
+    onChoose: (id) => { chosen = id; renderPickButton(document.getElementById("compare-pick")); go.disabled = !chosen; },
+    onBatch: null,
+  });
   document.getElementById("compare-no").onclick = closeOverlay;
-  document.getElementById("compare-yes").onclick = async () => {
-    const chosen = pick.value;
+  go.onclick = async () => {
     closeOverlay();
     if (!chosen) return;
-    setMode("diff");
-    setCompare(chosen);
-    renderRibbon();
-    syncBreakdown();
-    await loadTimeline();
-    await loadView({ refit: true });
+    await startCompare(chosen);
   };
+}
+
+/* Entering the comparison, from either door. */
+async function startCompare(id) {
+  setMode("diff");
+  setCompare(id);
+  renderRibbon();
+  syncBreakdown();
+  /* Comparing is a question about two maps and stepping is a question about
+   * one map's past. Picking a comparison answers the first, so the strip goes
+   * and the rewind with it. */
+  await loadTimeline();
+  await loadView({ refit: true });
+}
+
+/* The markup every picker is made of, so the three cannot drift apart. */
+function pickerMarkup(id, empty, extra = "") {
+  return tmpl`<div class="picker" id="${id}">
+    <button class="pick-button ${extra}" type="button" aria-haspopup="listbox"
+      aria-expanded="false" aria-label="Compare against">
+      <span class="dot" hidden></span>
+      <span class="pick-name">${empty}</span>
+      ${icon("down")}</button>
+    <div class="menu" role="listbox" hidden></div>
+  </div>`;
 }
 
 /* **The way out is back to what the map itself implies**, which is Browse for
@@ -2025,22 +2074,20 @@ function setMap(id) {
   const wanted = id || "";
   const row = state.maps.find((m) => m.map_id === wanted);
   state.map = row && !(row.runs > 1) ? wanted : "";
-  renderMapPick();
+  renderPickButton(el["map-picker"]);
   return state.map;
 }
 
-/* What the button shows: the kind's dot, and the name with its batch. */
-function renderMapPick() {
-  const kind = state.map ? kindOf(state.map) : "";
-  el["map-pick-dot"].dataset.kind = kind;
-  el["map-pick-dot"].hidden = !state.map;
-  el["map-pick-name"].textContent = state.map || "No maps cached";
-  el["map-pick"].disabled = !state.maps.length;
-}
-
+/* **The same validator, on the other side of the pair.** This used to be the
+ * `<select>` itself - written to, then read back, blanking on a value it had
+ * no option for - and losing that when the element went would have let
+ * `?compare=made-up` put a name on the ribbon that no route could answer
+ * about. A multi-run batch is refused for the reason `setMap` refuses one. */
 function setCompare(id) {
-  el.compare.value = id || "";
-  state.compare = el.compare.value;
+  const wanted = id || "";
+  const row = state.maps.find((m) => m.map_id === wanted);
+  state.compare = row && !(row.runs > 1) ? wanted : "";
+  renderPickButton(el.compare);
   return state.compare;
 }
 
@@ -2089,33 +2136,6 @@ function panelQuery() {
   return state.step >= last ? query : query + "&step=" + state.step;
 }
 
-/* **A batch of several runs is not a map and must not be offered as one.**
- *
- * `cache.resolve_map_path` refuses to guess which run a bare batch name means
- * - picking one silently would make the same name describe a different world
- * as runs were added - so selecting it 404s *every* route and the map goes
- * blank. `/api/maps` lists the batch and its runs flat, so this nests the runs
- * under their batch and gives the batch itself no value to select: an
- * `<optgroup>` is a label, which is exactly what a batch is here.
- *
- * A one-run batch stays a plain option, because there its name is unambiguous
- * and `--map <batch>` resolves to that run everywhere else too. */
-function mapOptions(maps) {
-  const kindOf = (m) => (m.kind === "fetched" ? "" : "  (" + (KIND_LABELS[m.kind] || label(m.kind)) + ")");
-  const option = (m, text) => tmpl`<option value="${m.map_id}">${text}${kindOf(m)}</option>`;
-  const runsOf = (batch) => maps.filter((m) => m.map_id.startsWith(batch + "/"));
-
-  let out = "";
-  for (const m of maps) {
-    if (m.map_id.includes("/")) continue;                 // emitted with its batch
-    if (!(m.runs > 1)) { out += option(m, m.map_id); continue; }
-    out += tmpl`<optgroup label="${m.map_id}${kindOf(m)}">`
-      + runsOf(m.map_id).map((run) => option(run, run.map_id.split("/")[1])).join("")
-      + "</optgroup>";
-  }
-  return out;
-}
-
 /* **Ordered by what a map is, then by name.** The three kinds answer three
  * different questions - what upstream holds, what a roll would give you, what
  * you changed by hand - and interleaving them alphabetically made the list a
@@ -2127,26 +2147,70 @@ function byKindThenName(a, b) {
   return order || a.map_id.localeCompare(b.map_id);
 }
 
+/* **One picker, everywhere a map is chosen.**
+ *
+ * There were three places to choose a map and only one of them was this. The
+ * ribbon's comparison and the Compare dialog were `<select>`s, which cannot
+ * colour a row, cannot nest a batch's runs beside it, and draw their popup in
+ * the platform's own colours - dark grey on white inside a dark page, capped
+ * at 20ch and squashed. The nesting is not decoration either: `<optgroup>`
+ * puts ten runs in the same scroll as every other map, which is the pile the
+ * batch row exists to collapse.
+ *
+ * `spec` is everything that differs between the three: where the maps come
+ * from, what is chosen now, what to do about a choice, what a *batch* row does
+ * when pressed, and an optional first row that chooses nothing.
+ */
+function initPicker(root, spec) {
+  root.__pick = spec;
+  root.querySelector(".pick-button").addEventListener("click", () => {
+    if (root.querySelector(".menu").hidden) openPicker(root); else closePicker(root);
+  });
+  renderPickButton(root);
+  return root;
+}
+
+/* What the button shows: the kind's dot, and the name with its batch. */
+function renderPickButton(root) {
+  const spec = root.__pick;
+  if (!spec) return;
+  const chosen = spec.selected();
+  const dot = root.querySelector(".dot");
+  dot.dataset.kind = chosen ? kindOf(chosen) : "";
+  dot.hidden = !chosen;
+  root.querySelector(".pick-name").textContent = chosen || spec.empty;
+  root.querySelector(".pick-button").disabled = !spec.maps().length;
+}
+
 /* **A batch's runs open beside it, not inside it.**
  *
  * `cache.resolve_map_path` refuses to guess which run a bare batch name means,
  * so a multi-run batch is a heading rather than a choice - and putting its ten
- * runs in the main list, which is what `<optgroup>` does, buries every other
- * map under them. A submenu says "this is one thing with parts" and costs one
- * row until you ask.
+ * runs in the main list buries every other map under them. A submenu says
+ * "this is one thing with parts" and costs one row until you ask.
  *
  * A one-run batch stays a plain row: there the name is unambiguous and
  * `--map <batch>` resolves to that run everywhere else too. */
-function renderMapMenu() {
-  const runsOf = (batch) => state.maps.filter((m) => m.map_id.startsWith(batch + "/"));
-  const row = (m, text, extra = "") => tmpl`<button class="menu-row ${
-      m.map_id === state.map ? "on" : ""}" type="button" role="option" data-map="${m.map_id}"
-      aria-selected="${m.map_id === state.map}" data-tip="${mapTip(m)}">
+function renderPickerMenu(root) {
+  const spec = root.__pick;
+  const menu = root.querySelector(".menu");
+  const maps = spec.maps();
+  const chosen = spec.selected();
+  const runsOf = (batch) => maps.filter((m) => m.map_id.startsWith(batch + "/"));
+  const row = (m, text) => tmpl`<button class="menu-row ${
+      m.map_id === chosen ? "on" : ""}" type="button" role="option" data-map="${m.map_id}"
+      aria-selected="${m.map_id === chosen}" data-tip="${mapTip(m)}">
       <span class="dot" data-kind="${m.kind}"></span>
-      <span class="name">${text}</span>${raw(extra)}</button>`;
+      <span class="name">${text}</span></button>`;
 
-  let out = "";
-  for (const m of [...state.maps].filter((x) => !x.map_id.includes("/")).sort(byKindThenName)) {
+  /* The row that chooses nothing, where choosing nothing means something -
+   * on the comparison it is how you stop comparing. */
+  let out = spec.clear
+    ? tmpl`<button class="menu-row ${chosen ? "" : "on"}" type="button" role="option"
+        data-clear="1"><span class="dot" hidden></span>
+        <span class="name">${spec.clear.label}</span></button>`
+    : "";
+  for (const m of [...maps].filter((x) => !x.map_id.includes("/")).sort(byKindThenName)) {
     const runs = runsOf(m.map_id);
     if (runs.length < 2) { out += row(m, m.map_id); continue; }
     /* **The batch row carries no tooltip**, and that is not an oversight: it
@@ -2163,20 +2227,23 @@ function renderMapMenu() {
       + runs.map((r) => row(r, r.map_id.split("/")[1])).join("")
       + "</div></div></div>";
   }
-  el["map-menu"].innerHTML = out;
-  for (const button of el["map-menu"].querySelectorAll("[data-map]")) {
-    button.onclick = () => { closeMapMenu(); chooseMap(button.dataset.map); };
+  menu.innerHTML = out;
+  for (const button of menu.querySelectorAll("[data-map]")) {
+    button.onclick = () => { closePicker(root); spec.onChoose(button.dataset.map); };
   }
+  const clear = menu.querySelector("[data-clear]");
+  if (clear) clear.onclick = () => { closePicker(root); spec.clear.run(); };
+
   /* **Hover previews the runs; a press asks about them.** Hover is the fast
    * path and the fragile one - it closes when the pointer wanders and does
-   * not exist on a touch screen or from a keyboard - so the press used to pin
-   * the strip open to make the runs reachable at all. `showSimulations` is a
-   * better answer to that: it lists every run *and* what happened in it, in a
-   * dialog that stays put.
+   * not exist on a touch screen or from a keyboard - so a press has to reach
+   * the runs too. On the map picker that press opens `showSimulations`, which
+   * lists every run *and* what happened in it; where there is nothing better
+   * to say, it pins the submenu instead.
    *
    * Only one nest is open at a time, or two submenus land in the same strip
    * of screen. */
-  const nests = () => el["map-menu"].querySelectorAll(".menu-nest");
+  const nests = () => menu.querySelectorAll(".menu-nest");
   /* **A nest shows and hides only itself.** This was one `open(on)` that swept
    * every nest, which read as "only one at a time" and was - right up until a
    * pending close belonging to the nest you *left* fired and swept the one you
@@ -2213,8 +2280,9 @@ function renderMapMenu() {
       nest.closing = setTimeout(() => show(nest, false), SUBMENU_GRACE);
     });
     nest.firstElementChild.onclick = () => {
-      closeMapMenu();
-      showSimulations(nest.dataset.batch);
+      if (!spec.onBatch) { show(nest, !nest.classList.contains("open")); return; }
+      closePicker(root);
+      spec.onBatch(nest.dataset.batch);
     };
   }
 }
@@ -2353,31 +2421,69 @@ function placeSubmenu(nest) {
   }
 }
 
-function openMapMenu() {
-  renderMapMenu();
-  el["map-menu"].hidden = false;
-  el["map-pick"].setAttribute("aria-expanded", "true");
+/* **The menu is `fixed` and placed here, for the reason the submenu is.** One
+ * of the three pickers lives inside a dialog, and `.sheet > div` scrolls - a
+ * scroll container clips its children in both axes, so an absolutely
+ * positioned menu hanging below its button was simply cut off. Fixed escapes
+ * the clip; the cost is that the coordinates cannot come from the stylesheet.
+ *
+ * Flips above the button when there is no room below, and never narrower than
+ * the button it belongs to. */
+function placeMenu(root) {
+  const menu = root.querySelector(".menu");
+  const button = root.querySelector(".pick-button").getBoundingClientRect();
+  menu.style.minWidth = button.width + "px";
+  menu.style.left = "";
+  menu.style.right = "";
+  menu.style.top = "";
+  menu.style.bottom = "";
+  const height = menu.offsetHeight;
+  if (button.bottom + SUBMENU_GAP + height <= window.innerHeight) {
+    menu.style.top = button.bottom + SUBMENU_GAP + "px";
+  } else {
+    menu.style.bottom = window.innerHeight - button.top + SUBMENU_GAP + "px";
+  }
+  const width = menu.offsetWidth;
+  menu.style.left = Math.max(SUBMENU_GAP,
+    Math.min(button.left, window.innerWidth - width - SUBMENU_GAP)) + "px";
 }
 
-function closeMapMenu() {
-  el["map-menu"].hidden = true;
-  el["map-pick"].setAttribute("aria-expanded", "false");
+function openPicker(root) {
+  closeAllPickers();
+  renderPickerMenu(root);
+  root.querySelector(".menu").hidden = false;
+  root.querySelector(".pick-button").setAttribute("aria-expanded", "true");
+  placeMenu(root);
 }
 
-el["map-pick"].addEventListener("click", () => {
-  if (el["map-menu"].hidden) openMapMenu(); else closeMapMenu();
-});
+function closePicker(root) {
+  root.querySelector(".menu").hidden = true;
+  root.querySelector(".pick-button").setAttribute("aria-expanded", "false");
+}
+
+function closeAllPickers() {
+  for (const root of document.querySelectorAll(".picker")) closePicker(root);
+}
 
 /* Anywhere else closes it, including the map - a menu that needs its own
  * button pressed again to go away is one you fight. */
 document.addEventListener("pointerdown", (event) => {
-  if (el["map-menu"].hidden) return;
-  if (event.target.closest("#map-menu, #map-pick")) return;
-  closeMapMenu();
+  if (event.target.closest(".picker")) return;
+  closeAllPickers();
 });
 
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !el["map-menu"].hidden) closeMapMenu();
+  if (event.key === "Escape") closeAllPickers();
+});
+
+/* The base map. **A batch row asks about its runs rather than choosing one**,
+ * which is what `showSimulations` is for - see there. */
+initPicker(el["map-picker"], {
+  empty: "No maps cached",
+  maps: () => state.maps,
+  selected: () => state.map,
+  onChoose: chooseMap,
+  onBatch: showSimulations,
 });
 
 async function loadMaps() {
@@ -2387,14 +2493,13 @@ async function loadMaps() {
     /* An empty screen is an invitation to act. The first build showed a blank
      * dropdown and "missing required parameter 'map'", which is a dead end. */
     state.map = "";
-    renderMapPick();
+    renderPickButton(el["map-picker"]);
     el.counts.textContent = "";
     el["chunk-body"].innerHTML = tmpl`<p class="empty">Nothing cached yet. Run <code>fray fetch</code> in a terminal, or press <b>Fetch Named Map</b> on the Maps tab.</p>`;
     showTab("maps");
     return false;
   }
   const keepMap = state.map, keepCompare = state.compare;
-  el.compare.innerHTML = "<option value=''>—</option>" + mapOptions(maps);
   setMap(BOOT.map || keepMap || maps[0].map_id);
   /* **`setMap` refuses an id the listing does not hold**, and a one-run batch
    * is listed under its bare name rather than as `<batch>/run-001` - so
@@ -2443,7 +2548,15 @@ function chunkStateLabel(cellState) {
   if (cellState === "added") return state.step === null ? "Gained" : "Rolled";
   if (cellState === "removed") return "Lost";
   if (cellState === "unlocked") return "Unlocked";
+  if (cellState === "reachable") return "Reachable";
   return "Locked";
+}
+
+/* The area entry for a square you can walk into without having rolled it, or
+ * `null`. See `loadReachable`: the join is a name, and the entry carries which
+ * area it is and which of your chunks opens it. */
+function reachableArea(chunkId) {
+  return state.reachable.find((c) => String(c.chunk_id) === String(chunkId)) || null;
 }
 
 /* What a square is, in one call: its state in words, and its candidate number
@@ -2458,9 +2571,19 @@ function chunkStatus(chunkId) {
   const at = chunkToGrid(chunkId);
   const cell = at && state.cells.get(at[0] + "," + at[1]);
   const candidate = state.candidates.get(chunkId);
+  /* **Reachable is a third answer, and the cells cannot give it.** A square
+   * behind a dungeon entrance is not in the unlocked set - it costs no chunk -
+   * so `/api/view` calls it locked and every reader repeated that. The map
+   * itself already draws them outlined; the words had not caught up, which is
+   * why Find showed `Slayer Tower (Basement)` as somewhere you cannot go
+   * while the square beside it was outlined as somewhere you can. */
+  const held = cell && cell.state !== "locked";
+  const area = held ? null : reachableArea(chunkId);
   return {
-    label: chunkStateLabel(cell ? cell.state : "locked"),
-    state: cell ? cell.state : "locked",
+    label: chunkStateLabel(held ? cell.state : (area ? "reachable" : "locked")),
+    state: held ? cell.state : (area ? "reachable" : "locked"),
+    area: area ? area.area : null,
+    entrances: area ? area.entrances || [] : [],
     number: candidate ? candidate.number : null,
   };
 }
@@ -2604,7 +2727,15 @@ let chunkDetail = null;
  * what a chunk you have just clicked should do. See `applyChipGesture`. */
 const chunkOff = new Set();
 
-async function selectChunk(chunkId) {
+/* **`show` is whether selecting also *goes* to the Chunk pane.**
+ *
+ * Clicking a square on the map is a question about that square, so the pane
+ * that answers it comes forward. Clicking a column of the timeline is not: it
+ * is a question about a *roll*, and the chunk is only how the roll is named -
+ * so it moved you off the Tasks or Estimate tab you were reading the run
+ * through, one roll at a time. The pane still fills in either way; it just
+ * does not take the front. */
+async function selectChunk(chunkId, { show = true } = {}) {
   state.selected = chunkId;
   invalidate();
   if (!chunkId) {
@@ -2614,7 +2745,7 @@ async function selectChunk(chunkId) {
     el["chunk-body"].innerHTML = tmpl`<p class="empty">Click a chunk on the map.</p>`;
     return;
   }
-  showTab("chunk");
+  if (show) showTab("chunk");
   el["chunk-body"].innerHTML = tmpl`<p class="empty">Reading ${chunkLabel(chunkId)}…</p>`;
   try {
     chunkDetail = await getJSON(
@@ -2652,7 +2783,7 @@ function renderChunk() {
       <button id="what-if" class="icon-btn" type="button" aria-label="What would this add?"
         data-tip="<b>What would this add?</b><span class='sub'>Sections, tasks and BiS upgrades this chunk would bring, without saving anything.</span>">${icon("help")}</button>
       <button id="do-unlock" class="icon-btn" type="button" aria-label="Unlock"
-        data-tip="<b>Unlock this chunk</b><span class='sub'>Save a new map with this chunk added by hand, the way <code>fray unlock --cache-map</code> does.</span>">${icon("unlock")}</button>`;
+        data-tip="<b>Unlock this chunk</b><span class='sub'>Save a new map with this chunk added by hand, the way <code>fray unlock --cache-map</code> does.</span><span class='hint'>U</span>">${icon("unlock")}</button>`;
 
   el["chunk-head"].innerHTML = tmpl`<h3>${
     detail.nickname ? qualified(detail.nickname) : "Chunk " + detail.chunk_id}</h3>
@@ -2666,28 +2797,17 @@ function renderChunk() {
   const whatIf = document.getElementById("what-if");
   if (whatIf) whatIf.onclick = () => previewUnlock(detail.chunk_id);
   const unlockNow = document.getElementById("do-unlock");
-  /* **Two different verbs behind one button, and the mode decides which.** In
-   * Browse, Unlock derives and writes a map of its own on the spot; in Edit it
-   * joins the pending set with everything else and costs nothing until Commit.
-   * Offering both at once would be two buttons a word apart. */
-  if (unlockNow) unlockNow.onclick = async () => {
-    if (state.mode !== "edit") return askUnlock(detail.chunk_id);
-    if (state.edits.unlocked.has(detail.chunk_id)) state.edits.unlocked.delete(detail.chunk_id);
-    else state.edits.unlocked.add(detail.chunk_id);
-    renderRibbon();
-    renderChunk();
-    renderLegend();
-    invalidate();
-  };
+  if (unlockNow) unlockNow.onclick = () => unlockChunk(detail.chunk_id);
   if (unlockNow && state.mode === "edit") {
     /* An icon has no label to swap, so the state is said in the tooltip and
      * shown by the button being pressed - which is what `aria-pressed` means
      * and what `.icon-btn[aria-pressed="true"]` already tints amber. */
     const pending = state.edits.unlocked.has(detail.chunk_id);
     unlockNow.setAttribute("aria-pressed", pending ? "true" : "false");
-    unlockNow.dataset.tip = pending
+    unlockNow.dataset.tip = (pending
       ? "<b>Take it back out</b><span class='sub'>Nothing has been written yet.</span>"
-      : "<b>Unlock it on commit</b><span class='sub'>Held in this page with your other changes until you press Commit.</span>";
+      : "<b>Unlock it on commit</b><span class='sub'>Held in this page with your other changes until you press Commit.</span>")
+      + "<span class='hint'>U</span>";
   }
 
   /* Categories as chips rather than as eight headings in one column: at 360px
@@ -2869,6 +2989,24 @@ async function previewUnlock(chunkId) {
  * fixed so unlocking two chunks from one map does not collide - `claim_batch`
  * would suffix the second `-2`, which reads as an accident rather than as a
  * choice. Whatever name is claimed comes back in the reply either way. */
+/* **Two different verbs behind one word, and the mode decides which.** In
+ * Browse, Unlock derives and writes a map of its own on the spot; in Edit it
+ * joins the pending set with everything else and costs nothing until Commit.
+ * Offering both at once would be two buttons a word apart.
+ *
+ * A function rather than the button's handler because the `U` key is the same
+ * action, and the key works on a chunk whose pane may not be open - so the
+ * redraw is conditional on the pane actually showing this chunk. */
+function unlockChunk(chunkId) {
+  if (state.mode !== "edit") return askUnlock(chunkId);
+  if (state.edits.unlocked.has(chunkId)) state.edits.unlocked.delete(chunkId);
+  else state.edits.unlocked.add(chunkId);
+  renderRibbon();
+  if (chunkDetail && String(chunkDetail.chunk_id) === String(chunkId)) renderChunk();
+  renderLegend();
+  invalidate();
+}
+
 function askUnlock(chunkId) {
   const suggested = (state.map || DEFAULT_MAP_ID).replace(/\//g, "-") + "-" + chunkId;
   openOverlay("Unlock " + chunkLabel(chunkId),
@@ -3097,6 +3235,11 @@ async function loadTasks() {
 }
 
 function renderTasks() {
+  /* **Asked to draw with nothing to draw from, fetch.** The only way here
+   * without a payload is that something dropped the memo, and the answer to
+   * that is the request, not an empty pane - and certainly not the throw this
+   * used to be, which swallowed the click that caused it. */
+  if (!taskPanel) return loadTasks();
   const sections = taskPanel.sections;
   const keys = sections.map((s) => s.key);
   el["task-chips"].innerHTML = sections.map((s) => {
@@ -3465,21 +3608,18 @@ function chunkRegion(chunkId) {
   return Number.isFinite(id) ? [id >> 8, id & 0xff] : null;
 }
 
-/* The map's own record of a square, where there is one. Used for lock state
- * and nothing else - see `chunkRegion` for why the coordinates do not come
- * from here. */
-function chunkCell(chunkId) {
-  if (!state.view) return null;
-  return state.view.cells.find((cell) => String(cell.chunk_id) === String(chunkId)) || null;
-}
+/* **Nearest first, then by id.** The question behind "which of these eight" is
+ * almost always "which can I already get to", so that is the sort: the ones
+ * you hold, then the ones you can walk into, then the rest. The id second
+ * keeps it stable and puts neighbours together, since ids run in columns. */
+const CHUNK_RANK = { unlocked: 0, added: 0, reachable: 1 };
 
-/* **Unlocked first, then by id.** The question behind "which of these eight"
- * is almost always "which can I already get to", so that is the sort; the id
- * second keeps it stable and puts neighbours together, since ids run in
- * columns. */
 function chunkOrder(a, b) {
-  const held = (id) => (chunkCell(id) && chunkCell(id).state !== "locked" ? 0 : 1);
-  return held(a) - held(b) || Number(a) - Number(b);
+  const rank = (id) => {
+    const at = CHUNK_RANK[chunkStatus(id).state];
+    return at === undefined ? 2 : at;
+  };
+  return rank(a) - rank(b) || Number(a) - Number(b);
 }
 
 /* The tiles a thing is in, as a grid you can click.
@@ -3494,8 +3634,7 @@ function showChunks(title, ids, shown = CHUNKS_SHOWN) {
   const page = ordered.slice(0, shown);
   const rest = ordered.length - page.length;
   const cards = page.map((id) => {
-    const cell = chunkCell(id);
-    const locked = !cell || cell.state === "locked";
+    const at = chunkStatus(id);
     const region = chunkRegion(id);
     const art = region
       /* **Not `loading="lazy"`.** The overlay is built and shown in the same
@@ -3506,16 +3645,28 @@ function showChunks(title, ids, shown = CHUNKS_SHOWN) {
       ? tmpl`<img class="chunk-art" alt=""
              src="${tileUrl(CHUNK_TILE_ZOOM, region[0], region[1], 0)}">`
       : tmpl`<span class="chunk-art off">no id</span>`;
-    return tmpl`<button class="chunk-card ${locked ? "locked" : ""}" type="button"
-      data-chunk="${String(id)}">${raw(art)}
+    /* **The state is a border and a word, not dimming alone.** Eight tiles at
+     * four columns are eight small pictures, and "which of these can I get
+     * to" was being answered by an opacity difference you had to compare two
+     * cards to see. The edge carries it - the same blue the map outlines a
+     * reachable area with - and the word under the name says which, since a
+     * green edge and a blue one are a legend nobody was given. */
+    const tip = tmpl`<b>${qualified(state.labels[id] || "Chunk " + id)}</b>`
+      + (at.area ? tmpl`<span class="sub">Walk in from ${
+          at.entrances.map((e) => chunkLabel(e)).join(", ") || "an unlocked chunk"}</span>` : "")
+      + tmpl`<span class="hint">${at.label}</span>`;
+    return tmpl`<button class="chunk-card" type="button" data-hold="${at.state}"
+      data-chunk="${String(id)}" data-tip="${tip}">${raw(art)}
       <span class="chunk-name">${qualified(state.labels[id] || "Unnamed")}</span>
-      <span class="chunk-id">${String(id)}</span></button>`;
+      <span class="chunk-foot"><span class="chunk-id">${String(id)}</span>
+        <span class="chunk-hold">${at.label}</span></span></button>`;
   }).join("");
   const more = rest > 0
     ? tmpl`<button id="chunk-more" type="button">Show ${String(rest)} more</button>`
     : "";
   openOverlay(title, tmpl`<p class="hint">${String(ordered.length)} ${
-    ordered.length === 1 ? "chunk" : "chunks"} · unlocked first. Click one to fly to it.</p>`
+    ordered.length === 1 ? "chunk" : "chunks"} · the ones you can reach first.
+    Click one to fly to it.</p>`
     + `<div class="chunk-grid">${cards}</div>`, more);
 
   for (const card of document.querySelectorAll(".chunk-card")) {
@@ -4176,7 +4327,6 @@ async function chooseMap(id) {
    * was, and half a load is not that. */
   if (!(await selectMap(id))) return;
   state.selected = null;
-  taskPanel = null;
   /* Cleared *before* the view loads: a step index belongs to one run, and
    * carrying it across would rewind the new map to a roll it never had.
    * `setMode` does it, and does it for every other way in as well. */
@@ -4186,23 +4336,18 @@ async function chooseMap(id) {
   await loadCandidates();
   await loadSections();
   await loadReachable();
+  await reloadPanels();
 }
 
-el.compare.addEventListener("change", async () => {
-  /* Only reachable from inside Diff now, so an empty choice means "leave".
-   * Read before the mode changes: leaving clears the comparison, which is
-   * right when you are leaving and would eat the one you just picked. */
-  const chosen = el.compare.value;
-  if (!chosen) return exitMode();
-  setMode("diff");
-  setCompare(chosen);
-  renderRibbon();
-  syncBreakdown();
-  /* Comparing is a question about two maps and stepping is a question about
-   * one map's past. Picking a comparison answers the first, so the strip goes
-   * and the rewind with it. */
-  await loadTimeline();
-  await loadView({ refit: true });
+/* Only reachable from inside Diff, so "choose nothing" means leave - which is
+ * a named row rather than an em dash you have to guess the meaning of. */
+initPicker(el.compare, {
+  empty: "Pick a map",
+  maps: () => state.maps.filter((m) => m.map_id !== state.map),
+  selected: () => state.compare,
+  onChoose: startCompare,
+  onBatch: null,
+  clear: { label: "Stop comparing", run: exitMode },
 });
 el.fit.addEventListener("click", () => fitToCells());
 
@@ -5023,7 +5168,7 @@ async function goToRoll(step) {
   await commitStep(step);
   const at = state.timeline && state.timeline.steps[step];
   if (at && at.chunk) {
-    await selectChunk(at.chunk);
+    await selectChunk(at.chunk, { show: false });
     focusChunk(at.chunk);
   }
 }
@@ -5224,18 +5369,35 @@ async function setStep(step) {
  * what `showTab` already does. */
 async function commitStep(step) {
   await setStep(step);
+  await loadCandidates();
+  await loadSections();
+  await loadReachable();
+  await reloadPanels();
+}
+
+/* **The world the panes describe has moved, so the panes have to.**
+ *
+ * The memos are dropped as well as the panes reloaded: `taskPanel` and
+ * `estimatePayload` are what the more/less toggles re-render *from*, so leaving
+ * them would put one world's rows under another's total.
+ *
+ * Only the open pane refetches - the others rebuild when they are next shown,
+ * which is what `showTab` already does. But dropping the memo without
+ * reloading the pane you are *looking at* is the bug this exists to end:
+ * choosing another map left the Tasks pane showing the previous map's list,
+ * and its "Show more" pressed into a null payload and threw. It read as the
+ * button being stuck, and swapping tabs "fixed" it because that is what
+ * refetched. */
+async function reloadPanels() {
   taskPanel = null;
   estimatePayload = null;
   clearExpansions("tasks:");
   clearExpansions("estimate:");
   clearExpansions("chunk:");
-  await loadCandidates();
-  await loadSections();
-  await loadReachable();
-  if (state.tab === "tasks") loadTasks();
-  if (state.tab === "estimate") loadEstimate();
+  if (state.tab === "tasks") await loadTasks();
+  if (state.tab === "estimate") await loadEstimate();
   if (state.tab === "find") runFind();
-  if (state.tab === "chunk" && state.selected) await selectChunk(state.selected);
+  if (state.tab === "chunk" && state.selected) await selectChunk(state.selected, { show: false });
 }
 
 /* `input` fires per frame of a drag and `change` once it settles, which is
@@ -5310,7 +5472,7 @@ async function poll() {
   if (!state.live || !state.view || !state.map) return;
   try {
     const { revision } = await getJSON("/api/revision?" + mapQuery());
-    if (revision !== state.revision) { taskPanel = null; await loadView(); }
+    if (revision !== state.revision) { await loadView(); await reloadPanels(); }
   } catch { /* a map deleted under us; the next load reports it */ }
 }
 

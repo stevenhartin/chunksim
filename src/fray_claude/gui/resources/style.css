@@ -36,6 +36,11 @@
   /* Candidates. Deliberately not green or red - those already mean gained and
      lost - and blue sits apart from the map's greens and tans. */
   --candidate: #5abeff;
+  /* Squares you can walk into without rolling them. The same blue the canvas
+     outlines them with - `REACHABLE_STROKE` in `app.js`, kept equal by a
+     contract test, because a dialog calling one thing two colours is worse
+     than either colour. */
+  --reachable: #5abeff;
   --gain: #3cc85a;
   --loss: #dc3c3c;
 
@@ -387,10 +392,7 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   color: var(--amber);
 }
 
-/* The two `<select>`s. `.pick-button` sets its own width - see below. */
-.pick:not(.pick-button) { max-width: 20ch; }
-
-/* --- the map picker ----------------------------------------------------- */
+/* --- the pickers -------------------------------------------------------- */
 
 /* **A dot rather than a coloured name.** Tinting the text would make the map's
    *provenance* compete with its name for the one thing a name is for, and at
@@ -410,9 +412,8 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 
 .picker { position: relative; }
 
-/* **It grows to fit the name rather than wrapping.** `.pick` caps the two
-   `<select>`s that share the class at 20ch; a button holding a batch's run name
-   needs more than that and used to get it in the worst way - `text-overflow`
+/* **It grows to fit the name rather than wrapping.** A button holding a
+   batch's run name used to get its width in the worst way - `text-overflow`
    only applies to a line box that does not wrap, so without `nowrap` below the
    name broke at the `-` in `verf-sim/run-012`, made the button two lines tall,
    and overflowed `.bar`'s fixed `--bar-h` instead of ellipsising. So: size to
@@ -428,6 +429,10 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   text-align: left;
 }
 
+/* The ribbon's copy is the same control at the ribbon's height. It sits beside
+   18px buttons, so it may not be floored at 20ch like the one in the bar. */
+.ribbon .pick-button { min-width: 12ch; max-width: 26ch; }
+
 .pick-name {
   flex: 1;
   min-width: 0;
@@ -436,12 +441,14 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   white-space: nowrap;
 }
 
+/* **`fixed`, and placed by `app.js`.** One of the three pickers opens inside a
+   dialog, and `.sheet > div` scrolls - a scroll container clips its children in
+   both axes, so a menu hanging below its button was cut off exactly as the
+   submenu was before it. The cost is that the coordinates cannot come from
+   here; `placeMenu` sets top/left and the button's width as the floor. */
 .menu {
-  position: absolute;
-  z-index: 6;
-  top: calc(100% + var(--s1));
-  left: 0;
-  min-width: 100%;
+  position: fixed;
+  z-index: 7;
   max-height: 60vh;
   overflow-y: auto;
   scrollbar-gutter: stable;
@@ -1344,9 +1351,19 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 
 /* **A bar that ran off the top of the axis, not one that reached it.** The
    hours axis is capped so a single enormous roll cannot flatten the other
-   forty-nine; a roll past the cap is drawn full height with its top edge cut
-   back, which reads as "continues" rather than as "this is the maximum". */
-.tl-bar.over { fill: var(--amber); }
+   forty-nine; a roll past the cap is drawn full height and marked, which reads
+   as "continues" rather than as "this is the maximum".
+
+   **Marked by its outline, because the fill already means something.** This
+   recoloured the whole bar amber, and the two axes cap at different heights -
+   1,000 hours on the linear one, 10,000 on the log - so the same death-band
+   roll came out black on one and amber on the other. Which band a roll is in
+   is a fact about the roll; running off the end is a fact about the axis, so
+   the band keeps the fill and the overflow takes the edge. */
+.tl-bar.over { stroke: var(--amber); stroke-width: 1.5; }
+/* With no bands configured there is no fill to protect, and an outline alone
+   on a green bar says nothing. */
+.tl-bar.over[data-band=""] { fill: var(--amber); }
 .tl-slot { fill: transparent; }
 .tl-slot:hover { fill: rgba(255, 255, 255, .07); }
 .tl-slot.at { fill: rgba(255, 255, 255, .04); }
@@ -1513,10 +1530,35 @@ ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
 }
 .chunk-card:hover { border-color: var(--amber); }
 
-/* **Locked chunks are shown and dimmed, not hidden.** "It is there and you
+/* **How near a chunk is, on its edge.** "Which of these can I already get to"
+   is the question the dialog exists to answer, and it was being answered by an
+   opacity difference you had to hold two cards side by side to see. The edge
+   is the loudest thing on a card that is mostly picture, so the edge carries
+   it - green for held, and the map's own reachable blue for a square you can
+   walk into without rolling it.
+
+   **Locked chunks are shown and dimmed, not hidden.** "It is there and you
    cannot reach it yet" is the answer to half the searches anyone makes. */
-.chunk-card.locked { opacity: 0.55; }
-.chunk-card.locked .chunk-name { color: var(--dim); }
+.chunk-card[data-hold="unlocked"], .chunk-card[data-hold="added"] {
+  border-color: var(--gain);
+}
+.chunk-card[data-hold="reachable"] { border-color: var(--reachable); }
+.chunk-card[data-hold="locked"] { opacity: 0.55; }
+.chunk-card[data-hold="locked"] .chunk-name { color: var(--dim); }
+
+/* The id and how near it is, on one line under the name: the id is what you
+   paste into `fray unlock`, and the word is the legend the two edge colours
+   would otherwise need. */
+.chunk-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: var(--s2);
+}
+.chunk-hold { color: var(--dim); font-size: var(--t-micro); }
+.chunk-card[data-hold="unlocked"] .chunk-hold,
+.chunk-card[data-hold="added"] .chunk-hold { color: var(--gain); }
+.chunk-card[data-hold="reachable"] .chunk-hold { color: var(--reachable); }
 
 .chunk-art {
   width: 100%;

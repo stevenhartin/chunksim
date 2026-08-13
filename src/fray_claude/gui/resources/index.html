@@ -74,7 +74,15 @@
        other mode; what the ribbon adds is the other side of the pair, so it
        is changeable without leaving the mode that needed it. -->
   <span id="ribbon-vs" class="vs" hidden>vs</span>
-  <select id="compare" class="pick pick-thin" aria-label="Compare against" hidden><option value="">—</option></select>
+  <div class="picker" id="compare" hidden>
+    <button class="pick-button pick-thin" type="button"
+            aria-haspopup="listbox" aria-expanded="false" aria-label="Compare against">
+      <span class="dot" hidden></span>
+      <span class="pick-name">Pick a map</span>
+      <svg class="icon" viewBox="0 0 24 24"><use href="#i-down"/></svg>
+    </button>
+    <div class="menu" role="listbox" hidden></div>
+  </div>
   <!-- Edit's own controls: what is waiting, and the one button that writes
        it. The count is the whole feedback loop for a mode that deliberately
        computes nothing until you press Commit. -->
@@ -94,14 +102,14 @@
        batch's runs beside it rather than inside it. `<optgroup>` puts ten runs
        in the same scroll as every other map, which is the list the batch entry
        exists to collapse. -->
-  <div class="picker">
-    <button id="map-pick" class="pick pick-button" type="button"
+  <div class="picker" id="map-picker">
+    <button class="pick-button" type="button"
             aria-haspopup="listbox" aria-expanded="false" aria-label="Map">
-      <span class="dot" id="map-pick-dot"></span>
-      <span class="pick-name" id="map-pick-name">…</span>
+      <span class="dot"></span>
+      <span class="pick-name">…</span>
       <svg class="icon" viewBox="0 0 24 24"><use href="#i-down"/></svg>
     </button>
-    <div class="menu" id="map-menu" role="listbox" hidden></div>
+    <div class="menu" role="listbox" hidden></div>
   </div>
   <!-- Comparing is a mode, not a second dropdown sitting permanently beside
        the first. The pair it needs lives in the ribbon, where the mode is
@@ -122,7 +130,7 @@
        argument about weight rather than about where it belongs. The bar is
        where this page changes what it is showing; the overlays on the map are
        where it reads back. -->
-  <select id="plane" class="pick plane-pick" aria-label="Plane" data-tip="&lt;b&gt;Floor to draw&lt;/b&gt;&lt;span class='sub'&gt;Above ground level the floor below is sunk so this one stands out.&lt;/span&gt;">
+  <select id="plane" class="plane-pick" aria-label="Plane" data-tip="&lt;b&gt;Floor to draw&lt;/b&gt;&lt;span class='sub'&gt;Above ground level the floor below is sunk so this one stands out.&lt;/span&gt;">
     <option value="0">Plane 0</option>
     <option value="1">Plane 1</option>
     <option value="2">Plane 2</option>
