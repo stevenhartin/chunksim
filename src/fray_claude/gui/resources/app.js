@@ -2107,8 +2107,21 @@ function renderMapMenu() {
         if (showing) placeSubmenu(other);
       }
     };
-    nest.addEventListener("mouseenter", () => { if (!pinned) open(true); });
-    nest.addEventListener("mouseleave", () => { if (!pinned) open(false); });
+    /* **The close waits, because there is a gap to cross.** The submenu is
+     * placed a few pixels clear of its row so the two read as separate
+     * strips, and those pixels belong to neither - so travelling into the
+     * submenu leaves the nest on the way, and an immediate close meant
+     * getting there in a single frame or not at all. A short grace, cancelled
+     * by arriving anywhere in the nest, is the difference between a menu you
+     * aim at and one you catch. */
+    nest.addEventListener("mouseenter", () => {
+      clearTimeout(nest.closing);
+      if (!pinned) open(true);
+    });
+    nest.addEventListener("mouseleave", () => {
+      clearTimeout(nest.closing);
+      if (!pinned) nest.closing = setTimeout(() => open(false), SUBMENU_GRACE);
+    });
     nest.firstElementChild.onclick = () => {
       pinned = pinned === nest ? null : nest;
       open(pinned === nest);
@@ -2121,6 +2134,11 @@ function renderMapMenu() {
  * own, read at the moment it opens. Flips to the left when the right would
  * run off the window - the picker is at the left edge, so that is the rare
  * side, but a narrow window makes it the only one. */
+/* How long a submenu survives the pointer leaving its row. Long enough to
+ * cross a 4px gap at any speed a hand moves, short enough that a menu left
+ * behind does not linger. */
+const SUBMENU_GRACE = 220;
+
 function placeSubmenu(nest) {
   const submenu = nest.querySelector(".submenu");
   const row = nest.firstElementChild.getBoundingClientRect();

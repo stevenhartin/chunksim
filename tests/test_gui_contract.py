@@ -1278,3 +1278,17 @@ def test_a_chunks_tile_comes_from_its_id_not_from_the_map_view() -> None:
     # so the browser has no layout to decide visibility from and leaves every
     # one pending - neither loaded nor failed.
     assert 'class="chunk-art" loading="lazy"' not in js
+
+
+def test_a_submenu_survives_the_gap_between_it_and_its_row() -> None:
+    """**The gap belongs to neither.** The submenu is placed a few pixels clear
+    of its row so the two read as separate strips, so travelling into it leaves
+    the nest on the way - and closing on that `mouseleave` meant crossing in a
+    single frame or not at all."""
+    _, js, _ = _resources()
+
+    assert "const SUBMENU_GRACE" in js
+    leave = _match(r'nest\.addEventListener\("mouseleave", \(\) => \{(.*?)\n    \}\)', js)
+    assert "setTimeout" in leave and "SUBMENU_GRACE" in leave
+    enter = _match(r'nest\.addEventListener\("mouseenter", \(\) => \{(.*?)\n    \}\)', js)
+    assert "clearTimeout" in enter, "arriving anywhere in the nest must cancel the close"
