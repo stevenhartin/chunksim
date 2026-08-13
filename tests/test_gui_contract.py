@@ -1359,3 +1359,25 @@ def test_the_two_faces_are_tokens_and_nothing_is_downloaded() -> None:
     # Figures are tabular: half of what this shows is a column read downward,
     # and proportional digits shuffle it sideways as values change.
     assert "tabular-nums" in styles
+
+
+def test_reachable_areas_are_drawn_apart_from_the_unlocked_blob() -> None:
+    """**Reachable, not rolled.**
+
+    Upstream tracks dungeon access by name, and those names are also the names
+    of real squares - the block the wiki draws north of the surface, because
+    that is where the game keeps interiors. They cost no chunk, so they get
+    their own outline rather than joining the hull, and the count in the bar
+    stays the number of chunks the map has.
+    """
+    _, js, _ = _resources()
+
+    assert "const REACHABLE_STROKE" in js
+    body = _match(r"function drawHull\(\) \{(.*?)\n\}", js)
+    assert "state.reachable" in body and "setLineDash" in body
+    # Dashes floored, or they scale below a pixel at low zoom and the outline
+    # reads as solid - the one thing it must not be mistaken for.
+    assert "Math.max(4, 6 * state.zoom)" in body
+    # And explained, like every other colour on the map.
+    legend = _match(r"function renderLegend\(\) \{(.*?)\n\}", js)
+    assert "Reachable area" in legend

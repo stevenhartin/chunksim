@@ -191,7 +191,7 @@ The table says what each module **owns**; its docstring says why.
 | `gui/server.py` | Routing, as a **pure `handle_request`** with a `BaseHTTPRequestHandler` adapter over it. Owns the `Sec-Fetch-Site`/`Host` checks, and `_state_at` — the one place `(map, step)` becomes a world, so six routes cannot disagree about what a step means. |
 | `gui/http.py` | The vocabulary every route speaks. **Must stay directly in `gui/`** — `RESOURCE_DIR` is `__file__`-relative, which is why the split is flat rather than a `routes/` package. |
 | `gui/routes_view.py` | The **cheap path**: every route answerable without parsing the export. Nothing here may call `ctx.derivations.load` (one documented exception, with a test). |
-| `gui/routes_derived.py` | The **expensive path**. `/api/diff` derives both sides and is the one route allowed to be slow. |
+| `gui/routes_derived.py` | The **expensive path**. `/api/diff` derives both sides and is the one route allowed to be slow. Also `reachable_by_area`: the squares a map can walk into without having rolled them, joined to `expanded_chunks` **by name** — the `sections` graph does not model dungeon entrances at all. |
 | `gui/routes_reference.py` | Bytes belonging to no map: the static allowlist, blob freshness, the tile *template*, and the lazy asset proxy. |
 | `gui/actions.py` | The POST handlers. **An action's reply shape decides whether the page polls it** — a job id, or the result. |
 | `gui/jobs.py` | The background job registry. **The only mutable state in the GUI**, kept out of the pure layer deliberately. Also `claim_once`, which is what stops the page's boot warm-up re-scraping the wiki on every reload. |

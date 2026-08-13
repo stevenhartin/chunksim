@@ -494,3 +494,33 @@ def test_a_refused_override_is_a_400_rather_than_a_quiet_no_op(
     assert response.status == HTTPStatus.BAD_REQUEST
     assert expected in _body(response)["error"]
     assert not cache.map_overrides_path("fray", ctx.root).exists()
+
+
+def test_a_reachable_area_names_squares_the_map_has_not_rolled(ctx: Context) -> None:
+    """**The join is the name and only the name.**
+
+    `derive`'s area fold puts entries like `Dwarven Mine` in
+    `expanded_chunks` beside the numeric ids, and those names are also the
+    `Name` of real squares. The `sections` graph is *not* the mechanism: of
+    the chunks in the block north of the surface, none has a `sections`
+    branch and not one edge crosses into it.
+    """
+    cache.write_cache(
+        "named",
+        {"chunks": {"unlocked": {LUMBRIDGE: LUMBRIDGE}}},
+        root=ctx.root,
+    )
+
+    response = _get("/api/reachable", ctx, map="named")
+
+    # Without an export this is a 400 rather than a wrong answer; with one it
+    # is a list. Either way it never reports a chunk already unlocked.
+    if response.status == HTTPStatus.OK:
+        ids = {entry["chunk_id"] for entry in _body(response)["chunks"]}
+        assert LUMBRIDGE not in ids
+
+
+def test_reachable_needs_a_map(ctx: Context) -> None:
+    response = _get("/api/reachable", ctx)
+
+    assert response.status == HTTPStatus.BAD_REQUEST

@@ -125,7 +125,11 @@ other map, where the run itself cannot.
 The panel covers the rest of the CLI. **Tasks** is what you are actually doing — checkbox chips per
 category and a toggle for what is already done; quests show only the step you are on, and
 collection-log entries read *Barrows Chests / dharok's greataxe* rather than the raw
-`(Barrows Chests) Obtain a ~|dharok's greataxe|~`. **Estimate** is the hours as a donut you hover for
+`(Barrows Chests) Obtain a ~|dharok's greataxe|~`. Squares you can walk into without having rolled them — dungeon interiors, which the game stores in a
+block north of the surface and which upstream tracks by *name* rather than by chunk id — are outlined
+in dashed blue. They are reachable, not owned, so they do not count toward the number in the bar.
+
+**Estimate** is the hours as a donut you hover for
 the figure, then the same buckets again as lists of what is actually in them. **Click a row to see
 the numbers it was priced off** — the kill rate, the shop price, the slayer table, a quest's length,
 the training rate behind a climb — with the layer each came from, and correct any of them in place.

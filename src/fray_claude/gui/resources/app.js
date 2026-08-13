@@ -49,6 +49,10 @@ const PENDING_FILL = "rgba(255, 190, 0, 0.42)";
 const PENDING_STROKE = "#ffbe00";
 const CANDIDATE_STROKE = "#5abeff";
 const HULL_STROKE = "#ffbe00";
+/* Reachable-but-not-rolled. The candidate blue rather than the hull's amber:
+ * amber means "this is yours" everywhere else on this map, and these are not.
+ * Matches `--candidate`, which already means "a square you could have". */
+const REACHABLE_STROKE = "#5abeff";
 const FOUND_FILL = "rgba(255, 190, 0, 0.30)";
 const GRID_STROKE = "rgba(255, 255, 255, 0.14)";
 const HOVER_FILL = "rgba(255, 255, 255, 0.10)";
@@ -114,6 +118,9 @@ const state = {
   candidates: new Map(),   // chunk id -> neighbour entry
   found: new Set(),        // chunk ids highlighted by a search
   sections: {},            // chunk id -> {section: reachable}, for the masks
+  /* Squares reachable through a named area rather than rolled - see
+   * `loadReachable`. Empty until that lands, and on any map without one. */
+  reachable: [],
   areas: {},               // chunk id -> named area, for labels and the readout
   selected: null,
   hovered: null,
@@ -998,6 +1005,27 @@ function drawHull() {
   CTX.lineWidth = Math.max(2, 2.5 * state.zoom);
   CTX.lineCap = "square";
   CTX.stroke();
+
+  /* **Reachable, not rolled**, so the same outline in a different colour
+   * rather than the same colour in a different place: these cost no chunk and
+   * are not part of the blob the hull traces. Dashed, because "you can walk in
+   * here" is a weaker claim than "this is yours". */
+  if (!state.reachable.length) return;
+  CTX.beginPath();
+  for (const cell of state.reachable) {
+    if (!cell.edges) continue;
+    const [x, y] = toScreen(cell.grid_x, cell.grid_y);
+    if (cell.edges & TOP) { CTX.moveTo(x, y); CTX.lineTo(x + size, y); }
+    if (cell.edges & BOTTOM) { CTX.moveTo(x, y + size); CTX.lineTo(x + size, y + size); }
+    if (cell.edges & LEFT) { CTX.moveTo(x, y); CTX.lineTo(x, y + size); }
+    if (cell.edges & RIGHT) { CTX.moveTo(x + size, y); CTX.lineTo(x + size, y + size); }
+  }
+  CTX.strokeStyle = REACHABLE_STROKE;
+  /* Floored, or the dash scales below a pixel at low zoom and the outline
+   * reads as solid - which is the one thing it must not be mistaken for. */
+  CTX.setLineDash([Math.max(4, 6 * state.zoom), Math.max(3, 4 * state.zoom)]);
+  CTX.stroke();
+  CTX.setLineDash([]);
 }
 
 /* A wash under the cursor, so the square you are about to click is the square
@@ -1855,6 +1883,7 @@ function askCommit() {
         await loadView({ refit: true });
         await loadCandidates();
         await loadSections();
+        await loadReachable();
         loadMapsPane();
       });
   };
@@ -1930,6 +1959,7 @@ async function exitMode() {
   await loadView({ refit: true });
   await loadCandidates();
   await loadSections();
+  await loadReachable();
 }
 
 /* **A `<select>` silently blanks on a value it has no option for**, and that
@@ -2368,6 +2398,9 @@ function renderLegend() {
     items.push([SECTION_REACHED.edge, "Section reached"], [SECTION_LOCKED.edge, "Section locked"]);
   }
   if (state.found.size) items.push(["rgba(255,190,0,.6)", "Found"]);
+  /* Same rule as every entry above it: a colour on screen the legend does not
+   * explain is a colour nobody trusts. */
+  if (state.reachable.length) items.push([REACHABLE_STROKE, "Reachable area"]);
   el.legend.innerHTML =
     items.map(([colour, label]) => tmpl`<span><i class="sw" style="background:${colour}"></i>${label}</span>`).join("") +
     tmpl`<span><i class="sw" style="background:transparent;border:2px solid ${HULL_STROKE}"></i>Border</span>`;
@@ -2387,6 +2420,31 @@ async function loadCandidates() {
   }
   renderCounts();
   renderLegend();
+  invalidate();
+}
+
+/* **The places you can walk into without having rolled them.**
+ *
+ * Upstream tracks dungeon access by *name* - `Dwarven Mine`, `Mor Ul Rek#Outer
+ * Area` - and those names are also the names of real squares, the ones drawn
+ * in a block north of the surface because that is where the game keeps
+ * interiors. So the map had been washing out places you can already reach.
+ * See `routes_derived.reachable_by_area`, which also records why the
+ * `sections` graph is not the mechanism: not one of its edges crosses into
+ * that block.
+ *
+ * Its own request, after the world is drawn: `/api/view` is a 36KB read that
+ * never derives and this needs the area fold, so the map stays cheap and this
+ * arrives when it can. */
+async function loadReachable() {
+  if (!state.map) { state.reachable = []; return; }
+  try {
+    const payload = await getJSON("/api/reachable?" + panelQuery());
+    state.reachable = payload.chunks || [];
+  } catch {
+    /* No export yet, or a map with no derivation - the map is still a map. */
+    state.reachable = [];
+  }
   invalidate();
 }
 
@@ -2735,6 +2793,7 @@ function askUnlock(chunkId) {
         await loadView();
         await loadCandidates();
         await loadSections();
+        await loadReachable();
         loadMapsPane();
         if (result.open) toast("Unlocked " + chunkLabel(chunkId) + " on " + base + " — the new chunk is green");
       });
@@ -3669,6 +3728,7 @@ async function loadMapsPane() {
           await loadView({ refit: true });
           await loadCandidates();
           await loadSections();
+          await loadReachable();
           loadMapsPane();
           if (base !== result.open) toast("Rolled from " + base + " — drag the slider to replay it");
         });
@@ -3992,6 +4052,7 @@ async function chooseMap(id) {
   await loadView({ refit: true });
   await loadCandidates();
   await loadSections();
+  await loadReachable();
 }
 
 el.compare.addEventListener("change", async () => {
@@ -4023,6 +4084,7 @@ el.masks.addEventListener("click", async () => {
   el.masks.setAttribute("aria-pressed", String(state.showMasks));
   renderLegend();
   await loadSections();
+  await loadReachable();
 });
 
 /* **Changing the floor changes only the picture.** A chunk is a region and a
@@ -5009,6 +5071,7 @@ async function commitStep(step) {
   clearExpansions("chunk:");
   await loadCandidates();
   await loadSections();
+  await loadReachable();
   if (state.tab === "tasks") loadTasks();
   if (state.tab === "estimate") loadEstimate();
   if (state.tab === "find") runFind();
@@ -5060,6 +5123,7 @@ el["tl-snapshot"].addEventListener("click", () => {
         await loadView({ refit: true });
         await loadCandidates();
         await loadSections();
+        await loadReachable();
         loadMapsPane();
       });
   };
@@ -5171,6 +5235,9 @@ function renderAttribution() {
   await loadTiles();
   fitToCells();
   loadAreas();
+  /* Not awaited: the world is already drawn and correct without it, and this
+   * needs a derivation. It arrives a beat later and repaints. */
+  loadReachable();
   if (BOOT.plane) { el.plane.value = BOOT.plane; el.plane.dispatchEvent(new Event("change")); }
   if (BOOT.candidates) el.candidates.click();
   if (BOOT.sections) el.masks.click();

@@ -56,6 +56,7 @@ from fray_claude.gui.actions import _ACTIONS
 from fray_claude.gui import knobs, settings
 from fray_claude.gui.http import Context, Response, _error, _first, _json, touch
 from fray_claude.gui.routes_derived import (
+    reachable_by_area,
     _chunk_detail,
     _estimate_payload,
     _full_diff,
@@ -396,6 +397,19 @@ def handle_request(
             if isinstance(at, Response):
                 return at
             return _json({"map_id": map_id, "step": at.step, **task_panel(at.derived)})
+
+        if path == "/api/reachable":
+            # **The expensive path, and asked for separately.** The map view is
+            # a 36KB read that never derives, and this needs the area fold - so
+            # it is its own request the page makes once the world is already
+            # drawn, rather than a cost every pan pays.
+            map_id = _first(query, "map")
+            if map_id is None:
+                return _error("missing required parameter 'map'", HTTPStatus.BAD_REQUEST)
+            at = _state_at(query, ctx, map_id)
+            if isinstance(at, Response):
+                return at
+            return _json(reachable_by_area(at))
 
         if path == "/api/heuristic":
             # **The cheap path, on purpose.** A knob is three config files;

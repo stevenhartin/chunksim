@@ -17,13 +17,14 @@ changing what this returns.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 from fray_claude.gui.derivation import DerivedState
 from fray_claude.derive.delta import MapSide
 from fray_claude.model.summary import _mapping
 from fray_claude.store.derived_cache import cached_derive
 from fray_claude.derive.delta import compare_maps
-from fray_claude.gui.worldmap import grid_position
+from fray_claude.gui.worldmap import grid_position, hull_edges
 from fray_claude.costing import inputs
 from fray_claude.gui.http import Context
 
@@ -31,6 +32,61 @@ from fray_claude.gui.http import Context
 #: The branches of a chunk entry worth showing, in the order a panel reads
 #: best: what you fight, then who you talk to, then what you interact with.
 _CONTENT_KEYS = ("Monster", "NPC", "Object", "Shop", "Spawn", "Quest", "Clue", "Diary")
+
+
+def reachable_by_area(state: DerivedState) -> dict[str, Any]:
+    """The squares a map can reach without having rolled them.
+
+    **Upstream tracks dungeon access by *name*, not by chunk id.** `derive`'s
+    area fold puts entries like `Dwarven Mine` and `Mor Ul Rek#Outer Area` in
+    `Derived.expanded_chunks` alongside the numeric ids, and those names are
+    also the `Name` of real squares in the export - the ones the wiki draws in
+    a block north of the surface, because that is where the game stores
+    interiors. So the map has been drawing places you can walk into as locked.
+
+    **There is no route data to find them by.** The obvious mechanism would be
+    the `sections` graph, and it does not model this: of the 371 chunks in
+    that northern block, *none* has a `sections` branch and not one edge
+    crosses between them and the surface. The join is the name and only the
+    name.
+
+    Matched exactly or on the head before `#`, since an area may be named
+    either way: `Wizards' Tower#Basement` is a whole area, while `Dwarven
+    Mine` covers three squares that qualify themselves.
+
+    Measured: 46 squares on `verf` and 92 on `fray`, of which 31 and 56 are in
+    the northern block.
+
+    **Reported apart from the unlocked set rather than folded into it.** These
+    are reachable, not rolled: they cost no chunk and the count in the bar is
+    the number of chunks the map *has*. Merging them would change that number
+    and every one derived from it.
+    """
+    areas = {name for name in state.derived.expanded_chunks if not str(name).isdigit()}
+    chunks = _mapping(state.state.chunk_info.data, "chunks")
+    found: set[str] = set()
+    for chunk_id, entry in chunks.items():
+        if chunk_id in state.unlocked or not isinstance(entry, Mapping):
+            continue
+        name = str(entry.get("Name") or "")
+        if name and (name in areas or name.split("#")[0] in areas):
+            found.add(str(chunk_id))
+    placed = {chunk_id: grid_position(chunk_id) for chunk_id in found}
+    numeric = [int(c) for c, at in placed.items() if at is not None and c.isdigit()]
+    edges = hull_edges(numeric)
+    return {
+        "map_id": state.map_id,
+        "chunks": [
+            {
+                "chunk_id": chunk_id,
+                "grid_x": at.grid_x,
+                "grid_y": at.grid_y,
+                "edges": int(edges.get(int(chunk_id), 0)) if chunk_id.isdigit() else 0,
+            }
+            for chunk_id, at in sorted(placed.items())
+            if at is not None
+        ],
+    }
 
 
 def _section_order(section_id: str) -> tuple[int, int, str]:
