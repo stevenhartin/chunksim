@@ -31,10 +31,11 @@ from fray_claude.store.cache import (
     write_cache,
 )
 from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.store.derived_cache import CacheBehaviour
+from fray_claude.store.derived_cache import CacheBehaviour, Digests
 from fray_claude.derive.pipeline import load_map_state
 from fray_claude.runs.simulate import simulate_rolls
-from fray_claude.runs.timeline import replay
+from fray_claude.costing import dps_bridge
+from fray_claude.runs.timeline import PRICING_MODEL, replay
 from fray_claude.derive.unlock import UnlockDelta
 
 #: 100 starts unlocked; 99/101/356 are its grid neighbours (id +/- 1, +/- 256)
@@ -401,8 +402,12 @@ def test_a_run_is_born_with_its_timeline(root: Path) -> None:
     assert all(isinstance(v, float) for v in stored["totals"])
     # A roll never *removes* work under this model.
     assert all(v >= 0 for v in stored["added"])
-    # Wiki rates, not gear - `enrich` is ~1.29s a roll and is the upgrade.
-    assert stored["stamp"]["enriched"] is False
+    # **The real basis, not a cheap one.** A run prices itself through
+    # `inputs.priced_heuristics` now, so the flag records whether the `dps`
+    # extra was there to do the fights - not whether anyone pressed a button
+    # afterwards.
+    assert stored["stamp"]["enriched"] is dps_bridge.DPS_AVAILABLE
+    assert stored["stamp"]["model"] == PRICING_MODEL
     assert stored["stamp"]["chunkinfo"] and stored["stamp"]["rates"]
 
 
@@ -628,3 +633,118 @@ def test_on_roll_reports_every_roll_once_with_what_landed(root: Path) -> None:
     assert [chunk for _r, _o, chunk in seen] == rolled
     # Numbered from 1 within each run, and the run index says which.
     assert [(r, o) for r, o, _c in seen] == [(0, 1), (0, 2), (0, 3), (1, 1), (1, 2), (1, 3)]
+
+
+def test_a_run_prices_itself_the_same_way_a_reprice_would(root: Path) -> None:
+    """**The drift guard.** A run prices its own rolls as it finishes and the
+    GUI can reprice them later across every core. Those are two callers of one
+    loop - derivations in hand, derivations off the disk - and when they were
+    two loops they layered different inputs and disagreed by threefold about
+    the same run, while writing to one cache key so the last to run decided
+    what the other read back. Nothing about the *inputs* differs, so only an
+    equality test catches it coming back."""
+    write_blob("wiki_rates", {}, "test", root=root)
+    batch = run_batch(name="d", payload=_PAYLOAD, base_map="fray", rolls=4, seed=11, root=root)
+    map_id = f"{batch.name}/{batch.runs[0].name}"
+    stored = read_timeline(map_id, root)
+    steps = replay(read_cache(map_id, root)["data"]["chunks"]["unlocked"],
+                   read_rolls(map_id, root))
+
+    added, totals = price_steps(
+        map_id=map_id, held=[sorted(step.unlocked) for step in steps], jobs=1, root=root
+    )
+
+    assert [round(v, 6) for v in totals] == [round(v, 6) for v in stored["totals"]]
+    assert [round(v, 6) for v in added] == [round(v, 6) for v in stored["added"]]
+
+
+@pytest.mark.real_cache
+def test_a_run_prices_on_the_same_basis_as_the_estimate_tab(
+    real_export: Any, real_state: Any
+) -> None:
+    """**The property this pricing exists to buy.**
+
+    Every step of a run is priced against the state the run *ends* in, so the
+    last step *is* the map - and its total has to be `fray estimate`'s for that
+    map to the penny. It was not: the old path stopped at bare
+    `load_heuristics`, with no recipe-computed rates, no material costs, no
+    prayer methods, no simulated kill rates, no computed combat rates and no
+    level overrides, and read **17,928h against 5,093h** on `fray-sim/run-001`.
+
+    Nothing about the two paths' *inputs* differs, so a digest could never have
+    caught this and only an equality test can. It rolls for real and writes
+    nothing: the states come from `simulate_rolls` and the pricing from the
+    same `_Pricer` a run uses.
+    """
+    from fray_claude.costing.inputs import estimate_answer
+    from fray_claude.runs.batch import _Pricer
+    from fray_claude.runs.simulate import simulate_rolls
+    from fray_claude.store import cache as cache_module
+    from fray_claude.store.derived_cache import cached_derive
+
+    state, unlocked = real_state
+    digests = Digests(
+        chunkinfo=cache_module.file_digest(cache_module.chunkinfo_source(None, None)),
+        tasks_map=cache_module.file_digest(
+            cache_module.blob_path(cache_module.TASKS_MAP_BLOB_NAME)
+        ),
+    )
+    pricer = _Pricer.build(real_export, None, digests)
+    assert pricer is not None, "needs cache/reference/wiki_rates.json"
+
+    ledger = simulate_rolls(
+        state, unlocked, rolls=3, seed=4242, on_state=pricer.record()
+    )
+    from fray_claude.runs.batch import _step_ids
+
+    steps = _step_ids(unlocked, [record.chunk_id for record in ledger])
+    pricer.price(state, steps)
+    ended = steps[-1]
+
+    answer = estimate_answer(
+        state, ended, cached_derive(state, ended, digests), digests
+    )
+    assert round(pricer.totals[-1], 2) == round(sum(answer.result.buckets.values()), 2)
+
+
+def test_how_much_a_run_cached_never_changes_the_answer(root: Path) -> None:
+    """**`--cache-behaviour` is about disk, never about numbers.**
+
+    It decides which of a run's states are written, and nothing else - the
+    pricing holds its own derivations and reads none of them back, so the bars
+    a run stores cannot depend on it. That is worth pinning rather than
+    implying: the obvious optimisation here is to drop the held states and read
+    them off disk instead, which would make this test's subject real. (It was
+    tried and measured: the peak is set by the pricing phase, not by the
+    states, so it bought nothing. See `_Pricer`.)
+
+    One test over the three rather than a parametrised one: the assertion is
+    that they *agree*, which no single run can make on its own.
+    """
+    write_blob("wiki_rates", {}, "test", root=root)
+    series: dict[CacheBehaviour, tuple[list[float], list[float]]] = {}
+    for behaviour in CacheBehaviour:
+        batch = run_batch(
+            name=f"hold-{behaviour.value}", payload=_PAYLOAD, base_map="fray", rolls=4,
+            seed=13, root=root, cache_behaviour=behaviour,
+        )
+        stored = read_timeline(f"{batch.name}/{batch.runs[0].name}", root)
+        series[behaviour] = (stored["added"], stored["totals"])
+
+    assert len(series) == 3, "a new cache behaviour needs a decision in _Pricer"
+    first = series[CacheBehaviour.ALL]
+    assert len(first[1]) == 5
+    assert all(other == first for other in series.values())
+
+
+def test_the_step_ids_walk_the_run_forwards(root: Path) -> None:
+    """`timeline.replay` recovers these by subtracting the later rolls off the
+    final set, because it has no base map; a run has one, so it adds."""
+    from fray_claude.runs.batch import _step_ids
+
+    steps = _step_ids({"a": True}, ["b", "c"])
+
+    assert steps == [{"a": True}, {"a": True, "b": True}, {"a": True, "b": True, "c": True}]
+    # Each is its own dict - a shared one would make every step the last one.
+    assert steps[0] == {"a": True}
+

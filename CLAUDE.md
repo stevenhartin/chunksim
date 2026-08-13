@@ -196,6 +196,7 @@ The table says what each module **owns**; its docstring says why.
 | `gui/actions.py` | The POST handlers. **An action's reply shape decides whether the page polls it** — a job id, or the result. |
 | `gui/jobs.py` | The background job registry. **The only mutable state in the GUI**, kept out of the pure layer deliberately. Also `claim_once`, which is what stops the page's boot warm-up re-scraping the wiki on every reload. |
 | `gui/derivation.py` | The boundary between the cheap path and the expensive one. Loads `ChunkInfo` **lazily**, and holds the `ReferenceBlobs` — the one memo here validated against the files' mtimes, because stale overrides key the enrichment cache. |
+| `gui/settings.py` | What a preference *means* - defaults, and the validation that refuses rather than coerces. `cache.py` stores it and knows nothing about it; this is where the next preference goes. |
 | `gui/panels.py` | Shaping `Derived` into what the panel draws — one shape across all five categories. Pure. **New shaping goes here, not into the JavaScript.** |
 | `gui/worldmap.py` | Where a chunk sits on the map and which sides face outward. Owns the projection (the y axis is flipped) and `hull_edges`. |
 | `gui/browser.py` | Finding a Chromium-family browser and opening an app window whose lifetime is the server's. `--user-data-dir` is load-bearing, not tidiness. |
@@ -289,7 +290,7 @@ cache/maps/edited/<batch>/…        # made by hand: `fray unlock --cache-map`, 
 cache/reference/                   # chunkinfo, tasks_map, wiki_rates, wiki_recipes, tile_version
 cache/derived/                     # pipeline.derive + dps_bridge.enrich results, keyed by content
 cache/assets/                      # section masks, skill icons
-cache/gui/                         # window.json, and the browser profile
+cache/gui/                         # window.json, settings.json, and the browser profile
 ```
 
 A batch of any computed kind holds `batch.json` (seeds, rolls, `batch_id`, and the payload it rolled

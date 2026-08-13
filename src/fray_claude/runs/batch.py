@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import os
 import random
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import uuid4
@@ -74,6 +74,7 @@ from fray_claude.store.derived_cache import (
     RollCache,
     cached_derive,
 )
+from fray_claude.costing import dps_bridge
 from fray_claude.costing.estimate import EstimateResult, estimate
 from fray_claude.costing.inputs import (
     ReferenceBlobs,
@@ -198,19 +199,54 @@ def derive_seeds(seed: int | None, runs: int) -> list[int]:
 class _Pricer:
     """Costs each state a run passes through, for the timeline.
 
-    **This is the one place a simulation is worth pricing, because the
-    derivation is already in hand.** `estimate` over a `Derived` is under 5ms;
-    the ~0.82s it would otherwise need is the `derive` this run has just done
-    anyway. Rebuilding the series afterwards means paying that again per step,
-    so a run is born with its timeline rather than earning one later.
+    **Two phases, and the split is forced by what a price is measured
+    against.** `priced_heuristics` needs a state to price *from* - it walks the
+    item graph for every rated method and, with the `dps` extra, simulates
+    every reachable fight - and the state this series has to use is **the one
+    the run ends in**, so that the last bar's total is the Estimate tab's
+    number to the penny (see `_walk`). That state does not exist until the last
+    roll has landed. So phase one keeps each `Derived` as it arrives and prices
+    nothing; phase two prices the lot.
 
-    **It stops at the estimator and does not call `dps_bridge.enrich`.** That
-    would add ~1.29s a roll - measured - and take a 100x50 batch from 68
-    minutes to 176, on every batch whether or not anyone opens its timeline.
-    So a run stores the cheap answer and `gui/server.py` upgrades it on
-    request; `timeline.stamp`'s `enriched` flag is what tells the two apart,
-    and `timeline.matches` deliberately ignores it so the cheap numbers do not
-    read as stale.
+    **This used to stop at bare `load_heuristics` and the numbers were wrong.**
+    The estimator itself was never the difference - `_walk` and
+    `inputs.estimate_answer` call the same `estimate` - but the `Heuristics`
+    underneath it was: no recipe-computed rates, no material costs, no prayer
+    methods, no simulated kill rates, no computed combat rates, and no
+    `level_overrides`. On `fray-sim/run-001` that read **17,928h against
+    5,093h** for the same map, and the timeline said one while the Estimate tab
+    said the other. A cheap answer that disagrees with the expensive one by
+    threefold is not a coarser answer, it is a wrong one, so there is now only
+    the expensive one.
+
+    **What it costs is ~1.9s a run, not the minute it once would have.** One
+    `priced_heuristics` is ~1.3s and each step's `estimate` is 7.9ms, so a
+    50-roll run pays about two seconds after its last roll - inside the worker
+    that rolled it, so a batch pays it once across its cores rather than once
+    per run in series. The old refusal ("~1.29s a roll, 68 minutes to 176") was
+    costed when the enrichment was per step and `recipe_priced` was 60.6s; both
+    of those are gone.
+
+    **The derivations are held, and re-reading them instead was measured and
+    rejected.** Holding fifty costs +95MB per worker on the real `verf` map,
+    which looked worth a branch: under the default `CacheBehaviour.ALL` every
+    state is on disk by the time this runs and could be read back at ~3ms
+    each. Measured on sixteen cores, 50 rolls, `verf`:
+
+    | | wall | peak RSS |
+    |---|---|---|
+    | before this pricing existed | 48s | 1,557MB |
+    | holding, which is what this does | 53s | 3,171MB |
+    | re-reading, tried and dropped | 51s | 3,340MB |
+
+    **The branch does not move the number it was for.** The peak is set by the
+    pricing phase, not by phase one: sixteen workers each load the monster
+    index and simulate every reachable fight, and that dwarfs the derivations
+    they were holding - re-reading was in fact very slightly *worse*, having
+    also to decompress them. So there is one path, and the doubling is the
+    price of the real estimate rather than of this design. Re-reading would
+    also have meant re-deriving at ~0.5s a step under `EXTREMITIES` and
+    `NONE` - half a minute a run for the people who chose those.
 
     The only mutable state in this module, and it never leaves the worker that
     built it - one instance per `run_one` call, on that call's stack. The
@@ -220,9 +256,14 @@ class _Pricer:
     heuristics: Heuristics
     world: WorldIndex
     stamp: dict[str, Any]
+    digests: Digests
+    reference: ReferenceBlobs
+    root: Path | None
+    #: Phase one's output, oldest first: the world before any roll, then one
+    #: per roll. Priced only once the last of them has arrived.
+    states: list[Derived] = field(default_factory=list)
     totals: list[float] = field(default_factory=list)
     added: list[float] = field(default_factory=list)
-    _last: EstimateResult | None = None
 
     @classmethod
     def build(
@@ -254,29 +295,116 @@ class _Pricer:
                 tasks_map=digests.tasks_map,
                 rates=blobs.pricing.rates,
                 overrides=blobs.pricing.overrides,
-                enriched=False,
+                # **What actually priced them**, so the page can say. It is
+                # excluded from the freshness comparison - see
+                # `timeline.matches` - and is a claim about quality, not age.
+                enriched=dps_bridge.DPS_AVAILABLE,
             ),
+            digests=digests,
+            reference=blobs,
+            root=root,
         )
 
-    def record(self, state: MapState) -> Callable[[int, Derived], None]:
-        """The `simulate_rolls` callback, bound to the state being rolled."""
+    def record(self) -> Callable[[int, Derived], None]:
+        """The `simulate_rolls` callback. Phase one: keep, do not price."""
 
-        def priced(order: int, derived: Derived) -> None:
-            result = estimate(state, derived, self.world, self.heuristics)
-            # Both series, for the reason `price_steps` gives: the bars are
-            # what a roll cost and the totals are what is left, and neither
-            # recovers the other.
-            self.added.append(added_hours(self._last, result))
-            self.totals.append(sum(result.buckets.values()))
-            self._last = result
+        def kept(order: int, derived: Derived) -> None:
+            self.states.append(derived)
 
-        return priced
+        return kept
+
+    def price(self, state: MapState, steps: Sequence[Mapping[str, bool]]) -> None:
+        """Phase two: price every state the run passed through.
+
+        `steps` is the unlocked set at each of them, oldest first - the world
+        before any roll, then one per roll. `run_one` accumulates it off the
+        ledger, because the `on_state` callback is handed a derivation and not
+        the ids behind it, and `priced_heuristics` has to be told which chunks
+        the state it prices from holds. A length that disagrees with the states
+        kept is a caller error rather than something to price around.
+
+        A run that rolled nothing has one state and no bars, and prices
+        nothing - `stored` refuses it anyway, and computing an enrichment for
+        it would be the whole cost of this for none of the benefit.
+
+        **What is priced is the carried derivation, and that is safe**, which
+        is worth saying because `derived_cache.cached_derive` refuses to
+        *store* one. The difference is that this runs after `simulate_rolls`
+        has checked itself: a run whose carry diverged raised
+        `CarryDivergedError` and never reached here, so what is priced equals
+        what a cold derivation would have given - which is also why re-reading
+        the stored copy gives the same answer as holding it.
+        """
+        if len(steps) < 2 or len(self.states) != len(steps):
+            return
+        heuristics, _ = priced_heuristics(
+            state,
+            steps[-1],
+            self.states[-1],
+            self.heuristics,
+            self.reference.levels,
+            self.digests,
+            world=self.world,
+            root=self.root,
+            reference=self.reference,
+        )
+        priced = _priced_series(
+            state,
+            enumerate(self.states),
+            heuristics,
+            self.world,
+            self.reference.levels,
+        )
+        self.added = [round(sum(fresh.buckets.values()), 4) for _, fresh, _ in priced]
+        self.totals = [total for _, _, total in priced]
 
     def stored(self) -> dict[str, Any] | None:
         """What to write, or `None` if the run rolled nothing worth graphing."""
         if len(self.totals) < 2:
             return None
         return {"stamp": self.stamp, "added": self.added, "totals": self.totals}
+
+
+def _priced_series(
+    state: MapState,
+    steps: Iterable[tuple[int, Derived]],
+    heuristics: Heuristics,
+    world: WorldIndex,
+    levels: Mapping[str, int],
+    *,
+    baseline: bool = False,
+) -> list[tuple[int, EstimateResult, float]]:
+    """`(step, what it added, what is outstanding after it)`, in step order.
+
+    **The one pricing loop, and it has to stay one.** A run prices itself as it
+    finishes and the GUI can reprice it later across every core; those are two
+    callers of two shapes - derivations in hand, derivations off the disk - and
+    when they were two loops they layered different inputs and disagreed by
+    threefold about the same run. Worse, both wrote to the same cache key, so
+    the last one to run decided what the other read back. That is the bug
+    `costing/inputs.py` was extracted to prevent, and keeping the arithmetic in
+    one function is what stops it coming back a third time.
+
+    `steps` is consumed lazily and deliberately: `_walk` derives as it goes, so
+    materialising it would hold a slice's worth of `Derived` for no reason.
+
+    `baseline` drops the first step from the result, for a slice that starts
+    mid-run and is carrying its predecessor only to have something to measure
+    its head against. The slice that owns that step reports it.
+
+    `level_overrides` reaches the estimator here, exactly as
+    `inputs.estimate_answer` passes it - a rate priced at one level and spent
+    at another is the kind of disagreement this function exists to remove.
+    """
+    out: list[tuple[int, EstimateResult, float]] = []
+    before: EstimateResult | None = None
+    overrides = dict(levels)
+    for position, (order, derived) in enumerate(steps):
+        result = estimate(state, derived, world, heuristics, level_overrides=overrides)
+        if not (baseline and position == 0):
+            out.append((order, added_estimate(before, result), sum(result.buckets.values())))
+        before = result
+    return out
 
 
 def _overrides_digest(root: Path | None) -> str:
@@ -423,24 +551,21 @@ def _walk(
             reference=reference,
         )
 
-    out: list[tuple[int, EstimateResult, float]] = []
-    before: EstimateResult | None = None
-    for position, (order, held) in enumerate(spec.steps):
-        unlocked = dict.fromkeys(held, True)
-        derived = cached_derive(state, unlocked, digests, root=spec.root)
-        # `level_overrides` reaches the estimator too, exactly as
-        # `inputs.estimate_answer` passes it - a rate priced at one level and
-        # spent at another is the kind of disagreement this call exists to
-        # remove.
-        result = estimate(state, derived, pricer.world, heuristics, level_overrides=levels)
-        # A slice that starts mid-run carries its predecessor purely to have
-        # something to measure the head against; it is not this slice's to
-        # report, and the slice that owns it reports it.
-        baseline = position == 0 and order > 0
-        if not baseline:
-            out.append((order, added_estimate(before, result), sum(result.buckets.values())))
-        before = result
-    return out
+    # Lazy on purpose - see `_priced_series`. A slice that starts mid-run
+    # carries its predecessor purely to have something to measure the head
+    # against; the slice that owns that step reports it.
+    walked = (
+        (order, cached_derive(state, dict.fromkeys(held, True), digests, root=spec.root))
+        for order, held in spec.steps
+    )
+    return _priced_series(
+        state,
+        walked,
+        heuristics,
+        pricer.world,
+        levels,
+        baseline=spec.steps[0][0] > 0,
+    )
 
 
 def price_slice(spec: PriceSpec) -> list[tuple[int, float, float]]:
@@ -591,12 +716,16 @@ def price_steps(
     which a tooltip wants and the bars deliberately do not sum to. See
     `timeline.series` on why the second one climbs.
 
-    **This is the parallel half of what `_Pricer` does inline.** A simulation
-    prices its own rolls as it goes, because the derivation is already in hand
-    and `estimate` alone is under 5ms. Repricing through `dps_bridge.enrich` is
-    ~1.24s a step, which is a minute on a 50-roll run - and 94% of it is
-    `osrs_dps` simulating fights, pure CPU over independent states. So it goes
-    across cores.
+    **This is the parallel half of what `_Pricer` does inside a run**, and
+    since both go through `_priced_series` the two answers are equal rather
+    than merely similar - `tests/test_batch.py` pins that. What is left for
+    this to do is a *re*price: the reference data moved, the `dps` extra was
+    installed since, or the run predates the current `timeline.PRICING_MODEL`.
+
+    It is worth spreading because the expensive part is per *slice*, not per
+    step: one `priced_heuristics` at ~1.3s, of which ~0.7s is `osrs_dps`
+    simulating fights - pure CPU over independent states - against ~7.9ms for
+    each step's `estimate`.
 
     **Measured on the real export** (8 physical cores, 16 logical), 16 steps:
     19.9s sequential, 10.4s at 2, 5.4s at 4, 2.9s at 8, 2.8s at 16 - so it
@@ -728,7 +857,7 @@ def run_one(
         seed=spec.seed,
         cache=RollCache(digests, spec.cache_behaviour, spec.root, spec.carry_areas),
         carry_areas=spec.carry_areas,
-        on_state=None if pricer is None else pricer.record(state),
+        on_state=None if pricer is None else pricer.record(),
         on_roll=on_roll,
         should_stop=should_stop,
     )
@@ -736,6 +865,12 @@ def run_one(
     payload = simulated_payload(spec.payload, ledger)
     rolled = tuple(record.chunk_id for record in ledger)
     held = payload.get("chunks", {}).get("unlocked", {})
+    # **After the rolling, because the rates are the run's final ones.** See
+    # `_Pricer.price`: pricing an early roll needs the state the run *ends* in,
+    # which does not exist until the last roll has landed. The ids per step are
+    # the starting set plus one chunk at a time, which is what a roll is.
+    if pricer is not None:
+        pricer.price(state, _step_ids(unlocked, rolled))
 
     simulation = {
         "run": spec.name,
@@ -778,6 +913,22 @@ def run_one(
         cancelled=stopped,
         written=bool(ledger),
     )
+
+
+def _step_ids(
+    unlocked: Mapping[str, bool], rolled: Sequence[str]
+) -> list[dict[str, bool]]:
+    """The unlocked set at every step of a run, oldest first.
+
+    `len(result)` is `len(rolled) + 1`: the world the run started in, then one
+    per roll. This is `timeline.replay`'s arithmetic run forwards - it
+    subtracts the later rolls off the final set, because it has no base map to
+    start from and this does.
+    """
+    steps = [dict(unlocked)]
+    for chunk_id in rolled:
+        steps.append({**steps[-1], chunk_id: True})
+    return steps
 
 
 def _specs(

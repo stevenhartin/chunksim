@@ -203,7 +203,16 @@ def _tasks_of(entry: Mapping[str, Any]) -> dict[str, tuple[str, ...]]:
 #: `2` is the band walk - a climb priced method by method as it unlocks, with
 #: quest experience taken off the front - which moved a real Herblore row from
 #: 13,034h to 99h. Anything that would move a number like that belongs here.
-PRICING_MODEL = 2
+#:
+#: `3` is a simulation pricing its own rolls through `inputs.priced_heuristics`
+#: rather than through bare `load_heuristics`: recipe-computed rates, material
+#: costs, prayer methods, simulated kill rates, computed combat rates and the
+#: level overrides, all of which the timeline used to go without while the
+#: Estimate tab had them. On `fray-sim/run-001` that gap read 17,928h against
+#: 5,093h - and every one of those files would still have stamped as fresh,
+#: because nothing about its *inputs* moved. This is exactly the case the
+#: number exists for.
+PRICING_MODEL = 3
 
 
 def stamp(
@@ -233,14 +242,17 @@ def stamp(
 def matches(stored: Any, current: Mapping[str, Any]) -> bool:
     """Whether a stored stamp still describes the world `current` describes.
 
-    **`enriched` is excluded on purpose.** A simulation prices its rolls with
-    the estimator alone, because the derivation is already in hand and costs
-    nothing extra; `dps_bridge.enrich` costs ~1.3s a roll on top and would
-    have tripled every batch. So the cheap numbers are what a run is born
-    with, and the expensive ones are an upgrade you ask for. Comparing
-    `enriched` would make the cheap ones read as *stale* the moment the extra
-    was installed - which is wrong, they are simply a different, coarser
-    answer, and one is worth showing until the other exists.
+    **`enriched` is excluded on purpose**, and the reason has changed while the
+    answer has not. It used to separate a cheap basis from an expensive one: a
+    run priced itself with the estimator alone and `dps_bridge.enrich` was an
+    upgrade you asked for. It no longer is - a run prices itself through
+    `inputs.priced_heuristics` like everything else - so the flag now records
+    only whether the `dps` extra was *installed* when the numbers were made.
+
+    That is a claim about quality, not about age, which is exactly why it must
+    stay out of the comparison. Including it would make a perfectly current
+    series read as *stale* the moment the extra was installed, and a run made
+    without the extra is not out of date - it is a supported way to run.
     """
     if not isinstance(stored, Mapping):
         return False

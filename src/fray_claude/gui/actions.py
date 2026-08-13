@@ -459,18 +459,21 @@ def _snapshot_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
 
 
 def _timeline_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
-    """Price every step of a run, and store the answer beside its ledger.
+    """Re-price every step of a run, and store the answer beside its ledger.
 
-    **This is the expensive half and it is a job for one reason:
-    `dps_bridge.enrich`.** Measured on the real export, a step costs ~0.01s to
-    derive and estimate when the derivation is cached - and ~1.3s more when
-    the `dps` extra is installed, because the kill rates are recomputed from
-    the map's own BiS gear. A 50-roll run is therefore a minute or so, and
-    skipping `enrich` is not the fix: the Estimate tab uses it, and a timeline
-    that disagreed with the tab beside it would be worse than a slow one.
+    **A re-price, not the price.** A run prices itself as it finishes, on the
+    same basis the Estimate tab uses and through the same `_priced_series`, so
+    this is normally not needed at all and the page hides the button. What is
+    left for it are the three ways a stored series can stop describing the
+    world: the reference data moved, the `dps` extra was installed since, or
+    the run predates the current `timeline.PRICING_MODEL`.
 
-    So it is paid once. The result goes to `timeline.json` stamped with what
-    it was computed against, and every later viewing is a file read.
+    It is still a job rather than an inline answer. Per slice it is one
+    `priced_heuristics` at ~1.3s - of which ~0.7s is `osrs_dps` simulating
+    every reachable fight - against ~7.9ms for each step's `estimate`, and
+    `price_steps` spreads the slices across every core. The result goes to
+    `timeline.json` stamped with what it was computed against, and every later
+    viewing is a file read.
 
     Derivations come from `cached_derive`, so under the default
     `--cache-behaviour all` every step is already on disk and the derive cost

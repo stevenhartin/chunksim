@@ -3703,10 +3703,18 @@ el.live.addEventListener("click", () => {
  *
  * - **Tasks** comes free. `unlock.delta_from` recorded it at roll time and it
  *   is already in the ledger.
- * - **Hours** does not. It needs `estimate` over a full derivation per step,
- *   and with the `dps` extra installed that is ~1.3s a step because the kill
- *   rates are recomputed from the map's own gear. So it is a button, paid
- *   once, stored beside the run, and a file read every time after.
+ * - **Hours** costs a little more, and a run pays it for itself. Pricing is
+ *   one `priced_heuristics` for the whole series - the expensive part, and the
+ *   only reason there is a button at all - plus ~8ms an `estimate` per step,
+ *   so a run stores its own bars as it finishes and every viewing after is a
+ *   file read. The button is now for *re*pricing: the wiki rates moved, the
+ *   `dps` extra arrived since, or the run predates the current pricing model.
+ *
+ * **The bars and the Estimate tab are the same arithmetic**, which they were
+ * not: a run used to price itself with the scraped rates alone and read three
+ * times the Estimate tab's total for the same map. Every step is priced
+ * against the state the run *ends* in, so the last bar's total is that tab's
+ * number to the penny.
  *
  * **Most hour bars are empty and some point down, and that is the data.**
  * Measured on the real 106-chunk map, ten rolls moved the estimate 2815.7h ->
@@ -3861,7 +3869,7 @@ function renderTimeline() {
     const on = tlSeries === key;
     const provenance = !payload.has_hours ? "Not computed yet"
       : payload.enriched ? "Priced from this map's own gear"
-      : "Wiki rates — often zero, most chunks add no work";
+      : "Wiki rates — the dps extra would price each kill from your gear";
     const tip = key === "hours"
       ? tmpl`<b>Hours added</b><span class="sub">What this roll newly put in front of you, assuming everything before it is done.</span><span class="hint">${provenance}</span>`
       : tmpl`<b>Tasks added</b><span class="sub">Challenges this roll made valid.</span>`;
@@ -3894,16 +3902,14 @@ function renderTimeline() {
 
   renderBandKey();
 
-  /* **Two different offers, and neither is "compute it again".**
+  /* **Two different offers, and neither is normally needed.**
    *
-   * A run now prices its own rolls as it rolls them - free, because the
-   * derivation is already in hand - so `has_hours` is normally true the moment
-   * a simulation finishes. What the button is for is the *upgrade*: with the
-   * `dps` extra installed, `enrich` reprices every kill from the map's own BiS
-   * gear, which costs ~1.3s a roll and is why a simulation does not do it. So
-   * it appears when there is either nothing yet or something better to be had,
-   * and says which. Once the numbers are enriched there is nothing left to
-   * offer and it goes. */
+   * A run prices its own rolls on the same basis the Estimate tab uses, so
+   * `has_hours` is true and `enriched` matches the extra the moment a
+   * simulation finishes - and this button is gone. It appears for a run made
+   * before the current pricing model, one made on a machine without the `dps`
+   * extra that now has it, or one whose reference data has since moved. Which
+   * of those it is decides the wording. */
   const upgrade = payload.has_hours && payload.can_enrich;
   el["tl-hours"].hidden = payload.has_hours && !payload.can_enrich;
   el["tl-hours"].lastChild.textContent = upgrade ? "Reprice with gear" : "Compute hours";

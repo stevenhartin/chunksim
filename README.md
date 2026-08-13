@@ -497,9 +497,17 @@ otherwise it's created in whatever directory you're in when you run `fray`.
    saving a number it can't stand behind. `--no-carry-areas` turns it off and derives every roll from
    scratch.
 
-   The one thing that costs: a carried run only caches the state it finishes on, where a cold one
-   caches every roll. That matters if you're going to **reprice** the run's timeline in the GUI,
-   which reads those per-roll states back — pass `--no-carry-areas` when you intend to.
+   Its intermediate states are held rather than written until that check passes, so a carried run
+   ends up caching every roll like a cold one — it just does it a moment later, and a run that
+   diverges writes nothing at all.
+
+   A run also **prices its own timeline** when it finishes, on exactly the basis the Estimate tab
+   uses, so the hours are right the moment the simulation ends rather than after you press a button.
+   That costs about 10% on a batch (16×50 goes from 48s to 53s) and roughly doubles its peak memory,
+   which is the price of the real estimate rather than of the timeline; what it buys is the last
+   bar's total being `fray estimate`'s number for that map to the penny. The GUI's **Reprice** button is left for
+   the cases where a stored series has stopped describing the world: the wiki rates moved, the `dps`
+   extra arrived since, or the run was made under an older pricing model.
 
 Run `fray <command> --help` for the full option list of any command, or `fray --help` for the list of
 commands.
