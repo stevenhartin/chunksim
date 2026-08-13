@@ -183,6 +183,19 @@ class SkillClassification:
     active: str | None
     obsolete: frozenset[str]
     completed: frozenset[str]
+    #: `checkPrimaryMethod(skill, ...)` - whether this skill can be trained
+    #: here at all. Kept because it is the *only* reason a challenge already
+    #: in `valid` can be barred from competing (`_is_eligible`), so the flip
+    #: `False -> True` makes a whole standing backlog eligible without any
+    #: task's validity changing. `unlock.delta_from` reads it to record that;
+    #: nothing else can tell, since a barred candidate lands in `obsolete`
+    #: undifferentiated from an ordinary superseded one.
+    #:
+    #: **Deliberately absent from `as_dict()`.** It is an input to the
+    #: selection rather than part of it, and every reader of that dict - the
+    #: panels, the oracles, `test_gui_contract` - is asking what the skill's
+    #: tasks are, not how the answer was reached.
+    primary: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -498,7 +511,12 @@ def _classify_skill(
         winner = None
 
     obsolete = frozenset(name for name in remaining if name != winner)
-    return SkillClassification(active=winner, obsolete=obsolete, completed=frozenset(completed_names))
+    return SkillClassification(
+        active=winner,
+        obsolete=obsolete,
+        completed=frozenset(completed_names),
+        primary=skill_is_primary,
+    )
 
 
 def classify_tasks(

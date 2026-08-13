@@ -110,7 +110,9 @@ changing map asks before discarding it.
 **Timeline** is the only mode a simulation is seen in, because a run is fifty worlds rather than one.
 Choosing one asks whether you meant to replay it, and declining leaves you where you were. The strip
 along the bottom is the run's history: drag it, click a bar to fly to the chunk that roll added, or
-press **Details** for what it opened. **Snapshot** saves the world at the roll you are looking at as
+press **Details** for what it opened — the furthest task per skill, the same rule the Tasks tab
+applies, including the case where the roll made a skill trainable at all and everything it had been
+sitting on became worth doing at once. **Snapshot** saves the world at the roll you are looking at as
 a map in its own right — which is how you get out of a timeline: it browses, edits and diffs like any
 other map, where the run itself cannot.
 

@@ -383,6 +383,8 @@ def _roll_classification(
     added: Mapping[str, Any],
     surpassed: Mapping[str, float],
     challenges: Mapping[str, Mapping[str, Any]] = {},
+    unbarred: Mapping[str, Any] = {},
+    boosted: Mapping[str, Any] = {},
 ) -> dict[str, Any]:
     """`task_classification`'s shape, over one roll's additions.
 
@@ -410,11 +412,33 @@ def _roll_classification(
     Without the export (the unit tests, and any caller with no `ChunkInfo` to
     hand) it falls back to the name, which is at least stable against
     dictionary order.
+
+    **`unbarred` is the second half of "what this roll opened", and the panel
+    was wrong without it.** A roll that makes a skill *trainable* makes every
+    challenge it already had eligible at once, with no task's validity
+    changing - so the additions alone name too small a winner. See
+    `unlock.newly_trainable_backlog` for the mechanism and the measurement.
+    The two are unioned rather than concatenated because a task can be in
+    both: `newly_trainable` is `before`'s valid set and `new_tasks` the
+    additions, which are disjoint today, but nothing in either producer
+    promises that and a duplicate would only cost a comparison anyway.
+
+    **`boosted` is laid over the values before anything ranks them**, because
+    every comparison below has to be the one `active_tasks` makes and that one
+    is against the boosted level (`unlock.boosted_levels` carries the
+    measurement). Overlaying rather than consulting it at each comparison is
+    what keeps `_roll_level` a single reading of a single value - the filter
+    and the winner loop cannot then disagree about which number they meant.
     """
     classified: dict[str, Any] = {}
-    for category, tasks in added.items():
-        if category in _SKILL_EXCLUDED or not isinstance(tasks, dict) or not tasks:
+    for category in list(added) + [key for key in unbarred if key not in added]:
+        if category in _SKILL_EXCLUDED:
             continue
+        tasks = {**_mapping(added, category), **_mapping(unbarred, category)}
+        if not tasks:
+            continue
+        real = _mapping(boosted, category)
+        tasks.update({name: real[name] for name in tasks.keys() & real.keys()})
         ceiling = surpassed.get(category, 0.0)
         better = [
             item for item in tasks.items()
@@ -514,13 +538,19 @@ def roll_panel(
     `Nonskill` is dropped, as the Tasks tab drops it: `other_tasks.CATEGORIES`
     is `Diary`/`Quest`/`Extra`, so there is no section for it to land in and
     inventing one here would be the inconsistency this replaces.
+
+    `newly_trainable` and `boosted_levels` are absent from a ledger written
+    before they existed, which reads back as `{}` - the behaviour those runs
+    were always rendered with, rather than an error.
     """
     added = _mapping(record, "new_tasks")
+    unbarred = _mapping(record, "newly_trainable")
+    boosted = _mapping(record, "boosted_levels")
     sections = [
         _section(
             "skills",
             "Skills",
-            _skill_groups(_roll_classification(added, surpassed, challenges)),
+            _skill_groups(_roll_classification(added, surpassed, challenges, unbarred, boosted)),
         ),
         _section("bis", "Best in slot", _bis_groups(_roll_bis(_mapping(record, "bis_upgrades")))),
     ]

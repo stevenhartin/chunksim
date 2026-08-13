@@ -163,7 +163,7 @@ The table says what each module **owns**; its docstring says why.
 | `derive/other_tasks.py` | The three non-skill categories, `Diary`/`Quest`/`Extra`. No single winner. |
 | `derive/boosts.py` | Temporary skill boosts. With `rules['Boosting']` on this is a **dependency** of the two above, not a feature. |
 | `derive/pipeline.py` | `MapState` + `derive`. Owns the **loop** where upstream's area-unlock circularity lives, and the `slayerLocked` fold. Raises `ConvergenceError` rather than returning a truncated derivation. |
-| `derive/unlock.py` | What one candidate unlock adds, by diffing two `derive` calls. **Owns the project's attribution rule.** Additions-only. |
+| `derive/unlock.py` | What one candidate unlock adds, by diffing two `derive` calls. **Owns the project's attribution rule.** Additions-only. Records *eligibility* and the two boost clamps as well as validity — a diff of `valid` alone cannot see a skill becoming trainable, and ranks on the wrong number when a boost applies. |
 | `derive/delta.py` | The **symmetric** comparison of two derived states. `unlock.py` projects its primitives down to a one-directional view, and the two must agree. |
 | `derive/neighbours.py` | Which chunks are eligible to roll next, upstream's canvas numbering, and the `sectionsLimits` gate. |
 | `derive/graph.py` | The export's `sections` branch as a **directed** graph. Shaped for the not-yet-written pathfinding search. |
@@ -180,7 +180,7 @@ The table says what each module **owns**; its docstring says why.
 | `costing/dps_bridge.py` | The seam to `osrs-dps`. **Optional import** — check `DPS_AVAILABLE`, never assume it. Prices only `reachable_providers`, which it imports rather than copying. |
 | `costing/*_overhead.py` | The harnesses that fitted the overhead constants. **No caller in `src/`** — they exist to be re-run when someone doubts them. |
 | `store/cache.py` | The disk. The envelope, the `--chunkinfo`/`FRAY_CHUNKINFO` override, `--map` resolution across kinds, atomic writes, the cross-kind name claim and `migrate_layout`. |
-| `store/derived_cache.py` | The on-disk cache of the **two** expensive per-state computations, and both their keys. **Read it before changing what `derive` returns.** |
+| `store/derived_cache.py` | The on-disk cache of the **two** expensive per-state computations, and both their keys. **Read it before changing what `derive` returns** — including a *nested* result dataclass, which `_RESULT_TYPES` must list or the key will not move. |
 | `store/build_info.py` | Which install is running and when it was made. Never raises and never guesses a date. |
 | `runs/simulate.py` | Seeded chunk-roll simulation and `simulated_payload`. Records are never revisited by a later roll. |
 | `runs/batch.py` | N simulations from one state. Owns seed derivation and **both** `ProcessPoolExecutor`s in the project. **`--jobs` must never change a result.** Also the single writer of the run metadata both apps read back. |
@@ -197,7 +197,7 @@ The table says what each module **owns**; its docstring says why.
 | `gui/jobs.py` | The background job registry. **The only mutable state in the GUI**, kept out of the pure layer deliberately. Also `claim_once`, which is what stops the page's boot warm-up re-scraping the wiki on every reload. |
 | `gui/derivation.py` | The boundary between the cheap path and the expensive one. Loads `ChunkInfo` **lazily**, and holds the `ReferenceBlobs` — the one memo here validated against the files' mtimes, because stale overrides key the enrichment cache. |
 | `gui/settings.py` | What a preference *means* - defaults, and the validation that refuses rather than coerces. `cache.py` stores it and knows nothing about it; this is where the next preference goes. |
-| `gui/panels.py` | Shaping `Derived` into what the panel draws — one shape across all five categories. Pure. **New shaping goes here, not into the JavaScript.** |
+| `gui/panels.py` | Shaping `Derived` into what the panel draws — one shape across all five categories. Pure. **New shaping goes here, not into the JavaScript.** A *roll* is shaped from the ledger alone, so anything the selection compares has to be in the ledger. |
 | `gui/worldmap.py` | Where a chunk sits on the map and which sides face outward. Owns the projection (the y axis is flipped) and `hull_edges`. |
 | `gui/browser.py` | Finding a Chromium-family browser and opening an app window whose lifetime is the server's. `--user-data-dir` is load-bearing, not tidiness. |
 | `gui/__init__.py` | `fray-gui`'s argparse and socket, `allowed_hosts`, and the **arming of at most one** of the two shutdown mechanisms. Downloads nothing. |
@@ -364,7 +364,10 @@ a green `.venv/bin/pytest` as a change being verified.
   checkout's populated `cache/`), `@pytest.mark.real_export`, or `@pytest.mark.slow` (minutes, and
   gated on `FRAY_SLOW_ORACLES` so the ordinary oracle run stays worth typing — today that is the
   `--carry-areas` equality run, which is that default's standing evidence — every carried run
-  also checks itself against a cold derivation, so a divergence surfaces on real data too); `conftest.pytest_collection_modifyitems`
+  also checks itself against a cold derivation, so a divergence surfaces on real data too — and
+  the roll panel replayed over a whole 50-roll run, where the ordinary variant replays twelve —
+  the prefix is what *finds* a defect, the full run is what lets you say the panel and the
+  derivation agree generally); `conftest.pytest_collection_modifyitems`
   turns them into skips when the inputs are absent, and the markers are registered in `pyproject.toml`
   so a typo is a warning rather than a silently-never-run test. Gating a real-cache test on the export
   alone is a bug, not a shortcut: it makes the test *fail* with `CacheMissError` on a fresh clone

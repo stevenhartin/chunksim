@@ -81,7 +81,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from pathlib import Path
 
-from fray_claude.derive.active_tasks import TaskClassification
+from fray_claude.derive.active_tasks import SkillClassification, TaskClassification
 from fray_claude.derive.bis import BisResult
 from fray_claude.store.cache import (
     RECIPES_BLOB_NAME,
@@ -102,7 +102,7 @@ from fray_claude.costing.heuristics import (
     Superior,
     TaskLength,
 )
-from fray_claude.derive.other_tasks import OtherTasks
+from fray_claude.derive.other_tasks import CategoryTasks, OtherTasks, TaskGroup
 from fray_claude.derive.pipeline import Derived, MapState, derive
 from fray_claude.derive.sources import SourceIndex
 
@@ -137,13 +137,30 @@ _LEVEL = 3
 
 #: The result types whose shape an entry depends on. Adding one here (or a
 #: field to any of them) invalidates every stored entry, by design.
+#:
+#: **Nested types count, and listing only the top six was a real hole.**
+#: `TaskClassification`'s only field is `skills`, so a field added to
+#: `SkillClassification` changed no digest at all and every stored entry
+#: stayed reachable - unpickling into an object missing the attribute, which
+#: is exactly the stale-but-loadable state the digest exists to make
+#: impossible. `OtherTasks` -> `CategoryTasks` -> `TaskGroup` is the same
+#: shape one level deeper. Pickle stores the whole graph, so the digest has to
+#: describe the whole graph.
+#:
+#: Kept as a written-out tuple rather than a walk over field types, because
+#: this is computed on every key and resolving annotations is not free.
+#: `tests/test_derived_cache.py` does the walk instead and fails if a new
+#: nested dataclass is missing from here.
 _RESULT_TYPES = (
     Derived,
     SourceIndex,
     ChallengeResult,
     BisResult,
     TaskClassification,
+    SkillClassification,
     OtherTasks,
+    CategoryTasks,
+    TaskGroup,
 )
 
 

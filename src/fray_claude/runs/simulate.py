@@ -46,7 +46,7 @@ from __future__ import annotations
 import random
 import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from fray_claude.derive.graph import SectionGraph, build_section_graph
@@ -97,6 +97,18 @@ class UnlockRecord:
     new_tasks: dict[str, dict[str, int | str | bool]]
     new_unsupported: frozenset[str]
     bis_upgrades: dict[str, tuple[str | None, str]]
+    #: `unlock.newly_trainable_backlog` - the standing work a skill this roll
+    #: made trainable already had. Absent from a ledger written before this
+    #: field existed, which reads back as `{}` and is the behaviour those runs
+    #: were rendered with.
+    newly_trainable: dict[str, dict[str, int | str | bool]] = field(default_factory=dict)
+    #: `unlock.boosted_levels` - where a boost puts a task at a level other
+    #: than the export's, so the panel ranks on the number the classification
+    #: ranks on. Sparse, and absent from a ledger written before it existed.
+    boosted_levels: dict[str, dict[str, float]] = field(default_factory=dict)
+    #: `unlock`'s completed-side clamp, for the running high-water mark rather
+    #: than for ranking. Sparse, and absent from an older ledger.
+    proven_levels: dict[str, dict[str, float]] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -104,6 +116,9 @@ class UnlockRecord:
             "chunk_id": self.chunk_id,
             "new_sections": self.new_sections,
             "new_tasks": self.new_tasks,
+            "newly_trainable": self.newly_trainable,
+            "boosted_levels": self.boosted_levels,
+            "proven_levels": self.proven_levels,
             "new_unsupported": sorted(self.new_unsupported),
             "bis_upgrades": {
                 key: {"previous": previous, "new": new}
@@ -347,7 +362,7 @@ def simulate_rolls(
             if cache is not None
             else derive(state, current_ids, carry_areas=carry)
         )
-        delta = delta_from(before, after, chunk_id)
+        delta = delta_from(before, after, chunk_id, state=state)
         ledger.append(
             UnlockRecord(
                 order=order,
@@ -356,6 +371,9 @@ def simulate_rolls(
                 new_tasks=delta.new_tasks,
                 new_unsupported=delta.new_unsupported,
                 bis_upgrades=delta.bis_upgrades,
+                newly_trainable=delta.newly_trainable,
+                boosted_levels=delta.boosted_levels,
+                proven_levels=delta.proven_levels,
             )
         )
         before = after

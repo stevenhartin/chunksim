@@ -20,6 +20,7 @@ from fray_claude.store.derived_cache import (
     Digests,
     PricingDigests,
     RollCache,
+    _RESULT_TYPES,
     _structure_digest,
     cached_derive,
     cached_enrich,
@@ -168,6 +169,44 @@ def test_the_structural_digest_tracks_the_result_classes(monkeypatch: pytest.Mon
     monkeypatch.setattr("fray_claude.store.derived_cache._RESULT_TYPES", (Extended,))
 
     assert _structure_digest() != before
+
+
+def test_the_structural_digest_reaches_every_nested_result_class() -> None:
+    """**Pickle stores the whole graph, so the digest must describe it.**
+
+    `_RESULT_TYPES` was the six top-level results, and three dataclasses hung
+    below them unwatched: `SkillClassification` under `TaskClassification`
+    (whose only field is `skills`), and `CategoryTasks`/`TaskGroup` under
+    `OtherTasks`. A field added to any of those changed no digest at all, so
+    every stored entry stayed *reachable* and unpickled into an object missing
+    the attribute - which is the one way this cache can be wrong rather than
+    merely useless, and the failure the digest exists to prevent.
+
+    The walk lives here rather than in `_structure_digest` because that runs
+    on every key and resolving annotations is not free. Its job is to fail the
+    day someone adds a nested result type and forgets the tuple.
+    """
+    import typing
+
+    reachable: set[type] = set()
+
+    def walk(cls: type) -> None:
+        if not dataclasses.is_dataclass(cls) or cls in reachable:
+            return
+        reachable.add(cls)
+        hints = typing.get_type_hints(cls)
+        for f in dataclasses.fields(cls):
+            annotation = hints.get(f.name)
+            for candidate in (annotation, *typing.get_args(annotation)):
+                for inner in (candidate, *typing.get_args(candidate)):
+                    if dataclasses.is_dataclass(inner) and isinstance(inner, type):
+                        walk(inner)
+
+    for result in _RESULT_TYPES:
+        walk(result)
+
+    missing = sorted(cls.__name__ for cls in reachable - set(_RESULT_TYPES))
+    assert missing == [], f"nested result dataclasses absent from _RESULT_TYPES: {missing}"
 
 
 @pytest.mark.parametrize(

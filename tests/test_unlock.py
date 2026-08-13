@@ -188,3 +188,61 @@ def test_tasks_added_by_reports_a_new_bis_upgrade() -> None:
         "Ranged-weapon": (None, "Rune scimitar"),
         "Magic-weapon": (None, "Rune scimitar"),
     }
+
+
+def _derived_with(valid: dict[str, Any], primary: dict[str, bool]) -> Any:
+    """A `Derived` stub carrying the two branches the backlog walk reads.
+
+    Hand-built rather than derived: `newly_trainable_backlog` reads
+    `challenges.valid` and `task_classification.skills[*].primary` and nothing
+    else, and a real one would need the 10MB export to say the same thing.
+    """
+    from types import SimpleNamespace
+
+    from fray_claude.derive.active_tasks import SkillClassification, TaskClassification
+
+    return SimpleNamespace(
+        challenges=SimpleNamespace(valid=valid),
+        task_classification=TaskClassification(
+            skills={
+                skill: SkillClassification(
+                    active=None, obsolete=frozenset(), completed=frozenset(), primary=flag
+                )
+                for skill, flag in primary.items()
+            }
+        ),
+    )
+
+
+def test_a_skill_that_becomes_trainable_records_the_backlog_it_already_had() -> None:
+    """The case a validity diff cannot express - see `newly_trainable_backlog`."""
+    from fray_claude.derive.unlock import newly_trainable_backlog
+
+    before = _derived_with({"Slayer": {"Slay a hydra": 95}}, {"Slayer": False})
+    after = _derived_with(
+        {"Slayer": {"Slay a hydra": 95, "Wear earmuffs": 15}}, {"Slayer": True}
+    )
+
+    assert newly_trainable_backlog(before, after) == {"Slayer": {"Slay a hydra": 95}}
+
+
+def test_a_skill_already_trainable_records_no_backlog() -> None:
+    """Otherwise every roll would re-propose the whole skill."""
+    from fray_claude.derive.unlock import newly_trainable_backlog
+
+    before = _derived_with({"Slayer": {"Slay a hydra": 95}}, {"Slayer": True})
+    after = _derived_with(
+        {"Slayer": {"Slay a hydra": 95, "Wear earmuffs": 15}}, {"Slayer": True}
+    )
+
+    assert newly_trainable_backlog(before, after) == {}
+
+
+def test_a_skill_that_becomes_trainable_with_nothing_standing_records_nothing() -> None:
+    """An empty entry would say "a backlog opened" where none did."""
+    from fray_claude.derive.unlock import newly_trainable_backlog
+
+    before = _derived_with({}, {})
+    after = _derived_with({"Slayer": {"Wear earmuffs": 15}}, {"Slayer": True})
+
+    assert newly_trainable_backlog(before, after) == {}

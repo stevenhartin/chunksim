@@ -445,10 +445,66 @@ def test_a_task_with_no_level_is_never_filtered_out() -> None:
     assert [row["key"] for row in group["active"]] == ["Slay something"]
 
 
-@pytest.mark.real_cache
-def test_a_roll_panel_matches_playing_the_run_out(
-    real_export: ChunkInfo, real_tasks_map: dict[str, str]
-) -> None:
+def test_a_newly_trainable_skill_contributes_its_standing_backlog() -> None:
+    """The ledger's second branch, which the panel had no way to see.
+
+    The additions are all low-level; the backlog holds the far one. Reading
+    the additions alone named the level-65 task where the derivation named
+    the level-85 one - see `unlock.newly_trainable_backlog`.
+    """
+    roll = {
+        "new_tasks": {"Slayer": {"Wield ~|amethyst broad bolts|~": 65}},
+        "newly_trainable": {"Slayer": {"Slay an ~|abyssal demon|~": 85}},
+    }
+
+    (group,) = _section(panels.roll_panel(roll), "skills")["groups"]
+
+    assert [row["key"] for row in group["active"]] == ["Slay an ~|abyssal demon|~"]
+
+
+def test_a_boosted_level_is_what_the_panel_ranks_on() -> None:
+    """Two tasks the export calls 95 are not a tie if a boost reaches one.
+
+    `NoBoost` bars the Alchemical Hydra, so the plain hydra is really a 90 and
+    the pair is not tied at all - where ranking on the export's numbers tied
+    them and `_wins_tie` handed it to the wrong one on `Priority`.
+    """
+    roll = {
+        "new_tasks": {
+            "Slayer": {"Slay a ~|hydra|~": 95, "Slay the ~|Alchemical Hydra|~": 95}
+        },
+        "boosted_levels": {"Slayer": {"Slay a ~|hydra|~": 90.0}},
+    }
+    challenges = {
+        "Slayer": {
+            "Slay a ~|hydra|~": {"Level": 95, "Priority": 1},
+            "Slay the ~|Alchemical Hydra|~": {"Level": 95, "Priority": 2, "NoBoost": True},
+        }
+    }
+
+    (group,) = _section(panels.roll_panel(roll, {}, challenges), "skills")["groups"]
+
+    assert [row["key"] for row in group["active"]] == ["Slay the ~|Alchemical Hydra|~"]
+
+
+def test_a_ledger_without_the_newer_branches_renders_as_it_always_did() -> None:
+    """A run rolled before they existed is read, not refused."""
+    panel = panels.roll_panel(_CONSTRUCTION_ROLL)
+
+    assert _section(panel, "skills")["active_total"] == 1
+
+
+#: How many rolls the ordinary oracle run replays. The whole 50 is ~58s,
+#: which is not a price the everyday `FRAY_CHUNKINFO=... pytest` loop should
+#: pay; twelve is ~14s and reaches every roll of `verf-sim/run-001` that has
+#: ever caught something (`12849` at four, `5179` at five). The slow variant
+#: below is the one that gets to say the equivalence holds *in general*.
+_ORDINARY_ROLLS = 12
+
+
+def _replay_and_compare(
+    real_export: ChunkInfo, real_tasks_map: dict[str, str], limit: int | None
+) -> int:
     """**The equivalence the roll panel exists to state.**
 
     A simulation projects a future in which you rolled these chunks and did
@@ -464,16 +520,36 @@ def test_a_roll_panel_matches_playing_the_run_out(
     stored ledger would therefore be a test of the cache's age. `delta_from`
     here is the same call `simulate.py` makes.
 
-    Two real defects came out of this check and both are asserted by it:
-    a completion proves a level even when the challenge lives in another
-    category (`_level_proven_elsewhere`), and equal-level ties break on
-    `Priority`/`Primary` rather than on the name.
+    Five real defects came out of this check and all five are asserted by it.
+    Two are about what a completion proves: it proves a level even when the
+    challenge lives in another category (`_level_proven_elsewhere`), and what
+    it proves is boost-adjusted *downwards* (`boosts.completed_ceiling`) - a
+    shortcut managed on a summer pie is not evidence of its face level. Two
+    are about ranking: equal-level ties break on `Priority`/`Primary` rather
+    than on the name, and the level being compared is the boosted one, so an
+    export-equal pair where only one is boostable is not a tie at all. The
+    fifth is eligibility - a roll that makes a skill *trainable* opens its
+    whole standing backlog with no task's validity changing
+    (`unlock.newly_trainable_backlog`).
+
+    **Three defects hid behind one, all inside six rolls.** The prefix this
+    ran over was already long enough to fail - roll four is where eligibility
+    bites - but a failing comparison stops at the first disagreement, so
+    fixing it revealed the next at roll five and that one revealed a third.
+    Length is not what found them; re-running after each fix was. What length
+    buys is the right to say the equivalence holds *generally*, which is why
+    `limit` exists and why the slow variant below passes `None`.
+
+    Returns the number of rolls compared, so a caller can assert it actually
+    had something to compare rather than skipping silently.
     """
     from dataclasses import replace
 
+    from fray_claude.derive import boosts
     from fray_claude.derive.active_tasks import _level_proven_elsewhere
     from fray_claude.derive.pipeline import derive, load_map_state
     from fray_claude.derive.unlock import delta_from
+    from fray_claude.gui.routes_view import _raise_ceiling
     from fray_claude.store.cache import project_root, read_base_payload, read_rolls
 
     run = "verf-sim/run-001"
@@ -484,10 +560,7 @@ def test_a_roll_panel_matches_playing_the_run_out(
         entry["chunk_id"]
         for entry in read_rolls(run, project_root())
         if isinstance(entry.get("chunk_id"), str)
-    # **Six, because the sixth is the one with anything in it.** Five empty
-    # rolls agreeing is a weak statement; `4922` opens redwood logs for two
-    # skills at once and is what the tie-break and the ceiling both bite on.
-    ][:6]
+    ][:limit]
     assert rolls, "the run rolled nothing to compare"
 
     state, unlocked = load_map_state(base, real_export, real_tasks_map)
@@ -501,21 +574,40 @@ def test_a_roll_panel_matches_playing_the_run_out(
         }
 
     ceiling: dict[str, float] = {}
+    #: The derivation the completed clamp is read against. `boosts` needs the
+    #: reachable items, which move as the run rolls, so this is rebound each
+    #: step rather than captured once.
+    at: list[Any] = []
 
     def raise_to(skill: str, name: str) -> None:
+        """`routes_view._completed_levels`' rule, over one completion."""
         known = challenges.get(skill) or {}
         challenge = known.get(name)
         level = challenge.get("Level") if isinstance(challenge, dict) else None
-        if not isinstance(level, (int, float)) or isinstance(level, bool):
+        if isinstance(challenge, dict) and isinstance(level, (int, float)) and not isinstance(
+            level, bool
+        ):
+            level = boosts.completed_ceiling(
+                skill,
+                name,
+                challenge,
+                float(level),
+                rules=state.rules,
+                chunk_info=real_export,
+                items=at[0].challenges.available_items,
+                source_index=at[0].source_index,
+            )
+        elif not isinstance(level, (int, float)) or isinstance(level, bool):
             level = _level_proven_elsewhere(skill, name, challenges)
         if isinstance(level, (int, float)) and not isinstance(level, bool):
             ceiling[skill] = max(ceiling.get(skill, 0.0), float(level))
 
+    rolled = derive(state, unlocked)
+    at.append(rolled)
     completed = {skill: dict(names) for skill, names in state.completed_challenges.items()}
     for skill, names in completed.items():
         for name in names:
             raise_to(skill, name)
-    rolled = derive(state, unlocked)
     before = actives(rolled)
     for skill, name in before.items():
         completed.setdefault(skill, {})[name] = True
@@ -525,7 +617,7 @@ def test_a_roll_panel_matches_playing_the_run_out(
     for chunk_id in rolls:
         held[chunk_id] = True
         after = derive(state, held)
-        record = delta_from(rolled, after, chunk_id).as_dict()
+        record = delta_from(rolled, after, chunk_id, state=state).as_dict()
         rolled = after
 
         played = derive(replace(state, completed_challenges=completed), held)
@@ -538,10 +630,38 @@ def test_a_roll_panel_matches_playing_the_run_out(
         assert said == opened, f"roll on {chunk_id}"
 
         before = now
+        at[0] = after
         for skill, name in now.items():
             completed.setdefault(skill, {})[name] = True
             raise_to(skill, name)
-        for skill, tasks in (record.get("new_tasks") or {}).items():
-            for level in (tasks or {}).values():
-                if isinstance(level, (int, float)) and not isinstance(level, bool):
-                    ceiling[skill] = max(ceiling.get(skill, 0.0), float(level))
+        # **The production fold, not a second copy of it.** An earlier version
+        # inlined it, and the inline copy went on reading raw levels after
+        # `_raise_ceiling` learned to read the clamped ones - so the test kept
+        # passing against its own arithmetic.
+        _raise_ceiling(ceiling, record)
+    return len(rolls)
+
+
+@pytest.mark.real_cache
+def test_a_roll_panel_matches_playing_the_run_out(
+    real_export: ChunkInfo, real_tasks_map: dict[str, str]
+) -> None:
+    """`_replay_and_compare` over the rolls that have ever caught something."""
+    assert _replay_and_compare(real_export, real_tasks_map, _ORDINARY_ROLLS) > 1
+
+
+@pytest.mark.real_cache
+@pytest.mark.slow
+def test_a_roll_panel_matches_playing_out_the_whole_run(
+    real_export: ChunkInfo, real_tasks_map: dict[str, str]
+) -> None:
+    """The same equivalence, over all fifty rolls rather than a prefix.
+
+    **A prefix is evidence about a prefix.** The three defects the prefix
+    found were each invisible until the one before it was fixed, which is
+    reason enough to distrust "it passes as far as I looked" - the only
+    honest way to say the panel and the derivation agree is to have compared
+    them everywhere. Gated on `FRAY_SLOW_ORACLES` because it is ~58s where
+    the prefix is ~14s.
+    """
+    assert _replay_and_compare(real_export, real_tasks_map, None) > _ORDINARY_ROLLS

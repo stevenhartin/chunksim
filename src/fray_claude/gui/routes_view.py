@@ -22,6 +22,7 @@ from __future__ import annotations
 from fray_claude.costing.estimate import EstimateResult
 from fray_claude.costing.training import TrainingOption, training_options
 from fray_claude.costing.inputs import load_heuristics
+from fray_claude.derive import boosts
 from fray_claude.derive.active_tasks import _level_proven_elsewhere
 from fray_claude.derive.task_names import strip_task_markup
 from fray_claude.runs.batch import PriceSpec, _Prepared, price_detail
@@ -179,11 +180,31 @@ def roll_panels(map_id: str, ctx: Context) -> list[dict[str, Any]]:
 
 
 def _raise_ceiling(ceiling: dict[str, float], record: Mapping[str, Any]) -> None:
-    """Fold one roll's levels into the running high-water mark, in place."""
-    for skill, tasks in _mapping(record, "new_tasks").items():
-        for level in (tasks or {}).values():
-            if isinstance(level, (int, float)) and not isinstance(level, bool):
-                ceiling[skill] = max(ceiling.get(skill, 0.0), float(level))
+    """Fold one roll's levels into the running high-water mark, in place.
+
+    **Both branches, because both are things the roll put in front of you.**
+    A skill this roll made trainable contributes its whole standing backlog
+    (`unlock.newly_trainable_backlog`), and the panel just proposed the
+    furthest of it - so a later roll has to filter against that level, not
+    against the additions' lower one.
+
+    **The completed clamp, not the candidate one.** A task the panel proposed
+    is being treated as done, and what a completion *proves* is
+    `boosts.completed_ceiling`, which a boost lowers: a shortcut you only
+    managed with a summer pie is not evidence of its face level. Ranking uses
+    the other clamp (`unlock._clamped_levels` holds both and says why neither
+    derives from the other); folding this one raw put an Agility ceiling at 88
+    where the derivation had 83, and hid the roll that opened the Karuulm
+    shortcut.
+    """
+    proven = _mapping(record, "proven_levels")
+    for branch in ("new_tasks", "newly_trainable"):
+        for skill, tasks in _mapping(record, branch).items():
+            clamped = _mapping(proven, skill)
+            for name, level in (tasks or {}).items():
+                level = clamped.get(name, level)
+                if isinstance(level, (int, float)) and not isinstance(level, bool):
+                    ceiling[skill] = max(ceiling.get(skill, 0.0), float(level))
 
 
 def panel_counts(panel: Mapping[str, Any]) -> tuple[int, dict[str, int]]:
@@ -273,19 +294,42 @@ def _completed_levels(map_id: str, ctx: Context) -> dict[str, float]:
       the roll. This is the term that costs a derivation - `base_derived`,
       through the same on-disk cache, ~0.15s where the run left its base state
       behind and ~0.8s where it did not.
+    - **What a completion proves is boost-adjusted, and downwards.** This is
+      `active_tasks._completed_level_ceiling`'s quantity, so it has to be that
+      function's number: `boosts.completed_ceiling`, not the export's `Level`.
+      A task only reachable with a boost proves less than its face value, and
+      reading the face value put the ceiling *above* what the derivation had -
+      which does not merely mis-rank a roll, it deletes one, since a candidate
+      must strictly exceed the ceiling to be news at all.
     """
     payload = cache.read_base_payload(map_id, ctx.root)
     if payload is None:
         return {}
     challenges = ctx.derivations.chunk_info().challenges
     state = ctx.derivations.base_state(payload)
+    derived = ctx.derivations.base_derived(payload)
     highest: dict[str, float] = {}
 
     def raise_to(skill: str, name: str) -> None:
         known = challenges.get(skill) or {}
         challenge = known.get(name)
         level = challenge.get("Level") if isinstance(challenge, dict) else None
-        if not isinstance(level, (int, float)) or isinstance(level, bool):
+        if isinstance(challenge, dict) and isinstance(level, (int, float)) and not isinstance(
+            level, bool
+        ):
+            level = boosts.completed_ceiling(
+                skill,
+                name,
+                challenge,
+                float(level),
+                rules=state.rules,
+                chunk_info=state.chunk_info,
+                items=derived.challenges.available_items,
+                source_index=derived.source_index,
+            )
+        elif not isinstance(level, (int, float)) or isinstance(level, bool):
+            # No `Level` of its own: the completion may still prove one stated
+            # somewhere else in the export, and that one carries no boost.
             level = _level_proven_elsewhere(skill, name, challenges)
         if isinstance(level, (int, float)) and not isinstance(level, bool):
             highest[skill] = max(highest.get(skill, 0.0), float(level))
@@ -293,7 +337,7 @@ def _completed_levels(map_id: str, ctx: Context) -> dict[str, float]:
     for skill, names in state.completed_challenges.items():
         for name in names:
             raise_to(skill, name)
-    for skill, entry in ctx.derivations.base_derived(payload).task_classification.as_dict().items():
+    for skill, entry in derived.task_classification.as_dict().items():
         current = entry.get("active")
         if isinstance(current, str) and current:
             raise_to(skill, current)

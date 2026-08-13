@@ -1206,6 +1206,9 @@ def save_unlock(
         new_tasks=delta.new_tasks,
         new_unsupported=delta.new_unsupported,
         bis_upgrades=delta.bis_upgrades,
+        newly_trainable=delta.newly_trainable,
+        boosted_levels=delta.boosted_levels,
+        proven_levels=delta.proven_levels,
     )
     written = _write_one_run_batch(
         name=name,
