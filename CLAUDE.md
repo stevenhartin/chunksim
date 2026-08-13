@@ -170,7 +170,7 @@ The table says what each module **owns**; its docstring says why.
 | `derive/search.py` | World-wide fuzzy search over the *raw* export — a strict superset of what `fray sources` can list. |
 | `costing/heuristics.py` | Every hand-correctable number, and the `defaults < scraped < overrides` merge. Owns the joins and their `exact`/`contained` provenance; **no fuzzy tier, by measurement.** |
 | `costing/estimate.py` | The four buckets over the **active** set. **Costs the unique *item*, not the task**, and **clamps per source**. Owns the item walk and the gates on it, and records the `Heuristics` entries each number was read off — where they are read, never reconstructed. |
-| `costing/training.py` | How fast a skill goes. **A climb is priced band by band as methods unlock**, so the floor can only ever be the first band. |
+| `costing/training.py` | How fast a skill goes. **A climb is priced band by band as methods unlock**, so the floor can only ever be the first band. Each band carries the override path behind its rate, set where the rate is chosen. |
 | `costing/recipe_rates.py` | A recipe turned into an XP rate, joined exactly on `Output`. Owns `defaults < computed < scraped < overrides` — **the one place a computed number does *not* beat the scrape.** |
 | `costing/combat_xp.py` | Combat XP, which is damage and almost nothing else. Owns the three gates and the two credits that each removed a wrong answer. |
 | `costing/slayer.py` | Slayer's rate, which is a *distribution* not a chosen method, and the points economy that decides where you train. |

@@ -237,6 +237,14 @@ class ComputedMethod:
     xp_per_hour: float
     level: int | None = None
     match: str = "computed"
+    #: The override path behind this rate, or `""` when the file describes
+    #: nothing that would move it. Set by whichever module computed the
+    #: method, because that is the only place that knows: combat's rate is
+    #: damage against a monster's hitpoints (`monster_stats/<monster>`), and
+    #: Prayer's comes off bone and altar tables that no branch describes.
+    #: Inferring it downstream from `method` was tried and was wrong three
+    #: separate ways - see `estimate._skill_knobs`.
+    knob: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {

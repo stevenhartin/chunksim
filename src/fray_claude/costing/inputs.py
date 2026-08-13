@@ -636,6 +636,10 @@ def priced_heuristics(
                         method=rate.source.removeprefix("combat:"),
                         xp_per_hour=rate.value,
                         match=rate.match,
+                        # Damage against hitpoints, so the entry a reader
+                        # could look at is the monster's - not a training
+                        # rate, which is a path nothing would read.
+                        knob=f"monster_stats/{rate.source.removeprefix('combat:')}",
                     ),
                 )
                 for skill, rate in rates.items()

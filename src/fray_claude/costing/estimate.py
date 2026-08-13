@@ -276,6 +276,8 @@ class TaskEstimate:
     bucket: str
     hours: float
     detail: str = ""
+    #: The entries behind `hours`, as override-file paths. See `_Priced.knobs`.
+    knobs: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -283,6 +285,7 @@ class TaskEstimate:
             "bucket": self.bucket,
             "hours": self.hours,
             "detail": self.detail,
+            "knobs": list(self.knobs),
         }
 
 
@@ -382,6 +385,9 @@ class SkillEstimate:
     #: `combat_xp.hitpoints_credit`. Already removed from `xp`, like the
     #: quest grant beside it.
     xp_from_combat: float = 0.0
+    #: The entries behind the climb, one per band that has one. See
+    #: `_skill_knobs`, which is where the three cases are decided.
+    knobs: tuple[str, ...] = ()
     #: The level the quest XP leaves you at, which is where the climb starts.
     #: Equal to `current_level` when no quest pays into this skill.
     effective_level: int = 0
@@ -403,6 +409,7 @@ class SkillEstimate:
             "days": round(self.days, 1),
             "xp_from_combat": self.xp_from_combat,
             "effective_level": self.effective_level,
+            "knobs": list(self.knobs),
             "bands": [band.as_dict() for band in self.bands],
         }
 
@@ -1208,6 +1215,12 @@ def _quest_tasks(derived: Derived, heuristics: Heuristics) -> list[TaskEstimate]
                 bucket="quests",
                 hours=rate.hours * remaining / total,
                 detail=f"{remaining}/{total} steps, {rate.length or 'unknown length'}",
+                # The step counts are the export's and the fraction is
+                # arithmetic; the only number anyone can argue with is how
+                # long the quest takes. Quest names carry `/` - `Recipe for
+                # Disaster/Freeing Evil Dave` - which is why `knobs.split`
+                # takes its depth from the branch and not from the separator.
+                knobs=(f"quests/{group.name}",),
             )
         )
     return estimates
@@ -1305,6 +1318,29 @@ def _farming_bands(
     return bands, plan.days_for(grown) if grown > 0 else 0.0
 
 
+def _skill_knobs(bands: tuple[TrainingBand, ...]) -> tuple[str, ...]:
+    """The entries behind a climb, collected from the bands that have one.
+
+    **Read off the band rather than worked out from it**, which is the same
+    rule `_Priced.knobs` follows and the one this function was written twice
+    for breaking. Inferring `training/<method>/<skill>` from what a band
+    carries was wrong four separate ways, each silently - the path was
+    accepted, written, and moved no number:
+
+    - a combat band's rate is damage against hitpoints, not a training entry;
+    - a Slayer band's is a distribution over a master's whole assignment
+      table, and `training/<master>` is not a key anywhere;
+    - a farming band is a calendar schedule rather than a rate;
+    - and for the ordinary case the key is the *challenge's* name, where
+      `TrainingBand.method` is `activity_name(...)` - a display string.
+
+    So each producer sets `TrainingBand.knob` where it chooses the rate, and
+    this collects them. A band with no knob is one the file describes nothing
+    for, which is the honest answer rather than a guess.
+    """
+    return _unique(band.knob for band in bands if band.knob)
+
+
 def _skill_estimate(
     skill: str,
     goal: str,
@@ -1351,6 +1387,7 @@ def _skill_estimate(
         xp_from_combat=xp_from_combat,
         days=days,
         effective_level=effective_level or current,
+        knobs=_skill_knobs(bands),
     )
 
 
@@ -1687,6 +1724,12 @@ def estimate(
                     xp_per_hour=slayer_rate.xp_per_hour,
                     method=slayer_rate.master,
                     match="slayer",
+                    # **A branch, like the superior table.** The rate is a
+                    # distribution over everything the master assigns, so no
+                    # single entry is behind it - and `training/<master>` is
+                    # not a key anywhere, which is what the first version of
+                    # this recorded.
+                    knob=f"slayer/{slayer_rate.master}",
                 ),
             )
         else:

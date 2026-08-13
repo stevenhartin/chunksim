@@ -48,9 +48,29 @@ NUMERIC_FIELD: Mapping[str, str | None] = {
     "currencies": None,
     "rarities": None,
     "monsters": "value",
+    "quests": "hours",
     "shops": "price",
     "slayer": "kills_per_hour",
     "superiors": "spawn_rate",
+    "training": "value",
+}
+
+#: How many keys deep a branch's leaves sit. **Not inferable from the path**,
+#: which is why it is written down: real quest names contain the separator -
+#: `Recipe for Disaster/Another Cook's Quest` is one key, not two - so
+#: splitting on every `/` reads that as a two-level path into a branch that is
+#: one level deep. It resolves to nothing, and a *write* would build a nested
+#: object `load` then ignores, which is a correction that silently does not
+#: apply.
+#:
+#: So the branch decides how many pieces there are, and the split takes the
+#: last separator rather than the first: the leaf key of a two-level branch
+#: (a skill, an item, an assignment) is the simple half, and the container (a
+#: shop, a quest, a master) is where a slash would turn up.
+BRANCH_DEPTH: Mapping[str, int] = {
+    "shops": 2,
+    "slayer": 2,
+    "training": 2,
 }
 
 #: Where a write may go. `site` is `heuristics/overrides.json`, which is
@@ -83,15 +103,28 @@ def split(path: str) -> tuple[str, ...]:
     file that is read back and parsed, so an unchecked one is a way to write
     arbitrary JSON into it - the discipline `settings.sanitise` applies to
     keys, applied to paths.
+
+    **The branch decides how many keys follow, not the separator** - see
+    `BRANCH_DEPTH`. A one-level branch keeps everything after it as a single
+    key, slashes and all, which is what makes `quests/Recipe for
+    Disaster/Freeing Evil Dave` address the quest it names rather than a
+    nesting that does not exist.
+
+    A two-level branch also accepts one key, which addresses the container
+    rather than a leaf: `slayer/Duradel` is a real thing to ask about, since
+    that is what the superior shared table is priced off.
     """
-    parts = tuple(part for part in path.split("/") if part)
-    if len(parts) < 2:
+    branch, separator, rest = path.partition("/")
+    if not separator or not rest:
         raise KnobError(f"{path!r} is not a knob: expected '<branch>/<key>'")
-    if parts[0] not in CONFIG_BRANCHES:
-        raise KnobError(f"{parts[0]!r} is not an override branch")
-    if len(parts) > 3:
-        raise KnobError(f"{path!r} is deeper than any override branch goes")
-    return parts
+    if branch not in CONFIG_BRANCHES:
+        raise KnobError(f"{branch!r} is not an override branch")
+    if BRANCH_DEPTH.get(branch, 1) == 1 or "/" not in rest:
+        return (branch, rest)
+    container, _, leaf = rest.rpartition("/")
+    if not container or not leaf:
+        raise KnobError(f"{path!r} is not a knob: expected '<branch>/<key>/<key>'")
+    return (branch, container, leaf)
 
 
 def at(config: Mapping[str, Any], parts: tuple[str, ...]) -> Any:
@@ -145,6 +178,18 @@ def resolve(
     )
     value = layers[winner] if winner is not None else None
     number = _number(value, branch)
+    # A branch-shaped path (`slayer/Duradel`) is a group of leaves, and a leaf
+    # whose branch has no single figure is structure. Neither has one number
+    # to put in a box - and they are not the same reason, so they do not get
+    # the same sentence. A dialog that said "read from the whole branch" over
+    # a monster's hitpoints would be explaining the wrong thing.
+    editable = number is not None or (winner is None and _editable_shape(parts))
+    if editable:
+        why = ""
+    elif branch not in NUMERIC_FIELD:
+        why = "several numbers, not one — read but not edited here"
+    else:
+        why = "read from the whole branch, not from one entry"
     return {
         "path": path,
         "branch": branch,
@@ -155,10 +200,8 @@ def resolve(
         "layer": winner,
         "value": value,
         "number": number,
-        # A branch-shaped path (`slayer/Duradel`) is a group of leaves, and a
-        # leaf whose branch has no numeric field is structure. Neither has one
-        # number to put in a box.
-        "editable": number is not None or (winner is None and _editable_shape(parts)),
+        "editable": editable,
+        "why": why,
     }
 
 

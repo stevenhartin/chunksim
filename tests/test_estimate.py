@@ -1996,7 +1996,8 @@ def test_every_knob_a_real_estimate_emits_names_a_real_override_branch(
     `shop_prices` for `shops`.
 
     Run against the real map because that is what exercises every route: a
-    fixture reaches one at a time and would have missed all three.
+    fixture reaches one at a time and would have missed all three. All three
+    buckets that record knobs are swept, not just the items.
     """
     from fray_claude.costing.heuristics import CONFIG_BRANCHES
     from fray_claude.costing.inputs import estimate_answer
@@ -2014,6 +2015,134 @@ def test_every_knob_a_real_estimate_emits_names_a_real_override_branch(
     )
     answer = estimate_answer(state, unlocked, real_derived, digests)
 
-    emitted = {knob.split("/")[0] for item in answer.result.items for knob in item.knobs}
+    priced: list[tuple[str, ...]] = [
+        row.knobs
+        for group in (answer.result.items, answer.result.tasks, answer.result.skills)
+        for row in group
+    ]
+    emitted = {knob.split("/")[0] for row in priced for knob in row}
     assert emitted, "the estimate priced nothing, so this proves nothing"
     assert emitted <= CONFIG_BRANCHES, f"not override branches: {sorted(emitted - CONFIG_BRANCHES)}"
+    # And every one of them parses back to the entry it names - the guard that
+    # a quest called `Recipe for Disaster/Freeing Evil Dave` needs.
+    from fray_claude.gui import knobs as knob_paths
+
+    for row in priced:
+        for knob in row:
+            assert knob_paths.split(knob)[0] in CONFIG_BRANCHES
+
+
+def test_a_quest_names_the_only_number_anyone_can_argue_with() -> None:
+    """The step counts are the export's and the fraction is arithmetic; what
+    is arguable is how long the quest takes.
+
+    **Neither cached map has an outstanding quest**, so this is the only place
+    the quest knob is exercised - which is the reason it is a fixture rather
+    than an oracle.
+    """
+    info = ChunkInfo({"challenges": {"Quest": {"~|Cook's Assistant|~ 1": {"BaseQuest": "Cook's Assistant"}}}})
+    derived = _derived(
+        other_tasks=OtherTasks(
+            categories={
+                "Quest": CategoryTasks(
+                    category="Quest",
+                    groups=(
+                        TaskGroup(name="Cook's Assistant", active=("~|Cook's Assistant|~ 1",)),
+                    ),
+                )
+            }
+        ),
+    )
+
+    result = _run(info, derived, Heuristics())
+
+    (quest,) = result.tasks
+    assert quest.knobs == ("quests/Cook's Assistant",)
+    assert quest.as_dict()["knobs"] == ["quests/Cook's Assistant"]
+
+
+def test_a_quest_whose_name_holds_a_separator_still_addresses_itself() -> None:
+    """`Recipe for Disaster/Freeing Evil Dave` is one key of `quests`, and the
+    path has to survive being read back - see `gui.knobs.split`."""
+    from fray_claude.gui import knobs
+
+    info = ChunkInfo({})
+    derived = _derived(
+        other_tasks=OtherTasks(
+            categories={
+                "Quest": CategoryTasks(
+                    category="Quest",
+                    groups=(
+                        TaskGroup(
+                            name="Recipe for Disaster/Freeing Evil Dave",
+                            active=("~|Recipe for Disaster|~ 1",),
+                        ),
+                    ),
+                )
+            }
+        ),
+    )
+
+    (quest,) = _run(info, derived, Heuristics()).tasks
+
+    (path,) = quest.knobs
+    assert knobs.split(path) == ("quests", "Recipe for Disaster/Freeing Evil Dave")
+
+
+def test_a_band_carries_the_knob_its_producer_chose() -> None:
+    """**Collected, not inferred.** Working the path out from what a band
+    carries was wrong four separate ways - see `_skill_knobs` - and each was
+    silent: the path was accepted, written, and moved no number."""
+    from fray_claude.costing.estimate import _skill_knobs
+    from fray_claude.costing.training import TrainingBand
+
+    def band(method: str, match: str, knob: str) -> TrainingBand:
+        return TrainingBand(
+            level_from=1, level_to=50, xp=100, xp_per_hour=1000.0,
+            method=method, match=match, knob=knob,
+        )
+
+    bands = (
+        band("Chop oak logs", "exact", "training/Chop ~|oak logs|~/Woodcutting"),
+        band("Mutated Bloodveld", "computed", "monster_stats/Mutated Bloodveld"),
+        band("Krystilia", "slayer", "slayer/Krystilia"),
+        # A farming schedule and a Prayer bury rate each describe nothing the
+        # file holds, so they carry nothing and contribute nothing.
+        band("4 patches, 60,000 xp/day", "farming", ""),
+        band("Bury ~|dragon bones|~", "computed", ""),
+    )
+
+    assert _skill_knobs(bands) == (
+        "training/Chop ~|oak logs|~/Woodcutting",
+        "monster_stats/Mutated Bloodveld",
+        "slayer/Krystilia",
+    )
+
+
+def test_a_training_knob_names_the_challenge_not_its_display_name() -> None:
+    """`TrainingOption.method` is `activity_name(...)`, which is not a key
+    anywhere - so a path built from it addresses nothing."""
+    from fray_claude.costing.training import training_options
+
+    info = ChunkInfo(
+        {
+            "challenges": {
+                "Woodcutting": {
+                    "Chop ~|oak logs|~": {"Primary": True, "Level": 15},
+                }
+            }
+        }
+    )
+    derived = _derived(
+        challenges=ChallengeResult(
+            valid={"Woodcutting": {"Chop ~|oak logs|~": True}}, unsupported=frozenset()
+        ),
+    )
+    heuristics = Heuristics(
+        training={"Chop ~|oak logs|~": {"Woodcutting": Rate(40000.0, "wiki:x", "exact")}}
+    )
+
+    (option,) = training_options(derived, info, heuristics, "Woodcutting")
+
+    assert option.knob == "training/Chop ~|oak logs|~/Woodcutting"
+    assert option.method != "Chop ~|oak logs|~", "the display name is not the key"

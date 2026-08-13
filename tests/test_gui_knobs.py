@@ -17,7 +17,7 @@ def test_a_path_must_name_a_real_branch() -> None:
     back and parsed, so an unchecked one is a way to write arbitrary JSON into
     it - the discipline `settings.sanitise` applies to keys, applied here to
     paths."""
-    for hostile in ("", "monsters", "nonsense/Goblin", "a/b/c/d", "/", "monsters//"):
+    for hostile in ("", "monsters", "nonsense/Goblin", "/", "monsters/"):
         with pytest.raises(knobs.KnobError):
             knobs.split(hostile)
 
@@ -27,6 +27,31 @@ def test_a_path_must_name_a_real_branch() -> None:
         "Duradel",
         "Abyssal demons",
     )
+
+
+def test_a_one_level_branch_keeps_the_separators_in_its_key() -> None:
+    """**Real quest names contain a slash.** `Recipe for Disaster/Freeing Evil
+    Dave` is one key of the `quests` branch, not a path into a nesting that
+    does not exist - and reading it as the latter resolves to nothing while a
+    *write* builds an object `load` ignores. A correction that silently does
+    not apply is the worst of the three outcomes.
+    """
+    assert knobs.split("quests/Recipe for Disaster/Freeing Evil Dave") == (
+        "quests",
+        "Recipe for Disaster/Freeing Evil Dave",
+    )
+
+
+def test_a_two_level_branch_splits_at_the_last_separator() -> None:
+    """The leaf of a two-level branch is the simple half - a skill, an item, an
+    assignment - and the container is where a slash would turn up."""
+    assert knobs.split("shops/Bob's Brilliant Axes/Bronze axe") == (
+        "shops",
+        "Bob's Brilliant Axes",
+        "Bronze axe",
+    )
+    # One key is the container itself, which is a real thing to ask about.
+    assert knobs.split("slayer/Duradel") == ("slayer", "Duradel")
 
 
 def test_a_knob_reports_every_layer_and_which_one_won() -> None:

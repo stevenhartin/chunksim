@@ -2941,6 +2941,9 @@ function renderEstimate(payload) {
    * hours". */
   for (const item of payload.items || []) file(item.bucket, { name: item.item, ...item });
   for (const task of payload.tasks || []) file(task.bucket, { name: task.task, ...task });
+  /* `knobs` rides along on the spread above, which is what makes a quest row
+   * clickable without a second branch here: the quest bucket goes through the
+   * same list renderer the item buckets do. */
 
   /* Ordered as the pie is, so the third heading down is the third wedge
    * round and the swatch beside it is the one you just hovered. */
@@ -2956,10 +2959,18 @@ function renderEstimate(payload) {
         /* The same renderer the roll overlay uses - one tooltip system, and
          * this one was three lines that said much less. */
         const tip = skillTip(skill);
-        return tmpl`<li data-tip="${tip}"><img class="skill-icon" src="/assets/skill/${skill.skill}.png" alt="">
+        /* A climb's knobs are one per band that has one, so a skill trained
+         * two ways opens two. A band whose rate was computed rather than read
+         * - combat off damage, prayer off bones - contributes provenance or
+         * nothing, which is why some skills have fewer knobs than bands. */
+        const knobs = skill.knobs || [];
+        const body = tmpl`<img class="skill-icon" src="/assets/skill/${skill.skill}.png" alt="">
           <span class="name">${skill.skill}</span>
           <span class="sub">${skill.current_level} → ${skill.target_level}</span>
-          <span class="num">${hours(skill.hours)}</span></li>`;
+          <span class="num">${hours(skill.hours)}</span>`;
+        if (!knobs.length) return tmpl`<li data-tip="${tip}">${raw(body)}</li>`;
+        return tmpl`<li class="arguable" data-tip="${tip}" data-knobs="${knobs.join("\u241f")}"
+          data-row="${skill.skill}" role="button" tabindex="0">${raw(body)}</li>`;
       });
       out += "</ul>";
       continue;
@@ -4236,7 +4247,7 @@ async function editKnobs(name, paths) {
       ? tmpl`<input class="knob-value" data-index="${String(index)}" type="number" min="0"
              step="any" value="${knob.number === null ? "" : String(knob.number)}"
              placeholder="default" aria-label="${knob.path}">`
-      : tmpl`<span class="knob-fixed">read from the whole branch</span>`;
+      : tmpl`<span class="knob-fixed">${knob.why || "not editable here"}</span>`;
     return tmpl`<div class="knob">
       <code class="knob-path">${knob.path}</code>
       <div class="knob-layers">${raw(knobLayers(knob))}</div>

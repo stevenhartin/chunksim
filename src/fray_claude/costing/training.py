@@ -56,6 +56,12 @@ class TrainingOption:
     #: and wins on calendar. Not serialised: it is a routing detail, where
     #: `match` is the thing a reader is being asked to judge.
     source: str = ""
+    #: The override path behind `xp_per_hour`, or `""` where the file
+    #: describes nothing that would move it. **Set here rather than worked
+    #: out later**: `method` is `activity_name(name)`, a display string, where
+    #: the config key is the challenge's own name - so the one thing a reader
+    #: needs cannot be recovered from what is carried alongside it.
+    knob: str = ""
 
     @property
     def effective_xp_per_hour(self) -> float:
@@ -125,6 +131,7 @@ def training_options(
             level=option.level,
             xp_per_hour=option.xp_per_hour,
             match=option.match,
+            knob=option.knob,
         )
         for option in heuristics.computed.get(skill) or ()
         if option.xp_per_hour > 0
@@ -147,6 +154,9 @@ def training_options(
                 match=rate.match,
                 material_seconds_per_xp=_material_cost(heuristics, name, rate),
                 source=rate.source,
+                # `name`, not `activity_name(name)`: the file is keyed by the
+                # challenge, and the display string is not a key anywhere.
+                knob=f"training/{name}/{skill}",
             )
         )
     return tuple(sorted(found, key=lambda option: -option.effective_xp_per_hour))
@@ -209,6 +219,8 @@ class TrainingBand:
     #: a reader can see why a 290,000/hr shark reads as 148,000 - see
     #: `TrainingOption.effective_xp_per_hour`.
     published_xp_per_hour: float = 0.0
+    #: The override path behind this band's rate - see `TrainingOption.knob`.
+    knob: str = ""
 
     @property
     def material_hours(self) -> float:
@@ -281,18 +293,19 @@ def training_bands(
                 option.method,
                 option.match,
                 option.xp_per_hour,
+                option.knob,
             )
             for option in options
         ),
         key=lambda entry: (entry[0], -entry[1], entry[2]),
     )
-    steps: list[tuple[int, float, str, str, float]] = []
+    steps: list[tuple[int, float, str, str, float, str]] = []
     best = 0.0
-    for level, rate, method, match, published in ranked:
+    for level, rate, method, match, published, knob in ranked:
         if rate <= best:
             continue
         best = rate
-        steps.append((xp_for_level(level), rate, method, match, published))
+        steps.append((xp_for_level(level), rate, method, match, published, knob))
 
     edges = sorted(
         {start_xp, target_xp} | {xp for xp, *_ in steps if start_xp < xp < target_xp}
@@ -300,8 +313,8 @@ def training_bands(
     bands: list[TrainingBand] = []
     for lower, upper in zip(edges, edges[1:]):
         open_now = [step for step in steps if step[0] <= lower]
-        rate, method, match, published = (
-            open_now[-1][1:] if open_now else (floor, "", "default", floor)
+        rate, method, match, published, knob = (
+            open_now[-1][1:] if open_now else (floor, "", "default", floor, "")
         )
         bands.append(
             TrainingBand(
@@ -312,6 +325,7 @@ def training_bands(
                 method=method,
                 match=match,
                 published_xp_per_hour=published,
+                knob=knob,
             )
         )
     return tuple(bands)
