@@ -880,11 +880,55 @@ def test_clicking_a_column_frames_the_chunk_and_details_is_separate() -> None:
     assert 'id="tl-details"' in html
     body = re.search(r"async function goToRoll\(step\) \{(.*?)\n\}", js, re.DOTALL)
     assert body is not None
-    assert "setStep(step)" in body.group(1)
+    # `commitStep` is `setStep` plus the panels; a click is a commit, so the
+    # panels follow it - see `test_a_drag_moves_the_world_and_a_commit_moves_the_panels`.
+    assert "commitStep(step)" in body.group(1)
     assert "selectChunk(" in body.group(1) and "focusChunk(" in body.group(1)
     # The overlay is opened by the button, not by the column.
     assert "slot.onclick = () => goToRoll(" in js
     assert 'el["tl-details"].addEventListener' in js
+
+
+def test_a_drag_moves_the_world_and_a_commit_moves_the_panels() -> None:
+    """**The two costs are nothing alike and the events have to reflect that.**
+
+    Rewinding the world is a 36KB read; each panel is a derivation, ~3ms warm
+    and ~0.6s cold. So `input` - once per frame of a drag - may only call
+    `setStep`, and `change` is what pays for the panels. Wiring `commitStep`
+    to `input` would put a derivation on every frame, which is the cost the
+    strip was built to avoid.
+    """
+    _, js, _ = _resources()
+
+    drag = _match(r'el\["tl-slider"\]\.addEventListener\("input",(.*?)\);', js)
+    commit = _match(r'el\["tl-slider"\]\.addEventListener\("change",(.*?)\);', js)
+    assert "setStep(" in drag and "commitStep(" not in drag
+    assert "commitStep(" in commit
+    # Both step buttons commit: they are single steps, not a scrub.
+    for control in ("tl-prev", "tl-next"):
+        assert f'el["{control}"].addEventListener("click", () => commitStep(' in js
+
+
+def test_a_panel_asks_about_the_step_and_the_view_asks_about_the_map() -> None:
+    """**Two questions, two builders, and they must stay adjacent.**
+
+    `mapQuery` says which chunk arrived and sends a step whenever there is
+    one; `panelQuery` says which world and sends one only when Timeline has
+    actually rewound. Every derivation-backed route takes the second, or a
+    panel describes the finished run under a rewound map.
+    """
+    _, js, _ = _resources()
+
+    for route in ("/api/tasks", "/api/estimate", "/api/sections", "/api/chunk",
+                  "/api/unlock", "/api/neighbours"):
+        assert _match(rf'"{re.escape(route)}\?" \+ (\w+)\(\)', js) == "panelQuery", (
+            f"{route} must scope to the step"
+        )
+    assert '"&" + panelQuery() + "&limit=40"' in js, "Find must scope to the step too"
+    # The cheap view keeps the other one.
+    assert '"/api/view?" + mapQuery()' in js
+    # Adjacent, which is the only thing keeping the two rules from drifting.
+    assert 0 < js.index("function panelQuery(") - js.index("function mapQuery(") < 2000
 
 def test_a_deep_link_to_a_run_falls_back_to_its_batch() -> None:
     """A one-run batch is offered under its bare name, so `?map=t/run-001` is

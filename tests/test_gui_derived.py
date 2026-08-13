@@ -359,3 +359,44 @@ def test_an_unlock_without_its_required_fields_is_a_400(
 ) -> None:
     ctx = Context(root=tmp_path, check_origin=False)
     assert _post("/api/unlock", ctx, payload).status == HTTPStatus.BAD_REQUEST
+
+
+def test_a_step_against_a_map_with_no_history_is_refused(ctx: Context) -> None:
+    """**Not a silent fall-through to the map.** A caller asking about roll 0
+    of something that never rolled is asking about a history that does not
+    exist, and answering a different question is how a panel comes to describe
+    a different world than the map beside it.
+
+    It also matters that this is refused rather than tolerated: `load_step`
+    commits the ticked-this-chunk ledger, which is right for a simulated world
+    and wrong for a real one, so step 0 of a fetched map would quietly blank
+    its `(Active)` markers.
+    """
+    response = _get("/api/tasks", ctx, map="fray", step="0")
+
+    assert response.status == HTTPStatus.BAD_REQUEST
+    assert "no rolls to step through" in _body(response)["error"]
+
+
+def test_a_step_that_is_not_a_number_is_refused(ctx: Context) -> None:
+    """Refused before anything is loaded - it is a malformed URL, not a miss."""
+    response = _get("/api/tasks", ctx, map="fray", step="halfway")
+
+    assert response.status == HTTPStatus.BAD_REQUEST
+    assert "not a number" in _body(response)["error"]
+
+
+def test_every_derivation_route_takes_the_same_step(ctx: Context) -> None:
+    """**One resolver, six routes.** Each would otherwise decide for itself
+    what a step meant, and the first to forget would show the finished run
+    under a rewound world."""
+    for path, extra in (
+        ("/api/tasks", {}),
+        ("/api/estimate", {}),
+        ("/api/sections", {}),
+        ("/api/chunk", {"chunk": LUMBRIDGE}),
+        ("/api/unlock", {"chunk": NORTH}),
+        ("/api/search", {"q": "bronze"}),
+    ):
+        response = _get(path, ctx, map="fray", step="1", **extra)
+        assert response.status == HTTPStatus.BAD_REQUEST, f"{path} ignored the step"

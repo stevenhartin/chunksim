@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +50,12 @@ class DerivedState:
     state: MapState
     unlocked: dict[str, bool]
     derived: Derived
+    #: Which roll of a run this describes, or `None` for the map itself.
+    #: Carried so a route can say what it answered about rather than trusting
+    #: the caller to remember what it asked - a panel that silently describes
+    #: a different world than the map beside it is the bug this whole seam
+    #: exists to prevent.
+    step: int | None = None
 
 
 class Derivations:
@@ -191,6 +197,70 @@ class Derivations:
         differ only in where the bytes come from.
         """
         return load_map_state(payload, self.chunk_info(), self._reverse_tasks())[0]
+
+    def load_step(self, map_id: str, step: int) -> DerivedState:
+        """One run rewound to the world it was in after `step` rolls.
+
+        **The map view has always rewound and the panels never did.** Both
+        halves of that were right when written: a square's position is fixed
+        by its id, so redrawing the world after each roll is a 36KB read,
+        where a panel needs a derivation and following a drag at ~0.8s each
+        would have cost the strip the whole reason it is instant. What
+        changed is the cache - `--cache-behaviour all` is the default and a
+        run stores every intermediate state it passes through, so a step is
+        a ~3ms read from `cache/derived/`. What is left to avoid is asking
+        per drag frame, which is the page's business, not this one's.
+
+        **From the run's base payload, with the ticked half committed.**
+        `simulate.simulated_payload` folds `checkedChallenges` into
+        `completedChallenges` and clears it, because that is what rolling a
+        chunk does upstream - so the base state and the run's own differ by
+        exactly that branch. `load_map_state` merges the two ledgers anyway,
+        which is why `derive` computes the same answers from either; what
+        `checked_challenges` still decides is the "ticked during the chunk in
+        play" marker on `other_tasks.current_chunk` and `bis.current_chunk`,
+        and both modules say so - it labels output and gates nothing. For a
+        world reached by rolling, that marker's correct value is empty:
+        nothing was ticked during a simulated chunk. Deriving from the base
+        state *unmodified* reproduced the pre-simulation ticks and the panel
+        for the last step disagreed with the panel for the map itself, in
+        three groups, on that marker alone.
+
+        So the state is the base with `checked_challenges` cleared, which
+        makes the last step's panel identical to `load(map_id)`'s - asserted
+        rather than assumed, in `tests/test_gui_derivation.py`.
+
+        **The cost that buys is a first look, not every look.** That state
+        hashes differently from the one the run rolled with, so a step is not
+        already in `cache/derived/` from the simulation: ~0.6s the first time
+        and ~3ms after, self-warming as you step. Rolling the simulation from
+        the committed state would make even the first free and is deliberately
+        not done here - it would change what every run stores, for a gain only
+        this route sees.
+
+        A run with no recorded base falls back to its own payload, which
+        `cache.read_base_payload` already documents as slower and not
+        different.
+
+        Raises `IndexError` for a step outside the run, and `CacheMissError`
+        when `map_id` is not a run at all.
+        """
+        from fray_claude.runs.timeline import replay
+
+        envelope = cache.read_cache(map_id, self._root)
+        steps = replay(unlocked_of(envelope), cache.read_rolls(map_id, self._root))
+        if not 0 <= step < len(steps):
+            raise IndexError(f"step {step} is outside this run's 0..{len(steps) - 1}")
+        payload = cache.read_base_payload(map_id, self._root)
+        state = replace(
+            self.base_state(payload if payload is not None else envelope["data"]),
+            checked_challenges={},
+        )
+        unlocked = {chunk_id: True for chunk_id in sorted(steps[step].unlocked)}
+        derived = cached_derive(state, unlocked, self.digests(), root=self._root)
+        return DerivedState(
+            map_id=map_id, state=state, unlocked=unlocked, derived=derived, step=step
+        )
 
     def load(self, map_id: str) -> DerivedState:
         """Parse and derive one map.

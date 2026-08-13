@@ -112,7 +112,13 @@ Choosing one asks whether you meant to replay it, and declining leaves you where
 along the bottom is the run's history: drag it, click a bar to fly to the chunk that roll added, or
 press **Details** for what it opened — the furthest task per skill, the same rule the Tasks tab
 applies, including the case where the roll made a skill trainable at all and everything it had been
-sitting on became worth doing at once. **Snapshot** saves the world at the roll you are looking at as
+sitting on became worth doing at once.
+
+**The panel follows the roll you stop on.** Tasks, Estimate and Find all describe the world as it
+stood after that roll rather than the finished run, so stepping back through a simulation is a way
+of asking what you would have been doing at the time and what was still ahead of you. Dragging the
+slider only moves the map; letting go is what re-asks the panel, because the map is a read and each
+panel is a derivation. **Snapshot** saves the world at the roll you are looking at as
 a map in its own right — which is how you get out of a timeline: it browses, edits and diffs like any
 other map, where the run itself cannot.
 

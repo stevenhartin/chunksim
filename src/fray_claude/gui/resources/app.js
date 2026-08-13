@@ -1575,7 +1575,15 @@ function renderRibbon() {
   const mode = state.mode;
   el.ribbon.dataset.mode = mode;
   el["ribbon-mode"].textContent = MODES[mode].label;
-  el["ribbon-map"].textContent = state.map || "no map";
+  /* **The ribbon names the world the panels describe**, which in Timeline is a
+   * roll rather than the map. It said only the map's name while the panels
+   * always showed the finished run; now that they follow the step, a bare name
+   * would be the same half-truth pointing the other way. */
+  const rewound = mode === "timeline" && state.timeline
+    && state.step !== null && state.step < state.timeline.steps.length - 1;
+  el["ribbon-map"].textContent = state.map
+    ? (rewound ? state.map + " @ " + state.step : state.map)
+    : "no map";
   for (const id of ["ribbon-vs", "compare", "breakdown"]) el[id].hidden = mode !== "diff";
   const count = editCount();
   el["ribbon-edits"].hidden = mode !== "edit";
@@ -1899,6 +1907,31 @@ function mapQuery() {
   return params.toString();
 }
 
+/* **What world a *panel* is about, which is not the same question.**
+ *
+ * `mapQuery` answers "which chunk arrived", so it sends a step whenever there
+ * is one - a one-run batch pinned at its end included, where the step is not
+ * a rewind but the only world the map has. A panel asks "which world", and
+ * those two come apart in exactly one place: outside Timeline the panels
+ * describe the map, and asking the server to rebuild that world from the run's
+ * base would be a slower way to the same answer with a different
+ * ticked-this-chunk marker on it.
+ *
+ * The last step is not sent either. It derives to the world the map already
+ * is - `Derivations.load_step` is tested on that equality - but the map's own
+ * derivation is the one already warm, so asking for the map is the same
+ * answer sooner.
+ *
+ * The two live next to each other because that is the only thing keeping them
+ * from drifting: a rule split across two functions on opposite sides of a
+ * file is a rule nobody reads twice. */
+function panelQuery() {
+  const query = "map=" + encodeURIComponent(state.map);
+  if (state.mode !== "timeline" || state.step === null || !state.timeline) return query;
+  const last = state.timeline.steps.length - 1;
+  return state.step >= last ? query : query + "&step=" + state.step;
+}
+
 /* **A batch of several runs is not a map and must not be offered as one.**
  *
  * `cache.resolve_map_path` refuses to guess which run a bare batch name means
@@ -2150,7 +2183,7 @@ async function loadCandidates() {
     state.candidates = new Map();
   } else {
     try {
-      const payload = await getJSON("/api/neighbours?map=" + encodeURIComponent(state.map));
+      const payload = await getJSON("/api/neighbours?" + panelQuery());
       state.candidates = new Map(payload.neighbours.map((n) => [n.chunk_id, n]));
     } catch (error) {
       state.candidates = new Map();
@@ -2165,7 +2198,7 @@ async function loadCandidates() {
 async function loadSections() {
   if (!state.showMasks || !state.map) { state.sections = {}; return; }
   try {
-    const payload = await getJSON("/api/sections?map=" + encodeURIComponent(state.map));
+    const payload = await getJSON("/api/sections?" + panelQuery());
     state.sections = payload.chunks;
   } catch (error) {
     state.sections = {};
@@ -2224,7 +2257,7 @@ async function selectChunk(chunkId) {
   el["chunk-body"].innerHTML = tmpl`<p class="empty">Reading ${chunkLabel(chunkId)}…</p>`;
   try {
     chunkDetail = await getJSON(
-      "/api/chunk?map=" + encodeURIComponent(state.map) +
+      "/api/chunk?" + panelQuery() +
       "&chunk=" + encodeURIComponent(chunkId));
     clearExpansions("chunk:");
     renderChunk();
@@ -2434,7 +2467,7 @@ async function previewUnlock(chunkId) {
   openOverlay("If you unlocked " + chunkId, tmpl`<p class="empty">Deriving both worlds…</p>`);
   try {
     const delta = await getJSON(
-      "/api/unlock?map=" + encodeURIComponent(state.map) +
+      "/api/unlock?" + panelQuery() +
       "&chunk=" + encodeURIComponent(chunkId));
     const tasks = Object.entries(delta.new_tasks).filter(([, v]) => Object.keys(v).length);
     const taskCount = tasks.reduce((n, [, v]) => n + Object.keys(v).length, 0);
@@ -2688,7 +2721,7 @@ async function loadTasks() {
   if (taskPanel && taskPanel.map_id === state.map) return renderTasks();
   el["tasks-body"].innerHTML = tmpl`<p class="empty">Deriving…</p>`;
   try {
-    taskPanel = await getJSON("/api/tasks?map=" + encodeURIComponent(state.map));
+    taskPanel = await getJSON("/api/tasks?" + panelQuery());
     clearExpansions("tasks:");
     renderTasks();
   } catch (error) {
@@ -2832,7 +2865,7 @@ let estimatePayload = null;
 async function loadEstimate() {
   el["estimate-body"].innerHTML = tmpl`<p class="empty">Pricing the outstanding work…</p>`;
   try {
-    estimatePayload = await getJSON("/api/estimate?map=" + encodeURIComponent(state.map));
+    estimatePayload = await getJSON("/api/estimate?" + panelQuery());
     clearExpansions("estimate:");
     renderEstimate(estimatePayload);
   } catch (error) {
@@ -3060,7 +3093,7 @@ async function runFind() {
   try {
     const payload = await getJSON(
       "/api/search?q=" + encodeURIComponent(term) +
-      "&map=" + encodeURIComponent(state.map) + "&limit=40");
+      "&" + panelQuery() + "&limit=40");
     if (run !== findRun) return;
     if (!payload.results.length) {
       body.innerHTML = tmpl`<p class="empty">Nothing matches ${term}.</p>`;
@@ -3857,13 +3890,18 @@ function renderTimeline() {
   const at = steps[state.step];
 
   el.timeline.hidden = false;
-  /* **The panels describe the map, and a rewound map is not the map.** They
-   * each need a derivation, so following the slider would cost ~1s a drag and
-   * lose the whole reason stepping is instant. Saying which is being shown
-   * beats a screen where the world and the panel beside it quietly disagree. */
+  /* **The panels follow the step now, so the note that they did not is gone.**
+   * It used to read "panels show the finished run", which was an apology for
+   * the world and the panel beside it describing different things. What is
+   * worth saying instead is where you are, and the ribbon says that - see
+   * `renderRibbon`. */
   const behind = state.step < last;
   el["tl-title"].innerHTML = tmpl`Timeline<span class="sub">${last} ${last === 1 ? "roll" : "rolls"}${
-    behind ? " · panels show the finished run" : ""}</span>`;
+    behind ? " · rewound to roll " + state.step : ""}</span>`;
+  /* The ribbon names the world the panels describe, and that world changes
+   * here rather than at `setMode` - which was the only caller until a step
+   * started meaning something to the panels. */
+  renderRibbon();
 
   el["tl-chips"].innerHTML = TL_SERIES.map(([key, name]) => {
     const on = tlSeries === key;
@@ -4198,7 +4236,7 @@ function tlTip(row, key) {
  * control rather than this same click, because a dialog would cover the map it
  * had just framed. */
 async function goToRoll(step) {
-  await setStep(step);
+  await commitStep(step);
   const at = state.timeline && state.timeline.steps[step];
   if (at && at.chunk) {
     await selectChunk(at.chunk);
@@ -4381,9 +4419,41 @@ async function setStep(step) {
   await loadView();
 }
 
+/* **Everything the panels are showing, re-asked about the step now pinned.**
+ *
+ * Split from `setStep` because the two costs are nothing alike. Rewinding the
+ * world is a 36KB read and belongs on every frame of a drag; the panels each
+ * need a derivation, which is ~3ms once a step is warm and ~0.6s the first
+ * time. So the drag calls `setStep` and only a *commit* - releasing the
+ * slider, a step button, clicking a bar - calls this.
+ *
+ * The memos have to be dropped as well as the panes reloaded: `taskPanel` and
+ * `estimatePayload` are what the more/less toggles re-render from, so leaving
+ * them would put the previous step's rows under the new step's total. Only the
+ * open pane refetches - the others rebuild when they are next shown, which is
+ * what `showTab` already does. */
+async function commitStep(step) {
+  await setStep(step);
+  taskPanel = null;
+  estimatePayload = null;
+  clearExpansions("tasks:");
+  clearExpansions("estimate:");
+  clearExpansions("chunk:");
+  await loadCandidates();
+  await loadSections();
+  if (state.tab === "tasks") loadTasks();
+  if (state.tab === "estimate") loadEstimate();
+  if (state.tab === "find") runFind();
+  if (state.tab === "chunk" && state.selected) await selectChunk(state.selected);
+}
+
+/* `input` fires per frame of a drag and `change` once it settles, which is
+ * exactly the split above. Keyboard use of the slider fires both, so a step
+ * taken with an arrow key still commits. */
 el["tl-slider"].addEventListener("input", () => setStep(Number(el["tl-slider"].value)));
-el["tl-prev"].addEventListener("click", () => setStep((state.step ?? 0) - 1));
-el["tl-next"].addEventListener("click", () => setStep((state.step ?? 0) + 1));
+el["tl-slider"].addEventListener("change", () => commitStep(Number(el["tl-slider"].value)));
+el["tl-prev"].addEventListener("click", () => commitStep((state.step ?? 0) - 1));
+el["tl-next"].addEventListener("click", () => commitStep((state.step ?? 0) + 1));
 
 el["tl-collapse"].addEventListener("click", () => {
   const shut = el.timeline.classList.toggle("shut");

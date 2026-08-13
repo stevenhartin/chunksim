@@ -50,6 +50,7 @@ from fray_claude.costing.estimate import estimate
 from fray_claude.derive.neighbours import eligible_neighbours
 from fray_claude.derive.search import build_world_index, search
 from fray_claude.model.summary import summarise
+from fray_claude.gui.derivation import DerivedState
 from fray_claude.gui.panels import roll_panel, task_panel
 from fray_claude.gui.actions import _ACTIONS
 from fray_claude.gui import settings
@@ -147,6 +148,36 @@ def _origin_ok(
     if host and host not in LOOPBACK_HOSTS and host not in allowed:
         return f"unexpected Host header {host!r}"
     return None
+
+
+def _state_at(
+    query: Mapping[str, list[str]], ctx: Context, map_id: str
+) -> DerivedState | Response:
+    """The world a request is asking about: a map, or one roll of a run.
+
+    **One resolver, because a panel that disagrees with the map beside it is
+    the whole failure mode.** Six routes take a `map` and each would otherwise
+    decide for itself what `step` meant; the first one to forget it would show
+    the finished run under a rewound world and look like a derivation bug.
+
+    No `step` is the map itself. `step` on something that is not a run is a
+    400 rather than a silent fall-through to the map - the caller asked a
+    question about a history that does not exist, and answering a different
+    question is how the two views drift.
+    """
+    raw = _first(query, "step")
+    if raw is None:
+        return ctx.derivations.load(map_id)
+    try:
+        step = int(raw)
+    except ValueError:
+        return _error(f"step {raw!r} is not a number", HTTPStatus.BAD_REQUEST)
+    try:
+        return ctx.derivations.load_step(map_id, step)
+    except IndexError as exc:
+        return _error(str(exc), HTTPStatus.BAD_REQUEST)
+    except (cache.CacheMissError, KeyError):
+        return _error(f"map {map_id!r} has no rolls to step through", HTTPStatus.BAD_REQUEST)
 
 
 def handle_request(
@@ -282,9 +313,10 @@ def handle_request(
             map_id = _first(query, "map")
             if map_id is None:
                 return _error("missing required parameter 'map'", HTTPStatus.BAD_REQUEST)
-            return _json(
-                {"map_id": map_id, "chunks": _section_states(ctx.derivations.load(map_id))}
-            )
+            at = _state_at(query, ctx, map_id)
+            if isinstance(at, Response):
+                return at
+            return _json({"map_id": map_id, "chunks": _section_states(at)})
 
         if path == "/api/diff":
             map1 = _first(query, "map1")
@@ -302,8 +334,10 @@ def handle_request(
                 return _error(
                     "missing required parameter 'map' or 'chunk'", HTTPStatus.BAD_REQUEST
                 )
-            state = ctx.derivations.load(map_id)
-            return _json(_chunk_detail(state, chunk_id, ctx))
+            at = _state_at(query, ctx, map_id)
+            if isinstance(at, Response):
+                return at
+            return _json(_chunk_detail(at, chunk_id, ctx))
 
         if path == "/api/unlock":
             map_id = _first(query, "map")
@@ -312,10 +346,12 @@ def handle_request(
                 return _error(
                     "missing required parameter 'map' or 'chunk'", HTTPStatus.BAD_REQUEST
                 )
-            state = ctx.derivations.load(map_id)
-            if chunk_id in state.unlocked:
+            at = _state_at(query, ctx, map_id)
+            if isinstance(at, Response):
+                return at
+            if chunk_id in at.unlocked:
                 return _error(f"chunk {chunk_id} is already unlocked", HTTPStatus.BAD_REQUEST)
-            return _json(_unlock_preview(state, chunk_id, ctx))
+            return _json(_unlock_preview(at, chunk_id, ctx))
 
         if path == "/api/search":
             term = _first(query, "q")
@@ -329,7 +365,9 @@ def handle_request(
             # "nothing here is reachable". `fray search` has always passed
             # both; this is the same call.
             map_id = _first(query, "map")
-            against = ctx.derivations.load(map_id) if map_id else None
+            against = _state_at(query, ctx, map_id) if map_id else None
+            if isinstance(against, Response):
+                return against
             info = against.state.chunk_info if against else ctx.derivations.chunk_info()
             results = search(
                 build_world_index(info),
@@ -344,14 +382,19 @@ def handle_request(
             map_id = _first(query, "map")
             if map_id is None:
                 return _error("missing required parameter 'map'", HTTPStatus.BAD_REQUEST)
-            return _json(_estimate_payload(ctx.derivations.load(map_id), ctx))
+            at = _state_at(query, ctx, map_id)
+            if isinstance(at, Response):
+                return at
+            return _json(_estimate_payload(at, ctx))
 
         if path == "/api/tasks":
             map_id = _first(query, "map")
             if map_id is None:
                 return _error("missing required parameter 'map'", HTTPStatus.BAD_REQUEST)
-            state = ctx.derivations.load(map_id)
-            return _json({"map_id": map_id, **task_panel(state.derived)})
+            at = _state_at(query, ctx, map_id)
+            if isinstance(at, Response):
+                return at
+            return _json({"map_id": map_id, "step": at.step, **task_panel(at.derived)})
 
         if path == "/api/settings":
             # **Whole, never a patch.** `sanitise` fills every key it knows
