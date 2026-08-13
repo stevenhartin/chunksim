@@ -1243,3 +1243,38 @@ def test_the_backdrop_dismisses_only_on_a_press_and_release_that_both_land_on_it
     assert "overlayPressed && e.target === el.overlay" in release
     # The old single-handler form is what this replaces.
     assert 'el.overlay.addEventListener("click", (e) => { if (e.target === el.overlay)' not in js
+
+
+def test_many_sources_open_a_list_rather_than_framing_the_world() -> None:
+    """**Fitting the camera around eight scattered chunks frames most of the
+    world**, which answers "roughly where" when the question was "which one".
+    One source has no choice in it and still flies."""
+    _, js, css = _resources()
+
+    body = _match(r"function highlight\(result\) \{(.*?)\n\}", js)
+    assert "placed.length > 1" in body and "showChunks(name, placed)" in body
+
+    grid = _match(r"function showChunks\(title, ids, shown = CHUNKS_SHOWN\) \{(.*?)\n\}", js)
+    # Unlocked first, then by id - "which can I already reach" is the question.
+    assert "chunkOrder" in grid
+    assert "CHUNKS_SHOWN" in js and "Show ${String(rest)} more" in grid
+    # The art is the chunk itself: one 256px tile is one chunk at this level.
+    assert "CHUNK_TILE_ZOOM" in grid
+    assert "const CHUNK_TILE_ZOOM = 2;" in js
+
+    styles = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    assert ".chunk-grid" in styles and ".chunk-card" in styles
+
+
+def test_a_chunks_tile_comes_from_its_id_not_from_the_map_view() -> None:
+    """`state.view.cells` holds only the squares the export places, and plenty
+    of what a search finds is an underground or instanced region with no
+    square - the Abyssal Nexus among them. Those still have artwork."""
+    _, js, _ = _resources()
+
+    body = _match(r"function chunkRegion\(chunkId\) \{(.*?)\n\}", js)
+    assert "id >> 8" in body and "id & 0xff" in body
+    # And the images are not lazy: the overlay is built and shown in one frame,
+    # so the browser has no layout to decide visibility from and leaves every
+    # one pending - neither loaded nor failed.
+    assert 'class="chunk-art" loading="lazy"' not in js

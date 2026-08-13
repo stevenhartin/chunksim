@@ -1381,6 +1381,50 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .knob-sep { color: var(--line-strong); padding: 0 var(--s1); }
 
 /* What the wiki has a page for, and what Find can frame. */
+/* The chunks a thing is in, as the squares they are. Four across is what fits
+   the overlay at the tile's own 256px halved twice - wider makes a wall of
+   map, narrower makes a column. */
+.chunk-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--s3);
+}
+
+.chunk-card {
+  display: grid;
+  gap: 2px;
+  padding: var(--s2);
+  text-align: center;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r2);
+  cursor: pointer;
+}
+.chunk-card:hover { border-color: var(--amber); }
+
+/* **Locked chunks are shown and dimmed, not hidden.** "It is there and you
+   cannot reach it yet" is the answer to half the searches anyone makes. */
+.chunk-card.locked { opacity: 0.55; }
+.chunk-card.locked .chunk-name { color: var(--dim); }
+
+.chunk-art {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--r1);
+  background: var(--surface-3);
+  image-rendering: pixelated;
+}
+.chunk-art.off {
+  display: grid;
+  place-items: center;
+  color: var(--dim);
+  font-size: 10px;
+}
+
+.chunk-name { font-size: 11px; overflow-wrap: anywhere; }
+.chunk-id { color: var(--dim); font-family: var(--mono); font-size: 10px; }
+
 .find-link { color: var(--candidate); cursor: pointer; text-decoration: underline dotted; }
 .find-link:hover, .find-link:focus-visible { text-decoration: underline solid; }
 

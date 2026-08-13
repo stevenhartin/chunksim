@@ -3155,6 +3155,93 @@ function chunksOf(result) {
   return [...found];
 }
 
+/* **One 256px tile is exactly one chunk at this level.** A chunk is 64 game
+ * tiles square and `tileSpan(2)` is 64, so the tile indices *are* the region
+ * coordinates - no arithmetic, and the thumbnail is the chunk rather than a
+ * crop of something larger. */
+const CHUNK_TILE_ZOOM = 2;
+
+/* **Ten, because a hundred and twenty is not a list.** `Bronze arrows` is in
+ * 120 chunks; drawing them all is 120 tile requests to say something a count
+ * already said. Ten is enough to recognise where a thing is without the panel
+ * becoming the answer to a different question. */
+const CHUNKS_SHOWN = 10;
+
+/* **A chunk id *is* its region coordinates**, which is why this needs no
+ * lookup: the id is `regionX * 256 + regionY`, and at `CHUNK_TILE_ZOOM` those
+ * are the tile indices. That matters because `state.view.cells` holds only
+ * the squares the export places, and plenty of what a search finds is an
+ * underground or instanced region with no cell - the Abyssal Nexus among
+ * them. Those still have artwork; they just have no square on the surface. */
+function chunkRegion(chunkId) {
+  const id = Number(chunkId);
+  return Number.isFinite(id) ? [id >> 8, id & 0xff] : null;
+}
+
+/* The map's own record of a square, where there is one. Used for lock state
+ * and nothing else - see `chunkRegion` for why the coordinates do not come
+ * from here. */
+function chunkCell(chunkId) {
+  if (!state.view) return null;
+  return state.view.cells.find((cell) => String(cell.chunk_id) === String(chunkId)) || null;
+}
+
+/* **Unlocked first, then by id.** The question behind "which of these eight"
+ * is almost always "which can I already get to", so that is the sort; the id
+ * second keeps it stable and puts neighbours together, since ids run in
+ * columns. */
+function chunkOrder(a, b) {
+  const held = (id) => (chunkCell(id) && chunkCell(id).state !== "locked" ? 0 : 1);
+  return held(a) - held(b) || Number(a) - Number(b);
+}
+
+/* The tiles a thing is in, as a grid you can click.
+ *
+ * **Framing eight chunks answers "roughly where" and not "which".** The map
+ * fits a rectangle around them, which for a thing spread across the world is
+ * the whole world - so the honest answer is the list, with each one drawn as
+ * the square it is. Clicking one is the same focus the Find pane does.
+ */
+function showChunks(title, ids, shown = CHUNKS_SHOWN) {
+  const ordered = [...ids].sort(chunkOrder);
+  const page = ordered.slice(0, shown);
+  const rest = ordered.length - page.length;
+  const cards = page.map((id) => {
+    const cell = chunkCell(id);
+    const locked = !cell || cell.state === "locked";
+    const region = chunkRegion(id);
+    const art = region
+      /* **Not `loading="lazy"`.** The overlay is built and shown in the same
+       * frame, so the browser has no layout to decide visibility from and
+       * leaves every one of them pending - neither loaded nor failed. Ten
+       * images is not a page's worth, and they are the reason the dialog
+       * exists. */
+      ? tmpl`<img class="chunk-art" alt=""
+             src="${tileUrl(CHUNK_TILE_ZOOM, region[0], region[1], 0)}">`
+      : tmpl`<span class="chunk-art off">no id</span>`;
+    return tmpl`<button class="chunk-card ${locked ? "locked" : ""}" type="button"
+      data-chunk="${String(id)}">${raw(art)}
+      <span class="chunk-name">${qualified(state.labels[id] || "Unnamed")}</span>
+      <span class="chunk-id">${String(id)}</span></button>`;
+  }).join("");
+  const more = rest > 0
+    ? tmpl`<button id="chunk-more" type="button">Show ${String(rest)} more</button>`
+    : "";
+  openOverlay(title, tmpl`<p class="hint">${String(ordered.length)} ${
+    ordered.length === 1 ? "chunk" : "chunks"} · unlocked first. Click one to fly to it.</p>`
+    + `<div class="chunk-grid">${cards}</div>`, more);
+
+  for (const card of document.querySelectorAll(".chunk-card")) {
+    card.onclick = () => {
+      closeOverlay();
+      selectChunk(card.dataset.chunk);
+      focusChunk(card.dataset.chunk);
+    };
+  }
+  const button = document.getElementById("chunk-more");
+  if (button) button.onclick = () => showChunks(title, ids, shown + CHUNKS_SHOWN);
+}
+
 function highlight(result) {
   const name = plain(result.name);
   state.found = new Set(chunksOf(result));
@@ -3173,6 +3260,14 @@ function highlight(result) {
    * - and centring on one silently does nothing, which reads as a broken
    * button rather than as "that place is not on this map". */
   const placed = [...state.found].filter((id) => chunkToGrid(id));
+  /* **More than one source is a list, not a rectangle.** Fitting the camera
+   * around eight scattered chunks frames most of the world, which answers
+   * "roughly where" when the question was "which one" - so anything with a
+   * choice in it opens the choice. One source has no choice and flies. */
+  if (placed.length > 1) {
+    showChunks(name, placed);
+    return;
+  }
   if (!frameChunks(placed)) {
     toast(name + ": " + state.found.size + " chunks, none on the surface map");
     return;
@@ -4894,7 +4989,10 @@ async function poll() {
 function chunkLabel(chunkId) {
   if (!chunkId) return "";
   const name = state.labels[chunkId];
-  return name ? `${name} (${chunkId})` : String(chunkId);
+  /* **Area names carry the qualifier too.** `Slayer Tower#Basement` is the
+   * same `#` a task name uses and reads the same way wrongly - there is just
+   * no markup around it here, which is why `plain` does not reach it. */
+  return name ? `${qualified(name)} (${chunkId})` : String(chunkId);
 }
 
 async function loadAreas() {
