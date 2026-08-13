@@ -42,7 +42,10 @@ from fray_claude.store.cache import (
     derived_path,
     derived_root,
     file_digest,
+    map_overrides_path,
     overrides_path,
+    read_map_overrides,
+    write_map_overrides,
     reference_stamp,
     list_derived,
     prune_derived,
@@ -822,3 +825,64 @@ def test_an_unreadable_settings_file_reads_as_empty(tmp_path: Path) -> None:
     path.write_text("not json at all", encoding="utf-8")
     assert read_gui_settings(tmp_path) == {}
 
+
+
+def test_a_maps_overrides_live_outside_the_maps_tree(tmp_path: Path) -> None:
+    """**`cache/maps/` holds maps and nothing else, which is the whole point.**
+
+    `list_maps` globs `maps/fetched/*.json`, so an override file filed beside
+    a map would turn up in the picker as a map that fails the moment it is
+    chosen - the exact failure the `cache/` split was introduced to end. A
+    directory cannot be forgotten; a name inside one has to be remembered.
+    """
+    write_cache("fray", {"chunks": {"unlocked": {"1": "1"}}}, root=tmp_path)
+    write_map_overrides("fray", {"monsters": {"Goblin": {"value": 200.0}}}, tmp_path)
+
+    path = map_overrides_path("fray", tmp_path)
+    assert path == tmp_path / "cache" / "overrides" / "fray.json"
+    assert "maps" not in path.parts
+    assert [entry.map_id for entry in list_maps(root=tmp_path)] == ["fray"]
+
+
+def test_a_runs_overrides_mirror_its_map_id(tmp_path: Path) -> None:
+    """`verf-sim/run-001` becomes `overrides/verf-sim/run-001.json`, so the
+    file is findable from the id without a lookup table."""
+    assert map_overrides_path("sim/run-001", tmp_path) == (
+        tmp_path / "cache" / "overrides" / "sim" / "run-001.json"
+    )
+
+
+def test_an_override_path_cannot_be_talked_into_a_traversal(tmp_path: Path) -> None:
+    """A map id is not a path fragment until `split_map_id` has run - the same
+    guard the rest of the module already trusts."""
+    for hostile in ("../../etc/passwd", "..", "a/../../b", "a/run-1/../../.."):
+        with pytest.raises(CacheMissError):
+            map_overrides_path(hostile, tmp_path)
+
+
+def test_overrides_round_trip_and_an_empty_write_removes_the_file(tmp_path: Path) -> None:
+    """**Removing rather than writing `{}`** keeps "no corrections" a single
+    state on disk, so `pricing_digests` cannot report two different keys for
+    inputs that price identically."""
+    assert read_map_overrides("fray", tmp_path) == {}
+
+    write_map_overrides("fray", {"monsters": {"Goblin": {"value": 200.0}}}, tmp_path)
+    assert read_map_overrides("fray", tmp_path)["monsters"]["Goblin"]["value"] == 200.0
+
+    write_map_overrides("fray", {}, tmp_path)
+    assert not map_overrides_path("fray", tmp_path).exists()
+    assert read_map_overrides("fray", tmp_path) == {}
+
+
+def test_the_reference_stamp_watches_a_maps_overrides_too(tmp_path: Path) -> None:
+    """It is the file most likely to move while the server is up - the Estimate
+    tab writes it - so a memo that did not watch it would serve the pre-edit
+    answer back to whoever just made the edit."""
+    before = reference_stamp(tmp_path, "fray")
+
+    write_map_overrides("fray", {"monsters": {"Goblin": {"value": 200.0}}}, tmp_path)
+
+    assert reference_stamp(tmp_path, "fray") != before
+    # Another map's stamp is unmoved: the layers are per map.
+    assert reference_stamp(tmp_path, "verf") == reference_stamp(tmp_path, "verf")
+    assert reference_stamp(tmp_path) == reference_stamp(tmp_path)

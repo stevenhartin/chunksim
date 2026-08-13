@@ -90,18 +90,32 @@ class ReferenceBlobs:
     Frozen and passed as an argument, never a module global - a stale copy of
     this is a wrong number rather than a slow one, so the GUI's memo of it is
     validated against the files' own mtimes (`gui/derivation.py`).
+
+    **Which map is being priced is part of what this holds**, because one of
+    the layers belongs to a map. `overrides` is the *effective* corrections -
+    the checked-in file with that map's own laid over it - so everything
+    downstream (`load_heuristics`, `levels`, `pinned`, `recipe_priced`) gets
+    the fourth layer without being told about it, which is the only way four
+    readers of one merge stay agreed. The cost is that a `ReferenceBlobs` is
+    now about one map, and `map_id` says which.
     """
 
     #: `cache/reference/wiki_rates.json`, or `{}` when never fetched.
     scraped: dict[str, Any]
     #: Whether that scrape was there at all - see `load_heuristics`.
     scraped_found: bool
-    #: `heuristics/overrides.json`, the checked-in hand corrections.
+    #: `heuristics/overrides.json` with `cache/overrides/<map_id>.json` merged
+    #: over it, deepest value winning. Site-wide corrections are the standing
+    #: opinion; a map's are what someone learned about that map, so they win.
     overrides: dict[str, Any]
     #: `cache/reference/wiki_recipes.json`, parsed back into `Recipe`s.
     recipes: Mapping[str, tuple[Recipe, ...]]
     #: What this machine would price against, for the enrichment cache key.
     pricing: PricingDigests
+    #: Which map `overrides` was assembled for, or `None` for the site-wide
+    #: layer alone. Carried so a caller can tell whether it is holding the
+    #: right blobs for the map it is about to price.
+    map_id: str | None = None
 
     @property
     def levels(self) -> dict[str, int]:
@@ -114,8 +128,14 @@ class ReferenceBlobs:
         return _pinned_from(self.overrides)
 
 
-def load_reference(root: Path | None = None) -> ReferenceBlobs:
-    """Read every reference file once. See `ReferenceBlobs`."""
+def load_reference(root: Path | None = None, map_id: str | None = None) -> ReferenceBlobs:
+    """Read every reference file once. See `ReferenceBlobs`.
+
+    `map_id` adds that map's own corrections as a fourth layer. Omitting it is
+    the site-wide answer and is what a caller pricing nothing in particular
+    wants; passing a map that has no corrections produces the same blobs,
+    which is correct rather than merely convenient - the two price the same.
+    """
     try:
         scraped: dict[str, Any] = cache.read_blob(
             cache.WIKI_RATES_BLOB_NAME, root, hint="run: fray heuristics"
@@ -123,12 +143,19 @@ def load_reference(root: Path | None = None) -> ReferenceBlobs:
         scraped_found = True
     except cache.CacheMissError:
         scraped, scraped_found = {}, False
+    overrides = cache.read_overrides(root)
+    if map_id is not None:
+        # `merge` is `heuristics.py`'s own deep merge, the same one that lays
+        # overrides over the scrape - so the fourth layer composes by exactly
+        # the rule the other three already follow.
+        overrides = merge(overrides, cache.read_map_overrides(map_id, root))
     return ReferenceBlobs(
         scraped=scraped,
         scraped_found=scraped_found,
-        overrides=cache.read_overrides(root),
+        overrides=overrides,
         recipes=_recipes_from(_recipe_blob(root)),
-        pricing=pricing_digests(root),
+        pricing=pricing_digests(root, map_id),
+        map_id=map_id,
     )
 
 
@@ -640,6 +667,7 @@ def estimate_answer(
     root: Path | None = None,
     refresh: bool = False,
     reference: ReferenceBlobs | None = None,
+    map_id: str | None = None,
 ) -> EstimateAnswer:
     """The whole estimate, assembled once for whichever app asked.
 
@@ -650,8 +678,16 @@ def estimate_answer(
     `reference` is the reference files already read - pass one in a process
     that will ask more than once, which is the GUI. Omitted, this reads them,
     which is what a one-shot CLI invocation wants.
+
+    `map_id` is which map's own corrections to lay on. **Both apps must pass
+    it or neither should**: this function exists because `fray estimate` and
+    the Estimate tab had already drifted once, and a fourth layer one of them
+    applied would be that drift again, in the place hardest to notice. It is
+    ignored when `reference` is given, since those blobs already carry
+    whichever map they were assembled for - `ReferenceBlobs.map_id` says
+    which.
     """
-    blobs = load_reference(root) if reference is None else reference
+    blobs = load_reference(root, map_id) if reference is None else reference
     heuristics, scraped_rates = load_heuristics(state.chunk_info, root, blobs)
     levels = blobs.levels
     world = build_world_index(state.chunk_info)

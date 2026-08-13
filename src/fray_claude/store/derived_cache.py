@@ -89,6 +89,7 @@ from fray_claude.store.cache import (
     CacheMissError,
     blob_path,
     file_digest,
+    map_overrides_path,
     overrides_path,
     read_derived,
     write_derived,
@@ -200,6 +201,11 @@ class PricingDigests:
 
     rates: str = ""
     overrides: str = ""
+    #: `cache/overrides/<map_id>.json`, kept apart from `overrides` for the
+    #: reason `recipes` is kept apart from `rates`: the two move on different
+    #: cadences and folding them would throw away every other map's stored
+    #: enrichment whenever one map's corrections changed.
+    map_overrides: str = ""
     library: str = ""
     #: The `fray recipes` blob. Separate from `rates` because it is a
     #: different API on a different cadence, and folding the two would
@@ -485,7 +491,7 @@ def dps_library_digest() -> str:
     return digest.hexdigest()[:16]
 
 
-def pricing_digests(root: Path | None = None) -> PricingDigests:
+def pricing_digests(root: Path | None = None, map_id: str | None = None) -> PricingDigests:
     """What this machine would price an enrichment against, right now.
 
     One builder for all three callers - `fray estimate`, the GUI's estimate
@@ -494,11 +500,18 @@ def pricing_digests(root: Path | None = None) -> PricingDigests:
 
     A missing rate scrape or overrides file digests as `""` rather than
     raising: both are optional inputs, and "the file that is not there" is a
-    perfectly good thing for a key to describe.
+    perfectly good thing for a key to describe. `map_id` is `None` for a
+    caller pricing nothing in particular, which digests the same as a map with
+    no corrections - correctly, since the two price identically.
     """
     return PricingDigests(
         rates=_maybe_digest(lambda: blob_path(WIKI_RATES_BLOB_NAME, root)),
         overrides=_maybe_digest(lambda: overrides_path(root)),
+        map_overrides=(
+            ""
+            if map_id is None
+            else _maybe_digest(lambda: map_overrides_path(map_id, root))
+        ),
         library=dps_library_digest(),
         recipes=_maybe_digest(lambda: blob_path(RECIPES_BLOB_NAME, root)),
     )
@@ -521,11 +534,12 @@ def enrichment_key(
 
     **Everything the derivation key covers, plus everything it does not.**
     `enrich` reads the derived state (so the whole derivation key applies) and
-    also the scraped rates, the hand-written overrides and the calculator
-    itself - none of which `derive` has ever heard of. Storing an enrichment
-    under the plain derivation key would serve stale kill rates after a
-    `fray heuristics`, an edit to `heuristics/overrides.json`, or an upgrade
-    of `osrs-dps`, and the only symptom would be a total that failed to move.
+    also every field of `PricingDigests` - the scraped rates, both layers of
+    hand-written overrides, the recipes and the calculator itself - none of
+    which `derive` has ever heard of. Storing an enrichment under the plain
+    derivation key would serve stale kill rates after a `fray heuristics`, an
+    edit to either overrides file, or an upgrade of `osrs-dps`, and the only
+    symptom would be a total that failed to move.
 
     The `kind` tag makes a collision with a derivation impossible rather than
     merely unlikely, so the two can share `cache/derived/` and one
@@ -550,15 +564,16 @@ def enrichment_key(
             "tasks_map": digests.tasks_map,
             "state": _state_digest(state),
             "unlocked": sorted(unlocked),
-            "rates": pricing.rates,
-            "overrides": pricing.overrides,
-            "library": pricing.library,
-            # **`recipes` was missing here while `PricingDigests` carried it.**
-            # So `fray recipes` landing after an estimate had been computed
-            # left every stored enrichment holding the recipe-free rates - a
-            # skill priced at the 1,000/hr floor staying there through the very
-            # fetch that fixes it.
-            "recipes": pricing.recipes,
+            # **Every field, taken from the dataclass rather than listed.**
+            # This was four hand-written lines and the list has fallen behind
+            # `PricingDigests` twice: first `recipes`, so `fray recipes`
+            # landing after an estimate left every stored enrichment holding
+            # the recipe-free rates - a skill priced at the 1,000/hr floor
+            # staying there through the very fetch that fixes it - and then
+            # `map_overrides`, so a per-map correction changed no key and the
+            # total simply failed to move. A digest that has to be remembered
+            # is a digest that will be forgotten; `asdict` cannot be.
+            "pricing": dataclasses.asdict(pricing),
             "model": _PRICING_MODEL,
         },
         sort_keys=True,

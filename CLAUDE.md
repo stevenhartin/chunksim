@@ -169,17 +169,17 @@ The table says what each module **owns**; its docstring says why.
 | `derive/graph.py` | The export's `sections` branch as a **directed** graph. Shaped for the not-yet-written pathfinding search. |
 | `derive/search.py` | World-wide fuzzy search over the *raw* export — a strict superset of what `fray sources` can list. |
 | `costing/heuristics.py` | Every hand-correctable number, and the `defaults < scraped < overrides` merge. Owns the joins and their `exact`/`contained` provenance; **no fuzzy tier, by measurement.** |
-| `costing/estimate.py` | The four buckets over the **active** set. **Costs the unique *item*, not the task**, and **clamps per source**. Owns the item walk and the gates on it. |
+| `costing/estimate.py` | The four buckets over the **active** set. **Costs the unique *item*, not the task**, and **clamps per source**. Owns the item walk and the gates on it, and records the `Heuristics` entries each number was read off — where they are read, never reconstructed. |
 | `costing/training.py` | How fast a skill goes. **A climb is priced band by band as methods unlock**, so the floor can only ever be the first band. |
 | `costing/recipe_rates.py` | A recipe turned into an XP rate, joined exactly on `Output`. Owns `defaults < computed < scraped < overrides` — **the one place a computed number does *not* beat the scrape.** |
 | `costing/combat_xp.py` | Combat XP, which is damage and almost nothing else. Owns the three gates and the two credits that each removed a wrong answer. |
 | `costing/slayer.py` | Slayer's rate, which is a *distribution* not a chosen method, and the points economy that decides where you train. |
 | `costing/prayer.py`, `costing/farming.py` | The two skills whose limit is not a rate: bone supply, and a **schedule** measured in calendar days beside its active hours. |
 | `costing/levels.py` | `infer_levels`/`goal_levels`/`reachable_providers` and the gating helpers. **The map records no skill levels** — the floor is read out of completed challenges. |
-| `costing/inputs.py` | What `fray estimate` and the Estimate tab must agree about, assembled once. The two had already drifted. Also `ReferenceBlobs`: the reference files read **once per invocation** and threaded, rather than four times by four callers. |
+| `costing/inputs.py` | What `fray estimate` and the Estimate tab must agree about, assembled once. The two had already drifted. Also `ReferenceBlobs`: the reference files read **once per invocation** and threaded, rather than four times by four callers — and the one place the four override layers are merged, so no reader can apply three of them. |
 | `costing/dps_bridge.py` | The seam to `osrs-dps`. **Optional import** — check `DPS_AVAILABLE`, never assume it. Prices only `reachable_providers`, which it imports rather than copying. |
 | `costing/*_overhead.py` | The harnesses that fitted the overhead constants. **No caller in `src/`** — they exist to be re-run when someone doubts them. |
-| `store/cache.py` | The disk. The envelope, the `--chunkinfo`/`FRAY_CHUNKINFO` override, `--map` resolution across kinds, atomic writes, the cross-kind name claim and `migrate_layout`. |
+| `store/cache.py` | The disk. The envelope, the `--chunkinfo`/`FRAY_CHUNKINFO` override, `--map` resolution across kinds, atomic writes, the cross-kind name claim, `migrate_layout`, and both override files. |
 | `store/derived_cache.py` | The on-disk cache of the **two** expensive per-state computations, and both their keys. **Read it before changing what `derive` returns** — including a *nested* result dataclass, which `_RESULT_TYPES` must list or the key will not move. |
 | `store/build_info.py` | Which install is running and when it was made. Never raises and never guesses a date. |
 | `runs/simulate.py` | Seeded chunk-roll simulation and `simulated_payload`. Records are never revisited by a later roll. |
@@ -289,6 +289,7 @@ cache/maps/simulated/<batch>/…     # rolled by `fray simulate`
 cache/maps/edited/<batch>/…        # made by hand: `fray unlock --cache-map`, or the GUI
 cache/reference/                   # chunkinfo, tasks_map, wiki_rates, wiki_recipes, tile_version
 cache/derived/                     # pipeline.derive + dps_bridge.enrich results, keyed by content
+cache/overrides/<map_id>.json      # heuristic corrections belonging to one map
 cache/assets/                      # section masks, skill icons
 cache/gui/                         # window.json, settings.json, and the browser profile
 ```
@@ -298,12 +299,22 @@ from) beside one directory per run holding `map.json`, `rolls.json`, `run.json` 
 **A name is claimed across every kind**, so `--map foo` never has to guess which directory meant it.
 `cache/` is gitignored, so a fresh clone has no data until `fray fetch`/`fray chunkinfo` run.
 
-**The estimator's numbers live in two places and only one is in `cache/`.** `fray heuristics` writes
-the scrape to `cache/reference/wiki_rates.json` (refetchable, gitignored); hand-written corrections
-go in **`heuristics/overrides.json`, which is checked in** so they are diffable and survive a
-re-scrape. `heuristics/README.md` is the guide to which numbers are worth correcting. The export has
-*no* durations, rates or XP figures at all, so every number `fray estimate` spends comes from one of
-those two files or a default in `costing/heuristics.py`.
+**The estimator's numbers live in three places and only two are in `cache/`.** `fray heuristics`
+writes the scrape to `cache/reference/wiki_rates.json` (refetchable, gitignored); hand-written
+corrections go in **`heuristics/overrides.json`, which is checked in** so they are diffable and
+survive a re-scrape; and corrections belonging to *one map* go in `cache/overrides/<map_id>.json`,
+which is cache data and gitignored with the rest. `heuristics/README.md` is the guide to which
+numbers are worth correcting. The export has *no* durations, rates or XP figures at all, so every
+number `fray estimate` spends comes from one of those three files or a default in
+`costing/heuristics.py`.
+
+The merge is `defaults < scraped < overrides < map overrides`, and it happens **once**, in
+`load_reference` — so `ReferenceBlobs.overrides` is the *effective* set and every downstream reader
+(`load_heuristics`, `levels`, `pinned`, `recipe_priced`) gets the fourth layer without being told
+about it. A `ReferenceBlobs` is therefore about one map, which is why `map_id` is on it and why the
+GUI memoises one per map. **Both apps must pass the map id or neither should**: `costing/inputs.py`
+exists because `fray estimate` and the Estimate tab had already drifted once, and a layer one of them
+applied would be that drift again in the hardest place to see.
 
 **`User-Agent` differs by host, deliberately.** Firebase and GitHub get none — those endpoints are
 public and unauthenticated, so a header would only publish information nobody asked for. The **OSRS

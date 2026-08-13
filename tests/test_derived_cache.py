@@ -503,3 +503,28 @@ def test_a_carrying_roll_cache_still_reads_what_is_already_there(tmp_path: Path)
 
     carrying = RollCache(_DIGESTS, CacheBehaviour.ALL, tmp_path, True)
     assert carrying.derive_state(state, unlocked, start=False, carry={"Area": True}) == stored
+
+
+def test_the_enrichment_key_covers_every_pricing_digest() -> None:
+    """**A digest that has to be remembered is a digest that gets forgotten.**
+
+    This key listed `PricingDigests`' fields by hand and fell behind the
+    dataclass twice: `recipes`, so `fray recipes` landing after an estimate
+    left every stored enrichment holding the recipe-free rates; then
+    `map_overrides`, so a per-map correction changed no key and the total
+    simply failed to move. Both are the same bug and neither was catchable by
+    reading the key - the inputs really had changed and the key said they had
+    not. So the assertion is structural: move any field, and the key moves.
+    """
+    state = _state()
+    digests = Digests(chunkinfo="a", tasks_map="b")
+    base = PricingDigests(rates="r", overrides="o", library="l", recipes="c")
+
+    keys = {enrichment_key(state, {}, digests, base)}
+    for field in dataclasses.fields(PricingDigests):
+        moved = dataclasses.replace(base, **{field.name: "moved"})
+        keys.add(enrichment_key(state, {}, digests, moved))
+
+    assert len(keys) == 1 + len(dataclasses.fields(PricingDigests)), (
+        "some PricingDigests field does not reach the enrichment key"
+    )

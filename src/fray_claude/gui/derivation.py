@@ -74,8 +74,7 @@ class Derivations:
         self._info: ChunkInfo | None = None
         self._tasks_map: dict[str, str] | None = None
         self._digests: Digests | None = None
-        self._reference: ReferenceBlobs | None = None
-        self._reference_stamp: tuple[tuple[int, int], ...] = ()
+        self._reference: dict[str | None, tuple[ReferenceBlobs, tuple[tuple[int, int], ...]]] = {}
 
     @property
     def loaded(self) -> bool:
@@ -121,7 +120,7 @@ class Derivations:
                 )
             return self._digests
 
-    def reference(self) -> ReferenceBlobs:
+    def reference(self, map_id: str | None = None) -> ReferenceBlobs:
         """The reference files, read once and re-read only when they move.
 
         **The one memo here that can go stale into a wrong answer.** The
@@ -133,21 +132,29 @@ class Derivations:
         enrichment cache, so a stale copy would file fresh numbers under a
         pre-edit key.
 
-        So it is validated, not just remembered: three `stat` calls per
-        access against re-reading 2.5MB. See `cache.reference_stamp`.
+        So it is validated, not just remembered: four `stat` calls per access
+        against re-reading 2.5MB. See `cache.reference_stamp`.
+
+        **One entry per map**, because a map's own corrections are one of the
+        layers (`ReferenceBlobs.overrides`). Keyed rather than replaced, so
+        opening a second map does not throw away the first's - the whole point
+        of the memo is a server that answers about one map many times, and
+        stepping a timeline asks about the same map over and over. `None` is
+        the site-wide answer and has its own entry.
         """
         with self._lock:
-            stamp = cache.reference_stamp(self._root)
-            if self._reference is None or stamp != self._reference_stamp:
-                self._reference = load_reference(self._root)
-                self._reference_stamp = stamp
-            return self._reference
+            stamp = cache.reference_stamp(self._root, map_id)
+            held = self._reference.get(map_id)
+            if held is None or held[1] != stamp:
+                blobs = load_reference(self._root, map_id)
+                self._reference[map_id] = (blobs, stamp)
+                return blobs
+            return held[0]
 
     def forget_reference(self) -> None:
         """Drop the reference memo, for a caller that just rewrote a blob."""
         with self._lock:
-            self._reference = None
-            self._reference_stamp = ()
+            self._reference.clear()
 
     def reset(self) -> None:
         """Forget the parsed export, so the next request reloads it.
@@ -161,8 +168,7 @@ class Derivations:
             self._info = None
             self._tasks_map = None
             self._digests = None
-            self._reference = None
-            self._reference_stamp = ()
+            self._reference.clear()
 
     def state_of(self, map_id: str) -> tuple[MapState, dict[str, bool]]:
         """One map parsed but **not** derived.

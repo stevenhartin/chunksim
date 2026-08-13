@@ -526,7 +526,10 @@ def roll_detail(map_id: str, index: int, ctx: Context) -> dict[str, Any] | None:
                 info=ctx.derivations.chunk_info(),
                 tasks_map=ctx.derivations.tasks_map(),
                 digests=ctx.derivations.digests(),
-                reference=ctx.derivations.reference(),
+                # The run's own corrections, so a repriced timeline and the
+                # Estimate tab spend the same numbers. They already share the
+                # pricing path; sharing the layers is the other half of that.
+                reference=ctx.derivations.reference(map_id),
             ),
         )
     except (CacheMissError, OSError):
@@ -591,7 +594,7 @@ def _training_options_for(
     try:
         state = ctx.derivations.load(map_id)
         heuristics, _ = load_heuristics(
-            state.state.chunk_info, ctx.root, ctx.derivations.reference()
+            state.state.chunk_info, ctx.root, ctx.derivations.reference(map_id)
         )
     except (CacheMissError, OSError):
         return {}

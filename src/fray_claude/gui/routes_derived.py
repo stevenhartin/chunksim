@@ -232,6 +232,11 @@ def _estimate_payload(state: DerivedState, ctx: Context) -> dict[str, Any]:
         state.derived,
         ctx.derivations.digests(),
         root=ctx.root,
-        reference=ctx.derivations.reference(),
+        # **The map's own corrections, which is why this takes the map id.**
+        # `estimate_answer` ignores its own `map_id` when handed blobs, so the
+        # layer has to be chosen here - and it has to be chosen the same way
+        # `cli/estimate.py` chooses it, or the two apps price one map
+        # differently, which is the drift this module was extracted to end.
+        reference=ctx.derivations.reference(state.map_id),
     )
     return answer.as_dict(state.map_id)

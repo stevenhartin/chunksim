@@ -34,7 +34,7 @@ def _cmd_estimate(args: argparse.Namespace) -> int:
     # the GUI so the two apps cannot answer differently; what is left here is
     # rendering.
     answer = inputs.estimate_answer(
-        state, unlocked, derived, known, refresh=args.recompute
+        state, unlocked, derived, known, refresh=args.recompute, map_id=args.map_id
     )
 
     if args.export_json != "-":

@@ -69,7 +69,7 @@ import json
 import os
 import re
 import shutil
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -134,6 +134,20 @@ MAP_KINDS = (FETCHED, *COMPUTED_KINDS)
 REFERENCE_DIR_NAME = "reference"
 
 DERIVED_DIR_NAME = "derived"
+
+#: Per-map heuristic corrections, one file per map, mirroring the map id.
+#:
+#: **Not beside the map, deliberately.** `cache/maps/` holding maps and
+#: nothing else is the whole point of that layout - `list_maps` globs
+#: `maps/fetched/*.json`, so an override file filed there would turn up in the
+#: picker as a map that fails the moment it is chosen, which is the exact
+#: failure the split was introduced to end. A directory cannot be forgotten;
+#: a name inside one has to be remembered.
+#:
+#: Distinct from `heuristics/overrides.json`, which is checked in and applies
+#: everywhere. These are cache data about one map, and are gitignored with the
+#: rest of `cache/`.
+MAP_OVERRIDES_DIR_NAME = "overrides"
 
 #: The GUI's own state: remembered window geometry and the browser profile it
 #: launches with. Neither is data about the game.
@@ -604,6 +618,59 @@ def read_overrides(root: Path | None = None) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise CacheMissError(f"{path} should hold an object, got {type(parsed).__name__}")
     return parsed
+
+
+def map_overrides_path(map_id: str, root: Path | None = None) -> Path:
+    """Where one map's own heuristic corrections live.
+
+    The path mirrors the map id - `verf-sim/run-001` becomes
+    `cache/overrides/verf-sim/run-001.json` - and goes through
+    `split_map_id`, which is the traversal guard the rest of this module
+    already trusts. A map id is *not* a path fragment until that has run.
+    """
+    name, run = split_map_id(map_id)
+    directory = (root or project_root()) / CACHE_DIR_NAME / MAP_OVERRIDES_DIR_NAME
+    return directory / name / f"{run}.json" if run else directory / f"{name}.json"
+
+
+def read_map_overrides(map_id: str, root: Path | None = None) -> dict[str, Any]:
+    """One map's corrections, or `{}` when it has none.
+
+    Absent is the normal case and not an error - most maps are priced on the
+    site-wide numbers alone. A *malformed* file raises, for the reason
+    `read_overrides` gives: it was written deliberately, so ignoring it would
+    drop corrections without saying so.
+    """
+    path = map_overrides_path(map_id, root)
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}
+    try:
+        parsed: Any = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise CacheMissError(f"{path} is not valid JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise CacheMissError(f"{path} should hold an object, got {type(parsed).__name__}")
+    return parsed
+
+
+def write_map_overrides(
+    map_id: str, overrides: Mapping[str, Any], root: Path | None = None
+) -> Path:
+    """Replace one map's corrections, atomically. An empty dict removes it.
+
+    Removing rather than writing `{}` keeps "this map has no corrections" a
+    single state on disk, so `pricing_digests` cannot report two different
+    keys for the same effective inputs.
+    """
+    path = map_overrides_path(map_id, root)
+    if not overrides:
+        path.unlink(missing_ok=True)
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write_json(path, dict(overrides))
+    return path
 
 
 def claim_batch(name: str, root: Path | None = None, *, kind: str = SIMULATED) -> Path:
@@ -1424,7 +1491,9 @@ def read_chunkinfo(override: Path | None = None, root: Path | None = None) -> di
     return data
 
 
-def reference_stamp(root: Path | None = None) -> tuple[tuple[int, int], ...]:
+def reference_stamp(
+    root: Path | None = None, map_id: str | None = None
+) -> tuple[tuple[int, int], ...]:
     """`(mtime_ns, size)` per reference file, for spotting an edit cheaply.
 
     **Not a content hash, and not a substitute for one.** `file_digest` keys
@@ -1437,11 +1506,18 @@ def reference_stamp(root: Path | None = None) -> tuple[tuple[int, int], ...]:
     A missing file stamps as `(0, 0)`, so appearing or vanishing both move it.
     """
     stamps: list[tuple[int, int]] = []
-    for path in (
+    paths = [
         blob_path(WIKI_RATES_BLOB_NAME, root),
         blob_path(RECIPES_BLOB_NAME, root),
         overrides_path(root),
-    ):
+    ]
+    if map_id is not None:
+        # A fourth file, and the one most likely to move while the server is
+        # up: it is what the Estimate tab writes when someone corrects a
+        # number, so a memo that did not watch it would serve the pre-edit
+        # answer back to the person who just made the edit.
+        paths.append(map_overrides_path(map_id, root))
+    for path in paths:
         try:
             info = path.stat()
         except OSError:
