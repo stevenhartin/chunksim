@@ -296,11 +296,21 @@ class _Priced:
     #: are earned *at the same time*, which is what `EstimateResult.buckets`
     #: uses to stop adding them together.
     source: str
-    #: Which `Heuristics` entries this number was read off, as override paths
+    #: Which entries this number was read off, as **override-file paths**
     #: (`monsters/Abyssal demon`). **Recorded where each is read, never
     #: reconstructed afterwards** - the joins are fuzzy enough
     #: (`heuristics.py` owns `exact`/`contained`) that guessing which entry a
-    #: number came from is exactly the mistake this exists to stop. A route
+    #: number came from is exactly the mistake this exists to stop.
+    #:
+    #: **The path is the file's branch, not the `Heuristics` field's name**,
+    #: and the two differ in three places: `currencies` is read into
+    #: `currency_per_hour`, `actions` into `action_seconds`, `shops` into
+    #: `shop_prices`. A knob exists to say where to go and change something,
+    #: so a name that is not in the file is worse than no name at all - which
+    #: is what the first version of this recorded.
+    #: `tests/test_estimate.py` checks every knob a real estimate emits
+    #: against `heuristics.CONFIG_BRANCHES`, on the real map - a fixture
+    #: reaches one route at a time and missed all three. A route
     #: built out of other routes unions theirs; a route whose numbers are all
     #: constants records nothing, which is the honest answer rather than an
     #: empty gesture at the nearest branch.
@@ -780,7 +790,7 @@ def _item_hours(
             quantity / earned,
             f"earn {quantity:,.0f} {item}",
             f"currency:{item}",
-            (f"currency_per_hour/{item}",),
+            (f"currencies/{item}",),
         )
 
     shared = _superior_table_hours(walk, item, quantity)
@@ -924,7 +934,7 @@ def _route_hours(
             + (f", {quantity:,.0f}x" if quantity > 1 else "")
             + f" ({seconds * quantity:,.0f}s earning + {travel:,.0f}s travel)",
             f"{route}:{provider}",
-            (f"shop_prices/{provider}/{item}",),
+            (f"shops/{provider}/{item}",),
         )
 
     if route.startswith("task:"):
@@ -978,7 +988,7 @@ def _route_hours(
                 return None
             quantity = quantity / share
         total = 0.0
-        knobs: list[str] = [f"action_seconds/{provider}"]
+        knobs: list[str] = [f"actions/{provider}"]
         for required in challenge.get("Items") or ():
             if not isinstance(required, str):
                 continue

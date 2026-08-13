@@ -1980,3 +1980,40 @@ def test_a_route_with_no_heuristic_behind_it_claims_none() -> None:
     assert priced is not None
     assert priced.hours > 0, "a spawn is cheap, not free"
     assert priced.knobs == ()
+
+
+@pytest.mark.real_cache
+def test_every_knob_a_real_estimate_emits_names_a_real_override_branch(
+    real_state: Any, real_derived: Any
+) -> None:
+    """**A knob exists to say where to go and change something.**
+
+    So a path that is not a branch of the override file is worse than no path:
+    it reads like a working pointer, sends someone to edit a key nothing
+    parses, and the number does not move. The first version of this recorded
+    `Heuristics` *field* names, three of which the file does not use -
+    `currency_per_hour` for `currencies`, `action_seconds` for `actions`,
+    `shop_prices` for `shops`.
+
+    Run against the real map because that is what exercises every route: a
+    fixture reaches one at a time and would have missed all three.
+    """
+    from fray_claude.costing.heuristics import CONFIG_BRANCHES
+    from fray_claude.costing.inputs import estimate_answer
+    from fray_claude.store.cache import project_root
+    from fray_claude.store.cache import file_digest
+    from fray_claude.store.derived_cache import Digests
+    from fray_claude.store import cache as cache_module
+
+    state, unlocked = real_state
+    digests = Digests(
+        chunkinfo=file_digest(cache_module.chunkinfo_source(None, project_root())),
+        tasks_map=file_digest(
+            cache_module.blob_path(cache_module.TASKS_MAP_BLOB_NAME, project_root())
+        ),
+    )
+    answer = estimate_answer(state, unlocked, real_derived, digests)
+
+    emitted = {knob.split("/")[0] for item in answer.result.items for knob in item.knobs}
+    assert emitted, "the estimate priced nothing, so this proves nothing"
+    assert emitted <= CONFIG_BRANCHES, f"not override branches: {sorted(emitted - CONFIG_BRANCHES)}"

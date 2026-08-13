@@ -1463,6 +1463,36 @@ def disagreements(scraped: dict[str, Any], overrides: dict[str, Any]) -> list[st
     return sorted(found)
 
 
+#: Every branch `load` reads out of a merged config - which is to say every
+#: place a correction can be written in `heuristics/overrides.json` or a map's
+#: own file.
+#:
+#: **Named here because the branch names and the `Heuristics` field names are
+#: not the same**, and three of them differ: `currencies` becomes
+#: `currency_per_hour`, `actions` becomes `action_seconds`, `shops` becomes
+#: `shop_prices`. Anything that hands a user a path to go and edit has to
+#: speak the file's names, and the first version of `estimate._Priced.knobs`
+#: spoke the field's - which reads like a working pointer and is not one.
+CONFIG_BRANCHES: frozenset[str] = frozenset(
+    {
+        "actions",
+        "conversions",
+        "currencies",
+        "farming",
+        "masters",
+        "monster_stats",
+        "monsters",
+        "quests",
+        "rarities",
+        "shops",
+        "slayer",
+        "spell_costs",
+        "superiors",
+        "training",
+    }
+)
+
+
 def load(
     config: dict[str, Any],
     *,

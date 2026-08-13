@@ -1134,3 +1134,25 @@ def test_a_table_of_made_things_joins_on_output_and_not_on_items() -> None:
 
     assert "glass" in OUTPUT_ONLY_KINDS
     assert set(rated) == {"Craft an ~|empty light orb|~"}, "the blowing, not the assembly"
+
+
+def test_the_declared_config_branches_are_the_ones_load_reads() -> None:
+    """**A list that has to be remembered is a list that goes stale.**
+
+    `CONFIG_BRANCHES` is what anything handing a user an editable path speaks,
+    so a branch `load` reads but this omits is a correction nobody can be
+    pointed at, and one it names that `load` ignores is a path that silently
+    does nothing. Read out of the source rather than restated, because
+    restating it is the failure.
+    """
+    from fray_claude.costing import heuristics as module
+
+    source = pathlib.Path(module.__file__).read_text(encoding="utf-8")
+    read = {
+        found or fallback
+        for found, fallback in re.findall(
+            r'_entries\(config, "([a-z_]+)"\)|_mapping\(config, "([a-z_]+)"\)', source
+        )
+    }
+
+    assert read == set(module.CONFIG_BRANCHES)
