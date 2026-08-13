@@ -20,6 +20,7 @@ from fray_claude.store.derived_cache import (
     Digests,
     PricingDigests,
     RollCache,
+    _PRICING_TYPES,
     _RESULT_TYPES,
     _structure_digest,
     cached_derive,
@@ -171,6 +172,22 @@ def test_the_structural_digest_tracks_the_result_classes(monkeypatch: pytest.Mon
     assert _structure_digest() != before
 
 
+def test_the_structural_digest_reaches_every_nested_pricing_class() -> None:
+    """**The same hole, in the sibling structure.**
+
+    `_RESULT_TYPES` was fixed for derivations and `_PRICING_TYPES` was not, so
+    `ComputedMethod` - which hangs off `Heuristics.computed` - was unwatched.
+    Adding the override path behind a computed training rate to it changed no
+    key, and every stored enrichment went on serving methods with that field
+    empty; the symptom was a skilling row that had quietly lost its knobs.
+    Seven more types sat in the same position.
+    """
+    missing = sorted(
+        cls.__name__ for cls in _reachable_dataclasses(_PRICING_TYPES) - set(_PRICING_TYPES)
+    )
+    assert missing == [], f"nested pricing dataclasses absent from _PRICING_TYPES: {missing}"
+
+
 def test_the_structural_digest_reaches_every_nested_result_class() -> None:
     """**Pickle stores the whole graph, so the digest must describe it.**
 
@@ -186,27 +203,37 @@ def test_the_structural_digest_reaches_every_nested_result_class() -> None:
     on every key and resolving annotations is not free. Its job is to fail the
     day someone adds a nested result type and forgets the tuple.
     """
+    missing = sorted(
+        cls.__name__ for cls in _reachable_dataclasses(_RESULT_TYPES) - set(_RESULT_TYPES)
+    )
+    assert missing == [], f"nested result dataclasses absent from _RESULT_TYPES: {missing}"
+
+
+def _reachable_dataclasses(roots: tuple[type, ...]) -> set[type]:
+    """Every dataclass pickle would store, reached from `roots` by field type.
+
+    Shared by the two digest tests because the hole they check for is the same
+    hole: a nested type nobody listed, whose fields the key therefore ignores.
+    """
     import typing
 
-    reachable: set[type] = set()
+    found: set[type] = set()
 
     def walk(cls: type) -> None:
-        if not dataclasses.is_dataclass(cls) or cls in reachable:
+        if not dataclasses.is_dataclass(cls) or cls in found:
             return
-        reachable.add(cls)
+        found.add(cls)
         hints = typing.get_type_hints(cls)
-        for f in dataclasses.fields(cls):
-            annotation = hints.get(f.name)
+        for field in dataclasses.fields(cls):
+            annotation = hints.get(field.name)
             for candidate in (annotation, *typing.get_args(annotation)):
                 for inner in (candidate, *typing.get_args(candidate)):
                     if dataclasses.is_dataclass(inner) and isinstance(inner, type):
                         walk(inner)
 
-    for result in _RESULT_TYPES:
-        walk(result)
-
-    missing = sorted(cls.__name__ for cls in reachable - set(_RESULT_TYPES))
-    assert missing == [], f"nested result dataclasses absent from _RESULT_TYPES: {missing}"
+    for root in roots:
+        walk(root)
+    return found
 
 
 @pytest.mark.parametrize(

@@ -1379,6 +1379,12 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 
 /* The numbers behind a priced row. Same scale and the same shape as the band
  * editor above - one dialog idiom, not two. */
+/* What wants a priced item, above the numbers that priced it. Dimmed and
+   tight: it is context for the row you opened, not a second list to work
+   through. */
+ul.list.wanted { margin-bottom: var(--s4); }
+ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
+
 .knob-edit { display: grid; gap: var(--s3); }
 
 .knob {

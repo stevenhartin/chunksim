@@ -96,13 +96,21 @@ from fray_claude.store.cache import (
 )
 from fray_claude.derive.challenges import ChallengeResult
 from fray_claude.costing.heuristics import (
+    ComputedMethod,
     Heuristics,
+    MaterialCost,
     QuestRate,
     Rate,
     SlayerTask,
     Superior,
     TaskLength,
 )
+# Scraped shapes that `Heuristics` carries verbatim. Imported here only so the
+# structural digest can see them - see `_PRICING_TYPES`.
+from fray_claude.remote.combat import AttackSpell, MonsterStats
+from fray_claude.remote.farming import Crop
+from fray_claude.remote.prayer import Altar, Bone
+from fray_claude.remote.stores import ShopPrice
 from fray_claude.derive.other_tasks import CategoryTasks, OtherTasks, TaskGroup
 from fray_claude.derive.pipeline import Derived, MapState, derive
 from fray_claude.derive.sources import SourceIndex
@@ -168,7 +176,28 @@ _RESULT_TYPES = (
 #: The pricing types, hashed the same way and for the same reason. Kept
 #: separate from `_RESULT_TYPES` so a field added to one kind of entry does
 #: not throw away the other.
-_PRICING_TYPES = (Heuristics, Rate, SlayerTask, Superior, QuestRate, TaskLength)
+#: **Nested ones too, for `_RESULT_TYPES`' reason and after the same bug.**
+#: `ComputedMethod` hangs off `Heuristics.computed` and was not listed, so
+#: adding a field to it - the override path behind a computed training rate -
+#: changed no key, and every stored enrichment went on serving methods with
+#: that field empty. The symptom was a skilling row that had lost its knobs
+#: for no visible reason. Seven more sat in the same position.
+_PRICING_TYPES = (
+    Heuristics,
+    Rate,
+    SlayerTask,
+    Superior,
+    QuestRate,
+    TaskLength,
+    Altar,
+    AttackSpell,
+    Bone,
+    ComputedMethod,
+    Crop,
+    MaterialCost,
+    MonsterStats,
+    ShopPrice,
+)
 
 
 @dataclass(frozen=True)

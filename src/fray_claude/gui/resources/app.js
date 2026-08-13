@@ -3248,7 +3248,7 @@ function renderEstimate(payload) {
         return tmpl`<li data-tip="${tip}"><span class="name">${plain(row.name)}</span><span class="num">${hours(row.hours)}</span></li>`;
       }
       return tmpl`<li class="arguable" data-tip="${tip}" data-knobs="${knobs.join("\u241f")}"
-        data-row="${plain(row.name)}" role="button" tabindex="0"><span class="name">${plain(row.name)}</span><span class="num">${hours(row.hours)}</span></li>`;
+        data-row="${row.name}" role="button" tabindex="0"><span class="name">${raw(marked(row.name))}</span><span class="num">${hours(row.hours)}</span></li>`;
     });
     out += "</ul>";
   }
@@ -3263,6 +3263,7 @@ function renderEstimate(payload) {
   el["estimate-body"].innerHTML = out;
   for (const row of el["estimate-body"].querySelectorAll("[data-knobs]")) {
     const open = () => editKnobs(row.dataset.row, row.dataset.knobs.split("\u241f"));
+
     row.onclick = open;
     row.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } };
   }
@@ -4683,14 +4684,32 @@ async function findTerm(term) {
  * with every one of thirty rows would be most of the payload for a dialog
  * nobody has opened. `/api/heuristic` is on the cheap path for the same
  * reason - it is a few stats, not a derivation. */
+/* **Which tasks want this thing.** The estimator costs the unique *item* and
+ * carries the tasks that wanted it - one whip answers a BiS pick and two log
+ * entries - and the panel has never shown that, so a 500-hour row could not
+ * say what it was *for*. It is already on the wire; nothing new is fetched.
+ *
+ * Linked, so the thing a task names is one press from the row that prices it -
+ * which is the other half of the tie: Tasks says what to do, Estimate says
+ * what it costs, and until now neither pointed at the other. */
+function wantedBy(key) {
+  const row = ((estimatePayload || {}).items || []).find((item) => item.item === key);
+  const tasks = (row && row.tasks) || [];
+  if (!tasks.length) return "";
+  return tmpl`<p class="hint">Wanted by ${String(tasks.length)} ${
+    tasks.length === 1 ? "task" : "tasks"}</p>`
+    + `<ul class="list wanted">` + tasks.map((task) =>
+      tmpl`<li><span class="name">${raw(linked(task))}</span></li>`).join("") + "</ul>";
+}
+
 async function editKnobs(name, paths) {
-  openOverlay(name, tmpl`<p class="empty">Reading what priced this…</p>`);
+  openOverlay(plain(name), tmpl`<p class="empty">Reading what priced this…</p>`);
   let knobs;
   try {
     knobs = await Promise.all(paths.map((path) =>
       getJSON("/api/heuristic?path=" + encodeURIComponent(path) + "&" + mapQuery())));
   } catch (error) {
-    return openOverlay(name, tmpl`<p class="empty">${error.message}</p>`);
+    return openOverlay(plain(name), tmpl`<p class="empty">${error.message}</p>`);
   }
 
   const rows = knobs.map((knob, index) => {
@@ -4722,8 +4741,11 @@ async function editKnobs(name, paths) {
     </div>`;
   }).join("");
 
-  openOverlay(name, tmpl`<p class="hint">These are the numbers this estimate was
-    read off. Blank means no override — the estimator falls back to the scrape or its
+  /* **Both halves of "why is this row here".** What wants it, then what it was
+   * priced off - in that order, because the first is the question you arrive
+   * with and the second is the one you stay for. */
+  openOverlay(plain(name), wantedBy(name) + tmpl`<p class="hint">These are the numbers this
+    estimate was read off. Blank means no override — the estimator falls back to the scrape or its
     own default. Saving writes to ${knobScopeLabel()}.</p>` + `<div class="knob-edit">${rows}</div>`,
     tmpl`<button id="knob-cancel" type="button">Cancel</button>
       <button id="knob-save" type="button">Save</button>`);
