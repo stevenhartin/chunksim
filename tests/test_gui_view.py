@@ -627,6 +627,9 @@ def test_a_roll_serves_the_task_names_a_step_summary_leaves_out(tmp_path: Path) 
         {
             "key": f"task-{NORTH}",
             "name": f"Task-{NORTH}",
+            # The same name with its markup still on - here there is none, so
+            # the two agree. See `panels._marked_name`.
+            "marked": f"Task-{NORTH}",
             "note": "Slayer",
             "icon": "Slayer",
             "category": "Slayer",

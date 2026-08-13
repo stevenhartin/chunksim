@@ -665,3 +665,37 @@ def test_a_roll_panel_matches_playing_out_the_whole_run(
     the prefix is ~14s.
     """
     assert _replay_and_compare(real_export, real_tasks_map, None) > _ORDINARY_ROLLS
+
+
+def test_a_qualifier_is_kept_and_only_a_heading_is_cut() -> None:
+    """**Position decides what `#` means, and getting that wrong deleted
+    names.**
+
+    Opening a name it is a heading - `~|Combat Achievements#Grandmaster|~
+    Wasn't Event Close` - repeated in every row of that group, so the column
+    reads better without it. Anywhere else it says *which* thing: a mutated
+    zygomite of a level, a hull of a class. The old rule cut at the first `#`
+    wherever it sat and kept the tail, so those rows read `86` and `Raft` -
+    the qualifier alone, with the thing it qualified thrown away.
+    """
+    assert panels._display_name("Slay a mutated ~|zygomite#Level 86|~") == (
+        "Slay a mutated zygomite (Level 86)"
+    )
+    assert panels._display_name("Build a ~|wooden hull#Raft|~") == "Build a wooden hull (Raft)"
+    # A heading still comes off, which is the behaviour this keeps.
+    assert panels._display_name("~|Varrock Diary#Elite|~ Task 3") == "Task 3"
+    assert panels._display_name("~|Combat Achievements#Medium|~ Big, Black and Fiery") == (
+        "Big, Black and Fiery"
+    )
+    # And a name with no qualifier is untouched beyond the markup and the case.
+    assert panels._display_name("Slay an ~|abyssal demon|~") == "Slay an abyssal demon"
+
+
+def test_the_marked_name_is_the_display_name_before_the_spans_were_flattened() -> None:
+    """The page turns each span into a link to what it names, which needs the
+    words `strip_task_markup` throws away - so the heading comes off here and
+    the markup does not."""
+    assert panels._marked_name("Slay a mutated ~|zygomite#Level 86|~") == (
+        "Slay a mutated ~|zygomite#Level 86|~"
+    )
+    assert panels._marked_name("~|Varrock Diary#Elite|~ Task 3") == "Task 3"

@@ -72,6 +72,11 @@ _LOG_ENTRY = re.compile(r"^\((?P<source>[^)]+)\)\s*(?P<rest>.*)$")
 #: ~|abyssal whip|~" into "abyssal whip".
 _MARKED = re.compile(r"~\|(?P<subject>[^|]+)\|~")
 
+#: The two halves of that markup, for the one reader that cares *where* a span
+#: is rather than what is in it - see `_heading_span`.
+MARKUP_OPEN = "~|"
+MARKUP_SHUT = "|~"
+
 #: `Melee BiS weapon` -> `Melee`. The zero-width space is upstream's own, put
 #: between styles so `Ranged/Magic` wraps; it is invisible and must not become
 #: part of a group name.
@@ -117,15 +122,46 @@ def _group_sort(group: Mapping[str, Any]) -> tuple[str, int, str]:
     return (ladder, _TIERS.index(tier) if tier else len(_TIERS), name)
 
 
+def _heading_span(name: str) -> str:
+    """The `<group>#<tier>` span a name *opens* with, or `""`.
+
+    **Position is the whole of the test, and getting that wrong deleted
+    names.** `#` is upstream's qualifier and it means two different things
+    depending on where it sits. Opening the name it is a heading - `~|Combat
+    Achievements#Grandmaster|~ Wasn't Event Close` - repeated in every row
+    under that group, so the column reads better without it. Anywhere else it
+    tells you *which* thing: a `~|zygomite#Level 86|~`, a `~|wooden hull#Raft|~`.
+
+    The old rule cut at the first `#` wherever it was and kept the tail, so a
+    mutated zygomite row read `86` and a hull read `Raft` - the qualifier
+    alone, with the thing it qualified thrown away.
+    """
+    if not name.startswith(MARKUP_OPEN):
+        return ""
+    shut = name.find(MARKUP_SHUT, len(MARKUP_OPEN))
+    span = name[len(MARKUP_OPEN) : shut] if shut != -1 else ""
+    return span if "#" in span else ""
+
+
+def qualified(name: str) -> str:
+    """`zygomite#Level 86` -> `zygomite (Level 86)`, per span.
+
+    Applied to the whole string after stripping, since a `#` only ever appears
+    inside a marked span - which is what makes one pass over the text safe.
+    """
+    head, sep, tail = name.partition("#")
+    return f"{head} ({tail})" if sep else name
+
+
 def _display_name(name: str) -> str:
     """A task name as a column of them should read.
 
-    Two things, and the second is deliberately conservative. The raw form
-    keeps upstream's `<group>#<tier>` prefix - `Combat Achievements#Grandmaster
-    Wasn't Event Close` - which is the heading repeated in every row under it,
-    so it comes off. And the first character is capitalised, because the export
-    writes `unholy symbol` beside `Falador shield 1` and a column that starts
-    in two cases reads as two lists.
+    Three things. A leading `<group>#<tier>` heading comes off, because it is
+    repeated in every row under it - see `_heading_span`. Any other `#` is a
+    qualifier and becomes a parenthesis, because `zygomite#Level 86` reads as a
+    typo and `zygomite (Level 86)` reads as a zygomite. And the first character
+    is capitalised, because the export writes `unholy symbol` beside `Falador
+    shield 1` and a column that starts in two cases reads as two lists.
 
     **Only the first character.** Lower-casing the rest would be the way to
     make the whole string consistent and it destroys the names it touches:
@@ -134,14 +170,53 @@ def _display_name(name: str) -> str:
     wrote them, which is the split `strip_task_markup` already draws between
     display and identity.
     """
-    plain = strip_task_markup(name)
-    head, sep, tail = plain.partition("#")
-    if sep:
-        # `Combat Achievements#Grandmaster Wasn't Event Close` -> the part
-        # after the tier. The tier is one word, so one split does it.
-        rest = tail.split(" ", 1)
-        plain = rest[1] if len(rest) > 1 else tail
+    plain = _without_heading(name)
     return plain[:1].upper() + plain[1:] if plain else plain
+
+
+def _without_heading(name: str) -> str:
+    """`name` stripped, minus a leading tier heading, with `#` qualified."""
+    return qualified(strip_task_markup(_after_heading(name)))
+
+
+def _marked_subject(key: str) -> str:
+    """`_cased(_subject(key))`, wrapped back in markup where it came from one.
+
+    **The subject *is* the thing the wiki has a page for**, so these rows are
+    the ones where a link is most obviously wanted - "Slay an abyssal demon"
+    is a row about an abyssal demon. Re-marking the cased form rather than the
+    raw one keeps the link text identical to the row it replaces; the search
+    it fires is fuzzy, so the capital costs nothing.
+
+    A key with no marked span comes back unmarked, and the page then renders
+    it as the plain text it is.
+    """
+    found = _MARKED.search(key)
+    return f"{MARKUP_OPEN}{_cased(_subject(key))}{MARKUP_SHUT}" if found else _cased(_subject(key))
+
+
+def _marked_name(name: str) -> str:
+    """`_display_name`'s string with the markup still on it.
+
+    **The same cut, one step earlier.** The page turns each marked span into a
+    link to the thing it names, and to do that it needs to know which words
+    those were - which is exactly what `strip_task_markup` throws away. So the
+    heading comes off here and the spans do not; the `#` inside a span is left
+    for the page, whose own `qualified` handles it per span.
+
+    Not capitalised, unlike `_display_name`: the first character is often
+    inside a span here, and title-casing the link text would make it disagree
+    with the row beside it.
+    """
+    return _after_heading(name).strip()
+
+
+def _after_heading(name: str) -> str:
+    """`name` with a leading `<group>#<tier>` span removed, markup intact."""
+    heading = _heading_span(name)
+    if not heading:
+        return name
+    return name[len(MARKUP_OPEN) + len(heading) + len(MARKUP_SHUT) :].strip()
 
 
 def _entry(
@@ -150,6 +225,7 @@ def _entry(
     note: str | None = None,
     icon: str | None = None,
     category: str | None = None,
+    marked: str | None = None,
 ) -> dict[str, Any]:
     """One row. `category` is which `completedChallenges` branch it lives in.
 
@@ -160,7 +236,19 @@ def _entry(
     The GUI's edit mode writes a tick, so it needs the payload's answer rather
     than the panel's, and the row is the only place both are known.
     """
-    return {"key": key, "name": name, "note": note, "icon": icon, "category": category}
+    return {
+        "key": key,
+        "name": name,
+        # **The same name with its markup still on.** `name` is what a column
+        # reads as; this is the same string before the spans were flattened, so
+        # the page can turn each one into a link to the thing it names without
+        # having to re-derive which words those were. It is `name` verbatim
+        # wherever the name was not built out of a key.
+        "marked": marked if marked is not None else name,
+        "note": note,
+        "icon": icon,
+        "category": category,
+    }
 
 
 def _group(name: str, active: Sequence[Any], completed: Sequence[Any]) -> dict[str, Any]:
@@ -255,7 +343,7 @@ def _extra_entry(name: str) -> dict[str, Any]:
     """A collection-log row split into its source and its item, or left whole."""
     found = _LOG_ENTRY.match(name)
     if found is None:
-        return _entry(name, _display_name(name))
+        return _entry(name, _display_name(name), marked=_marked_name(name))
     return _entry(name, _cased(_subject(found.group("rest"))), found.group("source"))
 
 
@@ -268,7 +356,9 @@ def _plain_groups(
     Achievement badge - both facts about a ladder rather than about a list, so
     `Extra` asks for neither.
     """
-    shape = _extra_entry if split_sources else (lambda n: _entry(n, _display_name(n)))
+    shape = _extra_entry if split_sources else (
+        lambda n: _entry(n, _display_name(n), marked=_marked_name(n))
+    )
     groups = [
         _group(
             str(group.get("name", "")),
@@ -315,7 +405,8 @@ def _bis_groups(bis: Mapping[str, Any]) -> list[dict[str, Any]]:
             style = _bis_style(str(label))
             note = str(slots.get(key) or label)
             grouped.setdefault(style, {"active": [], "completed": []})[state].append(
-                _entry(key, _cased(_subject(key)), note, category="BiS")
+                _entry(key, _cased(_subject(key)), note, category="BiS",
+                       marked=_marked_subject(key))
             )
     return [_group(style, rows["active"], rows["completed"]) for style, rows in sorted(grouped.items())]
 
@@ -334,11 +425,13 @@ def _skill_groups(classification: Mapping[str, Any]) -> list[dict[str, Any]]:
         current = entry.get("active")
         if isinstance(current, str) and current:
             active.append(
-                _entry(current, _cased(_subject(current)), skill, icon=skill, category=skill)
+                _entry(current, _cased(_subject(current)), skill, icon=skill,
+                       category=skill, marked=_marked_subject(current))
             )
         for done in entry.get("completed", ()):
             completed.append(
-                _entry(done, _cased(_subject(done)), skill, icon=skill, category=skill)
+                _entry(done, _cased(_subject(done)), skill, icon=skill,
+                       category=skill, marked=_marked_subject(done))
             )
     return [_group("Skills", active, completed)]
 

@@ -1341,10 +1341,73 @@ function raw(value) { return { __raw: String(value) }; }
  * intact without ever having been able to escape its attribute. */
 
 /* Task and challenge names are markup-bearing keys: the raw `~|...|~` form is
- * what everything is keyed by, and stripping it is display-only. Mirrors
- * `challenges.strip_task_markup`, and applies *only* to names and details -
- * other branches of the export use `~` and `|` for real. */
-function plain(text) { return String(text == null ? "" : text).replace(/~\|/g, "").replace(/\|~/g, ""); }
+ * what everything is keyed by, and turning it into words is display-only.
+ * Mirrors `challenges.strip_task_markup`, and applies *only* to names and
+ * details - other branches of the export use `~` and `|` for real.
+ *
+ * **One parse, three renderings.** A name is a sequence of marked spans - the
+ * things the wiki has a page for - and the text between them, and everything
+ * that shows a name wants the same split for a different reason: plain text
+ * wants it flattened, a tooltip wants the spans bold, a panel wants them
+ * clickable. Doing the split once is what stops the third renderer being the
+ * one that forgets. */
+function nameParts(text) {
+  const source = String(text == null ? "" : text);
+  const out = [];
+  let at = 0;
+  for (;;) {
+    const open = source.indexOf("~|", at);
+    const shut = open === -1 ? -1 : source.indexOf("|~", open + 2);
+    if (open === -1 || shut === -1) {
+      if (at < source.length) out.push({ marked: false, raw: source.slice(at) });
+      return out;
+    }
+    if (open > at) out.push({ marked: false, raw: source.slice(at, open) });
+    out.push({ marked: true, raw: source.slice(open + 2, shut) });
+    at = shut + 2;
+  }
+}
+
+/* **`#` is the export's qualifier and reads as a typo on screen.**
+ * `zygomite#Level 86` is a zygomite, of that level; `Combat Achievements#Easy`
+ * is the Easy tier of that table. Both are "the thing (which one)", so both
+ * become that. */
+function qualified(raw) {
+  const at = raw.indexOf("#");
+  return at === -1 ? raw : `${raw.slice(0, at)} (${raw.slice(at + 1)})`;
+}
+
+/* **A qualified span leading a name is a heading, and takes a dash.**
+ * `~|Combat Achievements#Easy|~ Mummy!` is a table, a tier, and the entry -
+ * running them together reads as one long title, where the dash says which
+ * part names the row. Only when the span is qualified: `~|Cook's Assistant|~ 1`
+ * is a quest and a step number and wants no punctuation between them. */
+function plain(text) {
+  const parts = nameParts(text);
+  return parts.map((part, index) => {
+    const shown = part.marked ? qualified(part.raw) : part.raw;
+    return index === 1 && parts[0].marked && parts[0].raw.includes("#")
+      ? " - " + shown.replace(/^\s+/, "")
+      : shown;
+  }).join("");
+}
+
+/* The raw form with only the delimiters gone - what a *key* looks like when it
+ * has to be compared with one, where `plain` is what a reader sees. Keeping
+ * them apart is what lets `plain` reformat freely. */
+function bare(text) { return String(text == null ? "" : text).replace(/~\|/g, "").replace(/\|~/g, ""); }
+
+/* A name with its marked spans emboldened, for a tooltip - where there is
+ * nothing to click, so the most a span can do is stand out as a proper noun. */
+function marked(text) {
+  return nameParts(text).map((part, index, parts) => {
+    const shown = part.marked ? qualified(part.raw) : part.raw;
+    const lead = index === 1 && parts[0].marked && parts[0].raw.includes("#")
+      ? " - " : "";
+    const body = lead ? shown.replace(/^\s+/, "") : shown;
+    return tmpl`${lead}` + (part.marked ? tmpl`<b>${body}</b>` : tmpl`${body}`);
+  }).join("");
+}
 
 function icon(name) { return raw(`<svg class="icon" viewBox="0 0 24 24"><use href="#i-${name}"/></svg>`); }
 
@@ -2438,7 +2501,7 @@ function renderCategory(detail, key) {
   if (!rows.length) return tmpl`<p class="empty">Nothing recorded here.</p>`;
   return "<ul class='list'>" + withMore(rows, "chunk:" + detail.chunk_id + ":" + key,
     TASK_ROWS, (row) => {
-    const tip = tmpl`<b>${plain(row.name)}</b><span class="sub">${
+    const tip = tmpl`<b>${raw(marked(row.name))}</b><span class="sub">${
       row.sections.length === 1 ? "Section " + row.sections[0] : "Sections " + row.sections.join(", ")
     }</span><span class="sub">${row.reachable
       ? "You can reach this"
@@ -2451,7 +2514,7 @@ function renderCategory(detail, key) {
      * wants them. */
     return tmpl`<li class="${row.reachable ? "" : "unreached"}" data-tip="${tip}"
       data-sections="${row.sections.join(" ")}" data-reachable="${row.reachable ? "1" : ""}">
-      <span class="name">${plain(row.name)}</span></li>`;
+      <span class="name">${raw(linked(row.marked || row.name))}</span></li>`;
   }) + "</ul>";
 }
 
@@ -2500,7 +2563,7 @@ async function previewUnlock(chunkId) {
       const sorted = tasks.sort((a, b) => Object.keys(b[1]).length - Object.keys(a[1]).length);
       out += withMore(sorted, "unlock:tasks", 8, ([category, names]) => {
         const keys = Object.keys(names);
-        const tip = tmpl`<b>${category}</b>` + keys.slice(0, 8).map((n) => tmpl`<span class="sub">${plain(n)}</span>`).join("")
+        const tip = tmpl`<b>${category}</b>` + keys.slice(0, 8).map((n) => tmpl`<span class="sub">${raw(marked(n))}</span>`).join("")
           + (keys.length > 8 ? tmpl`<span class="hint">and ${keys.length - 8} more</span>` : "");
         return tmpl`<li data-tip="${tip}"><span class="name">${category}</span><span class="num">${keys.length}</span></li>`;
       });
@@ -2624,7 +2687,7 @@ function diffNames(branch) {
 function diffList(rows, kind, key) {
   return tmpl`<ul class="list ${kind}">` + withMore(rows, key, DIFF_SAMPLE, ([name, note]) =>
     tmpl`<li><span class="mark">${kind === "gain" ? "+" : "−"}</span>
-      <span class="name">${plain(name)}</span><span class="sub">${plain(note)}</span></li>`) + "</ul>";
+      <span class="name">${raw(linked(name))}</span><span class="sub">${plain(note)}</span></li>`) + "</ul>";
 }
 
 async function showBreakdown() {
@@ -2822,9 +2885,9 @@ function renderTaskGroups(sections, side, keyPrefix, { tickable = false } = {}) 
         /* The row shows the subject; the tooltip shows the whole task as the
          * export writes it, which is what `fray tasks` prints and what you
          * would search for. */
-        const tip = tmpl`<b>${plain(row.name)}</b>`
-          + (row.note ? tmpl`<span class="sub">${plain(row.note)}</span>` : "")
-          + tmpl`<span class="hint">${plain(row.key)}</span>`;
+        const tip = tmpl`<b>${raw(marked(row.name))}</b>`
+          + (row.note ? tmpl`<span class="sub">${raw(marked(row.note))}</span>` : "")
+          + tmpl`<span class="hint">${raw(marked(row.key))}</span>`;
         /* **The row is the gesture.** Ticking is what a person does with a
          * to-do list, so the list is what they click - and `data-task`/
          * `data-category` carry the payload's own key rather than the
@@ -2834,7 +2897,7 @@ function renderTaskGroups(sections, side, keyPrefix, { tickable = false } = {}) 
         const hooks = tickable
           ? tmpl` data-task="${row.key}" data-category="${row.category || ""}"`
           : "";
-        return tmpl`<li class="task${pending}" data-tip="${tip}"${raw(hooks)}>${raw(badge)}<span class="name">${plain(row.name)}</span>
+        return tmpl`<li class="task${pending}" data-tip="${tip}"${raw(hooks)}>${raw(badge)}<span class="name">${raw(linked(row.marked || row.name))}</span>
           <span class="sub">${plain(slot ? "" : row.note || "")}</span></li>`;
       }) + "</ul>";
     }
@@ -3006,7 +3069,7 @@ function renderEstimate(payload) {
       const arguable = knobs.length
         ? tmpl`<span class="hint">Click to see the ${String(knobs.length)} ${knobs.length === 1 ? "number" : "numbers"} behind this</span>`
         : tmpl`<span class="hint">Priced without a rate — nothing here to correct</span>`;
-      const tip = tmpl`<b>${plain(row.name)}</b><span class="sub">${plain(row.detail)}</span><span class="sub">${label(row.bucket)}</span>` + arguable;
+      const tip = tmpl`<b>${raw(marked(row.name))}</b><span class="sub">${raw(marked(row.detail))}</span><span class="sub">${label(row.bucket)}</span>` + arguable;
       if (!knobs.length) {
         return tmpl`<li data-tip="${tip}"><span class="name">${plain(row.name)}</span><span class="num">${hours(row.hours)}</span></li>`;
       }
@@ -3020,7 +3083,7 @@ function renderEstimate(payload) {
   if (unpriced.length) {
     out += tmpl`<h3 data-tip="${"Reachable, but no rate exists for it in cache/wiki_rates.json, heuristics/overrides.json or a default - so none of these hours are in the total above."}">Unpriced <span class="num">${unpriced.length}</span></h3><ul class="list">`;
     out += withMore(unpriced, "estimate:unpriced", 25, (item) =>
-      tmpl`<li><span class="name">${plain(typeof item === "string" ? item : item.item || "")}</span></li>`);
+      tmpl`<li><span class="name">${raw(linked(typeof item === "string" ? item : item.item || ""))}</span></li>`);
     out += "</ul>";
   }
   el["estimate-body"].innerHTML = out;
@@ -3159,7 +3222,7 @@ async function runFind() {
     results.forEach((result, index) => {
       const chunks = chunksOf(result);
       const note = chunks.length ? chunks.length + (chunks.length === 1 ? " chunk" : " chunks") : "—";
-      const tip = tmpl`<b>${plain(result.name)}</b><span class="sub">${label(result.type)} · ${
+      const tip = tmpl`<b>${raw(marked(result.name))}</b><span class="sub">${label(result.type)} · ${
         result.available ? "reachable on this map" : "not reachable yet"
       }</span><span class="hint">${chunks.length ? "Click to light up its " + note + " on the map" : "Nowhere on the surface map"}</span>`;
       out += tmpl`<li data-tip="${tip}">
@@ -4286,19 +4349,17 @@ function knobLayers(knob) {
  * Returns markup, so every caller has to `raw()` it - and everything
  * interpolated inside is still escaped by the inner `tmpl`. */
 function linked(text) {
-  const source = String(text == null ? "" : text);
-  let out = "";
-  let at = 0;
-  for (;;) {
-    const open = source.indexOf("~|", at);
-    const shut = open === -1 ? -1 : source.indexOf("|~", open + 2);
-    if (open === -1 || shut === -1) { out += tmpl`${source.slice(at)}`; return out; }
-    out += tmpl`${source.slice(at, open)}`;
-    const term = source.slice(open + 2, shut);
-    out += tmpl`<a class="knob-link" role="button" tabindex="0"
-      data-term="${term}" title="Find ${term}">${term}</a>`;
-    at = shut + 2;
-  }
+  return nameParts(text).map((part, index, parts) => {
+    const shown = part.marked ? qualified(part.raw) : part.raw;
+    const lead = index === 1 && parts[0].marked && parts[0].raw.includes("#") ? " - " : "";
+    const body = lead ? shown.replace(/^\s+/, "") : shown;
+    if (!part.marked) return tmpl`${lead}${body}`;
+    /* **`data-term` is the raw span, not what is shown.** The search index is
+     * keyed the way the export writes it, so `zygomite#Level 86` is what finds
+     * the zygomite - where `zygomite (Level 86)` finds nothing. */
+    return tmpl`${lead}` + tmpl`<a class="find-link" role="button" tabindex="0"
+      data-term="${part.raw}" title="Find ${body}">${body}</a>`;
+  }).join("");
 }
 
 /* `actions/Imbue a granite ring at ~|Dom Onion's Reward Shop|~` reads as
@@ -4310,13 +4371,32 @@ function knobPath(knob) {
   return parts.map((part) => linked(part)).join(tmpl` <span class="knob-sep">></span> `);
 }
 
+/* **Delegated, and it stops the click going further.** A marked span can sit
+ * inside a row that is itself a control - a task row ticks, an estimate row
+ * opens its knobs - and following the link must not also do that. One handler
+ * for every link on the page, wherever it was drawn, is also what lets
+ * `linked` be used somewhere new without wiring anything up. */
+document.addEventListener("click", (event) => {
+  const link = event.target.closest(".find-link");
+  if (!link) return;
+  event.stopPropagation();
+  event.preventDefault();
+  findTerm(link.dataset.term);
+}, true);
+document.addEventListener("keydown", (event) => {
+  const link = event.target.closest?.(".find-link");
+  if (!link || (event.key !== "Enter" && event.key !== " ")) return;
+  event.preventDefault();
+  findTerm(link.dataset.term);
+});
+
 /* Find, from a link rather than from the box: one request, best match wins,
  * and `highlight` does the rest exactly as the Find pane does. */
 async function findTerm(term) {
   try {
     const payload = await getJSON(
       "/api/search?q=" + encodeURIComponent(term) + "&" + panelQuery() + "&limit=5");
-    const best = (payload.results || []).find((r) => plain(r.name) === term)
+    const best = (payload.results || []).find((r) => bare(r.name) === term)
       || (payload.results || [])[0];
     if (!best) { toast("Nothing matches " + term); return; }
     closeOverlay();
@@ -4378,11 +4458,6 @@ async function editKnobs(name, paths) {
 
   document.getElementById("knob-cancel").onclick = closeOverlay;
   document.getElementById("knob-save").onclick = () => applyKnobs(knobs);
-  for (const link of document.querySelectorAll(".knob-link")) {
-    const go = () => findTerm(link.dataset.term);
-    link.onclick = go;
-    link.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } };
-  }
   for (const button of document.querySelectorAll(".knob-revert")) {
     button.onclick = () => revertKnob(name, paths, knobs[Number(button.dataset.index)],
                                       button.dataset.layer);

@@ -1135,9 +1135,19 @@ def test_a_marked_span_becomes_a_link_rather_than_being_stripped() -> None:
     it goes to `highlight`, which is what the Find pane calls."""
     _, js, _ = _resources()
 
+    # The scan itself lives in `nameParts`, which every renderer shares - one
+    # parse, three renderings, so the third is not the one that forgets.
+    scan = _match(r"function nameParts\(text\) \{(.*?)\n\}", js)
+    assert '"~|"' in scan and '"|~"' in scan
     body = _match(r"function linked\(text\) \{(.*?)\n\}", js)
-    assert '"~|"' in body and '"|~"' in body
-    assert "knob-link" in body
+    assert "nameParts(text)" in body and "find-link" in body
+    # The link searches for the key, not for what it shows.
+    assert 'data-term="${part.raw}"' in body
+    # **Delegated and propagation-stopping**, because a marked span can sit
+    # inside a row that is itself a control - a task row ticks, an estimate
+    # row opens its knobs - and following the link must not also do that.
+    handler = _match(r'document\.addEventListener\("click", \(event\) => \{(.*?)\n\}, true\)', js)
+    assert '.find-link' in handler and "stopPropagation" in handler
     # The same framing Find does, not a second implementation of it.
     assert "highlight(best)" in _match(r"async function findTerm\(term\) \{(.*?)\n\}", js)
 
