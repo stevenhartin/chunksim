@@ -3122,6 +3122,7 @@ async function loadEstimate() {
     estimatePayload = await getJSON("/api/estimate?" + panelQuery());
     clearExpansions("estimate:");
     renderEstimate(estimatePayload);
+    renderAllReference();
   } catch (error) {
     estimatePayload = null;
     el["estimate-total"].textContent = "";
@@ -3577,10 +3578,16 @@ const REFERENCE_TIPS = {
   wiki_recipes: "<b>Wiki recipes</b><span class='sub'>What one action of a training method pays and costs, per skill. Thirteen requests.</span><span class='hint'>Without it Construction has no rated method at all — 13,034h rather than 191h</span>",
 };
 
-function renderReference(rows) {
-  const host = document.getElementById("reference");
+/* Which blobs belong to which pane. The chunk export is what *every* pane
+ * rests on, so it stays with the cache; the two the estimator spends belong
+ * beside the number they decide. */
+const ESTIMATE_BLOBS = ["wiki_rates", "wiki_recipes"];
+
+function renderReference(rows, hostId = "reference", only = null) {
+  const host = document.getElementById(hostId);
   if (!host) return;
-  host.innerHTML = rows.map((row) => {
+  const shown = only ? rows.filter((row) => only.includes(row.name)) : rows;
+  host.innerHTML = shown.map((row) => {
     const state = row.cached
       ? tmpl`<span class="sub">${when(row.fetched_at)} · ${bytes(row.size)}</span>`
       : tmpl`<span class="sub warn-text">not cached</span>`;
@@ -3593,6 +3600,15 @@ function renderReference(rows) {
   }
 }
 
+/* Both strips, wherever one of them moved. `/api/reference` is three `stat`
+ * calls, so redrawing the pair costs nothing and neither can go stale while
+ * the other is current. */
+async function renderAllReference() {
+  const rows = await loadReference();
+  renderReference(rows, "reference", ["chunkinfo"]);
+  renderReference(rows, "estimate-reference", ESTIMATE_BLOBS);
+}
+
 const REFRESH_LABELS = {
   heuristics: "Fetch wiki rates",
   recipes: "Fetch wiki recipes",
@@ -3602,7 +3618,13 @@ const REFRESH_LABELS = {
 function refreshReference(what) {
   const label = REFRESH_LABELS[what] || "Refresh reference data";
   return runAction(label, "/api/refresh", { what }, async () => {
-    renderReference(await loadReference());
+    await renderAllReference();
+    /* A fresh scrape is a different set of numbers, so the total above the
+     * strip is stale the moment this lands. */
+    if (what !== "chunkinfo" && state.tab === "estimate") {
+      estimatePayload = null;
+      loadEstimate();
+    }
   });
 }
 
@@ -3619,9 +3641,8 @@ async function autoRefresh(what) {
     return;
   }
   if (!reply || !reply.job) return;
-  await followJob(reply.job, REFRESH_LABELS[what] || "Refresh reference data", async () => {
-    renderReference(await loadReference());
-  });
+  await followJob(reply.job, REFRESH_LABELS[what] || "Refresh reference data",
+                  renderAllReference);
 }
 
 async function loadMapsPane() {
@@ -3639,7 +3660,7 @@ async function loadMapsPane() {
       <button id="do-fetch" type="button"
         data-tip="<b>Fetch a named map</b><span class='sub'>Read it from source-chunk and write it to cache/maps/fetched/. About a second.</span>">Fetch Named Map</button>
     </div>
-    <h3>Reference data</h3><ul class="list" id="reference"></ul>
+    <h3>Chunk data</h3><ul class="list" id="reference"></ul>
     <h3>Simulate</h3><div class="row">
       <input id="sim-rolls" type="number" min="1" value="5" style="width:7ch" aria-label="Rolls"
         data-tip="Chunks to roll in each run.">
@@ -3709,7 +3730,7 @@ async function loadMapsPane() {
       event.preventDefault();
       doFetch();
     };
-    renderReference(await loadReference());
+    await renderAllReference();
     document.getElementById("do-sim").onclick = () => {
       const rolls = Number(document.getElementById("sim-rolls").value) || 1;
       const runs = Number(document.getElementById("sim-runs").value) || 1;

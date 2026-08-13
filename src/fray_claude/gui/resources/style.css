@@ -1382,6 +1382,13 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 /* What wants a priced item, above the numbers that priced it. Dimmed and
    tight: it is context for the row you opened, not a second list to work
    through. */
+/* The two blobs the hours above rest on. A strip rather than a section: it is
+   a caveat on the number, not a topic of its own, and it must not push the
+   first bucket off the screen. */
+.reference-strip { flex: none; margin-bottom: var(--s3); }
+.reference-strip li { padding: 2px 0; }
+.reference-strip .name { font-size: var(--t-note); color: var(--dim); }
+
 ul.list.wanted { margin-bottom: var(--s4); }
 ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
 
