@@ -1468,3 +1468,27 @@ def test_everything_that_decides_what_the_map_draws_is_in_one_row() -> None:
 
     styles = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
     assert "position: fixed" not in _match(r"\.plane-pick \{([^}]*)\}", styles)
+
+
+def test_a_reachable_area_shows_the_way_in_when_you_look_at_it() -> None:
+    """**The outline says "you can get here" and never "from where".** A
+    reachable area is nowhere near its entrance - the Catacombs of Kourend are
+    a hundred rows north of their door - so selecting either end draws the
+    line, and only then: every link at once is a hundred lines across the map
+    and the question is always about one place."""
+    _, js, _ = _resources()
+
+    body = _match(r"function drawEntrances\(\) \{(.*?)\n\}", js)
+    assert "state.selected" in body and "cell.entrances" in body
+    # Either end, and every door - an area can have several.
+    assert "String(cell.chunk_id) !== chosen && String(entrance) !== chosen" in body
+    assert "setLineDash" in body
+    assert "drawEntrances();" in _match(r"function drawHull\(\) \{(.*?)\n\}", js)
+
+
+def test_an_area_name_is_qualified_wherever_it_is_shown() -> None:
+    """`Mor Ul Rek#Outer Area` is the same `#` a task name carries, and the
+    Chunk pane's heading printed it raw."""
+    _, js, _ = _resources()
+
+    assert "qualified(detail.nickname)" in js

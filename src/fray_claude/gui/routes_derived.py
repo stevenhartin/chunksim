@@ -24,6 +24,7 @@ from fray_claude.derive.delta import MapSide
 from fray_claude.model.summary import _mapping
 from fray_claude.store.derived_cache import cached_derive
 from fray_claude.derive.delta import compare_maps
+from fray_claude.derive.sections import area_connections
 from fray_claude.gui.worldmap import grid_position, hull_edges
 from fray_claude.costing import inputs
 from fray_claude.gui.http import Context
@@ -72,8 +73,19 @@ def reachable_by_area(state: DerivedState) -> dict[str, Any]:
         if name and (name in areas or name.split("#")[0] in areas):
             found.add(str(chunk_id))
     placed = {chunk_id: grid_position(chunk_id) for chunk_id in found}
-    numeric = [int(c) for c, at in placed.items() if at is not None and c.isdigit()]
-    edges = hull_edges(numeric)
+    # **One hull per area, not one over all of them.** Two areas can be
+    # neighbours - `Mor Ul Rek#Inner Area` sits against `#Outer Area` - and
+    # they are different places, so the edge between them is a real edge.
+    # Running `hull_edges` over the union merged them into one blob; running
+    # it per area omits only the edges *inside* an area, which is what the
+    # outline is for.
+    edges: dict[int, int] = {}
+    for members in _by_area(found, chunks).values():
+        numeric = [int(c) for c in members if c.isdigit() and placed.get(c) is not None]
+        for placed_id, edge in hull_edges(numeric).items():
+            edges[placed_id] = int(edge)
+    # Which unlocked squares open each area, so the page can draw the way in.
+    links = area_connections(state.unlocked, state.state.chunk_info)
     return {
         "map_id": state.map_id,
         "chunks": [
@@ -81,12 +93,31 @@ def reachable_by_area(state: DerivedState) -> dict[str, Any]:
                 "chunk_id": chunk_id,
                 "grid_x": at.grid_x,
                 "grid_y": at.grid_y,
-                "edges": int(edges.get(int(chunk_id), 0)) if chunk_id.isdigit() else 0,
+                "edges": edges.get(int(chunk_id), 0) if chunk_id.isdigit() else 0,
+                "area": _area_of(chunk_id, chunks),
+                # **The entrances, and there may be several.** The Catacombs of
+                # Kourend are reached from four different surface squares on
+                # `verf`; naming one would be picking a favourite.
+                "entrances": sorted(links.get(_area_of(chunk_id, chunks), {})),
             }
             for chunk_id, at in sorted(placed.items())
             if at is not None
         ],
     }
+
+
+def _area_of(chunk_id: str, chunks: Mapping[str, Any]) -> str:
+    """The area name a reachable square belongs to - its own `Name`."""
+    entry = chunks.get(chunk_id)
+    return str(entry.get("Name") or "") if isinstance(entry, Mapping) else ""
+
+
+def _by_area(found: set[str], chunks: Mapping[str, Any]) -> dict[str, list[str]]:
+    """The reachable squares grouped by the area each belongs to."""
+    grouped: dict[str, list[str]] = {}
+    for chunk_id in found:
+        grouped.setdefault(_area_of(chunk_id, chunks), []).append(chunk_id)
+    return grouped
 
 
 def _section_order(section_id: str) -> tuple[int, int, str]:

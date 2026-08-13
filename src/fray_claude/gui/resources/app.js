@@ -987,6 +987,49 @@ function drawAreas() {
   }
 }
 
+/* **The way in, drawn only for the square you are looking at.** A reachable
+ * area is nowhere near its entrance - the Catacombs of Kourend are a hundred
+ * rows north of their door - so the outline alone says "you can get here" and
+ * never "from where". Selecting either end draws the line between them.
+ *
+ * Only on selection: every link at once is a hundred lines across the map,
+ * and the question is always about one place.
+ *
+ * An area may have several doors - the Catacombs have four on `verf` - and
+ * all of them are drawn, because naming one would be picking a favourite. */
+function drawEntrances() {
+  const chosen = state.selected;
+  if (!chosen) return;
+  const pairs = [];
+  for (const cell of state.reachable) {
+    for (const entrance of cell.entrances || []) {
+      if (String(cell.chunk_id) !== chosen && String(entrance) !== chosen) continue;
+      pairs.push([String(entrance), String(cell.chunk_id)]);
+    }
+  }
+  if (!pairs.length) return;
+
+  const size = cellSize();
+  const centre = (id) => {
+    const at = chunkToGrid(id);
+    if (!at) return null;
+    const [x, y] = toScreen(at[0], at[1]);
+    return [x + size / 2, y + size / 2];
+  };
+  CTX.beginPath();
+  for (const [from, to] of pairs) {
+    const one = centre(from), other = centre(to);
+    if (!one || !other) continue;
+    CTX.moveTo(one[0], one[1]);
+    CTX.lineTo(other[0], other[1]);
+  }
+  CTX.strokeStyle = REACHABLE_STROKE;
+  CTX.lineWidth = Math.max(1, 1.5 * state.zoom);
+  CTX.setLineDash([Math.max(3, 5 * state.zoom), Math.max(3, 5 * state.zoom)]);
+  CTX.stroke();
+  CTX.setLineDash([]);
+}
+
 function drawHull() {
   /* One path, one stroke: the joins stay clean where edges meet at a corner,
    * and there is no per-cell state churn. */
@@ -1026,6 +1069,7 @@ function drawHull() {
   CTX.setLineDash([Math.max(4, 6 * state.zoom), Math.max(3, 4 * state.zoom)]);
   CTX.stroke();
   CTX.setLineDash([]);
+  drawEntrances();
 }
 
 /* A wash under the cursor, so the square you are about to click is the square
@@ -2585,7 +2629,8 @@ function renderChunk() {
       <button id="do-unlock" class="icon-btn" type="button" aria-label="Unlock"
         data-tip="<b>Unlock this chunk</b><span class='sub'>Save a new map with this chunk added by hand, the way <code>fray unlock --cache-map</code> does.</span>">${icon("unlock")}</button>`;
 
-  el["chunk-head"].innerHTML = tmpl`<h3>${detail.nickname || "Chunk " + detail.chunk_id}</h3>
+  el["chunk-head"].innerHTML = tmpl`<h3>${
+    detail.nickname ? qualified(detail.nickname) : "Chunk " + detail.chunk_id}</h3>
     <div class="row"><code>${detail.chunk_id}</code>${raw(status)}
       <span class="spacer"></span>
       <button id="chunk-focus" class="icon-btn" type="button" aria-label="Focus"
