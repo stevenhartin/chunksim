@@ -599,10 +599,15 @@ def test_the_mode_palette_is_defined_once() -> None:
     which one is on, as an attribute."""
     html, js, css = _resources()
 
-    for mode in ("browse", "edit", "diff", "timeline"):
+    # Read the modes out of the page rather than repeating them here, or a
+    # sixth mode arrives with no colour and the ribbon silently keeps the
+    # fifth's.
+    modes = re.findall(r"^  (\w+):\s*\{ label:", _match(r"const MODES = \{(.*?)\n\};", js),
+                       re.MULTILINE)
+    assert len(modes) >= 5, f"the mode table did not parse: {modes}"
+    for mode in modes:
         assert f"--mode-{mode}:" in css, f"{mode} has no colour"
         assert f'.ribbon[data-mode="{mode}"]' in css, f"{mode} tint is not selected for"
-        assert f'{mode}:' in js, f"{mode} is not a mode the page knows"
 
     # The page names the mode; it never names a colour.
     ribbon = re.search(r"function renderRibbon\(\) \{(.*?)\n\}", js, re.DOTALL)
@@ -1394,6 +1399,87 @@ def test_a_pane_never_outlives_the_world_it_describes() -> None:
 
     # And a pane asked to draw with no payload fetches one rather than throwing.
     assert "if (!taskPanel) return loadTasks();" in js
+
+
+def test_the_heatmap_is_a_layer_that_names_no_colour() -> None:
+    """**The canvas cannot read a stylesheet**, so the tempting thing is five
+    more hex literals beside the ones the map already carries - a second copy of
+    a palette the strip's swatches draw from.
+
+    The page holds the token *names* instead and reads their values at draw
+    time, so a band's colour is still defined exactly once. Positional, because
+    `bandOf` returns an index and the band names are the user's to change.
+    """
+    _, js, css = _resources()
+
+    tokens = re.findall(r'"(--band-[a-z]+)"', _match(r"const BAND_TOKENS = \[(.*?)\];", js))
+    drawn = set(re.findall(r'\.tl-bar\[data-band="(\d)"\]', css))
+    assert len(tokens) == len(drawn), (
+        "the canvas knows a different number of bands than the strip draws"
+    )
+    for token in tokens:
+        assert f"{token}:" in css, f"{token} is not defined"
+
+    fill = _match(r"function drawHeatmap\(\) \{(.*?)\n\}", js)
+    assert "#" not in fill, "a band colour literal has leaked onto the canvas"
+    assert "bandColour(bandOf(" in fill, "the fill must be the band the mean falls in"
+
+    # Fills under the hull, labels over it - a number with a line through it is
+    # the reason `drawAreas` sits where it does too.
+    order = _match(r"const LAYERS = \[(.*?)\];", js)
+    assert order.index("drawStates") < order.index("drawHeatmap") < order.index("drawHull")
+    assert order.index("drawHull") < order.index("drawHeatLabels")
+
+
+def test_the_heat_union_is_pure() -> None:
+    """It folds ten timelines the dialog is already holding into one number per
+    square. Reading the page instead would make it un-testable and would tie a
+    batch's arithmetic to whichever map happened to be selected - which is a
+    different map from the one the heat is about until `enterHeatmap` moves it.
+    """
+    _, js, _ = _resources()
+
+    body = _match(r"function heatOf\(runs, timelines\) \{(.*?)\n\}\n", js)
+    assert "state." not in body, "the union is reading the page"
+    assert "getJSON" not in body, "the union is fetching; its inputs are its arguments"
+    # The mean is of what a roll *added*, which is what the bands are cut
+    # against. `total_hours` is the outstanding estimate and runs to thousands.
+    assert "row.hours" in body and "total_hours" not in body
+
+
+def test_the_heatmap_is_read_only_and_puts_itself_back() -> None:
+    """**A tile is a summary over several futures**, so there is no one chain of
+    unlocks behind it whose tasks a panel could list - which is why the panel
+    goes away rather than showing the map's own.
+
+    Read-only needs no rule of its own: `ensureEditing` already refuses every
+    mode but Browse. What does need saying is that everything the entry moved is
+    moved back, since the way out is a dialog rather than a page load.
+    """
+    _, js, _ = _resources()
+
+    enter = _match(r"async function enterHeatmap\(batch, runs, timelines\) \{(.*?)\n\}", js)
+    assert 'setMode("heatmap")' in enter
+    assert "baseMapOf(batch)" in enter, "the heat must sit on the world the runs rolled from"
+    assert "hideStrip()" in enter, "a batch is not a run and has no slider"
+
+    # **Two ways out, one teardown.** The pill returns to the dialog; a run's
+    # name in that dialog goes into that run at that roll. Sharing `leaveHeatmap`
+    # is what stops the second from having to undo the first's reopened dialog.
+    teardown = _match(r"function leaveHeatmap\(\) \{(.*?)\n\}", js)
+    assert "state.heatmap = null" in teardown
+    assert "panel-pin" in teardown, "the panel must come back if it was up"
+    # Once as the definition, once per way out.
+    assert js.count("leaveHeatmap()") == 3, "a way out that does not share the teardown"
+
+    leave = _match(r"async function exitHeatmap\(\) \{(.*?)\n\}", js)
+    assert "showSimulations(batch)" in leave, "the way out is the dialog it came from"
+    assert 'if (state.mode === "heatmap") return exitHeatmap();' in js
+
+    # Nothing here writes. The dialog's only request is the ledger read behind
+    # the grinds column.
+    grinds = _match(r"async function fillGrinds\(index, roll\) \{(.*?)\n\}", js)
+    assert "postJSON" not in grinds and '"/api/roll?map="' in grinds
 
 
 def test_a_bar_past_the_cap_keeps_the_band_it_is_in() -> None:

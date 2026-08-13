@@ -90,6 +90,9 @@
   --mode-edit: #b8860b;
   --mode-diff: #6b4ea8;
   --mode-timeline: #1f6f9c;
+  /* Deliberately not one of the five band colours: the ribbon would then be
+     claiming a reading the map is making. */
+  --mode-heatmap: #7a4a6b;
   --mode-tint: var(--mode-browse);
   --panel-w: 360px;
   /* What is left of the panel when it is put away. Not zero: a panel that
@@ -320,6 +323,7 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 .ribbon[data-mode="edit"] { --mode-tint: var(--mode-edit); }
 .ribbon[data-mode="diff"] { --mode-tint: var(--mode-diff); }
 .ribbon[data-mode="timeline"] { --mode-tint: var(--mode-timeline); }
+.ribbon[data-mode="heatmap"] { --mode-tint: var(--mode-heatmap); }
 
 .ribbon-mode { font-weight: var(--w-emphasis); }
 .ribbon-edits { opacity: .9; }
@@ -1508,6 +1512,15 @@ ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
 /* A band nobody landed in is a zero worth reading past, not one worth
    reading. */
 .sim-table td.nil { color: var(--line-strong); }
+
+/* **What a roll's hours actually went on**, in the heat dialog. Stacked rather
+   than run together: three item names on one line is a sentence you have to
+   parse, and the question is "what are the big three", which is a list. Left,
+   because names read from the left even in a table of right-aligned numbers. */
+.heat-grinds { text-align: left; }
+.grind { display: flex; justify-content: space-between; gap: var(--s3); }
+.grind .sub { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sim-total .tl-sw { margin-right: var(--s2); vertical-align: baseline; }
 
 /* The chunks a thing is in, as the squares they are. Four across is what fits
    the overlay at the tile's own 256px halved twice - wider makes a wall of

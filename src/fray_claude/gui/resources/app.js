@@ -54,6 +54,26 @@ const HULL_STROKE = "#ffbe00";
  * Matches `--candidate`, which already means "a square you could have". */
 const REACHABLE_STROKE = "#5abeff";
 const FOUND_FILL = "rgba(255, 190, 0, 0.30)";
+
+/* **The five time bands, named by token and never by colour.**
+ *
+ * The heatmap paints on the canvas, which cannot read a stylesheet - so the
+ * obvious thing is five more hex literals here beside the ones above, and that
+ * would be a second copy of a palette the strip's swatches already draw from.
+ * These are the token *names* instead, and the values come out of
+ * `getComputedStyle` at draw time, so a band's colour is still defined exactly
+ * once.
+ *
+ * Positional, because `bandOf` hands back an index and the band *names* are the
+ * user's to change - the same reasoning `style.css` records above the
+ * `.tl-bar[data-band="n"]` rules, and the reason the tokens keep their default
+ * names rather than being renamed with the bands. */
+const BAND_TOKENS = ["--band-free", "--band-quick", "--band-grind", "--band-brutal", "--band-death"];
+
+function bandColour(index) {
+  const token = BAND_TOKENS[Math.max(0, Math.min(BAND_TOKENS.length - 1, index))];
+  return getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+}
 const GRID_STROKE = "rgba(255, 255, 255, 0.14)";
 const HOVER_FILL = "rgba(255, 255, 255, 0.10)";
 
@@ -140,6 +160,11 @@ const state = {
    * all, so the query stays clean for the common case. */
   timeline: null,
   step: null,
+  /* A batch's rolls, folded into one number per square - see `heatOf`. `null`
+   * except in heatmap mode, and the mode is what every reader gates on rather
+   * than on this being empty: entering it also puts the panel away and moves
+   * the map, and those have to be undone by the same act that clears this. */
+  heatmap: null,
   /* Which install is serving this page, for the watermark. Fetched once. */
   build: null,
   /* Chunk id -> the name a person calls it. Static per export, fetched with
@@ -418,8 +443,9 @@ function maskTargets() {
  * one more entry plus one key in view.overlays, and nothing about pan, zoom or
  * the hull has to change. */
 const LAYERS = [
-  drawTiles, drawLockedWash, drawGrid, drawStates, drawMasks, drawHoverSection, drawFound,
-  drawCandidates, drawPending, drawHull, drawAreas, drawHovered, drawSelected,
+  drawTiles, drawLockedWash, drawGrid, drawStates, drawHeatmap, drawMasks, drawHoverSection,
+  drawFound, drawCandidates, drawPending, drawHull, drawAreas, drawHeatLabels,
+  drawHovered, drawSelected,
 ];
 
 /* Below this on-screen chunk size a name is unreadable and the map is better
@@ -811,6 +837,67 @@ function drawStates() {
   }
 }
 
+/* **What a batch's rolls cost, one square at a time.**
+ *
+ * The fill is the band the *mean* falls in - `bandOf` against the same
+ * thresholds the strip's bars use, so a square that reads Grind here would have
+ * drawn a Grind bar there. The alpha is high because this is a mode you enter
+ * to answer one question, and the wiki map underneath is context rather than
+ * the subject.
+ *
+ * The labels are a separate layer: text under the hull is a number with a line
+ * through it, which is why `drawAreas` sits where it does too. */
+const HEAT_ALPHA = 0.62;
+
+function drawHeatmap() {
+  if (!state.heatmap) return;
+  const bands = tlBands();
+  if (!bands) return;
+  const size = cellSize();
+  for (const [chunkId, entry] of state.heatmap.chunks) {
+    const at = chunkToGrid(chunkId);
+    if (!at) continue;
+    const [x, y] = toScreen(at[0], at[1]);
+    if (!onScreen(x, y, size)) continue;
+    CTX.globalAlpha = HEAT_ALPHA;
+    CTX.fillStyle = bandColour(bandOf(entry.mean, bands));
+    CTX.fillRect(x, y, size, size);
+    CTX.globalAlpha = 1;
+  }
+}
+
+/* Below this a number is a smudge and the colour says it better on its own.
+ * Well below `AREA_LABEL_MIN_CELL`, because "1210h" is five glyphs where a
+ * place name is twenty - and the floor under the font size is what makes that
+ * safe. Measured: the whole-world framing puts a chunk at ~37px, where the
+ * proportional size alone was 7px and unreadable, which is worse than absent;
+ * at the 9px floor the widest label is ~26px and fits inside the square. */
+const HEAT_LABEL_MIN_CELL = 34;
+
+function drawHeatLabels() {
+  if (!state.heatmap) return;
+  const size = cellSize();
+  if (size < HEAT_LABEL_MIN_CELL) return;
+  CTX.textAlign = "center";
+  CTX.textBaseline = "middle";
+  CTX.font = `600 ${Math.round(Math.min(16, Math.max(9, size * 0.2)))}px system-ui, sans-serif`;
+  CTX.lineWidth = 3;
+  CTX.lineJoin = "round";
+  for (const [chunkId, entry] of state.heatmap.chunks) {
+    const at = chunkToGrid(chunkId);
+    if (!at) continue;
+    const [x, y] = toScreen(at[0], at[1]);
+    if (!onScreen(x, y, size)) continue;
+    const text = hours(entry.mean);
+    /* Stroked underneath, so the number reads over the death band's near-black
+     * and the free band's green alike. */
+    CTX.strokeStyle = "rgba(4, 8, 12, .85)";
+    CTX.strokeText(text, x + size / 2, y + size / 2);
+    CTX.fillStyle = "#f2f6fb";
+    CTX.fillText(text, x + size / 2, y + size / 2);
+  }
+}
+
 function drawMasks() {
   if (!state.showMasks) return;
   const size = cellSize();
@@ -954,6 +1041,9 @@ function drawCandidates() {
  * costs a sort of what is visible and means every area you can see is named
  * exactly once. */
 function drawAreas() {
+  /* One label per square. The heatmap writes a number in every square it has
+   * one for, and a name over a number in a 64px box is neither. */
+  if (state.heatmap) return;
   const size = cellSize();
   if (size < AREA_LABEL_MIN_CELL) return;
 
@@ -1280,7 +1370,13 @@ CANVAS.addEventListener("pointerup", (e) => {
    * a chunk selects it, which is maddening. */
   const wasDrag = movedWhileDown > 4;
   endDrag(e);
-  if (!wasDrag && state.view) selectChunk(hoveredChunk(e.clientX, e.clientY));
+  if (wasDrag || !state.view) return;
+  const clicked = hoveredChunk(e.clientX, e.clientY);
+  /* **The heatmap answers a different question, so it opens a different
+   * thing.** Selecting would put a chunk in a panel that is not on screen, and
+   * the panel could only describe one world anyway - the tile is several. */
+  if (state.heatmap) { if (clicked) showHeatChunk(clicked); return; }
+  selectChunk(clicked);
 });
 CANVAS.addEventListener("pointercancel", endDrag);
 
@@ -1345,6 +1441,16 @@ function showHovered(sx, sy) {
   const status = chunkStatus(chunkId);
   const bits = [chunkLabel(chunkId), status.label];
   if (status.number !== null) bits.push("candidate #" + status.number);
+  /* **Where the coverage the tile does not print gets said.** The label is the
+   * mean alone, so a square one run took looks exactly like one all ten took -
+   * true of the number and misleading about how much to trust it. The readout
+   * has room to carry the sample size and the tile does not. */
+  const heat = state.heatmap && state.heatmap.chunks.get(String(chunkId));
+  if (heat) {
+    bits.length = 1;
+    bits.push(hours(heat.mean) + " mean",
+      heat.rolls.length + (heat.rolls.length === 1 ? " run" : " runs"));
+  }
   el.hover.textContent = bits.join("  ·  ");
 }
 
@@ -1706,6 +1812,7 @@ const MODES = {
   edit:     { label: "Edit", exit: "Discard edits" },
   diff:     { label: "Diff", exit: "Exit diff view" },
   timeline: { label: "Timeline", exit: "Exit timeline" },
+  heatmap:  { label: "Heatmap", exit: "Exit heatmap" },
 };
 
 /* What a map is, from the listing rather than from a second request. Unknown
@@ -1775,7 +1882,7 @@ function renderRibbon() {
    * the thing is possible from here and you have not met its condition; this
    * one is possible from a *different* mode, which is a fact about the bar
    * rather than about the button. The way out stays Snapshot. */
-  el["compare-start"].hidden = mode === "timeline";
+  el["compare-start"].hidden = mode === "timeline" || mode === "heatmap";
   const exit = MODES[mode].exit;
   el["exit-mode"].hidden = !exit;
   if (exit) el["exit-mode"].textContent = exit;
@@ -2031,11 +2138,84 @@ function pickerMarkup(id, empty, extra = "") {
   </div>`;
 }
 
+/* **A batch's answer, drawn on the world it was rolled from.**
+ *
+ * Every run of a batch starts from the same map, so that map is what goes under
+ * the heat: each coloured square is then a chunk taken *from* the world you are
+ * looking at, and the hull traces where all ten runs began.
+ *
+ * **Read-only, and the mode is what makes it so** - `ensureEditing` already
+ * refuses every mode but Browse, so this needs no rule of its own. The panel
+ * goes away with it, and that is the point rather than tidiness: a tile is a
+ * summary over several futures, and there is no single chain of unlocks behind
+ * it whose tasks the panel could list. */
+async function enterHeatmap(batch, runs, timelines) {
+  const chunks = heatOf(runs, timelines);
+  if (!chunks.size) { toast(batch + " has no priced rolls to draw"); return; }
+  const base = baseMapOf(batch);
+  if (!base) { toast(batch + " does not record what it was rolled from"); return; }
+  closeOverlay();
+  const from = { map: state.map, mode: state.mode };
+  const panelWasHidden = el.panel.classList.contains("hidden");
+  /* **Set before the map moves, not after**, so `reloadPanels` knows there is
+   * no panel to fill. It is also what makes a declined switch undoable: the
+   * only thing changed before `chooseMap` runs is this. */
+  state.heatmap = { batch, chunks, from, panelWasHidden };
+  /* **`chooseMap`, not `selectMap`.** The guarded setter moves the name and
+   * nothing else - the world, the hull and the wash would all still be the
+   * previous map's, so the heat would sit on squares belonging to a world it
+   * was not measured in. Going through the same door every other map change
+   * goes through is also what keeps the pending-edits question asked. */
+  if (base !== state.map) {
+    await chooseMap(base);
+    if (state.map !== base) { state.heatmap = null; return; }   // declined
+  }
+  setMode("heatmap");
+  /* All three are about the selected map and would be read as part of the
+   * heat. Cleared rather than left on, because a colour on screen this view
+   * does not explain is one nobody can act on. */
+  if (state.showCandidates) el.candidates.click();
+  if (state.showMasks) el.masks.click();
+  state.found = new Set();
+  if (!panelWasHidden) el["panel-pin"].click();
+  /* A batch is not a run: there is no one sequence to drag along. */
+  hideStrip();
+  renderRibbon();
+  renderLegend();
+  renderCounts();
+  invalidate();
+}
+
+/* **Putting the view back, without deciding where it goes next.** There are two
+ * ways out and they differ only in the destination: the pill returns to the
+ * dialog it came from, and a run's name in that dialog goes into *that* run at
+ * *that* roll - which is the one thing a heat tile cannot show, the actual
+ * chain that got there. Sharing the teardown is what stops the second way from
+ * having to undo the first way's reopened dialog. */
+function leaveHeatmap() {
+  const { batch, from, panelWasHidden } = state.heatmap;
+  state.heatmap = null;
+  if (panelWasHidden !== el.panel.classList.contains("hidden")) el["panel-pin"].click();
+  renderLegend();
+  return { batch, from };
+}
+
+/* The way out named on the pill: back to the simulation overview. */
+async function exitHeatmap() {
+  const { batch, from } = leaveHeatmap();
+  if (from.map !== state.map) await chooseMap(from.map); else setMode(from.mode);
+  renderCounts();
+  invalidate();
+  await loadTimeline();
+  showSimulations(batch);
+}
+
 /* **The way out is back to what the map itself implies**, which is Browse for
  * an ordinary map. Leaving a timeline is the one that has to move the map as
  * well: the base is a simulation, so staying on it would mean staying in the
  * mode. Going back to the world it was rolled from is the honest answer. */
 async function exitMode() {
+  if (state.mode === "heatmap") return exitHeatmap();
   if (state.mode === "edit" && editCount()) {
     const ok = await confirmAction("Discard " + editCount() + " unsaved change(s)?",
       tmpl`<p>They are held in this page only - leaving edit mode throws them
@@ -2330,6 +2510,41 @@ function runOutstanding(timeline) {
     ? last.total_hours : null;
 }
 
+/* **What a batch says about the world, rather than about its runs.**
+ *
+ * Every run of a batch rolled from the same map, so the same square turns up in
+ * several of them - and what it *cost* is different every time, because a
+ * chunk's price depends on what was already unlocked when it was taken. Ten
+ * runs are ten samples of that, and the mean is the answer the batch was rolled
+ * to get.
+ *
+ * `hours` is what the roll **added**, which is what the bars measure and what
+ * the bands are cut against. Not `total_hours`, which is the outstanding
+ * estimate after a roll and runs to thousands - that would paint the world one
+ * colour.
+ *
+ * **Takes its inputs rather than reading `state`**, like `runBands` and
+ * `runOutstanding` beside it: the caller already holds every timeline, and a
+ * function that reads the page cannot be reasoned about by a test. */
+function heatOf(runs, timelines) {
+  const heat = new Map();
+  runs.forEach((run, index) => {
+    const timeline = timelines[index];
+    if (!timeline || !timeline.has_hours) return;
+    for (const row of timeline.steps.slice(1)) {
+      if (!row.chunk || row.hours === null || row.hours === undefined) continue;
+      const id = String(row.chunk);
+      const entry = heat.get(id) || { mean: 0, rolls: [] };
+      entry.rolls.push({ run: run.map_id, step: row.step, hours: row.hours, tasks: row.tasks });
+      heat.set(id, entry);
+    }
+  });
+  for (const entry of heat.values()) {
+    entry.mean = entry.rolls.reduce((sum, roll) => sum + roll.hours, 0) / entry.rolls.length;
+  }
+  return heat;
+}
+
 function renderSimulations(batch, runs, timelines) {
   const bands = tlBands();
   const unpriced = runs.filter((r, i) => !runBands(timelines[i])).length;
@@ -2362,13 +2577,92 @@ function renderSimulations(batch, runs, timelines) {
     unpriced
       ? tmpl`<button id="sim-cost" type="button">Compute hours for ${String(unpriced)} ${
           unpriced === 1 ? "run" : "runs"}</button>`
-      : "");
+      /* **Offered only once every run has a number.** A heatmap over half a
+       * batch is a mean of a different thing per tile - the squares the priced
+       * runs happened to take - and nothing on it would say so. So the empty
+       * footer is where it goes: there is nothing left to compute. */
+      : tmpl`<button id="sim-heat" type="button"
+          data-tip="<b>Colour the world by what each chunk cost</b><span class='sub'>The mean over every run that rolled it, in the same bands as the strip.</span>">Show heatmap</button>`);
 
   for (const button of document.querySelectorAll("[data-open]")) {
     button.onclick = () => { closeOverlay(); chooseMap(button.dataset.open); };
   }
   const cost = document.getElementById("sim-cost");
   if (cost) cost.onclick = () => costSimulations(batch, runs, timelines);
+  const heat = document.getElementById("sim-heat");
+  if (heat) heat.onclick = () => enterHeatmap(batch, runs, timelines);
+}
+
+/* **What the mean is a mean of.**
+ *
+ * A square's price is not a property of the square: it depends on what was
+ * already unlocked when it was taken, so the same chunk can be four hours in
+ * one run and two hundred in another. The tile prints the middle of that and
+ * this is the spread - one row per run that rolled it, in roll order.
+ *
+ * **The table is on screen before anything is fetched.** Run, step, tasks and
+ * hours all come out of the union the map is already drawn from. Only the
+ * grinds need asking about, and they are asked for per row in parallel and
+ * filled in as they land, so a chunk ten runs took does not open ten times
+ * slower than one a single run took.
+ */
+function showHeatChunk(chunkId) {
+  const entry = state.heatmap && state.heatmap.chunks.get(String(chunkId));
+  if (!entry) { toast(chunkLabel(chunkId) + " was never rolled in " + state.heatmap.batch); return; }
+  const rolls = [...entry.rolls].sort((a, b) => a.run.localeCompare(b.run));
+  const bands = tlBands();
+  const rows = rolls.map((roll, index) => {
+    const band = bands ? bandOf(roll.hours, bands) : null;
+    return tmpl`<tr><td class="sim-name"><button class="link" type="button"
+        data-roll="${String(index)}">${roll.run.split("/")[1] || roll.run}</button></td>
+      <td>${String(roll.step)}</td>
+      <td>${String(roll.tasks == null ? "—" : roll.tasks)}</td>
+      <td class="sim-total"><i class="tl-sw" data-band="${
+        band === null ? "" : String(band)}"></i>${hours(roll.hours)}</td>
+      <td class="heat-grinds" id="heat-grind-${String(index)}">…</td></tr>`;
+  }).join("");
+
+  openOverlay(chunkLabel(chunkId), tmpl`<p class="hint">${hours(entry.mean)} mean over ${
+      String(rolls.length)} ${rolls.length === 1 ? "run" : "runs"} of ${
+      state.heatmap.batch}. What a roll cost depends on what was already
+      unlocked when it landed, which is why these differ.</p>`
+    + `<table class="sim-table"><thead><tr><th>Run</th><th>Roll</th><th>Tasks</th>`
+    + `<th>Hours</th><th>Longest grinds</th></tr></thead><tbody>${rows}</tbody></table>`);
+
+  /* A run's name is a way into that run at that roll, which is the one thing
+   * this dialog cannot show: the actual chain that got there. */
+  for (const button of document.querySelectorAll("[data-roll]")) {
+    const roll = rolls[Number(button.dataset.roll)];
+    button.onclick = async () => {
+      closeOverlay();
+      leaveHeatmap();
+      await chooseMap(roll.run);
+      await goToRoll(roll.step);
+    };
+  }
+  rolls.forEach((roll, index) => fillGrinds(index, roll));
+}
+
+/* The three longest single items this roll put in front of you. `/api/roll`
+ * already sorts `hours.items` longest-first - see `routes_view.roll_detail` -
+ * so this takes the head of that rather than sorting again. Silent on failure:
+ * the row's other four columns are the answer, and a red word in a table cell
+ * for "this one roll could not be repriced" is noise. */
+async function fillGrinds(index, roll) {
+  const cell = document.getElementById("heat-grind-" + index);
+  if (!cell) return;
+  try {
+    const detail = await getJSON("/api/roll?map=" + encodeURIComponent(roll.run)
+      + "&step=" + roll.step);
+    const items = (detail.hours && detail.hours.items) || [];
+    if (!document.getElementById("heat-grind-" + index)) return;   // dialog closed
+    cell.innerHTML = items.length
+      ? items.slice(0, 3).map((item) => tmpl`<span class="grind">${
+          raw(linked(item.item))}<span class="sub">${hours(item.hours)}</span></span>`).join("")
+      : tmpl`<span class="sub">no single item</span>`;
+  } catch {
+    cell.innerHTML = tmpl`<span class="sub">—</span>`;
+  }
 }
 
 /* **One run at a time.** Each pricing job already spreads itself across every
@@ -2591,6 +2885,18 @@ function chunkStatus(chunkId) {
 function renderCounts() {
   const view = state.view;
   if (!view) return;
+  /* The bar says what is on screen, and in this mode that is a batch rather
+   * than a map: how many squares have a number and how many futures they were
+   * averaged over. The map's own chunk count is still under the picker. */
+  if (state.heatmap) {
+    const runs = new Set();
+    for (const entry of state.heatmap.chunks.values()) {
+      for (const roll of entry.rolls) runs.add(roll.run);
+    }
+    el.counts.textContent = `${state.heatmap.chunks.size} chunks rolled  ·  ${runs.size} runs`;
+    el.skipped.hidden = true;
+    return;
+  }
   const parts = [view.counts.unlocked + " unlocked"];
   if (view.counts.added) parts.push("+" + view.counts.added);
   if (view.counts.removed) parts.push("−" + view.counts.removed);
@@ -2613,6 +2919,17 @@ function renderCounts() {
 /* The legend describes what is actually on screen. The first build always
  * claimed gained and lost, even with nothing to compare against. */
 function renderLegend() {
+  /* **The heatmap's key is the whole key.** Every other entry describes the
+   * selected map, and here the squares are about a batch - so listing both
+   * would invite the reader to match a heat tile against "Unlocked". The bands
+   * carry their own names because those are the user's to change. */
+  if (state.heatmap) {
+    const bands = tlBands() || [];
+    el.legend.innerHTML = bands.map((band, index) => tmpl`<span data-tip="${
+        tmpl`<b>${band.name}</b><span class="sub">${bandRange(bands, index)}</span>`
+      }"><i class="tl-sw" data-band="${String(index)}"></i>${band.name}</span>`).join("");
+    return;
+  }
   const items = [["#6f8f5a", "Unlocked"], ["#7e8288", "Locked"]];
   /* **Keyed off the counts, not off `compare_map_id`.** A rewound run has
    * green squares and no compared map, so gating on the map left eight
@@ -5391,6 +5708,11 @@ async function commitStep(step) {
 async function reloadPanels() {
   taskPanel = null;
   estimatePayload = null;
+  /* **The heatmap has no panel and could not fill one honestly.** A tile is a
+   * summary over several runs, so there is no single chain of unlocks behind it
+   * whose tasks a pane could list - which is why the panel is put away on the
+   * way in. The memos above are still dropped, so leaving refetches. */
+  if (state.heatmap) return;
   clearExpansions("tasks:");
   clearExpansions("estimate:");
   clearExpansions("chunk:");

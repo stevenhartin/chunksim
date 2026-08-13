@@ -93,7 +93,7 @@ reads **Add to edit** instead and costs nothing until you commit. The category c
 checkboxes, not tabs — all on to begin with, so you can look at monsters and NPCs together, or
 narrow to one.
 
-### Four modes
+### Five modes
 
 A coloured ribbon under the toolbar says which one you are in, with the map named on it.
 
@@ -123,6 +123,17 @@ slider only moves the map; letting go is what re-asks the panel, because the map
 panel is a derivation. **Snapshot** saves the world at the roll you are looking at as
 a map in its own right — which is how you get out of a timeline: it browses, edits and diffs like any
 other map, where the run itself cannot.
+
+**Heatmap** is the only mode that is about a *batch* rather than a map. Pick a batch out of the map
+picker and its dialog lists one row per run; once every run has been priced, **Show heatmap** paints
+the world the batch was rolled from with what each square actually cost — the mean over every run
+that took it, in the same five bands the timeline strip colours its bars with. The number varies
+because a chunk's price depends on what was already unlocked when it landed, which is what the mean
+is worth having. Clicking a square opens that spread: one row per run, the roll it landed on, the
+tasks it opened, its hours, and the three longest single grinds behind them — and a run's name takes
+you into that run at that roll. It is read-only, and the panel is put away for the duration, since a
+square that several futures took has no one chain of unlocks behind it to describe. **Exit heatmap**
+returns to the batch.
 
 The panel covers the rest of the CLI. **Tasks** is what you are actually doing — checkbox chips per
 category and a toggle for what is already done; quests show only the step you are on, and

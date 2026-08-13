@@ -37,9 +37,13 @@ back to "all of them". The single exception is `cli/__init__.py`, which re-expor
 `[project.scripts]` names `fray_claude.cli:main`.
 
 Planned: a shortest-path search ("fewest chunk unlocks to reach X" — `derive/graph.py` exists to
-serve it and has no other reason to be a separate module), and heatmaps of likely rolls over N
-attempts (the cached simulation batches are the input; `gui/resources/app.js`'s `LAYERS` array plus
-`MapView.overlays` is the seam they attach to).
+serve it and has no other reason to be a separate module).
+
+The **heatmap** that used to sit beside it is built: the batch dialog's `Show heatmap` folds every
+run's `/api/timeline` into one mean per square and paints it in the timeline's own bands. It needed
+no Python — the batch is already fetched by the dialog that offers it — which is why the arithmetic
+lives in `app.js` beside `runBands` rather than in `gui/panels.py`: that module shapes a `Derived`,
+and this shapes ten timelines the browser is holding.
 
 ## source-chunk
 
