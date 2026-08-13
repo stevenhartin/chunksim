@@ -1381,3 +1381,60 @@ def test_reachable_areas_are_drawn_apart_from_the_unlocked_blob() -> None:
     # And explained, like every other colour on the map.
     legend = _match(r"function renderLegend\(\) \{(.*?)\n\}", js)
     assert "Reachable area" in legend
+
+
+def test_a_square_is_described_in_one_set_of_words() -> None:
+    """**The page had three.** The Chunk pane said `Unlocked`/`Locked`, the
+    hover readout printed the server's own lower-case `unlocked`/`added`, and
+    the legend had a third set - so the same square read three ways depending
+    on where you looked at it.
+
+    `added` still changes name with the mode, because a chunk the *other* map
+    has is gained where a chunk this run rolled is rolled. That decision is
+    made once now instead of once per reader.
+    """
+    _, js, _ = _resources()
+
+    assert "function chunkStateLabel(cellState)" in js
+    # Every reader goes through it.
+    legend = _match(r"function renderLegend\(\) \{(.*?)\n\}", js)
+    assert 'chunkStateLabel("added")' in legend and 'chunkStateLabel("removed")' in legend
+    assert "cell.state)" not in _match(r"function renderCounts\(\) \{(.*?)\n\}", js)
+
+
+def test_every_reader_of_candidacy_shares_one_source() -> None:
+    """**One map, so they cannot disagree.**
+
+    I had this down as an inconsistency - the Chunk pane naming a candidate
+    while the bar counted them only with the layer on - and it was not one:
+    `loadCandidates` empties `state.candidates` when the toggle is off, so
+    both readers see nothing together. What is worth pinning is the shared
+    source, since a second one would be a second answer.
+    """
+    _, js, _ = _resources()
+
+    assert "state.candidates = new Map();" in js
+    for reader in (r"function chunkStatus\(chunkId\) \{(.*?)\n\}",
+                   r"function renderCounts\(\) \{(.*?)\n\}"):
+        assert "state.candidates" in _match(reader, js)
+
+
+def test_mono_is_for_what_you_would_type() -> None:
+    """**`tabular-nums` retired the old argument for monospacing a number.**
+
+    Counts, hours, progress and axis labels were all monospaced on the
+    reasoning that a figure wants a fixed advance; that holds in any face now,
+    so a column of hours aligns in sans and reads as language rather than as
+    output. What keeps mono is identity - an id, a path, a snippet, the
+    single-character marker column whose width *is* its alignment.
+    """
+    _, _, css = _resources()
+    styles = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+
+    users = re.findall(r"([^{}]+)\{[^{}]*font-family: var\(--mono\)", styles)
+    selectors = {part.strip() for group in users for part in group.split(",")}
+    assert selectors <= {"code", ".mono", "ul.list .mark", ".chunk-id"}, (
+        f"mono has spread again: {sorted(selectors)}"
+    )
+    # And the quantities that lost it keep their column.
+    assert ".num { font-variant-numeric: tabular-nums; }" in styles

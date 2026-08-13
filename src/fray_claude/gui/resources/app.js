@@ -1285,10 +1285,10 @@ function showHovered(sx, sy) {
   /* Name and id together - `chunkLabel` puts the name first, because that is
    * what you are looking for, and keeps the id, which is what you paste into
    * `fray unlock`. */
-  const bits = [chunkLabel(chunkId)];
-  if (cell) bits.push(cell.state);
-  if (candidate) bits.push("#" + candidate.number);
-  el.hover.textContent = bits.join("  ");
+  const status = chunkStatus(chunkId);
+  const bits = [chunkLabel(chunkId), status.label];
+  if (status.number !== null) bits.push("candidate #" + status.number);
+  el.hover.textContent = bits.join("  ·  ");
 }
 
 /* ---- lists that are too long to print ------------------------------------ */
@@ -2357,6 +2357,42 @@ async function loadView({ refit = false } = {}) {
   }
 }
 
+/* **One set of words for what a square is.** The page had three: the Chunk
+ * pane said `Unlocked`/`Candidate #N`/`Locked`, the hover readout printed the
+ * server's own lower-case `unlocked`/`added`, and the legend had a third set
+ * again - so the same square was described three ways depending on where you
+ * looked at it.
+ *
+ * `added` is the one that changes name with the mode, and it always did: a
+ * chunk the *other* map has is gained, a chunk this run rolled is rolled. That
+ * distinction is real, so it stays - it is now made once here rather than
+ * once per reader. */
+function chunkStateLabel(cellState) {
+  if (cellState === "added") return state.step === null ? "Gained" : "Rolled";
+  if (cellState === "removed") return "Lost";
+  if (cellState === "unlocked") return "Unlocked";
+  return "Locked";
+}
+
+/* What a square is, in one call: its state in words, and its candidate number
+ * where it has one.
+ *
+ * **Candidacy is known only while the layer is loaded**, and that is a fact
+ * about the data rather than a choice made here: `loadCandidates` empties the
+ * map when the toggle is off, so every reader sees nothing and they cannot
+ * disagree. Reading it from that one map is what keeps that true - a second
+ * source would be a second answer. */
+function chunkStatus(chunkId) {
+  const at = chunkToGrid(chunkId);
+  const cell = at && state.cells.get(at[0] + "," + at[1]);
+  const candidate = state.candidates.get(chunkId);
+  return {
+    label: chunkStateLabel(cell ? cell.state : "locked"),
+    state: cell ? cell.state : "locked",
+    number: candidate ? candidate.number : null,
+  };
+}
+
 function renderCounts() {
   const view = state.view;
   if (!view) return;
@@ -2387,8 +2423,8 @@ function renderLegend() {
    * green squares and no compared map, so gating on the map left eight
    * chunks on screen in a colour the legend never explained. */
   const counts = (state.view && state.view.counts) || {};
-  if (counts.added) items.push(["rgba(60,200,90,.75)", state.step === null ? "Gained" : "Rolled"]);
-  if (counts.removed) items.push(["rgba(220,60,60,.75)", "Lost"]);
+  if (counts.added) items.push(["rgba(60,200,90,.75)", chunkStateLabel("added")]);
+  if (counts.removed) items.push(["rgba(220,60,60,.75)", chunkStateLabel("removed")]);
   if (state.showCandidates && state.candidates.size) items.push([CANDIDATE_STROKE, "Candidate"]);
   /* A colour on screen the legend does not explain is a colour nobody trusts,
    * and a pending unlock is the one square that means neither gained nor
@@ -2521,12 +2557,14 @@ async function selectChunk(chunkId) {
 
 function renderChunk() {
   const detail = chunkDetail;
-  const candidate = state.candidates.get(detail.chunk_id);
-  const status = detail.unlocked
-    ? '<span class="pill reachable">Unlocked</span>'
-    : candidate
-      ? '<span class="pill candidate">Candidate #' + candidate.number + "</span>"
-      : '<span class="pill locked">Locked</span>';
+  /* The same words the hover readout and the legend use - see `chunkStatus`.
+   * A candidate is still called out separately, because "locked, and next"
+   * is two facts and the second is the one you act on. */
+  const at = chunkStatus(detail.chunk_id);
+  const status = tmpl`<span class="pill ${detail.unlocked ? "reachable" : "locked"}">${
+    detail.unlocked ? "Unlocked" : at.label}</span>`
+    + (at.number === null ? ""
+       : tmpl`<span class="pill candidate">Candidate #${String(at.number)}</span>`);
 
   /* Two verbs for a locked chunk, and the order is the order you want them
    * in: ask what it gives you, then take it. Both derive twice, so neither is

@@ -163,10 +163,25 @@ body.no-panel { --rail: 0px; }
    means nothing. It is also the subject's own vocabulary: a chunk is
    identified by a number, so numerals here are as often names as they are
    quantities, and a name should not move. */
-code, .mono, .num {
+/* **Mono is for what you would type; sans is for what you read.**
+ *
+ * The two had drifted until most of the interface was monospaced - counts,
+ * hours, progress, axis labels - on the old reasoning that a number wants a
+ * fixed advance. `tabular-nums` gives that in *any* face, so the argument
+ * expired: a column of hours aligns in sans, and reads as language rather
+ * than as output.
+ *
+ * What is left is identity. A chunk id, a map id, an override path, a file
+ * name, a snippet - things you copy into a command or match character by
+ * character, where a monospaced face says "this is a literal" and the letters
+ * not being able to shift is the whole point. */
+code, .mono {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
 }
+
+/* A quantity: sans, but with figures that hold their column. */
+.num { font-variant-numeric: tabular-nums; }
 
 button, select, input {
   font: inherit;
@@ -488,7 +503,6 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 
 .counts, .hover {
   color: var(--dim);
-  font-family: var(--mono);
   font-size: var(--t-note);
   white-space: nowrap;
 }
@@ -683,7 +697,6 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 .chip[aria-checked="false"]:hover { opacity: .8; }
 
 .chip .count {
-  font-family: var(--mono);
   font-size: var(--t-note);
 }
 
@@ -724,7 +737,6 @@ h3.section:first-child { margin-top: 0; }
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 2px var(--s4);
-  font-family: var(--mono);
   font-size: var(--t-note);
 }
 
@@ -946,7 +958,6 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .progress-title { font-weight: var(--w-emphasis); flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
 .progress-count {
-  font-family: var(--mono);
   font-size: var(--t-note);
   color: var(--dim);
   white-space: nowrap;
@@ -955,7 +966,6 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .progress-detail {
   color: var(--dim);
   font-size: var(--t-note);
-  font-family: var(--mono);
   overflow-wrap: anywhere;
 }
 
@@ -1150,7 +1160,6 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   border-radius: var(--r2);
   background: rgba(23, 26, 32, .93);
   color: var(--dim);
-  font-family: var(--mono);
   font-size: var(--t-note);
   opacity: .62;
   transition: opacity .18s ease;
@@ -1238,7 +1247,6 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   transform: translateY(-50%);
   padding-right: var(--s1);
   color: var(--dim);
-  font-family: var(--mono);
   font-size: var(--t-micro);
   line-height: 1;
   /* The axis runs over the first column, so a label can land on a bar. Haloed
@@ -1454,7 +1462,7 @@ ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
 .sim-table td { padding: var(--s1) var(--s2); text-align: right; }
 .sim-table tbody tr { border-top: 1px solid var(--line); }
 .sim-name { text-align: left; }
-.sim-total { font-family: var(--mono); }
+.sim-total { font-variant-numeric: tabular-nums; }
 /* A band nobody landed in is a zero worth reading past, not one worth
    reading. */
 .sim-table td.nil { color: var(--line-strong); }
@@ -1554,10 +1562,10 @@ ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
 }
 
 .tl-step {
+  font-variant-numeric: tabular-nums;
   min-width: 12ch;
   text-align: right;
   color: var(--dim);
-  font-family: var(--mono);
   font-size: var(--t-note);
 }
 
