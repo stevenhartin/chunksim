@@ -1917,3 +1917,66 @@ def test_the_walk_gates_on_available_items_not_on_the_source_index() -> None:
     result = _run(info, derived, heuristics)
 
     assert "Raw thing" not in result.unpriced
+
+
+def test_a_priced_item_records_the_knobs_its_number_came_off() -> None:
+    """**What makes an estimate arguable rather than merely stated.**
+
+    `detail` says what was assumed in prose - "General Graardor at 1/381,
+    27/hr" - which tells you the number is wrong but not where to go and fix
+    it. The knob is the override path, recorded where the value was read: the
+    join that found it can be fuzzy (`heuristics.py` owns `exact`/`contained`),
+    so reconstructing which entry a number came from afterwards is exactly the
+    mistake this exists to stop.
+    """
+    info = ChunkInfo(
+        {
+            "drops": {"General Graardor": {"Bandos chestplate": {"1": "1/381"}}},
+            "codeItems": {"bossMonsters": {"General Graardor": True}},
+            "challenges": {
+                "Extra": {"Obtain a ~|bandos chestplate|~": {"Items": ["Bandos chestplate"]}}
+            },
+        }
+    )
+    derived = _derived(
+        monsters=("General Graardor",),
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra",
+                    groups=(
+                        TaskGroup(name="Boss", active=("Obtain a ~|bandos chestplate|~",)),
+                    ),
+                )
+            }
+        ),
+    )
+    heuristics = Heuristics(monsters={"General Graardor": Rate(27.0, "mmg:x", "exact")})
+
+    result = _run(info, derived, heuristics)
+
+    assert result.items[0].knobs == ("monsters/General Graardor",)
+    assert result.items[0].as_dict()["knobs"] == ["monsters/General Graardor"]
+
+
+def test_a_route_with_no_heuristic_behind_it_claims_none() -> None:
+    """**An empty tuple is the honest answer, not a gap.**
+
+    A ground spawn is priced entirely out of constants - hops an hour, seconds
+    to pick one up - so there is no entry anyone could correct. Pointing at the
+    nearest branch anyway would send someone to change a number that has no
+    bearing on it, which is worse than saying nothing.
+    """
+    info = ChunkInfo(
+        {
+            "chunks": {"4912": {"Spawn": {"Iron axe": 1}}},
+            "challenges": {"Extra": {"Obtain an ~|iron axe|~": {"Items": ["Iron axe"]}}},
+        }
+    )
+    walk = _walk_for(info)
+
+    priced = _item_hours(walk, "Iron axe")
+
+    assert priced is not None
+    assert priced.hours > 0, "a spawn is cheap, not free"
+    assert priced.knobs == ()

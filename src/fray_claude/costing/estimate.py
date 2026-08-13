@@ -151,7 +151,7 @@ instead of "offered and unreachable", which costs a 30-point skip.
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from functools import cached_property
 from typing import Any, Callable, Sequence
@@ -296,6 +296,15 @@ class _Priced:
     #: are earned *at the same time*, which is what `EstimateResult.buckets`
     #: uses to stop adding them together.
     source: str
+    #: Which `Heuristics` entries this number was read off, as override paths
+    #: (`monsters/Abyssal demon`). **Recorded where each is read, never
+    #: reconstructed afterwards** - the joins are fuzzy enough
+    #: (`heuristics.py` owns `exact`/`contained`) that guessing which entry a
+    #: number came from is exactly the mistake this exists to stop. A route
+    #: built out of other routes unions theirs; a route whose numbers are all
+    #: constants records nothing, which is the honest answer rather than an
+    #: empty gesture at the nearest branch.
+    knobs: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -314,6 +323,10 @@ class ItemEstimate:
     #: What you kill or do for it. Shared sources are worked in parallel.
     source: str = ""
     tasks: tuple[str, ...] = ()
+    #: The `Heuristics` entries behind `hours`, as override paths - see
+    #: `_Priced.knobs`. This is what makes the number arguable: `detail` says
+    #: what was assumed in prose, and this says where to go and change it.
+    knobs: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -323,6 +336,7 @@ class ItemEstimate:
             "detail": self.detail,
             "source": self.source,
             "tasks": list(self.tasks),
+            "knobs": list(self.knobs),
         }
 
 
@@ -762,7 +776,12 @@ def _item_hours(
     if earned is not None:
         if earned <= 0:
             return None
-        return _Priced(quantity / earned, f"earn {quantity:,.0f} {item}", f"currency:{item}")
+        return _Priced(
+            quantity / earned,
+            f"earn {quantity:,.0f} {item}",
+            f"currency:{item}",
+            (f"currency_per_hour/{item}",),
+        )
 
     shared = _superior_table_hours(walk, item, quantity)
     if shared is not None:
@@ -814,6 +833,10 @@ def _superior_table_hours(
         f"superior table under {master},"
         f" {max(1.0, quantity) / share:,.1f} rolls at {_rolls_label(walk, master)}",
         f"superiors:{master}",
+        # A *branch*, not a leaf: the roll rate is computed from the master's
+        # whole assignment table rather than read off one entry, so naming a
+        # single task would point at the wrong knob.
+        (f"slayer/{master}",),
     )
 
 
@@ -901,6 +924,7 @@ def _route_hours(
             + (f", {quantity:,.0f}x" if quantity > 1 else "")
             + f" ({seconds * quantity:,.0f}s earning + {travel:,.0f}s travel)",
             f"{route}:{provider}",
+            (f"shop_prices/{provider}/{item}",),
         )
 
     if route.startswith("task:"):
@@ -954,6 +978,7 @@ def _route_hours(
                 return None
             quantity = quantity / share
         total = 0.0
+        knobs: list[str] = [f"action_seconds/{provider}"]
         for required in challenge.get("Items") or ():
             if not isinstance(required, str):
                 continue
@@ -968,6 +993,11 @@ def _route_hours(
             if priced is None:
                 return None
             total += priced.hours
+            # **A made thing is its inputs, so it is their knobs too.** The
+            # whip in a recipe is the whip's kill rate; correcting that is
+            # what moves this number, and pointing only at the recipe would
+            # send you to the one entry that is already right.
+            knobs.extend(priced.knobs)
         # **The conversion itself can cost money.** Upstream models the
         # sawmill as a swap of logs for planks and records no price, so a
         # mahogany plank came out costing exactly one mahogany log. The fee is
@@ -985,7 +1015,7 @@ def _route_hours(
             if not math.isfinite(fee):
                 return None
             total += fee
-        return _Priced(total, f"make: {provider}", f"make:{provider}")
+        return _Priced(total, f"make: {provider}", f"make:{provider}", _unique(knobs))
 
     return _kill_hours(walk, provider, item, quantity)
 
@@ -1030,14 +1060,19 @@ def _kill_hours(
         gated = _task_hours(walk, provider, kills, rate.value)
         if gated is None:
             return None
-        hours, task = gated
-        return _Priced(hours, f"{detail} on {task} task", provider)
-    return _Priced(kills / rate.value, detail, provider)
+        hours, task, master = gated
+        return _Priced(
+            hours,
+            f"{detail} on {task} task",
+            provider,
+            (f"monsters/{provider}", f"slayer/{master}/{task}"),
+        )
+    return _Priced(kills / rate.value, detail, provider, (f"monsters/{provider}",))
 
 
 def _task_hours(
     walk: _Walk, provider: str, kills: float, kills_per_hour: float
-) -> tuple[float, str] | None:
+) -> tuple[float, str, str] | None:
     """Cost of `kills` of a task-gated monster, waiting for tasks included.
 
     You cannot go and kill a Grotesque Guardian; you have to be *sent*. One
@@ -1052,8 +1087,11 @@ def _task_hours(
         return None
 
     # Cheapest over the masters that can assign it: the size is theirs too,
-    # so wait and assignment length have to come from the same one.
-    best: float | None = None
+    # so wait and assignment length have to come from the same one. **Which
+    # master won is part of the answer**, not a detail of finding it - the
+    # entry a caller would correct is that master's, and every other master's
+    # is irrelevant to this number.
+    best: tuple[float, str] | None = None
     for master in walk.masters:
         wait = master.hours_to_be_assigned(task)
         rate = (walk.heuristics.slayer.get(master.master) or {}).get(task)
@@ -1061,8 +1099,9 @@ def _task_hours(
             continue
         assignments = max(1.0, kills / rate.count)
         hours = assignments * (wait + rate.count / kills_per_hour)
-        best = hours if best is None else min(best, hours)
-    return (best, task) if best is not None else None
+        if best is None or hours < best[0]:
+            best = (hours, master.master)
+    return (best[0], task, best[1]) if best is not None else None
 
 
 def _superior_hours(
@@ -1099,9 +1138,11 @@ def _superior_hours(
         gated = _task_hours(walk, superior.base, kills, rate.value)
         if gated is None:
             return None
-        hours = gated[0]
+        hours, task, master = gated
+        knobs: tuple[str, ...] = (f"monsters/{superior.base}", f"slayer/{master}/{task}")
     else:
         hours = kills / rate.value
+        knobs = (f"monsters/{superior.base}",)
     # The *base* monster is the source: the superior spawns while you kill it,
     # so its drops accumulate alongside the base's own.
     return _Priced(
@@ -1109,7 +1150,23 @@ def _superior_hours(
         f"{superior.name} (superior) <- {superior.base}"
         f" at 1/{1 / superior.spawn_rate:,.0f}, drop 1/{1 / chance:,.0f}",
         superior.base,
+        # The spawn rate is the superior's own entry; the kill rate is the
+        # base's, since that is what you are actually fighting.
+        (f"superiors/{superior.name}", *knobs),
     )
+
+
+def _unique(paths: Iterable[str]) -> tuple[str, ...]:
+    """`paths` with duplicates dropped, first-seen order kept.
+
+    Order is the order they were read in, which for a made item is the recipe
+    walked depth-first - so the dialog lists the thing you are making before
+    the things it is made of. Sorting would lose that and gain nothing.
+    """
+    seen: dict[str, None] = {}
+    for path in paths:
+        seen.setdefault(path, None)
+    return tuple(seen)
 
 
 def _bucket_for(walk: _Walk, source: str) -> str:
@@ -1509,6 +1566,7 @@ def estimate(
                 detail=priced.detail,
                 source=priced.source,
                 tasks=tuple(sorted(wanted_by)),
+                knobs=priced.knobs,
             )
         )
 
@@ -1527,6 +1585,7 @@ def estimate(
                 detail=f"one kill at {kph:g}/hr",
                 source=monster,
                 tasks=tuple(sorted(wanted_by)),
+                knobs=(f"monsters/{monster}",),
             )
         )
 
