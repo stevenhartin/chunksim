@@ -36,7 +36,8 @@ import math
 from collections.abc import Mapping
 from typing import Any
 
-from fray_claude.costing.heuristics import CONFIG_BRANCHES
+from fray_claude.costing.estimate import DEFAULT_ACTION_SECONDS
+from fray_claude.costing.heuristics import CONFIG_BRANCHES, Heuristics
 
 #: Which field of a branch's leaf carries the number worth editing, or `None`
 #: where the leaf is the number. Branches absent from here are readable and
@@ -89,6 +90,60 @@ SCOPES: tuple[str, ...] = ("site", "map")
 #: at any of these three is one the estimator is answering from a default,
 #: which is what an empty stack means and what the panel says.
 LAYERS: tuple[str, ...] = ("scraped", "site", "map")
+
+
+#: How to ask a built `Heuristics` what a branch's entry *actually* resolves
+#: to, defaults and all.
+#:
+#: **Because "default" is not a number and a reader wants the number.** There
+#: is no config-shaped layer of defaults to lay under the other three (see
+#: `LAYERS`) - a fallback is applied per field, by the accessor, and often
+#: depends on something the config does not hold: `kills_per_hour` picks one
+#: of three figures by whether the monster is a boss, a slayer target or
+#: neither. So the effective value is asked of the object that knows, rather
+#: than reconstructed from the file.
+_EFFECTIVE: Mapping[str, Any] = {
+    "monsters": lambda h, parts: h.kills_per_hour(parts[1]).value,
+    "quests": lambda h, parts: h.quest_hours(parts[1]).hours,
+    "currencies": lambda h, parts: h.currency_per_hour.get(parts[1]),
+    "actions": lambda h, parts: h.action_seconds.get(parts[1], DEFAULT_ACTION_SECONDS),
+    "rarities": lambda h, parts: h.rarities.get(parts[1].lower()),
+    "superiors": lambda h, parts: _attr(h.superiors.get(parts[1]), "spawn_rate"),
+    "monster_stats": lambda h, parts: _attr(h.monster_stats.get(parts[1]), "hitpoints"),
+    "training": lambda h, parts: h.xp_per_hour(parts[1], parts[2]).value,
+    "shops": lambda h, parts: _attr(h.shop_prices.get(parts[1], {}).get(parts[2]), "price"),
+    "slayer": lambda h, parts: _attr(
+        (h.slayer.get(parts[1]) or {}).get(parts[2]), "kills_per_hour"
+    ),
+}
+
+
+def _attr(holder: Any, name: str) -> float | None:
+    value = getattr(holder, name, None)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def effective(path: str, heuristics: Heuristics) -> float | None:
+    """What this knob resolves to right now, with every fallback applied.
+
+    `None` where the branch is two levels deep and only one was given
+    (`slayer/Duradel` is a table, not a figure), or where the accessor has
+    nothing to answer with. A caller showing this must treat `None` as "no
+    single number" rather than as zero.
+    """
+    parts = split(path)
+    reader = _EFFECTIVE.get(parts[0])
+    if reader is None or len(parts) != 1 + (BRANCH_DEPTH.get(parts[0], 1)):
+        return None
+    try:
+        value = reader(heuristics, parts)
+    except (AttributeError, KeyError, TypeError, ValueError):  # pragma: no cover - defensive
+        return None
+    if value is None or isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
 
 
 class KnobError(ValueError):
@@ -193,6 +248,11 @@ def resolve(
     return {
         "path": path,
         "branch": branch,
+        # **The split, so the page does not have to know `BRANCH_DEPTH`.** A
+        # second copy of that rule in JavaScript is a second thing to get
+        # wrong about `Recipe for Disaster/Freeing Evil Dave`, and the page
+        # only wants it to draw the path readably.
+        "parts": list(parts),
         "layers": {
             name: {"value": held, "number": _number(held, branch)}
             for name, held in layers.items()

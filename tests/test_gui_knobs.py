@@ -163,3 +163,50 @@ def test_a_branch_with_no_numeric_field_refuses_a_write() -> None:
     """`monster_stats` is scraped structure, not a figure to argue with."""
     with pytest.raises(knobs.KnobError):
         knobs.written("monster_stats/Goblin", 5.0, {})
+
+
+def test_a_knob_nobody_set_still_resolves_to_the_number_in_force() -> None:
+    """**"Default" is not a number and the reader wants the number.**
+
+    There is no config-shaped layer of defaults to lay under the other three -
+    a fallback is applied per field and often depends on something the file
+    does not hold, which is why this asks the built `Heuristics` rather than
+    reconstructing it. `Cerberus` is a boss and answers 20/hr; a plain monster
+    answers the ordinary floor.
+    """
+    from fray_claude.costing.heuristics import Heuristics
+
+    heuristics = Heuristics(boss_monsters=frozenset({"Cerberus"}))
+
+    boss = knobs.effective("monsters/Cerberus", heuristics)
+    ordinary = knobs.effective("monsters/Goblin", heuristics)
+
+    assert boss is not None and ordinary is not None
+    assert boss != ordinary, "the fallback depends on what kind of monster it is"
+
+
+def test_an_override_is_what_the_knob_resolves_to() -> None:
+    from fray_claude.costing.heuristics import Heuristics, Rate
+
+    heuristics = Heuristics(monsters={"Goblin": Rate(value=250.0)})
+
+    assert knobs.effective("monsters/Goblin", heuristics) == 250.0
+
+
+def test_a_branch_shaped_path_resolves_to_no_single_number() -> None:
+    """`slayer/Duradel` is a table. A caller must read `None` as "no single
+    number" rather than as zero."""
+    from fray_claude.costing.heuristics import Heuristics
+
+    assert knobs.effective("slayer/Duradel", Heuristics()) is None
+
+
+def test_the_split_is_reported_so_the_page_need_not_know_the_depths() -> None:
+    """A second copy of `BRANCH_DEPTH` in JavaScript is a second thing to get
+    wrong about a key with a slash in it."""
+    resolved = knobs.resolve(
+        "quests/Recipe for Disaster/Freeing Evil Dave",
+        scraped={}, site={}, map_overrides={},
+    )
+
+    assert resolved["parts"] == ["quests", "Recipe for Disaster/Freeing Evil Dave"]

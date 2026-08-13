@@ -131,7 +131,9 @@ the numbers it was priced off** — the kill rate, the shop price, the slayer ta
 the training rate behind a climb — with the layer each came from, and correct any of them in place.
 Rows that cannot be argued with say so instead of offering an editor: a ground spawn is priced
 entirely from constants, and a Slayer climb comes off a master's whole assignment table rather than
-any single entry. Where the correction
+any single entry. A number nobody has set shows what it actually resolves to rather than the word
+"default", anything you have overridden is bordered and flagged with a **Revert** beside it, and the
+names the wiki has a page for are links — clicking one frames its chunks exactly as **Find** does. Where the correction
 is saved depends on where you are: in **Browse** it goes to `heuristics/overrides.json`, which is
 checked in and applies to every map; in **Timeline** or **Edit** it belongs to that map alone, in
 `cache/overrides/`. Emptying the box takes the correction back out. **Find** searches the

@@ -4208,11 +4208,17 @@ function knobScopeLabel() {
 
 /* One knob's stack, weakest layer first. A layer holding nothing is drawn as
  * a dash rather than omitted: "the scrape has no opinion here" is an answer,
- * and a row that vanished would read as a rendering fault. */
+ * and a row that vanished would read as a rendering fault.
+ *
+ * **The bottom line is the number, not the word "default".** A knob nobody
+ * has set still has an answer and it is the one the estimate spent, so
+ * `effective` is shown and labelled by where it came from. Saying "Default"
+ * and stopping was the same failure as naming a file and stopping: true, and
+ * not what the reader came to find out. */
 function knobLayers(knob) {
   const seen = knob.layers || {};
   const named = { scraped: "Wiki scrape", site: "Site override", map: "This map" };
-  return Object.keys(named).map((key) => {
+  let out = Object.keys(named).map((key) => {
     const held = seen[key] || {};
     const shown = held.number === null || held.number === undefined
       ? (held.value === null || held.value === undefined ? "—" : "set")
@@ -4221,6 +4227,66 @@ function knobLayers(knob) {
       <span class="knob-layer-name">${named[key]}</span>
       <span class="knob-layer-value">${shown}</span></div>`;
   }).join("");
+  /* **Only where no layer holds one.** A layer that does is already showing
+   * the number and already bolded, so a second line repeating it is noise -
+   * and the whole reason this line exists is the case where the answer is not
+   * on any of the three. */
+  if (knob.layer === null && knob.effective !== null && knob.effective !== undefined) {
+    out += tmpl`<div class="knob-layer on">
+      <span class="knob-layer-name">Default</span>
+      <span class="knob-layer-value">${String(knob.effective)}</span></div>`;
+  }
+  return out;
+}
+
+/* **A marked span is a real thing, so it is a link to it.** Task and challenge
+ * names carry `~|...|~` around whatever the wiki has a page for - a shop, a
+ * monster, an item - and until now the panel's only use for that was to strip
+ * it. Clicking one asks the same question Find asks and frames the same
+ * chunks, because "where is Dom Onion's Reward Shop" is exactly the question a
+ * knob about it provokes.
+ *
+ * Returns markup, so every caller has to `raw()` it - and everything
+ * interpolated inside is still escaped by the inner `tmpl`. */
+function linked(text) {
+  const source = String(text == null ? "" : text);
+  let out = "";
+  let at = 0;
+  for (;;) {
+    const open = source.indexOf("~|", at);
+    const shut = open === -1 ? -1 : source.indexOf("|~", open + 2);
+    if (open === -1 || shut === -1) { out += tmpl`${source.slice(at)}`; return out; }
+    out += tmpl`${source.slice(at, open)}`;
+    const term = source.slice(open + 2, shut);
+    out += tmpl`<a class="knob-link" role="button" tabindex="0"
+      data-term="${term}" title="Find ${term}">${term}</a>`;
+    at = shut + 2;
+  }
+}
+
+/* `actions/Imbue a granite ring at ~|Dom Onion's Reward Shop|~` reads as
+ * `actions > Imbue a granite ring at Dom Onion's Reward Shop`. The parts come
+ * from the server, which owns how deep a branch is - a second copy of that
+ * rule here is a second thing to get wrong about a key with a slash in it. */
+function knobPath(knob) {
+  const parts = knob.parts || [knob.path];
+  return parts.map((part) => linked(part)).join(tmpl` <span class="knob-sep">></span> `);
+}
+
+/* Find, from a link rather than from the box: one request, best match wins,
+ * and `highlight` does the rest exactly as the Find pane does. */
+async function findTerm(term) {
+  try {
+    const payload = await getJSON(
+      "/api/search?q=" + encodeURIComponent(term) + "&" + panelQuery() + "&limit=5");
+    const best = (payload.results || []).find((r) => plain(r.name) === term)
+      || (payload.results || [])[0];
+    if (!best) { toast("Nothing matches " + term); return; }
+    closeOverlay();
+    highlight(best);
+  } catch (error) {
+    toast(String(error.message || error));
+  }
 }
 
 /* **Fetched on opening rather than carried on the row.** The row knows which
@@ -4243,15 +4309,27 @@ async function editKnobs(name, paths) {
      * the superior shared table reads, and the number came off the master's
      * whole assignment table - so there is no single entry to put in a box,
      * and saying so is more use than pretending the row is not there. */
+    const yours = knob.layer === "site" || knob.layer === "map";
+    /* **Revert is only offered where there is something to revert**, and it
+     * clears the layer actually in force rather than the one Save would write
+     * to. Those differ - a site override showing while the page would save to
+     * the map - and a button that cleared the empty one would look broken in
+     * the one case somebody most wants it to work. */
+    const revert = yours
+      ? tmpl`<button class="knob-revert" type="button" data-index="${String(index)}"
+             data-layer="${knob.layer}" title="Remove this override">Revert</button>`
+      : "";
     const field = knob.editable
       ? tmpl`<input class="knob-value" data-index="${String(index)}" type="number" min="0"
              step="any" value="${knob.number === null ? "" : String(knob.number)}"
-             placeholder="default" aria-label="${knob.path}">`
+             placeholder="${knob.effective === null || knob.effective === undefined ? "default" : String(knob.effective)}"
+             aria-label="${knob.path}">`
       : tmpl`<span class="knob-fixed">${knob.why || "not editable here"}</span>`;
-    return tmpl`<div class="knob">
-      <code class="knob-path">${knob.path}</code>
+    return tmpl`<div class="knob ${yours ? "mine" : ""}">
+      ${raw(yours ? tmpl`<span class="knob-flag">Overridden</span>` : "")}
+      <code class="knob-path">${raw(knobPath(knob))}</code>
       <div class="knob-layers">${raw(knobLayers(knob))}</div>
-      ${raw(field)}
+      <div class="knob-controls">${raw(field)}${raw(revert)}</div>
     </div>`;
   }).join("");
 
@@ -4263,6 +4341,33 @@ async function editKnobs(name, paths) {
 
   document.getElementById("knob-cancel").onclick = closeOverlay;
   document.getElementById("knob-save").onclick = () => applyKnobs(knobs);
+  for (const link of document.querySelectorAll(".knob-link")) {
+    const go = () => findTerm(link.dataset.term);
+    link.onclick = go;
+    link.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } };
+  }
+  for (const button of document.querySelectorAll(".knob-revert")) {
+    button.onclick = () => revertKnob(name, paths, knobs[Number(button.dataset.index)],
+                                      button.dataset.layer);
+  }
+}
+
+/* **Reverting is a write of `null` at the layer holding the value**, not a
+ * different mechanism - so it goes through the same route, the same refusal
+ * path and the same repricing as an edit. The dialog is reopened rather than
+ * closed: reverting one of three knobs is a step in reading the row, not the
+ * end of it. */
+async function revertKnob(name, paths, knob, layer) {
+  try {
+    await postJSON("/api/heuristic",
+      { path: knob.path, value: null, scope: layer, map: state.map });
+  } catch (error) {
+    toast(String(error.message || error));
+    return;
+  }
+  estimatePayload = null;
+  loadEstimate();
+  editKnobs(name, paths);
 }
 
 /* **Only what moved is sent.** Posting every knob would rewrite entries the

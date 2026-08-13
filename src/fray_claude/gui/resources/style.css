@@ -1263,14 +1263,55 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .knob-edit { display: grid; gap: var(--s3); }
 
 .knob {
+  position: relative;
   display: grid;
   gap: var(--s1);
   padding: var(--s2);
   border: 1px solid var(--line);
   border-radius: var(--r1);
+  overflow: hidden;
+}
+
+/* **A knob you changed looks changed.** The border carries it at a glance and
+ * the corner says which of the two states it is, because "this number is not
+ * the wiki's" is the single most useful thing to know about a row you are
+ * about to argue with. Amber rather than a new hue: it already means "yours"
+ * on the map, where an edited chunk wears it. */
+.knob.mine { border-color: var(--amber); }
+
+/* A corner ribbon: a band wider than the corner it crosses, rotated through
+ * it, with the card's `overflow: hidden` cutting the overhang. Sized in `ch`
+ * so it stays wider than its own word - a band measured in pixels clips the
+ * text the first time the label changes. */
+.knob-flag {
+  position: absolute;
+  top: var(--s4);
+  right: calc(var(--s6) * -1);
+  /* **Wider than the word, measured rather than guessed.** At 14ch the band
+   * was narrower than its own text and clipped it to "OVERRID"; the text is
+   * ~72px at this size, so the band has to clear that before the card's
+   * `overflow: hidden` gets to do the part it is meant to. */
+  width: 20ch;
+  transform: rotate(45deg);
+  padding: 1px 0;
+  background: var(--amber);
+  color: var(--bg);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-transform: uppercase;
 }
 
 .knob-path { color: var(--dim); font-size: 11px; overflow-wrap: anywhere; }
+.knob-sep { color: var(--line-strong); padding: 0 var(--s1); }
+
+/* What the wiki has a page for, and what Find can frame. */
+.knob-link { color: var(--candidate); cursor: pointer; text-decoration: underline dotted; }
+.knob-link:hover, .knob-link:focus-visible { text-decoration: underline solid; }
+
+.knob-controls { display: flex; align-items: center; gap: var(--s2); }
+.knob-revert { font-size: 11px; padding: 1px var(--s2); }
 
 .knob-layers { display: flex; flex-wrap: wrap; gap: var(--s2); }
 

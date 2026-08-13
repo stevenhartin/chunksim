@@ -358,13 +358,29 @@ def resolve_knob(path: str, map_id: str, ctx: Context) -> dict[str, Any]:
     then absent, which is the honest answer rather than a guess at which map
     was meant.
     """
-    blobs = ctx.derivations.reference()
-    return knobs.resolve(
+    blobs = ctx.derivations.reference(map_id or None)
+    resolved = knobs.resolve(
         path,
         scraped=blobs.scraped,
         site=cache.read_overrides(ctx.root),
         map_overrides=cache.read_map_overrides(map_id, ctx.root) if map_id else {},
     )
+    # **What the number actually is, not the word "default".** A knob nobody
+    # has set still has an answer, and it is the one the estimate spent - so
+    # the dialog has to be able to say it.
+    #
+    # **Best effort, and the only part of this that is.** It is also the only
+    # part needing a built `Heuristics`, which needs the export - and where
+    # the layers are the answer to "why is this number what it is", the
+    # effective figure is a convenience on top. So a cache with no export
+    # still gets a working dialog rather than a 400, which is the same trade
+    # `_skill_tooltips` makes one screen away.
+    try:
+        heuristics, _ = load_heuristics(ctx.derivations.chunk_info(), ctx.root, blobs)
+        resolved["effective"] = knobs.effective(path, heuristics)
+    except (CacheMissError, OSError, ValueError):
+        resolved["effective"] = None
+    return resolved
 
 
 def _step_view(map_id: str, step: int, ctx: Context) -> MapView:

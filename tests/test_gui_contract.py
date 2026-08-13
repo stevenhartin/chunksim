@@ -1126,3 +1126,47 @@ def test_saving_a_setting_redraws_from_the_answer() -> None:
     assert "state.settings = await postJSON" in body
     assert "renderTimeline()" in body
 
+
+
+def test_a_marked_span_becomes_a_link_rather_than_being_stripped() -> None:
+    """**`~|...|~` marks a thing the wiki has a page for**, and the panel's
+    only use for that had been to strip it. In a knob path it is a shop or a
+    monster, and "where is that" is the question a knob about it provokes - so
+    it goes to `highlight`, which is what the Find pane calls."""
+    _, js, _ = _resources()
+
+    body = _match(r"function linked\(text\) \{(.*?)\n\}", js)
+    assert '"~|"' in body and '"|~"' in body
+    assert "knob-link" in body
+    # The same framing Find does, not a second implementation of it.
+    assert "highlight(best)" in _match(r"async function findTerm\(term\) \{(.*?)\n\}", js)
+
+
+def test_a_knob_path_is_drawn_from_the_servers_own_split() -> None:
+    """`BRANCH_DEPTH` lives in `gui/knobs.py`; a second copy here is a second
+    thing to get wrong about a key with a slash in it."""
+    _, js, _ = _resources()
+
+    body = _match(r"function knobPath\(knob\) \{(.*?)\n\}", js)
+    assert "knob.parts" in body
+    assert "split(" not in body, "the page must not re-split the path"
+
+
+def test_an_overridden_knob_is_marked_and_can_be_reverted() -> None:
+    """**A knob you changed looks changed**, and the way back is next to it.
+
+    Revert clears the layer actually in force rather than the one Save would
+    write to: those differ when a site override shows while the page would
+    save to the map, and a button that cleared the empty one would look broken
+    in the one case somebody most wants it to work.
+    """
+    _, js, css = _resources()
+
+    body = _match(r"const rows = knobs\.map\(\(knob, index\) => \{(.*?)\n  \}\)", js)
+    assert 'knob.layer === "site" || knob.layer === "map"' in body
+    assert "knob-flag" in body and "knob-revert" in body
+    revert = _match(r"async function revertKnob\((.*?)\n\}", js)
+    assert "value: null" in revert and "scope: layer" in revert
+
+    styles = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    assert ".knob.mine" in styles and ".knob-flag" in styles
