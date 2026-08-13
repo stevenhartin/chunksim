@@ -1215,3 +1215,21 @@ def test_the_worst_band_is_marked_where_its_colour_cannot_be_seen() -> None:
     # **The graph's own `svg` rule must not reach the overlay's.** `.tl-graph
     # svg` out-specifies `.tl-skull` and sized every skull to the whole strip.
     assert ".tl-graph > svg" in styles and ".tl-graph svg" not in styles
+
+
+def test_the_backdrop_dismisses_only_on_a_press_and_release_that_both_land_on_it() -> None:
+    """**`click` cannot express this**, which is why it is two listeners.
+
+    It fires on the nearest common ancestor of the press and the release, so a
+    press that began on the dialog and drifted off it - selecting text to the
+    edge, missing a button by a pixel - arrives as a click on the overlay and
+    is indistinguishable from a real one. The reverse does too. Neither is a
+    dismissal, and a dismissed dialog is the one thing you cannot get back.
+    """
+    _, js, _ = _resources()
+
+    assert 'el.overlay.addEventListener("mousedown"' in js
+    release = _match(r'el\.overlay\.addEventListener\("mouseup", \(e\) => \{(.*?)\n\}\)', js)
+    assert "overlayPressed && e.target === el.overlay" in release
+    # The old single-handler form is what this replaces.
+    assert 'el.overlay.addEventListener("click", (e) => { if (e.target === el.overlay)' not in js

@@ -582,8 +582,13 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   flex: 1;
   min-height: 0;
   /* Air between the last character and the gutter, so a wrapped name does not
-     read as touching the scrollbar even when the bar is not drawn. */
+     read as touching the scrollbar even when the bar is not drawn.
+     **And the same on the left, for the focus ring**: `overflow-y: auto`
+     clips anything outside the content box, and a focused input's outline is
+     2px plus a 1px offset - which the Maps pane's fields wear against the
+     edge, sliced down their left side. */
   padding-right: var(--s1);
+  padding-left: var(--s1);
 }
 
 .pane-title { font-weight: 600; }
@@ -1208,11 +1213,12 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   position: absolute;
   width: 1.15em;
   height: 1.15em;
-  /* Centred on the bar and lifted clear of its top edge, so it labels the bar
-     rather than sitting inside it - a near-black glyph on a near-black bar
-     would be the thing it is there to fix. */
+  /* Centred on the point given, both ways - the point being the middle of the
+     bar. It sits *in* the bar rather than over it, which works because the
+     glyph is stroked in the outline colour the death bar already wears: the
+     bar is near-black, the mark is not. */
   margin-left: -0.575em;
-  margin-top: -1.35em;
+  margin-top: -0.575em;
   color: var(--band-death-mark);
   font-size: 13px;
   /* **Drawn like every other icon**, which `.icon` would have given it for
@@ -1229,13 +1235,12 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 /* The zero line is drawn, not implied: most steps add nothing, so without it
    an empty column reads as missing data rather than as "no change". */
 .tl-zero { stroke: var(--line-strong); stroke-width: 1; }
-.tl-zero-label { fill: var(--dim); font-size: 10px; font-family: var(--mono); }
 
 /* **The bars are drawn over the hit areas, so they must not take the
    pointer.** Without this, hovering the very thing you are aiming at - a tall
    green bar - lands on the bar rather than the slot beneath it and no tooltip
    appears, while the empty background either side works fine. */
-.tl-bar, .tl-at-mark, .tl-zero, .tl-zero-label, .tl-pending { pointer-events: none; }
+.tl-bar, .tl-at-mark, .tl-zero { pointer-events: none; }
 
 /* The decade lines of the log axis. Dashed, and dim enough to read as ruling
    rather than as data - they are there to be measured against, not looked at. */
@@ -1274,7 +1279,16 @@ li .icon { width: 14px; height: 14px; align-self: center; }
    the bars it was pointing at. */
 .tl-at-mark { fill: var(--gain); }
 
-.tl-pending { fill: var(--dim); font-size: 11px; }
+/* In the overlay now, so it is text rather than a `<text>` - centred by the
+   usual half-width shift instead of `text-anchor`. */
+.tl-pending {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
 
 /* **A second chip group, and it has to read as one.** It qualifies the Hours
    chip rather than joining the row of series, so without a rule between them

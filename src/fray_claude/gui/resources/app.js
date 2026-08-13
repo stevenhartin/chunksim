@@ -1467,7 +1467,24 @@ el["compare-start"].addEventListener("click", askCompare);
 el["exit-mode"].addEventListener("click", exitMode);
 
 el["overlay-close"].addEventListener("click", closeOverlay);
-el.overlay.addEventListener("click", (e) => { if (e.target === el.overlay) closeOverlay(); });
+/* **A click on the backdrop is a press *and* a release on the backdrop.**
+ *
+ * This cannot be done on `click`, which is why it is two listeners: `click`
+ * fires on the nearest common ancestor of the press and the release, so a
+ * press that began on the dialog and drifted off it - selecting text to the
+ * edge, missing a button by a pixel - arrives as a click on the *overlay*,
+ * indistinguishable from a real one. The reverse does too. Neither is a
+ * dismissal; both are a slip, and a dismissed dialog is the one thing you
+ * cannot get back.
+ *
+ * So the decision is made on release, where both ends are still known. */
+let overlayPressed = false;
+el.overlay.addEventListener("mousedown", (e) => { overlayPressed = e.target === el.overlay; });
+el.overlay.addEventListener("mouseup", (e) => {
+  const both = overlayPressed && e.target === el.overlay;
+  overlayPressed = false;
+  if (both) closeOverlay();
+});
 
 /* Tooltips are delegated and read `data-tip`, so any row can have one by
  * carrying an attribute rather than by wiring two listeners. */
@@ -4106,7 +4123,7 @@ function tlBars(steps, key, current) {
        * it exactly as it stretched the decade labels. */
       if (bands !== null && band === bands.length - 1 && !negative) {
         overlay.push(tmpl`<svg class="tl-skull" viewBox="0 0 24 24"
-          style="left:${((x + width / 2) / W) * 100}%; top:${((base - size) / H) * 100}%"
+          style="left:${((x + width / 2) / W) * 100}%; top:${((base - size / 2) / H) * 100}%"
           aria-hidden="true"><use href="#i-skull"/></svg>`);
       }
     }
@@ -4119,8 +4136,12 @@ function tlBars(steps, key, current) {
   });
   out += tmpl`<line class="tl-zero" x1="0" y1="${base}" x2="${W}" y2="${base}"/>`;
   if (key === "hours" && !known.length) {
-    out += tmpl`<text class="tl-pending" x="${W / 2}" y="${base - 14}"
-      text-anchor="middle">Press Compute hours to price each roll</text>`;
+    /* In the overlay for the reason the decade labels are: the graph's
+     * `preserveAspectRatio="none"` scales glyphs by whatever ratio the strip
+     * happens to be, and a sentence shows that far more plainly than "10h"
+     * does. */
+    overlay.push(tmpl`<span class="tl-pending"
+      style="top:${((base - 18) / H) * 100}%">Press Compute hours to price each roll</span>`);
   }
   return out + "</svg>" + (overlay.length ? `<div class="tl-over">${overlay.join("")}</div>` : "");
 }
