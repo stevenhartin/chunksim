@@ -5017,8 +5017,14 @@ function rollHours(priced) {
   if (rows.length) {
     out += tmpl`<h3>Longest to obtain <span class="num">${rows.length}</span></h3><ul class="list">`;
     out += withMore(rows, "roll:hours", 10, (row) => {
-      const tip = tmpl`<b>${row.item}</b><span class="sub">${label(row.bucket)}${row.source ? " · from " + row.source : ""}</span><span class="hint">${row.tasks.join(", ")}</span>`;
-      return tmpl`<li data-tip="${tip}"><span class="name">${row.item}</span><span class="num">${hours(row.hours)}</span></li>`;
+      /* Through `marked`, like every other name: these are raw keys and this
+       * tooltip printed them with their `~|...|~` still on. It only renders
+       * for a *priced* roll, which is how it survived the sweep that cleaned
+       * up the panels. */
+      const wants = row.tasks.map((task) => marked(task)).join(", ");
+      const tip = tmpl`<b>${raw(marked(row.item))}</b><span class="sub">${label(row.bucket)}${
+        row.source ? " · from " + plain(row.source) : ""}</span><span class="hint">${raw(wants)}</span>`;
+      return tmpl`<li data-tip="${tip}"><span class="name">${raw(marked(row.item))}</span><span class="num">${hours(row.hours)}</span></li>`;
     });
     out += "</ul>";
   }
