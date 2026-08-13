@@ -102,7 +102,39 @@
      this and needs no second rule for the common case. `app.js` sets it. */
   --strip-h: 0px;
 
-  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* **Two faces, and no third.** Language and figures are the only two things
+     this reads as, so those are the roles. There is no display face because
+     there is no hero: an instrument with a headline on it is a poster.
+
+     Rounded humanists at the head of each stack, per the brief, then the
+     platform's own, then the generic. `Adwaita Sans` and `Adwaita Mono` lead
+     because on the desktop this was built for they are the *system* faces -
+     so the window matches its own chrome - and because both are softer than
+     what they displace: Adwaita Mono is Iosevka-derived and narrower than
+     Hack, which is what a column of hours wants. Nothing is downloaded; a
+     machine with none of them lands on `system-ui` and reads fine. */
+  --sans: "Adwaita Sans", "Nunito Sans", Ubuntu, Cantarell, system-ui,
+          -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  --mono: "Adwaita Mono", Iosevka, "JetBrains Mono", "Fira Mono", ui-monospace,
+          "SF Mono", Menlo, Consolas, monospace;
+
+  /* **Four steps, named for the job.** This was six sizes across five pixels -
+     9, 10, 11, 12, 13, 14 - with 11 and 12 both carrying secondary text, which
+     is a one-pixel difference between neighbours and reads as jitter rather
+     than hierarchy. Twelve is retired into `--t-note` and nine into
+     `--t-micro`; what is left is four steps far enough apart to mean
+     something.
+
+     The scale cannot grow: the panel is a fixed rail and the body size is
+     what fits it. So the range is 10-15 and the discipline is using four of
+     them rather than every integer in between. */
+  --t-micro: 10px;   /* a caption under a tile, a label on an axis */
+  --t-note: 11px;    /* anything secondary to the line it sits on */
+  --t-body: 13px;    /* language: names, prose, controls */
+  --t-title: 15px;   /* a dialog saying what it is */
+
+  --w-body: 400;
+  --w-emphasis: 600;
 }
 
 * { box-sizing: border-box; }
@@ -119,12 +151,22 @@ html, body {
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
-  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: var(--w-body) var(--t-body)/1.45 var(--sans);
 }
 
 body.no-panel { --rail: 0px; }
 
-code, .mono, .num { font-family: var(--mono); }
+/* **Figures are tabular wherever they can change under you.** Half of what
+   this tool shows is a column you read *down* - ten runs' hours, a band count
+   per row, a step's total as the slider moves - and proportional digits make
+   those columns shuffle sideways as the values change, which is motion that
+   means nothing. It is also the subject's own vocabulary: a chunk is
+   identified by a number, so numerals here are as often names as they are
+   quantities, and a name should not move. */
+code, .mono, .num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
 
 button, select, input {
   font: inherit;
@@ -248,7 +290,7 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   padding: 0 var(--s4);
   background: var(--mode-tint);
   border-bottom: 1px solid rgba(0, 0, 0, .35);
-  font-size: 12px;
+  font-size: var(--t-note);
   color: var(--text);
 }
 
@@ -257,7 +299,7 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 .ribbon[data-mode="diff"] { --mode-tint: var(--mode-diff); }
 .ribbon[data-mode="timeline"] { --mode-tint: var(--mode-timeline); }
 
-.ribbon-mode { font-weight: 600; }
+.ribbon-mode { font-weight: var(--w-emphasis); }
 .ribbon-edits { opacity: .9; }
 .ribbon-map { opacity: .85; }
 
@@ -270,7 +312,7 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   border-radius: var(--r1);
   background: rgba(0, 0, 0, .22);
   color: var(--text);
-  font-size: 11px;
+  font-size: var(--t-note);
 }
 
 .ribbon .thin:disabled { opacity: .45; }
@@ -321,8 +363,8 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 /* The one deliberate exception to the no-transform rule: a wordmark is not
    prose, and lower-case `fray` is how the command is typed. */
 .brand {
-  font-weight: 700;
-  font-size: 12px;
+  font-weight: var(--w-emphasis);
+  font-size: var(--t-note);
   letter-spacing: .14em;
   text-transform: uppercase;
   color: var(--amber);
@@ -447,7 +489,7 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 .counts, .hover {
   color: var(--dim);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--t-note);
   white-space: nowrap;
 }
 
@@ -459,7 +501,7 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   color: var(--bg);
   background: var(--amber);
   border-color: var(--amber);
-  font-weight: 600;
+  font-weight: var(--w-emphasis);
 }
 
 #candidates[aria-pressed="true"] {
@@ -591,7 +633,7 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   padding-left: var(--s1);
 }
 
-.pane-title { font-weight: 600; }
+.pane-title { font-weight: var(--w-emphasis); }
 
 .row { display: flex; gap: var(--s3); margin-bottom: var(--s4); }
 .row input { flex: 1; min-width: 0; }
@@ -642,7 +684,7 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 
 .chip .count {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--t-note);
 }
 
 .chip.on .count { color: var(--amber); }
@@ -655,8 +697,8 @@ h3 {
   align-items: center;
   gap: var(--s2);
   margin: var(--s5) 0 var(--s2);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--t-note);
+  font-weight: var(--w-emphasis);
   letter-spacing: .06em;
   color: var(--dim);
   flex: none;
@@ -670,7 +712,7 @@ h3 .num { margin-left: auto; }
    inverts and every category reads as a sub-list of the one above. */
 h3.section {
   margin-top: var(--s6);
-  font-size: 12px;
+  font-size: var(--t-note);
   color: var(--text);
   border-bottom: 1px solid var(--line);
   padding-bottom: var(--s1);
@@ -683,7 +725,7 @@ h3.section:first-child { margin-top: 0; }
   grid-template-columns: auto 1fr;
   gap: 2px var(--s4);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--t-note);
 }
 
 .kv dt { color: var(--dim); }
@@ -712,7 +754,7 @@ ul.list .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
 ul.list .num {
   color: var(--dim);
-  font-size: 12px;
+  font-size: var(--t-note);
   white-space: nowrap;
 }
 
@@ -720,7 +762,7 @@ ul.list .num {
    visibly not the thing you are scanning for. */
 .sub {
   color: var(--dim);
-  font-size: 12px;
+  font-size: var(--t-note);
 }
 
 /* Reachability is the one thing greying is allowed to mean here: the row is
@@ -793,7 +835,7 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   padding: 3px var(--s2);
   border-radius: var(--pill);
   border: 1px solid var(--line);
-  font-size: 11px;
+  font-size: var(--t-note);
   color: var(--dim);
   white-space: nowrap;
 }
@@ -812,7 +854,7 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   padding: 3px var(--s2);
   border-radius: var(--r1);
   border: 1px solid currentColor;
-  font-size: 10px;
+  font-size: var(--t-micro);
   color: var(--dim);
 }
 
@@ -865,7 +907,7 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   flex-wrap: wrap;
   justify-content: center;
   gap: var(--s2) var(--s4);
-  font-size: 12px;
+  font-size: var(--t-note);
 }
 
 .pie-key span { display: flex; gap: var(--s2); align-items: center; cursor: help; }
@@ -901,18 +943,18 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   margin-bottom: var(--s2);
 }
 
-.progress-title { font-weight: 600; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.progress-title { font-weight: var(--w-emphasis); flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
 .progress-count {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--t-note);
   color: var(--dim);
   white-space: nowrap;
 }
 
 .progress-detail {
   color: var(--dim);
-  font-size: 12px;
+  font-size: var(--t-note);
   font-family: var(--mono);
   overflow-wrap: anywhere;
 }
@@ -971,7 +1013,7 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   border-radius: var(--r2);
   background: rgba(23, 26, 32, .93);
   color: var(--dim);
-  font-size: 12px;
+  font-size: var(--t-note);
 }
 
 .legend span { display: flex; gap: var(--s2); align-items: center; }
@@ -1028,7 +1070,7 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   border-bottom: 1px solid var(--line);
 }
 
-.sheet h2 { margin: 0; font-size: 14px; font-weight: 600; flex: 1; }
+.sheet h2 { margin: 0; font-size: var(--t-title); font-weight: var(--w-emphasis); flex: 1; }
 
 .sheet > div {
   padding: var(--s5);
@@ -1068,7 +1110,7 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   background: #0c0e12;
   border: 1px solid var(--line);
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--t-note);
   line-height: 1.4;
   box-shadow: 0 6px 20px rgba(0, 0, 0, .5);
 }
@@ -1084,7 +1126,7 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   padding-top: var(--s1);
   border-top: 1px solid var(--line);
   color: var(--dim);
-  font-size: 11px;
+  font-size: var(--t-note);
 }
 
 /* --- tile attribution ---------------------------------------------------- */
@@ -1109,7 +1151,7 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   background: rgba(23, 26, 32, .93);
   color: var(--dim);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--t-note);
   opacity: .62;
   transition: opacity .18s ease;
 }
@@ -1125,7 +1167,7 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   border-radius: var(--r2);
   background: rgba(23, 26, 32, .93);
   color: var(--dim);
-  font-size: 11px;
+  font-size: var(--t-note);
   transition: right .18s ease;
 }
 
@@ -1162,8 +1204,8 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   margin-bottom: var(--s2);
 }
 
-.tl-title { font-weight: 600; }
-.tl-title .sub { color: var(--dim); font-weight: 400; margin-left: var(--s2); }
+.tl-title { font-weight: var(--w-emphasis); }
+.tl-title .sub { color: var(--dim); font-weight: var(--w-body); margin-left: var(--s2); }
 
 .timeline.shut .tl-graph { display: none; }
 .timeline.shut { padding-bottom: var(--s2); }
@@ -1197,7 +1239,7 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   padding-right: var(--s1);
   color: var(--dim);
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--t-micro);
   line-height: 1;
   /* The axis runs over the first column, so a label can land on a bar. Haloed
      in the page's own background rather than boxed: a chip would draw a shape
@@ -1220,7 +1262,7 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   margin-left: -0.575em;
   margin-top: -0.575em;
   color: var(--band-death-mark);
-  font-size: 13px;
+  font-size: var(--t-body);
   /* **Drawn like every other icon**, which `.icon` would have given it for
      free were it not also carrying that class's 16px. Without these the sprite
      falls back to a filled black shape - which on this strip is a dark blob
@@ -1286,7 +1328,7 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   left: 50%;
   transform: translateX(-50%);
   color: var(--dim);
-  font-size: 11px;
+  font-size: var(--t-note);
   white-space: nowrap;
 }
 
@@ -1308,7 +1350,7 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   align-items: center;
   margin-bottom: var(--s2);
   color: var(--dim);
-  font-size: 11px;
+  font-size: var(--t-note);
 }
 
 .tl-band { display: flex; align-items: center; gap: var(--s2); }
@@ -1324,7 +1366,7 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   flex: none;
 }
 
-.tl-band-edit { font-size: 11px; }
+.tl-band-edit { font-size: var(--t-note); }
 
 .band-edit { display: grid; gap: var(--s2); }
 
@@ -1332,7 +1374,7 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 
 .band-name { flex: 1; min-width: 0; }
 .band-upto { width: 9ch; text-align: right; }
-.band-under, .band-unit, .band-open { color: var(--dim); font-size: 11px; }
+.band-under, .band-unit, .band-open { color: var(--dim); font-size: var(--t-note); }
 .band-open { margin-left: auto; }
 
 /* The numbers behind a priced row. Same scale and the same shape as the band
@@ -1373,25 +1415,25 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   padding: 1px 0;
   background: var(--amber);
   color: var(--bg);
-  font-size: 9px;
-  font-weight: 700;
+  font-size: var(--t-micro);
+  font-weight: var(--w-emphasis);
   letter-spacing: 0.04em;
   text-align: center;
   text-transform: uppercase;
 }
 
-.knob-path { color: var(--dim); font-size: 11px; overflow-wrap: anywhere; }
+.knob-path { color: var(--dim); font-size: var(--t-note); overflow-wrap: anywhere; }
 .knob-sep { color: var(--line-strong); padding: 0 var(--s1); }
 
 /* What the wiki has a page for, and what Find can frame. */
 /* One row per run of a batch, counted by band. A table because it is one -
    the columns are the same question asked five ways, and a grid of cards
    would make the reader do the aligning. */
-.sim-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.sim-table { width: 100%; border-collapse: collapse; font-size: var(--t-note); }
 .sim-table th {
   padding: var(--s1) var(--s2);
   color: var(--dim);
-  font-weight: 600;
+  font-weight: var(--w-emphasis);
   text-align: right;
 }
 .sim-table th:first-child { text-align: left; }
@@ -1442,28 +1484,44 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   display: grid;
   place-items: center;
   color: var(--dim);
-  font-size: 10px;
+  font-size: var(--t-micro);
 }
 
-.chunk-name { font-size: 11px; overflow-wrap: anywhere; }
-.chunk-id { color: var(--dim); font-family: var(--mono); font-size: 10px; }
+.chunk-name { font-size: var(--t-note); overflow-wrap: anywhere; }
+.chunk-id { color: var(--dim); font-family: var(--mono); font-size: var(--t-micro); }
 
-.find-link { color: var(--candidate); cursor: pointer; text-decoration: underline dotted; }
-.find-link:hover, .find-link:focus-visible { text-decoration: underline solid; }
+/* **Ambient in a list, explicit in prose.**
+   Nearly every row in the Tasks panel is a link now, and a column of forty
+   underlined blue names is a column with no emphasis left to spend - the
+   decoration stops marking anything because it marks everything. So in a list
+   the link inherits its row and reveals itself on approach; the cursor is the
+   affordance and the underline is the confirmation.
+   Inside a dialog's prose there is no row to inherit from and only a word or
+   two, so there it stays visible. */
+.find-link { color: inherit; cursor: pointer; text-decoration: none; }
+.find-link:hover, .find-link:focus-visible {
+  color: var(--candidate);
+  text-decoration: underline dotted;
+}
+
+.knob-path .find-link { color: var(--candidate); text-decoration: underline dotted; }
+.knob-path .find-link:hover, .knob-path .find-link:focus-visible {
+  text-decoration: underline solid;
+}
 
 .knob-controls { display: flex; align-items: center; gap: var(--s2); }
-.knob-revert { font-size: 11px; padding: 1px var(--s2); }
+.knob-revert { font-size: var(--t-note); padding: 1px var(--s2); }
 
 .knob-layers { display: flex; flex-wrap: wrap; gap: var(--s2); }
 
-.knob-layer { display: flex; gap: var(--s1); font-size: 11px; color: var(--dim); }
+.knob-layer { display: flex; gap: var(--s1); font-size: var(--t-note); color: var(--dim); }
 /* The layer in force, which is the one answering the question "why is it
  * that number". Weight rather than hue: the palette here already means
  * bucket, and a fifth meaning for a colour is how a legend stops working. */
-.knob-layer.on { color: var(--text); font-weight: 600; }
+.knob-layer.on { color: var(--text); font-weight: var(--w-emphasis); }
 
 .knob-value { width: 12ch; text-align: right; }
-.knob-fixed { color: var(--dim); font-size: 11px; }
+.knob-fixed { color: var(--dim); font-size: var(--t-note); }
 
 /* A row you can press. The cursor is the affordance; the tooltip says what
  * pressing does. */
@@ -1487,7 +1545,7 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   text-align: right;
   color: var(--dim);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--t-note);
 }
 
 @media (prefers-reduced-motion: reduce) {

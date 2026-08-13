@@ -1327,3 +1327,35 @@ def test_costing_a_batch_runs_one_at_a_time() -> None:
 
     body = _match(r"async function costSimulations\(batch, runs, timelines\) \{(.*?)\n\}", js)
     assert "await runAction(" in body and "for (let index" in body
+
+
+def test_type_comes_from_the_scale_like_every_other_length() -> None:
+    """**Font size was the one length that escaped the rule.**
+
+    Thirty-seven literals across six values in a five-pixel range - 9, 10, 11,
+    12, 13, 14 - with 11 and 12 both carrying secondary text. A one-pixel
+    difference between neighbours is not hierarchy, it is jitter, and it is
+    what "inconsistent fonts" turned out to mean. Four steps now, named for
+    the job rather than the size.
+    """
+    _, _, css = _resources()
+    styles = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+
+    assert re.search(r"font-size: \d", styles) is None, "a size literal is back"
+    assert re.search(r"font-weight: \d", styles) is None, "a weight literal is back"
+    for step in ("--t-micro", "--t-note", "--t-body", "--t-title"):
+        assert f"{step}:" in styles and f"var({step})" in styles
+
+
+def test_the_two_faces_are_tokens_and_nothing_is_downloaded() -> None:
+    """A stack that leads with rounded humanists and lands on `system-ui`.
+    Nothing is fetched: the CSP forbids it and the project ships no fonts."""
+    _, _, css = _resources()
+    styles = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+
+    assert "--sans:" in styles and "--mono:" in styles
+    assert "var(--sans)" in styles and "var(--mono)" in styles
+    assert "@font-face" not in styles and "@import" not in styles
+    # Figures are tabular: half of what this shows is a column read downward,
+    # and proportional digits shuffle it sideways as values change.
+    assert "tabular-nums" in styles

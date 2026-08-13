@@ -215,7 +215,7 @@ The table says what each module **owns**; its docstring says why.
   `tests/test_gui_contract.py` reads `app.js` and asserts them against the Python. It also pins the
   interface rules that each replaced a bug (one tooltip system; chip strips record what is *off*;
   no `raw()` interpolation inside an attribute) and that every length in `style.css` comes from the
-  one scale. `app.js` is heavily commented and is where the front end's rationale lives.
+  one scale. `app.js` is heavily commented and is where the front end's rationale lives. **Type comes from tokens like every other length**: two faces (`--sans`, `--mono`) and four steps (`--t-micro`/`--t-note`/`--t-body`/`--t-title`), with a contract test refusing a bare `font-size` or `font-weight` — font size was the one length that had escaped the scale.
 
 ## Toolchain
 
