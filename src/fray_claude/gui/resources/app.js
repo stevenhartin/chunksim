@@ -1683,15 +1683,18 @@ function renderRibbon() {
   const mode = state.mode;
   el.ribbon.dataset.mode = mode;
   el["ribbon-mode"].textContent = MODES[mode].label;
-  /* **The ribbon names the world the panels describe**, which in Timeline is a
-   * roll rather than the map. It said only the map's name while the panels
-   * always showed the finished run; now that they follow the step, a bare name
-   * would be the same half-truth pointing the other way. */
+  /* **The ribbon says what the picker cannot, and nothing it already does.**
+   * It carried the map's name, thirty pixels under the picker button whose
+   * label is the map's name - the same fact twice, in the same glance. What
+   * the picker has no way to say is *which* of a run's worlds you are looking
+   * at, so that is what is left here: the step when the panels are rewound,
+   * and nothing at all when they are not. */
+  const last = state.timeline ? state.timeline.steps.length - 1 : 0;
   const rewound = mode === "timeline" && state.timeline
-    && state.step !== null && state.step < state.timeline.steps.length - 1;
-  el["ribbon-map"].textContent = state.map
-    ? (rewound ? state.map + " @ " + state.step : state.map)
-    : "no map";
+    && state.step !== null && state.step < last;
+  el["ribbon-map"].textContent = rewound
+    ? `roll ${state.step} of ${last}` : "";
+  el["ribbon-map"].hidden = !rewound;
   for (const id of ["ribbon-vs", "compare", "breakdown"]) el[id].hidden = mode !== "diff";
   const count = editCount();
   el["ribbon-edits"].hidden = mode !== "edit";

@@ -67,7 +67,9 @@
      keyed off `data-mode`, so the palette lives in one file. -->
 <div id="ribbon" class="ribbon" data-mode="browse">
   <span id="ribbon-mode" class="ribbon-mode">Browse</span>
-  <span id="ribbon-map" class="ribbon-map mono">no map</span>
+  <!-- Not the map's name: the picker above already is that. This is the one
+       thing the picker cannot say - which of a run's worlds is on screen. -->
+  <span id="ribbon-map" class="ribbon-map" hidden></span>
   <!-- Diff's own controls. The base map keeps the picker it has in every
        other mode; what the ribbon adds is the other side of the pair, so it
        is changeable without leaving the mode that needed it. -->
@@ -114,6 +116,18 @@
   <button id="masks" class="toggle" type="button" aria-pressed="false"
           data-tip="&lt;b&gt;Sections&lt;/b&gt;&lt;span class='sub'&gt;Shade inside each chunk: green where you can reach, red where you cannot.&lt;/span&gt;&lt;span class='hint'&gt;S&lt;/span&gt;">Sections</button>
   <button id="fit" type="button" data-tip="&lt;b&gt;Fit&lt;/b&gt;&lt;span class='sub'&gt;Frame everything this map holds.&lt;/span&gt;&lt;span class='hint'&gt;Home&lt;/span&gt;">Fit</button>
+  <!-- **The third thing that decides what the map draws**, beside the other
+       two. It floated over the map's top-right on the argument that it is
+       read once when a dungeon looks empty and then left alone - true, and an
+       argument about weight rather than about where it belongs. The bar is
+       where this page changes what it is showing; the overlays on the map are
+       where it reads back. -->
+  <select id="plane" class="pick plane-pick" aria-label="Plane" data-tip="&lt;b&gt;Floor to draw&lt;/b&gt;&lt;span class='sub'&gt;Above ground level the floor below is sunk so this one stands out.&lt;/span&gt;">
+    <option value="0">Plane 0</option>
+    <option value="1">Plane 1</option>
+    <option value="2">Plane 2</option>
+    <option value="3">Plane 3</option>
+  </select>
 
   <span class="counts" id="counts"></span>
   <button id="skipped" class="warn" type="button" hidden></button>
@@ -122,15 +136,6 @@
   <span class="hover" id="hover"></span>
 </header>
 
-<!-- The floor, against the map's own top-right rather than in the bar. It is
-     read once when a dungeon looks empty and then left alone, which is not
-     the weight the bar gives everything in it. -->
-<select id="plane" class="pick plane-pick" aria-label="Plane" data-tip="&lt;b&gt;Floor to draw&lt;/b&gt;&lt;span class='sub'&gt;Above ground level the floor below is sunk so this one stands out.&lt;/span&gt;">
-  <option value="0">Plane 0</option>
-  <option value="1">Plane 1</option>
-  <option value="2">Plane 2</option>
-  <option value="3">Plane 3</option>
-</select>
 
 <aside class="panel" id="panel">
   <!-- **The panel's own handle, on the panel.** A button in the bar labelled

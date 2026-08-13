@@ -1438,3 +1438,33 @@ def test_mono_is_for_what_you_would_type() -> None:
     )
     # And the quantities that lost it keep their column.
     assert ".num { font-variant-numeric: tabular-nums; }" in styles
+
+
+def test_the_ribbon_says_only_what_the_picker_cannot() -> None:
+    """**The map's name was in two places thirty pixels apart** - the picker
+    button, whose label it is, and the ribbon under it. What the picker has no
+    way to say is *which* of a run's worlds is on screen, so that is what the
+    ribbon keeps, and it says nothing at all when the panels are not rewound.
+    """
+    html, js, _ = _resources()
+
+    body = _match(r"function renderRibbon\(\) \{(.*?)\n  for", js)
+    assert "state.map" not in body, "the ribbon is naming the map again"
+    assert "roll ${state.step} of ${last}" in body
+    assert 'id="ribbon-map" class="ribbon-map" hidden' in html
+
+
+def test_everything_that_decides_what_the_map_draws_is_in_one_row() -> None:
+    """Candidates, Sections and the floor are three answers to one question.
+    Two were in the bar and the third was pinned to the map's top-right - an
+    argument about weight rather than about where it belongs. The bar is where
+    this page changes what it shows; the overlays on the map are where it
+    reads back."""
+    html, _, css = _resources()
+
+    bar = _match(r"<header class=\"bar\">(.*?)</header>", html)
+    for control in ('id="candidates"', 'id="masks"', 'id="plane"'):
+        assert control in bar, f"{control} is not in the bar"
+
+    styles = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    assert "position: fixed" not in _match(r"\.plane-pick \{([^}]*)\}", styles)

@@ -576,13 +576,9 @@ button:focus-visible, select:focus-visible, input:focus-visible,
    everything else anchored there, so it slides out with the panel - plus the
    panel's own handle, which hangs into the same corner and must not be sat
    on. */
-.plane-pick {
-  position: fixed;
-  z-index: 3;
-  top: var(--float-top);
-  right: calc(var(--rail) + var(--s6) + var(--s4));
-  transition: right .18s ease;
-}
+/* In the bar now, beside the two toggles it belongs with - so it is an
+   ordinary control in a row of them rather than a thing pinned to the map. */
+.plane-pick { flex: none; }
 
 .tabs {
   display: flex;
@@ -936,8 +932,9 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .progress {
   position: fixed;
   z-index: 4;
-  /* Below the floor picker, which owns the top-right corner. */
-  top: calc(var(--float-top) + var(--s6) + var(--s4));
+  /* The top-right corner is its own now: the floor picker used to sit above
+     it and has moved into the bar with the other two layer controls. */
+  top: var(--float-top);
   right: calc(var(--rail) + var(--s4));
   width: 268px;
   padding: var(--s4);
