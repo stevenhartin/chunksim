@@ -35,6 +35,30 @@ from chunksim.gui.http import Context
 _CONTENT_KEYS = ("Monster", "NPC", "Object", "Shop", "Spawn", "Quest", "Clue", "Diary")
 
 
+def walked_into(state: DerivedState, chunk_id: str) -> bool:
+    """Whether `chunk_id` is a square this map can walk into without rolling.
+
+    **The join rule lives here so two callers cannot disagree about it.**
+    `reachable_by_area` draws these on the map and `_chunk_detail` decides
+    whether the panel greys their contents out; the panel used to answer "not
+    unlocked, therefore nothing in it is reachable", which contradicted the
+    outline the map had already drawn around the same square.
+
+    Matched on the name, exactly or on the head before `#` - see
+    `reachable_by_area` for why the name is the only thing there is to join on.
+    """
+    if chunk_id in state.unlocked:
+        return False
+    entry = _mapping(state.state.chunk_info.data, "chunks").get(chunk_id)
+    if not isinstance(entry, Mapping):
+        return False
+    name = str(entry.get("Name") or "")
+    if not name:
+        return False
+    areas = {area for area in state.derived.expanded_chunks if not str(area).isdigit()}
+    return name in areas or name.split("#")[0] in areas
+
+
 def reachable_by_area(state: DerivedState) -> dict[str, Any]:
     """The squares a map can reach without having rolled them.
 
@@ -156,6 +180,17 @@ def _chunk_detail(state: DerivedState, chunk_id: str, ctx: Context) -> dict[str,
     entry = info.chunk(chunk_id)
     reached = state.derived.reachable_sections.get(chunk_id, {})
     unlocked = chunk_id in state.unlocked
+    # **A square you can walk into is reachable, and its contents are too.**
+    # This asked `chunk_id in state.unlocked` alone, so a chunk behind a
+    # dungeon entrance - which costs no roll and which the map already outlines
+    # as somewhere you can go - had every section reported unreached and every
+    # monster in it greyed out. The `sections` graph cannot say *which* parts
+    # are reachable, because it does not model these entrances at all; what it
+    # can say is that you are inside the area, so they are taken as reached.
+    # The alternative is what was there, which called the whole square
+    # unreachable while the map drew a way in.
+    walk_in = not unlocked and walked_into(state, chunk_id)
+    reachable_here = unlocked or walk_in
     declared = _mapping(entry, "Sections")
 
     sections: list[dict[str, Any]] = []
@@ -163,7 +198,9 @@ def _chunk_detail(state: DerivedState, chunk_id: str, ctx: Context) -> dict[str,
         for section_id in sorted(declared, key=_section_order):
             # Section "0" is reachable the moment the chunk is - which is
             # exactly why `reachable_sections` omits it.
-            is_reached = unlocked and (section_id == "0" or bool(reached.get(section_id)))
+            is_reached = reachable_here and (
+                walk_in or section_id == "0" or bool(reached.get(section_id))
+            )
             sections.append(
                 {
                     "section": section_id,
@@ -172,7 +209,7 @@ def _chunk_detail(state: DerivedState, chunk_id: str, ctx: Context) -> dict[str,
                 }
             )
     else:
-        sections.append({"section": "0", "reachable": unlocked, "source": entry})
+        sections.append({"section": "0", "reachable": reachable_here, "source": entry})
 
     # **Collated across the chunk, not nested under each section.** A chunk
     # with six sections showed six short lists of the same kind of thing, and
@@ -199,6 +236,10 @@ def _chunk_detail(state: DerivedState, chunk_id: str, ctx: Context) -> dict[str,
         "chunk_id": chunk_id,
         "nickname": entry.get("Nickname") or entry.get("Name") or None,
         "unlocked": unlocked,
+        # **Separate from `unlocked`, because they are separate facts.** The
+        # count in the bar is the number of chunks the map *has*, and a square
+        # you can walk into is not one of them - see `reachable_by_area`.
+        "walk_in": walk_in,
         "contents": contents,
         "sections": [
             {"section": s["section"], "reachable": s["reachable"]} for s in sections

@@ -1861,3 +1861,27 @@ def test_a_find_row_says_which_of_the_maps_three_answers_it_is() -> None:
     assert 'chunkStatus(chunk).state === "reachable"' in js
     for hold in ("unlocked", "reachable"):
         assert f'.type-icon[data-hold="{hold}"]' in css
+
+
+def test_the_chunk_pane_offers_nothing_for_a_square_you_walk_into() -> None:
+    """**A reachable chunk is implicitly unlocked and cannot be rolled.**
+
+    It costs no roll and never appears among the candidates - measured on the
+    reference map, 92 reachable, 29 rollable and 106 held, with no overlap at
+    all - so `chunksim unlock` on one would write a map claiming a roll that
+    could not have happened.
+    """
+    js = _app_js()
+
+    assert re.search(r'const offer = \(detail\.unlocked \|\| hold === "reachable"\) \? "" :', js)
+
+
+def test_the_chunk_pill_carries_the_same_three_answers() -> None:
+    """It said the right *word* for a walk-in square and coloured it grey,
+    because the class came from `unlocked` alone. `data-hold` is the vocabulary
+    the Find icons, the chunk cards and this now share."""
+    js = _app_js()
+    _, _, css = _resources()
+
+    assert re.search(r'const hold = detail\.unlocked \? "unlocked" : at\.state;', js)
+    assert '.pill[data-hold="reachable"]' in css

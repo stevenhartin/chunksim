@@ -200,7 +200,7 @@ The table says what each module **owns**; its docstring says why.
 | `gui/server.py` | Routing, as a **pure `handle_request`** with a `BaseHTTPRequestHandler` adapter over it. Owns the `Sec-Fetch-Site`/`Host` checks, and `_state_at` — the one place `(map, step)` becomes a world, so six routes cannot disagree about what a step means. |
 | `gui/http.py` | The vocabulary every route speaks. **Must stay directly in `gui/`** — `RESOURCE_DIR` is `__file__`-relative, which is why the split is flat rather than a `routes/` package. |
 | `gui/routes_view.py` | The **cheap path**: every route answerable without parsing the export. Nothing here may call `ctx.derivations.load` (one documented exception, with a test). |
-| `gui/routes_derived.py` | The **expensive path**. `/api/diff` derives both sides and is the one route allowed to be slow. Also `reachable_by_area`: the squares a map can walk into without having rolled them, joined to `expanded_chunks` **by name** — the `sections` graph does not model dungeon entrances at all. |
+| `gui/routes_derived.py` | The **expensive path**. `walked_into` owns the name join for a square you can reach without rolling, and **both callers share it**: the map outlines them and the chunk panel stops greying their contents. Those two disagreed until it existed. `/api/diff` derives both sides and is the one route allowed to be slow. Also `reachable_by_area`: the squares a map can walk into without having rolled them, joined to `expanded_chunks` **by name** — the `sections` graph does not model dungeon entrances at all. |
 | `gui/routes_reference.py` | Bytes belonging to no map: the static allowlist, blob freshness, the tile *template*, and the lazy asset proxy. |
 | `gui/actions.py` | The POST handlers. **An action's reply shape decides whether the page polls it** — a job id, or the result. `/api/blank` makes a map out of nothing, for a first run with nothing to open. `/api/update` is silent on every failure by design; `/api/update/install` **verifies a checksum before executing anything** and refuses an asset that published none. |
 | `gui/jobs.py` | The background job registry. **The only mutable state in the GUI**, kept out of the pure layer deliberately. Also `claim_once`, which is what stops the page's boot warm-up re-scraping the wiki on every reload. |
@@ -228,7 +228,9 @@ Chrome throttles the timer in a hidden tab, so a `visibilitychange` listener pol
   `cache/` or re-serving them off loopback would make this a redistributor of NonCommercial artwork,
   where linking makes it a page with a picture on it. `tests/test_gui_contract.py` asserts no tile
   route exists, so a later "let's cache these" cannot pass review by looking like a speed-up.
-- **Constants crossing into JavaScript have nothing enforcing agreement**, so
+- **One vocabulary for how near a chunk is, everywhere.** `data-hold` is `unlocked` / `reachable` / `locked`, and the Find icons, the chunk pills, the section pills and the chunk cards all speak it. It is the map's own language: green a square you hold, blue one you can walk into without rolling it, grey neither. **A reachable chunk offers no unlock**, because it costs no roll and never appears among the candidates — measured on the reference map, the reachable, rollable and held sets do not intersect at all.
+
+**Constants crossing into JavaScript have nothing enforcing agreement**, so
   `tests/test_gui_contract.py` reads `app.js` and asserts them against the Python. It also pins the
   interface rules that each replaced a bug (one tooltip system; chip strips record what is *off*;
   no `raw()` interpolation inside an attribute) and that every length in `style.css` comes from the

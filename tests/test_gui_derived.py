@@ -524,3 +524,57 @@ def test_reachable_needs_a_map(ctx: Context) -> None:
     response = _get("/api/reachable", ctx)
 
     assert response.status == HTTPStatus.BAD_REQUEST
+
+
+@pytest.mark.real_cache
+def test_a_square_you_can_walk_into_is_not_greyed_out() -> None:
+    """**The panel used to contradict the map, on the real export.**
+
+    `_chunk_detail` asked `chunk_id in unlocked` alone, so a chunk behind a
+    dungeon entrance - which costs no roll and which the map already outlines
+    as somewhere you can go - had every section reported unreached and every
+    monster in it greyed out. Needs the real cache because `expanded_chunks`
+    only names an area after a real derivation folds one in; there is nothing
+    to hand-build that would be this rather than a restatement of the code.
+    """
+    from chunksim.gui.routes_derived import reachable_by_area, walked_into
+    from chunksim.gui.server import _state_at
+    from chunksim.store.cache import data_root
+
+    ctx = Context(root=data_root(), check_origin=False)
+    state = _state_at({"map": ["fray"]}, ctx, "fray")
+    assert not isinstance(state, Response)
+
+    walk_ins = [str(c["chunk_id"]) for c in reachable_by_area(state)["chunks"]]
+    assert walk_ins, "the reference map should reach areas by name"
+
+    detail = _body(_get("/api/chunk", ctx, map="fray", chunk=walk_ins[0]))
+
+    assert walked_into(state, walk_ins[0]) is True
+    # Reachable, not held: the count in the bar is chunks the map *has*.
+    assert detail["unlocked"] is False
+    assert detail["walk_in"] is True
+    assert all(section["reachable"] for section in detail["sections"])
+    for rows in detail["contents"].values():
+        assert all(row["reachable"] for row in rows), "a walk-in square must not grey its contents"
+
+
+@pytest.mark.real_cache
+def test_a_chunk_you_would_have_to_roll_is_still_greyed_out() -> None:
+    """The other half, or the change would just be greying nothing at all. A
+    roll candidate is locked by definition - the reachable, rollable and held
+    sets do not intersect."""
+    from chunksim.gui.server import _state_at
+    from chunksim.store.cache import data_root
+
+    ctx = Context(root=data_root(), check_origin=False)
+    state = _state_at({"map": ["fray"]}, ctx, "fray")
+    assert not isinstance(state, Response)
+
+    candidates = _body(_get("/api/neighbours", ctx, map="fray"))["neighbours"]
+    assert candidates
+
+    detail = _body(_get("/api/chunk", ctx, map="fray", chunk=str(candidates[0]["chunk_id"])))
+
+    assert detail["unlocked"] is False and detail["walk_in"] is False
+    assert not any(section["reachable"] for section in detail["sections"])

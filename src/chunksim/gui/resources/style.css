@@ -921,6 +921,14 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .type-icon { display: inline-flex; color: var(--dim); }
 .type-icon[data-hold="unlocked"] { color: var(--gain); }
 .type-icon[data-hold="reachable"] { color: var(--reachable); }
+
+/* The same three answers on a pill. `.pill.reachable` is the old name for
+   "available" and stays for the callers still using it; `data-hold` is the
+   vocabulary the icons, the chunk cards and this all share. */
+.pill[data-hold="unlocked"], .pill[data-hold="added"] {
+  color: var(--gain); border-color: var(--gain);
+}
+.pill[data-hold="reachable"] { color: var(--reachable); border-color: var(--reachable); }
 .pill.locked { color: var(--dim); }
 .pill.candidate { color: var(--candidate); border-color: var(--candidate); }
 

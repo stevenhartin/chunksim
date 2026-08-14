@@ -3118,7 +3118,13 @@ function renderChunk() {
    * A candidate is still called out separately, because "locked, and next"
    * is two facts and the second is the one you act on. */
   const at = chunkStatus(detail.chunk_id);
-  const status = tmpl`<span class="pill ${detail.unlocked ? "reachable" : "locked"}">${
+  /* **The pill carries the map's three answers, like everything else now.** It
+   * said the right *word* for a walk-in square - `chunkStatus` has known about
+   * those for a while - and then coloured it grey, because the class was
+   * chosen from `unlocked` alone. `data-hold` is the same vocabulary the Find
+   * icons and the chunk cards use. */
+  const hold = detail.unlocked ? "unlocked" : at.state;
+  const status = tmpl`<span class="pill" data-hold="${hold}">${
     detail.unlocked ? "Unlocked" : at.label}</span>`
     + (at.number === null ? ""
        : tmpl`<span class="pill candidate">Candidate #${String(at.number)}</span>`);
@@ -3133,7 +3139,13 @@ function renderChunk() {
    * in the tooltip, which is where every other control in this interface keeps
    * it - and the order is the order you want them in: look at it, ask what it
    * gives you, take it. */
-  const offer = detail.unlocked ? "" : tmpl`
+  /* **Nothing to offer for a square you can already walk into.** A reachable
+   * chunk is implicitly unlocked by an explicitly unlocked one - it costs no
+   * roll, never appears among the candidates, and `chunksim unlock` on it
+   * would write a map claiming you had rolled something you cannot roll.
+   * Measured on the reference map: 92 reachable, 29 rollable, 106 held, and
+   * the three sets do not intersect at all. */
+  const offer = (detail.unlocked || hold === "reachable") ? "" : tmpl`
       <button id="what-if" class="icon-btn" type="button" aria-label="What would this add?"
         data-tip="<b>What would this add?</b><span class='sub'>Sections, tasks and BiS upgrades this chunk would bring, without saving anything.</span>">${icon("help")}</button>
       <button id="do-unlock" class="icon-btn" type="button" aria-label="Unlock"
@@ -3242,11 +3254,17 @@ function renderSections(detail) {
     const tip = section.section === "0"
       ? "Section 0 opens with the chunk itself."
       : (section.reachable
-          ? "Opened by a link from a section you already reach."
+          ? (detail.walk_in
+             ? "You can walk into this square, so its sections come with it."
+             : "Opened by a link from a section you already reach.")
           : "Needs a link from somewhere you have not unlocked yet.");
+    /* Blue inside a square you walk into, green inside one you hold: the
+     * section is as reachable as the chunk it is in, and saying so in the
+     * chunk's own colour is what stops the panel and the map disagreeing. */
+    const hold = !section.reachable ? "locked" : (detail.walk_in ? "reachable" : "unlocked");
     out += tmpl`<li data-tip="${tip}" data-sections="${section.section}"
       data-reachable="${section.reachable ? "1" : ""}"><span class="name">Section ${section.section}</span>
-      <span class="pill ${section.reachable ? "reachable" : "locked"}">${section.reachable ? "Reachable" : "Unreached"}</span></li>`;
+      <span class="pill" data-hold="${hold}">${section.reachable ? "Reachable" : "Unreached"}</span></li>`;
   }
   return out + "</ul>";
 }
