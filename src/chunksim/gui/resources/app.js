@@ -1551,6 +1551,16 @@ function raw(value) { return { __raw: String(value) }; }
  * clickable. Doing the split once is what stops the third renderer being the
  * one that forgets. */
 function nameParts(text) {
+  /* **Every part carries its display form, and that is the centralisation.**
+   * `qualified` used to be applied by each renderer and only to *marked*
+   * spans, so an export name like `Spikey chain (Slayer Tower)#Advanced`,
+   * which carries no markup at all, kept its `#` on screen. There were four
+   * renderers by then and the same bug had been fixed in some of them more
+   * than once - which is the argument for doing it here instead: reading
+   * `.text` is the only way to get a name out of this, so a fifth renderer
+   * cannot get it wrong. `.raw` stays for the callers comparing *keys*, which
+   * must keep the export's own spelling. */
+  const part = (marked, raw) => ({ marked, raw, text: qualified(raw) });
   const source = String(text == null ? "" : text);
   const out = [];
   let at = 0;
@@ -1558,11 +1568,11 @@ function nameParts(text) {
     const open = source.indexOf("~|", at);
     const shut = open === -1 ? -1 : source.indexOf("|~", open + 2);
     if (open === -1 || shut === -1) {
-      if (at < source.length) out.push({ marked: false, raw: source.slice(at) });
+      if (at < source.length) out.push(part(false, source.slice(at)));
       return out;
     }
-    if (open > at) out.push({ marked: false, raw: source.slice(at, open) });
-    out.push({ marked: true, raw: source.slice(open + 2, shut) });
+    if (open > at) out.push(part(false, source.slice(at, open)));
+    out.push(part(true, source.slice(open + 2, shut)));
     at = shut + 2;
   }
 }
@@ -1584,7 +1594,7 @@ function qualified(raw) {
 function plain(text) {
   const parts = nameParts(text);
   return parts.map((part, index) => {
-    const shown = part.marked ? qualified(part.raw) : part.raw;
+    const shown = part.text;
     return index === 1 && parts[0].marked && parts[0].raw.includes("#")
       ? " - " + shown.replace(/^\s+/, "")
       : shown;
@@ -1600,7 +1610,7 @@ function bare(text) { return String(text == null ? "" : text).replace(/~\|/g, ""
  * nothing to click, so the most a span can do is stand out as a proper noun. */
 function marked(text) {
   return nameParts(text).map((part, index, parts) => {
-    const shown = part.marked ? qualified(part.raw) : part.raw;
+    const shown = part.text;
     const lead = index === 1 && parts[0].marked && parts[0].raw.includes("#")
       ? " - " : "";
     const body = lead ? shown.replace(/^\s+/, "") : shown;
@@ -2804,6 +2814,12 @@ async function loadMaps() {
     el["chunk-body"].innerHTML = tmpl`<p class="empty">Nothing cached yet. Run <code>chunksim fetch</code> in a terminal, or press <b>Fetch Named Map</b> on the Maps tab.</p>`;
     showTab("maps");
     return false;
+  }
+  /* **The cold-cache prose is written into a pane, so something has to take
+   * it back out.** Nothing did: after the first fetch the map drew and the
+   * Chunk tab still read "Nothing cached yet". */
+  if (el["chunk-body"].textContent.includes("Nothing cached yet")) {
+    el["chunk-body"].innerHTML = tmpl`<p class="empty">Click a chunk on the map.</p>`;
   }
   const keepMap = state.map, keepCompare = state.compare;
   setMap(BOOT.map || keepMap || maps[0].map_id);
@@ -5243,7 +5259,7 @@ function knobLayers(knob) {
  * interpolated inside is still escaped by the inner `tmpl`. */
 function linked(text) {
   return nameParts(text).map((part, index, parts) => {
-    const shown = part.marked ? qualified(part.raw) : part.raw;
+    const shown = part.text;
     const lead = index === 1 && parts[0].marked && parts[0].raw.includes("#") ? " - " : "";
     const body = lead ? shown.replace(/^\s+/, "") : shown;
     if (!part.marked) return tmpl`${lead}${body}`;
@@ -5506,14 +5522,19 @@ function tlTip(row, key) {
 /* Clicking a column is "take me to that roll": the slider moves, the chunk it
  * rolled is selected, and the camera flies to it. The breakdown is a separate
  * control rather than this same click, because a dialog would cover the map it
- * had just framed. */
+ * had just framed.
+ *
+ * **The camera goes first, before anything is awaited.** It used to fly last,
+ * after `commitStep` had rebuilt the view and every panel - so the one part of
+ * the answer that is already known, and free, waited on the part that needs
+ * derivations. The click felt dead for as long as that took. The step is in
+ * `state.timeline` before any of this runs, so which chunk to frame is not a
+ * question anything has to be asked. */
 async function goToRoll(step) {
-  await commitStep(step);
   const at = state.timeline && state.timeline.steps[step];
-  if (at && at.chunk) {
-    await selectChunk(at.chunk, { show: false });
-    focusChunk(at.chunk);
-  }
+  if (at && at.chunk) focusChunk(at.chunk);
+  await commitStep(step);
+  if (at && at.chunk) await selectChunk(at.chunk, { show: false });
 }
 
 /* **The names are not in `/api/timeline`.** One roll of the real export opened
@@ -6111,8 +6132,11 @@ function renderSetupSteps(steps, states) {
 /* Runs the outstanding steps, painting the setup screen as it goes. Returns
  * whether the export landed - the caller cares about that one specifically,
  * because it is the difference between a map and a black rectangle. */
-async function runSetup(missing) {
-  const states = {};
+/* `states` is the caller's, because setup runs in **two** phases - the export
+ * first so the map can draw, then the wiki behind it - and a fresh object per
+ * phase re-rendered the finished export bullet as pending. It went green and
+ * then grey a second later, which read as the download having been undone. */
+async function runSetup(missing, states) {
   renderSetupSteps(SETUP_STEPS, states);
   let exported = !missing.some((step) => step.what === "chunkinfo");
   for (const step of missing) {
@@ -6204,7 +6228,8 @@ async function firstRun(known) {
     /* The export is the one the map waits on, so the screen comes down the
      * moment it lands rather than at the end - the wiki scrapes finish behind
      * a drawn world. */
-    const exported = await runSetup(missing.filter((step) => step.what === "chunkinfo"));
+    const states = {};
+    const exported = await runSetup(missing.filter((step) => step.what === "chunkinfo"), states);
     if (exported) {
       await reloadWorld();
       /* Only if there is something behind it. On a genuine first run there is
@@ -6213,7 +6238,7 @@ async function firstRun(known) {
       if (state.maps.length) hideSetup();
     }
     const rest = missing.filter((step) => step.what !== "chunkinfo");
-    if (rest.length) await runSetup(rest);
+    if (rest.length) await runSetup(rest, states);
     hideSetup();
     renderAllReference();
   }
@@ -6265,6 +6290,9 @@ async function offerFirstMap() {
  * from `start` because setup needs exactly this sequence a second time. */
 async function reloadWorld() {
   await loadMaps();
+  /* The Maps pane lists what is cached, so a map arriving is precisely its
+   * business - and it is the tab the first run leaves you looking at. */
+  if (state.tab === "maps") await loadMapsPane();
   await loadTimeline();
   await loadView();
   await loadTiles();

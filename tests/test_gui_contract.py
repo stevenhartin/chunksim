@@ -1792,3 +1792,33 @@ def test_the_page_catches_up_when_it_becomes_visible() -> None:
 
     assert 'addEventListener("visibilitychange"' in js
     assert re.search(r'visibilityState === "visible"\) poll\(\)', js)
+
+
+def test_a_name_is_qualified_in_one_place_only() -> None:
+    """**The `#` bug, fixed where it cannot come back.**
+
+    `Spikey chain (Slayer Tower)#Advanced` is how the export writes a qualified
+    name, and `#` reads as a typo on screen. `qualified` turns it into
+    parentheses - but it used to be applied by each renderer, and only to
+    *marked* spans, so an unmarked export name kept its `#`. There were four
+    renderers by then and the same bug had been fixed in some of them twice.
+
+    It now happens inside `nameParts`, so `.text` is the only way a name comes
+    out. This asserts no renderer re-derives it, which is the shape the bug
+    took every time.
+    """
+    js = _app_js()
+
+    assert "qualified(part.raw)" not in js, "a renderer is qualifying names itself again"
+    assert re.search(r"const part = \(marked, raw\) => \(\{ marked, raw, text: qualified\(raw\) \}\)", js)
+    # Every renderer reads the display form rather than the source form.
+    assert js.count("const shown = part.text;") >= 3
+
+
+def test_keys_keep_the_exports_own_spelling() -> None:
+    """`.raw` must survive: the search index is keyed the way the export writes
+    it, so `zygomite#Level 86` is what finds the zygomite and
+    `zygomite (Level 86)` finds nothing."""
+    js = _app_js()
+
+    assert "data-term" in js and "part.raw" in js

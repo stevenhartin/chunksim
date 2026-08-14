@@ -1644,8 +1644,25 @@ ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
   border: 1px solid var(--line);
   border-radius: var(--r2);
   cursor: pointer;
+  transition: transform .12s ease, background .12s ease;
 }
-.chunk-card:hover { border-color: var(--amber); }
+/* **Hover must not touch the border**, and that is not a preference: the
+   border already says how near the chunk is - green held, blue reachable - so
+   recolouring it on hover overwrites the one thing the card exists to tell
+   you, and does it exactly when the pointer says you are interested.
+
+   An outline draws *outside* the border rather than replacing it, so both are
+   legible at once. The lift and the raise are what make the outline read as
+   "this one" rather than as a second border: `position` and `z-index` so a
+   scaled card sits over its neighbours instead of under them. */
+.chunk-card:hover {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+  background: var(--surface-3);
+  transform: scale(1.03);
+  position: relative;
+  z-index: 1;
+}
 
 /* **How near a chunk is, on its edge.** "Which of these can I already get to"
    is the question the dialog exists to answer, and it was being answered by an

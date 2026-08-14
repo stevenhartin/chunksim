@@ -1675,6 +1675,12 @@ def data_stamp(root: Path | None = None, map_id: str | None = None) -> tuple[tup
         _stat_stamp(blob_path(CHUNKINFO_BLOB_NAME, root)),
         _stat_stamp(blob_path(TASKS_MAP_BLOB_NAME, root)),
     ]
+    # **The map directories too, or a map *appearing* is invisible.** A
+    # directory's mtime moves when an entry is added or removed, which is
+    # exactly the event - the first `fetch` finishing is what turns "nothing
+    # cached yet" into a world, and nothing else on disk moves when it does.
+    # Three more `stat`s; the contents are not walked.
+    stamps += [_stat_stamp(kind_root(kind, root)) for kind in (FETCHED, *COMPUTED_KINDS)]
     return tuple(stamps) + reference_stamp(root, map_id)
 
 
