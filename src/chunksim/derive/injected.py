@@ -1,0 +1,140 @@
+"""The challenges upstream *builds* at runtime rather than reading from the
+export.
+
+`chunkpicker-chunkinfo-export.json` is not the whole challenge list. Several
+of upstream's rules construct challenges while `calcChallengesWork` runs and
+write them straight into `chunkInfo['challenges']` and `valids` - past
+`checkChallenge` entirely, so they are valid the moment they are made. Read
+the export alone and those tasks simply do not exist, with no error to say so.
+
+**The definition goes in; the validity does not.** Upstream seeds `valids`
+with the name as it writes the definition, but the definition lands in
+`chunkInfo['challenges']` *before* the scan at worker.js:3673, so the
+challenge is then checked like any other - and both capes are gated on a
+running total this project does not compute (`QuestPointsNeeded`,
+`TotalLevelNeeded`, two of `challenges._LEVEL_GATES_NOT_SUPPORTED`).
+Forcing them valid here made `Quest point cape (t)` a reachable item and
+`Perform the Quest point cape emote` an active Lumbridge Elite task on a map
+where upstream lists neither - the oracle caught it. So the definitions are
+overlaid and nothing else: the ordinary evaluation refuses the gate, and the
+name lands in `ChallengeResult.unsupported`, which is this project's way of
+saying "upstream has a challenge here and this tool cannot judge it" rather
+than guessing either way.
+
+The definition is what downstream needs regardless, because `other_tasks`'
+grouping, the panel's `Label` and `cli/listing` all look a name back up in
+the export.
+
+Upstream gets the definition there by mutating the parsed export in place.
+This module cannot: that dict is shared across processes and read-only by
+this project's own rule. `ChunkInfo.with_challenges` builds a shallow overlay
+instead - one merged `challenges` branch over the same 10MB of data - and
+`pipeline.derive` threads the overlaid `ChunkInfo` through the run, so every
+consumer that already takes one sees the injected entries with no change.
+`Derived.injected` carries the definitions out to the callers that hold only
+a `MapState`, which re-apply the overlay themselves.
+
+What is here so far:
+
+- **`Buy the ~|Max cape|~`** (worker.js:3609), `Extra`, gated on
+  `rules['Skillcape']` *and* holding chunk `11063` - Mac's hut on Falador's
+  rooftop. Neither cached map holds it.
+- **`Buy the quest point cape*`** (worker.js:3630), `Nonskill`, gated on
+  chunk `12338` alone: **no rule guards it**, and both cached maps hold that
+  chunk, so this one is a task both of them were missing. Its
+  `QuestPointsNeeded` is computed rather than constant - the sum of every
+  `QuestPoints` in the export's `Quest` branch, which moves whenever upstream
+  adds a quest.
+
+Chunk membership is tested the way upstream tests it, with
+`hasOwnProperty`: a chunk id present in the payload counts whatever its
+value, and this project's decoded `unlocked` maps an id to itself rather than
+to `True` anyway.
+
+The eight rules that synthesise in *bulk* - `All Shops`, `All Droptables`,
+`All Droptables Nest`, `Every Drop`, `Every Drop Implings`, `Kill X`, `Kill X
+Boss`, `Skilling Pets` - are not here yet. They belong in this module when
+they land: same mechanism, but their inputs are the seeded item and drop
+indexes rather than the chunk list, so they cannot be built before the fixed
+point the way these two can.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any
+
+from chunksim.model.chunkinfo import ChunkInfo
+
+#: `(chunk id, category, name)` for the two capes. Upstream writes each as a
+#: literal; the shared shape is worth naming once.
+_MAX_CAPE_CHUNK = "11063"
+_QUEST_CAPE_CHUNK = "12338"
+
+#: Upstream's `valids[category][name] = 'Skillcapes'`, and the `Label` the
+#: `Extra` panel groups the cape under.
+_SKILLCAPES = "Skillcapes"
+
+
+def _total_quest_points(chunk_info: ChunkInfo) -> int:
+    """Every `QuestPoints` in the export's `Quest` branch, summed.
+
+    Upstream recomputes this on each run rather than storing it, so the cape
+    tracks a growing game: adding a quest raises the bar for everyone.
+    """
+    total = 0
+    quests = chunk_info.challenges.get("Quest")
+    if not isinstance(quests, dict):
+        return total
+    for challenge in quests.values():
+        points = challenge.get("QuestPoints") if isinstance(challenge, dict) else None
+        if isinstance(points, (int, float)) and not isinstance(points, bool):
+            total += int(points)
+    return total
+
+
+def injected_challenges(
+    chunk_info: ChunkInfo, unlocked: Mapping[str, Any], rules: Mapping[str, Any]
+) -> dict[str, dict[str, Any]]:
+    """The definitions to overlay, keyed by category then name.
+
+    Empty on a map holding neither chunk, which is the common case and costs
+    nothing - `ChunkInfo.with_challenges` returns the same object.
+    """
+    definitions: dict[str, dict[str, Any]] = {}
+
+    def add(category: str, name: str, definition: dict[str, Any]) -> None:
+        definitions.setdefault(category, {})[name] = definition
+
+    if rules.get("Skillcape") is True and _MAX_CAPE_CHUNK in unlocked:
+        add(
+            "Extra",
+            "Buy the ~|Max cape|~",
+            {
+                "Category": ["Skillcape"],
+                "Chunks": [f"{_MAX_CAPE_CHUNK}-3"],
+                "ChunksDetails": [f"{_MAX_CAPE_CHUNK}-3"],
+                "Label": _SKILLCAPES,
+                "NPCs": ["Mac"],
+                "Output": "Max cape",
+                "TotalLevelNeeded": 2376,
+                "Permanent": False,
+            },
+        )
+
+    if _QUEST_CAPE_CHUNK in unlocked:
+        add(
+            "Nonskill",
+            "Buy the quest point cape*",
+            {
+                "Chunks": [_QUEST_CAPE_CHUNK],
+                "ChunksDetails": [_QUEST_CAPE_CHUNK],
+                "NPCs": ["Wise Old Man"],
+                "Output": "Quest point cape (t)",
+                "QuestPointsNeeded": _total_quest_points(chunk_info),
+                "Permanent": False,
+                "Not F2P": True,
+            },
+        )
+
+    return definitions

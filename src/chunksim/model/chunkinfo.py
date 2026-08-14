@@ -8,6 +8,7 @@ the expensive part, not attribute access, so callers should build one
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -39,6 +40,30 @@ class ChunkInfo:
     @property
     def challenges(self) -> dict[str, Any]:
         return _mapping(self.data, "challenges")
+
+    def with_challenges(self, extra: Mapping[str, Mapping[str, Any]]) -> "ChunkInfo":
+        """This export plus some challenges it does not contain.
+
+        Upstream builds challenges at runtime and writes them into its own
+        parsed export (`derive/injected.py` says which and why). Doing that
+        here would mutate a dict shared across processes, so this returns a
+        new `ChunkInfo` over a **shallow** overlay instead: the top-level
+        branches and the per-category challenge dicts are re-bound, the
+        ~10MB of challenge bodies underneath are the same objects. Copying
+        `Extra`'s 2,932 references is the whole cost, paid once per
+        derivation rather than per access - which is why the overlay is built
+        here and not inside the `challenges` property, read in every hot loop
+        in `derive/`.
+
+        Returns `self` unchanged when there is nothing to add, so the common
+        case allocates nothing.
+        """
+        if not extra:
+            return self
+        challenges = dict(self.challenges)
+        for category, entries in extra.items():
+            challenges[category] = {**_mapping(challenges, category), **entries}
+        return ChunkInfo({**self.data, "challenges": challenges})
 
     @property
     def drops(self) -> dict[str, Any]:

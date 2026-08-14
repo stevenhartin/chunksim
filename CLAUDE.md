@@ -170,6 +170,7 @@ The table says what each module **owns**; its docstring says why.
 | `derive/bis.py` | Best-in-slot per (combat style, slot). Inherently **non-monotonic**: recomputed fresh per state, never accumulated. |
 | `derive/active_tasks.py` | Per-skill active/obsolete/completed classification. A *display* winner only — it never changes `ChallengeResult.valid`. |
 | `derive/other_tasks.py` | The three non-skill categories, `Diary`/`Quest`/`Extra`. No single winner. |
+| `derive/injected.py` | The challenges upstream **builds at runtime** rather than reading from the export. The export is not the whole challenge list, and a name that is only ever constructed is invisible to every other module. Definitions are overlaid via `ChunkInfo.with_challenges`, never forced valid — the ordinary gates still judge them. |
 | `derive/boosts.py` | Temporary skill boosts. With `rules['Boosting']` on this is a **dependency** of the two above, not a feature. |
 | `derive/pipeline.py` | `MapState` + `derive`. Owns the **loop** where upstream's area-unlock circularity lives, and the `slayerLocked` fold. Raises `ConvergenceError` rather than returning a truncated derivation. |
 | `derive/unlock.py` | What one candidate unlock adds, by diffing two `derive` calls. **Owns the project's attribution rule.** Additions-only. Records *eligibility* and the two boost clamps as well as validity — a diff of `valid` alone cannot see a skill becoming trainable, and ranks on the wrong number when a boost applies. |

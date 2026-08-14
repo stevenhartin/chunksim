@@ -56,12 +56,13 @@ except `BiS` and `manualTasks`, which never need it.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from chunksim.derive.active_tasks import TaskClassification, classify_tasks
 from chunksim.derive.bis import BisResult, compute_bis
 from chunksim.derive.challenges import ChallengeResult, _ItemPlan, calc_challenges
+from chunksim.derive.injected import injected_challenges
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.derive.other_tasks import OtherTasks, classify_other_tasks
 from chunksim.model.firebase import decode_challenge_keyed, decode_payload
@@ -152,6 +153,15 @@ class Derived:
     bis: BisResult
     task_classification: TaskClassification
     other_tasks: OtherTasks
+    #: The challenges upstream builds at runtime rather than reading from the
+    #: export, as `{category: {name: definition}}` - see `derive/injected.py`.
+    #: They are already in `challenges.valid` and in the `ChunkInfo` this run
+    #: used, but a caller holding only a `MapState` has the *un*-overlaid
+    #: export and would look one of these names up and find nothing. Such a
+    #: caller wants `state.chunk_info.with_challenges(derived.injected)`.
+    #: Almost always empty, and small when it is not, so it costs the
+    #: derivation cache nothing to carry.
+    injected: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 class ConvergenceError(RuntimeError):
@@ -400,6 +410,13 @@ def derive(
     lands. See also `tests/test_simulate.py`'s carry oracle, which replays a
     full simulation on both maps and compares every state.
     """
+    # Upstream's runtime-built challenges, and the export overlaid with
+    # their definitions - see `derive/injected.py`. Both capes depend only on
+    # the chunk list and the rules, so they can be settled before the loop;
+    # everything below reads the overlaid export rather than `state`'s, the
+    # way upstream reads the copy it mutated.
+    injected_definitions = injected_challenges(state.chunk_info, unlocked, state.rules)
+    chunk_info = state.chunk_info.with_challenges(injected_definitions)
     max_skill = slayer_capped_max_skill(state, unlocked)
     locked_equipment = slayer_locked_equipment(state, unlocked)
     expanded = expand_chunk_areas(
@@ -418,12 +435,12 @@ def derive(
     item_plans: dict[tuple[str, str], _ItemPlan | None] = {}
     # The only pairs whose validity the next pass could read back; see the
     # exit test below and `sources.task_unlock_pairs`.
-    gate_pairs = task_unlock_pairs(state.chunk_info)
+    gate_pairs = task_unlock_pairs(chunk_info)
 
     for _ in range(_MAX_AREA_PASSES):
         reachable = unlocked_sections(
             expanded,
-            state.chunk_info,
+            chunk_info,
             manual_sections=state.manual_sections,
             opt_out_sections=state.settings.get("optOutSections") is True,
             opt_out_sections_water=state.settings.get("optOutSectionsWater") is True,
@@ -432,7 +449,7 @@ def derive(
         index = gather_chunks_info(
             expanded,
             reachable,
-            state.chunk_info,
+            chunk_info,
             rules=state.rules,
             backlogged_sources=state.backlogged_sources,
             manual_monsters=state.manual_monsters,
@@ -444,7 +461,7 @@ def derive(
             expanded,
             reachable,
             index,
-            state.chunk_info,
+            chunk_info,
             rules=state.rules,
             max_skill=max_skill,
             backlogged_sources=state.backlogged_sources,
@@ -459,7 +476,7 @@ def derive(
             challenges.valid,
             expanded,
             reachable,
-            state.chunk_info,
+            chunk_info,
             manual_areas=state.manual_areas,
             max_skill=max_skill,
             passive_skill=state.passive_skill,
@@ -478,7 +495,7 @@ def derive(
             "at the cut-off); the result would be truncated, so it is not returned"
         )
     bis = compute_bis(
-        state.chunk_info,
+        chunk_info,
         # Not `index.items`: BiS candidates must include items that only
         # exist as a valid challenge's `Output` (e.g. `Granite ring (i)`,
         # obtainable solely by imbuing one) - see `ChallengeResult`.
@@ -492,7 +509,7 @@ def derive(
     )
     task_classification = classify_tasks(
         challenges.valid,
-        state.chunk_info,
+        chunk_info,
         completed_challenges=state.completed_challenges,
         manual_tasks=state.manual_tasks,
         backlog=state.backlog,
@@ -503,7 +520,7 @@ def derive(
     )
     other = classify_other_tasks(
         challenges.valid,
-        state.chunk_info,
+        chunk_info,
         completed_challenges=state.completed_challenges,
         checked_challenges=state.checked_challenges,
         backlog=state.backlog,
@@ -516,6 +533,7 @@ def derive(
         bis=bis,
         task_classification=task_classification,
         other_tasks=other,
+        injected=injected_definitions,
     )
 
 
