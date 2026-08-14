@@ -526,6 +526,9 @@ def derive(
             SynthesisInputs(
                 items=challenges.available_items,
                 monsters=index.monsters,
+                drop_rates=index.drop_rates,
+                completed_extra=state.completed_challenges.get("Extra") or {},
+                backlogged_sources=state.backlogged_sources or {},
                 backlog=state.backlog.get("Extra") or {},
                 # Upstream asks `checkPrimaryMethod('Slayer', …)` inside the
                 # `Kill X` filter, once per monster, against this pass's own

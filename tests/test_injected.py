@@ -402,3 +402,117 @@ def test_a_kill_task_links_to_its_slayer_assignment() -> None:
     assert "Tasks" not in unlinked["Kill X ~|Cave crawler|~"]
     assert linked["Kill X ~|Cave crawler|~"]["Tasks"] == {"Slay ~|Cave crawler|~": "Slayer"}
     assert "Tasks" not in linked["Kill X ~|Rat|~"]
+
+
+def _drop_world() -> ChunkInfo:
+    return _info(
+        challenges={
+            "Slayer": {"Slay ~|Abyssal demon|~": {"Output": "Abyssal demon"}},
+            "Thieving": {"Pickpocket a ~|Rogue|~": {"Output": "Rogue"}},
+            "Hunter": {"Catch a ~|baby impling|~": {"Output": "Baby impling jar"}},
+        },
+        skillItems={
+            "Thieving": {"Rogue": {"Air rune": {"1": "1/16"}}},
+            "Hunter": {"Baby impling jar": {"Bronze arrow": {"1": "1/8"}}},
+        },
+        codeItems={"dropTables": {"RareDropTable+": {"Nature rune": "1/4@1"}}, "bossMonsters": {}},
+    )
+
+
+def _every_drop(**over: Any) -> dict[str, dict[str, Any]]:
+    given = SynthesisInputs(
+        items={"Bones": {"Goblin": "primary-drop"}},
+        drop_rates={"Goblin": {"Bones": "Always"}},
+        **over,
+    )
+    return synthesised_challenges(_drop_world(), given, {"Every Drop": True}).get("Extra", {})
+
+
+def test_every_drop_names_the_source_and_its_rate() -> None:
+    """One task per drop line, carrying that source's own rate - which is
+    what makes the same item off three monsters three tasks rather than one."""
+    assert set(_every_drop()) == {"Goblin: ~|Bones|~ (Always)"}
+
+
+def test_a_slay_source_is_named_by_its_monster() -> None:
+    """A `Slay ` source is a challenge name; the rate is filed under what it
+    outputs, so the title has to be too."""
+    given = SynthesisInputs(
+        items={"Abyssal whip": {"Slay ~|Abyssal demon|~": "primary-Slayer"}},
+        drop_rates={"Abyssal demon": {"Abyssal whip": "1/512"}},
+    )
+
+    built = synthesised_challenges(_drop_world(), given, {"Every Drop": True})["Extra"]
+
+    assert set(built) == {"Abyssal demon: ~|Abyssal whip|~ (1/512)"}
+
+
+def test_a_pickpocket_table_is_measured_under_its_own_namespace() -> None:
+    """`gather_chunks_info` never walks a Thieving loot table, so its rates
+    are measured here - and filed under upstream's invented `[Thieving] `
+    key, which is what keeps an NPC from colliding with a monster."""
+    given = SynthesisInputs(
+        items={"Air rune": {"Pickpocket a ~|Rogue|~": "primary-Thieving"}},
+        drop_rates={},
+    )
+
+    built = synthesised_challenges(_drop_world(), given, {"Every Drop": True})["Extra"]
+
+    assert set(built) == {"[Thieving] Rogue: ~|Air rune|~ (1/16)"}
+
+
+def test_implings_wait_for_their_own_rule() -> None:
+    """`Every Drop Implings` is a second switch, and the jar loses the word
+    `jar` on the way into the title."""
+    given = SynthesisInputs(
+        items={"Bronze arrow": {"Catch a ~|baby impling|~": "primary-Hunter"}},
+        drop_rates={},
+    )
+
+    assert synthesised_challenges(_drop_world(), given, {"Every Drop": True}) == {}
+    built = synthesised_challenges(
+        _drop_world(), given, {"Every Drop": True, "Every Drop Implings": True}
+    )["Extra"]
+    assert set(built) == {"Baby impling: ~|Bronze arrow|~ (1/8)"}
+
+
+def test_a_drop_already_ticked_off_is_not_offered_again() -> None:
+    """The completion is stored under the *task* name, so upstream reads the
+    item back out of it - and one source having yielded it settles the rest."""
+    built = _every_drop(completed_extra={"Somewhere else: ~|Bones|~ (1/2)": True})
+
+    assert built == {}
+
+
+def test_a_drop_table_name_is_not_a_thing_you_can_obtain() -> None:
+    given = SynthesisInputs(
+        items={"RareDropTable+": {"Goblin": "primary-drop"}},
+        drop_rates={"Goblin": {"RareDropTable+": "1/128"}},
+    )
+
+    assert synthesised_challenges(_drop_world(), given, {"Every Drop": True}) == {}
+
+
+def test_a_marked_index_entry_is_skipped() -> None:
+    given = SynthesisInputs(
+        items={"^^placeholder": {"Goblin": "primary-drop"}},
+        drop_rates={"Goblin": {"^^placeholder": "1/128"}},
+    )
+
+    assert synthesised_challenges(_drop_world(), given, {"Every Drop": True}) == {}
+
+
+def test_a_source_with_no_recorded_rate_names_nothing() -> None:
+    """The rate is part of the title, so a source that never reached
+    `dropRatesGlobal` cannot produce a task at all."""
+    given = SynthesisInputs(items={"Bones": {"Goblin": "primary-drop"}}, drop_rates={})
+
+    assert synthesised_challenges(_drop_world(), given, {"Every Drop": True}) == {}
+
+
+def test_a_shop_source_is_not_a_drop() -> None:
+    given = SynthesisInputs(
+        items={"Bones": {"Bone Store": "shop"}}, drop_rates={"Bone Store": {"Bones": "Always"}}
+    )
+
+    assert synthesised_challenges(_drop_world(), given, {"Every Drop": True}) == {}

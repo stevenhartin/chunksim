@@ -66,16 +66,12 @@ after its own scan, so they are checked on the following pass like anything
 else, and their `Items` requirement is satisfied by construction. Letting the
 ordinary machinery do it is both simpler and the same answer.
 
-Still outstanding: **`All Droptables`, `Every Drop` and `Every Drop
-Implings`**, which are one piece of work rather than three. All three read
-`dropRatesGlobal`, and both of the last two *extend* it as they go with keys
-`gather_chunks_info` never builds - `'[Thieving] <npc>'` for a pickpocket
-loot table, and an impling's name minus `' jar'` - each behind its own
-`Rare Drop`/`rareDropNum`/`Boss` gate. `All Droptables` wants a second side
-table on top: `dropTablesGlobal`, upstream's `calcedQuantity`, whose
-quantities are the table entry's multiplied through the monster's and carry
-`(noted)`/`(F2P)` suffixes into the task name. `sources.py`'s docstring
-already records that side table as deliberately unbuilt, and points here.
+Still outstanding: **`All Droptables`**. It wants a side table the rest do
+not - `dropTablesGlobal`, upstream's `calcedQuantity`, whose quantities are
+the drop table entry's multiplied through the monster's and carry
+`(noted)`/`(F2P)` suffixes into the task name, which is why its titles have
+a quantity where `Every Drop`'s have only a rate. `sources.py`'s docstring
+records that side table as deliberately unbuilt, and points here.
 
 (`Skilling Pets` is the odd one out and lives in `challenges.py` instead: it
 builds no challenge at all, it seeds seven pet *items*. It belongs to this
@@ -88,6 +84,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+import re
+
+from chunksim.derive import sources
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.model.summary import _mapping
 
@@ -354,6 +353,125 @@ def _kill_x(
     return built
 
 
+#: The four source tags `Every Drop` walks (worker.js:4768). A tag naming
+#: any of them means the item came off something killable, pickpocketable or
+#: caught, which is what the rule is a checklist of.
+_DROP_TAGS = ("-drop", "-Slayer", "-Thieving", "-Hunter")
+
+#: Upstream's `dropRatesGlobal` key for a pickpocket table - an invented
+#: namespace, so a Thieving NPC's loot cannot collide with a monster of the
+#: same name.
+_THIEVING_KEY = "[Thieving] "
+
+#: Upstream's own `Every Drop` task-name shape, used to read the item back
+#: out of a stored completion.
+_EVERY_DROP_NAME = re.compile(r".*: ~\|.*\|~ \(.*\)")
+
+
+def _completed_drop_items(completed_extra: Mapping[str, Any]) -> set[str]:
+    r"""The items already ticked off as `Every Drop` tasks.
+
+    Upstream re-reads its own task names out of `completedChallenges['Extra']`
+    to find them (`/.*: ~\|.*\|~ \(.*\)/`, then the text between the first
+    pair of pipes), because the completion is stored under the *task* name and
+    the rule needs the *item*. A drop ticked off any one source is not offered
+    from another.
+    """
+    done: set[str] = set()
+    for line in completed_extra:
+        if not isinstance(line, str) or not _EVERY_DROP_NAME.match(line):
+            continue
+        parts = line.split("|")
+        if len(parts) > 1:
+            done.add(parts[1])
+    return done
+
+
+def _every_drop_source(
+    source: str, tag: str, chunk_info: ChunkInfo, rules: Mapping[str, Any]
+) -> tuple[str, Mapping[str, Any] | None, str | None]:
+    """`(rate key, loot table to measure, real name)` for one source tag.
+
+    Four shapes, and the key is not the source name in three of them
+    (worker.js:4769/4771/4810/4851). A `Slay ` source is really its monster;
+    a Thieving source is its NPC under an invented namespace; an impling is
+    its jar minus the word. Only the plain drop case keeps the name it came
+    with. Where a table is returned the caller has to measure it - those two
+    rate namespaces are ones `gather_chunks_info` never builds.
+    """
+    plain = source.replace("*", "")
+    if "Slay " in source:
+        challenge = _mapping(chunk_info.challenges, "Slayer").get(source)
+        output = challenge.get("Output") if isinstance(challenge, dict) else None
+        return (output if isinstance(output, str) else plain), None, None
+    if "-Thieving" in tag:
+        challenge = _mapping(chunk_info.challenges, "Thieving").get(source)
+        npc = challenge.get("Output") if isinstance(challenge, dict) else None
+        if isinstance(npc, str):
+            table = _mapping(chunk_info.skill_items, "Thieving").get(npc)
+            return f"{_THIEVING_KEY}{npc}", table if isinstance(table, dict) else None, npc
+    if rules.get("Every Drop Implings") is True and "-Hunter" in tag and "impling" in source:
+        challenge = _mapping(chunk_info.challenges, "Hunter").get(source)
+        jar = challenge.get("Output") if isinstance(challenge, dict) else None
+        if isinstance(jar, str):
+            table = _mapping(chunk_info.skill_items, "Hunter").get(jar)
+            return jar.replace(" jar", ""), table if isinstance(table, dict) else None, jar
+    return plain, None, None
+
+
+def _every_drop(
+    chunk_info: ChunkInfo,
+    given: "SynthesisInputs",
+    rules: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """A task per item per source that yields it - port of worker.js:4758.
+
+    Where `All Shops` is one task per shop line, this is one per *drop line*:
+    an item off three monsters is three tasks, each carrying that monster's
+    own rate in its title. The rate is `dropRatesGlobal`'s, which for an
+    ordinary monster is `SourceIndex.drop_rates` already - and for a Thieving
+    NPC or an impling is a namespace upstream fills as it goes, measured here
+    through `sources.loot_table_rates` so the gates stay the tested ones.
+
+    Three things are refused, and the last is the subtle one: an item already
+    ticked off under any source, an item that is itself a drop *table* name
+    rather than a thing (`RareDropTable+` is not loot), and an item carrying
+    `^`, upstream's marker for an index entry that is not a real item.
+    """
+    done = _completed_drop_items(given.completed_extra)
+    rates: dict[str, Mapping[str, str]] = dict(given.drop_rates)
+    drop_tables = _mapping(chunk_info.code_items, "dropTables")
+    built: dict[str, dict[str, Any]] = {}
+    for item in sorted(given.items):
+        bare = item.replace("*", "")
+        if item in done or bare in done or bare in drop_tables or "^" in bare:
+            continue
+        for source, tag in given.items[item].items():
+            if not any(marker in tag for marker in _DROP_TAGS):
+                continue
+            key, table, real = _every_drop_source(source, tag, chunk_info, rules)
+            if table is not None and real is not None and key not in rates:
+                rates[key] = sources.loot_table_rates(
+                    table,
+                    entity=real,
+                    chunk_info=chunk_info,
+                    rules=rules,
+                    backlogged_sources=given.backlogged_sources,
+                )
+            rate = rates.get(key, {}).get(bare)
+            if rate is None:
+                continue
+            name = f"{key.replace('[+]', '')}: ~|{bare}|~ ({rate})"
+            built[name] = {
+                "Category": ["Every Drop"],
+                "Items": [bare],
+                "ItemsDetails": [bare],
+                "Label": "Every Drop",
+                "Permanent": False,
+            }
+    return built
+
+
 def forced_valid_from(
     definitions: Mapping[str, Mapping[str, Mapping[str, Any]]],
 ) -> dict[str, dict[str, int | str | bool]]:
@@ -381,6 +499,9 @@ class SynthesisInputs:
     items: Mapping[str, Mapping[str, str]]
     monsters: Mapping[str, Any] = field(default_factory=dict)
     backlog: Mapping[str, Any] = field(default_factory=dict)
+    drop_rates: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
+    completed_extra: Mapping[str, Any] = field(default_factory=dict)
+    backlogged_sources: Mapping[str, Any] = field(default_factory=dict)
     slayer_trainable: bool = False
     slayer_has_tasks: bool = False
     #: The assignment lock's level cap, or `None` for "no lock".
@@ -403,6 +524,8 @@ def synthesised_challenges(
         extra.update(_all_shops(given.items))
     if rules.get("All Droptables Nest") is True:
         extra.update(_nest_loot(chunk_info, given.items, rules))
+    if rules.get("Every Drop") is True:
+        extra.update(_every_drop(chunk_info, given, rules))
     if rules.get("Kill X") is True:
         extra.update(
             _kill_x(

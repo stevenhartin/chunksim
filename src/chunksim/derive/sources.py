@@ -430,6 +430,63 @@ def _slayer_skill_items_for(
     return table
 
 
+def loot_table_rates(
+    table: Mapping[str, Any],
+    *,
+    entity: str,
+    chunk_info: ChunkInfo,
+    rules: Mapping[str, Any],
+    backlogged_sources: Mapping[str, Any] = {},
+) -> dict[str, str]:
+    """Every rate one `skillItems` loot table yields, as `dropRatesGlobal`
+    would hold them - `{item: "1/128"}`.
+
+    **This exists for `derive/injected.py` and nothing else.** The `Every
+    Drop` rule pastes a rate into each task name it builds, and it reads two
+    tables `gather_chunks_info` has no reason to walk: a Thieving NPC's
+    `skillItems.Thieving` and an impling's `skillItems.Hunter`, whose rates
+    upstream files under invented keys (`'[Thieving] <npc>'`, and an
+    impling's name minus `' jar'`). Rather than re-derive the rate
+    arithmetic there, this runs the table through the same
+    `_resolve_monster_drop` every ordinary monster drop goes through, so the
+    `Rare Drop` / `rareDropNum` / `Boss` / `RDT` gates and the `Always`
+    formatting are the ones already tested here.
+
+    `entity` is the **real** name - the NPC, the impling with its `jar` -
+    because that is what upstream's boss gate tests. Re-keying to the
+    invented name is the caller's job, and doing it afterwards is what keeps
+    the gate honest.
+
+    The item index this fills is thrown away. `Every Drop` reads rates and
+    changes nothing about what is reachable; an item only a Thieving loot
+    table mentions is not made available by the rule that names a task after
+    it.
+    """
+    settings = _settings(rules)
+    scratch_items: dict[str, dict[str, str]] = {}
+    rates: dict[str, dict[str, str]] = {}
+    drop_tables = _mapping(chunk_info.code_items, "dropTables")
+    boss_monsters = _mapping(chunk_info.code_items, "bossMonsters")
+    for drop, quantities in table.items():
+        if not isinstance(quantities, dict):
+            continue
+        for rate_raw in quantities.values():
+            if not isinstance(rate_raw, str):
+                continue
+            _resolve_monster_drop(
+                monster=entity,
+                drop=drop,
+                monster_rate_raw=rate_raw,
+                drop_tables=drop_tables,
+                items=scratch_items,
+                drop_rates=rates,
+                settings=settings,
+                boss_monsters=boss_monsters,
+                backlogged=backlogged_sources,
+            )
+    return rates.get(entity, {})
+
+
 def _resolve_monster(
     *,
     monster: str,
