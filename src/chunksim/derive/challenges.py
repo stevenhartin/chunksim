@@ -107,12 +107,12 @@ except where noted as a silent, documented approximation instead:
   `Multi Step Processing` rule's chain-of-crafted-items requirement is not
   checked at all, which can over-include processing-skill tasks when that
   rule is on.
-- Dynamic Max Cape / Quest Point Cape challenge injection and
-  Collection Log Clues thresholds: not implemented. (Mahogany Homes *is*
-  now handled - see `_MAHOGANY_HOMES_CONTRACT`, and the **Slayer lock** is
+- Mahogany Homes *is* handled - see `_MAHOGANY_HOMES_CONTRACT`, the Max Cape
+  and Quest Point Cape injections are now `derive/injected.py`, the Collection
+  Log Clues threshold is `_clue_reward_gate_met`, and the **Slayer lock** is
   too: its level cap arrives folded into `max_skill` and its equipment half
   as `_compile_items`' `locked_equipment`, both from
-  `pipeline.slayer_capped_max_skill`/`slayer_locked_equipment`.) Shortcut
+  `pipeline.slayer_capped_max_skill`/`slayer_locked_equipment`. Shortcut
   Task / Combat and Teleport Spells / Cleaning Herbs only ever set
   `NeverShow` upstream, a display-only panel filter that never affects
   validity - so it stays out of this module, but it is *not* unused: it
@@ -167,6 +167,16 @@ Also implemented, beyond the requirement checking above:
   running *minima* rather than the single best, by way of a real bug in it
   that the function's docstring sets out - and the export contains sets
   where the two differ.
+- **The `Collection Log Clues` threshold** (`_clue_reward_gate_met`,
+  worker.js:3790): the rule has two halves and only the category one was
+  here. On, a reward task still waits until the share of its `ClueRewardTier`
+  the map can actually reach clears `Collection Log Clues Amount` - and at
+  the shipped default of `"100"` that means *every* step of the tier. The
+  measurement (`_clue_tasks_possible`) is a per-pass function of `Nonskill`
+  validity, which is why the gate sits on the dynamic side though upstream
+  writes it beside the category check. Turning the rule on used to add 519
+  `Extra` tasks on the second real map and now adds none, the best tier there
+  being 27% reachable.
 - **The `maybePrimary` downgrade** (`_effective_primary`, worker.js:3678):
   `Normal Farming`, `Sulphurous Fertiliser`, `Shortcut` and `InsidePOH
   Primary` are "methods that are only primary if their respective rule is
@@ -339,6 +349,7 @@ name, and how upstream renders them isn't something this project has located.
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass, field
@@ -346,6 +357,7 @@ from typing import Any
 
 from chunksim.derive import boosts
 from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.model.rates import build_clue_complete_num
 from chunksim.derive.sources import SourceIndex, apply_item_task_unlocks
 from chunksim.model.summary import _mapping
 
@@ -1488,6 +1500,90 @@ def _static_gates_met(
     return _mix_requirement_met(challenge, monsters, npcs, chunk_info)
 
 
+#: Upstream's `tempClueTasksPossible` keys (worker.js:3457), in its order.
+#: Fixed rather than discovered, because a tier missing from the table is
+#: what makes a clue challenge invalid - see `_clue_tasks_possible`.
+_CLUE_TIERS = ("beginner", "easy", "medium", "hard", "elite", "master")
+
+
+def _clue_tasks_possible(
+    valid: Mapping[str, Mapping[str, Any]], challenges: Mapping[str, Mapping[str, Any]]
+) -> dict[str, float]:
+    """How much of each clue tier this map can actually do, as a percentage.
+
+    Port of worker.js:3455-3483. Every `Nonskill` challenge carrying a
+    `ClueTier` is one step of that tier's clue scroll - 983 of them across the
+    six tiers - and the fraction of them currently valid is how upstream
+    decides whether the tier is worth collecting the *rewards* of. See
+    `_clue_reward_gate_met` for the other half.
+
+    A tier with no steps at all divides zero by zero. JS answers `NaN` and
+    carries on; the comparison that reads this is `<`, which is false against
+    `NaN`, so an empty tier is treated as passing rather than failing. That is
+    reproduced rather than special-cased - all six tiers are populated in the
+    current export, so it is guard code, but it is guard code that decides
+    validity in the direction opposite to the missing-key case just below it.
+    """
+    possible = dict.fromkeys(_CLUE_TIERS, 0)
+    total = dict.fromkeys(_CLUE_TIERS, 0)
+    nonskill = challenges.get("Nonskill")
+    if not isinstance(nonskill, dict):
+        return {tier: math.nan for tier in _CLUE_TIERS}
+    valid_nonskill = valid.get("Nonskill") or {}
+    for name, challenge in nonskill.items():
+        tier = challenge.get("ClueTier") if isinstance(challenge, dict) else None
+        if tier not in total:
+            continue
+        total[tier] += 1
+        if name in valid_nonskill:
+            possible[tier] += 1
+    return {
+        tier: (possible[tier] / total[tier]) * 100 if total[tier] else math.nan
+        for tier in _CLUE_TIERS
+    }
+
+
+def _clue_reward_gate_met(
+    challenge: Mapping[str, Any], rules: Mapping[str, Any], clue_possible: Mapping[str, float]
+) -> bool:
+    """Port of worker.js:3790-3796: with `Collection Log Clues` on, a reward
+    task is only offered once its tier is reachable enough.
+
+    The rule has two halves and only the first was here. `_category_gate_met`
+    handles it as an ordinary category - off means the 517 reward tasks are
+    out - but *on* does not mean all 517 are in: each carries a
+    `ClueRewardTier`, and it is refused unless that tier's
+    `_clue_tasks_possible` share reaches `rules['Collection Log Clues
+    Amount']`. At the shipped default of 100 that means every step of the
+    tier must be doable, which is a strong condition and the reason turning
+    the rule on used to add 519 tasks here against upstream's rather fewer.
+
+    A tier **absent** from the table fails outright, where a tier present but
+    `NaN` passes; upstream writes those two as separate clauses of one `||`
+    and they are not the same test. The absent case is real: the table is
+    empty until the first pass has some validity to measure, so on the first
+    pass no reward task is valid at all, and they arrive as the fixed point
+    settles.
+
+    Lives on the dynamic side of the gate split even though upstream writes
+    it beside the category check, because the share it reads is a function of
+    the validity being computed.
+    """
+    if rules.get("Collection Log Clues") is not True:
+        return True
+    categories = challenge.get("Category")
+    if not isinstance(categories, list) or "Collection Log Clues" not in categories:
+        return True
+    if "ClueRewardTier" not in challenge:
+        return True
+    tier = challenge.get("ClueRewardTier")
+    if not isinstance(tier, str) or tier not in clue_possible:
+        return False
+    return not clue_possible[tier] < build_clue_complete_num(
+        rules.get("Collection Log Clues Amount")
+    )
+
+
 def _dynamic_gates_met(
     skill: str,
     name: str,
@@ -1503,6 +1599,7 @@ def _dynamic_gates_met(
     max_skill: Mapping[str, int],
     trainable: Mapping[str, bool],
     prev_valid: Mapping[str, Mapping[str, Any]],
+    clue_possible: Mapping[str, float],
 ) -> bool:
     """The half that has to stay in the loop: `Items` and the buildable half
     of `Objects` read indexes the fixed point keeps re-seeding, and
@@ -1521,6 +1618,8 @@ def _dynamic_gates_met(
     if deferred_objects and not _objects_met(deferred_objects, objects):
         return False
     if plan is not None and not _item_plan_met(plan, items):
+        return False
+    if not _clue_reward_gate_met(challenge, rules, clue_possible):
         return False
     if not _skills_requirement_met(challenge, max_skill, valid, trainable=trainable):
         return False
@@ -1555,6 +1654,10 @@ def _evaluate_challenge(
     prev_valid: Mapping[str, Mapping[str, Any]],
     construction_locked: bool,
     locked_equipment: frozenset[str] = frozenset(),
+    #: Defaults to upstream's own starting state - an empty table, which
+    #: refuses every clue *reward* task. Single-challenge callers have no
+    #: fixed point to measure it from; the loop passes the real one.
+    clue_possible: Mapping[str, float] = {},
 ) -> int | str | bool | None:
     """Both halves, in upstream's order. `calc_challenges` runs the halves
     separately (static once, dynamic per pass); this stays as the composed
@@ -1588,6 +1691,7 @@ def _evaluate_challenge(
         skill,
         name,
         challenge,
+        clue_possible=clue_possible,
         plan=_compile_items(
             challenge, chunk_info, skill=skill, rules=rules, locked_equipment=locked_equipment
         ),
@@ -2264,6 +2368,10 @@ def calc_challenges(
     objects: Mapping[str, Mapping[str, Any]] = source_index.objects
     seedable_objects = _seedable_objects(challenges)
     valid: dict[str, dict[str, int | str | bool]] = {}
+    # Upstream's `clueTasksPossible` starts empty and is refilled at the end
+    # of every pass - see `_clue_reward_gate_met` for what an empty table
+    # means and why it is not the same as a table full of zeroes.
+    clue_possible: dict[str, float] = {}
     unsupported: set[str] = set()
     #: The first outer pass converges *without* pruning, so trainability is
     #: decided from a fully seeded index - deciding it earlier prunes a skill
@@ -2382,6 +2490,7 @@ def calc_challenges(
                     skill,
                     name,
                     challenge,
+                    clue_possible=clue_possible,
                     plan=plan,
                     items=items,
                     objects=objects,
@@ -2425,6 +2534,11 @@ def calc_challenges(
                     items=items,
                     objects=objects,
                 )
+            # Upstream measures the clue tiers at the end of each pass
+            # (worker.js:3455) and the next pass's gate reads the answer, so
+            # the table starts empty and no reward task is valid until a pass
+            # has produced some `Nonskill` validity to measure.
+            clue_possible = _clue_tasks_possible(new_valid, challenges)
             if new_valid == valid:
                 break
             valid = new_valid

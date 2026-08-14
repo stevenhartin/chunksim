@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import math
 import re
+from typing import Any
 
 
 def parse_ratio(raw: str) -> float:
@@ -93,6 +94,29 @@ def build_rare_drop_num(rare_drop_amount: str) -> float:
     if rare_drop_amount == "0":
         return parse_ratio("1/999999999999999")
     return parse_ratio(f"1/{rare_drop_amount}")
+
+
+def build_clue_complete_num(clue_complete_amount: Any) -> float:
+    """Port of `clueCompleteNum` (worker.js:286-290), a **percentage**.
+
+    `rules['Collection Log Clues Amount']` is a string in real payloads
+    (`"100"`), but upstream guards against a boolean and substitutes 100 -
+    the rules table stores booleans for every other key, so a client that
+    ever wrote one there would otherwise compare a number against `true`.
+    Anything else goes through `parseFloat`, whose answer for a non-numeric
+    string is `nan`; a `nan` threshold makes every comparison against it
+    false, which reads as "no tier is ever complete enough".
+
+    Unlike the other two `*_num` builders this is not a ratio - it is
+    measured against the *share* of a clue tier's reward tasks that the map
+    can actually reach, out of 100.
+    """
+    if isinstance(clue_complete_amount, bool):
+        return 100.0
+    try:
+        return float(str(clue_complete_amount))
+    except ValueError:
+        return math.nan
 
 
 def build_secondary_primary_num(secondary_primary_amount: str) -> float:

@@ -1392,6 +1392,118 @@ def test_smithing_by_smelting_on_needs_no_anvil() -> None:
     assert "Smith a ~|rune platebody|~" in result.valid["Smithing"]
 
 
+def _clue_map(steps_valid: int) -> ChunkInfo:
+    """Four `easy` clue steps, `steps_valid` of them reachable, plus one
+    reward task gated on that tier."""
+    nonskill = {
+        f"Clue step {i}": {"ClueTier": "easy", "Level": 1, **({} if i < steps_valid else {"Chunks": ["999"]})}
+        for i in range(4)
+    }
+    return _chunk_info(
+        challenges={
+            "Nonskill": nonskill,
+            "Extra": {
+                "Obtain a ~|ranger boot|~": {
+                    "Category": ["Collection Log", "Collection Log Clues"],
+                    "ClueRewardTier": "easy",
+                    "Label": "Collection Log",
+                }
+            },
+        }
+    )
+
+
+def _clue_rules(**over: Any) -> dict[str, Any]:
+    return {"Collection Log": True, "Collection Log Clues": True, **over}
+
+
+def test_a_clue_reward_waits_until_its_tier_is_reachable_enough() -> None:
+    """The half of `Collection Log Clues` that was missing. The category gate
+    decides whether the 517 reward tasks are in play at all; this decides
+    which of them, by the share of that tier's steps the map can actually do
+    against `Collection Log Clues Amount`.
+    """
+    half = calc_challenges(
+        {}, {}, _EMPTY, _clue_map(2), rules=_clue_rules(**{"Collection Log Clues Amount": "50"})
+    )
+    all_four = calc_challenges(
+        {}, {}, _EMPTY, _clue_map(4), rules=_clue_rules(**{"Collection Log Clues Amount": "50"})
+    )
+
+    assert "Obtain a ~|ranger boot|~" in half.valid["Extra"]
+    assert "Obtain a ~|ranger boot|~" in all_four.valid["Extra"]
+
+
+def test_a_tier_short_of_the_bar_keeps_its_rewards_out() -> None:
+    result = calc_challenges(
+        {}, {}, _EMPTY, _clue_map(2), rules=_clue_rules(**{"Collection Log Clues Amount": "100"})
+    )
+
+    assert "Extra" not in result.valid
+
+
+def test_the_shipped_default_of_100_wants_the_whole_tier() -> None:
+    """`Collection Log Clues Amount` is `"100"` in upstream's defaults and in
+    both cached maps, so a reward task needs *every* step of its tier - which
+    is why turning the rule on used to add 519 tasks here and rather fewer
+    upstream."""
+    result = calc_challenges(
+        {}, {}, _EMPTY, _clue_map(4), rules=_clue_rules(**{"Collection Log Clues Amount": "100"})
+    )
+
+    assert "Obtain a ~|ranger boot|~" in result.valid["Extra"]
+
+
+def test_the_gate_sleeps_while_the_rule_is_off() -> None:
+    """Off, the category gate has already taken the task out, so the tier
+    share is never consulted - and turning the rule off must not resurrect
+    anything."""
+    result = calc_challenges(
+        {}, {}, _EMPTY, _clue_map(0), rules={"Collection Log": True, "Collection Log Clues": False}
+    )
+
+    assert "Extra" not in result.valid
+
+
+def test_a_reward_task_with_no_tier_is_not_gated() -> None:
+    """Upstream reads `ClueRewardTier` with `hasOwnProperty`; 517 export
+    entries carry one, and a `Collection Log Clues` challenge without one
+    passes untouched."""
+    info = _chunk_info(
+        challenges={
+            "Extra": {
+                "Obtain a ~|clue box|~": {
+                    "Category": ["Collection Log", "Collection Log Clues"],
+                    "Label": "Collection Log",
+                }
+            }
+        }
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules=_clue_rules())
+
+    assert "Obtain a ~|clue box|~" in result.valid["Extra"]
+
+
+def test_a_tier_the_export_never_mentions_is_refused() -> None:
+    """Upstream's `||` has two clauses and they are opposite: a tier *absent*
+    from the table fails, where a tier present but immeasurable passes."""
+    info = _chunk_info(
+        challenges={
+            "Extra": {
+                "Obtain a ~|third-age boot|~": {
+                    "Category": ["Collection Log Clues"],
+                    "ClueRewardTier": "legendary",
+                }
+            }
+        }
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules=_clue_rules())
+
+    assert "Extra" not in result.valid
+
+
 def test_a_backup_whose_parent_is_unknown_is_left_alone() -> None:
     info = _chunk_info(
         challenges={
@@ -1910,3 +2022,34 @@ def test_a_backlogged_reward_item_is_left_out_on_its_own() -> None:
 
     assert "Raft" not in result.available_items
     assert "Spyglass" in result.available_items
+
+
+@pytest.mark.real_cache
+def test_clues_at_the_default_amount_admit_nothing_on_the_oracle_map(
+    real_payload: dict[str, Any],
+    real_export: ChunkInfo,
+    real_tasks_map: dict[str, str],
+) -> None:
+    """`Collection Log Clues` is off on the oracle map, which is how the
+    threshold half of it went unported: the category gate alone let the rule
+    add all 517 reward tasks.
+
+    Turning it on at the shipped `"100"` now adds none - no tier on that map
+    is fully reachable, the best being three quarters of `beginner` - and
+    dropping the bar to 0 admits the lot. The two ends are what make this a
+    test of the *threshold* rather than of the category gate.
+    """
+    import copy
+
+    from chunksim.derive.pipeline import derive, load_map_state
+
+    def extra_valid(**rules: Any) -> int:
+        payload = copy.deepcopy(real_payload)
+        payload["rules"].update(rules)
+        state, unlocked = load_map_state(payload, real_export, real_tasks_map)
+        return len(derive(state, unlocked).challenges.valid.get("Extra", {}))
+
+    off = extra_valid()
+
+    assert extra_valid(**{"Collection Log Clues": True}) == off
+    assert extra_valid(**{"Collection Log Clues": True, "Collection Log Clues Amount": "0"}) > off

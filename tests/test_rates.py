@@ -7,6 +7,7 @@ import math
 import pytest
 
 from chunksim.model.rates import (
+    build_clue_complete_num,
     build_rare_drop_num,
     build_secondary_primary_num,
     find_fraction,
@@ -142,3 +143,26 @@ def test_a_quantity_that_is_not_a_count_is_refused(raw: str) -> None:
     field. Guessing at it would be worse than pricing the drop as a single
     unit, which is what `None` makes the caller do."""
     assert parse_quantity(raw) is None
+
+
+def test_build_clue_complete_num_reads_the_amount_as_a_percentage() -> None:
+    """Unlike the other two `*_num` builders this is not a ratio: it is
+    compared against the share of a clue tier the map can reach, out of 100.
+    `"100"` is upstream's default and both cached maps' value."""
+    assert build_clue_complete_num("100") == 100.0
+    assert build_clue_complete_num("50") == 50.0
+    assert build_clue_complete_num("0") == 0.0
+
+
+def test_a_boolean_amount_falls_back_to_a_hundred() -> None:
+    """Upstream guards against it because every other rule value *is* a
+    boolean, so a client writing one here is a live possibility."""
+    assert build_clue_complete_num(True) == 100.0
+    assert build_clue_complete_num(False) == 100.0
+
+
+def test_an_unparseable_amount_is_nan_so_no_tier_ever_clears_it() -> None:
+    """`parseFloat` on a non-numeric string is `NaN`, and every comparison
+    against `NaN` is false - which reads as "no tier is complete enough"."""
+    assert math.isnan(build_clue_complete_num("lots"))
+
