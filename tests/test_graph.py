@@ -186,9 +186,18 @@ def test_the_real_export_builds_a_graph_matching_its_sections_branch(
 ) -> None:
     """Opt-in: the structural facts the module docstring rests on.
 
-    These are anchored counts rather than magic numbers - each one is a claim
-    the docstring makes, and a change to any of them means the export changed
-    shape and the docstring needs revisiting.
+    **Shape is pinned exactly; size is pinned only where zero would kill the
+    claim.** Upstream is live and improving, so the export grows: two edges and
+    one `"???"` arrived between two fetches a week apart, and an exact count
+    turned that into a failing oracle saying this module was wrong when it was
+    not. What each number is quoted *for* is an argument - "the graph must stay
+    directed", "the placeholder exists" - and an argument dies at zero, not at
+    a different magnitude. So the counts below assert what they defend, and the
+    docstring carries the measurement with a date on it.
+
+    The things that would mean upstream changed *shape* - a target outside
+    `sections`, a `"???"` node that gained a real ref, a third `sectionsLimits`
+    entry - are still exact, because those are claims about the port.
     """
     info = real_export
     graph = build_section_graph(info)
@@ -208,13 +217,23 @@ def test_the_real_export_builds_a_graph_matching_its_sections_branch(
     assert {edge.limit_key for edge in gated} == {"14646-1 to 14902", "14902 to 14646-1"}
 
     # Reciprocity is strict: S -> T counts as reversed only if T itself
-    # declares an edge back to S. 125 do not, which is why the graph must
-    # stay directed.
+    # declares an edge back to S. **The claim is that some do not** - at zero,
+    # an undirected adjacency would be correct and this module's central design
+    # decision would be wrong. 125 on 2026-08-14.
     declared_edges = {(edge.source, edge.target) for edge in edges}
     unreciprocated = [edge for edge in edges if (edge.target, edge.source) not in declared_edges]
-    assert len(unreciprocated) == 125
-    assert len(edges) == 6014
-    assert len(graph.unresolved) == 55
+    assert unreciprocated, "no unreciprocated edges: the graph need not be directed"
+
+    # A floor, not a count. It catches an export that arrived truncated or
+    # empty, which is the failure worth having a number for. 6,016 on the date
+    # above.
+    assert len(edges) > 5000
+
+    # The placeholder still exists, which is what `unresolved` is for and what
+    # `sections._unresolved_only` works around. 56 on the date above; see
+    # `test_sections.test_the_export_still_needs_the_unresolved_workaround`,
+    # which is where its disappearance is meant to be noticed.
+    assert graph.unresolved
 
 
 def _all_edges(graph: Any, chunk_id: str) -> list[Any]:

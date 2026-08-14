@@ -1,7 +1,14 @@
 """The export's `sections` branch as a directed graph over `(chunk, section)` nodes.
 
 `chunkinfo['sections']` is 1,172 entries - *exactly* the `walkableChunks` key
-set - of the form `{chunk: {section: [ref, ...]}}`. Two upstream passes consume
+set - of the form `{chunk: {section: [ref, ...]}}`.
+
+**Upstream is live, so the counts below are measurements with a date on them**
+(2026-08-14), not constants. What each one is quoted *for* is the claim beside
+it, and that is what `tests/test_graph.py` asserts: the shape is pinned exactly
+and the magnitudes only where reaching zero would kill the argument. Two edges
+and one `"???"` appeared between two fetches a week apart; neither meant this
+module was wrong, and a test that failed on them would have said it was. Two upstream passes consume
 it: `findConnectedSections` (worker.js, ported in `sections.py`) and
 `selectAllNeighborsCanvas` (index.js:3033-3079, ported in `neighbours.py`).
 This module is the shared substrate, and is shaped for a third consumer that
@@ -13,7 +20,7 @@ back to the node that lists it. `requirements(n)` is what `n` declares;
 `dependents(n)` is the reverse index - the edges naming `n`, whose `source` is
 the node `n` opens up. A frontier expansion from the unlocked set walks
 `dependents`; `neighbours.py`'s eligibility test walks `requirements`. **125 of
-the real export's 6,014 edges have no declared reverse**, so collapsing the two
+the real export's 6,016 edges have no declared reverse**, so collapsing the two
 into one undirected adjacency would invent 125 crossings the game lacks.
 
 Nodes are `(chunk, section)` because that is the export's own `"4651-1"` id
@@ -37,12 +44,13 @@ numeric. The export also has 315 *named* chunk keys, 7 of them hyphenated
 Use `chunk_node` for chunk ids; `parse_ref` is for `sections` refs only. Two
 functions so the hazard is unrepresentable rather than merely documented.
 
-`"???"` (55 refs) is the export's unresolved-neighbour placeholder. It produces
+`"???"` (56 refs) is the export's unresolved-neighbour placeholder. It produces
 no edge, and the node carrying it is recorded in `unresolved`. Every one of the
-55 has `"???"` as its **only** ref, so those sections have no connection-based
-way in at all - only `manualSections` or a `Connect` link opens them.
+56 has `"???"` as its **only** ref, so those sections have no connection-based
+way in at all - only `manualSections` or a `Connect` link opens them. That
+"every one" is the claim; the 56 is this week's count of it.
 
-**Nothing is filtered to grid adjacency here.** 38 of the 6,014 edges are not
+**Nothing is filtered to grid adjacency here.** 37 of the 6,016 edges are not
 `±1`/`±256` steps (deltas up to 4,857 - boats, stairs, teleports), and one is a
 same-chunk self-loop. `selectAllNeighborsCanvas` only ever *proposes* grid-
 adjacent candidates, so `neighbours.py` applies that filter itself; a path

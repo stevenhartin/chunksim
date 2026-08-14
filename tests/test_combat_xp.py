@@ -475,8 +475,12 @@ def test_most_of_the_exports_cast_challenges_have_a_rune_cost(real_export: Chunk
     priced = load(read_blob("wiki_rates", data_root())["data"]).spell_costs
     casts = {n for n in real_export.challenges["Magic"] if n.startswith("Cast ")}
 
-    assert len(casts) == 214
-    assert len(priced) == 190
+    # **"Most", which is what the name claims** - not 190 of 214, which is what
+    # they happened to be on 2026-08-14. Both sides are live: upstream adds
+    # `Cast` challenges and the wiki scrape follows, so an exact pair fails on
+    # the next good day either of them has.
+    assert len(casts) > 150
+    assert len(priced) > len(casts) * 0.8
     assert set(priced) <= casts
     assert all("spell sack" in n or "rune pouch" in n for n in casts - set(priced))
     assert priced["Cast ~|varrock teleport|~"].items == {

@@ -231,7 +231,7 @@ def unlocked_sections(
 
     `unresolved_sections_open` turns off the `"???"` workaround wholesale -
     see `_unresolved_only`. It defaults to *on* because leaving it off makes
-    33 real places unreachable on every possible map, including the Shipyard
+    34 real places unreachable on every possible map, including the Shipyard
     the Pandemonium quest is built in; it exists so a player who would rather
     match upstream's answers exactly can have them. The finer control is
     upstream's own and needs nothing from here: `manualSections` overrides
@@ -332,18 +332,18 @@ def _unresolved_only(connections: Any) -> bool:
     as `graph.py` does, which leaves such a section reachable by nothing.
     Measured against the whole export: 55 sections list it, 4 of those are
     section `0` (already free), 18 more are rescued by a `Connect`
-    named-area link, and **33 remain unreachable with every chunk in the
+    named-area link, and **34 remain unreachable with every chunk in the
     game unlocked**. A section no configuration of the world can enter has
     no reason to be in the export at all, so the honest reading of `???` is
     "not recorded", not "sealed".
 
     The consequence was not academic. Pandemonium step 5 builds the cargo
-    hold in the Shipyard, `8234-1`, which is one of the 33 - so the quest
+    hold in the Shipyard, `8234-1`, which is one of them - so the quest
     could never complete, its `Raft` reward never arrived, and all 243
     Sailing challenges stayed invalid on **every** map. Real players already
     work around it by hand: the second cached map carries a `manualSections`
     entry for
-    `12338-2`, another of the 33.
+    `12338-2`, another of them.
 
     **This deliberately fires per section rather than off a hardcoded id
     list, so it disappears on its own as upstream records the routes** - a

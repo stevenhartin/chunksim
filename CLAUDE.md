@@ -462,6 +462,15 @@ Run those before trusting a change to `sections`/`sources`/`challenges`/`bis`/`a
 `other_tasks`, and **treat a failure as a bug in this code rather than a stale oracle.** Do not report
 a green `.venv/bin/pytest` as a change being verified.
 
+- **Upstream is live, so pin shape exactly and size only where zero kills the claim.** The export
+  grows: two edges and a `"???"` arrived between fetches a week apart, and exact counts turned that
+  into oracles reporting this code as wrong when nothing here had moved. A count is quoted to defend
+  an argument — "the graph must stay directed", "the placeholder still exists", "most casts have a
+  rune cost" — and an argument dies at zero or at a ratio, not at a different magnitude. What stays
+  exact is anything that would mean upstream changed *shape*: a target outside `sections`, a third
+  `sectionsLimits` entry, a `"???"` node that gained a real ref. **Re-fetch and re-run is the sync
+  ritual** — `chunksim chunkinfo` then the oracle line below — and the module docstrings carry their
+  measurements with the date they were taken.
 - **The oracles are marked, not `skipif`-ed.** `@pytest.mark.real_cache` (needs the export *and* this
   checkout's populated `cache/`), `@pytest.mark.real_export`, or `@pytest.mark.slow` (minutes, and
   gated on `CHUNKSIM_SLOW_ORACLES` so the ordinary oracle run stays worth typing — today that is the

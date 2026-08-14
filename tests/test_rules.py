@@ -79,5 +79,9 @@ def test_an_absent_rules_branch_is_permissive_not_neutral(real_export: ChunkInfo
         state, unlocked = load_map_state(payload, real_export, {})
         return len(derive(state, unlocked).challenges.available_items)
 
-    assert items_for(None) == 526
+    # The contrast is the finding, and only one side of it is exact. **Zero is
+    # the claim** - upstream's own defaults reach nothing on three chunks - while
+    # the other side is "hundreds", which was 526 on 2026-08-14 and moves with
+    # every item upstream adds.
+    assert items_for(None) > 300
     assert items_for(default_rules()) == 0

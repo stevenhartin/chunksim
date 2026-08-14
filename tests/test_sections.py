@@ -411,8 +411,14 @@ def test_the_export_still_needs_the_unresolved_workaround(real_export: ChunkInfo
         if not sealed.get(chunk, {}).get(section)
     }
 
-    assert len(rescued) == 33
+    # **Non-empty, not a count.** The docstring above says to delete the
+    # workaround when this reaches zero, so zero is the only number that means
+    # anything - and upstream is live, so the figure moves on its own. It was
+    # 33, then 34 a week later, and neither told us anything about this code.
+    assert rescued, "no section needs rescuing: delete sections._unresolved_only"
     # The one that made this worth doing: Pandemonium step 5 builds the cargo
     # hold here, so without it the quest never finishes and all 243 Sailing
     # challenges stay invalid on every map.
     assert "8234-1" in rescued
+    # The other named case, so the pair the docstring cites is still real.
+    assert "12338-2" in rescued
