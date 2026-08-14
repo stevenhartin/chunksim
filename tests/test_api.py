@@ -18,6 +18,7 @@ import pytest
 from chunksim.remote.api import (
     CHUNKINFO_URL,
     DEFAULT_TIMEOUT,
+    RELEASES_URL,
     TASKS_MAP_URL,
     WIKI_API_URL,
     WIKI_TITLES_PER_REQUEST,
@@ -32,6 +33,7 @@ from chunksim.remote.api import (
     fetch_text,
     fetch_wiki_page_titles,
     fetch_wiki_pages,
+    fetch_latest_release,
     fetch_map_tile_version,
     map_url,
     slayer_sheet_url,
@@ -356,3 +358,77 @@ def test_the_tile_template_carries_every_coordinate() -> None:
     for placeholder in ("{version}", "{map_id}", "{z}", "{plane}", "{x}", "{y}"):
         assert placeholder in MAP_TILE_URL
     assert MAP_TILE_URL.startswith("https://maps.runescape.wiki/")
+
+
+_RELEASE = json.dumps({
+    "tag_name": "v0.2.0",
+    "html_url": "https://github.com/stevenhartin/chunksim/releases/tag/v0.2.0",
+    "assets": [
+        {"name": "source.zip", "browser_download_url": "https://example/source.zip",
+         "size": 10, "digest": "sha256:aa"},
+        {"name": "chunksim-0.2.0-setup.exe",
+         "browser_download_url": "https://example/chunksim-0.2.0-setup.exe",
+         "size": 4096, "digest": "sha256:bb"},
+    ],
+}).encode()
+
+
+def test_a_release_is_read_with_its_installer(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The tag names the version and one asset is the Windows installer; the
+    rest of a release is not this project's business."""
+    _patch_urlopen(monkeypatch, _responds(_RELEASE))
+
+    release = fetch_latest_release()
+
+    assert release is not None
+    # `v0.2.0` and `0.2.0` are the same release, so the prefix goes here rather
+    # than in every comparison after.
+    assert release.version == "0.2.0"
+    assert release.installer is not None
+    assert release.installer.name == "chunksim-0.2.0-setup.exe"
+    assert release.installer.digest == "sha256:bb"
+
+
+def test_a_release_without_an_installer_is_still_a_release(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A source-only release still says a newer version exists - there is just
+    nothing for the Windows path to offer."""
+    body = json.dumps({"tag_name": "0.3.0", "html_url": "u", "assets": []}).encode()
+    _patch_urlopen(monkeypatch, _responds(body))
+
+    release = fetch_latest_release()
+
+    assert release is not None and release.installer is None
+
+
+def test_no_releases_is_an_answer_rather_than_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**404 is also what a private repository looks like**, which is why the
+    endpoint has to be public - but either way the caller says nothing."""
+    _patch_urlopen(monkeypatch, _raises(
+        urllib.error.HTTPError(RELEASES_URL, 404, "Not Found", {}, None)  # type: ignore[arg-type]
+    ))
+
+    assert fetch_latest_release() is None
+
+
+def test_a_release_with_no_tag_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """There is nothing to compare against, and guessing one would be worse
+    than saying nothing."""
+    _patch_urlopen(monkeypatch, _responds(b'{"html_url": "u"}'))
+
+    with pytest.raises(FetchError, match="no tag"):
+        fetch_latest_release()
+
+
+def test_the_update_check_sends_no_custom_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """GitHub is public and unauthenticated, so a header would only publish
+    something nobody asked for - the same rule the Firebase calls follow."""
+    calls = _patch_urlopen(monkeypatch, _responds(_RELEASE))
+
+    fetch_latest_release()
+
+    # A bare string, not a Request carrying headers.
+    assert calls and isinstance(calls[0][0], str)

@@ -195,6 +195,16 @@ ASSET_DIR_NAME = "assets"
 #: does not re-scrape the wiki. An ordinary blob: `{"data": "2026-07-29_a",
 #: "fetched_at": ..., "source": ...}`.
 TILE_VERSION_BLOB_NAME = "tile_version"
+
+#: The last answer from the release check. Remembered so opening the GUI five
+#: times in an afternoon asks GitHub once, the same bargain `tile_version`
+#: makes with the wiki.
+UPDATE_BLOB_NAME = "update"
+
+#: How long that answer stands. A day is short enough that an update is noticed
+#: the day after it ships and long enough that the check is not part of what
+#: opening the app costs.
+UPDATE_MAX_AGE_HOURS = 24.0
 TILE_VERSION_ENV_VAR = "CHUNKSIM_TILE_VERSION"
 
 #: How long a remembered tile version is used before the wiki is asked again.
@@ -1425,6 +1435,30 @@ def read_tile_version(root: Path | None = None) -> tuple[str, float]:
 def write_tile_version(version: str, source: str, root: Path | None = None) -> Path:
     """Remember `version`, so a restart does not scrape the wiki again."""
     return write_blob(TILE_VERSION_BLOB_NAME, {"version": version}, source, root)
+
+
+def read_update(root: Path | None = None) -> tuple[dict[str, Any], float]:
+    """The remembered release check and its age in hours.
+
+    Shaped like `read_tile_version` and for the same reason: this module says
+    how old the answer is and nothing about whether that is too old. An empty
+    dict is a real answer - it is what "checked, and there are no releases"
+    looks like, and it must be remembered or every launch re-asks.
+    """
+    envelope = read_blob(UPDATE_BLOB_NAME, root, hint="the GUI checks this itself")
+    data = envelope.get("data")
+    if not isinstance(data, dict):
+        raise CacheMissError(f"no update check in {blob_path(UPDATE_BLOB_NAME, root)}")
+    try:
+        fetched = datetime.fromisoformat(str(envelope.get("fetched_at")))
+    except ValueError:
+        return data, float("inf")
+    return data, (datetime.now(UTC) - fetched).total_seconds() / 3600
+
+
+def write_update(release: Mapping[str, Any], source: str, root: Path | None = None) -> Path:
+    """Remember a release check, answer and timestamp together."""
+    return write_blob(UPDATE_BLOB_NAME, dict(release), source, root)
 
 
 @dataclass(frozen=True)

@@ -35,6 +35,9 @@ from chunksim.gui.jobs import StopCheck
 from chunksim.remote.api import TASKS_MAP_URL
 from chunksim.gui.jobs import as_int
 from chunksim.model.rules import default_rules
+from chunksim.remote.api import FetchError, RELEASES_URL, fetch_latest_release
+from chunksim.store.cache import CacheMissError
+from chunksim.store.build_info import is_newer, read_build
 from chunksim.store import cache
 from chunksim.store.derived_cache import cached_derive
 from chunksim.costing import dps_bridge
@@ -42,6 +45,9 @@ from chunksim.remote.api import fetch_chunkinfo
 from chunksim.remote.api import fetch_map
 from chunksim.remote.api import fetch_tasks_map
 import os
+import subprocess
+import sys
+from pathlib import Path
 from chunksim.runs.batch import price_steps
 from chunksim.runs.batch import run_batch
 from chunksim.runs.batch import save_edit, save_snapshot, save_unlock
@@ -253,6 +259,126 @@ def _blank_map(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
         root=ctx.root,
     )
     return {"map": saved.name, "open": saved.name}
+
+
+def _update_state(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
+    """Whether a newer `chunksim` has been published.
+
+    **Every failure is silent, and that is the design.** An update check
+    interrupting someone to say it could not reach GitHub is worse than one
+    that quietly does not run: nobody asked, and nothing they were doing
+    depends on the answer. So a network error, a private or release-less
+    repository, and a version neither side could parse all come back the same
+    way - `available: false`, no error text, no toast.
+
+    Answers **inline**: it is one small GET behind a day-long cache, so a job
+    id would buy a poll for something usually already on disk.
+    """
+    build = read_build()
+    answer: dict[str, Any] = {"current": build.version, "available": False, "latest": None}
+    if not settings.sanitise({}, cache.read_gui_settings(ctx.root)).get("update_check"):
+        return {**answer, "checked": False, "why": "disabled"}
+
+    fresh = bool(payload.get("force"))
+    remembered: dict[str, Any] | None = None
+    if not fresh:
+        try:
+            remembered, age = cache.read_update(ctx.root)
+            fresh = age > cache.UPDATE_MAX_AGE_HOURS
+        except CacheMissError:
+            fresh = True
+
+    if fresh:
+        try:
+            release = fetch_latest_release()
+        except FetchError:
+            # Nothing to say and nothing to remember: a failed check must not
+            # write a "no update" that then stands for a day.
+            return {**answer, "checked": False, "why": "unreachable"}
+        remembered = release.as_dict() if release else {}
+        cache.write_update(remembered, RELEASES_URL, ctx.root)
+
+    latest = (remembered or {}).get("version")
+    if not isinstance(latest, str) or not is_newer(latest, build.version):
+        return {**answer, "checked": True}
+    return {
+        **answer,
+        "checked": True,
+        "available": True,
+        "latest": latest,
+        "url": (remembered or {}).get("url") or "",
+        # Present only when this platform can act on it, so the page does not
+        # have to know what an installer is.
+        "installer": (remembered or {}).get("installer") if sys.platform == "win32" else None,
+    }
+
+
+def _update_install_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
+    """Download the published installer, check it, and hand over to it.
+
+    **User-initiated only.** Nothing here runs on a timer or on boot; the page
+    calls this because someone pressed a button next to a version number they
+    were shown.
+
+    **The digest is checked before anything is executed**, against what the
+    release API reported beside the download URL. HTTPS with certificate
+    validation is what makes that digest trustworthy in the first place; the
+    hash is what catches a truncated or substituted download afterwards. An
+    asset with no digest is **refused** rather than run on the strength of the
+    transport alone, and a mismatch deletes the file rather than keeping it
+    around to be found later.
+
+    The installer is written to a temporary directory, never to `cache/`:
+    nothing under there is executable, and an unpacked `.exe` sitting in a data
+    directory is a thing waiting to be run by accident.
+    """
+    if sys.platform != "win32":
+        raise ValueError("the installer is a Windows build")
+    asset = payload.get("installer")
+    if not isinstance(asset, Mapping):
+        raise ValueError("no installer was offered")
+    url, digest = asset.get("url"), asset.get("digest")
+    name = str(asset.get("name") or "chunksim-setup.exe")
+    if not isinstance(url, str) or not url.startswith("https://"):
+        raise ValueError("the installer URL is not https")
+    if not isinstance(digest, str) or not digest.startswith("sha256:"):
+        raise ValueError("the release published no checksum for the installer")
+
+    def work(progress: Progress, _stop: StopCheck) -> dict[str, Any]:
+        import hashlib
+        import tempfile
+        import urllib.request
+
+        progress(f"downloading {name}")
+        directory = Path(tempfile.mkdtemp(prefix="chunksim-update-"))
+        # `Path(name).name` strips any directory the release put in the asset
+        # name, so a hostile one cannot write outside the temporary directory.
+        target = directory / Path(name).name
+        with urllib.request.urlopen(url, timeout=300.0) as response:
+            target.write_bytes(response.read())
+
+        progress("checking the download")
+        got = hashlib.sha256(target.read_bytes()).hexdigest()
+        if got != digest.removeprefix("sha256:"):
+            target.unlink(missing_ok=True)
+            raise ValueError("the download did not match its published checksum")
+
+        progress("starting the installer")
+        # `/SILENT` is Inno Setup's: a progress window, no questions. The
+        # installer replaces files this process has open, so the server has to
+        # go - and it says so before it does, because the page is about to
+        # lose its connection and should not read that as a crash.
+        # Detached, or the installer dies with the server it was started from.
+        subprocess.Popen(
+            [str(target), "/SILENT"],
+            close_fds=True,
+            creationflags=getattr(subprocess, "DETACHED_PROCESS", 0)
+            | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+        )
+        ctx.stopping[0] = True
+        return {"installing": name, "path": str(target)}
+
+    return {"job": ctx.jobs.submit("update", work).id}
 
 
 def _simulate_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
@@ -740,6 +866,8 @@ def _prune_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
 _ACTIONS: dict[str, Callable[[Mapping[str, Any], Context], dict[str, Any]]] = {
     "/api/fetch": _fetch_job,
     "/api/blank": _blank_map,
+    "/api/update": _update_state,
+    "/api/update/install": _update_install_job,
     "/api/simulate": _simulate_job,
     "/api/unlock": _unlock_job,
     "/api/commit": _commit_job,

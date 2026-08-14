@@ -66,6 +66,7 @@ DEFAULTS: dict[str, Any] = {
     "hours_scale": "log",
     "hours_bands": [dict(band) for band in DEFAULT_BANDS],
     "first_run_done": False,
+    "update_check": True,
 }
 
 
@@ -75,6 +76,7 @@ def defaults() -> dict[str, Any]:
         "hours_scale": DEFAULTS["hours_scale"],
         "hours_bands": [dict(band) for band in DEFAULT_BANDS],
         "first_run_done": DEFAULTS["first_run_done"],
+        "update_check": DEFAULTS["update_check"],
     }
 
 
@@ -129,7 +131,7 @@ def _bands(value: Any) -> list[dict[str, Any]] | None:
 
 #: The keys `sanitise` understands. Named once so `reset` cannot ask for
 #: something no other part of this module has heard of.
-KEYS: tuple[str, ...] = ("hours_scale", "hours_bands", "first_run_done")
+KEYS: tuple[str, ...] = ("hours_scale", "hours_bands", "first_run_done", "update_check")
 
 #: Band names that were once the default and are not any more, and the bound
 #: they shipped with. **Both halves are the check**: a stored band matching
@@ -200,7 +202,8 @@ def sanitise(payload: Mapping[str, Any], current: Mapping[str, Any] | None = Non
         # and an exact `isinstance` rather than a truth test, because "the
         # setup ran" is a thing the page states, not a thing anything infers
         # from a stray 1 or "yes".
-        done = source.get("first_run_done")
-        if isinstance(done, bool):
-            settled["first_run_done"] = done
+        for flag in ("first_run_done", "update_check"):
+            value = source.get(flag)
+            if isinstance(value, bool):
+                settled[flag] = value
     return settled

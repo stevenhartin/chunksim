@@ -167,6 +167,8 @@ const state = {
   heatmap: null,
   /* Which install is serving this page, for the watermark. Fetched once. */
   build: null,
+  //: The release check's answer, or null until it has run. See `loadUpdate`.
+  update: null,
   /* Chunk id -> the name a person calls it. Static per export, fetched with
    * `areas` on boot. Empty until then, which `chunkLabel` treats as "no name
    * known" rather than as an error. */
@@ -1721,6 +1723,10 @@ function confirmAction(title, body, verb, { danger = true } = {}) {
 el["do-commit"].addEventListener("click", askCommit);
 el["compare-start"].addEventListener("click", askCompare);
 el["exit-mode"].addEventListener("click", exitMode);
+
+/* Only meaningful when there is an update; `askUpdate` returns without
+ * opening anything otherwise, so the watermark stays inert. */
+el.watermark.addEventListener("click", askUpdate);
 
 el["overlay-close"].addEventListener("click", closeOverlay);
 /* **A click on the backdrop is a press *and* a release on the backdrop.**
@@ -5925,6 +5931,7 @@ function renderAttribution() {
   if (BOOT.sections) el.masks.click();
   showTab(BOOT.tab || "tasks");
   warmReference();
+  loadUpdate();
 })();
 
 /* **Fetch the wiki rates once, on open, if they have never been fetched.**
@@ -5961,6 +5968,52 @@ function renderBuild() {
   el.watermark.textContent = `${build.version} · ${age}`;
   el.watermark.dataset.tip = tmpl`<b>This server's install</b><span class='sub'>${when(build.installed_at)} · ${build.kind}</span><span class='hint'>${build.path}</span>`;
   el.watermark.hidden = false;
+  /* **The update rides on the line that already says which install this is.**
+   * It is the same question - what am I running - so a second badge somewhere
+   * else would be two answers to it. */
+  const update = state.update;
+  el.watermark.classList.toggle("stale", Boolean(update && update.available));
+  if (update && update.available) {
+    el.watermark.textContent = `${build.version} · ${update.latest} available`;
+  }
+}
+
+/* **Checked on boot, and every failure is silent.** Nobody asked, so a network
+ * error, a repository with no releases and a disabled check all look the same
+ * from here: nothing on screen. The server answers from a day-long cache, so
+ * this is usually not a request at all. */
+async function loadUpdate() {
+  try { state.update = await postJSON("/api/update", {}); } catch { return; }
+  renderBuild();
+}
+
+/* The dialogue behind the watermark, when there is something to say. Reading
+ * the release notes first is the normal path; installing is the shortcut for
+ * someone who has already decided. */
+function askUpdate() {
+  const update = state.update;
+  if (!update || !update.available) return;
+  const installer = update.installer;
+  openOverlay("Update available",
+    tmpl`<p><b>${update.latest}</b> has been published; this is <b>${update.current}</b>.</p>
+      ${raw(installer
+        ? tmpl`<p>chunksim can download the installer and run it. The server stops
+            while it installs, and the download is checked against the checksum
+            published with the release.</p>`
+        : tmpl`<p>Open the release page to download it.</p>`)}`,
+    tmpl`<button id="update-later" type="button">Later</button>
+      <button id="update-open" type="button">Release Notes</button>
+      ${raw(installer ? '<button id="update-install" type="button">Download &amp; Install</button>' : "")}`);
+  document.getElementById("update-later").onclick = closeOverlay;
+  document.getElementById("update-open").onclick = () => {
+    window.open(update.url, "_blank", "noreferrer");
+    closeOverlay();
+  };
+  const install = document.getElementById("update-install");
+  if (install) install.onclick = () => {
+    closeOverlay();
+    runAction("Update to " + update.latest, "/api/update/install", { installer });
+  };
 }
 
 /* ---- first run ---------------------------------------------------------- */

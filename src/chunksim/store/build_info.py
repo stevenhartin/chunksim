@@ -216,3 +216,36 @@ __all__ = [
     "read_build",
     "watermark",
 ]
+
+
+def parse_version(text: str) -> tuple[int, ...] | None:
+    """`"0.2.10"` as `(0, 2, 10)`, or `None` if it is not that shape.
+
+    **Refusing is the point.** There is no PEP 440 parser in the standard
+    library and this project has no runtime dependencies, so the choice was a
+    strict reading of the simple case or a loose one of every case. A loose
+    parser here would compare a release it half-understood and either nag
+    forever or never mention an update at all, and both failures are silent.
+
+    A `None` means the caller says nothing, which is the right answer to a
+    version neither side can be sure it read correctly.
+    """
+    parts = text.strip().removeprefix("v").split(".")
+    if not parts or any(not part.isdigit() for part in parts):
+        return None
+    return tuple(int(part) for part in parts)
+
+
+def is_newer(candidate: str, current: str) -> bool:
+    """Whether `candidate` is a later version than `current`.
+
+    False whenever either side is unparseable, or equal, or older - so the
+    caller's question is only ever answered "yes" when both versions were
+    understood. `(0, 2)` and `(0, 2, 0)` compare equal by zero-padding, since
+    `0.2` and `0.2.0` are the same release named two ways.
+    """
+    left, right = parse_version(candidate), parse_version(current)
+    if left is None or right is None:
+        return False
+    width = max(len(left), len(right))
+    return left + (0,) * (width - len(left)) > right + (0,) * (width - len(right))

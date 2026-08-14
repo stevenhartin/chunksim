@@ -17,6 +17,8 @@ from pathlib import Path
 import pytest
 
 from chunksim.store.build_info import (
+    is_newer,
+    parse_version,
     NO_WATERMARK_ENV,
     Build,
     describe,
@@ -136,3 +138,48 @@ def test_it_goes_to_stderr_by_default(
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err.startswith("chunksim ")
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("0.2.0", (0, 2, 0)),
+        ("v0.2.0", (0, 2, 0)),
+        (" 1.0 ", (1, 0)),
+        ("0.1.0a1", None),
+        ("unknown", None),
+        ("", None),
+        ("1..2", None),
+    ],
+)
+def test_parse_version_reads_the_simple_case_and_refuses_the_rest(
+    text: str, expected: tuple[int, ...] | None
+) -> None:
+    """**Refusing is the point.** There is no PEP 440 parser in the stdlib and
+    no runtime dependencies here, so the choice was a strict reading of the
+    simple case or a loose one of every case - and a loose parser would compare
+    a version it half-understood, then nag forever or never speak."""
+    assert parse_version(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("candidate", "current", "newer"),
+    [
+        ("0.2.0", "0.1.0", True),
+        # The one a string comparison gets wrong, which is the reason this
+        # function exists at all.
+        ("0.10.0", "0.9.0", True),
+        ("0.1.0", "0.2.0", False),
+        ("0.1.0", "0.1.0", False),
+        # `0.2` and `0.2.0` are one release named two ways.
+        ("0.2", "0.2.0", False),
+        ("0.2.1", "0.2", True),
+        # Either side unreadable means the caller says nothing.
+        ("x", "0.1.0", False),
+        ("0.2.0", "unknown", False),
+    ],
+)
+def test_is_newer_only_answers_yes_when_it_understood_both(
+    candidate: str, current: str, newer: bool
+) -> None:
+    assert is_newer(candidate, current) is newer

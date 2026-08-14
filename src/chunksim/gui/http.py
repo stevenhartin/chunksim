@@ -91,6 +91,10 @@ class Context:
     #: wiki once however many times the page asks. Mutable for the same reason
     #: `last_seen` is.
     tile_version: list[str] = field(default_factory=lambda: [""])
+    #: Set when something has decided this process must end - today only the
+    #: updater, which has launched an installer that is about to replace the
+    #: files this process is running from. Mutable like the two above.
+    stopping: list[bool] = field(default_factory=lambda: [False])
     #: Whether the browser-origin checks apply. Off in tests, which have no
     #: browser to send the headers this asserts on.
     check_origin: bool = True
@@ -160,7 +164,14 @@ def should_stop(ctx: Context, timeout: float = IDLE_TIMEOUT_SECONDS) -> bool:
     `--keep-alive` disarms it entirely: a server left running over ssh is meant
     to outlive the browser that reads it, and stopping fifteen seconds after a
     laptop's tab closed is a server you have to go back and restart.
+
+    **`stopping` beats all four, `--keep-alive` included.** It is set when an
+    installer has been launched over the top of this install, and staying up
+    then does not keep the server useful - it keeps a process running from
+    files that are being replaced underneath it.
     """
+    if ctx.stopping[0]:
+        return True
     if ctx.keep_alive:
         return False
     if not ctx.last_seen[0]:

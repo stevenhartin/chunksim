@@ -6,9 +6,12 @@ here exercises the real routing without binding a socket.
 
 from __future__ import annotations
 
+import hashlib
+import io
 import json
 import re
 import threading
+from types import SimpleNamespace
 import time
 from http import HTTPStatus
 from pathlib import Path
@@ -17,6 +20,7 @@ from typing import Any
 import pytest
 
 from chunksim.model.rules import DEFAULT_RULES
+from chunksim.remote.api import FetchError
 from chunksim.store import cache
 from chunksim.gui.browser import window_flags
 from chunksim.gui.server import Context, Response, handle_request
@@ -923,3 +927,150 @@ def test_a_blank_map_opens_in_edit_mode(tmp_path: Path) -> None:
     # The listing expands a batch's runs, and a hand-made map is a batch of
     # one - so the row the picker opens is the bare name, not `.../run-001`.
     assert ("untitled", cache.EDITED) in [(row["map_id"], row["kind"]) for row in rows]
+
+
+_INSTALLER: dict[str, Any] = {
+    "name": "chunksim-9.9.9-setup.exe",
+    "url": "https://example/chunksim-9.9.9-setup.exe",
+    "size": 4,
+    "digest": "sha256:" + hashlib.sha256(b"MZ\x00\x00").hexdigest(),
+}
+
+_UPDATE_RELEASE: dict[str, Any] = {
+    "version": "9.9.9",
+    "url": "https://example/releases/9.9.9",
+    "installer": _INSTALLER,
+}
+
+
+def test_a_newer_release_is_reported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ctx = Context(root=tmp_path, check_origin=False)
+    monkeypatch.setattr(
+        "chunksim.gui.actions.fetch_latest_release",
+        lambda: SimpleNamespace(as_dict=lambda: _UPDATE_RELEASE),
+    )
+
+    reply = _body(_post("/api/update", ctx, {}))
+
+    assert (reply["available"], reply["latest"]) == (True, "9.9.9")
+    # Remembered, so opening the GUI five times in an afternoon asks once.
+    assert cache.read_update(tmp_path)[0]["version"] == "9.9.9"
+
+
+def test_an_unreachable_check_says_nothing_and_remembers_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**Silence is the design.** Nobody asked for this, so a check that cannot
+    run must not interrupt - and must not write a "no update" that would then
+    stand for a day."""
+    ctx = Context(root=tmp_path, check_origin=False)
+
+    def unreachable() -> None:
+        raise FetchError("network error checking for updates: unreachable")
+
+    monkeypatch.setattr("chunksim.gui.actions.fetch_latest_release", unreachable)
+
+    reply = _body(_post("/api/update", ctx, {}))
+
+    assert reply["available"] is False and reply["checked"] is False
+    with pytest.raises(cache.CacheMissError):
+        cache.read_update(tmp_path)
+
+
+def test_the_check_can_be_turned_off(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ctx = Context(root=tmp_path, check_origin=False)
+    cache.write_gui_settings({"update_check": False}, tmp_path)
+    monkeypatch.setattr(
+        "chunksim.gui.actions.fetch_latest_release",
+        lambda: pytest.fail("the network must not be touched when the check is off"),
+    )
+
+    reply = _body(_post("/api/update", ctx, {}))
+
+    assert reply["checked"] is False and reply["why"] == "disabled"
+
+
+def test_an_installer_without_a_checksum_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**An executable is not run on the strength of the transport alone.**
+    HTTPS says who served it; the digest says it is the file the release names.
+    Without one there is nothing to check the download against."""
+    monkeypatch.setattr("chunksim.gui.actions.sys.platform", "win32")
+    ctx = Context(root=tmp_path, check_origin=False)
+    installer = {**_INSTALLER, "digest": None}
+
+    response = _post("/api/update/install", ctx, {"installer": installer})
+
+    assert response.status == 400
+    assert "checksum" in _body(response)["error"]
+
+
+def test_an_installer_served_over_http_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("chunksim.gui.actions.sys.platform", "win32")
+    ctx = Context(root=tmp_path, check_origin=False)
+    installer = {**_INSTALLER, "url": "http://example/x-setup.exe"}
+
+    response = _post("/api/update/install", ctx, {"installer": installer})
+
+    assert response.status == 400
+
+
+def test_a_download_that_does_not_match_its_checksum_is_deleted_unrun(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The one that matters: a wrong file must not survive the failure, or it
+    sits on disk waiting to be found and double-clicked."""
+    monkeypatch.setattr("chunksim.gui.actions.sys.platform", "win32")
+    started: list[Any] = []
+    monkeypatch.setattr(
+        "chunksim.gui.actions.subprocess.Popen",
+        lambda *args, **kwargs: started.append(args),
+    )
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda url, timeout=0: io.BytesIO(b"NOT THE FILE"),
+    )
+    ctx = Context(root=tmp_path, check_origin=False)
+
+    job = _wait(ctx, _body(_post("/api/update/install", ctx, {"installer": _INSTALLER}))["job"])
+
+    assert job["state"] == "failed"
+    assert "checksum" in (job["error"] or "")
+    assert not started, "nothing may be executed after a checksum mismatch"
+    assert ctx.stopping[0] is False
+
+
+def test_a_verified_installer_is_launched_and_the_server_stands_down(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The server has to go: the installer is about to replace the files this
+    process is running from."""
+    monkeypatch.setattr("chunksim.gui.actions.sys.platform", "win32")
+    started: list[Any] = []
+    monkeypatch.setattr(
+        "chunksim.gui.actions.subprocess.Popen",
+        lambda *args, **kwargs: started.append(args[0]),
+    )
+    monkeypatch.setattr("urllib.request.urlopen", lambda url, timeout=0: io.BytesIO(b"MZ\x00\x00"))
+    ctx = Context(root=tmp_path, check_origin=False)
+
+    job = _wait(ctx, _body(_post("/api/update/install", ctx, {"installer": _INSTALLER}))["job"])
+
+    assert job["state"] == "done"
+    assert started and started[0][1] == "/SILENT"
+    assert ctx.stopping[0] is True
+
+
+def test_stopping_beats_keep_alive(tmp_path: Path) -> None:
+    """`--keep-alive` keeps a server useful; it cannot keep one running out of
+    files that are being replaced underneath it."""
+    from chunksim.gui.http import should_stop
+
+    ctx = Context(root=tmp_path, keep_alive=True)
+    assert should_stop(ctx) is False
+
+    ctx.stopping[0] = True
+    assert should_stop(ctx) is True

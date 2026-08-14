@@ -37,11 +37,27 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from chunksim.remote.wiki import map_tile_version
 
 MAP_URL = "https://chunkpicker.firebaseio.com/maps/{map_id}.json"
+
+#: Where this project's own releases are published. A **fifth host**, and the
+#: only one that is about `chunksim` rather than about the game.
+#:
+#: **It has to be a public repository.** GitHub answers an unauthenticated
+#: request for a private one with 404 rather than 403, so an update check
+#: against a private repo cannot tell "no release yet" from "not allowed" - and
+#: the fix is not a token. A token shipped inside a distributed application is
+#: a published token, granting read access to everything the account owns.
+RELEASES_URL = "https://api.github.com/repos/stevenhartin/chunksim/releases/latest"
+
+#: The installer asset a Windows build publishes, by convention. Matched
+#: case-insensitively against each asset's name; anything else in the release
+#: (source archives, other platforms) is ignored rather than offered.
+INSTALLER_ASSET_SUFFIX = "-setup.exe"
 
 # gh-pages is upstream's default branch and where the live site is served
 # from; `main` 404s.
@@ -141,6 +157,109 @@ DEFAULT_TIMEOUT = 30.0
 
 class FetchError(Exception):
     """A map could not be retrieved, or was not in the expected shape."""
+
+
+@dataclass(frozen=True)
+class ReleaseAsset:
+    """A downloadable file attached to a release."""
+
+    name: str
+    url: str
+    size: int
+    #: `sha256:<hex>` as GitHub reports it, or `None` for an older release that
+    #: predates the field. **`None` means the installer path refuses to run**:
+    #: an executable this project is about to launch is not something to take
+    #: on the strength of the transport alone.
+    digest: str | None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"name": self.name, "url": self.url, "size": self.size, "digest": self.digest}
+
+
+@dataclass(frozen=True)
+class Release:
+    """The newest published release, as the update check needs it."""
+
+    version: str
+    #: The release page, for a human to read before deciding.
+    url: str
+    installer: ReleaseAsset | None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "version": self.version,
+            "url": self.url,
+            "installer": self.installer.as_dict() if self.installer else None,
+        }
+
+
+def fetch_latest_release(timeout: float = DEFAULT_TIMEOUT) -> Release | None:
+    """The newest published release, or `None` if there are none yet.
+
+    `None` is an ordinary answer, not a failure: a repository with no releases
+    answers 404, and so does a private one - which is why `RELEASES_URL` says
+    the repository has to be public. Everything else raises `FetchError`, and
+    **every caller is expected to swallow it**. An update check that interrupts
+    someone to say it could not run is worse than one that quietly does not.
+
+    No custom headers, like every other public endpoint here. urllib's default
+    User-Agent satisfies GitHub's requirement that API requests carry one, and
+    it says nothing about who is asking.
+    """
+    import urllib.error
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(RELEASES_URL, timeout=timeout) as response:
+            payload: Any = json.load(response)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return None
+        raise FetchError(f"HTTP {exc.code} checking for updates") from exc
+    except TimeoutError as exc:
+        raise FetchError(f"timed out after {timeout:g}s checking for updates") from exc
+    except urllib.error.URLError as exc:
+        raise FetchError(f"network error checking for updates: {exc.reason}") from exc
+    except json.JSONDecodeError as exc:
+        raise FetchError(f"malformed JSON checking for updates: {exc}") from exc
+
+    if not isinstance(payload, dict):
+        raise FetchError("unexpected shape checking for updates")
+    tag = payload.get("tag_name")
+    if not isinstance(tag, str) or not tag:
+        raise FetchError("release carries no tag")
+
+    return Release(
+        # `v0.2.0` and `0.2.0` are the same release; the comparison is over
+        # numbers, so the prefix is dropped here rather than everywhere after.
+        version=tag[1:] if tag.startswith("v") else tag,
+        url=str(payload.get("html_url") or ""),
+        installer=_installer_asset(payload.get("assets")),
+    )
+
+
+def _installer_asset(assets: Any) -> ReleaseAsset | None:
+    """The Windows installer among a release's assets, if it published one."""
+    if not isinstance(assets, list):
+        return None
+    for entry in assets:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("name")
+        url = entry.get("browser_download_url")
+        if not isinstance(name, str) or not isinstance(url, str):
+            continue
+        if not name.lower().endswith(INSTALLER_ASSET_SUFFIX):
+            continue
+        digest = entry.get("digest")
+        size = entry.get("size")
+        return ReleaseAsset(
+            name=name,
+            url=url,
+            size=size if isinstance(size, int) else 0,
+            digest=digest if isinstance(digest, str) and digest else None,
+        )
+    return None
 
 
 def map_url(map_id: str) -> str:

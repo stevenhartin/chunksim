@@ -568,6 +568,17 @@ maps are your own work and nothing can recompute them.
 Run `chunksim <command> --help` for the full option list of any command, or `chunksim --help` for the list of
 commands.
 
+## Updates
+
+The GUI checks GitHub once a day for a newer release and says so on the version line in the corner;
+clicking it offers the release notes, and on Windows a **Download & Install** that fetches the
+installer, checks it against the checksum published with the release, and hands over to it. Nothing
+is downloaded or run without you pressing that button, and an asset with no published checksum is
+refused rather than trusted to HTTPS alone.
+
+Every failure is silent. No network, no releases, a version neither side can parse — the line just
+says what it always said. Turn the check off entirely with `update_check` in settings.
+
 ## License
 
 GNU GPL v3.0 or later — see [LICENSE](LICENSE).

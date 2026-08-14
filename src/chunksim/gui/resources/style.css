@@ -1296,6 +1296,16 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 }
 .watermark:hover { opacity: 1; }
 
+/* **An update is the one thing this line says that is worth a click.** Amber
+   because that is the interface's one accent, and full opacity because the
+   whole point of the watermark being faint is that it usually does not matter
+   - and this is the case where it does. */
+.watermark.stale {
+  color: var(--amber);
+  opacity: 1;
+  cursor: pointer;
+}
+
 .attribution {
   position: fixed;
   z-index: 2;
