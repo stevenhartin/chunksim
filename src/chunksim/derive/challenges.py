@@ -167,6 +167,23 @@ Also implemented, beyond the requirement checking above:
   running *minima* rather than the single best, by way of a real bug in it
   that the function's docstring sets out - and the export contains sets
   where the two differ.
+- **The `maybePrimary` downgrade** (`_effective_primary`, worker.js:3678):
+  `Normal Farming`, `Sulphurous Fertiliser`, `Shortcut` and `InsidePOH
+  Primary` are "methods that are only primary if their respective rule is
+  checked". The same four are exempt from the ordinary category gate, which
+  is the *other* half of that sentence and was the only half implemented -
+  so with `Shortcut` off, 638 challenges kept a `Primary` flag the rule had
+  taken away. Turning it off on the oracle map now drops 177 challenges
+  (Agility loses its only training route) where it used to drop none.
+- **`Secondary MTA`** (`_FORCED_PRIMARY`, worker.js:3605, checked at 4433):
+  the rule writes `forcedPrimary` onto one named Magic challenge, and a
+  `forcedPrimary` challenge whose ingredients are all somebody else's
+  by-products is invalid. Nothing in the export carries `forcedPrimary`,
+  which is why this was recorded as inert - upstream sets it at runtime.
+- **`Smithing by Smelting`** (`_check_primary_method`, worker.js:5226): with
+  the rule off, a `manualTasks` Smithing entry only proves Smithing
+  trainable if an anvil is actually reachable. The seeded object index is
+  what answers that, since `Build an ~|anvil (amenity)|~` outputs one.
 - **`manualTasks`** (`_inject_manual_tasks`, worker.js:1168): every entry the
   export still defines is forced valid with its stored value, for every
   category but `BiS`, and is exempt from the `BackupParent` sweep the way
@@ -332,7 +349,17 @@ from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.derive.sources import SourceIndex, apply_item_task_unlocks
 from chunksim.model.summary import _mapping
 
+#: index.js:1017's `maybePrimary`, verbatim: "methods that are only primary
+#: if their respective rule is checked". The list does double duty upstream
+#: and does the same here - `_category_gate_met` exempts these categories
+#: from the ordinary rule gate, and `_effective_primary` applies the rule to
+#: the `Primary` flag instead.
 _MAYBE_PRIMARY = frozenset({"Normal Farming", "Sulphurous Fertiliser", "Shortcut", "InsidePOH Primary"})
+
+
+#: The one challenge upstream ever sets `forcedPrimary` on (worker.js:3605).
+#: Nothing in the export carries the field.
+_FORCED_PRIMARY = ("Magic", "Participate in all parts of the ~|Magic Training Arena|~")
 
 #: Categories `calc_challenges` never evaluates - their absence from
 #: `ChallengeResult.valid` means "not computed", not "nothing is valid".
@@ -650,6 +677,53 @@ def _item_source_ok(
     return has_allowed_source(sources, allowed_sources)
 
 
+def _effective_primary(challenge: Mapping[str, Any], rules: Mapping[str, Any] | None) -> bool:
+    """Is this challenge a *primary* way to train its skill, once the rules
+    have had their say? Port of worker.js:3678-3684.
+
+    A challenge in a `_MAYBE_PRIMARY` category is only primary while that
+    category's rule is on: with `Shortcut` off, an agility shortcut stops
+    counting as a way to train Agility, and `checkPrimaryMethod` can go on to
+    call the whole skill untrainable. 638 export challenges carry both a
+    truthy `Primary` and one of these categories, so the downgrade is not a
+    corner - it was simply never applied here, and every read of the flag saw
+    the export's raw value.
+
+    Upstream does this by **mutating the export** (stashing the untouched
+    value in `OriginalPrimary` so re-runs stay idempotent), which this module
+    cannot do: the parsed export is shared across processes and must stay
+    read-only. Computing the answer per read is equivalent and needs no
+    `OriginalPrimary`.
+
+    Upstream assigns inside a `forEach`, so with two `_MAYBE_PRIMARY`
+    categories on one challenge the **last** wins rather than both applying.
+    That is reproduced rather than reconciled, though it cannot fire: no
+    export challenge carries more than one.
+
+    **`rules=None` is not `rules={}`.** An empty ruleset is a real ruleset
+    that happens to say no to everything, and upstream reads it that way -
+    `rules[category]` is `undefined`, so the flag is downgraded (see
+    `model.rules` on why absent is never neutral). `None` is the different
+    statement "no ruleset was available here", which is what a caller
+    reconstructing a panel from the roll ledger has, and it leaves the
+    export's own flag alone rather than guessing.
+
+    `costing/` still reads the raw `Primary` flag. That is a separate
+    question - what a task *costs* to train - and those modules are this
+    project's own work rather than a port, so they are left alone here.
+    """
+    if rules is None:
+        return challenge.get("Primary") is True
+    primary = challenge.get("Primary") is True
+    categories = challenge.get("Category")
+    if not isinstance(categories, list):
+        return primary
+    for category in categories:
+        if category in _MAYBE_PRIMARY:
+            primary = rules.get(category) is True and challenge.get("Primary") is True
+    return primary
+
+
 def _quality_flags(
     skill: str, challenge: Mapping[str, Any], rules: Mapping[str, Any]
 ) -> tuple[bool, bool]:
@@ -896,11 +970,13 @@ def _items_requirement_met(
     marker is stripped and otherwise ignored *here*: verified against upstream
     (worker.js:4046,4064), it does **not** gate validity - it sets a
     per-challenge `Secondary` flag, whose three consequences are traced in
-    this module's docstring. Two are inert on real data (`forcedPrimary` has
-    zero export uses; the seeded-`Output` tag split cannot move
-    `_source_quality_ok`); the third is the `Secondary` input to
-    `checkPrimaryMethod`, which **is** ported - see `_is_secondary` and
-    `_has_primary_task`, not this function. `[+]`
+    this module's docstring. One is inert on real data (the seeded-`Output`
+    tag split cannot move `_source_quality_ok`); the other two are ported -
+    the `Secondary` input to `checkPrimaryMethod` (see `_is_secondary` and
+    `_has_primary_task`) and `forcedPrimary`, which carries the `Secondary
+    MTA` rule and is checked in `_dynamic_gates_met`. An earlier version of
+    this note called `forcedPrimary` inert because no *export* challenge
+    carries it; upstream writes it at runtime instead. `[+]`
     resolves through `codeItems.itemsPlus`, the same shape `_plus_family`
     already handles for `Chunks`/`Objects`/`Monsters`/`NPCs`/`Mix`.
 
@@ -1043,7 +1119,7 @@ def _has_primary_task(
         challenge = challenges.get(name)
         if not isinstance(challenge, dict):
             continue
-        if challenge.get("Primary") is not True or name in backlogged:
+        if not _effective_primary(challenge, rules) or name in backlogged:
             continue
         level = challenge.get("Level")
         # `Secondary` is asked last of the three, though upstream writes the
@@ -1085,6 +1161,7 @@ def _check_primary_method(
     manual_tasks: Mapping[str, Mapping[str, Any]],
     rules: Mapping[str, Any] | None = None,
     items: Mapping[str, Any] | None = None,
+    objects: Mapping[str, Any] | None = None,
     _seen: frozenset[str] = frozenset(),
 ) -> bool:
     """Port of `checkPrimaryMethod` (worker.js:5077-5220): can `skill`
@@ -1101,14 +1178,17 @@ def _check_primary_method(
     and those in turn need only a monster to hit.
 
     Not modelled (all documented rather than silently approximated): the
-    `Boosting` level shift and `skillQuestXp` floor inside `Primary[+]`, the
-    secondary/processing-source filtering inside `Ranged[+]`, and the
-    `Smithing by Smelting` anvil caveat on the `manualTasks` override.
+    `Boosting` level shift and `skillQuestXp` floor inside `Primary[+]`, and
+    the secondary/processing-source filtering inside `Ranged[+]`.
     """
     rules = rules or {}
     # Upstream's `baseChunkData['items']` is the seeded index; falling back
-    # to the narrow one only loses boosts, never invents them.
+    # to the narrow one only loses boosts, never invents them. `objects` is
+    # the same bargain for the `Smithing by Smelting` anvil below - and it
+    # has to be the *seeded* set, since `Build an ~|anvil (amenity)|~`
+    # outputs one.
     items = source_index.items if items is None else items
+    objects = source_index.objects if objects is None else objects
     lines = _UNIVERSAL_PRIMARY.get(skill)
     if lines is None:
         return True  # upstream: `!universalPrimary[skill] && (tempValid = true)`
@@ -1140,6 +1220,7 @@ def _check_primary_method(
                     manual_tasks=manual_tasks,
                     rules=rules,
                     items=items,
+                    objects=objects,
                     _seen=_seen | {skill},
                 )
                 for other in sorted(_COMBAT_SKILLS)
@@ -1161,11 +1242,28 @@ def _check_primary_method(
 
     # `manualTasks[skill]` naming a Primary, non-backlogged challenge also
     # counts as a training method, as does an explicit `manualPrimary`.
+    #
+    # `Smithing by Smelting` (worker.js:5226) rides on this branch alone:
+    # with the rule off, a manually-added Smithing task only proves the skill
+    # trainable if the chunks actually hold an anvil, because smelting ore
+    # into bars is not by itself a way to train Smithing. With the rule on
+    # the whole condition short-circuits, which is why this was invisible on
+    # both cached maps.
     challenges = chunk_info.challenges.get(skill) or {}
     backlogged = backlog.get(skill) or {}
+    smithing_ok = (
+        skill != "Smithing"
+        or rules.get("Smithing by Smelting") is True
+        or "Anvil" in objects
+        or "Rusted anvil" in objects
+    )
     for name in manual_tasks.get(skill, {}):
         challenge = challenges.get(name)
-        if isinstance(challenge, dict) and challenge.get("Primary") is True and name not in backlogged:
+        if not isinstance(challenge, dict) or name in backlogged:
+            continue
+        if not _effective_primary(challenge, rules) or not smithing_ok:
+            continue
+        if not _is_secondary(challenge, items or {}, chunk_info, rules):
             return True
     return False
 
@@ -1392,6 +1490,7 @@ def _static_gates_met(
 
 def _dynamic_gates_met(
     skill: str,
+    name: str,
     challenge: Mapping[str, Any],
     *,
     plan: _ItemPlan | None,
@@ -1413,6 +1512,11 @@ def _dynamic_gates_met(
     and `deferred_objects` the `Objects` groups `_objects_requirement` could
     not settle against the base index - both because only the *index* they are
     checked against changes between sweeps.
+
+    `forcedPrimary` (worker.js:4433) lives here too, and it is dynamic for the
+    same reason: it is a test on the settled `Secondary` flag, which reads the
+    item index. Nothing in the export sets `forcedPrimary` - `Secondary MTA`
+    does, on one named challenge, at worker.js:3605. See `_FORCED_PRIMARY`.
     """
     if deferred_objects and not _objects_met(deferred_objects, objects):
         return False
@@ -1420,6 +1524,14 @@ def _dynamic_gates_met(
         return False
     if not _skills_requirement_met(challenge, max_skill, valid, trainable=trainable):
         return False
+    if (skill, name) == _FORCED_PRIMARY and rules.get("Secondary MTA") is not True:
+        # `forcedPrimary && Secondary -> invalid`. With `Secondary MTA` on,
+        # `forcedPrimary` is false and the gate never fires - which is why
+        # both cached maps see nothing here, and why `_items_requirement_met`
+        # used to call this consequence inert. It is inert in the *export*;
+        # the rule writes the flag at runtime.
+        if _is_secondary(challenge, items, chunk_info, rules):
+            return False
     return _tasks_requirement_met(challenge, valid, chunk_info, prev_valid, skill=skill, rules=rules)
 
 
@@ -1474,6 +1586,7 @@ def _evaluate_challenge(
     deferred = decision if isinstance(decision, tuple) else ()
     if not _dynamic_gates_met(
         skill,
+        name,
         challenge,
         plan=_compile_items(
             challenge, chunk_info, skill=skill, rules=rules, locked_equipment=locked_equipment
@@ -1696,6 +1809,7 @@ def _prune_untrainable_skills(
     backlog: Mapping[str, Mapping[str, Any]],
     manual_tasks: Mapping[str, Mapping[str, Any]],
     items: Mapping[str, Mapping[str, str]],
+    objects: Mapping[str, Mapping[str, Any]],
 ) -> None:
     """Strip a skill that cannot be trained here back to its `Level 1`
     challenges, in place. Port of worker.js:1521-1529.
@@ -1732,6 +1846,7 @@ def _prune_untrainable_skills(
             manual_tasks=manual_tasks,
             rules=rules,
             items=items,
+            objects=objects,
         ):
             continue
         passive = passive_skill.get(skill)
@@ -1795,6 +1910,7 @@ def _drop_unreachable_subskills(
     backlog: Mapping[str, Mapping[str, Any]],
     manual_tasks: Mapping[str, Mapping[str, Any]],
     items: Mapping[str, Mapping[str, str]],
+    objects: Mapping[str, Mapping[str, Any]],
 ) -> None:
     """Drop `Extra`/`Quest`/`Diary` challenges whose `Skills` requirement names
     a sub-skill out of reach - port of worker.js:8533-8567, in place.
@@ -1845,6 +1961,7 @@ def _drop_unreachable_subskills(
                     manual_tasks=manual_tasks,
                     rules=rules,
                     items=items,
+                    objects=objects,
                 ):
                     continue
                 best, saw = boosts.best_boost(
@@ -2255,6 +2372,7 @@ def calc_challenges(
                     manual_tasks=manual_tasks,
                     rules=rules,
                     items=items,
+                    objects=objects,
                 )
                 for skill in _UNIVERSAL_PRIMARY
             }
@@ -2262,6 +2380,7 @@ def calc_challenges(
             for skill, name, challenge, plan, deferred, value in candidates:
                 if _dynamic_gates_met(
                     skill,
+                    name,
                     challenge,
                     plan=plan,
                     items=items,
@@ -2292,6 +2411,7 @@ def calc_challenges(
                     backlog=backlog,
                     manual_tasks=manual_tasks,
                     items=items,
+                    objects=objects,
                 )
                 _drop_unreachable_subskills(
                     new_valid,
@@ -2303,6 +2423,7 @@ def calc_challenges(
                     backlog=backlog,
                     manual_tasks=manual_tasks,
                     items=items,
+                    objects=objects,
                 )
             if new_valid == valid:
                 break
@@ -2334,6 +2455,7 @@ def calc_challenges(
             backlog=backlog,
             manual_tasks=manual_tasks,
             items=items,
+            objects=objects,
         )
         _drop_unreachable_subskills(
             valid,
@@ -2345,6 +2467,7 @@ def calc_challenges(
             backlog=backlog,
             manual_tasks=manual_tasks,
             items=items,
+            objects=objects,
         )
         _drop_outclassed_extra_sets(valid, challenges, backlog, manual_tasks)
         reseeded = _seed_items_with_outputs(

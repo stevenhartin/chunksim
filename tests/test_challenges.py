@@ -1193,6 +1193,205 @@ def test_extra_challenges_carry_no_level_so_the_export_order_is_the_sweep_order(
     ]
 
 
+def _shortcut_map() -> ChunkInfo:
+    """Agility trainable *only* by a shortcut - the `Shortcut` category's
+    whole point, and the case the rule is there to switch off."""
+    return _chunk_info(
+        challenges={
+            "Agility": {
+                "Squeeze past the ~|loose railing|~": {
+                    "Level": 1,
+                    "Primary": True,
+                    "Category": ["Shortcut"],
+                },
+                "Climb the ~|basalt rock|~": {"Level": 60, "Category": ["Shortcut"]},
+            }
+        }
+    )
+
+
+def test_a_shortcut_stops_training_agility_when_its_rule_is_off() -> None:
+    """`maybePrimary`: these categories are primary only while their rule is
+    ticked. With `Shortcut` off the only `Primary` Agility challenge stops
+    counting, `checkPrimaryMethod` calls the skill untrainable, and
+    everything above Level 1 is pruned. On the oracle map this is 177
+    challenges; here it is the one.
+    """
+    on = calc_challenges({}, {}, _EMPTY, _shortcut_map(), rules={"Shortcut": True})
+    off = calc_challenges({}, {}, _EMPTY, _shortcut_map(), rules={"Shortcut": False})
+
+    assert set(on.valid["Agility"]) == {
+        "Squeeze past the ~|loose railing|~",
+        "Climb the ~|basalt rock|~",
+    }
+    assert set(off.valid["Agility"]) == {"Squeeze past the ~|loose railing|~"}
+
+
+def test_the_shortcut_category_is_still_exempt_from_the_ordinary_rule_gate() -> None:
+    """The downgrade is the *other* half of `maybePrimary`. A `Shortcut`
+    challenge with the rule off must lose its `Primary` flag, not its
+    validity - upstream's gate skips these four categories outright, so
+    turning the rule off never invalidates one on its own."""
+    info = _chunk_info(
+        challenges={
+            "Agility": {
+                "Walk about": {"Level": 1, "Primary": True},
+                "Climb the ~|basalt rock|~": {"Level": 60, "Category": ["Shortcut"]},
+            }
+        }
+    )
+
+    off = calc_challenges({}, {}, _EMPTY, info, rules={"Shortcut": False})
+
+    assert "Climb the ~|basalt rock|~" in off.valid["Agility"]
+
+
+def test_an_unruled_category_leaves_the_primary_flag_alone() -> None:
+    """Only the four `maybePrimary` categories are affected; an ordinary
+    category's rule gates validity and never touches `Primary`."""
+    info = _chunk_info(
+        challenges={
+            "Agility": {
+                "Squeeze past the ~|loose railing|~": {
+                    "Level": 1,
+                    "Primary": True,
+                    "Category": ["Minigame"],
+                },
+                "Climb the ~|basalt rock|~": {"Level": 60},
+            }
+        }
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={"Minigame": True})
+
+    assert set(result.valid["Agility"]) == {
+        "Squeeze past the ~|loose railing|~",
+        "Climb the ~|basalt rock|~",
+    }
+
+
+_MTA = "Participate in all parts of the ~|Magic Training Arena|~"
+
+
+def _mta_map() -> ChunkInfo:
+    """The one challenge upstream ever sets `forcedPrimary` on, consuming an
+    ingredient that has only a by-product source."""
+    return _chunk_info(
+        challenges={
+            "Magic": {
+                "Cast a spell": {"Level": 1, "Primary": True},
+                _MTA: {"Level": 33, "Items": ["Nature rune*"]},
+            }
+        }
+    )
+
+
+def _byproduct_runes() -> SourceIndex:
+    return SourceIndex(
+        items={"Nature rune": {"Kill a thing": "secondary-drop"}},
+        objects={}, monsters={}, npcs={}, shops={}, drop_rates={},
+    )
+
+
+def test_secondary_mta_off_invalidates_a_by_product_only_arena_run() -> None:
+    """`forcedPrimary && Secondary -> invalid`. With the rule off the arena
+    has to be reachable as a primary method, and an ingredient available only
+    as somebody else's by-product does not qualify."""
+    result = calc_challenges(
+        {}, {}, _byproduct_runes(), _mta_map(), rules={"Secondary MTA": False}
+    )
+
+    assert _MTA not in result.valid["Magic"]
+
+
+def test_secondary_mta_on_leaves_the_arena_valid() -> None:
+    """On, `forcedPrimary` is false and the gate never fires - which is why
+    neither cached map sees this."""
+    result = calc_challenges(
+        {}, {}, _byproduct_runes(), _mta_map(), rules={"Secondary MTA": True}
+    )
+
+    assert _MTA in result.valid["Magic"]
+
+
+def test_the_forced_primary_gate_is_limited_to_the_arena() -> None:
+    """`forcedPrimary` is set on one challenge by name, not on a shape - any
+    other by-product-only Magic challenge stays valid with the rule off."""
+    info = _chunk_info(
+        challenges={
+            "Magic": {
+                "Cast a spell": {"Level": 1, "Primary": True},
+                "Bind something": {"Level": 33, "Items": ["Nature rune*"]},
+            }
+        }
+    )
+
+    result = calc_challenges(
+        {}, {}, _byproduct_runes(), info, rules={"Secondary MTA": False}
+    )
+
+    assert "Bind something" in result.valid["Magic"]
+
+
+def _smelting_map() -> ChunkInfo:
+    """Smithing whose only `Primary` route is above the passive floor, so
+    `_has_primary_task` refuses it and the `manualTasks` branch of
+    `checkPrimaryMethod` is what decides whether the skill is trainable."""
+    return _chunk_info(
+        challenges={
+            "Smithing": {
+                "Smelt a ~|runite bar|~": {"Level": 85, "Primary": True},
+                "Smith a ~|rune platebody|~": {"Level": 99},
+            }
+        }
+    )
+
+
+_SMELT = {"Smithing": {"Smelt a ~|runite bar|~": 85}}
+
+
+def _with_anvil() -> SourceIndex:
+    return SourceIndex(
+        items={}, objects={"Anvil": {"100": True}},
+        monsters={}, npcs={}, shops={}, drop_rates={},
+    )
+
+
+def test_smelting_alone_does_not_train_smithing_when_its_rule_is_off() -> None:
+    """worker.js:5226. A manually-added smelting task proves nothing about
+    Smithing unless there is an anvil to hammer on - with the rule off and no
+    anvil the skill is untrainable, and a challenge that needs it goes."""
+    result = calc_challenges(
+        {}, {}, _EMPTY, _smelting_map(),
+        rules={"Smithing by Smelting": False},
+        manual_tasks=_SMELT,
+    )
+
+    assert "Smith a ~|rune platebody|~" not in result.valid.get("Smithing", {})
+
+
+def test_an_anvil_trains_smithing_whatever_the_rule_says() -> None:
+    result = calc_challenges(
+        {}, {}, _with_anvil(), _smelting_map(),
+        rules={"Smithing by Smelting": False},
+        manual_tasks=_SMELT,
+    )
+
+    assert "Smith a ~|rune platebody|~" in result.valid["Smithing"]
+
+
+def test_smithing_by_smelting_on_needs_no_anvil() -> None:
+    """On, the condition short-circuits - which is the state both cached maps
+    are in, and why not modelling this was invisible."""
+    result = calc_challenges(
+        {}, {}, _EMPTY, _smelting_map(),
+        rules={"Smithing by Smelting": True},
+        manual_tasks=_SMELT,
+    )
+
+    assert "Smith a ~|rune platebody|~" in result.valid["Smithing"]
+
+
 def test_a_backup_whose_parent_is_unknown_is_left_alone() -> None:
     info = _chunk_info(
         challenges={

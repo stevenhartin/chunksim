@@ -152,7 +152,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from chunksim.derive import boosts
-from chunksim.derive.challenges import _SKILL_NAMES, _check_primary_method
+from chunksim.derive.challenges import _SKILL_NAMES, _check_primary_method, _effective_primary
 
 #: `Combat` is in upstream's `skillNames` - it needs to be, for `Skills:
 #: {Combat: N}` requirements and its own `universalPrimary` line - but it is
@@ -281,7 +281,12 @@ def _lower_priority(challenger: Any, incumbent: Any) -> bool:
     )
 
 
-def _wins_tie(challenger: Mapping[str, Any], incumbent: Mapping[str, Any]) -> bool:
+def _wins_tie(
+    challenger: Mapping[str, Any],
+    incumbent: Mapping[str, Any],
+    *,
+    rules: Mapping[str, Any] | None = None,
+) -> bool:
     """Does `challenger` displace `incumbent` at equal boosted level?
 
     Upstream tries two branches in turn (worker.js:8469, then 8493 when the
@@ -299,6 +304,12 @@ def _wins_tie(challenger: Mapping[str, Any], incumbent: Mapping[str, Any]) -> bo
     is meant here - the *skill*-wide `checkPrimaryMethod` boolean is a
     different thing entirely and gates eligibility, not this (see
     `_is_eligible`).
+
+    `rules` decides whether the flag has been downgraded by its category's
+    own rule - see `challenges._effective_primary`. It defaults to `None`,
+    meaning "no ruleset here", for `panels._roll_classification`, which
+    reconstructs a roll from the ledger and has no rules to consult; that
+    leaves the export's flag as written rather than assuming the rule is off.
     """
     challenger_priority = challenger.get("Priority")
     incumbent_priority = incumbent.get("Priority")
@@ -306,7 +317,7 @@ def _wins_tie(challenger: Mapping[str, Any], incumbent: Mapping[str, Any]) -> bo
         return True
     if challenger_priority and _lower_priority(challenger_priority, incumbent_priority):
         return True
-    if not challenger.get("Primary"):
+    if not _effective_primary(challenger, rules):
         return False
     if "Priority" not in challenger or "Priority" not in incumbent:
         return True
@@ -502,11 +513,11 @@ def _classify_skill(
         ):
             continue
         if winner is None or level > winner_level or (
-            level == winner_level and _wins_tie(challenge, winner_challenge)
+            level == winner_level and _wins_tie(challenge, winner_challenge, rules=rules)
         ):
             winner, winner_level, winner_challenge = name, level, challenge
 
-    if winner is not None and winner_level <= 1 and winner_challenge.get("Primary") is not True:
+    if winner is not None and winner_level <= 1 and not _effective_primary(winner_challenge, rules):
         # `realLevel <= 1 && !Primary` -> discarded entirely (worker.js:8521).
         winner = None
 
