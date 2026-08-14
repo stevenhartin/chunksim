@@ -54,10 +54,19 @@ an incomplete index:
   heuristic for bosses whose drop requires owning a set of "key" items first.
   A distinct, self-contained sub-algorithm from the rest of this module.
 - `codeItems.dropTables`' quantity-keyed side table (`dropTablesGlobal`,
-  upstream's `calcedQuantity`): only consumed by the dynamic "Every Drop"/
-  "All Droptables" challenge synthesis, which is `challenges.py`'s job (that
-  synthesis lives in `calcChallengesWork`, not `gatherChunksInfo`) - not
-  needed for ordinary item/object/monster/npc/shop availability.
+  upstream's `calcedQuantity`): consumed by the **`All Droptables`** rule
+  alone, and nothing else in this project has ever needed it - ordinary
+  item/object/monster/npc/shop availability does not, and `Every Drop` turned
+  out not to either (it wants `dropRatesGlobal`, which *is* built here; see
+  `loot_table_rates` for the two namespaces it adds).
+  It is a bigger job than it looks: upstream fills it in six places across
+  `gatherChunksInfo` alone, re-keys every entry when an item gains or loses
+  its `*` secondary marker, prunes emptied branches, and then the synthesis
+  in `calcChallengesWork` adds three more families on top. The quantities are
+  the table entry's multiplied through the monster's, carrying `(noted)` and
+  `(F2P)` suffixes - which is why an `All Droptables` task title has a
+  quantity where an `Every Drop` one has only a rate. See
+  `derive/injected.py`.
 """
 
 from __future__ import annotations
