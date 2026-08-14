@@ -383,14 +383,56 @@ def test_a_cyclic_chain_terminates() -> None:
 
 
 
-#: Both categories now reproduce the map's own `activeTasks` exactly, so this
-#: is empty. It stays as a named, asserted-against constant rather than being
-#: deleted: an earlier version of this test compared *totals* and passed on
-#: `Extra` at 37 == 37 while seven entries were wrong in each direction, and
-#: pinning the set is what stops that recurring.
-_KNOWN_ORACLE_DELTA: dict[str, frozenset[str]] = {
-    "Diary": frozenset(),
-    "Extra": frozenset(),
+#: The residual disagreement with each cached map's own `activeTasks`, per
+#: `(map id, category)`. Pinned as a *set of names*, never a count: an earlier
+#: version of this test compared totals and passed on `Extra` at 37 == 37
+#: while seven entries were wrong in each direction.
+#:
+#: **The oracle map is empty and must stay that way**; it is the one whose
+#: every rule this project has been tuned against. The second map is not, and
+#: that is the point of running it - 41 of the oracle map's 104 rules are off,
+#: so it can only ever check the two thirds that are on. Its 24 `Extra`
+#: entries are one cluster (Slayer and boss collection-log drops, plus the
+#: Combat Achievement contracts) and its 2 `Diary` entries another; both are
+#: known-unexplained rather than accepted, and this number is expected to go
+#: down and never up.
+_KNOWN_ORACLE_DELTA: dict[tuple[str, str], frozenset[str]] = {
+    ("fray", "Diary"): frozenset(),
+    ("fray", "Extra"): frozenset(),
+    ("verf", "Diary"): frozenset(
+        {
+            "~|Combat Achievements#Easy|~ The Demonic Punching Bag",
+            "~|Combat Achievements#Medium|~ Brutal, Big, Black and Firey",
+        }
+    ),
+    ("verf", "Extra"): frozenset(
+        {
+            "(Abyssal Sire) Obtain an ~|abyssal dagger|~",
+            "(Abyssal Sire) Obtain an ~|abyssal head|~",
+            "(Abyssal Sire) Obtain an ~|abyssal whip|~",
+            "(Kalphite Queen) Obtain a ~|dragon chainbody|~",
+            "(Miscellaneous) Obtain a ~|dragon spear|~",
+            "(Slayer) Obtain a ~|dragon chainbody|~",
+            "(Slayer) Obtain a ~|dust battlestaff|~",
+            "(Slayer) Obtain a ~|mystic robe bottom (dark)|~",
+            "(Slayer) Obtain an ~|abyssal dagger|~",
+            "(Slayer) Obtain an ~|abyssal head|~",
+            "(Slayer) Obtain an ~|abyssal whip|~",
+            "(Slayer) Obtain ~|granite legs|~",
+            "(Slayer) Obtain ~|mystic gloves (light)|~",
+            "(Slayer) Obtain ~|rune boots|~",
+            "(Thermonuclear smoke devil) Obtain a ~|dragon chainbody|~",
+            "(Tithe Farm) Obtain a ~|herb sack|~",
+            "Obtain a ~|Golden Gnome|~",
+            "Obtain a ~|contract of bloodied blows|~",
+            "Obtain a ~|contract of divine severance|~",
+            "Obtain a ~|contract of forfeit breath|~",
+            "Obtain a ~|contract of glyphic attenuation|~",
+            "Obtain a ~|contract of sensory clouding|~",
+            "Obtain a ~|herb sack|~",
+            "Obtain an ~|abyssal head|~",
+        }
+    ),
 }
 
 
@@ -398,32 +440,55 @@ _KNOWN_ORACLE_DELTA: dict[str, frozenset[str]] = {
 @pytest.mark.parametrize("category", ["Diary", "Extra"])
 def test_active_tasks_match_the_live_oracle(
     category: str,
-    real_payload: dict[str, Any],
+    real_export: ChunkInfo,
     real_tasks_map: dict[str, str],
-    real_derived: Derived,
 ) -> None:
     """Opt-in oracle: `chunkinfo.activeTasks` records what the panel last
     showed for `Diary` and `Extra`.
+
+    **Every fetched map in the cache, not just the one `conftest.ORACLE_MAP`
+    names**, following `test_bis`'s lead for the same reason it gives: a map
+    is a set of rules a player chose, so a second one is a second set of
+    inputs rather than more of the same. The oracle map has 41 of its 104
+    rules off, and every one of those is a stretch of upstream this suite
+    could not see - `BIS Skilling` being off there is exactly how a whole
+    unported `Set` sweep survived a category whose active set is asserted
+    exactly. Fetch another map and it is covered here for free.
 
     Compared as a *set*, against `active` plus `current_chunk` - the latter is
     what upstream still lists as active and this module reports as
     completed-with-a-marker, so the panel's own view is the union.
 
-    The residual disagreement is pinned in `_KNOWN_ORACLE_DELTA` rather than
-    waved through with a count: an earlier version compared totals and passed
-    on `Extra` at 37 == 37 while seven entries were wrong in each direction.
+    The residual disagreement is pinned per map in `_KNOWN_ORACLE_DELTA`
+    rather than waved through with a count.
     """
+    from chunksim.derive.pipeline import derive, load_map_state
     from chunksim.model.firebase import decode_challenge_keyed
+    from chunksim.store.cache import data_root, list_maps, read_cache
 
-    derived = real_derived
-    oracle = set(
-        decode_challenge_keyed(
-            real_payload["chunkinfo"].get("activeTasks"), real_tasks_map
-        ).get(category, {})
-    )
-    assert oracle, f"the map no longer records active {category} tasks"
+    root = data_root()
+    fetched = [entry.map_id for entry in list_maps(root) if entry.kind == "fetched"]
+    assert fetched, "no fetched maps cached to compare against"
 
-    tasks = derived.other_tasks.categories[category]
-    ours = {name for group in tasks.groups for name in group.active} | tasks.current_chunk
+    checked = 0
+    for map_id in fetched:
+        payload = read_cache(map_id, root)["data"]
+        oracle = set(
+            decode_challenge_keyed(
+                payload["chunkinfo"].get("activeTasks"), real_tasks_map
+            ).get(category, {})
+        )
+        if not oracle:
+            continue
+        state, unlocked = load_map_state(payload, real_export, real_tasks_map)
+        tasks = derive(state, unlocked).other_tasks.categories[category]
+        ours = {name for group in tasks.groups for name in group.active} | tasks.current_chunk
 
-    assert ours ^ oracle == _KNOWN_ORACLE_DELTA[category]
+        expected = _KNOWN_ORACLE_DELTA.get((map_id, category))
+        assert expected is not None, (
+            f"{map_id}/{category} has no pinned delta - add one (empty if it matches) "
+            "rather than letting a new map quietly widen what this asserts"
+        )
+        assert ours ^ oracle == expected, map_id
+        checked += 1
+    assert checked, f"every cached map had an empty {category} oracle"

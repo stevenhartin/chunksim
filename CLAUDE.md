@@ -135,9 +135,15 @@ Every rule in a map's `rules` branch is a number or a flag a *player* set, so a 
 second set of inputs rather than more of the same data. A second real map alone found three
 defects nothing in
 the repo could have — including a `0` that reached a ratio parser as `"1/0"` (JS yields `Infinity` and
-raises nothing; Python disagreed) and two unported BiS rules. The BiS oracle runs over **every fetched
-map in the cache**, so `chunksim fetch --map <other>` is all it costs to widen the signal, and it is the
-fastest way to find the next defect. The GUI's undocumented `__UBER__` fetch (see `gui/actions.py`)
+raises nothing; Python disagreed) and two unported BiS rules. The BiS oracle, the `Diary`/`Extra` one
+and the per-skill one all run over **every fetched map in the cache**, so `chunksim fetch --map <other>`
+is all it costs to widen the signal, and it is the fastest way to find the next defect. **A map is a
+set of rules a player chose**, so a second one is a second set of inputs rather than more of the same:
+41 of the first map's 104 rules are off, and every one of those is a stretch of upstream nothing here
+could see — `BIS Skilling` being off there is how a whole unported `Set` sweep survived a category
+whose active set is asserted exactly. Each map's residual disagreement is pinned by *name* in
+`tests/test_other_tasks._KNOWN_ORACLE_DELTA`, and a map with no entry there fails rather than quietly
+widening what the suite asserts. The GUI's undocumented `__UBER__` fetch (see `gui/actions.py`)
 builds an every-chunk map on top of whichever map is open, which is what the docstrings' measurements
 are quoted against.
 

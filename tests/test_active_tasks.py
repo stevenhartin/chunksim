@@ -349,18 +349,20 @@ def test_a_completed_entry_with_no_level_sets_no_ceiling() -> None:
 
 
 @pytest.mark.real_cache
-def test_active_slayer_task_matches_the_live_oracle(
+def test_the_active_skill_task_matches_the_live_oracle(
     real_export: ChunkInfo,
-    real_payload: dict[str, Any],
     real_tasks_map: dict[str, str],
-    real_state: tuple[MapState, dict[str, bool]],
-    real_derived: Derived,
 ) -> None:
-    """Opt-in oracle: `chunkinfo.activeTasks.Slayer` is upstream's *own* last
-    computed active Slayer task, so it must reproduce exactly.
+    """Opt-in oracle: a skill entry in `chunkinfo.activeTasks` is upstream's
+    *own* last computed pick for that skill, so it must reproduce exactly.
 
-    An earlier stage of this project recorded this entry as "an unrelated
-    slayer-master assignment" and therefore ignored it. It is nothing of the
+    **Every fetched map, and every skill each one records** - the two cached
+    maps happen to record different skills (`Slayer` on one, `Thieving` on the
+    other), so hard-coding either name would have run half this test. See
+    `test_bis` for the argument; a map is a set of rules a player chose.
+
+    An earlier stage of this project recorded the `Slayer` entry as "an
+    unrelated slayer-master assignment" and ignored it. It is nothing of the
     sort - it is the one real oracle this module has, and it was failing.
     Getting it to pass found the eligibility bug: the candidacy gate keys off
     `checkPrimaryMethod(skill)`, one boolean for the whole skill, and this
@@ -369,41 +371,73 @@ def test_active_slayer_task_matches_the_live_oracle(
     Level 45 passive floor could ever be picked and `Slay an Infernal Mage`
     (45) won instead of the Level 92 araxyte.
 
-    The stored value is `"92{5}"` - Level 92 less a 5-point `Wild pie` boost -
-    and both halves are asserted: the name, and the boost `boosts.py` computes
-    for it. The boost is independent confirmation, since nothing about
-    reproducing the *name* depends on getting the boost table, the
-    availability lookup or the arithmetic right.
+    **`active` alone is the wrong thing to compare against**, and the second
+    map is what shows it: its `Thieving` pick is `Pickpocket a
+    ~|TzHaar-Hur|~`, ticked off during the chunk in play. Upstream keeps
+    listing a ticked task as active with its checkbox set; this module
+    deliberately reports it as *completed* instead (see the module docstring,
+    and `other_tasks`, which the `Diary`/`Extra` oracle already unions the
+    same way). So the panel's own view is the active pick plus whatever was
+    banked this chunk.
+
+    Where upstream stored a boost with the level (`"92{5}"` - Level 92 less a
+    5-point `Wild pie`), that is asserted too. It is independent
+    confirmation: nothing about reproducing the *name* depends on getting the
+    boost table, the availability lookup or the arithmetic right.
     """
-    from chunksim.model.firebase import decode_challenge_keyed
-
-    state, _unlocked = real_state
-    info, derived = real_export, real_derived
-
-    oracle = decode_challenge_keyed(
-        real_payload["chunkinfo"].get("activeTasks"), real_tasks_map
-    ).get("Slayer", {})
-    recorded = next(iter(oracle), None)
-
-    assert recorded is not None, "the map no longer records an active Slayer task"
-    assert derived.task_classification.skills["Slayer"].active == recorded
-
     from chunksim.derive import boosts
+    from chunksim.derive.other_tasks import CATEGORIES
+    from chunksim.derive.pipeline import derive, load_map_state
+    from chunksim.model.firebase import decode_challenge_keyed
+    from chunksim.store.cache import data_root, list_maps, read_cache
 
-    challenge = info.challenges["Slayer"][recorded]
-    best, saw = boosts.best_boost(
-        "Slayer",
-        recorded,
-        challenge,
-        float(challenge["Level"]),
-        rules=state.rules,
-        chunk_info=info,
-        items=derived.challenges.available_items,
-        source_index=derived.source_index,
-    )
-    # `"92{5}"` -> the trailing `{N}` is the boost upstream applied.
-    expected_boost = int(oracle[recorded].split("{")[1].rstrip("}"))
-    assert best + saw == expected_boost
+    root = data_root()
+    fetched = [entry.map_id for entry in list_maps(root) if entry.kind == "fetched"]
+    assert fetched, "no fetched maps cached to compare against"
+    not_a_skill = {*CATEGORIES, "BiS"}
+
+    checked = 0
+    for map_id in fetched:
+        payload = read_cache(map_id, root)["data"]
+        oracle = decode_challenge_keyed(
+            payload["chunkinfo"].get("activeTasks"), real_tasks_map
+        )
+        state, unlocked = load_map_state(payload, real_export, real_tasks_map)
+        derived = derive(state, unlocked)
+        for skill, entries in oracle.items():
+            if skill in not_a_skill or not entries:
+                continue
+            recorded, stored = next(iter(entries.items()))
+            ours = derived.task_classification.skills[skill]
+            banked = _mapping_names(state.checked_challenges.get(skill))
+            assert recorded == ours.active or recorded in (set(ours.completed) & banked), (
+                f"{map_id}/{skill}: upstream picked {recorded!r}, "
+                f"we have active={ours.active!r}"
+            )
+            checked += 1
+
+            if not isinstance(stored, str) or "{" not in stored:
+                continue
+            challenge = real_export.challenges[skill][recorded]
+            best, saw = boosts.best_boost(
+                skill,
+                recorded,
+                challenge,
+                float(challenge["Level"]),
+                rules=state.rules,
+                chunk_info=real_export,
+                items=derived.challenges.available_items,
+                source_index=derived.source_index,
+            )
+            assert best + saw == int(stored.split("{")[1].rstrip("}")), f"{map_id}/{skill}"
+
+    assert checked, "no cached map records an active skill task"
+
+
+def _mapping_names(branch: object) -> set[str]:
+    """A `checked_challenges` branch as a name set, tolerating its absence -
+    a map that has ticked nothing this chunk has no branch at all."""
+    return set(branch) if isinstance(branch, dict) else set()
 
 
 #: A Level 1 `Primary` route so `checkPrimaryMethod` reports the skill
