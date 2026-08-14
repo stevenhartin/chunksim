@@ -78,6 +78,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.model.summary import _mapping
 
 #: `(chunk id, category, name)` for the two capes. Upstream writes each as a
 #: literal; the shared shape is worth naming once.
@@ -193,8 +194,76 @@ def _all_shops(items: Mapping[str, Mapping[str, str]]) -> dict[str, dict[str, An
     return built
 
 
+def _nest_loot(
+    chunk_info: ChunkInfo, items: Mapping[str, Mapping[str, str]], rules: Mapping[str, Any]
+) -> dict[str, dict[str, Any]]:
+    """A task per bird-nest drop - port of worker.js:5050.
+
+    A reachable `Bird nest (…)` has a matching `<name> loot` entry in both
+    `skillItems.Nonskill` and `challenges.Nonskill`, and every row of that
+    loot table becomes its own task. The `Not F2P` check reads the *loot*
+    challenge rather than anything built here, so an F2P map loses the whole
+    nest rather than individual rows.
+
+    The rate goes into the name exactly as the export stores it - no
+    `find_fraction` pass, unlike `All Droptables` proper, because nothing is
+    multiplied here to need re-expressing. An empty quantity key reads as
+    `N/A`, upstream's `(quantity || 'N/A')`.
+
+    **The `Category` is `All Droptables`, not `All Droptables Nest`.** So on
+    a map with the nest rule on and the droptable rule off, upstream builds
+    these and its own category gate takes them straight back out on the next
+    pass. That is reproduced by building them and letting the gate run, which
+    is the same settled answer.
+    """
+    built: dict[str, dict[str, Any]] = {}
+    loot_tables = _mapping(chunk_info.skill_items, "Nonskill")
+    nonskill = _mapping(chunk_info.challenges, "Nonskill")
+    f2p = rules.get("F2P") is True
+    for nest in items:
+        if "Bird nest (" not in nest:
+            continue
+        loot_key = f"{nest} loot"
+        table = loot_tables.get(loot_key)
+        challenge = nonskill.get(loot_key)
+        if not isinstance(table, dict) or not isinstance(challenge, dict):
+            continue
+        if f2p and "Not F2P" in challenge:
+            continue
+        for drop, quantities in table.items():
+            if not isinstance(quantities, dict):
+                continue
+            for quantity, rate in quantities.items():
+                name = (
+                    f"{nest.replace('[+]', '')}: ~|{drop}|~ "
+                    f"({quantity or 'N/A'}) ({rate})"
+                )
+                built[name] = {
+                    "Category": ["All Droptables"],
+                    "Items": [drop],
+                    "ItemsDetails": [drop],
+                    "Monsters": [f"{nest}-object"],
+                    "Label": "All Droptables",
+                    "Permanent": False,
+                }
+    return built
+
+
+def forced_valid_from(
+    definitions: Mapping[str, Mapping[str, Mapping[str, Any]]],
+) -> dict[str, dict[str, int | str | bool]]:
+    """What `calc_challenges` writes into `valid` for each synthesised
+    challenge: its `Label`, which is what upstream stores
+    (`valids['Extra'][name] = 'All Shops'`) and what `other_tasks` groups an
+    `Extra` entry by."""
+    return {
+        category: {name: str(entry.get("Label", "")) for name, entry in entries.items()}
+        for category, entries in definitions.items()
+    }
+
+
 def synthesised_challenges(
-    items: Mapping[str, Mapping[str, str]], rules: Mapping[str, Any]
+    chunk_info: ChunkInfo, items: Mapping[str, Mapping[str, str]], rules: Mapping[str, Any]
 ) -> dict[str, dict[str, Any]]:
     """The bulk-built challenges, from one pass's seeded item index.
 
@@ -202,9 +271,9 @@ def synthesised_challenges(
     none of the rules that build them is on - which is the common case, and
     lets `pipeline.derive` skip rebuilding its overlay entirely.
     """
-    built: dict[str, dict[str, Any]] = {}
+    extra: dict[str, Any] = {}
     if rules.get("All Shops") is True:
-        shops = _all_shops(items)
-        if shops:
-            built["Extra"] = shops
-    return built
+        extra.update(_all_shops(items))
+    if rules.get("All Droptables Nest") is True:
+        extra.update(_nest_loot(chunk_info, items, rules))
+    return {"Extra": extra} if extra else {}

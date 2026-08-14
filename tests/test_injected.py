@@ -6,7 +6,11 @@ from typing import Any
 
 import pytest
 
-from chunksim.derive.injected import injected_challenges, synthesised_challenges
+from chunksim.derive.injected import (
+    forced_valid_from,
+    injected_challenges,
+    synthesised_challenges,
+)
 from chunksim.derive.pipeline import Derived
 from chunksim.model.chunkinfo import ChunkInfo
 
@@ -119,6 +123,7 @@ def test_the_quest_cape_is_reported_unjudgeable_rather_than_valid(
 def test_all_shops_names_a_task_per_shop_and_item() -> None:
     """One item sold in two shops is two tasks - the point of the rule."""
     built = synthesised_challenges(
+        _info(),
         {"Raw beef": {"Food Store": "shop", "Kenelme's Wares": "shop"}}, {"All Shops": True}
     )
 
@@ -139,6 +144,7 @@ def test_only_an_exact_shop_tag_counts() -> None:
     """Upstream tests the tag for equality, not membership: an item that
     merely passes through a shop carries a compound tag and is not stock."""
     built = synthesised_challenges(
+        _info(),
         {"Raw beef": {"Food Store": "shop", "Some route": "primary-Cooking-shop"}},
         {"All Shops": True},
     )
@@ -147,13 +153,13 @@ def test_only_an_exact_shop_tag_counts() -> None:
 
 
 def test_a_marked_index_entry_is_skipped_whole() -> None:
-    assert synthesised_challenges({"^^placeholder": {"Shop": "shop"}}, {"All Shops": True}) == {}
+    assert synthesised_challenges(_info(), {"^^placeholder": {"Shop": "shop"}}, {"All Shops": True}) == {}
 
 
 def test_the_secondary_marker_leaves_the_name_but_stays_in_items() -> None:
     """`*` marks a secondary ingredient. It has no business in a task title,
     but `_compile_items` reads it, so `Items` keeps it."""
-    built = synthesised_challenges({"Feather*": {"Shop": "shop"}}, {"All Shops": True})
+    built = synthesised_challenges(_info(), {"Feather*": {"Shop": "shop"}}, {"All Shops": True})
 
     assert list(built["Extra"]) == ["Shop: ~|Feather|~"]
     assert built["Extra"]["Shop: ~|Feather|~"]["Items"] == ["Feather*"]
@@ -161,6 +167,7 @@ def test_the_secondary_marker_leaves_the_name_but_stays_in_items() -> None:
 
 def test_a_marked_up_shop_name_is_unwrapped_for_the_title() -> None:
     built = synthesised_challenges(
+        _info(),
         {"Bronze axe": {"~|Bob's Brilliant Axes|~": "shop"}}, {"All Shops": True}
     )
 
@@ -168,8 +175,8 @@ def test_a_marked_up_shop_name_is_unwrapped_for_the_title() -> None:
 
 
 def test_nothing_is_built_while_the_rule_is_off() -> None:
-    assert synthesised_challenges({"Raw beef": {"Food Store": "shop"}}, {}) == {}
-    assert synthesised_challenges({"Raw beef": {"Food Store": "shop"}}, {"All Shops": False}) == {}
+    assert synthesised_challenges(_info(), {"Raw beef": {"Food Store": "shop"}}, {}) == {}
+    assert synthesised_challenges(_info(), {"Raw beef": {"Food Store": "shop"}}, {"All Shops": False}) == {}
 
 
 @pytest.mark.real_cache
@@ -200,3 +207,90 @@ def test_all_shops_settles_and_fills_the_panel(
     assert set(shops) <= set(derived.challenges.valid["Extra"])
     groups = {group.name: group for group in derived.other_tasks.categories["Extra"].groups}
     assert len(groups["All Shops"].active) == len(shops)
+
+
+def _nest_world() -> ChunkInfo:
+    return _info(
+        challenges={"Nonskill": {"Bird nest (egg) loot": {"Level": 1}}},
+        skillItems={
+            "Nonskill": {
+                "Bird nest (egg) loot": {
+                    "Bird nest (empty)": {"1": "Always"},
+                    "Bird's egg#Blue": {"": "1/3"},
+                }
+            }
+        },
+    )
+
+
+def test_a_reachable_nest_becomes_one_task_per_loot_row() -> None:
+    """The rate goes into the name as the export stores it, and an empty
+    quantity reads as `N/A` - upstream's `(quantity || 'N/A')`."""
+    built = synthesised_challenges(
+        _nest_world(), {"Bird nest (egg)": {}}, {"All Droptables Nest": True}
+    )
+
+    assert set(built["Extra"]) == {
+        "Bird nest (egg): ~|Bird nest (empty)|~ (1) (Always)",
+        "Bird nest (egg): ~|Bird's egg#Blue|~ (N/A) (1/3)",
+    }
+
+
+def test_a_nest_task_names_its_nest_as_an_object() -> None:
+    """`Monsters: ['<nest>-object']` is a suffix no monster index carries,
+    which is exactly why these have to be forced valid rather than judged."""
+    built = synthesised_challenges(
+        _nest_world(), {"Bird nest (egg)": {}}, {"All Droptables Nest": True}
+    )
+    entry = built["Extra"]["Bird nest (egg): ~|Bird nest (empty)|~ (1) (Always)"]
+
+    assert entry["Monsters"] == ["Bird nest (egg)-object"]
+    assert entry["Category"] == ["All Droptables"]
+    assert entry["Items"] == ["Bird nest (empty)"]
+
+
+def test_a_plus_family_nest_keeps_its_marker_out_of_the_title() -> None:
+    """`[+]` is stripped from the task name and from nothing else - the loot
+    lookup uses the index key exactly as it stands, which is why a nest whose
+    key carries a marker its loot table does not simply finds nothing. No
+    export nest carries one today; upstream still writes the strip.
+    """
+    world = _info(
+        challenges={"Nonskill": {"Bird nest (egg)[+] loot": {"Level": 1}}},
+        skillItems={"Nonskill": {"Bird nest (egg)[+] loot": {"Acorn": {"1": "1/2"}}}},
+    )
+
+    built = synthesised_challenges(
+        world, {"Bird nest (egg)[+]": {}}, {"All Droptables Nest": True}
+    )
+
+    assert list(built["Extra"]) == ["Bird nest (egg): ~|Acorn|~ (1) (1/2)"]
+
+
+def test_a_nest_with_no_loot_challenge_is_skipped() -> None:
+    """Both halves have to exist: upstream reads the loot *table* and the
+    loot *challenge*, and the second is what carries `Not F2P`."""
+    world = _info(skillItems={"Nonskill": {"Bird nest (egg) loot": {"Acorn": {"1": "1/2"}}}})
+
+    assert synthesised_challenges(
+        world, {"Bird nest (egg)": {}}, {"All Droptables Nest": True}
+    ) == {}
+
+
+def test_an_f2p_map_loses_a_members_nest_whole() -> None:
+    world = _info(
+        challenges={"Nonskill": {"Bird nest (egg) loot": {"Level": 1, "Not F2P": True}}},
+        skillItems={"Nonskill": {"Bird nest (egg) loot": {"Acorn": {"1": "1/2"}}}},
+    )
+    items: dict[str, dict[str, str]] = {"Bird nest (egg)": {}}
+
+    assert synthesised_challenges(world, items, {"All Droptables Nest": True})
+    assert synthesised_challenges(world, items, {"All Droptables Nest": True, "F2P": True}) == {}
+
+
+def test_forced_valid_values_are_the_labels() -> None:
+    """Upstream stores the `Label` in `valids`, and `other_tasks` groups an
+    `Extra` entry by exactly that."""
+    assert forced_valid_from({"Extra": {"A task": {"Label": "All Shops"}}}) == {
+        "Extra": {"A task": "All Shops"}
+    }

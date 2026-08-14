@@ -2341,6 +2341,7 @@ def calc_challenges(
     manual_tasks: Mapping[str, Mapping[str, Any]] | None = None,
     construction_locked: bool = False,
     locked_equipment: frozenset[str] = frozenset(),
+    forced_valid: Mapping[str, Mapping[str, int | str | bool]] | None = None,
     max_iterations: int = 15,
     item_plans: MutableMapping[tuple[str, str], _ItemPlan | None] | None = None,
 ) -> ChallengeResult:
@@ -2504,6 +2505,17 @@ def calc_challenges(
                 ):
                     new_valid.setdefault(skill, {})[name] = value
             _inject_manual_tasks(new_valid, challenges, manual_tasks)
+            # The bulk-synthesised challenges (`derive/injected.py`) are
+            # written into `valids` at the *end* of upstream's pass, after its
+            # scan, and its `valids` is rebuilt from scratch each pass - so
+            # they are valid every pass whatever the scan made of them. That
+            # is not a detail: a bird-nest droptable row names its nest under
+            # `Monsters` with an `-object` suffix that no monster index
+            # carries, so judging them would silently drop all 30 of them.
+            # Contrast `injected_challenges`, whose definitions land *before*
+            # the scan and are judged - see that module.
+            for category, entries in (forced_valid or {}).items():
+                new_valid.setdefault(category, {}).update(entries)
             _drop_superseded_backups(new_valid, valid, challenges, backlog, manual_tasks)
             _drop_outclassed_extra_sets(new_valid, challenges, backlog, manual_tasks)
             if pruning:

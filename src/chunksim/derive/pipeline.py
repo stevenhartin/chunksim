@@ -62,7 +62,11 @@ from typing import Any
 from chunksim.derive.active_tasks import TaskClassification, classify_tasks
 from chunksim.derive.bis import BisResult, compute_bis
 from chunksim.derive.challenges import ChallengeResult, _ItemPlan, calc_challenges
-from chunksim.derive.injected import injected_challenges, synthesised_challenges
+from chunksim.derive.injected import (
+    forced_valid_from,
+    injected_challenges,
+    synthesised_challenges,
+)
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.derive.other_tasks import OtherTasks, classify_other_tasks
 from chunksim.model.firebase import decode_challenge_keyed, decode_payload
@@ -488,6 +492,7 @@ def derive(
             manual_tasks=state.manual_tasks,
             construction_locked=state.construction_locked,
             locked_equipment=locked_equipment,
+            forced_valid=forced_valid_from(synthesised),
             item_plans=item_plans,
         )
         new_areas = unlockable_areas(
@@ -499,7 +504,9 @@ def derive(
             max_skill=max_skill,
             passive_skill=state.passive_skill,
         )
-        rebuilt = synthesised_challenges(challenges.available_items, state.rules)
+        rebuilt = synthesised_challenges(
+            chunk_info, challenges.available_items, state.rules
+        )
         settled = rebuilt == synthesised
         if not new_areas and settled and _gates_agree(gate_pairs, challenges.valid, valid_tasks):
             converged = True
