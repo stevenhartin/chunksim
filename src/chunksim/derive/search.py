@@ -424,10 +424,39 @@ def search(
     if not normalised_query:
         return []
 
+    # **A thing that is placed in the world is not also an item.** A challenge
+    # names what it grants in `Output`, and for a Slayer task that is the
+    # monster - so `Abyssal demon` reaches `item_sources` by the `task:` route
+    # and the search offered it twice: once as a monster, with the seven places
+    # it stands, and once as an item with no source at all, because there is no
+    # such item to obtain.
+    #
+    # **Suppressed here rather than kept out of `item_sources`**, and that
+    # distinction is the whole of it: `costing/estimate.py` walks that index to
+    # price the task, so pruning it would quietly move every estimate that
+    # involves killing something. What is wrong is offering it as a *result*,
+    # which is this function's business alone.
+    placed = {name for category in _ENTITY_TYPES.values() for name in world.locations.get(category, {})}
+
+    def only_named_by_a_task(name: str) -> bool:
+        """No way to *get* this, only challenges that mention it.
+
+        **Both halves are the test.** Suppressing everything placed in the
+        world would take `Bones` out of the item results - it stands somewhere
+        as an object *and* is an item with 601 sources, dropped and spawned.
+        `Abyssal demon` has exactly one, a `task:` route, which is upstream
+        naming the monster in a challenge's `Output` rather than an item
+        anybody can hold.
+        """
+        sources = world.item_sources.get(name, ())
+        return bool(sources) and all(source.route.startswith("task:") for source in sources)
+
     candidates: list[tuple[float, str, str]] = []  # (score, type, name)
     if "item" in wanted:
         candidates.extend(
-            (_score(normalised_query, name), "item", name) for name in world.item_sources
+            (_score(normalised_query, name), "item", name)
+            for name in world.item_sources
+            if not (name in placed and only_named_by_a_task(name))
         )
     for type_name, category in _ENTITY_TYPES.items():
         if type_name not in wanted:

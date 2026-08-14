@@ -340,3 +340,35 @@ def test_abyssal_whip_resolves_through_skill_items_to_a_real_chunk(
         s for s in item_hit.detail["sources"] if s["name"] == "Abyssal demon"
     )
     assert any(loc["chunk_id"] == "12108" for loc in abyssal_demon_source["locations"])
+
+
+@pytest.mark.real_export
+def test_a_monster_is_not_also_offered_as_an_item(real_export: ChunkInfo) -> None:
+    """**Both halves of the rule, on the two names that decide it.**
+
+    A challenge names what it grants in `Output`, and for a Slayer task that is
+    the monster - so `Abyssal demon` reaches `item_sources` by a `task:` route
+    and used to be offered twice: once as a monster with the places it stands,
+    once as an item with no source, because there is no such item.
+
+    `Bones` is why the rule is not simply "not placed in the world": it stands
+    somewhere as an object *and* is a real item with hundreds of drop and spawn
+    routes. Suppressing it would be the same bug pointed the other way.
+    """
+    world = build_world_index(real_export)
+
+    demon = {hit.type for hit in search(world, "Abyssal demon", unlocked={}, derived=None, limit=8)}
+    bones = {hit.type for hit in search(world, "Bones", unlocked={}, derived=None, limit=8)}
+
+    assert "item" not in demon and "monster" in demon
+    assert "item" in bones
+
+
+@pytest.mark.real_export
+def test_the_item_index_itself_is_untouched(real_export: ChunkInfo) -> None:
+    """**Suppressed in the results, not pruned from the index.**
+    `costing/estimate.py` walks `item_sources` to price a task, so removing the
+    entry would quietly move every estimate that involves killing something."""
+    world = build_world_index(real_export)
+
+    assert "Abyssal demon" in world.item_sources
