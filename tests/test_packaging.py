@@ -75,7 +75,7 @@ def test_the_guis_resources_are_where_package_data_says_they_are() -> None:
 
 
 def test_both_console_scripts_resolve() -> None:
-    """`fray` and `chunksim-gui` are dotted strings in `pyproject.toml` that nothing
+    """`chunksim` and `chunksim-gui` are dotted strings in `pyproject.toml` that nothing
     else checks. A module rename that misses them is a `pipx install` that
     succeeds and two commands that fail on their first line."""
     try:
@@ -85,6 +85,6 @@ def test_both_console_scripts_resolve() -> None:
 
     scripts = {entry.name: entry for entry in entries if entry.group == "console_scripts"}
 
-    assert set(scripts) == {"fray", "chunksim-gui"}
+    assert set(scripts) == {"chunksim", "chunksim-gui"}
     for entry in scripts.values():
         assert callable(entry.load()), f"{entry.name} -> {entry.value} does not resolve"
