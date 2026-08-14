@@ -156,6 +156,17 @@ Also implemented, beyond the requirement checking above:
   `valid` no longer strictly grows - 11 challenges disappear on the real map
   once a net is reachable. See `unlock.py` for what that costs the
   attribution partition.
+- **`Set`/`Priority`** (`_drop_outclassed_extra_sets`, worker.js:1514): an
+  `Extra` `Set` is one slot's interchangeable ladder - `BIS Axe` runs bronze
+  to infernal - and only `BIS Skilling` challenges carry it, 63 across 15
+  sets. Unswept, the whole ladder stays valid and a player holding an
+  infernal axe is still told to obtain the steel one: 19 of the second real
+  map's 20 outstanding `BIS Skilling` tasks. **The oracle map has the rule
+  off**, so no `Set` challenge is valid there and none of its pinned `Extra`
+  counts could ever have caught this. Note upstream's sweep keeps the
+  running *minima* rather than the single best, by way of a real bug in it
+  that the function's docstring sets out - and the export contains sets
+  where the two differ.
 - **`manualTasks`** (`_inject_manual_tasks`, worker.js:1168): every entry the
   export still defines is forced valid with its stored value, for every
   category but `BiS`, and is exempt from the `BackupParent` sweep the way
@@ -1920,6 +1931,110 @@ def _drop_superseded_backups(
         del new_valid[skill]
 
 
+def _js_lower_priority(challenger: Any, incumbent: Any) -> bool:
+    """`challenger < incumbent` with JavaScript's answer for a non-number.
+
+    Upstream compares two `Priority` fields with a bare `<`, and a missing
+    one is `undefined`: `5 < undefined` and `undefined < 5` are *both* false
+    there, where a Python `float("inf")` stand-in would make one of them
+    true. Every `Set`-bearing entry in the export carries an integer
+    `Priority`, so this is guard code - but it is the guard that decides
+    whether an entry is kept or deleted, so it answers the way upstream does.
+    """
+    if isinstance(challenger, bool) or isinstance(incumbent, bool):
+        return False
+    if not isinstance(challenger, (int, float)) or not isinstance(incumbent, (int, float)):
+        return False
+    return challenger < incumbent
+
+
+def _drop_outclassed_extra_sets(
+    new_valid: dict[str, dict[str, int | str | bool]],
+    challenges: Mapping[str, Mapping[str, Any]],
+    backlog: Mapping[str, Mapping[str, Any]],
+    manual_tasks: Mapping[str, Mapping[str, Any]],
+) -> None:
+    """Thin an `Extra` `Set` down to the members worth chasing, in place.
+
+    Port of the `extraSets` sweep (worker.js:1514-1534, repeated at
+    1771-1785) plus the backlog half of the same rule (worker.js:3771-3777,
+    upstream's `'Set outclassed'`). A `Set` groups the interchangeable ways
+    of holding one slot - `BIS Axe` has 19 members from bronze to infernal -
+    and `Priority` ranks them, **lower being better**. Only `BIS Skilling`
+    challenges carry the pair: 63 challenges across 15 sets, and no other
+    category uses `Set` at all.
+
+    Without this the whole ladder stays valid, so a player holding an
+    infernal axe was still being told to obtain the steel, mithril, adamant,
+    black, dragon and felling axes. On the second real map that is 19 of its
+    20 outstanding `BIS Skilling` tasks. **The oracle map cannot see this**:
+    it has `rules['BIS Skilling']` off, so it has no `Set`-bearing challenge
+    valid at all, and every `Extra` count it pins stayed green throughout.
+
+    Two things about the sweep are not what the name suggests, and both are
+    upstream's behaviour rather than a simplification here:
+
+    - **It is not an argmax.** Upstream means to keep one member per set and
+      writes `extraSets[newValids[skill][challenge]['Set']]` to find the
+      incumbent to delete - but `newValids[skill][challenge]` is the
+      challenge's *value* (a level or a boolean), so `.Set` is `undefined`
+      and the delete lands on a key that does not exist. The incumbent
+      survives; only the *worse* member of each comparison is ever removed.
+      What that leaves is the running minima of `Priority` in iteration
+      order: the first member seen, then any member better than everything
+      before it. It is visible in the real export - `BIS Angler Hat` lists
+      the ordinary hat (`Priority` 2) before the spirit one (`Priority` 1),
+      so a player who can reach both is offered both.
+    - **Iteration order is the export's own key order.** Upstream sweeps
+      `Object.keys(newValids['Extra'])`, i.e. insertion order, and `Extra`
+      entries are inserted by the scan at worker.js:3673 that sorts on
+      `Description` then `Level` - neither of which any of the 2,932 `Extra`
+      challenges has, so the comparator is `NaN` throughout and the export's
+      order survives. Iterating `challenges['Extra']` here reproduces that
+      without depending on how this module happened to build its own dict.
+
+    A backlogged member is dropped before the sweep rather than inside it:
+    upstream refuses it back in `checkChallenge`, so it never reaches
+    `newValids` and never takes part. `ManualValid` (and this module's
+    `manual_tasks` stand-in for it, as in `_drop_superseded_backups`) exempts
+    a member from being deleted, but not from becoming the first incumbent -
+    upstream checks the flag in two of the three branches and not the first.
+    """
+    names = new_valid.get("Extra")
+    extra = challenges.get("Extra")
+    if not names or not isinstance(extra, dict):
+        return
+    backlogged = backlog.get("Extra") or {}
+    manual = manual_tasks.get("Extra") or {}
+    incumbent: dict[str, Any] = {}
+    for name in extra:
+        if name not in names:
+            continue
+        challenge = extra[name]
+        if not isinstance(challenge, dict):
+            continue
+        group = challenge.get("Set")
+        if not isinstance(group, str):
+            continue
+        if name in backlogged or name.replace("#", "/") in backlogged:
+            del names[name]
+            continue
+        priority = challenge.get("Priority")
+        if group not in incumbent:
+            incumbent[group] = priority
+            continue
+        exempt = bool(challenge.get("ManualValid")) or name in manual
+        if _js_lower_priority(priority, incumbent[group]):
+            if not exempt:
+                incumbent[group] = priority
+        elif not exempt:
+            del names[name]
+    # Same contract as `_drop_superseded_backups`: a skill key in `new_valid`
+    # implies at least one valid challenge, so an emptied branch has to go.
+    if not names:
+        del new_valid["Extra"]
+
+
 def _group_processing_skill_challenges(
     valid: Mapping[str, Mapping[str, int | str | bool]],
     challenges: Mapping[str, Mapping[str, Any]],
@@ -2162,6 +2277,7 @@ def calc_challenges(
                     new_valid.setdefault(skill, {})[name] = value
             _inject_manual_tasks(new_valid, challenges, manual_tasks)
             _drop_superseded_backups(new_valid, valid, challenges, backlog, manual_tasks)
+            _drop_outclassed_extra_sets(new_valid, challenges, backlog, manual_tasks)
             if pruning:
                 # Second outer pass onward the index is fully seeded, so the
                 # prunes can join the fixed point - and must, or each pass
@@ -2230,6 +2346,7 @@ def calc_challenges(
             manual_tasks=manual_tasks,
             items=items,
         )
+        _drop_outclassed_extra_sets(valid, challenges, backlog, manual_tasks)
         reseeded = _seed_items_with_outputs(
             source_index.items,
             valid,

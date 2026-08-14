@@ -1055,6 +1055,144 @@ def test_manual_valid_exempts_a_backup_from_being_dropped() -> None:
     }
 
 
+def _axes(**extra: Any) -> ChunkInfo:
+    """An `Extra` `Set` in the export's own key order, best first.
+
+    `Priority` is lower-is-better, so `infernal` outranks the rest. No
+    `Items`, so every member is valid until the sweep says otherwise - the
+    ladder, not the reachability, is what these tests are about.
+    """
+    challenges = {
+        "Obtain an infernal axe": {"Set": "BIS Axe", "Priority": 3},
+        "Obtain a dragon axe": {"Set": "BIS Axe", "Priority": 5},
+        "Obtain a steel axe": {"Set": "BIS Axe", "Priority": 15},
+        "Obtain a herb sack": {"Set": "BIS Herb Sack", "Priority": 2},
+    }
+    for name, fields in extra.items():
+        challenges[name.replace("_", " ")] = fields
+    return _chunk_info(challenges={"Extra": challenges})
+
+
+def test_a_worse_set_member_is_dropped_once_a_better_one_is_valid() -> None:
+    """The reported bug: a player holding an infernal axe was still being
+    told to obtain the steel, mithril, adamant and dragon ones. A `Set` is
+    one slot's interchangeable ladder, and only its best reachable rung is
+    worth chasing. Other sets are untouched - the sweep is per-`Set`."""
+    result = calc_challenges({}, {}, _EMPTY, _axes(), rules={})
+
+    assert set(result.valid["Extra"]) == {"Obtain an infernal axe", "Obtain a herb sack"}
+
+
+def test_a_better_set_member_listed_later_leaves_the_earlier_one_standing() -> None:
+    """Upstream's sweep keeps the running *minima*, not the single best: the
+    delete meant for the beaten incumbent reads `.Set` off the challenge's
+    value rather than the challenge, so it lands on nothing and the incumbent
+    survives. This is not hypothetical - the real export lists `BIS Angler
+    Hat`'s ordinary hat (`Priority` 2) before the spirit one (`Priority` 1),
+    so a player who can reach both is offered both.
+    """
+    info = _chunk_info(
+        challenges={
+            "Extra": {
+                "Obtain the angler hat": {"Set": "BIS Angler Hat", "Priority": 2},
+                "Obtain the spirit angler headband": {"Set": "BIS Angler Hat", "Priority": 1},
+                "Obtain a straw hat": {"Set": "BIS Angler Hat", "Priority": 9},
+            }
+        }
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    # The straw hat loses to whichever member is incumbent by then; the two
+    # that each beat everything before them both stay.
+    assert set(result.valid["Extra"]) == {
+        "Obtain the angler hat",
+        "Obtain the spirit angler headband",
+    }
+
+
+def test_a_backlogged_set_member_is_dropped_and_stops_outclassing() -> None:
+    """Upstream refuses a backlogged `Set` member back in `checkChallenge`
+    (`'Set outclassed'`), so it never reaches the sweep - backlogging the
+    best rung has to promote the next one, not leave the whole ladder
+    deleted by a challenge the player has said no to."""
+    result = calc_challenges(
+        {}, {}, _EMPTY, _axes(), rules={}, backlog={"Extra": {"Obtain an infernal axe": ""}}
+    )
+
+    assert set(result.valid["Extra"]) == {"Obtain a dragon axe", "Obtain a herb sack"}
+
+
+def test_manual_valid_exempts_a_set_member_from_being_outclassed() -> None:
+    """`ManualValid` is upstream's "I said so" flag, checked in the two
+    branches that delete and not in the one that takes the first incumbent."""
+    info = _chunk_info(
+        challenges={
+            "Extra": {
+                "Obtain an infernal axe": {"Set": "BIS Axe", "Priority": 3},
+                "Obtain a dragon axe": {"Set": "BIS Axe", "Priority": 5, "ManualValid": True},
+                "Obtain a steel axe": {"Set": "BIS Axe", "Priority": 15},
+            }
+        }
+    )
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert set(result.valid["Extra"]) == {"Obtain an infernal axe", "Obtain a dragon axe"}
+
+
+def test_a_set_of_one_survives_intact() -> None:
+    info = _chunk_info(challenges={"Extra": {"Obtain a herb sack": {"Set": "BIS Herb Sack", "Priority": 2}}})
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+
+    assert result.valid == {"Extra": {"Obtain a herb sack": True}}
+
+
+@pytest.mark.real_export
+def test_only_bis_skilling_challenges_carry_a_set(real_export: ChunkInfo) -> None:
+    """What `_drop_outclassed_extra_sets` rests on: `Set` lives only on
+    `Extra`, only on `BIS Skilling` entries, and always beside an integer
+    `Priority`. A `Set` appearing elsewhere - or without a `Priority` - would
+    put the sweep somewhere it has never been measured.
+    """
+    carriers = {
+        (category, name): challenge
+        for category, entries in real_export.challenges.items()
+        for name, challenge in entries.items()
+        if isinstance(challenge, dict) and "Set" in challenge
+    }
+
+    assert carriers, "the export no longer defines any Set"
+    assert {category for category, _ in carriers} == {"Extra"}
+    assert all(challenge.get("Label") == "BIS Skilling" for challenge in carriers.values())
+    assert all(
+        isinstance(challenge.get("Priority"), int) and not isinstance(challenge["Priority"], bool)
+        for challenge in carriers.values()
+    )
+
+
+@pytest.mark.real_export
+def test_extra_challenges_carry_no_level_so_the_export_order_is_the_sweep_order(
+    real_export: ChunkInfo,
+) -> None:
+    """Upstream sweeps `newValids['Extra']` in insertion order, and those
+    entries are inserted by a scan sorted on `Description` then `Level`
+    (worker.js:3673). No `Extra` challenge has either, so that comparator is
+    `NaN` throughout and the export's own key order survives into the sweep -
+    which is the order `_drop_outclassed_extra_sets` iterates. An `Extra`
+    entry growing a `Level` would quietly reorder upstream's sweep and not
+    ours.
+    """
+    extra = real_export.challenges["Extra"]
+
+    assert not [
+        name
+        for name, challenge in extra.items()
+        if isinstance(challenge, dict) and ("Level" in challenge or "Description" in challenge)
+    ]
+
+
 def test_a_backup_whose_parent_is_unknown_is_left_alone() -> None:
     info = _chunk_info(
         challenges={
