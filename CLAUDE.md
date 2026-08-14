@@ -381,12 +381,21 @@ every subpackage — the third of which `tests/test_packaging.py` covers in mill
 installer. Both are built artefacts under `packaging/build/`, which is gitignored.
 
 ```
-packaging\build.bat                                    # on Windows: all three steps
+packaging\build.bat                                    # asks for a version, then builds
+packaging\build.bat /version 0.2.0                     # bump without asking
+packaging\build.bat /keep                              # build what is there, no bump
 packaging\build.bat /payload                           # stop before Inno Setup
 
 pyproject-build && python packaging/build_windows.py   # the same, by hand
 iscc packaging/chunksim.iss                            # -> packaging/build/chunksim-<v>-setup.exe
 ```
+
+**A release is a version in two files.** `pyproject.toml` is what the running program calls itself
+and `chunksim.iss` is what the installer does; `packaging/set_version.py` writes both and refuses
+anything `build_info.is_newer` says is not an advance — a release numbered below the last one is
+invisible to every install already out there, and shows up only as silence. `build.bat` bumps first
+and **commits last, only on success**, naming just those two files so an unrelated dirty tree is not
+swept into a release commit. A failed build leaves them modified and says so.
 
 `build.bat` is the one file here that cannot be tested where it is written. Its syntax and its first
 two steps were run under `wine cmd`; the wheel build, the payload step and Inno Setup need a real
