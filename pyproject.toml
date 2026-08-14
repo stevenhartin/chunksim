@@ -6,17 +6,19 @@ build-backend = "setuptools.build_meta"
 name = "chunksim"
 version = "0.1.0"
 description = "Offline tooling for source-chunk map state"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 requires-python = ">=3.14"
 dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest"]
-# The DPS calculator that `dps_bridge.py` prices kills with. Optional, and it
-# must stay optional: `chunksim estimate` falls back to the scraped wiki rates
-# without it. Kept out of `dependencies` for a second reason too - osrs-dps is
-# GPL-3.0 and this project is MIT, so it is an ordinary installed package a
-# user opts into rather than something vendored in. Not on PyPI yet; install
-# it from a checkout with `pip install -e ../osrs-dps`.
+# The DPS calculator that `dps_bridge.py` prices kills with. Optional because
+# `chunksim estimate` falls back to the scraped wiki rates without it, and
+# because nothing else in the project may assume it is installed. It used to be
+# a licence boundary as well - osrs-dps is GPL-3.0 where this was MIT - and
+# that half went away when this project became GPL-3.0-or-later to match. Not
+# on PyPI yet; install it from a checkout with `pip install -e ../osrs-dps`.
 dps = ["osrs-dps"]
 
 [project.scripts]
@@ -28,7 +30,7 @@ where = ["src"]
 
 # The GUI's html/js/css. Small, and ours. The map tiles are deliberately *not*
 # here, and are not fetched either: they are the OSRS wiki's cartography,
-# CC BY-NC-SA 3.0 against this project's MIT, so the browser loads them from
+# CC BY-NC-SA 3.0 against this project's GPL-3.0, so the browser loads them from
 # the wiki directly and nothing this project ships or caches carries one.
 # cache/assets/ holds section masks and skill icons, not artwork.
 [tool.setuptools.package-data]

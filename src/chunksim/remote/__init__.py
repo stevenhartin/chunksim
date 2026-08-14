@@ -12,5 +12,5 @@ which is a different thing and lives with the app that does it.
 
 The map tiles are the host this project never calls: `MAP_TILE_URL` is a
 template handed to the browser, because caching the wiki's CC BY-NC-SA
-cartography under an MIT project would make it a redistributor.
+cartography under a GPL-3.0 project would make it a redistributor.
 """

@@ -7,11 +7,12 @@ falls back to a flat `DEFAULT_KPH`. This module computes the number instead,
 from the gear `bis.py` says the map can actually reach, using the `osrs-dps`
 library.
 
-**The dependency is optional and must stay optional.** `osrs-dps` is GPL-3.0
-where this project is MIT, so it is something a user installs deliberately
-(`pip install -e ../osrs-dps`), not something vendored in. Every entry point
-here checks `DPS_AVAILABLE` and the estimator falls back to the scraped rates
-without it. Import this module freely - importing is safe when the library is
+**The dependency is optional and must stay optional.** Not for a licence
+reason any more - this project is GPL-3.0-or-later, the same as `osrs-dps` -
+but because `chunksim` has no required runtime dependencies at all and this
+would be the first. It is something a user installs deliberately (`pip install
+-e ../osrs-dps`). Every entry point here checks `DPS_AVAILABLE` and the
+estimator falls back to the scraped rates without it. Import this module freely - importing is safe when the library is
 absent; only calling is not.
 
 **Time-to-kill is not a kill cycle.** The library returns seconds of

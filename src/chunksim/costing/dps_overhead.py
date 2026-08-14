@@ -7,7 +7,7 @@ has **no caller anywhere in `src/`**: it produced the numbers now written into
 them.
 
 It lives here rather than in `dps_bridge.py` for that reason. That module is
-1,700 lines because the licence boundary says it must be - it is the only module
+1,700 lines because the import boundary says it must be - it is the only module
 allowed to import `osrs_dps` - and a benchmarking tool nothing calls is the one
 part of it that was paying that cost for nothing. It reaches the library
 through `dps_bridge`'s own names, so the boundary is intact: `from __future__

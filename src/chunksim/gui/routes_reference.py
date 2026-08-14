@@ -9,7 +9,7 @@ upstream's section masks and skill icons.
 
 **The tiles are a URL, never bytes.** `/api/tiles` hands out a template and the
 browser fetches from the wiki directly: the cartography is CC BY-NC-SA 3.0
-against this project's MIT, so caching it under `cache/` or re-serving it off
+against this project's GPL-3.0, so caching it under `cache/` or re-serving it off
 loopback would make this a redistributor of NonCommercial artwork, where
 linking makes it a page with a picture on it. A test asserts no tile route
 exists, so a later "let's cache these" cannot pass review by looking like a
@@ -119,7 +119,7 @@ def _tile_source(ctx: Context) -> dict[str, Any]:
     """Where the browser should get its map tiles.
 
     **This hands out a URL template; it never fetches a tile.** The tiles are
-    CC BY-NC-SA 3.0 and this project is MIT, so caching them under `cache/` or
+    CC BY-NC-SA 3.0 and this project is GPL-3.0, so caching them under `cache/` or
     serving them off loopback would make it a redistributor of NonCommercial
     artwork. Pointing the page at the wiki's own CDN makes it a page with a
     picture on it. That also means the `User-Agent` those tiles need is the

@@ -460,7 +460,7 @@ const AREA_LABEL_MIN_CELL = 54;
  * hands over a URL template and this file puts it in an `Image`, so the bytes
  * go wiki -> browser cache and touch no disk of ours. That is a licence
  * decision, not a performance one - the tiles are CC BY-NC-SA 3.0 against this
- * project's MIT, and caching or re-serving them would make it a redistributor
+ * project's GPL-3.0, and caching or re-serving them would make it a redistributor
  * of NonCommercial artwork. Linking to them makes it a page with a picture on
  * it. `MAP_TILE_ATTRIBUTION` is on screen for the same reason.
  *

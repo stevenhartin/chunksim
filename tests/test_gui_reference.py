@@ -56,7 +56,7 @@ def test_the_tile_source_is_a_template_and_never_a_tile(
 ) -> None:
     """**`/api/tiles` hands out a URL. It must never hand out a picture.**
 
-    The tiles are CC BY-NC-SA 3.0 and this project is MIT, so caching them
+    The tiles are CC BY-NC-SA 3.0 and this project is GPL-3.0, so caching them
     under `cache/` or re-serving them off loopback would make it a
     redistributor of NonCommercial artwork - pointing the browser at the
     wiki's own CDN makes it a page with a picture on it. That distinction is

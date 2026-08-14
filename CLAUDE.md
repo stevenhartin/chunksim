@@ -25,7 +25,7 @@ src/chunksim/
   remote/   the only outbound network calls
   store/    the only disk
   derive/   the pure layer: the derivation chain and everything that walks it
-  costing/  derivation -> hours, and the optional GPL seam to osrs-dps
+  costing/  derivation -> hours, and the optional seam to osrs-dps
   runs/     what a *run* is: a base state, a sequence of rolls, its replay
   cli/      one module per subcommand family, parser beside handler
   gui/      the server, split by what each route costs
@@ -216,7 +216,7 @@ The table says what each module **owns**; its docstring says why.
 
 - **The map is the OSRS wiki's cartography tiles and the browser loads them — this project never
   touches one.** `/api/tiles` hands out a URL *template*. That is a **licence decision, not an
-  optimisation**: the tiles are CC BY-NC-SA 3.0 against this project's MIT, so caching them under
+  optimisation**: the tiles are CC BY-NC-SA 3.0 against this project's GPL-3.0, so caching them under
   `cache/` or re-serving them off loopback would make this a redistributor of NonCommercial artwork,
   where linking makes it a page with a picture on it. `tests/test_gui_contract.py` asserts no tile
   route exists, so a later "let's cache these" cannot pass review by looking like a speed-up.
@@ -236,9 +236,11 @@ shape that keeps to: it wanted zstd and got it from 3.14's stdlib (PEP 784) rath
 still degrades to plain pickle on a CPython built without `_zstd`.
 
 There are two extras and they are not alike. `dev` is `pytest`. **`dps` is
-[`osrs-dps`](https://github.com/stevenhartin/osrs-dps), and it must stay optional for a reason beyond
-weight: it is GPL-3.0 where this project is MIT.** So it is a package a user installs deliberately,
-never vendored in, and `costing/dps_bridge.py` is the only module that may import it — behind a
+[`osrs-dps`](https://github.com/stevenhartin/osrs-dps), and it must stay optional** — this project has
+*no* required runtime dependencies and that one would be the first. It used to be a licence boundary
+as well, GPL-3.0 against this project's MIT; **that half is gone — chunksim is GPL-3.0-or-later now,
+so the two can ship in one distribution.** What did not change is the code: it is a package a user
+installs deliberately, never vendored in, and `costing/dps_bridge.py` is the only module that may import it — behind a
 `try`/`except ImportError` that sets `DPS_AVAILABLE`. Importing `dps_bridge` is always safe; calling
 into it without the extra raises `DpsUnavailableError`. Its tests skip rather than fail when the
 extra is absent, like the `CHUNKSIM_CHUNKINFO` oracles. A change to `osrs-dps` that moves a number is a

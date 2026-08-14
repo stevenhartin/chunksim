@@ -267,7 +267,7 @@ other machines.
 
 **The map is the OSRS wiki's, and your browser loads it directly from their CDN.** No map image is
 downloaded, cached or served by `chunksim-gui` — it hands the page a URL and the page uses it. That is
-deliberate: the tiles are CC BY-NC-SA 3.0 and this project is MIT, so keeping a copy would make it a
+deliberate: the tiles are CC BY-NC-SA 3.0 and this project is GPL-3.0, so keeping a copy would make it a
 redistributor of NonCommercial artwork, while linking makes it a page with a picture on it. The
 credit sits in the corner of the map, which is what that licence asks for. If the wiki ever moves
 its tiles, `CHUNKSIM_TILE_VERSION` pins a render by hand.
@@ -565,4 +565,9 @@ commands.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+GNU GPL v3.0 or later — see [LICENSE](LICENSE).
+
+It was MIT until the optional [`osrs-dps`](https://github.com/stevenhartin/osrs-dps) extra needed to
+ship in the same distribution. That library is GPL-3.0, so a combined work has to be, and matching it
+was the simpler half of the choice. Versions released before the change stay MIT; nothing takes that
+back.

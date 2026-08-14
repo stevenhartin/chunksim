@@ -54,8 +54,10 @@ TASKS_MAP_URL = _UPSTREAM_RAW.format(path="tasksMap.json")
 #: handed to the page and the page puts it in an `<img>`, so the bytes go from
 #: the wiki's CDN to the user's browser cache and touch nothing here. That is
 #: deliberate and it is about the licence: the tiles are CC BY-NC-SA 3.0 and
-#: this project is MIT, so caching them in `cache/` or serving them off
-#: `127.0.0.1` would make this a redistributor of NonCommercial artwork.
+#: this project is GPL-3.0, so caching them in `cache/` or serving them off
+#: `127.0.0.1` would make this a redistributor of NonCommercial artwork. The
+#: relicense from MIT changed nothing here and could not: a NonCommercial
+#: clause is an added restriction, which GPL-3.0 forbids outright.
 #: Pointing at them makes it a page with a picture on it, which is what every
 #: other site embedding a map is.
 #:

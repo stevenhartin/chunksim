@@ -330,9 +330,9 @@ def decode_pricing(blob: bytes) -> tuple[Heuristics, Any] | None:
     """Deserialise an enrichment, or `None` if it is unusable.
 
     The coverage half is typed `Any` because it is `dps_bridge.DpsCoverage`,
-    and this module must not import that: `dps_bridge` is the GPL-licensed
-    seam and is optional, so importing it here to name a type would make the
-    whole cache depend on an extra that may not be installed.
+    and this module must not import that: `dps_bridge` is the seam to an
+    optional extra, so importing it here to name a type would make the whole
+    cache depend on something that may not be installed.
     """
     value = _unpack(blob)
     if not isinstance(value, tuple) or len(value) != 2:
@@ -632,8 +632,8 @@ def cached_enrich(
     extra invalidation problem attached.
 
     `compute` is a callable rather than the arguments to `enrich`, so this
-    module never imports `dps_bridge` - the GPL-licensed optional extra stays
-    something only its own seam knows about.
+    module never imports `dps_bridge` - the optional extra stays something only
+    its own seam knows about.
     """
     key = enrichment_key(state, unlocked, digests, pricing)
     if not refresh:
