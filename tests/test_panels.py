@@ -766,3 +766,74 @@ def test_without_a_state_a_skill_row_says_nothing_about_levels() -> None:
     rows = [row for group in skills["groups"] for row in group["active"]]
 
     assert rows and all("requires" not in row for row in rows)
+
+
+@pytest.mark.real_cache
+def test_a_completed_row_says_when_it_was_ticked() -> None:
+    """**`checkedChallenges` is "this chunk" and needs no new data.**
+
+    Upstream keeps the two apart only as a commit step: ticking writes
+    `checkedChallenges`, and rolling the next chunk migrates the lot into
+    `completedChallenges` and clears it (index.js:12718). So the un-migrated
+    half *is* what was finished during the chunk in play, which is what
+    `MapState.checked_challenges` was kept addressable for.
+    """
+    from chunksim.derive.pipeline import derive, load_map_state
+    from chunksim.model.chunkinfo import ChunkInfo
+    from chunksim.model.firebase import reverse_tasks_map
+    from chunksim.store.cache import data_root, read_blob, read_cache, read_chunkinfo
+
+    info = ChunkInfo(read_chunkinfo())
+    payload = read_cache("verf", data_root())["data"]
+    # **With the real tasks map.** Names are interned to `t_N` ids in places,
+    # so an empty one leaves `checkedChallenges` keys that match nothing and
+    # the split silently reads as "all prior".
+    tasks = reverse_tasks_map(read_blob("tasks_map", data_root())["data"])
+    state, unlocked = load_map_state(payload, info, tasks)
+    panel = panels.task_panel(derive(state, unlocked), state)
+
+    rows = [
+        row
+        for section in panel["sections"]
+        for group in section["groups"]
+        for row in group["completed"]
+    ]
+    assert rows
+    assert {row["when"] for row in rows} <= {"chunk", "prior"}
+    # Both halves are real on this map, or the split would be untested.
+    assert any(row["when"] == "chunk" for row in rows)
+    assert any(row["when"] == "prior" for row in rows)
+
+    # And it is the *un-merged* branch that decides, not the merged one.
+    checked = sum(
+        len(names) for names in payload["chunkinfo"]["checkedChallenges"].values()
+        if isinstance(names, dict)
+    )
+    assert sum(1 for row in rows if row["when"] == "chunk") <= checked
+
+
+@pytest.mark.real_cache
+def test_a_finished_skill_row_shows_what_it_wanted_not_what_a_boost_saves() -> None:
+    """**A boost is advice for work still ahead.** On something already done it
+    would read as a claim about how it was done, which nothing here knows - so
+    a completed row carries the requirement flat."""
+    from chunksim.derive.pipeline import derive, load_map_state
+    from chunksim.model.chunkinfo import ChunkInfo
+    from chunksim.store.cache import data_root, read_cache, read_chunkinfo
+
+    from chunksim.model.firebase import reverse_tasks_map
+    from chunksim.store.cache import read_blob
+
+    info = ChunkInfo(read_chunkinfo())
+    tasks = reverse_tasks_map(read_blob("tasks_map", data_root())["data"])
+    state, unlocked = load_map_state(read_cache("verf", data_root())["data"], info, tasks)
+    panel = panels.task_panel(derive(state, unlocked), state)
+
+    skills = [s for s in panel["sections"] if s["key"] == "skills"][0]
+    done = [row for g in skills["groups"] for row in g["completed"] if "requires" in row]
+    assert done, "the second map should have finished skill tasks with levels"
+
+    for row in done:
+        need = row["requires"]
+        assert need["boost"] == 0
+        assert need["have"] == need["level"]

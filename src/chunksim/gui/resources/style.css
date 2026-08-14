@@ -934,6 +934,24 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   flex: none;
 }
 
+/* **A finished task is struck through, not hidden and not dimmed.** The list
+   is additive now - what is left and what is done, read together - so the
+   done ones have to be legible enough to read and obviously not outstanding.
+   Line-through does that where opacity only makes them hard to read.
+
+   The colour says *when*: green for finished before this chunk, amber for
+   finished during it. Amber is the accent that means "current" everywhere
+   else in this interface, and a task finished on the chunk you are looking at
+   is still news. */
+.task.done .name, .task.done .sub, .task.done .req {
+  text-decoration: line-through;
+  color: var(--gain);
+}
+.task.done .req { opacity: .75; }
+.task.done-now .name, .task.done-now .sub, .task.done-now .req {
+  color: var(--amber);
+}
+
 /* The same three answers on a pill. `.pill.reachable` is the old name for
    "available" and stays for the callers still using it; `data-hold` is the
    vocabulary the icons, the chunk cards and this all share. */

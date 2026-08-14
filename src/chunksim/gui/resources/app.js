@@ -3616,8 +3616,8 @@ function renderTasks() {
   const keys = sections.map((s) => s.key);
   el["task-chips"].innerHTML = sections.map((s) => {
     const on = !taskOff.has(s.key);
-    const count = state.showDone ? s.completed_total : s.active_total;
-    const tip = tmpl`<b>${s.label}</b><span class="sub">${count} ${state.showDone ? "completed" : "outstanding"}</span><span class="hint">${CHIP_HINT}</span>`;
+    const count = state.showDone ? s.active_total + s.completed_total : s.active_total;
+    const tip = tmpl`<b>${s.label}</b><span class="sub">${count} ${state.showDone ? "shown" : "outstanding"}</span><span class="hint">${CHIP_HINT}</span>`;
     /* **The word lives in the tooltip and in `aria-label`, not on the chip.**
      * Five words and their counts wrapped a 360px strip onto three lines, and
      * a strip is meant to be glanceable. The chunk pane made this trade
@@ -3633,16 +3633,20 @@ function renderTasks() {
     };
   }
 
-  const side = state.showDone ? "completed" : "active";
   const showing = sections.filter((s) => !taskOff.has(s.key));
   if (!showing.length) {
     el["tasks-body"].innerHTML = tmpl`<p class="empty">No categories selected.</p>`;
     return;
   }
 
-  const out = renderTaskGroups(showing, side, "tasks", { tickable: true });
+  /* **Additive, not a swap.** The toggle used to replace the outstanding list
+   * with the finished one, which answers "what have I done" and loses "what am
+   * I doing" - and the two are read together. Done rows are struck through and
+   * sorted after, so the list still opens with the work. */
+  const out = renderTaskGroups(showing, state.showDone ? "both" : "active", "tasks",
+                               { tickable: true });
   el["tasks-body"].innerHTML = out ||
-    tmpl`<p class="empty">Nothing ${state.showDone ? "completed" : "outstanding"} here.</p>`;
+    tmpl`<p class="empty">Nothing ${state.showDone ? "here" : "outstanding"}.</p>`;
   ownsMore("tasks", renderTasks);
 }
 
@@ -3662,10 +3666,31 @@ function renderTasks() {
  * the same thing is what made the pane read as a report rather than a list.
  * What replaces it is the truncation control, which says how many are hidden
  * only when some are. */
+/* **The reading order, and it is the only sort this applies.**
+ *
+ * Outstanding first, then what was finished during the chunk in play, then
+ * what was finished before it - which is near, nearer, past. Everything below
+ * that is left exactly as the server ordered it, alphabetically by skill,
+ * because a second sort here would silently overrule one made where the names
+ * are known.
+ *
+ * `when` comes from `panels._done_when`: upstream migrates `checkedChallenges`
+ * into `completedChallenges` on the next roll, so the un-migrated half *is*
+ * this chunk's. */
+function rowsFor(group, side) {
+  if (side !== "both") return group[side];
+  const done = group.completed;
+  return [
+    ...group.active,
+    ...done.filter((row) => row.when === "chunk"),
+    ...done.filter((row) => row.when !== "chunk"),
+  ];
+}
+
 function renderTaskGroups(sections, side, keyPrefix, { tickable = false } = {}) {
   let out = "";
   for (const section of sections) {
-    const groups = section.groups.filter((g) => g[side].length);
+    const groups = section.groups.filter((g) => rowsFor(g, side).length);
     if (!groups.length) continue;
     /* The section's own heading, once several are on screen at a time. With
      * one selected the chip already says which, and repeating it costs a row
@@ -3680,7 +3705,7 @@ function renderTaskGroups(sections, side, keyPrefix, { tickable = false } = {}) 
         out += tmpl`<h3>${raw(mark)}${group.name}</h3>`;
       }
       const key = keyPrefix + ":" + section.key + ":" + group.name + ":" + side;
-      out += "<ul class='list'>" + withMore(group[side], key, TASK_ROWS, (row) => {
+      out += "<ul class='list'>" + withMore(rowsFor(group, side), key, TASK_ROWS, (row) => {
         /* A slot badge *replaces* the note rather than sitting beside it:
          * the glyph and the word "ring" say one thing, and a 360px row has
          * no space to say it twice. The tooltip still spells it out. */
@@ -3709,10 +3734,16 @@ function renderTaskGroups(sections, side, keyPrefix, { tickable = false } = {}) 
          * panel's grouping, which is what `panels._entry` exists to say. */
         const pending = tickable && state.edits.ticked.get(row.category)?.has(row.key)
           ? " ticked" : "";
+        /* **Struck through, and the colour says when.** Amber for the chunk in
+         * play, green for the ones before it - the interface's accent means
+         * "current" everywhere else, and a finished task is still news while
+         * the chunk it was finished on is the one you are looking at. */
+        const done = side === "both" && row.when
+          ? (row.when === "chunk" ? " done done-now" : " done") : "";
         const hooks = tickable
           ? tmpl` data-task="${row.key}" data-category="${row.category || ""}"`
           : "";
-        return tmpl`<li class="task${pending}" data-tip="${tip}"${raw(hooks)}>${raw(badge)}${raw(level)}<span class="name">${raw(linked(row.marked || row.name))}</span>
+        return tmpl`<li class="task${pending}${done}" data-tip="${tip}"${raw(hooks)}>${raw(badge)}${raw(level)}<span class="name">${raw(linked(row.marked || row.name))}</span>
           <span class="sub">${plain(slot ? "" : row.note || "")}</span></li>`;
       }) + "</ul>";
     }
@@ -3723,10 +3754,15 @@ function renderTaskGroups(sections, side, keyPrefix, { tickable = false } = {}) 
 /* Delegated, so a re-render needs no rewiring - the same reason the tooltips
  * are. A completed row is not offered: un-ticking is not a thing this writes,
  * because `completedChallenges` is the player's own record and removing from
- * it is a claim about their past rather than about their map. */
+ * it is a claim about their past rather than about their map.
+ *
+ * **The row, not the toggle.** This used to refuse while `showDone` was on,
+ * which was right when that swapped the list for the finished one and wrong
+ * the moment it started adding to it - the outstanding rows are still there
+ * and still tickable. */
 el["tasks-body"].addEventListener("click", async (event) => {
   const row = event.target.closest("li.task[data-task]");
-  if (!row || state.showDone) return;
+  if (!row || row.classList.contains("done")) return;
   const category = row.dataset.category;
   if (!category) { toast("This row has no category to tick against"); return; }
   if (!(await ensureEditing())) return;
@@ -3742,7 +3778,7 @@ el["tasks-body"].addEventListener("click", async (event) => {
 el["show-done"].addEventListener("click", () => {
   state.showDone = !state.showDone;
   el["show-done"].setAttribute("aria-pressed", String(state.showDone));
-  el["show-done"].title = state.showDone ? "Show what is left to do" : "Show what is already done";
+  el["show-done"].title = state.showDone ? "Hide finished tasks" : "Also show finished tasks";
   if (taskPanel) renderTasks();
 });
 

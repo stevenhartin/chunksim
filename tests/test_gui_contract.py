@@ -1927,3 +1927,39 @@ def test_every_task_heading_has_a_glyph_of_its_own() -> None:
     assert set(icons) == {"skills", "bis", "Diary", "Quest", "Extra"}
     for name in icons.values():
         assert f'id="i-{name}"' in html, f"no sprite for {name}"
+
+
+def test_the_done_toggle_adds_rather_than_swaps() -> None:
+    """**"Also show done", not "show done".** It used to replace the
+    outstanding list with the finished one, which answers "what have I done"
+    and loses "what am I doing" - and the two are read together."""
+    js = _app_js()
+    html, _, _ = _resources()
+
+    assert 'state.showDone ? "both" : "active"' in js
+    assert "Also show done" in html
+    body = re.search(r"function rowsFor\(group, side\) \{(.*?)\n\}", js, re.DOTALL)
+    assert body is not None
+    assert "...group.active," in body.group(1), "the outstanding rows must come first"
+
+
+def test_a_done_row_is_struck_through_and_says_when() -> None:
+    """Amber for the chunk in play, green for before it - amber is the accent
+    that means "current" everywhere else, and a task finished on the chunk you
+    are looking at is still news. Line-through rather than dimming, because the
+    list is additive now and a done row still has to be readable."""
+    js = _app_js()
+    _, _, css = _resources()
+
+    assert 'row.when === "chunk" ? " done done-now" : " done"' in js
+    assert "text-decoration: line-through" in css
+    assert ".task.done-now .name" in css
+
+
+def test_ticking_follows_the_row_rather_than_the_toggle() -> None:
+    """The guard refused while `showDone` was on, which was right when that
+    swapped the list and wrong the moment it started adding to it: the
+    outstanding rows are still there and still tickable."""
+    js = _app_js()
+
+    assert 'if (!row || row.classList.contains("done")) return;' in js

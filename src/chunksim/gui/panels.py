@@ -423,8 +423,27 @@ def _bis_groups(bis: Mapping[str, Any]) -> list[dict[str, Any]]:
     return [_group(style, rows["active"], rows["completed"]) for style, rows in sorted(grouped.items())]
 
 
+def _done_when(category: str, key: str, state: MapState | None) -> str:
+    """`"chunk"` if this was ticked during the chunk in play, else `"prior"`.
+
+    **Upstream keeps the two apart only as a commit step**: ticking writes
+    `checkedChallenges` and rolling the next chunk migrates the lot into
+    `completedChallenges` and clears it (`completeChallenges`,
+    index.js:12718). So the un-migrated half *is* "done since the last roll",
+    which is what `MapState.checked_challenges` was kept addressable for.
+
+    Names are markup-bearing keys and the ledger spells `#` as `/` in places,
+    which `active_tasks` already has to allow for - so both spellings are
+    tried here for the same reason.
+    """
+    if state is None:
+        return "prior"
+    checked = _mapping(state.checked_challenges, category)
+    return "chunk" if (key in checked or key.replace("#", "/") in checked) else "prior"
+
+
 def _skill_requirement(
-    skill: str, key: str, derived: Derived, state: MapState | None
+    skill: str, key: str, derived: Derived, state: MapState | None, *, boosted: bool = True
 ) -> dict[str, int] | None:
     """What level a skills task needs, split into what you must *have* and
     what a boost can make up.
@@ -442,10 +461,21 @@ def _skill_requirement(
     """
     if state is None:
         return None
+    challenge = _mapping(state.chunk_info.challenges.get(skill, {}), key)
     level = derived.challenges.valid.get(skill, {}).get(key)
     if not isinstance(level, (int, float)) or isinstance(level, bool):
+        # A completed task has usually left `valid`, so its requirement comes
+        # from the challenge itself - which is the same number, read one step
+        # closer to the export.
+        level = challenge.get("Level")
+    if not isinstance(level, (int, float)) or isinstance(level, bool):
         return None
-    challenge = _mapping(state.chunk_info.challenges.get(skill, {}), key)
+    if not boosted:
+        # **A finished task shows what it wanted, not what a boost could have
+        # saved.** The boost is advice for work still ahead; on something done
+        # it would read as a claim about how it was done, which nothing here
+        # knows.
+        return {"level": int(level), "have": int(level), "boost": 0}
     best, saw = best_boost(
         skill,
         key,
@@ -491,10 +521,18 @@ def _skill_groups(
                 row = {**row, "requires": need}
             active.append(row)
         for done in entry.get("completed", ()):
-            completed.append(
-                _entry(done, _cased(_subject(done)), skill, icon=skill,
-                       category=skill, marked=_marked_subject(done))
+            row = _entry(done, _cased(_subject(done)), skill, icon=skill,
+                         category=skill, marked=_marked_subject(done))
+            row = {**row, "name": _unqualified(row["name"]),
+                   "marked": _unqualified(row["marked"]),
+                   "when": _done_when(skill, done, state)}
+            need = (
+                _skill_requirement(skill, done, derived, state, boosted=False)
+                if derived else None
             )
+            if need is not None:
+                row = {**row, "requires": need}
+            completed.append(row)
     return [_group("Skills", active, completed)]
 
 
@@ -733,6 +771,32 @@ def task_panel(derived: Derived, state: MapState | None = None) -> dict[str, Any
     nothing rather than printing the unboosted number as if it were the
     requirement.
     """
+    def stamped(section: dict[str, Any]) -> dict[str, Any]:
+        """`when` on every completed row, in one pass over the finished panel.
+
+        Here rather than in each of the five group builders: it is the same
+        question of every row - was this ticked during the chunk in play - so
+        asking it once is what stops the sixth builder forgetting.
+        """
+        return {
+            **section,
+            "groups": [
+                {
+                    **group,
+                    "completed": [
+                        {
+                            **row,
+                            "when": row.get("when") or _done_when(
+                                str(row.get("category") or section["key"]), row["key"], state
+                            ),
+                        }
+                        for row in group["completed"]
+                    ],
+                }
+                for group in section["groups"]
+            ],
+        }
+
     other = derived.other_tasks.as_dict()
     sections = [
         _section(
@@ -751,7 +815,7 @@ def task_panel(derived: Derived, state: MapState | None = None) -> dict[str, Any
         # category, so it is stamped here rather than threaded through two
         # group builders that have no other use for it.
         sections.append(_section(key, label, _with_category(groups, key)))
-    return {"sections": sections}
+    return {"sections": [stamped(section) for section in sections]}
 
 
 __all__ = ["roll_panel", "task_panel"]
