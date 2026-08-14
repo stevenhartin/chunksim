@@ -433,19 +433,19 @@ def test_no_unescaped_interpolation_lands_inside_an_attribute() -> None:
 
     assert not offenders, f"{len(offenders)} raw() interpolations inside an attribute"
 
-def test_the_default_map_id_agrees_across_the_two_languages() -> None:
-    """The placeholder promises what blank does, and nothing enforces it.
+def test_neither_language_carries_a_default_map_id() -> None:
+    """**There is no house map id, and the page must not invent one.**
 
-    A third constant crossing into JavaScript over no wire at all - see the
-    `Edge` bitfield and the projection. The symptom of drift is a box that
-    says `fray` and fetches something else.
+    This replaced a contract test that pinned a JavaScript constant against a
+    Python one. Both are gone: a fetch names someone's world on a public
+    database, so blank is refused rather than defaulted. The failure this
+    guards is a placeholder growing back on one side only, which would promise
+    a fetch the server now rejects.
     """
     _, js, _ = _resources()
 
-    declared = re.search(r'const DEFAULT_MAP_ID = "([^"]+)"', js)
-
-    assert declared is not None
-    assert declared.group(1) == cache.DEFAULT_MAP_ID
+    assert "DEFAULT_MAP_ID" not in js
+    assert not hasattr(cache, "DEFAULT_MAP_ID")
 
 def test_the_panel_offers_both_halves_of_the_unlock(tmp_path: Path) -> None:
     """**Asking and taking are two verbs and the page carries both.**

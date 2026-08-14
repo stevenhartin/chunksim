@@ -150,16 +150,18 @@ UBER_MAP_SENTINEL = "__UBER__"
 def _uber_map(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     """Every chunk in the export, unlocked, on top of whichever map is open.
 
-    The base matters and is not `fray`: a map carries the player's `rules`,
-    their `maxSkill` and their completed challenges, and an "everything
-    unlocked" map is only useful as *this* map with the chunk constraint
-    removed. Written as an ordinary edit, because that is what it is - a map
-    this project made by hand from another one - so it removes, browses,
-    diffs and edits like any other.
+    **The base matters, so it is required rather than defaulted**: a map
+    carries the player's `rules`, their `maxSkill` and their completed
+    challenges, and an "everything unlocked" map is only useful as *this* map
+    with the chunk constraint removed. Written as an ordinary edit, because
+    that is what it is - a map this project made by hand from another one - so
+    it removes, browses, diffs and edits like any other.
     """
     if ctx.allowed_hosts:
         raise ValueError("the uber map is a loopback-only development tool")
-    base = str(payload.get("base") or "").strip() or cache.DEFAULT_MAP_ID
+    base = str(payload.get("base") or "").strip()
+    if not base:
+        raise ValueError("the uber map needs a base map to build on")
     envelope = cache.read_cache(base, ctx.root)
     info = ctx.derivations.chunk_info()
     chunks = [
@@ -189,13 +191,17 @@ def _uber_map(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
 def _fetch_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     """Download any named map from Firebase, not only the one on screen.
 
-    **An empty name means `fray`**, matching every `--map` default in the CLI,
-    because that is the map this project exists for and typing it every time
-    is friction for nothing. `cache.split_map_id` is what makes the name safe
-    to accept from a browser at all - it rejects anything that is not
-    `[A-Za-z0-9_.-]+`, so no second, weaker check belongs here.
+    **An empty name is refused rather than defaulted.** There is no house map
+    id to fall back on - a fetch names someone's world on a public database,
+    and guessing whose is not this project's business. The CLI's `fetch` is
+    the same shape: `--map` is required there for the same reason.
+    `cache.split_map_id` is what makes the name safe to accept from a browser
+    at all - it rejects anything that is not `[A-Za-z0-9_.-]+`, so no second,
+    weaker check belongs here.
     """
-    map_id = str(payload.get("map") or "").strip() or cache.DEFAULT_MAP_ID
+    map_id = str(payload.get("map") or "").strip()
+    if not map_id:
+        raise ValueError("type the map id to fetch")
     if map_id == UBER_MAP_SENTINEL:
         return _uber_map(payload, ctx)
     if cache.split_map_id(map_id)[1] is not None:

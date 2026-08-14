@@ -20,7 +20,6 @@ import sys
 
 from pathlib import Path
 
-from fray_claude.cli.common import DEFAULT_MAP
 from fray_claude.costing import dps_bridge
 from fray_claude.costing.heuristics import disagreements
 from fray_claude.model.chunkinfo import ChunkInfo
@@ -158,8 +157,15 @@ def add_arguments(
 ) -> None:
     """This family's subcommands and their flags."""
     fetch = subcommands.add_parser("fetch", help="download map state and cache it locally")
+    # The one `--map` in this project with no default. Every other subcommand
+    # reads a map that is already cached, so an omitted id can be inferred
+    # from the cache; `fetch` names a map that by definition is not there yet,
+    # and there is no such thing as a house map id to fall back on.
     fetch.add_argument(
-        "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"
+        "--map",
+        dest="map_id",
+        required=True,
+        help="map id to download (the `?<id>` part of your chunk-picker URL)",
     )
     fetch.add_argument(
         "--timeout",
@@ -171,7 +177,10 @@ def add_arguments(
 
     show = subcommands.add_parser("show", help="summarise the cached map state")
     show.add_argument(
-        "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"
+        "--map",
+        dest="map_id",
+        default=None,
+        help="map id (default: the sole cached map)",
     )
     show.set_defaults(func=_cmd_show)
 

@@ -109,7 +109,10 @@ def fit(pairs: list[Pair]) -> float:
 
 
 def main(argv: list[str]) -> int:
-    free, paid = pairs_for(argv or ["fray"])
+    if not argv:
+        print("usage: recipe_overhead <map-id> [<map-id> ...]", file=sys.stderr)
+        return 2
+    free, paid = pairs_for(argv)
     print(f"{len(free)} free-input pairs, {len(paid)} paid-input pairs")
     if paid:
         ratios = sorted(xp * 3600.0 / s / g for xp, s, g in paid)

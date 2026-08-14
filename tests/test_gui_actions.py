@@ -361,12 +361,14 @@ def test_a_fetch_can_name_any_map_and_blank_means_the_default(
     ctx = Context(root=tmp_path, check_origin=False)
 
     named = _wait(ctx, _body(_post("/api/fetch", ctx, {"map": "someone-else"}))["job"])
-    blank = _wait(ctx, _body(_post("/api/fetch", ctx, {"map": "  "}))["job"])
+    blank = _post("/api/fetch", ctx, {"map": "  "})
 
-    assert seen == ["someone-else", cache.DEFAULT_MAP_ID]
+    # A blank box is refused rather than defaulted: there is no house map id,
+    # and nothing local can imply which world you meant to download.
+    assert blank.status == 400
+    assert seen == ["someone-else"]
     assert named["result"]["map"] == "someone-else"
-    assert blank["result"]["map"] == cache.DEFAULT_MAP_ID
-    # Both landed where `fray fetch` puts one, so the picker can see them.
+    # It landed where `fray fetch` puts one, so the picker can see it.
     assert cache.read_cache("someone-else", tmp_path)["kind"] == cache.FETCHED
 
 

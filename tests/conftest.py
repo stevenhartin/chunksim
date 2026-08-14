@@ -192,7 +192,7 @@ def cached_map(monkeypatch: pytest.MonkeyPatch) -> Callable[[dict[str, Any], dic
             "fray_claude.cli.io_commands.fetch_map",
             lambda map_id, timeout=30.0: payload,
         )
-        main(["fetch"])
+        main(["fetch", "--map", ORACLE_MAP])
         for module in ("io_commands", "common"):
             monkeypatch.setattr(
                 f"fray_claude.cli.{module}.read_chunkinfo",
@@ -220,7 +220,7 @@ def simulatable(monkeypatch: pytest.MonkeyPatch) -> Callable[[], None]:
             "fray_claude.cli.io_commands.fetch_map",
             lambda map_id, timeout=30.0: {"chunks": {"unlocked": {"100": "100"}}},
         )
-        main(["fetch"])
+        main(["fetch", "--map", ORACLE_MAP])
         write_blob(
             "chunkinfo",
             {"sections": {"101": {"0": ["100"]}, "102": {"0": ["101"]}}},

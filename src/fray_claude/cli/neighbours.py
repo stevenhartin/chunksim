@@ -11,7 +11,7 @@ import argparse
 
 from pathlib import Path
 
-from fray_claude.cli.common import DEFAULT_MAP, derive_cached, emit_json, load_state
+from fray_claude.cli.common import derive_cached, emit_json, load_state
 from fray_claude.derive.graph import build_section_graph
 from fray_claude.derive.neighbours import eligible_neighbours
 
@@ -59,7 +59,10 @@ def add_arguments(
         "--limit", type=int, default=None, help="cap the number of neighbours printed"
     )
     neighbours.add_argument(
-        "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"
+        "--map",
+        dest="map_id",
+        default=None,
+        help="map id (default: the sole cached map)",
     )
     neighbours.add_argument(
         "--chunkinfo",

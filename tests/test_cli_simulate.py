@@ -37,7 +37,7 @@ def test_simulate_without_a_cached_map_exits_one(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert main(["simulate", "--rolls", "1"]) == 1
-    assert "no cached data for map 'fray'" in capsys.readouterr().err
+    assert "no maps cached" in capsys.readouterr().err
 
 
 def test_simulate_is_deterministic_given_the_same_seed(

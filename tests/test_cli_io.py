@@ -47,7 +47,7 @@ def test_fetch_writes_the_cache(project: Path, monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr("fray_claude.cli.io_commands.fetch_map", fake_fetch_map)
 
-    assert main(["fetch"]) == 0
+    assert main(["fetch", "--map", "fray"]) == 0
     assert (project / "cache" / "maps" / "fetched" / "fray.json").is_file()
 
 
@@ -61,7 +61,7 @@ def test_show_summarises_the_cached_map(
     monkeypatch.setattr(
         "fray_claude.cli.io_commands.fetch_map", lambda map_id, timeout=DEFAULT_TIMEOUT: payload
     )
-    main(["fetch"])
+    main(["fetch", "--map", "fray"])
     capsys.readouterr()
 
     assert main(["show"]) == 0
@@ -84,7 +84,7 @@ def test_show_reports_whether_the_dps_calculator_is_installed(
         "fray_claude.cli.io_commands.fetch_map",
         lambda map_id, timeout=DEFAULT_TIMEOUT: {"chunks": {"unlocked": {"50_50": True}}},
     )
-    main(["fetch"])
+    main(["fetch", "--map", "fray"])
     capsys.readouterr()
 
     monkeypatch.setattr("fray_claude.costing.dps_bridge.library_version", lambda: "9.9.9")
@@ -100,7 +100,7 @@ def test_show_without_a_cache_exits_one(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert main(["show"]) == 1
-    assert "no cached data for map 'fray'" in capsys.readouterr().err
+    assert "no maps cached" in capsys.readouterr().err
 
 
 def test_fetch_failure_exits_one(
@@ -148,7 +148,7 @@ def test_a_changed_map_is_not_served_the_old_derivation(
             "chunks": {"unlocked": {"100": "100", "101": "101"}}
         },
     )
-    main(["fetch"])
+    main(["fetch", "--map", "fray"])
     capsys.readouterr()
 
     assert main(["sections"]) == 0

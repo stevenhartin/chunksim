@@ -1,8 +1,9 @@
 """What every subcommand needs before it can answer anything.
 
-Loading a map into a `MapState`, deriving it through the cache, emitting JSON,
-and reporting an error the way `main` expects. Five functions, no rendering and
-no domain logic - the point is that a family module can be read on its own.
+Loading a map into a `MapState`, deriving it through the cache, resolving
+which map was meant, emitting JSON, and reporting an error the way `main`
+expects. No rendering and no domain logic - the point is that a family module
+can be read on its own.
 
 **The names lost their leading underscore when they crossed a module
 boundary.** They were private to one 1,700-line file; they are now the small
@@ -23,7 +24,7 @@ from fray_claude.model.chunkinfo import ChunkInfo
 from fray_claude.derive.pipeline import Derived, MapState, load_map_state
 from fray_claude.model.firebase import reverse_tasks_map
 from fray_claude.store.cache import (
-    DEFAULT_MAP_ID,
+    FETCHED,
     CacheMissError,
     TASKS_MAP_BLOB_NAME,
     blob_path,
@@ -31,6 +32,7 @@ from fray_claude.store.cache import (
     file_digest,
     read_blob,
     read_cache,
+    list_maps,
     read_chunkinfo,
 )
 from fray_claude.store.derived_cache import Digests, cached_derive
@@ -106,7 +108,39 @@ def error(message: str) -> int:
     return 1
 
 
-#: What `--map` defaults to everywhere. Named here rather than in each family
-#: so `fray tasks` and `fray sections` cannot drift apart about which map they
-#: mean when you type neither.
-DEFAULT_MAP = DEFAULT_MAP_ID
+class MapAmbiguityError(Exception):
+    """`--map` was omitted and the cache could not imply one."""
+
+
+def resolve_map(map_id: str | None, root: Path | None = None) -> str:
+    """The map a command means when `--map` was not typed.
+
+    **There is no default map id.** There used to be one - a particular
+    account's, hard-coded - and it made every command silently about one
+    person's world. What a command can honestly infer instead is the cache:
+    if exactly one map is cached, that is unambiguously the one you meant.
+
+    **Only *fetched* maps count.** A simulated or edited map is something this
+    project computed from one, so counting them would make the first `fray
+    simulate` turn every later bare command into an ambiguity error - the tool
+    would get harder to use the more you used it. Upstream state is what a map
+    id names, and a fetched map is the only kind that is any.
+
+    Zero and two-or-more are both errors, and deliberately different ones: an
+    empty cache needs a fetch, an ambiguous one needs a choice. Neither guesses.
+    Named here rather than in each family so no two subcommands can drift apart
+    about which map they mean when you type neither.
+    """
+    if map_id is not None:
+        return map_id
+    fetched = sorted({e.map_id for e in list_maps(root) if e.kind == FETCHED})
+    if not fetched:
+        raise MapAmbiguityError(
+            "no maps cached; run: fray fetch --map <id>  (the id is the "
+            "`?<id>` part of your chunk-picker URL)"
+        )
+    if len(fetched) > 1:
+        raise MapAmbiguityError(
+            "several maps cached, so --map is required; choose one of: " + ", ".join(fetched)
+        )
+    return fetched[0]

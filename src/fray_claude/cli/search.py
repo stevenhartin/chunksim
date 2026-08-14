@@ -15,7 +15,7 @@ import argparse
 
 from pathlib import Path
 
-from fray_claude.cli.common import DEFAULT_MAP, derive_cached, emit_json, load_state
+from fray_claude.cli.common import derive_cached, emit_json, load_state
 from fray_claude.derive.task_names import strip_task_markup
 from fray_claude.derive.search import TYPES, build_world_index, search
 
@@ -91,7 +91,10 @@ def add_arguments(
         "--limit", type=int, default=10, help="max results (default: %(default)s)"
     )
     search_cmd.add_argument(
-        "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"
+        "--map",
+        dest="map_id",
+        default=None,
+        help="map id (default: the sole cached map)",
     )
     search_cmd.add_argument(
         "--chunkinfo",

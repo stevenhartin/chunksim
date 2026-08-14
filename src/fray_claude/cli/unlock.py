@@ -15,7 +15,7 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-from fray_claude.cli.common import DEFAULT_MAP, derive_cached, digests, emit_json, load_state
+from fray_claude.cli.common import derive_cached, digests, emit_json, load_state
 from fray_claude.derive.unlock import UnlockDelta, tasks_added_by
 from fray_claude.runs.batch import save_unlock
 from fray_claude.store.cache import read_cache
@@ -94,7 +94,10 @@ def add_arguments(
         help="save the post-unlock state as a cached map under NAME, readable with --map",
     )
     unlock.add_argument(
-        "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"
+        "--map",
+        dest="map_id",
+        default=None,
+        help="map id (default: the sole cached map)",
     )
     unlock.add_argument(
         "--chunkinfo",

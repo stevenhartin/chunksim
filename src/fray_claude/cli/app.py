@@ -51,7 +51,7 @@ from fray_claude.cli import (
     simulate,
     unlock,
 )
-from fray_claude.cli.common import error, load_state
+from fray_claude.cli.common import MapAmbiguityError, error, load_state, resolve_map
 from fray_claude.cli.render import display_tasks
 from fray_claude.store.derived_cache import CacheBehaviour
 from fray_claude.derive.pipeline import ConvergenceError, load_map_state
@@ -99,6 +99,16 @@ def main(argv: list[str] | None = None) -> int:
     # command then spends ten seconds deriving - and after parsing, so `--help`
     # and a usage error stay clean.
     print_watermark("fray")
+    # **Resolved once, here, rather than in each handler.** `args.map_id` is
+    # read in some forty places downstream - printed, keyed on, written into
+    # exported JSON - and every one of them wants the id that was *meant*. So
+    # the omitted-`--map` case is settled before any handler runs, and no
+    # handler has to know the default is inferred rather than declared.
+    if hasattr(args, "map_id") and args.map_id is None:
+        try:
+            args.map_id = resolve_map(None)
+        except MapAmbiguityError as exc:
+            return error(str(exc))
     handler: Any = args.func
     try:
         return int(handler(args))

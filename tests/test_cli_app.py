@@ -8,20 +8,55 @@ project's own.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from fray_claude.remote.api import DEFAULT_TIMEOUT
 from fray_claude.cli.app import build_parser, main
+from fray_claude.cli.common import MapAmbiguityError, resolve_map
 from fray_claude.model.summary import format_age
+from fray_claude.store.cache import write_cache
 
 
-def test_parser_defaults_to_the_fray_map() -> None:
-    args = build_parser().parse_args(["fetch"])
+def test_fetch_requires_a_map_because_nothing_local_can_imply_one() -> None:
+    """The one `--map` with no default. Every other subcommand reads a map
+    that is already cached; `fetch` names one that by definition is not."""
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["fetch"])
+
+    args = build_parser().parse_args(["fetch", "--map", "fray"])
 
     assert (args.map_id, args.timeout) == ("fray", DEFAULT_TIMEOUT)
+
+
+def test_an_omitted_map_resolves_to_the_sole_cached_one(
+    project: Path, cached_map: Callable[[dict[str, Any], dict[str, Any]], None]
+) -> None:
+    """**There is no house map id.** What a command can honestly infer is the
+    cache: one map cached is unambiguously the one you meant."""
+    cached_map({"chunks": {"unlocked": {"50_50": True}}}, {})
+
+    args = build_parser().parse_args(["show"])
+    assert args.map_id is None
+
+    assert resolve_map(None) == "fray"
+
+
+def test_an_empty_cache_and_an_ambiguous_one_fail_differently(project: Path) -> None:
+    """An empty cache needs a fetch; an ambiguous one needs a choice. Saying
+    so precisely is the whole value of refusing to guess."""
+    with pytest.raises(MapAmbiguityError, match="no maps cached"):
+        resolve_map(None)
+
+    for name in ("one", "two"):
+        write_cache(name, {"chunks": {"unlocked": {}}})
+
+    with pytest.raises(MapAmbiguityError, match="one, two"):
+        resolve_map(None)
 
 
 def test_parser_requires_a_subcommand() -> None:
@@ -43,7 +78,7 @@ def test_every_command_stamps_which_install_answered(
         lambda map_id, timeout=DEFAULT_TIMEOUT: {"chunks": {"unlocked": {"50_50": True}}},
     )
 
-    assert main(["fetch"]) == 0
+    assert main(["fetch", "--map", "fray"]) == 0
 
     captured = capsys.readouterr()
     assert captured.err.startswith("fray ")
@@ -59,7 +94,7 @@ def test_the_stamp_stays_off_the_stream_the_answer_goes_to(
         "fray_claude.cli.io_commands.fetch_map",
         lambda map_id, timeout=DEFAULT_TIMEOUT: {"chunks": {"unlocked": {"50_50": True}}},
     )
-    main(["fetch"])
+    main(["fetch", "--map", "fray"])
     capsys.readouterr()
 
     assert main(["maps", "list", "--export-json", "-"]) == 0

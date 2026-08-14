@@ -100,7 +100,7 @@ def test_search_without_a_cached_map_exits_one(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert main(["search", "whip"]) == 1
-    assert "no cached data for map 'fray'" in capsys.readouterr().err
+    assert "no maps cached" in capsys.readouterr().err
 
 
 def test_search_export_json_to_stdout_replaces_the_summary(

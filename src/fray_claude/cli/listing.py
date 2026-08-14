@@ -30,7 +30,7 @@ import argparse
 
 from pathlib import Path
 
-from fray_claude.cli.common import DEFAULT_MAP, derive_cached, emit_json, error, load_state
+from fray_claude.cli.common import derive_cached, emit_json, error, load_state
 from fray_claude.cli.render import display_tasks, print_capped, print_grouped
 from fray_claude.derive.task_names import strip_task_markup
 from fray_claude.derive.other_tasks import CATEGORIES as OTHER_CATEGORIES, CategoryTasks, display_name, task_text
@@ -313,7 +313,10 @@ def add_arguments(
         "--limit", type=int, default=None, help="cap the number of chunks printed by 'list'"
     )
     sections.add_argument(
-        "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"
+        "--map",
+        dest="map_id",
+        default=None,
+        help="map id (default: the sole cached map)",
     )
     sections.add_argument(
         "--chunkinfo",
@@ -348,7 +351,10 @@ def add_arguments(
         "--limit", type=int, default=None, help="cap the number of names printed"
     )
     sources.add_argument(
-        "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"
+        "--map",
+        dest="map_id",
+        default=None,
+        help="map id (default: the sole cached map)",
     )
     sources.add_argument(
         "--chunkinfo",
@@ -382,7 +388,10 @@ def add_arguments(
         "--limit", type=int, default=None, help="cap the number of tasks printed"
     )
     tasks.add_argument(
-        "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"
+        "--map",
+        dest="map_id",
+        default=None,
+        help="map id (default: the sole cached map)",
     )
     tasks.add_argument(
         "--chunkinfo",

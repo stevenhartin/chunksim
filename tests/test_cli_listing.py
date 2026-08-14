@@ -56,7 +56,7 @@ def test_sections_without_a_cached_map_exits_one(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert main(["sections"]) == 1
-    assert "no cached data for map 'fray'" in capsys.readouterr().err
+    assert "no maps cached" in capsys.readouterr().err
 
 
 def test_sections_export_json_to_stdout_replaces_the_summary(
@@ -113,7 +113,7 @@ def test_sources_without_a_cached_map_exits_one(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert main(["sources"]) == 1
-    assert "no cached data for map 'fray'" in capsys.readouterr().err
+    assert "no maps cached" in capsys.readouterr().err
 
 
 def test_sources_export_json_to_stdout_replaces_the_summary(
@@ -239,7 +239,7 @@ def test_tasks_without_a_cached_map_exits_one(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert main(["tasks"]) == 1
-    assert "no cached data for map 'fray'" in capsys.readouterr().err
+    assert "no maps cached" in capsys.readouterr().err
 
 
 def test_tasks_export_json_to_stdout_replaces_the_summary(

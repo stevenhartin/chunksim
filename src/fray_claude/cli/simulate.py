@@ -27,7 +27,7 @@ import argparse
 
 from pathlib import Path
 
-from fray_claude.cli.common import DEFAULT_MAP, digests, emit_json, error, load_state
+from fray_claude.cli.common import digests, emit_json, error, load_state
 from fray_claude.runs.batch import RunResult, run_batch
 from fray_claude.runs.simulate import simulate_rolls
 from fray_claude.store.cache import read_cache
@@ -177,7 +177,10 @@ def add_arguments(
         ),
     )
     simulate.add_argument(
-        "--map", dest="map_id", default=DEFAULT_MAP, help="map id (default: %(default)s)"
+        "--map",
+        dest="map_id",
+        default=None,
+        help="map id (default: the sole cached map)",
     )
     simulate.add_argument(
         "--chunkinfo",

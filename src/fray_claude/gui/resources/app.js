@@ -1983,16 +1983,16 @@ async function ensureEditing() {
  * A cached map is upstream's and immutable; an edit forks it. What follows is
  * that editing is iterative - unlock a chunk, tick what it opened, unlock the
  * next - and each round has to be named. `<map>-edit` per round gives
- * `fray-edit-edit-edit`, which names the *number of rounds* and nothing you
+ * `<map>-edit-edit-edit`, which names the *number of rounds* and nothing you
  * would look for.
  *
  * So an edit of an edit reuses its own family name and lets `claim_batch`
- * number it: `fray-edit`, `fray-edit-2`, `fray-edit-3`. The trailing number is
+ * number it: `<map>-edit`, `<map>-edit-2`, `<map>-edit-3`. The trailing number is
  * stripped rather than incremented here, because the server is the only thing
  * that knows what is taken - suggesting `-4` when `-4` exists would be a name
  * the dialog promises and does not deliver. */
 function defaultEditName(mapId) {
-  const base = (mapId || DEFAULT_MAP_ID).replace(/\//g, "-");
+  const base = (mapId || "map").replace(/\//g, "-");
   if (kindOf(mapId) === "edited") return base.replace(/-\d+$/, "");
   return base + "-edit";
 }
@@ -3325,7 +3325,7 @@ function unlockChunk(chunkId) {
 }
 
 function askUnlock(chunkId) {
-  const suggested = (state.map || DEFAULT_MAP_ID).replace(/\//g, "-") + "-" + chunkId;
+  const suggested = (state.map || "map").replace(/\//g, "-") + "-" + chunkId;
   openOverlay("Unlock " + chunkLabel(chunkId),
     tmpl`<p>Writes a new map under <code>cache/maps/edited/</code> holding
       everything <b>${state.map}</b> holds plus this chunk. Nothing existing
@@ -4094,11 +4094,6 @@ el["find-form"].addEventListener("submit", (e) => { e.preventDefault(); clearTim
 
 /* ---- maps pane --------------------------------------------------------- */
 
-/* What an empty "fetch a named map" box means. Must match
- * `cache.DEFAULT_MAP_ID`; `tests/test_gui_server.py` asserts it, because the
- * only symptom of drift is a placeholder that lies about what blank does. */
-const DEFAULT_MAP_ID = "fray";
-
 /* What each kind is called on screen. `fetched` is the only one worth leaving
  * unlabelled - it is the ordinary case and saying so on every row is noise. */
 /* **Which kind a map is, said in colour as well as in a word.** Four kinds
@@ -4231,11 +4226,12 @@ async function loadMapsPane() {
     /* **The box is why this is not "Fetch This Map".** Any source-chunk map
      * id is a public read, so being able to pull down a friend's map - or one
      * you have never cached and so cannot select above - is the whole point.
-     * Blank means `fray`, the same default every `--map` flag carries. */
+     * There is no default: blank is refused, because a fetch names someone's
+     * world and guessing whose is not this project's business. */
     let out = `<h3>Actions</h3><div class="row">
-      <input id="fetch-name" type="text" placeholder="${DEFAULT_MAP_ID}" autocomplete="off"
+      <input id="fetch-name" type="text" placeholder="map id" autocomplete="off"
         aria-label="Map id to fetch" spellcheck="false"
-        data-tip="<b>Map id on source-chunk</b><span class='sub'>The <code>?fray</code> part of the app's URL. Any id works, cached or not.</span><span class='hint'>Blank fetches ${DEFAULT_MAP_ID}</span>">
+        data-tip="<b>Map id on source-chunk</b><span class='sub'>The <code>?&lt;id&gt;</code> part of the app's URL. Any id works, cached or not.</span><span class='hint'>Required - there is no default</span>">
       <button id="do-fetch" type="button"
         data-tip="<b>Fetch a named map</b><span class='sub'>Read it from source-chunk and write it to cache/maps/fetched/. About a second.</span>">Fetch Named Map</button>
     </div>
@@ -4283,7 +4279,8 @@ async function loadMapsPane() {
 
     const fetchName = document.getElementById("fetch-name");
     const doFetch = () => {
-      const wanted = fetchName.value.trim() || DEFAULT_MAP_ID;
+      const wanted = fetchName.value.trim();
+      if (!wanted) { fetchName.focus(); return; }
       /* `base` is ignored by an ordinary fetch - source-chunk has never heard
        * of whatever is open here - and read by exactly one thing, which is
        * `actions.UBER_MAP_SENTINEL`. Sent always so the box stays one control

@@ -53,7 +53,7 @@ def both_apps(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(
         "fray_claude.cli.io_commands.fetch_map", lambda map_id, timeout=30.0: _PAYLOAD
     )
-    main(["fetch"])
+    main(["fetch", "--map", "fray"])
     monkeypatch.setattr(
         "fray_claude.cli.common.read_chunkinfo", lambda override=None, root=None: _CHUNKINFO
     )
