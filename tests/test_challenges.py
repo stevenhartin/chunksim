@@ -1557,6 +1557,147 @@ def test_an_untrainable_skill_earns_nothing() -> None:
     assert "Heron" not in result.available_items
 
 
+def _chain_world(**wield_over: Any) -> ChunkInfo:
+    """Two Crafting recipes competing for one ingredient, and a Defence task
+    that can only be done with what the *losing* one makes.
+
+    With `Highest Level` off the fork keeps the lowest-level consumer of
+    `Maple logs`, so the shield recipe is dropped - and everything about
+    `Multi Step Processing` turns on what happens to what it would have made.
+    Each skill gets a Level 1 `Primary` route so neither is pruned as
+    untrainable, which would settle the question for the wrong reason.
+    """
+    return _chunk_info(
+        challenges={
+            "Crafting": {
+                "Craft a ~|bowstring|~": {"Level": 1, "Primary": True},
+                "Craft a ~|maple stock|~": {"Level": 30, "Primary": True, "Items": ["Maple logs"]},
+                "Craft a ~|maple shield|~": {
+                    "Level": 50,
+                    "Primary": True,
+                    "Items": ["Maple logs"],
+                    "Output": "Maple shield",
+                },
+            },
+            "Defence": {
+                "Punch something": {"Level": 1, "Primary": True},
+                "Wield a ~|maple shield|~": {"Level": 30, "Items": ["Maple shield"], **wield_over},
+            },
+        }
+    )
+
+
+_LOGS = SourceIndex(
+    items={"Maple logs": {"100": "primary-Woodcutting"}},
+    objects={}, monsters={"Goblin": {"100": True}}, npcs={}, shops={}, drop_rates={},
+)
+
+#: On, so the *other* combat gate - `_source_quality_ok`, which refuses
+#: wielding a thing you had to train a skill to make - is out of the way and
+#: these tests are about `multiValid` alone. Both cached maps have it on.
+_WIELD = {"Wield Crafted Items": True}
+
+
+def _chain(**rules: Any) -> Any:
+    return calc_challenges({}, {}, _LOGS, _chain_world(), rules={**_WIELD, **rules})
+
+
+def test_a_dropped_recipe_makes_nothing() -> None:
+    """Upstream never had the losing recipe in `valids`, so what it would
+    have produced is not an item - and a task needing that item is not valid.
+    This module used to keep the recipe valid through the whole loop and seed
+    its `Output` regardless, which is the over-inclusion the `Highest Level`
+    note has always warned about."""
+    result = _chain(**{"Highest Level": False})
+
+    assert "Maple shield" not in result.available_items
+    assert "Wield a ~|maple shield|~" not in result.valid["Defence"]
+
+
+def test_multi_step_processing_publishes_it_as_a_maybe() -> None:
+    """On, the dropped recipe's `Output` is an item again - tagged `multi-`
+    to say the chain that makes it is still hypothetical."""
+    result = _chain(**{"Highest Level": False, "Multi Step Processing": True})
+
+    assert result.available_items["Maple shield"] == {"Craft a ~|maple shield|~": "multi-Crafting"}
+
+
+def test_a_weapon_may_not_be_claimed_off_a_maybe() -> None:
+    """The valve. The item is there and the requirement is met - and it is
+    refused anyway, because every source of the thing it wields is
+    speculative."""
+    result = _chain(**{"Highest Level": False, "Multi Step Processing": True})
+
+    assert "Maple shield" in result.available_items
+    assert "Wield a ~|maple shield|~" not in result.valid["Defence"]
+
+
+def test_not_equip_excuses_a_combat_task_from_the_valve() -> None:
+    """Upstream guards combat skills *without* `Not Equip`: the flag says the
+    challenge never actually wears the thing, so a hypothetical chain will
+    do."""
+    result = calc_challenges(
+        {}, {}, _LOGS, _chain_world(**{"Not Equip": True}),
+        rules={**_WIELD, "Highest Level": False, "Multi Step Processing": True},
+    )
+
+    assert "Wield a ~|maple shield|~" in result.valid["Defence"]
+
+
+def test_a_processing_skill_may_chain_on_a_maybe() -> None:
+    """Which is the point of the rule - the valve guards combat and `Extra`,
+    and nothing else."""
+    info = _chunk_info(
+        challenges={
+            "Crafting": {
+                "Craft a ~|bowstring|~": {"Level": 1, "Primary": True},
+                "Craft a ~|maple stock|~": {"Level": 30, "Primary": True, "Items": ["Maple logs"]},
+                "Craft a ~|maple shield|~": {
+                    "Level": 50, "Primary": True, "Items": ["Maple logs"], "Output": "Maple shield",
+                },
+            },
+            "Fletching": {
+                "Fletch a ~|shaft|~": {"Level": 1, "Primary": True},
+                "Trim a ~|maple shield|~": {"Level": 40, "Primary": True, "Items": ["Maple shield"]},
+            },
+        }
+    )
+
+    result = calc_challenges(
+        {}, {}, _LOGS, info,
+        rules={**_WIELD, "Highest Level": False, "Multi Step Processing": True},
+    )
+
+    assert "Trim a ~|maple shield|~" in result.valid["Fletching"]
+
+
+def test_one_real_source_is_enough_to_clear_the_valve() -> None:
+    """`multiValid` asks whether *every* source is speculative. A shop
+    selling the thing settles it."""
+    index = SourceIndex(
+        items={"Maple logs": {"100": "primary-Woodcutting"}, "Maple shield": {"Shop": "shop"}},
+        objects={}, monsters={"Goblin": {"100": True}}, npcs={}, shops={}, drop_rates={},
+    )
+
+    result = calc_challenges(
+        {}, {}, index, _chain_world(),
+        rules={**_WIELD, "Highest Level": False, "Multi Step Processing": True},
+    )
+
+    assert "Wield a ~|maple shield|~" in result.valid["Defence"]
+
+
+def test_highest_level_on_defers_nothing_so_none_of_this_fires() -> None:
+    """Both cached maps are in this state, which is why neither can exercise
+    the valve and why no oracle moves when it lands."""
+    result = _chain(**{"Highest Level": True, "Multi Step Processing": True})
+
+    assert result.available_items["Maple shield"] == {
+        "Craft a ~|maple shield|~": "primary-Crafting"
+    }
+    assert "Wield a ~|maple shield|~" in result.valid["Defence"]
+
+
 def test_a_backup_whose_parent_is_unknown_is_left_alone() -> None:
     info = _chunk_info(
         challenges={

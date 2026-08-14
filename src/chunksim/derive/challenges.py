@@ -101,42 +101,34 @@ except where noted as a silent, documented approximation instead:
   direct-add escapes, its `Boosting` level-shift, its multi-pass re-pick
   after `Tasks`/`Skills` pruning, or the `nonskill` chain-flattening that
   lets a group's own `Items` re-expand mid-walk. It also runs once, after
-  the fixed point converges, rather than feeding grouped-out challenges'
-  `Output` back out of `_seed_items_with_outputs` - so item-seeding can be
-  mildly over-inclusive relative to the final grouped `valid`.
-- **`Multi Step Processing` is unported, and it is not the "requirement"
-  an earlier version of this note called it.** It is *permissive*, and it
-  has two halves. Upstream does not put a valid processing recipe with a
-  non-tool ingredient into `valids` at all: it defers it into
-  `tempItemSkill[skill][item]` (worker.js:4444/4557), to be re-picked later
-  by whichever `Highest Level` branch applies (worker.js:1875 on, 1906 off).
-  With the rule on, every such deferred recipe's `Output` is then published
-  into the item index under a `multi-<skill>` tag (worker.js:3576) so a
-  *further* recipe can chain off something not yet actually reachable - and
-  the second half is the safety valve for that: a combat-skill challenge
-  without `Not Equip`, or any `Extra` one, is refused when every source of an
-  ingredient it consumes is one of those speculative tags (worker.js:3956).
-  Neither half is here, and neither can be until the deferral is. This module
-  keeps those recipes in `valid` throughout - 940 of them on the second
-  cached map and 726 on the first, 616 and 611 of which carry an `Output` -
-  so their outputs are seeded unconditionally, which lands nearer the rule
-  being *on* than off, and there is no `multi-` tag for the gate to test. The
-  deferral is a change to this module's core loop rather than an addition to
-  it, which is why it is recorded here rather than half-built.
-
-  **A shortcut was tried and the oracle refused it**, which is worth knowing
-  before anyone tries the same one. Tagging every processing recipe's seeded
-  `Output` `multi-<skill>` and adding the gate on top looks like it buys the
-  second half without the deferral, and it does not: upstream's grouping fork
-  *re-adds* the recipes it picks (worker.js:1875 with `Highest Level` on,
-  1906 with it off), and a re-added recipe is back in `valids` and seeded
-  `primary-` like anything else. Only the ones the fork **drops** stay
-  speculative. Tagging them all made `Obtain a ~|regen bracelet|~` read as
-  reachable-only-by-a-maybe and cost the BiS oracle a pick. With
-  `Highest Level` on - as it is on both cached maps - the fork drops nothing,
-  so the correct answer there is that *no* tag is `multi-` and the gate never
-  fires. Which is to say: the gate cannot be exercised by either cached map,
-  and the deferral is not optional groundwork for it but the whole of it.
+  the fixed point converges - but it no longer runs *only* then: the outer
+  pass re-runs it and feeds the grouped-out challenges back into
+  `_seed_items_with_outputs`, so their `Output` stops being an available item
+  the way upstream's never was. That closes what this note used to call a
+  mild over-inclusion; see the next entry for the rule it was in the way of.
+- **`Multi Step Processing`** (`_multi_step_gate_met`, worker.js:3576/3956),
+  and the deferral it stands on (`_deferred_recipes`, worker.js:4444). It is
+  *permissive*, not the "chain-of-crafted-items requirement" an earlier
+  version of this note called it. Upstream holds a processing recipe with a
+  non-tool ingredient out of `valids` and lets the `Highest Level` fork add
+  back the ones it picks; this module keeps them all and lets the fork take
+  the losers away, which reaches the same survivors. The difference is what
+  a *loser* makes: nothing, normally - so the over-inclusion this note used
+  to warn about is now closed, and a task needing only what a dropped recipe
+  produces is refused. With the rule on, that `Output` is published anyway
+  under a `multi-<skill>` tag saying the chain is hypothetical, and the gate
+  is the valve on that: a combat challenge without `Not Equip`, or any
+  `Extra` one, is refused when *every* source of an ingredient it needs is
+  speculative. You may chain processing steps on a maybe; you may not claim a
+  weapon off one. Measured with `Highest Level` off: 289 speculative sources
+  and 42 refusals on the second cached map, 262 and 31 on the first, all of
+  them combat or `Extra` - `Wield a ~|maple shield|~`, `Wear a ~|coif|~`.
+  **Neither cached map can exercise any of it**, both having `Highest Level`
+  on, which keeps every recipe and leaves nothing speculative; the tests
+  therefore turn the rule off, and a third map would be needed to check this
+  against upstream's own answers. An earlier attempt to skip the deferral and
+  tag every processing recipe `multi-` cost the BiS oracle a pick, because
+  the fork *re-adds* what it picks and only what it drops is a maybe.
 - Mahogany Homes *is* handled - see `_MAHOGANY_HOMES_CONTRACT`, the Max Cape
   and Quest Point Cape injections are now `derive/injected.py`, the Collection
   Log Clues threshold is `_clue_reward_gate_met`, and the **Slayer lock** is
@@ -1614,6 +1606,53 @@ def _clue_reward_gate_met(
     )
 
 
+def _multi_step_gate_met(
+    skill: str,
+    name: str,
+    challenge: Mapping[str, Any],
+    plan: "_ItemPlan | None",
+    items: Mapping[str, Mapping[str, str]],
+    rules: Mapping[str, Any],
+) -> bool:
+    """Port of the `multiValid` gate (worker.js:3956, refused at 3987).
+
+    `Multi Step Processing` lets a dropped recipe's `Output` count as
+    reachable before the chain that makes it has been established, which is
+    generous and upstream knows it. This is the valve: a **combat** challenge
+    without `Not Equip`, or any **`Extra`** one, is refused when every source
+    of something it consumes is one of those speculative `multi-` tags. You
+    may chain processing steps on a maybe; you may not claim a weapon or tick
+    a checklist entry off one.
+
+    The challenge's own name is struck from the sources first - a recipe that
+    makes the thing it needs is not evidence that the thing exists.
+
+    Only reached once the items have been found present, so an absent
+    ingredient never arrives here to be misread as unspeculative. And only
+    ever non-trivial when the grouping fork actually dropped something, which
+    means `rules['Highest Level']` off: with it on the fork keeps everything,
+    nothing is tagged `multi-`, and this cannot fire. **Both cached maps have
+    it on**, so neither exercises this - see the module docstring.
+    """
+    if rules.get("Multi Step Processing") is not True or plan is None:
+        return True
+    guarded = skill == "Extra" or (
+        skill in _COMBAT_SKILLS and challenge.get("Not Equip") is not True
+    )
+    if not guarded:
+        return True
+    for members, _needed in plan.families:
+        if members is None:
+            continue
+        sources: dict[str, str] = {}
+        for member in members:
+            sources.update(items.get(member) or {})
+        sources.pop(name, None)
+        if sources and all(tag.startswith("multi-") for tag in sources.values()):
+            return False
+    return True
+
+
 def _dynamic_gates_met(
     skill: str,
     name: str,
@@ -1648,6 +1687,8 @@ def _dynamic_gates_met(
     if deferred_objects and not _objects_met(deferred_objects, objects):
         return False
     if plan is not None and not _item_plan_met(plan, items):
+        return False
+    if not _multi_step_gate_met(skill, name, challenge, plan, items, rules):
         return False
     if not _clue_reward_gate_met(challenge, rules, clue_possible):
         return False
@@ -1747,6 +1788,7 @@ def _seed_items_with_outputs(
     rules: Mapping[str, Any],
     backlogged_sources: Mapping[str, Any],
     backlog: Mapping[str, Mapping[str, Any]] = {},
+    deferred: Mapping[str, frozenset[str]] = {},
 ) -> dict[str, dict[str, str]]:
     """A valid challenge's `Output` becomes a new item source for the next
     pass - and, when that `Output` names an activity in
@@ -1792,6 +1834,13 @@ def _seed_items_with_outputs(
     boss_logs = _mapping(chunk_info.code_items, "bossLogs")
     allow_boss = rules.get("Boss") is True
     backlogged_items = _mapping(backlogged_sources, "items")
+    # `deferred` names the processing recipes the grouping fork dropped. They
+    # are the ones upstream never had in `valids` in the first place
+    # (worker.js:4444), so their `Output` is not an item - unless
+    # `Multi Step Processing` is on, which publishes it under a `multi-`
+    # tag saying the chain that makes it is still hypothetical
+    # (worker.js:3576). See `_multi_step_gate_met` for what reads that.
+    multi_step = rules.get("Multi Step Processing") is True
 
     for skill, names in valid.items():
         skill_challenges = challenges.get(skill, {})
@@ -1804,8 +1853,13 @@ def _seed_items_with_outputs(
             output = challenge.get("Output")
             if not isinstance(output, str):
                 continue
+            held_back = name in deferred.get(skill, frozenset())
+            if held_back and not multi_step:
+                continue
             if backlogged_items.get(output) is not True:
-                items.setdefault(output, {})[name] = f"primary-{skill}"
+                items.setdefault(output, {})[name] = (
+                    f"multi-{skill}" if held_back else f"primary-{skill}"
+                )
 
             table = activities.get(output)
             if not isinstance(table, dict) or (not allow_boss and output in boss_logs):
@@ -2357,7 +2411,13 @@ def _group_processing_skill_challenges(
     source_index: SourceIndex,
 ) -> dict[str, dict[str, int | str | bool]]:
     """Port of the "Highest Level" grouping fork (worker.js:4413-4680), run
-    once after `calc_challenges`'s fixed point converges.
+    at the end of each of `calc_challenges`'s *outer* passes.
+
+    It used to run once, after everything had settled, which was fine while
+    nothing read its answer. `_deferred_recipes` does: what this fork drops
+    is what upstream never had in `valids`, so the next outer pass has to
+    know before it seeds items. See the module docstring on
+    `Multi Step Processing`.
 
     When `rules['Highest Level']` is off, a `_PROCESSING_SKILLS` challenge
     that consumes an available ingredient is valid only if it is the
@@ -2419,6 +2479,32 @@ def _group_processing_skill_challenges(
     return result
 
 
+def _deferred_recipes(
+    valid: Mapping[str, Mapping[str, Any]], grouped: Mapping[str, Mapping[str, Any]]
+) -> dict[str, frozenset[str]]:
+    """Which processing recipes the grouping fork dropped, per skill.
+
+    This is upstream's `tempItemSkill` read from the other end. Upstream holds
+    a processing recipe *out* of `valids` and lets the fork add back the ones
+    it picks (worker.js:4444, then 1875/1906); this module keeps them all and
+    lets the fork take the losers away. Same survivors either way - the
+    difference is only ever visible in what the losers' `Output` does, which
+    is exactly what `Multi Step Processing` is about, so the set is named here
+    rather than left implicit in a subtraction.
+
+    Empty whenever `rules['Highest Level']` is on, the fork keeping everything
+    then.
+    """
+    dropped: dict[str, frozenset[str]] = {}
+    for skill in _PROCESSING_SKILLS:
+        before = valid.get(skill) or {}
+        after = grouped.get(skill) or {}
+        lost = frozenset(before) - frozenset(after)
+        if lost:
+            dropped[skill] = lost
+    return dropped
+
+
 def calc_challenges(
     chunk_ids: Mapping[str, bool],
     reachable_sections: Mapping[str, Mapping[str, bool]],
@@ -2465,6 +2551,11 @@ def calc_challenges(
     # of every pass - see `_clue_reward_gate_met` for what an empty table
     # means and why it is not the same as a table full of zeroes.
     clue_possible: dict[str, float] = {}
+    # The recipes the grouping fork drops, fed back so the next outer pass
+    # seeds their `Output` the way upstream does - not at all, or under a
+    # `multi-` tag when `Multi Step Processing` is on. Starts empty, which is
+    # also where it stays whenever `Highest Level` is on.
+    deferred_recipes: dict[str, frozenset[str]] = {}
     unsupported: set[str] = set()
     #: The first outer pass converges *without* pruning, so trainability is
     #: decided from a fully seeded index - deciding it earlier prunes a skill
@@ -2654,6 +2745,7 @@ def calc_challenges(
                 rules,
                 backlogged_sources or {},
                 backlog,
+                deferred_recipes,
             )
             _seed_skilling_pets(items, valid, challenges, rules, trainable)
             objects = _seed_objects_with_outputs(
@@ -2689,6 +2781,10 @@ def calc_challenges(
             objects=objects,
         )
         _drop_outclassed_extra_sets(valid, challenges, backlog, manual_tasks)
+        grouped = _group_processing_skill_challenges(
+            valid, challenges, items, rules, chunk_info, source_index
+        )
+        settled_deferred = _deferred_recipes(valid, grouped)
         reseeded = _seed_items_with_outputs(
             source_index.items,
             valid,
@@ -2697,20 +2793,24 @@ def calc_challenges(
             rules,
             backlogged_sources or {},
             backlog,
+            settled_deferred,
         )
         _seed_skilling_pets(reseeded, valid, challenges, rules, trainable)
         reseeded_objects = _seed_objects_with_outputs(
             source_index.objects, valid, challenges, backlog
         )
-        if reseeded == items and reseeded_objects == objects and valid == settled:
+        if (
+            reseeded == items
+            and reseeded_objects == objects
+            and valid == settled
+            and settled_deferred == deferred_recipes
+        ):
             break
         items = reseeded
         objects = reseeded_objects
+        deferred_recipes = settled_deferred
         pruning = True
 
-    grouped = _group_processing_skill_challenges(
-        valid, challenges, items, rules, chunk_info, source_index
-    )
     return ChallengeResult(
         valid=grouped,
         unsupported=frozenset(unsupported),
