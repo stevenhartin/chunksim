@@ -103,10 +103,26 @@ except where noted as a silent, documented approximation instead:
   lets a group's own `Items` re-expand mid-walk. It also runs once, after
   the fixed point converges, rather than feeding grouped-out challenges'
   `Output` back out of `_seed_items_with_outputs` - so item-seeding can be
-  mildly over-inclusive relative to the final grouped `valid`. The
-  `Multi Step Processing` rule's chain-of-crafted-items requirement is not
-  checked at all, which can over-include processing-skill tasks when that
-  rule is on.
+  mildly over-inclusive relative to the final grouped `valid`.
+- **`Multi Step Processing` is unported, and it is not the "requirement"
+  an earlier version of this note called it.** It is *permissive*, and it
+  has two halves. Upstream does not put a valid processing recipe with a
+  non-tool ingredient into `valids` at all: it defers it into
+  `tempItemSkill[skill][item]` (worker.js:4444/4557), to be re-picked later
+  by whichever `Highest Level` branch applies (worker.js:1875 on, 1906 off).
+  With the rule on, every such deferred recipe's `Output` is then published
+  into the item index under a `multi-<skill>` tag (worker.js:3576) so a
+  *further* recipe can chain off something not yet actually reachable - and
+  the second half is the safety valve for that: a combat-skill challenge
+  without `Not Equip`, or any `Extra` one, is refused when every source of an
+  ingredient it consumes is one of those speculative tags (worker.js:3956).
+  Neither half is here, and neither can be until the deferral is. This module
+  keeps those recipes in `valid` throughout - 940 of them on the second
+  cached map and 726 on the first, 616 and 611 of which carry an `Output` -
+  so their outputs are seeded unconditionally, which lands nearer the rule
+  being *on* than off, and there is no `multi-` tag for the gate to test. The
+  deferral is a change to this module's core loop rather than an addition to
+  it, which is why it is recorded here rather than half-built.
 - Mahogany Homes *is* handled - see `_MAHOGANY_HOMES_CONTRACT`, the Max Cape
   and Quest Point Cape injections are now `derive/injected.py`, the Collection
   Log Clues threshold is `_clue_reward_gate_met`, and the **Slayer lock** is
