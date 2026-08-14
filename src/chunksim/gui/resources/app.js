@@ -3618,9 +3618,13 @@ function renderTasks() {
     const on = !taskOff.has(s.key);
     const count = state.showDone ? s.completed_total : s.active_total;
     const tip = tmpl`<b>${s.label}</b><span class="sub">${count} ${state.showDone ? "completed" : "outstanding"}</span><span class="hint">${CHIP_HINT}</span>`;
+    /* **The word lives in the tooltip and in `aria-label`, not on the chip.**
+     * Five words and their counts wrapped a 360px strip onto three lines, and
+     * a strip is meant to be glanceable. The chunk pane made this trade
+     * first; this is the same one, so the three strips now read alike. */
     return tmpl`<button class="chip ${on ? "on" : ""}" data-section="${s.key}" data-tip="${tip}"
-      role="checkbox" aria-checked="${on}">
-      ${s.label}<span class="count">${count}</span></button>`;
+      role="checkbox" aria-checked="${on}" aria-label="${s.label}">
+      ${icon(TASK_ICONS[s.key] || "dot")}<span class="count">${count}</span></button>`;
   }).join("");
   for (const chip of el["task-chips"].querySelectorAll("[data-section]")) {
     chip.onclick = (event) => {
@@ -3965,8 +3969,12 @@ function renderFindChips() {
   el["find-chips"].innerHTML = FIND_TYPES.map((name) => {
     const on = !findOff.has(name);
     const tip = tmpl`<b>${typeLabel(name)}</b><span class="hint">${CHIP_HINT}</span>`;
+    /* The same glyph the rows carry, so the filter and the thing it filters
+     * are visibly one. No count: nothing has been asked yet, and a chip
+     * claiming a number before the search would be inventing one. */
     return tmpl`<button class="chip ${on ? "on" : ""}" data-find-type="${name}" data-tip="${tip}"
-      role="checkbox" aria-checked="${on}">${typeLabel(name)}</button>`;
+      role="checkbox" aria-checked="${on}" aria-label="${typeLabel(name)}">
+      ${icon(TYPE_ICONS[name] || "dot")}</button>`;
   }).join("");
   for (const chip of el["find-chips"].querySelectorAll("[data-find-type]")) {
     chip.onclick = (event) => {
@@ -3983,6 +3991,13 @@ function renderFindChips() {
 /* `label()` would give "Npc" here too - the same trap `CATEGORY_LABELS`
  * exists for, one row at a time rather than one heading. The tooltip was
  * already saying it before the chips arrived. */
+/* One glyph per task heading, the way `CATEGORY_ICONS` gives the chunk pane
+ * one per category. `Diary` and `Quest` are the export's own keys, capitalised
+ * the way it writes them. */
+const TASK_ICONS = {
+  skills: "skill", bis: "bis", Diary: "diary", Quest: "quest", Extra: "log",
+};
+
 const TYPE_LABELS = {
   item: "Item", monster: "Monster", npc: "NPC",
   object: "Object", shop: "Shop", task: "Task",

@@ -1885,3 +1885,45 @@ def test_the_chunk_pill_carries_the_same_three_answers() -> None:
 
     assert re.search(r'const hold = detail\.unlocked \? "unlocked" : at\.state;', js)
     assert '.pill[data-hold="reachable"]' in css
+
+
+def test_every_chip_strip_is_glyphs_with_the_word_in_the_label() -> None:
+    """**Three strips, one shape.** Chunk categories, task headings and find
+    types are the same control doing the same job, and two of them used to say
+    their word on the chip - which wrapped a 360px strip onto three lines and
+    made them read as three different things.
+
+    The word does not disappear: it moves to `aria-label` and the tooltip, so a
+    screen reader and a hover both still get it. That is the part worth pinning
+    - an icon-only button with no label is the accessibility bug this trade
+    invites.
+    """
+    js = _app_js()
+
+    strips = {
+        "chunk": r'data-cat="\$\{key\}"',
+        "task": r'data-section="\$\{s\.key\}"',
+        "find": r'data-find-type="\$\{name\}"',
+    }
+    for name, marker in strips.items():
+        match = re.search(marker + r'.*?</button>', js, re.DOTALL)
+        assert match is not None, f"no {name} chip found"
+        markup = match.group(0)
+        assert "aria-label=" in markup, f"the {name} chip lost its accessible name"
+        assert "${icon(" in markup, f"the {name} chip is not a glyph"
+
+
+def test_every_task_heading_has_a_glyph_of_its_own() -> None:
+    """A missing key would fall through to `dot`, which is the same mark for
+    two different headings - so the map is asserted whole rather than trusted
+    to a fallback nobody would notice."""
+    js = _app_js()
+    html, _, _ = _resources()
+
+    block = re.search(r"const TASK_ICONS = \{(.*?)\};", js, re.DOTALL)
+    assert block is not None
+    icons = dict(re.findall(r'(\w+): "([\w-]+)"', block.group(1)))
+
+    assert set(icons) == {"skills", "bis", "Diary", "Quest", "Extra"}
+    for name in icons.values():
+        assert f'id="i-{name}"' in html, f"no sprite for {name}"
