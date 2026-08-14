@@ -981,6 +981,25 @@ def _roll_reporter(
     return report
 
 
+def _run_one_reporting(spec: RunSpec, queue: Any, run_index: int) -> RunResult:
+    """`run_one` in a worker, reporting each roll back down `queue`.
+
+    **Module level because it has to pickle.** A closure over the queue would
+    not survive the trip to a worker, which is the reason `run_one`'s
+    `on_roll` is a keyword argument rather than a `RunSpec` field in the first
+    place - a spec pickles, a callback does not.
+
+    `should_stop` still does not cross: a submitted future is already inside a
+    worker and there is nothing to interrupt it with. Progress travels *out*,
+    which is a different direction and a much cheaper promise.
+    """
+
+    def report(order: int, chunk_id: str) -> None:
+        queue.put((run_index, order, chunk_id))
+
+    return run_one(spec, on_roll=report)
+
+
 def run_batch(
     *,
     name: str,
@@ -1022,14 +1041,21 @@ def run_batch(
     rebuilds the summary from the runs in that case rather than treating the
     batch as lost.
 
-    **`on_roll` is per roll and only fires inline.** A run's cost is its
-    rolls, so that is what a progress bar should count - `2/3 runs` on a
-    3x100 job is three updates across four minutes. With `jobs > 1` the
-    callback would fire inside a worker with no channel back, so the pooled
-    path reports through `on_complete` alone and the caller says which
-    granularity it is getting. Threading a `multiprocessing.Queue` through
-    `RunSpec` would buy a smoother CLI bar for the one piece of shared state
-    this module is built without.
+    **`on_roll` is per roll, pooled or not.** A run's cost is its rolls, so
+    that is what a progress bar should count - `2/3 runs` on a 3x100 job is
+    three updates across four minutes, and the two in between say nothing.
+
+    Pooled, the callback fires in a worker with no way to reach the caller, so
+    a `multiprocessing.Manager` queue carries the reports out and a drainer
+    thread in this process turns them back into `on_roll` calls. The docstring
+    here used to record that as the trade not taken; a batch that appears to do
+    nothing for four minutes is what changed the answer.
+
+    **It is the only shared state in this module and it is one-way.** Reports
+    travel out; nothing travels in, and nothing a worker sends can change what
+    a worker computes - so `--jobs` still cannot change a result. The manager
+    process is started only when there is an `on_roll` to feed, so the command
+    line without a progress bar pays nothing for it.
 
     `should_stop` ends the batch early. Inline it is checked **per roll**, so
     a partial run is kept; pooled it is checked **between runs**, because
@@ -1085,8 +1111,39 @@ def run_batch(
         # module on every command while only `--jobs > 1` ever needs a pool.
         from concurrent.futures import ProcessPoolExecutor, as_completed
 
+        import multiprocessing
+        import queue as queue_module
+        import threading
+
+        manager = multiprocessing.Manager() if on_roll is not None else None
+        reports = manager.Queue() if manager is not None else None
+        draining = threading.Event()
+
+        def drain() -> None:
+            """Turn a worker's reports back into `on_roll` calls, here.
+
+            A timeout rather than a blocking get, so the thread notices the
+            batch ending; and a final sweep after it, because a roll reported
+            microseconds before the last future resolved is still a roll.
+            """
+            assert reports is not None and on_roll is not None
+            while not draining.is_set():
+                try:
+                    run_index, order, chunk_id = reports.get(timeout=0.1)
+                except (queue_module.Empty, EOFError, OSError):
+                    continue
+                on_roll(run_index, order, chunk_id)
+
+        drainer = threading.Thread(target=drain, daemon=True) if reports is not None else None
+        if drainer is not None:
+            drainer.start()
+
         with ProcessPoolExecutor(max_workers=min(workers, len(specs))) as pool:
-            futures = [pool.submit(run_one, spec) for spec in specs]
+            futures = [
+                pool.submit(run_one, spec) if reports is None
+                else pool.submit(_run_one_reporting, spec, reports, index)
+                for index, spec in enumerate(specs)
+            ]
             for future in as_completed(futures):
                 result = future.result()
                 results.append(result)
@@ -1098,6 +1155,21 @@ def run_batch(
                     for pending in futures:
                         pending.cancel()
                     break
+
+        if drainer is not None and reports is not None and on_roll is not None:
+            # **The sweep matters.** A roll reported microseconds before the
+            # last future resolved is still a roll, and dropping it leaves the
+            # bar a few short of the total it just claimed to reach.
+            draining.set()
+            drainer.join(timeout=2.0)
+            while True:
+                try:
+                    run_index, order, chunk_id = reports.get_nowait()
+                except Exception:
+                    break
+                on_roll(run_index, order, chunk_id)
+        if manager is not None:
+            manager.shutdown()
 
     # Completion order is scheduling noise; run order is the reproducible one.
     results.sort(key=lambda result: result.name)

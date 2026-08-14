@@ -423,21 +423,34 @@ def _simulate_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
         rolled = 0
         finished = 0
 
+        # **Says how wide it is running, because that is the other half of
+        # "why is this taking so long".** Sixteen workers on fifty rolls and
+        # one worker on fifty rolls are the same bar and very different waits.
+        where = f" on {min(workers, runs)} workers" if not inline else ""
+
         def roll(_run: int, _order: int, chunk_id: str) -> None:
             nonlocal rolled
             rolled += 1
-            progress(f"{rolled}/{total} rolls - {chunk_id}" + (" - stopping" if stop() else ""))
+            # Pooled, rolls arrive from several runs at once and out of order,
+            # so the chunk name would flicker between unrelated worlds. The
+            # count is the honest thing to show; the name belongs to the one
+            # run that is inline.
+            detail = f" - {chunk_id}" if inline else f" - {finished}/{runs} runs{where}"
+            progress(f"{rolled}/{total} rolls{detail}" + (" - stopping" if stop() else ""))
 
         def report(result: RunResult) -> None:
             nonlocal finished, rolled
             finished += 1
-            # Pooled runs report nothing per roll, so the count catches up
-            # here; inline it is already there and this only re-states it.
+            # Rolls are counted as they happen now, pooled or not, so this no
+            # longer has to catch the count up - it only guards against a run
+            # that reported nothing at all.
             rolled = max(rolled, finished * rolls)
+            # Inline, every roll already produced a line and this would only
+            # repeat the last one with a run tally bolted on.
             if not inline:
-                progress(f"{rolled}/{total} rolls - {finished}/{runs} runs")
+                progress(f"{rolled}/{total} rolls - {finished}/{runs} runs{where}")
 
-        progress(f"0/{total} rolls")
+        progress(f"0/{total} rolls{where}")
         batch = run_batch(
             name=name,
             payload=envelope["data"],
@@ -449,11 +462,10 @@ def _simulate_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
             seed=seed,
             root=ctx.root,
             on_complete=report,
-            # Only inline: a worker has no channel back, so `run_batch`
-            # ignores this when it pools and reports per run instead. Asked
-            # about `inline` rather than `jobs`, since `jobs=0` means "as wide
-            # as the machine" and a single run still executes here.
-            on_roll=roll if inline else None,
+            # **Pooled too, now.** `run_batch` carries a worker's rolls back
+            # over a manager queue, so a fifty-roll batch ticks up rather than
+            # standing still until a whole run lands.
+            on_roll=roll,
             should_stop=stop,
         )
         kept = sum(len(run.rolls) for run in batch.runs)

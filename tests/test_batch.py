@@ -748,3 +748,42 @@ def test_the_step_ids_walk_the_run_forwards(root: Path) -> None:
     # Each is its own dict - a shared one would make every step the last one.
     assert steps[0] == {"a": True}
 
+
+
+def test_a_pooled_batch_reports_every_roll_as_it_happens(root: Path) -> None:
+    """**The bar used to stand at zero until a whole run landed.**
+
+    A worker cannot call back into this process, so the pooled path reported
+    only per run - `2/3 runs` on a long batch is two updates across minutes,
+    and a fifty-roll run looked frozen. `run_batch` now carries each roll out
+    over a manager queue and turns it back into an `on_roll` call here.
+
+    Asserts the *count*, not the order: rolls arrive from several runs at once
+    and interleave, which is why the page shows a tally rather than a name.
+    """
+    seen: list[tuple[int, int, str]] = []
+
+    batch = run_batch(
+        name="Reported", payload=_PAYLOAD, base_map="fray", rolls=3, runs=4, seed=5,
+        jobs=2, root=root, on_roll=lambda run, order, chunk: seen.append((run, order, chunk)),
+    )
+
+    assert len(batch.runs) == 4
+    assert len(seen) == 12, f"expected one report per roll, got {len(seen)}"
+    assert {run for run, _, _ in seen} == {0, 1, 2, 3}, "every run should have reported"
+
+
+def test_reporting_does_not_change_what_a_pooled_batch_produces(root: Path) -> None:
+    """**`--jobs` must never change a result, and nor may watching it.** The
+    queue is one-way: reports travel out, nothing travels in, and nothing a
+    worker sends can reach what a worker computes."""
+    quiet = run_batch(
+        name="Quiet", payload=_PAYLOAD, base_map="fray", rolls=3, runs=3, seed=11, jobs=2, root=root
+    )
+    watched = run_batch(
+        name="Watched", payload=_PAYLOAD, base_map="fray", rolls=3, runs=3, seed=11, jobs=2,
+        root=root, on_roll=lambda *_: None,
+    )
+
+    assert [(r.seed, r.rolls) for r in quiet.runs] == [(r.seed, r.rolls) for r in watched.runs]
+    assert _rolls(root, "Quiet") == _rolls(root, "Watched")

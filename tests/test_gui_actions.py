@@ -509,18 +509,26 @@ def test_simulate_progress_counts_rolls_not_runs(
 def test_a_pooled_simulation_still_counts_rolls_and_asks_for_no_roll_callback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """**The default is wide now, so this is the path a user actually gets.**
+    """**The default is wide, so this is the path a user actually gets.**
 
-    `run_batch` cannot call back per roll from a worker, so the page must not
-    ask it to - and the bar still has to read in rolls, which it does by
-    catching up as each run lands. The old `jobs > 1` test for this would have
-    left `jobs=0` reporting as if it were inline, freezing the bar at zero.
+    A pooled batch reports per roll too now - `run_batch` carries a worker's
+    rolls out over a manager queue - so the bar ticks instead of standing at
+    zero until a whole run lands. It also says how many workers are on it,
+    because sixteen workers and one worker are the same bar and very different
+    waits.
+
+    The chunk id is deliberately absent here: rolls arrive from several runs at
+    once and out of order, so the name would flicker between unrelated worlds.
     """
     seen: list[str] = []
     asked: dict[str, Any] = {}
 
     def fake(**kw: Any) -> Any:
         asked.update(kw)
+        roll = kw["on_roll"]
+        for run in range(kw["runs"]):
+            for order in range(1, kw["rolls"] + 1):
+                roll(run, order, "12850")
         return _FakeBatch(kw["name"], kw["runs"], kw["on_complete"])
 
     monkeypatch.setattr("chunksim.gui.actions.run_batch", fake)
@@ -537,9 +545,11 @@ def test_a_pooled_simulation_still_counts_rolls_and_asks_for_no_roll_callback(
     _post("/api/simulate", ctx, {"map": "fray", "name": "sim", "rolls": 4, "runs": 3})
 
     assert asked["jobs"] == 0, "the page should ask for every core"
-    assert asked["on_roll"] is None, "a pooled run cannot report per roll"
-    assert seen[0] == "0/12 rolls"
+    assert asked["on_roll"] is not None, "a pooled run reports per roll now"
+    assert seen[0].startswith("0/12 rolls"), seen
+    assert "workers" in seen[0], "the bar should say how wide it is running"
     assert seen[-1].startswith("12/12 rolls"), seen
+    assert not any("12850" in line for line in seen), "a pooled bar must not flicker chunk names"
 
 
 def test_committing_an_edit_writes_a_map_of_its_own_kind(ctx: Context) -> None:
