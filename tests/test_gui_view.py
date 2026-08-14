@@ -818,3 +818,39 @@ def test_a_hand_edited_settings_file_is_validated_on_the_way_out(ctx: Context) -
     assert body["hours_scale"] == "log"
     assert len(body["hours_bands"]) == 5
 
+
+
+def test_revision_answers_without_a_map(tmp_path: Path) -> None:
+    """**The state a first run is in.** A page with nothing drawn still has to
+    notice data arriving, so this route must answer before there is a map to
+    ask about - otherwise the watcher is blind exactly when it is needed."""
+    ctx = Context(root=tmp_path, check_origin=False)
+
+    body = _body(handle_request("GET", "/api/revision", {}, ctx))
+
+    assert body["revision"] is None
+    assert isinstance(body["data"], str) and body["data"]
+
+
+def test_the_data_token_moves_when_the_export_arrives(tmp_path: Path) -> None:
+    """The bug this exists for: the map file does not change when reference
+    data lands, so a token made only of its mtime never moves and every panel
+    stays on the placeholder it drew before the data existed."""
+    ctx = Context(root=tmp_path, check_origin=False)
+    before = _body(handle_request("GET", "/api/revision", {}, ctx))["data"]
+
+    cache.write_blob(cache.CHUNKINFO_BLOB_NAME, {"chunks": {}}, "test", tmp_path)
+
+    after = _body(handle_request("GET", "/api/revision", {}, ctx))["data"]
+    assert after != before
+
+
+def test_a_map_that_vanished_still_answers(tmp_path: Path) -> None:
+    """A poll must keep hearing the data token through a map being deleted, or
+    the page goes quiet until someone reloads it."""
+    ctx = Context(root=tmp_path, check_origin=False)
+
+    body = _body(handle_request("GET", "/api/revision", {"map": ["gone"]}, ctx))
+
+    assert body["revision"] is None
+    assert body["data"]

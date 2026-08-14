@@ -1657,6 +1657,36 @@ def read_chunkinfo(override: Path | None = None, root: Path | None = None) -> di
     return data
 
 
+def data_stamp(root: Path | None = None, map_id: str | None = None) -> tuple[tuple[int, int], ...]:
+    """`(mtime_ns, size)` per file a panel's answer is computed from.
+
+    **A different question from `reference_stamp`, which is why it is a
+    different function.** That one asks "is my in-process memo of the wiki
+    files still good"; this asks "has anything the browser drew from changed on
+    disk". The sets overlap but the export is the difference, and the export is
+    the whole point: a panel that rendered before `chunkinfo.json` existed has
+    to notice when it arrives, and nothing else on disk moves when it does.
+
+    Cheap for the same reason as `reference_stamp` - five `stat` calls, asked
+    on a timer - and a missing file stamps `(0, 0)`, so *appearing* moves it.
+    That is the case this exists for.
+    """
+    stamps = [
+        _stat_stamp(blob_path(CHUNKINFO_BLOB_NAME, root)),
+        _stat_stamp(blob_path(TASKS_MAP_BLOB_NAME, root)),
+    ]
+    return tuple(stamps) + reference_stamp(root, map_id)
+
+
+def _stat_stamp(path: Path) -> tuple[int, int]:
+    """`(mtime_ns, size)`, or `(0, 0)` when the file is not there yet."""
+    try:
+        info = path.stat()
+    except OSError:
+        return (0, 0)
+    return (info.st_mtime_ns, info.st_size)
+
+
 def reference_stamp(
     root: Path | None = None, map_id: str | None = None
 ) -> tuple[tuple[int, int], ...]:

@@ -167,6 +167,10 @@ const state = {
   heatmap: null,
   /* Which install is serving this page, for the watermark. Fetched once. */
   build: null,
+  //: The last `data` token from `/api/revision` - a stamp over the files every
+  //: panel's answer is computed from. `null` until the first poll, which is
+  //: what makes that poll a baseline rather than a change. See `poll`.
+  dataStamp: null,
   //: The release check's answer, or null until it has run. See `loadUpdate`.
   update: null,
   /* Chunk id -> the name a person calls it. Static per export, fetched with
@@ -5811,13 +5815,58 @@ el["tl-hours"].addEventListener("click", () => {
   });
 });
 
+/* **Panels heal themselves rather than waiting to be told.**
+ *
+ * This used to watch one token - the map file's mtime - which meant it only
+ * ever noticed *the map* changing. Everything a panel actually draws from can
+ * change without that moving: the chunk export arriving is the obvious case,
+ * and it is the one a first run is made of. A panel that rendered "Loading…"
+ * before the export landed stayed on it for ever, because the thing being
+ * compared had not moved and nothing else came to tell it.
+ *
+ * So there are two tokens now, and neither is a callback anyone has to
+ * remember to fire:
+ *
+ *   `data`     - a stamp over the export, the tasks map and the wiki files.
+ *                Changing it means the *answers* changed, so the world and
+ *                every panel are rebuilt.
+ *   `revision` - the map's own mtime, as before: the world changed, the
+ *                reference data did not.
+ *
+ * **Deliberately not a second ticker.** This loop already runs, and it is also
+ * the idle-shutdown heartbeat (`http.should_stop`) - a second one would feed
+ * that too and quietly change when an unattended server exits.
+ *
+ * The gate is only `live` now. It used to include `state.view`, which meant a
+ * page with nothing drawn yet - exactly the first run - never asked at all.
+ * `/api/revision` answers without a map for the same reason. */
 async function poll() {
   renderBuild();
-  if (!state.live || !state.view || !state.map) return;
+  if (!state.live) return;
+  let answer;
   try {
-    const { revision } = await getJSON("/api/revision?" + mapQuery());
-    if (revision !== state.revision) { await loadView(); await reloadPanels(); }
-  } catch { /* a map deleted under us; the next load reports it */ }
+    answer = await getJSON("/api/revision?" + mapQuery());
+  } catch {
+    return; /* a map deleted under us; the next load reports it */
+  }
+
+  if (answer.data !== state.dataStamp) {
+    const first = state.dataStamp === null;
+    state.dataStamp = answer.data;
+    /* The first answer is what "unchanged" is measured against, not a change.
+     * Reloading on it would rebuild the world a beat after boot drew it. */
+    if (!first) {
+      await reloadWorld();
+      await reloadPanels();
+      renderAllReference();
+      return; /* `reloadWorld` refreshed the view; the revision below is stale. */
+    }
+  }
+
+  if (state.view && answer.revision !== null && answer.revision !== state.revision) {
+    await loadView();
+    await reloadPanels();
+  }
 }
 
 /* Which region belongs to which named place. Static per export and map
@@ -5895,6 +5944,16 @@ function renderAttribution() {
    * armed nothing, and a first run sitting on the setup screen could have the
    * server exit from under it after fifteen seconds. */
   setInterval(poll, 2000);
+  /* **Chrome throttles timers in a hidden tab**, down to about once a minute
+   * once it has been hidden a while - so the loop above is not a promise about
+   * how fresh a backgrounded page is, and cannot be made into one. Asking the
+   * moment the tab is looked at again is the part that is in our gift, and it
+   * is what makes the staleness invisible: whatever was missed while away is
+   * reconciled before the first frame anyone sees. `--tab` mode is where this
+   * matters; an app window is normally the thing in front of you. */
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") poll();
+  });
   loadBuild();
   /* **A cold cache is a setup problem, not a dead end.** This used to return
    * here, which left the rest of boot - the warm-up included - as dead code on
@@ -6082,9 +6141,14 @@ async function runSetup(missing) {
     const ok = job.state === "done";
     states[step.what] = ok ? "done" : "failed";
     if (!ok) el["setup-detail"].textContent = job.error || "Stopped.";
-    if (step.what === "chunkinfo") exported = ok;
     renderSetupSteps(SETUP_STEPS, states);
   }
+  /* **Asked, not inferred.** A step can end without a job - the server
+   * declines one it has already done, or already tried - so "the job
+   * succeeded" is not the same question as "the export is on disk", and only
+   * the second one decides whether a map can be drawn. */
+  const rows = await loadReference();
+  exported = Boolean((rows.find((row) => row.name === "chunkinfo") || {}).cached);
   return exported;
 }
 
@@ -6155,6 +6219,25 @@ async function firstRun(known) {
   }
 
   if (state.settings && state.settings.first_run_done) return;
+  /* **Only block boot when there is nothing to boot into.**
+   *
+   * This dialogue used to be awaited unconditionally, and boot is what waited:
+   * `showTab` runs after `firstRun`, and `showTab` is what loads a panel at
+   * all. So a page that already had a map sat with every pane on its
+   * placeholder - "Loading…" for ever - until someone answered a question they
+   * had not necessarily noticed. That is the bug this comment exists for.
+   *
+   * With a map cached there is a working page underneath, so the question
+   * floats over it and boot carries on. With no map there is nothing to carry
+   * on to, and the answer is what produces one - so that case still waits. */
+  if (state.maps.length) {
+    offerFirstMap();
+    return;
+  }
+  await offerFirstMap();
+}
+
+async function offerFirstMap() {
   const wanted = await askFirstMap();
   if (wanted) {
     await runAction("Fetch " + wanted, "/api/fetch", { map: wanted }, async () => {

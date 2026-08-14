@@ -152,6 +152,25 @@ def _origin_ok(
     return None
 
 
+def _revision_of(
+    map_id: str, query: Mapping[str, list[str]], ctx: Context
+) -> int | None:
+    """The map's change token, or `None` when it cannot be had right now.
+
+    **Never raises, because this only ever answers a poll.** A map deleted
+    underneath the page, a step that no longer exists - the page should keep
+    hearing the `data` token through all of it and heal when the map comes
+    back, rather than going quiet until someone reloads. The routes that
+    *serve* a view still refuse loudly; this is the one that watches.
+    """
+    try:
+        raw_step = _first(query, "step")
+        step = None if raw_step in (None, "") else int(str(raw_step))
+        return build_map_view(map_id, _first(query, "compare"), ctx, step).revision
+    except (cache.CacheMissError, ValueError, KeyError, IndexError, OSError):
+        return None
+
+
 def _state_at(
     query: Mapping[str, list[str]], ctx: Context, map_id: str
 ) -> DerivedState | Response:
@@ -491,7 +510,23 @@ def handle_request(
                 return _error("missing required parameter 'map'", HTTPStatus.BAD_REQUEST)
             return _json(_timeline_payload(map_id, ctx))
 
-        if path in ("/api/view", "/api/revision"):
+        if path == "/api/revision":
+            # **The map is optional here, and that is the point of the route.**
+            # A page with nothing drawn yet still has to notice data arriving -
+            # that is precisely the state a first run is in - so the answer is
+            # always a `data` token and a `revision` only when there is a map
+            # to have one.
+            map_id = _first(query, "map") or None
+            try:
+                stamp = cache.data_stamp(ctx.root, map_id)
+            except ValueError:
+                stamp = cache.data_stamp(ctx.root)
+            data = ".".join(f"{mtime}-{size}" for mtime, size in stamp)
+            if map_id is None:
+                return _json({"revision": None, "data": data})
+            return _json({"revision": _revision_of(map_id, query, ctx), "data": data})
+
+        if path == "/api/view":
             map_id = _first(query, "map")
             if map_id is None:
                 return _error("missing required parameter 'map'", HTTPStatus.BAD_REQUEST)
@@ -505,8 +540,6 @@ def handle_request(
                 view = build_map_view(map_id, compare, ctx, step)
             except ValueError as exc:
                 return _error(str(exc), HTTPStatus.BAD_REQUEST)
-            if path == "/api/revision":
-                return _json({"revision": view.revision})
             return _json({**view.as_dict(), "step": step})
     except cache.CacheMissError as exc:
         # The message already names the command that would fix it, which is

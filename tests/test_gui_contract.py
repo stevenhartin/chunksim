@@ -1754,3 +1754,41 @@ def test_the_first_run_flag_is_spelled_the_same_on_both_sides() -> None:
 
     assert "first_run_done" in settings.KEYS
     assert 'first_run_done: true' in _app_js() or '"first_run_done"' in _app_js()
+
+
+def test_the_page_watches_rather_than_waiting_to_be_told() -> None:
+    """**Panels heal themselves; nothing has to remember to refresh them.**
+
+    `poll` compares two tokens from `/api/revision` - `data` for the files an
+    answer is computed from, `revision` for the map itself. Watching only the
+    second was the bug: the map file does not change when the export arrives,
+    so a panel that rendered before it landed stayed on its placeholder for
+    ever, and the fix could not be "call reloadPanels here too" because the
+    number of places that would need it is the problem.
+    """
+    js = _app_js()
+
+    assert "state.dataStamp" in js, "the data token must be remembered to be compared"
+    assert re.search(r"answer\.data !== state\.dataStamp", js), "the comparison is the mechanism"
+    assert "reloadPanels()" in js
+
+
+def test_the_poll_is_not_gated_on_having_a_view() -> None:
+    """A page with nothing drawn is exactly the page that needs to notice data
+    arriving, so the gate is `live` alone."""
+    js = _app_js()
+    body = re.search(r"async function poll\(\) \{(.*?)\n\}", js, re.DOTALL)
+
+    assert body is not None
+    assert "if (!state.live) return;" in body.group(1)
+    assert "!state.view ||" not in body.group(1), "a viewless page must still watch"
+
+
+def test_the_page_catches_up_when_it_becomes_visible() -> None:
+    """Chrome throttles timers in a hidden tab to roughly once a minute, so the
+    interval alone is not a promise about freshness. Asking on the way back is
+    what makes the staleness invisible."""
+    js = _app_js()
+
+    assert 'addEventListener("visibilitychange"' in js
+    assert re.search(r'visibilityState === "visible"\) poll\(\)', js)

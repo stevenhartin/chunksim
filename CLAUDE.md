@@ -214,6 +214,14 @@ The table says what each module **owns**; its docstring says why.
 
 ### Two constraints on the GUI worth knowing before editing it
 
+**Panels heal themselves; nothing tells them to.** `poll` compares two tokens from `/api/revision`:
+`data`, a stamp over the files an answer is computed from (`cache.data_stamp` — the export, the tasks
+map, the wiki files), and `revision`, the map's own mtime. Watching only the second was a real bug —
+the map file does not move when the export arrives, so a panel that rendered before it landed stayed
+on its placeholder for ever. **Do not fix a stale panel by calling `reloadPanels` from wherever the
+data changed**; that is the pattern this replaced, and the number of places needing it is the problem.
+Chrome throttles the timer in a hidden tab, so a `visibilitychange` listener polls on the way back.
+
 - **The map is the OSRS wiki's cartography tiles and the browser loads them — this project never
   touches one.** `/api/tiles` hands out a URL *template*. That is a **licence decision, not an
   optimisation**: the tiles are CC BY-NC-SA 3.0 against this project's GPL-3.0, so caching them under
