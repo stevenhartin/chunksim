@@ -910,6 +910,17 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .tag[data-kind="edited"] { color: var(--amber); }
 
 .pill.reachable { color: var(--gain); border-color: var(--gain); }
+
+/* **The kind as a glyph, the colour as the answer.** The pill said the kind in
+   a word and the colour said reachable-or-not, which spent a lot of width on
+   the half a reader can usually infer from the name. The icon frees the colour
+   to carry the map's *three* answers instead of two - and they are the map's,
+   deliberately: green is a chunk you hold, blue one you can walk into without
+   rolling it, and grey neither. A row that disagrees with the square it points
+   at is the bug this replaced. */
+.type-icon { display: inline-flex; color: var(--dim); }
+.type-icon[data-hold="unlocked"] { color: var(--gain); }
+.type-icon[data-hold="reachable"] { color: var(--reachable); }
 .pill.locked { color: var(--dim); }
 .pill.candidate { color: var(--candidate); border-color: var(--candidate); }
 

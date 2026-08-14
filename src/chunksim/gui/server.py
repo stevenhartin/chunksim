@@ -48,6 +48,7 @@ from chunksim.remote.api import (
 from chunksim.store.build_info import read_build
 from chunksim.costing.estimate import estimate
 from chunksim.derive.neighbours import eligible_neighbours
+from chunksim.derive.search import TYPES as SEARCH_TYPES
 from chunksim.derive.search import build_world_index, search
 from chunksim.model.summary import summarise
 from chunksim.gui.derivation import DerivedState
@@ -379,6 +380,22 @@ def handle_request(
             if term is None:
                 return _error("missing required parameter 'q'", HTTPStatus.BAD_REQUEST)
             limit = max(1, min(200, int(_first(query, "limit") or 40)))
+            # **Checked before the export is touched.** A malformed parameter
+            # is the cheapest thing here to be wrong about, and reading 10MB
+            # to discover it would answer "no cached data" to a request that
+            # was never going to be served anyway.
+            #
+            # **Refused rather than ignored**: `search` intersects with the
+            # types it knows, so a typo comes back as an empty list - a filter
+            # that silently does nothing, which reads exactly like "nothing
+            # matched".
+            types = query.get("type") or None
+            unknown = sorted(set(types or ()) - set(SEARCH_TYPES))
+            if unknown:
+                return _error(
+                    f"unknown search type{'s' if len(unknown) > 1 else ''}: {', '.join(unknown)}",
+                    HTTPStatus.BAD_REQUEST,
+                )
             # **`unlocked` and `derived` are what make `available` mean
             # anything.** Without them every hit and every one of its
             # locations comes back locked, which is not a cheaper answer -
@@ -390,9 +407,16 @@ def handle_request(
             if isinstance(against, Response):
                 return against
             info = against.state.chunk_info if against else ctx.derivations.chunk_info()
+            # **Types are the search's business, not the page's.** It ranks
+            # across the set it is given and keeps the best `limit`, so a page
+            # that asked for everything and then hid four categories would be
+            # showing the best forty of the wrong question - and could show
+            # nothing at all where items existed but forty monsters scored
+            # higher.
             results = search(
                 build_world_index(info),
                 term,
+                types=types,
                 unlocked=against.unlocked if against else None,
                 derived=against.derived if against else None,
                 limit=limit,

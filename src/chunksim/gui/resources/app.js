@@ -196,7 +196,7 @@ for (const id of [
   "setup", "setup-lead", "setup-steps", "setup-fill", "setup-detail",
   "chunk-head", "chunk-chips", "chunk-body", "task-chips", "tasks-body",
   "show-done", "estimate-total", "estimate-why", "estimate-body",
-  "find-body", "find-form", "find-input", "maps-body", "attribution", "watermark",
+  "find-body", "find-chips", "find-form", "find-input", "maps-body", "attribution", "watermark",
   "timeline", "tl-title", "tl-chips", "tl-scale", "tl-key",
   "tl-hours", "tl-details", "tl-collapse", "tl-graph",
   "tl-prev", "tl-slider", "tl-next", "tl-step", "tl-snapshot",
@@ -1667,6 +1667,10 @@ function showTab(name) {
     p.classList.toggle("on", p.dataset.pane === name);
   }
   if (el.panel.classList.contains("hidden")) el["panel-pin"].click();
+  /* The strip is state, not a result, so it draws whether or not anything
+   * has been searched for - otherwise the filters only appear once you
+   * have typed, which is after you needed them. */
+  if (name === "find") renderFindChips();
   if (name === "tasks") loadTasks();
   if (name === "estimate") loadEstimate();
   if (name === "maps") loadMapsPane();
@@ -3921,6 +3925,81 @@ el["estimate-why"].addEventListener("click", () => {
  * an item carries them under each of its sources. A `chunk_id` may be
  * `12850-1` or a named area like `Observatory Dungeon`, and only the numeric
  * head of the former has a square. */
+/* **One icon per kind, so a glance says what a row is.** The word was a pill
+ * repeating what the name usually already implies; the icon costs no width and
+ * leaves the colour free to say something else. */
+/* Every kind the search can return, in the order the strip shows them. The
+ * server validates against its own `TYPES`, so a name wrong here is a 400
+ * rather than a filter that silently does nothing. */
+const FIND_TYPES = ["item", "monster", "npc", "object", "shop", "task"];
+
+/* **Records what is *off*, exactly like the Tasks strip.** A set of exclusions
+ * means a kind nobody has ever deselected is on by default for ever, which is
+ * what "all on to begin with" has to mean - where holding the selected set
+ * freezes it the first time a strip renders. See `applyChipGesture`. */
+const findOff = new Set();
+
+function findTypes() {
+  return FIND_TYPES.filter((name) => !findOff.has(name));
+}
+
+function renderFindChips() {
+  el["find-chips"].innerHTML = FIND_TYPES.map((name) => {
+    const on = !findOff.has(name);
+    const tip = tmpl`<b>${typeLabel(name)}</b><span class="hint">${CHIP_HINT}</span>`;
+    return tmpl`<button class="chip ${on ? "on" : ""}" data-find-type="${name}" data-tip="${tip}"
+      role="checkbox" aria-checked="${on}">${typeLabel(name)}</button>`;
+  }).join("");
+  for (const chip of el["find-chips"].querySelectorAll("[data-find-type]")) {
+    chip.onclick = (event) => {
+      applyChipGesture(findOff, chip.dataset.findType, FIND_TYPES, event);
+      renderFindChips();
+      /* Re-asks rather than re-filters: the search ranks across the types it
+       * was given and keeps the best forty, so hiding rows on the page would
+       * show the best forty of a question nobody asked. */
+      runFind();
+    };
+  }
+}
+
+/* `label()` would give "Npc" here too - the same trap `CATEGORY_LABELS`
+ * exists for, one row at a time rather than one heading. The tooltip was
+ * already saying it before the chips arrived. */
+const TYPE_LABELS = {
+  item: "Item", monster: "Monster", npc: "NPC",
+  object: "Object", shop: "Shop", task: "Task",
+};
+
+function typeLabel(name) { return TYPE_LABELS[name] || label(name); }
+
+const TYPE_ICONS = {
+  item: "item", monster: "monster", npc: "npc",
+  object: "object", shop: "shop", task: "task",
+};
+
+const HOLD_WORDS = {
+  unlocked: "on a chunk you hold",
+  reachable: "on a chunk you can walk into",
+  locked: "not reachable yet",
+};
+
+/* **The map's own three answers, in a list that used to have two.**
+ *
+ * `available` is the server's, and it means "in a chunk you hold" - it has no
+ * idea about a square behind a dungeon entrance, which costs no chunk and is
+ * drawn outlined on the map. `chunkStatus` is where that third answer lives
+ * and its own comment records Find as the thing that got it wrong: the pane
+ * called `Slayer Tower (Basement)` unreachable while the square beside it was
+ * outlined as somewhere you can go. Asking the same classifier the map asks is
+ * how the two stop disagreeing. */
+function findHold(result, chunks) {
+  if (result.available) return "unlocked";
+  for (const chunk of chunks) {
+    if (chunkStatus(chunk).state === "reachable") return "reachable";
+  }
+  return "locked";
+}
+
 function chunksOf(result) {
   const found = new Set();
   const consider = (locations) => {
@@ -4086,7 +4165,8 @@ async function runFind() {
   try {
     const payload = await getJSON(
       "/api/search?q=" + encodeURIComponent(term) +
-      "&" + panelQuery() + "&limit=40");
+      "&" + panelQuery() + "&limit=40" +
+      findTypes().map((name) => "&type=" + encodeURIComponent(name)).join(""));
     if (run !== findRun) return;
     if (!payload.results.length) {
       body.innerHTML = tmpl`<p class="empty">Nothing matches ${term}.</p>`;
@@ -4105,11 +4185,12 @@ async function runFind() {
     results.forEach((result, index) => {
       const chunks = chunksOf(result);
       const note = chunks.length ? chunks.length + (chunks.length === 1 ? " chunk" : " chunks") : "—";
-      const tip = tmpl`<b>${raw(marked(result.name))}</b><span class="sub">${label(result.type)} · ${
-        result.available ? "reachable on this map" : "not reachable yet"
+      const hold = findHold(result, chunks);
+      const tip = tmpl`<b>${raw(marked(result.name))}</b><span class="sub">${typeLabel(result.type)} · ${
+        HOLD_WORDS[hold]
       }</span><span class="hint">${chunks.length ? "Click to light up its " + note + " on the map" : "Nowhere on the surface map"}</span>`;
       out += tmpl`<li data-tip="${tip}">
-        <span class="pill ${result.available ? "reachable" : "locked"}">${label(result.type)}</span>
+        <span class="type-icon" data-hold="${hold}">${icon(TYPE_ICONS[result.type] || "dot")}</span>
         <button class="link name" data-result="${index}">${plain(result.name)}</button>
         <span class="num">${note}</span></li>`;
     });

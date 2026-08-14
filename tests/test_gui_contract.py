@@ -1822,3 +1822,42 @@ def test_keys_keep_the_exports_own_spelling() -> None:
     js = _app_js()
 
     assert "data-term" in js and "part.raw" in js
+
+
+def test_the_find_pane_filters_by_asking_rather_than_hiding() -> None:
+    """**The strip re-runs the search; it does not hide rows.**
+
+    `/api/search` ranks across the types it was given and keeps the best forty.
+    A page that asked for everything and then hid four categories would be
+    showing the best forty of a question nobody asked - and could show nothing
+    at all where items existed but forty monsters scored higher.
+    """
+    js = _app_js()
+
+    assert '"&type=" + encodeURIComponent(name)' in js, "the types must reach the server"
+    body = re.search(r"function renderFindChips\(\) \{(.*?)\n\}", js, re.DOTALL)
+    assert body is not None and "runFind()" in body.group(1)
+
+
+def test_the_find_pane_uses_the_same_chip_gesture_as_the_tasks_pane() -> None:
+    """One gesture across the interface: click for only this, again for all,
+    shift adds, ctrl removes - and a strip records what is *off*, so a kind
+    nobody has deselected is on by default for ever."""
+    js = _app_js()
+
+    assert "const findOff = new Set();" in js
+    assert re.search(r"applyChipGesture\(findOff, chip\.dataset\.findType, FIND_TYPES, event\)", js)
+
+
+def test_a_find_row_says_which_of_the_maps_three_answers_it_is() -> None:
+    """`available` is "in a chunk you hold" and has no idea about a square
+    behind a dungeon entrance, which costs no chunk and is drawn outlined.
+    `chunkStatus` is where that third answer lives, and Find is the pane whose
+    disagreement with the map prompted it."""
+    js = _app_js()
+    _, _, css = _resources()
+
+    assert re.search(r"function findHold\(result, chunks\)", js)
+    assert 'chunkStatus(chunk).state === "reachable"' in js
+    for hold in ("unlocked", "reachable"):
+        assert f'.type-icon[data-hold="{hold}"]' in css

@@ -20,6 +20,8 @@
     <g id="i-npc"><circle cx="12" cy="8" r="3.5"/><path d="M5 21a7 7 0 0 1 14 0"/></g>
     <g id="i-object"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></g>
     <g id="i-shop"><path d="M4 8h16l-1.2 12H5.2z"/><path d="M8.5 8V6a3.5 3.5 0 0 1 7 0v2"/></g>
+    <g id="i-item"><path d="M4 8.5l8-4 8 4v7l-8 4-8-4z"/><path d="M4 8.5l8 4 8-4"/><path d="M12 12.5v7"/></g>
+    <g id="i-task"><path d="M5 5h14v14H5z"/><path d="M9 12.5l2.2 2.2L15.5 10"/></g>
     <g id="i-spawn"><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><circle cx="12" cy="12" r="3"/></g>
     <g id="i-quest"><path d="M6 3h9l3 3v15H6z"/><path d="M9 8h6M9 12h6M9 16h4"/></g>
     <g id="i-clue"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></g>
@@ -184,6 +186,12 @@
     <form id="find-form" class="row">
       <input id="find-input" type="search" placeholder="Item, monster, NPC, object…" autocomplete="off">
     </form>
+    <!-- Same strip, same gesture and same "records what is off" rule as the
+         Tasks pane - see `applyChipGesture`. Unlike that one these re-ask the
+         server, because the search ranks and truncates across the types it
+         was given: filtering forty monsters down to nothing on the page would
+         hide items that were never sent. -->
+    <div class="chips" id="find-chips"></div>
     <div id="find-body" class="empty">Search the whole world, unlocked or not.</div>
   </section>
 

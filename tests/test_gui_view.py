@@ -854,3 +854,15 @@ def test_a_map_that_vanished_still_answers(tmp_path: Path) -> None:
 
     assert body["revision"] is None
     assert body["data"]
+
+
+def test_search_refuses_a_type_it_does_not_know(tmp_path: Path) -> None:
+    """**Refused rather than ignored.** `search` intersects with the types it
+    knows, so a typo would come back as an empty list - a filter that silently
+    does nothing, which is indistinguishable from "nothing matched"."""
+    ctx = Context(root=tmp_path, check_origin=False)
+
+    response = handle_request("GET", "/api/search", {"q": ["x"], "type": ["nonsense"]}, ctx)
+
+    assert response.status == 400
+    assert "unknown search type" in _body(response)["error"]
