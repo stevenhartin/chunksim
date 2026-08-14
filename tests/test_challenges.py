@@ -1504,6 +1504,59 @@ def test_a_tier_the_export_never_mentions_is_refused() -> None:
     assert "Extra" not in result.valid
 
 
+def _fishing_world(**over: Any) -> ChunkInfo:
+    return _chunk_info(
+        challenges={"Fishing": {"Catch a ~|shrimp|~": {"Level": 1, "Primary": True, **over}}}
+    )
+
+
+def test_a_trainable_skill_puts_its_pet_within_reach() -> None:
+    """A skilling pet is not dropped or sold - it falls out of doing the
+    skill, so upstream adds it to the item index directly. The tag is
+    `secondary-<skill>`, which keeps it from ever counting as a way to train
+    anything: nobody trains Fishing by fishing up a Heron."""
+    result = calc_challenges({}, {}, _EMPTY, _fishing_world(), rules={"Skilling Pets": True})
+
+    assert result.available_items["Heron"] == {"Manually Added*": "secondary-Fishing"}
+
+
+def test_no_pet_without_the_rule() -> None:
+    result = calc_challenges({}, {}, _EMPTY, _fishing_world(), rules={})
+
+    assert "Heron" not in result.available_items
+
+
+def test_a_task_flagged_nopet_earns_nothing() -> None:
+    result = calc_challenges(
+        {}, {}, _EMPTY, _fishing_world(NoPet=True), rules={"Skilling Pets": True}
+    )
+
+    assert "Heron" not in result.available_items
+
+
+def test_a_task_with_prose_earns_nothing_either() -> None:
+    """`Description` marks the quest and diary steps folded into a skill;
+    upstream excludes them from earning a pet the same way it excludes
+    `NoPet`."""
+    result = calc_challenges(
+        {}, {}, _EMPTY, _fishing_world(Description="Speak to the fisherman."),
+        rules={"Skilling Pets": True},
+    )
+
+    assert "Heron" not in result.available_items
+
+
+def test_an_untrainable_skill_earns_nothing() -> None:
+    """The pet needs the skill trainable, not merely present: a `Fishing`
+    challenge above Level 1 with no primary route leaves the skill untrainable
+    and the Heron out of reach."""
+    info = _chunk_info(challenges={"Fishing": {"Catch a ~|shark|~": {"Level": 76}}})
+
+    result = calc_challenges({}, {}, _EMPTY, info, rules={"Skilling Pets": True})
+
+    assert "Heron" not in result.available_items
+
+
 def test_a_backup_whose_parent_is_unknown_is_left_alone() -> None:
     info = _chunk_info(
         challenges={

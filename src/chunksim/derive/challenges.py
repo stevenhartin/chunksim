@@ -1796,6 +1796,68 @@ def _seed_items_with_outputs(
     return items
 
 
+#: `skillingPets` (worker.js:2726) - the pet each skill can drop while you
+#: train it. `Sailing` is in the table ahead of the skill itself.
+_SKILLING_PETS = {
+    "Fishing": "Heron",
+    "Mining": "Rock golem",
+    "Woodcutting": "Beaver",
+    "Agility": "Giant squirrel",
+    "Farming": "Tangleroot",
+    "Thieving": "Rocky",
+    "Runecraft": "Rift guardian",
+    "Sailing": "Soup",
+}
+
+
+def _seed_skilling_pets(
+    items: dict[str, dict[str, str]],
+    valid: Mapping[str, Mapping[str, Any]],
+    challenges: Mapping[str, Mapping[str, Any]],
+    rules: Mapping[str, Any],
+    trainable: Mapping[str, bool],
+) -> None:
+    """Make each skilling pet reachable where its skill is, in place. Port of
+    worker.js:2725-2748.
+
+    A pet is not dropped by a monster or sold anywhere - it falls out of
+    *doing the skill*, so upstream adds it to the item index directly under
+    the source key `Manually Added*` once two things hold: the skill is
+    trainable at all, and it has at least one valid challenge that is neither
+    flagged `NoPet` nor carrying a `Description`. The second is what keeps a
+    quest or diary step from earning you a pet - those are the entries with
+    prose attached.
+
+    The tag is `secondary-<skill>`, so the pet reads as a by-product
+    throughout: `_is_secondary` will not let a challenge that needs one count
+    as a way to train anything, which is right - nobody trains Fishing by
+    fishing up a Heron.
+
+    Upstream also *deletes* the key when the condition stops holding, and
+    tidies an item left with no sources. Nothing here needs that: the index is
+    rebuilt from `SourceIndex` every pass, so a pet that stops qualifying is
+    simply not re-added.
+
+    `trainable` is this pass's map, computed from the previous pass's
+    validity, where upstream asks `checkPrimaryMethod` against the pass's own
+    `newValids`. The fixed point closes that gap - the two agree by the time
+    it settles - and asking again here would repeat the most expensive sweep
+    in the module for an answer one pass stale at worst.
+    """
+    if rules.get("Skilling Pets") is not True:
+        return
+    for skill, pet in _SKILLING_PETS.items():
+        if not trainable.get(skill):
+            continue
+        skill_challenges = challenges.get(skill) or {}
+        earns_pet = any(
+            isinstance(entry, dict) and "NoPet" not in entry and "Description" not in entry
+            for entry in (skill_challenges.get(name) for name in valid.get(skill, {}))
+        )
+        if earns_pet:
+            items.setdefault(pet, {})["Manually Added*"] = f"secondary-{skill}"
+
+
 def _seed_objects_with_outputs(
     base_objects: Mapping[str, Mapping[str, Any]],
     valid: Mapping[str, Mapping[str, Any]],
@@ -2563,6 +2625,7 @@ def calc_challenges(
                 backlogged_sources or {},
                 backlog,
             )
+            _seed_skilling_pets(items, valid, challenges, rules, trainable)
             objects = _seed_objects_with_outputs(
                 source_index.objects, valid, challenges, backlog
             )
@@ -2605,6 +2668,7 @@ def calc_challenges(
             backlogged_sources or {},
             backlog,
         )
+        _seed_skilling_pets(reseeded, valid, challenges, rules, trainable)
         reseeded_objects = _seed_objects_with_outputs(
             source_index.objects, valid, challenges, backlog
         )
