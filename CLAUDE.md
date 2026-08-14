@@ -381,9 +381,18 @@ every subpackage — the third of which `tests/test_packaging.py` covers in mill
 installer. Both are built artefacts under `packaging/build/`, which is gitignored.
 
 ```
-pyproject-build && python packaging/build_windows.py   # -> packaging/build/payload (26.5 MB)
+packaging\build.bat                                    # on Windows: all three steps
+packaging\build.bat /payload                           # stop before Inno Setup
+
+pyproject-build && python packaging/build_windows.py   # the same, by hand
 iscc packaging/chunksim.iss                            # -> packaging/build/chunksim-<v>-setup.exe
 ```
+
+`build.bat` is the one file here that cannot be tested where it is written. Its syntax and its first
+two steps were run under `wine cmd`; the wheel build, the payload step and Inno Setup need a real
+Windows box. **`%ProgramFiles(x86)%` is read outside every parenthesised block on purpose** - the
+brackets in its *value* close an `if` block early, which is how a batch file that reads correctly
+fails only on the machines that have it set.
 
 **Embeddable CPython, not a freeze**, and the reason is this project's own shape: zero runtime
 dependencies means there is no graph to resolve, while `gui.RESOURCE_DIR` and
