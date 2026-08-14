@@ -36,8 +36,10 @@ re-exports, which would rebuild the god-module this layout replaced and put "whi
 back to "all of them". The single exception is `cli/__init__.py`, which re-exports `main` because
 `[project.scripts]` names `fray_claude.cli:main`.
 
-Planned: a shortest-path search ("fewest chunk unlocks to reach X" — `derive/graph.py` exists to
-serve it and has no other reason to be a separate module).
+Planned: a shortest-path search ("fewest chunk unlocks to reach X"). `derive/graph.py` is shaped for
+it but is **not** speculative — it is the substrate two ported upstream passes already run on
+(`findConnectedSections` in `sections.py`, `selectAllNeighborsCanvas` in `neighbours.py`), and
+`runs/simulate.py` builds one too. Treat it as load-bearing, not as scaffolding for the unwritten.
 
 The **heatmap** that used to sit beside it is built: the batch dialog's `Show heatmap` folds every
 run's `/api/timeline` into one mean per square and paints it in the timeline's own bands. It needed
@@ -161,6 +163,7 @@ The table says what each module **owns**; its docstring says why.
 | `remote/prayer.py`, `remote/farming.py` | Bones/altars, and the Farming calculator's crop table read as raw Lua. |
 | `derive/sections.py` | Which sections of the unlocked chunks are reachable, plus named-area unlocking and the one place this project overrules the export. |
 | `derive/sources.py` | What the unlocked chunks make available (`SourceIndex`), incl. `taskUnlocks` over items *and* entities. |
+| `derive/task_names.py` | `strip_task_markup`: the one place the raw task-name markup is undone, **display-only** and over challenge/task names alone. Split out of `challenges.py` so its thirteen callers need not import a convergence loop to print a word. |
 | `derive/challenges.py` | Which challenges are valid — a two-phase fixed point. **`BiS` is never evaluated here.** Also **where every derivation command spends its time**: read the static/dynamic gate split before touching the loop. |
 | `derive/bis.py` | Best-in-slot per (combat style, slot). Inherently **non-monotonic**: recomputed fresh per state, never accumulated. |
 | `derive/active_tasks.py` | Per-skill active/obsolete/completed classification. A *display* winner only — it never changes `ChallengeResult.valid`. |
@@ -170,7 +173,7 @@ The table says what each module **owns**; its docstring says why.
 | `derive/unlock.py` | What one candidate unlock adds, by diffing two `derive` calls. **Owns the project's attribution rule.** Additions-only. Records *eligibility* and the two boost clamps as well as validity — a diff of `valid` alone cannot see a skill becoming trainable, and ranks on the wrong number when a boost applies. |
 | `derive/delta.py` | The **symmetric** comparison of two derived states. `unlock.py` projects its primitives down to a one-directional view, and the two must agree. |
 | `derive/neighbours.py` | Which chunks are eligible to roll next, upstream's canvas numbering, and the `sectionsLimits` gate. |
-| `derive/graph.py` | The export's `sections` branch as a **directed** graph. Shaped for the not-yet-written pathfinding search. |
+| `derive/graph.py` | The export's `sections` branch as a **directed** graph — the shared substrate `sections.py`, `neighbours.py` and `runs/simulate.py` all build on, and shaped for the not-yet-written pathfinding search besides. |
 | `derive/search.py` | World-wide fuzzy search over the *raw* export — a strict superset of what `fray sources` can list. |
 | `costing/heuristics.py` | Every hand-correctable number, and the `defaults < scraped < overrides` merge. Owns the joins and their `exact`/`contained` provenance; **no fuzzy tier, by measurement.** |
 | `costing/estimate.py` | The four buckets over the **active** set. **Costs the unique *item*, not the task**, and **clamps per source**. Owns the item walk and the gates on it, and records the `Heuristics` entries each number was read off — where they are read, never reconstructed. |
@@ -268,7 +271,7 @@ fray derived [list [--verbose]] | derived clean [--older-than DAYS] [--all]
 fray search   QUERY [--type T ...] [--limit N]
 python -m fray_claude ...    # same CLI without the console script
 fray-gui [--map ID] [--compare ID] [--port N] [--host H] [--allow-host H] [--keep-alive]
-         [--no-browser] [--tab]
+         [--no-browser] [--tab] [--timeout S]
 mypy                         # strict, over src/ and tests/; run from the repo root
 .venv/bin/pytest             # whole suite
 ```
@@ -279,9 +282,12 @@ Env vars: `FRAY_CHUNKINFO` (an export, or `fray chunkinfo`'s envelope around one
 
 **Flag conventions, so each means one thing everywhere.** `--export-json PATH` (or `-` for stdout) and
 `--recompute` are carried by the nine *derivation* subcommands and nothing else (`--export-json` also
-by `maps list`), not by the four I/O ones. `--limit` defaults to `None` — full output, so piping just
-works — except for `search`, where it is `10`. `fray diff` is the one subcommand taking two maps,
-hence `--map1`/`--map2`; it reports **both directions**, which `fray unlock` deliberately does not.
+by `maps list`), not by the five I/O ones. `--limit` defaults to `None` — full output, so piping just
+works — except for `search`, where it is `10`. **`--map ID` is carried by every subcommand that reads a
+cached map**, so the usage lines above name it only where the map *is* the point; `fray diff` is the
+one taking two, hence `--map1`/`--map2`, and it reports **both directions**, which `fray unlock`
+deliberately does not. **`--chunkinfo PATH` is the per-invocation form of `FRAY_CHUNKINFO`** and rides
+along on all ten subcommands that parse the export.
 
 **`cache/` is sorted by purpose, and `cache/maps/` holds maps and nothing else holds maps.** That
 sentence is the layout's whole point: `list_maps` used to glob `cache/*.json` and skip the names it
@@ -295,14 +301,16 @@ cache/maps/edited/<batch>/…        # made by hand: `fray unlock --cache-map`, 
 cache/reference/                   # chunkinfo, tasks_map, wiki_rates, wiki_recipes, tile_version
 cache/derived/                     # pipeline.derive + dps_bridge.enrich results, keyed by content
 cache/overrides/<map_id>.json      # heuristic corrections belonging to one map
-cache/assets/                      # section masks, skill icons
+cache/assets/                      # section masks, skill icons, CA tier icons
 cache/gui/                         # window.json, settings.json, and the browser profile
 ```
 
 A batch of any computed kind holds `batch.json` (seeds, rolls, `batch_id`, and the payload it rolled
 from) beside one directory per run holding `map.json`, `rolls.json`, `run.json` and `timeline.json`.
 **A name is claimed across every kind**, so `--map foo` never has to guess which directory meant it.
-`cache/` is gitignored, so a fresh clone has no data until `fray fetch`/`fray chunkinfo` run.
+`cache/` is gitignored, so a fresh clone has no data until `fray fetch`/`fray chunkinfo` run — and
+so is `/*.json` at the repo root, which is where `--export-json` output lands when it is aimed at
+the checkout rather than `/tmp` or stdout. A stray `tasks.json` there is that, not project data.
 
 **The estimator's numbers live in three places and only two are in `cache/`.** `fray heuristics`
 writes the scrape to `cache/reference/wiki_rates.json` (refetchable, gitignored); hand-written

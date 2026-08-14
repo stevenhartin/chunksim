@@ -8,11 +8,12 @@ elsewhere would rebuild the god-module this split exists to retire, and put
 "which tests do I run" back to "all of them".
 
 Everything else lives beside its own parser: `app.py` (the parser and `main`),
-`common.py` (what the handlers share), `args.py` (the flags several
-subcommands carry), `render.py`, and one module per family - `io_commands`,
-`listing`, `search`, `unlock`, `diff`, `estimate`, `maps`, `derived`,
-`simulate`. Changing a flag edits one file, and `tests/test_cli_<family>.py`
-is the file that checks it.
+`common.py` (what the handlers share), `render.py` (the shared terminal
+formatting), and one module per family - `io_commands`, `listing`, `search`,
+`unlock`, `diff`, `estimate`, `neighbours`, `maps`, `derived`, `simulate`.
+There is deliberately no shared `args.py`: a flag several families carry is
+declared in each of their `add_parser` blocks, so changing one edits one file,
+and `tests/test_cli_<family>.py` is the file that checks it.
 
 New *logic* still goes in a pure module, not here. That rule did not change
 when this stopped being one file.

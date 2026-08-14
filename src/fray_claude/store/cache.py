@@ -22,10 +22,11 @@ way. A directory cannot be forgotten::
     cache/maps/fetched/<id>.json      # from Firebase; only `fray fetch` writes one
     cache/maps/simulated/<batch>/     # rolled by `fray simulate`
     cache/maps/edited/<batch>/        # made by hand: `fray unlock --cache-map`, or the GUI
-    cache/reference/                  # chunkinfo, tasks_map, wiki_rates, tile_version
+    cache/reference/                  # chunkinfo, tasks_map, wiki_rates, wiki_recipes,
+                                      # tile_version
     cache/derived/                    # `pipeline.derive` results, content-keyed
-    cache/assets/                     # section masks, skill icons
-    cache/gui/                        # window.json, and the browser profile
+    cache/assets/                     # section masks, skill icons, CA tier icons
+    cache/gui/                        # window.json, settings.json, browser profile
 
 A batch, whichever computed kind::
 
@@ -198,9 +199,9 @@ TILE_VERSION_ENV_VAR = "FRAY_TILE_VERSION"
 TILE_VERSION_MAX_AGE_HOURS = 24.0
 
 #: Subdirectories of `assets/` holding the many-small-files kinds: one
-#: 192x192 mask per (chunk, section), and one icon per skill. Both are fetched
-#: lazily, one file at a time, because a chunk has a handful of sections and
-#: nobody opens all 1,534 masks.
+#: 192x192 mask per (chunk, section), one icon per skill, and one per Combat
+#: Achievement tier. All are fetched lazily, one file at a time, because a
+#: chunk has a handful of sections and nobody opens all 1,534 masks.
 SECTION_OVERLAY_DIR = "section_overlays"
 SKILL_ICON_DIR = "skill_icons"
 CA_ICON_DIR = "ca_icons"

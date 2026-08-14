@@ -20,11 +20,11 @@ one of them:
   summary rather than interleaving with it, so piping stays clean. Carried by
   the nine derivation subcommands plus `maps list`, whose output is a
   reduction over the cache rather than a cache file; deliberately not by the
-  four I/O ones.
-- **`--limit`** defaults to `None` - full output - for `sections`, `sources`,
-  `tasks`, `neighbours` and `diff`, so piping to `grep` or `less` needs no
-  flag; but to `10` for `search`, where the tail of a fuzzy ranking is noise
-  rather than data.
+  five I/O ones.
+- **`--limit`** defaults to `None` - full output - for `estimate`, `sections`,
+  `sources`, `tasks`, `neighbours` and `diff`, so piping to `grep` or `less`
+  needs no flag; but to `10` for `search`, where the tail of a fuzzy ranking is
+  noise rather than data.
 """
 
 
