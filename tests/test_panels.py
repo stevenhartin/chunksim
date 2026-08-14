@@ -699,3 +699,70 @@ def test_the_marked_name_is_the_display_name_before_the_spans_were_flattened() -
         "Slay a mutated ~|zygomite#Level 86|~"
     )
     assert panels._marked_name("~|Varrock Diary#Elite|~ Task 3") == "Task 3"
+
+
+@pytest.mark.real_cache
+def test_a_skill_row_says_the_level_it_needs_and_what_a_boost_covers() -> None:
+    """**The requirement alone would send you training levels you do not need.**
+
+    Upstream's own check is `Level - bestBoost` (`boosts.real_level`,
+    worker.js:8462), so the reference map's Slayer task wants 92 and is doable
+    at 87 holding a +5. Printing 92 is wrong by five levels; printing 87 alone
+    does not say why.
+
+    Needs the real cache: the boost depends on this map's rules and on which
+    boost items it can reach, which is a derivation rather than a fixture.
+    """
+    from chunksim.derive.pipeline import derive, load_map_state
+    from chunksim.model.chunkinfo import ChunkInfo
+    from chunksim.store.cache import data_root, read_cache, read_chunkinfo
+
+    info = ChunkInfo(read_chunkinfo())
+    state, unlocked = load_map_state(read_cache("fray", data_root())["data"], info, {})
+    panel = panels.task_panel(derive(state, unlocked), state)
+
+    skills = [s for s in panel["sections"] if s["key"] == "skills"][0]
+    rows = [row for group in skills["groups"] for row in group["active"]]
+    assert rows, "the reference map should have an active skill task"
+
+    with_levels = [row for row in rows if "requires" in row]
+    assert with_levels, "a levelled skill task should carry its requirement"
+    for row in with_levels:
+        need = row["requires"]
+        assert need["have"] + need["boost"] == need["level"]
+        assert need["have"] >= 1
+
+
+@pytest.mark.real_cache
+def test_a_skill_row_drops_the_qualifier_that_names_a_variant() -> None:
+    """`Araxyte#Level 96` is the export naming *which* araxyte the entry is
+    about, and the task is to slay any of them - so beside a required Slayer
+    level it reads as a second, contradictory requirement. It survives in
+    `key`, which is the ledger's and what a search would match."""
+    from chunksim.derive.pipeline import derive, load_map_state
+    from chunksim.model.chunkinfo import ChunkInfo
+    from chunksim.store.cache import data_root, read_cache, read_chunkinfo
+
+    info = ChunkInfo(read_chunkinfo())
+    state, unlocked = load_map_state(read_cache("fray", data_root())["data"], info, {})
+    panel = panels.task_panel(derive(state, unlocked), state)
+
+    skills = [s for s in panel["sections"] if s["key"] == "skills"][0]
+    rows = [row for group in skills["groups"] for row in group["active"]]
+
+    assert not any("#" in row["name"] for row in rows), "a skills row still shows a qualifier"
+    assert not any("#" in row["marked"] for row in rows)
+    assert any("#" in row["key"] for row in rows), "the ledger key must keep the export's spelling"
+
+
+def test_without_a_state_a_skill_row_says_nothing_about_levels() -> None:
+    """**Silence rather than the unboosted number.** How much of a requirement
+    a boost covers is a fact about this map's rules and items; without a
+    `MapState` there is no honest answer, and printing 92 as though it were
+    what you need would be a wrong one."""
+    panel = panels.task_panel(_derived(skills={"Slayer": {"active": "Slay a ~|thing|~"}}))
+
+    skills = [s for s in panel["sections"] if s["key"] == "skills"][0]
+    rows = [row for group in skills["groups"] for row in group["active"]]
+
+    assert rows and all("requires" not in row for row in rows)

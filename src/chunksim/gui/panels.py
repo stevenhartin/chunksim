@@ -49,7 +49,8 @@ from typing import Any
 from chunksim.derive.task_names import strip_task_markup
 from chunksim.derive.active_tasks import _wins_tie
 from chunksim.derive.other_tasks import CATEGORIES, group_of
-from chunksim.derive.pipeline import Derived
+from chunksim.derive.boosts import best_boost
+from chunksim.derive.pipeline import Derived, MapState
 from chunksim.model.summary import _mapping
 
 #: A quest step token, split so `2c10` sorts after `2c4` rather than before
@@ -272,6 +273,17 @@ def _section(
     }
 
 
+def _unqualified(name: str) -> str:
+    """A name without the export's `#` qualifier, markup preserved.
+
+    `~|Araxyte#Level 96|~` becomes `~|Araxyte|~`. Display only, and only where
+    the qualifier is noise - `gui/resources/app.js`'s `qualified` turns it into
+    parentheses everywhere else, which is right when it names a distinct thing
+    and wrong when it names a variant of the one being asked for.
+    """
+    return re.sub(r"#[^|]*", "", name)
+
+
 def _subject(name: str) -> str:
     """The marked-up subject of a task name, or the whole name without markup.
 
@@ -411,7 +423,48 @@ def _bis_groups(bis: Mapping[str, Any]) -> list[dict[str, Any]]:
     return [_group(style, rows["active"], rows["completed"]) for style, rows in sorted(grouped.items())]
 
 
-def _skill_groups(classification: Mapping[str, Any]) -> list[dict[str, Any]]:
+def _skill_requirement(
+    skill: str, key: str, derived: Derived, state: MapState | None
+) -> dict[str, int] | None:
+    """What level a skills task needs, split into what you must *have* and
+    what a boost can make up.
+
+    **The requirement alone is misleading and the boost is what fixes it.**
+    Upstream's own check is `Level - (bestBoost + crystalSaw)`
+    (`boosts.real_level`, worker.js:8462), so a Slayer 92 task is one you can
+    do at 87 holding something worth +5 - and a panel that printed 92 would
+    have you train five levels you do not need.
+
+    `None` when there is no numeric level, or when no `state` was given: the
+    boost is a fact about *this map's* rules and items, so without one the
+    honest answer is to say nothing rather than print the unboosted number as
+    though it were the requirement.
+    """
+    if state is None:
+        return None
+    level = derived.challenges.valid.get(skill, {}).get(key)
+    if not isinstance(level, (int, float)) or isinstance(level, bool):
+        return None
+    challenge = _mapping(state.chunk_info.challenges.get(skill, {}), key)
+    best, saw = best_boost(
+        skill,
+        key,
+        challenge,
+        float(level),
+        rules=state.rules,
+        chunk_info=state.chunk_info,
+        items=derived.challenges.available_items,
+        source_index=derived.source_index,
+    )
+    boost = best + saw
+    return {"level": int(level), "have": int(max(level - boost, 1)), "boost": int(boost)}
+
+
+def _skill_groups(
+    classification: Mapping[str, Any],
+    derived: Derived | None = None,
+    state: MapState | None = None,
+) -> list[dict[str, Any]]:
     """All 21 skills as **one** list, each row labelled by its skill's icon.
 
     One group rather than 21 headings: a skill contributes at most one active
@@ -424,10 +477,19 @@ def _skill_groups(classification: Mapping[str, Any]) -> list[dict[str, Any]]:
     for skill, entry in sorted(classification.items()):
         current = entry.get("active")
         if isinstance(current, str) and current:
-            active.append(
-                _entry(current, _cased(_subject(current)), skill, icon=skill,
-                       category=skill, marked=_marked_subject(current))
-            )
+            row = _entry(current, _cased(_subject(current)), skill, icon=skill,
+                         category=skill, marked=_marked_subject(current))
+            # **The `#` qualifier goes on a skills row.** `Araxyte#Level 96`
+            # is the export naming *which* araxyte the entry is about, and the
+            # task is to slay any of them - so printing "(Level 96)" beside a
+            # required Slayer level reads as a second requirement, and a
+            # contradictory one. It stays in `key`, which is the ledger's.
+            row = {**row, "name": _unqualified(row["name"]),
+                   "marked": _unqualified(row["marked"])}
+            need = _skill_requirement(skill, current, derived, state) if derived else None
+            if need is not None:
+                row = {**row, "requires": need}
+            active.append(row)
         for done in entry.get("completed", ()):
             completed.append(
                 _entry(done, _cased(_subject(done)), skill, icon=skill,
@@ -656,17 +718,28 @@ def roll_panel(
     return {"sections": sections}
 
 
-def task_panel(derived: Derived) -> dict[str, Any]:
+def task_panel(derived: Derived, state: MapState | None = None) -> dict[str, Any]:
     """Every task the panel shows, in one shape.
 
     Ordered as the panel reads: what you are training now, what you are
     hunting, then the three long-tail categories. `valid` is deliberately
     absent - it is 2,700 entries meaning "the requirements are met", which is
     not a to-do list and drowns one if put in the same panel.
+
+    **`state` is optional and only skill levels need it.** The level a task
+    wants is in `Derived`; how much of it a boost can supply is a fact about
+    this map's rules and items, which only `MapState` has. Without one the
+    rows come back without a `requires` and the page prints no level - saying
+    nothing rather than printing the unboosted number as if it were the
+    requirement.
     """
     other = derived.other_tasks.as_dict()
     sections = [
-        _section("skills", "Skills", _skill_groups(derived.task_classification.as_dict())),
+        _section(
+            "skills",
+            "Skills",
+            _skill_groups(derived.task_classification.as_dict(), derived, state),
+        ),
         _section("bis", "Best in slot", _bis_groups(derived.bis.as_dict())),
     ]
     for key, label, groups in (

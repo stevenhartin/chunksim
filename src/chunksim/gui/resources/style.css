@@ -922,6 +922,18 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .type-icon[data-hold="unlocked"] { color: var(--gain); }
 .type-icon[data-hold="reachable"] { color: var(--reachable); }
 
+/* **The level a task wants, before the name it wants it for.** Dim because it
+   is the condition rather than the thing - the name is what you are looking
+   for - and `tabular-nums` rather than mono, which is the rule the rest of
+   this file follows: a figure aligns in the sans face now, and mono is kept
+   for identity. */
+.req {
+  font-size: var(--t-note);
+  font-variant-numeric: tabular-nums;
+  color: var(--dim);
+  flex: none;
+}
+
 /* The same three answers on a pill. `.pill.reachable` is the old name for
    "available" and stays for the callers still using it; `data-hold` is the
    vocabulary the icons, the chunk cards and this all share. */

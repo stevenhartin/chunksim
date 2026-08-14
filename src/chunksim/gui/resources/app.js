@@ -3689,8 +3689,19 @@ function renderTaskGroups(sections, side, keyPrefix, { tickable = false } = {}) 
         /* The row shows the subject; the tooltip shows the whole task as the
          * export writes it, which is what `chunksim tasks` prints and what you
          * would search for. */
+        /* **`[87+5]` is "have 87, boost the last 5", not "level 87".** The
+         * requirement is 92 and upstream's own check is
+         * `Level - bestBoost` (`boosts.real_level`), so a row printing 92
+         * would have you train five levels you do not need - and one printing
+         * 87 alone would not say why. The tooltip spells both out. */
+        const need = row.requires;
+        const level = !need ? ""
+          : tmpl`<span class="req">[${String(need.have)}${
+              need.boost ? "+" + String(need.boost) : ""}]</span>`;
         const tip = tmpl`<b>${raw(marked(row.name))}</b>`
-          + (row.note ? tmpl`<span class="sub">${raw(marked(row.note))}</span>` : "")
+          + (need ? tmpl`<span class="sub">${row.note || ""} ${String(need.level)}${
+              need.boost ? ` - ${need.have} with a +${need.boost} boost` : ""}</span>` : "")
+          + (row.note && !need ? tmpl`<span class="sub">${raw(marked(row.note))}</span>` : "")
           + tmpl`<span class="hint">${raw(marked(row.key))}</span>`;
         /* **The row is the gesture.** Ticking is what a person does with a
          * to-do list, so the list is what they click - and `data-task`/
@@ -3701,7 +3712,7 @@ function renderTaskGroups(sections, side, keyPrefix, { tickable = false } = {}) 
         const hooks = tickable
           ? tmpl` data-task="${row.key}" data-category="${row.category || ""}"`
           : "";
-        return tmpl`<li class="task${pending}" data-tip="${tip}"${raw(hooks)}>${raw(badge)}<span class="name">${raw(linked(row.marked || row.name))}</span>
+        return tmpl`<li class="task${pending}" data-tip="${tip}"${raw(hooks)}>${raw(badge)}${raw(level)}<span class="name">${raw(linked(row.marked || row.name))}</span>
           <span class="sub">${plain(slot ? "" : row.note || "")}</span></li>`;
       }) + "</ul>";
     }

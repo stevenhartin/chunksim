@@ -439,7 +439,11 @@ def handle_request(
             at = _state_at(query, ctx, map_id)
             if isinstance(at, Response):
                 return at
-            return _json({"map_id": map_id, "step": at.step, **task_panel(at.derived)})
+            # The state as well as the derivation: a skill task's level needs
+            # both, and the panel says nothing rather than guessing.
+            return _json(
+                {"map_id": map_id, "step": at.step, **task_panel(at.derived, at.state)}
+            )
 
         if path == "/api/reachable":
             # **The expensive path, and asked for separately.** The map view is
