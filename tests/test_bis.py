@@ -544,12 +544,12 @@ def test_every_bis_pick_matches_the_live_oracle(
     dismissed the rest as a stale snapshot. They were not stale - the tool
     was wrong. Assert all of them, on every map.
     """
-    from chunksim.store.cache import list_maps, project_root, read_cache
+    from chunksim.store.cache import data_root, list_maps, read_cache
     from chunksim.model.firebase import decode_challenge_keyed
     from chunksim.derive.pipeline import derive, load_map_state
 
     info, tasks_map = real_export, real_tasks_map
-    root = project_root()
+    root = data_root()
     equipment = info.data["equipment"]
     fetched = [m.map_id for m in list_maps(root) if m.kind == "fetched"]
     assert fetched, "no fetched maps cached to compare against"

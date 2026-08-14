@@ -550,15 +550,15 @@ def _replay_and_compare(
     from chunksim.derive.pipeline import derive, load_map_state
     from chunksim.derive.unlock import delta_from
     from chunksim.gui.routes_view import _raise_ceiling
-    from chunksim.store.cache import project_root, read_base_payload, read_rolls
+    from chunksim.store.cache import data_root, read_base_payload, read_rolls
 
     run = "verf-sim/run-001"
-    base = read_base_payload(run, project_root())
+    base = read_base_payload(run, data_root())
     if base is None:
         pytest.skip(f"{run} records no base payload")
     rolls = [
         entry["chunk_id"]
-        for entry in read_rolls(run, project_root())
+        for entry in read_rolls(run, data_root())
         if isinstance(entry.get("chunk_id"), str)
     ][:limit]
     assert rolls, "the run rolled nothing to compare"

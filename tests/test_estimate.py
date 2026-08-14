@@ -2001,16 +2001,16 @@ def test_every_knob_a_real_estimate_emits_names_a_real_override_branch(
     """
     from chunksim.costing.heuristics import CONFIG_BRANCHES
     from chunksim.costing.inputs import estimate_answer
-    from chunksim.store.cache import project_root
+    from chunksim.store.cache import data_root
     from chunksim.store.cache import file_digest
     from chunksim.store.derived_cache import Digests
     from chunksim.store import cache as cache_module
 
     state, unlocked = real_state
     digests = Digests(
-        chunkinfo=file_digest(cache_module.chunkinfo_source(None, project_root())),
+        chunkinfo=file_digest(cache_module.chunkinfo_source(None, data_root())),
         tasks_map=file_digest(
-            cache_module.blob_path(cache_module.TASKS_MAP_BLOB_NAME, project_root())
+            cache_module.blob_path(cache_module.TASKS_MAP_BLOB_NAME, data_root())
         ),
     )
     answer = estimate_answer(state, unlocked, real_derived, digests)

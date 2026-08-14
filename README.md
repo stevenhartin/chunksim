@@ -420,9 +420,14 @@ Either way, the target machine only needs Python 3.14+ — there's nothing else 
 
 ## Usage (once `chunksim` is installed)
 
-`chunksim` stores its cache in a `cache/` directory. If you're running it from inside a checkout of this
-repository (or any directory tree containing a `pyproject.toml`), that's where `cache/` lands;
-otherwise it's created in whatever directory you're in when you run `chunksim`.
+`chunksim` stores everything in a `cache/` directory, and where that lands depends on how you're
+running it. Inside a checkout of this repository, it's the checkout — so your data sits beside the
+code you're changing. Installed, it's your own data directory: `%LOCALAPPDATA%\chunksim` on Windows,
+`~/Library/Application Support/chunksim` on macOS, `~/.local/share/chunksim` elsewhere. Set
+`CHUNKSIM_CACHE` to put it anywhere you like.
+
+Despite the name it isn't disposable: fetched maps re-download, but simulated batches and hand-edited
+maps are your own work and nothing can recompute them.
 
 1. **Fetch your map's live state** (replace `your-map-id` with your actual source-chunk map id —
    it's the `?<map-id>` part of your chunk-picker URL, and `--map` is required):

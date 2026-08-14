@@ -470,9 +470,9 @@ def test_most_of_the_exports_cast_challenges_have_a_rune_cost(real_export: Chunk
     miss is the right answer there, not a gap.
     """
     from chunksim.costing.heuristics import load
-    from chunksim.store.cache import project_root, read_blob
+    from chunksim.store.cache import data_root, read_blob
 
-    priced = load(read_blob("wiki_rates", project_root())["data"]).spell_costs
+    priced = load(read_blob("wiki_rates", data_root())["data"]).spell_costs
     casts = {n for n in real_export.challenges["Magic"] if n.startswith("Cast ")}
 
     assert len(casts) == 214

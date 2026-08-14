@@ -45,11 +45,16 @@ _CHUNKINFO: dict[str, Any] = {
 
 
 @pytest.fixture
-def both_apps(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """One cache root that `fray` and `chunksim-gui` both answer against."""
+def both_apps(project: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """One cache root that `chunksim` and `chunksim-gui` both answer against.
+
+    Takes `project` rather than building a throwaway checkout by hand: what
+    `cache.checkout_root` accepts is knowledge one fixture should hold, and a
+    near-miss here would not fail, it would quietly resolve to the developer's
+    own data directory.
+    """
+    tmp_path = project
     monkeypatch.delenv("CHUNKSIM_CHUNKINFO", raising=False)
-    (tmp_path / "pyproject.toml").write_text("", encoding="utf-8")
-    monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
         "chunksim.cli.io_commands.fetch_map", lambda map_id, timeout=30.0: _PAYLOAD
     )

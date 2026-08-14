@@ -24,11 +24,13 @@ page names the *state* and never the hue. A user-editable band *count* would
 mean a user-editable palette, which puts colour literals back into the page. So
 the names and the thresholds move and the count does not.
 
-**Per checkout, not per human.** `cache/` is resolved from
-`cache.project_root()` and is gitignored, so two clones of this repo have two
-sets of preferences and neither travels. That is the cost of keeping to the
-documented layout; a genuinely per-user store would be the first `Path.home()`
-in the project.
+**Per checkout when you are working on this, per user when you installed it.**
+`cache/` is resolved by `cache.data_root()`, so two clones of this repo have two
+sets of preferences and neither travels - while an installed `chunksim` keeps
+one set under the platform's own data directory. This docstring used to say a
+genuinely per-user store would be the first `Path.home()` in the project;
+`cache.user_data_root()` is now that call, and it arrived because an installed
+program cannot keep its data in whatever directory it was run from.
 """
 
 from __future__ import annotations

@@ -20,7 +20,7 @@ RUN = "verf-sim/run-001"
 def run_length() -> int:
     """How many rolls `RUN` holds, or a skip when it is not cached."""
     try:
-        return len(cache.read_rolls(RUN, cache.project_root()))
+        return len(cache.read_rolls(RUN, cache.data_root()))
     except cache.CacheMissError:  # pragma: no cover - depends on the developer's cache
         return pytest.skip(f"{RUN} is not in this checkout's cache")
 
@@ -43,7 +43,7 @@ def test_the_last_step_is_the_map_itself(run_length: int) -> None:
     a label. `load_step` commits that ledger for the same reason
     `simulate.simulated_payload` does.
     """
-    derivations = Derivations(root=cache.project_root())
+    derivations = Derivations(root=cache.data_root())
 
     whole = derivations.load(RUN)
     last = derivations.load_step(RUN, run_length)
@@ -56,7 +56,7 @@ def test_the_last_step_is_the_map_itself(run_length: int) -> None:
 def test_a_step_holds_what_the_run_had_rolled_by_then(run_length: int) -> None:
     """Step k is the base plus k rolls - so the unlocked set only grows, and
     step 0 is the world the run started from rather than the one it reached."""
-    derivations = Derivations(root=cache.project_root())
+    derivations = Derivations(root=cache.data_root())
 
     sizes = [len(derivations.load_step(RUN, step).unlocked) for step in (0, 1, run_length)]
 
@@ -69,7 +69,7 @@ def test_a_step_holds_what_the_run_had_rolled_by_then(run_length: int) -> None:
 def test_a_step_outside_the_run_is_refused(run_length: int) -> None:
     """Raised rather than clamped: a caller asking for roll 99 of a 50-roll
     run has a bug, and answering roll 50 hides it."""
-    derivations = Derivations(root=cache.project_root())
+    derivations = Derivations(root=cache.data_root())
 
     with pytest.raises(IndexError):
         derivations.load_step(RUN, run_length + 1)
@@ -81,7 +81,7 @@ def test_a_step_outside_the_run_is_refused(run_length: int) -> None:
 def test_a_step_records_which_one_it_answered(run_length: int) -> None:
     """`DerivedState.step` is how a route says what it was about; the map's
     own load leaves it `None`, which is the difference the panels turn on."""
-    derivations = Derivations(root=cache.project_root())
+    derivations = Derivations(root=cache.data_root())
 
     assert derivations.load_step(RUN, 1).step == 1
     assert derivations.load(RUN).step is None

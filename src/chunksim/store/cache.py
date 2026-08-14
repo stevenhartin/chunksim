@@ -69,6 +69,7 @@ import hashlib
 import json
 import os
 import re
+import sys
 import shutil
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -79,7 +80,18 @@ from typing import Any
 from chunksim.remote.api import map_url
 
 CACHE_DIR_NAME = "cache"
+
+#: Both halves are the test, and the second one is why. `pyproject.toml` alone
+#: says "some Python project", which is fine for a developer standing in this
+#: repo and wrong for an installed `chunksim` that happens to be run from
+#: inside someone else's checkout - that would drop a `cache/` into a stranger's
+#: project. `src/chunksim/` says *this* project.
 _ROOT_MARKER = "pyproject.toml"
+_CHECKOUT_MARKER = ("src", "chunksim")
+
+#: Names the directory `cache/` is created under, for anyone who wants it
+#: somewhere else - a portable install on a stick, or a second working set.
+CACHE_ENV_VAR = "CHUNKSIM_CACHE"
 
 #: **`cache/maps/` holds maps and nothing else holds maps.** That sentence is
 #: the whole point of the layout, and it replaced a denylist: `list_maps` used
@@ -248,22 +260,69 @@ class CacheMissError(Exception):
     """No usable cached copy exists for the requested map or blob."""
 
 
-def project_root(start: Path | None = None) -> Path:
-    """Nearest ancestor holding `pyproject.toml`, falling back to `start`.
+def checkout_root(start: Path | None = None) -> Path | None:
+    """The `chunksim` source checkout `start` sits inside, or `None`.
 
-    Walking up means the cache resolves to the same place whether the CLI is run
-    from the repo root or a subdirectory.
+    Walking up means a developer gets the same cache from the repo root and
+    from a subdirectory. Requiring `src/chunksim/` beside the `pyproject.toml`
+    means an *installed* `chunksim` run from inside an unrelated Python project
+    does not decide that project is its home.
     """
     origin = (start or Path.cwd()).resolve()
     for candidate in (origin, *origin.parents):
-        if (candidate / _ROOT_MARKER).is_file():
+        if (candidate / _ROOT_MARKER).is_file() and candidate.joinpath(*_CHECKOUT_MARKER).is_dir():
             return candidate
-    return origin
+    return None
+
+
+def user_data_root() -> Path:
+    """Where an installed `chunksim` keeps its data, per platform.
+
+    **Data, not cache**, and the distinction is the point: `cache/` is a
+    misleading name for a directory holding simulated batches and hand-edited
+    maps, which are the user's own work and cannot be recomputed from anything.
+    So this is `%LOCALAPPDATA%` and `XDG_DATA_HOME` rather than
+    `XDG_CACHE_HOME`, which a system cleaner is entitled to empty.
+
+    **Local rather than roaming on Windows** for the same reason in reverse:
+    the fetched export alone is 10 MiB and a batch of fifty runs is far more,
+    and none of it is worth pushing across a network at every login.
+    """
+    if sys.platform == "win32":
+        local = os.environ.get("LOCALAPPDATA")
+        base = Path(local) if local else Path.home() / "AppData" / "Local"
+        return base / "chunksim"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "chunksim"
+    xdg = os.environ.get("XDG_DATA_HOME")
+    # The spec says a relative XDG path is to be ignored, not resolved.
+    base = Path(xdg) if xdg and Path(xdg).is_absolute() else Path.home() / ".local" / "share"
+    return base / "chunksim"
+
+
+def data_root(start: Path | None = None) -> Path:
+    """The directory `cache/` and `heuristics/` hang off, for this invocation.
+
+    Three answers in order, and each is a different question being asked:
+    `CHUNKSIM_CACHE` is "put it here"; a checkout is "you are working on this,
+    so keep the data beside the code you are changing"; and otherwise this is
+    an installed program, whose data belongs to the user rather than to
+    whatever directory their shell happened to be in.
+
+    **That last branch is the one that changed.** It used to be the working
+    directory, which is harmless in a checkout and wrong everywhere else - an
+    installed `chunksim` scattered a `cache/` wherever it was run from, and on
+    Windows would try to write one under `Program Files`.
+    """
+    named = os.environ.get(CACHE_ENV_VAR)
+    if named:
+        return Path(named).expanduser().resolve()
+    return checkout_root(start) or user_data_root()
 
 
 def cache_root(root: Path | None = None) -> Path:
     """`cache/` itself. Everything below is a subdirectory of exactly one kind."""
-    return (root or project_root()) / CACHE_DIR_NAME
+    return (root or data_root()) / CACHE_DIR_NAME
 
 
 def maps_root(root: Path | None = None) -> Path:
@@ -598,7 +657,7 @@ def read_blob(name: str, root: Path | None = None, *, hint: str | None = None) -
 
 def overrides_path(root: Path | None = None) -> Path:
     """The checked-in file holding hand-written heuristic corrections."""
-    return (root or project_root()) / HEURISTICS_DIR_NAME / OVERRIDES_FILE_NAME
+    return (root or data_root()) / HEURISTICS_DIR_NAME / OVERRIDES_FILE_NAME
 
 
 def read_overrides(root: Path | None = None) -> dict[str, Any]:
@@ -648,7 +707,7 @@ def map_overrides_path(map_id: str, root: Path | None = None) -> Path:
     already trusts. A map id is *not* a path fragment until that has run.
     """
     name, run = split_map_id(map_id)
-    directory = (root or project_root()) / CACHE_DIR_NAME / MAP_OVERRIDES_DIR_NAME
+    directory = (root or data_root()) / CACHE_DIR_NAME / MAP_OVERRIDES_DIR_NAME
     return directory / name / f"{run}.json" if run else directory / f"{name}.json"
 
 

@@ -55,7 +55,10 @@ from chunksim.store.cache import (
     write_tile_version,
     write_derived,
     list_maps,
-    project_root,
+    CACHE_ENV_VAR,
+    checkout_root,
+    data_root,
+    user_data_root,
     read_blob,
     read_cache,
     read_chunkinfo,
@@ -132,17 +135,63 @@ def test_read_cache_rejects_an_envelope_without_a_data_object(
         read_cache("fray", root=tmp_path)
 
 
-def test_project_root_walks_up_to_the_marker(tmp_path: Path) -> None:
+def test_checkout_root_walks_up_to_the_marker(tmp_path: Path) -> None:
+    """From a subdirectory, a developer gets the same root as from the top."""
     (tmp_path / "pyproject.toml").write_text("", encoding="utf-8")
     nested = tmp_path / "src" / "chunksim"
     nested.mkdir(parents=True)
 
-    assert project_root(nested) == tmp_path.resolve()
+    assert checkout_root(nested) == tmp_path.resolve()
 
 
-def test_project_root_falls_back_to_the_starting_directory(tmp_path: Path) -> None:
-    # tmp_path has no ancestor holding a pyproject.toml.
-    assert project_root(tmp_path) == tmp_path.resolve()
+def test_a_pyproject_alone_is_not_this_checkout(tmp_path: Path) -> None:
+    """**The guard against an installed chunksim adopting a stranger's project.**
+
+    `pyproject.toml` says "some Python project", which every Python developer
+    has directories full of. Without the second marker, running the installed
+    program from inside one would put a `cache/` in it.
+    """
+    (tmp_path / "pyproject.toml").write_text("", encoding="utf-8")
+
+    assert checkout_root(tmp_path) is None
+
+
+def test_outside_a_checkout_the_data_goes_to_the_user_not_the_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """This is the change: it used to be the working directory, which meant an
+    installed chunksim scattered a `cache/` wherever it was run from."""
+    monkeypatch.delenv(CACHE_ENV_VAR, raising=False)
+
+    assert data_root(tmp_path) == user_data_root()
+    assert data_root(tmp_path) != tmp_path.resolve()
+
+
+def test_the_env_var_beats_both(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """"Put it here" is a different question from "where am I", so it is asked
+    first - including from inside a checkout."""
+    (tmp_path / "pyproject.toml").write_text("", encoding="utf-8")
+    (tmp_path / "src" / "chunksim").mkdir(parents=True)
+    elsewhere = tmp_path / "elsewhere"
+    monkeypatch.setenv(CACHE_ENV_VAR, str(elsewhere))
+
+    assert data_root(tmp_path) == elsewhere.resolve()
+
+
+def test_the_user_data_root_is_per_platform(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Local rather than roaming on Windows, and a *data* directory rather than
+    a cache one everywhere - what is under it is the user's own work."""
+    monkeypatch.setattr("chunksim.store.cache.sys.platform", "win32")
+    monkeypatch.setenv("LOCALAPPDATA", r"C:\Users\x\AppData\Local")
+    assert user_data_root() == Path(r"C:\Users\x\AppData\Local") / "chunksim"
+
+    monkeypatch.setattr("chunksim.store.cache.sys.platform", "linux")
+    monkeypatch.setenv("XDG_DATA_HOME", "/xdg")
+    assert user_data_root() == Path("/xdg/chunksim")
+
+    # A relative XDG path is to be ignored rather than resolved, per the spec.
+    monkeypatch.setenv("XDG_DATA_HOME", "relative/path")
+    assert user_data_root() == Path.home() / ".local" / "share" / "chunksim"
 
 
 def test_write_then_read_blob_round_trips_the_payload(tmp_path: Path) -> None:

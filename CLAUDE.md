@@ -188,7 +188,7 @@ The table says what each module **owns**; its docstring says why.
 | `costing/inputs.py` | What `chunksim estimate` and the Estimate tab must agree about, assembled once. The two had already drifted. Also `ReferenceBlobs`: the reference files read **once per invocation** and threaded, rather than four times by four callers — and the one place the four override layers are merged, so no reader can apply three of them. |
 | `costing/dps_bridge.py` | The seam to `osrs-dps`. **Optional import** — check `DPS_AVAILABLE`, never assume it. Prices only `reachable_providers`, which it imports rather than copying. |
 | `costing/*_overhead.py` | The harnesses that fitted the overhead constants. **No caller in `src/`** — they exist to be re-run when someone doubts them. |
-| `store/cache.py` | The disk. The envelope, the `--chunkinfo`/`CHUNKSIM_CHUNKINFO` override, `--map` resolution across kinds, atomic writes, the cross-kind name claim, `migrate_layout`, and both override files. |
+| `store/cache.py` | The disk. **`data_root` — where everything hangs off: `CHUNKSIM_CACHE`, else the checkout, else the user's own data directory.** Also the envelope, the `--chunkinfo`/`CHUNKSIM_CHUNKINFO` override, `--map` resolution across kinds, atomic writes, the cross-kind name claim, `migrate_layout`, and both override files. |
 | `store/derived_cache.py` | The on-disk cache of the **two** expensive per-state computations, and both their keys. **Read it before changing what `derive` returns** — including a *nested* result dataclass, which `_RESULT_TYPES` must list or the key will not move. |
 | `store/build_info.py` | Which install is running and when it was made. Never raises and never guesses a date. |
 | `runs/simulate.py` | Seeded chunk-roll simulation and `simulated_payload`. Records are never revisited by a later roll. |
@@ -280,7 +280,8 @@ mypy                         # strict, over src/ and tests/; run from the repo r
 .venv/bin/pytest             # whole suite
 ```
 
-Env vars: `CHUNKSIM_CHUNKINFO` (an export, or `chunksim chunkinfo`'s envelope around one), `CHUNKSIM_MAP_CACHE`
+Env vars: `CHUNKSIM_CACHE` (the directory `cache/` is made under), `CHUNKSIM_CHUNKINFO` (an export, or
+`chunksim chunkinfo`'s envelope around one), `CHUNKSIM_MAP_CACHE`
 (presence-only), `CHUNKSIM_SLOW_ORACLES` (presence-only), `CHUNKSIM_NO_WATERMARK`, `CHUNKSIM_TILE_VERSION`,
 `CHUNKSIM_GUI_VERBOSE`.
 
@@ -312,6 +313,14 @@ cache/gui/                         # window.json, settings.json, and the browser
 A batch of any computed kind holds `batch.json` (seeds, rolls, `batch_id`, and the payload it rolled
 from) beside one directory per run holding `map.json`, `rolls.json`, `run.json` and `timeline.json`.
 **A name is claimed across every kind**, so `--map foo` never has to guess which directory meant it.
+**Where `cache/` itself lands is `data_root`'s answer, and it is three answers in order**:
+`CHUNKSIM_CACHE` if set; else the checkout you are standing in; else the user's own data directory
+(`%LOCALAPPDATA%\chunksim`, `~/Library/Application Support/chunksim`, `~/.local/share/chunksim`).
+The middle one needs **`pyproject.toml` *and* `src/chunksim/`** — `pyproject.toml` alone is any Python
+project, and an installed `chunksim` run from inside one must not decide that project is its home.
+That last branch used to be the working directory, which is harmless in a checkout and wrong
+everywhere else.
+
 `cache/` is gitignored, so a fresh clone has no data until `chunksim fetch`/`chunksim chunkinfo` run — and
 so is `/*.json` at the repo root, which is where `--export-json` output lands when it is aimed at
 the checkout rather than `/tmp` or stdout. A stray `tasks.json` there is that, not project data.

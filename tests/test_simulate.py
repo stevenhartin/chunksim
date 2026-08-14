@@ -288,9 +288,9 @@ def test_carrying_areas_reaches_the_same_states_as_deriving_cold(
     wrong, not the test: the cold half is the definition.
     """
     from chunksim.derive.pipeline import load_map_state
-    from chunksim.store.cache import project_root, read_cache
+    from chunksim.store.cache import data_root, read_cache
 
-    envelope = read_cache(map_id, root=project_root())
+    envelope = read_cache(map_id, root=data_root())
     state, unlocked = load_map_state(envelope["data"], real_export, real_tasks_map)
 
     seen: dict[bool, list[Any]] = {}

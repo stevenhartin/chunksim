@@ -48,7 +48,7 @@ from typing import Any
 
 import pytest
 
-from chunksim.store.cache import project_root, read_blob, read_cache, read_chunkinfo
+from chunksim.store.cache import data_root, read_blob, read_cache, read_chunkinfo
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.model.firebase import reverse_tasks_map
 from chunksim.derive.pipeline import Derived, MapState, derive, load_map_state
@@ -58,7 +58,7 @@ from chunksim.derive.pipeline import Derived, MapState, derive, load_map_state
 REAL_EXPORT = os.environ.get("CHUNKSIM_CHUNKINFO")
 
 #: Presence-only: its value is never read. It says "this checkout's `cache/` is
-#: populated", because the map is read through `cache.project_root()` rather
+#: populated", because the map is read through `cache.data_root()` rather
 #: than from anything this variable names.
 REAL_CACHE = os.environ.get("CHUNKSIM_MAP_CACHE")
 
@@ -113,7 +113,7 @@ def real_export() -> ChunkInfo:
 @pytest.fixture(scope="session")
 def real_tasks_map() -> dict[str, str]:
     """`tasksMap.json` inverted, so `t_N` ids read back as names."""
-    return reverse_tasks_map(read_blob("tasks_map", project_root())["data"])
+    return reverse_tasks_map(read_blob("tasks_map", data_root())["data"])
 
 
 @pytest.fixture(scope="session")
@@ -123,7 +123,7 @@ def real_payload() -> dict[str, Any]:
     The payload, not the envelope: every caller wants `envelope["data"]`, and
     the oracles themselves live inside it under `chunkinfo.activeTasks`.
     """
-    payload: dict[str, Any] = read_cache(ORACLE_MAP, project_root())["data"]
+    payload: dict[str, Any] = read_cache(ORACLE_MAP, data_root())["data"]
     return payload
 
 
@@ -167,10 +167,38 @@ def no_ambient_chunkinfo(monkeypatch: pytest.MonkeyPatch) -> None:
 # argument at every call site.
 
 
+@pytest.fixture(autouse=True)
+def no_real_user_data(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    """**A test that escapes its root must not reach the developer's own data.**
+
+    `cache.data_root` falls back to `user_data_root()` when there is no
+    checkout and no `CHUNKSIM_CACHE`, which is right for an installed program
+    and a trap here: a fixture that builds a not-quite-checkout used to write
+    into the working directory, where it was at least visible, and would now
+    write into `~/.local/share/chunksim` instead. That happened once, during
+    the change that introduced this - two tests fetched a map into the real
+    home directory and only failed for an unrelated reason.
+
+    Autouse, because the tests that need protecting are exactly the ones that
+    did not think to ask for it.
+    """
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("XDG_DATA_HOME", str(home / "share"))
+    monkeypatch.setenv("LOCALAPPDATA", str(home / "AppData" / "Local"))
+    monkeypatch.delenv("CHUNKSIM_CACHE", raising=False)
+
+
 @pytest.fixture
 def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A throwaway project root that `cache.project_root()` will find."""
+    """A throwaway checkout root that `cache.data_root()` will find.
+
+    **Both markers, because `checkout_root` wants both.** `pyproject.toml`
+    alone is any Python project, and an installed `chunksim` must not treat one
+    of those as its home - so a fixture standing in for the checkout has to
+    look like the checkout.
+    """
     (tmp_path / "pyproject.toml").write_text("", encoding="utf-8")
+    (tmp_path / "src" / "chunksim").mkdir(parents=True)
     monkeypatch.chdir(tmp_path)
     return tmp_path
 
