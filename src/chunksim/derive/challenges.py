@@ -123,6 +123,20 @@ except where noted as a silent, documented approximation instead:
   being *on* than off, and there is no `multi-` tag for the gate to test. The
   deferral is a change to this module's core loop rather than an addition to
   it, which is why it is recorded here rather than half-built.
+
+  **A shortcut was tried and the oracle refused it**, which is worth knowing
+  before anyone tries the same one. Tagging every processing recipe's seeded
+  `Output` `multi-<skill>` and adding the gate on top looks like it buys the
+  second half without the deferral, and it does not: upstream's grouping fork
+  *re-adds* the recipes it picks (worker.js:1875 with `Highest Level` on,
+  1906 with it off), and a re-added recipe is back in `valids` and seeded
+  `primary-` like anything else. Only the ones the fork **drops** stay
+  speculative. Tagging them all made `Obtain a ~|regen bracelet|~` read as
+  reachable-only-by-a-maybe and cost the BiS oracle a pick. With
+  `Highest Level` on - as it is on both cached maps - the fork drops nothing,
+  so the correct answer there is that *no* tag is `multi-` and the gate never
+  fires. Which is to say: the gate cannot be exercised by either cached map,
+  and the deferral is not optional groundwork for it but the whole of it.
 - Mahogany Homes *is* handled - see `_MAHOGANY_HOMES_CONTRACT`, the Max Cape
   and Quest Point Cape injections are now `derive/injected.py`, the Collection
   Log Clues threshold is `_clue_reward_gate_met`, and the **Slayer lock** is
