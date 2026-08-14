@@ -14,8 +14,8 @@ from typing import Any
 
 import pytest
 
-from fray_claude.store.cache import write_blob
-from fray_claude.cli.app import main
+from chunksim.store.cache import write_blob
+from chunksim.cli.app import main
 
 
 def _estimate_fixture(

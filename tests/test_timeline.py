@@ -13,10 +13,10 @@ from typing import Any
 
 import pytest
 
-from fray_claude.runs.batch import run_batch
-from fray_claude.store.cache import ROLLS_FILE_NAME, read_cache, sims_root, write_blob, write_cache
-from fray_claude.costing.estimate import EstimateResult, ItemEstimate, SkillEstimate
-from fray_claude.runs.timeline import (
+from chunksim.runs.batch import run_batch
+from chunksim.store.cache import ROLLS_FILE_NAME, read_cache, sims_root, write_blob, write_cache
+from chunksim.costing.estimate import EstimateResult, ItemEstimate, SkillEstimate
+from chunksim.runs.timeline import (
     Step,
     added_hours,
     matches as timeline_matches,
@@ -317,7 +317,7 @@ def test_a_series_priced_by_an_older_model_reads_as_absent() -> None:
     mismatch already reads as absent, and the page offers to recompute an
     absent series rather than refusing to draw one.
     """
-    from fray_claude.runs.timeline import PRICING_MODEL
+    from chunksim.runs.timeline import PRICING_MODEL
 
     current = timeline_stamp(
         chunkinfo="a", tasks_map="b", rates="c", overrides="d", enriched=False

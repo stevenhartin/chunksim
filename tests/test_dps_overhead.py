@@ -10,9 +10,9 @@ from typing import Any
 
 import pytest
 
-from fray_claude.costing import dps_bridge, dps_overhead
-from fray_claude.costing.heuristics import Rate
-from fray_claude.model.chunkinfo import ChunkInfo
+from chunksim.costing import dps_bridge, dps_overhead
+from chunksim.costing.heuristics import Rate
+from chunksim.model.chunkinfo import ChunkInfo
 
 pytestmark = pytest.mark.skipif(
     not dps_bridge.DPS_AVAILABLE, reason="needs the optional dps extra"

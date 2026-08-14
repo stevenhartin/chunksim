@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from fray_claude.derive.bis import (
+from chunksim.derive.bis import (
     _STYLE_SEPARATOR,
     article_for,
     bis_display_name,
@@ -15,8 +15,8 @@ from fray_claude.derive.bis import (
     compute_bis,
     format_equip,
 )
-from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.derive.pipeline import Derived, MapState
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.derive.pipeline import Derived, MapState
 
 
 
@@ -544,9 +544,9 @@ def test_every_bis_pick_matches_the_live_oracle(
     dismissed the rest as a stale snapshot. They were not stale - the tool
     was wrong. Assert all of them, on every map.
     """
-    from fray_claude.store.cache import list_maps, project_root, read_cache
-    from fray_claude.model.firebase import decode_challenge_keyed
-    from fray_claude.derive.pipeline import derive, load_map_state
+    from chunksim.store.cache import list_maps, project_root, read_cache
+    from chunksim.model.firebase import decode_challenge_keyed
+    from chunksim.derive.pipeline import derive, load_map_state
 
     info, tasks_map = real_export, real_tasks_map
     root = project_root()

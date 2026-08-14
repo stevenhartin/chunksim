@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from fray_claude.gui import settings
+from chunksim.gui import settings
 
 
 def _bands(*bounds: float | None) -> list[dict[str, Any]]:

@@ -1,4 +1,4 @@
-"""Tests for `cli/maps.py`: `fray maps list|rm|clean`.
+"""Tests for `cli/maps.py`: `chunksim maps list|rm|clean`.
 
 `project`, `cached_map`, `simulatable` and `derived_entries` come from
 `conftest.py`, so the cache under test is a temporary one rather than the
@@ -13,7 +13,7 @@ from collections.abc import Callable
 
 import pytest
 
-from fray_claude.cli.app import main
+from chunksim.cli.app import main
 
 
 def test_maps_rm_guards_a_fetched_map(

@@ -16,8 +16,8 @@ from unittest import mock
 
 import pytest
 
-from fray_claude.store import cache
-from fray_claude.gui.server import Context, Response, handle_request
+from chunksim.store import cache
+from chunksim.gui.server import Context, Response, handle_request
 
 
 LUMBRIDGE = "12850"
@@ -79,15 +79,15 @@ def _derived_ctx(
     10MB file, so the fixture is the few keys under test.
     """
     monkeypatch.setattr(
-        "fray_claude.gui.derivation.cache.read_chunkinfo",
+        "chunksim.gui.derivation.cache.read_chunkinfo",
         lambda override=None, root=None: chunkinfo,
     )
     monkeypatch.setattr(
-        "fray_claude.gui.derivation.cache.read_blob",
+        "chunksim.gui.derivation.cache.read_blob",
         lambda name, root=None, hint=None: {"data": {}},
     )
     monkeypatch.setattr(
-        "fray_claude.gui.derivation.cache.file_digest", lambda path: "digest"
+        "chunksim.gui.derivation.cache.file_digest", lambda path: "digest"
     )
     # **Under `tmp_path`, not bare names.** These patch attributes on the
     # *shared* `cache` module, so anything that later writes through
@@ -95,10 +95,10 @@ def _derived_ctx(
     # which put a stray file in the repo root the first time a test using
     # this fixture wrote a blob for real.
     monkeypatch.setattr(
-        "fray_claude.gui.derivation.cache.chunkinfo_source", lambda o, r: tmp_path / "x"
+        "chunksim.gui.derivation.cache.chunkinfo_source", lambda o, r: tmp_path / "x"
     )
     monkeypatch.setattr(
-        "fray_claude.gui.derivation.cache.blob_path", lambda n, r: tmp_path / f"{n}.json"
+        "chunksim.gui.derivation.cache.blob_path", lambda n, r: tmp_path / f"{n}.json"
     )
     return Context(root=tmp_path)
 
@@ -293,7 +293,7 @@ def test_the_map_view_never_parses_the_export(
     def explode(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("the map view parsed the chunkinfo export")
 
-    monkeypatch.setattr("fray_claude.gui.derivation.cache.read_chunkinfo", explode)
+    monkeypatch.setattr("chunksim.gui.derivation.cache.read_chunkinfo", explode)
     ctx = Context(root=tmp_path)
 
     assert _get("/api/view", ctx, map="fray").status == HTTPStatus.OK
@@ -378,7 +378,7 @@ def test_stored_hours_are_served_and_a_moved_world_discards_them(
     """
     ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
     map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
-    from fray_claude.gui.routes_view import _timeline_stamp
+    from chunksim.gui.routes_view import _timeline_stamp
 
     stamp = _timeline_stamp(ctx, enriched=False)
     cache.write_timeline(map_id, {"stamp": stamp, "added": [0.0, 2.5], "totals": [10.0, 12.5]}, tmp_path)
@@ -412,14 +412,14 @@ def test_cheap_hours_are_not_stale_merely_because_dps_is_installed(
     """
     ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
     map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
-    from fray_claude.gui.routes_view import _timeline_stamp
+    from chunksim.gui.routes_view import _timeline_stamp
 
     cache.write_timeline(
         map_id,
         {"stamp": _timeline_stamp(ctx, enriched=False), "added": [0.0, 2.5], "totals": [10.0, 12.5]},
         tmp_path,
     )
-    monkeypatch.setattr("fray_claude.gui.routes_view.dps_bridge.DPS_AVAILABLE", True)
+    monkeypatch.setattr("chunksim.gui.routes_view.dps_bridge.DPS_AVAILABLE", True)
 
     payload = _body(_get("/api/timeline", ctx, map=map_id))
 
@@ -436,14 +436,14 @@ def test_enriched_hours_leave_nothing_to_upgrade(
     rewrite the same numbers."""
     ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
     map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
-    from fray_claude.gui.routes_view import _timeline_stamp
+    from chunksim.gui.routes_view import _timeline_stamp
 
     cache.write_timeline(
         map_id,
         {"stamp": _timeline_stamp(ctx, enriched=True), "added": [0.0, 2.5], "totals": [10.0, 12.5]},
         tmp_path,
     )
-    monkeypatch.setattr("fray_claude.gui.routes_view.dps_bridge.DPS_AVAILABLE", True)
+    monkeypatch.setattr("chunksim.gui.routes_view.dps_bridge.DPS_AVAILABLE", True)
 
     payload = _body(_get("/api/timeline", ctx, map=map_id))
 
@@ -457,14 +457,14 @@ def test_without_the_extra_there_is_nothing_better_to_offer(
     without the extra it is false however the numbers were computed."""
     ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
     map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
-    from fray_claude.gui.routes_view import _timeline_stamp
+    from chunksim.gui.routes_view import _timeline_stamp
 
     cache.write_timeline(
         map_id,
         {"stamp": _timeline_stamp(ctx, enriched=False), "added": [0.0, 2.5], "totals": [10.0, 12.5]},
         tmp_path,
     )
-    monkeypatch.setattr("fray_claude.gui.routes_view.dps_bridge.DPS_AVAILABLE", False)
+    monkeypatch.setattr("chunksim.gui.routes_view.dps_bridge.DPS_AVAILABLE", False)
 
     payload = _body(_get("/api/timeline", ctx, map=map_id))
 
@@ -478,7 +478,7 @@ def test_a_totals_list_that_does_not_fit_the_run_is_ignored(
     Drawing the old numbers against the new chunks would be silently wrong."""
     ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
     map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
-    from fray_claude.gui.routes_view import _timeline_stamp
+    from chunksim.gui.routes_view import _timeline_stamp
 
     cache.write_timeline(
         map_id,
@@ -512,9 +512,9 @@ def test_the_timeline_job_reports_slices_for_the_bar(
         report(2, 2)
         return [0.0, 1.0], [1.0, 2.0]
 
-    monkeypatch.setattr("fray_claude.gui.actions.price_steps", fake)
+    monkeypatch.setattr("chunksim.gui.actions.price_steps", fake)
     monkeypatch.setattr(
-        "fray_claude.gui.jobs.JobRegistry.submit",
+        "chunksim.gui.jobs.JobRegistry.submit",
         lambda self, action, work: _capture(self, action, work, seen),
     )
 
@@ -538,7 +538,7 @@ def test_the_timeline_job_passes_jobs_through(
         asked.append(kw["jobs"])
         return [0.0, 1.0], [1.0, 2.0]
 
-    monkeypatch.setattr("fray_claude.gui.actions.price_steps", fake)
+    monkeypatch.setattr("chunksim.gui.actions.price_steps", fake)
 
     _wait(ctx, _body(_post("/api/timeline", ctx, {"map": map_id, "jobs": 4}))["job"])
     _wait(ctx, _body(_post("/api/timeline", ctx, {"map": map_id}))["job"])
@@ -558,7 +558,7 @@ def test_a_timeline_written_under_the_old_meaning_is_refused(
     """
     ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
     map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
-    from fray_claude.gui.routes_view import _timeline_stamp
+    from chunksim.gui.routes_view import _timeline_stamp
 
     cache.write_timeline(
         map_id, {"stamp": _timeline_stamp(ctx, enriched=False), "totals": [10.0, 12.5]}, tmp_path
@@ -591,8 +591,8 @@ def test_two_roll_clicks_parse_the_export_once(tmp_path: Path) -> None:
     ctx = Context(root=tmp_path)
     map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH, "12852"], [NORTH, "12852"])
 
-    with mock.patch("fray_claude.gui.derivation.cache.read_chunkinfo", counting), \
-         mock.patch("fray_claude.runs.batch.read_chunkinfo", counting):
+    with mock.patch("chunksim.gui.derivation.cache.read_chunkinfo", counting), \
+         mock.patch("chunksim.runs.batch.read_chunkinfo", counting):
         _get("/api/roll", ctx, map=map_id, step="1")
         first = len(reads)
         _get("/api/roll", ctx, map=map_id, step="2")

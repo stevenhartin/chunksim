@@ -14,8 +14,8 @@ from typing import Any
 
 import pytest
 
-from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.store.derived_cache import (
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.store.derived_cache import (
     CacheBehaviour,
     Digests,
     PricingDigests,
@@ -31,8 +31,8 @@ from fray_claude.store.derived_cache import (
     encode,
     enrichment_key,
 )
-from fray_claude.costing.heuristics import Heuristics, Rate
-from fray_claude.derive.pipeline import MapState, derive
+from chunksim.costing.heuristics import Heuristics, Rate
+from chunksim.derive.pipeline import MapState, derive
 
 _DIGESTS = Digests(chunkinfo="abc123", tasks_map="def456")
 
@@ -151,7 +151,7 @@ def test_a_different_unlocked_set_changes_the_key() -> None:
 
 @pytest.mark.parametrize("digests", [Digests("other", "def456"), Digests("abc123", "other")])
 def test_new_reference_data_changes_the_key(digests: Digests) -> None:
-    """A re-run `fray chunkinfo` must not be served last week's answer."""
+    """A re-run `chunksim chunkinfo` must not be served last week's answer."""
     assert derivation_key(_state(), {"100": True}, digests) != derivation_key(
         _state(), {"100": True}, _DIGESTS
     )
@@ -167,7 +167,7 @@ def test_the_structural_digest_tracks_the_result_classes(monkeypatch: pytest.Mon
         picks: dict[str, str]
         surprise: int
 
-    monkeypatch.setattr("fray_claude.store.derived_cache._RESULT_TYPES", (Extended,))
+    monkeypatch.setattr("chunksim.store.derived_cache._RESULT_TYPES", (Extended,))
 
     assert _structure_digest() != before
 
@@ -384,7 +384,7 @@ _PRICING = PricingDigests(rates="r1", overrides="o1", library="l1")
 
 
 def test_an_enrichment_can_never_collide_with_a_derivation() -> None:
-    """They share `cache/derived/`, so one `fray derived clean` ages out both.
+    """They share `cache/derived/`, so one `chunksim derived clean` ages out both.
     A `kind` tag in the material makes that safe by construction rather than
     by the two happening to hash differently."""
     state = _state()
@@ -398,7 +398,7 @@ def test_an_enrichment_can_never_collide_with_a_derivation() -> None:
 def test_every_pricing_input_moves_the_key(field: str) -> None:
     """**The derivation key covers none of these**, which is why an enrichment
     needs its own. Storing one under the plain derivation key would serve
-    stale kill rates after a `fray heuristics`, an edit to
+    stale kill rates after a `chunksim heuristics`, an edit to
     `heuristics/overrides.json` or an `osrs-dps` upgrade - and the symptom
     would be a total that failed to move, which is invisible."""
     state = _state()
@@ -413,7 +413,7 @@ def test_a_pricing_digest_is_not_the_library_version(tmp_path: Path) -> None:
     """`osrs-dps` is installed editable, so its version is `0.0.1` and stays
     there however much of the calculator changes underneath - and a calculator
     change moves every kill rate. The digest is of the source, so it moves."""
-    from fray_claude.store.derived_cache import dps_library_digest
+    from chunksim.store.derived_cache import dps_library_digest
 
     digest = dps_library_digest()
 
@@ -536,7 +536,7 @@ def test_the_enrichment_key_covers_every_pricing_digest() -> None:
     """**A digest that has to be remembered is a digest that gets forgotten.**
 
     This key listed `PricingDigests`' fields by hand and fell behind the
-    dataclass twice: `recipes`, so `fray recipes` landing after an estimate
+    dataclass twice: `recipes`, so `chunksim recipes` landing after an estimate
     left every stored enrichment holding the recipe-free rates; then
     `map_overrides`, so a per-map correction changed no key and the total
     simply failed to move. Both are the same bug and neither was catchable by

@@ -1,0 +1,1656 @@
+/* The map is the subject; everything here gets out of its way.
+ *
+ * Sixty million pixels of hand-drawn world are already on screen, so the
+ * chrome is deliberately unornamented: near-black surfaces, hairline rules,
+ * one accent. That accent is the same amber the hull is stroked in, so the
+ * interface and the map speak one colour language rather than two.
+ *
+ * Everything in this app is an id, a count or an hour, so data is set in the
+ * platform's monospace and labels in its UI face. That split is the type
+ * system; there is no third role.
+ *
+ * **No `text-transform` anywhere.** The export's names are Title Case and
+ * nothing here can change that, so the chrome is Title Case too and what is
+ * written in the markup is what appears on screen. Uppercasing headings in
+ * CSS made three casings visible at once and hid which one the source used.
+ *
+ * **Every length comes from the scale below.** This file used to carry nine
+ * different paddings and six radii, all within a few pixels of each other and
+ * none of them meaning anything; a row was 4px from its neighbour here and 5px
+ * there for no reason either could state. Reach for a token. If none fits, the
+ * scale is wrong and gains a step - it does not gain an exception. */
+
+:root {
+  --bg: #101216;
+  --surface: #171a20;
+  --surface-2: #1e222a;
+  /* Raised above the panel: the tooltip, the progress card, the dialog. */
+  --surface-3: #232833;
+  --line: #2a2f39;
+  --line-strong: #3d4450;
+  --text: #dfe3ea;
+  --dim: #858d9c;
+
+  /* The hull's colour, reused as the interface accent. */
+  --amber: #ffbe00;
+  /* Candidates. Deliberately not green or red - those already mean gained and
+     lost - and blue sits apart from the map's greens and tans. */
+  --candidate: #5abeff;
+  /* Squares you can walk into without rolling them. The same blue the canvas
+     outlines them with - `REACHABLE_STROKE` in `app.js`, kept equal by a
+     contract test, because a dialog calling one thing two colours is worse
+     than either colour. */
+  --reachable: #5abeff;
+  --gain: #3cc85a;
+  --loss: #dc3c3c;
+
+  /* **The time bands, and why they are their own family.** `--gain` and
+     `--loss` already mean *gained* and *lost*, so a bar coloured `--gain`
+     because it is cheap would be saying something it does not mean. These five
+     say how much of your life a roll costs, cheapest first, and the page never
+     names the hue - it sets `data-band` and the rules below pick the colour,
+     the same division the mode tints keep.
+
+     Death is not `#000`: on `--bg` a black bar is a bar-shaped hole. It is the
+     darkest thing here that still has an edge, and it is given one. */
+  --band-free: #4cc38a;
+  --band-quick: #d8c341;
+  --band-grind: #e08c3c;
+  --band-brutal: #d6453f;
+  --band-death: #16181d;
+  /* The death bar is near-black against a near-black strip, so its mark is
+     drawn in the outline colour the bar already wears rather than in the
+     fill, which would be invisible on it. */
+  --band-death-mark: #d6453f;
+
+  /* Spacing. Four-based, because every border here is a hairline and the
+     smallest gap that reads as a gap at 13px type is 4. */
+  /* Kept equal to `SUBMENU_GAP` in `app.js` by a contract test. */
+  --submenu-gap: 4px;
+  --s1: 4px;
+  --s2: 6px;
+  --s3: 8px;
+  --s4: 12px;
+  --s5: 16px;
+  --s6: 24px;
+
+  /* Radius. Three steps and a pill - controls, cards, dialogs. */
+  --r1: 4px;
+  --r2: 6px;
+  --r3: 10px;
+  --pill: 999px;
+
+  --bar-h: 42px;
+  --ribbon-h: 24px;
+  /* **One colour per mode, defined once.** The canvas constants and the
+     legend's swatches are already two copies of this project's palette with
+     nothing asserting they agree; the modes are not going to be a third. JS
+     sets `data-mode` and the rules below pick the tint. */
+  --mode-browse: #4a5262;
+  --mode-edit: #b8860b;
+  --mode-diff: #6b4ea8;
+  --mode-timeline: #1f6f9c;
+  /* Deliberately not one of the five band colours: the ribbon would then be
+     claiming a reading the map is making. */
+  --mode-heatmap: #7a4a6b;
+  --mode-tint: var(--mode-browse);
+  --panel-w: 360px;
+  /* What is left of the panel when it is put away. Not zero: a panel that
+     leaves nothing behind has to be brought back from somewhere else, which is
+     the button in the bar this replaced. A sliver is its own handle. */
+  --sliver: 14px;
+  /* The top edge of anything floating over the *map* rather than over the
+     page: below the bar and the ribbon, inset by a gap. Three things read it,
+     which is two more than a repeated `calc` should serve. */
+  --float-top: calc(var(--bar-h) + var(--ribbon-h) + var(--s4));
+  /* How much of the right edge the panel is occupying. Anything anchored to
+     the right of the *map* reads this rather than `--panel-w`, so it slides
+     out with the panel instead of hanging over a gap. `app.js` flips it. */
+  --rail: var(--panel-w);
+  /* How much of the bottom edge the timeline strip is occupying. Zero unless
+     the map is a simulated run, so everything anchored to the bottom reads
+     this and needs no second rule for the common case. `app.js` sets it. */
+  --strip-h: 0px;
+
+  /* **Two faces, and no third.** Language and figures are the only two things
+     this reads as, so those are the roles. There is no display face because
+     there is no hero: an instrument with a headline on it is a poster.
+
+     Rounded humanists at the head of each stack, per the brief, then the
+     platform's own, then the generic. `Adwaita Sans` and `Adwaita Mono` lead
+     because on the desktop this was built for they are the *system* faces -
+     so the window matches its own chrome - and because both are softer than
+     what they displace: Adwaita Mono is Iosevka-derived and narrower than
+     Hack, which is what a column of hours wants. Nothing is downloaded; a
+     machine with none of them lands on `system-ui` and reads fine. */
+  --sans: "Adwaita Sans", "Nunito Sans", Ubuntu, Cantarell, system-ui,
+          -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  --mono: "Adwaita Mono", Iosevka, "JetBrains Mono", "Fira Mono", ui-monospace,
+          "SF Mono", Menlo, Consolas, monospace;
+
+  /* **Four steps, named for the job.** This was six sizes across five pixels -
+     9, 10, 11, 12, 13, 14 - with 11 and 12 both carrying secondary text, which
+     is a one-pixel difference between neighbours and reads as jitter rather
+     than hierarchy. Twelve is retired into `--t-note` and nine into
+     `--t-micro`; what is left is four steps far enough apart to mean
+     something.
+
+     The scale cannot grow: the panel is a fixed rail and the body size is
+     what fits it. So the range is 10-15 and the discipline is using four of
+     them rather than every integer in between. */
+  --t-micro: 10px;   /* a caption under a tile, a label on an axis */
+  --t-note: 11px;    /* anything secondary to the line it sits on */
+  --t-body: 13px;    /* language: names, prose, controls */
+  --t-title: 15px;   /* a dialog saying what it is */
+
+  --w-body: 400;
+  --w-emphasis: 600;
+}
+
+* { box-sizing: border-box; }
+
+/* **`display` in a rule beats the `hidden` attribute**, which is only a UA
+   `display: none`. Every element below that is laid out with flex therefore
+   needs this, or it shows regardless - which is how an empty dialog ended up
+   over the map on first load. */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font: var(--w-body) var(--t-body)/1.45 var(--sans);
+}
+
+body.no-panel { --rail: 0px; }
+
+/* **Figures are tabular wherever they can change under you.** Half of what
+   this tool shows is a column you read *down* - ten runs' hours, a band count
+   per row, a step's total as the slider moves - and proportional digits make
+   those columns shuffle sideways as the values change, which is motion that
+   means nothing. It is also the subject's own vocabulary: a chunk is
+   identified by a number, so numerals here are as often names as they are
+   quantities, and a name should not move. */
+/* **Mono is for what you would type; sans is for what you read.**
+ *
+ * The two had drifted until most of the interface was monospaced - counts,
+ * hours, progress, axis labels - on the old reasoning that a number wants a
+ * fixed advance. `tabular-nums` gives that in *any* face, so the argument
+ * expired: a column of hours aligns in sans, and reads as language rather
+ * than as output.
+ *
+ * What is left is identity. A chunk id, a map id, an override path, a file
+ * name, a snippet - things you copy into a command or match character by
+ * character, where a monospaced face says "this is a literal" and the letters
+ * not being able to shift is the whole point. */
+code, .mono {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A quantity: sans, but with figures that hold their column. */
+.num { font-variant-numeric: tabular-nums; }
+
+button, select, input {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r1);
+  padding: var(--s1) 9px;
+}
+
+button { cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--line-strong); }
+button:disabled { opacity: .4; cursor: default; }
+
+button:focus-visible, select:focus-visible, input:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 1px;
+}
+
+/* --- scrollbars ---------------------------------------------------------- */
+
+/* **The gutter is reserved, not overlaid.** Chrome's overlay scrollbar sits
+   *on top* of the last few characters of every long task name, so the thing
+   you are reading is the thing it covers. `scrollbar-gutter: stable` takes the
+   width out of the content box up front, whether or not the bar is showing,
+   which also stops the whole pane reflowing the moment a list grows past the
+   fold.
+
+   The thumb is drawn inside a transparent border so it reads as a slim pill
+   with air around it rather than a bar wedged against the edge; `background-
+   clip: content-box` is what makes that border transparent rather than
+   painted. */
+.scroller {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border: 3px solid transparent;
+  border-radius: var(--pill);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4d5666;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* Every icon is one 24-unit sprite symbol, stroked in the current colour, so
+   a row's icon inherits whatever that row is already saying. */
+.icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s1);
+  color: var(--dim);
+  background: transparent;
+  border-color: transparent;
+}
+
+.icon-btn:hover { color: var(--text); border-color: var(--line); }
+.icon-btn[aria-pressed="true"] { color: var(--amber); border-color: var(--line); }
+
+/* --- canvas ------------------------------------------------------------- */
+
+/* `inset: 0` does NOT stretch a canvas: it is a replaced element with
+   intrinsic dimensions (300x150), so `width: auto` resolves against those
+   rather than against the offsets the way a div would. Without these two
+   declarations the map draws correctly into a small box in the corner, which
+   reads as a rendering bug and is a layout one. */
+#canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  display: block;
+  cursor: grab;
+  background: #0a0c0f;
+}
+
+#canvas.dragging { cursor: grabbing; }
+
+/* --- bar ---------------------------------------------------------------- */
+
+/* --- ribbon -------------------------------------------------------------- */
+
+/* Under the bar and above everything else, so it reads as a property of the
+   whole page rather than as one more control in a row of them. */
+.ribbon {
+  position: fixed;
+  top: var(--bar-h);
+  left: 0;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  gap: var(--s3);
+  align-items: center;
+  height: var(--ribbon-h);
+  padding: 0 var(--s4);
+  background: var(--mode-tint);
+  border-bottom: 1px solid rgba(0, 0, 0, .35);
+  font-size: var(--t-note);
+  color: var(--text);
+}
+
+.ribbon[data-mode="browse"] { --mode-tint: var(--mode-browse); }
+.ribbon[data-mode="edit"] { --mode-tint: var(--mode-edit); }
+.ribbon[data-mode="diff"] { --mode-tint: var(--mode-diff); }
+.ribbon[data-mode="timeline"] { --mode-tint: var(--mode-timeline); }
+.ribbon[data-mode="heatmap"] { --mode-tint: var(--mode-heatmap); }
+
+.ribbon-mode { font-weight: var(--w-emphasis); }
+.ribbon-edits { opacity: .9; }
+.ribbon-map { opacity: .85; }
+
+/* On a tinted strip the controls have to sit *on* the colour rather than
+   punch a hole in it, or the ribbon reads as two bars. */
+.ribbon .pick-thin, .ribbon .thin {
+  height: 18px;
+  padding: 0 var(--s2);
+  border: 1px solid rgba(255, 255, 255, .28);
+  border-radius: var(--r1);
+  background: rgba(0, 0, 0, .22);
+  color: var(--text);
+  font-size: var(--t-note);
+}
+
+.ribbon .thin:disabled { opacity: .45; }
+
+/* **The way out, over the map and above the strip.** `--strip-h` is 0 unless
+   a strip is up, so this is one rule rather than one per mode. */
+.exit-pill {
+  position: fixed;
+  z-index: 5;
+  left: 50%;
+  bottom: calc(var(--strip-h) + var(--s5));
+  transform: translateX(-50%);
+  padding: var(--s2) 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--pill);
+  background: var(--surface-3);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+}
+
+.exit-pill:hover { border-color: var(--amber); }
+
+/* A pending tick, greyed in place. Struck through rather than removed: the
+   list is what you are clicking, and a row that vanished under the cursor
+   would move the next one under it. */
+.list li.task { cursor: default; }
+.list li.task[data-category]:not([data-category=""]) { cursor: pointer; }
+.list li.ticked .name, .list li.ticked .sub {
+  opacity: .5;
+  text-decoration: line-through;
+}
+
+.bar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 3;
+  display: flex;
+  gap: var(--s3);
+  align-items: center;
+  height: var(--bar-h);
+  padding: 0 var(--s4);
+  background: rgba(23, 26, 32, .94);
+  border-bottom: 1px solid var(--line);
+}
+
+/* The one deliberate exception to the no-transform rule: a wordmark is not
+   prose, and lower-case `chunksim` is how the command is typed. */
+.brand {
+  font-weight: var(--w-emphasis);
+  font-size: var(--t-note);
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+
+/* --- the pickers -------------------------------------------------------- */
+
+/* **A dot rather than a coloured name.** Tinting the text would make the map's
+   *provenance* compete with its name for the one thing a name is for, and at
+   12px a blue word beside a grey one reads as emphasis rather than as a
+   category. The dot carries the kind and the name stays plain. Same three
+   colours as the Maps tab's tags, from the same palette. */
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--pill);
+  flex: none;
+  border: 1px solid var(--dim);
+}
+
+.dot[data-kind="simulated"] { background: var(--candidate); border-color: var(--candidate); }
+.dot[data-kind="edited"] { background: var(--amber); border-color: var(--amber); }
+
+.picker { position: relative; }
+
+/* **It grows to fit the name rather than wrapping.** A button holding a
+   batch's run name used to get its width in the worst way - `text-overflow`
+   only applies to a line box that does not wrap, so without `nowrap` below the
+   name broke at the `-` in `<batch>-sim/run-012`, made the button two lines
+   tall,
+   and overflowed `.bar`'s fixed `--bar-h` instead of ellipsising. So: size to
+   the content, floored so short names do not make a stub of a control and
+   ceilinged so a long one cannot push the rest of the bar off the edge. */
+.pick-button {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: max-content;
+  min-width: 20ch;
+  max-width: 34ch;
+  text-align: left;
+}
+
+/* The ribbon's copy is the same control at the ribbon's height. It sits beside
+   18px buttons, so it may not be floored at 20ch like the one in the bar. */
+.ribbon .pick-button { min-width: 12ch; max-width: 26ch; }
+
+.pick-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* **`fixed`, and placed by `app.js`.** One of the three pickers opens inside a
+   dialog, and `.sheet > div` scrolls - a scroll container clips its children in
+   both axes, so a menu hanging below its button was cut off exactly as the
+   submenu was before it. The cost is that the coordinates cannot come from
+   here; `placeMenu` sets top/left and the button's width as the floor. */
+.menu {
+  position: fixed;
+  z-index: 7;
+  max-height: 60vh;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: var(--s1);
+  border: 1px solid var(--line);
+  border-radius: var(--r2);
+  background: var(--surface-3);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+}
+
+.menu-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  padding: var(--s2) var(--s3);
+  border: 0;
+  border-radius: var(--r1);
+  background: none;
+  color: var(--text);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.menu-row:hover { background: rgba(255, 255, 255, .06); }
+.menu-row.on { color: var(--amber); }
+.menu-row .name { flex: 1; }
+
+/* **The runs open beside their batch, which is the whole point of nesting.**
+   Ten runs in the main list is the pile the batch entry exists to collapse;
+   to the side they cost one row until asked for. Opened by a class rather than
+   by `:hover`, so pressing the batch row works too - a submenu only a pointer
+   can reach is one a keyboard cannot.
+
+   **`position: fixed`, and placed by `app.js`.** The menu that holds it
+   scrolls, and a scroll container clips its children in *both* axes - CSS
+   computes `overflow-x` to `auto` when `overflow-y` is not `visible`, so an
+   absolutely-positioned submenu hanging out of the side is simply cut off.
+   It read exactly like the submenu not existing. Fixed positioning escapes
+   the clip; the cost is that the coordinates cannot come from here. */
+.menu-nest { position: relative; }
+
+.submenu {
+  display: none;
+  position: fixed;
+  padding: var(--s1);
+  border: 1px solid var(--line);
+  border-radius: var(--r2);
+  background: var(--surface-3);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+}
+
+/* **The scrolling is one level in, and that is the point.** A scroll container
+   clips its children in both axes, pseudo-elements included - so with
+   `overflow-y` on `.submenu` itself the bridge below was computed, painted
+   nowhere and hit-tested as the menu behind it. The same trap that put the
+   submenu on `position: fixed` in the first place, one element further in. */
+.submenu-body {
+  max-height: 60vh;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.menu-nest.open .submenu { display: block; }
+
+/* **The gap is part of the submenu, even though it looks like nothing.**
+   The submenu is placed `--submenu-gap` clear of its row so the two read as
+   separate strips - and a pointer travelling straight across was over neither
+   element, which fired `mouseleave` on the nest and started the close. This
+   pseudo-element hangs off the facing side and fills exactly that clearance:
+   it is generated content *inside* the submenu, so the pointer never leaves.
+   `app.js` decides the side, since only it knows which way the menu flipped. */
+.submenu::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--submenu-gap);
+}
+
+.submenu[data-side="right"]::before { right: 100%; }
+.submenu[data-side="left"]::before { left: 100%; }
+.vs { color: var(--dim); }
+.rule { width: 1px; height: 20px; background: var(--line); flex: none; }
+.spacer { flex: 1; }
+
+.counts, .hover {
+  color: var(--dim);
+  font-size: var(--t-note);
+  white-space: nowrap;
+}
+
+.hover { min-width: 20ch; text-align: right; }
+
+/* A toggle reads its state from its border, not from a checkbox: the row is
+   dense and a tick box in it would be one more shape to parse. */
+.toggle[aria-pressed="true"] {
+  color: var(--bg);
+  background: var(--amber);
+  border-color: var(--amber);
+  font-weight: var(--w-emphasis);
+}
+
+#candidates[aria-pressed="true"] {
+  background: var(--candidate);
+  border-color: var(--candidate);
+}
+
+#masks[aria-pressed="true"] {
+  background: var(--gain);
+  border-color: var(--gain);
+}
+
+.warn { color: var(--amber); border-color: var(--amber); }
+
+/* --- panel -------------------------------------------------------------- */
+
+.panel {
+  position: fixed;
+  z-index: 2;
+  top: calc(var(--bar-h) + var(--ribbon-h));
+  right: 0;
+  bottom: 0;
+  width: var(--panel-w);
+  display: flex;
+  flex-direction: column;
+  background: rgba(23, 26, 32, .96);
+  border-left: 1px solid var(--line);
+  transition: transform .18s ease;
+}
+
+.panel.hidden { transform: translateX(calc(100% - var(--sliver))); }
+
+/* **The handle rides the panel's left edge and hangs outside it**, so it is
+   visible whichever side of the transform the panel is on - and when the panel
+   is away, the handle plus the sliver is what you aim at to bring it back. */
+.panel-pin {
+  position: absolute;
+  top: var(--s4);
+  left: calc(var(--s6) * -1);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--s6);
+  height: var(--s6);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-right: 0;
+  border-radius: var(--r2) 0 0 var(--r2);
+  background: rgba(23, 26, 32, .96);
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.panel-pin:hover { color: var(--text); border-color: var(--line-strong); }
+
+/* The floor picker, against the map's top-right. It tracks `--rail` like
+   everything else anchored there, so it slides out with the panel - plus the
+   panel's own handle, which hangs into the same corner and must not be sat
+   on. */
+/* In the bar now, beside the two toggles it belongs with - so it is an
+   ordinary control in a row of them rather than a thing pinned to the map. */
+.plane-pick { flex: none; }
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+
+.tabs button {
+  flex: 1;
+  border: 0;
+  border-radius: 0;
+  padding: 9px var(--s1);
+  background: transparent;
+  color: var(--dim);
+  border-bottom: 2px solid transparent;
+}
+
+.tabs button:hover { color: var(--text); background: rgba(255, 255, 255, .03); }
+
+.tabs button.on {
+  color: var(--text);
+  border-bottom-color: var(--amber);
+}
+
+.pane {
+  display: none;
+  padding: var(--s4);
+  flex: 1;
+  min-height: 0;
+}
+
+.pane.on { display: flex; flex-direction: column; }
+.pane .empty { color: var(--dim); padding: var(--s3) 0; }
+
+.pane-head {
+  display: flex;
+  gap: var(--s3);
+  align-items: flex-start;
+  margin-bottom: var(--s4);
+  flex: none;
+}
+
+.pane-head .chips { margin-bottom: 0; }
+
+/* The body of a pane scrolls; its head and chips do not. Without this the
+   whole pane scrolls as one and the chips you are switching between leave
+   the screen the moment you read past them. */
+.pane > div:last-child {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+  flex: 1;
+  min-height: 0;
+  /* Air between the last character and the gutter, so a wrapped name does not
+     read as touching the scrollbar even when the bar is not drawn.
+     **And the same on the left, for the focus ring**: `overflow-y: auto`
+     clips anything outside the content box, and a focused input's outline is
+     2px plus a 1px offset - which the Maps pane's fields wear against the
+     edge, sliced down their left side. */
+  padding-right: var(--s1);
+  padding-left: var(--s1);
+}
+
+.pane-title { font-weight: var(--w-emphasis); }
+
+.row { display: flex; gap: var(--s3); margin-bottom: var(--s4); }
+.row input { flex: 1; min-width: 0; }
+
+/* A chip strip is the sub-tab bar: an icon, and the count it stands for.
+   Wrapping rather than scrolling, because eight of them at 360px is two rows
+   and a hidden ninth chip is a category you never find.
+
+   `min-width: 0` is what actually lets it wrap when it shares a row with a
+   button; `flex-grow: 0` is what stops it swallowing the pane when it is a
+   direct child of one, since a `.pane` is a *column* flexbox and growing
+   there means growing downwards. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-bottom: var(--s4);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px var(--s3) 3px var(--s2);
+  border-radius: var(--pill);
+  color: var(--dim);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  transition: opacity .12s ease, border-color .12s ease;
+}
+
+.chip:hover { color: var(--text); }
+
+/* **A chip is a checkbox, not a radio button**, and the two need telling
+   apart at a glance: with several on at once, "on" cannot be the only one
+   that looks selected. So off is visibly *off* - dimmed and desaturated -
+   rather than merely not-highlighted. */
+.chip.on {
+  color: var(--text);
+  border-color: var(--amber);
+  background: rgba(255, 190, 0, .12);
+}
+
+.chip[aria-checked="false"] { opacity: .45; }
+.chip[aria-checked="false"]:hover { opacity: .8; }
+
+.chip .count {
+  font-size: var(--t-note);
+}
+
+.chip.on .count { color: var(--amber); }
+
+/* A heading in the panel is a label, not a title: small, spaced, quiet -
+   but written as it is displayed. It may carry a swatch or an icon, so it
+   lays out as a row with the count pushed to the far edge. */
+h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: var(--s5) 0 var(--s2);
+  font-size: var(--t-note);
+  font-weight: var(--w-emphasis);
+  letter-spacing: .06em;
+  color: var(--dim);
+  flex: none;
+}
+
+h3:first-child { margin-top: 0; }
+h3 .num { margin-left: auto; }
+
+/* The section heading above a group heading, when several task categories are
+   shown at once. Louder than the group headings under it, or the hierarchy
+   inverts and every category reads as a sub-list of the one above. */
+h3.section {
+  margin-top: var(--s6);
+  font-size: var(--t-note);
+  color: var(--text);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: var(--s1);
+}
+
+h3.section:first-child { margin-top: 0; }
+
+.kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px var(--s4);
+  font-size: var(--t-note);
+}
+
+.kv dt { color: var(--dim); }
+.kv dd { margin: 0; text-align: right; }
+
+ul.list { margin: 0; padding: 0; list-style: none; }
+
+ul.list li {
+  display: flex;
+  gap: var(--s3);
+  align-items: baseline;
+  padding: var(--s1) var(--s2);
+  margin: 0 calc(var(--s2) * -1);
+  border-radius: var(--r1);
+  border-bottom: 1px solid var(--line);
+}
+
+ul.list li:last-child { border-bottom: 0; }
+
+/* Only rows that *do* something light up. A row with a tooltip is doing
+   something - it is holding the rest of its own sentence. */
+ul.list li[data-tip]:hover,
+ul.list li:has(button:hover) { background: rgba(255, 255, 255, .04); }
+
+ul.list .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+ul.list .num {
+  color: var(--dim);
+  font-size: var(--t-note);
+  white-space: nowrap;
+}
+
+/* The secondary half of a row - a slot, a source, a skill. Present, and
+   visibly not the thing you are scanning for. */
+.sub {
+  color: var(--dim);
+  font-size: var(--t-note);
+}
+
+/* Reachability is the one thing greying is allowed to mean here: the row is
+   real, the export lists it, and you cannot get to it yet. */
+.unreached { opacity: .45; }
+
+/* **A truncated list is a control, not a caption.** It says how much it is
+   hiding and reveals it when pressed, in the same column as the names it
+   stands for. Collapsing is a second press rather than something that happens
+   when the region scrolls away: a list that folds itself up while you are
+   reading further down is a list that moves the thing you were looking at. */
+li.more { border-bottom: 0; padding: 0; }
+
+.more-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  padding: var(--s2);
+  margin: var(--s1) 0 0;
+  border: 1px dashed var(--line);
+  border-radius: var(--r1);
+  background: transparent;
+  color: var(--dim);
+  text-align: left;
+}
+
+.more-toggle:hover { color: var(--text); border-color: var(--line-strong); }
+.more-toggle .icon { width: 13px; height: 13px; }
+
+/* The two directions of a comparison, coloured as the map colours them. */
+.gain { color: var(--gain); }
+.loss { color: var(--loss); }
+
+ul.list .mark {
+  font-family: var(--mono);
+  width: 1ch;
+  flex: none;
+}
+
+ul.list.gain .mark { color: var(--gain); }
+ul.list.loss .mark { color: var(--loss); }
+
+li .icon { width: 14px; height: 14px; align-self: center; }
+
+/* Where a badge would be, on a row that has none. A list whose names start in
+   two different columns depending on whether the thing happens to have an icon
+   is one the eye has to re-find its edge in on every row. */
+.icon-gap { width: 15px; flex: none; }
+
+/* Upstream's own skill icons, which are 25px sprites of pixel art. */
+.skill-icon {
+  width: 15px;
+  height: 15px;
+  image-rendering: pixelated;
+  align-self: center;
+  flex: none;
+}
+
+/* A pill is a box around one word, so the word has to sit in the middle of it.
+   Left to `inline` it inherited the body line-height and baseline-aligned
+   inside a row that is itself baseline-aligned, which put the text a pixel
+   high and the border a pixel low. `inline-flex` centres it, and `align-self`
+   opts the pill out of the row's baseline so the box centres too. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  line-height: 1;
+  padding: 3px var(--s2);
+  border-radius: var(--pill);
+  border: 1px solid var(--line);
+  font-size: var(--t-note);
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+/* **What kind a map is, as a tint rather than as another word to read.**
+   Three kinds meaning three different provenances looked alike as a column of
+   names. The colours are the palette already on screen - blue is what a
+   candidate is drawn in, amber is the accent - and `fetched` is deliberately
+   untinted, being the one that came from somewhere real. */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  flex: none;
+  line-height: 1;
+  padding: 3px var(--s2);
+  border-radius: var(--r1);
+  border: 1px solid currentColor;
+  font-size: var(--t-micro);
+  color: var(--dim);
+}
+
+.tag[data-kind="simulated"] { color: var(--candidate); }
+.tag[data-kind="edited"] { color: var(--amber); }
+
+.pill.reachable { color: var(--gain); border-color: var(--gain); }
+.pill.locked { color: var(--dim); }
+.pill.candidate { color: var(--candidate); border-color: var(--candidate); }
+
+.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--candidate);
+  text-align: left;
+  cursor: pointer;
+}
+
+.link:hover { text-decoration: underline; }
+
+.actions { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s4); }
+.danger { color: var(--loss); border-color: #4a2a2a; }
+.danger:hover:not(:disabled) { border-color: var(--loss); }
+
+/* --- estimate ----------------------------------------------------------- */
+
+/* The chart is the pane's opening statement, so it is centred and given room
+   rather than tucked against the left edge with the key squeezed beside it.
+   At 360px a row of donut-plus-key left the key two words wide. */
+.pie-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s4);
+  margin-bottom: var(--s5);
+}
+
+.pie { flex: none; transform: rotate(-90deg); }
+.pie circle { fill: none; stroke-width: 14; }
+
+/* Only the stroke is painted, so the ring takes the pointer and the hole does
+   not - which is what makes a slice hoverable without the middle of the chart
+   claiming whichever slice happens to be drawn last. */
+.pie .slice { cursor: help; transition: stroke-width .12s ease; }
+.pie .slice:hover { stroke-width: 18; }
+
+.pie-key {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--s2) var(--s4);
+  font-size: var(--t-note);
+}
+
+.pie-key span { display: flex; gap: var(--s2); align-items: center; cursor: help; }
+.pie-key span:hover { color: var(--text); }
+
+/* --- progress, legend, toast, overlay ------------------------------------ */
+
+/* **Work that takes time gets a card, not a status line.**
+   `chunksim simulate --runs 40` is minutes of work, and the old one-line strip
+   under the bar was the same weight as the hover readout - easy to start
+   something and then wonder whether it was running at all. This sits in the
+   top right of the *map*, tracks the panel with `--rail`, and carries a bar
+   whenever the job reports a count it can be measured against. */
+.progress {
+  position: fixed;
+  z-index: 4;
+  /* The top-right corner is its own now: the floor picker used to sit above
+     it and has moved into the bar with the other two layer controls. */
+  top: var(--float-top);
+  right: calc(var(--rail) + var(--s4));
+  width: 268px;
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--r3);
+  background: var(--surface-3);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+  transition: right .18s ease;
+}
+
+.progress-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  margin-bottom: var(--s2);
+}
+
+.progress-title { font-weight: var(--w-emphasis); flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+.progress-count {
+  font-size: var(--t-note);
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.progress-detail {
+  color: var(--dim);
+  font-size: var(--t-note);
+  overflow-wrap: anywhere;
+}
+
+.progress-track {
+  height: 4px;
+  margin-top: var(--s3);
+  border-radius: var(--pill);
+  background: rgba(255, 255, 255, .08);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0;
+  border-radius: var(--pill);
+  background: var(--amber);
+  transition: width .25s ease;
+}
+
+/* No count to measure against - a fetch, a chunkinfo download - so the bar
+   says "moving" rather than lying about how far along it is. */
+.progress-track.indeterminate .progress-fill {
+  width: 35%;
+  animation: slide 1.1s ease-in-out infinite;
+}
+
+@keyframes slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(286%); }
+}
+
+.progress.done .progress-fill { background: var(--gain); }
+.progress.failed .progress-fill { background: var(--loss); }
+.progress.failed .progress-detail { color: #ef8080; }
+/* Stopped on purpose: the accent, not the loss colour. What it kept is
+   cached and openable, so this is an outcome rather than a fault. */
+.progress.stopped .progress-fill { background: var(--amber); }
+.progress.stopped .progress-detail { color: var(--amber); }
+
+/* **Top left, opposite the progress card** - it used to sit bottom left,
+   which is where the timeline strip now spans the whole width. Up here it
+   also reads in the order you meet things: what the colours mean, then the
+   map, then what the run did. */
+.legend {
+  position: fixed;
+  z-index: 2;
+  left: var(--s4);
+  top: calc(var(--bar-h) + var(--ribbon-h) + var(--s4));
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+  max-width: 40vw;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r2);
+  background: rgba(23, 26, 32, .93);
+  color: var(--dim);
+  font-size: var(--t-note);
+}
+
+.legend span { display: flex; gap: var(--s2); align-items: center; }
+
+.sw {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 0, 0, .6);
+  flex: none;
+}
+
+.toast {
+  position: fixed;
+  z-index: 5;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  max-width: 70vw;
+  padding: var(--s3) 14px;
+  border-radius: var(--r2);
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s6);
+  background: rgba(6, 8, 11, .62);
+}
+
+.sheet {
+  width: min(520px, 100%);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r3);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .55);
+}
+
+.sheet header {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s4) var(--s4) var(--s4) var(--s5);
+  border-bottom: 1px solid var(--line);
+}
+
+.sheet h2 { margin: 0; font-size: var(--t-title); font-weight: var(--w-emphasis); flex: 1; }
+
+.sheet > div {
+  padding: var(--s5);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+/* A dialog that asks a question puts its answers at the bottom right, the
+   confirming one last, because that is where the eye finishes. */
+.sheet footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s3);
+  padding: var(--s4) var(--s5);
+  border-top: 1px solid var(--line);
+}
+
+.sheet footer .danger {
+  background: rgba(220, 60, 60, .14);
+  border-color: var(--loss);
+  color: #ff9c9c;
+}
+
+.sheet footer .danger:hover { background: rgba(220, 60, 60, .24); }
+
+/* A tooltip follows the pointer, so it must never be under it - otherwise it
+   takes the `mouseleave` that would have dismissed it. */
+.tip {
+  position: fixed;
+  z-index: 7;
+  pointer-events: none;
+  max-width: 320px;
+  padding: var(--s2) 9px;
+  border-radius: var(--r2);
+  background: #0c0e12;
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: var(--t-note);
+  line-height: 1.4;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .5);
+}
+
+.tip b { display: block; }
+.tip .sub { display: block; }
+
+/* A tooltip's last line is often "shift to add, ctrl to remove" - a rule
+   rather than a fact, so it is set apart from the sentence above it. */
+.tip .hint {
+  display: block;
+  margin-top: var(--s1);
+  padding-top: var(--s1);
+  border-top: 1px solid var(--line);
+  color: var(--dim);
+  font-size: var(--t-note);
+}
+
+/* --- tile attribution ---------------------------------------------------- */
+
+/* Bottom-right, opposite the legend, quiet but never hidden: CC BY-NC-SA asks
+   for credit and a credit you have to open a menu to find is not one. */
+/* Sits above the timeline strip rather than behind it. This is a licence
+   obligation, not decoration - CC BY-NC-SA asks for the credit to be visible
+   and `--strip-h` is 0 whenever the strip is not there. */
+/* Provenance, not a control - so it is faint until pointed at, and it clears
+   the timeline strip the way everything else anchored to the bottom does.
+   Monospaced because it is a version and a duration, both of which are read
+   rather than skimmed. */
+.watermark {
+  position: fixed;
+  z-index: 2;
+  left: var(--s4);
+  bottom: calc(var(--strip-h) + var(--s4));
+  padding: var(--s1) 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--r2);
+  background: rgba(23, 26, 32, .93);
+  color: var(--dim);
+  font-size: var(--t-note);
+  opacity: .62;
+  transition: opacity .18s ease;
+}
+.watermark:hover { opacity: 1; }
+
+.attribution {
+  position: fixed;
+  z-index: 2;
+  right: calc(var(--rail) + var(--s4));
+  bottom: calc(var(--strip-h) + var(--s4));
+  padding: var(--s1) 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--r2);
+  background: rgba(23, 26, 32, .93);
+  color: var(--dim);
+  font-size: var(--t-note);
+  transition: right .18s ease;
+}
+
+.attribution a { color: inherit; text-decoration: none; }
+.attribution a:hover { color: var(--text); text-decoration: underline; }
+
+/* Reference data that has never been fetched. The interface accent rather
+   than `--loss`: it is a thing to do, not a thing that went wrong. */
+.warn-text { color: var(--amber); }
+
+/* --- timeline ----------------------------------------------------------- */
+
+/* Comparing hides the *graph*, not the strip - the strip is where the page
+   says why the graph is gone and offers the way back. Everything that acts on
+   a step goes with it, since there is no step to act on. */
+/* Spans the map's width rather than the window's, so it stops at the panel
+   the way the attribution does. */
+.timeline {
+  position: fixed;
+  z-index: 3;
+  left: 0;
+  right: var(--rail);
+  bottom: 0;
+  padding: var(--s3) var(--s4);
+  background: rgba(23, 26, 32, .96);
+  border-top: 1px solid var(--line);
+  transition: right .18s ease;
+}
+
+.tl-head {
+  display: flex;
+  gap: var(--s3);
+  align-items: center;
+  margin-bottom: var(--s2);
+}
+
+.tl-title { font-weight: var(--w-emphasis); }
+.tl-title .sub { color: var(--dim); font-weight: var(--w-body); margin-left: var(--s2); }
+
+.timeline.shut .tl-graph { display: none; }
+.timeline.shut { padding-bottom: var(--s2); }
+
+.tl-graph {
+  position: relative;
+  height: 92px;
+  margin-bottom: var(--s2);
+}
+
+/* **The direct child, not any `svg` inside.** The overlay's skulls are `svg`
+   too, and `.tl-graph svg` out-specifies `.tl-skull` - which sized each one to
+   the whole strip. */
+.tl-graph > svg { display: block; width: 100%; height: 100%; }
+
+/* **Where anything that must not be stretched goes.** The graph draws with
+   `preserveAspectRatio="none"`, which is right for a bar - it should fill its
+   column at any panel width - and wrong for every glyph, which comes out
+   scaled by whatever ratio the strip happens to be. So the decade labels and
+   the skulls sit here, in ordinary layout, positioned by percentage. */
+.tl-over {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.tl-tick {
+  position: absolute;
+  left: var(--s1);
+  transform: translateY(-50%);
+  padding-right: var(--s1);
+  color: var(--dim);
+  font-size: var(--t-micro);
+  line-height: 1;
+  /* The axis runs over the first column, so a label can land on a bar. Haloed
+     in the page's own background rather than boxed: a chip would draw a shape
+     where there is nothing, and these have to read as ruling. */
+  text-shadow: 0 0 3px var(--bg), 0 0 3px var(--bg), 0 0 2px var(--bg);
+}
+/* The top line has nothing above it to hold a label. */
+.tl-tick.below { transform: translateY(2px); }
+
+/* The mark on a roll that costs more than a working month. Sized in `em` off
+   the tick text beside it, so the two stay in proportion. */
+.tl-skull {
+  position: absolute;
+  width: 1.15em;
+  height: 1.15em;
+  /* Centred on the point given, both ways - the point being the middle of the
+     bar. It sits *in* the bar rather than over it, which works because the
+     glyph is stroked in the outline colour the death bar already wears: the
+     bar is near-black, the mark is not. */
+  margin-left: -0.575em;
+  margin-top: -0.575em;
+  color: var(--band-death-mark);
+  font-size: var(--t-body);
+  /* **Drawn like every other icon**, which `.icon` would have given it for
+     free were it not also carrying that class's 16px. Without these the sprite
+     falls back to a filled black shape - which on this strip is a dark blob
+     with two red eyes. */
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The zero line is drawn, not implied: most steps add nothing, so without it
+   an empty column reads as missing data rather than as "no change". */
+.tl-zero { stroke: var(--line-strong); stroke-width: 1; }
+
+/* **The bars are drawn over the hit areas, so they must not take the
+   pointer.** Without this, hovering the very thing you are aiming at - a tall
+   green bar - lands on the bar rather than the slot beneath it and no tooltip
+   appears, while the empty background either side works fine. */
+.tl-bar, .tl-at-mark, .tl-zero { pointer-events: none; }
+
+/* The decade lines of the log axis. Dashed, and dim enough to read as ruling
+   rather than as data - they are there to be measured against, not looked at. */
+.tl-grid {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  pointer-events: none;
+}
+
+.tl-bar { fill: var(--gain); }
+.tl-bar.down { fill: var(--loss); }
+
+/* **Positional, because the names move and the colours do not.** `bandOf`
+   hands back an index; what that band is called is the user's business. */
+.tl-bar[data-band="0"], .tl-sw[data-band="0"] { fill: var(--band-free); background: var(--band-free); }
+.tl-bar[data-band="1"], .tl-sw[data-band="1"] { fill: var(--band-quick); background: var(--band-quick); }
+.tl-bar[data-band="2"], .tl-sw[data-band="2"] { fill: var(--band-grind); background: var(--band-grind); }
+.tl-bar[data-band="3"], .tl-sw[data-band="3"] { fill: var(--band-brutal); background: var(--band-brutal); }
+.tl-bar[data-band="4"], .tl-sw[data-band="4"] { fill: var(--band-death); background: var(--band-death); }
+/* The darkest band needs an edge or it is a hole rather than a bar. */
+.tl-bar[data-band="4"] { stroke: var(--line-strong); stroke-width: 1; }
+/* A step with nothing to show still gets a hit area, so hovering anywhere
+   along the axis answers "what happened here" with "nothing". */
+.tl-bar.flat { fill: var(--line-strong); }
+
+/* **A bar that ran off the top of the axis, not one that reached it.** The
+   hours axis is capped so a single enormous roll cannot flatten the other
+   forty-nine; a roll past the cap is drawn full height and marked, which reads
+   as "continues" rather than as "this is the maximum".
+
+   **Marked by its outline, because the fill already means something.** This
+   recoloured the whole bar amber, and the two axes cap at different heights -
+   1,000 hours on the linear one, 10,000 on the log - so the same death-band
+   roll came out black on one and amber on the other. Which band a roll is in
+   is a fact about the roll; running off the end is a fact about the axis, so
+   the band keeps the fill and the overflow takes the edge. */
+.tl-bar.over { stroke: var(--amber); stroke-width: 1.5; }
+/* With no bands configured there is no fill to protect, and an outline alone
+   on a green bar says nothing. */
+.tl-bar.over[data-band=""] { fill: var(--amber); }
+.tl-slot { fill: transparent; }
+.tl-slot:hover { fill: rgba(255, 255, 255, .07); }
+.tl-slot.at { fill: rgba(255, 255, 255, .04); }
+/* Where you are, marked under the column. A full-height wash competed with
+   the bars it was pointing at. */
+.tl-at-mark { fill: var(--gain); }
+
+/* In the overlay now, so it is text rather than a `<text>` - centred by the
+   usual half-width shift instead of `text-anchor`. */
+.tl-pending {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--dim);
+  font-size: var(--t-note);
+  white-space: nowrap;
+}
+
+/* **A second chip group, and it has to read as one.** It qualifies the Hours
+   chip rather than joining the row of series, so without a rule between them
+   "Tasks Hours Log Linear" reads as four choices of one thing. */
+.tl-scale {
+  padding-left: var(--s3);
+  border-left: 1px solid var(--line);
+}
+
+/* The colour key, under the graph it describes. Wraps rather than scrolls: at
+   five entries it fits every width the strip is drawn at, and a scrollbar on a
+   legend is a control that looks like it hides something. */
+.tl-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+  align-items: center;
+  margin-bottom: var(--s2);
+  color: var(--dim);
+  font-size: var(--t-note);
+}
+
+.tl-band { display: flex; align-items: center; gap: var(--s2); }
+
+.tl-sw {
+  /* `<i>` is inline, so the box has no size until it is told to have one. In
+     the legend a flex parent did that; in a table header nothing does. */
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--r1);
+  border: 1px solid var(--line);
+  flex: none;
+}
+
+.tl-band-edit { font-size: var(--t-note); }
+
+.band-edit { display: grid; gap: var(--s2); }
+
+.band-row { display: flex; align-items: center; gap: var(--s2); }
+
+.band-name { flex: 1; min-width: 0; }
+.band-upto { width: 9ch; text-align: right; }
+.band-under, .band-unit, .band-open { color: var(--dim); font-size: var(--t-note); }
+.band-open { margin-left: auto; }
+
+/* The numbers behind a priced row. Same scale and the same shape as the band
+ * editor above - one dialog idiom, not two. */
+/* What wants a priced item, above the numbers that priced it. Dimmed and
+   tight: it is context for the row you opened, not a second list to work
+   through. */
+/* The two blobs the hours above rest on. A strip rather than a section: it is
+   a caveat on the number, not a topic of its own, and it must not push the
+   first bucket off the screen. */
+.reference-strip { flex: none; margin-bottom: var(--s3); }
+.reference-strip li { padding: 2px 0; }
+.reference-strip .name { font-size: var(--t-note); color: var(--dim); }
+
+ul.list.wanted { margin-bottom: var(--s4); }
+ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
+
+.knob-edit { display: grid; gap: var(--s3); }
+
+.knob {
+  position: relative;
+  display: grid;
+  gap: var(--s1);
+  padding: var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--r1);
+  overflow: hidden;
+}
+
+/* **A knob you changed looks changed.** The border carries it at a glance and
+ * the corner says which of the two states it is, because "this number is not
+ * the wiki's" is the single most useful thing to know about a row you are
+ * about to argue with. Amber rather than a new hue: it already means "yours"
+ * on the map, where an edited chunk wears it. */
+.knob.mine { border-color: var(--amber); }
+
+/* A corner ribbon: a band wider than the corner it crosses, rotated through
+ * it, with the card's `overflow: hidden` cutting the overhang. Sized in `ch`
+ * so it stays wider than its own word - a band measured in pixels clips the
+ * text the first time the label changes. */
+.knob-flag {
+  position: absolute;
+  top: var(--s4);
+  right: calc(var(--s6) * -1);
+  /* **Wider than the word, measured rather than guessed.** At 14ch the band
+   * was narrower than its own text and clipped it to "OVERRID"; the text is
+   * ~72px at this size, so the band has to clear that before the card's
+   * `overflow: hidden` gets to do the part it is meant to. */
+  width: 20ch;
+  transform: rotate(45deg);
+  padding: 1px 0;
+  background: var(--amber);
+  color: var(--bg);
+  font-size: var(--t-micro);
+  font-weight: var(--w-emphasis);
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.knob-path { color: var(--dim); font-size: var(--t-note); overflow-wrap: anywhere; }
+.knob-sep { color: var(--line-strong); padding: 0 var(--s1); }
+
+/* What the wiki has a page for, and what Find can frame. */
+/* One row per run of a batch, counted by band. A table because it is one -
+   the columns are the same question asked five ways, and a grid of cards
+   would make the reader do the aligning. */
+.sim-table { width: 100%; border-collapse: collapse; font-size: var(--t-note); }
+.sim-table th {
+  padding: var(--s1) var(--s2);
+  color: var(--dim);
+  font-weight: var(--w-emphasis);
+  text-align: right;
+}
+.sim-table th:first-child { text-align: left; }
+.sim-band { display: inline-flex; align-items: center; gap: var(--s1); }
+.sim-table td { padding: var(--s1) var(--s2); text-align: right; }
+.sim-table tbody tr { border-top: 1px solid var(--line); }
+.sim-name { text-align: left; }
+.sim-total { font-variant-numeric: tabular-nums; }
+/* A band nobody landed in is a zero worth reading past, not one worth
+   reading. */
+.sim-table td.nil { color: var(--line-strong); }
+
+/* **What a roll's hours actually went on**, in the heat dialog. Stacked rather
+   than run together: three item names on one line is a sentence you have to
+   parse, and the question is "what are the big three", which is a list. Left,
+   because names read from the left even in a table of right-aligned numbers. */
+.heat-grinds { text-align: left; }
+.grind { display: flex; justify-content: space-between; gap: var(--s3); }
+.grind .sub { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sim-total .tl-sw { margin-right: var(--s2); vertical-align: baseline; }
+
+/* The chunks a thing is in, as the squares they are. Four across is what fits
+   the overlay at the tile's own 256px halved twice - wider makes a wall of
+   map, narrower makes a column. */
+.chunk-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--s3);
+}
+
+.chunk-card {
+  display: grid;
+  gap: 2px;
+  padding: var(--s2);
+  text-align: center;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r2);
+  cursor: pointer;
+}
+.chunk-card:hover { border-color: var(--amber); }
+
+/* **How near a chunk is, on its edge.** "Which of these can I already get to"
+   is the question the dialog exists to answer, and it was being answered by an
+   opacity difference you had to hold two cards side by side to see. The edge
+   is the loudest thing on a card that is mostly picture, so the edge carries
+   it - green for held, and the map's own reachable blue for a square you can
+   walk into without rolling it.
+
+   **Locked chunks are shown and dimmed, not hidden.** "It is there and you
+   cannot reach it yet" is the answer to half the searches anyone makes. */
+.chunk-card[data-hold="unlocked"], .chunk-card[data-hold="added"] {
+  border-color: var(--gain);
+}
+.chunk-card[data-hold="reachable"] { border-color: var(--reachable); }
+.chunk-card[data-hold="locked"] { opacity: 0.55; }
+.chunk-card[data-hold="locked"] .chunk-name { color: var(--dim); }
+
+/* The id and how near it is, on one line under the name: the id is what you
+   paste into `chunksim unlock`, and the word is the legend the two edge colours
+   would otherwise need. */
+.chunk-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: var(--s2);
+}
+.chunk-hold { color: var(--dim); font-size: var(--t-micro); }
+.chunk-card[data-hold="unlocked"] .chunk-hold,
+.chunk-card[data-hold="added"] .chunk-hold { color: var(--gain); }
+.chunk-card[data-hold="reachable"] .chunk-hold { color: var(--reachable); }
+
+.chunk-art {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--r1);
+  background: var(--surface-3);
+  image-rendering: pixelated;
+}
+.chunk-art.off {
+  display: grid;
+  place-items: center;
+  color: var(--dim);
+  font-size: var(--t-micro);
+}
+
+.chunk-name { font-size: var(--t-note); overflow-wrap: anywhere; }
+.chunk-id { color: var(--dim); font-family: var(--mono); font-size: var(--t-micro); }
+
+/* **Ambient in a list, explicit in prose.**
+   Nearly every row in the Tasks panel is a link now, and a column of forty
+   underlined blue names is a column with no emphasis left to spend - the
+   decoration stops marking anything because it marks everything. So in a list
+   the link inherits its row and reveals itself on approach; the cursor is the
+   affordance and the underline is the confirmation.
+   Inside a dialog's prose there is no row to inherit from and only a word or
+   two, so there it stays visible. */
+.find-link { color: inherit; cursor: pointer; text-decoration: none; }
+.find-link:hover, .find-link:focus-visible {
+  color: var(--candidate);
+  text-decoration: underline dotted;
+}
+
+.knob-path .find-link { color: var(--candidate); text-decoration: underline dotted; }
+.knob-path .find-link:hover, .knob-path .find-link:focus-visible {
+  text-decoration: underline solid;
+}
+
+.knob-controls { display: flex; align-items: center; gap: var(--s2); }
+.knob-revert { font-size: var(--t-note); padding: 1px var(--s2); }
+
+.knob-layers { display: flex; flex-wrap: wrap; gap: var(--s2); }
+
+.knob-layer { display: flex; gap: var(--s1); font-size: var(--t-note); color: var(--dim); }
+/* The layer in force, which is the one answering the question "why is it
+ * that number". Weight rather than hue: the palette here already means
+ * bucket, and a fifth meaning for a colour is how a legend stops working. */
+.knob-layer.on { color: var(--text); font-weight: var(--w-emphasis); }
+
+.knob-value { width: 12ch; text-align: right; }
+.knob-fixed { color: var(--dim); font-size: var(--t-note); }
+
+/* A row you can press. The cursor is the affordance; the tooltip says what
+ * pressing does. */
+.arguable { cursor: pointer; }
+.arguable:hover .name, .arguable:focus-visible .name { color: var(--amber); }
+
+.tl-scrub {
+  display: flex;
+  gap: var(--s3);
+  align-items: center;
+}
+
+.tl-slider {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--gain);
+}
+
+.tl-step {
+  font-variant-numeric: tabular-nums;
+  min-width: 12ch;
+  text-align: right;
+  color: var(--dim);
+  font-size: var(--t-note);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel, .progress, .attribution, .chip, .progress-fill { transition: none; }
+  .progress-track.indeterminate .progress-fill { animation: none; width: 100%; }
+}

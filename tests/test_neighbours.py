@@ -6,10 +6,10 @@ from typing import Any
 
 import pytest
 
-from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.derive.graph import grid_neighbours
-from fray_claude.derive.neighbours import assign_numbers, eligible_neighbours, neighbour_pool
-from fray_claude.derive.pipeline import Derived, MapState, derive
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.derive.graph import grid_neighbours
+from chunksim.derive.neighbours import assign_numbers, eligible_neighbours, neighbour_pool
+from chunksim.derive.pipeline import Derived, MapState, derive
 
 
 
@@ -347,7 +347,7 @@ def test_the_cabin_fever_gate_blocks_its_neighbour_on_the_real_export(
 def test_the_real_maps_neighbours_satisfy_the_numbering_invariants(
     real_state: tuple[MapState, dict[str, bool]], real_derived: Derived
 ) -> None:
-    """Structural rather than golden: a `fray fetch` after a roll changes the
+    """Structural rather than golden: a `chunksim fetch` after a roll changes the
     answer, and breaking the suite for that would be the wrong signal."""
     state, unlocked = real_state
     result = eligible_neighbours(state, unlocked, real_derived)
@@ -379,13 +379,13 @@ def test_neighbour_numbers_match_the_apps_own_answer(
     `tempSelectedChunks` also carries hand-selected chunks, so the oracle is
     only clean if nothing was manually selected before "assign" was pressed.
     """
-    from fray_claude.model.summary import _mapping
+    from chunksim.model.summary import _mapping
 
     state, unlocked = real_state
     oracle = _mapping(_mapping(real_payload, "chunks"), "selected")
     if not oracle:
         pytest.skip(
-            "no chunks.selected recorded; run the app's 'assign' action, then `fray fetch`"
+            "no chunks.selected recorded; run the app's 'assign' action, then `chunksim fetch`"
         )
 
     result = eligible_neighbours(state, unlocked, real_derived)

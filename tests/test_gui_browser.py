@@ -14,9 +14,9 @@ from typing import Any
 
 import pytest
 
-from fray_claude.gui import allowed_hosts, browser
-from fray_claude.gui.jobs import JobRegistry
-from fray_claude.gui.http import Context, idle_seconds, should_stop, touch
+from chunksim.gui import allowed_hosts, browser
+from chunksim.gui.jobs import JobRegistry
+from chunksim.gui.http import Context, idle_seconds, should_stop, touch
 
 
 def test_the_search_prefers_what_is_most_likely_installed() -> None:
@@ -35,7 +35,7 @@ def test_the_search_prefers_what_is_most_likely_installed() -> None:
 
 def test_no_browser_found_is_none_not_an_error(monkeypatch: pytest.MonkeyPatch) -> None:
     """A machine with only Firefox falls back to a tab; it does not fail."""
-    monkeypatch.setattr("fray_claude.gui.browser.shutil.which", lambda name: None)
+    monkeypatch.setattr("chunksim.gui.browser.shutil.which", lambda name: None)
     monkeypatch.setattr(browser, "_MACOS_APPS", ())
     monkeypatch.setattr(browser, "_WINDOWS_APPS", ())
 
@@ -57,7 +57,7 @@ def test_the_window_gets_its_own_profile(
         seen.append(command)
         return _FakeProcess()
 
-    monkeypatch.setattr("fray_claude.gui.browser.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("chunksim.gui.browser.subprocess.Popen", fake_popen)
     profile = tmp_path / "profile"
 
     window = browser.open_app_window(
@@ -77,7 +77,7 @@ def test_a_browser_that_will_not_run_falls_back(
     def explode(command: list[str], **kwargs: Any) -> Any:
         raise OSError("permission denied")
 
-    monkeypatch.setattr("fray_claude.gui.browser.subprocess.Popen", explode)
+    monkeypatch.setattr("chunksim.gui.browser.subprocess.Popen", explode)
 
     assert browser.open_app_window("http://x/", tmp_path, browser=Path("/x")) is None
 
@@ -86,7 +86,7 @@ def test_closing_insists_if_asking_does_not_work(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     process = _FakeProcess(ignores_terminate=True)
-    monkeypatch.setattr("fray_claude.gui.browser.subprocess.Popen", lambda *a, **k: process)
+    monkeypatch.setattr("chunksim.gui.browser.subprocess.Popen", lambda *a, **k: process)
     window = browser.open_app_window("http://x/", tmp_path, browser=Path("/x"))
 
     assert window is not None

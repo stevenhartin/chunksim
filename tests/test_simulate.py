@@ -14,9 +14,9 @@ from typing import Any
 
 import pytest
 
-from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.derive.pipeline import MapState, derive
-from fray_claude.runs.simulate import (
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.derive.pipeline import MapState, derive
+from chunksim.runs.simulate import (
     CarryDivergedError,
     UnlockRecord,
     roll_pool,
@@ -287,8 +287,8 @@ def test_carrying_areas_reaches_the_same_states_as_deriving_cold(
     Minutes, not seconds - hence `slow`. If this ever fails, the flag is
     wrong, not the test: the cold half is the definition.
     """
-    from fray_claude.derive.pipeline import load_map_state
-    from fray_claude.store.cache import project_root, read_cache
+    from chunksim.derive.pipeline import load_map_state
+    from chunksim.store.cache import project_root, read_cache
 
     envelope = read_cache(map_id, root=project_root())
     state, unlocked = load_map_state(envelope["data"], real_export, real_tasks_map)
@@ -331,7 +331,7 @@ def test_a_carried_run_checks_itself_against_a_cold_derivation(
     assert simulate_rolls(state, {"100": True}, rolls=1, seed=1), "the fixture should roll"
 
     # Make the *verifying* derivation differ from the carried one.
-    from fray_claude.runs import simulate as module
+    from chunksim.runs import simulate as module
 
     calls = {"n": 0}
     original = derive
@@ -354,7 +354,7 @@ def test_not_carrying_skips_the_check_entirely(monkeypatch: pytest.MonkeyPatch) 
     and must not pay for a second derivation of its own answer."""
     info = _chunk_info(sections={"101": {"0": ["100"]}})
     state = _state(chunk_info=info)
-    from fray_claude.runs import simulate as module
+    from chunksim.runs import simulate as module
 
     calls = {"n": 0}
     original = derive

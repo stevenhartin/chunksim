@@ -10,9 +10,9 @@ from typing import Any, cast
 
 import pytest
 
-from fray_claude.gui import panels
-from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.derive.pipeline import Derived
+from chunksim.gui import panels
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.derive.pipeline import Derived
 
 
 class _Stub:
@@ -331,7 +331,7 @@ def test_a_name_is_capitalised_and_otherwise_left_alone() -> None:
     """The export writes `unholy symbol` beside `Falador shield 1`, so a column
     of them starts in two cases. Only the first character is touched:
     lower-casing the rest destroys `TzHaar-Hur` and `Ardougne`."""
-    from fray_claude.gui.panels import _display_name
+    from chunksim.gui.panels import _display_name
 
     assert _display_name("unholy symbol") == "Unholy symbol"
     assert _display_name("Falador shield 1") == "Falador shield 1"
@@ -495,7 +495,7 @@ def test_a_ledger_without_the_newer_branches_renders_as_it_always_did() -> None:
 
 
 #: How many rolls the ordinary oracle run replays. The whole 50 is ~58s,
-#: which is not a price the everyday `FRAY_CHUNKINFO=... pytest` loop should
+#: which is not a price the everyday `CHUNKSIM_CHUNKINFO=... pytest` loop should
 #: pay; twelve is ~14s and reaches every roll of `verf-sim/run-001` that has
 #: ever caught something (`12849` at four, `5179` at five). The slow variant
 #: below is the one that gets to say the equivalence holds *in general*.
@@ -545,12 +545,12 @@ def _replay_and_compare(
     """
     from dataclasses import replace
 
-    from fray_claude.derive import boosts
-    from fray_claude.derive.active_tasks import _level_proven_elsewhere
-    from fray_claude.derive.pipeline import derive, load_map_state
-    from fray_claude.derive.unlock import delta_from
-    from fray_claude.gui.routes_view import _raise_ceiling
-    from fray_claude.store.cache import project_root, read_base_payload, read_rolls
+    from chunksim.derive import boosts
+    from chunksim.derive.active_tasks import _level_proven_elsewhere
+    from chunksim.derive.pipeline import derive, load_map_state
+    from chunksim.derive.unlock import delta_from
+    from chunksim.gui.routes_view import _raise_ceiling
+    from chunksim.store.cache import project_root, read_base_payload, read_rolls
 
     run = "verf-sim/run-001"
     base = read_base_payload(run, project_root())
@@ -661,7 +661,7 @@ def test_a_roll_panel_matches_playing_out_the_whole_run(
     found were each invisible until the one before it was fixed, which is
     reason enough to distrust "it passes as far as I looked" - the only
     honest way to say the panel and the derivation agree is to have compared
-    them everywhere. Gated on `FRAY_SLOW_ORACLES` because it is ~58s where
+    them everywhere. Gated on `CHUNKSIM_SLOW_ORACLES` because it is ~58s where
     the prefix is ~14s.
     """
     assert _replay_and_compare(real_export, real_tasks_map, None) > _ORDINARY_ROLLS

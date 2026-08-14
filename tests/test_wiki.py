@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from fray_claude.remote.wiki import (
+from chunksim.remote.wiki import (
     mmg_rates,
     monster_slayer_xp,
     parse_amount,

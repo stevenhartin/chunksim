@@ -11,11 +11,11 @@ from typing import Any
 
 import pytest
 
-from fray_claude.derive.active_tasks import SkillClassification, TaskClassification
-from fray_claude.derive.bis import BisResult
-from fray_claude.derive.challenges import ChallengeResult
-from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.derive.delta import (
+from chunksim.derive.active_tasks import SkillClassification, TaskClassification
+from chunksim.derive.bis import BisResult
+from chunksim.derive.challenges import ChallengeResult
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.derive.delta import (
     BRANCHES,
     BranchDelta,
     MapSide,
@@ -25,10 +25,10 @@ from fray_claude.derive.delta import (
     diff_nested,
     diff_picks,
 )
-from fray_claude.derive.other_tasks import CategoryTasks, OtherTasks, TaskGroup
-from fray_claude.derive.pipeline import Derived, MapState, derive
-from fray_claude.derive.sources import SourceIndex
-from fray_claude.derive.unlock import delta_from
+from chunksim.derive.other_tasks import CategoryTasks, OtherTasks, TaskGroup
+from chunksim.derive.pipeline import Derived, MapState, derive
+from chunksim.derive.sources import SourceIndex
+from chunksim.derive.unlock import delta_from
 
 
 def _chunk_info(**data: Any) -> ChunkInfo:
@@ -374,7 +374,7 @@ def test_the_added_half_matches_the_unlock_delta() -> None:
 
 def test_the_unlock_delta_drops_what_the_symmetric_one_keeps() -> None:
     # The BackupParent case in miniature: something valid before and not
-    # after. `fray unlock` is entitled to omit it; `fray diff` is not.
+    # after. `chunksim unlock` is entitled to omit it; `chunksim diff` is not.
     before = _derived(
         challenges=ChallengeResult(
             valid={"Hunter": {"Catch it barehanded": True}}, unsupported=frozenset()
@@ -393,7 +393,7 @@ def test_the_unlock_delta_drops_what_the_symmetric_one_keeps() -> None:
 
 
 def test_every_branch_name_is_rendered_by_the_counts() -> None:
-    # `BRANCHES` is what `fray diff`'s positional accepts; a name that never
+    # `BRANCHES` is what `chunksim diff`'s positional accepts; a name that never
     # reaches `counts()` would accept an argument and then print nothing.
     counts = compare(_derived(), _derived()).counts()
 

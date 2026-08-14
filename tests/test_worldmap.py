@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import pytest
 
-from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.derive.delta import diff_names
-from fray_claude.gui.worldmap import (
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.derive.delta import diff_names
+from chunksim.gui.worldmap import (
     GRID_COLUMNS,
     GRID_ROWS,
     MAX_REGION_X,
@@ -236,7 +236,7 @@ def test_locked_chunks_are_absent_rather_than_listed() -> None:
 
 
 def test_unplaceable_ids_are_reported_not_dropped() -> None:
-    """A canvas showing fewer chunks than `fray show` must explain itself."""
+    """A canvas showing fewer chunks than `chunksim show` must explain itself."""
     view = build_view(map_id="fray", unlocked=[LUMBRIDGE, "Abyss", "103891"])
 
     assert view.skipped == ("Abyss", "103891")
@@ -289,7 +289,7 @@ def test_the_hull_spans_the_additions_but_not_the_removals() -> None:
 def test_the_view_agrees_with_fray_diff() -> None:
     """`build_view` and `delta.diff_names` must describe the same comparison.
 
-    `fray diff --map1 a --map2 b chunks` reports "added" as present in map2 and
+    `chunksim diff --map1 a --map2 b chunks` reports "added" as present in map2 and
     absent from map1. A renderer that read it the other way would paint gains
     red, so the two are pinned together the way `tests/test_delta.py` pins
     `unlock` and `delta`.
@@ -428,7 +428,7 @@ def test_a_subdivision_with_no_square_borrows_its_parents() -> None:
     ordinary placeable dungeons, so the honest square for a section is the
     dungeon's. Holding the section by id or by name reaches the same squares.
     """
-    from fray_claude.gui.worldmap import region_xy as _rx
+    from chunksim.gui.worldmap import region_xy as _rx
 
     assert _rx(109001) == (425, 201)
     assert grid_position("109001") is None

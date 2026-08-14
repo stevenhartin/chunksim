@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from fray_claude.store.build_info import (
+from chunksim.store.build_info import (
     NO_WATERMARK_ENV,
     Build,
     describe,
@@ -63,7 +63,7 @@ def test_an_editable_install_says_so(tmp_path: Path) -> None:
     build = describe(_dist(tmp_path, editable=True), tmp_path / "demo")
 
     assert build.kind == "editable"
-    assert "editable install, linked" in watermark("fray", build)
+    assert "editable install, linked" in watermark("chunksim", build)
 
 
 def test_a_local_wheel_is_not_an_editable_install(tmp_path: Path) -> None:
@@ -81,7 +81,7 @@ def test_an_unreadable_direct_url_is_not_an_editable_install(tmp_path: Path) -> 
 
 
 def test_an_uninstalled_checkout_has_no_date_and_says_where_it_is() -> None:
-    """`python -m fray_claude` off a checkout on `sys.path` reaches the code
+    """`python -m chunksim` off a checkout on `sys.path` reaches the code
     without any installer having recorded anything. Inventing a date there
     would be worse than the honest answer."""
     build = read_build("no-such-distribution-anywhere")
@@ -89,8 +89,8 @@ def test_an_uninstalled_checkout_has_no_date_and_says_where_it_is() -> None:
     assert build.kind == "source"
     assert build.installed_at is None
     assert build.version == "unknown"
-    assert build.path.endswith("fray_claude")
-    assert "uninstalled source at" in watermark("fray", build)
+    assert build.path.endswith("chunksim")
+    assert "uninstalled source at" in watermark("chunksim", build)
 
 
 def test_the_real_install_answers_and_never_raises() -> None:
@@ -98,7 +98,7 @@ def test_the_real_install_answers_and_never_raises() -> None:
     build = read_build()
 
     assert build.kind in ("wheel", "editable", "source")
-    assert watermark("fray", build).startswith("fray ")
+    assert watermark("chunksim", build).startswith("chunksim ")
 
 
 def test_the_json_the_page_reads_is_flat_and_the_same_shape_for_every_kind(
@@ -113,14 +113,14 @@ def test_the_json_the_page_reads_is_flat_and_the_same_shape_for_every_kind(
 def test_the_watermark_names_the_app_it_was_printed_by() -> None:
     build = Build(version="0.1.0", installed_at=None, kind="wheel", path="/x")
 
-    assert watermark("fray-gui", build).startswith("fray-gui 0.1.0")
+    assert watermark("chunksim-gui", build).startswith("chunksim-gui 0.1.0")
 
 
 def test_the_environment_can_silence_it(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv(NO_WATERMARK_ENV, "1")
-    print_watermark("fray")
+    print_watermark("chunksim")
 
     assert capsys.readouterr() == ("", "")
 
@@ -131,8 +131,8 @@ def test_it_goes_to_stderr_by_default(
     """**Nine subcommands can write their whole answer to stdout** with
     `--export-json -`; a line of provenance in front of it is a parse error."""
     monkeypatch.delenv(NO_WATERMARK_ENV, raising=False)
-    print_watermark("fray")
+    print_watermark("chunksim")
 
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert captured.err.startswith("fray ")
+    assert captured.err.startswith("chunksim ")

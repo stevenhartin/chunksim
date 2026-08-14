@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from fray_claude.cli.app import main
+from chunksim.cli.app import main
 
 
 def test_unlock_reports_new_tasks_and_sections(

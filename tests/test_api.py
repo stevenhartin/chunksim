@@ -15,7 +15,7 @@ from typing import Any, cast
 
 import pytest
 
-from fray_claude.remote.api import (
+from chunksim.remote.api import (
     CHUNKINFO_URL,
     DEFAULT_TIMEOUT,
     TASKS_MAP_URL,
@@ -305,7 +305,7 @@ def test_the_tile_version_is_read_out_of_the_map_page(
     # fetch and not this process's.
     request = cast(urllib.request.Request, calls[0][0])
     assert request.full_url == MAP_TILE_VERSION_URL
-    assert "fray-claude" in (request.get_header("User-agent") or "")
+    assert "chunksim" in (request.get_header("User-agent") or "")
 
 
 def test_a_message_page_that_is_not_a_version_is_an_error(

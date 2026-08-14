@@ -1,6 +1,6 @@
 # heuristics/
 
-Hand-written corrections to the numbers `fray estimate` spends. Checked in, so
+Hand-written corrections to the numbers `chunksim estimate` spends. Checked in, so
 they are diffable, survive a re-scrape, and travel with the repo — which
 nothing under the gitignored `cache/` would.
 
@@ -11,20 +11,20 @@ defaults (heuristics.py)  <  scraped (cache/wiki_rates.json)  <  overrides.json
 ```
 
 The deepest value wins, key by key, so pinning one quest's hours does not
-erase the length recorded beside it. `fray heuristics` regenerates the middle
+erase the length recorded beside it. `chunksim heuristics` regenerates the middle
 layer and reports any value here that now disagrees with it — the override
 still wins, it just says so rather than winning silently.
 
 ## What is worth correcting
 
-Run `fray estimate` and look at what it flags:
+Run `chunksim estimate` and look at what it flags:
 
 - **The fastest rate opening the *earliest* band.** A climb is priced method by
   method as each unlocks, so a wrong rate is charged for every level between
   where it opens and where something faster does. A bad number at level 36 can
   cost more than a bad number at 90, which is the opposite of the old advice
   ("the entries that move a total") and worth re-reading if you learned that
-  one. `fray estimate skilling` prints the bands under each skill with the
+  one. `chunksim estimate skilling` prints the bands under each skill with the
   level range and the XP each covers; the band carrying the most XP is the one
   to check first.
 - **A `contained` join.** 163 of the 237 scraped training rates are `contained`
@@ -120,7 +120,7 @@ for one task:
 ```
 
 The seconds come from the same item walk a recipe's materials go through, so
-the cost is this map's — a runite bar is 14s on `fray` and unreachable on a map
+the cost is this map's — a runite bar is 14s on one cached map and unreachable on a map
 without a route to one. An item the walk cannot price at all leaves the method
 **uncharged** rather than dropping it.
 
@@ -132,7 +132,7 @@ costing nothing.
 
 ## Slayer masters
 
-`fray estimate skilling` prints every reachable master with a `pts/task`
+`chunksim estimate skilling` prints every reachable master with a `pts/task`
 column: points earned on the tasks you can do, less the 30 you pay cancelling
 the ones the master offers but your chunks cannot reach. A **negative** figure
 means training there bleeds points however good the XP looks.
@@ -179,7 +179,7 @@ it. Turn it on per task:
 
 Longer tasks are not automatically better: they shift the time-weighted
 average towards whatever you are extending, so a slow task extended can lower
-a master's overall XP rate. `fray estimate skilling` prints the rate, so
+a master's overall XP rate. `chunksim estimate skilling` prints the rate, so
 compare before and after.
 
 `extended_count` is `0.0` for tasks that have no extended size, and the flag

@@ -11,8 +11,8 @@ import pytest
 
 PROJECT = pathlib.Path(__file__).resolve().parent.parent
 
-from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.costing.heuristics import (
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.costing.heuristics import (
     TABLE_KINDS,
     DEFAULT_CURRENCY_PER_HOUR,
     burning_rate,
@@ -33,8 +33,8 @@ from fray_claude.costing.heuristics import (
     stems,
     streak_factor,
 )
-from fray_claude.remote.skill_tables import SkillRow
-from fray_claude.remote.wiki import Assignment, MmgRates
+from chunksim.remote.skill_tables import SkillRow
+from chunksim.remote.wiki import Assignment, MmgRates
 
 
 def _info(**data: Any) -> ChunkInfo:
@@ -459,7 +459,7 @@ def test_a_single_milestone_amortises_over_its_interval() -> None:
 
 def test_a_stackable_tasks_rate_reads_as_multi_target() -> None:
     """3,360 kills an hour is one every 1.07 seconds - chinchompas, not a weapon."""
-    from fray_claude.costing.heuristics import MULTI_TARGET_KPH, SlayerTask
+    from chunksim.costing.heuristics import MULTI_TARGET_KPH, SlayerTask
 
     spiders = SlayerTask(mean_count=150, xp_per_kill=12.8, kills_per_hour=3360)
     ankous = SlayerTask(mean_count=150, xp_per_kill=98.0, kills_per_hour=1500)
@@ -471,7 +471,7 @@ def test_a_stackable_tasks_rate_reads_as_multi_target() -> None:
 
 def test_an_ordinary_rate_does_not() -> None:
     """Black dragons at 195 an hour is somebody hitting one dragon."""
-    from fray_claude.costing.heuristics import SlayerTask
+    from chunksim.costing.heuristics import SlayerTask
 
     assert not SlayerTask(
         mean_count=150, xp_per_kill=262.0, kills_per_hour=195
@@ -484,7 +484,7 @@ def test_the_threshold_is_conservative_and_says_so() -> None:
     Recorded rather than fixed: the threshold is not trying to be clever, and
     an override is the place to correct a row that matters.
     """
-    from fray_claude.costing.heuristics import SlayerTask
+    from chunksim.costing.heuristics import SlayerTask
 
     assert not SlayerTask(
         mean_count=150, xp_per_kill=105, kills_per_hour=950
@@ -952,8 +952,8 @@ def test_the_rift_prices_the_runes_that_are_crafted_inside_it() -> None:
     and the guide tabulates from 40, so a variant below that keeps nothing
     rather than borrowing the 40-50 figure.
     """
-    from fray_claude.costing.heuristics import GOTR_SOURCE, _table_rates
-    from fray_claude.remote.skill_tables import SkillRow
+    from chunksim.costing.heuristics import GOTR_SOURCE, _table_rates
+    from chunksim.remote.skill_tables import SkillRow
 
     chunk_info = ChunkInfo(
         {
@@ -1001,14 +1001,14 @@ def test_the_rifts_rate_has_already_paid_for_its_own_essence() -> None:
     twice, which is the mistake `_material_cost` was written to stop for
     recipe rates and which the Rift is the second case of.
     """
-    from fray_claude.costing.heuristics import (
+    from chunksim.costing.heuristics import (
         GOTR_SOURCE,
         TITHE_SOURCE,
         Heuristics,
         Rate,
     )
-    from fray_claude.costing.recipe_rates import RECIPE_SOURCE
-    from fray_claude.costing.training import _ALL_INCLUSIVE_SOURCES, _material_cost
+    from chunksim.costing.recipe_rates import RECIPE_SOURCE
+    from chunksim.costing.training import _ALL_INCLUSIVE_SOURCES, _material_cost
 
     # Tithe Farm is the third and for the same reason: its seeds come out of
     # the minigame, so the published figure has already paid for them.
@@ -1073,8 +1073,8 @@ def test_tithe_farm_joins_on_upstreams_own_category() -> None:
     climbs steeply with the seed tier, so lending them that number would
     invent one.
     """
-    from fray_claude.costing.heuristics import TITHE_SOURCE, _table_rates
-    from fray_claude.remote.skill_tables import SkillRow
+    from chunksim.costing.heuristics import TITHE_SOURCE, _table_rates
+    from chunksim.remote.skill_tables import SkillRow
 
     chunk_info = ChunkInfo(
         {
@@ -1110,8 +1110,8 @@ def test_a_table_of_made_things_joins_on_output_and_not_on_items() -> None:
     the *assembly* step, not the blowing: it took the blowing's 122,500/hr
     with no glass charged against it, and won the Crafting climb with it.
     """
-    from fray_claude.costing.heuristics import OUTPUT_ONLY_KINDS, _table_rates
-    from fray_claude.remote.skill_tables import SkillRow
+    from chunksim.costing.heuristics import OUTPUT_ONLY_KINDS, _table_rates
+    from chunksim.remote.skill_tables import SkillRow
 
     chunk_info = ChunkInfo(
         {
@@ -1145,7 +1145,7 @@ def test_the_declared_config_branches_are_the_ones_load_reads() -> None:
     does nothing. Read out of the source rather than restated, because
     restating it is the failure.
     """
-    from fray_claude.costing import heuristics as module
+    from chunksim.costing import heuristics as module
 
     source = pathlib.Path(module.__file__).read_text(encoding="utf-8")
     read = {

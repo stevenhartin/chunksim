@@ -1,4 +1,4 @@
-# fray-claude
+# chunksim
 
 A command-line tool that reads state from the [source-chunk](https://github.com/source-chunk/chunk-picker-v2/)
 web app, caches it locally, and derives things from that cache entirely offline: which sections of
@@ -6,7 +6,7 @@ your unlocked chunks are reachable, what items/monsters/objects they give you ac
 challenges are currently valid and which are your current goal per skill, your best-in-slot equipment
 per combat style, what a candidate chunk unlock would add, and simulated multi-roll outcomes.
 
-source-chunk is upstream and read-only from here — `fray-claude` never writes back to it.
+source-chunk is upstream and read-only from here — `chunksim` never writes back to it.
 
 ## What it does
 
@@ -36,7 +36,7 @@ source-chunk is upstream and read-only from here — `fray-claude` never writes 
   source-chunk's own canvas puts on it, and the connection that makes it reachable.
 - **`simulate --rolls N`** — simulate N chunk rolls in sequence and accumulate what each one adds,
   with a `--seed` for reproducible runs. Add `--cache-map NAME` to keep each simulated future as a
-  cached map you can point every other command at (`fray tasks --map NAME`), `--runs R` to generate a
+  cached map you can point every other command at (`chunksim tasks --map NAME`), `--runs R` to generate a
   batch of them, and `--jobs J` to control how wide it runs (it already uses every core; `--jobs 1`
   makes it serial).
 - **`maps`** — list what's cached, fetched and simulated alike; `maps rm NAME` and `maps clean`
@@ -50,9 +50,9 @@ source-chunk is upstream and read-only from here — `fray-claude` never writes 
 
 Everything after the initial `fetch`/`chunkinfo` runs offline, against the local cache.
 
-## The map (`fray-gui`)
+## The map (`chunksim-gui`)
 
-There is a second command. `fray-gui` starts a local server and opens a browser on an interactive
+There is a second command. `chunksim-gui` starts a local server and opens a browser on an interactive
 OSRS world map — the wiki's cartography render, drawn from the game's own cache, at twice the detail
 of the published map and with the icons on it. It is the *whole* world: every dungeon, instance and
 boss room as well as the overworld, on one grid, with a selector for which floor to draw and the
@@ -66,10 +66,10 @@ open it in the panel. Press <kbd>F</kbd> to fly the camera to whatever is under 
 An **edited** map opens in Edit mode, since editing in place is what it is for.
 
 ```
-fray-gui                              # serve http://127.0.0.1:8731 and open it
-fray-gui --compare my-sim             # start in diff mode: gains green, losses red
-fray-gui --no-browser --port 0        # bind an OS-assigned port, open nothing
-fray-gui --no-browser --keep-alive --host 100.93.219.108   # serve it to another machine
+chunksim-gui                              # serve http://127.0.0.1:8731 and open it
+chunksim-gui --compare my-sim             # start in diff mode: gains green, losses red
+chunksim-gui --no-browser --port 0        # bind an OS-assigned port, open nothing
+chunksim-gui --no-browser --keep-alive --host 100.93.219.108   # serve it to another machine
 ```
 
 It opens as its own window — no tabs, no address bar — and **closing that window stops the server**,
@@ -87,7 +87,7 @@ section.
 
 Click any chunk for its contents, grouped by kind, with anything behind a door you cannot open
 greyed out; for one you do not own yet, **What would this add?** derives both worlds and tells you,
-and **Unlock** then saves that world as a map of its own — the same thing `fray unlock --cache-map`
+and **Unlock** then saves that world as a map of its own — the same thing `chunksim unlock --cache-map`
 does, named in a dialog and then opened, with its new chunk drawn green. In edit mode the same button
 reads **Add to edit** instead and costs nothing until you commit. The category chips are
 checkboxes, not tabs — all on to begin with, so you can look at monsters and NPCs together, or
@@ -100,7 +100,7 @@ A coloured ribbon under the toolbar says which one you are in, with the map name
 **Browse** is the map as it is. **Compare** puts you in **Diff**: pick a second map and its world is
 what you see — gains green, what it lost red and washed out like anything else you do not hold — with
 both selectors on the ribbon so the pair is changeable without leaving, and **Breakdown** opening the
-whole of `fray diff` in a panel (sections, tasks, sources and BiS, both directions). A floating
+whole of `chunksim diff` in a panel (sections, tasks, sources and BiS, both directions). A floating
 **Exit diff view** takes you back.
 
 **Edit** is entered by making an edit: click a task in the panel and it asks first. Ticked tasks
@@ -158,7 +158,7 @@ whole world as you type, puts what you can reach first, and fits the camera arou
 thing comes from. **Maps** lists what is cached, with the actions that make and remove it — including the two things every number rests on, the chunk export and the wiki rates, each with the date it was last fetched. The rates are scraped automatically the first time you open the GUI without them, since otherwise every hour in **Estimate** is a fallback default.
 
 A simulated run gets a **timeline**: a strip across the bottom with a slider that steps through the
-rolls, redrawing the world after each one. `fray simulate` has always written every roll down and
+rolls, redrawing the world after each one. `chunksim simulate` has always written every roll down and
 nothing ever read it back, so a simulation could tell you where you ended up and not what each roll
 bought you. A run carries its own past, so stepping costs nothing — drag the slider and the map
 follows.
@@ -201,14 +201,15 @@ opened.
 
 `?map=…&step=4` deep-links a particular roll.
 
-It re-reads the cache as it goes, so a `fray fetch` or `fray simulate` in another terminal appears
+It re-reads the cache as it goes, so a `chunksim fetch` or `chunksim simulate` in another terminal appears
 in the browser a couple of seconds later. You can also drive both from the page itself. **Fetch
 Named Map** takes an id rather than the map on screen — every source-chunk map is a public read, so
-you can pull down one you have never cached, or a friend's; leaving the box empty fetches `fray`.
+you can pull down one you have never cached, or a friend's. The box is required: there is no
+default map, because a fetch names someone's world and guessing whose is not this tool's business.
 **Roll** simulates N chunks, saves each run as a cached map and opens the result as a comparison. The
 progress card counts rolls rather than runs — `47/300` on a three-run job — and carries a stop button:
 stopping keeps every roll already finished, as an ordinary map you can open, derive and step through.
-`fray maps` marks it `(stopped)` so a run that ended short is not mistaken for one that finished.
+`chunksim maps` marks it `(stopped)` so a run that ended short is not mistaken for one that finished.
 
 `?map=…&compare=…&candidates=1&sections=1&step=4&tab=estimate` reproduces a view, so a particular question
 is shareable and a screenshot is reproducible.
@@ -217,13 +218,13 @@ It remembers the size and position you left the window at. Chrome will not do th
 URL changes between launches, which this one's does, so the page reports its own geometry back; the
 first run opens maximised.
 
-**Both apps say which install answered.** `fray` prints one line to stderr before anything else —
-`fray 0.1.0 · installed 3h ago` — and the map carries the same thing as a faint watermark in its
+**Both apps say which install answered.** `chunksim` prints one line to stderr before anything
+else — `chunksim 0.1.0 · installed 3h ago` — and the map carries the same thing as a faint watermark in its
 bottom-left corner, read from the server rather than baked into the page. This is not decoration:
 an install can be older than the checkout it came from and behave exactly as if it were not —
 `pipx install` on a package whose version has not moved is a silent no-op, so a wheel install can sit
 weeks behind with no symptom. An editable install cannot go stale, and says `editable, linked 3h ago`
-instead: its date is the age of the link, its code is whatever the checkout holds right now. `FRAY_NO_WATERMARK=1` silences the line;
+instead: its date is the age of the link, its code is whatever the checkout holds right now. `CHUNKSIM_NO_WATERMARK=1` silences the line;
 stderr keeps it clear of `--export-json -` either way.
 
 **It binds `127.0.0.1` and is not authenticated.** A page you have open in another tab cannot read
@@ -237,7 +238,7 @@ flags. Forward the port — `ssh -N -L 8731:127.0.0.1:8731 devbox`, then open
 Or serve the address directly:
 
 ```
-fray-gui --no-browser --keep-alive --host 100.93.219.108
+chunksim-gui --no-browser --keep-alive --host 100.93.219.108
 ```
 
 `--host` binds it *and* names it, so the page served there can use its buttons rather than rendering
@@ -250,11 +251,11 @@ from `0.0.0.0` on a café network — so the startup line says outright when the
 other machines.
 
 **The map is the OSRS wiki's, and your browser loads it directly from their CDN.** No map image is
-downloaded, cached or served by `fray-gui` — it hands the page a URL and the page uses it. That is
+downloaded, cached or served by `chunksim-gui` — it hands the page a URL and the page uses it. That is
 deliberate: the tiles are CC BY-NC-SA 3.0 and this project is MIT, so keeping a copy would make it a
 redistributor of NonCommercial artwork, while linking makes it a page with a picture on it. The
 credit sits in the corner of the map, which is what that licence asks for. If the wiki ever moves
-its tiles, `FRAY_TILE_VERSION` pins a render by hand.
+its tiles, `CHUNKSIM_TILE_VERSION` pins a render by hand.
 
 The section masks and skill icons *are* fetched — they come from source-chunk, one file at a time as
 you first look at them rather than all 1,558 up front.
@@ -269,20 +270,20 @@ likely to notice:
   and `CombatLevelNeeded`. Computing these needs state (quest points earned, kudos, …) that nothing
   in the export provides, so a task carrying one is reported as *unsupported* instead of guessed at.
   That's the only thing that ever lands in that bucket — 42 tasks on the map this was built against.
-  Run `fray tasks` and read the `unsupported` line for the count on *your* map.
+  Run `chunksim tasks` and read the `unsupported` line for the count on *your* map.
 - **Best-in-slot set effects** — the Void/Obsidian/Inquisitor/Verac's/Crystal/Karil's DPS overrides
   aren't modelled, so a set-bonus item can be under-rated against a raw-stats rival.
 - **Manual choices during simulation** — chunk selection and blacklisting, and the `roll2`/`roll5`
-  bonus rerolls. `fray simulate` rolls the way an untouched map would.
+  bonus rerolls. `chunksim simulate` rolls the way an untouched map would.
 
-**`fray estimate` is a rough guide, not a projection.** The chunk-info export contains no durations,
+**`chunksim estimate` is a rough guide, not a projection.** The chunk-info export contains no durations,
 no kill rates and no XP figures of any kind, so every number it spends comes from the OSRS wiki, a
 community spreadsheet, or a default — and any of them can be wrong for you. Three things to know
 before believing a total:
 
 - **A skill is priced method by method as each one unlocks**, not at one rate for the whole climb —
   Herblore 1→99 on a real map is nine bands, from cleaning guams at level 3 up to super combats at
-  90, and `fray estimate skilling` prints them with the level range and the XP each covers. Rates
+  90, and `chunksim estimate skilling` prints them with the level range and the XP each covers. Rates
   come from four places and each band says which: a money-making guide (225 of the export's 2,657
   training methods — most training doesn't make money, so most has no guide), the wiki's own skill
   and training-page tables (Agility, Thieving, Firemaking, Woodcutting, Hunter and part of Fishing), a per-action
@@ -295,7 +296,7 @@ before believing a total:
   it, and none of them are free: a shop charges its price at 500,000 gp an hour (or 25,000 Tokkul,
   or 19.5 marks of grace — all tunable) plus thirty seconds to walk there, a ground spawn is limited
   by how fast you can hop worlds to a fresh one, and performing an action costs its own time. What
-  cannot be priced is *said* rather than skipped: `fray estimate` lists what it could not cost, and
+  cannot be priced is *said* rather than skipped: `chunksim estimate` lists what it could not cost, and
   items sold for currencies with no agreed rate stay on that list.
 - **Your skill levels aren't in the map.** source-chunk records a level *cap* and a passively
   reachable level, neither of which is where you actually are, so the estimate counts from the
@@ -324,15 +325,15 @@ No other runtime dependencies.
 ## Installation (for development)
 
 ```sh
-git clone git@github.com:stevenhartin/fray-claude.git
-cd fray-claude
+git clone git@github.com:stevenhartin/chunksim.git
+cd chunksim
 pip install -e ".[dev]"
 ```
 
-This is an editable install: it links the `fray` console script to your checkout and pulls in the
+This is an editable install: it links the `chunksim` console script to your checkout and pulls in the
 `dev` extra (`pytest`), so edits take effect immediately without reinstalling.
 
-To get `fray` and `fray-gui` on your `PATH` outside the checkout while still tracking it, install
+To get `chunksim` and `chunksim-gui` on your `PATH` outside the checkout while still tracking it, install
 them the same way with pipx — once, not per change:
 
 ```sh
@@ -360,14 +361,14 @@ against source-chunk's own recorded answers, which makes them the suite's real c
 run them before trusting a change to the derivation modules:
 
 ```sh
-FRAY_CHUNKINFO=cache/reference/chunkinfo.json FRAY_MAP_CACHE=1 .venv/bin/pytest
+CHUNKSIM_CHUNKINFO=cache/reference/chunkinfo.json CHUNKSIM_MAP_CACHE=1 .venv/bin/pytest
 ```
 
-That is the whole setup once `fray chunkinfo` and `fray fetch` have run — the variable takes the
+That is the whole setup once `chunksim chunkinfo` and `chunksim fetch` have run — the variable takes the
 cached file as it is written, or a raw export if you have one. Without the variables the same tests
 skip, so a fresh clone stays green.
 
-The library is six subpackages under `src/fray_claude/`: `model/` (what upstream's data is),
+The library is six subpackages under `src/chunksim/`: `model/` (what upstream's data is),
 `remote/` (the only outbound calls), `store/` (the only disk), `derive/` (the pure layer),
 `costing/` (derivation to hours) and `runs/` (a base state plus a sequence of rolls), with `cli/`
 and `gui/` as the two apps on top. Tests are flat in `tests/` and named for what they cover, so
@@ -377,68 +378,68 @@ See `CLAUDE.md` for the module-by-module architecture and the testing convention
 
 ## Deploying
 
-`fray-claude` is a local CLI, not a service, so there's no server to deploy — "deploying" here just
+`chunksim` is a local CLI, not a service, so there's no server to deploy — "deploying" here just
 means producing an installable copy on a machine that isn't your development checkout, without the
 dev extras or an editable install.
 
 **Option A — install straight from the repository:**
 
 ```sh
-pip install git+https://github.com/stevenhartin/fray-claude.git
+pip install git+https://github.com/stevenhartin/chunksim.git
 ```
 
 **Option B — build a wheel and ship it:**
 
 ```sh
 pip install build
-python -m build             # writes dist/fray_claude-<version>-py3-none-any.whl
+python -m build             # writes dist/chunksim-<version>-py3-none-any.whl
 ```
 
 Copy the resulting `.whl` to the target machine and install it there:
 
 ```sh
-pip install fray_claude-<version>-py3-none-any.whl
+pip install chunksim-<version>-py3-none-any.whl
 ```
 
 Either way, the target machine only needs Python 3.14+ — there's nothing else to provision.
 
-## Usage (once `fray` is installed)
+## Usage (once `chunksim` is installed)
 
-`fray` stores its cache in a `cache/` directory. If you're running it from inside a checkout of this
+`chunksim` stores its cache in a `cache/` directory. If you're running it from inside a checkout of this
 repository (or any directory tree containing a `pyproject.toml`), that's where `cache/` lands;
-otherwise it's created in whatever directory you're in when you run `fray`.
+otherwise it's created in whatever directory you're in when you run `chunksim`.
 
-1. **Fetch your map's live state** (replace `your-map-id` with your actual source-chunk map id; it
-   defaults to `fray`):
+1. **Fetch your map's live state** (replace `your-map-id` with your actual source-chunk map id —
+   it's the `?<map-id>` part of your chunk-picker URL, and `--map` is required):
 
    ```sh
-   fray fetch --map your-map-id
+   chunksim fetch --map your-map-id
    ```
 
 2. **Fetch the upstream reference data** (~10MB; static game-world data, not personal state, so this
    only needs repeating when source-chunk itself updates it):
 
    ```sh
-   fray chunkinfo
+   chunksim chunkinfo
    ```
 
-   If you want `fray estimate`, also pull the numbers it spends. Two different sources, both from the
+   If you want `chunksim estimate`, also pull the numbers it spends. Two different sources, both from the
    wiki and both only worth repeating occasionally:
 
    ```sh
-   fray heuristics                     # 30+ requests: guides, quest lengths, skill tables, monster hp, bones
-   fray recipes                        # 13 requests: xp per action and tick costs, per skill
+   chunksim heuristics                     # 30+ requests: guides, quest lengths, skill tables, monster hp, bones
+   chunksim recipes                        # 13 requests: xp per action and tick costs, per skill
    ```
 
    The second is what stops most training methods being priced at a flat 1,000 xp/hour: it brings
    back what one action of a method actually pays and how long it takes, for 3,889 recipes. Where a
-   money-making guide exists it still wins - see `fray estimate skilling`, which prints where each
+   money-making guide exists it still wins - see `chunksim estimate skilling`, which prints where each
    band's rate came from.
 
 3. **Look at what you've got:**
 
    ```sh
-   fray show
+   chunksim show
    ```
 
    Counts of unlocked chunks, active tasks and enabled rules. It also prints a `slayer locked` line
@@ -448,19 +449,19 @@ otherwise it's created in whatever directory you're in when you run `fray`.
 4. **Derive things offline**, no network required from here on:
 
    ```sh
-   fray sections                       # reachable sections of your unlocked chunks
-   fray sources                        # items/objects/monsters/npcs/shops available to you
-   fray tasks                          # which challenges are currently valid
-   fray tasks Woodcutting              # your current goal for one skill, and what it supersedes
-   fray tasks Diary                    # outstanding diary tasks, grouped by diary and tier
-   fray tasks BiS                      # best-in-slot equipment: still to get, already got, outdated
-   fray search "abyssal whip"          # where in the world would I get this?
-   fray unlock --chunk 12082           # what unlocking chunk 12082 would add
-   fray diff --map1 fray --map2 Future # what's different between two cached maps, both ways
-   fray estimate                       # roughly how long the outstanding work would take
-   fray estimate skilling              # ... and which training method each skill would use
-   fray neighbours                     # which chunks I could unlock next, and their roll numbers
-   fray simulate --rolls 20 --seed 1   # simulate 20 rolls; --seed makes it reproducible
+   chunksim sections                       # reachable sections of your unlocked chunks
+   chunksim sources                        # items/objects/monsters/npcs/shops available to you
+   chunksim tasks                          # which challenges are currently valid
+   chunksim tasks Woodcutting              # your current goal for one skill, and what it supersedes
+   chunksim tasks Diary                    # outstanding diary tasks, grouped by diary and tier
+   chunksim tasks BiS                      # best-in-slot equipment: still to get, already got, outdated
+   chunksim search "abyssal whip"          # where in the world would I get this?
+   chunksim unlock --chunk 12082           # what unlocking chunk 12082 would add
+   chunksim diff --map1 A --map2 B     # what's different between two cached maps, both ways
+   chunksim estimate                       # roughly how long the outstanding work would take
+   chunksim estimate skilling              # ... and which training method each skill would use
+   chunksim neighbours                     # which chunks I could unlock next, and their roll numbers
+   chunksim simulate --rolls 20 --seed 1   # simulate 20 rolls; --seed makes it reproducible
    ```
 
    `sections`, `sources`, `tasks` and `diff` print counts by default and take an optional positional
@@ -472,41 +473,41 @@ otherwise it's created in whatever directory you're in when you run `fray`.
    human-readable summary.
 
    If you'd rather point at a chunk-info export you already have on disk instead of fetching it,
-   pass `--chunkinfo PATH` to any of those commands, or set the `FRAY_CHUNKINFO` environment variable.
+   pass `--chunkinfo PATH` to any of those commands, or set the `CHUNKSIM_CHUNKINFO` environment variable.
 
    Working out what's valid takes about a second, so the answer is cached under `cache/derived/` and
    reused until something it depended on changes — your map, the chunk-info export, or the chunks
    you asked about. A repeat command takes about a tenth of a second, and because the cache is keyed
-   on those inputs rather than on the command, `fray sections` reuses what `fray tasks` just worked
-   out. Nothing needs invalidating by hand: a `fray fetch` simply produces a different answer to
+   on those inputs rather than on the command, `chunksim sections` reuses what `chunksim tasks` just worked
+   out. Nothing needs invalidating by hand: a `chunksim fetch` simply produces a different answer to
    "what did this depend on". Pass `--recompute` to any of those commands to ignore the cache and
-   redo the work, `fray derived` to see what's stored, and `fray derived clean` to drop entries you
+   redo the work, `chunksim derived` to see what's stored, and `chunksim derived clean` to drop entries you
    haven't used in a fortnight (`--all` for the lot). Deleting them only ever costs recomputation.
 
    The same cache holds the other slow thing, if you have the `dps` extra: recomputing every kill
    rate from your map's own gear takes about two thirds of a second, and dwarfs the estimate it
-   feeds — so that gets stored too, and `fray estimate` drops from 1.7s to 0.2s on a repeat. It is
+   feeds — so that gets stored too, and `chunksim estimate` drops from 1.7s to 0.2s on a repeat. It is
    keyed on the rates, your `heuristics/overrides.json` *and* the calculator's own source, so
    editing an override or upgrading `osrs-dps` recomputes rather than quietly serving you the old
    number.
 
    A simulation derives a state per roll, and by default all of them are kept — so re-running a
    seeded batch takes about a quarter of a second instead of eight, at roughly 118 KiB per state.
-   `fray simulate --cache-behaviour extremities` keeps only the state each run starts from and the
+   `chunksim simulate --cache-behaviour extremities` keeps only the state each run starts from and the
    one it ends on (that last one being what the saved simulated map holds, so reading the map back is
    immediate), and `--cache-behaviour none` keeps nothing at all.
 
 5. **Keep a possible future and work against it**, instead of just reading the summary:
 
    ```sh
-   fray simulate --rolls 50 --cache-map Future            # saved as cache/maps/simulated/Future/run-001
-   fray unlock --chunk 12082 --cache-map Candidate        # the same, for one chosen chunk
-   fray tasks --map Future                                # the same commands, against that world
-   fray diff --map1 Candidate --map2 Future               # ... or against each other
-   fray simulate --rolls 50 --cache-map Sweep --runs 100    # a batch, as wide as the machine
-   fray maps                                              # what's cached, fetched and simulated
-   fray maps rm Sweep                                     # ... and remove one again
-   fray maps clean                                        # remove every simulated map
+   chunksim simulate --rolls 50 --cache-map Future            # saved as cache/maps/simulated/Future/run-001
+   chunksim unlock --chunk 12082 --cache-map Candidate        # the same, for one chosen chunk
+   chunksim tasks --map Future                                # the same commands, against that world
+   chunksim diff --map1 Candidate --map2 Future               # ... or against each other
+   chunksim simulate --rolls 50 --cache-map Sweep --runs 100    # a batch, as wide as the machine
+   chunksim maps                                              # what's cached, fetched and simulated
+   chunksim maps rm Sweep                                     # ... and remove one again
+   chunksim maps clean                                        # remove every simulated map
    ```
 
    `unlock --cache-map` saves into the same place a simulation does, so everything below applies to
@@ -514,7 +515,7 @@ otherwise it's created in whatever directory you're in when you run `fray`.
 
    A batch writes one directory per run, addressable as `--map Sweep/run-007`; a bare `--map Sweep`
    works whenever the batch holds exactly one run. Each run records the seed it used, so any single
-   run can be reproduced on its own with `fray simulate --seed <that>`. `cache/maps/simulated/<name>/batch.json`
+   run can be reproduced on its own with `chunksim simulate --seed <that>`. `cache/maps/simulated/<name>/batch.json`
    holds every run's rolled chunks in one small file, which is what to read for "how often did chunk X
    come up". Naming a batch something already taken saves it alongside as `<name>-2` rather than
    overwriting, and `maps rm`/`maps clean` refuse to touch a *fetched* map unless you pass
@@ -540,11 +541,11 @@ otherwise it's created in whatever directory you're in when you run `fray`.
    uses, so the hours are right the moment the simulation ends rather than after you press a button.
    That costs about 10% on a batch (16×50 goes from 48s to 53s) and roughly doubles its peak memory,
    which is the price of the real estimate rather than of the timeline; what it buys is the last
-   bar's total being `fray estimate`'s number for that map to the penny. The GUI's **Reprice** button is left for
+   bar's total being `chunksim estimate`'s number for that map to the penny. The GUI's **Reprice** button is left for
    the cases where a stored series has stopped describing the world: the wiki rates moved, the `dps`
    extra arrived since, or the run was made under an older pricing model.
 
-Run `fray <command> --help` for the full option list of any command, or `fray --help` for the list of
+Run `chunksim <command> --help` for the full option list of any command, or `chunksim --help` for the list of
 commands.
 
 ## License

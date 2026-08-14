@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "fray-claude"
+name = "chunksim"
 version = "0.1.0"
 description = "Offline tooling for source-chunk map state"
 requires-python = ">=3.14"
@@ -12,7 +12,7 @@ dependencies = []
 [project.optional-dependencies]
 dev = ["pytest"]
 # The DPS calculator that `dps_bridge.py` prices kills with. Optional, and it
-# must stay optional: `fray estimate` falls back to the scraped wiki rates
+# must stay optional: `chunksim estimate` falls back to the scraped wiki rates
 # without it. Kept out of `dependencies` for a second reason too - osrs-dps is
 # GPL-3.0 and this project is MIT, so it is an ordinary installed package a
 # user opts into rather than something vendored in. Not on PyPI yet; install
@@ -20,8 +20,8 @@ dev = ["pytest"]
 dps = ["osrs-dps"]
 
 [project.scripts]
-fray = "fray_claude.cli:main"
-fray-gui = "fray_claude.gui:main"
+chunksim = "chunksim.cli:main"
+chunksim-gui = "chunksim.gui:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -32,16 +32,16 @@ where = ["src"]
 # the wiki directly and nothing this project ships or caches carries one.
 # cache/assets/ holds section masks and skill icons, not artwork.
 [tool.setuptools.package-data]
-fray_claude = ["gui/resources/*"]
+chunksim = ["gui/resources/*"]
 
 [tool.pytest.ini_options]
 # The opt-in oracles. `conftest.pytest_collection_modifyitems` turns these into
 # skips when their inputs are absent, so a fresh clone stays green; registering
 # them here is what keeps an unknown-marker warning from hiding a typo.
 markers = [
-    "real_export: needs the real chunk export (FRAY_CHUNKINFO)",
-    "real_cache: needs the export and this checkout's own populated cache/ (FRAY_MAP_CACHE)",
-    "slow: minutes rather than seconds; also needs FRAY_SLOW_ORACLES",
+    "real_export: needs the real chunk export (CHUNKSIM_CHUNKINFO)",
+    "real_cache: needs the export and this checkout's own populated cache/ (CHUNKSIM_MAP_CACHE)",
+    "slow: minutes rather than seconds; also needs CHUNKSIM_SLOW_ORACLES",
 ]
 
 [tool.mypy]

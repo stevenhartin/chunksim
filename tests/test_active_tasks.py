@@ -6,9 +6,9 @@ from typing import Any
 
 import pytest
 
-from fray_claude.derive.active_tasks import SkillClassification, TaskClassification, classify_tasks
-from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.derive.pipeline import Derived, MapState
+from chunksim.derive.active_tasks import SkillClassification, TaskClassification, classify_tasks
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.derive.pipeline import Derived, MapState
 
 
 def _chunk_info(**data: Any) -> ChunkInfo:
@@ -375,7 +375,7 @@ def test_active_slayer_task_matches_the_live_oracle(
     reproducing the *name* depends on getting the boost table, the
     availability lookup or the arithmetic right.
     """
-    from fray_claude.model.firebase import decode_challenge_keyed
+    from chunksim.model.firebase import decode_challenge_keyed
 
     state, _unlocked = real_state
     info, derived = real_export, real_derived
@@ -388,7 +388,7 @@ def test_active_slayer_task_matches_the_live_oracle(
     assert recorded is not None, "the map no longer records an active Slayer task"
     assert derived.task_classification.skills["Slayer"].active == recorded
 
-    from fray_claude.derive import boosts
+    from chunksim.derive import boosts
 
     challenge = info.challenges["Slayer"][recorded]
     best, saw = boosts.best_boost(

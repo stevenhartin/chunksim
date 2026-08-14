@@ -13,8 +13,8 @@ from typing import Any
 
 import pytest
 
-from fray_claude.remote.api import DEFAULT_TIMEOUT
-from fray_claude.cli.app import build_parser, main
+from chunksim.remote.api import DEFAULT_TIMEOUT
+from chunksim.cli.app import build_parser, main
 
 
 _DIFF_CHUNKINFO: dict[str, Any] = {
@@ -34,16 +34,16 @@ def _cache_two_maps(
 ) -> None:
     payloads = {"a": first, "b": second}
     monkeypatch.setattr(
-        "fray_claude.cli.io_commands.fetch_map", lambda map_id, timeout=DEFAULT_TIMEOUT: payloads[map_id]
+        "chunksim.cli.io_commands.fetch_map", lambda map_id, timeout=DEFAULT_TIMEOUT: payloads[map_id]
     )
     main(["fetch", "--map", "a"])
     main(["fetch", "--map", "b"])
     # **Two readers, and both must be patched** - see `conftest.cached_map`.
     # This one cannot use that fixture: it caches two maps under two names,
-    # which is the whole point of `fray diff`.
+    # which is the whole point of `chunksim diff`.
     for module in ("io_commands", "common"):
         monkeypatch.setattr(
-            f"fray_claude.cli.{module}.read_chunkinfo",
+            f"chunksim.cli.{module}.read_chunkinfo",
             lambda override=None, root=None: chunkinfo_data,
         )
 
@@ -65,7 +65,7 @@ def test_diff_reports_both_directions(
     assert "map1         a" in out
     assert "map2         b" in out
     # Neither map contains the other, so both halves are non-empty - the case
-    # `fray unlock` structurally cannot report.
+    # `chunksim unlock` structurally cannot report.
     assert "chunks       +1 -1" in out
     assert "tasks        +1 -1" in out
 

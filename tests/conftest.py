@@ -15,7 +15,7 @@ against the same map. Sharing that took the oracle run from 10.35s to 6.42s.
 
 **The gating markers are the load-bearing half.** A real-cache test must skip on
 a fresh clone, not fail, and it must be gated on **both** variables - the export
-*and* `FRAY_MAP_CACHE`, which is presence-only and says "this checkout's own
+*and* `CHUNKSIM_MAP_CACHE`, which is presence-only and says "this checkout's own
 `cache/` is populated, read it". Two tests were once gated on the export alone
 and so failed with `CacheMissError` for anyone who had not fetched a map. One
 marker each removes the chance of getting that wrong again.
@@ -48,19 +48,19 @@ from typing import Any
 
 import pytest
 
-from fray_claude.store.cache import project_root, read_blob, read_cache, read_chunkinfo
-from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.model.firebase import reverse_tasks_map
-from fray_claude.derive.pipeline import Derived, MapState, derive, load_map_state
+from chunksim.store.cache import project_root, read_blob, read_cache, read_chunkinfo
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.model.firebase import reverse_tasks_map
+from chunksim.derive.pipeline import Derived, MapState, derive, load_map_state
 
-#: The raw export, or `fray chunkinfo`'s envelope around one - `read_chunkinfo`
+#: The raw export, or `chunksim chunkinfo`'s envelope around one - `read_chunkinfo`
 #: takes either since `cache._unwrapped_export`.
-REAL_EXPORT = os.environ.get("FRAY_CHUNKINFO")
+REAL_EXPORT = os.environ.get("CHUNKSIM_CHUNKINFO")
 
 #: Presence-only: its value is never read. It says "this checkout's `cache/` is
 #: populated", because the map is read through `cache.project_root()` rather
 #: than from anything this variable names.
-REAL_CACHE = os.environ.get("FRAY_MAP_CACHE")
+REAL_CACHE = os.environ.get("CHUNKSIM_MAP_CACHE")
 
 #: The map the oracles are recorded against.
 ORACLE_MAP = "fray"
@@ -68,20 +68,20 @@ ORACLE_MAP = "fray"
 #: Presence-only, like `REAL_CACHE`. Gates the oracles measured in minutes -
 #: today the carry equality run, which simulates both cached maps twice over.
 #: Kept off the ordinary oracle run so that stays worth typing.
-SLOW_ORACLES = os.environ.get("FRAY_SLOW_ORACLES")
+SLOW_ORACLES = os.environ.get("CHUNKSIM_SLOW_ORACLES")
 
 _NO_EXPORT = pytest.mark.skip(
-    reason="set FRAY_CHUNKINFO to a chunk export (raw or the cached envelope) to run this"
+    reason="set CHUNKSIM_CHUNKINFO to a chunk export (raw or the cached envelope) to run this"
 )
 
 _NO_SLOW = pytest.mark.skip(
-    reason="set FRAY_SLOW_ORACLES (with FRAY_CHUNKINFO and FRAY_MAP_CACHE) to run this"
+    reason="set CHUNKSIM_SLOW_ORACLES (with CHUNKSIM_CHUNKINFO and CHUNKSIM_MAP_CACHE) to run this"
 )
 
 _NO_CACHE = pytest.mark.skip(
     reason=(
-        "set FRAY_CHUNKINFO to a chunk export and FRAY_MAP_CACHE to anything; the map "
-        "itself is read from the repo's own cache/, so FRAY_MAP_CACHE's value is unused"
+        "set CHUNKSIM_CHUNKINFO to a chunk export and CHUNKSIM_MAP_CACHE to anything; the map "
+        "itself is read from the repo's own cache/, so CHUNKSIM_MAP_CACHE's value is unused"
     )
 )
 
@@ -148,14 +148,14 @@ def real_derived(real_state: tuple[MapState, dict[str, bool]]) -> Derived:
 
 @pytest.fixture
 def no_ambient_chunkinfo(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Stop an exported `FRAY_CHUNKINFO` shadowing a test's own `tmp_path`.
+    """Stop an exported `CHUNKSIM_CHUNKINFO` shadowing a test's own `tmp_path`.
 
     Any test calling `cache.read_chunkinfo()` without an explicit `override`
     needs this, or it reads the developer's real export instead of the fixture
     it just built - and passes or fails for reasons that have nothing to do
     with it.
     """
-    monkeypatch.delenv("FRAY_CHUNKINFO", raising=False)
+    monkeypatch.delenv("CHUNKSIM_CHUNKINFO", raising=False)
 
 
 # --- what the CLI tests share --------------------------------------------
@@ -179,23 +179,23 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def cached_map(monkeypatch: pytest.MonkeyPatch) -> Callable[[dict[str, Any], dict[str, Any]], None]:
     """Fetch a payload into the temporary cache and fake the export.
 
-    **Two readers, and both must be patched.** `fray chunkinfo` and `fray
+    **Two readers, and both must be patched.** `chunksim chunkinfo` and `fray
     heuristics` read the export through `cli.io_commands`; every derivation
     command reads it through `cli.common.load_state`. Patching one leaves the
     other reading the developer's real cache - which is not a failing test but
     a passing one, computed against the wrong map.
     """
-    from fray_claude.cli.app import main
+    from chunksim.cli.app import main
 
     def cache(payload: dict[str, Any], chunkinfo_data: dict[str, Any]) -> None:
         monkeypatch.setattr(
-            "fray_claude.cli.io_commands.fetch_map",
+            "chunksim.cli.io_commands.fetch_map",
             lambda map_id, timeout=30.0: payload,
         )
         main(["fetch", "--map", ORACLE_MAP])
         for module in ("io_commands", "common"):
             monkeypatch.setattr(
-                f"fray_claude.cli.{module}.read_chunkinfo",
+                f"chunksim.cli.{module}.read_chunkinfo",
                 lambda override=None, root=None: chunkinfo_data,
             )
 
@@ -204,20 +204,20 @@ def cached_map(monkeypatch: pytest.MonkeyPatch) -> Callable[[dict[str, Any], dic
 
 @pytest.fixture
 def simulatable(monkeypatch: pytest.MonkeyPatch) -> Callable[[], None]:
-    """Cache a map and an export that `fray simulate` can actually roll from.
+    """Cache a map and an export that `chunksim simulate` can actually roll from.
 
     Writes the export as a *blob* rather than patching the reader, because
     `batch.run_one` resolves its own copy in a worker process - which is the
     point of the worker design and would be invisible to a patch made in the
     parent.
     """
-    from fray_claude.cli.app import main
-    from fray_claude.store.cache import write_blob
+    from chunksim.cli.app import main
+    from chunksim.store.cache import write_blob
 
     def prepare() -> None:
-        monkeypatch.delenv("FRAY_CHUNKINFO", raising=False)
+        monkeypatch.delenv("CHUNKSIM_CHUNKINFO", raising=False)
         monkeypatch.setattr(
-            "fray_claude.cli.io_commands.fetch_map",
+            "chunksim.cli.io_commands.fetch_map",
             lambda map_id, timeout=30.0: {"chunks": {"unlocked": {"100": "100"}}},
         )
         main(["fetch", "--map", ORACLE_MAP])

@@ -6,7 +6,7 @@ stripping changes nothing but the punctuation.
 
 from __future__ import annotations
 
-from fray_claude.derive.task_names import strip_task_markup
+from chunksim.derive.task_names import strip_task_markup
 
 
 def test_strip_task_markup_keeps_the_text_and_its_casing() -> None:

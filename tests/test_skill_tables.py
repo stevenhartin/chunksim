@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from fray_claude.remote.skill_tables import (
+from chunksim.remote.skill_tables import (
     parse_fishing,
     parse_herblore,
     parse_mining,
@@ -408,7 +408,7 @@ def test_a_place_parenthetical_is_not_stripped_from_a_join_key() -> None:
     parentheticals and at their own rates, so stripping those would fall back
     to a different row's number while still calling the join exact.
     """
-    from fray_claude.costing.heuristics import _DISAMBIGUATOR
+    from chunksim.costing.heuristics import _DISAMBIGUATOR
 
     assert _DISAMBIGUATOR.sub("", "black chinchompa (hunter)") == "black chinchompa"
     assert _DISAMBIGUATOR.sub("", "chaos altar (prayer)") == "chaos altar"
@@ -763,7 +763,7 @@ def test_the_modelled_dart_pace_is_one_set_a_tick() -> None:
     xp/hr and dragon at 1,500,000. Pinned because a silent edit here moves the
     top of a whole climb.
     """
-    from fray_claude.costing.heuristics import DART_CYCLE_SECONDS
+    from chunksim.costing.heuristics import DART_CYCLE_SECONDS
 
     assert DART_CYCLE_SECONDS == pytest.approx(0.06), "ten darts per 0.6s tick"
     assert 3600.0 / DART_CYCLE_SECONDS == pytest.approx(60_000.0)
@@ -818,8 +818,8 @@ def test_the_plunder_names_are_the_words_the_export_uses() -> None:
     therefore carries the export's phrasing, the same way `COURSE_ALIASES`
     carries the four course spellings upstream gets wrong.
     """
-    from fray_claude.costing.heuristics import _join_keys
-    from fray_claude.remote.skill_tables import COURSE_ALIASES, PLUNDER_BY_LEVEL
+    from chunksim.costing.heuristics import _join_keys
+    from chunksim.remote.skill_tables import COURSE_ALIASES, PLUNDER_BY_LEVEL
 
     keys = _join_keys(
         {"Level": 71, "Primary": True},
@@ -999,7 +999,7 @@ def test_the_modelled_cooking_pace_is_an_inventory_plus_a_bank_trip() -> None:
     Checkable against a figure it did not come from: anglerfish at 230 xp
     works out at 300,311/hr where the community quotes ~300,000.
     """
-    from fray_claude.costing.heuristics import COOK_CYCLE_SECONDS
+    from chunksim.costing.heuristics import COOK_CYCLE_SECONDS
 
     assert 3600.0 / COOK_CYCLE_SECONDS == pytest.approx(1305.7, abs=0.1)
     assert 230.0 * 3600.0 / COOK_CYCLE_SECONDS == pytest.approx(300_311, abs=1)

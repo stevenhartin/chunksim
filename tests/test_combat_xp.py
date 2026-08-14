@@ -12,7 +12,7 @@ import json
 
 import pytest
 
-from fray_claude.costing.combat_xp import (
+from chunksim.costing.combat_xp import (
     MAGIC_XP_PER_DAMAGE,
     XP_PER_DAMAGE,
     slayer_credit,
@@ -27,9 +27,9 @@ from fray_claude.costing.combat_xp import (
     hitpoints_credit,
     spawn_caps,
 )
-from fray_claude.costing.heuristics import Heuristics, Rate
-from fray_claude.costing.heuristics import spell_materials
-from fray_claude.remote.combat import (
+from chunksim.costing.heuristics import Heuristics, Rate
+from chunksim.costing.heuristics import spell_materials
+from chunksim.remote.combat import (
     SpellCost,
     parse_cost,
     parse_spell_costs,
@@ -38,13 +38,13 @@ from fray_claude.remote.combat import (
     parse_attack_spells,
     parse_monster_stats,
 )
-from fray_claude.derive.active_tasks import TaskClassification
-from fray_claude.derive.bis import BisResult
-from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.derive.challenges import ChallengeResult
-from fray_claude.derive.other_tasks import OtherTasks
-from fray_claude.derive.pipeline import Derived
-from fray_claude.derive.sources import SourceIndex
+from chunksim.derive.active_tasks import TaskClassification
+from chunksim.derive.bis import BisResult
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.derive.challenges import ChallengeResult
+from chunksim.derive.other_tasks import OtherTasks
+from chunksim.derive.pipeline import Derived
+from chunksim.derive.sources import SourceIndex
 
 
 def _derived(monsters: tuple[str, ...]) -> Derived:
@@ -469,8 +469,8 @@ def test_most_of_the_exports_cast_challenges_have_a_rune_cost(real_export: Chunk
     where the runes come out of a container rather than being supplied - so a
     miss is the right answer there, not a gap.
     """
-    from fray_claude.costing.heuristics import load
-    from fray_claude.store.cache import project_root, read_blob
+    from chunksim.costing.heuristics import load
+    from chunksim.store.cache import project_root, read_blob
 
     priced = load(read_blob("wiki_rates", project_root())["data"]).spell_costs
     casts = {n for n in real_export.challenges["Magic"] if n.startswith("Cast ")}

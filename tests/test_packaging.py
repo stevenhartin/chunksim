@@ -28,7 +28,7 @@ from pathlib import Path
 import pytest
 
 SRC = Path(__file__).resolve().parent.parent / "src"
-PACKAGE = SRC / "fray_claude"
+PACKAGE = SRC / "chunksim"
 
 
 def _source_dirs() -> list[Path]:
@@ -67,7 +67,7 @@ def test_the_guis_resources_are_where_package_data_says_they_are() -> None:
     """
     with open(PACKAGE.parent.parent / "pyproject.toml", "rb") as handle:
         config = tomllib.load(handle)
-    globs = config["tool"]["setuptools"]["package-data"]["fray_claude"]
+    globs = config["tool"]["setuptools"]["package-data"]["chunksim"]
 
     assert "gui/resources/*" in globs
     served = {path.name for path in (PACKAGE / "gui" / "resources").iterdir()}
@@ -75,16 +75,16 @@ def test_the_guis_resources_are_where_package_data_says_they_are() -> None:
 
 
 def test_both_console_scripts_resolve() -> None:
-    """`fray` and `fray-gui` are dotted strings in `pyproject.toml` that nothing
+    """`fray` and `chunksim-gui` are dotted strings in `pyproject.toml` that nothing
     else checks. A module rename that misses them is a `pipx install` that
     succeeds and two commands that fail on their first line."""
     try:
-        entries = metadata.distribution("fray-claude").entry_points
+        entries = metadata.distribution("chunksim").entry_points
     except metadata.PackageNotFoundError:  # pragma: no cover - fresh clone
-        pytest.skip("fray-claude is not installed into this environment")
+        pytest.skip("chunksim is not installed into this environment")
 
     scripts = {entry.name: entry for entry in entries if entry.group == "console_scripts"}
 
-    assert set(scripts) == {"fray", "fray-gui"}
+    assert set(scripts) == {"fray", "chunksim-gui"}
     for entry in scripts.values():
         assert callable(entry.load()), f"{entry.name} -> {entry.value} does not resolve"

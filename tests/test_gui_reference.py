@@ -14,9 +14,9 @@ from typing import Any
 
 import pytest
 
-from fray_claude.store import cache
-from fray_claude.remote.api import FetchError
-from fray_claude.gui.server import Context, Response, handle_request
+from chunksim.store import cache
+from chunksim.remote.api import FetchError
+from chunksim.gui.server import Context, Response, handle_request
 
 
 LUMBRIDGE = "12850"
@@ -63,7 +63,7 @@ def test_the_tile_source_is_a_template_and_never_a_tile(
     the whole reason this route exists, so it is asserted rather than trusted
     to a comment.
     """
-    monkeypatch.delenv("FRAY_TILE_VERSION", raising=False)
+    monkeypatch.delenv("CHUNKSIM_TILE_VERSION", raising=False)
     cache.write_tile_version("2026-07-29_a", "https://example.invalid", root=tmp_path)
 
     payload = _body(_get("/api/tiles", Context(root=tmp_path)))
@@ -82,16 +82,16 @@ def test_the_tile_source_is_a_template_and_never_a_tile(
 def test_a_pinned_tile_version_skips_the_network(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`FRAY_TILE_VERSION` is the escape hatch for a scrape that has broken.
+    """`CHUNKSIM_TILE_VERSION` is the escape hatch for a scrape that has broken.
 
     The version comes out of a rendered page, and a page can change shape;
     pinning is what turns that from "the map is gone" into "the map is a bit
     old". It must not touch the wiki at all, which is what the exploding
     fetcher pins.
     """
-    monkeypatch.setenv("FRAY_TILE_VERSION", "2020-01-01_z")
+    monkeypatch.setenv("CHUNKSIM_TILE_VERSION", "2020-01-01_z")
     monkeypatch.setattr(
-        "fray_claude.gui.routes_reference.fetch_map_tile_version",
+        "chunksim.gui.routes_reference.fetch_map_tile_version",
         lambda *a, **k: pytest.fail("a pinned version still scraped the wiki"),
     )
 
@@ -110,7 +110,7 @@ def test_a_failed_scrape_falls_back_to_the_last_known_version(
     one is a world a few weeks out of date - strictly better than a blank
     canvas. The error rides along so the page can say so.
     """
-    monkeypatch.delenv("FRAY_TILE_VERSION", raising=False)
+    monkeypatch.delenv("CHUNKSIM_TILE_VERSION", raising=False)
     cache.write_tile_version("2026-07-29_a", "https://example.invalid", root=tmp_path)
     # Age it past the refresh window so the scrape is attempted.
     blob = cache.blob_path(cache.TILE_VERSION_BLOB_NAME, tmp_path)
@@ -121,7 +121,7 @@ def test_a_failed_scrape_falls_back_to_the_last_known_version(
     def explode(*args: Any, **kwargs: Any) -> str:
         raise FetchError("the wiki is down")
 
-    monkeypatch.setattr("fray_claude.gui.routes_reference.fetch_map_tile_version", explode)
+    monkeypatch.setattr("chunksim.gui.routes_reference.fetch_map_tile_version", explode)
 
     payload = _body(_get("/api/tiles", Context(root=tmp_path)))
 
@@ -138,12 +138,12 @@ def test_no_version_anywhere_is_reported_rather_than_guessed(
     more often than not and a wrong one 404s into a blank map with nothing
     saying why.
     """
-    monkeypatch.delenv("FRAY_TILE_VERSION", raising=False)
+    monkeypatch.delenv("CHUNKSIM_TILE_VERSION", raising=False)
 
     def explode(*args: Any, **kwargs: Any) -> str:
         raise FetchError("the wiki is down")
 
-    monkeypatch.setattr("fray_claude.gui.routes_reference.fetch_map_tile_version", explode)
+    monkeypatch.setattr("chunksim.gui.routes_reference.fetch_map_tile_version", explode)
 
     payload = _body(_get("/api/tiles", Context(root=tmp_path)))
 
@@ -169,7 +169,7 @@ def test_a_section_mask_is_fetched_once_and_then_read_from_disk(
         calls.append(name)
         return b"\x89PNG-mask"
 
-    monkeypatch.setattr("fray_claude.gui.server.fetch_section_overlay", fake)
+    monkeypatch.setattr("chunksim.gui.server.fetch_section_overlay", fake)
     ctx = Context(root=tmp_path)
 
     first = _get("/assets/section/12850-1.png", ctx)
@@ -189,7 +189,7 @@ def test_a_missing_mask_is_a_404_rather_than_an_error(
     def fake(name: str, timeout: float = 0.0) -> bytes:
         raise FetchError("HTTP 404")
 
-    monkeypatch.setattr("fray_claude.gui.server.fetch_section_overlay", fake)
+    monkeypatch.setattr("chunksim.gui.server.fetch_section_overlay", fake)
 
     response = _get("/assets/section/12850-9.png", Context(root=tmp_path))
 

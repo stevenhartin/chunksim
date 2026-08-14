@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fray_claude.remote.recipes import parse_recipes, recipe_query
+from chunksim.remote.recipes import parse_recipes, recipe_query
 
 
 def _row(page: str, **production: Any) -> dict[str, Any]:

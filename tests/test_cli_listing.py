@@ -14,8 +14,8 @@ from typing import Any
 
 import pytest
 
-from fray_claude.store.cache import write_blob
-from fray_claude.cli.app import main
+from chunksim.store.cache import write_blob
+from chunksim.cli.app import main
 
 
 def _other_payload() -> tuple[dict[str, Any], dict[str, Any]]:
@@ -199,7 +199,7 @@ def test_tasks_overview_lists_the_active_task_of_each_category(
     assert "  Woodcutting   Chop with a rune axe" in out
     assert "bronze axe" not in out
     # And BiS's own active picks, in the same `[slot] Obtain ...` form the
-    # `fray tasks BiS` view uses.
+    # `chunksim tasks BiS` view uses.
     assert "BiS          active 1" in out
     assert "  [weapon] Obtain a rune scimitar" in out
 
@@ -417,7 +417,7 @@ def test_tasks_skill_category_shows_active_obsolete_and_completed(
     project: Path, cached_map: Callable[[dict[str, Any], dict[str, Any]], None],
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from fray_claude.store.cache import write_blob
+    from chunksim.store.cache import write_blob
 
     payload: dict[str, Any] = {
         "chunks": {"unlocked": {}},
@@ -453,7 +453,7 @@ def test_tasks_skill_category_strips_markup_from_every_section(
     project: Path, cached_map: Callable[[dict[str, Any], dict[str, Any]], None],
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from fray_claude.store.cache import write_blob
+    from chunksim.store.cache import write_blob
 
     payload: dict[str, Any] = {
         "chunks": {"unlocked": {}},
@@ -501,7 +501,7 @@ def test_tasks_skill_category_reports_a_cached_active_task_match(
     project: Path, cached_map: Callable[[dict[str, Any], dict[str, Any]], None],
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from fray_claude.store.cache import write_blob
+    from chunksim.store.cache import write_blob
 
     payload: dict[str, Any] = {
         "chunks": {"unlocked": {}},
@@ -683,7 +683,7 @@ def test_simulate_cache_map_writes_a_readable_map(
 
     out = capsys.readouterr().out
     assert "batch        Demo" in out
-    assert "fray tasks --map Demo" in out
+    assert "chunksim tasks --map Demo" in out
     assert (project / "cache" / "maps" / "simulated" / "Demo" / "run-001" / "map.json").is_file()
 
     # The saved state is a map like any other.
@@ -705,7 +705,7 @@ def test_a_second_command_reuses_the_first_ones_derivation(
 
     calls: list[int] = []
     monkeypatch.setattr(
-        "fray_claude.store.derived_cache.derive",
+        "chunksim.store.derived_cache.derive",
         lambda *a, **k: calls.append(1),  # never reached on a hit
     )
 
@@ -790,7 +790,7 @@ def test_a_simulated_maps_own_state_is_cached_by_its_run(
     stored = len(derived_entries(project))
 
     monkeypatch.setattr(
-        "fray_claude.store.derived_cache.derive",
+        "chunksim.store.derived_cache.derive",
         lambda *a, **k: pytest.fail("the saved map's own state should already be cached"),
     )
 

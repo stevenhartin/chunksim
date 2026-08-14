@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from fray_claude.store.cache import (
+from chunksim.store.cache import (
     CHUNKINFO_BLOB_NAME,
     _migrated,
     migrate_layout,
@@ -107,7 +107,7 @@ def test_read_cache_reports_a_missing_file(tmp_path: Path) -> None:
 
 
 def test_read_cache_hint_names_the_requested_map(tmp_path: Path) -> None:
-    with pytest.raises(CacheMissError, match="fray fetch --map other"):
+    with pytest.raises(CacheMissError, match="chunksim fetch --map other"):
         read_cache("other", root=tmp_path)
 
 
@@ -134,7 +134,7 @@ def test_read_cache_rejects_an_envelope_without_a_data_object(
 
 def test_project_root_walks_up_to_the_marker(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text("", encoding="utf-8")
-    nested = tmp_path / "src" / "fray_claude"
+    nested = tmp_path / "src" / "chunksim"
     nested.mkdir(parents=True)
 
     assert project_root(nested) == tmp_path.resolve()
@@ -173,7 +173,7 @@ def test_read_blob_reports_a_missing_file(tmp_path: Path) -> None:
 def test_read_chunkinfo_falls_back_to_the_cached_blob(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # A `FRAY_CHUNKINFO` set in the ambient environment must not shadow this.
+    # A `CHUNKSIM_CHUNKINFO` set in the ambient environment must not shadow this.
     monkeypatch.delenv(CHUNKINFO_ENV_VAR, raising=False)
     data: dict[str, Any] = {"chunks": {}}
     write_blob("chunkinfo", data, "https://example.invalid/chunkinfo.json", root=tmp_path)
@@ -270,7 +270,7 @@ def test_a_run_records_its_default_provenance(tmp_path: Path) -> None:
 
 
 def test_a_run_can_override_its_provenance_line(tmp_path: Path) -> None:
-    # `fray unlock --cache-map` writes here too; the `source` line is the only
+    # `chunksim unlock --cache-map` writes here too; the `source` line is the only
     # thing separating the two, `is_simulated` staying true for both.
     directory = run_dir(sims_root(tmp_path) / "Candidate", 1)
     path = write_sim_run(
@@ -549,7 +549,7 @@ def test_a_tile_version_round_trips_with_its_age(
     The *age* comes back rather than a verdict: whether an old version is worth
     re-scraping is a network decision, and `cache.py` makes none.
     """
-    monkeypatch.delenv("FRAY_TILE_VERSION", raising=False)
+    monkeypatch.delenv("CHUNKSIM_TILE_VERSION", raising=False)
     write_tile_version("2026-07-29_a", "https://example.invalid", root=tmp_path)
 
     version, age = read_tile_version(root=tmp_path)
@@ -558,7 +558,7 @@ def test_a_tile_version_round_trips_with_its_age(
     assert age < 1.0
     assert tile_version_override() is None
 
-    monkeypatch.setenv("FRAY_TILE_VERSION", "2020-01-01_z")
+    monkeypatch.setenv("CHUNKSIM_TILE_VERSION", "2020-01-01_z")
     assert tile_version_override() == "2020-01-01_z"
 
 

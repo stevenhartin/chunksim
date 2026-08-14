@@ -11,7 +11,7 @@ shape deciding whether it is polled.
 
 They live apart from `test_gui_server.py` because they answer a different
 question and are needed at a different time: **these are the only tests an
-`app.js` or `style.css` change needs**, and with `fray-gui` installed editable
+`app.js` or `style.css` change needs**, and with `chunksim-gui` installed editable
 that change needs no reinstall either - so the whole front-end loop is edit,
 run this file, reload the tab.
 
@@ -25,10 +25,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from fray_claude.store import cache
+from chunksim.store import cache
 
 def _app_js() -> str:
-    from fray_claude.gui.http import RESOURCE_DIR
+    from chunksim.gui.http import RESOURCE_DIR
 
     return (RESOURCE_DIR / "app.js").read_text(encoding="utf-8")
 
@@ -39,7 +39,7 @@ def test_the_edge_bits_agree_across_the_two_languages() -> None:
     JSON - so a renumbered flag would draw the hull on the wrong sides and
     every test on either side would still pass.
     """
-    from fray_claude.gui.worldmap import Edge
+    from chunksim.gui.worldmap import Edge
 
     match = re.search(
         r"const TOP = (\d+), BOTTOM = (\d+), LEFT = (\d+), RIGHT = (\d+);", _app_js()
@@ -59,9 +59,9 @@ def test_the_hover_readout_inverts_the_real_projection() -> None:
 
     That means it carries its own copy of the projection, and a copy that
     drifts would name the wrong chunk under the cursor - the sort of thing
-    nobody notices until they paste the id into `fray unlock`.
+    nobody notices until they paste the id into `chunksim unlock`.
     """
-    from fray_claude.gui.worldmap import MAX_REGION_Y, MIN_REGION_X, REGION_STRIDE
+    from chunksim.gui.worldmap import MAX_REGION_Y, MIN_REGION_X, REGION_STRIDE
 
     source = _app_js()
     # `gridToChunk`, which the hover readout and the candidate overlay both use.
@@ -80,7 +80,7 @@ def test_the_tile_pyramid_agrees_across_the_two_languages() -> None:
     tile is fetched at the wrong level, which draws a plausible-looking map of
     the wrong place.
     """
-    from fray_claude.gui.worldmap import MAX_TILE_ZOOM, MIN_TILE_ZOOM, TILE_PIXELS
+    from chunksim.gui.worldmap import MAX_TILE_ZOOM, MIN_TILE_ZOOM, TILE_PIXELS
 
     source = _app_js()
     assert f"const TILE_PIXELS = {TILE_PIXELS};" in source
@@ -103,7 +103,7 @@ def test_the_tile_placement_uses_the_edge_row_not_the_cell_row() -> None:
     mean channel difference once fixed and 13.7 one pixel out. Pinned here
     because nothing else would notice.
     """
-    from fray_claude.gui.worldmap import MAX_REGION_Y
+    from chunksim.gui.worldmap import MAX_REGION_Y
 
     match = re.search(r"const GRID_TOP_REGION_Y = (\d+);", _app_js())
     assert match is not None
@@ -192,7 +192,7 @@ def test_the_coarse_fallback_flips_y_and_not_x() -> None:
 def test_the_page_loads_tiles_from_the_wiki_and_not_from_here() -> None:
     """The licence lives in this assertion as much as in any docstring.
 
-    A future edit that proxies tiles through `fray-gui` "for caching" would
+    A future edit that proxies tiles through `chunksim-gui` "for caching" would
     turn this project into a redistributor of NonCommercial artwork, and it
     would look like a performance win while doing it.
     """
@@ -205,7 +205,7 @@ def test_the_page_loads_tiles_from_the_wiki_and_not_from_here() -> None:
 
 def test_the_tile_attribution_is_on_screen() -> None:
     """CC BY-NC-SA asks for credit, and a credit behind a menu is not one."""
-    from fray_claude.gui.http import RESOURCE_DIR
+    from chunksim.gui.http import RESOURCE_DIR
 
     html = (RESOURCE_DIR / "index.html").read_text(encoding="utf-8")
     assert 'id="attribution"' in html
@@ -219,14 +219,14 @@ def test_the_whole_chunk_section_sentinel_agrees_across_the_two_languages() -> N
     `<chunk>-*.png`, which `cache.section_overlay_path` rejects - so the
     failure is a shading hole plus a 400 per square, in a mode nothing tests.
     """
-    from fray_claude.gui.routes_derived import WHOLE_CHUNK_SECTION
+    from chunksim.gui.routes_derived import WHOLE_CHUNK_SECTION
 
     match = re.search(r'const WHOLE_CHUNK = "([^"]+)";', _app_js())
     assert match is not None
     assert match.group(1) == WHOLE_CHUNK_SECTION
 
 def _resources() -> tuple[str, str, str]:
-    from fray_claude.gui.http import RESOURCE_DIR
+    from chunksim.gui.http import RESOURCE_DIR
 
     return (
         (RESOURCE_DIR / "index.html").read_text(encoding="utf-8"),
@@ -1040,7 +1040,7 @@ def test_the_hours_axis_is_logarithmic_by_default() -> None:
     """The default lives in Python, and the page must not carry a second copy
     of it - `tlScale` falls back to the older axis only when settings are
     unreadable, which is a different thing from a default."""
-    from fray_claude.gui import settings
+    from chunksim.gui import settings
 
     assert settings.DEFAULTS["hours_scale"] == "log"
     _, js, _ = _resources()
@@ -1084,7 +1084,7 @@ def test_the_bands_are_positional_so_a_renamed_band_keeps_its_colour() -> None:
 
 
 def test_the_band_count_agrees_across_the_two_languages() -> None:
-    from fray_claude.gui import settings
+    from chunksim.gui import settings
 
     _, _, css = _resources()
     selectors = re.findall(r'\.tl-bar\[data-band="(\d+)"\]', css)
@@ -1094,7 +1094,7 @@ def test_the_band_count_agrees_across_the_two_languages() -> None:
 def test_the_band_name_length_agrees_across_the_two_languages() -> None:
     """The input's `maxlength` and the server's trim must be the same number,
     or typing to the limit produces a name the page did not show you."""
-    from fray_claude.gui import settings
+    from chunksim.gui import settings
 
     _, js, _ = _resources()
     assert f'maxlength="{settings.MAX_BAND_NAME}"' in js
@@ -1125,7 +1125,7 @@ def test_a_refused_band_edit_is_not_reported_as_a_save() -> None:
 def test_a_reset_asks_for_the_key_by_name() -> None:
     """An empty band list is refused, so sending one leaves the stored bands
     exactly where they were - the opposite of a reset."""
-    from fray_claude.gui import settings
+    from chunksim.gui import settings
 
     _, js, _ = _resources()
     assert 'reset: ["hours_bands"]' in js

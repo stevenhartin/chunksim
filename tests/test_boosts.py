@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from fray_claude.derive import boosts
-from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.derive.sources import SourceIndex
+from chunksim.derive import boosts
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.derive.sources import SourceIndex
 
 _ON = {"Boosting": True}
 

@@ -1,4 +1,4 @@
-"""Tests for `cli/search.py`: the world-wide index behind `fray search`.
+"""Tests for `cli/search.py`: the world-wide index behind `chunksim search`.
 
 `project`, `cached_map`, `simulatable` and `derived_entries` come from
 `conftest.py`, so the cache under test is a temporary one rather than the
@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from fray_claude.cli.app import main
+from chunksim.cli.app import main
 
 
 def test_search_reports_hits(

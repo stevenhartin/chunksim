@@ -16,9 +16,9 @@ from typing import Any
 
 import pytest
 
-from fray_claude.store import cache
-from fray_claude.gui.browser import window_flags
-from fray_claude.gui.server import Context, Response, handle_request
+from chunksim.store import cache
+from chunksim.gui.browser import window_flags
+from chunksim.gui.server import Context, Response, handle_request
 
 
 LUMBRIDGE = "12850"
@@ -98,15 +98,15 @@ def _derived_ctx(
     10MB file, so the fixture is the few keys under test.
     """
     monkeypatch.setattr(
-        "fray_claude.gui.derivation.cache.read_chunkinfo",
+        "chunksim.gui.derivation.cache.read_chunkinfo",
         lambda override=None, root=None: chunkinfo,
     )
     monkeypatch.setattr(
-        "fray_claude.gui.derivation.cache.read_blob",
+        "chunksim.gui.derivation.cache.read_blob",
         lambda name, root=None, hint=None: {"data": {}},
     )
     monkeypatch.setattr(
-        "fray_claude.gui.derivation.cache.file_digest", lambda path: "digest"
+        "chunksim.gui.derivation.cache.file_digest", lambda path: "digest"
     )
     # **Under `tmp_path`, not bare names.** These patch attributes on the
     # *shared* `cache` module, so anything that later writes through
@@ -114,10 +114,10 @@ def _derived_ctx(
     # which put a stray file in the repo root the first time a test using
     # this fixture wrote a blob for real.
     monkeypatch.setattr(
-        "fray_claude.gui.derivation.cache.chunkinfo_source", lambda o, r: tmp_path / "x"
+        "chunksim.gui.derivation.cache.chunkinfo_source", lambda o, r: tmp_path / "x"
     )
     monkeypatch.setattr(
-        "fray_claude.gui.derivation.cache.blob_path", lambda n, r: tmp_path / f"{n}.json"
+        "chunksim.gui.derivation.cache.blob_path", lambda n, r: tmp_path / f"{n}.json"
     )
     return Context(root=tmp_path)
 
@@ -137,7 +137,7 @@ def test_a_simulate_post_returns_a_job_that_finishes(
 ) -> None:
     """The whole point of the job shape: a POST answers before the work does."""
     monkeypatch.setattr(
-        "fray_claude.gui.actions.run_batch",
+        "chunksim.gui.actions.run_batch",
         lambda **kw: _FakeBatch(kw["name"], kw["runs"], kw["on_complete"]),
     )
     ctx = Context(root=tmp_path, check_origin=False)
@@ -158,7 +158,7 @@ def test_a_failing_job_reports_its_reason_without_a_traceback(
     def explode(**kw: Any) -> None:
         raise RuntimeError("the pool caught fire")
 
-    monkeypatch.setattr("fray_claude.gui.actions.run_batch", explode)
+    monkeypatch.setattr("chunksim.gui.actions.run_batch", explode)
     ctx = Context(root=tmp_path, check_origin=False)
     _write_map(tmp_path, "fray", [LUMBRIDGE])
 
@@ -226,7 +226,7 @@ def test_a_rebound_host_is_refused(ctx: Context) -> None:
 
 def test_a_same_origin_post_is_allowed(ctx: Context, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "fray_claude.gui.actions.fetch_map",
+        "chunksim.gui.actions.fetch_map",
         lambda map_id, timeout=30.0: {"chunks": {"unlocked": {LUMBRIDGE: LUMBRIDGE}}},
     )
     response = _post(
@@ -246,7 +246,7 @@ def test_a_post_from_an_allowed_host_is_accepted(
     403ing, which reads as a broken GUI rather than as a refusal.
     """
     monkeypatch.setattr(
-        "fray_claude.gui.actions.fetch_map",
+        "chunksim.gui.actions.fetch_map",
         lambda map_id, timeout=30.0: {"chunks": {"unlocked": {LUMBRIDGE: LUMBRIDGE}}},
     )
     remote = Context(root=ctx.root, allowed_hosts=frozenset({"100.93.219.108"}))
@@ -357,7 +357,7 @@ def test_a_fetch_can_name_any_map_and_blank_means_the_default(
         seen.append(map_id)
         return {"chunks": {"unlocked": {LUMBRIDGE: LUMBRIDGE}}}
 
-    monkeypatch.setattr("fray_claude.gui.actions.fetch_map", pretend)
+    monkeypatch.setattr("chunksim.gui.actions.fetch_map", pretend)
     ctx = Context(root=tmp_path, check_origin=False)
 
     named = _wait(ctx, _body(_post("/api/fetch", ctx, {"map": "someone-else"}))["job"])
@@ -368,7 +368,7 @@ def test_a_fetch_can_name_any_map_and_blank_means_the_default(
     assert blank.status == 400
     assert seen == ["someone-else"]
     assert named["result"]["map"] == "someone-else"
-    # It landed where `fray fetch` puts one, so the picker can see it.
+    # It landed where `chunksim fetch` puts one, so the picker can see it.
     assert cache.read_cache("someone-else", tmp_path)["kind"] == cache.FETCHED
 
 
@@ -386,16 +386,16 @@ def test_a_fetch_refuses_to_ask_firebase_for_a_run(tmp_path: Path) -> None:
 def test_refreshing_the_rates_runs_the_same_scrape_the_cli_runs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """**One scraper, two callers.** `fray heuristics` and this button must
+    """**One scraper, two callers.** `chunksim heuristics` and this button must
     write the same file; a sixteen-step sequence kept in two places would
     not stay the same for long. So this asserts the wiring - that the button
     reaches `scrape.scrape` - rather than re-testing the scrape."""
     ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
     ctx = Context(root=tmp_path, check_origin=False, derivations=ctx.derivations)
-    from fray_claude.remote.scrape import ScrapeResult
+    from chunksim.remote.scrape import ScrapeResult
 
     monkeypatch.setattr(
-        "fray_claude.gui.actions.scrape",
+        "chunksim.gui.actions.scrape",
         lambda info, timeout=0.0, progress=None: ScrapeResult(
             config={"quests": {"Cook's Assistant": 5}},
             coverage={"quests": (1, 1)},
@@ -483,9 +483,9 @@ def test_simulate_progress_counts_rolls_not_runs(
                 roll(run, order, "12850")
         return _FakeBatch(kw["name"], kw["runs"], kw["on_complete"])
 
-    monkeypatch.setattr("fray_claude.gui.actions.run_batch", fake)
+    monkeypatch.setattr("chunksim.gui.actions.run_batch", fake)
     monkeypatch.setattr(
-        "fray_claude.gui.jobs.JobRegistry.submit",
+        "chunksim.gui.jobs.JobRegistry.submit",
         lambda self, action, work: _capture(self, action, work, seen),
     )
     ctx = Context(root=tmp_path, check_origin=False)
@@ -518,12 +518,12 @@ def test_a_pooled_simulation_still_counts_rolls_and_asks_for_no_roll_callback(
         asked.update(kw)
         return _FakeBatch(kw["name"], kw["runs"], kw["on_complete"])
 
-    monkeypatch.setattr("fray_claude.gui.actions.run_batch", fake)
+    monkeypatch.setattr("chunksim.gui.actions.run_batch", fake)
     # Pinned: whether this reports per roll or per run depends on how many
     # cores the batch will really get, and a test must not.
-    monkeypatch.setattr("fray_claude.gui.actions.os.process_cpu_count", lambda: 8)
+    monkeypatch.setattr("chunksim.gui.actions.os.process_cpu_count", lambda: 8)
     monkeypatch.setattr(
-        "fray_claude.gui.jobs.JobRegistry.submit",
+        "chunksim.gui.jobs.JobRegistry.submit",
         lambda self, action, work: _capture(self, action, work, seen),
     )
     ctx = Context(root=tmp_path, check_origin=False)
@@ -575,7 +575,7 @@ def test_a_committed_tick_reads_back_as_completed(ctx: Context) -> None:
     had never been ticked - no error anywhere. So the assertion is the round
     trip through the decoder every derivation actually uses, not the presence
     of some key."""
-    from fray_claude.model.firebase import decode_challenge_keyed
+    from chunksim.model.firebase import decode_challenge_keyed
 
     name = "Mine 5 ~|iron ore|~ (2/3 of it)"
     job = _wait(
@@ -622,8 +622,8 @@ def _sim_run(root: Path, batch: str, chunks: list[str]) -> str:
     """A run directory the snapshot route can read: a base payload, a ledger
     and a map. Written through `_write_one_run_batch` so the metadata is the
     real shape rather than a guess at it."""
-    from fray_claude.runs.batch import _write_one_run_batch
-    from fray_claude.runs.simulate import UnlockRecord, simulated_payload
+    from chunksim.runs.batch import _write_one_run_batch
+    from chunksim.runs.simulate import UnlockRecord, simulated_payload
 
     base = {"chunks": {"unlocked": {LUMBRIDGE: LUMBRIDGE}}}
     records = [
@@ -710,7 +710,7 @@ def test_an_edited_map_can_be_edited_again(ctx: Context) -> None:
     pin rather than a feature to add - the risk is a later "only fetched maps
     can be edited" guard, which would look like tidiness and remove the point.
     """
-    from fray_claude.model.firebase import decode_challenge_keyed
+    from chunksim.model.firebase import decode_challenge_keyed
 
     first = _wait(
         ctx,
@@ -790,7 +790,7 @@ def test_an_edited_map_is_updated_in_place_rather_than_forked_again(ctx: Context
     batch keeps the payload it was originally forked from and the ledger
     grows, so it still replays every chunk added by hand.
     """
-    from fray_claude.model.firebase import decode_challenge_keyed
+    from chunksim.model.firebase import decode_challenge_keyed
 
     first = _wait(ctx, _body(_post("/api/commit", ctx, {
         "map": "fray", "name": "mine", "ticked": {"Mining": ["Mine ~|copper ore|~"]},
@@ -864,7 +864,7 @@ def test_an_auto_refresh_does_not_retry_a_scrape_that_failed(
     def explode(timeout: float = 0.0) -> dict[str, Any]:
         raise OSError("the wiki said no")
 
-    monkeypatch.setattr("fray_claude.gui.actions.scrape_recipes", explode)
+    monkeypatch.setattr("chunksim.gui.actions.scrape_recipes", explode)
 
     first = _body(_post("/api/refresh", ctx, {"what": "recipes", "auto": True}))
     job = _wait(ctx, first["job"])

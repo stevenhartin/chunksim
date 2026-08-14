@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from fray_claude.gui import knobs
+from chunksim.gui import knobs
 
 
 def test_a_path_must_name_a_real_branch() -> None:
@@ -174,7 +174,7 @@ def test_a_knob_nobody_set_still_resolves_to_the_number_in_force() -> None:
     reconstructing it. `Cerberus` is a boss and answers 20/hr; a plain monster
     answers the ordinary floor.
     """
-    from fray_claude.costing.heuristics import Heuristics
+    from chunksim.costing.heuristics import Heuristics
 
     heuristics = Heuristics(boss_monsters=frozenset({"Cerberus"}))
 
@@ -186,7 +186,7 @@ def test_a_knob_nobody_set_still_resolves_to_the_number_in_force() -> None:
 
 
 def test_an_override_is_what_the_knob_resolves_to() -> None:
-    from fray_claude.costing.heuristics import Heuristics, Rate
+    from chunksim.costing.heuristics import Heuristics, Rate
 
     heuristics = Heuristics(monsters={"Goblin": Rate(value=250.0)})
 
@@ -196,7 +196,7 @@ def test_an_override_is_what_the_knob_resolves_to() -> None:
 def test_a_branch_shaped_path_resolves_to_no_single_number() -> None:
     """`slayer/Duradel` is a table. A caller must read `None` as "no single
     number" rather than as zero."""
-    from fray_claude.costing.heuristics import Heuristics
+    from chunksim.costing.heuristics import Heuristics
 
     assert knobs.effective("slayer/Duradel", Heuristics()) is None
 

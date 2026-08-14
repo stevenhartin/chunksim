@@ -6,8 +6,8 @@ from typing import Any
 
 import pytest
 
-from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.derive.pipeline import (
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.derive.pipeline import (
     ConvergenceError,
     MapState,
     SlayerLock,
@@ -207,7 +207,7 @@ def test_derive_refuses_to_return_a_truncated_derivation(
     pass could differ, so a state that has genuinely settled now leaves on the
     first pass rather than spending a second one proving it.
     """
-    monkeypatch.setattr("fray_claude.derive.pipeline._MAX_AREA_PASSES", 1)
+    monkeypatch.setattr("chunksim.derive.pipeline._MAX_AREA_PASSES", 1)
     info = _chunk_info(
         chunks={
             "100": {"Monster": {"Goblin": True}, "Connect": {"6727": True}},
@@ -396,7 +396,7 @@ def test_derive_stops_once_the_gates_agree_rather_than_the_whole_map(
     equality test spent a second one proving `valid != {}` had stopped being
     true.
     """
-    monkeypatch.setattr("fray_claude.derive.pipeline._MAX_AREA_PASSES", 1)
+    monkeypatch.setattr("chunksim.derive.pipeline._MAX_AREA_PASSES", 1)
     info = _chunk_info(
         chunks={"100": {"Monster": {"Goblin": True}}},
         drops={"Goblin": {"Bones": {"1": "Always"}}},
@@ -418,7 +418,7 @@ def test_derive_keeps_going_while_a_gated_task_is_still_moving(
     leave on the pass that first made it valid. Capped at one pass, that is
     the difference between a `ConvergenceError` and a quietly short answer.
     """
-    monkeypatch.setattr("fray_claude.derive.pipeline._MAX_AREA_PASSES", 1)
+    monkeypatch.setattr("chunksim.derive.pipeline._MAX_AREA_PASSES", 1)
     info = _chunk_info(
         chunks={"100": {"Monster": {"Goblin": True}, "Shop": {"General Store": True}}},
         drops={"Goblin": {"Bones": {"1": "Always"}}},

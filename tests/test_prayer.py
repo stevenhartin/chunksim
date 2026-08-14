@@ -11,20 +11,20 @@ from __future__ import annotations
 
 from typing import Any
 
-from fray_claude.costing.prayer import (
+from chunksim.costing.prayer import (
     CHAOS_ALTAR_CHUNK,
     CHAOS_ALTAR_OBJECT,
     offerings,
     prayer_methods,
 )
-from fray_claude.derive.active_tasks import TaskClassification
-from fray_claude.derive.bis import BisResult
-from fray_claude.derive.challenges import ChallengeResult
-from fray_claude.derive.other_tasks import OtherTasks
-from fray_claude.derive.pipeline import Derived
-from fray_claude.derive.sources import SourceIndex
-from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.remote.prayer import Altar, Bone, parse_altars, parse_bones
+from chunksim.derive.active_tasks import TaskClassification
+from chunksim.derive.bis import BisResult
+from chunksim.derive.challenges import ChallengeResult
+from chunksim.derive.other_tasks import OtherTasks
+from chunksim.derive.pipeline import Derived
+from chunksim.derive.sources import SourceIndex
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.remote.prayer import Altar, Bone, parse_altars, parse_bones
 
 _BONES = """
 {{Prayer info

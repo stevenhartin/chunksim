@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from fray_claude.cli.app import main
+from chunksim.cli.app import main
 
 
 def test_simulate_reports_each_roll(

@@ -10,14 +10,14 @@ from __future__ import annotations
 
 import pytest
 
-from fray_claude.costing.farming import (
+from chunksim.costing.farming import (
     DEFAULT_HARVESTS_PER_DAY,
     HARVEST_SECONDS,
     harvest_experience,
     plan_for,
     schedule_key,
 )
-from fray_claude.remote.farming import Crop, parse_crops
+from chunksim.remote.farming import Crop, parse_crops
 
 _LUA = """
 return {

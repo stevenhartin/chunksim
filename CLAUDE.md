@@ -11,16 +11,16 @@ can live in one belongs there instead of here.
 
 ## Project
 
-fray-claude is a CLI that reads state from the source-chunk web app, caches it locally, and runs
+chunksim is a CLI that reads state from the source-chunk web app, caches it locally, and runs
 offline operations on that cache. source-chunk is upstream and read-only from here.
 
-**Two apps, one distribution.** `fray` is the CLI; `fray-gui` is a local server plus a browser
+**Two apps, one distribution.** `chunksim` is the CLI; `chunksim-gui` is a local server plus a browser
 front-end that draws the world map. The library both use is eight subpackages, and there is
 deliberately **no `core/` and no second distribution** — three pyprojects would buy independent
 versioning nobody needs, and a subpackage can be lifted out on the day someone wants to reuse it.
 
 ```
-src/fray_claude/
+src/chunksim/
   model/    what upstream's data *is*, before anything is derived from it
   remote/   the only outbound network calls
   store/    the only disk
@@ -34,7 +34,7 @@ src/fray_claude/
 Each directory's `__init__.py` carries the rule that holds across it and **nothing else** — no
 re-exports, which would rebuild the god-module this layout replaced and put "which tests do I run"
 back to "all of them". The single exception is `cli/__init__.py`, which re-exports `main` because
-`[project.scripts]` names `fray_claude.cli:main`.
+`[project.scripts]` names `chunksim.cli:main`.
 
 Planned: a shortest-path search ("fewest chunk unlocks to reach X"). `derive/graph.py` is shaped for
 it but is **not** speculative — it is the substrate two ported upstream passes already run on
@@ -50,7 +50,7 @@ and this shapes ten timelines the browser is holding.
 ## source-chunk
 
 - Source: https://github.com/source-chunk/chunk-picker-v2/
-- Live instance, the only one that matters: https://source-chunk.github.io/chunk-picker-v2/?fray
+- Live instance, the only one that matters: https://source-chunk.github.io/chunk-picker-v2/?<map-id>
 
 It imposes an artificial rule set on Old School RuneScape by adding barriers to the world: it holds
 the set of chosen chunks, tracks goals for the active chunk, and randomly selects the next chunk to
@@ -63,7 +63,7 @@ output.** Module docstrings cite `worker.js`/`index.js` line numbers throughout.
 **Section** — a chunk may be split into numbered sub-areas; unlocking a chunk only makes section `0`
 reachable, not the rest (`derive/sections.py`).
 
-`?fray` is a map ID, not page state — the real backend is a public Firebase Realtime Database, read
+`?<map-id>` is a map ID, not page state — the real backend is a public Firebase Realtime Database, read
 with a plain unauthenticated GET: `https://chunkpicker.firebaseio.com/maps/<map_id>.json`. Chunk
 adjacency/neighbour data isn't there; it's `chunkpicker-chunkinfo-export.json` in the upstream repo,
 served from the **`gh-pages`** branch — that's upstream's default branch, and `main` 404s.
@@ -113,7 +113,7 @@ Each of the first three has already caused a real bug.
   oracles. `completedChallenges` is the player's ticked list, an *input*. What `cache/derived/` avoids
   is computing the derivation *twice*, which is the real version of this optimisation.
 - **The pure layer must stay process-parallel, so there is no module-level mutable state anywhere** —
-  no `lru_cache`, no module-level memo dicts, no globals; `MapState`/`Derived` are frozen. `fray
+  no `lru_cache`, no module-level memo dicts, no globals; `MapState`/`Derived` are frozen. `chunksim
   simulate --jobs N` and `runs/batch.price_steps` both depend on it, and a cache added to a "pure"
   module would break `--jobs` silently, as runs that disagree. `cache/derived/` is content-keyed, so
   two workers racing on one key write identical bytes and the atomic rename makes either winner
@@ -132,10 +132,11 @@ Each of the first three has already caused a real bug.
 ### Test against more than one map
 
 Every rule in a map's `rules` branch is a number or a flag a *player* set, so a second map is a
-second set of inputs rather than more of the same data. `verf` alone found three defects nothing in
+second set of inputs rather than more of the same data. A second real map alone found three
+defects nothing in
 the repo could have — including a `0` that reached a ratio parser as `"1/0"` (JS yields `Infinity` and
 raises nothing; Python disagreed) and two unported BiS rules. The BiS oracle runs over **every fetched
-map in the cache**, so `fray fetch --map <other>` is all it costs to widen the signal, and it is the
+map in the cache**, so `chunksim fetch --map <other>` is all it costs to widen the signal, and it is the
 fastest way to find the next defect. The GUI's undocumented `__UBER__` fetch (see `gui/actions.py`)
 builds an every-chunk map on top of whichever map is open, which is what the docstrings' measurements
 are quoted against.
@@ -174,7 +175,7 @@ The table says what each module **owns**; its docstring says why.
 | `derive/delta.py` | The **symmetric** comparison of two derived states. `unlock.py` projects its primitives down to a one-directional view, and the two must agree. |
 | `derive/neighbours.py` | Which chunks are eligible to roll next, upstream's canvas numbering, and the `sectionsLimits` gate. |
 | `derive/graph.py` | The export's `sections` branch as a **directed** graph — the shared substrate `sections.py`, `neighbours.py` and `runs/simulate.py` all build on, and shaped for the not-yet-written pathfinding search besides. |
-| `derive/search.py` | World-wide fuzzy search over the *raw* export — a strict superset of what `fray sources` can list. |
+| `derive/search.py` | World-wide fuzzy search over the *raw* export — a strict superset of what `chunksim sources` can list. |
 | `costing/heuristics.py` | Every hand-correctable number, and the `defaults < scraped < overrides` merge. Owns the joins and their `exact`/`contained` provenance; **no fuzzy tier, by measurement.** |
 | `costing/estimate.py` | The four buckets over the **active** set. **Costs the unique *item*, not the task**, and **clamps per source**. Owns the item walk and the gates on it, and records the `Heuristics` entries each number was read off — where they are read, never reconstructed. |
 | `costing/training.py` | How fast a skill goes. **A climb is priced band by band as methods unlock**, so the floor can only ever be the first band. Each band carries the override path behind its rate, set where the rate is chosen. |
@@ -183,10 +184,10 @@ The table says what each module **owns**; its docstring says why.
 | `costing/slayer.py` | Slayer's rate, which is a *distribution* not a chosen method, and the points economy that decides where you train. |
 | `costing/prayer.py`, `costing/farming.py` | The two skills whose limit is not a rate: bone supply, and a **schedule** measured in calendar days beside its active hours. |
 | `costing/levels.py` | `infer_levels`/`goal_levels`/`reachable_providers` and the gating helpers. **The map records no skill levels** — the floor is read out of completed challenges. |
-| `costing/inputs.py` | What `fray estimate` and the Estimate tab must agree about, assembled once. The two had already drifted. Also `ReferenceBlobs`: the reference files read **once per invocation** and threaded, rather than four times by four callers — and the one place the four override layers are merged, so no reader can apply three of them. |
+| `costing/inputs.py` | What `chunksim estimate` and the Estimate tab must agree about, assembled once. The two had already drifted. Also `ReferenceBlobs`: the reference files read **once per invocation** and threaded, rather than four times by four callers — and the one place the four override layers are merged, so no reader can apply three of them. |
 | `costing/dps_bridge.py` | The seam to `osrs-dps`. **Optional import** — check `DPS_AVAILABLE`, never assume it. Prices only `reachable_providers`, which it imports rather than copying. |
 | `costing/*_overhead.py` | The harnesses that fitted the overhead constants. **No caller in `src/`** — they exist to be re-run when someone doubts them. |
-| `store/cache.py` | The disk. The envelope, the `--chunkinfo`/`FRAY_CHUNKINFO` override, `--map` resolution across kinds, atomic writes, the cross-kind name claim, `migrate_layout`, and both override files. |
+| `store/cache.py` | The disk. The envelope, the `--chunkinfo`/`CHUNKSIM_CHUNKINFO` override, `--map` resolution across kinds, atomic writes, the cross-kind name claim, `migrate_layout`, and both override files. |
 | `store/derived_cache.py` | The on-disk cache of the **two** expensive per-state computations, and both their keys. **Read it before changing what `derive` returns** — including a *nested* result dataclass, which `_RESULT_TYPES` must list or the key will not move. |
 | `store/build_info.py` | Which install is running and when it was made. Never raises and never guesses a date. |
 | `runs/simulate.py` | Seeded chunk-roll simulation and `simulated_payload`. Records are never revisited by a later roll. |
@@ -208,7 +209,7 @@ The table says what each module **owns**; its docstring says why.
 | `gui/panels.py` | Shaping `Derived` into what the panel draws — one shape across all five categories. Pure. **New shaping goes here, not into the JavaScript.** A *roll* is shaped from the ledger alone, so anything the selection compares has to be in the ledger. |
 | `gui/worldmap.py` | Where a chunk sits on the map and which sides face outward. Owns the projection (the y axis is flipped) and `hull_edges`. |
 | `gui/browser.py` | Finding a Chromium-family browser and opening an app window whose lifetime is the server's. `--user-data-dir` is load-bearing, not tidiness. |
-| `gui/__init__.py` | `fray-gui`'s argparse and socket, `allowed_hosts`, and the **arming of at most one** of the two shutdown mechanisms. Downloads nothing. |
+| `gui/__init__.py` | `chunksim-gui`'s argparse and socket, `allowed_hosts`, and the **arming of at most one** of the two shutdown mechanisms. Downloads nothing. |
 
 ### Two constraints on the GUI worth knowing before editing it
 
@@ -239,8 +240,8 @@ weight: it is GPL-3.0 where this project is MIT.** So it is a package a user ins
 never vendored in, and `costing/dps_bridge.py` is the only module that may import it — behind a
 `try`/`except ImportError` that sets `DPS_AVAILABLE`. Importing `dps_bridge` is always safe; calling
 into it without the extra raises `DpsUnavailableError`. Its tests skip rather than fail when the
-extra is absent, like the `FRAY_CHUNKINFO` oracles. A change to `osrs-dps` that moves a number is a
-change to `fray estimate`'s answers, so run both suites.
+extra is absent, like the `CHUNKSIM_CHUNKINFO` oracles. A change to `osrs-dps` that moves a number is a
+change to `chunksim estimate`'s answers, so run both suites.
 
 `mypy` and `pytest` are invoked differently on purpose: **mypy is the *system* install** (there is no
 `.venv/bin/mypy`), configured with `python_executable = ".venv/bin/python"` so it can see pytest's
@@ -251,42 +252,42 @@ found".
 ## Commands
 
 ```
-pip install -e ".[dev]"     # editable install into .venv; provides the `fray` script
-fray fetch [--map ID]       # GET live state -> cache/maps/fetched/<map>.json (default: fray)
-fray show  [--map ID]       # summarise the cached copy; no network
-fray chunkinfo              # GET upstream's chunk/challenge reference data (~10MB)
-fray heuristics             # GET wiki/spreadsheet rates -> cache/reference/wiki_rates.json (30+ requests)
-fray recipes                # GET per-action xp + tick costs -> cache/reference/wiki_recipes.json
-fray estimate [BUCKET] [--limit N]                 # rough hours for the outstanding active tasks
-fray sections [list|CHUNK] [--limit N]             # reachable sections
-fray sources  [CATEGORY]   [--limit N]             # items/objects/monsters/npcs/shops
-fray tasks    [CATEGORY]   [--limit N]             # valid/active/obsolete/completed, incl. BiS
-fray unlock   --chunk ID [--cache-map NAME]        # what one candidate chunk would add
-fray diff --map1 A --map2 B [BRANCH] [--limit N]   # symmetric comparison of two cached maps
-fray neighbours [--limit N]                        # chunks eligible to unlock next
-fray simulate --rolls N [--seed S] [--cache-map NAME] [--runs R] [--jobs J]
+pip install -e ".[dev]"     # editable install into .venv; provides the `chunksim` script
+chunksim fetch --map ID         # GET live state -> cache/maps/fetched/<map>.json
+chunksim show  [--map ID]       # summarise the cached copy; no network
+chunksim chunkinfo              # GET upstream's chunk/challenge reference data (~10MB)
+chunksim heuristics             # GET wiki/spreadsheet rates -> cache/reference/wiki_rates.json (30+ requests)
+chunksim recipes                # GET per-action xp + tick costs -> cache/reference/wiki_recipes.json
+chunksim estimate [BUCKET] [--limit N]                 # rough hours for the outstanding active tasks
+chunksim sections [list|CHUNK] [--limit N]             # reachable sections
+chunksim sources  [CATEGORY]   [--limit N]             # items/objects/monsters/npcs/shops
+chunksim tasks    [CATEGORY]   [--limit N]             # valid/active/obsolete/completed, incl. BiS
+chunksim unlock   --chunk ID [--cache-map NAME]        # what one candidate chunk would add
+chunksim diff --map1 A --map2 B [BRANCH] [--limit N]   # symmetric comparison of two cached maps
+chunksim neighbours [--limit N]                        # chunks eligible to unlock next
+chunksim simulate --rolls N [--seed S] [--cache-map NAME] [--runs R] [--jobs J]
               [--cache-behaviour all|extremities|none] [--no-carry-areas]
-fray maps [list [--runs]] | maps rm NAME... [--include-fetched] | maps clean [--include-fetched]
-fray derived [list [--verbose]] | derived clean [--older-than DAYS] [--all]
-fray search   QUERY [--type T ...] [--limit N]
-python -m fray_claude ...    # same CLI without the console script
-fray-gui [--map ID] [--compare ID] [--port N] [--host H] [--allow-host H] [--keep-alive]
+chunksim maps [list [--runs]] | maps rm NAME... [--include-fetched] | maps clean [--include-fetched]
+chunksim derived [list [--verbose]] | derived clean [--older-than DAYS] [--all]
+chunksim search   QUERY [--type T ...] [--limit N]
+python -m chunksim ...    # same CLI without the console script
+chunksim-gui [--map ID] [--compare ID] [--port N] [--host H] [--allow-host H] [--keep-alive]
          [--no-browser] [--tab] [--timeout S]
 mypy                         # strict, over src/ and tests/; run from the repo root
 .venv/bin/pytest             # whole suite
 ```
 
-Env vars: `FRAY_CHUNKINFO` (an export, or `fray chunkinfo`'s envelope around one), `FRAY_MAP_CACHE`
-(presence-only), `FRAY_SLOW_ORACLES` (presence-only), `FRAY_NO_WATERMARK`, `FRAY_TILE_VERSION`,
-`FRAY_GUI_VERBOSE`.
+Env vars: `CHUNKSIM_CHUNKINFO` (an export, or `chunksim chunkinfo`'s envelope around one), `CHUNKSIM_MAP_CACHE`
+(presence-only), `CHUNKSIM_SLOW_ORACLES` (presence-only), `CHUNKSIM_NO_WATERMARK`, `CHUNKSIM_TILE_VERSION`,
+`CHUNKSIM_GUI_VERBOSE`.
 
 **Flag conventions, so each means one thing everywhere.** `--export-json PATH` (or `-` for stdout) and
 `--recompute` are carried by the nine *derivation* subcommands and nothing else (`--export-json` also
 by `maps list`), not by the five I/O ones. `--limit` defaults to `None` — full output, so piping just
 works — except for `search`, where it is `10`. **`--map ID` is carried by every subcommand that reads a
-cached map**, so the usage lines above name it only where the map *is* the point; `fray diff` is the
-one taking two, hence `--map1`/`--map2`, and it reports **both directions**, which `fray unlock`
-deliberately does not. **`--chunkinfo PATH` is the per-invocation form of `FRAY_CHUNKINFO`** and rides
+cached map**, so the usage lines above name it only where the map *is* the point; `chunksim diff` is the
+one taking two, hence `--map1`/`--map2`, and it reports **both directions**, which `chunksim unlock`
+deliberately does not. **`--chunkinfo PATH` is the per-invocation form of `CHUNKSIM_CHUNKINFO`** and rides
 along on all ten subcommands that parse the export.
 
 **`cache/` is sorted by purpose, and `cache/maps/` holds maps and nothing else holds maps.** That
@@ -295,9 +296,9 @@ sentence is the layout's whole point: `list_maps` used to glob `cache/*.json` an
 that failed the moment it was chosen. A directory cannot be forgotten.
 
 ```
-cache/maps/fetched/<id>.json       # from Firebase; only `fray fetch` writes one
-cache/maps/simulated/<batch>/…     # rolled by `fray simulate`
-cache/maps/edited/<batch>/…        # made by hand: `fray unlock --cache-map`, or the GUI
+cache/maps/fetched/<id>.json       # from Firebase; only `chunksim fetch` writes one
+cache/maps/simulated/<batch>/…     # rolled by `chunksim simulate`
+cache/maps/edited/<batch>/…        # made by hand: `chunksim unlock --cache-map`, or the GUI
 cache/reference/                   # chunkinfo, tasks_map, wiki_rates, wiki_recipes, tile_version
 cache/derived/                     # pipeline.derive + dps_bridge.enrich results, keyed by content
 cache/overrides/<map_id>.json      # heuristic corrections belonging to one map
@@ -308,17 +309,17 @@ cache/gui/                         # window.json, settings.json, and the browser
 A batch of any computed kind holds `batch.json` (seeds, rolls, `batch_id`, and the payload it rolled
 from) beside one directory per run holding `map.json`, `rolls.json`, `run.json` and `timeline.json`.
 **A name is claimed across every kind**, so `--map foo` never has to guess which directory meant it.
-`cache/` is gitignored, so a fresh clone has no data until `fray fetch`/`fray chunkinfo` run — and
+`cache/` is gitignored, so a fresh clone has no data until `chunksim fetch`/`chunksim chunkinfo` run — and
 so is `/*.json` at the repo root, which is where `--export-json` output lands when it is aimed at
 the checkout rather than `/tmp` or stdout. A stray `tasks.json` there is that, not project data.
 
-**The estimator's numbers live in three places and only two are in `cache/`.** `fray heuristics`
+**The estimator's numbers live in three places and only two are in `cache/`.** `chunksim heuristics`
 writes the scrape to `cache/reference/wiki_rates.json` (refetchable, gitignored); hand-written
 corrections go in **`heuristics/overrides.json`, which is checked in** so they are diffable and
 survive a re-scrape; and corrections belonging to *one map* go in `cache/overrides/<map_id>.json`,
 which is cache data and gitignored with the rest. `heuristics/README.md` is the guide to which
 numbers are worth correcting. The export has *no* durations, rates or XP figures at all, so every
-number `fray estimate` spends comes from one of those three files or a default in
+number `chunksim estimate` spends comes from one of those three files or a default in
 `costing/heuristics.py`.
 
 The merge is `defaults < scraped < overrides < map overrides`, and it happens **once**, in
@@ -326,7 +327,7 @@ The merge is `defaults < scraped < overrides < map overrides`, and it happens **
 (`load_heuristics`, `levels`, `pinned`, `recipe_priced`) gets the fourth layer without being told
 about it. A `ReferenceBlobs` is therefore about one map, which is why `map_id` is on it and why the
 GUI memoises one per map. **Both apps must pass the map id or neither should**: `costing/inputs.py`
-exists because `fray estimate` and the Estimate tab had already drifted once, and a layer one of them
+exists because `chunksim estimate` and the Estimate tab had already drifted once, and a layer one of them
 applied would be that drift again in the hardest place to see.
 
 **`User-Agent` differs by host, deliberately.** Firebase and GitHub get none — those endpoints are
@@ -340,10 +341,10 @@ about who is asking. The header names the project and its repo, never the user.
 ```
 pipx install --force --editable .                    # once, not per change
 pip install -e ../osrs-dps                           # the optional dps extra, into .venv
-(cd ../osrs-dps && pyproject-build) && pipx inject --force fray-claude ../osrs-dps/dist/osrs_dps-*.whl
+(cd ../osrs-dps && pyproject-build) && pipx inject --force chunksim ../osrs-dps/dist/osrs_dps-*.whl
 ```
 
-**`fray` on `PATH` is an editable install, so there is nothing to rebuild** — a Python edit is live
+**`chunksim` on `PATH` is an editable install, so there is nothing to rebuild** — a Python edit is live
 immediately, and so is a `gui/resources/` edit, since `RESOURCE_DIR` is `__file__`-relative and
 resolves into the checkout. Editing the front end is edit → reload the tab. **The cost is that the
 checkout is load-bearing**: move or delete it and both commands break. And one failure mode moves
@@ -351,7 +352,7 @@ rather than disappearing — a new subdirectory without an `__init__.py` imports
 silently absent from any wheel built later, which is what `tests/test_packaging.py` catches.
 
 **The `dps` extra is installed two different ways, one per venv**, and both are needed: `.venv` is
-what `pytest`/`mypy` see, pipx's own venv is what the `fray` on `PATH` sees. An injected package
+what `pytest`/`mypy` see, pipx's own venv is what the `chunksim` on `PATH` sees. An injected package
 survives `pipx install --force` (both measured), but `inject` *copies* a wheel — so a change to
 `osrs-dps` needs a rebuild and a re-inject, and `--force` is required because the version does not
 move between builds, which makes a plain `inject` a silent no-op.
@@ -376,8 +377,8 @@ directory-grade selection.
 
 ```
 .venv/bin/pytest                                                              # whole suite, ~2.6s
-FRAY_CHUNKINFO=cache/reference/chunkinfo.json FRAY_MAP_CACHE=1 .venv/bin/pytest   # every oracle
-FRAY_CHUNKINFO=… FRAY_MAP_CACHE=1 FRAY_SLOW_ORACLES=1 .venv/bin/pytest            # + the slow ones
+CHUNKSIM_CHUNKINFO=cache/reference/chunkinfo.json CHUNKSIM_MAP_CACHE=1 .venv/bin/pytest   # every oracle
+CHUNKSIM_CHUNKINFO=… CHUNKSIM_MAP_CACHE=1 CHUNKSIM_SLOW_ORACLES=1 .venv/bin/pytest            # + the slow ones
 ```
 
 Run those before trusting a change to `sections`/`sources`/`challenges`/`bis`/`active_tasks`/
@@ -386,7 +387,7 @@ a green `.venv/bin/pytest` as a change being verified.
 
 - **The oracles are marked, not `skipif`-ed.** `@pytest.mark.real_cache` (needs the export *and* this
   checkout's populated `cache/`), `@pytest.mark.real_export`, or `@pytest.mark.slow` (minutes, and
-  gated on `FRAY_SLOW_ORACLES` so the ordinary oracle run stays worth typing — today that is the
+  gated on `CHUNKSIM_SLOW_ORACLES` so the ordinary oracle run stays worth typing — today that is the
   `--carry-areas` equality run, which is that default's standing evidence — every carried run
   also checks itself against a cold derivation, so a divergence surfaces on real data too — and
   the roll panel replayed over a whole 50-roll run, where the ordinary variant replays twelve —

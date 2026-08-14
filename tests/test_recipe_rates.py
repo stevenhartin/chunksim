@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from fray_claude.costing.heuristics import Rate
-from fray_claude.costing.recipe_rates import (
+from chunksim.costing.heuristics import Rate
+from chunksim.costing.recipe_rates import (
     ACTION_OVERHEAD_SECONDS,
     COMPUTED_MATCH,
     TICK_SECONDS,
@@ -21,8 +21,8 @@ from fray_claude.costing.recipe_rates import (
     index_recipes,
     rate_for,
 )
-from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.remote.recipes import Material, Recipe
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.remote.recipes import Material, Recipe
 
 
 def _recipe(output: str, **kwargs: object) -> Recipe:

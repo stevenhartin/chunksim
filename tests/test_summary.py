@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fray_claude.model.summary import summarise
+from chunksim.model.summary import summarise
 
 PAYLOAD: dict[str, Any] = {
     "chunks": {

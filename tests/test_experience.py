@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from fray_claude.model.experience import (
+from chunksim.model.experience import (
     MAX_LEVEL,
     level_for_xp,
     xp_between,

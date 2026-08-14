@@ -6,21 +6,21 @@ from typing import Any
 
 import pytest
 
-from fray_claude.costing.heuristics import ComputedMethod, Heuristics, Rate
-from fray_claude.costing.training import (
+from chunksim.costing.heuristics import ComputedMethod, Heuristics, Rate
+from chunksim.costing.training import (
     TrainingOption,
     quest_xp_grants,
     training_bands,
     training_options,
 )
-from fray_claude.derive.challenges import ChallengeResult
-from fray_claude.derive.pipeline import Derived
-from fray_claude.derive.active_tasks import TaskClassification
-from fray_claude.derive.bis import BisResult
-from fray_claude.derive.other_tasks import CategoryTasks, OtherTasks, TaskGroup
-from fray_claude.derive.sources import SourceIndex
-from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.model.experience import MAX_LEVEL, level_for_xp, xp_between, xp_for_level
+from chunksim.derive.challenges import ChallengeResult
+from chunksim.derive.pipeline import Derived
+from chunksim.derive.active_tasks import TaskClassification
+from chunksim.derive.bis import BisResult
+from chunksim.derive.other_tasks import CategoryTasks, OtherTasks, TaskGroup
+from chunksim.derive.sources import SourceIndex
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.model.experience import MAX_LEVEL, level_for_xp, xp_between, xp_for_level
 
 
 
@@ -409,8 +409,8 @@ def test_a_computed_rate_is_not_charged_for_its_materials_twice() -> None:
     computed rate and were charged twice, against 58 with a guide rate that
     were correct.
     """
-    from fray_claude.costing.recipe_rates import RECIPE_SOURCE
-    from fray_claude.costing.training import _material_cost
+    from chunksim.costing.recipe_rates import RECIPE_SOURCE
+    from chunksim.costing.training import _material_cost
 
     heuristics = Heuristics(material_seconds_per_xp={"Build a ~|4-poster|~": 0.05})
 

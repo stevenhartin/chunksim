@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import pytest
 
-from fray_claude.gui.derivation import Derivations
-from fray_claude.gui.panels import task_panel
-from fray_claude.store import cache
+from chunksim.gui.derivation import Derivations
+from chunksim.gui.panels import task_panel
+from chunksim.store import cache
 
 
 RUN = "verf-sim/run-001"

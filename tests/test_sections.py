@@ -8,8 +8,8 @@ from typing import Any
 
 import pytest
 
-from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.derive.sections import (
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.derive.sections import (
     ChunkSections,
     area_connections,
     describe_sections,

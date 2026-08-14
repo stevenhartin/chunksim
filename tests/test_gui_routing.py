@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from fray_claude.store import cache
-from fray_claude.gui.browser import window_flags
-from fray_claude.gui.server import (
+from chunksim.store import cache
+from chunksim.gui.browser import window_flags
+from chunksim.gui.server import (
     Context,
     Response,
     _origin_ok,
@@ -136,7 +136,7 @@ def test_the_canvas_is_given_an_explicit_size() -> None:
     whole thing unusable, and looking like a rendering bug rather than a
     layout one.
     """
-    from fray_claude.gui.http import RESOURCE_DIR
+    from chunksim.gui.http import RESOURCE_DIR
 
     css = (RESOURCE_DIR / "style.css").read_text(encoding="utf-8")
     canvas_rule = re.search(r"#canvas\s*\{(.*?)\}", css, re.DOTALL)
@@ -167,7 +167,7 @@ def test_a_skill_icon_takes_the_same_route(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "fray_claude.gui.server.fetch_skill_icon", lambda skill, timeout=0.0: b"icon"
+        "chunksim.gui.server.fetch_skill_icon", lambda skill, timeout=0.0: b"icon"
     )
 
     response = _get("/assets/skill/Attack.png", Context(root=tmp_path))

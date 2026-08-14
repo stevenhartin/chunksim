@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from fray_claude.model.rates import (
+from chunksim.model.rates import (
     build_rare_drop_num,
     build_secondary_primary_num,
     find_fraction,

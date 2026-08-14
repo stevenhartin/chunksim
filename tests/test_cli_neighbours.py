@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from fray_claude.cli.app import build_parser, main
+from chunksim.cli.app import build_parser, main
 
 
 def _neighbour_fixture() -> tuple[dict[str, Any], dict[str, Any]]:

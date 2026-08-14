@@ -4,19 +4,19 @@ from __future__ import annotations
 
 from typing import Any
 
-from fray_claude.model.experience import xp_for_level
+from chunksim.model.experience import xp_for_level
 
 import pytest
 
-from fray_claude.derive.active_tasks import SkillClassification, TaskClassification
-from fray_claude.derive.bis import BisResult
-from fray_claude.derive.challenges import ChallengeResult
-from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.costing.estimate import DEFAULT_ACTION_SECONDS, _item_hours, estimate
-from fray_claude.costing.training import training_options
-from fray_claude.costing.levels import goal_levels, infer_levels, reachable_providers, task_gated_monsters
-from fray_claude.remote.stores import ShopPrice
-from fray_claude.costing.heuristics import (
+from chunksim.derive.active_tasks import SkillClassification, TaskClassification
+from chunksim.derive.bis import BisResult
+from chunksim.derive.challenges import ChallengeResult
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.costing.estimate import DEFAULT_ACTION_SECONDS, _item_hours, estimate
+from chunksim.costing.training import training_options
+from chunksim.costing.levels import goal_levels, infer_levels, reachable_providers, task_gated_monsters
+from chunksim.remote.stores import ShopPrice
+from chunksim.costing.heuristics import (
     DEFAULT_XP_PER_HOUR,
     Heuristics,
     QuestRate,
@@ -24,13 +24,13 @@ from fray_claude.costing.heuristics import (
     SlayerTask,
     Superior,
 )
-from fray_claude.derive.other_tasks import CategoryTasks, OtherTasks, TaskGroup
-from fray_claude.derive.pipeline import Derived, MapState
-from fray_claude.derive.search import build_world_index
-from fray_claude.costing.combat_xp import COMBAT_SKILLS
-from fray_claude.costing.inputs import load_heuristics
-from fray_claude.model.experience import xp_between
-from fray_claude.derive.sources import SourceIndex
+from chunksim.derive.other_tasks import CategoryTasks, OtherTasks, TaskGroup
+from chunksim.derive.pipeline import Derived, MapState
+from chunksim.derive.search import build_world_index
+from chunksim.costing.combat_xp import COMBAT_SKILLS
+from chunksim.costing.inputs import load_heuristics
+from chunksim.model.experience import xp_between
+from chunksim.derive.sources import SourceIndex
 
 
 def _state(info: ChunkInfo, **overrides: Any) -> MapState:
@@ -85,7 +85,7 @@ def _walk_for(info: ChunkInfo, heuristics: Heuristics | None = None) -> Any:
     The walk's gates are exercised elsewhere; these tests are about what a
     route *costs* once it is reachable.
     """
-    from fray_claude.costing.estimate import _Walk
+    from chunksim.costing.estimate import _Walk
 
     world = build_world_index(info)
     return _Walk(
@@ -1691,7 +1691,7 @@ def test_a_slayer_climb_pays_for_the_combat_climbs_beside_it(
 
 def _farming_plan() -> Any:
     """A one-crop schedule, shaped only to have a rate and a calendar."""
-    from fray_claude.costing.farming import FarmingPlan, FarmingRun
+    from chunksim.costing.farming import FarmingPlan, FarmingRun
 
     return FarmingPlan(
         runs=(
@@ -1710,7 +1710,7 @@ def test_the_farm_schedule_is_one_method_rather_than_the_whole_answer() -> None:
     With no minigame available nothing changes: the schedule wins every band
     and the calendar is charged for the whole climb, exactly as before.
     """
-    from fray_claude.costing.estimate import _farming_bands
+    from chunksim.costing.estimate import _farming_bands
 
     plan = _farming_plan()
     bands, days = _farming_bands(plan, (), 0, 99)
@@ -1730,9 +1730,9 @@ def test_tithe_farm_is_preferred_above_its_level_though_it_is_slower() -> None:
     a player does. Measured on `verf-sim/run-001`: 64.0h over 145 calendar
     days becomes 138.0h over 12.2, buying 133 days for 74 hours.
     """
-    from fray_claude.costing.estimate import _farming_bands
-    from fray_claude.costing.heuristics import TITHE_SOURCE
-    from fray_claude.costing.training import TrainingOption
+    from chunksim.costing.estimate import _farming_bands
+    from chunksim.costing.heuristics import TITHE_SOURCE
+    from chunksim.costing.training import TrainingOption
 
     plan = _farming_plan()
     tithe = TrainingOption(
@@ -1771,8 +1771,8 @@ def test_an_unrated_skill_is_rechecked_rather_than_refused_on_sight() -> None:
     floor is honest and an improving scrape fixes it; without the recheck, a
     skill stays refused after its numbers arrive.
     """
-    from fray_claude.costing.estimate import UNRATED_SKILLS
-    from fray_claude.costing.training import TrainingOption, training_bands
+    from chunksim.costing.estimate import UNRATED_SKILLS
+    from chunksim.costing.training import TrainingOption, training_bands
 
     assert "Sailing" in UNRATED_SKILLS
 
@@ -1999,12 +1999,12 @@ def test_every_knob_a_real_estimate_emits_names_a_real_override_branch(
     fixture reaches one at a time and would have missed all three. All three
     buckets that record knobs are swept, not just the items.
     """
-    from fray_claude.costing.heuristics import CONFIG_BRANCHES
-    from fray_claude.costing.inputs import estimate_answer
-    from fray_claude.store.cache import project_root
-    from fray_claude.store.cache import file_digest
-    from fray_claude.store.derived_cache import Digests
-    from fray_claude.store import cache as cache_module
+    from chunksim.costing.heuristics import CONFIG_BRANCHES
+    from chunksim.costing.inputs import estimate_answer
+    from chunksim.store.cache import project_root
+    from chunksim.store.cache import file_digest
+    from chunksim.store.derived_cache import Digests
+    from chunksim.store import cache as cache_module
 
     state, unlocked = real_state
     digests = Digests(
@@ -2025,7 +2025,7 @@ def test_every_knob_a_real_estimate_emits_names_a_real_override_branch(
     assert emitted <= CONFIG_BRANCHES, f"not override branches: {sorted(emitted - CONFIG_BRANCHES)}"
     # And every one of them parses back to the entry it names - the guard that
     # a quest called `Recipe for Disaster/Freeing Evil Dave` needs.
-    from fray_claude.gui import knobs as knob_paths
+    from chunksim.gui import knobs as knob_paths
 
     for row in priced:
         for knob in row:
@@ -2064,7 +2064,7 @@ def test_a_quest_names_the_only_number_anyone_can_argue_with() -> None:
 def test_a_quest_whose_name_holds_a_separator_still_addresses_itself() -> None:
     """`Recipe for Disaster/Freeing Evil Dave` is one key of `quests`, and the
     path has to survive being read back - see `gui.knobs.split`."""
-    from fray_claude.gui import knobs
+    from chunksim.gui import knobs
 
     info = ChunkInfo({})
     derived = _derived(
@@ -2093,8 +2093,8 @@ def test_a_band_carries_the_knob_its_producer_chose() -> None:
     """**Collected, not inferred.** Working the path out from what a band
     carries was wrong four separate ways - see `_skill_knobs` - and each was
     silent: the path was accepted, written, and moved no number."""
-    from fray_claude.costing.estimate import _skill_knobs
-    from fray_claude.costing.training import TrainingBand
+    from chunksim.costing.estimate import _skill_knobs
+    from chunksim.costing.training import TrainingBand
 
     def band(method: str, match: str, knob: str) -> TrainingBand:
         return TrainingBand(
@@ -2122,7 +2122,7 @@ def test_a_band_carries_the_knob_its_producer_chose() -> None:
 def test_a_training_knob_names_the_challenge_not_its_display_name() -> None:
     """`TrainingOption.method` is `activity_name(...)`, which is not a key
     anywhere - so a path built from it addresses nothing."""
-    from fray_claude.costing.training import training_options
+    from chunksim.costing.training import training_options
 
     info = ChunkInfo(
         {

@@ -7,7 +7,7 @@ written as `{{coins|1500}}` inside prose rather than as store stock.
 
 from __future__ import annotations
 
-from fray_claude.remote.stores import (
+from chunksim.remote.stores import (
     SAWMILL_PAGE,
     ShopPrice,
     parse_conversion_fees,

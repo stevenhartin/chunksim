@@ -18,11 +18,11 @@ from typing import Any
 
 import pytest
 
-from fray_claude.costing import inputs
-from fray_claude.costing import dps_bridge
-from fray_claude.cli import main
-from fray_claude.gui.http import Context
-from fray_claude.gui.server import handle_request
+from chunksim.costing import inputs
+from chunksim.costing import dps_bridge
+from chunksim.cli import main
+from chunksim.gui.http import Context
+from chunksim.gui.server import handle_request
 
 LUMBRIDGE = "12850"
 
@@ -46,36 +46,36 @@ _CHUNKINFO: dict[str, Any] = {
 
 @pytest.fixture
 def both_apps(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """One cache root that `fray` and `fray-gui` both answer against."""
-    monkeypatch.delenv("FRAY_CHUNKINFO", raising=False)
+    """One cache root that `fray` and `chunksim-gui` both answer against."""
+    monkeypatch.delenv("CHUNKSIM_CHUNKINFO", raising=False)
     (tmp_path / "pyproject.toml").write_text("", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
-        "fray_claude.cli.io_commands.fetch_map", lambda map_id, timeout=30.0: _PAYLOAD
+        "chunksim.cli.io_commands.fetch_map", lambda map_id, timeout=30.0: _PAYLOAD
     )
     main(["fetch", "--map", "fray"])
     monkeypatch.setattr(
-        "fray_claude.cli.common.read_chunkinfo", lambda override=None, root=None: _CHUNKINFO
+        "chunksim.cli.common.read_chunkinfo", lambda override=None, root=None: _CHUNKINFO
     )
     # The same five patches `test_gui_server._derived_ctx` makes: patch the
     # reader rather than write a 10MB export, and point everything that could
     # *write* at `tmp_path`, since these land on the shared `cache` module.
     monkeypatch.setattr(
-        "fray_claude.gui.derivation.cache.read_chunkinfo",
+        "chunksim.gui.derivation.cache.read_chunkinfo",
         lambda override=None, root=None: _CHUNKINFO,
     )
     monkeypatch.setattr(
-        "fray_claude.gui.derivation.cache.read_blob",
+        "chunksim.gui.derivation.cache.read_blob",
         lambda name, root=None, hint=None: {"data": {}},
     )
     monkeypatch.setattr(
-        "fray_claude.gui.derivation.cache.file_digest", lambda path: "digest"
+        "chunksim.gui.derivation.cache.file_digest", lambda path: "digest"
     )
     monkeypatch.setattr(
-        "fray_claude.gui.derivation.cache.chunkinfo_source", lambda o, r: tmp_path / "x"
+        "chunksim.gui.derivation.cache.chunkinfo_source", lambda o, r: tmp_path / "x"
     )
     monkeypatch.setattr(
-        "fray_claude.gui.derivation.cache.blob_path", lambda n, r: tmp_path / f"{n}.json"
+        "chunksim.gui.derivation.cache.blob_path", lambda n, r: tmp_path / f"{n}.json"
     )
     return tmp_path
 
@@ -91,7 +91,7 @@ def test_both_apps_price_one_map_identically(
     pins were applied, so both wrote different values under one key in a shared
     `cache/derived/`. Last writer won, and the loser's number was plausible.
     """
-    monkeypatch.setenv("FRAY_NO_WATERMARK", "1")
+    monkeypatch.setenv("CHUNKSIM_NO_WATERMARK", "1")
     assert main(["estimate", "--export-json", "-"]) == 0
     from_cli = json.loads(capsys.readouterr().out)
 
@@ -135,12 +135,12 @@ def test_both_apps_hand_the_pricer_the_same_pins(
         calls.append(kwargs)
         return real(*args, **kwargs)
 
-    monkeypatch.setattr("fray_claude.costing.dps_bridge.enrich", spy)
+    monkeypatch.setattr("chunksim.costing.dps_bridge.enrich", spy)
     monkeypatch.setattr(
-        "fray_claude.costing.inputs.cached_enrich",
+        "chunksim.costing.inputs.cached_enrich",
         lambda compute, *a, **k: compute(),
     )
-    monkeypatch.setenv("FRAY_NO_WATERMARK", "1")
+    monkeypatch.setenv("CHUNKSIM_NO_WATERMARK", "1")
 
     main(["estimate", "--export-json", "-"])
     capsys.readouterr()
@@ -160,7 +160,7 @@ def test_neither_app_reaches_past_the_shared_module() -> None:
     back, and it would be invisible again until someone wrote a slayer
     override.
     """
-    from fray_claude.gui import server
+    from chunksim.gui import server
 
     for module in (main.__module__, server.__name__):
         source = Path(__import__(module, fromlist=["__file__"]).__file__ or "").read_text()

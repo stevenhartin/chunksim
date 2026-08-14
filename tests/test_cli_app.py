@@ -15,11 +15,11 @@ from typing import Any
 
 import pytest
 
-from fray_claude.remote.api import DEFAULT_TIMEOUT
-from fray_claude.cli.app import build_parser, main
-from fray_claude.cli.common import MapAmbiguityError, resolve_map
-from fray_claude.model.summary import format_age
-from fray_claude.store.cache import write_cache
+from chunksim.remote.api import DEFAULT_TIMEOUT
+from chunksim.cli.app import build_parser, main
+from chunksim.cli.common import MapAmbiguityError, resolve_map
+from chunksim.model.summary import format_age
+from chunksim.store.cache import write_cache
 
 
 def test_fetch_requires_a_map_because_nothing_local_can_imply_one() -> None:
@@ -72,26 +72,26 @@ def test_every_command_stamps_which_install_answered(
     line goes to **stderr**, because nine subcommands can write their whole
     answer to stdout with `--export-json -`.
     """
-    monkeypatch.delenv("FRAY_NO_WATERMARK", raising=False)
+    monkeypatch.delenv("CHUNKSIM_NO_WATERMARK", raising=False)
     monkeypatch.setattr(
-        "fray_claude.cli.io_commands.fetch_map",
+        "chunksim.cli.io_commands.fetch_map",
         lambda map_id, timeout=DEFAULT_TIMEOUT: {"chunks": {"unlocked": {"50_50": True}}},
     )
 
     assert main(["fetch", "--map", "fray"]) == 0
 
     captured = capsys.readouterr()
-    assert captured.err.startswith("fray ")
-    assert "fray " not in captured.out.split("\n")[0]
+    assert captured.err.startswith("chunksim ")
+    assert "chunksim " not in captured.out.split("\n")[0]
 
 
 def test_the_stamp_stays_off_the_stream_the_answer_goes_to(
     project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """`fray maps list --export-json -` has to stay pipeable into `jq`."""
-    monkeypatch.delenv("FRAY_NO_WATERMARK", raising=False)
+    """`chunksim maps list --export-json -` has to stay pipeable into `jq`."""
+    monkeypatch.delenv("CHUNKSIM_NO_WATERMARK", raising=False)
     monkeypatch.setattr(
-        "fray_claude.cli.io_commands.fetch_map",
+        "chunksim.cli.io_commands.fetch_map",
         lambda map_id, timeout=DEFAULT_TIMEOUT: {"chunks": {"unlocked": {"50_50": True}}},
     )
     main(["fetch", "--map", "fray"])

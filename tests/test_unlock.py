@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.derive.pipeline import MapState
-from fray_claude.derive.unlock import diff_bis_picks, diff_reachable_sections, diff_valid_tasks, tasks_added_by
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.derive.pipeline import MapState
+from chunksim.derive.unlock import diff_bis_picks, diff_reachable_sections, diff_valid_tasks, tasks_added_by
 
 
 def _chunk_info(**data: Any) -> ChunkInfo:
@@ -199,7 +199,7 @@ def _derived_with(valid: dict[str, Any], primary: dict[str, bool]) -> Any:
     """
     from types import SimpleNamespace
 
-    from fray_claude.derive.active_tasks import SkillClassification, TaskClassification
+    from chunksim.derive.active_tasks import SkillClassification, TaskClassification
 
     return SimpleNamespace(
         challenges=SimpleNamespace(valid=valid),
@@ -216,7 +216,7 @@ def _derived_with(valid: dict[str, Any], primary: dict[str, bool]) -> Any:
 
 def test_a_skill_that_becomes_trainable_records_the_backlog_it_already_had() -> None:
     """The case a validity diff cannot express - see `newly_trainable_backlog`."""
-    from fray_claude.derive.unlock import newly_trainable_backlog
+    from chunksim.derive.unlock import newly_trainable_backlog
 
     before = _derived_with({"Slayer": {"Slay a hydra": 95}}, {"Slayer": False})
     after = _derived_with(
@@ -228,7 +228,7 @@ def test_a_skill_that_becomes_trainable_records_the_backlog_it_already_had() -> 
 
 def test_a_skill_already_trainable_records_no_backlog() -> None:
     """Otherwise every roll would re-propose the whole skill."""
-    from fray_claude.derive.unlock import newly_trainable_backlog
+    from chunksim.derive.unlock import newly_trainable_backlog
 
     before = _derived_with({"Slayer": {"Slay a hydra": 95}}, {"Slayer": True})
     after = _derived_with(
@@ -240,7 +240,7 @@ def test_a_skill_already_trainable_records_no_backlog() -> None:
 
 def test_a_skill_that_becomes_trainable_with_nothing_standing_records_nothing() -> None:
     """An empty entry would say "a backlog opened" where none did."""
-    from fray_claude.derive.unlock import newly_trainable_backlog
+    from chunksim.derive.unlock import newly_trainable_backlog
 
     before = _derived_with({}, {})
     after = _derived_with({"Slayer": {"Wear earmuffs": 15}}, {"Slayer": True})

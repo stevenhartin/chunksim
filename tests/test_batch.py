@@ -15,8 +15,8 @@ from typing import Any
 
 import pytest
 
-from fray_claude.runs.batch import derive_seeds, price_steps, run_batch, save_unlock
-from fray_claude.store.cache import (
+from chunksim.runs.batch import derive_seeds, price_steps, run_batch, save_unlock
+from chunksim.store.cache import (
     EDITED,
     BATCH_META_FILE_NAME,
     CacheMissError,
@@ -30,13 +30,13 @@ from fray_claude.store.cache import (
     write_blob,
     write_cache,
 )
-from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.store.derived_cache import CacheBehaviour, Digests
-from fray_claude.derive.pipeline import load_map_state
-from fray_claude.runs.simulate import simulate_rolls
-from fray_claude.costing import dps_bridge
-from fray_claude.runs.timeline import PRICING_MODEL, replay
-from fray_claude.derive.unlock import UnlockDelta
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.store.derived_cache import CacheBehaviour, Digests
+from chunksim.derive.pipeline import load_map_state
+from chunksim.runs.simulate import simulate_rolls
+from chunksim.costing import dps_bridge
+from chunksim.runs.timeline import PRICING_MODEL, replay
+from chunksim.derive.unlock import UnlockDelta
 
 #: 100 starts unlocked; 99/101/356 are its grid neighbours (id +/- 1, +/- 256)
 #: and each declares a connection back to it, so a roll has three candidates
@@ -141,7 +141,7 @@ def test_jobs_changes_where_runs_execute_and_nothing_else(root: Path) -> None:
     """The parallelism guarantee: `--jobs` must not move a single roll.
 
     Three arms, because there are three ways to say how wide: inline, an
-    explicit width, and **`0`, which is what `fray simulate` now sends by
+    explicit width, and **`0`, which is what `chunksim simulate` now sends by
     default** - so the value a user actually gets is the one under test.
     """
     serial = run_batch(
@@ -349,7 +349,7 @@ def _delta(chunk_id: str) -> UnlockDelta:
 
 def test_saving_an_unlock_writes_a_batch_of_one(root: Path) -> None:
     """**One writer, because two apps save an unlock and one metadata shape
-    reads it back.** `fray unlock --cache-map` and the GUI's chunk panel both
+    reads it back.** `chunksim unlock --cache-map` and the GUI's chunk panel both
     land here, and `maps list`, the picker and `read_batch` all read what it
     writes - so a key added on one path and not the other is a row that goes
     blank on half the maps in the list.
@@ -413,7 +413,7 @@ def test_a_run_is_born_with_its_timeline(root: Path) -> None:
 
 def test_without_a_rate_scrape_a_run_stores_no_timeline(root: Path) -> None:
     """**No hours beats wrong hours.** Without `wiki_rates` every number falls
-    to a default and the total is thousands of hours light - which `fray show`
+    to a default and the total is thousands of hours light - which `chunksim show`
     at least prints a caveat beside. A graph carries no caveat, so there
     isn't one."""
     batch = run_batch(name="t", payload=_PAYLOAD, base_map="fray", rolls=2, seed=2, root=root)
@@ -444,7 +444,7 @@ def test_slices_are_contiguous_and_overlap_by_one() -> None:
     The overlap is the baseline: a slice starting mid-run needs the roll
     before its head to know what its head added.
     """
-    from fray_claude.runs.batch import _slices
+    from chunksim.runs.batch import _slices
 
     parts = _slices([["a"], ["b"], ["c"], ["d"], ["e"]], 2)
 
@@ -458,7 +458,7 @@ def test_slices_are_contiguous_and_overlap_by_one() -> None:
 
 def test_more_slices_than_steps_is_not_an_error() -> None:
     """Asking for 16 slices of a 3-step run produces 3, not 13 empty ones."""
-    from fray_claude.runs.batch import _slices
+    from chunksim.runs.batch import _slices
 
     parts = _slices([["a"], ["b"], ["c"]], 16)
 
@@ -665,7 +665,7 @@ def test_a_run_prices_on_the_same_basis_as_the_estimate_tab(
     """**The property this pricing exists to buy.**
 
     Every step of a run is priced against the state the run *ends* in, so the
-    last step *is* the map - and its total has to be `fray estimate`'s for that
+    last step *is* the map - and its total has to be `chunksim estimate`'s for that
     map to the penny. It was not: the old path stopped at bare
     `load_heuristics`, with no recipe-computed rates, no material costs, no
     prayer methods, no simulated kill rates, no computed combat rates and no
@@ -676,11 +676,11 @@ def test_a_run_prices_on_the_same_basis_as_the_estimate_tab(
     nothing: the states come from `simulate_rolls` and the pricing from the
     same `_Pricer` a run uses.
     """
-    from fray_claude.costing.inputs import estimate_answer
-    from fray_claude.runs.batch import _Pricer
-    from fray_claude.runs.simulate import simulate_rolls
-    from fray_claude.store import cache as cache_module
-    from fray_claude.store.derived_cache import cached_derive
+    from chunksim.costing.inputs import estimate_answer
+    from chunksim.runs.batch import _Pricer
+    from chunksim.runs.simulate import simulate_rolls
+    from chunksim.store import cache as cache_module
+    from chunksim.store.derived_cache import cached_derive
 
     state, unlocked = real_state
     digests = Digests(
@@ -695,7 +695,7 @@ def test_a_run_prices_on_the_same_basis_as_the_estimate_tab(
     ledger = simulate_rolls(
         state, unlocked, rolls=3, seed=4242, on_state=pricer.record()
     )
-    from fray_claude.runs.batch import _step_ids
+    from chunksim.runs.batch import _step_ids
 
     steps = _step_ids(unlocked, [record.chunk_id for record in ledger])
     pricer.price(state, steps)
@@ -740,7 +740,7 @@ def test_how_much_a_run_cached_never_changes_the_answer(root: Path) -> None:
 def test_the_step_ids_walk_the_run_forwards(root: Path) -> None:
     """`timeline.replay` recovers these by subtracting the later rolls off the
     final set, because it has no base map; a run has one, so it adds."""
-    from fray_claude.runs.batch import _step_ids
+    from chunksim.runs.batch import _step_ids
 
     steps = _step_ids({"a": True}, ["b", "c"])
 

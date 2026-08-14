@@ -14,8 +14,8 @@ from typing import Any
 
 import pytest
 
-from fray_claude.store import cache
-from fray_claude.gui.server import Context, Response, handle_request
+from chunksim.store import cache
+from chunksim.gui.server import Context, Response, handle_request
 
 
 LUMBRIDGE = "12850"
@@ -77,15 +77,15 @@ def _derived_ctx(
     10MB file, so the fixture is the few keys under test.
     """
     monkeypatch.setattr(
-        "fray_claude.gui.derivation.cache.read_chunkinfo",
+        "chunksim.gui.derivation.cache.read_chunkinfo",
         lambda override=None, root=None: chunkinfo,
     )
     monkeypatch.setattr(
-        "fray_claude.gui.derivation.cache.read_blob",
+        "chunksim.gui.derivation.cache.read_blob",
         lambda name, root=None, hint=None: {"data": {}},
     )
     monkeypatch.setattr(
-        "fray_claude.gui.derivation.cache.file_digest", lambda path: "digest"
+        "chunksim.gui.derivation.cache.file_digest", lambda path: "digest"
     )
     # **Under `tmp_path`, not bare names.** These patch attributes on the
     # *shared* `cache` module, so anything that later writes through
@@ -93,10 +93,10 @@ def _derived_ctx(
     # which put a stray file in the repo root the first time a test using
     # this fixture wrote a blob for real.
     monkeypatch.setattr(
-        "fray_claude.gui.derivation.cache.chunkinfo_source", lambda o, r: tmp_path / "x"
+        "chunksim.gui.derivation.cache.chunkinfo_source", lambda o, r: tmp_path / "x"
     )
     monkeypatch.setattr(
-        "fray_claude.gui.derivation.cache.blob_path", lambda n, r: tmp_path / f"{n}.json"
+        "chunksim.gui.derivation.cache.blob_path", lambda n, r: tmp_path / f"{n}.json"
     )
     return Context(root=tmp_path)
 
@@ -193,7 +193,7 @@ def test_every_placed_chunk_gets_a_section_state(
     Locked chunks are in, all-red, since "what is behind this square" is
     asked hardest about one you have not got.
     """
-    from fray_claude.gui.routes_derived import WHOLE_CHUNK_SECTION
+    from chunksim.gui.routes_derived import WHOLE_CHUNK_SECTION
 
     _write_map(tmp_path, "fray", [LUMBRIDGE])
     ctx = _derived_ctx(
@@ -222,7 +222,7 @@ def test_every_placed_chunk_gets_a_section_state(
 def test_the_full_diff_reports_both_directions(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`/api/diff` is `fray diff`, and the one route allowed to derive twice.
+    """`/api/diff` is `chunksim diff`, and the one route allowed to derive twice.
 
     The map view answers the *chunks* question from a set difference in
     microseconds, which is why it does not call `compare_maps`. This one has
@@ -302,7 +302,7 @@ def test_unlocking_a_chunk_you_already_have_is_refused(
 def test_unlocking_a_chunk_writes_a_map_of_its_own_kind(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`fray unlock --chunk X --cache-map NAME`, reached from the chunk panel.
+    """`chunksim unlock --chunk X --cache-map NAME`, reached from the chunk panel.
 
     The kind is the assertion that matters: a map made by adding one chunk by
     hand is `unlocked`, not `simulated`, because the picker has to say which.

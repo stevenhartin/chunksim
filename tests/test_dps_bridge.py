@@ -12,11 +12,11 @@ from typing import Any, cast
 
 import pytest
 
-from fray_claude.costing import dps_bridge
-from fray_claude.model.chunkinfo import ChunkInfo
-from fray_claude.derive.pipeline import MapState
-from fray_claude.costing.heuristics import Heuristics, Rate
-from fray_claude.derive.sources import SourceIndex
+from chunksim.costing import dps_bridge
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.derive.pipeline import MapState
+from chunksim.costing.heuristics import Heuristics, Rate
+from chunksim.derive.sources import SourceIndex
 
 pytestmark = pytest.mark.skipif(
     not dps_bridge.DPS_AVAILABLE,
@@ -734,7 +734,7 @@ def test_every_task_is_priced_not_only_the_unmeasured_ones() -> None:
     derived from one is not a rate this player can reach. The single-target
     number is computed for every task, and a measured row does not exempt it.
     """
-    from fray_claude.costing.heuristics import Heuristics, SlayerTask
+    from chunksim.costing.heuristics import Heuristics, SlayerTask
 
     info = _slayer_info(Banshees="Banshee", Cockatrices="Cockatrice")
     index = _FakeIndex(
@@ -783,7 +783,7 @@ def test_slayer_xp_per_kill_is_the_monsters_hitpoints() -> None:
     nine. Not to be confused with the sheet's `xp_per_kill`, which averages a
     task's whole monster mix.
     """
-    from fray_claude.costing.heuristics import Heuristics, SlayerTask
+    from chunksim.costing.heuristics import Heuristics, SlayerTask
 
     info = _slayer_info(Banshees="Banshee")
     index = _FakeIndex({"Banshee": _target(name="Banshee", hitpoints=22)})
@@ -805,7 +805,7 @@ def test_slayer_xp_per_kill_is_the_monsters_hitpoints() -> None:
 
 def test_a_task_with_no_measured_size_is_left_alone() -> None:
     """A rate beside no size is half an answer; `slayer.py` still covers it."""
-    from fray_claude.costing.heuristics import Heuristics, SlayerTask
+    from chunksim.costing.heuristics import Heuristics, SlayerTask
 
     info = _slayer_info(Banshees="Banshee")
     index = _FakeIndex({"Banshee": _target(name="Banshee", hitpoints=22)})
@@ -834,7 +834,7 @@ def test_a_task_with_no_measured_size_is_left_alone() -> None:
 
 def test_with_slayer_rates_merges_without_mutating() -> None:
     """The pure layer stays shareable, so this returns a new value."""
-    from fray_claude.costing.heuristics import Heuristics, SlayerTask
+    from chunksim.costing.heuristics import Heuristics, SlayerTask
 
     original = Heuristics(
         slayer={
@@ -867,7 +867,7 @@ def test_slayer_pricing_narrows_to_what_the_map_can_reach() -> None:
     `Dwarves` names eight and a map may hold two; pricing the fastest of all
     eight quotes a fight that is not on offer.
     """
-    from fray_claude.costing.heuristics import Heuristics, SlayerTask
+    from chunksim.costing.heuristics import Heuristics, SlayerTask
 
     info = ChunkInfo(
         {
@@ -909,7 +909,7 @@ def test_slayer_pricing_narrows_to_what_the_map_can_reach() -> None:
 
 def test_a_task_whose_monsters_are_all_unreachable_is_not_priced() -> None:
     """`slayer.py` has already decided that is a skip, not a rate."""
-    from fray_claude.costing.heuristics import Heuristics, SlayerTask
+    from chunksim.costing.heuristics import Heuristics, SlayerTask
 
     info = ChunkInfo(
         {
@@ -950,7 +950,7 @@ def test_slayer_pricing_skips_masters_you_cannot_reach() -> None:
     holding none of him; pricing their task list is the same waste, and an
     entry for a master nobody can visit invites the same misreading.
     """
-    from fray_claude.costing.heuristics import Heuristics, SlayerTask
+    from chunksim.costing.heuristics import Heuristics, SlayerTask
 
     info = ChunkInfo(
         {
@@ -982,7 +982,7 @@ def test_slayer_pricing_skips_masters_you_cannot_reach() -> None:
 
 def test_naming_both_masters_prices_both() -> None:
     """There is no "do not filter" mode; a caller states who is reachable."""
-    from fray_claude.costing.heuristics import Heuristics, SlayerTask
+    from chunksim.costing.heuristics import Heuristics, SlayerTask
 
     info = ChunkInfo(
         {
@@ -1020,7 +1020,7 @@ def test_a_slayer_task_is_priced_on_xp_per_hour_not_speed() -> None:
     Choosing on speed under-reported `Scorpions`, `Spiders` and `Zombies` by
     seven to thirteen times.
     """
-    from fray_claude.costing.heuristics import Heuristics, SlayerTask
+    from chunksim.costing.heuristics import Heuristics, SlayerTask
 
     info = ChunkInfo(
         {
@@ -1075,7 +1075,7 @@ def test_a_hand_override_outranks_the_computed_rate() -> None:
     computed layer outranking it would make hand corrections stop working
     with no sign that they had.
     """
-    from fray_claude.costing.heuristics import Heuristics, Rate, SlayerTask
+    from chunksim.costing.heuristics import Heuristics, Rate, SlayerTask
 
     heuristics = Heuristics(
         monsters={"Rat": Rate(value=1.0, source="overrides")},
@@ -1253,9 +1253,9 @@ def test_incremental_pricing_is_the_same_answer_as_pricing_from_scratch(
     it is 14.5s of full pricing against 3.4s incremental, and the two agreed
     on every one of 4,094 rates.
     """
-    from fray_claude.store import cache
-    from fray_claude.store.derived_cache import Digests, cached_derive
-    from fray_claude.costing.levels import goal_levels, infer_levels
+    from chunksim.store import cache
+    from chunksim.store.derived_cache import Digests, cached_derive
+    from chunksim.costing.levels import goal_levels, infer_levels
 
     info = real_export
     state, unlocked = real_state

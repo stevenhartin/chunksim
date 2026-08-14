@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from fray_claude.model.firebase import (
+from chunksim.model.firebase import (
     encode_key,
     encode_string,
     reverse_tasks_map,

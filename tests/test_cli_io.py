@@ -14,8 +14,8 @@ from typing import Any
 
 import pytest
 
-from fray_claude.remote.api import DEFAULT_TIMEOUT, FetchError
-from fray_claude.cli.app import main
+from chunksim.remote.api import DEFAULT_TIMEOUT, FetchError
+from chunksim.cli.app import main
 
 
 def _patch_wiki_sources(
@@ -25,19 +25,19 @@ def _patch_wiki_sources(
     guides: dict[str, str] | None = None,
     sheet: str = '"Task","XP/Kill","Raw Kills/Hour"\n"Bats","5","800"\n',
 ) -> None:
-    """Stand in for every network source `fray heuristics` reaches."""
+    """Stand in for every network source `chunksim heuristics` reaches."""
     pages = {**(quest_pages or {}), **(guides or {})}
     monkeypatch.setattr(
-        "fray_claude.remote.scrape.fetch_wiki_pages", lambda titles, timeout=DEFAULT_TIMEOUT: {
+        "chunksim.remote.scrape.fetch_wiki_pages", lambda titles, timeout=DEFAULT_TIMEOUT: {
             title: pages[title] for title in titles if title in pages
         }
     )
     monkeypatch.setattr(
-        "fray_claude.remote.scrape.fetch_wiki_page_titles",
+        "chunksim.remote.scrape.fetch_wiki_page_titles",
         lambda prefix, timeout=DEFAULT_TIMEOUT: sorted(guides or {}),
     )
     monkeypatch.setattr(
-        "fray_claude.remote.scrape.fetch_text", lambda url, timeout=DEFAULT_TIMEOUT, what="": sheet
+        "chunksim.remote.scrape.fetch_text", lambda url, timeout=DEFAULT_TIMEOUT, what="": sheet
     )
 
 
@@ -45,7 +45,7 @@ def test_fetch_writes_the_cache(project: Path, monkeypatch: pytest.MonkeyPatch) 
     def fake_fetch_map(map_id: str, timeout: float = DEFAULT_TIMEOUT) -> dict[str, Any]:
         return {"chunks": {"unlocked": {"50_50": True}}}
 
-    monkeypatch.setattr("fray_claude.cli.io_commands.fetch_map", fake_fetch_map)
+    monkeypatch.setattr("chunksim.cli.io_commands.fetch_map", fake_fetch_map)
 
     assert main(["fetch", "--map", "fray"]) == 0
     assert (project / "cache" / "maps" / "fetched" / "fray.json").is_file()
@@ -59,7 +59,7 @@ def test_show_summarises_the_cached_map(
         "rules": {"All Shops": True, "Boosting": False},
     }
     monkeypatch.setattr(
-        "fray_claude.cli.io_commands.fetch_map", lambda map_id, timeout=DEFAULT_TIMEOUT: payload
+        "chunksim.cli.io_commands.fetch_map", lambda map_id, timeout=DEFAULT_TIMEOUT: payload
     )
     main(["fetch", "--map", "fray"])
     capsys.readouterr()
@@ -81,17 +81,17 @@ def test_show_reports_whether_the_dps_calculator_is_installed(
     about to get, so the line is there whichever way it falls.
     """
     monkeypatch.setattr(
-        "fray_claude.cli.io_commands.fetch_map",
+        "chunksim.cli.io_commands.fetch_map",
         lambda map_id, timeout=DEFAULT_TIMEOUT: {"chunks": {"unlocked": {"50_50": True}}},
     )
     main(["fetch", "--map", "fray"])
     capsys.readouterr()
 
-    monkeypatch.setattr("fray_claude.costing.dps_bridge.library_version", lambda: "9.9.9")
+    monkeypatch.setattr("chunksim.costing.dps_bridge.library_version", lambda: "9.9.9")
     main(["show"])
     assert "dps calc       osrs-dps 9.9.9" in capsys.readouterr().out
 
-    monkeypatch.setattr("fray_claude.costing.dps_bridge.library_version", lambda: None)
+    monkeypatch.setattr("chunksim.costing.dps_bridge.library_version", lambda: None)
     main(["show"])
     assert "dps calc       not installed" in capsys.readouterr().out
 
@@ -109,7 +109,7 @@ def test_fetch_failure_exits_one(
     def fake_fetch_map(map_id: str, timeout: float = DEFAULT_TIMEOUT) -> dict[str, Any]:
         raise FetchError(f"no such map: {map_id!r}")
 
-    monkeypatch.setattr("fray_claude.cli.io_commands.fetch_map", fake_fetch_map)
+    monkeypatch.setattr("chunksim.cli.io_commands.fetch_map", fake_fetch_map)
 
     assert main(["fetch", "--map", "nope"]) == 1
     # `endswith` rather than `==`: the provenance line shares this stream.
@@ -120,10 +120,10 @@ def test_chunkinfo_fetches_and_caches_both_blobs(
     project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "fray_claude.cli.io_commands.fetch_chunkinfo", lambda timeout=DEFAULT_TIMEOUT: {"chunks": {}}
+        "chunksim.cli.io_commands.fetch_chunkinfo", lambda timeout=DEFAULT_TIMEOUT: {"chunks": {}}
     )
     monkeypatch.setattr(
-        "fray_claude.cli.io_commands.fetch_tasks_map",
+        "chunksim.cli.io_commands.fetch_tasks_map",
         lambda timeout=DEFAULT_TIMEOUT: {"Obtain a whip": "t_1"},
     )
 
@@ -143,7 +143,7 @@ def test_a_changed_map_is_not_served_the_old_derivation(
     capsys.readouterr()
 
     monkeypatch.setattr(
-        "fray_claude.cli.io_commands.fetch_map",
+        "chunksim.cli.io_commands.fetch_map",
         lambda map_id, timeout=DEFAULT_TIMEOUT: {
             "chunks": {"unlocked": {"100": "100", "101": "101"}}
         },
@@ -197,7 +197,7 @@ def test_heuristics_survives_the_slayer_sheet_being_unavailable(
     cached_map({"chunks": {"unlocked": {}}}, {})
     _patch_wiki_sources(monkeypatch)
     monkeypatch.setattr(
-        "fray_claude.remote.scrape.fetch_text",
+        "chunksim.remote.scrape.fetch_text",
         lambda url, timeout=DEFAULT_TIMEOUT, what="": (_ for _ in ()).throw(
             FetchError("HTTP 404 fetching slayer sheet")
         ),
