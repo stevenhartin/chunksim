@@ -32,7 +32,9 @@ AppUpdatesURL={#AppURL}/releases
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 ; The program is GPL-3.0-or-later. Shipping the terms with the binary is the
-; minimum; the corresponding source is the public repository named above.
+; minimum. The *source* ships too, in {app}\source - chunksim is developed in
+; public but osrs-dps is not, so pointing at a repository would answer for only
+; half of what this installs. See build_windows.bundle_source.
 LicenseFile=..\LICENSE
 OutputDir=build
 ; Matches `api.INSTALLER_ASSET_SUFFIX`, which is how the in-app updater finds

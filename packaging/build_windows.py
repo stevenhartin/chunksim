@@ -31,6 +31,7 @@ import argparse
 import hashlib
 import json
 import shutil
+import subprocess
 import sys
 import urllib.request
 import zipfile
@@ -53,6 +54,67 @@ PAYLOAD = BUILD / "payload"
 #: `LICENSE` is not decoration: this is GPL-3.0-or-later, and a binary handed
 #: to someone has to carry its terms.
 EXTRAS = ("LICENSE", "README.md")
+
+#: The optional DPS calculator, bundled because both projects are now
+#: GPL-3.0-or-later - which is the whole reason chunksim relicensed. Its
+#: checkout is a sibling of this one; it is not on PyPI.
+DEFAULT_DPS_CHECKOUT = PROJECT.parent / "osrs-dps"
+
+#: Where the source for everything in the payload goes. **GPL-3.0 section 6
+#: wants the object code accompanied by the corresponding source**, and
+#: `osrs-dps` is not a public repository someone could be pointed at instead -
+#: so its source ships here, beside the program built from it. chunksim's own
+#: goes in too: it costs a few hundred kilobytes and makes the answer to "where
+#: is the source" one directory rather than one directory and a caveat.
+SOURCE_DIR_NAME = "source"
+
+
+def build_dists(checkout: Path) -> tuple[Path, Path]:
+    """Build a wheel and an sdist from `checkout`, returning both.
+
+    **One invocation, so the two correspond.** A source archive that does not
+    match the binary beside it is worse than none: it is an offer of source
+    that does not build what was shipped.
+
+    `build` is a module in some environments and only a `pyproject-build`
+    script in others - it is commonly installed with pipx, which puts the
+    command on PATH and the module in a venv this interpreter cannot see.
+    """
+    out = checkout / "dist"
+    before = set(out.glob("*")) if out.is_dir() else set()
+    attempts: list[list[str]] = [[sys.executable, "-m", "build", "--outdir", str(out), str(checkout)]]
+    script = shutil.which("pyproject-build")
+    if script:
+        attempts.append([script, "--outdir", str(out), str(checkout)])
+    for command in attempts:
+        result = subprocess.run(command, capture_output=True, text=True)
+        if result.returncode == 0:
+            break
+    else:
+        raise SystemExit(
+            f"could not build {checkout.name}: install `build` "
+            f"({sys.executable} -m pip install build)"
+        )
+    wheels = sorted(out.glob("*.whl"), key=lambda p: p.stat().st_mtime)
+    sdists = sorted(out.glob("*.tar.gz"), key=lambda p: p.stat().st_mtime)
+    if not wheels or not sdists:
+        raise SystemExit(f"{checkout.name} built no wheel/sdist pair in {out}")
+    del before
+    return wheels[-1], sdists[-1]
+
+
+def unpack_into(wheel: Path, app: Path) -> None:
+    """Copy a wheel's package and metadata beside the interpreter."""
+    staged = BUILD / "unpacked" / wheel.stem
+    if staged.exists():
+        shutil.rmtree(staged)
+    with zipfile.ZipFile(wheel) as bundle:
+        bundle.extractall(staged)
+    for entry in staged.iterdir():
+        destination = app / entry.name
+        if destination.exists():
+            shutil.rmtree(destination)
+        shutil.copytree(entry, destination)
 
 
 def download(url: str, into: Path) -> Path:
@@ -144,41 +206,57 @@ def point_path_file(python_dir: Path) -> Path:
     return path_file
 
 
-def application(dist_info: Path | None) -> Path:
-    """Copy the package and its metadata beside the interpreter."""
+def application(wheel: Path) -> Path:
+    """Unpack chunksim's own wheel beside the interpreter.
+
+    The wheel rather than `src/`, so what ships is what `package-data` says
+    ships - `gui/resources` and `heuristics/overrides.json` are both in the
+    payload because the wheel carries them, not because this file remembered
+    to. It also brings the `.dist-info` that `importlib.metadata` needs.
+    """
     app = PAYLOAD / "app"
     if app.exists():
         shutil.rmtree(app)
     app.mkdir(parents=True)
-    shutil.copytree(
-        PROJECT / "src" / "chunksim",
-        app / "chunksim",
-        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-    )
-    if dist_info is not None:
-        shutil.copytree(dist_info, app / dist_info.name)
+    unpack_into(wheel, app)
     return app
 
 
-def built_metadata() -> Path | None:
-    """The `.dist-info` from a built wheel, for `importlib.metadata`.
 
-    Without it `read_build` reports "uninstalled source" and the update check
-    has no version to compare, so the watermark and the updater both go quiet.
-    Built by `pyproject-build`, which is not otherwise part of this project's
-    development loop - hence a clear message rather than an import of it.
+
+
+def bundle_source(sources: dict[str, Path]) -> Path:
+    """Put the corresponding source in the payload, with a note saying so.
+
+    This is the GPL-3.0 section 6 obligation discharged the direct way -
+    accompanying the object code with the source - rather than by a written
+    offer or a public repository, because one of the two projects here is
+    neither.
     """
-    wheels = sorted((PROJECT / "dist").glob("chunksim-*.whl"))
-    if not wheels:
-        print("  no wheel in dist/ - run `pyproject-build` for a versioned build")
-        return None
-    unpacked = BUILD / "wheel"
-    if unpacked.exists():
-        shutil.rmtree(unpacked)
-    with zipfile.ZipFile(wheels[-1]) as bundle:
-        bundle.extractall(unpacked)
-    found = sorted(unpacked.glob("chunksim-*.dist-info"))
-    return found[0] if found else None
+    directory = PAYLOAD / SOURCE_DIR_NAME
+    if directory.exists():
+        shutil.rmtree(directory)
+    directory.mkdir(parents=True)
+    for archive in sources.values():
+        shutil.copy2(archive, directory / archive.name)
+    listing = "\n".join(f"  {name}: {path.name}" for name, path in sorted(sources.items()))
+    (directory / "README.txt").write_text(
+        "Source code for this program\n"
+        "============================\n\n"
+        "chunksim is free software under the GNU General Public License,\n"
+        "version 3 or later. A copy of the licence is in LICENSE, one\n"
+        "directory up.\n\n"
+        "The licence entitles you to the complete corresponding source for\n"
+        "everything installed here. It is in this directory, as the source\n"
+        "archives the shipped code was built from:\n\n"
+        f"{listing}\n\n"
+        "Each unpacks with any tar or zip tool and builds with\n"
+        "`python -m build`.\n\n"
+        "chunksim is also developed in the open at\n"
+        "https://github.com/stevenhartin/chunksim\n",
+        encoding="utf-8",
+    )
+    return directory
 
 
 def launchers() -> None:
@@ -197,7 +275,7 @@ def launchers() -> None:
     )
 
 
-def verify_payload() -> list[str]:
+def verify_payload(*, with_dps: bool) -> list[str]:
     """What must be true of the tree, checked rather than assumed."""
     problems: list[str] = []
     required = [
@@ -217,28 +295,68 @@ def verify_payload() -> list[str]:
         problems.append("no _zstd in the interpreter: derived caches fall back to plain pickle")
     if not sorted((PAYLOAD / "app").glob("chunksim-*.dist-info")):
         problems.append("no .dist-info: the watermark and the update check go quiet")
+    if with_dps:
+        if not (PAYLOAD / "app" / "osrs_dps" / "data" / "monsters.json").is_file():
+            problems.append("osrs_dps is missing its monster data: DPS pricing would refuse")
+        # **The licence half of the build, checked like the code half.** The
+        # source is not documentation here; it is the thing that makes shipping
+        # this binary allowed at all.
+        archives = list((PAYLOAD / SOURCE_DIR_NAME).glob("*.tar.gz"))
+        if len(archives) < 2:
+            problems.append(
+                f"{len(archives)} source archive(s) in {SOURCE_DIR_NAME}/: GPL-3.0 wants the "
+                "corresponding source for everything shipped, and osrs-dps has no public repo"
+            )
     return problems
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--python-version", default=DEFAULT_PYTHON)
+    parser.add_argument(
+        "--dps-checkout", type=Path, default=DEFAULT_DPS_CHECKOUT,
+        help="the osrs-dps source tree to bundle (default: a sibling of this one)",
+    )
+    parser.add_argument(
+        "--without-dps", action="store_true",
+        help="build without DPS pricing; estimates fall back to the scraped wiki rates",
+    )
     args = parser.parse_args(argv)
 
     print(f"payload -> {PAYLOAD}")
     PAYLOAD.mkdir(parents=True, exist_ok=True)
     python_dir = interpreter(args.python_version)
     print(f"  path file: {point_path_file(python_dir).name}")
-    print(f"  app: {application(built_metadata())}")
+
+    wheel, sdist = build_dists(PROJECT)
+    sources = {"chunksim": sdist}
+    app = application(wheel)
+    print(f"  app: {wheel.name}")
+
+    with_dps = not args.without_dps
+    if with_dps and not (args.dps_checkout / "pyproject.toml").is_file():
+        # A missing sibling checkout is a build without DPS pricing, not a
+        # failed build - but silently is exactly how that would ship wrong, so
+        # it is said twice and the summary repeats it.
+        print(f"  WARNING: no osrs-dps checkout at {args.dps_checkout} - building without it")
+        with_dps = False
+    if with_dps:
+        dps_wheel, dps_sdist = build_dists(args.dps_checkout)
+        unpack_into(dps_wheel, app)
+        sources["osrs-dps"] = dps_sdist
+        print(f"  dps: {dps_wheel.name}")
+
+    print(f"  source: {bundle_source(sources)}")
     launchers()
     for extra in EXTRAS:
         shutil.copy2(PROJECT / extra, PAYLOAD / extra)
 
-    problems = verify_payload()
+    problems = verify_payload(with_dps=with_dps)
     for problem in problems:
         print(f"  ! {problem}", file=sys.stderr)
     total = sum(p.stat().st_size for p in PAYLOAD.rglob("*") if p.is_file())
     print(f"  {total / 1e6:.1f} MB in {sum(1 for _ in PAYLOAD.rglob('*') if _.is_file())} files")
+    print(f"  DPS pricing: {'bundled' if with_dps else 'ABSENT - estimates use scraped rates'}")
     return 1 if problems else 0
 
 

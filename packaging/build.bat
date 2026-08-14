@@ -5,15 +5,17 @@ rem      packaging\build.bat                  ask for a version, then build
 rem      packaging\build.bat /version 0.2.0   bump to 0.2.0 without asking
 rem      packaging\build.bat /keep            build the current version, no bump
 rem      packaging\build.bat /payload         stop after the payload, skip Inno Setup
+rem      packaging\build.bat /nodps          build without the DPS calculator
 rem
-rem  Four steps, each a thing that can be *missing* rather than subtly wrong, so
-rem  each is checked and named:
+rem  Three steps, each a thing that can be *missing* rather than subtly wrong,
+rem  so each is checked and named:
 rem
 rem    1. the version    - pyproject.toml and chunksim.iss, which must agree
-rem    2. a wheel        - its .dist-info goes beside the package, and without
-rem                        it the watermark and the update check go quiet
-rem    3. the payload    - embeddable CPython with chunksim next to it
-rem    4. the installer  - Inno Setup compiles the payload into setup.exe
+rem    2. the payload    - embeddable CPython, chunksim and osrs-dps beside it,
+rem                        and the GPL source for both. build_windows.py builds
+rem                        the wheels and sdists it needs; this only makes sure
+rem                        the `build` package is there to do it with.
+rem    3. the installer  - Inno Setup compiles the payload into setup.exe
 rem
 rem  **The commit is last, and only on success.** A version bump committed for a
 rem  build that then failed is a tag waiting to be cut for an artefact nobody
@@ -37,10 +39,12 @@ pushd "%~dp0.."
 set "SKIP_INNO="
 set "NEWVER="
 set "KEEP="
+set "DPSARG="
 :args
 if "%~1"=="" goto :args_done
 if /i "%~1"=="/payload" set "SKIP_INNO=1"
 if /i "%~1"=="/keep" set "KEEP=1"
+if /i "%~1"=="/nodps" set "DPSARG=--without-dps"
 if /i "%~1"=="/version" set "NEWVER=%~2"& shift
 shift
 goto :args
@@ -71,7 +75,7 @@ if errorlevel 1 (
 
 rem --- 1. the version ---------------------------------------------------
 for /f "delims=" %%V in ('%PY% packaging\set_version.py') do set "CURVER=%%V"
-echo [1/4] current version: !CURVER!
+echo [1/3] current version: !CURVER!
 
 set "BUMPED="
 if defined KEEP goto :version_done
@@ -90,7 +94,7 @@ set "BUMPED=1"
 
 :version_done
 
-rem --- 2. the wheel -----------------------------------------------------
+rem --- 2. the payload ---------------------------------------------------
 %PY% -c "import build" >nul 2>&1
 if errorlevel 1 (
     echo       installing the 'build' package
@@ -100,25 +104,16 @@ if errorlevel 1 (
         goto :fail
     )
 )
-echo [2/4] building the wheel
-%PY% -m build --wheel --outdir dist >nul
-if errorlevel 1 (
-    echo ERROR: the wheel did not build. Run without ^>nul to see why:
-    echo        %PY% -m build --wheel --outdir dist
-    goto :fail
-)
-
-rem --- 3. the payload ---------------------------------------------------
-echo [3/4] assembling the payload
-%PY% packaging\build_windows.py
+echo [2/3] assembling the payload
+%PY% packaging\build_windows.py %DPSARG%
 if errorlevel 1 (
     echo ERROR: the payload is incomplete - see the lines marked ! above.
     goto :fail
 )
 
-rem --- 4. the installer -------------------------------------------------
+rem --- 3. the installer -------------------------------------------------
 if defined SKIP_INNO (
-    echo [4/4] skipped ^(/payload^)
+    echo [3/3] skipped ^(/payload^)
     echo.
     echo Payload ready: %CD%\packaging\build\payload
     goto :commit
@@ -136,7 +131,7 @@ if not defined ISCC (
     echo        or re-run with /payload to stop after the payload.
     goto :fail
 )
-echo [4/4] Inno Setup: !ISCC!
+echo [3/3] Inno Setup: !ISCC!
 "!ISCC!" /Q "packaging\chunksim.iss"
 if errorlevel 1 (
     echo ERROR: the installer did not compile.

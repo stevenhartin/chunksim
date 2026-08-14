@@ -384,6 +384,7 @@ installer. Both are built artefacts under `packaging/build/`, which is gitignore
 packaging\build.bat                                    # asks for a version, then builds
 packaging\build.bat /version 0.2.0                     # bump without asking
 packaging\build.bat /keep                              # build what is there, no bump
+packaging\build.bat /nodps                             # without the DPS calculator
 packaging\build.bat /payload                           # stop before Inno Setup
 
 pyproject-build && python packaging/build_windows.py   # the same, by hand
@@ -410,6 +411,15 @@ three of which a one-file freeze breaks or has to be told about. The wheel must 
 `.dist-info` is copied beside the package, and without it the watermark and the update check both go
 quiet. The interpreter is verified against the SHA-256 in python.org's **SPDX SBOM** (`*.spdx.json` —
 there is no `SHA256SUMS`).
+
+**The Windows build bundles `osrs-dps`, and that is what the relicense was for.** Both projects are
+GPL-3.0-or-later now, so they may ship as one work — which also means recipients are entitled to the
+corresponding source for *both*. chunksim is public; `osrs-dps` is not, so pointing at a repository
+would answer for half of what is installed. The payload therefore carries `source/`: an sdist for
+each, built in the same invocation as the wheels so the two correspond, and a `README.txt` saying so.
+`verify_payload` treats a missing archive as a build failure — the licence half is checked like the
+code half. `--without-dps` (or `/nodps`) builds without it, and a missing sibling checkout warns
+rather than fails.
 
 **Three cross-file contracts, all pinned by `tests/test_packaging.py`**: the installer's
 `OutputBaseFilename` must end in `api.INSTALLER_ASSET_SUFFIX` or the updater never finds the asset;
