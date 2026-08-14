@@ -7,6 +7,10 @@ built by hand; nothing reads the real export or the real cache.
 
 from __future__ import annotations
 
+import subprocess
+import sys
+import textwrap
+
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -1284,3 +1288,65 @@ def test_incremental_pricing_is_the_same_answer_as_pricing_from_scratch(
         assert step == full, f"incremental diverged at {len(chunks)} chunks"
         assert step_cover.monsters == full_cover.monsters
         assert step_cover.slayer_tasks == full_cover.slayer_tasks
+
+
+def test_importing_without_the_extra_is_safe() -> None:
+    """**The one promise this module makes**, and it was broken for a year.
+
+    `_MELEE_ATTACK_BONUSES` built `CombatStyle.STAB` at module scope, so
+    importing `dps_bridge` raised `NameError` on any install that had not opted
+    into the GPL extra - which is every install but a developer's, since the
+    checkout always has it. Nothing caught it because every test environment
+    has the extra; it surfaced the first time the package was run from a
+    Windows payload that deliberately does not ship it.
+
+    A subprocess with a blocking finder, because the point is a *cold* import
+    with the library genuinely absent: patching `sys.modules` after the fact
+    would test a module that had already been built successfully.
+    """
+    code = textwrap.dedent(
+        """
+        import sys
+
+        class Block:
+            def find_spec(self, name, path=None, target=None):
+                if name == "osrs_dps" or name.startswith("osrs_dps."):
+                    raise ImportError("blocked")
+                return None
+
+        sys.meta_path.insert(0, Block())
+        import chunksim.costing.dps_bridge as bridge
+        import chunksim.gui  # the import chain that actually broke
+        assert bridge.DPS_AVAILABLE is False
+        print("ok")
+        """
+    )
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"
+
+
+def test_calling_without_the_extra_still_refuses() -> None:
+    """Importing being safe must not make *using* it quietly return nothing."""
+    code = textwrap.dedent(
+        """
+        import sys
+
+        class Block:
+            def find_spec(self, name, path=None, target=None):
+                if name == "osrs_dps" or name.startswith("osrs_dps."):
+                    raise ImportError("blocked")
+                return None
+
+        sys.meta_path.insert(0, Block())
+        import chunksim.costing.dps_bridge as bridge
+        try:
+            bridge._require()
+        except bridge.DpsUnavailableError:
+            print("ok")
+        """
+    )
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+
+    assert result.stdout.strip() == "ok", result.stderr

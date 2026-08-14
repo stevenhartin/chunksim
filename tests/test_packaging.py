@@ -22,6 +22,7 @@ about; there is no `packaging.py` to sit beside.
 from __future__ import annotations
 
 import importlib.metadata as metadata
+import re
 import tomllib
 from pathlib import Path
 
@@ -88,3 +89,56 @@ def test_both_console_scripts_resolve() -> None:
     assert set(scripts) == {"chunksim", "chunksim-gui"}
     for entry in scripts.values():
         assert callable(entry.load()), f"{entry.name} -> {entry.value} does not resolve"
+
+
+def _installer_script() -> str:
+    return (SRC.parent / "packaging" / "chunksim.iss").read_text(encoding="utf-8")
+
+
+def test_the_installer_is_named_what_the_updater_looks_for() -> None:
+    """**A cross-file contract with nothing else enforcing it.**
+
+    `_installer_asset` finds the download among a release's assets by matching
+    `INSTALLER_ASSET_SUFFIX` against each name. Inno Setup decides that name.
+    Rename it on either side and the release still publishes, the check still
+    reports an update, and the Download & Install button silently never
+    appears - which is the sort of failure only a real release would surface.
+    """
+    from chunksim.remote.api import INSTALLER_ASSET_SUFFIX
+
+    match = re.search(r"OutputBaseFilename=(\S+)", _installer_script())
+
+    assert match is not None
+    produced = match.group(1).replace("{#AppName}", "chunksim").replace("{#AppVersion}", "0.1.0")
+    assert (produced + ".exe").endswith(INSTALLER_ASSET_SUFFIX)
+
+
+def test_the_installer_version_matches_the_project() -> None:
+    """The installer names its own version, and `read_build` reads the wheel's.
+    A drift shows up as an update that installs itself forever, or never."""
+    with open(SRC.parent / "pyproject.toml", "rb") as handle:
+        version = tomllib.load(handle)["project"]["version"]
+
+    match = re.search(r'#define AppVersion "([^"]+)"', _installer_script())
+
+    assert match is not None and match.group(1) == version
+
+
+def test_the_installer_upgrades_rather_than_stacking() -> None:
+    """A fixed `AppId` is what makes a new version replace the old one instead
+    of leaving two entries in Add/Remove Programs - and what lets the in-app
+    updater hand over with `/SILENT` and get a replacement."""
+    script = _installer_script()
+
+    assert re.search(r"^AppId=\{\{[0-9A-F-]{36}\}?$", script, re.MULTILINE), "AppId must be a fixed GUID"
+
+
+def test_uninstalling_asks_before_deleting_anyones_maps() -> None:
+    """Fetched maps re-download; simulated batches and hand-edited maps are the
+    user's own work and nothing can recompute them. Deleting the data directory
+    silently would be the most destructive thing this installer could do."""
+    script = _installer_script()
+
+    assert "localappdata}\\chunksim" in script
+    assert "MB_DEFBUTTON2" in script, "the safe answer must be the default"
+    assert "DelTree" in script and "mbConfirmation" in script

@@ -375,6 +375,34 @@ shipping to another machine, proving the packaged `gui/resources` shipped
 (`python -m zipfile -l dist/*.whl | grep resources`), and checking `packages.find` still discovers
 every subpackage — the third of which `tests/test_packaging.py` covers in milliseconds.
 
+## Packaging for Windows
+
+`packaging/build_windows.py` assembles a payload; `packaging/chunksim.iss` turns it into an
+installer. Both are built artefacts under `packaging/build/`, which is gitignored.
+
+```
+pyproject-build && python packaging/build_windows.py   # -> packaging/build/payload (26.5 MB)
+iscc packaging/chunksim.iss                            # -> packaging/build/chunksim-<v>-setup.exe
+```
+
+**Embeddable CPython, not a freeze**, and the reason is this project's own shape: zero runtime
+dependencies means there is no graph to resolve, while `gui.RESOURCE_DIR` and
+`cache.PACKAGED_OVERRIDES` are `__file__`-relative and `build_info` reads `importlib.metadata` — all
+three of which a one-file freeze breaks or has to be told about. The wheel must exist first: its
+`.dist-info` is copied beside the package, and without it the watermark and the update check both go
+quiet. The interpreter is verified against the SHA-256 in python.org's **SPDX SBOM** (`*.spdx.json` —
+there is no `SHA256SUMS`).
+
+**Three cross-file contracts, all pinned by `tests/test_packaging.py`**: the installer's
+`OutputBaseFilename` must end in `api.INSTALLER_ASSET_SUFFIX` or the updater never finds the asset;
+`AppVersion` must match `pyproject.toml` or an update installs itself forever; and `AppId` is a fixed
+GUID, which is what makes a new version an upgrade rather than a second Add/Remove entry.
+
+**`wine` runs the payload**, which is how this was verified without a Windows machine — the
+interpreter, the CLI, the `%LOCALAPPDATA%` branch of `data_root`, the packaged corrections and the
+GUI serving on loopback. It is also what found `dps_bridge` raising `NameError` on import without the
+optional extra, which every test environment had hidden. Compiling the `.iss` still needs Inno Setup.
+
 ## Tests
 
 **Which tests a change needs is a file, not a judgement** — that is what the module split bought, and

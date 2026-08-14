@@ -413,11 +413,26 @@ GROUP_BOSSES = frozenset(
 #: estimate spends its hours.
 _SEQUENTIAL_VERSIONS = ("phase", "stage", "wave", "delve", "enraged", "transition")
 
-_MELEE_ATTACK_BONUSES: tuple[tuple[str, "CombatStyle"], ...] = (
-    ("attack_stab", CombatStyle.STAB),
-    ("attack_slash", CombatStyle.SLASH),
-    ("attack_crush", CombatStyle.CRUSH),
-)
+def _melee_attack_bonuses() -> tuple[tuple[str, "CombatStyle"], ...]:
+    """The three melee bonuses paired with the style each one drives.
+
+    **A function rather than a module-level tuple, and that is the whole
+    point.** `CombatStyle` comes from the optional library, so building this at
+    import time made `import chunksim.costing.dps_bridge` raise `NameError`
+    wherever the extra was absent - which is every install that did not opt in,
+    and contradicts the one promise this module makes: importing is always
+    safe, only calling is not. The annotation was already quoted; the *values*
+    were not, and a quoted annotation is exactly what hides that.
+
+    Not memoised: it is three tuples built on a path that is already about to
+    run a DPS calculation, and a module-level cache is what this module is not
+    allowed to have.
+    """
+    return (
+        ("attack_stab", CombatStyle.STAB),
+        ("attack_slash", CombatStyle.SLASH),
+        ("attack_crush", CombatStyle.CRUSH),
+    )
 
 
 class DpsUnavailableError(RuntimeError):
@@ -733,7 +748,7 @@ def _melee_style(weapon: Mapping[str, Any]) -> CombatStyle:
         value = weapon.get(key, 0)
         return float(value) if isinstance(value, (int, float)) else 0.0
 
-    _, style = max(_MELEE_ATTACK_BONUSES, key=lambda pair: bonus(pair[0]))
+    _, style = max(_melee_attack_bonuses(), key=lambda pair: bonus(pair[0]))
     return style
 
 

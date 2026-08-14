@@ -222,3 +222,8 @@ cache/
 
 # `--export-json` output, when it lands in the checkout rather than /tmp
 /*.json
+
+# The Windows payload and the installer it compiles into. Both are built
+# artefacts; `packaging/build_windows.py` reproduces the first from a wheel and
+# a download, and Inno Setup the second from that.
+packaging/build/
