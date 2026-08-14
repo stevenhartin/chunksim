@@ -315,6 +315,23 @@
   </div>
 </div>
 
+<!-- **Setup, and deliberately not the overlay above.** That one is dismissible
+     by backdrop, Escape and a close button, which is right for an answer you
+     asked a question to get and wrong for this: until the chunk export is on
+     disk there is no map to dismiss it back to, so there is nothing behind it
+     and no way to proceed but through. It is a sibling rather than a `.sheet`
+     variant for the same reason - sharing the markup would mean sharing the
+     dismiss wiring. -->
+<div class="setup" id="setup" role="status" aria-live="polite" hidden>
+  <div class="setup-card">
+    <h1 class="brand setup-brand">chunksim</h1>
+    <p class="setup-lead" id="setup-lead">Getting the world ready.</p>
+    <ol class="setup-steps" id="setup-steps"></ol>
+    <div class="setup-track"><div class="setup-fill" id="setup-fill"></div></div>
+    <p class="setup-detail" id="setup-detail"></p>
+  </div>
+</div>
+
 <div class="tip" id="tip" hidden></div>
 
 <script src="/static/app.js"></script>

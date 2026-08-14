@@ -187,6 +187,7 @@ for (const id of [
   "progress", "progress-title", "progress-count", "progress-detail",
   "progress-track", "progress-fill", "progress-cancel",
   "overlay", "overlay-title", "overlay-body", "overlay-close", "overlay-actions",
+  "setup", "setup-lead", "setup-steps", "setup-fill", "setup-detail",
   "chunk-head", "chunk-chips", "chunk-body", "task-chips", "tasks-body",
   "show-done", "estimate-total", "estimate-why", "estimate-body",
   "find-body", "find-form", "find-input", "maps-body", "attribution", "watermark",
@@ -2814,7 +2815,7 @@ async function loadMaps() {
 }
 
 async function loadView({ refit = false } = {}) {
-  if (!state.map) return;
+  if (!state.map) return false;
   try {
     const view = await getJSON("/api/view?" + mapQuery());
     state.view = view;
@@ -2823,9 +2824,14 @@ async function loadView({ refit = false } = {}) {
     renderCounts();
     renderLegend();
     if (refit) fitToCells(); else invalidate();
+    return true;
   } catch (error) {
     el.counts.textContent = "";
-    toast(error.message);
+    /* **The failure here is usually a missing export, not a missing map**, and
+     * that reads as a black rectangle. `start` turns a `false` into the setup
+     * screen; the toast is for everyone who already has a world drawn. */
+    if (state.view) toast(error.message);
+    return false;
   }
 }
 
@@ -4540,7 +4546,17 @@ async function runAction(label, path, payload, onDone) {
   await onDone?.(reply);
 }
 
-function followJob(id, label, onDone) {
+/* **One poll loop, two faces.** `followJob` paints the progress card; the
+ * setup screen paints itself, because during setup it *is* the page and a
+ * card floating over it would be a second thing saying the same thing. What
+ * both need is the same three lines - ask until the job stops running - so
+ * that is what lives here.
+ *
+ * A transport failure resolves as a *failed job* rather than as its own
+ * outcome. Callers already have to render "the job failed"; making them also
+ * render "asking about the job failed" would double every branch to say the
+ * same sentence. */
+function pollJob(id, onTick) {
   return new Promise((resolve) => {
     const timer = setInterval(async () => {
       let job;
@@ -4548,39 +4564,40 @@ function followJob(id, label, onDone) {
         job = await getJSON("/api/jobs/" + id);
       } catch (error) {
         clearInterval(timer);
-        showProgress(label, { detail: error.message, state: "failed" });
-        hideProgress(6000);
-        return resolve();
+        return resolve({ id, state: "failed", error: error.message });
       }
-      if (job.state === "running") {
-        return showProgress(label, {
-          detail: job.progress || "Working…",
-          job: job.stopping ? "" : id,
-          ...countsIn(job.progress),
-        });
-      }
+      if (job.state === "running") return onTick?.(job);
       clearInterval(timer);
-      if (job.state === "failed") {
-        showProgress(label, { detail: job.error, state: "failed" });
-        hideProgress(8000);
-      } else if (job.state === "cancelled") {
-        /* **Stopped is not failed.** The user did this, and what it kept is
-         * cached and openable - so it reads as an outcome, not a red bar. */
-        showProgress(label, {
-          detail: summariseReply(job.result), done: 1, total: 1, state: "stopped",
-        });
-        hideProgress(5000);
-        await onDone?.(job.result);
-      } else {
-        showProgress(label, {
-          detail: summariseReply(job.result), done: 1, total: 1, state: "done",
-        });
-        hideProgress(3200);
-        await onDone?.(job.result);
-      }
-      resolve();
+      resolve(job);
     }, 400);
   });
+}
+
+async function followJob(id, label, onDone) {
+  const job = await pollJob(id, (tick) => showProgress(label, {
+    detail: tick.progress || "Working…",
+    job: tick.stopping ? "" : id,
+    ...countsIn(tick.progress),
+  }));
+  if (job.state === "failed") {
+    showProgress(label, { detail: job.error, state: "failed" });
+    hideProgress(8000);
+    return;
+  }
+  if (job.state === "cancelled") {
+    /* **Stopped is not failed.** The user did this, and what it kept is
+     * cached and openable - so it reads as an outcome, not a red bar. */
+    showProgress(label, {
+      detail: summariseReply(job.result), done: 1, total: 1, state: "stopped",
+    });
+    hideProgress(5000);
+  } else {
+    showProgress(label, {
+      detail: summariseReply(job.result), done: 1, total: 1, state: "done",
+    });
+    hideProgress(3200);
+  }
+  await onDone?.(job.result);
 }
 
 /* ---- window geometry --------------------------------------------------- */
@@ -5866,7 +5883,29 @@ function renderAttribution() {
    * of them and would otherwise draw once uncoloured and again a moment
    * later. */
   await loadSettings();
-  if (!(await loadMaps())) return;
+  /* **Armed before anything can go wrong, and that is not tidiness.** This
+   * loop is also the idle-shutdown heartbeat (`http.should_stop`), and it used
+   * to sit at the bottom behind an early return - so a page that found no maps
+   * armed nothing, and a first run sitting on the setup screen could have the
+   * server exit from under it after fifteen seconds. */
+  setInterval(poll, 2000);
+  loadBuild();
+  /* **A cold cache is a setup problem, not a dead end.** This used to return
+   * here, which left the rest of boot - the warm-up included - as dead code on
+   * exactly the state it was for. `firstRun` handles both ways to arrive with
+   * nothing to draw: no maps at all, and a map with no export behind it. */
+  /* **Asked here rather than inside `firstRun`, because it is the test.**
+   * `/api/view` answers 200 with no export - it is the derivation routes that
+   * 404 - so "the view failed" would never fire, and the page would draw a
+   * grid with an error where every panel should be. What the map is actually
+   * waiting on is the export, so that is what is asked about. */
+  const reference = await loadReference();
+  const exportMissing = !(reference.find((row) => row.name === "chunkinfo") || {}).cached;
+  const haveMaps = await loadMaps();
+  if (exportMissing || !haveMaps) {
+    await firstRun(reference);
+    if (!state.maps.length) return;
+  }
   syncBreakdown();
   await loadTimeline();
   if (BOOT.step !== null && state.timeline) {
@@ -5885,8 +5924,6 @@ function renderAttribution() {
   if (BOOT.candidates) el.candidates.click();
   if (BOOT.sections) el.masks.click();
   showTab(BOOT.tab || "tasks");
-  setInterval(poll, 2000);
-  loadBuild();
   warmReference();
 })();
 
@@ -5924,6 +5961,180 @@ function renderBuild() {
   el.watermark.textContent = `${build.version} · ${age}`;
   el.watermark.dataset.tip = tmpl`<b>This server's install</b><span class='sub'>${when(build.installed_at)} · ${build.kind}</span><span class='hint'>${build.path}</span>`;
   el.watermark.hidden = false;
+}
+
+/* ---- first run ---------------------------------------------------------- */
+
+/* **What the map needs before it can be a map, in the order it needs it.**
+ * The order is not cosmetic: `actions._refresh_job` runs the heuristics scrape
+ * through `ctx.derivations.chunk_info()`, so asking for rates before the
+ * export is on disk ends that job `failed`. Recipes would survive going first;
+ * keeping all three in dependency order means nobody has to remember which. */
+const SETUP_STEPS = [
+  { what: "chunkinfo", blob: "chunkinfo", label: "Chunk data (~10 MiB)" },
+  { what: "heuristics", blob: "wiki_rates", label: "Wiki rates" },
+  { what: "recipes", blob: "wiki_recipes", label: "Wiki recipes" },
+];
+
+function showSetup(lead) {
+  el["setup-lead"].textContent = lead;
+  el.setup.hidden = false;
+}
+
+function hideSetup() {
+  el.setup.hidden = true;
+}
+
+/* States are `pending`, `active`, `done`, `failed` - the class *is* the state,
+ * since the marker is the only thing that changes and re-rendering the list is
+ * cheaper than tracking which node moved. */
+function renderSetupSteps(steps, states) {
+  el["setup-steps"].innerHTML = steps
+    .map((step) => tmpl`<li class="${states[step.what] || "pending"}">${step.label}</li>`)
+    .join("");
+  const done = steps.filter((step) => states[step.what] === "done").length;
+  el["setup-fill"].style.width = Math.round((done / steps.length) * 100) + "%";
+}
+
+/* Runs the outstanding steps, painting the setup screen as it goes. Returns
+ * whether the export landed - the caller cares about that one specifically,
+ * because it is the difference between a map and a black rectangle. */
+async function runSetup(missing) {
+  const states = {};
+  renderSetupSteps(SETUP_STEPS, states);
+  let exported = !missing.some((step) => step.what === "chunkinfo");
+  for (const step of missing) {
+    states[step.what] = "active";
+    renderSetupSteps(SETUP_STEPS, states);
+    el["setup-detail"].textContent = "Starting…";
+    let reply;
+    try {
+      reply = await postJSON("/api/refresh", { what: step.what, auto: true });
+    } catch (error) {
+      states[step.what] = "failed";
+      el["setup-detail"].textContent = error.message;
+      renderSetupSteps(SETUP_STEPS, states);
+      continue;
+    }
+    /* No job means the server declined - already cached, or already tried this
+     * run. Both are "nothing to do here", not a failure. */
+    if (!reply || !reply.job) {
+      states[step.what] = "done";
+      renderSetupSteps(SETUP_STEPS, states);
+      continue;
+    }
+    const job = await pollJob(reply.job, (tick) => {
+      el["setup-detail"].textContent = tick.progress || "Working…";
+    });
+    const ok = job.state === "done";
+    states[step.what] = ok ? "done" : "failed";
+    if (!ok) el["setup-detail"].textContent = job.error || "Stopped.";
+    if (step.what === "chunkinfo") exported = ok;
+    renderSetupSteps(SETUP_STEPS, states);
+  }
+  return exported;
+}
+
+/* **Asked once, and the flag lives in the cache.** "Never again unless the
+ * cache is empty" needs no cache-watching: the setting is written to
+ * `cache/gui/settings.json`, so emptying the cache takes the flag with it and
+ * the question comes back on its own. */
+function askFirstMap() {
+  return new Promise((resolve) => {
+    openOverlay("Open your map",
+      tmpl`<p>chunksim reads a map from source-chunk. The id is the
+        <code>?&lt;map-id&gt;</code> part of your chunk-picker URL.</p>
+      <p><input id="first-map" type="text" placeholder="map id" autocomplete="off"
+         spellcheck="false" aria-label="Map id to fetch"></p>
+      <p class="empty">No map yet? Skip this and chunksim opens a blank one you
+        can unlock squares on and save.</p>`,
+      `<button id="first-skip" type="button">Skip</button>
+       <button id="first-fetch" type="button">Fetch Map</button>`);
+    const input = document.getElementById("first-map");
+    input.focus();
+    /* Dismissing this is skipping it, not cancelling the first run - so the
+     * empty string, which the caller reads as "no map named". */
+    closeOverlay.pending = () => resolve("");
+    const finish = (value) => {
+      closeOverlay.pending = null;
+      el.overlay.hidden = true;
+      resolve(value);
+    };
+    document.getElementById("first-skip").onclick = () => finish("");
+    document.getElementById("first-fetch").onclick = () => finish(input.value.trim());
+    input.onkeydown = (event) => {
+      if (event.key === "Enter") { event.preventDefault(); finish(input.value.trim()); }
+    };
+  });
+}
+
+/* The whole cold-start path: get what the map needs, draw it, then ask whose
+ * map it is. Called when the export is missing or nothing is cached - which is
+ * both the genuine first run and the state "Fetch Named Map" used to leave the
+ * page in, since that writes a map and no export. */
+async function firstRun(known) {
+  const rows = known || await loadReference();
+  const missing = SETUP_STEPS.filter((step) => {
+    const row = rows.find((entry) => entry.name === step.blob);
+    return row && !row.cached;
+  });
+  const needsExport = missing.some((step) => step.what === "chunkinfo");
+
+  if (missing.length) {
+    showSetup(needsExport
+      ? "Downloading what the map is drawn from. This happens once."
+      : "Getting the numbers the estimates are made of.");
+    /* The export is the one the map waits on, so the screen comes down the
+     * moment it lands rather than at the end - the wiki scrapes finish behind
+     * a drawn world. */
+    const exported = await runSetup(missing.filter((step) => step.what === "chunkinfo"));
+    if (exported) {
+      await reloadWorld();
+      /* Only if there is something behind it. On a genuine first run there is
+       * no map yet, so taking the screen down here would reveal exactly the
+       * black canvas it went up to replace - it stays until the dialogue. */
+      if (state.maps.length) hideSetup();
+    }
+    const rest = missing.filter((step) => step.what !== "chunkinfo");
+    if (rest.length) await runSetup(rest);
+    hideSetup();
+    renderAllReference();
+  }
+
+  if (state.settings && state.settings.first_run_done) return;
+  const wanted = await askFirstMap();
+  if (wanted) {
+    await runAction("Fetch " + wanted, "/api/fetch", { map: wanted }, async () => {
+      await loadMaps();
+      await reloadWorld();
+    });
+  }
+  /* Skipped, or the fetch did not leave us with anything to open. A blank map
+   * is a real map under `cache/maps/edited/`, so it opens in edit mode and
+   * every square is unlockable by hand - see `actions._blank_map`. */
+  if (!state.maps.length) {
+    try {
+      const made = await postJSON("/api/blank", {});
+      await loadMaps();
+      if (made && made.open) openMap(made.open);
+      await reloadWorld();
+    } catch (error) {
+      toast(error.message);
+    }
+  }
+  await saveSettings({ first_run_done: true });
+}
+
+/* Everything the map is, after the thing it is drawn from changed. Extracted
+ * from `start` because setup needs exactly this sequence a second time. */
+async function reloadWorld() {
+  await loadMaps();
+  await loadTimeline();
+  await loadView();
+  await loadTiles();
+  fitToCells();
+  loadAreas();
+  loadReachable();
 }
 
 async function warmReference() {

@@ -63,6 +63,7 @@ MAX_BAND_NAME = 24
 DEFAULTS: dict[str, Any] = {
     "hours_scale": "log",
     "hours_bands": [dict(band) for band in DEFAULT_BANDS],
+    "first_run_done": False,
 }
 
 
@@ -71,6 +72,7 @@ def defaults() -> dict[str, Any]:
     return {
         "hours_scale": DEFAULTS["hours_scale"],
         "hours_bands": [dict(band) for band in DEFAULT_BANDS],
+        "first_run_done": DEFAULTS["first_run_done"],
     }
 
 
@@ -125,7 +127,7 @@ def _bands(value: Any) -> list[dict[str, Any]] | None:
 
 #: The keys `sanitise` understands. Named once so `reset` cannot ask for
 #: something no other part of this module has heard of.
-KEYS: tuple[str, ...] = ("hours_scale", "hours_bands")
+KEYS: tuple[str, ...] = ("hours_scale", "hours_bands", "first_run_done")
 
 #: Band names that were once the default and are not any more, and the bound
 #: they shipped with. **Both halves are the check**: a stored band matching
@@ -192,4 +194,11 @@ def sanitise(payload: Mapping[str, Any], current: Mapping[str, Any] | None = Non
         bands = _bands(source.get("hours_bands"))
         if bands is not None:
             settled["hours_bands"] = bands
+        # `_number` refuses `bool` on purpose, so a flag needs its own check -
+        # and an exact `isinstance` rather than a truth test, because "the
+        # setup ran" is a thing the page states, not a thing anything infers
+        # from a stray 1 or "yes".
+        done = source.get("first_run_done")
+        if isinstance(done, bool):
+            settled["first_run_done"] = done
     return settled

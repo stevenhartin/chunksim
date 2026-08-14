@@ -152,6 +152,7 @@ The table says what each module **owns**; its docstring says why.
 | `model/summary.py` | Pure reductions over a raw payload — extend this, not the CLI. Also `format_age` and `_mapping`, the tolerant dict accessor eight modules import despite the `_`. |
 | `model/rates.py` | Drop-rate string parsing/formatting matching JS's rounding, **and its division**, so a zero denominator is `inf`. |
 | `model/experience.py` | The exact 1–99 XP curve, closed-form. **Not a heuristic and not overridable** — that separation from `heuristics.py` is the point of the module. |
+| `model/rules.py` | Upstream's seed `rules`, for a map this project makes from nothing. **A missing rule key skips its gate where `False` refuses it**, so an absent branch is the most permissive map there is, not a neutral one — the measurement is in the docstring. |
 | `model/edits.py` | A tick written back into a payload — **the one place this project writes to upstream's data.** The danger is silence, not complexity. |
 | `remote/api.py` | The network. Four hosts. An unknown map is HTTP 200 + bare `null`, never a 404. **The map tiles are a fifth host it never calls.** |
 | `remote/wiki.py` | Wikitext template parsing and numeric-value extraction (arithmetic, `{{#expr:}}`, and what to refuse). |
@@ -201,10 +202,10 @@ The table says what each module **owns**; its docstring says why.
 | `gui/routes_view.py` | The **cheap path**: every route answerable without parsing the export. Nothing here may call `ctx.derivations.load` (one documented exception, with a test). |
 | `gui/routes_derived.py` | The **expensive path**. `/api/diff` derives both sides and is the one route allowed to be slow. Also `reachable_by_area`: the squares a map can walk into without having rolled them, joined to `expanded_chunks` **by name** — the `sections` graph does not model dungeon entrances at all. |
 | `gui/routes_reference.py` | Bytes belonging to no map: the static allowlist, blob freshness, the tile *template*, and the lazy asset proxy. |
-| `gui/actions.py` | The POST handlers. **An action's reply shape decides whether the page polls it** — a job id, or the result. |
+| `gui/actions.py` | The POST handlers. **An action's reply shape decides whether the page polls it** — a job id, or the result. `/api/blank` is the one that makes a map out of nothing, for a first run with nothing to open. |
 | `gui/jobs.py` | The background job registry. **The only mutable state in the GUI**, kept out of the pure layer deliberately. Also `claim_once`, which is what stops the page's boot warm-up re-scraping the wiki on every reload. |
 | `gui/derivation.py` | The boundary between the cheap path and the expensive one. Loads `ChunkInfo` **lazily**, and holds the `ReferenceBlobs` — the one memo here validated against the files' mtimes, because stale overrides key the enrichment cache. Also `load_step`, which is how a panel describes one roll of a run rather than the map. |
-| `gui/settings.py` | What a preference *means* - defaults, and the validation that refuses rather than coerces. `cache.py` stores it and knows nothing about it; this is where the next preference goes. |
+| `gui/settings.py` | What a preference *means* - defaults, and the validation that refuses rather than coerces. `cache.py` stores it and knows nothing about it; this is where the next preference goes. **`first_run_done` living here is what makes "never asked again unless the cache is empty" free**: the file is under `cache/`. |
 | `gui/knobs.py` | What an override **path** means: which layer a value came from, and whether a proposed one is allowed. Pure, and the guard on paths that address a file read back and parsed. |
 | `gui/panels.py` | Shaping `Derived` into what the panel draws — one shape across all five categories. Pure. **New shaping goes here, not into the JavaScript.** A *roll* is shaped from the ledger alone, so anything the selection compares has to be in the ledger. |
 | `gui/worldmap.py` | Where a chunk sits on the map and which sides face outward. Owns the projection (the y axis is flipped) and `hull_edges`. |

@@ -72,6 +72,14 @@ open it in the panel. Press <kbd>F</kbd> to fly the camera to whatever is under 
 <kbd>U</kbd> to unlock it — which saves a new map in Browse, and joins the pending set in Edit.
 An **edited** map opens in Edit mode, since editing in place is what it is for.
 
+**The first run sets itself up.** With nothing cached there is nothing to draw, so instead of a black
+map you get a setup screen that downloads the chunk export, draws the world as soon as it lands, and
+pulls the wiki data behind it. It then asks for your map id — and if you skip that, or have no map
+yet, it opens a blank **untitled** map in Edit mode that you can unlock squares on and Commit. The
+question is asked once; the answer lives in `cache/gui/settings.json`, so emptying the cache brings it
+back. A blank map is seeded with source-chunk's own default rules rather than none, because a map with
+no rules is the most permissive one there is rather than a neutral one.
+
 ```
 chunksim-gui                              # serve http://127.0.0.1:8731 and open it
 chunksim-gui --compare my-sim             # start in diff mode: gains green, losses red

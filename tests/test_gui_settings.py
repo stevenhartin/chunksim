@@ -191,3 +191,40 @@ def test_the_same_name_over_a_moved_edge_is_a_choice_and_is_kept() -> None:
     settled = settings.sanitise({}, stored)
 
     assert [band["name"] for band in settled["hours_bands"]][3] == "Minor Death"
+
+
+def test_the_first_run_flag_defaults_to_not_yet() -> None:
+    """A cache with no settings file has not seen the setup flow.
+
+    Which is the whole of "unless their cache is completely empty": the flag
+    lives in `cache/gui/settings.json`, so emptying the cache takes it away and
+    the question comes back without anything having to watch for that.
+    """
+    assert settings.sanitise({})["first_run_done"] is False
+
+
+def test_the_first_run_flag_round_trips() -> None:
+    settled = settings.sanitise({"first_run_done": True})
+    assert settled["first_run_done"] is True
+    assert settings.sanitise({}, settled)["first_run_done"] is True
+
+
+@pytest.mark.parametrize("value", [1, "true", "yes", [], None, 0.0])
+def test_only_a_real_boolean_sets_the_first_run_flag(value: Any) -> None:
+    """**Refused rather than coerced**, like every other key here.
+
+    `1` and `"yes"` are what a hand-written payload looks like, and a truthy
+    value quietly meaning "setup ran" would suppress the dialogue for someone
+    who never saw it. `_number` cannot be reused for this - it rejects `bool`
+    deliberately, because `True` is an `int` in Python.
+    """
+    assert settings.sanitise({"first_run_done": value})["first_run_done"] is False
+    kept = settings.sanitise({"first_run_done": True})
+    assert settings.sanitise({"first_run_done": value}, kept)["first_run_done"] is True
+
+
+def test_the_first_run_flag_can_be_reset() -> None:
+    """It is in `KEYS`, so `reset` can name it - which is how you ask to be
+    shown the setup flow again without deleting the cache."""
+    kept = settings.sanitise({"first_run_done": True})
+    assert settings.sanitise({"reset": ["first_run_done"]}, kept)["first_run_done"] is False

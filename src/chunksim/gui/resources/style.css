@@ -1145,6 +1145,99 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 
 .sheet footer .danger:hover { background: rgba(220, 60, 60, .24); }
 
+/* **The setup screen, which is what a cold cache sees instead of a black map.**
+   Above the dialog because it is not one: nothing behind it is usable until
+   the chunk export lands, so it has no dismiss and no backdrop to click
+   through. Opaque rather than translucent for the same reason - a wash over
+   an empty canvas just shows the empty canvas. */
+.setup {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s6);
+  background: var(--bg);
+}
+
+.setup-card {
+  width: min(420px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r3);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .55);
+  padding: var(--s6);
+}
+
+/* The wordmark itself, one step up: a first run is the only time the app
+   introduces itself, and it carries `.brand` so there is one wordmark rather
+   than two that drift. */
+.setup-brand {
+  margin: 0;
+  font-size: var(--t-title);
+}
+
+.setup-lead { margin: var(--s2) 0 var(--s5); color: var(--dim); }
+
+/* Steps rather than a bare bar, because the wait is three different waits and
+   one of them is 10 MiB. A bar alone cannot say which. */
+.setup-steps {
+  list-style: none;
+  margin: 0 0 var(--s5);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.setup-steps li {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  font-size: var(--t-note);
+  color: var(--dim);
+}
+
+/* A step's state is carried by its marker, so the row reads the same width
+   throughout and nothing reflows as the run advances. */
+.setup-steps li::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: var(--pill);
+  border: 1px solid var(--line-strong);
+}
+
+.setup-steps li.active { color: var(--text); }
+.setup-steps li.active::before { background: var(--amber); border-color: var(--amber); }
+.setup-steps li.done::before { background: var(--gain); border-color: var(--gain); }
+.setup-steps li.failed::before { background: var(--loss); border-color: var(--loss); }
+
+.setup-track {
+  height: 4px;
+  border-radius: var(--pill);
+  background: rgba(255, 255, 255, .08);
+  overflow: hidden;
+}
+
+.setup-fill {
+  height: 100%;
+  width: 0;
+  border-radius: var(--pill);
+  background: var(--amber);
+  transition: width .25s ease;
+}
+
+.setup-detail {
+  margin: var(--s3) 0 0;
+  min-height: 1.45em;
+  font-size: var(--t-note);
+  color: var(--dim);
+  overflow-wrap: anywhere;
+}
+
 /* A tooltip follows the pointer, so it must never be under it - otherwise it
    takes the `mouseleave` that would have dismissed it. */
 .tip {

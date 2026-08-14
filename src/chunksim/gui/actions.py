@@ -34,6 +34,7 @@ from chunksim.runs.batch import RunResult
 from chunksim.gui.jobs import StopCheck
 from chunksim.remote.api import TASKS_MAP_URL
 from chunksim.gui.jobs import as_int
+from chunksim.model.rules import default_rules
 from chunksim.store import cache
 from chunksim.store.derived_cache import cached_derive
 from chunksim.costing import dps_bridge
@@ -217,6 +218,41 @@ def _fetch_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
         return {"map": map_id, "path": str(path), "unlocked_chunks": len(unlocked)}
 
     return {"job": ctx.jobs.submit("fetch", work).id}
+
+
+def _blank_map(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
+    """A map with nothing unlocked, for someone who has no map yet.
+
+    **The point is that the world is browsable before you own anything.** With
+    no map cached at all the page has nothing to draw and no way in; this gives
+    it a real map to open, in edit mode, where any square can be unlocked by
+    hand - `_unlock_job` and the front end already decline to check eligibility
+    on an edit, which is what makes a first chunk possible at all (a map with
+    nothing unlocked has no eligible neighbours by definition).
+
+    **It seeds upstream's own rules rather than leaving the branch empty**, and
+    that is not tidiness: a missing rule key skips its gate where `False`
+    refuses it, so `rules={}` is the most permissive map there is - 526
+    obtainable items on a three-chunk world against 3 for a real one. See
+    `model/rules.py`, which owns the table and the measurement.
+
+    Answers **inline rather than as a job**: it writes four small files and
+    does no network, and the page needs the claimed name back in the same
+    breath because `claim_batch` suffixes `untitled-2` when the last draft is
+    still there.
+    """
+    name = str(payload.get("name") or "untitled").strip() or "untitled"
+    saved = save_edit(
+        name=name,
+        # Forked from nothing, which is the honest answer and what `base_map`
+        # is asked for. It is metadata; no code reads it back as a map id.
+        payload={"rules": default_rules()},
+        ticked={},
+        unlocked=[],
+        base_map="",
+        root=ctx.root,
+    )
+    return {"map": saved.name, "open": saved.name}
 
 
 def _simulate_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
@@ -594,7 +630,11 @@ def _blob_present(what: str, ctx: Context) -> bool:
     parsing 1.7MB of recipes to answer it would cost more than the answer is
     worth. `routes_reference._reference_state` takes the same line.
     """
-    name = cache.WIKI_RATES_BLOB_NAME if what == "heuristics" else cache.RECIPES_BLOB_NAME
+    name = {
+        "chunkinfo": cache.CHUNKINFO_BLOB_NAME,
+        "heuristics": cache.WIKI_RATES_BLOB_NAME,
+        "recipes": cache.RECIPES_BLOB_NAME,
+    }[what]
     return cache.blob_path(name, ctx.root).is_file()
 
 
@@ -619,7 +659,12 @@ def _refresh_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     # answers "already there" or "already tried" without starting a job. A
     # button press sends no `auto` and is never refused.
     if payload.get("auto") is True:
-        if what != "chunkinfo" and _blob_present(what, ctx):
+        # **The export is checked like the other two.** It used to be exempt,
+        # from when nothing auto-refreshed it - and the exemption was a
+        # 10 MiB re-download once per server process the moment the first-run
+        # flow started warming it, since `claim_once` only stops the *second*
+        # attempt in a process.
+        if _blob_present(what, ctx):
             return {"skipped": what, "why": "cached"}
         if not ctx.jobs.claim_once(f"refresh {what}"):
             return {"skipped": what, "why": "attempted"}
@@ -694,6 +739,7 @@ def _prune_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
 
 _ACTIONS: dict[str, Callable[[Mapping[str, Any], Context], dict[str, Any]]] = {
     "/api/fetch": _fetch_job,
+    "/api/blank": _blank_map,
     "/api/simulate": _simulate_job,
     "/api/unlock": _unlock_job,
     "/api/commit": _commit_job,

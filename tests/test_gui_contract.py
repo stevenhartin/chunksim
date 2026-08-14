@@ -1699,3 +1699,58 @@ def test_an_area_name_is_qualified_wherever_it_is_shown() -> None:
     _, js, _ = _resources()
 
     assert "qualified(detail.nickname)" in js
+
+
+def test_the_setup_steps_name_refresh_targets_the_server_accepts() -> None:
+    """**`SETUP_STEPS` is a list of strings the server validates and rejects.**
+
+    `_refresh_job` raises on an unknown `what`, so a typo here is a first run
+    that shows a failed step to someone who has never seen the app work - and
+    only on a cold cache, which is the state hardest to get back to. The blob
+    names have to match `routes_reference._REFERENCE_BLOBS` for the same
+    reason: a step keyed to a blob nothing reports reads as permanently
+    missing and re-downloads on every boot.
+    """
+    from chunksim.gui import routes_reference
+
+    js = _app_js()
+    block = re.search(r"const SETUP_STEPS = \[(.*?)\];", js, re.DOTALL)
+    assert block is not None
+
+    whats = re.findall(r'what:\s*"([^"]+)"', block.group(1))
+    blobs = re.findall(r'blob:\s*"([^"]+)"', block.group(1))
+
+    known = {row[2] for row in routes_reference._REFERENCE_BLOBS}
+    assert set(whats) == known, f"setup steps and refresh targets disagree: {whats} vs {known}"
+    assert set(blobs) == {row[0] for row in routes_reference._REFERENCE_BLOBS}
+
+
+def test_the_export_is_the_first_setup_step() -> None:
+    """Order is a dependency, not a preference: the heuristics scrape runs
+    through `ctx.derivations.chunk_info()`, so asking for rates before the
+    export is on disk ends that job failed."""
+    block = re.search(r"const SETUP_STEPS = \[(.*?)\];", _app_js(), re.DOTALL)
+    assert block is not None
+
+    assert re.findall(r'what:\s*"([^"]+)"', block.group(1))[0] == "chunkinfo"
+
+
+def test_the_setup_screen_cannot_be_dismissed() -> None:
+    """It is not the overlay, and that is the point: until the export lands
+    there is nothing behind it to dismiss back to. A close button or an
+    `aria-modal` sheet here would mean someone can reach a black map."""
+    html, _, _ = _resources()
+    setup = re.search(r'<div class="setup" id="setup".*?\n</div>', html, re.DOTALL)
+    assert setup is not None
+
+    assert "overlay" not in setup.group(0)
+    assert "-close" not in setup.group(0)
+
+
+def test_the_first_run_flag_is_spelled_the_same_on_both_sides() -> None:
+    """The page reads it off `/api/settings` and writes it back; `settings.KEYS`
+    is what decides whether the write survives `sanitise`."""
+    from chunksim.gui import settings
+
+    assert "first_run_done" in settings.KEYS
+    assert 'first_run_done: true' in _app_js() or '"first_run_done"' in _app_js()

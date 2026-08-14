@@ -16,6 +16,7 @@ from typing import Any
 
 import pytest
 
+from chunksim.model.rules import DEFAULT_RULES
 from chunksim.store import cache
 from chunksim.gui.browser import window_flags
 from chunksim.gui.server import Context, Response, handle_request
@@ -874,3 +875,51 @@ def test_an_auto_refresh_does_not_retry_a_scrape_that_failed(
     assert second == {"skipped": "recipes", "why": "attempted"}
     # The button still works: it is a decision, and the user can see the error.
     assert "job" in _body(_post("/api/refresh", ctx, {"what": "recipes"}))
+
+
+def test_a_blank_map_is_a_real_map_carrying_upstream_rules(tmp_path: Path) -> None:
+    """**The reason `/api/blank` exists rather than the page faking one.**
+
+    A map with no `rules` branch is not a neutral map: a missing rule key skips
+    its gate where `False` refuses it, so an empty one is the most permissive
+    world there is. `model/rules.py` owns the table and the measurement; this
+    asserts the action actually seeds it.
+    """
+    ctx = Context(root=tmp_path, check_origin=False)
+
+    reply = _body(_post("/api/blank", ctx, {}))
+
+    assert reply == {"map": "untitled", "open": "untitled"}
+    envelope = cache.read_cache("untitled", tmp_path)
+    assert envelope["kind"] == cache.EDITED
+    assert envelope["data"]["chunks"]["unlocked"] == {}
+    assert envelope["data"]["rules"] == dict(DEFAULT_RULES)
+
+
+def test_a_blank_map_answers_inline_because_the_page_needs_the_name(tmp_path: Path) -> None:
+    """No job: it writes four small files and does no network. And the name
+    comes back because `claim_batch` suffixes when the last draft is still
+    there, so the page cannot assume what it asked for is what it got."""
+    ctx = Context(root=tmp_path, check_origin=False)
+
+    first = _body(_post("/api/blank", ctx, {}))
+    second = _body(_post("/api/blank", ctx, {}))
+
+    assert "job" not in first and "job" not in second
+    assert (first["open"], second["open"]) == ("untitled", "untitled-2")
+    assert {entry.map_id for entry in cache.list_maps(tmp_path)} == {"untitled", "untitled-2"}
+
+
+def test_a_blank_map_opens_in_edit_mode(tmp_path: Path) -> None:
+    """`modeForMap` in `app.js` opens an `edited` map in edit mode, which is
+    what makes every square unlockable by hand - a map with nothing unlocked
+    has no eligible neighbours, so a first chunk cannot come from the
+    candidate list."""
+    ctx = Context(root=tmp_path, check_origin=False)
+
+    _post("/api/blank", ctx, {})
+
+    rows = _body(handle_request("GET", "/api/maps", {}, ctx))
+    # The listing expands a batch's runs, and a hand-made map is a batch of
+    # one - so the row the picker opens is the bare name, not `.../run-001`.
+    assert ("untitled", cache.EDITED) in [(row["map_id"], row["kind"]) for row in rows]
