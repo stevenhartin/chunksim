@@ -66,12 +66,11 @@ after its own scan, so they are checked on the following pass like anything
 else, and their `Items` requirement is satisfied by construction. Letting the
 ordinary machinery do it is both simpler and the same answer.
 
-Still outstanding: **`All Droptables`**. It wants a side table the rest do
-not - `dropTablesGlobal`, upstream's `calcedQuantity`, whose quantities are
-the drop table entry's multiplied through the monster's and carry
-`(noted)`/`(F2P)` suffixes into the task name, which is why its titles have
-a quantity where `Every Drop`'s have only a rate. `sources.py`'s docstring
-records that side table as deliberately unbuilt, and points here.
+All eight bulk rules are ported. What is *not* ported, and shows only in
+`All Droptables`, is upstream's re-keying of `dropTablesGlobal` when an item
+gains or loses its `*` secondary marker (worker.js:906-1022) and the pass
+that prunes emptied branches (worker.js:1112-1138); nothing here writes an
+entry those would move, but a future `skillItems` route might.
 
 (`Skilling Pets` is the odd one out and lives in `challenges.py` instead: it
 builds no challenge at all, it seeds seven pet *items*. It belongs to this
@@ -87,6 +86,7 @@ from typing import Any
 import re
 
 from chunksim.derive import sources
+from chunksim.derive.challenges import _SKILL_NAMES
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.model.summary import _mapping
 
@@ -363,6 +363,11 @@ _DROP_TAGS = ("-drop", "-Slayer", "-Thieving", "-Hunter")
 #: same name.
 _THIEVING_KEY = "[Thieving] "
 
+#: `skillNames` plus `Nonskill`: upstream refuses to emit `All Droptables`
+#: rows from a `dropTablesGlobal` key suffixed with one of these, those being
+#: the `skillItems` routes rather than a real entity.
+_SKILL_ROUTE_SUFFIXES = frozenset({*_SKILL_NAMES, "Nonskill"})
+
 #: Upstream's own `Every Drop` task-name shape, used to read the item back
 #: out of a stored completion.
 _EVERY_DROP_NAME = re.compile(r".*: ~\|.*\|~ \(.*\)")
@@ -472,6 +477,162 @@ def _every_drop(
     return built
 
 
+#: `dropTablesGlobal`'s entity suffixes, and the export field each one is
+#: read off. Upstream picks the first that the *source challenge* has
+#: (worker.js:4943), never the entity itself.
+_ENTITY_SUFFIXES = (("Mix", "-mix"), ("NPCs", "-npc"), ("Objects", "-object"))
+
+#: Upstream's own `All Droptables` task-name shape as its completion parser
+#: expects it - `<entity>: <something> ~|<item>|~ (<qty>) (<rate>)`.
+_ALL_DROPTABLES_NAME = re.compile(r".*: .+ ~\|.*\|~ \(.*\) \(.*\)")
+
+
+def _entity_suffix(challenge: Mapping[str, Any]) -> str:
+    for field_name, suffix in _ENTITY_SUFFIXES:
+        if field_name in challenge:
+            return suffix
+    return ""
+
+
+def _completed_droptable_rows(completed_extra: Mapping[str, Any]) -> set[tuple[str, str, str]]:
+    r"""The `(entity, item, quantity)` rows already ticked off.
+
+    **This matches nothing on the names the rule actually builds, and that is
+    upstream's state rather than a mistake here.** The parser wants
+    `<entity>: <something> ~|<item>|~ …` - note the `.+` between the colon
+    and the markup - while every name the emit produces goes straight from
+    `: ` to `~|`. So the regex cannot fire, and a completed droptable row is
+    offered again. Ported as written: guessing at the shape it was meant for
+    would invent a suppression upstream does not have, and a reader finding
+    this list always empty deserves to know why.
+    """
+    rows: set[tuple[str, str, str]] = set()
+    for line in completed_extra:
+        if not isinstance(line, str) or not _ALL_DROPTABLES_NAME.match(line):
+            continue
+        entity = line.split(":")[0]
+        parts = line.split("|")
+        head = line.split(" ~")[0].split(": ")
+        if len(parts) > 1 and len(head) > 1:
+            rows.add((entity, parts[1], head[1]))
+    return rows
+
+
+def _all_droptables(
+    chunk_info: ChunkInfo, given: "SynthesisInputs", rules: Mapping[str, Any]
+) -> dict[str, dict[str, Any]]:
+    """A task per drop *row* - port of worker.js:4881.
+
+    Where `Every Drop` is one task per (source, item), this is one per
+    (source, item, **quantity**): a monster dropping 1 coin and 100 coins is
+    two rows, and the title carries which. That is the whole reason it needs
+    `SourceIndex.drop_quantities` - `dropTablesGlobal` - where the other
+    rules make do with rates.
+
+    Ordinary monster drops are in that table already. Three families are not,
+    and each is keyed under a name of its own so it cannot collide: a Slayer
+    assignment's monster, a Thieving NPC under `[Thieving] ` plus whichever
+    of `-mix`/`-npc`/`-object` its *source challenge* implies, and an
+    impling's jar minus the word plus `-npc`. The suffix survives into the
+    definition, deciding whether the row names a monster, an NPC or an
+    object; it is stripped from the title.
+
+    Upstream's own filter on which entities to emit skips a key whose suffix
+    after `-` is a skill name - those come from a `skillItems` route this
+    project does not build - and it is kept so that adding that route later
+    cannot silently start emitting from it.
+    """
+    quantities: dict[str, dict[str, dict[str, str]]] = {
+        entity: {item: dict(rows) for item, rows in table.items()}
+        for entity, table in given.drop_quantities.items()
+    }
+    slayer = _mapping(chunk_info.challenges, "Slayer")
+    thieving = _mapping(chunk_info.challenges, "Thieving")
+    hunter = _mapping(chunk_info.challenges, "Hunter")
+    skill_items = chunk_info.skill_items
+
+    def measure(key: str, entity: str, table: Any, *, multiply: bool) -> None:
+        if key in quantities or not isinstance(table, dict):
+            return
+        _, built = sources.loot_table_tables(
+            table,
+            entity=entity,
+            chunk_info=chunk_info,
+            rules=rules,
+            backlogged_sources=given.backlogged_sources,
+            multiply_quantities=multiply,
+        )
+        if built:
+            quantities[key] = built
+
+    for item in sorted(given.items):
+        if "^" in item:
+            continue
+        for source, tag in given.items[item].items():
+            if "Slay " in source:
+                challenge = slayer.get(source)
+                monster = challenge.get("Output") if isinstance(challenge, dict) else None
+                if isinstance(monster, str):
+                    measure(
+                        monster, monster, _mapping(skill_items, "Slayer").get(monster), multiply=True
+                    )
+            if "-Thieving" in tag and isinstance(thieving.get(source), dict):
+                challenge = thieving[source]
+                npc = challenge.get("Output")
+                if isinstance(npc, str):
+                    key = f"{_THIEVING_KEY}{npc}{_entity_suffix(challenge)}"
+                    measure(key, npc, _mapping(skill_items, "Thieving").get(npc), multiply=False)
+            if "-Hunter" in tag and "impling" in source and isinstance(hunter.get(source), dict):
+                jar = hunter[source].get("Output")
+                if isinstance(jar, str):
+                    key = f"{jar.replace(' jar', '')}-npc"
+                    measure(key, jar, _mapping(skill_items, "Hunter").get(jar), multiply=False)
+
+    done = _completed_droptable_rows(given.completed_extra)
+    built: dict[str, dict[str, Any]] = {}
+    for entity, table in quantities.items():
+        head, _, suffix = entity.partition("-")
+        if suffix and suffix in _SKILL_ROUTE_SUFFIXES:
+            continue
+        bare = entity
+        extra: dict[str, Any] = {"Monsters": [entity], "MonsterDetails": [entity]}
+        for field_name, marker in _ENTITY_SUFFIXES:
+            if marker in entity:
+                bare = entity.replace(marker, "")
+                if marker == "-mix":
+                    extra = {
+                        "Monsters": [bare],
+                        "MonsterDetails": [bare],
+                        "NPCs": [bare],
+                        "NPCsDetails": [bare],
+                    }
+                else:
+                    extra = {
+                        "Monsters": [entity],
+                        "MonsterDetails": [entity],
+                        field_name: [bare],
+                        f"{field_name}Details": [bare],
+                    }
+                break
+        title_entity = bare.replace("[+]", "")
+        for item, rows in table.items():
+            if "^" in item:
+                continue
+            for quantity, rate in rows.items():
+                if (entity, item, quantity) in done:
+                    continue
+                name = f"{title_entity}: ~|{item}|~ ({quantity or 'N/A'}) ({rate})"
+                built[name] = {
+                    "Category": ["All Droptables"],
+                    "Items": [item],
+                    "ItemsDetails": [item],
+                    "Label": "All Droptables",
+                    "Permanent": False,
+                    **extra,
+                }
+    return built
+
+
 def forced_valid_from(
     definitions: Mapping[str, Mapping[str, Mapping[str, Any]]],
 ) -> dict[str, dict[str, int | str | bool]]:
@@ -500,6 +661,7 @@ class SynthesisInputs:
     monsters: Mapping[str, Any] = field(default_factory=dict)
     backlog: Mapping[str, Any] = field(default_factory=dict)
     drop_rates: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
+    drop_quantities: Mapping[str, Mapping[str, Mapping[str, str]]] = field(default_factory=dict)
     completed_extra: Mapping[str, Any] = field(default_factory=dict)
     backlogged_sources: Mapping[str, Any] = field(default_factory=dict)
     slayer_trainable: bool = False
@@ -524,6 +686,8 @@ def synthesised_challenges(
         extra.update(_all_shops(given.items))
     if rules.get("All Droptables Nest") is True:
         extra.update(_nest_loot(chunk_info, given.items, rules))
+    if rules.get("All Droptables") is True:
+        extra.update(_all_droptables(chunk_info, given, rules))
     if rules.get("Every Drop") is True:
         extra.update(_every_drop(chunk_info, given, rules))
     if rules.get("Kill X") is True:

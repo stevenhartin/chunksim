@@ -53,27 +53,21 @@ an incomplete index:
 - The `KeyItem Bosses` pass (worker.js:9269-9357): a secondary rate-boosting
   heuristic for bosses whose drop requires owning a set of "key" items first.
   A distinct, self-contained sub-algorithm from the rest of this module.
-- `codeItems.dropTables`' quantity-keyed side table (`dropTablesGlobal`,
-  upstream's `calcedQuantity`): consumed by the **`All Droptables`** rule
-  alone, and nothing else in this project has ever needed it - ordinary
-  item/object/monster/npc/shop availability does not, and `Every Drop` turned
-  out not to either (it wants `dropRatesGlobal`, which *is* built here; see
-  `loot_table_rates` for the two namespaces it adds).
-  It is a bigger job than it looks: upstream fills it in six places across
-  `gatherChunksInfo` alone, re-keys every entry when an item gains or loses
-  its `*` secondary marker, prunes emptied branches, and then the synthesis
-  in `calcChallengesWork` adds three more families on top. The quantities are
-  the table entry's multiplied through the monster's, carrying `(noted)` and
-  `(F2P)` suffixes - which is why an `All Droptables` task title has a
-  quantity where an `Every Drop` one has only a rate. See
-  `derive/injected.py`.
+- The `*`-marker re-keying of `dropTablesGlobal` (worker.js:906-1022) and the
+  pass that prunes its emptied branches (worker.js:1112-1138). The table
+  itself **is** built - `SourceIndex.drop_quantities`, read by the
+  `All Droptables` rule alone, whose task titles carry a quantity where every
+  other rule's carry only a rate. What is skipped is upstream moving an entry
+  from `item` to `item*` and back as `taskUnlocks` opens and closes; nothing
+  this project writes there is affected, because the marker is fixed by the
+  time the table is filled.
 """
 
 from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from chunksim.model.chunkinfo import ChunkInfo
@@ -81,6 +75,7 @@ from chunksim.model.rates import (
     build_rare_drop_num,
     build_secondary_primary_num,
     find_fraction,
+    js_multiply,
     looks_non_numeric,
     parse_ratio,
     secondary_primary_denominator,
@@ -109,6 +104,11 @@ class SourceIndex:
     npcs: dict[str, dict[str, bool]]
     shops: dict[str, dict[str, bool]]
     drop_rates: dict[str, dict[str, str]]
+    #: `dropTablesGlobal`: the same rates again, but keyed by *how many* the
+    #: drop yields rather than only by item - `{monster: {item: {quantity:
+    #: rate}}}`. Read by the `All Droptables` rule alone, whose task titles
+    #: carry a quantity; see this module's header and `derive/injected.py`.
+    drop_quantities: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -118,6 +118,7 @@ class SourceIndex:
             "npcs": self.npcs,
             "shops": self.shops,
             "drop_rates": self.drop_rates,
+            "drop_quantities": self.drop_quantities,
         }
 
     def category(self, name: str) -> dict[str, dict[str, Any]]:
@@ -230,6 +231,50 @@ def _classify_and_record(
         bucket[monster] = "secondary-drop"
 
 
+def _calced_quantity(table_quantity: str, monster_quantity: str) -> str:
+    """`dropTablesGlobal`'s quantity key - port of worker.js:748-761.
+
+    A drop table entry is `"<rate>@<quantity>"`, and the quantity may carry
+    `(noted)` or `(F2P)` or both. The number in front is multiplied through
+    the monster's own quantity key, and the brackets are put back afterwards
+    - `(noted) (F2P)` in that order, whatever order they arrived in, because
+    upstream reassembles rather than edits.
+
+    This is the whole reason an `All Droptables` task title carries a
+    quantity where an `Every Drop` one carries only a rate.
+    """
+    if " (noted)" in table_quantity:
+        base = table_quantity.split(" (noted)")[0]
+        suffix = " (noted) (F2P)" if " (F2P)" in table_quantity else " (noted)"
+    elif " (F2P)" in table_quantity:
+        base, suffix = table_quantity.split(" (F2P)")[0], " (F2P)"
+    else:
+        base, suffix = table_quantity, ""
+    return f"{js_multiply(base, monster_quantity)}{suffix}"
+
+
+def _record_drop_quantity(
+    *,
+    drop_quantities: dict[str, dict[str, dict[str, str]]],
+    monster: str,
+    item: str,
+    quantity: str,
+    rate: float,
+    raw: str,
+    rounded_denominator: bool = False,
+) -> None:
+    """One `dropTablesGlobal[monster][item][quantity]` entry.
+
+    Same value as the `dropRatesGlobal` entry beside it, bar one thing: an
+    unrepresentable rate falls back to the monster's raw string here
+    (worker.js:763's `isNaN(droprate) ? drops[...] : findFraction(...)`)
+    rather than to `"NaN"`. The two side tables disagree on that and both are
+    reproduced as written.
+    """
+    value = raw if math.isnan(rate) else find_fraction(rate, rounded_denominator)
+    drop_quantities.setdefault(monster, {}).setdefault(item, {})[quantity] = value
+
+
 def _record_drop_rate(
     *,
     drop_rates: dict[str, dict[str, str]],
@@ -267,12 +312,15 @@ def _expand_drop_table(
     monster: str,
     drop: str,
     monster_rate_raw: str,
+    monster_quantity: str,
     table: Mapping[str, Any],
     items: dict[str, dict[str, str]],
     drop_rates: dict[str, dict[str, str]],
+    drop_quantities: dict[str, dict[str, dict[str, str]]],
     settings: _Settings,
     boss_monsters: Mapping[str, Any],
     backlogged: Mapping[str, Any],
+    multiply_quantities: bool = True,
 ) -> None:
     """Port of the `Object.keys(dropTables[drop]).forEach((item) => ...)` block
     (e.g. worker.js:8817-8862): expand a drop TABLE into the items it can
@@ -308,6 +356,19 @@ def _expand_drop_table(
         _record_drop_rate(
             drop_rates=drop_rates, monster=monster, item=item, rate=combined_rate, drop_name=drop
         )
+        _record_drop_quantity(
+            drop_quantities=drop_quantities,
+            monster=monster,
+            item=item,
+            quantity=(
+                _calced_quantity(table_entry_raw.partition("@")[2], monster_quantity)
+                if multiply_quantities
+                else monster_quantity
+            ),
+            rate=combined_rate,
+            raw=monster_rate_raw,
+            rounded_denominator="GeneralSeedDropTable" in drop,
+        )
 
 
 def _add_single_drop_item(
@@ -315,8 +376,10 @@ def _add_single_drop_item(
     monster: str,
     drop: str,
     monster_rate_raw: str,
+    monster_quantity: str,
     items: dict[str, dict[str, str]],
     drop_rates: dict[str, dict[str, str]],
+    drop_quantities: dict[str, dict[str, dict[str, str]]],
     settings: _Settings,
 ) -> None:
     """Port of the `else if (...)` single-item fallback (e.g. worker.js:8864-
@@ -337,6 +400,11 @@ def _add_single_drop_item(
         drop_name=drop,
         raw=monster_rate_raw,
     )
+    # The single-drop branch keys on the monster's own quantity untouched -
+    # there is no table entry to multiply through (worker.js:786).
+    drop_quantities.setdefault(monster, {}).setdefault(drop, {})[monster_quantity] = (
+        drop_rates[monster][drop]
+    )
 
 
 def _resolve_monster_drop(
@@ -344,19 +412,30 @@ def _resolve_monster_drop(
     monster: str,
     drop: str,
     monster_rate_raw: str,
+    monster_quantity: str = "",
     drop_tables: Mapping[str, Any],
     items: dict[str, dict[str, str]],
     drop_rates: dict[str, dict[str, str]],
+    drop_quantities: dict[str, dict[str, dict[str, str]]] | None = None,
     settings: _Settings,
     boss_monsters: Mapping[str, Any],
     backlogged: Mapping[str, Any],
+    multiply_quantities: bool = True,
 ) -> None:
     """Port of the repeated per-drop dispatch (e.g. worker.js:8815-8899):
     a drop is either a drop TABLE (expand it) or a literal item (the drop
     name itself), with the two RDT-gated branches upstream keeps as
     separate `if` statements - see the module docstring's note on
     `GemDropTableLegends+`, the one case where both branches can fire.
+
+    `monster_quantity` is the key this rate was filed under in the export
+    (`drops[monster][drop][<here>]`), needed only for the `dropTablesGlobal`
+    side table; `drop_quantities` omitted means "don't build it", which is
+    what every caller outside `gather_chunks_info` wants.
     """
+    quantities: dict[str, dict[str, dict[str, str]]] = (
+        {} if drop_quantities is None else drop_quantities
+    )
     table = drop_tables.get(drop)
     has_table = isinstance(table, dict)
     is_rdt_family = drop in _RDT_FAMILY
@@ -367,12 +446,15 @@ def _resolve_monster_drop(
             monster=monster,
             drop=drop,
             monster_rate_raw=monster_rate_raw,
+            monster_quantity=monster_quantity,
             table=table,  # type: ignore[arg-type]
             items=items,
             drop_rates=drop_rates,
+            drop_quantities=quantities,
             settings=settings,
             boss_monsters=boss_monsters,
             backlogged=backlogged,
+            multiply_quantities=multiply_quantities,
         )
     else:
         monster_rate = parse_ratio(monster_rate_raw)
@@ -388,8 +470,10 @@ def _resolve_monster_drop(
                 monster=monster,
                 drop=drop,
                 monster_rate_raw=monster_rate_raw,
+                monster_quantity=monster_quantity,
                 items=items,
                 drop_rates=drop_rates,
+                drop_quantities=quantities,
                 settings=settings,
             )
 
@@ -398,12 +482,15 @@ def _resolve_monster_drop(
             monster=monster,
             drop=drop,
             monster_rate_raw=monster_rate_raw,
+            monster_quantity=monster_quantity,
             table=table,  # type: ignore[arg-type]
             items=items,
             drop_rates=drop_rates,
+            drop_quantities=quantities,
             settings=settings,
             boss_monsters=boss_monsters,
             backlogged=backlogged,
+            multiply_quantities=multiply_quantities,
         )
 
 
@@ -439,6 +526,56 @@ def _slayer_skill_items_for(
     return table
 
 
+def loot_table_tables(
+    table: Mapping[str, Any],
+    *,
+    entity: str,
+    chunk_info: ChunkInfo,
+    rules: Mapping[str, Any],
+    backlogged_sources: Mapping[str, Any] = {},
+    multiply_quantities: bool = True,
+) -> tuple[dict[str, str], dict[str, dict[str, str]]]:
+    """`(rates, quantities)` for one `skillItems` loot table - the two side
+    tables `dropRatesGlobal` and `dropTablesGlobal` would hold for it.
+
+    `multiply_quantities` is upstream's own inconsistency, not a knob: the
+    Slayer family of `All Droptables` multiplies a drop table's quantity
+    through the monster's (worker.js:4907) where the Thieving and impling
+    families file the monster's quantity untouched (worker.js:4950/4976).
+    Both are reproduced rather than reconciled.
+
+    See `loot_table_rates` for the rest of the contract; this is the same
+    walk, returning both halves.
+    """
+    settings = _settings(rules)
+    scratch_items: dict[str, dict[str, str]] = {}
+    rates: dict[str, dict[str, str]] = {}
+    quantities: dict[str, dict[str, dict[str, str]]] = {}
+    drop_tables = _mapping(chunk_info.code_items, "dropTables")
+    boss_monsters = _mapping(chunk_info.code_items, "bossMonsters")
+    for drop, per_quantity in table.items():
+        if not isinstance(per_quantity, dict):
+            continue
+        for quantity_key, rate_raw in per_quantity.items():
+            if not isinstance(rate_raw, str):
+                continue
+            _resolve_monster_drop(
+                monster=entity,
+                drop=drop,
+                monster_rate_raw=rate_raw,
+                monster_quantity=str(quantity_key),
+                drop_tables=drop_tables,
+                items=scratch_items,
+                drop_rates=rates,
+                drop_quantities=quantities,
+                settings=settings,
+                boss_monsters=boss_monsters,
+                backlogged=backlogged_sources,
+                multiply_quantities=multiply_quantities,
+            )
+    return rates.get(entity, {}), quantities.get(entity, {})
+
+
 def loot_table_rates(
     table: Mapping[str, Any],
     *,
@@ -471,29 +608,13 @@ def loot_table_rates(
     table mentions is not made available by the rule that names a task after
     it.
     """
-    settings = _settings(rules)
-    scratch_items: dict[str, dict[str, str]] = {}
-    rates: dict[str, dict[str, str]] = {}
-    drop_tables = _mapping(chunk_info.code_items, "dropTables")
-    boss_monsters = _mapping(chunk_info.code_items, "bossMonsters")
-    for drop, quantities in table.items():
-        if not isinstance(quantities, dict):
-            continue
-        for rate_raw in quantities.values():
-            if not isinstance(rate_raw, str):
-                continue
-            _resolve_monster_drop(
-                monster=entity,
-                drop=drop,
-                monster_rate_raw=rate_raw,
-                drop_tables=drop_tables,
-                items=scratch_items,
-                drop_rates=rates,
-                settings=settings,
-                boss_monsters=boss_monsters,
-                backlogged=backlogged_sources,
-            )
-    return rates.get(entity, {})
+    return loot_table_tables(
+        table,
+        entity=entity,
+        chunk_info=chunk_info,
+        rules=rules,
+        backlogged_sources=backlogged_sources,
+    )[0]
 
 
 def _resolve_monster(
@@ -504,6 +625,7 @@ def _resolve_monster(
     items: dict[str, dict[str, str]],
     monsters: dict[str, dict[str, bool]],
     drop_rates: dict[str, dict[str, str]],
+    drop_quantities: dict[str, dict[str, dict[str, str]]],
     source: str,
     settings: _Settings,
     rules: Mapping[str, Any],
@@ -535,13 +657,15 @@ def _resolve_monster(
     for drop, quantities in monster_drops.items():
         if not isinstance(quantities, dict):
             continue
-        for rate_raw in quantities.values():
+        for quantity_key, rate_raw in quantities.items():
             if not isinstance(rate_raw, str):
                 continue
             _resolve_monster_drop(
                 monster=monster,
                 drop=drop,
                 monster_rate_raw=rate_raw,
+                monster_quantity=str(quantity_key),
+                drop_quantities=drop_quantities,
                 drop_tables=drop_tables,
                 items=items,
                 drop_rates=drop_rates,
@@ -772,6 +896,7 @@ def gather_chunks_info(
     npcs: dict[str, dict[str, bool]] = {}
     shops: dict[str, dict[str, bool]] = {}
     drop_rates: dict[str, dict[str, str]] = {}
+    drop_quantities: dict[str, dict[str, dict[str, str]]] = {}
 
     for item in manual_equipment or {}:
         items.setdefault(item, {})["Manually Added Equipment"] = "secondary-drop"
@@ -798,6 +923,7 @@ def gather_chunks_info(
                         items=items,
                         monsters=monsters,
                         drop_rates=drop_rates,
+                        drop_quantities=drop_quantities,
                         source=source,
                         settings=settings,
                         rules=rules,
@@ -847,6 +973,7 @@ def gather_chunks_info(
                 items=items,
                 monsters=monsters,
                 drop_rates=drop_rates,
+                drop_quantities=drop_quantities,
                 source=chunk_id,
                 settings=settings,
                 rules=rules,
@@ -903,6 +1030,7 @@ def gather_chunks_info(
                 items=items,
                 monsters=monsters,
                 drop_rates=drop_rates,
+                drop_quantities=drop_quantities,
                 source=_MANUAL_SOURCE,
                 settings=settings,
                 rules=rules,
@@ -948,4 +1076,5 @@ def gather_chunks_info(
         npcs=npcs,
         shops=shops,
         drop_rates=drop_rates,
+        drop_quantities=drop_quantities,
     )

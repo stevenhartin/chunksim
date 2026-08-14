@@ -154,6 +154,39 @@ def _format_js_number(value: float) -> str:
     return f"{value:,}"
 
 
+def js_number(text: str) -> float:
+    """`Number(text)` - JS's *coercion*, which is not `parseFloat`.
+
+    The difference decides a task name. `Number("1-5")` is `NaN` where
+    `parseFloat("1-5")` is `1`, and `Number("")` is **0** where `parseFloat`
+    gives `NaN`. Both show up in real quantity keys, and both reach a
+    multiplication that ends up in an `All Droptables` title.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return 0.0
+    try:
+        return float(stripped)
+    except ValueError:
+        return math.nan
+
+
+def js_multiply(left: str, right: str) -> str:
+    """`left * right` where both are strings and the answer becomes an object
+    key - so what matters is the *string* JS would produce.
+
+    Port of upstream's `calcedQuantity` arithmetic (worker.js:748-761): a
+    drop table entry says how many the table gives, the monster's own entry
+    says how many rolls, and the product is what you actually get. `NaN`
+    stringifies to `"NaN"` and keys an entry just as happily as a number
+    does, which is why nothing here raises.
+    """
+    product = js_number(left) * js_number(right)
+    if math.isnan(product):
+        return "NaN"
+    return _format_js_number(product)
+
+
 def find_fraction(value: float, rounded_denominator: bool = False) -> str:
     """Port of `findFraction`: render a probability as a `1/N` display string.
 

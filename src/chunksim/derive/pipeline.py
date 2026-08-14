@@ -527,6 +527,7 @@ def derive(
                 items=challenges.available_items,
                 monsters=index.monsters,
                 drop_rates=index.drop_rates,
+                drop_quantities=index.drop_quantities,
                 completed_extra=state.completed_challenges.get("Extra") or {},
                 backlogged_sources=state.backlogged_sources or {},
                 backlog=state.backlog.get("Extra") or {},

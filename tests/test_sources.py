@@ -281,6 +281,7 @@ def test_gather_chunks_info_tolerates_an_empty_export() -> None:
         "npcs": {},
         "shops": {},
         "drop_rates": {},
+        "drop_quantities": {},
     }
 
 

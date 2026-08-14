@@ -516,3 +516,123 @@ def test_a_shop_source_is_not_a_drop() -> None:
     )
 
     assert synthesised_challenges(_drop_world(), given, {"Every Drop": True}) == {}
+
+
+def _table_world() -> ChunkInfo:
+    return _info(
+        challenges={
+            "Slayer": {"Slay ~|Abyssal demon|~": {"Output": "Abyssal demon"}},
+            "Thieving": {
+                "Pickpocket a ~|Rogue|~": {"Output": "Rogue", "NPCs": ["Rogue"]},
+                "Loot a ~|chest|~": {"Output": "Chest", "Objects": ["Chest"]},
+            },
+            "Hunter": {"Catch a ~|baby impling|~": {"Output": "Baby impling jar"}},
+        },
+        skillItems={
+            "Slayer": {"Abyssal demon": {"Abyssal whip": {"1": "1/512"}}},
+            "Thieving": {
+                "Rogue": {"Air rune": {"10-19": "1/16"}},
+                "Chest": {"Coins": {"100": "Always"}},
+            },
+            "Hunter": {"Baby impling jar": {"Bronze arrow": {"1": "1/8"}}},
+        },
+        codeItems={"dropTables": {}, "bossMonsters": {}},
+    )
+
+
+def _droptables(**over: Any) -> dict[str, dict[str, Any]]:
+    given = SynthesisInputs(items={}, **over)
+    return synthesised_challenges(_table_world(), given, {"All Droptables": True}).get("Extra", {})
+
+
+def test_a_droptable_row_carries_its_quantity_as_well_as_its_rate() -> None:
+    """The difference from `Every Drop`: one task per (source, item,
+    *quantity*), so a monster dropping one coin and a hundred is two rows and
+    the title says which."""
+    built = _droptables(
+        drop_quantities={"Goblin": {"Coins": {"1": "Always", "100": "1/128"}}}
+    )
+
+    assert set(built) == {
+        "Goblin: ~|Coins|~ (1) (Always)",
+        "Goblin: ~|Coins|~ (100) (1/128)",
+    }
+
+
+def test_an_empty_quantity_reads_as_not_applicable() -> None:
+    built = _droptables(drop_quantities={"Goblin": {"Bones": {"": "Always"}}})
+
+    assert set(built) == {"Goblin: ~|Bones|~ (N/A) (Always)"}
+
+
+def test_a_plain_entity_is_named_as_a_monster() -> None:
+    built = _droptables(drop_quantities={"Goblin": {"Bones": {"1": "Always"}}})
+    entry = built["Goblin: ~|Bones|~ (1) (Always)"]
+
+    assert entry["Monsters"] == ["Goblin"]
+    assert "NPCs" not in entry and "Objects" not in entry
+
+
+def test_a_pickpocket_table_is_keyed_and_shaped_by_its_source_challenge() -> None:
+    """The suffix comes off the *source challenge*, never the NPC: upstream
+    asks whether the challenge has `Mix`, then `NPCs`, then `Objects`. It
+    keeps the entity apart in `dropTablesGlobal` and decides whether the row
+    names a monster, an NPC or an object - then is stripped from the title."""
+    given = SynthesisInputs(
+        items={"Air rune": {"Pickpocket a ~|Rogue|~": "primary-Thieving"}},
+    )
+
+    built = synthesised_challenges(_table_world(), given, {"All Droptables": True})["Extra"]
+
+    name = "[Thieving] Rogue: ~|Air rune|~ (10-19) (1/16)"
+    assert set(built) == {name}
+    assert built[name]["NPCs"] == ["[Thieving] Rogue"]
+    assert built[name]["Monsters"] == ["[Thieving] Rogue-npc"]
+
+
+def test_an_object_source_names_an_object() -> None:
+    given = SynthesisInputs(items={"Coins": {"Loot a ~|chest|~": "primary-Thieving"}})
+
+    built = synthesised_challenges(_table_world(), given, {"All Droptables": True})["Extra"]
+    entry = built["[Thieving] Chest: ~|Coins|~ (100) (Always)"]
+
+    assert entry["Objects"] == ["[Thieving] Chest"]
+
+
+def test_an_implings_jar_loses_the_word_and_gains_a_suffix() -> None:
+    given = SynthesisInputs(
+        items={"Bronze arrow": {"Catch a ~|baby impling|~": "primary-Hunter"}}
+    )
+
+    built = synthesised_challenges(_table_world(), given, {"All Droptables": True})["Extra"]
+    entry = built["Baby impling: ~|Bronze arrow|~ (1) (1/8)"]
+
+    assert entry["NPCs"] == ["Baby impling"]
+    assert entry["Monsters"] == ["Baby impling-npc"]
+
+
+def test_a_slayer_table_is_measured_under_its_monster() -> None:
+    given = SynthesisInputs(
+        items={"Abyssal whip": {"Slay ~|Abyssal demon|~": "primary-Slayer"}}
+    )
+
+    built = synthesised_challenges(_table_world(), given, {"All Droptables": True})["Extra"]
+
+    assert set(built) == {"Abyssal demon: ~|Abyssal whip|~ (1) (1/512)"}
+
+
+def test_a_skill_route_key_is_never_emitted_from() -> None:
+    """Upstream refuses a `dropTablesGlobal` key whose suffix is a skill
+    name - those are `skillItems` routes rather than entities. This project
+    does not build them yet; the guard is here so that adding the route
+    cannot silently start emitting from it.
+    """
+    built = _droptables(drop_quantities={"Pizazz points-Magic": {"Master wand": {"1": "1/1"}}})
+
+    assert built == {}
+
+
+def test_a_marked_item_row_is_skipped() -> None:
+    built = _droptables(drop_quantities={"Goblin": {"^^placeholder": {"1": "Always"}}})
+
+    assert built == {}
