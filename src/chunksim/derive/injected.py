@@ -66,10 +66,20 @@ after its own scan, so they are checked on the following pass like anything
 else, and their `Items` requirement is satisfied by construction. Letting the
 ordinary machinery do it is both simpler and the same answer.
 
-Still outstanding: `All Droptables`, `All Droptables Nest`, `Every Drop`,
-`Every Drop Implings`, `Kill X`, `Kill X Boss`, `Skilling Pets`. The last is
-not a challenge at all - it seeds pet *items* - and belongs beside the
-others only because the same rule switch turns it on.
+Still outstanding: **`All Droptables`, `Every Drop` and `Every Drop
+Implings`**, which are one piece of work rather than three. All three read
+`dropRatesGlobal`, and both of the last two *extend* it as they go with keys
+`gather_chunks_info` never builds - `'[Thieving] <npc>'` for a pickpocket
+loot table, and an impling's name minus `' jar'` - each behind its own
+`Rare Drop`/`rareDropNum`/`Boss` gate. `All Droptables` wants a second side
+table on top: `dropTablesGlobal`, upstream's `calcedQuantity`, whose
+quantities are the table entry's multiplied through the monster's and carry
+`(noted)`/`(F2P)` suffixes into the task name. `sources.py`'s docstring
+already records that side table as deliberately unbuilt, and points here.
+
+(`Skilling Pets` is the odd one out and lives in `challenges.py` instead: it
+builds no challenge at all, it seeds seven pet *items*. It belongs to this
+family only in that the same kind of rule switch turns it on.)
 """
 
 from __future__ import annotations
