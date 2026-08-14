@@ -429,3 +429,56 @@ def test_every_real_gate_is_in_the_pair_set(real_export: ChunkInfo) -> None:
                             assert (skill, task) in pairs, f"{skill}/{task} missing"
                             seen += 1
     assert seen > 100, "the export should carry hundreds of gate references"
+
+
+def test_an_unconditional_drop_keeps_its_rate_as_written() -> None:
+    """`dropRatesGlobal` keeps a rate with no `/` verbatim - upstream's
+    `split('/').length <= 1 ? raw : findFraction(...)` (worker.js:779).
+
+    Running `Always` through `find_fraction` gives the string `"NaN"`, which
+    is what 189 of the second cached map's 3,402 rates read before this. It
+    shows in `chunksim sources`, and these rates are pasted into the task
+    names the `Every Drop` rule synthesises, so a wrong one becomes a wrong
+    title.
+    """
+    info = _chunk_info(
+        chunks={"100": {"Monster": {"Goblin": True}}},
+        drops={"Goblin": {"Bones": {"1": "Always"}, "Coins": {"1": "1/16"}}},
+    )
+
+    index = gather_chunks_info({"100": True}, {}, info, rules={"Rare Drop Amount": "100"})
+
+    assert index.drop_rates["Goblin"]["Bones"] == "Always"
+    assert index.drop_rates["Goblin"]["Coins"] == "1/16"
+
+
+def test_a_drop_table_rate_is_the_two_rates_multiplied() -> None:
+    """The table branch has no raw fallback: it multiplies the monster's rate
+    by the table entry's and formats the product (worker.js:741). A `1/2`
+    monster rate into a `1/4` table row is `1/8`."""
+    info = _chunk_info(
+        chunks={"100": {"Monster": {"Goblin": True}}},
+        drops={"Goblin": {"HerbDropTable": {"1": "1/2"}}},
+        codeItems={"dropTables": {"HerbDropTable": {"Grimy guam leaf": "1/4@1"}}},
+    )
+
+    index = gather_chunks_info({"100": True}, {}, info, rules={"Rare Drop Amount": "100"})
+
+    assert index.drop_rates["Goblin"]["Grimy guam leaf"] == "1/8"
+
+
+def test_an_unconditional_drop_table_rate_stays_unrepresentable() -> None:
+    """`Always` into a table is `parseFloat('Always') * rate` upstream, i.e.
+    `NaN`, and `findFraction(NaN)` is the string `"NaN"`. Kept rather than
+    tidied: the raw-string fallback belongs to the single-drop branch alone,
+    and inventing one here would be a rate upstream never shows.
+    """
+    info = _chunk_info(
+        chunks={"100": {"Monster": {"Goblin": True}}},
+        drops={"Goblin": {"HerbDropTable": {"1": "Always"}}},
+        codeItems={"dropTables": {"HerbDropTable": {"Grimy guam leaf": "1/4@1"}}},
+    )
+
+    index = gather_chunks_info({"100": True}, {}, info, rules={"Rare Drop Amount": "100"})
+
+    assert index.drop_rates["Goblin"]["Grimy guam leaf"] == "NaN"

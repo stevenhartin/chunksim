@@ -222,8 +222,32 @@ def _classify_and_record(
 
 
 def _record_drop_rate(
-    *, drop_rates: dict[str, dict[str, str]], monster: str, item: str, rate: float, drop_name: str
+    *,
+    drop_rates: dict[str, dict[str, str]],
+    monster: str,
+    item: str,
+    rate: float,
+    drop_name: str,
+    raw: str | None = None,
 ) -> None:
+    """One `dropRatesGlobal[monster][item]` entry.
+
+    `raw` is the rate string as the export wrote it, and it is kept verbatim
+    when it carries no `/` - upstream's
+    `split('/').length <= 1 ? raw : findFraction(...)` (worker.js:779). An
+    unconditional drop is spelled `Always`, which has no fraction to find:
+    running it through `find_fraction` gives the string `"NaN"`, and that is
+    what 189 of the second cached map's 3,402 rates used to read. It shows in
+    `chunksim sources` and, since these rates are pasted into synthesised task
+    names, in every `Every Drop` title built off one.
+
+    Passing no `raw` keeps the unconditional formatting, which is right for
+    the drop-*table* branch: that one multiplies two rates and has a number
+    either way, so upstream formats it unconditionally too (worker.js:741).
+    """
+    if raw is not None and "/" not in raw:
+        drop_rates.setdefault(monster, {})[item] = raw
+        return
     drop_rates.setdefault(monster, {})[item] = find_fraction(
         rate, "GeneralSeedDropTable" in drop_name
     )
@@ -297,7 +321,12 @@ def _add_single_drop_item(
     )
     _classify_and_record(items=items, item=drop, monster=monster, is_primary=is_primary)
     _record_drop_rate(
-        drop_rates=drop_rates, monster=monster, item=drop, rate=monster_rate, drop_name=drop
+        drop_rates=drop_rates,
+        monster=monster,
+        item=drop,
+        rate=monster_rate,
+        drop_name=drop,
+        raw=monster_rate_raw,
     )
 
 
