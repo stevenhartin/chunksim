@@ -1,12 +1,19 @@
 # chunksim
 
-A command-line tool that reads state from the [source-chunk](https://github.com/source-chunk/chunk-picker-v2/)
-web app, caches it locally, and derives things from that cache entirely offline: which sections of
-your unlocked chunks are reachable, what items/monsters/objects they give you access to, which
-challenges are currently valid and which are your current goal per skill, your best-in-slot equipment
-per combat style, what a candidate chunk unlock would add, and simulated multi-roll outcomes.
+**Offline tooling for [source-chunk](https://github.com/source-chunk/chunk-picker-v2/) chunkman
+maps — a command line and a browser world map over your own cached state.**
 
-source-chunk is upstream and read-only from here — `chunksim` never writes back to it.
+chunksim reads a map's live state from source-chunk, caches it locally, and derives things from that
+cache entirely offline: which sections of the unlocked chunks are reachable, what items, monsters and
+objects they give access to, which challenges are currently valid and which one is the goal per
+skill, best-in-slot equipment per combat style, what a candidate chunk unlock would add, roughly how
+many hours the outstanding work would take, and simulated multi-roll futures.
+
+**It belongs to no particular account.** Point it at any map id — the `?<map-id>` part of your
+chunk-picker URL — and it works the same. There is no default map, and nothing here is specific to
+one player's world.
+
+source-chunk is upstream and read-only from here — chunksim never writes back to it.
 
 ## What it does
 
