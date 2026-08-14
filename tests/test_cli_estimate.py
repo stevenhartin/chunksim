@@ -85,8 +85,10 @@ def test_an_override_beats_the_scraped_rate(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _estimate_fixture(cached_map)
-    overrides = project / "heuristics"
-    overrides.mkdir()
+    # Where `cache.overrides_path` looks inside a checkout - the corrections
+    # ship with the code now, so a throwaway checkout carries its own.
+    overrides = project / "src" / "chunksim" / "heuristics"
+    overrides.mkdir(parents=True, exist_ok=True)
     (overrides / "overrides.json").write_text(
         json.dumps({"monsters": {"Goblin": {"value": 1.0}}}), encoding="utf-8"
     )

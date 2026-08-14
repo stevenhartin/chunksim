@@ -179,6 +179,13 @@ CHUNKINFO_ENV_VAR = "CHUNKSIM_CHUNKINFO"
 HEURISTICS_DIR_NAME = "heuristics"
 OVERRIDES_FILE_NAME = "overrides.json"
 
+#: The corrections that **ship with the code**, `__file__`-relative like
+#: `gui.RESOURCE_DIR`. They live inside the package because they are the
+#: project's answers rather than the user's: an install that did not carry them
+#: would price every estimate differently from the checkout they were measured
+#: on, and say nothing about why.
+PACKAGED_OVERRIDES = Path(__file__).resolve().parent.parent / HEURISTICS_DIR_NAME / OVERRIDES_FILE_NAME
+
 #: Binary assets the GUI needs, kept beside the JSON blobs. Every one of them
 #: is fetched rather than committed, because all of it is somebody else's
 #: artwork - see `api.SECTION_OVERLAY_URL`.
@@ -666,8 +673,55 @@ def read_blob(name: str, root: Path | None = None, *, hint: str | None = None) -
 
 
 def overrides_path(root: Path | None = None) -> Path:
-    """The checked-in file holding hand-written heuristic corrections."""
-    return (root or data_root()) / HEURISTICS_DIR_NAME / OVERRIDES_FILE_NAME
+    """Where a correction is **written**.
+
+    In a checkout that is the packaged file itself, which is the checked-in one
+    - so editing a knob in the GUI still produces a diff, which is the whole
+    reason these are tracked rather than cached.
+
+    Installed, the package lives somewhere the user may not be able to write
+    and which an upgrade replaces, so writes go to their own data directory
+    instead. `read_overrides` looks there first and falls back to the shipped
+    copy, so the two behave as one file that the user can shadow.
+    """
+    base = root or data_root()
+    # **The same question however `base` arrived**, and that is the whole of it:
+    # `chunksim` passes nothing and the GUI passes `ctx.root`, so a rule that
+    # read the two differently would put the two apps back to pricing one map
+    # two ways - which is the bug `costing/inputs.py` exists to prevent.
+    #
+    # **Derived from the tree, not from `__file__`.** They are the same
+    # directory when this is running out of the checkout it is editing, and a
+    # test standing in a throwaway one needs its own file rather than the
+    # developer's real corrections.
+    packaged = base / "src" / "chunksim" / HEURISTICS_DIR_NAME / OVERRIDES_FILE_NAME
+    if packaged.parent.parent.is_dir():
+        return packaged
+    return base / HEURISTICS_DIR_NAME / OVERRIDES_FILE_NAME
+
+
+def overrides_source(root: Path | None = None) -> Path:
+    """The file `read_overrides` will actually read.
+
+    Separate from `overrides_path` because the two differ on an installed
+    build that has never had a knob edited: writes go to the user's directory,
+    reads come from the shipped copy. **Anything keying a cache on "which
+    corrections were these" wants this one** - digesting a path that does not
+    exist yet would say the inputs were empty when they were not.
+    """
+    written = overrides_path(root)
+    if written.is_file():
+        return written
+    # **An explicit root is a closed world.** Falling through to the shipped
+    # copy would make a caller that named a tree read a file outside it, and
+    # the caller that does this most is a test pointing at `tmp_path`.
+    if root is not None:
+        return written
+    # A checkout without corrections has none of its own; only an *installed*
+    # build falls through to the copy that shipped with it.
+    if (data_root() / "src" / "chunksim").is_dir():
+        return written
+    return PACKAGED_OVERRIDES
 
 
 def read_overrides(root: Path | None = None) -> dict[str, Any]:
@@ -678,7 +732,7 @@ def read_overrides(root: Path | None = None) -> dict[str, Any]:
     with it. A *malformed* file does raise - it was written deliberately, so
     silently ignoring it would drop corrections without saying so.
     """
-    path = overrides_path(root)
+    path = overrides_source(root)
     try:
         raw = path.read_text(encoding="utf-8")
     except FileNotFoundError:

@@ -28,13 +28,16 @@ chunksim-gui = "chunksim.gui:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-# The GUI's html/js/css. Small, and ours. The map tiles are deliberately *not*
+# The GUI's html/js/css, and the hand-written heuristic corrections. Both are
+# ours and both have to travel with the code: an install without the
+# corrections prices every estimate differently from the checkout they were
+# measured on, and says nothing about why. The map tiles are deliberately *not*
 # here, and are not fetched either: they are the OSRS wiki's cartography,
 # CC BY-NC-SA 3.0 against this project's GPL-3.0, so the browser loads them from
 # the wiki directly and nothing this project ships or caches carries one.
 # cache/assets/ holds section masks and skill icons, not artwork.
 [tool.setuptools.package-data]
-chunksim = ["gui/resources/*"]
+chunksim = ["gui/resources/*", "heuristics/*.json"]
 
 [tool.pytest.ini_options]
 # The opt-in oracles. `conftest.pytest_collection_modifyitems` turns these into

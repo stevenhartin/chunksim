@@ -429,7 +429,7 @@ def _overrides_digest(ctx: Context) -> str:
     without any fetch having happened - which is exactly the case a digest of
     the *fetched* inputs alone would miss."""
     try:
-        return cache.file_digest(cache.overrides_path(ctx.root))
+        return cache.file_digest(cache.overrides_source(ctx.root))
     except (OSError, cache.CacheMissError):
         return ""
 

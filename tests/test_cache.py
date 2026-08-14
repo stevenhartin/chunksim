@@ -56,6 +56,10 @@ from chunksim.store.cache import (
     write_derived,
     list_maps,
     CACHE_ENV_VAR,
+    PACKAGED_OVERRIDES,
+    overrides_path,
+    overrides_source,
+    read_overrides,
     checkout_root,
     data_root,
     user_data_root,
@@ -935,3 +939,39 @@ def test_the_reference_stamp_watches_a_maps_overrides_too(tmp_path: Path) -> Non
     # Another map's stamp is unmoved: the layers are per map.
     assert reference_stamp(tmp_path, "verf") == reference_stamp(tmp_path, "verf")
     assert reference_stamp(tmp_path) == reference_stamp(tmp_path)
+
+
+def test_an_installed_build_reads_the_corrections_that_shipped_with_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**The gap this closed.** `heuristics/overrides.json` used to live outside
+    the package and ship in nothing, so `pip install chunksim` and the Windows
+    build both priced every estimate without the hand-written corrections -
+    different answers from the checkout they were measured on, silently."""
+    monkeypatch.setenv(CACHE_ENV_VAR, str(tmp_path))
+
+    assert overrides_source() == PACKAGED_OVERRIDES
+    assert PACKAGED_OVERRIDES.is_file(), "the corrections must travel with the code"
+    assert read_overrides()["materials"], "an install with no corrections is the bug"
+
+
+def test_a_users_own_corrections_shadow_the_shipped_ones(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Installed, writes go somewhere the user can write and an upgrade will
+    not replace; reads prefer that, so the two behave as one file."""
+    monkeypatch.setenv(CACHE_ENV_VAR, str(tmp_path))
+    mine = overrides_path()
+    mine.parent.mkdir(parents=True, exist_ok=True)
+    mine.write_text('{"monsters": {"Cow": {"kills_per_hour": 1}}}', encoding="utf-8")
+
+    assert mine != PACKAGED_OVERRIDES
+    assert overrides_source() == mine
+    assert read_overrides() == {"monsters": {"Cow": {"kills_per_hour": 1}}}
+
+
+def test_an_explicit_root_never_reads_outside_itself(tmp_path: Path) -> None:
+    """A caller that named a tree gets that tree - which is what keeps a test
+    pointing at `tmp_path` from reading the developer's real corrections."""
+    assert overrides_source(tmp_path).is_relative_to(tmp_path)
+    assert read_overrides(tmp_path) == {}

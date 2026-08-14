@@ -127,8 +127,10 @@ def test_both_apps_hand_the_pricer_the_same_pins(
     if not dps_bridge.DPS_AVAILABLE:
         pytest.skip("the dps extra is not installed")
 
-    (both_apps / "heuristics").mkdir()
-    (both_apps / "heuristics" / "overrides.json").write_text(
+    # The corrections ship with the code, so a throwaway checkout carries its
+    # own copy where `cache.overrides_path` looks for one.
+    (both_apps / "src" / "chunksim" / "heuristics").mkdir(parents=True, exist_ok=True)
+    (both_apps / "src" / "chunksim" / "heuristics" / "overrides.json").write_text(
         json.dumps({"slayer": {"Duradel": {"Abyssal demon": {"kills_per_hour": 90}}},
                     "monsters": {"Cow": {"kills_per_hour": 300}}})
     )

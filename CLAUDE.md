@@ -188,7 +188,7 @@ The table says what each module **owns**; its docstring says why.
 | `costing/inputs.py` | What `chunksim estimate` and the Estimate tab must agree about, assembled once. The two had already drifted. Also `ReferenceBlobs`: the reference files read **once per invocation** and threaded, rather than four times by four callers — and the one place the four override layers are merged, so no reader can apply three of them. |
 | `costing/dps_bridge.py` | The seam to `osrs-dps`. **Optional import** — check `DPS_AVAILABLE`, never assume it. Prices only `reachable_providers`, which it imports rather than copying. |
 | `costing/*_overhead.py` | The harnesses that fitted the overhead constants. **No caller in `src/`** — they exist to be re-run when someone doubts them. |
-| `store/cache.py` | The disk. **`data_root` — where everything hangs off: `CHUNKSIM_CACHE`, else the checkout, else the user's own data directory.** Also the envelope, the `--chunkinfo`/`CHUNKSIM_CHUNKINFO` override, `--map` resolution across kinds, atomic writes, the cross-kind name claim, `migrate_layout`, and both override files. |
+| `store/cache.py` | The disk. **`overrides_path` is where a correction is *written* and `overrides_source` is the file actually *read*** — they differ on an installed build that has never had a knob edited, and anything keying a cache on "which corrections were these" wants the second. Both resolve the same way however `root` arrived, or the two apps price one map two ways. **`data_root` — where everything hangs off: `CHUNKSIM_CACHE`, else the checkout, else the user's own data directory.** Also the envelope, the `--chunkinfo`/`CHUNKSIM_CHUNKINFO` override, `--map` resolution across kinds, atomic writes, the cross-kind name claim, `migrate_layout`, and both override files. |
 | `store/derived_cache.py` | The on-disk cache of the **two** expensive per-state computations, and both their keys. **Read it before changing what `derive` returns** — including a *nested* result dataclass, which `_RESULT_TYPES` must list or the key will not move. |
 | `store/build_info.py` | Which install is running and when it was made. Never raises and never guesses a date. Also `parse_version`/`is_newer` — a **strict** reading of `X.Y.Z` that returns `None` rather than guess, since there is no PEP 440 parser in the stdlib and no dependency to add one. |
 | `runs/simulate.py` | Seeded chunk-roll simulation and `simulated_payload`. Records are never revisited by a later roll. |
@@ -327,7 +327,8 @@ the checkout rather than `/tmp` or stdout. A stray `tasks.json` there is that, n
 
 **The estimator's numbers live in three places and only two are in `cache/`.** `chunksim heuristics`
 writes the scrape to `cache/reference/wiki_rates.json` (refetchable, gitignored); hand-written
-corrections go in **`heuristics/overrides.json`, which is checked in** so they are diffable and
+corrections go in **`src/chunksim/heuristics/overrides.json`, which is checked in *and* shipped as
+package data** so they are diffable and
 survive a re-scrape; and corrections belonging to *one map* go in `cache/overrides/<map_id>.json`,
 which is cache data and gitignored with the rest. `heuristics/README.md` is the guide to which
 numbers are worth correcting. The export has *no* durations, rates or XP figures at all, so every

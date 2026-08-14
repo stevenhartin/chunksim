@@ -1,5 +1,9 @@
 # heuristics/
 
+**The file this describes is `src/chunksim/heuristics/overrides.json`.** It moved into the
+package so it ships with the code: an install that did not carry it would price every estimate
+differently from the checkout the numbers were measured on, and say nothing about why.
+
 Hand-written corrections to the numbers `chunksim estimate` spends. Checked in, so
 they are diffable, survive a re-scrape, and travel with the repo — which
 nothing under the gitignored `cache/` would.

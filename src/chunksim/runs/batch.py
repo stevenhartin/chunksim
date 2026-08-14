@@ -58,6 +58,7 @@ from chunksim.store.cache import (
     claim_sim_batch,
     file_digest,
     overrides_path,
+    overrides_source,
     read_base_payload,
     read_blob,
     read_cache,
@@ -412,7 +413,7 @@ def _overrides_digest(root: Path | None) -> str:
     without any fetch having happened - the case a digest of the fetched
     inputs alone would miss."""
     try:
-        return file_digest(overrides_path(root))
+        return file_digest(overrides_source(root))
     except (OSError, CacheMissError):
         return ""
 

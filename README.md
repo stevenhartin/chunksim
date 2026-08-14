@@ -166,7 +166,7 @@ entirely from constants, and a Slayer climb comes off a master's whole assignmen
 any single entry. A number nobody has set shows what it actually resolves to rather than the word
 "default", anything you have overridden is bordered and flagged with a **Revert** beside it, and the
 names the wiki has a page for are links — clicking one frames its chunks exactly as **Find** does. Where the correction
-is saved depends on where you are: in **Browse** it goes to `heuristics/overrides.json`, which is
+is saved depends on where you are: in **Browse** it goes to `src/chunksim/heuristics/overrides.json`, which is
 checked in and applies to every map; in **Timeline** or **Edit** it belongs to that map alone, in
 `cache/overrides/`. Emptying the box takes the correction back out. **Find** searches the
 whole world as you type, puts what you can reach first, and fits the camera around every place a
@@ -306,7 +306,7 @@ before believing a total:
   can reach**; what is left sits at a deliberately low 1,000 xp/hr so it looks slow rather than free,
   and under bands that floor usually applies to the bottom of a climb rather than all of it.
   151 of the guide joins are matched by *containment* rather than exactly — usually right,
-  occasionally not, and `heuristics/overrides.json` is where you disagree.
+  occasionally not, and `src/chunksim/heuristics/overrides.json` is where you disagree.
 - **Getting a thing costs what it costs.** An item is priced by the cheapest route this map has to
   it, and none of them are free: a shop charges its price at 500,000 gp an hour (or 25,000 Tokkul,
   or 19.5 marks of grace — all tunable) plus thirty seconds to walk there, a ground spawn is limited
@@ -507,7 +507,7 @@ maps are your own work and nothing can recompute them.
    The same cache holds the other slow thing, if you have the `dps` extra: recomputing every kill
    rate from your map's own gear takes about two thirds of a second, and dwarfs the estimate it
    feeds — so that gets stored too, and `chunksim estimate` drops from 1.7s to 0.2s on a repeat. It is
-   keyed on the rates, your `heuristics/overrides.json` *and* the calculator's own source, so
+   keyed on the rates, your `src/chunksim/heuristics/overrides.json` *and* the calculator's own source, so
    editing an override or upgrading `osrs-dps` recomputes rather than quietly serving you the old
    number.
 

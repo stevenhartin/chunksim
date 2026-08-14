@@ -9,6 +9,8 @@ from typing import Any
 
 import pytest
 
+from chunksim.store.cache import PACKAGED_OVERRIDES
+
 PROJECT = pathlib.Path(__file__).resolve().parent.parent
 
 from chunksim.model.chunkinfo import ChunkInfo
@@ -778,7 +780,7 @@ def test_the_giants_foundry_rates_are_the_wikis_own_alloy_tiers() -> None:
     entry in `heuristics/overrides.json` rather than something the scrape
     fetches, and a silent edit moves the whole climb: 874.1h -> 54.5h.
     """
-    overrides = json.loads((PROJECT / "heuristics" / "overrides.json").read_text())
+    overrides = json.loads(PACKAGED_OVERRIDES.read_text())
     rates = {
         task.split("Forge a")[-1].split("~|")[0].strip(): entry["Smithing"]["value"]
         for task, entry in overrides["training"].items()
@@ -813,7 +815,7 @@ def test_the_giants_foundry_charges_28_bars_and_says_so_consistently() -> None:
     accepts: an item contributes one bar *less* than it cost to smith, so it is
     strictly worse per bar of value.
     """
-    overrides = json.loads((PROJECT / "heuristics" / "overrides.json").read_text())
+    overrides = json.loads(PACKAGED_OVERRIDES.read_text())
     materials = {
         task: entry
         for task, entry in overrides["materials"].items()
@@ -866,7 +868,7 @@ def test_the_dart_materials_are_the_published_xp_per_dart() -> None:
     Measured: `fray` Fletching 21.3h -> 30.0h and `verf` 114.8h -> 244.9h,
     with dragon darts falling from 1,500,000 published to **197** effective.
     """
-    overrides = json.loads((PROJECT / "heuristics" / "overrides.json").read_text())
+    overrides = json.loads(PACKAGED_OVERRIDES.read_text())
     darts = {
         task.split("~|")[1].removesuffix("|~"): entry
         for task, entry in overrides["materials"].items()
@@ -897,7 +899,7 @@ def test_every_hand_material_names_a_task_the_export_carries(
     that key, misses, and the method keeps its rate with nothing charged -
     exactly the state this file exists to fix.
     """
-    overrides = json.loads((PROJECT / "heuristics" / "overrides.json").read_text())
+    overrides = json.loads(PACKAGED_OVERRIDES.read_text())
     known = {
         name
         for tasks in real_export.challenges.values()
