@@ -75,6 +75,7 @@ others only because the same rule switch turns it on.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import Any
 
 from chunksim.model.chunkinfo import ChunkInfo
@@ -249,6 +250,100 @@ def _nest_loot(
     return built
 
 
+def _slayer_task_for(monster: str, slayer: Mapping[str, Any]) -> str | None:
+    """The Slayer assignment a `Kill X` task should hang off, or `None`.
+
+    Upstream asks twice and the two questions are not the same (worker.js:4751
+    then :4753): whether *any* Slayer challenge outputs this monster or names
+    it case-sensitively, and then which one to link, matching
+    case-insensitively and skipping the `|~ alt` duplicates. A monster that
+    answers the first and not the second reaches `[0]` of an empty list -
+    `undefined` - and upstream writes a `Tasks` key spelled "undefined". That
+    is a bug rather than an intention, so it is not reproduced; the link is
+    simply left off, which is what the `Tasks` requirement then reads as
+    "nothing to wait for".
+    """
+    def outputs(name: str) -> bool:
+        entry = slayer.get(name)
+        return isinstance(entry, dict) and entry.get("Output") == monster
+
+    if not any(outputs(name) or f"~|{monster}|~" in name for name in slayer):
+        return None
+    lowered = f"~|{monster.lower()}|~"
+    for name in slayer:
+        if (outputs(name) or lowered in name.lower()) and "|~ alt" not in name:
+            return name
+    return None
+
+
+def _kill_x(
+    chunk_info: ChunkInfo,
+    monsters: Mapping[str, Any],
+    rules: Mapping[str, Any],
+    *,
+    slayer_trainable: bool,
+    slayer_has_tasks: bool,
+    slayer_cap: int | None,
+    passive_slayer: int | None,
+    best_boost: int,
+    backlog: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """A task per killable monster - port of worker.js:4718.
+
+    Every monster the chunks hold becomes `Kill X ~|<monster>|~`, where the X
+    is `rules['Kill X Amount']` at display time, not here. Three gates decide
+    which monsters count:
+
+    - **Slayer reach.** A monster that needs a Slayer level is only killable
+      if Slayer is trainable and any assignment lock allows it, or a
+      `passiveSkill` floor already covers the requirement. Both comparisons
+      take the best Slayer boost the chunks can supply, computed at level 1
+      the way upstream computes it.
+    - **`Kill X Boss`**, which is a second rule rather than an amount: off,
+      the boss list is excluded outright.
+    - **The backlog**, checked here rather than left to the ordinary
+      machinery, because a forced-valid challenge never reaches it. Both
+      spellings of a `#` sub-name are tried, as everywhere the backlog is
+      read.
+
+    A `Tasks` link back to the matching Slayer assignment is added when the
+    map has any Slayer validity at all, so that killing the monster reads as
+    part of a slayer task rather than a free-standing goal.
+    """
+    slayer_monsters = chunk_info.slayer_monsters
+    bosses = _mapping(chunk_info.code_items, "bossMonsters")
+    boss_ok = rules.get("Kill X Boss") is True
+    slayer = _mapping(chunk_info.challenges, "Slayer")
+    built: dict[str, dict[str, Any]] = {}
+    for monster in sorted(monsters):
+        required = slayer_monsters.get(monster)
+        if isinstance(required, (int, float)) and not isinstance(required, bool):
+            locked_ok = slayer_trainable and (
+                slayer_cap is None or required <= slayer_cap + best_boost
+            )
+            passive_ok = passive_slayer is not None and passive_slayer + best_boost >= required
+            if not locked_ok and not passive_ok:
+                continue
+        if not boss_ok and monster in bosses:
+            continue
+        name = f"Kill X ~|{monster}|~"
+        if name in backlog or f"Kill X ~|{monster.replace('#', '/')}|~" in backlog:
+            continue
+        entry: dict[str, Any] = {
+            "Category": ["Kill X"],
+            "Monsters": [monster],
+            "MonstersDetails": [monster],
+            "Label": "Kill X",
+            "Permanent": False,
+        }
+        if slayer_has_tasks:
+            assignment = _slayer_task_for(monster, slayer)
+            if assignment is not None:
+                entry["Tasks"] = {assignment: "Slayer"}
+        built[name] = entry
+    return built
+
+
 def forced_valid_from(
     definitions: Mapping[str, Mapping[str, Mapping[str, Any]]],
 ) -> dict[str, dict[str, int | str | bool]]:
@@ -262,10 +357,32 @@ def forced_valid_from(
     }
 
 
+@dataclass(frozen=True)
+class SynthesisInputs:
+    """Everything the bulk rules read beyond the export and the rules.
+
+    A record rather than eight parameters, because the set grows with each
+    rule ported and every one of them is threaded from the same place in
+    `pipeline.derive`. All of it is one pass's answer, not the map's: `items`
+    and `monsters` are the seeded indexes, `slayer_trainable` this pass's
+    `checkPrimaryMethod`.
+    """
+
+    items: Mapping[str, Mapping[str, str]]
+    monsters: Mapping[str, Any] = field(default_factory=dict)
+    backlog: Mapping[str, Any] = field(default_factory=dict)
+    slayer_trainable: bool = False
+    slayer_has_tasks: bool = False
+    #: The assignment lock's level cap, or `None` for "no lock".
+    slayer_cap: int | None = None
+    passive_slayer: int | None = None
+    best_slayer_boost: int = 0
+
+
 def synthesised_challenges(
-    chunk_info: ChunkInfo, items: Mapping[str, Mapping[str, str]], rules: Mapping[str, Any]
+    chunk_info: ChunkInfo, given: SynthesisInputs, rules: Mapping[str, Any]
 ) -> dict[str, dict[str, Any]]:
-    """The bulk-built challenges, from one pass's seeded item index.
+    """The bulk-built challenges, from one pass's seeded indexes.
 
     Keyed by category then name, like `injected_challenges`, and empty when
     none of the rules that build them is on - which is the common case, and
@@ -273,7 +390,21 @@ def synthesised_challenges(
     """
     extra: dict[str, Any] = {}
     if rules.get("All Shops") is True:
-        extra.update(_all_shops(items))
+        extra.update(_all_shops(given.items))
     if rules.get("All Droptables Nest") is True:
-        extra.update(_nest_loot(chunk_info, items, rules))
+        extra.update(_nest_loot(chunk_info, given.items, rules))
+    if rules.get("Kill X") is True:
+        extra.update(
+            _kill_x(
+                chunk_info,
+                given.monsters,
+                rules,
+                slayer_trainable=given.slayer_trainable,
+                slayer_has_tasks=given.slayer_has_tasks,
+                slayer_cap=given.slayer_cap,
+                passive_slayer=given.passive_slayer,
+                best_boost=given.best_slayer_boost,
+                backlog=given.backlog,
+            )
+        )
     return {"Extra": extra} if extra else {}

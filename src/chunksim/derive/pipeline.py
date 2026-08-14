@@ -61,8 +61,15 @@ from typing import Any
 
 from chunksim.derive.active_tasks import TaskClassification, classify_tasks
 from chunksim.derive.bis import BisResult, compute_bis
-from chunksim.derive.challenges import ChallengeResult, _ItemPlan, calc_challenges
+from chunksim.derive import boosts
+from chunksim.derive.challenges import (
+    ChallengeResult,
+    _check_primary_method,
+    _ItemPlan,
+    calc_challenges,
+)
 from chunksim.derive.injected import (
+    SynthesisInputs,
     forced_valid_from,
     injected_challenges,
     synthesised_challenges,
@@ -331,6 +338,16 @@ def _gates_agree(
     )
 
 
+def _slayer_floor(state: MapState) -> int | None:
+    """`passiveSkill['Slayer']` as an int, or `None` where the map records
+    none. Upstream's `Kill X` filter tests presence before comparing, so an
+    absent floor must not read as zero."""
+    floor = state.passive_skill.get("Slayer")
+    if isinstance(floor, (int, float)) and not isinstance(floor, bool):
+        return int(floor)
+    return None
+
+
 def _merge_by_category(
     first: Mapping[str, Mapping[str, Any]], second: Mapping[str, Mapping[str, Any]]
 ) -> dict[str, dict[str, Any]]:
@@ -505,7 +522,41 @@ def derive(
             passive_skill=state.passive_skill,
         )
         rebuilt = synthesised_challenges(
-            chunk_info, challenges.available_items, state.rules
+            chunk_info,
+            SynthesisInputs(
+                items=challenges.available_items,
+                monsters=index.monsters,
+                backlog=state.backlog.get("Extra") or {},
+                # Upstream asks `checkPrimaryMethod('Slayer', …)` inside the
+                # `Kill X` filter, once per monster, against this pass's own
+                # answer; asking it here is the same question hoisted.
+                slayer_trainable=_check_primary_method(
+                    "Slayer",
+                    challenges.valid,
+                    index,
+                    chunk_info,
+                    passive_skill=state.passive_skill,
+                    backlog=state.backlog,
+                    manual_tasks=state.manual_tasks,
+                    rules=state.rules,
+                    items=challenges.available_items,
+                    objects=challenges.available_objects,
+                ),
+                slayer_has_tasks=bool(challenges.valid.get("Slayer")),
+                slayer_cap=state.slayer_locked.level if state.slayer_locked else None,
+                passive_slayer=_slayer_floor(state),
+                best_slayer_boost=boosts.best_boost(
+                    "Slayer",
+                    "",
+                    {},
+                    1.0,
+                    rules=state.rules,
+                    chunk_info=chunk_info,
+                    items=challenges.available_items,
+                    source_index=index,
+                )[0],
+            ),
+            state.rules,
         )
         settled = rebuilt == synthesised
         if not new_areas and settled and _gates_agree(gate_pairs, challenges.valid, valid_tasks):

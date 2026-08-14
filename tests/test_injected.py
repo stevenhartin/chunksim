@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from chunksim.derive.injected import (
+    SynthesisInputs,
     forced_valid_from,
     injected_challenges,
     synthesised_challenges,
@@ -124,7 +125,7 @@ def test_all_shops_names_a_task_per_shop_and_item() -> None:
     """One item sold in two shops is two tasks - the point of the rule."""
     built = synthesised_challenges(
         _info(),
-        {"Raw beef": {"Food Store": "shop", "Kenelme's Wares": "shop"}}, {"All Shops": True}
+        SynthesisInputs(items={"Raw beef": {"Food Store": "shop", "Kenelme's Wares": "shop"}}), {"All Shops": True}
     )
 
     assert set(built["Extra"]) == {
@@ -145,7 +146,9 @@ def test_only_an_exact_shop_tag_counts() -> None:
     merely passes through a shop carries a compound tag and is not stock."""
     built = synthesised_challenges(
         _info(),
-        {"Raw beef": {"Food Store": "shop", "Some route": "primary-Cooking-shop"}},
+        SynthesisInputs(
+            items={"Raw beef": {"Food Store": "shop", "Some route": "primary-Cooking-shop"}}
+        ),
         {"All Shops": True},
     )
 
@@ -153,13 +156,13 @@ def test_only_an_exact_shop_tag_counts() -> None:
 
 
 def test_a_marked_index_entry_is_skipped_whole() -> None:
-    assert synthesised_challenges(_info(), {"^^placeholder": {"Shop": "shop"}}, {"All Shops": True}) == {}
+    assert synthesised_challenges(_info(), SynthesisInputs(items={"^^placeholder": {"Shop": "shop"}}), {"All Shops": True}) == {}
 
 
 def test_the_secondary_marker_leaves_the_name_but_stays_in_items() -> None:
     """`*` marks a secondary ingredient. It has no business in a task title,
     but `_compile_items` reads it, so `Items` keeps it."""
-    built = synthesised_challenges(_info(), {"Feather*": {"Shop": "shop"}}, {"All Shops": True})
+    built = synthesised_challenges(_info(), SynthesisInputs(items={"Feather*": {"Shop": "shop"}}), {"All Shops": True})
 
     assert list(built["Extra"]) == ["Shop: ~|Feather|~"]
     assert built["Extra"]["Shop: ~|Feather|~"]["Items"] == ["Feather*"]
@@ -168,15 +171,15 @@ def test_the_secondary_marker_leaves_the_name_but_stays_in_items() -> None:
 def test_a_marked_up_shop_name_is_unwrapped_for_the_title() -> None:
     built = synthesised_challenges(
         _info(),
-        {"Bronze axe": {"~|Bob's Brilliant Axes|~": "shop"}}, {"All Shops": True}
+        SynthesisInputs(items={"Bronze axe": {"~|Bob's Brilliant Axes|~": "shop"}}), {"All Shops": True}
     )
 
     assert list(built["Extra"]) == ["Bob's Brilliant Axes: ~|Bronze axe|~"]
 
 
 def test_nothing_is_built_while_the_rule_is_off() -> None:
-    assert synthesised_challenges(_info(), {"Raw beef": {"Food Store": "shop"}}, {}) == {}
-    assert synthesised_challenges(_info(), {"Raw beef": {"Food Store": "shop"}}, {"All Shops": False}) == {}
+    assert synthesised_challenges(_info(), SynthesisInputs(items={"Raw beef": {"Food Store": "shop"}}), {}) == {}
+    assert synthesised_challenges(_info(), SynthesisInputs(items={"Raw beef": {"Food Store": "shop"}}), {"All Shops": False}) == {}
 
 
 @pytest.mark.real_cache
@@ -227,7 +230,7 @@ def test_a_reachable_nest_becomes_one_task_per_loot_row() -> None:
     """The rate goes into the name as the export stores it, and an empty
     quantity reads as `N/A` - upstream's `(quantity || 'N/A')`."""
     built = synthesised_challenges(
-        _nest_world(), {"Bird nest (egg)": {}}, {"All Droptables Nest": True}
+        _nest_world(), SynthesisInputs(items={"Bird nest (egg)": {}}), {"All Droptables Nest": True}
     )
 
     assert set(built["Extra"]) == {
@@ -240,7 +243,7 @@ def test_a_nest_task_names_its_nest_as_an_object() -> None:
     """`Monsters: ['<nest>-object']` is a suffix no monster index carries,
     which is exactly why these have to be forced valid rather than judged."""
     built = synthesised_challenges(
-        _nest_world(), {"Bird nest (egg)": {}}, {"All Droptables Nest": True}
+        _nest_world(), SynthesisInputs(items={"Bird nest (egg)": {}}), {"All Droptables Nest": True}
     )
     entry = built["Extra"]["Bird nest (egg): ~|Bird nest (empty)|~ (1) (Always)"]
 
@@ -261,7 +264,7 @@ def test_a_plus_family_nest_keeps_its_marker_out_of_the_title() -> None:
     )
 
     built = synthesised_challenges(
-        world, {"Bird nest (egg)[+]": {}}, {"All Droptables Nest": True}
+        world, SynthesisInputs(items={"Bird nest (egg)[+]": {}}), {"All Droptables Nest": True}
     )
 
     assert list(built["Extra"]) == ["Bird nest (egg): ~|Acorn|~ (1) (1/2)"]
@@ -273,7 +276,7 @@ def test_a_nest_with_no_loot_challenge_is_skipped() -> None:
     world = _info(skillItems={"Nonskill": {"Bird nest (egg) loot": {"Acorn": {"1": "1/2"}}}})
 
     assert synthesised_challenges(
-        world, {"Bird nest (egg)": {}}, {"All Droptables Nest": True}
+        world, SynthesisInputs(items={"Bird nest (egg)": {}}), {"All Droptables Nest": True}
     ) == {}
 
 
@@ -284,8 +287,8 @@ def test_an_f2p_map_loses_a_members_nest_whole() -> None:
     )
     items: dict[str, dict[str, str]] = {"Bird nest (egg)": {}}
 
-    assert synthesised_challenges(world, items, {"All Droptables Nest": True})
-    assert synthesised_challenges(world, items, {"All Droptables Nest": True, "F2P": True}) == {}
+    assert synthesised_challenges(world, SynthesisInputs(items=items), {"All Droptables Nest": True})
+    assert synthesised_challenges(world, SynthesisInputs(items=items), {"All Droptables Nest": True, "F2P": True}) == {}
 
 
 def test_forced_valid_values_are_the_labels() -> None:
@@ -294,3 +297,108 @@ def test_forced_valid_values_are_the_labels() -> None:
     assert forced_valid_from({"Extra": {"A task": {"Label": "All Shops"}}}) == {
         "Extra": {"A task": "All Shops"}
     }
+
+
+def _monster_world(**over: Any) -> ChunkInfo:
+    return _info(
+        challenges={
+            "Slayer": {
+                "Slay ~|Cave crawler|~": {"Output": "Cave crawler", "Level": 10},
+                "Slay ~|cave crawler|~ alt": {"Output": "Cave crawler", "Level": 10},
+            }
+        },
+        slayerMonsters={"Cave crawler": 10, "Abyssal demon": 85},
+        codeItems={"bossMonsters": {"Zulrah": True}},
+        **over,
+    )
+
+
+def _kill_x(**over: Any) -> dict[str, dict[str, Any]]:
+    given = SynthesisInputs(
+        items={},
+        monsters={"Rat": True, "Cave crawler": True, "Abyssal demon": True, "Zulrah": True},
+        **over,
+    )
+    return synthesised_challenges(_monster_world(), given, {"Kill X": True}).get("Extra", {})
+
+
+def test_kill_x_names_a_task_per_reachable_monster() -> None:
+    """A monster with no Slayer requirement always counts; one with a
+    requirement needs Slayer trainable or a passive floor that covers it.
+    Bosses are a separate rule, off here."""
+    built = _kill_x()
+
+    assert set(built) == {"Kill X ~|Rat|~"}
+
+
+def test_a_trainable_slayer_brings_its_monsters_in() -> None:
+    built = _kill_x(slayer_trainable=True)
+
+    assert set(built) == {"Kill X ~|Rat|~", "Kill X ~|Cave crawler|~", "Kill X ~|Abyssal demon|~"}
+
+
+def test_a_slayer_lock_caps_which_monsters_count() -> None:
+    """The assignment lock stops Slayer at its level, so the level-85 monster
+    goes and the level-10 one stays."""
+    built = _kill_x(slayer_trainable=True, slayer_cap=40)
+
+    assert set(built) == {"Kill X ~|Rat|~", "Kill X ~|Cave crawler|~"}
+
+
+def test_a_boost_lifts_the_cap() -> None:
+    built = _kill_x(slayer_trainable=True, slayer_cap=80, best_slayer_boost=5)
+
+    assert "Kill X ~|Abyssal demon|~" in built
+
+
+def test_a_passive_floor_counts_even_with_slayer_untrainable() -> None:
+    """The two routes are alternatives, not conjuncts: a level already banked
+    needs no way to train the skill further."""
+    built = _kill_x(passive_slayer=85)
+
+    assert "Kill X ~|Abyssal demon|~" in built
+
+
+def test_an_absent_passive_floor_is_not_a_zero() -> None:
+    """Upstream tests `passiveSkill.hasOwnProperty('Slayer')` before
+    comparing, so a map recording none must not read as level 0 - which would
+    admit any monster requiring 0."""
+    assert "Kill X ~|Cave crawler|~" not in _kill_x()
+
+
+def test_bosses_wait_for_their_own_rule() -> None:
+    given = SynthesisInputs(items={}, monsters={"Zulrah": True})
+
+    assert synthesised_challenges(_monster_world(), given, {"Kill X": True}) == {}
+    assert "Kill X ~|Zulrah|~" in synthesised_challenges(
+        _monster_world(), given, {"Kill X": True, "Kill X Boss": True}
+    )["Extra"]
+
+
+def test_a_backlogged_kill_is_left_out() -> None:
+    """Checked here rather than left to the ordinary machinery, because a
+    forced-valid challenge never reaches it."""
+    built = _kill_x(backlog={"Kill X ~|Rat|~": True})
+
+    assert "Kill X ~|Rat|~" not in built
+
+
+def test_a_hash_sub_name_is_tried_both_spellings_in_the_backlog() -> None:
+    given = SynthesisInputs(
+        items={},
+        monsters={"Cave bug#Level 6": True},
+        backlog={"Kill X ~|Cave bug/Level 6|~": True},
+    )
+
+    assert synthesised_challenges(_monster_world(), given, {"Kill X": True}) == {}
+
+
+def test_a_kill_task_links_to_its_slayer_assignment() -> None:
+    """Skipping the `|~ alt` duplicates, and only when the map has Slayer
+    validity at all."""
+    unlinked = _kill_x(slayer_trainable=True)
+    linked = _kill_x(slayer_trainable=True, slayer_has_tasks=True)
+
+    assert "Tasks" not in unlinked["Kill X ~|Cave crawler|~"]
+    assert linked["Kill X ~|Cave crawler|~"]["Tasks"] == {"Slay ~|Cave crawler|~": "Slayer"}
+    assert "Tasks" not in linked["Kill X ~|Rat|~"]
