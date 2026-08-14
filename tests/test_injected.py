@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from chunksim.derive.injected import injected_challenges
+from chunksim.derive.injected import injected_challenges, synthesised_challenges
 from chunksim.derive.pipeline import Derived
 from chunksim.model.chunkinfo import ChunkInfo
 
@@ -114,3 +114,89 @@ def test_the_quest_cape_is_reported_unjudgeable_rather_than_valid(
     assert f"Nonskill/{_QUEST_CAPE}" in real_derived.challenges.unsupported
     assert _QUEST_CAPE not in real_derived.challenges.valid.get("Nonskill", {})
     assert "Quest point cape (t)" not in real_derived.challenges.available_items
+
+
+def test_all_shops_names_a_task_per_shop_and_item() -> None:
+    """One item sold in two shops is two tasks - the point of the rule."""
+    built = synthesised_challenges(
+        {"Raw beef": {"Food Store": "shop", "Kenelme's Wares": "shop"}}, {"All Shops": True}
+    )
+
+    assert set(built["Extra"]) == {
+        "Food Store: ~|Raw beef|~",
+        "Kenelme's Wares: ~|Raw beef|~",
+    }
+    assert built["Extra"]["Food Store: ~|Raw beef|~"] == {
+        "Category": ["All Shops"],
+        "Items": ["Raw beef"],
+        "ItemsDetails": ["Raw beef"],
+        "Label": "All Shops",
+        "Permanent": False,
+    }
+
+
+def test_only_an_exact_shop_tag_counts() -> None:
+    """Upstream tests the tag for equality, not membership: an item that
+    merely passes through a shop carries a compound tag and is not stock."""
+    built = synthesised_challenges(
+        {"Raw beef": {"Food Store": "shop", "Some route": "primary-Cooking-shop"}},
+        {"All Shops": True},
+    )
+
+    assert set(built["Extra"]) == {"Food Store: ~|Raw beef|~"}
+
+
+def test_a_marked_index_entry_is_skipped_whole() -> None:
+    assert synthesised_challenges({"^^placeholder": {"Shop": "shop"}}, {"All Shops": True}) == {}
+
+
+def test_the_secondary_marker_leaves_the_name_but_stays_in_items() -> None:
+    """`*` marks a secondary ingredient. It has no business in a task title,
+    but `_compile_items` reads it, so `Items` keeps it."""
+    built = synthesised_challenges({"Feather*": {"Shop": "shop"}}, {"All Shops": True})
+
+    assert list(built["Extra"]) == ["Shop: ~|Feather|~"]
+    assert built["Extra"]["Shop: ~|Feather|~"]["Items"] == ["Feather*"]
+
+
+def test_a_marked_up_shop_name_is_unwrapped_for_the_title() -> None:
+    built = synthesised_challenges(
+        {"Bronze axe": {"~|Bob's Brilliant Axes|~": "shop"}}, {"All Shops": True}
+    )
+
+    assert list(built["Extra"]) == ["Bob's Brilliant Axes: ~|Bronze axe|~"]
+
+
+def test_nothing_is_built_while_the_rule_is_off() -> None:
+    assert synthesised_challenges({"Raw beef": {"Food Store": "shop"}}, {}) == {}
+    assert synthesised_challenges({"Raw beef": {"Food Store": "shop"}}, {"All Shops": False}) == {}
+
+
+@pytest.mark.real_cache
+def test_all_shops_settles_and_fills_the_panel(
+    real_payload: dict[str, Any],
+    real_export: ChunkInfo,
+    real_tasks_map: dict[str, str],
+) -> None:
+    """The loop has to converge with the rule on, which is the thing a
+    per-pass synthesis can get wrong: the challenges are built from the item
+    index, so a set that never settles would raise `ConvergenceError`.
+
+    They are also the whole content of an `All Shops` panel group, which is
+    what `Derived.injected` exists to let a caller render.
+    """
+    import copy
+
+    from chunksim.derive.pipeline import derive, load_map_state
+
+    payload = copy.deepcopy(real_payload)
+    payload["rules"]["All Shops"] = True
+    state, unlocked = load_map_state(payload, real_export, real_tasks_map)
+
+    derived = derive(state, unlocked)
+    shops = derived.injected["Extra"]
+
+    assert shops, "the oracle map reaches no shop at all"
+    assert set(shops) <= set(derived.challenges.valid["Extra"])
+    groups = {group.name: group for group in derived.other_tasks.categories["Extra"].groups}
+    assert len(groups["All Shops"].active) == len(shops)

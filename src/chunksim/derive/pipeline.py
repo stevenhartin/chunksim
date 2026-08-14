@@ -62,7 +62,7 @@ from typing import Any
 from chunksim.derive.active_tasks import TaskClassification, classify_tasks
 from chunksim.derive.bis import BisResult, compute_bis
 from chunksim.derive.challenges import ChallengeResult, _ItemPlan, calc_challenges
-from chunksim.derive.injected import injected_challenges
+from chunksim.derive.injected import injected_challenges, synthesised_challenges
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.derive.other_tasks import OtherTasks, classify_other_tasks
 from chunksim.model.firebase import decode_challenge_keyed, decode_payload
@@ -327,6 +327,20 @@ def _gates_agree(
     )
 
 
+def _merge_by_category(
+    first: Mapping[str, Mapping[str, Any]], second: Mapping[str, Mapping[str, Any]]
+) -> dict[str, dict[str, Any]]:
+    """Two `{category: {name: definition}}` tables as one, `second` winning a
+    clash. Neither producer can name the same challenge as the other today -
+    the capes are two literals - but merging by category rather than by
+    top-level key is what stops one silently replacing the other's whole
+    branch."""
+    return {
+        category: {**first.get(category, {}), **second.get(category, {})}
+        for category in first.keys() | second.keys()
+    }
+
+
 def derive(
     state: MapState,
     unlocked: Mapping[str, bool],
@@ -416,6 +430,10 @@ def derive(
     # everything below reads the overlaid export rather than `state`'s, the
     # way upstream reads the copy it mutated.
     injected_definitions = injected_challenges(state.chunk_info, unlocked, state.rules)
+    # The bulk-built challenges are a function of the item index this loop is
+    # still computing, so they start empty and are refolded at the end of each
+    # pass - see below, and `derive/injected.py` for why that terminates.
+    synthesised: dict[str, dict[str, Any]] = {}
     chunk_info = state.chunk_info.with_challenges(injected_definitions)
     max_skill = slayer_capped_max_skill(state, unlocked)
     locked_equipment = slayer_locked_equipment(state, unlocked)
@@ -481,9 +499,20 @@ def derive(
             max_skill=max_skill,
             passive_skill=state.passive_skill,
         )
-        if not new_areas and _gates_agree(gate_pairs, challenges.valid, valid_tasks):
+        rebuilt = synthesised_challenges(challenges.available_items, state.rules)
+        settled = rebuilt == synthesised
+        if not new_areas and settled and _gates_agree(gate_pairs, challenges.valid, valid_tasks):
             converged = True
             break
+        if not settled:
+            # A changed set means the next pass has challenges this one never
+            # saw, so nothing about this pass's answer can be trusted as final
+            # - including the two tests above, which is why this is folded in
+            # before them rather than after.
+            synthesised = rebuilt
+            chunk_info = state.chunk_info.with_challenges(
+                _merge_by_category(injected_definitions, rebuilt)
+            )
         valid_tasks = challenges.valid
         expanded = {**expanded, **new_areas}
 
@@ -533,7 +562,7 @@ def derive(
         bis=bis,
         task_classification=task_classification,
         other_tasks=other,
-        injected=injected_definitions,
+        injected=_merge_by_category(injected_definitions, synthesised),
     )
 
 

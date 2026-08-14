@@ -51,12 +51,25 @@ Chunk membership is tested the way upstream tests it, with
 value, and this project's decoded `unlocked` maps an id to itself rather than
 to `True` anyway.
 
-The eight rules that synthesise in *bulk* - `All Shops`, `All Droptables`,
-`All Droptables Nest`, `Every Drop`, `Every Drop Implings`, `Kill X`, `Kill X
-Boss`, `Skilling Pets` - are not here yet. They belong in this module when
-they land: same mechanism, but their inputs are the seeded item and drop
-indexes rather than the chunk list, so they cannot be built before the fixed
-point the way these two can.
+`synthesised_challenges` is the other half, for the rules that build in
+*bulk* from what the map can already reach - a task per shop line, per
+droptable row, per monster. Those cannot be settled before the fixed point
+the way the capes can, because their input **is** the fixed point's answer:
+the seeded item index. `pipeline.derive` recomputes them at the end of each
+pass, re-overlays, and refuses to converge until they stop moving. That
+terminates because none of them carries an `Output` - they consume what is
+already reachable and add nothing to it, so the item index cannot chase its
+own tail through them.
+
+Unlike the capes these *are* re-judged, and want to be: upstream writes them
+after its own scan, so they are checked on the following pass like anything
+else, and their `Items` requirement is satisfied by construction. Letting the
+ordinary machinery do it is both simpler and the same answer.
+
+Still outstanding: `All Droptables`, `All Droptables Nest`, `Every Drop`,
+`Every Drop Implings`, `Kill X`, `Kill X Boss`, `Skilling Pets`. The last is
+not a challenge at all - it seeds pet *items* - and belongs beside the
+others only because the same rule switch turns it on.
 """
 
 from __future__ import annotations
@@ -138,3 +151,60 @@ def injected_challenges(
         )
 
     return definitions
+
+
+def _shop_source(source: str) -> str:
+    """`~|Bob's Brilliant Axes|~` -> `Bob's Brilliant Axes`; anything else
+    unchanged. Upstream unwraps the markup for the *name* only, and leaves
+    the index key it came from alone."""
+    if "~|" in source and "|~" in source:
+        return source.split("~|")[1].split("|~")[0]
+    return source
+
+
+def _all_shops(items: Mapping[str, Mapping[str, str]]) -> dict[str, dict[str, Any]]:
+    """A task per (shop, item) the map can reach - port of worker.js:5071.
+
+    The tag has to be **exactly** `shop`: an item a shop sells is tagged
+    `shop`, where one that merely passes through a shop as part of a longer
+    route carries a compound tag, and upstream tests equality rather than
+    membership. `^^` marks an index entry that is not a real item and is
+    skipped whole; a `*` in the item name is a secondary marker, dropped from
+    the task name but kept in `Items` where `_compile_items` reads it.
+
+    One item sold in four shops is four tasks, which is the point of the
+    rule - 572 of them on the second cached map.
+    """
+    built: dict[str, dict[str, Any]] = {}
+    for item, sources in items.items():
+        if "^^" in item:
+            continue
+        for source, tag in sources.items():
+            if tag != "shop":
+                continue
+            name = f"{_shop_source(source)}: ~|{item.replace('*', '')}|~"
+            built[name] = {
+                "Category": ["All Shops"],
+                "Items": [item],
+                "ItemsDetails": [item],
+                "Label": "All Shops",
+                "Permanent": False,
+            }
+    return built
+
+
+def synthesised_challenges(
+    items: Mapping[str, Mapping[str, str]], rules: Mapping[str, Any]
+) -> dict[str, dict[str, Any]]:
+    """The bulk-built challenges, from one pass's seeded item index.
+
+    Keyed by category then name, like `injected_challenges`, and empty when
+    none of the rules that build them is on - which is the common case, and
+    lets `pipeline.derive` skip rebuilding its overlay entirely.
+    """
+    built: dict[str, dict[str, Any]] = {}
+    if rules.get("All Shops") is True:
+        shops = _all_shops(items)
+        if shops:
+            built["Extra"] = shops
+    return built
