@@ -52,6 +52,15 @@ MAP_URL = "https://chunkpicker.firebaseio.com/maps/{map_id}.json"
 #: against a private repo cannot tell "no release yet" from "not allowed" - and
 #: the fix is not a token. A token shipped inside a distributed application is
 #: a published token, granting read access to everything the account owns.
+#:
+#: **`latest` excludes pre-releases and drafts, so this 404s while every
+#: published release is one.** That is not a fault to go looking for: it is the
+#: pre-release checkbox doing its job, and the update check correctly says
+#: nothing rather than offering a build its author marked as not ready.
+#: Measured against `v0.1.0` on 2026-08-14 - the release existed, its asset and
+#: digest were exactly right, and this endpoint still answered 404. Reading
+#: `/releases` and filtering would change that, and would need a channel
+#: setting to be worth having.
 RELEASES_URL = "https://api.github.com/repos/stevenhartin/chunksim/releases/latest"
 
 #: The installer asset a Windows build publishes, by convention. Matched
