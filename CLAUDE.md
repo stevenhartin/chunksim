@@ -153,6 +153,16 @@ docstring carries its half:
   somebody else's account. So it wins, the same way `dps_bridge` puts a
   simulated fight above a scraped kill rate.
 
+**Not every "computed" number is evidence, and the docstrings say which.**
+Thieving's fifteen tabulated stalls come out at exactly 1.00x against the
+scrape, and that is an identity rather than agreement — the wiki's column is
+`3600 / respawn * xp` and so is the model. Mining's one fitted row is the same
+standing for the opposite reason: one parameter against one observation. Read a
+1.00x in `costing/gathering_overhead.py`'s output as a claim about arithmetic
+until the docstring says otherwise; the numbers that carry information are the
+ones with several rows and a residual, like Woodcutting's 12/17 and Hunter's
+6/10.
+
 **The third layer is not a rate at all, and that is what makes it compose.**
 `costing/production.py` reads the same `Module:Skill calc` tables the gathering
 model does, for a different column: what one action *consumes*, against the XP

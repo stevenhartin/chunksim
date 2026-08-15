@@ -1,4 +1,4 @@
-"""The three numbers a gathering action is made of, from the wiki's own tables.
+"""The numbers a gathering action is made of, from the wiki's own tables.
 
 **Gathering was the hole every other rate source left.** `{{Recipe}}` describes
 nothing here - a fishing spot is not a recipe, so `remote/recipes.py` returns
@@ -16,6 +16,15 @@ publishes all three in machine-readable form:
 | success chance | `{{Skilling success chart}}` | `low`/`high`/`req` per series |
 | roll interval | the tool page's `Ticks between rolls` column | ticks per pickaxe |
 | node cycle | the skill page's despawn/respawn table | seconds per node |
+| stall restock | `Stall/Thievable`'s `Respawn Time` column | seconds per stall |
+| traps at once | the Hunter page's `Multiple traps` table | units per level |
+
+**The last two are what finished Thieving and Hunter**, the two skills the model
+refused longest, and neither needed a fit. A stall hands over one item and is
+empty until it restocks, so the restock time *is* its rate; a trap line runs
+several traps at once, and the count is a step function of level that no success
+curve can express. Both were sitting in plain sight on pages already being
+fetched for something else.
 
 **The chart template is the find, and it is everywhere.** Over 500 article-space
 pages transclude it - every tree, rock, fishing spot, kebbit, stall and
@@ -32,6 +41,10 @@ changes the *interval* instead and the wiki says so in as many words ("Your
 level affects the chance of getting ore each time the game rolls; your pickaxe
 affects how often that happens" - Mod Ash, 28 October 2019). Reading the shape
 off the chart rather than branching per skill is what lets one model serve both.
+
+**A transcluded table is not in the page that shows it.** The thievable-stall
+table renders inside `Stall` and lives at `Stall/Thievable`; fetching the
+article returns `{{/Thievable}}` and nothing else. Read the subpage.
 
 Pure parsing. `remote/api.py` fetches, `costing/gathering.py` decides what a row
 implies, and the success *formula* lives there too - it is the game's own
@@ -58,6 +71,15 @@ WOODCUTTING_PAGE = "Woodcutting"
 
 #: The template every success curve is written as.
 SUCCESS_TEMPLATE = "Skilling success chart"
+
+#: The thievable-stall table, transcluded into `Stall` as `{{/Thievable}}`.
+#: **The subpage rather than the article**, because a transclusion is not in
+#: the article's own wikitext and the parent page carries only the template
+#: call.
+STALL_PAGE = "Stall/Thievable"
+
+#: The Hunter skill page, for its `Multiple traps` table.
+HUNTER_PAGE = "Hunter"
 
 #: One `{{Skilling success chart|...}}` invocation. Matched non-greedily and
 #: without nesting support on purpose: the template takes flat scalar
@@ -273,6 +295,91 @@ def parse_node_cycles(text: str) -> tuple[NodeCycle, ...]:
     return tuple(found)
 
 
+@dataclass(frozen=True)
+class StallRespawn:
+    """How long a thievable stall takes to restock, in seconds."""
+
+    name: str
+    respawn: float
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"respawn": self.respawn}
+
+
+def parse_stall_respawns(text: str) -> tuple[StallRespawn, ...]:
+    """`Stall/Thievable`'s respawn column, as seconds.
+
+    **The one table that makes Thieving's stalls modellable.** A stall yields
+    one item and then has to restock, so its respawn *is* its rate - and the
+    wiki tabulates it for every thievable stall, which no other page does.
+
+    Two shapes have to survive here. The name is a `{{plinkt|...}}` rather than
+    a `[[link]]`, so `_link_name` does not reach it; and a handful of rows
+    qualify the number by location - `2.4 seconds (9.6 seconds in Keldagrim)` -
+    where the leading figure is the ordinary one and the parenthesis is a
+    variant this project has no way to choose between. Taking the leading
+    figure is therefore the same conservative reading `_tool_curve` takes of a
+    tool tier: the common case, stated first.
+    """
+    table = table_with(text, "Respawn Time")
+    if not table:
+        return ()
+    body = [cells for cells in rows(table) if not cells[0].lstrip().startswith("!")]
+    respawn_at = column_index(table, "respawn time", width=max((len(c) for c in body), default=0))
+    if respawn_at is None:
+        return ()
+    found: list[StallRespawn] = []
+    for cells in body:
+        if len(cells) <= respawn_at:
+            continue
+        name = _plink_name(cells[0])
+        respawn = _duration(cells[respawn_at])
+        if not name or respawn is None or respawn <= 0:
+            continue
+        found.append(StallRespawn(name=name, respawn=respawn))
+    return tuple(found)
+
+
+def parse_trap_counts(text: str) -> tuple[tuple[int, float], ...]:
+    """The `Multiple traps` table: `(level, traps)`, ascending.
+
+    **A published mechanic the model was silently pricing at one trap.** Box
+    trapping, net trapping and bird snaring all run several traps at once and
+    the count is a step function of Hunter level - 1, 2, 3, 4, 5 at 1, 20, 40,
+    60 and 80 - which is most of why hunting gets faster as you level, and none
+    of which a success curve says.
+
+    The table is two plain columns and the only one on the page with a `Traps`
+    heading, so it needs no disambiguation beyond that.
+    """
+    table = table_with(text, "Traps")
+    if not table:
+        return ()
+    found: list[tuple[int, float]] = []
+    for cells in rows(table):
+        if len(cells) < 2 or cells[0].lstrip().startswith("!"):
+            continue
+        level = _leading(cells[0])
+        traps = _leading(cells[1])
+        if level is None or traps is None or traps <= 0:
+            continue
+        found.append((int(level), float(traps)))
+    return tuple(sorted(found))
+
+
+def _plink_name(cell: str) -> str:
+    """The page title out of `{{plinkt|Fur stall|pic=...}}`.
+
+    `plinkt`'s first argument is the page; a `txt=` override is what the row
+    *displays* and is deliberately not read, since the join downstream is on
+    the page name.
+    """
+    match = _PLINK.search(cell)
+    if match:
+        return match.group(1).strip()
+    return _link_name(cell)
+
+
 def _link_name(cell: str) -> str:
     """The page title out of `[[Oak tree]]` or `[[Rocks (x)|Rocks]]`."""
     match = re.search(r"\[\[([^\]|]+)", cell)
@@ -329,6 +436,14 @@ class GatheringTables:
     tool_ticks: dict[str, float] = field(default_factory=dict)
     #: Node -> how long it yields and how long it takes to come back.
     cycles: dict[str, NodeCycle] = field(default_factory=dict)
+    #: Stall -> seconds to restock. A separate table from `cycles` because it
+    #: is a different mechanic: a tree yields for a window, a stall yields
+    #: exactly one item and then is empty.
+    respawns: dict[str, float] = field(default_factory=dict)
+    #: Skill -> `(level, units)` steps for a loop worked several at a time.
+    #: Only Hunter publishes one, and it is a table rather than a constant
+    #: because the count is what changes as the skill levels.
+    parallel: dict[str, tuple[tuple[int, float], ...]] = field(default_factory=dict)
     #: Skill -> its calculator rows: level and experience per action.
     actions: dict[str, tuple[CalcRow, ...]] = field(default_factory=dict)
     #: `source -> (came back, asked for)`, so a 404 is visible rather than a
@@ -350,6 +465,11 @@ class GatheringTables:
             "cycles": {
                 name: {"despawn": cycle.despawn, "respawn": cycle.respawn}
                 for name, cycle in sorted(self.cycles.items())
+            },
+            "respawns": dict(sorted(self.respawns.items())),
+            "parallel": {
+                skill: [list(step) for step in steps]
+                for skill, steps in sorted(self.parallel.items())
             },
             "actions": {
                 skill: [row.as_dict() for row in rows]
@@ -399,8 +519,8 @@ def build_tables(
         if charts:
             curves[title] = charts[0]
 
-    say("reading tool speeds and node cycles")
-    mechanics = fetch_pages([PICKAXE_PAGE, WOODCUTTING_PAGE])
+    say("reading tool speeds, node cycles, stall respawns and trap counts")
+    mechanics = fetch_pages([PICKAXE_PAGE, WOODCUTTING_PAGE, STALL_PAGE, HUNTER_PAGE])
     tool_ticks = {
         tool.name: tool.ticks
         for tool in parse_tool_speeds(mechanics.get(PICKAXE_PAGE, ""))
@@ -409,6 +529,12 @@ def build_tables(
         cycle.name: cycle
         for cycle in parse_node_cycles(mechanics.get(WOODCUTTING_PAGE, ""))
     }
+    respawns = {
+        stall.name: stall.respawn
+        for stall in parse_stall_respawns(mechanics.get(STALL_PAGE, ""))
+    }
+    traps = parse_trap_counts(mechanics.get(HUNTER_PAGE, ""))
+    parallel = {"Hunter": traps} if traps else {}
 
     say(f"reading {len(SKILL_CALC_PAGES)} skill calculators")
     calc_pages = fetch_pages(sorted(SKILL_CALC_PAGES.values()))
@@ -422,25 +548,37 @@ def build_tables(
         curves=curves,
         tool_ticks=tool_ticks,
         cycles=cycles,
+        respawns=respawns,
+        parallel=parallel,
         actions=actions,
         sources={
             "success charts": (len(curves), len(titles)),
             "skill calculators": (len(actions), len(SKILL_CALC_PAGES)),
         },
-        counts={"tool speeds": len(tool_ticks), "node cycles": len(cycles)},
+        counts={
+            "tool speeds": len(tool_ticks),
+            "node cycles": len(cycles),
+            "stall respawns": len(respawns),
+            "parallel steps": sum(len(steps) for steps in parallel.values()),
+        },
     )
 
 
 __all__ = [
     "GatheringTables",
+    "HUNTER_PAGE",
     "NodeCycle",
     "PICKAXE_PAGE",
+    "STALL_PAGE",
     "SUCCESS_TEMPLATE",
+    "StallRespawn",
     "SuccessCurve",
     "ToolSpeed",
     "WOODCUTTING_PAGE",
     "build_tables",
     "parse_node_cycles",
+    "parse_stall_respawns",
+    "parse_trap_counts",
     "parse_success_charts",
     "parse_tool_speeds",
 ]

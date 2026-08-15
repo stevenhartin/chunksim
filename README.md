@@ -456,12 +456,19 @@ maps are your own work and nothing can recompute them.
    money-making guide exists it still wins - see `chunksim estimate skilling`, which prints where each
    band's rate came from.
 
-   **You do not need to fetch anything for the gathering skills.** Fishing, Mining and Woodcutting are
-   *modelled* rather than looked up - the success chance at your level, the roll interval for your
-   best reachable axe or pickaxe, and the time a node costs you between resources - and the tables
-   behind that ship with the package. So a willow tree is priced for the axe your map actually holds
-   rather than for the dragon axe a training guide assumes, and the rate climbs as you level instead
-   of one figure covering the whole climb. Bands from that model are marked `modelled`.
+   **You do not need to fetch anything for the gathering skills.** Fishing, Mining, Woodcutting,
+   Hunter and Thieving are *modelled* rather than looked up - the success chance at your level, the
+   roll interval for your best reachable axe or pickaxe, how many traps your level allows, and the
+   time a node costs you between resources - and the tables behind that ship with the package. So a
+   willow tree is priced for the axe your map actually holds rather than for the dragon axe a
+   training guide assumes, and the rate climbs as you level instead of one figure covering the whole
+   climb. Bands from that model are marked `modelled`.
+
+   Two of the five are worth knowing about specifically. **Pickpocketing is priced with its
+   failures**, where the published figure assumes you never fail: a knight reads 70,958/hr at level
+   55 climbing to 125,222 at 84, against a flat 252,900. **A stall is priced at its restock time**,
+   because a stall hands over one item and is empty until it comes back — which covers all thirty
+   stalls the wiki tabulates rather than the fifteen a guide mentions.
 
    **The same tables charge a production skill for what it burns or fletches.** A published rate is
    quoted with the materials to hand — "394,778 an hour burning magic logs" describes the burning,

@@ -289,3 +289,178 @@ class TestTables:
         assert tables.cycles["willow tree"] == (30.0, 8.4)
         assert tables.experience["Woodcutting"]["willow logs"] == (67.5, "Regular")
         assert tables.empty is False
+
+
+TRAPPING = gathering.Tables(
+    curves={
+        "black chinchompa (hunter)": (("Black chinchompa", -78.0, 228.0),),
+        "carnivorous chinchompa": (("Carnivorous chinchompa", -78.0, 228.0),),
+        "magic stall": (("Magic Stall", 20.0, 180.0),),
+        "knight of ardougne": (("Normal", 50.0, 240.0),),
+        "vegetable stall": (("Vegetable Stall", 50.0, 500.0),),
+    },
+    experience={
+        "Hunter": {
+            "black chinchompa (hunter)": (315.0, "Box trap"),
+            "carnivorous chinchompa": (265.0, "Box trap"),
+        },
+        "Thieving": {
+            "magic stall": (90.0, "Stalls"),
+            "knight of ardougne": (84.3, "Pickpocket"),
+            "vegetable stall": (10.0, "Stalls"),
+        },
+    },
+    respawns={"magic stall": 7.2, "vegetable stall": 1.2},
+    parallel={"Hunter": ((1, 1.0), (20, 2.0), (40, 3.0), (60, 4.0), (80, 5.0))},
+)
+
+BLACK_CHIN = {"Level": 73, "Primary": True, "NPCs": ["Black chinchompa"]}
+RED_CHIN = {"Level": 63, "Primary": True, "NPCs": ["Carnivorous chinchompa"]}
+MAGIC_STALL = {"Level": 65, "Primary": True, "Objects": ["Magic Stall"]}
+VEG_STALL = {"Level": 2, "Primary": True, "Objects": ["Vegetable stall"]}
+KNIGHT = {"Level": 55, "Primary": True, "NPCs": ["Knight of Ardougne"]}
+
+HUNTER = gathering.SkillProfile(
+    depletes=False,
+    strict_kinds=True,
+    roll_ticks_by_kind={"Box trap": 101.0},
+    parallel_kinds=frozenset({"Box trap"}),
+    parallel_bonus={"black chinchompa (hunter)": 1.0},
+)
+THIEVING = gathering.SkillProfile(
+    depletes=False,
+    strict_kinds=True,
+    roll_ticks_by_kind={"Pickpocket": 2.0, "Stalls": 2.0},
+    fail_seconds=3.6,
+    fail_seconds_by_kind={"Stalls": 0.0},
+)
+
+
+class TestUnitsAt:
+    def test_takes_the_last_step_at_or_below_the_level(self) -> None:
+        steps = ((1, 1.0), (20, 2.0), (40, 3.0))
+        assert gathering.units_at(steps, 1) == 1.0
+        assert gathering.units_at(steps, 39) == 2.0
+        assert gathering.units_at(steps, 99) == 3.0
+
+    def test_an_empty_table_is_one_unit(self) -> None:
+        assert gathering.units_at((), 99) == 1.0
+
+
+class TestParallelUnits:
+    def _rate(self, challenge: dict[str, object], level: int) -> gathering.NodeRate:
+        rate = gathering.rate_at(
+            TRAPPING, {}, HUNTER, "Catch it", "Hunter", challenge, level
+        )
+        assert rate is not None
+        return rate
+
+    def test_more_traps_at_a_higher_level_is_faster(self) -> None:
+        # The published step table is most of why hunting speeds up with
+        # level; the success curve alone barely moves across this stretch.
+        assert self._rate(RED_CHIN, 80).xp_per_hour > self._rate(RED_CHIN, 60).xp_per_hour
+
+    def test_the_step_divides_the_rolling_outright(self) -> None:
+        three = self._rate(RED_CHIN, 40)
+        five = self._rate(RED_CHIN, 80)
+        # Units multiply throughput; the curve is the only other thing moving,
+        # so dividing it out has to leave exactly the ratio of the steps.
+        assert (five.xp_per_hour / three.xp_per_hour) / (
+            five.chance / three.chance
+        ) == pytest.approx(5.0 / 3.0)
+
+    def test_the_wilderness_trap_is_what_separates_two_identical_curves(self) -> None:
+        # Black and carnivorous chinchompas share a curve exactly; the only
+        # thing the model can see between them is the sixth trap.
+        black = self._rate(BLACK_CHIN, 99)
+        red = self._rate(RED_CHIN, 99)
+        assert black.chance == red.chance
+        assert black.xp_per_hour / red.xp_per_hour == pytest.approx(
+            (6.0 / 5.0) * (315.0 / 265.0)
+        )
+
+    def test_a_loop_outside_parallel_kinds_gets_one_unit(self) -> None:
+        alone = gathering.SkillProfile(
+            depletes=False, strict_kinds=True, roll_ticks_by_kind={"Box trap": 101.0}
+        )
+        rate = gathering.rate_at(
+            TRAPPING, {}, alone, "Catch it", "Hunter", RED_CHIN, 99
+        )
+        assert rate is not None
+        assert rate.xp_per_hour == pytest.approx(self._rate(RED_CHIN, 99).xp_per_hour / 5.0)
+
+
+class TestRespawnFloor:
+    def _rate(self, challenge: dict[str, object], level: int) -> gathering.NodeRate:
+        rate = gathering.rate_at(
+            TRAPPING, {}, THIEVING, "Steal it", "Thieving", challenge, level
+        )
+        assert rate is not None
+        return rate
+
+    def test_a_restocking_stall_is_priced_at_its_respawn(self) -> None:
+        # 90 xp every 7.2 seconds, which is the wiki's own `Max XP/Hr`.
+        assert self._rate(MAGIC_STALL, 99).xp_per_hour == pytest.approx(45_000.0)
+
+    def test_a_fast_respawn_leaves_the_rolling_in_charge(self) -> None:
+        # 1.2s respawn against a 1.2s roll: at certainty the two meet at the
+        # wiki's own maximum, and below it the *roll* is what you wait for -
+        # which is the half the published `Max XP/Hr` column cannot express.
+        assert self._rate(VEG_STALL, 99).xp_per_hour == pytest.approx(30_000.0)
+        assert self._rate(VEG_STALL, 20).xp_per_hour < 30_000.0
+
+    def test_the_floor_does_not_depend_on_level(self) -> None:
+        assert self._rate(MAGIC_STALL, 65).xp_per_hour == self._rate(MAGIC_STALL, 99).xp_per_hour
+
+
+class TestFailureCost:
+    def test_a_stun_is_charged_only_to_the_loop_that_stuns(self) -> None:
+        knight = gathering.rate_at(
+            TRAPPING, {}, THIEVING, "Pickpocket", "Thieving", KNIGHT, 99
+        )
+        assert knight is not None
+        chance = gathering.success_chance(99, 50.0, 240.0)
+        expected = 1.2 / chance + 3.6 * ((1.0 / chance) - 1.0)
+        assert knight.xp_per_hour == pytest.approx(84.3 * 3600.0 / expected)
+
+    def test_the_stall_loop_pays_no_stun(self) -> None:
+        # A failed stall steal costs the attempt and nothing else, so the
+        # per-kind entry has to beat the profile-wide 3.6 seconds. Read off a
+        # stall whose respawn does *not* dominate, or the floor would hide it.
+        stunned = gathering.rate_at(
+            TRAPPING, {}, THIEVING, "Steal it", "Thieving", VEG_STALL, 20
+        )
+        unstunned = gathering.rate_at(
+            TRAPPING,
+            {},
+            gathering.SkillProfile(
+                depletes=False,
+                strict_kinds=True,
+                roll_ticks_by_kind={"Stalls": 2.0},
+            ),
+            "Steal it",
+            "Thieving",
+            VEG_STALL,
+            20,
+        )
+        assert stunned is not None and unstunned is not None
+        assert stunned.xp_per_hour == pytest.approx(unstunned.xp_per_hour)
+
+
+class TestSkillDisambiguator:
+    def test_a_bare_export_name_reaches_the_wikis_hunter_page(self) -> None:
+        # The export says `Black chinchompa`; the wiki page is `Black
+        # chinchompa (Hunter)`, which is how it separates the creature you
+        # hunt from the item it drops.
+        rate = gathering.rate_at(
+            TRAPPING, {}, HUNTER, "Catch it", "Hunter", BLACK_CHIN, 99
+        )
+        assert rate is not None
+        assert rate.node == "Black chinchompa (Hunter)"
+
+    def test_a_plainly_titled_page_still_wins(self) -> None:
+        rate = gathering.rate_at(
+            TRAPPING, {}, HUNTER, "Catch it", "Hunter", RED_CHIN, 99
+        )
+        assert rate is not None
+        assert rate.node == "Carnivorous chinchompa"

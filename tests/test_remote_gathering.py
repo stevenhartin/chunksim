@@ -208,3 +208,94 @@ class TestBuildTables:
         tables = gathering.build_tables(lambda template: [], lambda titles: {})
         assert tables.curves == {}
         assert tables.sources["success charts"] == (0, 0)
+
+
+STALL_TABLE = """
+{| class="wikitable sortable"
+! colspan=2 | Stall
+!{{SCP|Thieving}}Level
+!Exp.
+!Location
+!Respawn Time
+! Max XP/Hr
+|-
+|{{plinkt|Vegetable stall|pic=Cabbage}}
+|2
+|10
+|[[Miscellania]]
+|1.2 seconds
+| 30,000
+|-
+|{{plinkt|Bakery stall|pic=Bread}}
+|5
+|16
+|[[East Ardougne]]
+|2.4 seconds (9.6 seconds in [[Keldagrim]])
+| 24,000
+|-
+|{{plinkt|Cannonball stall|pic=Cannonball|txt=Cannonballs}}
+|87
+|223
+|[[Keldagrim]]
+|Instant
+|
+|}
+"""
+
+TRAP_TABLE = """
+===Multiple traps===
+Box trapping, net trapping and bird snaring can be done with multiple traps.
+{| class="wikitable align-centre-2"
+! {{SCP|Hunter}}
+! Traps
+|-
+| 1 || 1
+|-
+| 20 || 2
+|-
+| 80 || 5
+|}
+"""
+
+
+class TestStallRespawns:
+    def test_reads_the_plinkt_name_and_the_seconds(self) -> None:
+        found = {stall.name: stall.respawn for stall in gathering.parse_stall_respawns(STALL_TABLE)}
+        assert found["Vegetable stall"] == 1.2
+        assert found["Bakery stall"] == 2.4
+
+    def test_a_location_qualifier_keeps_the_leading_figure(self) -> None:
+        # `2.4 seconds (9.6 seconds in Keldagrim)` - the parenthesis is a
+        # variant nothing here can choose between, so the ordinary one wins.
+        (bakery,) = [
+            stall
+            for stall in gathering.parse_stall_respawns(STALL_TABLE)
+            if stall.name == "Bakery stall"
+        ]
+        assert bakery.respawn == 2.4
+
+    def test_a_txt_override_does_not_become_the_name(self) -> None:
+        # `{{plinkt|Cannonball stall|txt=Cannonballs}}` displays one word and
+        # links another; the join downstream is on the page.
+        assert "Cannonballs" not in {
+            stall.name for stall in gathering.parse_stall_respawns(STALL_TABLE)
+        }
+
+    def test_a_stall_with_no_time_is_dropped(self) -> None:
+        assert "Cannonball stall" not in {
+            stall.name for stall in gathering.parse_stall_respawns(STALL_TABLE)
+        }
+
+    def test_a_page_without_the_column_yields_nothing(self) -> None:
+        assert gathering.parse_stall_respawns(DESPAWN_PAGE) == ()
+
+
+class TestTrapCounts:
+    def test_reads_the_level_steps_ascending(self) -> None:
+        assert gathering.parse_trap_counts(TRAP_TABLE) == ((1, 1.0), (20, 2.0), (80, 5.0))
+
+    def test_the_header_is_not_a_step(self) -> None:
+        assert all(level > 0 for level, _ in gathering.parse_trap_counts(TRAP_TABLE))
+
+    def test_a_page_without_the_table_yields_nothing(self) -> None:
+        assert gathering.parse_trap_counts(DESPAWN_PAGE) == ()

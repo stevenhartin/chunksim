@@ -35,10 +35,11 @@ The modules, and what each owns:
 - `skillcalc.py` - reading a `Module:Skill calc/<Skill>` Lua table, one format
   across eighteen skills. Owns the brace matching, which `farming.py` measured
   first and now imports.
-- `gathering.py` - the three inputs a gathering rate is computed from:
+- `gathering.py` - the inputs a gathering rate is computed from:
   `{{Skilling success chart}}`'s `low`/`high` curves, the tool page's `Ticks
-  between rolls`, and the despawn/respawn table. Also `build_tables`, whose
-  **fetching is injected** so the module cannot open a socket.
+  between rolls`, the despawn/respawn table, `Stall/Thievable`'s restock times
+  and the Hunter page's trap-count steps. Also `build_tables`, whose **fetching
+  is injected** so the module cannot open a socket.
 - `recipes.py` - `{{Recipe}}` as the wiki's Bucket serves it: experience, ticks
   and materials per action.
 - `stores.py` - what a shop charges, and **in what currency**.

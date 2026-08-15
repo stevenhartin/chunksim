@@ -69,9 +69,15 @@ TRUSTED_SOURCES: tuple[str, ...] = (
     "wiki:Pay-to-play Mining training",
 )
 
-#: Roll intervals are searched in half ticks up to thirty, which covers
-#: everything from a two-tick pickpocket to a box trap you come back to.
-_TICK_GRID: tuple[float, ...] = tuple(x / 2 for x in range(2, 61))
+#: Roll intervals are searched in half ticks to thirty and whole ticks to three
+#: hundred. **The long tail is for the traps.** A box-trap interval is not an
+#: animation, it is how long one trap waits for prey to walk into it, and once
+#: the model runs five traps at once that number is minutes rather than
+#: seconds. Capped at thirty the fit simply sat on the bound, which is the
+#: model saying "longer than this" and being disbelieved.
+_TICK_GRID: tuple[float, ...] = tuple(x / 2 for x in range(2, 61)) + tuple(
+    float(x) for x in range(31, 301)
+)
 
 #: Which profile fields each skill's fit moves, and the grid to search each on.
 #: **A field is fitted only against the rows it actually changes**, which the
@@ -97,7 +103,13 @@ FITTED: dict[str, tuple[tuple[str, tuple[float, ...]], ...]] = {
     # bank run folded into it, the same contamination `mmg:` rows carry.
     "Fishing": (("bank_seconds", tuple(float(x) for x in range(0, 241))),),
     "Hunter": (("roll_ticks_by_kind", _TICK_GRID),),
-    "Thieving": (("roll_ticks_by_kind", _TICK_GRID),),
+    # **Thieving is deliberately absent, and that is the result rather than an
+    # omission.** Both of its constants are published - two ticks between
+    # pickpocket attempts, eight ticks locked out after a failure - and the
+    # stall half is not a rate at all but a restock time the wiki tabulates for
+    # all thirty stalls. There is nothing left to fit, and fitting anyway would
+    # trade a stated mechanic for noise, which is the mistake the Woodcutting
+    # note above describes.
     # Nothing to fit: the model's answer for these is checked, not tuned.
 }
 #: Skills whose profile the fit leaves alone entirely.
@@ -231,7 +243,13 @@ def fit(map_id: str = "fray") -> None:
 
     import math
 
-    for skill, fields in sorted(FITTED.items()):
+    # **Every profile, not every fit.** A skill with nothing left to fit still
+    # has rows to answer for, and Thieving is the case that proves it: both its
+    # constants are published, so it appears in `PROFILES` and not in `FITTED`,
+    # and reporting only the fitted skills would have hidden its evidence
+    # exactly when it stopped being tuned.
+    for skill in sorted(gathering.PROFILES):
+        fields = FITTED.get(skill, ())
         subject = [row for row in rows if row["skill"] == skill]
         if not subject:
             print(f"{skill}: no trusted rows to fit against\n")
@@ -290,7 +308,7 @@ def fit(map_id: str = "fray") -> None:
             else f"{name} {getattr(base, name):g} -> {getattr(profile, name):g}"
             for name, _ in fields
         )
-        print(f"{skill}: {changes}")
+        print(f"{skill}: {changes or 'nothing to fit - every constant is published'}")
         print(f"  {'task':<40}{'kind':<16}{'modelled':>10}{'published':>11}{'ratio':>8}")
         ratios: list[float] = []
         for row in sorted(subject, key=lambda entry: str(entry["task"])):

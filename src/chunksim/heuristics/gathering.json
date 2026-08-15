@@ -1,6 +1,6 @@
 {
   "name": "gathering.json",
-  "fetched_at": "2026-08-15T00:06:54.529814+00:00",
+  "fetched_at": "2026-08-15T10:13:13.921570+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "curves": {
@@ -12413,6 +12413,62 @@
         "despawn": 114.0,
         "respawn": 59.4
       }
+    },
+    "respawns": {
+      "Bakery stall": 2.4,
+      "Cannonball stall": 2.4,
+      "Counter (Gu'Tanoth)": 7.2,
+      "Crafting stall": 4.8,
+      "Crossbow stall": 4.8,
+      "Fish stall": 7.2,
+      "Fish stall (Port Roberts)": 2.4,
+      "Food Stall": 3.6,
+      "Fruit Stall": 2.4,
+      "Fur stall": 7.2,
+      "Fur stall (Port Roberts)": 2.4,
+      "Gem stall": 60.0,
+      "Gem stall (Mor Ul Rek)": 105.0,
+      "Gem stall (Port Roberts)": 2.4,
+      "Magic stall": 7.2,
+      "Monkey general stall": 4.8,
+      "Ore stall (Mor Ul Rek)": 30.0,
+      "Ore stall (Port Roberts)": 2.4,
+      "Scimitar stall": 19.2,
+      "Seed stall": 2.4,
+      "Silk stall": 4.8,
+      "Silk stall (Port Roberts)": 2.4,
+      "Silver stall": 19.2,
+      "Silver stall (Port Roberts)": 2.4,
+      "Spice stall": 6.0,
+      "Spice stall (Port Roberts)": 2.4,
+      "Tea stall": 2.4,
+      "Veg stall (Port Roberts)": 2.4,
+      "Vegetable stall": 1.2,
+      "Wine stall": 4.8
+    },
+    "parallel": {
+      "Hunter": [
+        [
+          1,
+          1.0
+        ],
+        [
+          20,
+          2.0
+        ],
+        [
+          40,
+          3.0
+        ],
+        [
+          60,
+          4.0
+        ],
+        [
+          80,
+          5.0
+        ]
+      ]
     },
     "actions": {
       "Agility": [
@@ -43000,6 +43056,8 @@
     },
     "counts": {
       "node cycles": 13,
+      "parallel steps": 5,
+      "stall respawns": 30,
       "tool speeds": 17
     }
   }

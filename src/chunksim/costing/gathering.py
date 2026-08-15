@@ -7,7 +7,10 @@ time when the node runs out. Three numbers decide the rate and
 `remote/gathering.py` reads all three off the wiki, so this module is arithmetic
 over a config file and nothing else:
 
-    xp/hr = experience * 3600 / (roll_seconds / chance / duty + bank_share)
+    xp/hr = experience * 3600 / (
+        max(respawn, roll_seconds / chance / units / duty + stun * failures)
+        + bank_share
+    )
 
 **What it replaces is a published figure, not a gap.** `remote/skill_tables.py`
 joins hourly rates off training guides, which is real data but somebody else's -
@@ -37,6 +40,29 @@ guide answer the same one, and the curve knows whose account it is describing.
    the single-node one; how many nodes a player rotates is what picks a point
    between them, and it is `SkillProfile.nodes_worked`.
 
+**Inactivity has four published shapes, not one**, and which one a node has is
+the difference between a model and a fitted constant:
+
+- a *duty cycle*, for a node that yields for a window and then regrows - every
+  tree the Woodcutting page tabulates;
+- a *flat charge per resource*, for a node that hands over one thing and
+  vanishes - every rock, and every tree below oak, whose downtime nothing
+  publishes and which is therefore fitted;
+- a *restock floor*, for a node that is empty until it comes back. A stall is
+  this and the wiki tabulates all thirty, so `max(respawn, rolling)` is the
+  whole of Thieving's stall half and there is nothing left to fit;
+- a *stun*, for a loop where failing costs more than trying. A failed
+  pickpocket locks you out for eight ticks against a two-tick attempt, both
+  stated on the Pickpocketing page.
+
+**Throughput is not always one loop at a time.** Box trapping, net trapping and
+bird snaring run several traps at once, 1 to 5 across levels 1 to 80, and the
+Hunter page publishes the table; the Wilderness allows a sixth for black
+chinchompas and black salamanders. That divides the rolling outright, which is
+what makes it different from `nodes_worked` - that one fills a wait and is
+capped at having no wait, this one runs several independent loops. It is also
+most of why hunting speeds up with level, and none of it is in a success curve.
+
 **Banking is deliberately not charged here.** A published gathering rate is
 quoted for a player dropping what they gather, and that is also how the item
 walk wants it: when Fletching buys its logs from this model, the trip that
@@ -52,6 +78,16 @@ clearest case: a `Willow tree` chart's nine series are axe tiers, where a
 chinchompa` chart's three are different creatures - so exactly one skill reads
 series as tools, and the rest take the first series, which is the unassisted
 case and the same conservative reading `remote/skill_tables.parse_hunter` takes.
+
+**Two of the five reproduce their published figures by construction, and that is
+not agreement.** Thieving's fifteen tabulated stalls come out at exactly 1.00x
+because the wiki's own column is `3600 / respawn * xp` and so is this - the
+model cannot be wrong about them and cannot be shown right either. What it buys
+there is *coverage*, thirty stalls against the fifteen the scrape reached, and
+the half the published column cannot express: where the restock is faster than
+the rolling, the rolling is what you wait for. Mining's single fitted row is the
+same standing for the opposite reason - one parameter, one observation, exactly
+identified.
 
 Pure: the caller supplies the tables and the reachable-item set, so nothing here
 reads disk or network and no module-level state survives a call.
@@ -182,11 +218,42 @@ class SkillProfile:
     #: no page states. **Fitted against the rates the wiki does publish**, and
     #: `0.0` for the skills whose nodes do not deplete at all.
     node_seconds: float = 0.0
+    #: The calculator `kind`s worked several units at a time, against
+    #: `Tables.parallel`'s published step table for the skill.
+    #:
+    #: **The generic form of "you can run five box traps".** Hunter publishes
+    #: the count as a function of level - 1, 2, 3, 4, 5 at 1, 20, 40, 60 and 80
+    #: - and it applies to box trapping, net trapping and bird snaring but not
+    #: to falconry or tracking, which is why it is a set of kinds rather than a
+    #: profile-wide flag. It multiplies throughput outright, which is what
+    #: makes it different from `nodes_worked`: that one fills a wait and is
+    #: capped at no wait, this one runs several loops at once.
+    parallel_kinds: frozenset[str] = frozenset()
+    #: The calculator `kind`s where a node with a published restock time and
+    #: **no** success chart does not fail, rather than being unknown.
+    #:
+    #: Thieving's stalls are the case and the wiki states it: "Unlike
+    #: pickpocketing, stealing from stalls has a 100% success rate." The five
+    #: Ape Atoll stalls that *can* fail carry a chart of their own and are
+    #: priced off it, so the absence of a chart is itself the statement. Gated
+    #: on the restock time being published, so this can never turn "nothing is
+    #: known about this node" into a rate.
+    certain_kinds: frozenset[str] = frozenset()
+    #: Node -> units *beyond* what the step table allows there, where the game
+    #: says so. One entry today: the Wilderness lets a sixth trap out for black
+    #: chinchompas, which the Hunter and Box trap pages both state.
+    parallel_bonus: Mapping[str, float] = field(default_factory=dict)
     #: Seconds charged for a *failed* roll, on top of the roll itself.
     #: Thieving is the skill that needs it - a failed pickpocket stuns you,
     #: which is real downtime the success curve says nothing about - and it is
     #: why the curve alone reads a systematic 1.37x fast there.
     fail_seconds: float = 0.0
+    #: The same, **per calculator `kind`**, for a skill whose loops fail
+    #: differently. Thieving is that skill and it is why this exists: a failed
+    #: pickpocket locks you out for eight ticks, and a failed stall steal
+    #: costs you nothing but the attempt. One number could only be wrong for
+    #: one of them.
+    fail_seconds_by_kind: Mapping[str, float] = field(default_factory=dict)
     #: Whether a published node cycle applies at all. A fishing spot moves
     #: rather than running out and a pickpocket target never does, so charging
     #: either would invent downtime that does not happen.
@@ -305,27 +372,71 @@ PROFILES: dict[str, SkillProfile] = {
         ),
         bank_seconds=74.0,
     ),
-    # **Only falconry, and the refusal is the point.** Hunter's loops are as
-    # different from each other as two skills are, and only one of them has
-    # enough published rows to check: falconry's three land at 1.05x, 0.89x and
-    # 1.04x. Box trapping has two rows that disagree with each other (0.70x and
-    # 1.41x), and deadfall has one, which the fit can only match by running the
-    # interval into the top of its grid - a fitted parameter reaching its bound
-    # is the model saying it cannot describe this, and it is taken at its word.
+    # **Traps are the mechanic, and they are published.** Box trapping, net
+    # trapping and bird snaring run several traps at once, 1 to 5 across levels
+    # 1 to 80, and the Wilderness allows a sixth for black chinchompas - which
+    # the Hunter and Box trap pages both state, and which is the only reason
+    # black reads faster than carnivorous when the two share a curve exactly.
+    #
+    # The intervals are still fitted, and they are the honest kind of fitted:
+    # what the model cannot see is how often prey walks past a trap, which no
+    # page publishes, so one number per loop stands in for prey density. Four
+    # loops carry one, and `Deadfall`'s is a single row against a single
+    # parameter - exactly identified, so its 1.00x is arithmetic rather than
+    # agreement, the same standing as Mining's `node_seconds`.
+    #
+    # **`Bird snare` and `Pitfall` are absent because nothing published can
+    # check them**, and `strict_kinds` therefore refuses both. They keep their
+    # place in `parallel_kinds` all the same: the trap table is a fact about
+    # those loops whether or not this model prices one.
+    #
+    # The residual is density and reads as density. The two Wilderness rows sit
+    # slow (black chinchompa 0.77x, black salamander 0.69x) and the lowest-level
+    # row sits fast (swamp lizard 1.48x), which is what one number per loop
+    # buys against guides quoting their best spot.
     "Hunter": SkillProfile(
         depletes=False,
         strict_kinds=True,
-        roll_ticks_by_kind={"Falconry": 10.0},
+        roll_ticks_by_kind={
+            "Falconry": 10.0,
+            "Box trap": 101.0,
+            "Deadfall": 105.0,
+            "Net trapping": 154.0,
+        },
+        parallel_kinds=frozenset({"Box trap", "Net trapping", "Bird snare"}),
+        parallel_bonus={
+            "black chinchompa (hunter)": 1.0,
+            "black salamander (hunter)": 1.0,
+        },
     ),
-    # **Nothing priced yet, deliberately.** Thieving has three published stall
-    # rows and one interval cannot fit them - 0.76x, 0.71x and 1.89x - because
-    # each stall has its own respawn, which no page tabulates. Its pickpocket
-    # rates look like a fourth source and are not: `heuristics._table_rates`
-    # computes them from `PICKPOCKET_CYCLE_SECONDS`, a constant this project
-    # chose, so they cannot judge a model meant to replace exactly that.
-    # Until a stall respawn table turns up this refuses, and `wiki:stalls`
-    # keeps the skill.
-    "Thieving": SkillProfile(depletes=False, strict_kinds=True),
+    # **Both halves of Thieving are published outright; neither is fitted.**
+    #
+    # *Pickpocketing*: "NPCs may be pickpocketed every two ticks (1.2 seconds)"
+    # and a failure "prevents the player from ... further pickpocketing for
+    # eight ticks (4.8s)". The roll already charges two of those eight, so the
+    # stun costs the other six - 3.6 seconds - which is what `fail_seconds`
+    # means. This is what supersedes `wiki:pickpockets`, and non-circularly:
+    # that source is `experience * 3600 / 1.2`, the right cadence with the
+    # wrong assumption, since it prices every level as though you never fail.
+    #
+    # *Stalls*: a stall hands over one item and restocks, so the published
+    # restock time is the floor and `Tables.respawns` carries it for all
+    # thirty. Two ticks is **the game's minimum interaction cadence rather
+    # than a measurement**, and it is deliberately a lower bound: the floor is
+    # a `max`, so a rolling time that is too short can only make the respawn
+    # win, which it does for every stall the wiki tabulates a rate for.
+    # A failed stall steal costs the attempt and nothing else - there is no
+    # stun - hence `fail_seconds_by_kind`.
+    #
+    # `Chests` and `Other` stay unmeasured and `strict_kinds` refuses them.
+    "Thieving": SkillProfile(
+        depletes=False,
+        strict_kinds=True,
+        roll_ticks_by_kind={"Pickpocket": 2.0, "Stalls": 2.0},
+        fail_seconds=3.6,
+        fail_seconds_by_kind={"Stalls": 0.0},
+        certain_kinds=frozenset({"Stalls"}),
+    ),
 }
 
 
@@ -454,6 +565,15 @@ class Tables:
     materials: dict[str, dict[str, tuple[tuple[str, float], ...]]] = field(
         default_factory=dict
     )
+    #: Lowercased stall name -> seconds to restock.
+    #:
+    #: **Kept apart from `cycles` because the mechanic is different.** A tree
+    #: yields for a whole despawn window and its wait is a duty cycle; a stall
+    #: yields exactly one item and then the wait *is* the rate. Folding them
+    #: would make one of the two arithmetics wrong.
+    respawns: dict[str, float] = field(default_factory=dict)
+    #: Skill -> `(level, units)` steps, for a loop worked several at a time.
+    parallel: dict[str, tuple[tuple[int, float], ...]] = field(default_factory=dict)
 
     @property
     def empty(self) -> bool:
@@ -531,13 +651,51 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
         for name, value in _mapping(raw, "tool_ticks").items()
         if isinstance(value, (int, float))
     }
+    respawns = {
+        str(name).lower(): float(value)
+        for name, value in _mapping(raw, "respawns").items()
+        if isinstance(value, (int, float)) and value > 0
+    }
+
+    parallel: dict[str, tuple[tuple[int, float], ...]] = {}
+    for skill, steps in _mapping(raw, "parallel").items():
+        if not isinstance(steps, list):
+            continue
+        steps_read = tuple(
+            (int(step[0]), float(step[1]))
+            for step in steps
+            if isinstance(step, list)
+            and len(step) == 2
+            and isinstance(step[0], (int, float))
+            and isinstance(step[1], (int, float))
+            and float(step[1]) > 0
+        )
+        if steps_read:
+            parallel[skill] = tuple(sorted(steps_read))
+
     return Tables(
         curves=curves,
         tool_ticks=ticks,
         cycles=cycles,
         experience=experience,
         materials=materials,
+        respawns=respawns,
+        parallel=parallel,
     )
+
+
+def units_at(steps: Sequence[tuple[int, float]], level: int) -> float:
+    """How many units a `(level, units)` table allows at `level`.
+
+    The last step at or below the level, and `1.0` when the table says nothing
+    - one of a thing being the case every loop shares, and the conservative
+    reading besides.
+    """
+    allowed = 1.0
+    for opens, units in steps:
+        if level >= opens:
+            allowed = units
+    return allowed
 
 
 def duty_cycle(despawn: float, respawn: float, nodes: float) -> float:
@@ -619,6 +777,7 @@ def _curve_for(
     families: Mapping[str, Sequence[str]],
     challenge: Mapping[str, Any],
     task: str,
+    skill: str = "",
 ) -> tuple[str, tuple[tuple[str, float, float], ...]]:
     """The success curve for a challenge, and the page it was read off.
 
@@ -630,7 +789,9 @@ def _curve_for(
     so a page the wiki really does title `Warrior (Thieving)` matches itself
     first and this can only add a join.
     """
-    keys = _join_keys(challenge, families, ("Output", "Objects", "NPCs", "Monsters"))
+    keys = _join_keys(
+        challenge, families, ("Output", "Objects", "NPCs", "Monsters"), skill
+    )
     for key in keys:
         found = tables.curves.get(key.lower())
         if found:
@@ -642,6 +803,7 @@ def _join_keys(
     challenge: Mapping[str, Any],
     families: Mapping[str, Sequence[str]],
     fields: Sequence[str],
+    skill: str = "",
 ) -> tuple[str, ...]:
     """Every whole-string name a challenge offers, most specific first.
 
@@ -651,6 +813,16 @@ def _join_keys(
     spelled `Iron`. The disambiguated forms come last for the same reason they
     do in `heuristics._join_keys` - so a page the wiki really does title
     `Warrior (Thieving)` matches itself before the bare `Warrior`.
+
+    **Both directions of the disambiguator, because the two vocabularies
+    disagree in both.** Stripping one turns the export's `Warrior (Thieving)`
+    into the wiki's `Warrior`; *adding* the skill's own turns the export's
+    `Black salamander` into the wiki's `Black salamander (Hunter)`, which is
+    how the wiki separates a creature you hunt from the item it drops. Hunter
+    is the skill that needs it and it is not a Hunter special case: the whole
+    of net trapping and half of box trapping joined nothing without it, which
+    is five methods on the reference map and every salamander in the export.
+    Added last, so a page that really is titled plainly still wins.
     """
     keys: list[str] = []
     for field_name in fields:
@@ -662,6 +834,8 @@ def _join_keys(
             keys.extend(families.get(name.strip(), ()))
             keys.append(name.split("#")[0].replace("[+]", "").replace("*", "").strip())
     keys.extend(_DISAMBIGUATOR.sub("", key).strip() for key in list(keys))
+    if skill:
+        keys.extend(f"{key} ({skill})" for key in list(keys) if "(" not in key)
     return tuple(key for key in dict.fromkeys(keys) if key)
 
 
@@ -696,11 +870,29 @@ def _experience_for(
     invented wearing a citation.
     """
     by_name = tables.experience.get(skill) or {}
-    for key in _join_keys(challenge, families, ("Output", "Objects", "NPCs")):
+    for key in _join_keys(challenge, families, ("Output", "Objects", "NPCs"), skill):
         found = by_name.get(key.lower())
         if found:
             return found
     return 0.0, ""
+
+
+def _respawn_key(
+    tables: Tables,
+    families: Mapping[str, Sequence[str]],
+    challenge: Mapping[str, Any],
+    skill: str,
+) -> str:
+    """The first name a challenge offers that `Tables.respawns` knows.
+
+    Separate from `_curve_for` because it answers a different question with the
+    same keys: not "how often does this succeed" but "how long until there is
+    another one".
+    """
+    for key in _join_keys(challenge, families, ("Output", "Objects", "NPCs"), skill):
+        if key.lower() in tables.respawns:
+            return key
+    return ""
 
 
 def _tool_curve(
@@ -742,17 +934,30 @@ def rate_at(
     posture `costing/recipe_rates.py` takes with an unpriceable ingredient, and
     for the same reason: a made-up numerator opens a band.
     """
-    node, curves = _curve_for(tables, families, challenge, task)
-    if not curves:
-        return None
     experience, kind = _experience_for(tables, families, skill, challenge, task)
     if experience <= 0:
         return None
+
+    node, curves = _curve_for(tables, families, challenge, task, skill)
+    label = ""
+    if curves:
+        label, low, high = _tool_curve(curves, profile, tool)
+        chance = success_chance(level, low, high)
+    elif kind in profile.certain_kinds:
+        # **No chart because there is nothing to chart.** An ordinary stall is
+        # a 100% steal - the Thieving page says so outright - and the pages
+        # that *do* carry a chart are the Ape Atoll ones, which really can
+        # fail. So a loop declared certain reads a missing chart as certainty
+        # rather than as ignorance. Gated on a published restock time as well,
+        # which is what keeps "no chart" from meaning "no data at all".
+        node = _respawn_key(tables, families, challenge, skill)
+        if not node:
+            return None
+        chance = 1.0
+    else:
+        return None
     if node.lower() in profile.refuses:
         return None
-
-    label, low, high = _tool_curve(curves, profile, tool)
-    chance = success_chance(level, low, high)
     if chance <= 0:
         return None
 
@@ -780,17 +985,42 @@ def rate_at(
     elif profile.depletes:
         per_resource = profile.node_seconds
 
+    # **Several units of the loop at once**, where the game publishes how
+    # many. Divides the rolling outright, unlike `duty`, which only fills a
+    # wait - five box traps really are five independent chances at a time.
+    units = 1.0
+    if kind in profile.parallel_kinds:
+        units = units_at(tables.parallel.get(skill, ()), level)
+        units += profile.parallel_bonus.get(node.lower(), 0.0)
+    if units <= 0:
+        return None
+
     # A failed roll can cost more than the roll: see `SkillProfile.fail_seconds`.
     failures = (1.0 / chance) - 1.0
+    stun = profile.fail_seconds_by_kind.get(kind, profile.fail_seconds)
     banking = (
         profile.bank_seconds / profile.carry if profile.carry > 0 else 0.0
     )
-    seconds_per_resource = (
-        roll_seconds / chance / duty
-        + profile.fail_seconds * failures
+    working = (
+        roll_seconds / chance / duty / units
+        + stun * failures
         + per_resource
-        + banking
     )
+
+    # **A restocking node is a floor, not an addition.** A stall hands over one
+    # item and is empty until it restocks, so however fast you can roll you
+    # cannot take a second item sooner - and where the rolling is the slower of
+    # the two, the rolling is what you wait for. `max` is the whole model, and
+    # it is why this needs no fitted constant: both halves are published.
+    #
+    # **The floor is over the working time and not over the banking**, which is
+    # charged after it. A trip does not happen while a stall restocks; it is
+    # time on top, the same way it is for every other loop here.
+    respawn = tables.respawns.get(node.lower())
+    if respawn is not None:
+        working = max(respawn, working)
+
+    seconds_per_resource = working + banking
     if seconds_per_resource <= 0:
         return None
     return NodeRate(
@@ -912,7 +1142,7 @@ def _record_miss(
     charts nothing for, and those have a chart but no experience figure" points
     at the page to go and read.
     """
-    _, curves = _curve_for(tables, families, challenge, task)
+    _, curves = _curve_for(tables, families, challenge, task, skill)
     if not curves:
         no_curve.append(task)
     elif _experience_for(tables, families, skill, challenge, task)[0] <= 0:
