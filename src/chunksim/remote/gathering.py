@@ -89,6 +89,11 @@ HUNTER_PAGE = "Hunter"
 #: mechanic: one loot, then a restock.
 THIEVING_PAGE = "Thieving"
 
+#: The herbiboar article, whose experience table is the one thing about that
+#: activity worth reading: it is a minigame rather than a loop, and what a
+#: catch pays is the only part of it a model can hold.
+HERBIBOAR_PAGE = "Herbiboar"
+
 #: The impling article, whose four spawn-tier tables say which impling appears
 #: at which kind of spawn point. **Four tables on one page distinguished only
 #: by their headings**, which is why `parse_spawn_tiers` reads headings rather
@@ -459,6 +464,29 @@ def _ratio(cell: str) -> float | None:
     return float(match.group(1)) / denominator if denominator else None
 
 
+def parse_level_experience(text: str) -> dict[int, float]:
+    """A `Hunter Level | XP` table, as `{level: experience}`.
+
+    **Two pairs of columns per row**, which is how the wiki fits levels 74 to 99
+    into thirteen lines - so a row is read as `(level, xp)` twice rather than
+    once, and a parser that took the first two cells would lose half the table.
+    """
+    table = table_with(text, "Hunter Level", "XP")
+    if not table:
+        return {}
+    found: dict[int, float] = {}
+    for cells in rows(table):
+        if cells and cells[0].lstrip().startswith("!"):
+            continue
+        for index in range(0, len(cells) - 1, 2):
+            level = _leading(cells[index])
+            paid = _leading(cells[index + 1])
+            if level is None or paid is None or level < 1 or paid <= 0:
+                continue
+            found[int(level)] = paid
+    return found
+
+
 def _plink_name(cell: str) -> str:
     """The page title out of `{{plinkt|Fur stall|pic=...}}`.
 
@@ -532,6 +560,8 @@ class GatheringTables:
     #: is a different mechanic: a tree yields for a window, a stall yields
     #: exactly one item and then is empty.
     respawns: dict[str, float] = field(default_factory=dict)
+    #: Hunter level -> experience for one herbiboar.
+    herbiboar_xp: dict[int, float] = field(default_factory=dict)
     #: Spawn-tier heading -> `(impling, share)`, the chance table each kind of
     #: Puro-Puro spawn point rolls.
     spawn_tiers: dict[str, tuple[tuple[str, float], ...]] = field(default_factory=dict)
@@ -566,6 +596,9 @@ class GatheringTables:
                 for name, cycle in sorted(self.cycles.items())
             },
             "respawns": dict(sorted(self.respawns.items())),
+            "herbiboar_xp": {
+                str(level): paid for level, paid in sorted(self.herbiboar_xp.items())
+            },
             "spawn_tiers": {
                 tier: [[name, share] for name, share in entries]
                 for tier, entries in sorted(self.spawn_tiers.items())
@@ -635,6 +668,7 @@ def build_tables(
             HUNTER_PAGE,
             CRAB_PAGE,
             IMPLING_PAGE,
+            HERBIBOAR_PAGE,
         ]
     )
     tool_ticks = {
@@ -659,6 +693,7 @@ def build_tables(
     if traps:
         parallel.setdefault("Hunter", {})[""] = traps
     spawn_tiers = parse_spawn_tiers(mechanics.get(IMPLING_PAGE, ""))
+    herbiboar_xp = parse_level_experience(mechanics.get(HERBIBOAR_PAGE, ""))
     crabs = parse_trap_counts(mechanics.get(CRAB_PAGE, ""))
     if crabs:
         parallel.setdefault("Hunter", {})["Crab trapping"] = crabs
@@ -677,6 +712,7 @@ def build_tables(
         cycles=cycles,
         respawns=respawns,
         spawn_tiers=spawn_tiers,
+        herbiboar_xp=herbiboar_xp,
         parallel=parallel,
         actions=actions,
         sources={
@@ -688,6 +724,7 @@ def build_tables(
             "node cycles": len(cycles),
             "stall respawns": len(respawns),
             "spawn tiers": len(spawn_tiers),
+            "herbiboar levels": len(herbiboar_xp),
             "parallel steps": sum(
                 len(steps) for loops in parallel.values() for steps in loops.values()
             ),
@@ -697,6 +734,7 @@ def build_tables(
 
 __all__ = [
     "GatheringTables",
+    "HERBIBOAR_PAGE",
     "HUNTER_PAGE",
     "IMPLING_PAGE",
     "NodeCycle",
@@ -711,6 +749,7 @@ __all__ = [
     "WOODCUTTING_PAGE",
     "build_tables",
     "parse_node_cycles",
+    "parse_level_experience",
     "parse_spawn_tiers",
     "parse_stall_respawns",
     "parse_trap_counts",

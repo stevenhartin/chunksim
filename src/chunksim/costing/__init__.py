@@ -56,6 +56,9 @@ The modules, and what each owns:
   inside it: what your level buys is which implings the spawn tables let you
   keep, not a faster loop. Overworld implings are not a training method and
   upstream says so too.
+- `herbiboar.py` - a puzzle rather than a loop: no chance, no interval, no
+  tool, just a published experience-per-level table times a stated trails per
+  hour. Stays out of `SkillProfile` for that reason.
 - `combat_xp.py` - combat XP, which is damage and almost nothing else. Owns the
   three gates and the two credits that each removed a wrong answer.
 - `slayer.py` - Slayer's rate, which is a *distribution* rather than a chosen

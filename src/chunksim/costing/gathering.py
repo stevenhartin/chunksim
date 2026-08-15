@@ -865,6 +865,9 @@ class Tables:
     #: yields exactly one item and then the wait *is* the rate. Folding them
     #: would make one of the two arithmetics wrong.
     respawns: dict[str, float] = field(default_factory=dict)
+    #: Hunter level -> experience for one herbiboar, for
+    #: `costing/herbiboar.py`.
+    herbiboar_xp: dict[int, float] = field(default_factory=dict)
     #: Spawn-tier name -> `(impling, share)`, for `costing/implings.py`.
     spawn_tiers: dict[str, tuple[tuple[str, float], ...]] = field(default_factory=dict)
     #: Skill -> loop -> `(level, units)` steps, `""` being the skill's default.
@@ -963,6 +966,12 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
         if isinstance(value, (int, float)) and value > 0
     }
 
+    herbiboar_xp = {
+        int(level): float(paid)
+        for level, paid in _mapping(raw, "herbiboar_xp").items()
+        if isinstance(paid, (int, float)) and float(paid) > 0 and str(level).isdigit()
+    }
+
     spawn_tiers: dict[str, tuple[tuple[str, float], ...]] = {}
     for tier, entries in _mapping(raw, "spawn_tiers").items():
         if not isinstance(entries, list):
@@ -1002,6 +1011,7 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
         materials=materials,
         respawns=respawns,
         spawn_tiers=spawn_tiers,
+        herbiboar_xp=herbiboar_xp,
         parallel=parallel,
     )
 
