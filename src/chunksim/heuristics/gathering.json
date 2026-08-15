@@ -1,6 +1,6 @@
 {
   "name": "gathering.json",
-  "fetched_at": "2026-08-15T17:43:43.123989+00:00",
+  "fetched_at": "2026-08-15T17:48:34.556235+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "curves": {
@@ -14332,6 +14332,352 @@
         130.0
       ]
     ],
+    "hunter_info": {
+      "Baby impling": [
+        17,
+        18.0
+      ],
+      "Barb-tailed kebbit": [
+        33,
+        168.0
+      ],
+      "Birdhouse (scenery)": [
+        5,
+        280.0
+      ],
+      "Black chinchompa (Hunter)": [
+        73,
+        315.0
+      ],
+      "Black salamander (Hunter)": [
+        67,
+        319.2
+      ],
+      "Black warlock": [
+        45,
+        54.0
+      ],
+      "Bucket of sandworms": [
+        15,
+        10.0
+      ],
+      "Carnivorous chinchompa": [
+        63,
+        265.0
+      ],
+      "Cerulean twitch": [
+        11,
+        64.5
+      ],
+      "Chinchompa (Hunter)": [
+        53,
+        198.4
+      ],
+      "Common kebbit": [
+        3,
+        36.0
+      ],
+      "Copper longtail": [
+        9,
+        61.2
+      ],
+      "Crimson swift": [
+        1,
+        34.0
+      ],
+      "Crystal impling": [
+        80,
+        280.0
+      ],
+      "Dark kebbit": [
+        57,
+        132.0
+      ],
+      "Dashing kebbit": [
+        69,
+        156.0
+      ],
+      "Desert devil": [
+        13,
+        66.0
+      ],
+      "Dragon impling": [
+        83,
+        65.0
+      ],
+      "Earth impling": [
+        36,
+        25.0
+      ],
+      "Eclectic impling": [
+        50,
+        30.0
+      ],
+      "Embertailed jerboa": [
+        39,
+        137.0
+      ],
+      "Essence impling": [
+        42,
+        27.0
+      ],
+      "Feldip weasel": [
+        7,
+        48.0
+      ],
+      "Ferret (Hunter)": [
+        27,
+        115.2
+      ],
+      "Giral bat": [
+        30,
+        13.0
+      ],
+      "Golden warbler": [
+        5,
+        47.0
+      ],
+      "Gourmet impling": [
+        28,
+        22.0
+      ],
+      "Grubby sapling": [
+        1,
+        1.0
+      ],
+      "Guanic bat": [
+        1,
+        5.0
+      ],
+      "Horned graahk": [
+        41,
+        240.0
+      ],
+      "Imp": [
+        71,
+        450.0
+      ],
+      "Kryket bat": [
+        60,
+        21.0
+      ],
+      "Letvek (Hunter)": [
+        76,
+        208.5
+      ],
+      "Lucky impling": [
+        89,
+        80.0
+      ],
+      "Magic birdhouse": [
+        74,
+        1140.0
+      ],
+      "Magpie impling": [
+        65,
+        44.0
+      ],
+      "Mahogany birdhouse": [
+        49,
+        960.0
+      ],
+      "Maniacal monkey (Hunter)": [
+        60,
+        1000.0
+      ],
+      "Maple birdhouse": [
+        44,
+        820.0
+      ],
+      "Moonlight antelope": [
+        91,
+        450.0
+      ],
+      "Moonlight moth": [
+        75,
+        84.0
+      ],
+      "Moss Lizard": [
+        20,
+        90.0
+      ],
+      "Murng bat": [
+        75,
+        25.0
+      ],
+      "Nature impling": [
+        58,
+        34.0
+      ],
+      "Ninja impling": [
+        74,
+        50.0
+      ],
+      "Oak birdhouse": [
+        14,
+        420.0
+      ],
+      "Orange salamander (Hunter)": [
+        47,
+        224.0
+      ],
+      "Phluxia bat": [
+        45,
+        17.0
+      ],
+      "Polar kebbit": [
+        1,
+        30.0
+      ],
+      "Prael bat": [
+        15,
+        9.0
+      ],
+      "Prickly kebbit": [
+        37,
+        204.0
+      ],
+      "Psykk bat": [
+        90,
+        29.0
+      ],
+      "Pyre fox": [
+        57,
+        222.0
+      ],
+      "Rainbow crab (Hunter)": [
+        77,
+        216.0
+      ],
+      "Raw giral bat (2)": [
+        30,
+        13.0
+      ],
+      "Raw guanic bat (0)": [
+        1,
+        5.0
+      ],
+      "Raw kryket bat (4)": [
+        60,
+        21.0
+      ],
+      "Raw murng bat (5)": [
+        75,
+        25.0
+      ],
+      "Raw phluxia bat (3)": [
+        45,
+        17.0
+      ],
+      "Raw prael bat (1)": [
+        15,
+        9.0
+      ],
+      "Raw psykk bat (6)": [
+        90,
+        29.0
+      ],
+      "Razor-backed kebbit": [
+        49,
+        348.5
+      ],
+      "Red crab (Hunter)": [
+        21,
+        64.0
+      ],
+      "Red salamander (Hunter)": [
+        59,
+        272.0
+      ],
+      "Redwood birdhouse": [
+        89,
+        1200.0
+      ],
+      "Ruby harvest": [
+        15,
+        24.0
+      ],
+      "Sabre-toothed kebbit": [
+        51,
+        200.0
+      ],
+      "Sabre-toothed kyatt": [
+        55,
+        300.0
+      ],
+      "Sandworm castings": [
+        15,
+        10.0
+      ],
+      "Sapphire glacialis": [
+        25,
+        34.0
+      ],
+      "Snowy knight": [
+        35,
+        44.0
+      ],
+      "Spined larupia": [
+        31,
+        180.0
+      ],
+      "Spotted kebbit": [
+        43,
+        104.0
+      ],
+      "Stymphike": [
+        82,
+        1350.0
+      ],
+      "Sunlight Moth": [
+        65,
+        74.0
+      ],
+      "Sunlight antelope": [
+        72,
+        380.0
+      ],
+      "Swamp lizard (Hunter)": [
+        29,
+        152.0
+      ],
+      "Teak birdhouse": [
+        34,
+        700.0
+      ],
+      "Tecu salamander (Hunter)": [
+        79,
+        344.0
+      ],
+      "Tropical wagtail": [
+        19,
+        95.2
+      ],
+      "White rabbit": [
+        27,
+        144.0
+      ],
+      "Wild kebbit": [
+        23,
+        128.0
+      ],
+      "Willow birdhouse": [
+        24,
+        560.0
+      ],
+      "Wyrmscraig Goat": [
+        60,
+        100.0
+      ],
+      "Yew birdhouse": [
+        59,
+        1020.0
+      ],
+      "Young impling": [
+        22,
+        20.0
+      ]
+    },
     "herbiboar_xp": {
       "74": 1770.0,
       "75": 1800.0,
@@ -45102,6 +45448,10 @@
       ]
     },
     "sources": {
+      "creature infoboxes": [
+        86,
+        89
+      ],
       "skill calculators": [
         18,
         18

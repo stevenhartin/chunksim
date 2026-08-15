@@ -1313,3 +1313,41 @@ class TestNameFieldsAreOneList:
         )
         assert rate is not None
         assert rate.provenance == gathering.INFERRED
+
+
+class TestInfoboxExperienceFallback:
+    """A creature's own infobox, where no calculator lists it.
+
+    The letvek is in the game, on the Box trap page and in the export, and
+    absent from `Module:Skill calc/Hunter` entirely - so "no experience row"
+    was reporting a gap in one source rather than in the wiki.
+    """
+
+    _TABLES = gathering.Tables(
+        curves={"chinchompa (hunter)": (("Grey", 6.0, 268.0, 53, "confirmed"),)},
+        experience={"Hunter": {"ferret (hunter)": (115.2, "Box trap")}},
+        hunter_info={"letvek (hunter)": 208.5, "ferret (hunter)": 115.2},
+    )
+
+    def _rate(self, node: str, opens: int) -> gathering.NodeRate | None:
+        return gathering.rate_at(
+            self._TABLES, {}, gathering.PROFILES["Hunter"], "t", "Hunter",
+            {"Level": opens, "Primary": True, "NPCs": [node]}, 99,
+        )
+
+    def test_a_creature_no_calculator_lists_is_still_priced(self) -> None:
+        rate = self._rate("Letvek (Hunter)", 76)
+        assert rate is not None
+        assert rate.experience == 208.5
+
+    def test_the_calculator_still_wins_where_it_has_a_row(self) -> None:
+        # Read as a fallback and never as an override: the calculator is the
+        # one with the loop attached.
+        rate = self._rate("Ferret (Hunter)", 27)
+        assert rate is not None
+        assert rate.experience == 115.2
+
+    def test_a_fallback_row_carries_no_loop_of_its_own(self) -> None:
+        # An infobox states a trap, not a calculator grouping, so the loop has
+        # to come from `loop_at` - which is why the letvek has an entry there.
+        assert gathering.PROFILES["Hunter"].loop_at["letvek (hunter)"] == "Box trap"

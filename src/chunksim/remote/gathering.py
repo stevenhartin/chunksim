@@ -89,6 +89,10 @@ HUNTER_PAGE = "Hunter"
 #: mechanic: one loot, then a restock.
 THIEVING_PAGE = "Thieving"
 
+#: The infobox every huntable creature carries, and the **only** place some of
+#: them state their experience: the calculator has no row for a letvek at all.
+HUNTER_INFO_TEMPLATE = "Hunter info"
+
 #: The aerial fishing article, whose creature table is the only place the four
 #: catches' experience is stated for **both** skills they pay.
 AERIAL_PAGE = "Aerial fishing"
@@ -468,6 +472,32 @@ def _ratio(cell: str) -> float | None:
     return float(match.group(1)) / denominator if denominator else None
 
 
+_HUNTER_INFO = re.compile(r"\{\{Hunter info(.*?)\n\}\}", re.S)
+_INFO_FIELD = re.compile(r"\|\s*(\w+)\s*=\s*([^\n|]*)")
+
+
+def parse_hunter_info(text: str) -> tuple[int, float] | None:
+    """`(level, experience)` from a creature's `{{Hunter info}}`, or `None`.
+
+    **A second source of experience, for the creatures no calculator lists.**
+    `Module:Skill calc/Hunter` covers the methods a training calculator cares
+    about; this template is on the creature itself, so a letvek - which the
+    calculator omits entirely - states its 208.5 here and nowhere else.
+
+    Read as a fallback and never as an override: where both exist they agree,
+    and the calculator is the one with the loop attached.
+    """
+    block = _HUNTER_INFO.search(text)
+    if block is None:
+        return None
+    fields = {key: value.strip() for key, value in _INFO_FIELD.findall(block.group(1))}
+    level = _leading(fields.get("level", ""))
+    paid = _leading(fields.get("xp", ""))
+    if level is None or paid is None or level < 1 or paid <= 0:
+        return None
+    return int(level), paid
+
+
 def parse_aerial_fish(text: str) -> tuple[tuple[str, int, float, int, float], ...]:
     """`(name, fishing level, fishing xp, hunter level, hunter xp)` per catch.
 
@@ -602,6 +632,8 @@ class GatheringTables:
     #: The aerial catches: `(name, fishing level, fishing xp, hunter level,
     #: hunter xp)`.
     aerial_fish: tuple[tuple[str, int, float, int, float], ...] = ()
+    #: Creature page -> `(level, experience)` off its `{{Hunter info}}`.
+    hunter_info: dict[str, tuple[int, float]] = field(default_factory=dict)
     #: Spawn-tier heading -> `(impling, share)`, the chance table each kind of
     #: Puro-Puro spawn point rolls.
     spawn_tiers: dict[str, tuple[tuple[str, float], ...]] = field(default_factory=dict)
@@ -637,6 +669,10 @@ class GatheringTables:
             },
             "respawns": dict(sorted(self.respawns.items())),
             "aerial_fish": [list(entry) for entry in self.aerial_fish],
+            "hunter_info": {
+                name: [level, paid]
+                for name, (level, paid) in sorted(self.hunter_info.items())
+            },
             "herbiboar_xp": {
                 str(level): paid for level, paid in sorted(self.herbiboar_xp.items())
             },
@@ -737,6 +773,14 @@ def build_tables(
     spawn_tiers = parse_spawn_tiers(mechanics.get(IMPLING_PAGE, ""))
     herbiboar_xp = parse_level_experience(mechanics.get(HERBIBOAR_PAGE, ""))
     aerial_fish = parse_aerial_fish(mechanics.get(AERIAL_PAGE, ""))
+
+    say(f"reading creature infoboxes using {HUNTER_INFO_TEMPLATE}")
+    creatures = sorted(set(list_transclusions(f"Template:{HUNTER_INFO_TEMPLATE}")))
+    hunter_info: dict[str, tuple[int, float]] = {}
+    for title, body in fetch_pages(creatures).items():
+        found = parse_hunter_info(body)
+        if found is not None:
+            hunter_info[title] = found
     crabs = parse_trap_counts(mechanics.get(CRAB_PAGE, ""))
     if crabs:
         parallel.setdefault("Hunter", {})["Crab trapping"] = crabs
@@ -757,11 +801,13 @@ def build_tables(
         spawn_tiers=spawn_tiers,
         herbiboar_xp=herbiboar_xp,
         aerial_fish=aerial_fish,
+        hunter_info=hunter_info,
         parallel=parallel,
         actions=actions,
         sources={
             "success charts": (len(curves), len(titles)),
             "skill calculators": (len(actions), len(SKILL_CALC_PAGES)),
+            "creature infoboxes": (len(hunter_info), len(creatures)),
         },
         counts={
             "tool speeds": len(tool_ticks),
@@ -781,6 +827,7 @@ __all__ = [
     "AERIAL_PAGE",
     "GatheringTables",
     "HERBIBOAR_PAGE",
+    "HUNTER_INFO_TEMPLATE",
     "HUNTER_PAGE",
     "IMPLING_PAGE",
     "NodeCycle",
@@ -796,6 +843,7 @@ __all__ = [
     "build_tables",
     "parse_node_cycles",
     "parse_aerial_fish",
+    "parse_hunter_info",
     "parse_level_experience",
     "parse_spawn_tiers",
     "parse_stall_respawns",

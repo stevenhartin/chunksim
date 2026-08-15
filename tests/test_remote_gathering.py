@@ -360,3 +360,28 @@ class TestTrapTableHeadings:
 
     def test_the_hunter_pages_wording_still_works(self) -> None:
         assert gathering.parse_trap_counts(TRAP_TABLE) == ((1, 1.0), (20, 2.0), (80, 5.0))
+
+
+HUNTER_INFO_PAGE = """
+Some prose about a letvek.
+==Hunter info==
+{{Hunter info
+|name = Letvek
+|level = 76
+|xp = 208.5
+|trap = {{plink|Box trap}}
+|retaliation = No
+}}
+{{DropsTableHead}}
+"""
+
+
+class TestHunterInfo:
+    def test_reads_the_level_and_experience(self) -> None:
+        assert gathering.parse_hunter_info(HUNTER_INFO_PAGE) == (76, 208.5)
+
+    def test_a_page_without_the_infobox_yields_nothing(self) -> None:
+        assert gathering.parse_hunter_info(DESPAWN_PAGE) is None
+
+    def test_an_infobox_with_no_experience_yields_nothing(self) -> None:
+        assert gathering.parse_hunter_info("{{Hunter info\n|name = X\n|level = 1\n}}") is None

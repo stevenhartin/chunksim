@@ -670,6 +670,9 @@ PROFILES: dict[str, SkillProfile] = {
             # `Other` is the calculator's shrug, and the wiki's own name for
             # this is magic box trapping.
             "imp": "Magic box",
+            # No calculator row at all, so no loop comes with its experience -
+            # the export names the trap in `Items`.
+            "letvek (hunter)": "Box trap",
         },
         inferred_loops=frozenset({"Rabbit snare", "Magic box"}),
         # **The pitfall five, and the two kinds of number in one place.** The
@@ -963,6 +966,10 @@ class Tables:
     #: `(name, fishing level, fishing xp, hunter level, hunter xp)` per aerial
     #: catch, for `costing/aerial.py`.
     aerial_fish: tuple[tuple[str, int, float, int, float], ...] = ()
+    #: Lowercased creature page -> experience, off its `{{Hunter info}}`.
+    #: **The fallback when no calculator lists the creature** - see
+    #: `_experience_for`.
+    hunter_info: dict[str, float] = field(default_factory=dict)
     #: Spawn-tier name -> `(impling, share)`, for `costing/implings.py`.
     spawn_tiers: dict[str, tuple[tuple[str, float], ...]] = field(default_factory=dict)
     #: Skill -> loop -> `(level, units)` steps, `""` being the skill's default.
@@ -1073,6 +1080,12 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
         if isinstance(row, list) and len(row) == 5
     )
 
+    hunter_info = {
+        str(name).lower(): float(entry[1])
+        for name, entry in _mapping(raw, "hunter_info").items()
+        if isinstance(entry, list) and len(entry) == 2 and float(entry[1]) > 0
+    }
+
     spawn_tiers: dict[str, tuple[tuple[str, float], ...]] = {}
     for tier, entries in _mapping(raw, "spawn_tiers").items():
         if not isinstance(entries, list):
@@ -1114,6 +1127,7 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
         spawn_tiers=spawn_tiers,
         herbiboar_xp=herbiboar_xp,
         aerial_fish=aerial_fish,
+        hunter_info=hunter_info,
         parallel=parallel,
     )
 
@@ -1352,10 +1366,20 @@ def _experience_for(
     invented wearing a citation.
     """
     by_name = tables.experience.get(skill) or {}
-    for key in _join_keys(challenge, families, _NAME_FIELDS, skill):
+    keys = _join_keys(challenge, families, _NAME_FIELDS, skill)
+    for key in keys:
         found = by_name.get(key.lower())
         if found:
             return found
+    # **A creature's own infobox, where no calculator lists it.** A letvek is
+    # in the game, on the Box trap page and in the export, and absent from
+    # `Module:Skill calc/Hunter` entirely - so its 208.5 is stated on its page
+    # and nowhere else. The loop comes from `loop_at` in that case, since an
+    # infobox states a trap rather than a calculator's grouping.
+    for key in keys:
+        paid = tables.hunter_info.get(key.lower())
+        if paid:
+            return paid, ""
     return 0.0, ""
 
 
