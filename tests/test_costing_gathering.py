@@ -959,3 +959,41 @@ class TestCurvesCarryTheirRequirement:
             {"curves": {"X": [{"label": "a", "low": 1, "high": 2}]}}
         )
         assert tables.curves["x"][0][3] == 1
+
+
+class TestBirdSnaring:
+    """The one interval derived from another model's output rather than fitted.
+
+    Worth pinning because it is three inferences deep - the borrowed butterfly
+    curve, the butterfly interval, and the guide's combined figure - so a
+    change to any of them should show up here rather than quietly move a band.
+    """
+
+    _TABLES = gathering.Tables(
+        curves={"copper longtail": (("Copper longtail", 85.0, 390.0, 9),)},
+        experience={"Hunter": {"copper longtail": (61.0, "Bird snare")}},
+        parallel={"Hunter": {"": ((1, 1.0), (20, 2.0), (80, 5.0))}},
+    )
+
+    def _rate(self, level: int) -> gathering.NodeRate:
+        rate = gathering.rate_at(
+            self._TABLES, {}, gathering.PROFILES["Hunter"],
+            "Catch a ~|copper longtail|~", "Hunter",
+            {"Level": 9, "Primary": True, "NPCs": ["Copper longtail"]}, level,
+        )
+        assert rate is not None
+        return rate
+
+    def test_it_reproduces_the_bird_half_of_the_guides_figure(self) -> None:
+        # "up to 20,000 experience per hour with two traps" at levels 15-21 is
+        # ruby harvests caught while two snares run; this model puts the
+        # butterflies at 13,018 there, leaving 6,982 for the birds.
+        assert self._rate(21).xp_per_hour == pytest.approx(6_982, rel=0.02)
+
+    def test_it_beats_the_floor_at_the_bottom_of_the_skill(self) -> None:
+        # The only thing between level 1 and the butterflies at 15.
+        assert self._rate(9).xp_per_hour > 1_000.0
+
+    def test_traps_divide_the_interval(self) -> None:
+        # The step that is extrapolation past two traps - see the profile.
+        assert self._rate(80).xp_per_hour / self._rate(21).xp_per_hour > 2.0

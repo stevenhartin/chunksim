@@ -530,6 +530,30 @@ PROFILES: dict[str, SkillProfile] = {
     # place in `parallel_kinds` all the same: the trap table is a fact about
     # those loops whether or not this model prices one.
     #
+    # **`Bird snare` is the one interval derived rather than fitted, and it is
+    # three inferences deep.** No page isolates a bird-snaring rate; the only
+    # figure that mentions one is the training guide's "up to 20,000
+    # experience per hour with two traps" for levels 15-21, which is ruby
+    # harvests caught *while* two snares run. Subtracting what this model says
+    # the butterflies pay at 21 - 13,018 - leaves 6,982 for the birds, and two
+    # traps at a 0.578 chance on 61 xp put a bird in a snare every 60.6 ticks.
+    # So it rests on the borrowed butterfly curve and on the butterfly interval
+    # as well as on the guide, and should be the first thing re-derived if
+    # either moves.
+    #
+    # It earns its place at the bottom rather than the top: a crimson swift is
+    # 1,319/hr at level 1, which is the only thing at all between level 1 and
+    # the butterflies at 15, and it beats the floor that stood there.
+    #
+    # **Anchored at two traps, so the five-trap end is extrapolation**, and it
+    # reads too fast there: a cerulean twitch comes out at 25,416/hr at level
+    # 60, above the swamp lizards nobody would leave for it. The suspect step
+    # is that traps divide the interval, which assumes bird density scales with
+    # how many snares you set rather than being a property of the area. Neither
+    # cached map reaches a bird area, so no band moves on the evidence to hand;
+    # a map that does should be read with this in mind, and one published
+    # high-level figure would settle it.
+    #
     # The residual is density and reads as density. The two Wilderness rows sit
     # slow (black chinchompa 0.77x, black salamander 0.69x) and the lowest-level
     # row sits fast (swamp lizard 1.48x), which is what one number per loop
@@ -544,6 +568,7 @@ PROFILES: dict[str, SkillProfile] = {
             "Net trapping": 154.0,
             "Crab trapping": 57.0,
             "Butterfly net": 7.0,
+            "Bird snare": 61.0,
         },
         # **Three butterflies the wiki has not charted, given the worst chart
         # it has.** `Category:Needs skilling success chart` lists ruby harvest,
