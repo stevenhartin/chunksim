@@ -777,6 +777,8 @@ class Tables:
     #: yields exactly one item and then the wait *is* the rate. Folding them
     #: would make one of the two arithmetics wrong.
     respawns: dict[str, float] = field(default_factory=dict)
+    #: Spawn-tier name -> `(impling, share)`, for `costing/implings.py`.
+    spawn_tiers: dict[str, tuple[tuple[str, float], ...]] = field(default_factory=dict)
     #: Skill -> loop -> `(level, units)` steps, `""` being the skill's default.
     #: Keyed by loop because Hunter publishes two tables that disagree: the
     #: general one opens at level 1 with five steps, crab trapping's at 21 with
@@ -872,6 +874,18 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
         if isinstance(value, (int, float)) and value > 0
     }
 
+    spawn_tiers: dict[str, tuple[tuple[str, float], ...]] = {}
+    for tier, entries in _mapping(raw, "spawn_tiers").items():
+        if not isinstance(entries, list):
+            continue
+        read_tier = tuple(
+            (str(entry[0]), float(entry[1]))
+            for entry in entries
+            if isinstance(entry, list) and len(entry) == 2 and float(entry[1]) > 0
+        )
+        if read_tier:
+            spawn_tiers[tier] = read_tier
+
     parallel: dict[str, dict[str, tuple[tuple[int, float], ...]]] = {}
     for skill, loops in _mapping(raw, "parallel").items():
         if not isinstance(loops, dict):
@@ -898,6 +912,7 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
         experience=experience,
         materials=materials,
         respawns=respawns,
+        spawn_tiers=spawn_tiers,
         parallel=parallel,
     )
 
@@ -1576,6 +1591,8 @@ def apply(
 
 def banded_methods(
     priced: Mapping[str, Sequence[NodeRate]],
+    *,
+    keep_first: bool = False,
 ) -> dict[str, tuple[ComputedMethod, ...]]:
     """The curve's higher points, as methods the band walk can open later.
 
@@ -1594,7 +1611,12 @@ def banded_methods(
     for task, rates in priced.items():
         if not rates:
             continue
-        opening = min(rate.level for rate in rates)
+        # **The opening point is normally already in `training`**, so offering
+        # it again would put a duplicate in the tooltip. `keep_first` is for a
+        # method that never went to `training` at all - see
+        # `inputs._gathered` on Puro-Puro, whose challenge states a level that
+        # is about holding the realm rather than about the method.
+        opening = -1 if keep_first else min(rate.level for rate in rates)
         for rate in rates:
             if rate.level <= opening:
                 continue

@@ -51,6 +51,11 @@ The modules, and what each owns:
   many of a node you work at once is one idea across all five skills** -
   `units_worked` resolves it, and what it buys depends on what that node makes
   you wait for.
+- `implings.py` - Puro-Puro, priced as **one** method rather than as twelve
+  creatures. Not a node, so it sits beside the gathering walk rather than
+  inside it: what your level buys is which implings the spawn tables let you
+  keep, not a faster loop. Overworld implings are not a training method and
+  upstream says so too.
 - `combat_xp.py` - combat XP, which is damage and almost nothing else. Owns the
   three gates and the two credits that each removed a wrong answer.
 - `slayer.py` - Slayer's rate, which is a *distribution* rather than a chosen

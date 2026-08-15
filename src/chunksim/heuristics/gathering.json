@@ -1,6 +1,6 @@
 {
   "name": "gathering.json",
-  "fetched_at": "2026-08-15T12:07:40.419280+00:00",
+  "fetched_at": "2026-08-15T12:55:00.813225+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "curves": {
@@ -12456,6 +12456,108 @@
       "Veg stall (Port Roberts)": 2.4,
       "Vegetable stall": 1.2,
       "Wine stall": 4.8
+    },
+    "spawn_tiers": {
+      "High-tier": [
+        [
+          "Nature impling",
+          0.09900990099009901
+        ],
+        [
+          "Magpie impling",
+          0.49504950495049505
+        ],
+        [
+          "Ninja impling",
+          0.297029702970297
+        ],
+        [
+          "Dragon impling",
+          0.09900990099009901
+        ],
+        [
+          "Lucky impling",
+          0.009900990099009901
+        ]
+      ],
+      "High-tier (Puro-Puro)": [
+        [
+          "Nature impling",
+          0.4983388704318937
+        ],
+        [
+          "Magpie impling",
+          0.3787375415282392
+        ],
+        [
+          "Ninja impling",
+          0.08970099667774087
+        ],
+        [
+          "Dragon impling",
+          0.029900332225913623
+        ],
+        [
+          "Lucky impling",
+          0.0033222591362126247
+        ]
+      ],
+      "Low-tier": [
+        [
+          "Baby impling",
+          0.2
+        ],
+        [
+          "Young impling",
+          0.2
+        ],
+        [
+          "Gourmet impling",
+          0.2
+        ],
+        [
+          "Earth impling",
+          0.2
+        ],
+        [
+          "Essence impling",
+          0.1
+        ],
+        [
+          "Eclectic impling",
+          0.1
+        ]
+      ],
+      "Mid-tier": [
+        [
+          "Gourmet impling",
+          0.1
+        ],
+        [
+          "Earth impling",
+          0.1
+        ],
+        [
+          "Essence impling",
+          0.2
+        ],
+        [
+          "Eclectic impling",
+          0.37
+        ],
+        [
+          "Nature impling",
+          0.2
+        ],
+        [
+          "Magpie impling",
+          0.02
+        ],
+        [
+          "Ninja impling",
+          0.01
+        ]
+      ]
     },
     "parallel": {
       "Hunter": {
@@ -43109,6 +43211,7 @@
     "counts": {
       "node cycles": 13,
       "parallel steps": 9,
+      "spawn tiers": 4,
       "stall respawns": 41,
       "tool speeds": 17
     }

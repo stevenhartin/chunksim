@@ -89,6 +89,12 @@ HUNTER_PAGE = "Hunter"
 #: mechanic: one loot, then a restock.
 THIEVING_PAGE = "Thieving"
 
+#: The impling article, whose four spawn-tier tables say which impling appears
+#: at which kind of spawn point. **Four tables on one page distinguished only
+#: by their headings**, which is why `parse_spawn_tiers` reads headings rather
+#: than looking for a table by its columns.
+IMPLING_PAGE = "Impling"
+
 #: `Crab trapping`, which publishes a trap-count table of its **own**. It is not
 #: the Hunter page's - it opens at 21 rather than 1 and has four steps rather
 #: than five - which is why `Tables.parallel` is keyed by loop and not just by
@@ -399,6 +405,54 @@ def parse_trap_counts(text: str) -> tuple[tuple[int, float], ...]:
     return tuple(sorted(found))
 
 
+#: A wikitext heading at any depth, with its own words captured.
+_HEADING = re.compile(r"^=+\s*(.+?)\s*=+\s*$", re.M)
+
+
+def parse_spawn_tiers(text: str) -> dict[str, tuple[tuple[str, float], ...]]:
+    """Each `Types of spawn` table, keyed by its heading's own words.
+
+    **Heading-scoped rather than column-scoped**, because the four tables are
+    identical in shape - `Impling` against `Chance` - and differ only in which
+    section they sit under. Asking for "the table with a Chance column" would
+    return the low tier four times.
+
+    The chance is written as a fraction of a varying denominator (`20/100`,
+    `10/101`, `150/301`), so it is read as one and returned as a share; a tier
+    whose shares do not sum to about one is a parse that has gone wrong rather
+    than a tier worth spending.
+    """
+    found: dict[str, tuple[tuple[str, float], ...]] = {}
+    marks = list(_HEADING.finditer(text))
+    for index, mark in enumerate(marks):
+        end = marks[index + 1].start() if index + 1 < len(marks) else len(text)
+        section = text[mark.end() : end]
+        table = table_with(section, "Chance")
+        if not table:
+            continue
+        entries: list[tuple[str, float]] = []
+        for cells in rows(table):
+            if len(cells) < 2 or cells[0].lstrip().startswith("!"):
+                continue
+            name = _plink_name(cells[0])
+            share = _ratio(cells[-1])
+            if name and share is not None and share > 0:
+                entries.append((name, share))
+        total = sum(share for _, share in entries)
+        if entries and 0.95 <= total <= 1.05:
+            found[mark.group(1)] = tuple(entries)
+    return found
+
+
+def _ratio(cell: str) -> float | None:
+    """`20/100` -> `0.2`, or `None` where the cell is not a fraction."""
+    match = re.search(r"(\d+)\s*/\s*(\d+)", cell)
+    if match is None:
+        return None
+    denominator = float(match.group(2))
+    return float(match.group(1)) / denominator if denominator else None
+
+
 def _plink_name(cell: str) -> str:
     """The page title out of `{{plinkt|Fur stall|pic=...}}`.
 
@@ -472,6 +526,9 @@ class GatheringTables:
     #: is a different mechanic: a tree yields for a window, a stall yields
     #: exactly one item and then is empty.
     respawns: dict[str, float] = field(default_factory=dict)
+    #: Spawn-tier heading -> `(impling, share)`, the chance table each kind of
+    #: Puro-Puro spawn point rolls.
+    spawn_tiers: dict[str, tuple[tuple[str, float], ...]] = field(default_factory=dict)
     #: Skill -> loop -> `(level, units)` steps for a loop worked several at a
     #: time, `""` being the skill's default. A table rather than a constant
     #: because the count is what changes as the skill levels, and keyed by loop
@@ -503,6 +560,10 @@ class GatheringTables:
                 for name, cycle in sorted(self.cycles.items())
             },
             "respawns": dict(sorted(self.respawns.items())),
+            "spawn_tiers": {
+                tier: [[name, share] for name, share in entries]
+                for tier, entries in sorted(self.spawn_tiers.items())
+            },
             "parallel": {
                 skill: {
                     loop: [list(step) for step in steps]
@@ -560,7 +621,15 @@ def build_tables(
 
     say("reading tool speeds, node cycles, stall respawns and trap counts")
     mechanics = fetch_pages(
-        [PICKAXE_PAGE, WOODCUTTING_PAGE, STALL_PAGE, THIEVING_PAGE, HUNTER_PAGE, CRAB_PAGE]
+        [
+            PICKAXE_PAGE,
+            WOODCUTTING_PAGE,
+            STALL_PAGE,
+            THIEVING_PAGE,
+            HUNTER_PAGE,
+            CRAB_PAGE,
+            IMPLING_PAGE,
+        ]
     )
     tool_ticks = {
         tool.name: tool.ticks
@@ -583,6 +652,7 @@ def build_tables(
     traps = parse_trap_counts(mechanics.get(HUNTER_PAGE, ""))
     if traps:
         parallel.setdefault("Hunter", {})[""] = traps
+    spawn_tiers = parse_spawn_tiers(mechanics.get(IMPLING_PAGE, ""))
     crabs = parse_trap_counts(mechanics.get(CRAB_PAGE, ""))
     if crabs:
         parallel.setdefault("Hunter", {})["Crab trapping"] = crabs
@@ -600,6 +670,7 @@ def build_tables(
         tool_ticks=tool_ticks,
         cycles=cycles,
         respawns=respawns,
+        spawn_tiers=spawn_tiers,
         parallel=parallel,
         actions=actions,
         sources={
@@ -610,6 +681,7 @@ def build_tables(
             "tool speeds": len(tool_ticks),
             "node cycles": len(cycles),
             "stall respawns": len(respawns),
+            "spawn tiers": len(spawn_tiers),
             "parallel steps": sum(
                 len(steps) for loops in parallel.values() for steps in loops.values()
             ),
@@ -620,6 +692,7 @@ def build_tables(
 __all__ = [
     "GatheringTables",
     "HUNTER_PAGE",
+    "IMPLING_PAGE",
     "NodeCycle",
     "PICKAXE_PAGE",
     "CRAB_PAGE",
@@ -632,6 +705,7 @@ __all__ = [
     "WOODCUTTING_PAGE",
     "build_tables",
     "parse_node_cycles",
+    "parse_spawn_tiers",
     "parse_stall_respawns",
     "parse_trap_counts",
     "parse_success_charts",

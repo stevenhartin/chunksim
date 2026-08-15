@@ -33,7 +33,7 @@ from pathlib import Path
 from collections.abc import Callable
 from typing import Any, Mapping
 
-from chunksim.costing import combat_xp, dps_bridge, production, recipe_rates
+from chunksim.costing import combat_xp, dps_bridge, implings, production, recipe_rates
 from chunksim.costing import gathering as gathering_model
 from chunksim.costing.estimate import material_seconds
 from chunksim.costing import prayer as prayer_costing
@@ -420,6 +420,13 @@ def _gathered(
         frozenset(derived.challenges.available_items),
         at_level,
     )
+    # **Puro-Puro is one method rather than twelve, and it is not a node**, so
+    # it is produced beside the node walk instead of inside it - see
+    # `costing/implings.py`. Merged here because that module reads
+    # `gathering.py` and the dependency has to run one way. It contributes
+    # nothing on a map that cannot reach the realm, which is upstream's gate
+    # rather than one this project invents.
+    nodeless = implings.methods(blobs.gathering, derived.challenges.valid)
     # The level a player is at now is what the item walk should pay, where the
     # band walk gets the whole curve; `min` is the method's opening point and
     # is the fallback for a skill no completion has established a level for.
@@ -432,13 +439,24 @@ def _gathered(
         )
         if chosen.seconds_per_item > 0:
             timed[task] = chosen.seconds_per_item
+    # **Puro-Puro goes to the bands and not to `training`, and the difference
+    # is a real one.** `apply` writes a method's opening rate into `training`,
+    # where `training_options` reads the level off the *challenge* - and
+    # upstream gives that challenge `Level: 1`, because what gates it is
+    # holding the realm rather than a level. Routed that way the climb opened
+    # at 1 with the level-17 figure and swallowed the floor band: 12.0h of
+    # honest ignorance became 0.6h. Sent to `banded_methods` alone, every point
+    # carries the level this model computed it at.
+    banded = gathering_model.banded_methods(priced)
+    for skill, methods in gathering_model.banded_methods(nodeless, keep_first=True).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
     return (
         replace(
             heuristics,
             training=gathering_model.apply(heuristics.training, priced, pinned),
             action_seconds={**heuristics.action_seconds, **timed},
         ),
-        gathering_model.banded_methods(priced),
+        banded,
         coverage,
     )
 
