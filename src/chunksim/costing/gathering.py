@@ -966,6 +966,10 @@ class Tables:
     #: `(name, fishing level, fishing xp, hunter level, hunter xp)` per aerial
     #: catch, for `costing/aerial.py`.
     aerial_fish: tuple[tuple[str, int, float, int, float], ...] = ()
+    #: Skill -> level -> experience from one of each Forestry event, and how
+    #: many events that is a sum over. For `costing/forestry.py`.
+    forestry: dict[str, dict[int, float]] = field(default_factory=dict)
+    forestry_events: int = 0
     #: Lowercased creature page -> `(level, experience)`, off its
     #: `{{Hunter info}}`.
     #: **The fallback when no calculator lists the creature** - see
@@ -1081,6 +1085,18 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
         if isinstance(row, list) and len(row) == 5
     )
 
+    forestry: dict[str, dict[int, float]] = {}
+    for skill, by_level in _mapping(raw, "forestry").items():
+        read_levels = {
+            int(level): float(paid)
+            for level, paid in (by_level or {}).items()
+            if str(level).isdigit() and isinstance(paid, (int, float))
+        }
+        if read_levels:
+            forestry[str(skill)] = read_levels
+    forestry_events = raw.get("forestry_events")
+    forestry_events = int(forestry_events) if isinstance(forestry_events, int) else 0
+
     hunter_info = {
         str(name).lower(): (int(entry[0]), float(entry[1]))
         for name, entry in _mapping(raw, "hunter_info").items()
@@ -1128,6 +1144,8 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
         spawn_tiers=spawn_tiers,
         herbiboar_xp=herbiboar_xp,
         aerial_fish=aerial_fish,
+        forestry=forestry,
+        forestry_events=forestry_events,
         hunter_info=hunter_info,
         parallel=parallel,
     )

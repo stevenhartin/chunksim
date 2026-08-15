@@ -8,6 +8,8 @@ header, the header arriving as a data row, a footnote glued to a number, and a
 
 from __future__ import annotations
 
+import pytest
+
 from chunksim.remote import gathering, skillcalc
 
 WILLOW_CHART = """
@@ -385,3 +387,69 @@ class TestHunterInfo:
 
     def test_an_infobox_with_no_experience_yields_nothing(self) -> None:
         assert gathering.parse_hunter_info("{{Hunter info\n|name = X\n|level = 1\n}}") is None
+
+
+FORESTRY_TABLE = """
+{| class="wikitable sortable"
+|-
+! Event !! Typical actions per event !! Rewards per correct action (average) !! Bonus at end
+|-
+| [[Rising roots|Rising Roots]]
+| 30<br/>(5 chops * 6 roots)
+| 10.5 bark<br/>{{#expr:1.2*50 round 1}} {{SCP|Woodcutting}} xp
+| {{NA}}
+|-
+| [[Beehive (Forestry event)|Beehive]]
+| 60<br/>(10 logs * 6 hives)
+| {{#expr:0.575*50 round 1}} {{SCP|Woodcutting}} xp per log<br/>{{#expr:5.45*50 - 0.02*(50^2) round 1}} {{SCP|Woodcutting}} xp per hive<br/>{{#expr:0.3*50 round 1}} {{SCP|Construction}} xp per log
+| {{NA}}
+|-
+| [[Poachers (Forestry event)|Poachers]]
+| 15
+| {{#expr:1.5*50 round 1}} {{SCP|Woodcutting}} xp<br/>{{#expr:0.5*50 round 1}} {{SCP|Hunter}} xp
+| 160 bark<br/>{{#expr:400 + 14.5*50 round 1}} {{SCP|Woodcutting}} xp
+|}
+"""
+
+
+class TestForestryEvents:
+    def test_actions_multiply_the_per_action_reward(self) -> None:
+        found = gathering.parse_forestry_events(FORESTRY_TABLE)
+        assert found["Rising roots"]["Woodcutting"] == pytest.approx(30 * 1.2 * 50)
+
+    def test_a_bonus_happens_once_rather_than_per_action(self) -> None:
+        found = gathering.parse_forestry_events(FORESTRY_TABLE)
+        assert found["Poachers (Forestry event)"]["Woodcutting"] == pytest.approx(
+            15 * 1.5 * 50 + (400 + 14.5 * 50)
+        )
+
+    def test_a_per_unit_reward_uses_that_units_count(self) -> None:
+        # The beehive is 10 logs on each of 6 hives, so `per log` is 60 and
+        # `per hive` is 6 - not both 60.
+        found = gathering.parse_forestry_events(FORESTRY_TABLE)
+        assert found["Beehive (Forestry event)"]["Construction"] == pytest.approx(60 * 0.3 * 50)
+        assert found["Beehive (Forestry event)"]["Woodcutting"] == pytest.approx(
+            60 * 0.575 * 50 + 6 * (5.45 * 50 - 0.02 * 50**2)
+        )
+
+    def test_the_power_is_expanded_rather_than_read_as_xor(self) -> None:
+        # `remote/wiki.py`'s evaluator allows four operations by design, so a
+        # square is expanded here instead of widening it for the whole scrape.
+        found = gathering.parse_forestry_events(FORESTRY_TABLE)
+        assert found["Beehive (Forestry event)"]["Woodcutting"] > 60 * 0.575 * 50
+
+    def test_the_level_substitutes_into_every_formula(self) -> None:
+        by_level = gathering.forestry_by_level(FORESTRY_TABLE, (1, 99))
+        assert by_level["Woodcutting"][99] > by_level["Woodcutting"][1]
+
+    def test_it_sums_the_events_rather_than_keeping_them_apart(self) -> None:
+        # A player does not choose which spawns, so what a skill is paid is
+        # the only question downstream asks.
+        by_level = gathering.forestry_by_level(FORESTRY_TABLE, (50,))
+        events = gathering.parse_forestry_events(FORESTRY_TABLE)
+        assert by_level["Woodcutting"][50] == pytest.approx(
+            sum(paid.get("Woodcutting", 0.0) for paid in events.values())
+        )
+
+    def test_a_page_without_the_table_yields_nothing(self) -> None:
+        assert gathering.parse_forestry_events(DESPAWN_PAGE) == {}

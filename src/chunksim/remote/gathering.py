@@ -67,6 +67,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from chunksim.remote.skill_tables import STALLS_PAGE
+from chunksim.remote.wiki import parse_amount
 from chunksim.remote.skillcalc import SKILL_CALC_PAGES, CalcRow, parse_rows
 from chunksim.remote.wikitable import column_index, rows, table_with
 
@@ -88,6 +89,11 @@ HUNTER_PAGE = "Hunter"
 #: the stall one and read by the same parser, since a chest is the same
 #: mechanic: one loot, then a restock.
 THIEVING_PAGE = "Thieving"
+
+#: `Forestry/Strategies`, whose rewards table is the only place the nine events
+#: are costed side by side - actions per event against experience per action,
+#: with the level written into each formula.
+FORESTRY_PAGE = "Forestry/Strategies"
 
 #: The infobox every huntable creature carries, and the **only** place some of
 #: them state their experience: the calculator has no row for a letvek at all.
@@ -472,6 +478,131 @@ def _ratio(cell: str) -> float | None:
     return float(match.group(1)) / denominator if denominator else None
 
 
+#: An `{{#expr:}}` giving experience in a named skill, optionally per a named
+#: unit. **`[^}]` rather than `.` in the body**: two of these sit in one cell
+#: with bark between them, and a lazy `.` still runs from the first `#expr` to
+#: the second one's skill tag.
+_EVENT_EXPR = re.compile(
+    r"\{\{#expr:\s*([^}]*?)\s*(?:round\s+\d+\s*)?\}\}\s*"
+    r"\{\{SCP\|(\w+)\}\}\s*xp(?:\s*per\s+(\w+))?",
+    re.I,
+)
+
+#: The same, written as a plain number rather than a formula.
+_EVENT_FLAT = re.compile(
+    r"([\d.]+)\s*\{\{SCP\|(\w+)\}\}\s*xp(?:\s*per\s+(\w+))?", re.I
+)
+
+#: `(50^2)` and the like - MediaWiki's power, which is expanded rather than
+#: translated. Bounded to a single digit, since the only one in the table is a
+#: square and an unbounded exponent is a way to hang a scrape.
+_POWER = re.compile(r"\(?([\d.]+)\s*\^\s*(\d)\)?")
+
+#: `30<br/>(5 chops * 6 roots)` - the total, and the two units it breaks into.
+_EVENT_ACTIONS = re.compile(r"^(\d+)")
+_EVENT_UNITS = re.compile(r"\((\d+)\s*(\w+)\s*\*\s*(\d+)\s*(\w+)\)")
+
+#: The level the table is written at. Every `50` in an experience cell is this
+#: - checked against all nine rows - so substituting it is how the table is
+#: read at any other level.
+FORESTRY_TABLE_LEVEL = 50
+
+
+def _event_value(expression: str, level: int) -> float | None:
+    """One `{{#expr:}}` body at `level`, or `None` if it is not arithmetic.
+
+    Two rewrites before evaluating. The table's assumed level becomes the one
+    asked for; and a power is **expanded into repeated multiplication** rather
+    than translated, because `remote/wiki.py`'s evaluator deliberately allows
+    only the four operations and widening it for one table would widen it for
+    the whole scrape. The beehive's per-hive term is
+    `5.45*50 - 0.02*(50^2)` - the one power in the table, and read as Python's
+    XOR it is not merely wrong but a different shape of curve.
+    """
+    body = re.sub(r"\b%d\b" % FORESTRY_TABLE_LEVEL, str(level), expression)
+    body = _POWER.sub(
+        lambda match: "(" + "*".join([f"({match.group(1)})"] * int(match.group(2))) + ")",
+        body,
+    )
+    return parse_amount(body)
+
+
+def parse_forestry_events(text: str) -> dict[str, dict[str, float]]:
+    """`{event: {skill: experience for one occurrence}}` at each level.
+
+    Returns the level-50 figures; call `forestry_by_level` for the curve. Kept
+    separate so the parsing is testable without a hundred evaluations.
+    """
+    return _forestry_at(text, FORESTRY_TABLE_LEVEL)
+
+
+def _forestry_at(text: str, level: int) -> dict[str, dict[str, float]]:
+    table = table_with(text, "Typical actions per event")
+    if not table:
+        return {}
+    found: dict[str, dict[str, float]] = {}
+    for cells in rows(table):
+        if not cells or cells[0].lstrip().startswith("!") or len(cells) < 4:
+            continue
+        name = _link_name(cells[0].strip().lstrip("|"))
+        name = name.split("|")[-1].strip()
+        total = _EVENT_ACTIONS.search(cells[1].strip())
+        if not name or total is None:
+            continue
+        counts = {"": float(total.group(1))}
+        units = _EVENT_UNITS.search(cells[1])
+        if units is not None:
+            per, first, outer, second = units.groups()
+            counts[first.rstrip("s").lower()] = float(per) * float(outer)
+            counts[second.rstrip("s").lower()] = float(outer)
+        paid: dict[str, float] = {}
+        # Per-action rewards are multiplied by the count; the end-of-event
+        # bonus happens once.
+        for cell, multiply in ((cells[2], True), (cells[3], False)):
+            for value, skill, unit in _event_fragments(cell, level):
+                times = counts.get(unit, counts[""]) if multiply else 1.0
+                paid[skill] = paid.get(skill, 0.0) + value * times
+        if paid:
+            found[name] = paid
+    return found
+
+
+def _event_fragments(cell: str, level: int) -> list[tuple[float, str, str]]:
+    """`(experience, skill, unit)` for every xp figure in one cell."""
+    found: list[tuple[float, str, str]] = []
+    spans: list[tuple[int, int]] = []
+    for match in _EVENT_EXPR.finditer(cell):
+        spans.append(match.span())
+        value = _event_value(match.group(1), level)
+        if value is not None:
+            found.append((value, match.group(2), (match.group(3) or "").rstrip("s").lower()))
+    for match in _EVENT_FLAT.finditer(cell):
+        if any(start <= match.start() < end for start, end in spans):
+            continue
+        value = _float(match.group(1))
+        if value is not None:
+            found.append((value, match.group(2), (match.group(3) or "").rstrip("s").lower()))
+    return found
+
+
+def forestry_by_level(text: str, levels: Sequence[int]) -> dict[str, dict[int, float]]:
+    """`{skill: {level: experience from one of each event}}`.
+
+    Summed over the events rather than kept per event, because a player does
+    not choose which one spawns: an hour of forestry is a share of all nine,
+    and what a *skill* is paid is the only question downstream asks. The event
+    count travels with it as `FORESTRY_EVENTS`.
+    """
+    found: dict[str, dict[int, float]] = {}
+    for level in levels:
+        for paid in _forestry_at(text, level).values():
+            for skill, value in paid.items():
+                found.setdefault(skill, {})[level] = (
+                    found.setdefault(skill, {}).get(level, 0.0) + value
+                )
+    return found
+
+
 _HUNTER_INFO = re.compile(r"\{\{Hunter info(.*?)\n\}\}", re.S)
 _INFO_FIELD = re.compile(r"\|\s*(\w+)\s*=\s*([^\n|]*)")
 
@@ -632,6 +763,10 @@ class GatheringTables:
     #: The aerial catches: `(name, fishing level, fishing xp, hunter level,
     #: hunter xp)`.
     aerial_fish: tuple[tuple[str, int, float, int, float], ...] = ()
+    #: Skill -> level -> experience from one of each Forestry event, and how
+    #: many events that sum is over.
+    forestry: dict[str, dict[int, float]] = field(default_factory=dict)
+    forestry_events: int = 0
     #: Creature page -> `(level, experience)` off its `{{Hunter info}}`.
     hunter_info: dict[str, tuple[int, float]] = field(default_factory=dict)
     #: Spawn-tier heading -> `(impling, share)`, the chance table each kind of
@@ -669,6 +804,11 @@ class GatheringTables:
             },
             "respawns": dict(sorted(self.respawns.items())),
             "aerial_fish": [list(entry) for entry in self.aerial_fish],
+            "forestry": {
+                skill: {str(level): paid for level, paid in sorted(by_level.items())}
+                for skill, by_level in sorted(self.forestry.items())
+            },
+            "forestry_events": self.forestry_events,
             "hunter_info": {
                 name: [level, paid]
                 for name, (level, paid) in sorted(self.hunter_info.items())
@@ -747,6 +887,7 @@ def build_tables(
             IMPLING_PAGE,
             HERBIBOAR_PAGE,
             AERIAL_PAGE,
+            FORESTRY_PAGE,
         ]
     )
     tool_ticks = {
@@ -773,6 +914,9 @@ def build_tables(
     spawn_tiers = parse_spawn_tiers(mechanics.get(IMPLING_PAGE, ""))
     herbiboar_xp = parse_level_experience(mechanics.get(HERBIBOAR_PAGE, ""))
     aerial_fish = parse_aerial_fish(mechanics.get(AERIAL_PAGE, ""))
+
+    forestry = forestry_by_level(mechanics.get(FORESTRY_PAGE, ""), range(1, 100))
+    forestry_events = len(parse_forestry_events(mechanics.get(FORESTRY_PAGE, "")))
 
     say(f"reading creature infoboxes using {HUNTER_INFO_TEMPLATE}")
     creatures = sorted(set(list_transclusions(f"Template:{HUNTER_INFO_TEMPLATE}")))
@@ -801,6 +945,8 @@ def build_tables(
         spawn_tiers=spawn_tiers,
         herbiboar_xp=herbiboar_xp,
         aerial_fish=aerial_fish,
+        forestry=forestry,
+        forestry_events=forestry_events,
         hunter_info=hunter_info,
         parallel=parallel,
         actions=actions,
@@ -816,6 +962,7 @@ def build_tables(
             "spawn tiers": len(spawn_tiers),
             "herbiboar levels": len(herbiboar_xp),
             "aerial catches": len(aerial_fish),
+            "forestry events": forestry_events,
             "parallel steps": sum(
                 len(steps) for loops in parallel.values() for steps in loops.values()
             ),
@@ -825,6 +972,7 @@ def build_tables(
 
 __all__ = [
     "AERIAL_PAGE",
+    "FORESTRY_PAGE",
     "GatheringTables",
     "HERBIBOAR_PAGE",
     "HUNTER_INFO_TEMPLATE",
@@ -843,6 +991,8 @@ __all__ = [
     "build_tables",
     "parse_node_cycles",
     "parse_aerial_fish",
+    "forestry_by_level",
+    "parse_forestry_events",
     "parse_hunter_info",
     "parse_level_experience",
     "parse_spawn_tiers",

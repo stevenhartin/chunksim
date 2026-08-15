@@ -62,6 +62,9 @@ The modules, and what each owns:
 - `herbiboar.py` - a puzzle rather than a loop: no chance, no interval, no
   tool, just a published experience-per-level table times a stated trails per
   hour. Stays out of `SkillProfile` for that reason.
+- `forestry.py` - the nine Forestry events, which you meet a share of rather
+  than choose between, and which pay **six** skills at once off one table of
+  level-carrying formulas.
 - `bats.py` - the Chambers of Xeric bats, where **two** skills gate which one
   you are given and the lower of them decides. Four ticks each, no roll.
 - `rumours.py` - Hunters' Rumours: an exact experience formula at an invented

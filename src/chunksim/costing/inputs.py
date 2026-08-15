@@ -38,6 +38,7 @@ from chunksim.costing import (
     bats,
     combat_xp,
     dps_bridge,
+    forestry,
     herbiboar,
     implings,
     production,
@@ -477,6 +478,13 @@ def _gathered(
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **The bats gate on Cooking as well as Hunter**, so this is the one place
     # a second skill's level has to be handed in - see `costing/bats.py`.
+    # **Nine events, none of them chosen** - see `costing/forestry.py`. It pays
+    # six skills at once, which is why it is merged like this rather than being
+    # priced under whichever event a challenge names.
+    for skill, methods in forestry.methods(
+        blobs.gathering, state.chunk_info, derived.challenges.valid
+    ).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
     for skill, methods in bats.methods(
         blobs.gathering, derived.challenges.valid, at_level.get("Cooking", 1)
     ).items():
