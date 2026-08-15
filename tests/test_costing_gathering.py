@@ -1351,3 +1351,60 @@ class TestInfoboxExperienceFallback:
         # An infobox states a trap, not a calculator grouping, so the loop has
         # to come from `loop_at` - which is why the letvek has an entry there.
         assert gathering.PROFILES["Hunter"].loop_at["letvek (hunter)"] == "Box trap"
+
+
+class TestStatedChanceOutranksAChart:
+    """The one precedence that runs the other way, and why.
+
+    A profile states a chance only where the chart is answering a different
+    question. The sandworm is the case: its two series are the split between a
+    bucket of sandworms and a bucket of sand, and they sum to one, so reading
+    either as a success rate charges a failure for a dig that never fails.
+    """
+
+    _TABLES = gathering.Tables(
+        curves={
+            "sandworm castings": (
+                ("Bucket of sandworms", 148.0, 178.0, 15, "confirmed"),
+                ("Bucket of sand", 107.0, 77.0, 15, "confirmed"),
+            )
+        },
+        experience={"Hunter": {"sandworm castings": (10.0, "")}},
+    )
+
+    def test_the_stated_chance_wins(self) -> None:
+        rate = gathering.rate_at(
+            self._TABLES, {}, gathering.PROFILES["Hunter"], "t", "Hunter",
+            {"Level": 15, "Primary": True, "Objects": ["Sandworm castings"]}, 99,
+        )
+        assert rate is not None
+        assert rate.chance == 1.0
+
+    def test_the_two_series_really_do_sum_to_one(self) -> None:
+        # The evidence for calling it a split rather than a success rate.
+        worms = gathering.success_chance(15, 148.0, 178.0)
+        sand = gathering.success_chance(15, 107.0, 77.0)
+        assert worms + sand == pytest.approx(1.0, abs=0.01)
+
+    def test_a_dig_is_five_ticks_and_twelve_thousand_an_hour(self) -> None:
+        rate = gathering.rate_at(
+            self._TABLES, {}, gathering.PROFILES["Hunter"], "t", "Hunter",
+            {"Level": 15, "Primary": True, "Objects": ["Sandworm castings"]}, 99,
+        )
+        assert rate is not None
+        assert rate.xp_per_hour == pytest.approx(12_000)
+
+
+class TestLootStemKey:
+    def test_an_output_named_loot_offers_the_creature_too(self) -> None:
+        # `Stymphike loot` is the `Output`; the article is `Stymphike`.
+        keys = gathering._join_keys(
+            {"Output": "Stymphike loot"}, {}, gathering._NAME_FIELDS, "Hunter"
+        )
+        assert "Stymphike" in keys
+
+    def test_the_plain_form_still_comes_first(self) -> None:
+        keys = gathering._join_keys(
+            {"Output": "Stymphike loot"}, {}, gathering._NAME_FIELDS, "Hunter"
+        )
+        assert keys.index("Stymphike loot") < keys.index("Stymphike")

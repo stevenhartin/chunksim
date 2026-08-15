@@ -656,6 +656,17 @@ PROFILES: dict[str, SkillProfile] = {
             # not for a wandering impling. Nothing publishes an imp rate, so
             # this is `INFERRED` like rabbit snaring.
             "Magic box": 90.0,
+            # **A dig and the run to the next casting.** One tick to dig, four
+            # to reach the next spot, and it repeats without limit.
+            "Digging": 5.0,
+            # `Goat hunting`: "a little over 6 ticks on average to catch each
+            # goat ... approximately 900 goats per hour can be processed",
+            # which is 4 seconds and is what this reproduces.
+            "Goat pit": 6.667,
+            # `Stymphike`: click, then wait. The page's own estimate is
+            # 120,000-143,000/hr and 65 ticks against 1,350 experience puts it
+            # at 124,615.
+            "Stymphike": 65.0,
         },
         # **What the calculator groups by is not always what the game does.**
         # The export names the trap in each challenge's `Items`, which is the
@@ -673,6 +684,11 @@ PROFILES: dict[str, SkillProfile] = {
             # No calculator row at all, so no loop comes with its experience -
             # the export names the trap in `Items`.
             "letvek (hunter)": "Box trap",
+            # Three activities the calculator states no loop for, each its own
+            # technique: a spade, a baited pit and a spear.
+            "sandworm castings": "Digging",
+            "wyrmscraig goat": "Goat pit",
+            "stymphike": "Stymphike",
         },
         inferred_loops=frozenset({"Rabbit snare", "Magic box"}),
         # **The pitfall five, and the two kinds of number in one place.** The
@@ -684,6 +700,13 @@ PROFILES: dict[str, SkillProfile] = {
         fixed_chances={
             "sunlight antelope": (1.0, CONFIRMED),
             "moonlight antelope": (1.0, CONFIRMED),
+            # **A dig always yields**; the sandworm chart is the split between
+            # a bucket of sandworms and one of sand, and its two series sum to
+            # one. Same for the goat and the stymphike, whose published rates
+            # are quoted as a flat catches-per-hour with no failure in them.
+            "sandworm castings": (1.0, CONFIRMED),
+            "wyrmscraig goat": (1.0, CONFIRMED),
+            "stymphike": (1.0, CONFIRMED),
             "spined larupia": (0.5, GUESS),
             "horned graahk": (0.5, GUESS),
             "sabre-toothed kyatt": (0.5, GUESS),
@@ -1349,6 +1372,11 @@ def _join_keys(
             keys.extend(families.get(name.strip(), ()))
             keys.append(name.split("#")[0].replace("[+]", "").replace("*", "").strip())
     keys.extend(_DISAMBIGUATOR.sub("", key).strip() for key in list(keys))
+    # **`<creature> loot` is upstream's name for what a catch drops**, not a
+    # page: `Stymphike loot` is the `Output` where the article is `Stymphike`.
+    # Offered after the plain forms, so a page really titled that way still
+    # matches itself first.
+    keys.extend(key[: -len(" loot")] for key in list(keys) if key.endswith(" loot"))
     if skill:
         keys.extend(f"{key} ({skill})" for key in list(keys) if "(" not in key)
     return tuple(key for key in dict.fromkeys(keys) if key)
@@ -1607,17 +1635,24 @@ def rate_at(
     provenance = CONFIRMED
     borrowed = _borrowed_curve(tables, profile, families, challenge, skill)
     fixed = _fixed_chance(profile, families, challenge, skill)
-    if curves:
+    if fixed is not None:
+        # **A stated chance outranks a chart**, which is the opposite of every
+        # other precedence here and is deliberate: a profile only states one
+        # where the chart answers a different question. The sandworm is the
+        # case - its two series are the *split* between a bucket of sandworms
+        # and a bucket of sand, and they sum to one, so reading either as a
+        # success rate charges a failure for a dig that never fails.
+        #
+        # There is no curve behind a stated chance either way, so it does not
+        # move with level - true of the antelopes, and the honest shape of a
+        # guess.
+        node, chance, provenance = fixed
+    elif curves:
         opens = challenge.get("Level")
         label, low, high, _req, provenance = _tool_curve(
             curves, profile, tool, int(opens) if isinstance(opens, (int, float)) else 0
         )
         chance = success_chance(level, low, high)
-    elif fixed is not None:
-        # **Stated in prose, or not stated at all.** Either way there is no
-        # curve to evaluate, so the chance does not move with level - which is
-        # true of the antelopes and is the honest shape of a guess.
-        node, chance, provenance = fixed
     elif borrowed is not None:
         node, label, low, high = borrowed
         provenance = INFERRED
