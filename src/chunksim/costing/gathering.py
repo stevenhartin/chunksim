@@ -120,6 +120,18 @@ the location rather than about the method and has to be modelled as one:
 *wait* rather than the clicking, because three chests do not let you open any
 faster - they mean the first has restocked by the time you are back at it.
 
+**A curve can be borrowed, which is the one place this model assumes rather than
+reads.** The wiki keeps `Category:Needs skilling success chart` - its own list
+of what nobody has measured - and three butterflies on it are methods a map can
+actually train. What makes a borrow defensible is that the charted butterflies
+climb *identically*: black warlock, sunlight moth and moonlight moth all gain
+`276/98` of a catch per level and differ only in what they are worth where they
+open, 0.57, 0.79 and 0.82. So the line is real and only its position is unknown,
+and `assumed_curves` moves the worst of the three sideways until it opens where
+the borrower does. It is the only inference here that is not a reading, it is
+marked `assumed: <donor>` in the rate it produces, and an entry should be
+deleted rather than updated when a real chart appears.
+
 **Two of the five reproduce their published figures by construction, and that is
 not agreement.** Thieving's fifteen tabulated stalls come out at exactly 1.00x
 because the wiki's own column is `3600 / respawn * xp` and so is this - the
@@ -327,6 +339,28 @@ class SkillProfile:
     #: because the loop it belongs to (`Miscellaneous`) is a grab-bag that also
     #: holds cage fishing, which really is banked.
     unbanked: frozenset[str] = frozenset()
+    #: Node -> the node whose success chart to borrow, for a creature the wiki
+    #: has not charted yet.
+    #:
+    #: **Re-anchored to the borrower's own unlock level, not copied.** A chart
+    #: is a line, and what makes two of them comparable is where each one
+    #: starts: black warlock, sunlight moth and moonlight moth all climb at
+    #: `276/98` per level and differ only in what they are worth at the level
+    #: they open at - 0.56, 0.79 and 0.82 of a catch. So the borrowed line
+    #: keeps its slope and is moved sideways until it opens where the borrower
+    #: does, which is the whole of what "the same curve" can mean between two
+    #: creatures unlocked sixty levels apart.
+    #:
+    #: **Black warlock is the donor because it is the worst of the three**, and
+    #: an assumed number should be the pessimistic one. `Category:Needs
+    #: skilling success chart` is the wiki's own list of what is unmeasured;
+    #: every entry here is on it, and an entry should be *deleted* rather than
+    #: updated when a real chart appears.
+    #:
+    #: Keyed by node rather than by loop, because the loop is no guide: 29
+    #: calculator rows share `Butterfly net` and most of them are implings,
+    #: which are caught by a different mechanic entirely.
+    assumed_curves: Mapping[str, str] = field(default_factory=dict)
     #: Node -> the ordered loop it is rolled inside, best reward first.
     #:
     #: **A cascade is several success rolls in one action**, which
@@ -509,7 +543,46 @@ PROFILES: dict[str, SkillProfile] = {
             "Deadfall": 105.0,
             "Net trapping": 154.0,
             "Crab trapping": 57.0,
+            "Butterfly net": 7.0,
         },
+        # **Three butterflies the wiki has not charted, given the worst chart
+        # it has.** `Category:Needs skilling success chart` lists ruby harvest,
+        # snowy knight and sapphire glacialis; black warlock, sunlight moth and
+        # moonlight moth are charted and climb identically, differing only in
+        # what they are worth where they open. Black warlock opens lowest, so
+        # it is the one lent - an assumed curve should be the pessimistic one.
+        # Delete an entry when its own chart appears; do not update it.
+        assumed_curves={
+            "ruby harvest": "Black warlock",
+            "snowy knight": "Black warlock",
+            "sapphire glacialis": "Black warlock",
+        },
+        refuses=frozenset(
+            {
+                # **`Butterfly net` is a grab-bag, the way Fishing's
+                # `Miscellaneous` is**, and the twelve implings in it share the
+                # tool and nothing else. A butterfly field puts one in front of
+                # you; an impling is a rare wandering spawn you chase, and the
+                # seven-tick interval is fitted against ruby harvest and
+                # sapphire glacialis, which are neither. Nothing published
+                # prices an impling, so there is no way to tell how far wrong
+                # that would be - and unrefused they took 50 -> 99 on the
+                # second cached map at 24,750/hr, which is a whole climb
+                # decided by an extrapolation.
+                "baby impling",
+                "young impling",
+                "gourmet impling",
+                "earth impling",
+                "essence impling",
+                "eclectic impling",
+                "nature impling",
+                "magpie impling",
+                "ninja impling",
+                "crystal impling",
+                "dragon impling",
+                "lucky impling",
+            }
+        ),
         certain_kinds=frozenset({"Crab trapping"}),
         parallel_kinds=frozenset(
             {"Box trap", "Net trapping", "Bird snare", "Crab trapping"}
@@ -668,8 +741,13 @@ class Tables:
     a worker process could inherit.
     """
 
-    #: Lowercased page title -> its success curves, in written order.
-    curves: dict[str, tuple[tuple[str, float, float], ...]] = field(default_factory=dict)
+    #: Lowercased page title -> its success curves, in written order, each
+    #: `(label, low, high, req)`. **`req` is carried because a curve can be
+    #: lent**: re-anchoring one creature's chart onto another needs the level
+    #: the original was drawn from - see `SkillProfile.assumed_curves`.
+    curves: dict[str, tuple[tuple[str, float, float, int], ...]] = field(
+        default_factory=dict
+    )
     #: Tool item -> ticks between rolls.
     tool_ticks: dict[str, float] = field(default_factory=dict)
     #: Lowercased node name -> (despawn seconds, respawn seconds).
@@ -726,12 +804,17 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
     `Soft clay rocks` against a page titled `Soft clay rock`. Case is the only
     fuzz allowed here; everything else is a whole-string match.
     """
-    curves: dict[str, tuple[tuple[str, float, float], ...]] = {}
+    curves: dict[str, tuple[tuple[str, float, float, int], ...]] = {}
     for page, series in _mapping(raw, "curves").items():
         if not isinstance(series, list):
             continue
         read = tuple(
-            (str(entry.get("label", "")), float(entry["low"]), float(entry["high"]))
+            (
+                str(entry.get("label", "")),
+                float(entry["low"]),
+                float(entry["high"]),
+                int(entry.get("requirement") or 1),
+            )
             for entry in series
             if isinstance(entry, dict) and "low" in entry and "high" in entry
         )
@@ -951,7 +1034,7 @@ def _curve_for(
     challenge: Mapping[str, Any],
     task: str,
     skill: str = "",
-) -> tuple[str, tuple[tuple[str, float, float], ...]]:
+) -> tuple[str, tuple[tuple[str, float, float, int], ...]]:
     """The success curve for a challenge, and the page it was read off.
 
     Keys are tried most specific first and every one is a **whole string**:
@@ -1090,6 +1173,48 @@ def _cascade(
     return marginal, expected / marginal, 1.0 - survive
 
 
+def _borrowed_curve(
+    tables: Tables,
+    profile: SkillProfile,
+    families: Mapping[str, Sequence[str]],
+    challenge: Mapping[str, Any],
+    skill: str,
+) -> tuple[str, str, float, float] | None:
+    """`(node, label, low, high)` for a creature borrowing another's chart.
+
+    **The slope is kept and the line is moved**, so the borrower reaches the
+    donor's opening chance at its *own* opening level rather than at the
+    donor's. See `SkillProfile.assumed_curves` for why that is what "the same
+    curve" means here.
+
+    The donor's first series is taken, which is the unassisted one - the same
+    conservative reading `_tool_curve` falls back to - and the unlock level is
+    the challenge's own `Level`. `None` where nothing is borrowed, where the
+    donor is uncharted itself, or where the challenge states no level, since
+    the whole construction is anchored on that number.
+    """
+    if not profile.assumed_curves:
+        return None
+    node = ""
+    donor_name = ""
+    for key in _join_keys(challenge, families, ("Output", "Objects", "NPCs"), skill):
+        found = profile.assumed_curves.get(key.lower())
+        if found:
+            node, donor_name = key, found
+            break
+    if not donor_name:
+        return None
+    donor = tables.curves.get(donor_name.lower())
+    opens = challenge.get("Level")
+    if not donor or not isinstance(opens, (int, float)) or opens < 1:
+        return None
+    label, low, high, donor_req = donor[0]
+    slope = (high - low) / 98.0
+    at_donor = low + slope * (donor_req - 1)
+    moved = at_donor - slope * (int(opens) - 1)
+    return node, f"assumed: {donor_name}", moved, moved + (high - low)
+
+
 def _respawn_key(
     tables: Tables,
     families: Mapping[str, Sequence[str]],
@@ -1109,8 +1234,8 @@ def _respawn_key(
 
 
 def _tool_curve(
-    curves: tuple[tuple[str, float, float], ...], profile: SkillProfile, tool: str
-) -> tuple[str, float, float]:
+    curves: tuple[tuple[str, float, float, int], ...], profile: SkillProfile, tool: str
+) -> tuple[str, float, float, int]:
     """Which series of a chart to spend.
 
     The first, except where the profile says the labels are tool tiers - in
@@ -1153,8 +1278,12 @@ def rate_at(
 
     node, curves = _curve_for(tables, families, challenge, task, skill)
     label = ""
+    borrowed = _borrowed_curve(tables, profile, families, challenge, skill)
     if curves:
-        label, low, high = _tool_curve(curves, profile, tool)
+        label, low, high, _req = _tool_curve(curves, profile, tool)
+        chance = success_chance(level, low, high)
+    elif borrowed is not None:
+        node, label, low, high = borrowed
         chance = success_chance(level, low, high)
     elif kind in profile.certain_kinds:
         # **No chart because there is nothing to chart.** An ordinary stall is

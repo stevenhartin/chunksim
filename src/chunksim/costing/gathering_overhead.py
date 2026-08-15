@@ -141,6 +141,7 @@ def _targets(map_id: str) -> list[dict[str, Any]]:
     tables = blobs.gathering
     families = gathering.expand_families(state.chunk_info)
     found: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, float]] = set()
     for skill in sorted(gathering.PROFILES):
         challenges = state.chunk_info.challenges.get(skill) or {}
         for task, challenge in sorted(challenges.items()):
@@ -163,6 +164,17 @@ def _targets(map_id: str) -> list[dict[str, Any]]:
             cascade = profile.cascades.get(node.lower())
             if cascade and cascade[0].lower() != node.lower():
                 continue
+            # **One node quoted at one rate is one observation, however many
+            # challenges name it.** The export carries `Catch a ~|ruby
+            # harvest|~`, the same `in a jar`, and the barehanded variant, and
+            # the guide has a single figure for all three - so keeping them all
+            # would let butterflies outvote everything else three to one. Same
+            # for `Chop ~|yew logs|~` against the Forestry event that reads off
+            # it. Scored on the pair, not on the task name.
+            seen_key = (skill, node.lower(), round(float(rate.value), 3))
+            if seen_key in seen:
+                continue
+            seen.add(seen_key)
             family = gathering._tool_family(challenge)
             found.append(
                 {

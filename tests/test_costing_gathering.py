@@ -18,9 +18,9 @@ from chunksim.model.chunkinfo import ChunkInfo
 
 TABLES = gathering.Tables(
     curves={
-        "willow tree": (("Bronze", 16.0, 50.0), ("Rune", 56.0, 175.0)),
-        "iron rocks": (("Iron rocks", 96.0, 350.0),),
-        "raw lobster": (("Raw lobster", 6.0, 95.0),),
+        "willow tree": (("Bronze", 16.0, 50.0, 1), ("Rune", 56.0, 175.0, 1)),
+        "iron rocks": (("Iron rocks", 96.0, 350.0, 1),),
+        "raw lobster": (("Raw lobster", 6.0, 95.0, 1),),
     },
     tool_ticks={"Bronze pickaxe": 8.0, "Rune pickaxe": 3.0},
     cycles={"willow tree": (30.0, 8.4)},
@@ -287,7 +287,7 @@ class TestTables:
                 "tool_ticks": {"Bronze pickaxe": 8},
             }
         )
-        assert tables.curves["willow tree"][0] == ("Bronze", 16.0, 50.0)
+        assert tables.curves["willow tree"][0] == ("Bronze", 16.0, 50.0, 1)
         assert tables.cycles["willow tree"] == (30.0, 8.4)
         assert tables.experience["Woodcutting"]["willow logs"] == (67.5, "Regular")
         assert tables.empty is False
@@ -295,11 +295,11 @@ class TestTables:
 
 TRAPPING = gathering.Tables(
     curves={
-        "black chinchompa (hunter)": (("Black chinchompa", -78.0, 228.0),),
-        "carnivorous chinchompa": (("Carnivorous chinchompa", -78.0, 228.0),),
-        "magic stall": (("Magic Stall", 20.0, 180.0),),
-        "knight of ardougne": (("Normal", 50.0, 240.0),),
-        "vegetable stall": (("Vegetable Stall", 50.0, 500.0),),
+        "black chinchompa (hunter)": (("Black chinchompa", -78.0, 228.0, 1),),
+        "carnivorous chinchompa": (("Carnivorous chinchompa", -78.0, 228.0, 1),),
+        "magic stall": (("Magic Stall", 20.0, 180.0, 1),),
+        "knight of ardougne": (("Normal", 50.0, 240.0, 1),),
+        "vegetable stall": (("Vegetable Stall", 50.0, 500.0, 1),),
     },
     experience={
         "Hunter": {
@@ -532,9 +532,9 @@ class TestTheScrapeIsNotRedundant:
 
 CASCADE = gathering.Tables(
     curves={
-        "leaping sturgeon": (("Leaping sturgeon", 8.0, 64.0),),
-        "leaping salmon": (("Leaping salmon", 16.0, 96.0),),
-        "leaping trout": (("Leaping trout", 32.0, 128.0),),
+        "leaping sturgeon": (("Leaping sturgeon", 8.0, 64.0, 1),),
+        "leaping salmon": (("Leaping salmon", 16.0, 96.0, 1),),
+        "leaping trout": (("Leaping trout", 32.0, 128.0, 1),),
         "red crab (hunter)": (),
     },
     experience={
@@ -629,7 +629,7 @@ class TestCascade:
 
     def test_half_a_cascade_is_refused_rather_than_shortened(self) -> None:
         partial = gathering.Tables(
-            curves={"leaping sturgeon": (("Leaping sturgeon", 8.0, 64.0),)},
+            curves={"leaping sturgeon": (("Leaping sturgeon", 8.0, 64.0, 1),)},
             experience={"Fishing": {"leaping sturgeon": (80.0, "Miscellaneous")}},
         )
         assert (
@@ -775,7 +775,7 @@ class TestUnitsAreSpentByWhatTheNodeWaitsFor:
     """The same count, three different payoffs - none of them per skill."""
 
     _TABLES = gathering.Tables(
-        curves={"n": (("n", 500.0, 500.0),)},
+        curves={"n": (("n", 500.0, 500.0, 1),)},
         experience={"S": {"n": (100.0, "K")}},
         cycles={"cycling": (30.0, 30.0)},
         respawns={"restocking": 60.0},
@@ -784,7 +784,7 @@ class TestUnitsAreSpentByWhatTheNodeWaitsFor:
     def _rate(self, node: str, profile: gathering.SkillProfile) -> gathering.NodeRate:
         tables = dataclasses.replace(
             self._TABLES,
-            curves={node.lower(): (("n", 500.0, 500.0),)},
+            curves={node.lower(): (("n", 500.0, 500.0, 1),)},
             experience={"S": {node.lower(): (100.0, "K")}},
         )
         rate = gathering.rate_at(
@@ -865,3 +865,97 @@ class TestTheShippedCountsAreConservative:
         )
         assert rate is not None
         assert rate.xp_per_hour == pytest.approx(100.0 * 3600.0 / 60.0)
+
+
+BUTTERFLIES = gathering.Tables(
+    curves={
+        "black warlock": (
+            ("Butterfly net", 20.0, 296.0, 45),
+            ("Barehanded or Magic butterfly net", 40.0, 316.0, 45),
+        ),
+        "moonlight moth": (("Butterfly net", 0.0, 276.0, 75),),
+    },
+    experience={
+        "Hunter": {
+            "black warlock": (54.0, "Butterfly net"),
+            "moonlight moth": (75.0, "Butterfly net"),
+            "ruby harvest": (24.0, "Butterfly net"),
+            "baby impling": (18.0, "Butterfly net"),
+        }
+    },
+)
+
+NETTING = gathering.SkillProfile(
+    depletes=False,
+    strict_kinds=True,
+    roll_ticks_by_kind={"Butterfly net": 7.0},
+    assumed_curves={"ruby harvest": "Black warlock"},
+    refuses=frozenset({"baby impling"}),
+)
+
+
+def _netted(node: str, level: int, opens: int) -> gathering.NodeRate | None:
+    return gathering.rate_at(
+        BUTTERFLIES, {}, NETTING, f"Catch a ~|{node}|~", "Hunter",
+        {"Level": opens, "Primary": True, "NPCs": [node.title()]}, level,
+    )
+
+
+class TestBorrowedCurves:
+    def test_a_borrower_opens_where_its_donor_opens(self) -> None:
+        # The whole construction: black warlock is worth 0.5664 of a catch at
+        # its own level 45, so a creature unlocked at 15 is worth that at 15.
+        donor = gathering.success_chance(45, 20.0, 296.0)
+        borrowed = _netted("ruby harvest", 15, 15)
+        assert borrowed is not None
+        assert borrowed.chance == pytest.approx(donor, abs=1 / 256)
+
+    def test_the_slope_is_kept_when_the_line_is_moved(self) -> None:
+        # Same climb per level, thirty levels earlier.
+        low = _netted("ruby harvest", 15, 15)
+        high = _netted("ruby harvest", 45, 15)
+        assert low is not None and high is not None
+        assert high.chance - low.chance == pytest.approx(
+            gathering.success_chance(75, 20.0, 296.0)
+            - gathering.success_chance(45, 20.0, 296.0),
+            abs=2 / 256,
+        )
+
+    def test_a_charted_creature_is_never_given_a_borrowed_curve(self) -> None:
+        # `assumed_curves` fills a gap; it must not override a measurement.
+        rate = _netted("moonlight moth", 99, 75)
+        assert rate is not None
+        assert rate.chance == gathering.success_chance(99, 0.0, 276.0)
+
+    def test_the_donors_first_series_is_the_one_lent(self) -> None:
+        # The unassisted tier, matching what `_tool_curve` falls back to - a
+        # borrowed number should not assume the better net as well.
+        borrowed = _netted("ruby harvest", 15, 15)
+        assert borrowed is not None
+        assert borrowed.chance != pytest.approx(
+            gathering.success_chance(45, 40.0, 316.0), abs=1 / 512
+        )
+
+    def test_nothing_is_borrowed_without_an_entry(self) -> None:
+        assert _netted("snowy knight", 99, 35) is None
+
+    def test_an_impling_is_refused_though_it_shares_the_loop(self) -> None:
+        # `Butterfly net` is a grab-bag: the interval is fitted against static
+        # butterfly fields and an impling is a wandering rare spawn.
+        assert _netted("baby impling", 99, 17) is None
+
+
+class TestCurvesCarryTheirRequirement:
+    def test_the_level_a_chart_was_drawn_from_survives_the_load(self) -> None:
+        # Without it a borrowed curve cannot be re-anchored, since the whole
+        # construction is "move this line to where the borrower opens".
+        tables = gathering.load_tables(
+            {"curves": {"Black warlock": [{"label": "Butterfly net", "low": 20, "high": 296, "requirement": 45}]}}
+        )
+        assert tables.curves["black warlock"][0] == ("Butterfly net", 20.0, 296.0, 45)
+
+    def test_a_chart_with_no_requirement_reads_as_level_one(self) -> None:
+        tables = gathering.load_tables(
+            {"curves": {"X": [{"label": "a", "low": 1, "high": 2}]}}
+        )
+        assert tables.curves["x"][0][3] == 1
