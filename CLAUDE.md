@@ -31,10 +31,12 @@ src/chunksim/
   gui/      the server, split by what each route costs
 ```
 
-Each directory's `__init__.py` carries the rule that holds across it and **nothing else** — no
-re-exports, which would rebuild the god-module this layout replaced and put "which tests do I run"
-back to "all of them". The single exception is `cli/__init__.py`, which re-exports `main` because
-`[project.scripts]` names `chunksim.cli:main`.
+Each directory's `__init__.py` carries the rule that holds across it **and one entry per module
+saying what that module owns** — and no code: no re-exports, which would rebuild the god-module this
+layout replaced and put "which tests do I run" back to "all of them". The single exception is
+`cli/__init__.py`, which re-exports `main` because `[project.scripts]` names `chunksim.cli:main`.
+**Those eight docstrings are the directory of this project** — the map from "what am I looking for"
+to "which file", which used to be a table here and is now next to the code it describes.
 
 Planned: a shortest-path search ("fewest chunk unlocks to reach X"). `derive/graph.py` is shaped for
 it but is **not** speculative — it is the substrate two ported upstream passes already run on
@@ -188,78 +190,21 @@ are quoted against.
 
 ### Where things live
 
-The table says what each module **owns**; its docstring says why.
+**What each individual module owns lives in its subpackage's `__init__.py`**, as one entry per
+module, and that is where a new module's entry goes too. Read the `__init__` before working
+anywhere in the directory; this file names only the eight, because a sixty-row table of files nobody
+is touching is context spent on nothing every session.
 
-| Module | Owns |
+| Subpackage | What it is, and the rule it carries |
 |---|---|
-| `model/chunkinfo.py` | Typed, tolerant accessors over the parsed export. Build **one** per invocation — the ~10MB parse is the expensive part. |
-| `model/firebase.py` | The Firebase-safe codec, both ways, incl. mixed `t_N`/literal keys and the encoder the GUI's edit mode writes through. |
-| `model/summary.py` | Pure reductions over a raw payload — extend this, not the CLI. Also `format_age` and `_mapping`, the tolerant dict accessor eight modules import despite the `_`. |
-| `model/rates.py` | Drop-rate string parsing/formatting matching JS's rounding, **and its division**, so a zero denominator is `inf`. |
-| `model/experience.py` | The exact 1–99 XP curve, closed-form. **Not a heuristic and not overridable** — that separation from `heuristics.py` is the point of the module. |
-| `model/rules.py` | Upstream's seed `rules`, for a map this project makes from nothing. **A missing rule key skips its gate where `False` refuses it**, so an absent branch is the most permissive map there is, not a neutral one — the measurement is in the docstring. |
-| `model/edits.py` | A tick written back into a payload — **the one place this project writes to upstream's data.** The danger is silence, not complexity. |
-| `remote/api.py` | The network. **Five hosts** — the fifth is this project's own GitHub releases, which is the only one about `chunksim` rather than the game, and **must be a public repo**: GitHub answers unauthenticated requests for a private one with 404, and a token shipped in a distributed app is a published token. An unknown map is HTTP 200 + bare `null`, never a 404. **The map tiles are a fifth host it never calls.** |
-| `remote/wiki.py` | Wikitext template parsing and numeric-value extraction (arithmetic, `{{#expr:}}`, and what to refuse). |
-| `remote/wikitable.py` | Reading a wikitable: the depth-aware cell splitter and `column_index`'s `colspan` resolution. |
-| `remote/scrape.py` | The sixteen stages (thirty-odd requests) that build the scraped layer, and its coverage. **Both apps run it**, so the two cannot write different files. Decides no rate. |
-| `remote/skill_tables.py` | Rates from wiki tables, headings and prose for the skills `{{Recipe}}` and the guides cannot describe. **Published hourly figures** — somebody else's account; contrast `remote/gathering.py`, which reads what a rate is computed *from*. |
-| `remote/skillcalc.py` | Reading a `Module:Skill calc/<Skill>` Lua table — one format across eighteen skills. Owns the brace matching, which `remote/farming.py` measured first and now imports. |
-| `remote/gathering.py` | The three inputs a gathering rate is computed from: `{{Skilling success chart}}`'s `low`/`high` curves, the tool page's `Ticks between rolls`, and the despawn/respawn table. Also `build_tables`, whose **fetching is injected** so the module cannot open a socket. |
-| `remote/recipes.py` | `{{Recipe}}` as the wiki's Bucket serves it: experience, ticks and materials per action. |
-| `remote/stores.py` | What a shop charges and **in what currency**. |
-| `remote/combat.py` | Monster hitpoints and xp multipliers; autocastable spells and what each cast consumes. |
-| `remote/prayer.py`, `remote/farming.py` | Bones/altars, and the Farming calculator's crop table read as raw Lua. |
-| `derive/sections.py` | Which sections of the unlocked chunks are reachable, plus named-area unlocking and the one place this project overrules the export. |
-| `derive/sources.py` | What the unlocked chunks make available (`SourceIndex`), incl. `taskUnlocks` over items *and* entities. |
-| `derive/task_names.py` | `strip_task_markup`: the one place the raw task-name markup is undone, **display-only** and over challenge/task names alone. Split out of `challenges.py` so its thirteen callers need not import a convergence loop to print a word. |
-| `derive/challenges.py` | Which challenges are valid — a two-phase fixed point. **`BiS` is never evaluated here.** Also **where every derivation command spends its time**: read the static/dynamic gate split before touching the loop. |
-| `derive/bis.py` | Best-in-slot per (combat style, slot). Inherently **non-monotonic**: recomputed fresh per state, never accumulated. |
-| `derive/active_tasks.py` | Per-skill active/obsolete/completed classification. A *display* winner only — it never changes `ChallengeResult.valid`. |
-| `derive/other_tasks.py` | The three non-skill categories, `Diary`/`Quest`/`Extra`. No single winner. |
-| `derive/injected.py` | The challenges upstream **builds at runtime** rather than reading from the export. The export is not the whole challenge list, and a name that is only ever constructed is invisible to every other module. Definitions are overlaid via `ChunkInfo.with_challenges`, never forced valid — the ordinary gates still judge them. |
-| `derive/boosts.py` | Temporary skill boosts. With `rules['Boosting']` on this is a **dependency** of the two above, not a feature. |
-| `derive/pipeline.py` | `MapState` + `derive`. Owns the **loop** where upstream's area-unlock circularity lives, and the `slayerLocked` fold. Raises `ConvergenceError` rather than returning a truncated derivation. |
-| `derive/unlock.py` | What one candidate unlock adds, by diffing two `derive` calls. **Owns the project's attribution rule.** Additions-only. Records *eligibility* and the two boost clamps as well as validity — a diff of `valid` alone cannot see a skill becoming trainable, and ranks on the wrong number when a boost applies. |
-| `derive/delta.py` | The **symmetric** comparison of two derived states. `unlock.py` projects its primitives down to a one-directional view, and the two must agree. |
-| `derive/neighbours.py` | Which chunks are eligible to roll next, upstream's canvas numbering, and the `sectionsLimits` gate. |
-| `derive/graph.py` | The export's `sections` branch as a **directed** graph — the shared substrate `sections.py`, `neighbours.py` and `runs/simulate.py` all build on, and shaped for the not-yet-written pathfinding search besides. |
-| `derive/search.py` | World-wide fuzzy search over the *raw* export — a strict superset of what `chunksim sources` can list. |
-| `costing/heuristics.py` | Every hand-correctable number, and the `defaults < scraped < overrides` merge. Owns the joins and their `exact`/`contained` provenance; **no fuzzy tier, by measurement.** |
-| `costing/estimate.py` | The four buckets over the **active** set. **Costs the unique *item*, not the task**, and **clamps per source**. Owns the item walk and the gates on it, and records the `Heuristics` entries each number was read off — where they are read, never reconstructed. |
-| `costing/training.py` | How fast a skill goes. **A climb is priced band by band as methods unlock**, so the floor can only ever be the first band. Each band carries the override path behind its rate, set where the rate is chosen. |
-| `costing/recipe_rates.py` | A recipe turned into an XP rate, joined exactly on `Output`. Owns `defaults < computed < scraped < overrides` — **the one place a computed number does *not* beat the scrape.** Also `trip_seconds`: a bank trip's share, scaled by what an action consumes. |
-| `costing/gathering.py` | The generic node model for Fishing/Mining/Woodcutting/Hunter/Thieving, and the exact skilling-success formula. Owns `defaults < scraped < modelled < overrides` — **it beats the scrape where `recipe_rates.py` loses to it**, and the docstring says why. Per-skill quirks are `SkillProfile` fields, never branches. |
-| `costing/combat_xp.py` | Combat XP, which is damage and almost nothing else. Owns the three gates and the two credits that each removed a wrong answer. |
-| `costing/slayer.py` | Slayer's rate, which is a *distribution* not a chosen method, and the points economy that decides where you train. |
-| `costing/prayer.py`, `costing/farming.py` | The two skills whose limit is not a rate: bone supply, and a **schedule** measured in calendar days beside its active hours. |
-| `costing/levels.py` | `infer_levels`/`goal_levels`/`reachable_providers` and the gating helpers. **The map records no skill levels** — the floor is read out of completed challenges. |
-| `costing/inputs.py` | What `chunksim estimate` and the Estimate tab must agree about, assembled once. The two had already drifted. Also `ReferenceBlobs`: the reference files read **once per invocation** and threaded, rather than four times by four callers — and the one place the four override layers are merged, so no reader can apply three of them. |
-| `costing/dps_bridge.py` | The seam to `osrs-dps`. **Optional import** — check `DPS_AVAILABLE`, never assume it. Prices only `reachable_providers`, which it imports rather than copying. |
-| `costing/*_overhead.py` | The harnesses that fitted the overhead constants. **No caller in `src/`** — they exist to be re-run when someone doubts them. |
-| `store/cache.py` | The disk. **`overrides_path` is where a correction is *written* and `overrides_source` is the file actually *read*** — they differ on an installed build that has never had a knob edited, and anything keying a cache on "which corrections were these" wants the second. Both resolve the same way however `root` arrived, or the two apps price one map two ways. **`data_root` — where everything hangs off: `CHUNKSIM_CACHE`, else the checkout, else the user's own data directory.** Also the envelope, the `--chunkinfo`/`CHUNKSIM_CHUNKINFO` override, `--map` resolution across kinds, atomic writes, the cross-kind name claim, `migrate_layout`, and both override files. |
-| `store/derived_cache.py` | The on-disk cache of the **two** expensive per-state computations, and both their keys. **Read it before changing what `derive` returns** — including a *nested* result dataclass, which `_RESULT_TYPES` must list or the key will not move. |
-| `store/build_info.py` | Which install is running and when it was made. Never raises and never guesses a date. Also `parse_version`/`is_newer` — a **strict** reading of `X.Y.Z` that returns `None` rather than guess, since there is no PEP 440 parser in the stdlib and no dependency to add one. |
-| `runs/simulate.py` | Seeded chunk-roll simulation and `simulated_payload`. Records are never revisited by a later roll. |
-| `runs/batch.py` | N simulations from one state. Owns seed derivation and **both** `ProcessPoolExecutor`s in the project. **`--jobs` must never change a result** — nor may watching one: `on_roll` fires pooled as well as inline now, over a manager queue that is **one-way**, so nothing a worker reports can reach what a worker computes. Also the single writer of the run metadata both apps read back. |
-| `runs/timeline.py` | Replaying a run one roll at a time, and `added_hours` — what a roll *cost*, as a diff of what is being costed rather than of the totals. **A run is self-contained**: stepping needs no base map, no export and no `derive`. |
-| `cli/app.py` | The parser and `main`, and nothing else. If it is about a particular subcommand it does not belong here. |
-| `cli/common.py` | What every family needs before it can answer: `load_state`, `derive_cached`, `emit_json`, `digests`, `error`, `DEFAULT_MAP`. |
-| `cli/<family>.py` | One per subcommand family, each holding its handlers **and** its `add_parser` block, so a flag change edits one file. `cli/render.py` is the shared terminal formatting. |
-| `gui/server.py` | Routing, as a **pure `handle_request`** with a `BaseHTTPRequestHandler` adapter over it. Owns the `Sec-Fetch-Site`/`Host` checks, and `_state_at` — the one place `(map, step)` becomes a world, so six routes cannot disagree about what a step means. |
-| `gui/http.py` | The vocabulary every route speaks. **Must stay directly in `gui/`** — `RESOURCE_DIR` is `__file__`-relative, which is why the split is flat rather than a `routes/` package. |
-| `gui/routes_view.py` | The **cheap path**: every route answerable without parsing the export. Nothing here may call `ctx.derivations.load` (one documented exception, with a test). |
-| `gui/routes_derived.py` | The **expensive path**. `walked_into` owns the name join for a square you can reach without rolling, and **both callers share it**: the map outlines them and the chunk panel stops greying their contents. Those two disagreed until it existed. `/api/diff` derives both sides and is the one route allowed to be slow. Also `reachable_by_area`: the squares a map can walk into without having rolled them, joined to `expanded_chunks` **by name** — the `sections` graph does not model dungeon entrances at all. |
-| `gui/routes_reference.py` | Bytes belonging to no map: the static allowlist, blob freshness, the tile *template*, and the lazy asset proxy. |
-| `gui/actions.py` | The POST handlers. **An action's reply shape decides whether the page polls it** — a job id, or the result. `/api/blank` makes a map out of nothing, for a first run with nothing to open. `/api/update` is silent on every failure by design; `/api/update/install` **verifies a checksum before executing anything** and refuses an asset that published none. |
-| `gui/jobs.py` | The background job registry. **The only mutable state in the GUI**, kept out of the pure layer deliberately. Also `claim_once`, which is what stops the page's boot warm-up re-scraping the wiki on every reload. |
-| `gui/derivation.py` | The boundary between the cheap path and the expensive one. Loads `ChunkInfo` **lazily**, and holds the `ReferenceBlobs` — the one memo here validated against the files' mtimes, because stale overrides key the enrichment cache. Also `load_step`, which is how a panel describes one roll of a run rather than the map. |
-| `gui/settings.py` | What a preference *means* - defaults, and the validation that refuses rather than coerces. `cache.py` stores it and knows nothing about it; this is where the next preference goes. **`first_run_done` living here is what makes "never asked again unless the cache is empty" free**: the file is under `cache/`. |
-| `gui/knobs.py` | What an override **path** means: which layer a value came from, and whether a proposed one is allowed. Pure, and the guard on paths that address a file read back and parsed. |
-| `gui/panels.py` | Shaping `Derived` into what the panel draws. **A completed row carries `when`** — `checkedChallenges` is what was ticked during the chunk in play and the next roll migrates it into `completedChallenges`, so the un-migrated half *is* "this chunk" and needs no new data. **A skills row's level is `Level - bestBoost`, not `Level`** — printing the requirement would send someone training levels a boost already covers — and it needs `MapState` as well as `Derived`, because the boost depends on this map's rules and reachable items. Without one the row says nothing rather than printing the unboosted number. — one shape across all five categories. Pure. **New shaping goes here, not into the JavaScript.** A *roll* is shaped from the ledger alone, so anything the selection compares has to be in the ledger. |
-| `gui/worldmap.py` | Where a chunk sits on the map and which sides face outward. Owns the projection (the y axis is flipped) and `hull_edges`. |
-| `gui/browser.py` | Finding a Chromium-family browser and opening an app window whose lifetime is the server's. `--user-data-dir` is load-bearing, not tidiness. |
-| `gui/__init__.py` | `chunksim-gui`'s argparse and socket, `allowed_hosts`, and the **arming of at most one** of the two shutdown mechanisms. Downloads nothing. |
+| `model/` | Upstream's data as typed, tolerant accessors, the Firebase wire codec, and the two exact vocabularies — drop-rate strings and the XP curve. **Imports from no other subpackage**, so it is the one to read first and then stop thinking about. |
+| `remote/` | Every outbound call, and every wikitext parser reading what comes back. **`api.py` is the only module in the project that opens an outbound connection** — one directory to grep for `urlopen` rather than an honour system. |
+| `store/` | Every disk touch: `cache/`'s layout and envelope, the content-keyed derived cache, and this install's own metadata. Holds the one **upward** edge in the layering, because a store of results has to know their shape. |
+| `derive/` | The derivation chain and everything that walks or diffs it. **No module-level mutable state, across all fifteen modules** — `--jobs N` runs them in worker processes, and a cache here breaks that as runs that disagree. |
+| `costing/` | Derivation -> hours: the rate layers, the item walk, and the per-skill models. **`dps_bridge.py` is the only module that may import `osrs_dps`**, and the extra must stay optional. |
+| `runs/` | What a run is: a base state, its rolls, its replay. **A run is self-contained** — stepping one needs no base map, no export and no `derive`. |
+| `cli/` | One module per subcommand family, `add_parser` beside handler, so a flag change edits one file. The only `__init__` carrying code, because `[project.scripts]` names `chunksim.cli:main`. |
+| `gui/` | The local server and the browser front end, split by **what each route costs**: `routes_view.py` answers without parsing the export and `routes_derived.py` may not. `resources/` is the front end itself. |
 
 ### Two constraints on the GUI worth knowing before editing it
 
@@ -563,6 +508,9 @@ a green `.venv/bin/pytest` as a change being verified.
   file is for what spans modules or cannot be discovered from them. When a port turns out to be
   wrong, **correct the docstring rather than appending a note**, and keep the superseded claim only
   where the wrong version is the tempting one.
+- **A new module lands in two docstrings**: its own (why it exists and what it refuses to guess at)
+  and its subpackage's `__init__.py` (one entry saying what it owns). Nothing about it belongs in
+  this file unless it changes something that spans subpackages.
 - **`README.md` is the user-facing counterpart and describes every subcommand and most flags**, so a
   new subcommand, a renamed flag or a changed default lands in three places: the module docstring
   (why), this file (what spans modules) and the README (what a user types). It is the one that

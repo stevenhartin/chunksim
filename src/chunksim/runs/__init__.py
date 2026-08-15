@@ -14,4 +14,17 @@ that has to agree is in this directory.
 
 `--jobs` never changes a result, in either pool. That property belongs to
 `derive/` (see its `__init__`) and is spent here.
+
+The modules, and what each owns:
+
+- `simulate.py` - seeded chunk-roll simulation, and `simulated_payload`.
+  Records are never revisited by a later roll.
+- `batch.py` - N simulations from one state. Owns the seed derivation and
+  **both** `ProcessPoolExecutor`s in the project. **`--jobs` must never change a
+  result** - nor may watching one: `on_roll` fires pooled as well as inline, over
+  a manager queue that is **one-way**, so nothing a worker reports can reach
+  what a worker computes. Also the single writer of the run metadata both apps
+  read back.
+- `timeline.py` - replaying a run one roll at a time, and `added_hours`: what a
+  roll *cost*, as a diff of what is being costed rather than of the totals.
 """

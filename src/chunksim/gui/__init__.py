@@ -44,6 +44,74 @@ URL, and ours carries the port and the `?map=` deep link - so every launch
 looks like a different app to it. The page reports its own geometry to
 `/api/window` instead, and `browser.window_flags` reads it back. A first run
 opens maximised.
+
+The modules, and what each owns:
+
+- `server.py` - routing, as a **pure `handle_request`** with a
+  `BaseHTTPRequestHandler` adapter over it. Owns the `Sec-Fetch-Site`/`Host`
+  checks, and `_state_at`, the one place `(map, step)` becomes a world, so six
+  routes cannot disagree about what a step means.
+- `http.py` - the vocabulary every route speaks. **Must stay directly in
+  `gui/`**: `RESOURCE_DIR` is `__file__`-relative, which is why this split is
+  flat rather than a `routes/` package.
+- `routes_view.py` - the **cheap path**, every route answerable without parsing
+  the export. Nothing here may call `ctx.derivations.load` (one documented
+  exception, with a test).
+- `routes_derived.py` - the **expensive path**. `walked_into` owns the name join
+  for a square you can reach without rolling, and **both callers share it**: the
+  map outlines them and the chunk panel stops greying their contents. Those two
+  disagreed until it existed. `/api/diff` derives both sides and is the one
+  route allowed to be slow. Also `reachable_by_area`, the squares a map can walk
+  into without having rolled them, joined to `expanded_chunks` **by name** - the
+  `sections` graph does not model dungeon entrances at all.
+- `routes_reference.py` - bytes belonging to no map: the static allowlist, blob
+  freshness, the tile *template*, and the lazy asset proxy.
+- `actions.py` - the POST handlers. **An action's reply shape decides whether
+  the page polls it** - a job id, or the result. `/api/blank` makes a map out of
+  nothing, for a first run with nothing to open. `/api/update` is silent on
+  every failure by design; `/api/update/install` **verifies a checksum before
+  executing anything** and refuses an asset that published none.
+- `jobs.py` - the background job registry. **The only mutable state in the
+  GUI**, kept out of the pure layer deliberately. Also `claim_once`, which is
+  what stops the page's boot warm-up re-scraping the wiki on every reload.
+- `derivation.py` - the boundary between the cheap path and the expensive one.
+  Loads `ChunkInfo` **lazily**, and holds the `ReferenceBlobs` - the one memo
+  here validated against the files' mtimes, because stale overrides key the
+  enrichment cache. Also `load_step`, which is how a panel describes one roll of
+  a run rather than the map.
+- `settings.py` - what a preference *means*: the defaults, and the validation
+  that refuses rather than coerces. `cache.py` stores it and knows nothing about
+  it; this is where the next preference goes. **`first_run_done` living here is
+  what makes "never asked again unless the cache is empty" free**, because the
+  file is under `cache/`.
+- `knobs.py` - what an override **path** means: which layer a value came from,
+  and whether a proposed one is allowed. Pure, and the guard on paths that
+  address a file read back and parsed.
+- `panels.py` - shaping `Derived` into what the panel draws, one shape across
+  all five categories, pure. **A completed row carries `when`**:
+  `checkedChallenges` is what was ticked during the chunk in play and the next
+  roll migrates it into `completedChallenges`, so the un-migrated half *is*
+  "this chunk" and needs no new data. **A skills row's level is
+  `Level - bestBoost`, not `Level`** - printing the requirement would send
+  someone training levels a boost already covers - and it needs `MapState` as
+  well as `Derived`, because the boost depends on this map's rules and reachable
+  items; without one the row says nothing rather than printing the unboosted
+  number. **New shaping goes here, not into the JavaScript.** A *roll* is shaped
+  from the ledger alone, so anything the selection compares has to be in the
+  ledger.
+- `worldmap.py` - where a chunk sits on the map and which sides face outward.
+  Owns the projection (the y axis is flipped) and `hull_edges`.
+- `browser.py` - finding a Chromium-family browser and opening an app window
+  whose lifetime is the server's. `--user-data-dir` is load-bearing, not
+  tidiness.
+- `__main__.py` - `python -m chunksim.gui`, which exists for the Windows payload
+  rather than for convenience.
+- this module - `chunksim-gui`'s argparse and socket, `allowed_hosts`, and the
+  arming of at most one of the two shutdown mechanisms. Downloads nothing.
+
+`resources/` is the front end itself. `app.js` is heavily commented and is where
+its rationale lives; `tests/test_gui_contract.py` is what stops it and the
+Python drifting apart.
 """
 
 from __future__ import annotations

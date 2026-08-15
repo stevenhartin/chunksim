@@ -15,4 +15,25 @@ resources.
 and worth stating here rather than discovering: a store of results has to know
 the shape of what it stores, and the alternative (results knowing about their
 cache) is what the no-module-level-state rule forbids.
+
+The modules, and what each owns:
+
+- `cache.py` - the disk. **`overrides_path` is where a correction is *written*
+  and `overrides_source` is the file actually *read***; they differ on an
+  installed build that has never had a knob edited, and anything keying a cache
+  on "which corrections were these" wants the second. Both resolve the same way
+  however `root` arrived, or the two apps price one map two ways. Also
+  **`data_root`**, where everything hangs off - `CHUNKSIM_CACHE`, else the
+  checkout, else the user's own data directory - and the envelope, the
+  `--chunkinfo`/`CHUNKSIM_CHUNKINFO` override, `--map` resolution across kinds,
+  the atomic writes, the cross-kind name claim, `migrate_layout`, and both
+  override files.
+- `derived_cache.py` - the on-disk cache of the **two** expensive per-state
+  computations, and both their keys. **Read it before changing what `derive`
+  returns**, including a *nested* result dataclass, which `_RESULT_TYPES` must
+  list or the key will not move.
+- `build_info.py` - which install is running and when it was made. Never raises
+  and never guesses a date. Also `parse_version`/`is_newer`, a **strict**
+  reading of `X.Y.Z` that returns `None` rather than guess, since there is no
+  PEP 440 parser in the stdlib and no dependency to add one.
 """

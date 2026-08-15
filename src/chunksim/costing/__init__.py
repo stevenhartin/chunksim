@@ -18,4 +18,46 @@ The export contains no durations, no kill rates and no XP figures at all, so
 every number this directory spends comes from the scrape, the checked-in
 overrides, or a default - except `model/experience.py`'s XP curve, which is
 exact and deliberately not overridable.
+
+The modules, and what each owns:
+
+- `heuristics.py` - every hand-correctable number, and the
+  `defaults < scraped < overrides` merge. Owns the joins and their
+  `exact`/`contained` provenance; **no fuzzy tier, by measurement.**
+- `estimate.py` - the four buckets over the **active** set. **Costs the unique
+  *item*, not the task**, and **clamps per source**. Owns the item walk and the
+  gates on it, and records the `Heuristics` entries each number was read off -
+  where they are read, never reconstructed.
+- `training.py` - how fast a skill goes. **A climb is priced band by band as
+  methods unlock**, so the floor can only ever be the first band. Each band
+  carries the override path behind its rate, set where the rate is chosen.
+- `recipe_rates.py` - a recipe turned into an XP rate, joined exactly on
+  `Output`. Owns `defaults < computed < scraped < overrides`, **the one place a
+  computed number does *not* beat the scrape**. Also `trip_seconds`: a bank
+  trip's share, scaled by what an action consumes.
+- `gathering.py` - the generic node model for Fishing/Mining/Woodcutting/
+  Hunter/Thieving, and the exact skilling-success formula. Owns
+  `defaults < scraped < modelled < overrides`, so **it beats the scrape where
+  `recipe_rates.py` loses to it**, and the docstring says why. Per-skill quirks
+  are `SkillProfile` fields, never branches.
+- `combat_xp.py` - combat XP, which is damage and almost nothing else. Owns the
+  three gates and the two credits that each removed a wrong answer.
+- `slayer.py` - Slayer's rate, which is a *distribution* rather than a chosen
+  method, and the points economy that decides where you train.
+- `prayer.py`, `farming.py` - the two skills whose limit is not a rate: bone
+  supply, and a **schedule** measured in calendar days beside its active hours.
+- `levels.py` - `infer_levels`/`goal_levels`/`reachable_providers` and the
+  gating helpers. **The map records no skill levels**; the floor is read out of
+  completed challenges.
+- `inputs.py` - what `chunksim estimate` and the Estimate tab must agree about,
+  assembled once, because the two had already drifted. Also `ReferenceBlobs`:
+  the reference files read **once per invocation** and threaded, rather than
+  four times by four callers - and the one place the four override layers are
+  merged, so no reader can apply three of them.
+- `dps_bridge.py` - the seam to `osrs-dps`. **Optional import** - check
+  `DPS_AVAILABLE`, never assume it. Prices only `reachable_providers`, which it
+  imports rather than copying.
+- `dps_overhead.py`, `recipe_overhead.py`, `gathering_overhead.py` - the
+  harnesses that fitted the overhead constants. **No caller in `src/`**; they
+  exist to be re-run when someone doubts them.
 """
