@@ -380,13 +380,13 @@ Some prose about a letvek.
 
 class TestHunterInfo:
     def test_reads_the_level_and_experience(self) -> None:
-        assert gathering.parse_hunter_info(HUNTER_INFO_PAGE) == (76, 208.5)
+        assert gathering.parse_skill_info(HUNTER_INFO_PAGE, "Hunter info") == (76, 208.5)
 
     def test_a_page_without_the_infobox_yields_nothing(self) -> None:
-        assert gathering.parse_hunter_info(DESPAWN_PAGE) is None
+        assert gathering.parse_skill_info(DESPAWN_PAGE, "Hunter info") is None
 
     def test_an_infobox_with_no_experience_yields_nothing(self) -> None:
-        assert gathering.parse_hunter_info("{{Hunter info\n|name = X\n|level = 1\n}}") is None
+        assert gathering.parse_skill_info("{{Hunter info\n|name = X\n|level = 1\n}}", "Hunter info") is None
 
 
 FORESTRY_TABLE = """

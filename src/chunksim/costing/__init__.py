@@ -65,8 +65,9 @@ The modules, and what each owns:
 - `forestry.py` - the nine Forestry events, which you meet a share of rather
   than choose between, and which pay **six** skills at once off one table of
   level-carrying formulas.
-- `bats.py` - the Chambers of Xeric bats, where **two** skills gate which one
-  you are given and the lower of them decides. Four ticks each, no roll.
+- `chambers.py` - the Chambers of Xeric ladders, seven bats for Hunter and
+  seven fish for Fishing, where **two** skills gate which one you are given and
+  the lower of them decides. Four ticks each, no roll.
 - `driftnet.py` - drift net fishing, read as the hourly table the wiki costs
   it as. Pays Hunter and Fishing, and **stops scaling at 70** in both.
 - `stated.py` - the two whose rate is stated rather than computed: a moss

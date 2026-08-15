@@ -35,7 +35,7 @@ from typing import Any, Mapping
 
 from chunksim.costing import (
     aerial,
-    bats,
+    chambers,
     combat_xp,
     dps_bridge,
     driftnet,
@@ -478,8 +478,9 @@ def _gathered(
     # `costing/rumours.py`, whose every band is marked `guess` for it.
     for skill, methods in rumours.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
-    # **The bats gate on Cooking as well as Hunter**, so this is the one place
-    # a second skill's level has to be handed in - see `costing/bats.py`.
+    # **The Chambers families gate on Cooking as well as their own skill**, so
+    # this is the one place a second skill's level has to be handed in - see
+    # `costing/chambers.py`.
     # **Nine events, none of them chosen** - see `costing/forestry.py`. It pays
     # six skills at once, which is why it is merged like this rather than being
     # priced under whichever event a challenge names.
@@ -496,7 +497,7 @@ def _gathered(
         banded[skill] = (*banded.get(skill, ()), *methods)
     for skill, methods in stated.methods(state.chunk_info, derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
-    for skill, methods in bats.methods(
+    for skill, methods in chambers.methods(
         blobs.gathering, derived.challenges.valid, at_level.get("Cooking", 1)
     ).items():
         banded[skill] = (*banded.get(skill, ()), *methods)

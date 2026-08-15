@@ -100,9 +100,13 @@ DRIFT_NET_PAGE = "Drift net fishing"
 #: with the level written into each formula.
 FORESTRY_PAGE = "Forestry/Strategies"
 
-#: The infobox every huntable creature carries, and the **only** place some of
-#: them state their experience: the calculator has no row for a letvek at all.
-HUNTER_INFO_TEMPLATE = "Hunter info"
+#: The infoboxes a skilling creature carries, by the skill they are about.
+#: **The only place some of them state their experience** - the calculator has
+#: no row for a letvek at all, nor for any Chambers of Xeric fish.
+SKILL_INFO_TEMPLATES: dict[str, str] = {
+    "Hunter": "Hunter info",
+    "Fishing": "Fishing info",
+}
 
 #: The aerial fishing article, whose creature table is the only place the four
 #: catches' experience is stated for **both** skills they pay.
@@ -639,22 +643,22 @@ def parse_drift_net(text: str) -> dict[int, tuple[float, float]]:
     return found
 
 
-_HUNTER_INFO = re.compile(r"\{\{Hunter info(.*?)\n\}\}", re.S)
 _INFO_FIELD = re.compile(r"\|\s*(\w+)\s*=\s*([^\n|]*)")
 
 
-def parse_hunter_info(text: str) -> tuple[int, float] | None:
-    """`(level, experience)` from a creature's `{{Hunter info}}`, or `None`.
+def parse_skill_info(text: str, template: str) -> tuple[int, float] | None:
+    """`(level, experience)` from a creature's own infobox, or `None`.
 
-    **A second source of experience, for the creatures no calculator lists.**
-    `Module:Skill calc/Hunter` covers the methods a training calculator cares
-    about; this template is on the creature itself, so a letvek - which the
-    calculator omits entirely - states its 208.5 here and nowhere else.
+    **A second source of experience, for the things no calculator lists.**
+    `Module:Skill calc/<Skill>` covers the methods a training calculator cares
+    about; these templates are on the creature itself, so a letvek - which the
+    calculator omits entirely - states its 208.5 here and nowhere else, and the
+    seven Chambers of Xeric fish state theirs the same way.
 
     Read as a fallback and never as an override: where both exist they agree,
     and the calculator is the one with the loop attached.
     """
-    block = _HUNTER_INFO.search(text)
+    block = re.search(r"\{\{" + re.escape(template) + r"(.*?)\n\}\}", text, re.S)
     if block is None:
         return None
     fields = {key: value.strip() for key, value in _INFO_FIELD.findall(block.group(1))}
@@ -805,8 +809,8 @@ class GatheringTables:
     #: many events that sum is over.
     forestry: dict[str, dict[int, float]] = field(default_factory=dict)
     forestry_events: int = 0
-    #: Creature page -> `(level, experience)` off its `{{Hunter info}}`.
-    hunter_info: dict[str, tuple[int, float]] = field(default_factory=dict)
+    #: Skill -> creature page -> `(level, experience)` off its own infobox.
+    skill_info: dict[str, dict[str, tuple[int, float]]] = field(default_factory=dict)
     #: Spawn-tier heading -> `(impling, share)`, the chance table each kind of
     #: Puro-Puro spawn point rolls.
     spawn_tiers: dict[str, tuple[tuple[str, float], ...]] = field(default_factory=dict)
@@ -851,9 +855,12 @@ class GatheringTables:
                 for skill, by_level in sorted(self.forestry.items())
             },
             "forestry_events": self.forestry_events,
-            "hunter_info": {
-                name: [level, paid]
-                for name, (level, paid) in sorted(self.hunter_info.items())
+            "skill_info": {
+                skill: {
+                    name: [level, paid]
+                    for name, (level, paid) in sorted(entries.items())
+                }
+                for skill, entries in sorted(self.skill_info.items())
             },
             "herbiboar_xp": {
                 str(level): paid for level, paid in sorted(self.herbiboar_xp.items())
@@ -962,13 +969,16 @@ def build_tables(
     forestry = forestry_by_level(mechanics.get(FORESTRY_PAGE, ""), range(1, 100))
     forestry_events = len(parse_forestry_events(mechanics.get(FORESTRY_PAGE, "")))
 
-    say(f"reading creature infoboxes using {HUNTER_INFO_TEMPLATE}")
-    creatures = sorted(set(list_transclusions(f"Template:{HUNTER_INFO_TEMPLATE}")))
-    hunter_info: dict[str, tuple[int, float]] = {}
-    for title, body in fetch_pages(creatures).items():
-        found = parse_hunter_info(body)
-        if found is not None:
-            hunter_info[title] = found
+    say(f"reading creature infoboxes for {len(SKILL_INFO_TEMPLATES)} skills")
+    skill_info: dict[str, dict[str, tuple[int, float]]] = {}
+    creatures: list[str] = []
+    for skill, template in sorted(SKILL_INFO_TEMPLATES.items()):
+        titles_for = sorted(set(list_transclusions(f"Template:{template}")))
+        creatures.extend(titles_for)
+        for title, body in fetch_pages(titles_for).items():
+            found = parse_skill_info(body, template)
+            if found is not None:
+                skill_info.setdefault(skill, {})[title] = found
     crabs = parse_trap_counts(mechanics.get(CRAB_PAGE, ""))
     if crabs:
         parallel.setdefault("Hunter", {})["Crab trapping"] = crabs
@@ -992,13 +1002,16 @@ def build_tables(
         drift_net=drift_net,
         forestry=forestry,
         forestry_events=forestry_events,
-        hunter_info=hunter_info,
+        skill_info=skill_info,
         parallel=parallel,
         actions=actions,
         sources={
             "success charts": (len(curves), len(titles)),
             "skill calculators": (len(actions), len(SKILL_CALC_PAGES)),
-            "creature infoboxes": (len(hunter_info), len(creatures)),
+            "creature infoboxes": (
+                sum(len(entries) for entries in skill_info.values()),
+                len(creatures),
+            ),
         },
         counts={
             "tool speeds": len(tool_ticks),
@@ -1022,7 +1035,6 @@ __all__ = [
     "DRIFT_NET_PAGE",
     "GatheringTables",
     "HERBIBOAR_PAGE",
-    "HUNTER_INFO_TEMPLATE",
     "HUNTER_PAGE",
     "IMPLING_PAGE",
     "NodeCycle",
@@ -1030,6 +1042,7 @@ __all__ = [
     "CRAB_PAGE",
     "STALL_PAGE",
     "THIEVING_PAGE",
+    "SKILL_INFO_TEMPLATES",
     "SUCCESS_TEMPLATE",
     "StallRespawn",
     "SuccessCurve",
@@ -1041,7 +1054,7 @@ __all__ = [
     "forestry_by_level",
     "parse_drift_net",
     "parse_forestry_events",
-    "parse_hunter_info",
+    "parse_skill_info",
     "parse_level_experience",
     "parse_spawn_tiers",
     "parse_stall_respawns",

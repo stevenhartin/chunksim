@@ -995,11 +995,10 @@ class Tables:
     #: many events that is a sum over. For `costing/forestry.py`.
     forestry: dict[str, dict[int, float]] = field(default_factory=dict)
     forestry_events: int = 0
-    #: Lowercased creature page -> `(level, experience)`, off its
-    #: `{{Hunter info}}`.
-    #: **The fallback when no calculator lists the creature** - see
+    #: Skill -> lowercased creature page -> `(level, experience)`, off its own
+    #: infobox. **The fallback when no calculator lists the creature** - see
     #: `_experience_for`.
-    hunter_info: dict[str, tuple[int, float]] = field(default_factory=dict)
+    skill_info: dict[str, dict[str, tuple[int, float]]] = field(default_factory=dict)
     #: Spawn-tier name -> `(impling, share)`, for `costing/implings.py`.
     spawn_tiers: dict[str, tuple[tuple[str, float], ...]] = field(default_factory=dict)
     #: Skill -> loop -> `(level, units)` steps, `""` being the skill's default.
@@ -1128,11 +1127,15 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
     forestry_events = raw.get("forestry_events")
     forestry_events = int(forestry_events) if isinstance(forestry_events, int) else 0
 
-    hunter_info = {
-        str(name).lower(): (int(entry[0]), float(entry[1]))
-        for name, entry in _mapping(raw, "hunter_info").items()
-        if isinstance(entry, list) and len(entry) == 2 and float(entry[1]) > 0
-    }
+    skill_info: dict[str, dict[str, tuple[int, float]]] = {}
+    for skill, entries in _mapping(raw, "skill_info").items():
+        read_info = {
+            str(name).lower(): (int(entry[0]), float(entry[1]))
+            for name, entry in (entries or {}).items()
+            if isinstance(entry, list) and len(entry) == 2 and float(entry[1]) > 0
+        }
+        if read_info:
+            skill_info[str(skill)] = read_info
 
     spawn_tiers: dict[str, tuple[tuple[str, float], ...]] = {}
     for tier, entries in _mapping(raw, "spawn_tiers").items():
@@ -1178,7 +1181,7 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
         drift_net=drift_net,
         forestry=forestry,
         forestry_events=forestry_events,
-        hunter_info=hunter_info,
+        skill_info=skill_info,
         parallel=parallel,
     )
 
@@ -1433,7 +1436,7 @@ def _experience_for(
     # and nowhere else. The loop comes from `loop_at` in that case, since an
     # infobox states a trap rather than a calculator's grouping.
     for key in keys:
-        entry = tables.hunter_info.get(key.lower())
+        entry = (tables.skill_info.get(skill) or {}).get(key.lower())
         if entry is not None and entry[1] > 0:
             return entry[1], ""
     return 0.0, ""
