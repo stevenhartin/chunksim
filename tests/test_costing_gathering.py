@@ -876,6 +876,19 @@ class TestCurvesThisProjectSuppliesItself:
         # one-sided, which is what the hold-out test measured.
         assert gathering._geometric(16.0, 2.0, 0.5) < (16.0 + 2.0) / 2
 
+    def test_stated_experience_overrides_the_tables(self) -> None:
+        # **Not a better estimate of the same quantity - a different one.**
+        # `{{Mining info}}` writes sunstone as `xp = 23-28`, the scrape takes
+        # the low end, and 28 is what the momentum the curve assumes actually
+        # pays. Layering it under the tables would price every swing as though
+        # momentum never happened.
+        profile = self._profile(
+            stated_curves={"new rock": (60.0, 240.0)},
+            stated_experience={"new rock": 80.0},
+        )
+        got = self._rate(profile, 99)
+        assert got is not None and got.experience == 80.0
+
     def test_a_stated_curve_outranks_an_interpolated_one(self) -> None:
         # Recovered from this node's own published rates, against a guess from
         # its neighbours - the first is about this rock and the second is not.
@@ -961,6 +974,32 @@ class TestNamesNoRuleBridges:
             {"Level": 14, "Primary": True, "Objects": ["Rocks (Barronite)"]}, 99,
         )
         assert got is not None and got.provenance == gathering.CONFIRMED
+
+    def test_a_refusal_matches_any_name_the_challenge_offers(self) -> None:
+        # **A refusal is about the method, not about the name a curve happened
+        # to resolve under.** The sunstone monolith states `Output: Sunstone`,
+        # which the rock rewrite turns into `Sunstone rocks` - so it reached
+        # the rocks' curve and priced at 43,864/hr, being a different object.
+        # Refusing on the resolved node cannot say that; the resolved node is
+        # the rocks'.
+        tables = gathering.Tables(
+            curves={"sunstone rocks": (("Sunstone", 200.0, 255.0, 50, "confirmed"),)},
+            experience={"Mining": {"sunstone rocks": (28.0, "")}},
+        )
+        challenge = {
+            "Level": 50, "Primary": True,
+            "Objects": ["Sunstone monolith"], "Output": "Sunstone",
+        }
+        priced = gathering.SkillProfile(roll_ticks=4.0)
+        assert gathering.rate_at(
+            tables, {}, priced, "t", "Mining", challenge, 99
+        ) is not None
+        refusing = dataclasses.replace(
+            priced, refuses=frozenset({"sunstone monolith"})
+        )
+        assert gathering.rate_at(
+            tables, {}, refusing, "t", "Mining", challenge, 99
+        ) is None
 
     def test_the_alias_list_stays_short(self) -> None:
         # Two entries is a vocabulary gap; twenty would mean a rule is missing.

@@ -493,7 +493,11 @@ maps are your own work and nothing can recompute them.
    lands on 30,212/hr against a published 30,000. A handful of methods are
    priced from prose alone, where the wiki states the mechanic rather than
    charting it: an essence rock and a soil spot never fail, a soil spot is dug
-   every four ticks whatever you hold, and an amalgamation averages 2.5.
+   every four ticks whatever you hold, an amalgamation averages 2.5, and the
+   three Ghorrock salts never fail but run out on a flat 1/7 chance per mine.
+   Sunstone's curve comes from a sentence rather than a chart - "scaling from
+   75% success rate at level 50 to a 100% success rate at level 92" - and two
+   points fix the game's own interpolation exactly.
 
    Where a method is not a training method the model says so rather than
    omitting it - a Motherlode rockfall is an obstacle in front of the ore vein

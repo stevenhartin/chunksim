@@ -455,6 +455,18 @@ class SkillProfile:
     #: `INFERRED`, never `CONFIRMED`: the number is real but it is this
     #: project's arithmetic over somebody's figures, not a line the wiki drew.
     stated_curves: Mapping[str, tuple[float, float]] = field(default_factory=dict)
+    #: Node -> the experience one action pays, where the tables cannot say.
+    #:
+    #: **For a node that pays two different figures depending on state.**
+    #: `{{Mining info}}` writes sunstone as `xp = 23-28` with a footnote -
+    #: "mining Sunstone with momentum active increases the experience to 28" -
+    #: and a range is not a number, so the scrape takes the low end and the
+    #: model would price every swing as though momentum never happened.
+    #:
+    #: Overrides the tables outright rather than layering under them, because
+    #: the tables' answer here is not a worse estimate but a different
+    #: quantity.
+    stated_experience: Mapping[str, float] = field(default_factory=dict)
     #: Nodes whose curve is **interpolated from `curve_ladder`**, for a rock
     #: the wiki has charted neither directly nor by a comparable sibling.
     #:
@@ -733,6 +745,15 @@ PROFILES: dict[str, SkillProfile] = {
             # it and a stated chance is right: interpolated at 70 it would
             # borrow adamantite's odds and read a fifteenth of the truth.
             "soft clay rocks": (1.0, CONFIRMED),
+            # **The three Ghorrock salts never fail; what they do is run out.**
+            # Each page states it and Mod Ash is quoted for the figure - "it's
+            # a flat 1/7 chance of depletion" - so the roll is certain and the
+            # 5.4-second respawn is charged once per seven mines. See `yields`,
+            # which is where that half lives; without it the model charges a
+            # fresh respawn for every 5 experience.
+            "te salt rocks": (1.0, CONFIRMED),
+            "urt salt rocks": (1.0, CONFIRMED),
+            "efh salt rocks": (1.0, CONFIRMED),
         },
         # The same rock, from the same page: it holds "an unlimited supply of
         # essence and never deplete". Its `{{Mining info}}` `time` is `N/A`,
@@ -792,11 +813,46 @@ PROFILES: dict[str, SkillProfile] = {
         # refused for want of a curve before this is reached. The entry is here
         # to say the refusal is a decision rather than a gap, and to hold if a
         # chart ever appears.
-        refuses=frozenset({"rockfall"}),
+        refuses=frozenset({
+            "rockfall",
+            # **A different object that shares a name with the rocks.** The
+            # monolith's `Output` is `Sunstone` like theirs, so it reached
+            # their curve and their 28 experience through the rock rewrite and
+            # priced at 43,864/hr. It is a quest-line object paying 15, with no
+            # chart of its own, so the honest answer is nothing.
+            "sunstone monolith",
+        }),
         stated_curves={
             "rubium rocks": (69.0, 247.5),
             "calcified rocks": (-11.5, 177.5),
+            # **Solved from two points the page states in prose**, rather than
+            # fitted against rates like the pair above: "mining another
+            # sunstone rock with momentum active will have a higher chance to
+            # succeed, scaling from 75% success rate at level 50 Mining to a
+            # 100% success rate at level 92". Two points determine the game's
+            # own linear interpolation exactly, and this pair reproduces both -
+            # 0.7539 at 50, within the 1/256 quantum of 0.75, and 1.0000 at 92.
+            #
+            # **It is the *momentum* curve, and that is what makes the whole
+            # entry `INFERRED` rather than confirmed.** A sunstone roll has two
+            # chances - one with momentum and one without - and the wiki
+            # publishes only the first. Modelling the pair properly is a
+            # two-state chain: succeed and you hold momentum for 5 ticks, which
+            # is inside the next roll whatever pickaxe you hold, so you stay;
+            # fail and you drop back to a base chance nothing states. Charging
+            # the momentum curve for every roll assumes you never drop out,
+            # which is **exact at level 92 and above** - there the momentum
+            # chance is 1, so a chain that enters the momentum state never
+            # leaves it - and optimistic below, by however much the unpublished
+            # base chance is worse.
+            "sunstone rocks": (117.4, 265.6),
         },
+        # 28 rather than the infobox's `23-28`, for the same reason: the 28 is
+        # what momentum pays and the model above assumes momentum. **The 20%
+        # is not part of this** - the page gives it as "a 20% chance to mine an
+        # additional chunk", which is a second sunstone in the bag and not a
+        # second lot of experience, so it changes the loot and not the rate.
+        stated_experience={"sunstone rocks": 28.0},
         # Both figures are the pages' own. See `SkillProfile.yields`.
         # Both spellings, because the join reaches whichever the challenge
         # names first and `Mine ~|nickel ore|~` offers its `Output` before its
@@ -805,6 +861,15 @@ PROFILES: dict[str, SkillProfile] = {
             "rubium rocks": 7.0,
             "nickel rocks": 9.0,
             "nickel ore": 9.0,
+            # A flat 1/7 chance of depleting per mine is seven mines a rock on
+            # average. **Basalt is in the same quote and is not in the same
+            # branch above** - it has a real chart, so only its yield is stated
+            # here; the salts needed both halves.
+            "te salt rocks": 7.0,
+            "urt salt rocks": 7.0,
+            "efh salt rocks": 7.0,
+            "basalt rock": 7.0,
+            "basalt rocks (mining)": 7.0,
         },
         # 70 seconds of yielding against a 30-second respawn - the guide states
         # the first, the infobox the second. See `SkillProfile.stated_cycles`.
@@ -2036,6 +2101,23 @@ def _borrowed_curve(
     return node, f"assumed: {donor_name}", moved, moved + (high - low)
 
 
+def _stated_experience(
+    profile: SkillProfile,
+    families: Mapping[str, Sequence[str]],
+    challenge: Mapping[str, Any],
+    skill: str,
+    task: str = "",
+) -> float | None:
+    """The experience a profile states for a node, or `None`."""
+    if not profile.stated_experience:
+        return None
+    for key in _join_keys(challenge, families, _NAME_FIELDS, skill, task):
+        found = profile.stated_experience.get(key.lower())
+        if found is not None:
+            return found
+    return None
+
+
 def _stated_curve(
     profile: SkillProfile,
     families: Mapping[str, Sequence[str]],
@@ -2211,6 +2293,9 @@ def rate_at(
     for the same reason: a made-up numerator opens a band.
     """
     experience, kind = _experience_for(tables, families, skill, challenge, task)
+    paid = _stated_experience(profile, families, challenge, skill, task)
+    if paid is not None:
+        experience = paid
     if experience <= 0:
         return None
     kind = _loop_for(profile, families, challenge, skill, task) or kind
@@ -2275,7 +2360,19 @@ def rate_at(
         chance = 1.0
     else:
         return None
-    if node.lower() in profile.refuses:
+    # **Refused against every name the challenge offers, not just the one that
+    # matched.** A refusal is about the *method*, and the name a curve happened
+    # to resolve under is a poor handle on it: `Mine the ~|sunstone monolith|~`
+    # states `Output: Sunstone`, which the rock rewrite turns into
+    # `Sunstone rocks` - so the monolith reached the rocks' curve and was
+    # priced at 43,864/hr, being a different object entirely. Refusing on the
+    # resolved node cannot express that, because the resolved node is the
+    # rocks'. Measured over the export, widening this refuses five methods and
+    # all five were already meant to be refused.
+    if any(
+        key.lower() in profile.refuses
+        for key in _join_keys(challenge, families, _NAME_FIELDS, skill, task)
+    ):
         return None
     # **Restock-bound loops need their restock.** See `restock_kinds`: without
     # it a stall falls back to the interaction cadence and reads as the fastest
