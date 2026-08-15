@@ -51,5 +51,6 @@ class TestMethods:
         from chunksim.costing.gathering import PROFILES
 
         profile = PROFILES["Hunter"]
-        assert "Tracking" not in profile.roll_ticks_by_kind
         assert "herbiboar" not in profile.fixed_chances
+        assert "herbiboar" not in profile.assumed_curves
+        assert "herbiboar" not in profile.loop_at

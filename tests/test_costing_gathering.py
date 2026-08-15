@@ -1212,10 +1212,59 @@ class TestBorrowTakesTheWorstSeries:
             gathering.success_chance(53, 6.0, 268.0), abs=1 / 512
         )
 
-    def test_only_the_ferret_borrows_among_the_box_trap_creatures(self) -> None:
-        # The wiki says the ferret is hunted like a chinchompa; it says nothing
-        # of the kind for the jerboa or the letvek, and a shared trap is not a
-        # shared chance.
-        borrowed = set(gathering.PROFILES["Hunter"].assumed_curves)
-        assert "ferret (hunter)" in borrowed
-        assert not borrowed & {"embertailed jerboa", "letvek"}
+    def test_the_box_trap_creatures_borrow_the_charted_chinchompa(self) -> None:
+        # The ferret's page states the technique is shared and the trap says
+        # the same for the rest, so all three uncharted box-trap creatures take
+        # the one chart there is.
+        borrowed = gathering.PROFILES["Hunter"].assumed_curves
+        assert {
+            borrowed[node]
+            for node in ("ferret (hunter)", "embertailed jerboa", "letvek (hunter)")
+        } == {"Chinchompa (Hunter)"}
+
+
+class TestTracking:
+    """Noose-wand tracking: one chart lent to five, and a checkable interval.
+
+    The strongest evidence in the Hunter profile, and worth saying why: two of
+    the five carry published rates and they sit 42 levels apart, so a single
+    interval reproducing both is a real constraint rather than an exactly
+    identified fit.
+    """
+
+    def test_the_four_uncharted_trails_borrow_the_charted_one(self) -> None:
+        borrowed = gathering.PROFILES["Hunter"].assumed_curves
+        assert {
+            "common kebbit",
+            "feldip weasel",
+            "desert devil",
+            "razor-backed kebbit",
+        } <= set(borrowed)
+        assert set(borrowed[node] for node in ("common kebbit", "desert devil")) == {
+            "Polar kebbit"
+        }
+
+    def test_every_box_trap_creature_borrows_the_chinchompa(self) -> None:
+        # The ferret's page states the technique is shared; the trap says the
+        # same for the jerboa and the letvek.
+        borrowed = gathering.PROFILES["Hunter"].assumed_curves
+        assert {"ferret (hunter)", "embertailed jerboa", "letvek (hunter)"} <= set(borrowed)
+
+    def test_tracking_is_not_a_multi_trap_loop(self) -> None:
+        # You follow one trail at a time; there is no trap to set several of.
+        assert "Tracking" not in gathering.PROFILES["Hunter"].parallel_kinds
+
+    def test_a_borrowed_curve_is_reachable_through_a_monsters_field(self) -> None:
+        # The jerboa names itself in `Monsters` where everything else uses
+        # `NPCs`, and the borrow lookup has to see the same fields the curve
+        # lookup does.
+        tables = gathering.Tables(
+            curves={"chinchompa (hunter)": (("Grey", 6.0, 268.0, 53, "confirmed"),)},
+            experience={"Hunter": {"embertailed jerboa": (137.0, "Box trap")}},
+        )
+        rate = gathering.rate_at(
+            tables, {}, gathering.PROFILES["Hunter"], "t", "Hunter",
+            {"Level": 39, "Primary": True, "Monsters": ["Embertailed jerboa"]}, 99,
+        )
+        assert rate is not None
+        assert rate.provenance == gathering.INFERRED

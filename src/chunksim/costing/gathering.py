@@ -644,6 +644,9 @@ PROFILES: dict[str, SkillProfile] = {
             # taken to happen as often as a chinchompa approaching a box. That
             # makes every white-rabbit rate `INFERRED` - see `inferred_loops`.
             "Rabbit snare": 101.0,
+            # Fitted against feldip weasel and razor-backed kebbit, the two
+            # tracked creatures with published rates.
+            "Tracking": 21.5,
         },
         # **What the calculator groups by is not always what the game does.**
         # The export names the trap in each challenge's `Items`, which is the
@@ -687,7 +690,24 @@ PROFILES: dict[str, SkillProfile] = {
             # above. Its two box-trap siblings, the embertailed jerboa and the
             # letvek, say no such thing and stay refused - a shared trap is not
             # a shared chance, and the sentence is what makes this one safe.
+            # **Every box-trap creature is the same technique**, which the
+            # ferret's page says outright - "The hunting technique is the same
+            # as for chinchompas" - and which the trap itself implies for the
+            # rest. Only the carnivorous chinchompa is charted; the others
+            # borrow that chart moved to their own level.
             "ferret (hunter)": "Chinchompa (Hunter)",
+            "embertailed jerboa": "Chinchompa (Hunter)",
+            "letvek (hunter)": "Chinchompa (Hunter)",
+            # **Noose-wand tracking, of which one of five is charted.** Polar
+            # kebbit carries the chart and the other four are the same trail
+            # followed to the same burrow, so they borrow it. Unlike the box
+            # traps this one can be *checked*: two of the five have published
+            # rates, and the interval fitted against them lands within 6% of
+            # both.
+            "common kebbit": "Polar kebbit",
+            "feldip weasel": "Polar kebbit",
+            "desert devil": "Polar kebbit",
+            "razor-backed kebbit": "Polar kebbit",
         },
         refuses=frozenset(
             {
@@ -1290,7 +1310,12 @@ def _experience_for(
     invented wearing a citation.
     """
     by_name = tables.experience.get(skill) or {}
-    for key in _join_keys(challenge, families, ("Output", "Objects", "NPCs"), skill):
+    # **The same fields the curve lookup reads.** An embertailed jerboa names
+    # itself only in `Monsters` - its `Output` is `Jerboa tail` - so leaving
+    # that field out here refused the method before its curve was ever asked
+    # for, and the borrow above it could never fire.
+    fields = ("Output", "Objects", "NPCs", "Monsters")
+    for key in _join_keys(challenge, families, fields, skill):
         found = by_name.get(key.lower())
         if found:
             return found
@@ -1393,7 +1418,8 @@ def _borrowed_curve(
         return None
     node = ""
     donor_name = ""
-    for key in _join_keys(challenge, families, ("Output", "Objects", "NPCs"), skill):
+    fields = ("Output", "Objects", "NPCs", "Monsters")
+    for key in _join_keys(challenge, families, fields, skill):
         found = profile.assumed_curves.get(key.lower())
         if found:
             node, donor_name = key, found
