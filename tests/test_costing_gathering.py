@@ -145,6 +145,25 @@ class TestRateAt:
             is not None
         )
 
+    def test_a_tree_offers_what_it_yields(self) -> None:
+        # **Fourteen Forestry methods turned on this.** `Participate in
+        # ~|Forestry events|~ while chopping oak trees` states
+        # `Output: Anima-infused bark` - the event currency - so the only name
+        # it offers for the tree is `Oak tree`, and no calculator row is called
+        # that. They had a curve and a tool and were refused for want of a
+        # numerator.
+        keys = gathering._join_keys(
+            {"Objects": ["Oak tree"], "Output": "Anima-infused bark"},
+            {}, gathering._NAME_FIELDS, "Woodcutting",
+        )
+        assert "Oak logs" in keys
+
+    def test_another_skill_does_not_grow_logs(self) -> None:
+        keys = gathering._join_keys(
+            {"Objects": ["Oak tree"]}, {}, gathering._NAME_FIELDS, "Mining"
+        )
+        assert not any("logs" in key for key in keys)
+
     def test_a_plural_is_offered_for_every_skill(self) -> None:
         # A spelling rule, not a mechanic: the export writes
         # `Mine a size-1 ~|shooting star|~` and the chart is on
@@ -1859,8 +1878,10 @@ class TestTaskSpanIsTheLastJoinKey:
         ) == (
             "Willow tree",
             "Willow trees",
+            "Willow logs",
             "Willow tree (Woodcutting)",
             "Willow trees (Woodcutting)",
+            "Willow logs (Woodcutting)",
         )
 
 

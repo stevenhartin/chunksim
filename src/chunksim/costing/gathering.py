@@ -1965,6 +1965,22 @@ _ROCK_SUFFIX = re.compile(r"\s+(?:ore|rocks?)$", re.I)
 #: instead put a `Willow tree rocks` in every join in the project.
 _ROCK_SKILLS = frozenset({"Mining"})
 
+#: A trailing `tree`/`trees`, so a tree and what it yields can be offered
+#: together. `Woodcutting`'s half of what `_ROCK_SUFFIX` does for Mining.
+_TREE_SUFFIX = re.compile(r"\s+trees?$", re.I)
+
+#: The skills whose calculator rows are named for the *product* where the
+#: export names the thing you swing at.
+#:
+#: **Fourteen methods turned on this and every one of them was a Forestry
+#: task.** `Chop ~|oak logs|~` states `Output: Oak logs` and joins itself, but
+#: `Participate in ~|Forestry events|~ while chopping oak trees` states
+#: `Output: Anima-infused bark` - the event currency - so the only name it
+#: offers for the tree is `Oak tree`, and no calculator row is called that.
+#: They had a success curve and a tool and were refused for want of a
+#: numerator, which reads as a missing page rather than as a missing letter.
+_LOG_SKILLS = frozenset({"Woodcutting"})
+
 #: Export spelling -> the wiki page the same thing is written up on, for the
 #: names no rule can bridge.
 #:
@@ -2060,6 +2076,12 @@ def _join_keys(
         key[:-1] if key.endswith("s") and not key.endswith("ss") else f"{key}s"
         for key in list(keys)
     )
+    if skill in _LOG_SKILLS:
+        keys.extend(
+            f"{_TREE_SUFFIX.sub('', key).strip()} logs"
+            for key in list(keys)
+            if _TREE_SUFFIX.search(key)
+        )
     if skill in _ROCK_SKILLS:
         stems = [_ROCK_SUFFIX.sub("", key).strip() for key in list(keys)]
         keys.extend(stems)
