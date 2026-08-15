@@ -1408,3 +1408,58 @@ class TestLootStemKey:
             {"Output": "Stymphike loot"}, {}, gathering._NAME_FIELDS, "Hunter"
         )
         assert keys.index("Stymphike loot") < keys.index("Stymphike")
+
+
+class TestDeepSeaTrawling:
+    """The shoals, and the constant three guides agree on.
+
+    Every shoal rolls on the same cadence and states its own experience, so the
+    only thing that had to be worked out was how many rolls an hour - and three
+    of the four money-making guides put it at `9,880 x chance` within 4% of
+    each other. Marlin is the fourth and does not fit, because its shoals are
+    the rarest and the hour goes on sailing between them rather than on the
+    roll at one.
+    """
+
+    _TABLES = gathering.Tables(
+        curves={
+            "bluefin shoal": (("Trawling net", -200.0, 24.0, 87, "confirmed"),),
+            "haddock shoal": (("Trawling net", -200.0, 29.0, 73, "confirmed"),),
+        },
+        experience={"Fishing": {}},
+        skill_info={"Fishing": {"bluefin shoal": (87, 220.5), "haddock shoal": (73, 128.5)}},
+    )
+
+    def _rate(self, node: str, opens: int) -> gathering.NodeRate:
+        rate = gathering.rate_at(
+            self._TABLES, {}, gathering.PROFILES["Fishing"], "t", "Fishing",
+            {"Level": opens, "Primary": True, "Objects": [node]}, 99,
+        )
+        assert rate is not None
+        return rate
+
+    def test_a_shoal_is_priced_off_its_own_chart_and_experience(self) -> None:
+        rate = self._rate("Bluefin shoal", 87)
+        assert rate.experience == 220.5
+        assert rate.roll_seconds == pytest.approx(2.43 * 0.6)
+
+    def test_the_krill_experience_is_recovered_from_its_rod_figure(self) -> None:
+        # It states only `skill1exp2`, and the rod pays exactly a fifth on all
+        # five shoals that publish both.
+        assert 22.5 * 5 == 112.5
+
+    def test_marlin_is_slower_because_its_shoals_are_scarce(self) -> None:
+        profile = gathering.PROFILES["Fishing"]
+        assert profile.loop_at["marlin shoal"] == "Trawling (scarce)"
+        assert (
+            profile.roll_ticks_by_kind["Trawling (scarce)"]
+            > profile.roll_ticks_by_kind["Trawling"]
+        )
+
+    def test_no_trip_is_charged_for_a_shoal(self) -> None:
+        # Caught from a boat, and the guides quote it that way.
+        assert self._rate("Haddock shoal", 73).bank_seconds_per_item == 0.0
+
+    def test_every_shoal_shares_the_shallow_cadence_but_marlin(self) -> None:
+        loops = gathering.PROFILES["Fishing"].loop_at
+        assert {loops[node] for node in loops if node != "marlin shoal"} == {"Trawling"}

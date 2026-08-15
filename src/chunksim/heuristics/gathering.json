@@ -1,6 +1,6 @@
 {
   "name": "gathering.json",
-  "fetched_at": "2026-08-15T19:12:14.397562+00:00",
+  "fetched_at": "2026-08-15T19:41:06.358554+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "curves": {
@@ -14981,6 +14981,10 @@
           50,
           100.0
         ],
+        "Bluefin shoal": [
+          87,
+          220.5
+        ],
         "Boat fishing spot (karambwan)": [
           65,
           50.0
@@ -15065,9 +15069,25 @@
           33,
           75.0
         ],
+        "Giant krill shoal": [
+          69,
+          112.5
+        ],
+        "Haddock shoal": [
+          73,
+          128.5
+        ],
+        "Halibut shoal": [
+          83,
+          195.5
+        ],
         "Infernal eel": [
           80,
           95.0
+        ],
+        "Marlin shoal": [
+          91,
+          265.5
         ],
         "Minnow": [
           82,
@@ -15088,6 +15108,10 @@
         "Raw bass": [
           46,
           100.0
+        ],
+        "Raw bluefin": [
+          87,
+          220.5
         ],
         "Raw brawk fish (3)": [
           45,
@@ -15117,9 +15141,21 @@
           85,
           130.0
         ],
+        "Raw giant krill": [
+          69,
+          112.5
+        ],
         "Raw guppy": [
           7,
           8.0
+        ],
+        "Raw haddock": [
+          73,
+          128.5
+        ],
+        "Raw halibut": [
+          83,
+          195.5
         ],
         "Raw harpoonfish": [
           35,
@@ -15164,6 +15200,10 @@
         "Raw manta ray": [
           81,
           69.0
+        ],
+        "Raw marlin": [
+          91,
+          265.5
         ],
         "Raw monkfish": [
           62,
@@ -15233,6 +15273,10 @@
           20,
           50.0
         ],
+        "Raw yellowfin": [
+          79,
+          155.5
+        ],
         "Rod Fishing spot (infernal eel)": [
           80,
           95.0
@@ -15248,6 +15292,10 @@
         "Whitefish": [
           40,
           70.0
+        ],
+        "Yellowfin shoal": [
+          79,
+          155.5
         ]
       },
       "Hunter": {
@@ -46368,7 +46416,7 @@
     },
     "sources": {
       "creature infoboxes": [
-        156,
+        168,
         203
       ],
       "skill calculators": [

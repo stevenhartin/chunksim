@@ -643,6 +643,10 @@ def parse_drift_net(text: str) -> dict[int, tuple[float, float]]:
     return found
 
 
+#: What a rod catch pays against a trawling net's, measured on the five shoals
+#: that publish both.
+_ROD_SHARE = 5.0
+
 _INFO_FIELD = re.compile(r"\|\s*(\w+)\s*=\s*([^\n|]*)")
 
 
@@ -664,6 +668,19 @@ def parse_skill_info(text: str, template: str) -> tuple[int, float] | None:
     fields = {key: value.strip() for key, value in _INFO_FIELD.findall(block.group(1))}
     level = _leading(fields.get("level", ""))
     paid = _leading(fields.get("xp", ""))
+    if paid is None:
+        # **A page with two versions states them numbered.** Every trawling
+        # shoal carries `skill1exp1` for the net and `skill1exp2` for the rod
+        # rather than a plain `xp`, and the first is the one this project
+        # prices - the rod is the same fish caught the slow way.
+        paid = _leading(fields.get("skill1exp1", ""))
+    if paid is None:
+        # **The rod figure is exactly a fifth of the net one**, on all five
+        # shoals that state both - 265.5/53.1, 220.5/44.1, 195.5/39.1,
+        # 155.5/31.1, 128.5/25.7 - so the giant krill shoal, which states only
+        # the rod's 22.5, is the one row this recovers.
+        rod = _leading(fields.get("skill1exp2", ""))
+        paid = None if rod is None else rod * _ROD_SHARE
     if level is None or paid is None or level < 1 or paid <= 0:
         return None
     return int(level), paid

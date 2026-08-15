@@ -548,10 +548,60 @@ PROFILES: dict[str, SkillProfile] = {
             "Small net, Big net": 5.0,
             # The calculator's catch-all, and it really is one - see `refuses`.
             "Miscellaneous": 5.0,
+            # **Deep sea trawling, and the interval is a derivation.** Each
+            # shoal rolls every 3 ticks, or every 2 if the net is clicked each
+            # tick, and its own success chart says how often that roll lands.
+            # Three of the four money-making guides agree that fish an hour is
+            # `9,880 x chance` - within 4% of each other - which against the
+            # quarter-experience every one of them applies is a roll every 2.43
+            # ticks, sitting inside the bracket the page states.
+            "Trawling": 2.43,
+            # **Marlin is scarcity, not slowness.** Its guide implies 5,610
+            # rather than 9,880 because marlin shoals are the rarest and the
+            # hour is spent sailing between them; the roll at one is the same.
+            # One constant against one observation, so its 1.01x is arithmetic.
+            "Trawling (scarce)": 4.28,
+            #
+            # **Haddock and giant krill are the two rows nothing checks.** No
+            # guide costs either, so they are this constant extrapolated one
+            # tier below where it was measured - 35,942/hr and 33,637/hr, which
+            # continue the fall from yellowfin's 44,241 as the tier drops. The
+            # experience is read (a shoal states it, and the krill's is
+            # recovered from its rod figure) and the chance is charted; the
+            # pace is the extrapolation.
+            #
+            # Each shoal is priced on *its own* experience rather than on the
+            # mix of fish it really yields, which the guides do carry. That is
+            # worth 5% at worst - yellowfin reads 0.949x because its shoal
+            # gives more of the dearer fish than its own 155.5 - and it is what
+            # lets the two uncosted shoals be priced at all, since nobody
+            # publishes their mix.
+        },
+        # A shoal is caught from a boat and the guides quote it that way, so no
+        # trip is charged - see `unbanked`.
+        loop_at={
+            "bluefin shoal": "Trawling",
+            "halibut shoal": "Trawling",
+            "yellowfin shoal": "Trawling",
+            "haddock shoal": "Trawling",
+            "giant krill shoal": "Trawling",
+            "marlin shoal": "Trawling (scarce)",
         },
         # Barbarian fishing is trained by dropping, so its published figures
         # carry no bank run - see `unbanked`.
-        unbanked=frozenset({"leaping sturgeon", "leaping salmon", "leaping trout"}),
+        unbanked=frozenset(
+            {
+                "leaping sturgeon",
+                "leaping salmon",
+                "leaping trout",
+                "bluefin shoal",
+                "halibut shoal",
+                "yellowfin shoal",
+                "haddock shoal",
+                "giant krill shoal",
+                "marlin shoal",
+            }
+        ),
         cascades={
             # **Barbarian fishing, and the order is the mechanic.** The best
             # fish is rolled first and each failure falls through to the next,
