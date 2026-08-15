@@ -1001,6 +1001,19 @@ class TestNamesNoRuleBridges:
             tables, {}, refusing, "t", "Mining", challenge, 99
         ) is None
 
+    def test_the_rock_rewrite_can_make_two_methods_share_a_name(self) -> None:
+        # **The trap the widened refusal set, caught by a fit that produced no
+        # rows at all.** `Mine an ~|infernal shale deposit|~` states
+        # `Output: Infernal shale`, which the rock rewrite turns into
+        # `Infernal shale rocks` - the *other* method's name. So refusing the
+        # rocks refused the deposit beside them. Anything keyed by name has to
+        # know this is possible.
+        keys = gathering._join_keys(
+            {"Objects": ["Infernal shale deposit"], "Output": "Infernal shale"},
+            {}, gathering._NAME_FIELDS, "Mining",
+        )
+        assert "Infernal shale rocks" in keys
+
     def test_the_alias_list_stays_short(self) -> None:
         # Two entries is a vocabulary gap; twenty would mean a rule is missing.
         assert len(gathering._ALIASES) <= 5

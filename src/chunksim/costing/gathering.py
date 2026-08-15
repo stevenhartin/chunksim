@@ -606,7 +606,7 @@ class SkillProfile:
 #: | Hunter | 16 | 1.00x | 12/16 |
 #: | Thieving | 14 | 1.00x | 14/14 |
 #: | Mining | 4 | 0.86x | 1/4 |
-#: | Mining (`--stated-curves`) | 18 | 1.00x | 18/18 |
+#: | Mining (`--stated-curves`) | 20 | 1.00x | 20/20 |
 #:
 #: **Read the last three rows the opposite way round from how they look.**
 #: Thieving's 14/14 is an identity rather than evidence - the model's stall
@@ -794,6 +794,11 @@ PROFILES: dict[str, SkillProfile] = {
             # every few hundred seconds. That is below the resolution of
             # anything else here.
             "rubium deposit",
+            # The same two-deposit dance as rubium, and stated the same way:
+            # "two deposits are located close together in the mine, with only
+            # one of them being minable at a time. The minable deposit
+            # alternates regularly every 4.5 to 5 minutes."
+            "infernal shale deposit",
         }),
         # **Two curves recovered from published rate tables**, where the wiki
         # charts neither rock but quotes hourly figures against level for both.
@@ -832,6 +837,14 @@ PROFILES: dict[str, SkillProfile] = {
         # refused for want of a curve before this is reached. The entry is here
         # to say the refusal is a decision rather than a gap, and to hold if a
         # chart ever appears.
+        # **A refusal matches every name the challenge offers, so check what
+        # else generates that name before adding one.** `infernal shale rocks`
+        # was tried here and is not: the rock rewrite turns the *deposit's*
+        # `Output: Infernal shale` into `Infernal shale rocks` too, so refusing
+        # the rocks refused its sibling as well - which showed up as the
+        # deposit's curve fitting to nothing at all. The rocks are left
+        # uncurved instead, which refuses them just as effectively and cannot
+        # catch anything else.
         refuses=frozenset({
             "rockfall",
             # **A different object that shares a name with the rocks.** The
@@ -875,6 +888,24 @@ PROFILES: dict[str, SkillProfile] = {
             # evidence here is that the *shape* is the game's linear
             # interpolation, not that the fit converged.
             "rubium deposit": (-38.0, 30.5),
+            # **The deposit is curved and the rocks beside it deliberately are
+            # not**, which is the whole decision here rather than an omission.
+            # Every figure published for `Infernal shale rocks` is Jim's wet
+            # cloth - the page's 40-50k "with decent execution", its "over
+            # 60k", and the money-making guide's 35,960 the scrape holds - and
+            # this model has no representation of that technique.
+            #
+            # **This is not the granite call, and the difference is evidence.**
+            # Granite is modelled at 24,700 against a 3-tick 87,000 because
+            # granite has three real success charts and a real respawn: the
+            # model knows what ordinary granite mining costs and the technique
+            # sits on top. Infernal shale rocks are charted nowhere. Any number
+            # for them would be this curve borrowed onto a rock the page
+            # describes differently - "between iron and coal in time to mine" -
+            # and it would then *displace* the measured figure, because a
+            # modelled rate outranks a scraped one. Leaving them uncurved
+            # leaves the number somebody actually observed.
+            "infernal shale deposit": (-15.5, 24.0),
         },
         # 28 rather than the infobox's `23-28`, for the same reason: the 28 is
         # what momentum pays and the model above assumes momentum. **The 20%
@@ -890,6 +921,15 @@ PROFILES: dict[str, SkillProfile] = {
             # range, so the scrape takes the low end - pricing every geode at
             # a quarter of what it pays.
             "rubium deposit": 40.0,
+            # **42.73, weighted, and the wiki weighted it.** Infernal shale
+            # pays one of ten figures from 13.2 to 100.0, nine at 1/11 and the
+            # 100 at 2/11, and the deposit page tabulates the average
+            # underneath. Keyed on the shale rather than on either rock,
+            # because `Infernal shale` is the `Output` both name and it is the
+            # shale that pays. Neither page carries a `{{Mining info}}` this
+            # could have been scraped from - the deposit's is a `{{Skill info}}`
+            # and writes it `13-100` besides.
+            "infernal shale": 42.73,
         },
         # Both figures are the pages' own. See `SkillProfile.yields`.
         # Both spellings, because the join reaches whichever the challenge

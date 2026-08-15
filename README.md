@@ -498,7 +498,14 @@ maps are your own work and nothing can recompute them.
    and the salt deposit under Duke Sucellus never runs out at all - 5 experience
    every 2.83 ticks, which is 10,601/hr against a reported 10,600 with nothing
    fitted. A rubium geode pays one of eleven equally-likely figures and the
-   wiki averages them for you: exactly 40.
+   wiki averages them for you: exactly 40, and infernal shale's ten values
+   weight out to 42.73.
+
+   Where the only published figure for a method is a **tick-manipulation**
+   one, the model says nothing rather than something slower. Infernal shale
+   rocks are mined with Jim's wet cloth for 40-60k/hr and are charted nowhere,
+   so they keep the observed figure; the deposit beside them, which the same
+   page calls AFK, is modelled from its own 6-9k.
    Sunstone's curve comes from a sentence rather than a chart - "scaling from
    75% success rate at level 50 to a 100% success rate at level 92" - and two
    points fix the game's own interpolation exactly.

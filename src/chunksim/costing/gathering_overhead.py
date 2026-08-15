@@ -438,6 +438,19 @@ STATED_RATES: dict[str, tuple[str, tuple[tuple[int, float], ...]]] = {
         "Rubium deposit#Experience rates (the 97 row's low end)",
         ((75, 5000), (97, 10000)),
     ),
+    # **The level attribution is this project's reading and not the page's.**
+    # `Infernal shale deposit` says only "players can expect to receive 6k-9k
+    # Mining experience ... per hour", with no levels against the ends, where
+    # every other range this file meets names its band. Spreading it over the
+    # method's own span - 78, its requirement, to 99 - is the only reading that
+    # makes a range mean anything for one activity with one requirement, and a
+    # 1.5x spread is what a mid-difficulty chance curve does over those
+    # twenty-one levels. Two points against two parameters is exactly
+    # determined, so what this buys is the shape between them.
+    "infernal shale deposit": (
+        "Infernal shale deposit (6k-9k, levels assumed 78 and 99)",
+        ((78, 6000), (99, 9000)),
+    ),
     "calcified rocks": (
         "Pay-to-play Mining training#Levels 41-99: Calcified rocks (w/o 3-tick)",
         ((50, 23500), (60, 27000), (70, 34000), (80, 39000), (90, 44000), (99, 49000)),
