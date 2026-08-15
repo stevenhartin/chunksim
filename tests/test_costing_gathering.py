@@ -311,7 +311,7 @@ TRAPPING = gathering.Tables(
         },
     },
     respawns={"magic stall": 7.2, "vegetable stall": 1.2},
-    parallel={"Hunter": ((1, 1.0), (20, 2.0), (40, 3.0), (60, 4.0), (80, 5.0))},
+    parallel={"Hunter": {"": ((1, 1.0), (20, 2.0), (40, 3.0), (60, 4.0), (80, 5.0))}},
 )
 
 BLACK_CHIN = {"Level": 73, "Primary": True, "NPCs": ["Black chinchompa"]}
@@ -526,3 +526,161 @@ class TestTheScrapeIsNotRedundant:
             "really true the guide stage could go, but check it is not a join "
             "regression first"
         )
+
+
+CASCADE = gathering.Tables(
+    curves={
+        "leaping sturgeon": (("Leaping sturgeon", 8.0, 64.0),),
+        "leaping salmon": (("Leaping salmon", 16.0, 96.0),),
+        "leaping trout": (("Leaping trout", 32.0, 128.0),),
+        "red crab (hunter)": (),
+    },
+    experience={
+        "Fishing": {
+            "leaping sturgeon": (80.0, "Miscellaneous"),
+            "leaping salmon": (70.0, "Miscellaneous"),
+            "leaping trout": (50.0, "Miscellaneous"),
+        },
+        "Hunter": {"red crab (hunter)": (64.0, "Crab trapping")},
+        "Thieving": {
+            "chest (rogues' castle)": (701.7, "Chests"),
+            "shop counter (ore)": (100.0, "Stalls"),
+        },
+    },
+    respawns={"chest (rogues' castle)": 20.4},
+    parallel={"Hunter": {"": ((1, 1.0), (80, 5.0)), "Crab trapping": ((21, 2.0), (80, 5.0))}},
+)
+
+BARBARIAN = gathering.SkillProfile(
+    depletes=False,
+    strict_kinds=True,
+    roll_ticks_by_kind={"Miscellaneous": 5.0},
+    unbanked=frozenset({"leaping sturgeon", "leaping salmon", "leaping trout"}),
+    cascades={
+        node: ("Leaping sturgeon", "Leaping salmon", "Leaping trout")
+        for node in ("leaping sturgeon", "leaping salmon", "leaping trout")
+    },
+    bank_seconds=74.0,
+)
+CHESTS = gathering.SkillProfile(
+    depletes=False,
+    strict_kinds=True,
+    roll_ticks_by_kind={"Chests": 2.0, "Stalls": 2.0},
+    certain_kinds=frozenset({"Chests", "Stalls"}),
+    restock_kinds=frozenset({"Chests", "Stalls"}),
+)
+CRABS = gathering.SkillProfile(
+    depletes=False,
+    strict_kinds=True,
+    roll_ticks_by_kind={"Crab trapping": 57.0},
+    certain_kinds=frozenset({"Crab trapping"}),
+    parallel_kinds=frozenset({"Crab trapping"}),
+)
+
+
+def _fish(node: str, level: int) -> gathering.NodeRate:
+    rate = gathering.rate_at(
+        CASCADE, {}, BARBARIAN, f"Catch a ~|{node}|~", "Fishing",
+        {"Level": 48, "Primary": True, "Output": node.capitalize()}, level,
+    )
+    assert rate is not None
+    return rate
+
+
+class TestCascade:
+    def test_every_fish_in_one_cascade_prices_the_same_action(self) -> None:
+        # Three challenges, one roll: what the action pays cannot depend on
+        # which of its outcomes the task happens to name.
+        rates = {
+            node: _fish(node, 99).xp_per_hour
+            for node in ("leaping sturgeon", "leaping salmon", "leaping trout")
+        }
+        assert len(set(round(value, 6) for value in rates.values())) == 1
+
+    def test_the_action_pays_more_than_its_best_fish_alone(self) -> None:
+        # The whole point: priced as a single roll, two of the three rolls an
+        # action makes went uncounted and barbarian fishing read 0.73x.
+        single = gathering.SkillProfile(
+            depletes=False, strict_kinds=True, roll_ticks_by_kind={"Miscellaneous": 5.0}
+        )
+        alone = gathering.rate_at(
+            CASCADE, {}, single, "Catch a ~|leaping sturgeon|~", "Fishing",
+            {"Level": 70, "Primary": True, "Output": "Leaping sturgeon"}, 99,
+        )
+        assert alone is not None
+        assert _fish("leaping sturgeon", 99).xp_per_hour > alone.xp_per_hour
+
+    def test_a_rarer_fish_costs_more_to_obtain_than_a_common_one(self) -> None:
+        # One rate for training, but the item walk still has to know that a
+        # sturgeon is not an average fish: `chance` stays the marginal.
+        assert _fish("leaping trout", 99).chance < _fish("leaping sturgeon", 99).chance
+        assert (
+            _fish("leaping trout", 99).seconds_per_item
+            > _fish("leaping sturgeon", 99).seconds_per_item
+        )
+
+    def test_the_rate_climbs_with_level(self) -> None:
+        assert _fish("leaping trout", 48).xp_per_hour < _fish("leaping trout", 99).xp_per_hour
+
+    def test_an_unbanked_node_is_charged_no_trip(self) -> None:
+        assert _fish("leaping sturgeon", 99).bank_seconds_per_item == 0.0
+
+    def test_half_a_cascade_is_refused_rather_than_shortened(self) -> None:
+        partial = gathering.Tables(
+            curves={"leaping sturgeon": (("Leaping sturgeon", 8.0, 64.0),)},
+            experience={"Fishing": {"leaping sturgeon": (80.0, "Miscellaneous")}},
+        )
+        assert (
+            gathering.rate_at(
+                partial, {}, BARBARIAN, "Catch a ~|leaping sturgeon|~", "Fishing",
+                {"Level": 70, "Primary": True, "Output": "Leaping sturgeon"}, 99,
+            )
+            is None
+        )
+
+
+class TestRestockGate:
+    def test_a_chest_is_priced_at_its_restock(self) -> None:
+        rate = gathering.rate_at(
+            CASCADE, {}, CHESTS, "Loot a ~|chest|~", "Thieving",
+            {"Level": 84, "Primary": True, "Objects": ["Chest (Rogues' Castle)"]}, 99,
+        )
+        assert rate is not None
+        assert rate.xp_per_hour == pytest.approx(701.7 * 3600.0 / 20.4)
+
+    def test_a_restock_bound_node_with_no_restock_is_refused(self) -> None:
+        # Without the gate this falls back to the two-tick interaction cadence
+        # and reads as the fastest method in the game.
+        assert (
+            gathering.rate_at(
+                CASCADE, {}, CHESTS, "Steal from a ~|shop counter|~", "Thieving",
+                {"Level": 1, "Primary": True, "Objects": ["Shop Counter (ore)"]}, 99,
+            )
+            is None
+        )
+
+
+class TestCrabTrapping:
+    def _rate(self, level: int) -> gathering.NodeRate:
+        rate = gathering.rate_at(
+            CASCADE, {}, CRABS, "Catch a ~|red crab|~", "Hunter",
+            {"Level": 21, "Primary": True, "NPCs": ["Red crab"]}, level,
+        )
+        assert rate is not None
+        return rate
+
+    def test_a_trap_that_cannot_fail_needs_no_curve(self) -> None:
+        # "players cannot fail to catch a crab" - so a missing chart is the
+        # statement, not the gap.
+        assert self._rate(99).chance == 1.0
+
+    def test_it_uses_its_own_trap_table_not_the_skills(self) -> None:
+        # Crab trapping opens at 21 with two traps where hunting generally
+        # opens at 1 with one; the general table would hand a level-21 player
+        # the wrong count.
+        assert self._rate(21).xp_per_hour == pytest.approx(2.0 * self._rate(1).xp_per_hour)
+
+    def test_a_node_with_no_restock_is_still_priced(self) -> None:
+        # Certain *and* not restock-bound: its rate is the interval, so the
+        # `restock_kinds` guard must not reach it.
+        assert self._rate(99).xp_per_hour > 0

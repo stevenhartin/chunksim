@@ -138,6 +138,8 @@ def _targets(map_id: str) -> list[dict[str, Any]]:
     blobs = inputs.load_reference(None, map_id)
     heuristics, _ = inputs.load_heuristics(state.chunk_info, None, blobs)
 
+    tables = blobs.gathering
+    families = gathering.expand_families(state.chunk_info)
     found: list[dict[str, Any]] = []
     for skill in sorted(gathering.PROFILES):
         challenges = state.chunk_info.challenges.get(skill) or {}
@@ -146,6 +148,20 @@ def _targets(map_id: str) -> list[dict[str, Any]]:
                 continue
             rate = heuristics.training.get(task, {}).get(skill)
             if rate is None or not rate.source.startswith(TRUSTED_SOURCES):
+                continue
+            # **A cascade is one method wearing three names.** Barbarian
+            # fishing rolls sturgeon, then salmon, then trout in one action, so
+            # the three challenges share a rate - and the guide quotes each at
+            # the level it opens at, where this compares everything at 99.
+            # Keeping all three would triple-count one observation and score
+            # two of them against a number describing a different player. The
+            # head of the cascade is the method at 99, so it is the one kept.
+            profile = gathering.PROFILES[skill]
+            node, _ = gathering._curve_for(
+                tables, families, challenge, task, skill
+            )
+            cascade = profile.cascades.get(node.lower())
+            if cascade and cascade[0].lower() != node.lower():
                 continue
             family = gathering._tool_family(challenge)
             found.append(

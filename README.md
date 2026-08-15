@@ -464,11 +464,16 @@ maps are your own work and nothing can recompute them.
    training guide assumes, and the rate climbs as you level instead of one figure covering the whole
    climb. Bands from that model are marked `modelled`.
 
-   Two of the five are worth knowing about specifically. **Pickpocketing is priced with its
+   Three of the five are worth knowing about specifically. **Pickpocketing is priced with its
    failures**, where the published figure assumes you never fail: a knight reads 70,958/hr at level
-   55 climbing to 125,222 at 84, against a flat 252,900. **A stall is priced at its restock time**,
-   because a stall hands over one item and is empty until it comes back — which covers all thirty
-   stalls the wiki tabulates rather than the fifteen a guide mentions.
+   55 climbing to 160,936 at 99, against a flat 252,900. **Stalls and chests are priced at their
+   restock time**, because each hands over one item and is empty until it comes back — which covers
+   all forty-one the wiki tabulates rather than the handful a guide mentions. And **barbarian fishing
+   is priced as the cascade it is** — sturgeon, then salmon on that failing, then trout on that —
+   so the action is paid for all three of its rolls instead of one.
+
+   A method the model cannot describe keeps its guide rate rather than being guessed at; `chunksim
+   estimate skilling` marks a band `modelled` when the model priced it.
 
    **The same tables charge a production skill for what it burns or fletches.** A published rate is
    quoted with the materials to hand — "394,778 an hour burning magic logs" describes the burning,

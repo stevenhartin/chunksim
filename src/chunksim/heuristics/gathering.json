@@ -1,6 +1,6 @@
 {
   "name": "gathering.json",
-  "fetched_at": "2026-08-15T10:13:13.921570+00:00",
+  "fetched_at": "2026-08-15T11:12:49.755094+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "curves": {
@@ -12417,6 +12417,17 @@
     "respawns": {
       "Bakery stall": 2.4,
       "Cannonball stall": 2.4,
+      "Chest (10 coins)": 3.5,
+      "Chest (50 coins)": 45.0,
+      "Chest (Aldarin Villas)": 1.8,
+      "Chest (Ardougne Castle)": 240.0,
+      "Chest (Dorgesh-Kaan Average)": 90.0,
+      "Chest (Dorgesh-Kaan Rich)": 300.0,
+      "Chest (Isle of Souls Dungeon)": 1.2,
+      "Chest (Rogues' Castle)": 20.4,
+      "Chest (blood runes)": 120.0,
+      "Chest (nature runes)": 8.0,
+      "Chest (steel arrowtips)": 75.0,
       "Counter (Gu'Tanoth)": 7.2,
       "Crafting stall": 4.8,
       "Crossbow stall": 4.8,
@@ -12447,28 +12458,48 @@
       "Wine stall": 4.8
     },
     "parallel": {
-      "Hunter": [
-        [
-          1,
-          1.0
+      "Hunter": {
+        "": [
+          [
+            1,
+            1.0
+          ],
+          [
+            20,
+            2.0
+          ],
+          [
+            40,
+            3.0
+          ],
+          [
+            60,
+            4.0
+          ],
+          [
+            80,
+            5.0
+          ]
         ],
-        [
-          20,
-          2.0
-        ],
-        [
-          40,
-          3.0
-        ],
-        [
-          60,
-          4.0
-        ],
-        [
-          80,
-          5.0
+        "Crab trapping": [
+          [
+            21,
+            2.0
+          ],
+          [
+            40,
+            3.0
+          ],
+          [
+            60,
+            4.0
+          ],
+          [
+            80,
+            5.0
+          ]
         ]
-      ]
+      }
     },
     "actions": {
       "Agility": [
@@ -12713,7 +12744,7 @@
           "materials": []
         },
         {
-          "name": "Seers\\",
+          "name": "Seers' Village Rooftop Course",
           "level": 60,
           "experience": 570.0,
           "kind": "Rooftop Agility Course",
@@ -13780,6 +13811,10 @@
               "quantity": 1.0
             },
             {
+              "name": "Toad's legs",
+              "quantity": 2.0
+            },
+            {
               "name": "Equa leaves",
               "quantity": 1.0
             }
@@ -14355,6 +14390,10 @@
               "quantity": 1.0
             },
             {
+              "name": "Toad's legs",
+              "quantity": 1.0
+            },
+            {
               "name": "Cheese",
               "quantity": 1.0
             }
@@ -14478,7 +14517,7 @@
           ]
         },
         {
-          "name": "Greenman\\",
+          "name": "Greenman's ale",
           "level": 29,
           "experience": 281.0,
           "kind": "Brewing",
@@ -14706,7 +14745,7 @@
           ]
         },
         {
-          "name": "Wizard\\",
+          "name": "Wizard's mind bomb",
           "level": 34,
           "experience": 314.0,
           "kind": "Brewing",
@@ -14999,7 +15038,7 @@
           ]
         },
         {
-          "name": "Tangled toad\\",
+          "name": "Tangled toad's legs",
           "level": 40,
           "experience": 185.0,
           "kind": "Gnome food",
@@ -15012,6 +15051,10 @@
             {
               "name": "Gianne dough",
               "quantity": 1.0
+            },
+            {
+              "name": "Toad's legs",
+              "quantity": 4.0
             },
             {
               "name": "Cheese",
@@ -15383,7 +15426,7 @@
           ]
         },
         {
-          "name": "Axeman\\",
+          "name": "Axeman's folly",
           "level": 49,
           "experience": 413.0,
           "kind": "Brewing",
@@ -15501,7 +15544,7 @@
           ]
         },
         {
-          "name": "Chef\\",
+          "name": "Chef's delight",
           "level": 54,
           "experience": 446.0,
           "kind": "Brewing",
@@ -15648,7 +15691,7 @@
           ]
         },
         {
-          "name": "Slayer\\",
+          "name": "Slayer's respite",
           "level": 59,
           "experience": 479.0,
           "kind": "Brewing",
@@ -15870,6 +15913,10 @@
           "materials": [
             {
               "name": "Jug of water",
+              "quantity": 1.0
+            },
+            {
+              "name": "Zamorak's grapes",
               "quantity": 1.0
             }
           ]
@@ -17790,7 +17837,7 @@
           ]
         },
         {
-          "name": "Pointed blood\\",
+          "name": "Pointed blood'n'tar snelm",
           "level": 15,
           "experience": 32.5,
           "kind": "Other",
@@ -17803,7 +17850,7 @@
           ]
         },
         {
-          "name": "Blood\\",
+          "name": "Blood'n'tar snelm",
           "level": 15,
           "experience": 32.5,
           "kind": "Other",
@@ -19120,7 +19167,7 @@
           ]
         },
         {
-          "name": "Green d\\",
+          "name": "Green d'hide vambraces",
           "level": 57,
           "experience": 62.0,
           "kind": "Dragonhide",
@@ -19171,7 +19218,7 @@
           ]
         },
         {
-          "name": "Green d\\",
+          "name": "Green d'hide chaps",
           "level": 60,
           "experience": 124.0,
           "kind": "Dragonhide",
@@ -19482,7 +19529,7 @@
           ]
         },
         {
-          "name": "Green d\\",
+          "name": "Green d'hide shield",
           "level": 62,
           "experience": 124.0,
           "kind": "Dragonhide",
@@ -19520,7 +19567,7 @@
           ]
         },
         {
-          "name": "Green d\\",
+          "name": "Green d'hide body",
           "level": 63,
           "experience": 186.0,
           "kind": "Dragonhide",
@@ -19537,7 +19584,7 @@
           ]
         },
         {
-          "name": "Blue d\\",
+          "name": "Blue d'hide vambraces",
           "level": 66,
           "experience": 70.0,
           "kind": "Dragonhide",
@@ -19652,7 +19699,7 @@
           ]
         },
         {
-          "name": "Blue d\\",
+          "name": "Blue d'hide chaps",
           "level": 68,
           "experience": 140.0,
           "kind": "Dragonhide",
@@ -19669,7 +19716,7 @@
           ]
         },
         {
-          "name": "Blue d\\",
+          "name": "Blue d'hide shield",
           "level": 69,
           "experience": 140.0,
           "kind": "Dragonhide",
@@ -19690,7 +19737,7 @@
           ]
         },
         {
-          "name": "Blue d\\",
+          "name": "Blue d'hide body",
           "level": 71,
           "experience": 210.0,
           "kind": "Dragonhide",
@@ -19707,7 +19754,7 @@
           ]
         },
         {
-          "name": "Red d\\",
+          "name": "Red d'hide vambraces",
           "level": 73,
           "experience": 78.0,
           "kind": "Dragonhide",
@@ -19741,7 +19788,7 @@
           ]
         },
         {
-          "name": "Red d\\",
+          "name": "Red d'hide chaps",
           "level": 75,
           "experience": 156.0,
           "kind": "Dragonhide",
@@ -19771,7 +19818,7 @@
           ]
         },
         {
-          "name": "Red d\\",
+          "name": "Red d'hide shield",
           "level": 76,
           "experience": 156.0,
           "kind": "Dragonhide",
@@ -19792,7 +19839,7 @@
           ]
         },
         {
-          "name": "Red d\\",
+          "name": "Red d'hide body",
           "level": 77,
           "experience": 234.0,
           "kind": "Dragonhide",
@@ -19809,7 +19856,7 @@
           ]
         },
         {
-          "name": "Black d\\",
+          "name": "Black d'hide vambraces",
           "level": 79,
           "experience": 86.0,
           "kind": "Dragonhide",
@@ -19826,7 +19873,7 @@
           ]
         },
         {
-          "name": "Black d\\",
+          "name": "Black d'hide chaps",
           "level": 82,
           "experience": 172.0,
           "kind": "Dragonhide",
@@ -19843,7 +19890,7 @@
           ]
         },
         {
-          "name": "Black d\\",
+          "name": "Black d'hide shield",
           "level": 83,
           "experience": 172.0,
           "kind": "Dragonhide",
@@ -19864,7 +19911,7 @@
           ]
         },
         {
-          "name": "Black d\\",
+          "name": "Black d'hide body",
           "level": 84,
           "experience": 258.0,
           "kind": "Dragonhide",
@@ -25027,7 +25074,7 @@
           ]
         },
         {
-          "name": "Relicym\\",
+          "name": "Relicym's balm(3)",
           "level": 8,
           "experience": 40.0,
           "kind": "Regular potions",
@@ -25035,12 +25082,17 @@
           "materials": []
         },
         {
-          "name": "Relicym\\",
+          "name": "Relicym's mix(2)",
           "level": 9,
           "experience": 14.0,
           "kind": "Barbarian potions",
           "members": true,
-          "materials": []
+          "materials": [
+            {
+              "name": "Relicym's balm(2)",
+              "quantity": 1.0
+            }
+          ]
         },
         {
           "name": "Tarromin",
@@ -29139,7 +29191,7 @@
           ]
         },
         {
-          "name": "Fenkenstrain\\",
+          "name": "Fenkenstrain's Castle Teleport",
           "level": 48,
           "experience": 50.0,
           "kind": "Teleport",
@@ -36266,7 +36318,7 @@
           "materials": []
         },
         {
-          "name": "Fisherman\\",
+          "name": "Fisherman's shipwreck",
           "level": 26,
           "experience": 16.0,
           "kind": "Salvaging",
@@ -36274,7 +36326,7 @@
           "materials": []
         },
         {
-          "name": "Fisherman\\",
+          "name": "Fisherman's shipwreck",
           "level": 26,
           "experience": 26.0,
           "kind": "Salvaging",
@@ -42393,7 +42445,7 @@
           "materials": []
         },
         {
-          "name": "Winter sq\\",
+          "name": "Winter sq'irkjuice",
           "level": 1,
           "experience": 350.0,
           "kind": "Other",
@@ -42513,7 +42565,7 @@
           "materials": []
         },
         {
-          "name": "Spring sq\\",
+          "name": "Spring sq'irkjuice",
           "level": 25,
           "experience": 1350.0,
           "kind": "Other",
@@ -42601,7 +42653,7 @@
           "materials": []
         },
         {
-          "name": "Autumn sq\\",
+          "name": "Autumn sq'irkjuice",
           "level": 45,
           "experience": 2350.0,
           "kind": "Other",
@@ -42737,7 +42789,7 @@
           "materials": []
         },
         {
-          "name": "Summer sq\\",
+          "name": "Summer sq'irkjuice",
           "level": 65,
           "experience": 3000.0,
           "kind": "Other",
@@ -42833,7 +42885,7 @@
           "materials": []
         },
         {
-          "name": "Chest (Rogues\\",
+          "name": "Chest (Rogues' Castle)",
           "level": 84,
           "experience": 701.7,
           "kind": "Chests",
@@ -43056,8 +43108,8 @@
     },
     "counts": {
       "node cycles": 13,
-      "parallel steps": 5,
-      "stall respawns": 30,
+      "parallel steps": 9,
+      "stall respawns": 41,
       "tool speeds": 17
     }
   }

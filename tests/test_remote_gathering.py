@@ -299,3 +299,64 @@ class TestTrapCounts:
 
     def test_a_page_without_the_table_yields_nothing(self) -> None:
         assert gathering.parse_trap_counts(DESPAWN_PAGE) == ()
+
+
+ESCAPED_MODULE = """
+return {
+\t{
+    \tname = 'Chest (Rogues\\' Castle)',
+        level = 84,
+        xp = 701.7,
+        members = 'Yes',
+        type = 'Chests'
+    }, {
+    \tname = "Chef's delight",
+        level = 1,
+        xp = 10,
+        materials = {
+        \t{ name = 'Green d\\'hide', quantity = 1 }
+        },
+        members = 'Yes',
+        type = 'Brewing'
+    }
+}
+"""
+
+CRAB_TRAPS = """
+{| class="wikitable"
+!{{SCP|Hunter}} level
+!Number of traps
+|-
+|21
+|2
+|-
+|80
+|5
+|}
+"""
+
+
+class TestLuaEscapes:
+    def test_an_escaped_apostrophe_does_not_truncate_a_name(self) -> None:
+        # It did, silently, for thirty-five rows: every possessive in the game
+        # came back cut at the escape and joined nothing.
+        rows = skillcalc.parse_rows(ESCAPED_MODULE)
+        assert [row.name for row in rows] == ["Chest (Rogues' Castle)", "Chef's delight"]
+
+    def test_a_double_quoted_name_survives_too(self) -> None:
+        assert skillcalc.parse_rows(ESCAPED_MODULE)[1].name == "Chef's delight"
+
+    def test_a_material_name_survives_its_own_escape(self) -> None:
+        assert skillcalc.parse_rows(ESCAPED_MODULE)[1].materials == (
+            skillcalc.Ingredient("Green d'hide", 1.0),
+        )
+
+
+class TestTrapTableHeadings:
+    def test_the_crab_pages_own_wording_is_read(self) -> None:
+        # `Number of traps` there against `Traps` on the Hunter page, and
+        # `table_with` compares header text exactly.
+        assert gathering.parse_trap_counts(CRAB_TRAPS) == ((21, 2.0), (80, 5.0))
+
+    def test_the_hunter_pages_wording_still_works(self) -> None:
+        assert gathering.parse_trap_counts(TRAP_TABLE) == ((1, 1.0), (20, 2.0), (80, 5.0))

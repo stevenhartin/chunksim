@@ -17,14 +17,22 @@ publishes all three in machine-readable form:
 | roll interval | the tool page's `Ticks between rolls` column | ticks per pickaxe |
 | node cycle | the skill page's despawn/respawn table | seconds per node |
 | stall restock | `Stall/Thievable`'s `Respawn Time` column | seconds per stall |
-| traps at once | the Hunter page's `Multiple traps` table | units per level |
+| chest restock | the Thieving page's `Thievable chests` table | seconds per chest |
+| traps at once | `Multiple traps`, on the Hunter and crab pages | units per level |
 
-**The last two are what finished Thieving and Hunter**, the two skills the model
-refused longest, and neither needed a fit. A stall hands over one item and is
-empty until it restocks, so the restock time *is* its rate; a trap line runs
-several traps at once, and the count is a step function of level that no success
-curve can express. Both were sitting in plain sight on pages already being
-fetched for something else.
+**These are what finished Thieving and Hunter**, the two skills the model refused
+longest, and none of them needed a fit. A stall or a chest hands over one item
+and is empty until it restocks, so the restock time *is* its rate - one parser
+reads both tables, because it is one mechanic written twice. A trap line runs
+several traps at once and the count is a step function of level that no success
+curve can express. All of it was sitting on pages already being fetched for
+something else.
+
+**Two trap tables, not one, and they disagree.** The Hunter page's opens at
+level 1 with five steps; `Crab trapping`'s opens at 21 with four, because crab
+traps are a different activity that happens to share the mechanic. They also
+spell their heading differently - `Traps` against `Number of traps` - which is
+why `parse_trap_counts` tries both and why `Tables.parallel` is keyed by loop.
 
 **The chart template is the find, and it is everywhere.** Over 500 article-space
 pages transclude it - every tree, rock, fishing spot, kebbit, stall and
@@ -75,6 +83,17 @@ SUCCESS_TEMPLATE = "Skilling success chart"
 
 #: The Hunter skill page, for its `Multiple traps` table.
 HUNTER_PAGE = "Hunter"
+
+#: The Thieving skill page, for its `Thievable chests` table - the same shape as
+#: the stall one and read by the same parser, since a chest is the same
+#: mechanic: one loot, then a restock.
+THIEVING_PAGE = "Thieving"
+
+#: `Crab trapping`, which publishes a trap-count table of its **own**. It is not
+#: the Hunter page's - it opens at 21 rather than 1 and has four steps rather
+#: than five - which is why `Tables.parallel` is keyed by loop and not just by
+#: skill.
+CRAB_PAGE = "Crab trapping"
 
 #: The thievable-stall table - **the same page `remote/skill_tables.py` reads,
 #: and imported from there rather than spelled twice.** It is a transclusion,
@@ -360,10 +379,12 @@ def parse_trap_counts(text: str) -> tuple[tuple[int, float], ...]:
     60 and 80 - which is most of why hunting gets faster as you level, and none
     of which a success curve says.
 
-    The table is two plain columns and the only one on the page with a `Traps`
-    heading, so it needs no disambiguation beyond that.
+    Two plain columns, and the only table on either page whose header mentions
+    traps - but the two pages **spell that header differently**, `Traps` on the
+    Hunter page and `Number of traps` on the crab one. `table_with` compares
+    header text exactly, so one needle cannot find the other.
     """
-    table = table_with(text, "Traps")
+    table = table_with(text, "Traps") or table_with(text, "Number of traps")
     if not table:
         return ()
     found: list[tuple[int, float]] = []
@@ -451,10 +472,14 @@ class GatheringTables:
     #: is a different mechanic: a tree yields for a window, a stall yields
     #: exactly one item and then is empty.
     respawns: dict[str, float] = field(default_factory=dict)
-    #: Skill -> `(level, units)` steps for a loop worked several at a time.
-    #: Only Hunter publishes one, and it is a table rather than a constant
-    #: because the count is what changes as the skill levels.
-    parallel: dict[str, tuple[tuple[int, float], ...]] = field(default_factory=dict)
+    #: Skill -> loop -> `(level, units)` steps for a loop worked several at a
+    #: time, `""` being the skill's default. A table rather than a constant
+    #: because the count is what changes as the skill levels, and keyed by loop
+    #: because Hunter publishes two that disagree: the general one opens at
+    #: level 1 with five steps and crab trapping's opens at 21 with four.
+    parallel: dict[str, dict[str, tuple[tuple[int, float], ...]]] = field(
+        default_factory=dict
+    )
     #: Skill -> its calculator rows: level and experience per action.
     actions: dict[str, tuple[CalcRow, ...]] = field(default_factory=dict)
     #: `source -> (came back, asked for)`, so a 404 is visible rather than a
@@ -479,8 +504,11 @@ class GatheringTables:
             },
             "respawns": dict(sorted(self.respawns.items())),
             "parallel": {
-                skill: [list(step) for step in steps]
-                for skill, steps in sorted(self.parallel.items())
+                skill: {
+                    loop: [list(step) for step in steps]
+                    for loop, steps in sorted(loops.items())
+                }
+                for skill, loops in sorted(self.parallel.items())
             },
             "actions": {
                 skill: [row.as_dict() for row in rows]
@@ -531,7 +559,9 @@ def build_tables(
             curves[title] = charts[0]
 
     say("reading tool speeds, node cycles, stall respawns and trap counts")
-    mechanics = fetch_pages([PICKAXE_PAGE, WOODCUTTING_PAGE, STALL_PAGE, HUNTER_PAGE])
+    mechanics = fetch_pages(
+        [PICKAXE_PAGE, WOODCUTTING_PAGE, STALL_PAGE, THIEVING_PAGE, HUNTER_PAGE, CRAB_PAGE]
+    )
     tool_ticks = {
         tool.name: tool.ticks
         for tool in parse_tool_speeds(mechanics.get(PICKAXE_PAGE, ""))
@@ -540,12 +570,22 @@ def build_tables(
         cycle.name: cycle
         for cycle in parse_node_cycles(mechanics.get(WOODCUTTING_PAGE, ""))
     }
+    # **Stalls and chests are one table twice.** Both publish a `Respawn Time`
+    # column against a `{{plinkt}}` name, because both are the same mechanic -
+    # take the one thing, wait for it to come back - so one parser reads both
+    # and they share one index.
     respawns = {
-        stall.name: stall.respawn
-        for stall in parse_stall_respawns(mechanics.get(STALL_PAGE, ""))
+        entry.name: entry.respawn
+        for page in (STALL_PAGE, THIEVING_PAGE)
+        for entry in parse_stall_respawns(mechanics.get(page, ""))
     }
+    parallel: dict[str, dict[str, tuple[tuple[int, float], ...]]] = {}
     traps = parse_trap_counts(mechanics.get(HUNTER_PAGE, ""))
-    parallel = {"Hunter": traps} if traps else {}
+    if traps:
+        parallel.setdefault("Hunter", {})[""] = traps
+    crabs = parse_trap_counts(mechanics.get(CRAB_PAGE, ""))
+    if crabs:
+        parallel.setdefault("Hunter", {})["Crab trapping"] = crabs
 
     say(f"reading {len(SKILL_CALC_PAGES)} skill calculators")
     calc_pages = fetch_pages(sorted(SKILL_CALC_PAGES.values()))
@@ -570,7 +610,9 @@ def build_tables(
             "tool speeds": len(tool_ticks),
             "node cycles": len(cycles),
             "stall respawns": len(respawns),
-            "parallel steps": sum(len(steps) for steps in parallel.values()),
+            "parallel steps": sum(
+                len(steps) for loops in parallel.values() for steps in loops.values()
+            ),
         },
     )
 
@@ -580,7 +622,9 @@ __all__ = [
     "HUNTER_PAGE",
     "NodeCycle",
     "PICKAXE_PAGE",
+    "CRAB_PAGE",
     "STALL_PAGE",
+    "THIEVING_PAGE",
     "SUCCESS_TEMPLATE",
     "StallRespawn",
     "SuccessCurve",

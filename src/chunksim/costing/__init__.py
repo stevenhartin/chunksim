@@ -44,9 +44,10 @@ The modules, and what each owns:
   Hunter/Thieving, and the exact skilling-success formula. Owns
   `defaults < scraped < modelled < overrides`, so **it beats the scrape where
   `recipe_rates.py` loses to it**, and the docstring says why. Per-skill quirks
-  are `SkillProfile` fields, never branches - there are eleven, and the four
-  inactivity shapes (duty cycle, flat charge, restock floor, stun) are what
-  separate a model from a fitted constant.
+  are `SkillProfile` fields, never branches, and the four inactivity shapes
+  (duty cycle, flat charge, restock floor, stun) are what separate a model from
+  a fitted constant. A *cascade* is the one shape that is not inactivity: several
+  success rolls inside one action, which is barbarian fishing.
 - `combat_xp.py` - combat XP, which is damage and almost nothing else. Owns the
   three gates and the two credits that each removed a wrong answer.
 - `slayer.py` - Slayer's rate, which is a *distribution* rather than a chosen

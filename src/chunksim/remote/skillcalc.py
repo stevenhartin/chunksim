@@ -1,4 +1,4 @@
-"""Reading a `Module:Skill calc/<Skill>` table, for the eleven skills that have one.
+"""Reading a `Module:Skill calc/<Skill>` table, for the eighteen skills with one.
 
 **One reader, because there is one format.** Every skill calculator on the wiki
 is backed by a plain Lua module that `return`s a list of rows, and the rows are
@@ -38,7 +38,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-#: The page each skill's table lives on. **Eleven, not twenty-three** - there is
+#: The page each skill's table lives on. **Eighteen, not twenty-three** - there is
 #: no `Module:Skill calc/Slayer` and none for the combat skills, because a
 #: calculator needs a list of actions and those skills have none.
 SKILL_CALC_PAGES: dict[str, str] = {
@@ -67,11 +67,13 @@ SKILL_CALC_PAGES: dict[str, str] = {
 
 #: One `name = value` pair, string or number. Quoted forms first so a value
 #: containing digits is not read as a number.
-_FIELD = re.compile(r"(\w+)\s*=\s*(?:'([^']*)'|\"([^\"]*)\"|([\d.]+))")
+_FIELD = re.compile(
+    r"(\w+)\s*=\s*(?:'((?:[^'\\]|\\.)*)'|\"((?:[^\"\\]|\\.)*)\"|([\d.]+))"
+)
 
 #: A `{ name = '...', quantity = N }` pair inside a `materials` table.
 _MATERIAL = re.compile(
-    r"\{\s*name\s*=\s*'([^']*)'\s*,\s*quantity\s*=\s*([\d.]+)\s*\}"
+    r"\{\s*name\s*=\s*'((?:[^'\\]|\\.)*)'\s*,\s*quantity\s*=\s*([\d.]+)\s*\}"
 )
 
 #: The `materials = { ... }` block, so a row's own `name` is not read out of it.
@@ -152,8 +154,21 @@ def fields(chunk: str) -> dict[str, str]:
     for match in _FIELD.finditer(chunk):
         key = match.group(1)
         value = next(group for group in match.groups()[1:] if group is not None)
-        found.setdefault(key, value)
+        found.setdefault(key, unescape(value))
     return found
+
+
+def unescape(value: str) -> str:
+    """Undo Lua's backslash escapes in a quoted string.
+
+    **An apostrophe is the whole of it, and it cost thirty-five rows.** The
+    quoted-string pattern used to stop at the first `'`, so
+    `'Chest (Rogues\\' Castle)'` came back as `Chest (Rogues\\` - a name that
+    joins nothing, silently, for every possessive in the game: `Seers' Village`,
+    `Chef's delight`, `Green d'hide body`, `Blood'n'tar snelm`. The pattern now
+    spans the escape and this puts the character back.
+    """
+    return value.replace("\\'", "'").replace('\\"', '"').replace("\\\\", "\\")
 
 
 def materials(chunk: str) -> tuple[Ingredient, ...]:
@@ -166,7 +181,7 @@ def materials(chunk: str) -> tuple[Ingredient, ...]:
     if block is None:
         return ()
     return tuple(
-        Ingredient(name=name, quantity=float(quantity))
+        Ingredient(name=unescape(name), quantity=float(quantity))
         for name, quantity in _MATERIAL.findall(block.group(1))
     )
 

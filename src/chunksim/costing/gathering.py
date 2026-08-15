@@ -55,6 +55,16 @@ the difference between a model and a fitted constant:
   pickpocket locks you out for eight ticks against a two-tick attempt, both
   stated on the Pickpocketing page.
 
+**And one loop rolls more than once per action.** `Skilling success rate`
+documents a *cascade*: the best outcome is rolled, and on failing it the next,
+until one lands or all fail. Barbarian fishing is sturgeon, then salmon, then
+trout, and pricing it as a single roll left two thirds of what the action pays
+uncounted - it read 0.73x and was refused for it. `SkillProfile.cascades` names
+the order, and the expectation over the whole thing is what `xp_per_hour`
+prices, while the *marginal* branch is what `seconds_per_item` charges, so the
+item walk still knows a sturgeon is not an average fish. Herbiboar is the other
+cascade in the game and is not modelled.
+
 **Throughput is not always one loop at a time.** Box trapping, net trapping and
 bird snaring run several traps at once, 1 to 5 across levels 1 to 80, and the
 Hunter page publishes the table; the Wilderness allows a sixth for black
@@ -78,6 +88,17 @@ clearest case: a `Willow tree` chart's nine series are axe tiers, where a
 chinchompa` chart's three are different creatures - so exactly one skill reads
 series as tools, and the rest take the first series, which is the unassisted
 case and the same conservative reading `remote/skill_tables.parse_hunter` takes.
+
+**A published figure is quoted for a player, and three things follow from
+that.** It carries a bank run where the method banks and none where the method
+drops - `bank_seconds` against `unbanked`, which is the difference between
+ordinary fishing and barbarian fishing *inside one skill*. It is quoted at the
+level the method opens at, which is why a cascade must be compared at one level
+and counted once: the three barbarian challenges are one action, and scoring
+them separately at 99 triple-counts one observation against two figures
+describing other players. And it assumes whatever facility the guide's author
+had - a Wilderness three-chest rotation, for instance, where this prices one
+chest, because how many of a node sit together is published nowhere.
 
 **Two of the five reproduce their published figures by construction, and that is
 not agreement.** Thieving's fifteen tabulated stalls come out at exactly 1.00x
@@ -239,6 +260,38 @@ class SkillProfile:
     #: on the restock time being published, so this can never turn "nothing is
     #: known about this node" into a rate.
     certain_kinds: frozenset[str] = frozenset()
+    #: The calculator `kind`s whose rate *is* a restock time, so a node without
+    #: one published is refused however much else is known about it.
+    #:
+    #: **The guard that keeps `certain_kinds` honest.** A stall and a chest are
+    #: priced by the wait, not by the clicking; without a restock the model
+    #: would fall back to the two-tick interaction cadence and read
+    #: `Shop Counter (ore)` as the fastest thing on the map. Crab trapping is
+    #: certain in the same way and is *not* restock-bound - its rate is an
+    #: interval - which is why this is a set beside that one rather than the
+    #: same set.
+    restock_kinds: frozenset[str] = frozenset()
+    #: Nodes whose published rate is a **drop** rate, so no trip is charged.
+    #:
+    #: `bank_seconds` exists because every published Fishing figure has a bank
+    #: run inside it where every published Woodcutting one does not - but that
+    #: is a fact about each *method*, not about the skill, and barbarian
+    #: fishing is the counter-example inside Fishing itself: the catch is
+    #: dropped, and charging a trip for it read the whole activity 0.69x at the
+    #: level its guide is quoted for. Named per node rather than per loop
+    #: because the loop it belongs to (`Miscellaneous`) is a grab-bag that also
+    #: holds cage fishing, which really is banked.
+    unbanked: frozenset[str] = frozenset()
+    #: Node -> the ordered loop it is rolled inside, best reward first.
+    #:
+    #: **A cascade is several success rolls in one action**, which
+    #: `Skilling success rate` documents under that name: the best outcome is
+    #: rolled, and on failing it the next is rolled, until one lands or all
+    #: fail. Barbarian fishing is the case - sturgeon, then salmon, then trout -
+    #: and priced as a single roll it read 0.73x, because two thirds of what
+    #: the action pays was going uncounted. Every node in one cascade names the
+    #: same tuple, so the entry reads the same whichever task asked.
+    cascades: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     #: Node -> units *beyond* what the step table allows there, where the game
     #: says so. One entry today: the Wilderness lets a sixth trap out for black
     #: chinchompas, which the Hunter and Box trap pages both state.
@@ -351,15 +404,20 @@ PROFILES: dict[str, SkillProfile] = {
             # The calculator's catch-all, and it really is one - see `refuses`.
             "Miscellaneous": 5.0,
         },
+        # Barbarian fishing is trained by dropping, so its published figures
+        # carry no bank run - see `unbanked`.
+        unbanked=frozenset({"leaping sturgeon", "leaping salmon", "leaping trout"}),
+        cascades={
+            # **Barbarian fishing, and the order is the mechanic.** The best
+            # fish is rolled first and each failure falls through to the next,
+            # which `Skilling success rate` documents under "Cascading
+            # chances". Priced as a single roll these read 0.73x, because two
+            # of the three rolls an action makes were going uncounted.
+            node: ("Leaping sturgeon", "Leaping salmon", "Leaping trout")
+            for node in ("leaping sturgeon", "leaping salmon", "leaping trout")
+        },
         refuses=frozenset(
             {
-                # **Barbarian fishing is a cascade**: sturgeon is rolled, then
-                # salmon on that failing, then trout on that failing. The wiki
-                # documents it under "Cascading chances" and this model rolls
-                # once, which read them 0.73x.
-                "leaping sturgeon",
-                "leaping salmon",
-                "leaping trout",
                 # **Aerial fishing is not the skilling success function at
                 # all** - it is a Hunter catch that pays Fishing experience,
                 # and `Skilling success rate` names it as an activity the
@@ -402,8 +460,12 @@ PROFILES: dict[str, SkillProfile] = {
             "Box trap": 101.0,
             "Deadfall": 105.0,
             "Net trapping": 154.0,
+            "Crab trapping": 57.0,
         },
-        parallel_kinds=frozenset({"Box trap", "Net trapping", "Bird snare"}),
+        certain_kinds=frozenset({"Crab trapping"}),
+        parallel_kinds=frozenset(
+            {"Box trap", "Net trapping", "Bird snare", "Crab trapping"}
+        ),
         parallel_bonus={
             "black chinchompa (hunter)": 1.0,
             "black salamander (hunter)": 1.0,
@@ -432,10 +494,11 @@ PROFILES: dict[str, SkillProfile] = {
     "Thieving": SkillProfile(
         depletes=False,
         strict_kinds=True,
-        roll_ticks_by_kind={"Pickpocket": 2.0, "Stalls": 2.0},
+        roll_ticks_by_kind={"Pickpocket": 2.0, "Stalls": 2.0, "Chests": 2.0},
         fail_seconds=3.6,
-        fail_seconds_by_kind={"Stalls": 0.0},
-        certain_kinds=frozenset({"Stalls"}),
+        fail_seconds_by_kind={"Stalls": 0.0, "Chests": 0.0},
+        certain_kinds=frozenset({"Stalls", "Chests"}),
+        restock_kinds=frozenset({"Stalls", "Chests"}),
     ),
 }
 
@@ -572,8 +635,13 @@ class Tables:
     #: yields exactly one item and then the wait *is* the rate. Folding them
     #: would make one of the two arithmetics wrong.
     respawns: dict[str, float] = field(default_factory=dict)
-    #: Skill -> `(level, units)` steps, for a loop worked several at a time.
-    parallel: dict[str, tuple[tuple[int, float], ...]] = field(default_factory=dict)
+    #: Skill -> loop -> `(level, units)` steps, `""` being the skill's default.
+    #: Keyed by loop because Hunter publishes two tables that disagree: the
+    #: general one opens at level 1 with five steps, crab trapping's at 21 with
+    #: four.
+    parallel: dict[str, dict[str, tuple[tuple[int, float], ...]]] = field(
+        default_factory=dict
+    )
 
     @property
     def empty(self) -> bool:
@@ -657,21 +725,24 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
         if isinstance(value, (int, float)) and value > 0
     }
 
-    parallel: dict[str, tuple[tuple[int, float], ...]] = {}
-    for skill, steps in _mapping(raw, "parallel").items():
-        if not isinstance(steps, list):
+    parallel: dict[str, dict[str, tuple[tuple[int, float], ...]]] = {}
+    for skill, loops in _mapping(raw, "parallel").items():
+        if not isinstance(loops, dict):
             continue
-        steps_read = tuple(
-            (int(step[0]), float(step[1]))
-            for step in steps
-            if isinstance(step, list)
-            and len(step) == 2
-            and isinstance(step[0], (int, float))
-            and isinstance(step[1], (int, float))
-            and float(step[1]) > 0
-        )
-        if steps_read:
-            parallel[skill] = tuple(sorted(steps_read))
+        for loop, steps in loops.items():
+            if not isinstance(steps, list):
+                continue
+            steps_read = tuple(
+                (int(step[0]), float(step[1]))
+                for step in steps
+                if isinstance(step, list)
+                and len(step) == 2
+                and isinstance(step[0], (int, float))
+                and isinstance(step[1], (int, float))
+                and float(step[1]) > 0
+            )
+            if steps_read:
+                parallel.setdefault(skill, {})[loop] = tuple(sorted(steps_read))
 
     return Tables(
         curves=curves,
@@ -877,6 +948,46 @@ def _experience_for(
     return 0.0, ""
 
 
+def _cascade(
+    tables: Tables,
+    skill: str,
+    order: Sequence[str],
+    node: str,
+    level: int,
+) -> tuple[float, float, float] | None:
+    """`(marginal chance, experience per catch, any-catch chance)` for one node.
+
+    **Two questions, answered as one pair so the ordinary arithmetic still
+    works.** What the *action* pays is the expectation over the whole cascade -
+    roll sturgeon, and on failing that salmon, and on failing that trout - while
+    what *this fish* costs is only the branch that yields it. Returning the
+    marginal chance with the expectation divided by it makes
+    `experience * chance` the expected XP per roll, so `xp_per_hour` prices the
+    activity, and `roll_seconds / chance` the time to obtain this one fish, so
+    the item walk still prices a leaping sturgeon rather than an average fish.
+
+    `None` if any member of the cascade is missing a curve or an experience
+    figure: half a cascade is not a smaller cascade, it is a different one.
+    """
+    paid = tables.experience.get(skill) or {}
+    survive = 1.0
+    expected = 0.0
+    marginal = 0.0
+    for name in order:
+        curves = tables.curves.get(name.lower())
+        figure = paid.get(name.lower())
+        if not curves or not figure:
+            return None
+        chance = success_chance(level, curves[0][1], curves[0][2])
+        expected += survive * chance * figure[0]
+        if name.lower() == node.lower():
+            marginal = survive * chance
+        survive *= 1.0 - chance
+    if marginal <= 0 or expected <= 0:
+        return None
+    return marginal, expected / marginal, 1.0 - survive
+
+
 def _respawn_key(
     tables: Tables,
     families: Mapping[str, Sequence[str]],
@@ -945,12 +1056,14 @@ def rate_at(
         chance = success_chance(level, low, high)
     elif kind in profile.certain_kinds:
         # **No chart because there is nothing to chart.** An ordinary stall is
-        # a 100% steal - the Thieving page says so outright - and the pages
-        # that *do* carry a chart are the Ape Atoll ones, which really can
-        # fail. So a loop declared certain reads a missing chart as certainty
-        # rather than as ignorance. Gated on a published restock time as well,
-        # which is what keeps "no chart" from meaning "no data at all".
-        node = _respawn_key(tables, families, challenge, skill)
+        # a 100% steal and crab traps "cannot fail" - both stated on the wiki -
+        # and the pages that *do* carry a chart are the Ape Atoll stalls, which
+        # really can fail. So a loop declared certain reads a missing chart as
+        # certainty rather than as ignorance.
+        node = _respawn_key(tables, families, challenge, skill) or node
+        if not node:
+            keys = _join_keys(challenge, families, ("Output", "Objects", "NPCs"), skill)
+            node = keys[0] if keys else ""
         if not node:
             return None
         chance = 1.0
@@ -958,8 +1071,22 @@ def rate_at(
         return None
     if node.lower() in profile.refuses:
         return None
+    # **Restock-bound loops need their restock.** See `restock_kinds`: without
+    # it a stall falls back to the interaction cadence and reads as the fastest
+    # method in the game.
+    if kind in profile.restock_kinds and node.lower() not in tables.respawns:
+        return None
     if chance <= 0:
         return None
+
+    # **A cascade pays for every roll in it, not just the one asked about.**
+    cascade = profile.cascades.get(node.lower())
+    caught = 0.0
+    if cascade:
+        priced = _cascade(tables, skill, cascade, node, level)
+        if priced is None:
+            return None
+        chance, experience, caught = priced
 
     ticks = profile.roll_ticks_by_kind.get(kind)
     if ticks is None and profile.strict_kinds:
@@ -990,7 +1117,11 @@ def rate_at(
     # wait - five box traps really are five independent chances at a time.
     units = 1.0
     if kind in profile.parallel_kinds:
-        units = units_at(tables.parallel.get(skill, ()), level)
+        loops = tables.parallel.get(skill) or {}
+        # **The loop's own table wins over the skill's.** Crab trapping opens
+        # at 21 where hunting generally opens at 1, and using the general table
+        # would hand a level-1 player two traps they cannot set.
+        units = units_at(loops.get(kind) or loops.get("") or (), level)
         units += profile.parallel_bonus.get(node.lower(), 0.0)
     if units <= 0:
         return None
@@ -1001,6 +1132,15 @@ def rate_at(
     banking = (
         profile.bank_seconds / profile.carry if profile.carry > 0 else 0.0
     )
+    if node.lower() in profile.unbanked:
+        banking = 0.0
+    elif cascade:
+        # **A cascade banks what the action caught, not what the task asked
+        # for.** One roll yields at most one fish and it is banked whichever of
+        # the three it turned out to be, so the trip is charged against the
+        # whole catch rate and then shared over this branch, rather than billed
+        # to the rarest fish as though the other two were free to carry.
+        banking = banking * caught / chance
     working = (
         roll_seconds / chance / duty / units
         + stun * failures
