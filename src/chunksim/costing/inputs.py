@@ -34,6 +34,7 @@ from collections.abc import Callable
 from typing import Any, Mapping
 
 from chunksim.costing import combat_xp, dps_bridge, recipe_rates
+from chunksim.costing import gathering as gathering_model
 from chunksim.costing.estimate import material_seconds
 from chunksim.costing import prayer as prayer_costing
 from chunksim.costing.heuristics import ComputedMethod, MaterialCost
@@ -110,6 +111,12 @@ class ReferenceBlobs:
     overrides: dict[str, Any]
     #: `cache/reference/wiki_recipes.json`, parsed back into `Recipe`s.
     recipes: Mapping[str, tuple[Recipe, ...]]
+    #: `src/chunksim/heuristics/gathering.json`, indexed for lookup. **Not a
+    #: cache blob** - it ships with the package and only `chunksim
+    #: gather-tables` writes it - but it is read here with the rest because it
+    #: is the same kind of thing to every reader downstream: numbers the
+    #: estimator spends, read once per invocation and threaded.
+    gathering: gathering_model.Tables
     #: What this machine would price against, for the enrichment cache key.
     pricing: PricingDigests
     #: Which map `overrides` was assembled for, or `None` for the site-wide
@@ -154,6 +161,7 @@ def load_reference(root: Path | None = None, map_id: str | None = None) -> Refer
         scraped_found=scraped_found,
         overrides=overrides,
         recipes=_recipes_from(_recipe_blob(root)),
+        gathering=gathering_model.load_tables(cache.read_gathering(root)),
         pricing=pricing_digests(root, map_id),
         map_id=map_id,
     )
@@ -275,6 +283,19 @@ def recipe_priced(
     """
     blobs = load_reference(root) if reference is None else reference
     recipes = dict(blobs.recipes)
+    pinned = frozenset(_mapping(blobs.overrides, "training"))
+
+    # **Gathering is priced first, and the order is load-bearing.** A recipe's
+    # inputs are walked by `material_seconds`, and a log or an ore is now
+    # something this project *models* rather than charges four ticks for - so
+    # the walk has to be able to see the modelled figure before it prices a
+    # single recipe. Run the other way round, every Fletching method would be
+    # costed against logs at `estimate.DEFAULT_ACTION_SECONDS`, which assumes
+    # a tree hands one over every four ticks with certainty.
+    heuristics, gathered, gathering_coverage = _gathered(
+        state, derived, heuristics, blobs, levels, pinned
+    )
+
     seconds = material_seconds(state, derived, world, heuristics, level_overrides=levels)
     # **Prayer is priced here because this is where the item walk is.** Its
     # rate is a bone's experience over the time to collect one, so it needs
@@ -296,12 +317,11 @@ def recipe_priced(
         return (
             replace(
                 heuristics,
-                computed=prayed,
+                computed=_merge_computed(prayed, gathered),
                 material_seconds_per_xp={**by_spell, **by_hand},
             ),
             recipe_rates.RecipeCoverage(),
         )
-    pinned = frozenset(_mapping(overrides, "training"))
     computed, coverage = recipe_rates.computed_rates(
         state.chunk_info,
         derived.challenges.valid,
@@ -333,13 +353,100 @@ def recipe_priced(
     return (
         replace(
             heuristics,
+            # **`recipe_rates.apply` cannot overwrite a modelled rate**, and
+            # needs no telling: it only fills where the existing rate is
+            # `default`, and `gathering.apply` has already written a
+            # `modelled` one. The two computed layers therefore compose
+            # without either having to know the other exists.
             training=recipe_rates.apply(heuristics.training, computed, pinned),
             action_seconds=timed,
-            computed=prayed,
+            computed=_merge_computed(prayed, gathered),
             material_seconds_per_xp=per_xp,
         ),
         coverage,
     )
+
+
+def _gathered(
+    state: MapState,
+    derived: Derived,
+    heuristics: Heuristics,
+    blobs: ReferenceBlobs,
+    levels: dict[str, int],
+    pinned: frozenset[str],
+) -> tuple[Heuristics, dict[str, tuple[ComputedMethod, ...]], gathering_model.GatheringCoverage]:
+    """`heuristics` with `costing/gathering.py`'s answers laid on.
+
+    Three things go on, and they land in three different places because they
+    answer three different questions:
+
+    - **The rate at the method's opening level** replaces whatever the scrape
+      had, in `training`. See `gathering.apply` for why this layer wins where
+      `recipe_rates`' loses.
+    - **The rest of the curve** goes into `computed`, which carries a level per
+      entry so `training_bands` can open each point where it belongs. A
+      gathering rate is a function of level and one number cannot be it.
+    - **The seconds one resource costs** goes into `action_seconds`, which is
+      what `estimate._route_hours` charges for performing a challenge. That is
+      the join between this model and the production half: a log costs what
+      chopping one costs, rather than the four ticks
+      `estimate.DEFAULT_ACTION_SECONDS` stands in with.
+
+    **The walk is charged the un-banked figure.** `NodeRate.seconds_per_item`
+    drops the bank share deliberately: `estimate._route_hours` already charges
+    a trip for the production action that consumes the material, and
+    `recipe_rates.trip_seconds` is where. Charging both bills one walk to the
+    bank twice, which is the error `training._material_cost` exists to prevent
+    in the other direction.
+    """
+    if blobs.gathering.empty:
+        return heuristics, {}, gathering_model.GatheringCoverage()
+    at_level = {**infer_levels(state), **levels}
+    priced, coverage = gathering_model.priced_methods(
+        state.chunk_info,
+        derived.challenges.valid,
+        blobs.gathering,
+        frozenset(derived.challenges.available_items),
+        at_level,
+    )
+    # The level a player is at now is what the item walk should pay, where the
+    # band walk gets the whole curve; `min` is the method's opening point and
+    # is the fallback for a skill no completion has established a level for.
+    timed: dict[str, float] = {}
+    for task, rates in priced.items():
+        held = at_level.get(rates[0].skill, 1)
+        chosen = min(
+            (rate for rate in rates if rate.level <= held), key=lambda rate: -rate.level,
+            default=min(rates, key=lambda rate: rate.level),
+        )
+        if chosen.seconds_per_item > 0:
+            timed[task] = chosen.seconds_per_item
+    return (
+        replace(
+            heuristics,
+            training=gathering_model.apply(heuristics.training, priced, pinned),
+            action_seconds={**heuristics.action_seconds, **timed},
+        ),
+        gathering_model.banded_methods(priced),
+        coverage,
+    )
+
+
+def _merge_computed(
+    *layers: Mapping[str, tuple[ComputedMethod, ...]],
+) -> dict[str, tuple[ComputedMethod, ...]]:
+    """Every computed layer's methods for a skill, **concatenated not replaced**.
+
+    Prayer offers bones and gathering offers a curve; a skill can have both, and
+    a `dict` update would silently drop whichever was written first. That is not
+    hypothetical - Prayer and combat already had to be merged rather than
+    assigned for exactly this reason.
+    """
+    merged: dict[str, tuple[ComputedMethod, ...]] = {}
+    for layer in layers:
+        for skill, methods in layer.items():
+            merged[skill] = merged.get(skill, ()) + tuple(methods)
+    return merged
 
 
 def priced_materials(

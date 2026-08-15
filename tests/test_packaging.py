@@ -75,6 +75,26 @@ def test_the_guis_resources_are_where_package_data_says_they_are() -> None:
     assert {"index.html", "app.js", "style.css"} <= served
 
 
+def test_the_heuristics_json_ships_with_the_package() -> None:
+    """Both files under `heuristics/` are numbers the estimator spends.
+
+    Same trap as the GUI's resources and a quieter one: an editable install
+    reads them out of the checkout whatever the glob says, so a wheel that
+    stopped matching would ship an estimator that prices every skill
+    differently and says nothing about why. `overrides.json` is the hand
+    corrections; `gathering.json` is the scraped tables behind
+    `costing/gathering.py`, and without it that whole model goes quiet - which
+    is a supported state, and not one a packaging mistake should reach.
+    """
+    with open(PACKAGE.parent.parent / "pyproject.toml", "rb") as handle:
+        config = tomllib.load(handle)
+    globs = config["tool"]["setuptools"]["package-data"]["chunksim"]
+
+    assert "heuristics/*.json" in globs
+    shipped = {path.name for path in (PACKAGE / "heuristics").iterdir()}
+    assert {"overrides.json", "gathering.json"} <= shipped
+
+
 def test_both_console_scripts_resolve() -> None:
     """`chunksim` and `chunksim-gui` are dotted strings in `pyproject.toml` that nothing
     else checks. A module rename that misses them is a `pipx install` that

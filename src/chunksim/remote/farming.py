@@ -6,7 +6,9 @@ spends hours or days growing while you do something else, so what limits the
 skill is how many harvests a day you get round to - not how fast you click.
 
 `Module:Skill calc/Farming` is the table behind `Calculator:Farming`, and it is
-plain Lua rather than a template, so it comes back whole from `action=raw`:
+plain Lua rather than a template, so it comes back whole from `action=raw`.
+**`remote/skillcalc.py` reads that format** - it is one format across eleven
+skills, and the brace matching it needs was measured here first:
 
     { name = 'Ranarr weed', level = 32, xp = 30.5, plantXp = 27,
       materials = { { name = 'Ranarr seed', quantity = 1 } },
@@ -42,11 +44,10 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from chunksim.remote.skillcalc import entries, fields as read_fields
+
 #: The calculator's data table, as raw Lua.
 CROPS_PAGE = "Module:Skill calc/Farming"
-
-#: One `name = value` pair, string or number.
-_FIELD = re.compile(r"(\w+)\s*=\s*(?:'([^']*)'|\"([^\"]*)\"|([\d.]+))")
 
 #: A quoted `name = '...'` value, used to pick the seed out of `materials`.
 _NAME = re.compile(r"name\s*=\s*'([^']*)'")
@@ -79,45 +80,6 @@ class Crop:
         }
 
 
-def _fields(chunk: str) -> dict[str, str]:
-    found: dict[str, str] = {}
-    for match in _FIELD.finditer(chunk):
-        key = match.group(1)
-        value = next(g for g in match.groups()[1:] if g is not None)
-        found.setdefault(key, value)
-    return found
-
-
-def _entries(text: str) -> list[str]:
-    """Each top-level `{...}` inside the returned table.
-
-    **Brace matching rather than splitting on `name =`.** Every crop contains a
-    `materials` table which contains a `name` of its own, so a split gives 152
-    fragments for 76 crops - and worse, each crop's fragment then *ends* at its
-    own materials, before the `type` field that says which patch it goes in.
-    Every crop parsed as unusable and the table came back empty.
-    """
-    start = text.find("{")
-    if start < 0:
-        return []
-    found: list[str] = []
-    depth = 0
-    opened = 0
-    for index in range(start, len(text)):
-        char = text[index]
-        if char == "{":
-            depth += 1
-            if depth == 2:
-                opened = index
-        elif char == "}":
-            if depth == 2:
-                found.append(text[opened : index + 1])
-            depth -= 1
-            if depth == 0:
-                break
-    return found
-
-
 def parse_crops(text: str) -> tuple[Crop, ...]:
     """Every crop in the module, in the order written.
 
@@ -126,8 +88,8 @@ def parse_crops(text: str) -> tuple[Crop, ...]:
     the one inside `materials`.
     """
     found: list[Crop] = []
-    for entry in _entries(text):
-        fields = _fields(entry)
+    for entry in entries(text):
+        fields = read_fields(entry)
         name, patch = fields.get("name"), fields.get("type")
         level, experience = fields.get("level"), fields.get("xp")
         if not name or not patch or level is None or experience is None:

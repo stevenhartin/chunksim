@@ -456,6 +456,19 @@ maps are your own work and nothing can recompute them.
    money-making guide exists it still wins - see `chunksim estimate skilling`, which prints where each
    band's rate came from.
 
+   **You do not need to fetch anything for the gathering skills.** Fishing, Mining and Woodcutting are
+   *modelled* rather than looked up - the success chance at your level, the roll interval for your
+   best reachable axe or pickaxe, and the time a node costs you between resources - and the tables
+   behind that ship with the package. So a willow tree is priced for the axe your map actually holds
+   rather than for the dragon axe a training guide assumes, and the rate climbs as you level instead
+   of one figure covering the whole climb. Bands from that model are marked `modelled`.
+
+   Rebuilding those tables is a developer job and needs the checkout:
+
+   ```sh
+   chunksim gather-tables                  # ~15 requests -> src/chunksim/heuristics/gathering.json
+   ```
+
 3. **Look at what you've got:**
 
    ```sh

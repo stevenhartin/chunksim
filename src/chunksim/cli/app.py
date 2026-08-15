@@ -43,6 +43,7 @@ from chunksim.cli import (
     derived,
     diff,
     estimate,
+    gather_tables,
     io_commands,
     listing,
     maps,
@@ -65,6 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     io_commands.add_arguments(subcommands)
+    gather_tables.add_arguments(subcommands)
 
     estimate.add_arguments(subcommands)
 

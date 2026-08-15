@@ -80,7 +80,10 @@ def pairs_for(map_ids: list[str]) -> tuple[list[Pair], list[Pair]]:
             if guide.match != "exact" or guide.value <= 0 or task in seen:
                 continue
             seen.add(task)
-            bare = action.action_seconds - recipe_rates.ACTION_OVERHEAD_SECONDS
+            # The trip share is per action now, not one constant - see
+            # `recipe_rates.trip_seconds`, which scales it by what the
+            # action consumes. Subtract what this action was charged.
+            bare = action.action_seconds - action.trip_seconds
             # **"Cheap materials", not "free materials".** The split was
             # `input_seconds <= 0` while a shop cost nothing and a ground
             # spawn cost nothing; both now cost something, so *no* method has
@@ -129,7 +132,11 @@ def main(argv: list[str]) -> int:
         f"  median error x{math.exp(error_at(free, best)):.2f}"
         f"  (0s: x{math.exp(error_at(free, 0.0)):.2f})"
     )
-    print(f"  in use: {recipe_rates.ACTION_OVERHEAD_SECONDS}s")
+    print(
+        f"  in use: {recipe_rates.TRIP_SECONDS}s a trip over"
+        f" {recipe_rates.CARRY_SLOTS:g} slots"
+        f" = {recipe_rates.ACTION_OVERHEAD_SECONDS:.2f}s for a one-input action"
+    )
     return 0
 
 

@@ -129,6 +129,45 @@ Each of the first three has already caused a real bug.
   and where a memo outlives a request, as the GUI's `ReferenceBlobs` does, it must be validated
   against what it caches rather than merely remembered.
 
+### The two computed rate layers, and why they layer opposite ways
+
+There are now two models that compute a rate the scrape also has an answer for,
+and **they sit on opposite sides of it**:
+
+```
+defaults < computed (recipe) < scraped < modelled (gathering) < overrides
+```
+
+That is not an inconsistency, it is the whole argument, and each module's
+docstring carries its half:
+
+- **A recipe and a money-making guide measure different things.** The guide
+  assumes you bought the silver bar; the recipe charges you six minutes for
+  mining it. Neither is wrong, and the guide is the better-known number — so a
+  guide keeps the method and `recipe_rates` only fills the 1,000/hr floor.
+- **A success curve and a training guide measure the same thing** — how fast
+  this action goes — and the curve is better informed, because it is evaluated
+  at *this* map's level with *this* map's best reachable axe where the guide is
+  somebody else's account. So it wins, the same way `dps_bridge` puts a
+  simulated fight above a scraped kill rate.
+
+**A modelled rate is not one number**, which is the other thing to know before
+reading `costing/training.py`. A gathering rate is a function of level, so
+`gathering.apply` writes the opening-level figure into `Heuristics.training` and
+`gathering.banded_methods` puts the rest of the curve into `Heuristics.computed`
+— which already carries a level per entry, because combat and Prayer needed one.
+`training_bands` then opens each point where it belongs, and a climb reads as one
+method getting faster rather than as ten methods.
+
+**`chunksim gather-tables` is the one subcommand that writes into `src/`.**
+Everything else that fetches writes a cache blob a user is expected to refresh;
+this writes `src/chunksim/heuristics/gathering.json`, which is checked in and
+shipped as package data. That is deliberate — the tables move about once a game
+update, and making every install re-read six hundred wiki pages would cost the
+estimator a network dependency it does not otherwise have. **`chunksim estimate`
+must never reach that code**, which is why the fetching is injected into
+`gathering.build_tables` rather than imported by it.
+
 ### Test against more than one map
 
 Every rule in a map's `rules` branch is a number or a flag a *player* set, so a second map is a
@@ -164,7 +203,9 @@ The table says what each module **owns**; its docstring says why.
 | `remote/wiki.py` | Wikitext template parsing and numeric-value extraction (arithmetic, `{{#expr:}}`, and what to refuse). |
 | `remote/wikitable.py` | Reading a wikitable: the depth-aware cell splitter and `column_index`'s `colspan` resolution. |
 | `remote/scrape.py` | The sixteen stages (thirty-odd requests) that build the scraped layer, and its coverage. **Both apps run it**, so the two cannot write different files. Decides no rate. |
-| `remote/skill_tables.py` | Rates from wiki tables, headings and prose for the skills `{{Recipe}}` and the guides cannot describe. |
+| `remote/skill_tables.py` | Rates from wiki tables, headings and prose for the skills `{{Recipe}}` and the guides cannot describe. **Published hourly figures** — somebody else's account; contrast `remote/gathering.py`, which reads what a rate is computed *from*. |
+| `remote/skillcalc.py` | Reading a `Module:Skill calc/<Skill>` Lua table — one format across eighteen skills. Owns the brace matching, which `remote/farming.py` measured first and now imports. |
+| `remote/gathering.py` | The three inputs a gathering rate is computed from: `{{Skilling success chart}}`'s `low`/`high` curves, the tool page's `Ticks between rolls`, and the despawn/respawn table. Also `build_tables`, whose **fetching is injected** so the module cannot open a socket. |
 | `remote/recipes.py` | `{{Recipe}}` as the wiki's Bucket serves it: experience, ticks and materials per action. |
 | `remote/stores.py` | What a shop charges and **in what currency**. |
 | `remote/combat.py` | Monster hitpoints and xp multipliers; autocastable spells and what each cast consumes. |
@@ -187,7 +228,8 @@ The table says what each module **owns**; its docstring says why.
 | `costing/heuristics.py` | Every hand-correctable number, and the `defaults < scraped < overrides` merge. Owns the joins and their `exact`/`contained` provenance; **no fuzzy tier, by measurement.** |
 | `costing/estimate.py` | The four buckets over the **active** set. **Costs the unique *item*, not the task**, and **clamps per source**. Owns the item walk and the gates on it, and records the `Heuristics` entries each number was read off — where they are read, never reconstructed. |
 | `costing/training.py` | How fast a skill goes. **A climb is priced band by band as methods unlock**, so the floor can only ever be the first band. Each band carries the override path behind its rate, set where the rate is chosen. |
-| `costing/recipe_rates.py` | A recipe turned into an XP rate, joined exactly on `Output`. Owns `defaults < computed < scraped < overrides` — **the one place a computed number does *not* beat the scrape.** |
+| `costing/recipe_rates.py` | A recipe turned into an XP rate, joined exactly on `Output`. Owns `defaults < computed < scraped < overrides` — **the one place a computed number does *not* beat the scrape.** Also `trip_seconds`: a bank trip's share, scaled by what an action consumes. |
+| `costing/gathering.py` | The generic node model for Fishing/Mining/Woodcutting/Hunter/Thieving, and the exact skilling-success formula. Owns `defaults < scraped < modelled < overrides` — **it beats the scrape where `recipe_rates.py` loses to it**, and the docstring says why. Per-skill quirks are `SkillProfile` fields, never branches. |
 | `costing/combat_xp.py` | Combat XP, which is damage and almost nothing else. Owns the three gates and the two credits that each removed a wrong answer. |
 | `costing/slayer.py` | Slayer's rate, which is a *distribution* not a chosen method, and the points economy that decides where you train. |
 | `costing/prayer.py`, `costing/farming.py` | The two skills whose limit is not a rate: bone supply, and a **schedule** measured in calendar days beside its active hours. |
@@ -278,6 +320,7 @@ chunksim show  [--map ID]       # summarise the cached copy; no network
 chunksim chunkinfo              # GET upstream's chunk/challenge reference data (~10MB)
 chunksim heuristics             # GET wiki/spreadsheet rates -> cache/reference/wiki_rates.json (30+ requests)
 chunksim recipes                # GET per-action xp + tick costs -> cache/reference/wiki_recipes.json
+chunksim gather-tables          # developer only: GET the gathering tables -> src/chunksim/heuristics/gathering.json
 chunksim estimate [BUCKET] [--limit N]                 # rough hours for the outstanding active tasks
 chunksim sections [list|CHUNK] [--limit N]             # reachable sections
 chunksim sources  [CATEGORY]   [--limit N]             # items/objects/monsters/npcs/shops
@@ -342,13 +385,16 @@ everywhere else.
 so is `/*.json` at the repo root, which is where `--export-json` output lands when it is aimed at
 the checkout rather than `/tmp` or stdout. A stray `tasks.json` there is that, not project data.
 
-**The estimator's numbers live in three places and only two are in `cache/`.** `chunksim heuristics`
+**The estimator's numbers live in four places and only two are in `cache/`.** `chunksim heuristics`
 writes the scrape to `cache/reference/wiki_rates.json` (refetchable, gitignored); hand-written
 corrections go in **`src/chunksim/heuristics/overrides.json`, which is checked in *and* shipped as
 package data** so they are diffable and
 survive a re-scrape; and corrections belonging to *one map* go in `cache/overrides/<map_id>.json`,
-which is cache data and gitignored with the rest. `heuristics/README.md` is the guide to which
-numbers are worth correcting. The export has *no* durations, rates or XP figures at all, so every
+which is cache data and gitignored with the rest. The fourth is
+**`src/chunksim/heuristics/gathering.json`**, the scraped gathering tables — checked in and shipped
+like the corrections beside it, but a *scrape* rather than a hand opinion, so it is regenerated
+wholesale by `chunksim gather-tables` and corrected through `overrides.json` like everything else.
+`heuristics/README.md` is the guide to which numbers are worth correcting. The export has *no* durations, rates or XP figures at all, so every
 number `chunksim estimate` spends comes from one of those three files or a default in
 `costing/heuristics.py`.
 

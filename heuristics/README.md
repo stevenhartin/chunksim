@@ -8,11 +8,19 @@ Hand-written corrections to the numbers `chunksim estimate` spends. Checked in, 
 they are diffable, survive a re-scrape, and travel with the repo — which
 nothing under the gitignored `cache/` would.
 
-## The three layers
+## The layers
 
 ```
-defaults (heuristics.py)  <  scraped (cache/wiki_rates.json)  <  overrides.json
+defaults (heuristics.py) < computed (recipes) < scraped (cache/wiki_rates.json)
+                         < modelled (gathering) < overrides.json
 ```
+
+**Two computed layers, on opposite sides of the scrape**, and the asymmetry is deliberate. A recipe
+and a money-making guide measure different things — the guide assumes you bought the silver bar,
+the recipe charges you for mining it — so the guide keeps the method and `recipe_rates` only fills
+the 1,000/hr floor. A success curve and a training guide measure the *same* thing, and the curve is
+evaluated at your level with your best reachable axe where the guide is somebody else's account, so
+it wins. `costing/gathering.py`'s docstring is the authority.
 
 The deepest value wins, key by key, so pinning one quest's hours does not
 erase the length recorded beside it. `chunksim heuristics` regenerates the middle
@@ -69,6 +77,13 @@ here, then edit the value.
 | `materials` | the full task name | `{"experience": 23000, "items": {"Runite bar": 28}}` — what one action pays and consumes |
 | `slayer` | **master**, then task | `{"mean_count": 165, "xp_per_kill": 106, "kills_per_hour": 340, "extended": false}` |
 | `rarities` | a rate word | a probability, e.g. `{"varies": 0.02}` |
+
+A `training` pin outranks the gathering model too — it is the top layer for every source.
+
+**`gathering.json` beside this file is not a correction file and is not hand-edited.** It is the
+scraped gathering tables, regenerated wholesale by `chunksim gather-tables` and committed with the
+change that needed it. Correct a modelled rate here in `overrides.json`, exactly as you would a
+scraped one.
 
 `levels` has no scraped layer and exists only here. **The map records no
 current skill levels** — `maxSkill` is a declared cap and `passiveSkill` is

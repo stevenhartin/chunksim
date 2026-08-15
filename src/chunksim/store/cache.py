@@ -179,12 +179,26 @@ CHUNKINFO_ENV_VAR = "CHUNKSIM_CHUNKINFO"
 HEURISTICS_DIR_NAME = "heuristics"
 OVERRIDES_FILE_NAME = "overrides.json"
 
+#: The gathering tables `chunksim gather-tables` scrapes, in the same directory
+#: and shipped the same way - but **not the same kind of file.** Corrections are
+#: the user's and can be shadowed in their own data directory; this is a
+#: *scrape*, regenerated wholesale by a developer and read-only everywhere
+#: else, so there is one copy and it is the packaged one. Correcting a number in
+#: it goes through `overrides.json` like every other correction.
+GATHERING_FILE_NAME = "gathering.json"
+
 #: The corrections that **ship with the code**, `__file__`-relative like
 #: `gui.RESOURCE_DIR`. They live inside the package because they are the
 #: project's answers rather than the user's: an install that did not carry them
 #: would price every estimate differently from the checkout they were measured
 #: on, and say nothing about why.
 PACKAGED_OVERRIDES = Path(__file__).resolve().parent.parent / HEURISTICS_DIR_NAME / OVERRIDES_FILE_NAME
+
+#: The gathering tables that ship with the code. **Read `__file__`-relative and
+#: never from `data_root()`**, because unlike the corrections there is no user
+#: copy to prefer: an installed build must read what it shipped with, and a
+#: checkout reads what it has just regenerated, and those are the same path.
+PACKAGED_GATHERING = Path(__file__).resolve().parent.parent / HEURISTICS_DIR_NAME / GATHERING_FILE_NAME
 
 #: Binary assets the GUI needs, kept beside the JSON blobs. Every one of them
 #: is fetched rather than committed, because all of it is somebody else's
@@ -744,6 +758,74 @@ def read_overrides(root: Path | None = None) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise CacheMissError(f"{path} should hold an object, got {type(parsed).__name__}")
     return parsed
+
+
+def gathering_path(root: Path | None = None) -> Path:
+    """Where `chunksim gather-tables` writes, which is the checkout's own copy.
+
+    Derived from the tree rather than from `__file__` for the same reason
+    `overrides_path` is: they are the same directory when this runs out of the
+    checkout it is editing, and a test standing in a throwaway tree needs its
+    own file rather than the developer's real tables.
+    """
+    base = root or data_root()
+    packaged = base / "src" / "chunksim" / HEURISTICS_DIR_NAME / GATHERING_FILE_NAME
+    if packaged.parent.parent.is_dir():
+        return packaged
+    return base / HEURISTICS_DIR_NAME / GATHERING_FILE_NAME
+
+
+def read_gathering(root: Path | None = None) -> dict[str, Any]:
+    """The scraped gathering tables, or `{}` when the file is not there.
+
+    **Absent is a supported state, not an error.** A clone that has never run
+    `chunksim gather-tables` still prices every skill the older sources cover;
+    what it loses is the computed layer, which `costing/gathering.py` reports as
+    no rate rather than as a wrong one. A *malformed* file does raise, on the
+    same reasoning as `read_overrides`: it was written deliberately.
+
+    An explicit `root` is a closed world and never falls through to the shipped
+    copy - the caller that does this most is a test pointing at `tmp_path`.
+    """
+    path = gathering_path(root) if root is not None else None
+    if path is None or not path.is_file():
+        if root is not None:
+            return {}
+        checkout = gathering_path()
+        path = checkout if checkout.is_file() else PACKAGED_GATHERING
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}
+    try:
+        parsed: Any = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise CacheMissError(f"{path} is not valid JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise CacheMissError(f"{path} should hold an object, got {type(parsed).__name__}")
+    data = parsed.get("data")
+    return data if isinstance(data, dict) else {}
+
+
+def write_gathering(tables: Mapping[str, Any], source: str, root: Path | None = None) -> Path:
+    """Write the scraped gathering tables into the checkout, atomically.
+
+    **In `write_blob`'s provenance envelope**, even though this does not live
+    under `cache/`: it is a scrape like the other two, and a reader that has to
+    remember which blobs are wrapped and which are bare is a reader that will
+    get it wrong. `read_gathering` unwraps it.
+    """
+    path = gathering_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return _atomic_write_json(
+        path,
+        {
+            "name": GATHERING_FILE_NAME,
+            "fetched_at": datetime.now(UTC).isoformat(),
+            "source": source,
+            "data": dict(tables),
+        },
+    )
 
 
 def write_overrides(overrides: Mapping[str, Any], root: Path | None = None) -> Path:

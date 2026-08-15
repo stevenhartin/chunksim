@@ -8,7 +8,7 @@ actually decide a rate - experience per action and the action's tick cost - for
 3,889 recipes across thirteen skills, and this module turns them into an hourly
 figure:
 
-    xp_per_hour = experience * 3600 / (0.6 * ticks + input_seconds)
+    xp_per_hour = experience * 3600 / (0.6 * ticks + input_seconds + trip_share)
 
 Three parts, each of which has to be right for the answer to mean anything:
 
@@ -24,9 +24,11 @@ does not match exactly is a method this module declines to price.
 **Gathering skills are absent, and that is the honest answer.** Fishing,
 Woodcutting, Firemaking and Farming join at ~0% because a fishing spot is not a
 recipe: the wiki records no `{{Recipe}}` for it, so there are no ticks and no
-materials to read. They keep whatever the scrape gave them and wait for a model
-of their own. Reporting a 0% join as coverage of the skill would read as this
-module having failed at something it never attempted.
+materials to read. Reporting a 0% join as coverage of the skill would read as
+this module having failed at something it never attempted. **`costing/gathering.py`
+is the model of their own they were waiting for**, and it is where a log's or an
+ore's cost now comes from - including the cost of the ones this module's recipes
+consume, which is the join between the two halves.
 
 **An input you cannot obtain drops the method.** `input_seconds` is the caller's
 `_item_hours` walk, which prices the cheapest route to a material and returns
@@ -110,15 +112,48 @@ def join_keys(challenge: Mapping[str, Any], task: str) -> tuple[str, ...]:
     return tuple(key for key in dict.fromkeys(keys) if key)
 
 
-#: Seconds an action costs beyond its own animation: the withdraw, the click,
-#: the walk back. **Fitted, not chosen** - `recipe_overhead.py` re-runs the
-#: fit and is the authority on this number. Over the 24 methods where a recipe
-#: and an *exactly* joined guide both exist and the materials price free,
-#: tick-math alone is a median 1.38x fast; 0.4s an action brings that to
-#: 1.14x. It is also the right order for the thing it stands in for - 28 items
-#: a bank trip at ~20s a trip is 0.7s an item - which is the only reason to
-#: trust a one-parameter fit over 24 points at all.
-ACTION_OVERHEAD_SECONDS = 0.4
+#: Seconds one bank trip costs: the walk, the withdraw, the walk back.
+#:
+#: **Calibrated rather than fitted afresh, and the distinction matters.**
+#: `ACTION_OVERHEAD_SECONDS` was fitted at 0.4s an action over 24 methods, and
+#: `recipe_overhead.py` records that the fit has since gone *flat* - now that
+#: shops, spawns and actions all cost something, only six pairs are comparable
+#: and 0.0s scores exactly what 0.4s does. So there is no evidence left to
+#: re-fit against, and this number is chosen to reproduce the one there was:
+#: `TRIP_SECONDS / CARRY_SLOTS` is 0.4s, which is what a single-input action
+#: still costs.
+TRIP_SECONDS = 10.8
+
+#: Slots a trip brings back, an inventory being 28 and one holding the tool.
+CARRY_SLOTS = 27.0
+
+#: What a single-input action pays for its trip. Kept as a name because it is
+#: the number the fit produced and the one `recipe_overhead.py` reports on.
+ACTION_OVERHEAD_SECONDS = TRIP_SECONDS / CARRY_SLOTS
+
+
+def trip_seconds(recipe: Recipe) -> float:
+    """The share of a bank trip one action of `recipe` costs.
+
+    **What a flat constant could not see.** An action is not charged for a trip;
+    it is charged for its *share* of one, and the share is decided by how many
+    actions an inventory covers. A Giants' Foundry preform eats 28 bars, so a
+    trip buys exactly one action and it pays for the whole run; a bowstring on
+    a longbow eats one, so a trip buys 27 and each pays a twenty-seventh. Priced
+    flat, those two came out the same.
+
+    **Consuming nothing means no trip at all.** That is the "some can do
+    infinite" case - an action with no materials has nothing to carry, so there
+    is nothing to walk back for, and charging it a trip share would invent
+    downtime. Cutting a gem from a gem you are already holding is not the
+    shape; a fire lit from logs you just chopped is.
+
+    The quantities are the recipe's own, so this needs no new data.
+    """
+    consumed = sum(material.quantity for material in recipe.materials)
+    if consumed <= 0:
+        return 0.0
+    return TRIP_SECONDS * consumed / CARRY_SLOTS
 
 @dataclass(frozen=True)
 class ActionRate:
@@ -133,6 +168,10 @@ class ActionRate:
     input_seconds: float
     output: str
     materials: tuple[str, ...] = ()
+    #: The trip share this action was priced with - see `trip_seconds`. Carried
+    #: rather than recomputed because an `ActionRate` no longer holds the
+    #: recipe it came from, and the two must not be able to disagree.
+    trip_seconds: float = ACTION_OVERHEAD_SECONDS
 
     @property
     def performing_seconds(self) -> float:
@@ -142,7 +181,7 @@ class ActionRate:
         The walk charges a conversion's inputs itself, so handing it the whole
         cycle would bill the materials twice.
         """
-        return TICK_SECONDS * self.ticks + ACTION_OVERHEAD_SECONDS
+        return TICK_SECONDS * self.ticks + self.trip_seconds
 
     @property
     def action_seconds(self) -> float:
@@ -151,7 +190,7 @@ class ActionRate:
         All three, because leaving the overhead out here and adding it in
         `action_seconds()` is how the fit harness came to subtract it twice.
         """
-        return TICK_SECONDS * self.ticks + self.input_seconds + ACTION_OVERHEAD_SECONDS
+        return TICK_SECONDS * self.ticks + self.input_seconds + self.trip_seconds
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -234,7 +273,7 @@ def action_seconds(
     materials = material_seconds(recipe, input_seconds)
     if recipe.ticks is None or materials is None:
         return None
-    return TICK_SECONDS * recipe.ticks + ACTION_OVERHEAD_SECONDS + materials
+    return TICK_SECONDS * recipe.ticks + trip_seconds(recipe) + materials
 
 
 def rate_for(
@@ -264,7 +303,7 @@ def rate_for(
         materials = material_seconds(recipe, input_seconds)
         if recipe.ticks is None or materials is None:
             continue
-        seconds = TICK_SECONDS * recipe.ticks + ACTION_OVERHEAD_SECONDS + materials
+        seconds = TICK_SECONDS * recipe.ticks + trip_seconds(recipe) + materials
         if seconds <= 0:
             continue
         rate = recipe.experience * 3600.0 / seconds
@@ -324,6 +363,7 @@ def computed_rates(
                 input_seconds=materials,
                 output=output,
                 materials=tuple(material.name for material in recipe.materials),
+                trip_seconds=trip_seconds(recipe),
             )
         if offered:
             coverage[skill] = (found, offered)
