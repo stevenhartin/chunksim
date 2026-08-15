@@ -109,3 +109,32 @@ class TestLanternHarpoon:
 
     def test_a_map_without_the_spot_gets_nothing(self) -> None:
         assert "Fishing" not in stated.methods(INFO, {"Fishing": {}}, self._TABLES)
+
+
+class TestTempoross:
+    _VALID = {"Fishing": {stated.TEMPOROSS_TASK: True}}
+
+    def test_the_best_harpoon_held_decides_the_rate(self) -> None:
+        assert stated.tempoross_rate(frozenset({"Crystal harpoon"})) == 100_000.0
+        assert stated.tempoross_rate(frozenset({"Dragon harpoon"})) == 85_000.0
+        assert stated.tempoross_rate(frozenset({"Harpoon"})) == 80_000.0
+
+    def test_a_lesser_harpoon_is_not_upgraded(self) -> None:
+        # The best tier *held*, not the best that exists - the same reading
+        # `gathering.best_tool` takes of an axe.
+        assert stated.tempoross_rate(frozenset({"Harpoon", "Barb-tail harpoon"})) == 80_000.0
+
+    def test_the_better_of_two_held_wins(self) -> None:
+        assert stated.tempoross_rate(frozenset({"Harpoon", "Dragon harpoon"})) == 85_000.0
+
+    def test_no_harpoon_prices_nothing(self) -> None:
+        assert stated.tempoross_rate(frozenset()) == 0.0
+        assert stated.methods(INFO, self._VALID, None, frozenset()) == {}
+
+    def test_it_opens_at_the_level_the_export_states(self) -> None:
+        found = stated.methods(INFO, self._VALID, None, frozenset({"Harpoon"}))["Fishing"]
+        assert [method.level for method in found] == [stated.TEMPOROSS_OPENS]
+
+    def test_a_stated_figure_is_marked_as_one(self) -> None:
+        found = stated.methods(INFO, self._VALID, None, frozenset({"Harpoon"}))["Fishing"]
+        assert {method.match for method in found} == {GUESS}
