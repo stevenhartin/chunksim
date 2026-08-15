@@ -89,6 +89,10 @@ HUNTER_PAGE = "Hunter"
 #: mechanic: one loot, then a restock.
 THIEVING_PAGE = "Thieving"
 
+#: The aerial fishing article, whose creature table is the only place the four
+#: catches' experience is stated for **both** skills they pay.
+AERIAL_PAGE = "Aerial fishing"
+
 #: The herbiboar article, whose experience table is the one thing about that
 #: activity worth reading: it is a minigame rather than a loop, and what a
 #: catch pays is the only part of it a model can hold.
@@ -464,6 +468,39 @@ def _ratio(cell: str) -> float | None:
     return float(match.group(1)) / denominator if denominator else None
 
 
+def parse_aerial_fish(text: str) -> tuple[tuple[str, int, float, int, float], ...]:
+    """`(name, fishing level, fishing xp, hunter level, hunter xp)` per catch.
+
+    **The one table that states a catch's experience in two skills at once**,
+    which is what aerial fishing pays and what no skill calculator records: the
+    Fishing calculator has no row for these at all and the Hunter one has none
+    either.
+
+    The header is two rows deep - a `colspan=2` per skill over a `Level`/`Exp`
+    pair - so the second one arrives through `rows` as data and is skipped like
+    any other `!` line. Cooking's pair is read and dropped; it is real, but
+    nothing here prices a catch for a third skill.
+    """
+    table = table_with(text, "Creature")
+    if not table:
+        return ()
+    found: list[tuple[str, int, float, int, float]] = []
+    for cells in rows(table):
+        if len(cells) < 5 or cells[0].lstrip().startswith("!"):
+            continue
+        name = _plink_name(cells[0])
+        numbers = [_leading(cell) for cell in cells[1:5]]
+        if not name or any(value is None for value in numbers):
+            continue
+        fishing_level, fishing_xp, hunter_level, hunter_xp = numbers
+        assert fishing_level is not None and fishing_xp is not None
+        assert hunter_level is not None and hunter_xp is not None
+        found.append(
+            (name, int(fishing_level), fishing_xp, int(hunter_level), hunter_xp)
+        )
+    return tuple(found)
+
+
 def parse_level_experience(text: str) -> dict[int, float]:
     """A `Hunter Level | XP` table, as `{level: experience}`.
 
@@ -562,6 +599,9 @@ class GatheringTables:
     respawns: dict[str, float] = field(default_factory=dict)
     #: Hunter level -> experience for one herbiboar.
     herbiboar_xp: dict[int, float] = field(default_factory=dict)
+    #: The aerial catches: `(name, fishing level, fishing xp, hunter level,
+    #: hunter xp)`.
+    aerial_fish: tuple[tuple[str, int, float, int, float], ...] = ()
     #: Spawn-tier heading -> `(impling, share)`, the chance table each kind of
     #: Puro-Puro spawn point rolls.
     spawn_tiers: dict[str, tuple[tuple[str, float], ...]] = field(default_factory=dict)
@@ -596,6 +636,7 @@ class GatheringTables:
                 for name, cycle in sorted(self.cycles.items())
             },
             "respawns": dict(sorted(self.respawns.items())),
+            "aerial_fish": [list(entry) for entry in self.aerial_fish],
             "herbiboar_xp": {
                 str(level): paid for level, paid in sorted(self.herbiboar_xp.items())
             },
@@ -669,6 +710,7 @@ def build_tables(
             CRAB_PAGE,
             IMPLING_PAGE,
             HERBIBOAR_PAGE,
+            AERIAL_PAGE,
         ]
     )
     tool_ticks = {
@@ -694,6 +736,7 @@ def build_tables(
         parallel.setdefault("Hunter", {})[""] = traps
     spawn_tiers = parse_spawn_tiers(mechanics.get(IMPLING_PAGE, ""))
     herbiboar_xp = parse_level_experience(mechanics.get(HERBIBOAR_PAGE, ""))
+    aerial_fish = parse_aerial_fish(mechanics.get(AERIAL_PAGE, ""))
     crabs = parse_trap_counts(mechanics.get(CRAB_PAGE, ""))
     if crabs:
         parallel.setdefault("Hunter", {})["Crab trapping"] = crabs
@@ -713,6 +756,7 @@ def build_tables(
         respawns=respawns,
         spawn_tiers=spawn_tiers,
         herbiboar_xp=herbiboar_xp,
+        aerial_fish=aerial_fish,
         parallel=parallel,
         actions=actions,
         sources={
@@ -725,6 +769,7 @@ def build_tables(
             "stall respawns": len(respawns),
             "spawn tiers": len(spawn_tiers),
             "herbiboar levels": len(herbiboar_xp),
+            "aerial catches": len(aerial_fish),
             "parallel steps": sum(
                 len(steps) for loops in parallel.values() for steps in loops.values()
             ),
@@ -733,6 +778,7 @@ def build_tables(
 
 
 __all__ = [
+    "AERIAL_PAGE",
     "GatheringTables",
     "HERBIBOAR_PAGE",
     "HUNTER_PAGE",
@@ -749,6 +795,7 @@ __all__ = [
     "WOODCUTTING_PAGE",
     "build_tables",
     "parse_node_cycles",
+    "parse_aerial_fish",
     "parse_level_experience",
     "parse_spawn_tiers",
     "parse_stall_respawns",

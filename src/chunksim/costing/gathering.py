@@ -563,10 +563,11 @@ PROFILES: dict[str, SkillProfile] = {
         },
         refuses=frozenset(
             {
-                # **Aerial fishing is not the skilling success function at
-                # all** - it is a Hunter catch that pays Fishing experience,
-                # and `Skilling success rate` names it as an activity the
-                # formula does not describe.
+                # **Aerial fishing has no success roll at all** - "a catch
+                # is guaranteed each time the bird is sent" - so there is
+                # nothing here for a success curve to describe. It is priced
+                # as one activity paying two skills by `costing/aerial.py`,
+                # and refused from the node walk so it cannot be priced twice.
                 "greater siren",
                 "mottled eel",
                 "bluegill",
@@ -959,6 +960,9 @@ class Tables:
     #: Hunter level -> experience for one herbiboar, for
     #: `costing/herbiboar.py`.
     herbiboar_xp: dict[int, float] = field(default_factory=dict)
+    #: `(name, fishing level, fishing xp, hunter level, hunter xp)` per aerial
+    #: catch, for `costing/aerial.py`.
+    aerial_fish: tuple[tuple[str, int, float, int, float], ...] = ()
     #: Spawn-tier name -> `(impling, share)`, for `costing/implings.py`.
     spawn_tiers: dict[str, tuple[tuple[str, float], ...]] = field(default_factory=dict)
     #: Skill -> loop -> `(level, units)` steps, `""` being the skill's default.
@@ -1063,6 +1067,12 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
         if isinstance(paid, (int, float)) and float(paid) > 0 and str(level).isdigit()
     }
 
+    aerial_fish = tuple(
+        (str(row[0]), int(row[1]), float(row[2]), int(row[3]), float(row[4]))
+        for row in raw.get("aerial_fish") or ()
+        if isinstance(row, list) and len(row) == 5
+    )
+
     spawn_tiers: dict[str, tuple[tuple[str, float], ...]] = {}
     for tier, entries in _mapping(raw, "spawn_tiers").items():
         if not isinstance(entries, list):
@@ -1103,6 +1113,7 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
         respawns=respawns,
         spawn_tiers=spawn_tiers,
         herbiboar_xp=herbiboar_xp,
+        aerial_fish=aerial_fish,
         parallel=parallel,
     )
 

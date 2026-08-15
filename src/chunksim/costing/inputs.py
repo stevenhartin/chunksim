@@ -34,6 +34,7 @@ from collections.abc import Callable
 from typing import Any, Mapping
 
 from chunksim.costing import (
+    aerial,
     combat_xp,
     dps_bridge,
     herbiboar,
@@ -433,7 +434,12 @@ def _gathered(
     # `gathering.py` and the dependency has to run one way. It contributes
     # nothing on a map that cannot reach the realm, which is upstream's gate
     # rather than one this project invents.
-    nodeless = implings.methods(blobs.gathering, derived.challenges.valid)
+    nodeless = {
+        **implings.methods(blobs.gathering, derived.challenges.valid),
+        # Aerial fishing is one action paying two skills and never missing, so
+        # it is a mix rather than a node - see `costing/aerial.py`.
+        **aerial.methods(blobs.gathering, derived.challenges.valid),
+    }
     # The level a player is at now is what the item walk should pay, where the
     # band walk gets the whole curve; `min` is the method's opening point and
     # is the fallback for a skill no completion has established a level for.

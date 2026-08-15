@@ -1,6 +1,6 @@
 {
   "name": "gathering.json",
-  "fetched_at": "2026-08-15T14:44:41.057289+00:00",
+  "fetched_at": "2026-08-15T17:43:43.123989+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "curves": {
@@ -14302,6 +14302,36 @@
       "Vegetable stall": 1.2,
       "Wine stall": 4.8
     },
+    "aerial_fish": [
+      [
+        "Bluegill",
+        43,
+        11.5,
+        35,
+        16.5
+      ],
+      [
+        "Common tench",
+        56,
+        40.0,
+        51,
+        45.0
+      ],
+      [
+        "Mottled eel",
+        73,
+        65.0,
+        68,
+        90.0
+      ],
+      [
+        "Greater siren",
+        91,
+        100.0,
+        87,
+        130.0
+      ]
+    ],
     "herbiboar_xp": {
       "74": 1770.0,
       "75": 1800.0,
@@ -26851,7 +26881,7 @@
         },
         {
           "name": "Dragon dart",
-          "level": 91,
+          "level": 95,
           "experience": 250.0,
           "kind": "Darts",
           "members": true,
@@ -45082,6 +45112,7 @@
       ]
     },
     "counts": {
+      "aerial catches": 4,
       "herbiboar levels": 26,
       "node cycles": 13,
       "parallel steps": 9,
