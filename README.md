@@ -501,11 +501,12 @@ maps are your own work and nothing can recompute them.
    wiki averages them for you: exactly 40, and infernal shale's ten values
    weight out to 42.73.
 
-   Where the only published figure for a method is a **tick-manipulation**
-   one, the model says nothing rather than something slower. Infernal shale
-   rocks are mined with Jim's wet cloth for 40-60k/hr and are charted nowhere,
-   so they keep the observed figure; the deposit beside them, which the same
-   page calls AFK, is modelled from its own 6-9k.
+   **Tick manipulation is deliberately not modelled**, so a method whose only
+   published figure assumes it is priced as ordinary play instead. Granite is
+   quoted at 87,000/hr for 3-tick mining and infernal shale rocks at 40-60k
+   with Jim's wet cloth; both are priced here for the swing a player actually
+   makes, and the technique is simply absent rather than folded into a success
+   chance.
 
    And where a method is priced by how far you *run* rather than how fast you
    swing, that is modelled too: sixteen ash piles scattered over a volcano

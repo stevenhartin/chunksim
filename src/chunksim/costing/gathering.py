@@ -870,12 +870,12 @@ PROFILES: dict[str, SkillProfile] = {
         # chart ever appears.
         # **A refusal matches every name the challenge offers, so check what
         # else generates that name before adding one.** `infernal shale rocks`
-        # was tried here and is not: the rock rewrite turns the *deposit's*
-        # `Output: Infernal shale` into `Infernal shale rocks` too, so refusing
-        # the rocks refused its sibling as well - which showed up as the
-        # deposit's curve fitting to nothing at all. The rocks are left
-        # uncurved instead, which refuses them just as effectively and cannot
-        # catch anything else.
+        # was tried here and could not work: the rock rewrite turns the
+        # *deposit's* `Output: Infernal shale` into `Infernal shale rocks` too,
+        # so refusing the rocks refused its sibling as well - which showed up
+        # as the deposit's curve fitting to nothing at all. Both are priced
+        # now, but the trap is general: anything keyed by name can catch a
+        # method that merely generates that name.
         refuses=frozenset({
             "rockfall",
             # **A different object that shares a name with the rocks.** The
@@ -936,24 +936,34 @@ PROFILES: dict[str, SkillProfile] = {
             # evidence here is that the *shape* is the game's linear
             # interpolation, not that the fit converged.
             "rubium deposit": (-38.0, 30.5),
-            # **The deposit is curved and the rocks beside it deliberately are
-            # not**, which is the whole decision here rather than an omission.
-            # Every figure published for `Infernal shale rocks` is Jim's wet
-            # cloth - the page's 40-50k "with decent execution", its "over
-            # 60k", and the money-making guide's 35,960 the scrape holds - and
-            # this model has no representation of that technique.
-            #
-            # **This is not the granite call, and the difference is evidence.**
-            # Granite is modelled at 24,700 against a 3-tick 87,000 because
-            # granite has three real success charts and a real respawn: the
-            # model knows what ordinary granite mining costs and the technique
-            # sits on top. Infernal shale rocks are charted nowhere. Any number
-            # for them would be this curve borrowed onto a rock the page
-            # describes differently - "between iron and coal in time to mine" -
-            # and it would then *displace* the measured figure, because a
-            # modelled rate outranks a scraped one. Leaving them uncurved
-            # leaves the number somebody actually observed.
             "infernal shale deposit": (-15.5, 24.0),
+            # **The rocks beside it share that curve, and the wet cloth is out
+            # of scope on purpose.** Every figure published for
+            # `Infernal shale rocks` is Jim's wet cloth - 40-50k "with decent
+            # execution", "over 60k" with perfect timing, and the money-making
+            # guide's 35,960 the scrape holds - and this model has no
+            # representation of that technique, exactly as it has none of the
+            # 3-tick granite it also declines to price.
+            #
+            # **This was left uncurved once, so that the observed figure would
+            # survive, and that was the wrong call.** The layering exists to
+            # prefer the model, and a wet-cloth measurement is not a
+            # measurement of the method the model prices; keeping it meant the
+            # estimator quoting a technique it cannot represent for one rock
+            # while refusing to for granite. The rocks are priced as ordinary
+            # mining and the cloth is simply not modelled.
+            #
+            # The deposit's own curve is the base, being the same shale at the
+            # same level with the same experience table, and the page's only
+            # remark about the rocks - "seem to be between iron and coal in
+            # time to mine" - is deliberately *not* used: read as a chance it
+            # gives 45,400/hr at level 78, which is inside the wet-cloth range
+            # and so cannot be what mining them without the cloth costs.
+            # Against the shared curve the cloth reads as a 4-7x speed-up,
+            # which is what "a powerful swing that can usually instantly mine
+            # the rock" should be worth against a roll landing about one time
+            # in ten.
+            "infernal shale rocks": (-15.5, 24.0),
         },
         # 28 rather than the infobox's `23-28`, for the same reason: the 28 is
         # what momentum pays and the model above assumes momentum. **The 20%
