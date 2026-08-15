@@ -1126,3 +1126,96 @@ class TestLoopOverride:
 
     def test_only_rabbit_snaring_is_marked_borrowed(self) -> None:
         assert gathering.PROFILES["Hunter"].inferred_loops == frozenset({"Rabbit snare"})
+
+
+class TestSeriesMatchedToTheCreature:
+    """A chart shared by a family is drawn once and carries a series each.
+
+    The `Chinchompa` chart appears verbatim on all three chinchompa pages with
+    Grey at 53, Red at 63 and Black at 73. Taking the first gave every one of
+    them the grey series, which is certain at 99 where the other two are 0.895 -
+    and the fitted box-trap interval absorbed the difference, so nothing in the
+    ratios showed it.
+    """
+
+    _CHART = (
+        ("Grey", 6.0, 268.0, 53, "confirmed"),
+        ("Red", -78.0, 228.0, 63, "confirmed"),
+        ("Black", -78.0, 228.0, 73, "confirmed"),
+    )
+    _TABLES = gathering.Tables(
+        curves={"chinchompa (hunter)": _CHART, "black chinchompa (hunter)": _CHART},
+        experience={
+            "Hunter": {
+                "chinchompa (hunter)": (198.4, "Box trap"),
+                "black chinchompa (hunter)": (315.0, "Box trap"),
+            }
+        },
+    )
+
+    def _chance(self, node: str, opens: int) -> float:
+        rate = gathering.rate_at(
+            self._TABLES, {}, gathering.PROFILES["Hunter"], "t", "Hunter",
+            {"Level": opens, "Primary": True, "NPCs": [node]}, 99,
+        )
+        assert rate is not None
+        return rate.chance
+
+    def test_each_creature_takes_the_series_drawn_for_it(self) -> None:
+        assert self._chance("Chinchompa (Hunter)", 53) == gathering.success_chance(99, 6.0, 268.0)
+        assert self._chance("Black chinchompa (Hunter)", 73) == gathering.success_chance(
+            99, -78.0, 228.0
+        )
+
+    def test_the_grey_series_no_longer_prices_every_chinchompa(self) -> None:
+        assert self._chance("Black chinchompa (Hunter)", 73) < self._chance(
+            "Chinchompa (Hunter)", 53
+        )
+
+    def test_an_unmatched_level_still_falls_back_to_the_first(self) -> None:
+        # A single-series chart has nothing else, and neither does a family
+        # whose member opens at a level the chart does not draw.
+        assert self._chance("Chinchompa (Hunter)", 41) == gathering.success_chance(
+            99, 6.0, 268.0
+        )
+
+
+class TestBorrowTakesTheWorstSeries:
+    def test_the_donors_weakest_series_is_the_one_lent(self) -> None:
+        # An assumed number should be the pessimistic one, and "first" only
+        # happened to mean that for the butterflies: the chinchompa chart opens
+        # with grey, which is the easiest of its three.
+        tables = gathering.Tables(
+            curves={
+                "chinchompa (hunter)": (
+                    ("Grey", 6.0, 268.0, 53, "confirmed"),
+                    ("Red", -78.0, 228.0, 63, "confirmed"),
+                )
+            },
+            experience={"Hunter": {"ferret (hunter)": (115.0, "Box trap")}},
+        )
+        profile = dataclasses.replace(
+            gathering.PROFILES["Hunter"],
+            assumed_curves={"ferret (hunter)": "Chinchompa (Hunter)"},
+        )
+        rate = gathering.rate_at(
+            tables, {}, profile, "t", "Hunter",
+            {"Level": 27, "Primary": True, "NPCs": ["Ferret (Hunter)"]}, 27,
+        )
+        assert rate is not None
+        # Red is worth less where it opens than grey is where grey opens, so
+        # the borrower opens at Red's 63 rather than at Grey's 53.
+        assert rate.chance == pytest.approx(
+            gathering.success_chance(63, -78.0, 228.0), abs=1 / 256
+        )
+        assert rate.chance != pytest.approx(
+            gathering.success_chance(53, 6.0, 268.0), abs=1 / 512
+        )
+
+    def test_only_the_ferret_borrows_among_the_box_trap_creatures(self) -> None:
+        # The wiki says the ferret is hunted like a chinchompa; it says nothing
+        # of the kind for the jerboa or the letvek, and a shared trap is not a
+        # shared chance.
+        borrowed = set(gathering.PROFILES["Hunter"].assumed_curves)
+        assert "ferret (hunter)" in borrowed
+        assert not borrowed & {"embertailed jerboa", "letvek"}

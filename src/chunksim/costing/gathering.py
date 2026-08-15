@@ -626,7 +626,7 @@ PROFILES: dict[str, SkillProfile] = {
         strict_kinds=True,
         roll_ticks_by_kind={
             "Falconry": 10.0,
-            "Box trap": 101.0,
+            "Box trap": 90.0,
             "Deadfall": 105.0,
             "Net trapping": 154.0,
             "Crab trapping": 57.0,
@@ -681,6 +681,13 @@ PROFILES: dict[str, SkillProfile] = {
             "ruby harvest": "Black warlock",
             "snowy knight": "Black warlock",
             "sapphire glacialis": "Black warlock",
+            # **The wiki says this one outright**: "The hunting technique is
+            # the same as for chinchompas", and the ferret is on
+            # `Category:Needs skilling success chart` like the butterflies
+            # above. Its two box-trap siblings, the embertailed jerboa and the
+            # letvek, say no such thing and stay refused - a shared trap is not
+            # a shared chance, and the sentence is what makes this one safe.
+            "ferret (hunter)": "Chinchompa (Hunter)",
         },
         refuses=frozenset(
             {
@@ -1397,7 +1404,14 @@ def _borrowed_curve(
     opens = challenge.get("Level")
     if not donor or not isinstance(opens, (int, float)) or opens < 1:
         return None
-    label, low, high, donor_req, _provenance = donor[0]
+    # **The worst series the donor has, not its first.** An assumed number
+    # should be the pessimistic one, and "first" only happened to mean that for
+    # the butterflies - the `Chinchompa` chart opens with grey, which is the
+    # *easiest* of its three. Worst is measured where each series begins, since
+    # that is the one point every series of a family can be compared at.
+    label, low, high, donor_req, _provenance = min(
+        donor, key=lambda series: series[1] + (series[2] - series[1]) * (series[3] - 1) / 98.0
+    )
     slope = (high - low) / 98.0
     at_donor = low + slope * (donor_req - 1)
     moved = at_donor - slope * (int(opens) - 1)
@@ -1426,21 +1440,36 @@ def _tool_curve(
     curves: tuple[tuple[str, float, float, int, str], ...],
     profile: SkillProfile,
     tool: str,
+    opens: int = 0,
 ) -> tuple[str, float, float, int, str]:
-    """Which series of a chart to spend.
+    """Which series of a chart to spend. Three rules, in order.
 
-    The first, except where the profile says the labels are tool tiers - in
-    which case the one naming the tool held. A tool with no series of its own
-    falls back to the first, which is the worst tier and therefore the
-    conservative end, the same direction every other choice here leans.
+    **A tool tier where the profile says the labels are tools** - Woodcutting
+    alone - taking the one naming the axe held, and the first otherwise, which
+    is the worst tier and the conservative end.
+
+    **Otherwise the series drawn for *this* creature**, matched on the level it
+    opens at. A chart is often shared by a family and drawn once: the
+    `Chinchompa` chart carries Grey at 53, Red at 63 and Black at 73, and it
+    appears verbatim on all three pages. Taking the first gave every chinchompa
+    the grey one - certain at 99 where the other two are 0.895 - so red and
+    black were priced about 12% fast at the top and further out below it, with
+    the fitted box-trap interval quietly absorbing the difference. That is why
+    the two of them looked identical when the wilderness trap was measured.
+
+    **The first otherwise**, which is all a single-series chart has anyway.
     """
-    if not profile.tool_tiers or not tool:
+    if profile.tool_tiers and tool:
+        # `Rune axe` -> `rune`, against a series labelled `Rune`.
+        tier = tool.lower().split()[0]
+        for series in curves:
+            if series[0].strip().lower() == tier:
+                return series
         return curves[0]
-    # `Rune axe` -> `rune`, against a series labelled `Rune`.
-    tier = tool.lower().split()[0]
-    for series in curves:
-        if series[0].strip().lower() == tier:
-            return series
+    if opens > 0:
+        for series in curves:
+            if series[3] == opens:
+                return series
     return curves[0]
 
 
@@ -1474,7 +1503,10 @@ def rate_at(
     borrowed = _borrowed_curve(tables, profile, families, challenge, skill)
     fixed = _fixed_chance(profile, families, challenge, skill)
     if curves:
-        label, low, high, _req, provenance = _tool_curve(curves, profile, tool)
+        opens = challenge.get("Level")
+        label, low, high, _req, provenance = _tool_curve(
+            curves, profile, tool, int(opens) if isinstance(opens, (int, float)) else 0
+        )
         chance = success_chance(level, low, high)
     elif fixed is not None:
         # **Stated in prose, or not stated at all.** Either way there is no
