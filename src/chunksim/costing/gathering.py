@@ -97,8 +97,11 @@ level the method opens at, which is why a cascade must be compared at one level
 and counted once: the three barbarian challenges are one action, and scoring
 them separately at 99 triple-counts one observation against two figures
 describing other players. And it assumes whatever facility the guide's author
-had - a Wilderness three-chest rotation, for instance, where this prices one
-chest, because how many of a node sit together is published nowhere.
+had - a Wilderness three-chest rotation, for instance, which is a fact about
+the location rather than about the method and has to be modelled as one:
+`parallel_bonus` carries the count, and for a restock-bound loop it divides the
+*wait* rather than the clicking, because three chests do not let you open any
+faster - they mean the first has restocked by the time you are back at it.
 
 **Two of the five reproduce their published figures by construction, and that is
 not agreement.** Thieving's fifteen tabulated stalls come out at exactly 1.00x
@@ -494,11 +497,27 @@ PROFILES: dict[str, SkillProfile] = {
     "Thieving": SkillProfile(
         depletes=False,
         strict_kinds=True,
-        roll_ticks_by_kind={"Pickpocket": 2.0, "Stalls": 2.0, "Chests": 2.0},
+        # **A chest cycle is not a stall's.** A stall is two ticks of clicking
+        # against a restock that is nearly always the longer of the two, so its
+        # interval barely shows. A chest has to be searched for traps, opened
+        # and looted, and at the one location anybody publishes a rate for you
+        # walk between three of them - which is the whole cost, since three in
+        # rotation means the restock never binds. **One parameter against one
+        # observation**, the same standing as Mining's `node_seconds`: 15.5
+        # ticks is what reproduces the Rogues' Castle figure of 270,154/hr, and
+        # nothing else published can check it.
+        roll_ticks_by_kind={"Pickpocket": 2.0, "Stalls": 2.0, "Chests": 15.5},
         fail_seconds=3.6,
         fail_seconds_by_kind={"Stalls": 0.0, "Chests": 0.0},
         certain_kinds=frozenset({"Stalls", "Chests"}),
         restock_kinds=frozenset({"Stalls", "Chests"}),
+        parallel_kinds=frozenset({"Chests"}),
+        # **Three chests sit together at the Rogues' Castle**, which its own
+        # `{{Map}}` pins show and which is why the guide's rate beats what one
+        # chest could ever give: 20.4 seconds of restock shared three ways is
+        # 6.8, and the cycle is longer than that, so the wait stops mattering
+        # at all. Every other chest the wiki tabulates is priced as one.
+        parallel_bonus={"chest (rogues' castle)": 2.0},
     ),
 }
 
@@ -1126,6 +1145,15 @@ def rate_at(
     if units <= 0:
         return None
 
+    # **What several units overlap depends on what the loop waits for**, and
+    # the two cases are opposite. Five box traps roll for prey at the same
+    # time, so they divide the *rolling*. Three chests in one room do not let
+    # you loot any faster - you still open them one at a time - they divide the
+    # *waiting*, because by the time you are back at the first it has restocked.
+    # Applying either divisor to the other half would be a different game.
+    rolling_units = 1.0 if kind in profile.restock_kinds else units
+    restock_units = units if kind in profile.restock_kinds else 1.0
+
     # A failed roll can cost more than the roll: see `SkillProfile.fail_seconds`.
     failures = (1.0 / chance) - 1.0
     stun = profile.fail_seconds_by_kind.get(kind, profile.fail_seconds)
@@ -1142,7 +1170,7 @@ def rate_at(
         # to the rarest fish as though the other two were free to carry.
         banking = banking * caught / chance
     working = (
-        roll_seconds / chance / duty / units
+        roll_seconds / chance / duty / rolling_units
         + stun * failures
         + per_resource
     )
@@ -1158,7 +1186,7 @@ def rate_at(
     # time on top, the same way it is for every other loop here.
     respawn = tables.respawns.get(node.lower())
     if respawn is not None:
-        working = max(respawn, working)
+        working = max(respawn / restock_units, working)
 
     seconds_per_resource = working + banking
     if seconds_per_resource <= 0:

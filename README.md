@@ -468,7 +468,9 @@ maps are your own work and nothing can recompute them.
    failures**, where the published figure assumes you never fail: a knight reads 70,958/hr at level
    55 climbing to 160,936 at 99, against a flat 252,900. **Stalls and chests are priced at their
    restock time**, because each hands over one item and is empty until it comes back — which covers
-   all forty-one the wiki tabulates rather than the handful a guide mentions. And **barbarian fishing
+   all forty-one the wiki tabulates rather than the handful a guide mentions. Where several sit
+   together, as the three chests at the Rogues' Castle do, the wait is shared between them and the
+   cost becomes the looting itself. And **barbarian fishing
    is priced as the cascade it is** — sturgeon, then salmon on that failing, then trout on that —
    so the action is paid for all three of its rolls instead of one.
 

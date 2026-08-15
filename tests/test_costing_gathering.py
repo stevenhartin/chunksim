@@ -7,6 +7,8 @@ here that could catch the arithmetic being wrong rather than merely stable.
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from chunksim.costing import gathering
@@ -684,3 +686,40 @@ class TestCrabTrapping:
         # Certain *and* not restock-bound: its rate is the interval, so the
         # `restock_kinds` guard must not reach it.
         assert self._rate(99).xp_per_hour > 0
+
+
+ROTATED = gathering.SkillProfile(
+    depletes=False,
+    strict_kinds=True,
+    roll_ticks_by_kind={"Chests": 15.5},
+    certain_kinds=frozenset({"Chests"}),
+    restock_kinds=frozenset({"Chests"}),
+    parallel_kinds=frozenset({"Chests"}),
+    parallel_bonus={"chest (rogues' castle)": 2.0},
+)
+
+
+class TestRotationDividesTheWait:
+    def _rate(
+        self, profile: gathering.SkillProfile
+    ) -> gathering.NodeRate:
+        rate = gathering.rate_at(
+            CASCADE, {}, profile, "Loot a ~|chest|~", "Thieving",
+            {"Level": 84, "Primary": True, "Objects": ["Chest (Rogues' Castle)"]}, 99,
+        )
+        assert rate is not None
+        return rate
+
+    def test_three_chests_share_one_restock(self) -> None:
+        # 20.4s three ways is 6.8s, which is shorter than the 9.3s cycle - so
+        # the wait stops binding entirely and the cycle is the whole cost.
+        assert self._rate(ROTATED).xp_per_hour == pytest.approx(701.7 * 3600.0 / 9.3)
+
+    def test_one_chest_waits_out_its_whole_restock(self) -> None:
+        alone = dataclasses.replace(ROTATED, parallel_bonus={})
+        assert self._rate(alone).xp_per_hour == pytest.approx(701.7 * 3600.0 / 20.4)
+
+    def test_rotation_never_speeds_up_the_looting_itself(self) -> None:
+        # The opposite of a trap line: you still open one chest at a time, so
+        # the cycle is untouched and only the wait is shared.
+        assert self._rate(ROTATED).roll_seconds == pytest.approx(15.5 * 0.6)
