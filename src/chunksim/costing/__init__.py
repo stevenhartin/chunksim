@@ -67,6 +67,8 @@ The modules, and what each owns:
   level-carrying formulas.
 - `bats.py` - the Chambers of Xeric bats, where **two** skills gate which one
   you are given and the lower of them decides. Four ticks each, no roll.
+- `driftnet.py` - drift net fishing, read as the hourly table the wiki costs
+  it as. Pays Hunter and Fishing, and **stops scaling at 70** in both.
 - `stated.py` - the two whose rate is stated rather than computed: a moss
   lizard's exact experience formula at a guessed pace, and Trouble Brewing,
   which is a figure and nothing else. Every band from it is marked `guess`.

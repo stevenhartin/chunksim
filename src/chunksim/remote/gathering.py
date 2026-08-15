@@ -90,6 +90,11 @@ HUNTER_PAGE = "Hunter"
 #: mechanic: one loot, then a restock.
 THIEVING_PAGE = "Thieving"
 
+#: `Drift net fishing`, whose rate table is the only place the activity's two
+#: skills are costed together - and the only place its experience is stated at
+#: all, since neither calculator carries a row for a fish shoal.
+DRIFT_NET_PAGE = "Drift net fishing"
+
 #: `Forestry/Strategies`, whose rewards table is the only place the nine events
 #: are costed side by side - actions per event against experience per action,
 #: with the level written into each formula.
@@ -603,6 +608,37 @@ def forestry_by_level(text: str, levels: Sequence[int]) -> dict[str, dict[int, f
     return found
 
 
+def parse_drift_net(text: str) -> dict[int, tuple[float, float]]:
+    """`{level: (Hunter xp/hr, Fishing xp/hr)}` from the rate table.
+
+    **Read as hourly rates rather than as per-shoal experience**, because the
+    table already multiplies by its own assumption of 1,150 shoals an hour and
+    re-deriving that would only give this project a chance to disagree with the
+    page it is reading.
+
+    The two level columns are paired and equal except on the opening row, where
+    the requirements differ - 44 Hunter against 47 Fishing - so the Hunter one
+    is the key and the pairing is what the row means. Experience stops scaling
+    at 70 in both skills, which is why the table ends there rather than at 99.
+    """
+    table = table_with(text, "XP/shoal")
+    if not table:
+        return {}
+    found: dict[int, tuple[float, float]] = {}
+    for cells in rows(table):
+        if len(cells) < 6 or cells[0].lstrip().startswith("!"):
+            continue
+        level = _leading(cells[0])
+        hunter = _leading(cells[4].replace(",", ""))
+        fishing = _leading(cells[5].replace(",", ""))
+        if level is None or hunter is None or fishing is None:
+            continue
+        if level < 1 or hunter <= 0 or fishing <= 0:
+            continue
+        found[int(level)] = (hunter, fishing)
+    return found
+
+
 _HUNTER_INFO = re.compile(r"\{\{Hunter info(.*?)\n\}\}", re.S)
 _INFO_FIELD = re.compile(r"\|\s*(\w+)\s*=\s*([^\n|]*)")
 
@@ -763,6 +799,8 @@ class GatheringTables:
     #: The aerial catches: `(name, fishing level, fishing xp, hunter level,
     #: hunter xp)`.
     aerial_fish: tuple[tuple[str, int, float, int, float], ...] = ()
+    #: Hunter level -> `(Hunter xp/hr, Fishing xp/hr)` for drift net fishing.
+    drift_net: dict[int, tuple[float, float]] = field(default_factory=dict)
     #: Skill -> level -> experience from one of each Forestry event, and how
     #: many events that sum is over.
     forestry: dict[str, dict[int, float]] = field(default_factory=dict)
@@ -804,6 +842,10 @@ class GatheringTables:
             },
             "respawns": dict(sorted(self.respawns.items())),
             "aerial_fish": [list(entry) for entry in self.aerial_fish],
+            "drift_net": {
+                str(level): [hunter, fishing]
+                for level, (hunter, fishing) in sorted(self.drift_net.items())
+            },
             "forestry": {
                 skill: {str(level): paid for level, paid in sorted(by_level.items())}
                 for skill, by_level in sorted(self.forestry.items())
@@ -888,6 +930,7 @@ def build_tables(
             HERBIBOAR_PAGE,
             AERIAL_PAGE,
             FORESTRY_PAGE,
+            DRIFT_NET_PAGE,
         ]
     )
     tool_ticks = {
@@ -915,6 +958,7 @@ def build_tables(
     herbiboar_xp = parse_level_experience(mechanics.get(HERBIBOAR_PAGE, ""))
     aerial_fish = parse_aerial_fish(mechanics.get(AERIAL_PAGE, ""))
 
+    drift_net = parse_drift_net(mechanics.get(DRIFT_NET_PAGE, ""))
     forestry = forestry_by_level(mechanics.get(FORESTRY_PAGE, ""), range(1, 100))
     forestry_events = len(parse_forestry_events(mechanics.get(FORESTRY_PAGE, "")))
 
@@ -945,6 +989,7 @@ def build_tables(
         spawn_tiers=spawn_tiers,
         herbiboar_xp=herbiboar_xp,
         aerial_fish=aerial_fish,
+        drift_net=drift_net,
         forestry=forestry,
         forestry_events=forestry_events,
         hunter_info=hunter_info,
@@ -963,6 +1008,7 @@ def build_tables(
             "herbiboar levels": len(herbiboar_xp),
             "aerial catches": len(aerial_fish),
             "forestry events": forestry_events,
+            "drift net levels": len(drift_net),
             "parallel steps": sum(
                 len(steps) for loops in parallel.values() for steps in loops.values()
             ),
@@ -973,6 +1019,7 @@ def build_tables(
 __all__ = [
     "AERIAL_PAGE",
     "FORESTRY_PAGE",
+    "DRIFT_NET_PAGE",
     "GatheringTables",
     "HERBIBOAR_PAGE",
     "HUNTER_INFO_TEMPLATE",
@@ -992,6 +1039,7 @@ __all__ = [
     "parse_node_cycles",
     "parse_aerial_fish",
     "forestry_by_level",
+    "parse_drift_net",
     "parse_forestry_events",
     "parse_hunter_info",
     "parse_level_experience",

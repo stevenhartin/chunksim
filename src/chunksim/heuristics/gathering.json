@@ -1,6 +1,6 @@
 {
   "name": "gathering.json",
-  "fetched_at": "2026-08-15T18:12:52.762763+00:00",
+  "fetched_at": "2026-08-15T18:43:00.619821+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "curves": {
@@ -14332,6 +14332,32 @@
         130.0
       ]
     ],
+    "drift_net": {
+      "44": [
+        60145.0,
+        53130.0
+      ],
+      "50": [
+        71875.0,
+        57500.0
+      ],
+      "55": [
+        82225.0,
+        64745.0
+      ],
+      "60": [
+        93150.0,
+        72450.0
+      ],
+      "65": [
+        104650.0,
+        80270.0
+      ],
+      "70": [
+        116725.0,
+        88550.0
+      ]
+    },
     "forestry": {
       "Construction": {
         "1": 18.0,
@@ -46072,6 +46098,7 @@
     },
     "counts": {
       "aerial catches": 4,
+      "drift net levels": 6,
       "forestry events": 9,
       "herbiboar levels": 26,
       "node cycles": 13,

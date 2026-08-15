@@ -989,6 +989,8 @@ class Tables:
     #: `(name, fishing level, fishing xp, hunter level, hunter xp)` per aerial
     #: catch, for `costing/aerial.py`.
     aerial_fish: tuple[tuple[str, int, float, int, float], ...] = ()
+    #: Hunter level -> `(Hunter xp/hr, Fishing xp/hr)` for drift net fishing.
+    drift_net: dict[int, tuple[float, float]] = field(default_factory=dict)
     #: Skill -> level -> experience from one of each Forestry event, and how
     #: many events that is a sum over. For `costing/forestry.py`.
     forestry: dict[str, dict[int, float]] = field(default_factory=dict)
@@ -1108,6 +1110,12 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
         if isinstance(row, list) and len(row) == 5
     )
 
+    drift_net = {
+        int(level): (float(pair[0]), float(pair[1]))
+        for level, pair in _mapping(raw, "drift_net").items()
+        if str(level).isdigit() and isinstance(pair, list) and len(pair) == 2
+    }
+
     forestry: dict[str, dict[int, float]] = {}
     for skill, by_level in _mapping(raw, "forestry").items():
         read_levels = {
@@ -1167,6 +1175,7 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
         spawn_tiers=spawn_tiers,
         herbiboar_xp=herbiboar_xp,
         aerial_fish=aerial_fish,
+        drift_net=drift_net,
         forestry=forestry,
         forestry_events=forestry_events,
         hunter_info=hunter_info,

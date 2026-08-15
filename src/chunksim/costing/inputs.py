@@ -38,6 +38,7 @@ from chunksim.costing import (
     bats,
     combat_xp,
     dps_bridge,
+    driftnet,
     forestry,
     herbiboar,
     implings,
@@ -488,6 +489,11 @@ def _gathered(
         banded[skill] = (*banded.get(skill, ()), *methods)
     # Two activities whose rate is stated rather than computed - see
     # `costing/stated.py`, whose every band is marked `guess`.
+    # Two skills at once and a ceiling at 70 - see `costing/driftnet.py`.
+    for skill, methods in driftnet.methods(
+        blobs.gathering, derived.challenges.valid
+    ).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
     for skill, methods in stated.methods(state.chunk_info, derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     for skill, methods in bats.methods(

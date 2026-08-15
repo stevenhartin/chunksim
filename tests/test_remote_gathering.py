@@ -453,3 +453,33 @@ class TestForestryEvents:
 
     def test_a_page_without_the_table_yields_nothing(self) -> None:
         assert gathering.parse_forestry_events(DESPAWN_PAGE) == {}
+
+
+DRIFT_NET_TABLE = """
+{|class="wikitable align-center-1"
+! colspan="2" | Level !! colspan="2" | XP/shoal !! colspan="3" | XP/h
+|-
+! Hunter !! Fishing !! Hunter !! Fishing !! Hunter !! Fishing !! Total
+|-
+| 44 || 47 || 52.3 || 46.2 || 60,145 || 53,130 || 113,275
+|-
+| 70 || 70 || 101.5 || 77.0 || 116,725 || 88,550 || 205,275
+|}
+"""
+
+
+class TestDriftNet:
+    def test_reads_the_hourly_columns_rather_than_the_per_shoal_ones(self) -> None:
+        found = gathering.parse_drift_net(DRIFT_NET_TABLE)
+        assert found[44] == (60145.0, 53130.0)
+
+    def test_the_thousands_separator_survives(self) -> None:
+        assert gathering.parse_drift_net(DRIFT_NET_TABLE)[70] == (116725.0, 88550.0)
+
+    def test_the_hunter_level_is_the_key(self) -> None:
+        # The opening row pairs 44 Hunter with 47 Fishing; every later one
+        # pairs equal numbers.
+        assert 47 not in gathering.parse_drift_net(DRIFT_NET_TABLE)
+
+    def test_a_page_without_the_table_yields_nothing(self) -> None:
+        assert gathering.parse_drift_net(DESPAWN_PAGE) == {}
