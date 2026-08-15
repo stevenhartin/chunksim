@@ -145,6 +145,16 @@ class TestRateAt:
             is not None
         )
 
+    def test_a_plural_is_offered_for_every_skill(self) -> None:
+        # A spelling rule, not a mechanic: the export writes
+        # `Mine a size-1 ~|shooting star|~` and the chart is on
+        # `Shooting Stars`. Measured over the whole export it changes no
+        # existing join and adds those nine.
+        keys = gathering._join_keys(
+            {"Objects": ["Shooting star#landing site"]}, {}, gathering._NAME_FIELDS, "Mining"
+        )
+        assert "Shooting stars" in keys
+
     def test_another_skill_is_left_alone(self) -> None:
         # The guard is the skill, not the name: widened to every skill, every
         # join in the project grew a `Willow tree rocks`.
@@ -1672,7 +1682,12 @@ class TestTaskSpanIsTheLastJoinKey:
     def test_no_task_leaves_the_keys_as_they_were(self) -> None:
         assert gathering._join_keys(
             {"Objects": ["Willow tree"]}, {}, gathering._NAME_FIELDS, "Woodcutting"
-        ) == ("Willow tree", "Willow tree (Woodcutting)")
+        ) == (
+            "Willow tree",
+            "Willow trees",
+            "Willow tree (Woodcutting)",
+            "Willow trees (Woodcutting)",
+        )
 
 
 class TestBreamBorrowsTheLeechfin:

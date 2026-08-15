@@ -488,7 +488,9 @@ maps are your own work and nothing can recompute them.
    both reproduce every published row within 1.25x. Three rocks nobody charted
    at all (lovakite, nickel, daeyalt) are interpolated from the charted ores
    either side, which reproduces every charted ore held out of its own
-   prediction at a geometric mean of 1.03x.
+   prediction at a geometric mean of 1.03x. Crashed stars need none of that -
+   the wiki charts them and states an outcome for the whole loop, and the model
+   lands on 30,212/hr against a published 30,000.
 
    **The same tables charge a production skill for what it burns or fletches.** A published rate is
    quoted with the materials to hand — "394,778 an hour burning magic logs" describes the burning,

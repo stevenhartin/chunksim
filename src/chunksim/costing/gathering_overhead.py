@@ -433,6 +433,56 @@ STATED_RATES: dict[str, tuple[str, tuple[tuple[int, float], ...]]] = {
 }
 
 
+#: Published figures quoted **with the level and the tool they assume**, as
+#: `node -> (where it says so, level, tool, xp/hr)`.
+#:
+#: **Checked, never fitted, and that is what makes them worth having.** Every
+#: row in `TRUSTED_SOURCES` is a bare hourly number whose level the scrape does
+#: not carry, which is the whole reason Mining's four rows read as disagreement
+#: - the harness evaluates at 99 and the figures were quoted at 50. A page that
+#: says "with a Dragon pickaxe and 90+ mining, players can expect approximately
+#: 30,000 experience per hour" states all three, so the model can be asked the
+#: same question the wiki answered.
+#:
+#: Nothing is tuned against these. The star's chance comes off the wiki's own
+#: `{{Skilling success chart}}` and its interval off the pickaxe table, so the
+#: agreement below is two published inputs meeting a published output with
+#: nothing of this project's in between.
+CHECKED_RATES: dict[str, tuple[str, int, str, float]] = {
+    "shooting stars": (
+        "Shooting Stars#Rewards", 90, "Dragon pickaxe", 30_000.0
+    ),
+}
+
+
+def check_stated_rates(map_id: str = "fray", skill: str = "Mining") -> None:
+    """Ask the model the question a page already answered."""
+    tables = gathering.load_tables(read_gathering())
+    args = argparse.Namespace(map_id=map_id, chunkinfo=None, recompute=False)
+    state, _unlocked = load_state(args)
+    families = gathering.expand_families(state.chunk_info)
+    profile = gathering.PROFILES[skill]
+    challenges = state.chunk_info.challenges.get(skill) or {}
+
+    print(f"  {'node':<20}{'level':>6}{'modelled':>11}{'published':>11}{'ratio':>8}")
+    for node, (source, level, tool, published) in sorted(CHECKED_RATES.items()):
+        task, challenge = _task_for(gathering, families, challenges, skill, node)
+        if challenge is None:
+            print(f"  {node:<20} no challenge in this map names it")
+            continue
+        rate = gathering.rate_at(
+            tables, families, profile, task, skill, challenge, level, tool=tool
+        )
+        if rate is None:
+            print(f"  {node:<20} refused")
+            continue
+        print(
+            f"  {node:<20}{level:>6}{rate.xp_per_hour:>11,.0f}{published:>11,.0f}"
+            f"{rate.xp_per_hour / published:>7.2f}x   ({tool}, {source})"
+        )
+    print()
+
+
 def fit_stated_curves(map_id: str = "fray", skill: str = "Mining") -> None:
     """Recover a success curve from a table of published hourly rates.
 
@@ -534,6 +584,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     if args.stated_curves:
+        check_stated_rates(args.map)
         fit_stated_curves(args.map)
     else:
         fit(args.map)

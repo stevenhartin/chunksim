@@ -584,7 +584,7 @@ class SkillProfile:
 #: | Hunter | 16 | 1.00x | 12/16 |
 #: | Thieving | 14 | 1.00x | 14/14 |
 #: | Mining | 4 | 0.86x | 1/4 |
-#: | Mining (`--stated-curves`) | 13 | 1.00x | 13/13 |
+#: | Mining (`--stated-curves`) | 14 | 1.00x | 14/14 |
 #:
 #: **Read the last three rows the opposite way round from how they look.**
 #: Thieving's 14/14 is an identity rather than evidence - the model's stall
@@ -599,6 +599,15 @@ class SkillProfile:
 #: That is `gathering_overhead.fit_stated_curves`, and it exists because two
 #: rocks the wiki charts nothing for tabulate hourly figures instead - which is
 #: the same statement a chart makes, read from the other end.
+#:
+#: **The fourteenth row is the one nothing was fitted against at all.** A
+#: crashed star's chance is the wiki's own chart and its interval the pickaxe
+#: table, and the Shooting Stars page states an outcome for both together:
+#: "with a Dragon pickaxe and 90+ mining, players can expect approximately
+#: 30,000 experience per hour". The model says 30,212. That is two published
+#: inputs meeting a published output with nothing of this project's in
+#: between, which is the strongest shape of evidence in this file and the one
+#: `gathering_overhead.CHECKED_RATES` exists to keep.
 PROFILES: dict[str, SkillProfile] = {
     # **Four ticks is the wiki's, not a fit** - the Woodcutting page states it -
     # and pinning it is what makes the other two constants mean something. Left
@@ -681,7 +690,16 @@ PROFILES: dict[str, SkillProfile] = {
         # The same rock, from the same page: it holds "an unlimited supply of
         # essence and never deplete". Its `{{Mining info}}` `time` is `N/A`,
         # which is the infobox saying the same thing.
-        endless=frozenset({"rune essence"}),
+        #
+        # **A crashed star is the other kind of endless**, for the length of a
+        # visit rather than for ever: it degrades through its tiers over hours
+        # and you mine one spot for about forty minutes, so within the loop
+        # being priced there is no depletion, no respawn and nowhere to hop.
+        # The wiki's own figure is quoted the same way - "mining consistently"
+        # with the time spent *locating* stars named separately as what makes
+        # a real hour vary - so this prices an hour at a star, not an hour of
+        # the activity.
+        endless=frozenset({"rune essence", "shooting star", "shooting stars"}),
         # **Two curves recovered from published rate tables**, where the wiki
         # charts neither rock but quotes hourly figures against level for both.
         # The fit is `gathering_overhead.fit_stated_curves`; re-run it rather
@@ -1720,6 +1738,16 @@ def _join_keys(
     # a suffix, which kept `Willow tree rocks` out of every other skill's joins
     # but also left `Mine ~|limestone|~` - `Output: Limestone`, charted as
     # `Limestone rock` - matching nothing at all.
+    # **Singular against plural, because the two vocabularies disagree there
+    # too.** The export's task says `Mine a size-1 ~|shooting star|~` and the
+    # page carrying the chart is `Shooting Stars`; nine methods joined nothing
+    # over one letter. Offered for every skill because it is a spelling rule
+    # rather than a mechanic - measured over the whole export it changes no
+    # existing join and adds those nine.
+    keys.extend(
+        key[:-1] if key.endswith("s") and not key.endswith("ss") else f"{key}s"
+        for key in list(keys)
+    )
     if skill in _ROCK_SKILLS:
         stems = [_ROCK_SUFFIX.sub("", key).strip() for key in list(keys)]
         keys.extend(stems)
