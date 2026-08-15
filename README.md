@@ -482,7 +482,13 @@ maps are your own work and nothing can recompute them.
    assume, it says so: every success chance it uses is tagged `confirmed` (read off the wiki),
    `inferred` (built from a measurement of the same kind of thing, as the uncharted butterflies borrow
    a charted one) or `guess` (a round conservative number so the method has one at all). There are
-   three guesses, all pitfall cats.
+   three guesses, all pitfall cats. Where the wiki charts nothing but publishes
+   hourly figures against level, the chance is **recovered from those figures**
+   rather than guessed - rubium and calcified rocks are priced that way, and
+   both reproduce every published row within 1.25x. Three rocks nobody charted
+   at all (lovakite, nickel, daeyalt) are interpolated from the charted ores
+   either side, which reproduces every charted ore held out of its own
+   prediction at a geometric mean of 1.03x.
 
    **The same tables charge a production skill for what it burns or fletches.** A published rate is
    quoted with the materials to hand — "394,778 an hour burning magic logs" describes the burning,

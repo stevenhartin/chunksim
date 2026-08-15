@@ -31,6 +31,13 @@ would fold somebody's banking into a constant that means "node downtime".
 Measured, the mmg rows disagree with the model 2.5x where the exact rows agree
 within 1.1x, and letting them into the fit moves every constant the wrong way.
 
+**Two fits, and they are not alike.** `fit` pins one constant per *skill*
+against one published figure per method - the shape this project distrusts and
+prints residuals for. `fit_stated_curves` recovers a success curve for one
+*node* from a table of hourly figures against level: two parameters against six
+or seven rows of one method, which is the better-supported of the two by a wide
+margin. Run it with `--stated-curves`.
+
 **One free parameter per skill, fitted on a grid.** There is not enough data for
 anything cleverer - sixteen woodcutting rows and five fishing ones - and a one-parameter fit over eight points is already the shape this
 project distrusts, which is why the residuals are printed per row rather than
@@ -41,6 +48,7 @@ telling you the two are a different mechanic, not that the constant is wrong.
 from __future__ import annotations
 
 import argparse
+import math
 from dataclasses import replace
 from typing import Any, Callable, Mapping, Sequence
 
@@ -130,6 +138,24 @@ FITTED: dict[str, tuple[tuple[str, tuple[float, ...]], ...]] = {
 }
 #: Skills whose profile the fit leaves alone entirely.
 _UNFITTED: tuple[str, ...] = ()
+
+#: Skills whose trusted rows must not be read as agreement, and why - printed
+#: with the block so a ratio cannot be quoted without its caveat.
+#:
+#: **Every Mining row is the bottom of a range quoted against a level band**,
+#: and this harness evaluates at 99. `46,000-75,000 ... at levels 50-99`
+#: contributes 46,000; `23,500-49,000 normally at levels 50-99` contributes
+#: 23,500 - the *level 50* figure, against a model asked for level 99, which is
+#: why calcified reads 2.08x here and 1.00x in `fit_stated_curves`, off the
+#: same wiki table. Nothing in the scrape carries the level a figure was
+#: quoted at, so this cannot be fixed by joining harder.
+_ROWS_NOT_COMPARABLE: dict[str, str] = {
+    "Mining": (
+        "every wiki:mining row is a range low-end quoted at a level band, and "
+        "granite's is a tick-manipulation figure - see PROFILES['Mining']. Run "
+        "--stated-curves for the targets that can be compared"
+    ),
+}
 
 
 #: The tool each family is fitted with. **The best in the game, not the best on
@@ -353,6 +379,9 @@ def fit(map_id: str = "fray") -> None:
             for name, _ in fields
         )
         print(f"{skill}: {changes or 'no free parameter - see the profile for why'}")
+        caveat = _ROWS_NOT_COMPARABLE.get(skill)
+        if caveat:
+            print(f"  !! {caveat}")
         print(f"  {'task':<40}{'kind':<16}{'modelled':>10}{'published':>11}{'ratio':>8}")
         ratios: list[float] = []
         for row in sorted(subject, key=lambda entry: str(entry["task"])):
@@ -376,10 +405,138 @@ def fit(map_id: str = "fray") -> None:
             )
 
 
+#: The nodes the wiki charts nothing for but quotes **hourly figures against
+#: level** for, as `node -> (where it says so, ((level, xp/hr), ...))`.
+#:
+#: **A different kind of target from the one `FITTED` uses, and a much better
+#: one.** `FITTED`'s rows are one published figure per method, spent to pin one
+#: constant shared across a whole skill. These are a table per node: six and
+#: seven rows against two free parameters, all of one method, and the two
+#: parameters recovered are exactly what a `{{Skilling success chart}}` would
+#: have stated had anyone drawn one.
+#:
+#: **The 3-tick column is refused where a page offers both.** Calcified rocks
+#: are tabulated twice on the training guide, with and without tick
+#: manipulation, and the second is taken - a technique this model cannot
+#: represent would otherwise be absorbed into a success chance, which is the
+#: same mistake as fitting granite's 87,000.
+STATED_RATES: dict[str, tuple[str, tuple[tuple[int, float], ...]]] = {
+    "rubium rocks": (
+        "Rubium rocks#Experience rates",
+        ((48, 39000), (61, 42000), (72, 46500), (80, 51000),
+         (90, 52500), (97, 57000), (99, 63900)),
+    ),
+    "calcified rocks": (
+        "Pay-to-play Mining training#Levels 41-99: Calcified rocks (w/o 3-tick)",
+        ((50, 23500), (60, 27000), (70, 34000), (80, 39000), (90, 44000), (99, 49000)),
+    ),
+}
+
+
+def fit_stated_curves(map_id: str = "fray", skill: str = "Mining") -> None:
+    """Recover a success curve from a table of published hourly rates.
+
+    **Fitted *through* `rate_at`, never through a copy of its arithmetic**, and
+    that is the whole design of this function rather than an implementation
+    detail. The first version of these two curves was fitted against a
+    hand-written `xp * 3600 / (roll / chance + hop)`, which was the model at the
+    time; giving calcified rocks a duty cycle then removed the hop, and the
+    curve fitted against the old expression read 1.22x fast at every level
+    while looking perfectly converged. A fit against a paraphrase of the model
+    measures the paraphrase.
+
+    Two passes: a whole-number sweep, then half-steps around what it found.
+    """
+    tables = gathering.load_tables(read_gathering())
+    args = argparse.Namespace(map_id=map_id, chunkinfo=None, recompute=False)
+    state, _unlocked = load_state(args)
+    families = gathering.expand_families(state.chunk_info)
+    base = gathering.PROFILES[skill]
+    challenges = state.chunk_info.challenges.get(skill) or {}
+
+    for node, (source, points) in sorted(STATED_RATES.items()):
+        task, challenge = _task_for(gathering, families, challenges, skill, node)
+        if challenge is None:
+            print(f"{node}: no challenge in this map names it\n")
+            continue
+        tool = BEST_TOOLS.get(gathering._tool_family(challenge), "")
+
+        def score(low: float, high: float) -> float:
+            candidate = replace(base, stated_curves={**base.stated_curves, node: (low, high)})
+            total = 0.0
+            for level, published in points:
+                rate = gathering.rate_at(
+                    tables, families, candidate, task, skill, challenge, level, tool=tool
+                )
+                if rate is None or rate.xp_per_hour <= 0:
+                    return float("inf")
+                total += math.log(rate.xp_per_hour / published) ** 2
+            return total
+
+        best = min(
+            ((score(float(low), float(high)), float(low), float(high))
+             for low in range(-100, 200, 2)
+             for high in range(2, 300, 2)),
+            key=lambda found: found[0],
+        )
+        best = min(
+            ((score(best[1] + dl / 2, best[2] + dh / 2), best[1] + dl / 2, best[2] + dh / 2)
+             for dl in range(-4, 5)
+             for dh in range(-4, 5)),
+            key=lambda found: found[0],
+        )
+        _, low, high = best
+        print(f"{node}: low {low}, high {high}   (target: {source})")
+        print(f"  {'level':<8}{'chance':>8}{'modelled':>11}{'published':>11}{'ratio':>8}")
+        candidate = replace(base, stated_curves={**base.stated_curves, node: (low, high)})
+        ratios = []
+        for level, published in points:
+            rate = gathering.rate_at(
+                tables, families, candidate, task, skill, challenge, level, tool=tool
+            )
+            if rate is None:
+                continue
+            ratios.append(rate.xp_per_hour / published)
+            print(
+                f"  {level:<8}{rate.chance:>8.3f}{rate.xp_per_hour:>11,.0f}"
+                f"{published:>11,.0f}{ratios[-1]:>7.2f}x"
+            )
+        if ratios:
+            geometric = math.exp(sum(math.log(r) for r in ratios) / len(ratios))
+            within = sum(1 for r in ratios if 1 / 1.25 <= r <= 1.25)
+            print(f"  geometric mean {geometric:.3f}, {within}/{len(ratios)} within 1.25x\n")
+
+
+def _task_for(
+    module: Any,
+    families: Mapping[str, Sequence[str]],
+    challenges: Mapping[str, Any],
+    skill: str,
+    node: str,
+) -> tuple[str, Mapping[str, Any] | None]:
+    """The primary challenge whose join keys reach `node`."""
+    for task, challenge in sorted(challenges.items()):
+        if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
+            continue
+        keys = module._join_keys(challenge, families, module._NAME_FIELDS, skill, task)
+        if any(key.lower() == node for key in keys):
+            return task, challenge
+    return "", None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--map", default="fray", help="which cached map to fit against")
-    fit(parser.parse_args().map)
+    parser.add_argument(
+        "--stated-curves",
+        action="store_true",
+        help="fit STATED_RATES instead: a success curve out of published hourly figures",
+    )
+    args = parser.parse_args()
+    if args.stated_curves:
+        fit_stated_curves(args.map)
+    else:
+        fit(args.map)
 
 
 if __name__ == "__main__":

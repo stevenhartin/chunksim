@@ -787,6 +787,106 @@ class TestUnitsWorked:
         assert self._units(profile, "Box trap", "Black chinchompa", 1) == 2.0
 
 
+class TestCurvesThisProjectSuppliesItself:
+    """The two sources below a real chart, and what each refuses."""
+
+    #: A stand-in for Mining's ore ladder: three rungs, decaying.
+    _TABLES = gathering.Tables(
+        curves={
+            "low rock": (("Low rock", 100.0, 350.0, 10, "confirmed"),),
+            "mid rock": (("Mid rock", 16.0, 100.0, 30, "confirmed"),),
+            "high rock": (("High rock", 2.0, 25.0, 70, "confirmed"),),
+        },
+        experience={"S": {"new rock": (50.0, "K")}},
+    )
+    _LADDER = ("low rock", "mid rock", "high rock")
+
+    def _profile(self, **extra: object) -> gathering.SkillProfile:
+        return gathering.SkillProfile(roll_ticks=2.0, **extra)  # type: ignore[arg-type]
+
+    def _rate(
+        self, profile: gathering.SkillProfile, level: int, opens: int = 50
+    ) -> gathering.NodeRate | None:
+        return gathering.rate_at(
+            self._TABLES, {}, profile, "t", "S",
+            {"Level": opens, "Primary": True, "Objects": ["New rock"]}, level,
+        )
+
+    def test_an_interpolated_curve_sits_between_its_neighbours(self) -> None:
+        profile = self._profile(
+            interpolated=frozenset({"new rock"}), curve_ladder=self._LADDER
+        )
+        got = self._rate(profile, 99)
+        assert got is not None
+        below = gathering.success_chance(99, 16.0, 100.0)
+        above = gathering.success_chance(99, 2.0, 25.0)
+        assert above < got.chance < below
+
+    def test_an_interpolated_curve_is_never_confirmed(self) -> None:
+        # It is built from measurements of the rocks either side and of nothing
+        # about this one, which is exactly what INFERRED means.
+        profile = self._profile(
+            interpolated=frozenset({"new rock"}), curve_ladder=self._LADDER
+        )
+        got = self._rate(profile, 99)
+        assert got is not None and got.provenance == gathering.INFERRED
+
+    def test_a_rung_at_the_same_level_wins_outright(self) -> None:
+        # Daeyalt opens at exactly silver's level. Taking that chart beats
+        # interpolating across the ladder's one discontinuity.
+        profile = self._profile(
+            interpolated=frozenset({"new rock"}), curve_ladder=self._LADDER
+        )
+        got = self._rate(profile, 99, opens=30)
+        assert got is not None
+        assert got.chance == pytest.approx(gathering.success_chance(99, 16.0, 100.0))
+
+    def test_a_level_off_the_end_of_the_ladder_is_refused(self) -> None:
+        # Extrapolating past the hardest rung would be inventing a rock harder
+        # than the hardest one there is.
+        profile = self._profile(
+            interpolated=frozenset({"new rock"}), curve_ladder=self._LADDER
+        )
+        assert self._rate(profile, 99, opens=90) is None
+        assert self._rate(profile, 99, opens=5) is None
+
+    def test_geometric_interpolation_sits_below_the_linear_one(self) -> None:
+        # The whole reason it is geometric: the ladder decays, so a straight
+        # line between two rungs sits above the curve every time. The error is
+        # one-sided, which is what the hold-out test measured.
+        assert gathering._geometric(16.0, 2.0, 0.5) < (16.0 + 2.0) / 2
+
+    def test_a_stated_curve_outranks_an_interpolated_one(self) -> None:
+        # Recovered from this node's own published rates, against a guess from
+        # its neighbours - the first is about this rock and the second is not.
+        profile = self._profile(
+            stated_curves={"new rock": (60.0, 240.0)},
+            interpolated=frozenset({"new rock"}),
+            curve_ladder=self._LADDER,
+        )
+        got = self._rate(profile, 99)
+        assert got is not None
+        assert got.chance == pytest.approx(gathering.success_chance(99, 60.0, 240.0))
+
+    def test_a_real_chart_outranks_both(self) -> None:
+        profile = self._profile(
+            stated_curves={"mid rock": (60.0, 240.0)},
+            interpolated=frozenset({"mid rock"}),
+            curve_ladder=self._LADDER,
+        )
+        got = gathering.rate_at(
+            dataclasses.replace(
+                self._TABLES, experience={"S": {"mid rock": (50.0, "K")}}
+            ),
+            {}, profile, "t", "S",
+            {"Level": 30, "Primary": True, "Objects": ["Mid rock"]}, 99,
+        )
+        assert got is not None and got.provenance == gathering.CONFIRMED
+
+    def test_a_node_naming_neither_is_still_refused(self) -> None:
+        assert self._rate(self._profile(), 99) is None
+
+
 class TestUnitsAreSpentByWhatTheNodeWaitsFor:
     """The same count, three different payoffs - none of them per skill."""
 
@@ -838,6 +938,38 @@ class TestUnitsAreSpentByWhatTheNodeWaitsFor:
         assert self._rate("restocking", charged).xp_per_hour == pytest.approx(
             self._rate("restocking", free).xp_per_hour
         )
+
+    def test_a_node_that_never_depletes_pays_only_its_roll(self) -> None:
+        # The rune essence rock: no respawn to share, no hop to anywhere.
+        charged = gathering.SkillProfile(roll_ticks=2.0, node_seconds=5.0, hops=True)
+        endless = dataclasses.replace(charged, endless=frozenset({"restocking"}))
+        rate = self._rate("restocking", endless)
+        assert rate.xp_per_hour == pytest.approx(100.0 * 3600.0 / (2.0 * 0.6))
+        assert rate.xp_per_hour > self._rate("restocking", charged).xp_per_hour
+
+    def test_a_yield_is_shared_over_what_the_depletion_paid_for(self) -> None:
+        # **A rock is not always one ore.** Rubium hands over seven splinters
+        # before it goes, so its 35.4-second respawn is charged once per seven
+        # rather than once per splinter - priced the other way it read
+        # 9,153/hr against a published 39,000.
+        one = gathering.SkillProfile(roll_ticks=2.0, worked=1.0)
+        seven = dataclasses.replace(one, yields={"restocking": 7.0})
+        assert self._rate("restocking", seven).xp_per_hour == pytest.approx(
+            self._rate("restocking", one).xp_per_hour * 7.0
+        )
+
+    def test_a_stated_cycle_replaces_the_respawn_rather_than_joining_it(self) -> None:
+        # **The bug this caught, and it only exists for a node that states
+        # both.** A duty cycle spends the wait as a share of the hour and a
+        # restock floor spends it per resource; charged together, calcified
+        # rocks sat flat at 11,880/hr while the cycle said there was no wait at
+        # all. No tree ever hit it - the wiki gives a tree one or the other.
+        cycling = gathering.SkillProfile(
+            roll_ticks=2.0, stated_cycles={"restocking": (70.0, 30.0)}, worked=3.0
+        )
+        rate = self._rate("restocking", cycling)
+        assert rate.duty == pytest.approx(1.0)
+        assert rate.xp_per_hour == pytest.approx(100.0 * 3600.0 / (2.0 * 0.6))
 
     def test_rotation_never_divides_the_rolling(self) -> None:
         # A restocking node worked three ways still opens one at a time, so

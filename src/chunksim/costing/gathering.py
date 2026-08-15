@@ -438,6 +438,72 @@ class SkillProfile:
     #: calculator rows share `Butterfly net` and most of them are implings,
     #: which are caught by a different mechanic entirely.
     assumed_curves: Mapping[str, str] = field(default_factory=dict)
+    #: Node -> `(low, high)` **this project derived from a published rate
+    #: table**, for a node the wiki charts nothing for but quotes hourly
+    #: figures at several levels.
+    #:
+    #: **Two parameters against six or seven observations, which is the
+    #: opposite of the fits this project distrusts.** A `{{Skilling success
+    #: chart}}` and a table of xp/hr against level say the same thing twice -
+    #: the chart states the chance and the table states what the chance
+    #: produces - so where only the second exists, the first can be recovered
+    #: rather than guessed. The residuals are what makes it evidence: rubium
+    #: fits 7/7 of its published rows within 1.25x at a geometric mean of
+    #: 1.000, calcified 6/6 at 0.998, and both are printed by
+    #: `gathering_overhead`.
+    #:
+    #: `INFERRED`, never `CONFIRMED`: the number is real but it is this
+    #: project's arithmetic over somebody's figures, not a line the wiki drew.
+    stated_curves: Mapping[str, tuple[float, float]] = field(default_factory=dict)
+    #: Nodes whose curve is **interpolated from `curve_ladder`**, for a rock
+    #: the wiki has charted neither directly nor by a comparable sibling.
+    #:
+    #: See `_ladder_curve` for the arithmetic and the hold-out measurement that
+    #: chose it. `INFERRED`, for the same reason `assumed_curves` is.
+    interpolated: frozenset[str] = frozenset()
+    #: The charted nodes `interpolated` reads, as a ladder of comparable ones.
+    #:
+    #: **An explicit list rather than "every charted node of this skill"**, and
+    #: the exclusions are the content. Mining's ladder is the nine standard
+    #: ores; sandstone, granite and gem rocks are charted too and are kept out
+    #: because each carries several series for the *same* level - a size or an
+    #: amulet - so a level alone does not pick one, and a multi-series node on
+    #: a ladder would silently contribute whichever series came first.
+    curve_ladder: tuple[str, ...] = ()
+    #: Node -> how many resources it hands over **before** it depletes.
+    #:
+    #: **A rock is not always one ore.** The model's default is that a node
+    #: gives one thing and is then empty, which is what every ore rock and
+    #: every stall does; three nodes in the export do not, and each states its
+    #: own figure. Rubium rocks are "guaranteed to yield at least two splinters
+    #: before depleting" with "approximately a 1/6 chance on each subsequent
+    #: splinter" that they run out, which the page works out to an average of
+    #: seven. Nickel rocks "can contain between 2 and 16 nickel ores".
+    #:
+    #: It divides the respawn *and* the hop, because both happen once per
+    #: depletion rather than once per resource - which is the whole of why it
+    #: matters. Rubium priced one-splinter-per-rock reads 9,153/hr against a
+    #: published 39,000: the model was charging a 35.4-second respawn seven
+    #: times over.
+    yields: Mapping[str, float] = field(default_factory=dict)
+    #: Node -> `(despawn, respawn)` the profile states, for a node whose cycle
+    #: the skill page does not tabulate.
+    #:
+    #: **The same shape as `Tables.cycles` and read by the same arithmetic**,
+    #: because it is the same mechanic written somewhere else: the Woodcutting
+    #: page tabulates thirteen trees and nothing tabulates anything for Mining,
+    #: but `Pay-to-play Mining training` says calcified rocks "deplete after
+    #: around 70 seconds" and the infobox states the 30-second respawn. A node
+    #: that yields for a *window* is a duty cycle, not a restock, and pricing
+    #: one as the other charges a fresh wait for every resource it produced.
+    stated_cycles: Mapping[str, tuple[float, float]] = field(default_factory=dict)
+    #: Nodes that never run out, so neither a respawn nor the hop is charged.
+    #:
+    #: **A stated mechanic, not an optimisation.** The rune essence rock "will
+    #: never deplete" and there is nothing to walk to, so it is the one node in
+    #: this model whose cost is the roll and nothing else. Without it `hops`
+    #: charges a hop that does not happen.
+    endless: frozenset[str] = frozenset()
     #: Node -> the ordered loop it is rolled inside, best reward first.
     #:
     #: **A cascade is several success rolls in one action**, which
@@ -517,15 +583,22 @@ class SkillProfile:
 #: | Fishing | 5 | 1.03x | 5/5 |
 #: | Hunter | 16 | 1.00x | 12/16 |
 #: | Thieving | 14 | 1.00x | 14/14 |
-#: | Mining | 3 | 0.64x | 1/3 |
+#: | Mining | 4 | 0.86x | 1/4 |
+#: | Mining (`--stated-curves`) | 13 | 1.00x | 13/13 |
 #:
-#: **Read the last two rows the opposite way round from how they look.**
+#: **Read the last three rows the opposite way round from how they look.**
 #: Thieving's 14/14 is an identity rather than evidence - the model's stall
 #: rate *is* the published restock time, so agreement is arithmetic - while
-#: Mining's 1/3 is a statement about the three published rows and not about the
-#: model: one is a tick-manipulation figure, the other two are the bottom of a
-#: range quoted at a level the harness does not evaluate at. The profile's own
-#: comment carries the reasoning and the band Mining *can* be checked against.
+#: Mining's 1/4 is a statement about the four published rows and not about the
+#: model: one is a tick-manipulation figure and the rest are the bottom of a
+#: range quoted at a level the harness does not evaluate at.
+#:
+#: **Mining's real evidence is the row under it**, and it is the best-supported
+#: number in this file: thirteen published rows across two rocks, six and seven
+#: levels apart, against two free parameters each, all thirteen inside 1.25x.
+#: That is `gathering_overhead.fit_stated_curves`, and it exists because two
+#: rocks the wiki charts nothing for tabulate hourly figures instead - which is
+#: the same statement a chart makes, read from the other end.
 PROFILES: dict[str, SkillProfile] = {
     # **Four ticks is the wiki's, not a fit** - the Woodcutting page states it -
     # and pinning it is what makes the other two constants mean something. Left
@@ -596,6 +669,80 @@ PROFILES: dict[str, SkillProfile] = {
         # is insensitive to its own value is one that cannot be a fit in
         # disguise.
         worked_at={"gem rocks": 48.0},
+        # **Guaranteed, and Mod Ash said so.** `Rune essence (rock)` quotes
+        # him: "the essence rock doesn't have a random roll based on your stat
+        # like other rocks do - it's like everyone gets a 100% chance at any
+        # level. But a better pickaxe can let you roll more frequently." So the
+        # rock is charted nowhere because there is nothing to chart, and the
+        # rate is the pickaxe interval alone. Both essences share the rock -
+        # the challenges name `Rune Essence rock` and differ only in what comes
+        # out of it - so one entry answers for both.
+        fixed_chances={"rune essence": (1.0, CONFIRMED)},
+        # The same rock, from the same page: it holds "an unlimited supply of
+        # essence and never deplete". Its `{{Mining info}}` `time` is `N/A`,
+        # which is the infobox saying the same thing.
+        endless=frozenset({"rune essence"}),
+        # **Two curves recovered from published rate tables**, where the wiki
+        # charts neither rock but quotes hourly figures against level for both.
+        # The fit is `gathering_overhead.fit_stated_curves`; re-run it rather
+        # than editing these by eye.
+        #
+        # - `Rubium rocks` tabulates seven rows from 48 to 99 on its own page.
+        #   At 30 xp an action and a rock that yields about seven splinters
+        #   before depleting, the hop amortises to a twelfth of a second and
+        #   the loop is pure rolling. 7/7 within 1.25x, geometric mean 0.999.
+        # - `Pay-to-play Mining training` tabulates calcified rocks in two
+        #   columns, 3-tick and not. **The second is the one taken**, for the
+        #   same reason granite is refused as a target entirely: this model has
+        #   no representation of tick manipulation, and fitting to a column
+        #   that assumes it would bury the technique inside a success chance.
+        #   6/6 within 1.25x, geometric mean 1.000, and the calcified figures
+        #   are quoted against the cycle below rather than against a hop: the
+        #   first version of this pair was fitted before that cycle existed and
+        #   read 1.22x fast at every level afterwards while still looking
+        #   converged, which is why the harness now fits through `rate_at`.
+        #
+        # A negative `low` is not a parse error - amethyst's real chart is
+        # -18/10. It means the rock is unmineable well above its own
+        # requirement, which is what the published rows say.
+        stated_curves={
+            "rubium rocks": (69.0, 247.5),
+            "calcified rocks": (-11.5, 177.5),
+        },
+        # Both figures are the pages' own. See `SkillProfile.yields`.
+        # Both spellings, because the join reaches whichever the challenge
+        # names first and `Mine ~|nickel ore|~` offers its `Output` before its
+        # `Objects` - keyed one way it silently kept charging the full respawn.
+        yields={
+            "rubium rocks": 7.0,
+            "nickel rocks": 9.0,
+            "nickel ore": 9.0,
+        },
+        # 70 seconds of yielding against a 30-second respawn - the guide states
+        # the first, the infobox the second. See `SkillProfile.stated_cycles`.
+        stated_cycles={"calcified rocks": (70.0, 30.0)},
+        # **Three rocks nobody charted, interpolated from the ones either
+        # side.** See `_ladder_curve` for the arithmetic and the hold-out
+        # measurement. Daeyalt opens at exactly silver's level, so it takes
+        # silver's chart outright rather than interpolating anything.
+        interpolated=frozenset({
+            "lovakite ore", "lovakite rocks",
+            "nickel ore", "nickel rocks",
+            "daeyalt ore", "daeyalt rocks",
+        }),
+        # The nine standard ores, in level order. Multi-series rocks are out on
+        # purpose - see `SkillProfile.curve_ladder`.
+        curve_ladder=(
+            "copper rocks",
+            "blurite rocks",
+            "iron rocks",
+            "silver rocks",
+            "coal rocks",
+            "gold rocks",
+            "mithril rocks",
+            "adamantite rocks",
+            "runite rocks",
+        ),
     ),
     # **A fishing spot does not deplete**; it relocates. Five ticks a roll is
     # the game's rather than a fit - net, bait, harpoon and cage share it - and
@@ -1746,6 +1893,105 @@ def _borrowed_curve(
     return node, f"assumed: {donor_name}", moved, moved + (high - low)
 
 
+def _stated_curve(
+    profile: SkillProfile,
+    families: Mapping[str, Sequence[str]],
+    challenge: Mapping[str, Any],
+    skill: str,
+    task: str = "",
+) -> tuple[str, float, float] | None:
+    """`(node, low, high)` where a profile carries a derived curve."""
+    if not profile.stated_curves:
+        return None
+    for key in _join_keys(challenge, families, _NAME_FIELDS, skill, task):
+        found = profile.stated_curves.get(key.lower())
+        if found is not None:
+            return key, found[0], found[1]
+    return None
+
+
+def _ladder_curve(
+    tables: Tables,
+    profile: SkillProfile,
+    families: Mapping[str, Sequence[str]],
+    challenge: Mapping[str, Any],
+    skill: str,
+    task: str = "",
+) -> tuple[str, float, float] | None:
+    """`(node, low, high)` interpolated between the two charted rocks that
+    bracket this one's level.
+
+    **Geometrically, not linearly, and the difference is measured.** Held out
+    one at a time and predicted from its own neighbours, every charted rock on
+    Mining's ladder comes back at a geometric mean of 1.031 with 17 of 21
+    sampled chances inside 1.25x; the same test on a straight linear
+    interpolation gives 1.138 and 10 of 21. The ladder decays roughly
+    geometrically - 350 high at level 1, 100 at 30, 25 at 70, 18 at 85 - so a
+    straight line between two rungs sits above the curve every time, and the
+    error is one-sided rather than noisy.
+
+    **A rung at exactly this level wins outright**, which is not a special case
+    so much as the interpolation's own endpoint. Daeyalt ore opens at 20 and so
+    does silver, and taking silver's chart is better than interpolating across
+    the one discontinuity the ladder has: copper, blurite and iron all sit near
+    350 and silver drops to 200, which is why iron and silver are the two rungs
+    the hold-out test misses on.
+
+    `None` where the profile names no ladder, where the node is not in
+    `interpolated`, where the challenge states no level, or where the level
+    falls outside the ladder - extrapolating past runite would be inventing a
+    rock harder than the hardest one there is.
+    """
+    if not profile.interpolated or not profile.curve_ladder:
+        return None
+    node = ""
+    for key in _join_keys(challenge, families, _NAME_FIELDS, skill, task):
+        if key.lower() in profile.interpolated:
+            node = key
+            break
+    if not node:
+        return None
+    opens = challenge.get("Level")
+    if not isinstance(opens, (int, float)) or opens < 1:
+        return None
+    level = int(opens)
+    rungs: list[tuple[int, float, float]] = []
+    for name in profile.curve_ladder:
+        series = tables.curves.get(name.lower())
+        if series:
+            label, low, high, req, _provenance = series[0]
+            rungs.append((req, low, high))
+    if not rungs:
+        return None
+    for req, low, high in rungs:
+        if req == level:
+            return node, low, high
+    below = [rung for rung in rungs if rung[0] < level]
+    above = [rung for rung in rungs if rung[0] > level]
+    if not below or not above:
+        return None
+    lower = max(below, key=lambda rung: rung[0])
+    upper = min(above, key=lambda rung: rung[0])
+    weight = (level - lower[0]) / (upper[0] - lower[0])
+    return node, _geometric(lower[1], upper[1], weight), _geometric(
+        lower[2], upper[2], weight
+    )
+
+
+def _geometric(start: float, end: float, weight: float) -> float:
+    """`start` and `end` blended in log space, clamped away from zero.
+
+    The clamp is what keeps runite's `low` of 1 from dragging a neighbour to
+    zero, and it is why this is a named function rather than one expression:
+    a chance of zero is refused downstream, so an interpolation that can reach
+    it would turn a modelled rock into an unpriced one.
+    """
+    floor = 0.01
+    return math.exp(
+        math.log(max(start, floor)) * (1.0 - weight) + math.log(max(end, floor)) * weight
+    )
+
+
 def _respawn_key(
     tables: Tables,
     families: Mapping[str, Sequence[str]],
@@ -1831,6 +2077,8 @@ def rate_at(
     provenance = CONFIRMED
     borrowed = _borrowed_curve(tables, profile, families, challenge, skill, task)
     fixed = _fixed_chance(profile, families, challenge, skill, task)
+    stated = _stated_curve(profile, families, challenge, skill, task)
+    laddered = _ladder_curve(tables, profile, families, challenge, skill, task)
     if fixed is not None:
         # **A stated chance outranks a chart**, which is the opposite of every
         # other precedence here and is deliberate: a profile only states one
@@ -1849,8 +2097,24 @@ def rate_at(
             curves, profile, tool, int(opens) if isinstance(opens, (int, float)) else 0
         )
         chance = success_chance(level, low, high)
+    elif stated is not None:
+        # **A curve recovered from published hourly figures.** Ranked below a
+        # real chart and above everything else: it is the wiki's own numbers,
+        # just read through the model rather than off a line - see
+        # `SkillProfile.stated_curves` for the residuals that make it evidence.
+        node, low, high = stated
+        label = "derived from published rates"
+        provenance = INFERRED
+        chance = success_chance(level, low, high)
     elif borrowed is not None:
         node, label, low, high = borrowed
+        provenance = INFERRED
+        chance = success_chance(level, low, high)
+    elif laddered is not None:
+        # **Last of the curve sources, because it is the only one built from no
+        # measurement of *this* node at all** - just of the rocks either side.
+        node, low, high = laddered
+        label = "interpolated"
         provenance = INFERRED
         chance = success_chance(level, low, high)
     elif kind in profile.certain_kinds:
@@ -1938,12 +2202,32 @@ def rate_at(
     # cycle for silently chopped twice as fast, and the fit absorbed it by
     # moving `node_seconds` from 2.4 to 3.7.
     rolling_units = units if kind in profile.parallel_kinds else 1.0
-    cycle = tables.cycles.get(node.lower()) if profile.depletes else None
-    restock = tables.respawns.get(node.lower())
+    # **A node that never runs out has none of the three waits.** See
+    # `SkillProfile.endless`: there is no cycle to fill, no respawn to share
+    # and nowhere to hop to, so the roll is the whole cost.
+    endless = node.lower() in profile.endless
+    cycle = (
+        tables.cycles.get(node.lower()) or profile.stated_cycles.get(node.lower())
+        if profile.depletes and not endless
+        else None
+    )
+    # **A cycle already contains the respawn, so the two are exclusive.** A
+    # duty cycle spends the wait as a share of the hour; a restock floor spends
+    # it per resource. Charging both bills one wait twice, which read as
+    # calcified rocks flat at 11,880/hr against a published climb to 49,000 -
+    # the cycle said "no wait" and the floor went on charging 10 seconds an
+    # action anyway. This never showed on a tree because the wiki tabulates a
+    # cycle *or* a respawn and never both; a rock states both.
+    restock = None if endless or cycle is not None else tables.respawns.get(node.lower())
+    # **A node that hands over several things is emptied once, not once per
+    # thing.** See `SkillProfile.yields`: both the respawn and the hop are
+    # charged per depletion, so they are shared over what the depletion paid
+    # for.
+    per_depletion = max(1.0, profile.yields.get(node.lower(), 1.0))
     if cycle is not None:
         duty = duty_cycle(cycle[0], cycle[1], units)
-    elif profile.depletes and (restock is None or profile.hops):
-        per_resource = profile.node_seconds
+    elif profile.depletes and not endless and (restock is None or profile.hops):
+        per_resource = profile.node_seconds / per_depletion
 
     # **Several units of the loop at once**, where the game publishes how
     # many. Divides the rolling outright, unlike `duty`, which only fills a
@@ -1979,7 +2263,7 @@ def rate_at(
     # charged after it. A trip does not happen while a stall restocks; it is
     # time on top, the same way it is for every other loop here.
     if restock is not None:
-        working = max(restock / units, working)
+        working = max(restock / units / per_depletion, working)
 
     seconds_per_resource = working + banking
     if seconds_per_resource <= 0:
