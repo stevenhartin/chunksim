@@ -15,6 +15,14 @@ from typing import Any
 import pytest
 
 from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.store.cache import (
+    RECIPES_BLOB_NAME,
+    WIKI_RATES_BLOB_NAME,
+    blob_path,
+    gathering_path,
+    map_overrides_path,
+    overrides_path,
+)
 from chunksim.store.derived_cache import (
     CacheBehaviour,
     Digests,
@@ -30,6 +38,7 @@ from chunksim.store.derived_cache import (
     derivation_key,
     encode,
     enrichment_key,
+    pricing_digests,
 )
 from chunksim.costing.heuristics import Heuristics, Rate
 from chunksim.derive.pipeline import MapState, derive
@@ -555,3 +564,57 @@ def test_the_enrichment_key_covers_every_pricing_digest() -> None:
     assert len(keys) == 1 + len(dataclasses.fields(PricingDigests)), (
         "some PricingDigests field does not reach the enrichment key"
     )
+
+
+def test_the_pricing_digests_cover_every_file_the_pricing_reads(tmp_path: Path) -> None:
+    """**The other half of the key, and the half that actually broke.**
+
+    `test_the_enrichment_key_covers_every_pricing_digest` proves every *field*
+    reaches the key. It cannot prove the fields describe every *file*, and
+    that is the gap the gathering tables fell through: `heuristics/gathering.json`
+    ships inside the package rather than under `cache/`, so no field watched
+    it, the key never moved, and every stored enrichment went on serving the
+    scraped rates the model was meant to replace. The symptom was a
+    Woodcutting climb reading 176.4h from `wiki:woodcutting` on a machine
+    where the model said 210.3h.
+
+    So this walks the files rather than the fields: write one, digest, change
+    it, digest again. A file nothing hashes shows up here as two equal
+    digests.
+    """
+    locations = {
+        "rates": blob_path(WIKI_RATES_BLOB_NAME, tmp_path),
+        "recipes": blob_path(RECIPES_BLOB_NAME, tmp_path),
+        "overrides": overrides_path(tmp_path),
+        "map_overrides": map_overrides_path("fray", tmp_path),
+        "gathering": gathering_path(tmp_path),
+    }
+    for path in locations.values():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('{"data": {}}', encoding="utf-8")
+
+    for name, path in locations.items():
+        before = pricing_digests(tmp_path, "fray")
+        path.write_text('{"data": {"moved": true}}', encoding="utf-8")
+        after = pricing_digests(tmp_path, "fray")
+        assert before != after, f"nothing in PricingDigests watches {name} ({path.name})"
+
+
+def test_an_installed_build_digests_the_files_that_shipped_with_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**The `_source` half of both fixes, on the build where it is visible.**
+
+    An install that has never had a knob edited and has never run
+    `chunksim gather-tables` reads two files from inside the package and
+    writes neither. Digesting the *write* paths says both inputs are empty on
+    exactly those builds - so two installs with different shipped corrections
+    would share a cache key. It resolves to the same file in a checkout, which
+    is why this needs a root with no `src/chunksim` under it.
+    """
+    monkeypatch.setenv("CHUNKSIM_CACHE", str(tmp_path))
+
+    digests = pricing_digests()
+
+    assert digests.overrides != "", "the shipped corrections must reach the key"
+    assert digests.gathering != "", "the shipped gathering tables must reach the key"

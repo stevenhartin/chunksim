@@ -775,6 +775,33 @@ def gathering_path(root: Path | None = None) -> Path:
     return base / HEURISTICS_DIR_NAME / GATHERING_FILE_NAME
 
 
+def gathering_source(root: Path | None = None) -> Path:
+    """The file `read_gathering` will actually read.
+
+    **The `overrides_path`/`overrides_source` split, for the same reason and
+    with the same trap.** `gathering_path` is where `chunksim gather-tables`
+    *writes*; on an installed build that has never run it - which is every
+    install, since it is a developer command - the file read is the one that
+    shipped inside the package. **Anything keying a cache on "which tables
+    were these" wants this one**: digesting the write path would say there
+    were no tables on precisely the builds that have them, which is how the
+    gathering layer came to be missing from `PricingDigests` without anything
+    noticing.
+    """
+    written = gathering_path(root)
+    if written.is_file():
+        return written
+    # **An explicit root is a closed world**, as in `overrides_source`: a test
+    # pointing at `tmp_path` must not read the developer's real tables.
+    if root is not None:
+        return written
+    # In a checkout the two paths are the same directory, so there is nothing
+    # to fall through to; only an installed build has a separate shipped copy.
+    if (data_root() / "src" / "chunksim").is_dir():
+        return written
+    return PACKAGED_GATHERING
+
+
 def read_gathering(root: Path | None = None) -> dict[str, Any]:
     """The scraped gathering tables, or `{}` when the file is not there.
 
@@ -784,15 +811,11 @@ def read_gathering(root: Path | None = None) -> dict[str, Any]:
     no rate rather than as a wrong one. A *malformed* file does raise, on the
     same reasoning as `read_overrides`: it was written deliberately.
 
-    An explicit `root` is a closed world and never falls through to the shipped
-    copy - the caller that does this most is a test pointing at `tmp_path`.
+    Resolution is `gathering_source`'s, not repeated here - one reader, one
+    answer, so a cache key and this function cannot disagree about which file
+    the tables came from.
     """
-    path = gathering_path(root) if root is not None else None
-    if path is None or not path.is_file():
-        if root is not None:
-            return {}
-        checkout = gathering_path()
-        path = checkout if checkout.is_file() else PACKAGED_GATHERING
+    path = gathering_source(root)
     try:
         raw = path.read_text(encoding="utf-8")
     except FileNotFoundError:

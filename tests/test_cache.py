@@ -59,6 +59,10 @@ from chunksim.store.cache import (
     PACKAGED_OVERRIDES,
     overrides_path,
     overrides_source,
+    gathering_path,
+    gathering_source,
+    read_gathering,
+    PACKAGED_GATHERING,
     read_overrides,
     checkout_root,
     data_root,
@@ -975,3 +979,42 @@ def test_an_explicit_root_never_reads_outside_itself(tmp_path: Path) -> None:
     pointing at `tmp_path` from reading the developer's real corrections."""
     assert overrides_source(tmp_path).is_relative_to(tmp_path)
     assert read_overrides(tmp_path) == {}
+
+
+def test_an_installed_build_reads_the_gathering_tables_that_shipped_with_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`gather-tables` is a developer command, so **every install reads the
+    shipped copy** - and `gathering_source` is what says so. It exists because
+    the cache key needs the file actually read: keyed on the write path, the
+    tables looked absent on every install that had them, and the gathering
+    model's rates were cached away behind the scraped ones they replace."""
+    monkeypatch.setenv(CACHE_ENV_VAR, str(tmp_path))
+
+    assert gathering_source() == PACKAGED_GATHERING
+    assert PACKAGED_GATHERING.is_file(), "the tables must travel with the code"
+    assert read_gathering()["curves"], "an install with no tables is the bug"
+
+
+def test_gathering_tables_written_into_a_tree_shadow_the_shipped_ones(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same two-file behaviour as the corrections beside them, so a
+    developer re-running `gather-tables` reads back what they just wrote."""
+    monkeypatch.setenv(CACHE_ENV_VAR, str(tmp_path))
+    mine = gathering_path()
+    mine.parent.mkdir(parents=True, exist_ok=True)
+    mine.write_text('{"data": {"curves": {"Oak tree": []}}}', encoding="utf-8")
+
+    assert mine != PACKAGED_GATHERING
+    assert gathering_source() == mine
+    assert read_gathering() == {"curves": {"Oak tree": []}}
+
+
+def test_an_explicit_root_never_reads_gathering_tables_outside_itself(
+    tmp_path: Path,
+) -> None:
+    """A closed world, as for the corrections: `tmp_path` must not reach the
+    developer's real tables, and absent is `{}` rather than a raise."""
+    assert gathering_source(tmp_path).is_relative_to(tmp_path)
+    assert read_gathering(tmp_path) == {}

@@ -89,8 +89,9 @@ from chunksim.store.cache import (
     CacheMissError,
     blob_path,
     file_digest,
+    gathering_source,
     map_overrides_path,
-    overrides_path,
+    overrides_source,
     read_derived,
     write_derived,
 )
@@ -138,7 +139,7 @@ _FORMAT = "1"
 #: `dps_bridge.enrich_incremental` where the estimate has `recipe_priced`,
 #: `enrich` and the combat rates - two different computations behind one key,
 #: last writer winning.
-_PRICING_MODEL = "2"
+_PRICING_MODEL = "3"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.
@@ -240,6 +241,17 @@ class PricingDigests:
     #: different API on a different cadence, and folding the two would
     #: invalidate every stored enrichment whenever either moved.
     recipes: str = ""
+    #: `heuristics/gathering.json`, the checked-in gathering tables.
+    #:
+    #: **The third time this dataclass fell behind its own inputs**, and the
+    #: first where the missing field was not merely stale but *invisible*: the
+    #: tables ship inside the package rather than under `cache/`, so nothing
+    #: about them moved when the gathering model arrived and every stored
+    #: enrichment kept serving the scraped rates it had been computed with.
+    #: A Woodcutting climb read 176.4h from `wiki:woodcutting` where the model
+    #: says 210.3h, on a machine where the model was installed and working.
+    #: Digested from `cache.gathering_source`, the file actually read.
+    gathering: str = ""
 
 
 def _structure_digest() -> str:
@@ -535,7 +547,11 @@ def pricing_digests(root: Path | None = None, map_id: str | None = None) -> Pric
     """
     return PricingDigests(
         rates=_maybe_digest(lambda: blob_path(WIKI_RATES_BLOB_NAME, root)),
-        overrides=_maybe_digest(lambda: overrides_path(root)),
+        # **`overrides_source`, not `overrides_path`.** They differ on an
+        # installed build that has never had a knob edited - the write path
+        # does not exist and the shipped corrections do - so digesting the
+        # write path described an empty input on every such install.
+        overrides=_maybe_digest(lambda: overrides_source(root)),
         map_overrides=(
             ""
             if map_id is None
@@ -543,6 +559,7 @@ def pricing_digests(root: Path | None = None, map_id: str | None = None) -> Pric
         ),
         library=dps_library_digest(),
         recipes=_maybe_digest(lambda: blob_path(RECIPES_BLOB_NAME, root)),
+        gathering=_maybe_digest(lambda: gathering_source(root)),
     )
 
 
