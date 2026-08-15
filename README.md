@@ -494,7 +494,11 @@ maps are your own work and nothing can recompute them.
    priced from prose alone, where the wiki states the mechanic rather than
    charting it: an essence rock and a soil spot never fail, a soil spot is dug
    every four ticks whatever you hold, an amalgamation averages 2.5, and the
-   three Ghorrock salts never fail but run out on a flat 1/7 chance per mine.
+   three Ghorrock salts never fail but run out on a flat 1/7 chance per mine,
+   and the salt deposit under Duke Sucellus never runs out at all - 5 experience
+   every 2.83 ticks, which is 10,601/hr against a reported 10,600 with nothing
+   fitted. A rubium geode pays one of eleven equally-likely figures and the
+   wiki averages them for you: exactly 40.
    Sunstone's curve comes from a sentence rather than a chart - "scaling from
    75% success rate at level 50 to a 100% success rate at level 92" - and two
    points fix the game's own interpolation exactly.

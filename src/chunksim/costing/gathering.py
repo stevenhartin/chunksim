@@ -606,7 +606,7 @@ class SkillProfile:
 #: | Hunter | 16 | 1.00x | 12/16 |
 #: | Thieving | 14 | 1.00x | 14/14 |
 #: | Mining | 4 | 0.86x | 1/4 |
-#: | Mining (`--stated-curves`) | 15 | 1.00x | 15/15 |
+#: | Mining (`--stated-curves`) | 18 | 1.00x | 18/18 |
 #:
 #: **Read the last three rows the opposite way round from how they look.**
 #: Thieving's 14/14 is an identity rather than evidence - the model's stall
@@ -629,7 +629,10 @@ class SkillProfile:
 #: 30,000 experience per hour". The model says 30,212. That is two published
 #: inputs meeting a published output with nothing of this project's in
 #: between, which is the strongest shape of evidence in this file and the one
-#: `gathering_overhead.CHECKED_RATES` exists to keep.
+#: `gathering_overhead.CHECKED_RATES` exists to keep. The Duke Sucellus salt
+#: deposit is the same shape and even barer: certain, endless, and priced by
+#: the pickaxe table alone, so 5 experience every 2.83 ticks is 10,601/hr
+#: against a reported 10,600 with nothing here chosen at all.
 PROFILES: dict[str, SkillProfile] = {
     # **Four ticks is the wiki's, not a fit** - the Woodcutting page states it -
     # and pinning it is what makes the other two constants mean something. Left
@@ -754,6 +757,14 @@ PROFILES: dict[str, SkillProfile] = {
             "te salt rocks": (1.0, CONFIRMED),
             "urt salt rocks": (1.0, CONFIRMED),
             "efh salt rocks": (1.0, CONFIRMED),
+            # **The fourth salt, and the one that never runs out at all.** The
+            # deposit in Duke Sucellus' chamber is certain like the Ghorrock
+            # three and has no depletion to charge, so its whole rate is the
+            # pickaxe: 5 experience every 2.83 ticks is 10,601/hr with a dragon
+            # pickaxe, against a reported 10.6k. Nothing is fitted - the two
+            # halves are the mechanic and the tool table, and they multiply out
+            # to the observed figure on their own.
+            "salt deposit": (1.0, CONFIRMED),
         },
         # The same rock, from the same page: it holds "an unlimited supply of
         # essence and never deplete". Its `{{Mining info}}` `time` is `N/A`,
@@ -775,6 +786,14 @@ PROFILES: dict[str, SkillProfile] = {
             # is nothing to wait for, and the following-around is inside the
             # published figure the chance was recovered from.
             "ancient essence crystals",
+            "salt deposit",
+            # **Two deposits taking turns, so there is never a wait.** "Only
+            # one of the two deposits is active at a time; the moment one
+            # depletes, the other replenishes" - and one lasts four to five
+            # minutes, so what a depletion costs is a walk across the room
+            # every few hundred seconds. That is below the resolution of
+            # anything else here.
+            "rubium deposit",
         }),
         # **Two curves recovered from published rate tables**, where the wiki
         # charts neither rock but quotes hourly figures against level for both.
@@ -846,13 +865,32 @@ PROFILES: dict[str, SkillProfile] = {
             # leaves it - and optimistic below, by however much the unpublished
             # base chance is worse.
             "sunstone rocks": (117.4, 265.6),
+            # **Two rows, two parameters - exactly determined and no more.**
+            # The deposit page tabulates 5,000/hr at level 75 and
+            # 10,000-11,000 at 97, and the low end of the second is taken for
+            # the same reason the 3-tick column is refused elsewhere: the
+            # conservative reading of a range this model has no way to earn the
+            # top of. It reproduces both at 0.99x, which is arithmetic rather
+            # than agreement at two points against two parameters - the
+            # evidence here is that the *shape* is the game's linear
+            # interpolation, not that the fit converged.
+            "rubium deposit": (-38.0, 30.5),
         },
         # 28 rather than the infobox's `23-28`, for the same reason: the 28 is
         # what momentum pays and the model above assumes momentum. **The 20%
         # is not part of this** - the page gives it as "a 20% chance to mine an
         # additional chunk", which is a second sunstone in the bag and not a
         # second lot of experience, so it changes the loot and not the rate.
-        stated_experience={"sunstone rocks": 28.0},
+        stated_experience={
+            "sunstone rocks": 28.0,
+            # **Forty, and the wiki did the arithmetic.** A rubium geode pays
+            # one of eleven equally-likely figures from 10.0 to 100.0 and the
+            # page tabulates them with the average underneath: exactly 40.00.
+            # The infobox writes the same thing as `xp = 10-100`, which is a
+            # range, so the scrape takes the low end - pricing every geode at
+            # a quarter of what it pays.
+            "rubium deposit": 40.0,
+        },
         # Both figures are the pages' own. See `SkillProfile.yields`.
         # Both spellings, because the join reaches whichever the challenge
         # names first and `Mine ~|nickel ore|~` offers its `Output` before its

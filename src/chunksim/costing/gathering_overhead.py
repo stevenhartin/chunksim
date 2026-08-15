@@ -434,6 +434,10 @@ STATED_RATES: dict[str, tuple[str, tuple[tuple[int, float], ...]]] = {
         ((48, 39000), (61, 42000), (72, 46500), (80, 51000),
          (90, 52500), (97, 57000), (99, 63900)),
     ),
+    "rubium deposit": (
+        "Rubium deposit#Experience rates (the 97 row's low end)",
+        ((75, 5000), (97, 10000)),
+    ),
     "calcified rocks": (
         "Pay-to-play Mining training#Levels 41-99: Calcified rocks (w/o 3-tick)",
         ((50, 23500), (60, 27000), (70, 34000), (80, 39000), (90, 44000), (99, 49000)),
@@ -460,6 +464,9 @@ CHECKED_RATES: dict[str, tuple[str, int, str, float]] = {
     "shooting stars": (
         "Shooting Stars#Rewards", 90, "Dragon pickaxe", 30_000.0
     ),
+    # Certain, endless, and priced entirely by the pickaxe table: 5 experience
+    # every 2.83 ticks. Nothing about this figure was chosen.
+    "salt deposit": ("reported in-game", 99, "Dragon pickaxe", 10_600.0),
 }
 
 
