@@ -33,7 +33,7 @@ from pathlib import Path
 from collections.abc import Callable
 from typing import Any, Mapping
 
-from chunksim.costing import combat_xp, dps_bridge, recipe_rates
+from chunksim.costing import combat_xp, dps_bridge, production, recipe_rates
 from chunksim.costing import gathering as gathering_model
 from chunksim.costing.estimate import material_seconds
 from chunksim.costing import prayer as prayer_costing
@@ -313,12 +313,22 @@ def recipe_priced(
     # as the runes, so it is both larger and righter. Where both describe the
     # same thing they agree: a charge-orb cast prices at 0.6162 s/xp either way.
     by_spell = spell_material_costs(heuristics, seconds)
+    # **The broadest of the three, so it goes in first and is overwritten by
+    # both.** A calculator row states an average action for a whole skill; a
+    # recipe knows the variant, a spell's infobox is measured against the
+    # export's own casts, and a hand entry is a deliberate correction. What it
+    # is for is the methods the other two never reach - Firemaking has no
+    # `{{Recipe}}` at all, and burned its logs for free until this existed.
+    by_calc = priced_materials(
+        production.calculator_costs(state.chunk_info, derived.challenges.valid, blobs.gathering),
+        seconds,
+    )
     if not recipes:
         return (
             replace(
                 heuristics,
                 computed=_merge_computed(prayed, gathered),
-                material_seconds_per_xp={**by_spell, **by_hand},
+                material_seconds_per_xp={**by_calc, **by_spell, **by_hand},
             ),
             recipe_rates.RecipeCoverage(),
         )
@@ -342,6 +352,7 @@ def recipe_priced(
     # on what it actually costs. Taken from the same `ActionRate`s the rates
     # above come from, so the two cannot disagree about a recipe.
     per_xp = {
+        **by_calc,
         **by_spell,
         **{
             task: rate.input_seconds / rate.experience
@@ -508,24 +519,23 @@ def spell_material_costs(
 def hand_material_costs(
     overrides: Mapping[str, Any], collect: Callable[[str, float], float | None]
 ) -> dict[str, float]:
-    """`material_seconds_per_xp` for the methods a `{{Recipe}}` cannot describe.
+    """`material_seconds_per_xp` for a method somebody rated by hand.
 
-    **The one way to charge a method for what it consumes when the export does
-    not say how much.** `recipe_priced` derives that figure from
-    `computed_rates`, which is the only place experience-per-action and
-    quantity-per-action exist together - the export carries neither (0 of its
-    2,710 primary challenges state a quantity anywhere in `Items`, and its one
-    experience field is a quest's one-off lump). So a method with a scraped or
-    hand-entered rate and no recipe row is ranked as though its inputs were
-    free, which is the documented material bias.
+    **The last word on what a method consumes**, over the recipe that describes
+    it and over `costing/production.py`'s calculator row. The export states
+    neither half of the pair this needs - 0 of its 2,710 primary challenges
+    carry a quantity anywhere in `Items`, and its one experience field is a
+    quest's one-off lump - so every source of it is something joined on from
+    outside, and this is the one a person writes deliberately.
 
-    This is the hand-stated half of that pair, in the file hand-stated numbers
-    already live in. An entry is `{"experience": <per action>, "items":
-    {<name>: <quantity>}}`; the seconds come from the same item walk a recipe's
-    do, so the two cannot disagree about what a bar costs on this map.
+    This is the hand-stated half, in the file hand-stated numbers already live
+    in. An entry is `{"experience": <per action>, "items": {<name>:
+    <quantity>}}`; the seconds come from the same item walk a recipe's do, so
+    the two cannot disagree about what a bar costs on this map.
 
-    **The Giants' Foundry is what it was written for and is the whole of it
-    today.** Its six challenges declare `Items: ["AdamantMats[+]*", ...]` -
+    **The Giants' Foundry is what it was written for**, and was the whole of it
+    until `production.py` turned the general case into a layer. Its six
+    challenges declare `Items: ["AdamantMats[+]*", ...]` -
     family placeholders, not items - with `Output: None`, so nothing joins them
     and the wiki's 276,000/hr was being spent with the bars free. The wiki
     states both missing numbers outright: the crucible "needs to be filled with
@@ -553,7 +563,7 @@ def hand_material_costs(
         stated[task] = MaterialCost(
             experience=float(experience),
             items={
-                str(item): int(quantity)
+                str(item): float(quantity)
                 for item, quantity in _mapping(entry, "items").items()
                 if isinstance(quantity, (int, float)) and quantity > 0
             },

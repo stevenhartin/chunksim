@@ -35,6 +35,11 @@ The modules, and what each owns:
   `Output`. Owns `defaults < computed < scraped < overrides`, **the one place a
   computed number does *not* beat the scrape**. Also `trip_seconds`: a bank
   trip's share, scaled by what an action consumes.
+- `production.py` - what a production method consumes, for the methods no
+  `{{Recipe}}` describes, read off `Module:Skill calc` by way of the gathering
+  tables. **It supplies a material cost, never a rate**: a calculator row has
+  no ticks, so it composes with whatever rate wins rather than competing with
+  one. Joins on upstream's own `~|...|~` span.
 - `gathering.py` - the generic node model for Fishing/Mining/Woodcutting/
   Hunter/Thieving, and the exact skilling-success formula. Owns
   `defaults < scraped < modelled < overrides`, so **it beats the scrape where

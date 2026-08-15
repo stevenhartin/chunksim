@@ -404,13 +404,20 @@ class MaterialCost:
     """What one action of a method consumes, against the XP that action pays.
 
     The pair `material_seconds_per_xp` needs and **the export states neither
-    half of** - see `costing/inputs.py`. Two things produce it: a hand entry in
-    `heuristics/overrides.json`, and the wiki's `infobox_spell`, which is the
-    one family where both halves are published per action.
+    half of** - see `costing/inputs.py`. Three things produce it: a hand entry
+    in `heuristics/overrides.json`, the wiki's `infobox_spell`, and
+    `Module:Skill calc/<Skill>` by way of `costing/production.py` - the last of
+    which is what turned this from a per-method correction into a layer.
+
+    **Quantities are fractional and have to be.** A rune comes in whole
+    numbers, but a calculator row states an *average* action: Mahogany Homes
+    costs half a steel bar and 9.7 planks a contract. Held as `int` those
+    became 0 and 9 - the bar dropped silently and the planks were undercharged
+    by 7%.
     """
 
     experience: float
-    items: dict[str, int] = field(default_factory=dict)
+    items: dict[str, float] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {"experience": self.experience, "items": dict(sorted(self.items.items()))}
@@ -438,7 +445,10 @@ def spell_materials(
         spell = strip_task_markup(name).removeprefix(_CAST_PREFIX).strip().lower()
         cost = by_page.get(spell) or by_page.get(SPELL_PAGE_ALIASES.get(spell, "").lower())
         if cost is not None:
-            joined[name] = MaterialCost(experience=cost.experience, items=dict(cost.items))
+            joined[name] = MaterialCost(
+                experience=cost.experience,
+                items={item: float(count) for item, count in cost.items.items()},
+            )
     return joined
 
 
@@ -1667,7 +1677,7 @@ def load(
             task: MaterialCost(
                 experience=_float(entry.get("experience"), 0.0),
                 items={
-                    str(item): int(_float(quantity, 0.0))
+                    str(item): _float(quantity, 0.0)
                     for item, quantity in _mapping(entry, "items").items()
                     if _float(quantity, 0.0) > 0
                 },

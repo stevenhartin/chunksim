@@ -139,7 +139,13 @@ _FORMAT = "1"
 #: `dps_bridge.enrich_incremental` where the estimate has `recipe_priced`,
 #: `enrich` and the combat rates - two different computations behind one key,
 #: last writer winning.
-_PRICING_MODEL = "3"
+#: 3: `costing/gathering.py` arrived. Its tables ship inside the package, so
+#: adding `PricingDigests.gathering` moved the key for anyone who refetches
+#: them - but not for the entries already stored against the same scrape.
+#: 4: `costing/production.py` arrived, charging a production method for what it
+#: consumes wherever no `{{Recipe}}` reaches it. Same shape as 3 and a bigger
+#: move: Fletching 1 -> 99 went 30.0h to 244.9h on the reference map.
+_PRICING_MODEL = "4"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

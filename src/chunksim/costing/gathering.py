@@ -443,6 +443,17 @@ class Tables:
     #: free over all six tabulated Hunter methods it lands on 18 ticks, which
     #: is not a mechanic, it is the average of three.
     experience: dict[str, dict[str, tuple[float, str]]] = field(default_factory=dict)
+    #: Skill -> lowercased action name -> what one action *consumes*,
+    #: `((item, quantity), ...)` in the calculator's own order.
+    #:
+    #: **Read here and spent in `costing/production.py`**, which is the only
+    #: caller: a gathering rate has nothing to consume, and the same tables
+    #: happen to carry the one pair a production method needs and the export
+    #: does not state. Keeping the two in one file is what stops a second
+    #: scrape of the same eighteen pages.
+    materials: dict[str, dict[str, tuple[tuple[str, float], ...]]] = field(
+        default_factory=dict
+    )
 
     @property
     def empty(self) -> bool:
@@ -481,10 +492,12 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
             cycles[name.lower()] = (float(entry["despawn"]), float(entry["respawn"]))
 
     experience: dict[str, dict[str, tuple[float, str]]] = {}
+    materials: dict[str, dict[str, tuple[tuple[str, float], ...]]] = {}
     for skill, rows in _mapping(raw, "actions").items():
         if not isinstance(rows, list):
             continue
         by_name: dict[str, tuple[float, str]] = {}
+        consumed: dict[str, tuple[tuple[str, float], ...]] = {}
         for row in rows:
             if not isinstance(row, dict):
                 continue
@@ -496,15 +509,35 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
                 by_name.setdefault(
                     action.lower(), (float(paid), str(row.get("kind", "")))
                 )
+                # **The same first-wins rule, and it has to be the same row.**
+                # Taking experience from one duplicate and materials from
+                # another would price an action against a cost it never had.
+                if action.lower() not in consumed:
+                    entries = row.get("materials")
+                    consumed[action.lower()] = tuple(
+                        (str(entry["name"]), float(entry["quantity"]))
+                        for entry in (entries if isinstance(entries, list) else ())
+                        if isinstance(entry, dict)
+                        and isinstance(entry.get("name"), str)
+                        and isinstance(entry.get("quantity"), (int, float))
+                        and float(entry["quantity"]) > 0
+                    )
         if by_name:
             experience[skill] = by_name
+            materials[skill] = consumed
 
     ticks = {
         str(name): float(value)
         for name, value in _mapping(raw, "tool_ticks").items()
         if isinstance(value, (int, float))
     }
-    return Tables(curves=curves, tool_ticks=ticks, cycles=cycles, experience=experience)
+    return Tables(
+        curves=curves,
+        tool_ticks=ticks,
+        cycles=cycles,
+        experience=experience,
+        materials=materials,
+    )
 
 
 def duty_cycle(despawn: float, respawn: float, nodes: float) -> float:

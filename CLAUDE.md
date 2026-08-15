@@ -131,9 +131,9 @@ Each of the first three has already caused a real bug.
   and where a memo outlives a request, as the GUI's `ReferenceBlobs` does, it must be validated
   against what it caches rather than merely remembered.
 
-### The two computed rate layers, and why they layer opposite ways
+### The computed rate layers, and why two of them layer opposite ways
 
-There are now two models that compute a rate the scrape also has an answer for,
+There are two models that compute a rate the scrape also has an answer for,
 and **they sit on opposite sides of it**:
 
 ```
@@ -152,6 +152,25 @@ docstring carries its half:
   at *this* map's level with *this* map's best reachable axe where the guide is
   somebody else's account. So it wins, the same way `dps_bridge` puts a
   simulated fight above a scraped kill rate.
+
+**The third layer is not a rate at all, and that is what makes it compose.**
+`costing/production.py` reads the same `Module:Skill calc` tables the gathering
+model does, for a different column: what one action *consumes*, against the XP
+that action pays. A calculator row carries no ticks, so it can never state a
+rate - it states a **material cost**, which `training.effective_xp_per_hour`
+folds into whichever rate won. That is why it needs no place in the ordering
+above: a published figure keeps the method and simply stops being quoted with
+its materials free.
+
+It is the general form of a correction that used to be written by hand, one
+method at a time, and the numbers say why it was worth generalising: on the
+reference map **Fletching 1 -> 99 went 30.0h to 244.9h** and **Firemaking 35.2h
+to 81.3h**. Both were topped by a method charged nothing for what it burned or
+fletched. The Firemaking case also shows the shape of the bug to watch for -
+the export carries `Burn ~|magic logs|~` *and* `Burn ~|magic logs|~ at a fire`,
+they render to the same words, and while only one of them joined, **the
+uncharged twin outranked the charged one**. A join that misses does not read as
+a gap; it reads as a faster method.
 
 **A modelled rate is not one number**, which is the other thing to know before
 reading `costing/training.py`. A gathering rate is a function of level, so

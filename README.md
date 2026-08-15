@@ -463,6 +463,14 @@ maps are your own work and nothing can recompute them.
    rather than for the dragon axe a training guide assumes, and the rate climbs as you level instead
    of one figure covering the whole climb. Bands from that model are marked `modelled`.
 
+   **The same tables charge a production skill for what it burns or fletches.** A published rate is
+   quoted with the materials to hand — "394,778 an hour burning magic logs" describes the burning,
+   not the tree — which on a chunk map is most of the cost. So a method is priced on what it pays
+   *and* on the time to obtain what it consumes. Both figures are kept: every band carries
+   `published_xp_per_hour` beside the rate it was costed at, which `--export-json` writes out and the
+   GUI's Estimate tab shows. On the reference map this takes Fletching 1→99 from 30.0 to 244.9 hours,
+   and Firemaking from 35.2 to 81.3.
+
    Rebuilding those tables is a developer job and needs the checkout:
 
    ```sh
