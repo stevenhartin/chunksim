@@ -519,12 +519,21 @@ PROFILES: dict[str, SkillProfile] = {
         node_seconds=2.4,
     ),
     # A pickaxe changes how often the game rolls, never whether the roll wins.
+    # **A second row arrived and it disagrees.** `Mine a ~|gem rock|~` joins now
+    # that the task's own span offers the singular the calculator uses against
+    # the export's plural `Gem rocks`, and at `node_seconds` 1.1 it reads 0.73x
+    # where iron reads 1.00x. The constant is *not* refitted on it: gem rocks
+    # come in a cluster you rotate and this model charges each one its full
+    # downtime, so the gap is most likely the mechanic rather than the number -
+    # refitting would move iron off a figure that is right to split a
+    # difference with one that is wrong for a reason.
+
     # **No rock's respawn is published anywhere** - not on the skill page, not
     # in the scenery infobox, not in any Module - so the whole of a rock's
     # downtime is the fitted constant, and it is fitted against a single row.
-    # That is thin and is recorded as thin: it reproduces iron at 1.00x and
-    # nothing else has been able to check it, because the three tabulated
-    # headings (granite, gem rocks, calcified) all fail the experience join.
+    # That is thin, and gem rocks are now the second row rather than a third
+    # heading that fails to join: it reproduces iron at 1.00x and gem rocks at
+    # 0.73x.
     "Mining": SkillProfile(tool_axis="interval", node_seconds=1.1),
     # **A fishing spot does not deplete**; it relocates. Five ticks a roll is
     # the game's rather than a fit - net, bait, harpoon and cage share it - and
@@ -580,6 +589,11 @@ PROFILES: dict[str, SkillProfile] = {
         # A shoal is caught from a boat and the guides quote it that way, so no
         # trip is charged - see `unbanked`.
         loop_at={
+            # **A bream is a leechfin with a different number on it.** Both are
+            # big-net fish; the leechfin has a chart and a calculator row and
+            # the bream has neither, so it borrows the one and takes its loop
+            # from here. Its own experience is stated on its page.
+            "raw bream": "Big net",
             "bluefin shoal": "Trawling",
             "halibut shoal": "Trawling",
             "yellowfin shoal": "Trawling",
@@ -602,6 +616,7 @@ PROFILES: dict[str, SkillProfile] = {
                 "marlin shoal",
             }
         ),
+        assumed_curves={"raw bream": "Leechfin"},
         cascades={
             # **Barbarian fishing, and the order is the mechanic.** The best
             # fish is rolled first and each failure falls through to the next,
@@ -611,6 +626,13 @@ PROFILES: dict[str, SkillProfile] = {
             node: ("Leaping sturgeon", "Leaping salmon", "Leaping trout")
             for node in ("leaping sturgeon", "leaping salmon", "leaping trout")
         },
+        # **The junk spots are left unpriced on purpose too.** Civitas illa
+        # Fortis, The Stranglewood, panning points and the big-net junk loot
+        # are all the same thing - a spot that yields refuse rather than fish,
+        # worth about 2,000 an hour at 99 - so none of them is a training
+        # method and costing one would only put a floor-height band in front of
+        # a reader. Decided, not overlooked.
+        #
         # **Camdozaal is left unpriced on purpose.** Raw guppy, cavefish,
         # tetra and catfish - everything at `Fishing spot (Camdozaal)` - have
         # their experience now, their own `{{Fishing info}}` states it, but no
@@ -1399,7 +1421,7 @@ def _curve_for(
     so a page the wiki really does title `Warrior (Thieving)` matches itself
     first and this can only add a join.
     """
-    keys = _join_keys(challenge, families, _NAME_FIELDS, skill)
+    keys = _join_keys(challenge, families, _NAME_FIELDS, skill, task)
     for key in keys:
         found = tables.curves.get(key.lower())
         if found:
@@ -1407,11 +1429,17 @@ def _curve_for(
     return "", ()
 
 
+#: Upstream's own mark for what a task is about, non-greedy so a name with two
+#: spans yields the one it opens on.
+_SPAN = re.compile(r"~\|(.+?)\|~")
+
+
 def _join_keys(
     challenge: Mapping[str, Any],
     families: Mapping[str, Sequence[str]],
     fields: Sequence[str],
     skill: str = "",
+    task: str = "",
 ) -> tuple[str, ...]:
     """Every whole-string name a challenge offers, most specific first.
 
@@ -1447,6 +1475,14 @@ def _join_keys(
     # Offered after the plain forms, so a page really titled that way still
     # matches itself first.
     keys.extend(key[: -len(" loot")] for key in list(keys) if key.endswith(" loot"))
+    # **Last of all, what the task calls itself.** A handful of challenges name
+    # no object, npc or output at all - `Catch a ~|raw bream|~` states only a
+    # level and a chunk - and upstream's own `~|...|~` span is the only thing
+    # that says what they are about. Offered after every field, so it can add a
+    # join and never change one.
+    span = _SPAN.search(task)
+    if span is not None:
+        keys.append(span.group(1).strip())
     if skill:
         keys.extend(f"{key} ({skill})" for key in list(keys) if "(" not in key)
     return tuple(key for key in dict.fromkeys(keys) if key)
@@ -1483,7 +1519,7 @@ def _experience_for(
     invented wearing a citation.
     """
     by_name = tables.experience.get(skill) or {}
-    keys = _join_keys(challenge, families, _NAME_FIELDS, skill)
+    keys = _join_keys(challenge, families, _NAME_FIELDS, skill, task)
     for key in keys:
         found = by_name.get(key.lower())
         if found:
@@ -1545,11 +1581,12 @@ def _loop_for(
     families: Mapping[str, Sequence[str]],
     challenge: Mapping[str, Any],
     skill: str,
+    task: str = "",
 ) -> str:
     """The loop a profile assigns this node, or `""` to keep the calculator's."""
     if not profile.loop_at:
         return ""
-    for key in _join_keys(challenge, families, _NAME_FIELDS, skill):
+    for key in _join_keys(challenge, families, _NAME_FIELDS, skill, task):
         found = profile.loop_at.get(key.lower())
         if found:
             return found
@@ -1561,11 +1598,12 @@ def _fixed_chance(
     families: Mapping[str, Sequence[str]],
     challenge: Mapping[str, Any],
     skill: str,
+    task: str = "",
 ) -> tuple[str, float, str] | None:
     """`(node, chance, provenance)` where a profile states one outright."""
     if not profile.fixed_chances:
         return None
-    for key in _join_keys(challenge, families, _NAME_FIELDS, skill):
+    for key in _join_keys(challenge, families, _NAME_FIELDS, skill, task):
         found = profile.fixed_chances.get(key.lower())
         if found is not None:
             return key, found[0], found[1]
@@ -1578,6 +1616,7 @@ def _borrowed_curve(
     families: Mapping[str, Sequence[str]],
     challenge: Mapping[str, Any],
     skill: str,
+    task: str = "",
 ) -> tuple[str, str, float, float] | None:
     """`(node, label, low, high)` for a creature borrowing another's chart.
 
@@ -1596,7 +1635,7 @@ def _borrowed_curve(
         return None
     node = ""
     donor_name = ""
-    for key in _join_keys(challenge, families, _NAME_FIELDS, skill):
+    for key in _join_keys(challenge, families, _NAME_FIELDS, skill, task):
         found = profile.assumed_curves.get(key.lower())
         if found:
             node, donor_name = key, found
@@ -1626,6 +1665,7 @@ def _respawn_key(
     families: Mapping[str, Sequence[str]],
     challenge: Mapping[str, Any],
     skill: str,
+    task: str = "",
 ) -> str:
     """The first name a challenge offers that `Tables.respawns` knows.
 
@@ -1633,7 +1673,7 @@ def _respawn_key(
     same keys: not "how often does this succeed" but "how long until there is
     another one".
     """
-    for key in _join_keys(challenge, families, _NAME_FIELDS, skill):
+    for key in _join_keys(challenge, families, _NAME_FIELDS, skill, task):
         if key.lower() in tables.respawns:
             return key
     return ""
@@ -1698,13 +1738,13 @@ def rate_at(
     experience, kind = _experience_for(tables, families, skill, challenge, task)
     if experience <= 0:
         return None
-    kind = _loop_for(profile, families, challenge, skill) or kind
+    kind = _loop_for(profile, families, challenge, skill, task) or kind
 
     node, curves = _curve_for(tables, families, challenge, task, skill)
     label = ""
     provenance = CONFIRMED
-    borrowed = _borrowed_curve(tables, profile, families, challenge, skill)
-    fixed = _fixed_chance(profile, families, challenge, skill)
+    borrowed = _borrowed_curve(tables, profile, families, challenge, skill, task)
+    fixed = _fixed_chance(profile, families, challenge, skill, task)
     if fixed is not None:
         # **A stated chance outranks a chart**, which is the opposite of every
         # other precedence here and is deliberate: a profile only states one
@@ -1733,9 +1773,9 @@ def rate_at(
         # and the pages that *do* carry a chart are the Ape Atoll stalls, which
         # really can fail. So a loop declared certain reads a missing chart as
         # certainty rather than as ignorance.
-        node = _respawn_key(tables, families, challenge, skill) or node
+        node = _respawn_key(tables, families, challenge, skill, task) or node
         if not node:
-            keys = _join_keys(challenge, families, _NAME_FIELDS, skill)
+            keys = _join_keys(challenge, families, _NAME_FIELDS, skill, task)
             node = keys[0] if keys else ""
         if not node:
             return None

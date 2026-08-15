@@ -1462,4 +1462,58 @@ class TestDeepSeaTrawling:
 
     def test_every_shoal_shares_the_shallow_cadence_but_marlin(self) -> None:
         loops = gathering.PROFILES["Fishing"].loop_at
-        assert {loops[node] for node in loops if node != "marlin shoal"} == {"Trawling"}
+        shoals = [node for node in loops if node.endswith("shoal")]
+        assert {loops[node] for node in shoals if node != "marlin shoal"} == {"Trawling"}
+
+
+class TestTaskSpanIsTheLastJoinKey:
+    """What a task calls itself, for the challenges that name nothing else.
+
+    Two shapes needed it. `Catch a ~|raw bream|~` states only a level and a
+    chunk, so no field offers a name at all; and `Mine a ~|gem rock|~` states
+    the export's plural `Gem rocks` where the calculator lists the singular,
+    so its experience never joined. Offered after every field, so it can add a
+    join and never change one.
+    """
+
+    def test_a_challenge_naming_nothing_still_offers_its_span(self) -> None:
+        keys = gathering._join_keys(
+            {"Level": 20}, {}, gathering._NAME_FIELDS, "Fishing",
+            "Catch a ~|raw bream|~",
+        )
+        assert keys[0] == "raw bream"
+
+    def test_the_span_comes_after_every_field(self) -> None:
+        keys = gathering._join_keys(
+            {"Objects": ["Gem rocks"]}, {}, gathering._NAME_FIELDS, "Mining",
+            "Mine a ~|gem rock|~",
+        )
+        assert keys.index("Gem rocks") < keys.index("gem rock")
+
+    def test_no_task_leaves_the_keys_as_they_were(self) -> None:
+        assert gathering._join_keys(
+            {"Objects": ["Willow tree"]}, {}, gathering._NAME_FIELDS, "Woodcutting"
+        ) == ("Willow tree", "Willow tree (Woodcutting)")
+
+
+class TestBreamBorrowsTheLeechfin:
+    def test_it_takes_the_leechfins_curve_and_its_own_experience(self) -> None:
+        profile = gathering.PROFILES["Fishing"]
+        assert profile.assumed_curves["raw bream"] == "Leechfin"
+        assert profile.loop_at["raw bream"] == "Big net"
+
+    def test_the_borrow_opens_where_the_bream_does(self) -> None:
+        tables = gathering.Tables(
+            curves={"leechfin": (("Leechfin", 30.0, 220.0, 78, "confirmed"),)},
+            skill_info={"Fishing": {"raw bream": (20, 20.0)}},
+        )
+        rate = gathering.rate_at(
+            tables, {}, gathering.PROFILES["Fishing"], "Catch a ~|raw bream|~",
+            "Fishing", {"Level": 20, "Primary": True}, 20,
+        )
+        assert rate is not None
+        assert rate.experience == 20.0
+        assert rate.chance == pytest.approx(
+            gathering.success_chance(78, 30.0, 220.0), abs=1 / 256
+        )
+        assert rate.provenance == gathering.INFERRED
