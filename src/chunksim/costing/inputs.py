@@ -41,6 +41,7 @@ from chunksim.costing import (
     implings,
     production,
     recipe_rates,
+    rumours,
 )
 from chunksim.costing import gathering as gathering_model
 from chunksim.costing.estimate import material_seconds
@@ -468,6 +469,10 @@ def _gathered(
     # rate, for the reason Puro-Puro does: the level shape is the point, and the
     # scraped guide figure it refines is one number across twenty levels.
     for skill, methods in herbiboar.methods(blobs.gathering, derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # Rumours pay an exact formula at an invented pace - see
+    # `costing/rumours.py`, whose every band is marked `guess` for it.
+    for skill, methods in rumours.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     return (
         replace(

@@ -62,6 +62,8 @@ The modules, and what each owns:
 - `herbiboar.py` - a puzzle rather than a loop: no chance, no interval, no
   tool, just a published experience-per-level table times a stated trails per
   hour. Stays out of `SkillProfile` for that reason.
+- `rumours.py` - Hunters' Rumours: an exact experience formula at an invented
+  pace, so every band it produces is marked `guess`. The one number to set.
 - `combat_xp.py` - combat XP, which is damage and almost nothing else. Owns the
   three gates and the two credits that each removed a wrong answer.
 - `slayer.py` - Slayer's rate, which is a *distribution* rather than a chosen
