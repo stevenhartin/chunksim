@@ -827,3 +827,41 @@ class TestUnitsAreSpentByWhatTheNodeWaitsFor:
         two = self._rate("cycling", gathering.SkillProfile(roll_ticks=4.0, worked=2.0))
         assert two.duty > one.duty
         assert two.duty == 1.0
+
+
+class TestTheShippedCountsAreConservative:
+    """`worked_at` is a judgement per method, so the default has to be safe.
+
+    Nothing publishes whether you can get back to a node before its restock
+    finishes - it depends on the route, and the export knows only which chunk a
+    thing is in - so the count is written by hand where somebody has decided,
+    and is one everywhere else.
+    """
+
+    def test_a_stall_is_worked_one_at_a_time(self) -> None:
+        # Ardougne market holds several stalls of one type and they are too far
+        # apart to beat the restock, so the count stays one. It is also what
+        # keeps the model reproducing the wiki's own per-stall maximum: a count
+        # here would move every stall off the only figure that checks it.
+        profile = gathering.PROFILES["Thieving"]
+        assert (
+            gathering.units_worked(
+                gathering.Tables(), profile, "Thieving", "Stalls", "Fruit stall", 99
+            )
+            == 1.0
+        )
+
+    def test_only_the_rogues_castle_chest_is_rotated(self) -> None:
+        assert set(gathering.PROFILES["Thieving"].worked_at) == {"chest (rogues' castle)"}
+
+    def test_a_node_nobody_has_judged_waits_out_its_restock(self) -> None:
+        tables = gathering.Tables(
+            experience={"Thieving": {"somewhere": (100.0, "Chests")}},
+            respawns={"somewhere": 60.0},
+        )
+        rate = gathering.rate_at(
+            tables, {}, gathering.PROFILES["Thieving"], "Loot it", "Thieving",
+            {"Level": 1, "Primary": True, "Objects": ["Somewhere"]}, 99,
+        )
+        assert rate is not None
+        assert rate.xp_per_hour == pytest.approx(100.0 * 3600.0 / 60.0)

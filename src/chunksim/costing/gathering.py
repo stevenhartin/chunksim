@@ -72,8 +72,13 @@ default - and `rate_at` spends it against whatever that node makes you wait for:
 
 - a *cycle* node fills its gap, via `duty_cycle`, capped at having no wait. Two
   trees is Woodcutting's fitted answer.
-- a *restock* node divides its wait. Three chests share one room at the Rogues'
-  Castle, so 20.4 seconds of restock becomes 6.8 and stops binding at all.
+- a *restock* node divides its wait, **but only where you can get back before
+  it finishes**. Three chests share one room at the Rogues' Castle, so 20.4
+  seconds of restock becomes 6.8 and stops binding at all; Ardougne market
+  holds several stalls of one type too far apart to be worth the walk, so they
+  wait. That test is a fact about a route rather than about a node, nothing
+  publishes it and the export cannot supply it - see `SkillProfile.worked_at`,
+  which is therefore a hand entry per method and defaults to one.
 - a **simultaneous** loop divides the *rolling*, the only one of the three that
   beats one-at-a-time throughput. Box trapping, net trapping and bird snaring
   run 1 to 5 traps across levels 1 to 80 off the Hunter page's table, with a
@@ -251,10 +256,26 @@ class SkillProfile:
     #: they are resolved, and `rate_at` for the three different ways the answer
     #: can pay off.
     worked: float = 1.0
-    #: Per-node counts, for the places the game puts several of a thing
-    #: together. **A fact about a location rather than about a skill**, which is
-    #: why it is keyed by node: three chests share one room at the Rogues'
-    #: Castle, and nothing about Thieving in general says so.
+    #: Per-node counts, where the game puts several of a thing near enough
+    #: together to be worth walking between.
+    #:
+    #: **Not how many exist - how many you can be back at before the restock
+    #: finishes.** Those are different numbers and the second is the one that
+    #: decides a rate. Ardougne market is the counter-example that makes the
+    #: distinction concrete: it holds several stalls of one type, and they are
+    #: far enough apart that waiting out the restock beats running to the next,
+    #: so the right count there is one however many the map shows. The Rogues'
+    #: Castle is the other way round - three chests in a room, 20.4 seconds
+    #: shared three ways, and the wait stops binding at all.
+    #:
+    #: **Nothing published decides this and the export cannot either**, which is
+    #: why it is a hand entry per method rather than a table. The export says
+    #: only which chunk a thing is in, never how far apart two of them are, and
+    #: no wiki page tabulates "can you get back in time" because the answer
+    #: depends on the route as much as on the node. So each entry is a judgement
+    #: about one training method, written down with its reasoning beside it -
+    #: and an absent entry is the conservative reading, one node and the full
+    #: wait.
     worked_at: Mapping[str, float] = field(default_factory=dict)
     #: Seconds lost per resource for a node whose cycle is **not** published.
     #: A normal tree hands over one log and vanishes, and a rock one ore; the
