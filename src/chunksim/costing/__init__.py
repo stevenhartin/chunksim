@@ -67,6 +67,9 @@ The modules, and what each owns:
   level-carrying formulas.
 - `bats.py` - the Chambers of Xeric bats, where **two** skills gate which one
   you are given and the lower of them decides. Four ticks each, no roll.
+- `stated.py` - the two whose rate is stated rather than computed: a moss
+  lizard's exact experience formula at a guessed pace, and Trouble Brewing,
+  which is a figure and nothing else. Every band from it is marked `guess`.
 - `rumours.py` - Hunters' Rumours: an exact experience formula at an invented
   pace, so every band it produces is marked `guess`. The one number to set.
 - `combat_xp.py` - combat XP, which is damage and almost nothing else. Owns the

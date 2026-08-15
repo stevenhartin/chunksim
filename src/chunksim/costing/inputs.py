@@ -44,6 +44,7 @@ from chunksim.costing import (
     production,
     recipe_rates,
     rumours,
+    stated,
 )
 from chunksim.costing import gathering as gathering_model
 from chunksim.costing.estimate import material_seconds
@@ -484,6 +485,10 @@ def _gathered(
     for skill, methods in forestry.methods(
         blobs.gathering, state.chunk_info, derived.challenges.valid
     ).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # Two activities whose rate is stated rather than computed - see
+    # `costing/stated.py`, whose every band is marked `guess`.
+    for skill, methods in stated.methods(state.chunk_info, derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     for skill, methods in bats.methods(
         blobs.gathering, derived.challenges.valid, at_level.get("Cooking", 1)
