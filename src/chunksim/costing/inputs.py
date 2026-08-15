@@ -35,6 +35,7 @@ from typing import Any, Mapping
 
 from chunksim.costing import (
     aerial,
+    bats,
     combat_xp,
     dps_bridge,
     herbiboar,
@@ -473,6 +474,12 @@ def _gathered(
     # Rumours pay an exact formula at an invented pace - see
     # `costing/rumours.py`, whose every band is marked `guess` for it.
     for skill, methods in rumours.methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **The bats gate on Cooking as well as Hunter**, so this is the one place
+    # a second skill's level has to be handed in - see `costing/bats.py`.
+    for skill, methods in bats.methods(
+        blobs.gathering, derived.challenges.valid, at_level.get("Cooking", 1)
+    ).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     return (
         replace(

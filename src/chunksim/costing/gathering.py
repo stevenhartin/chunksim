@@ -966,10 +966,11 @@ class Tables:
     #: `(name, fishing level, fishing xp, hunter level, hunter xp)` per aerial
     #: catch, for `costing/aerial.py`.
     aerial_fish: tuple[tuple[str, int, float, int, float], ...] = ()
-    #: Lowercased creature page -> experience, off its `{{Hunter info}}`.
+    #: Lowercased creature page -> `(level, experience)`, off its
+    #: `{{Hunter info}}`.
     #: **The fallback when no calculator lists the creature** - see
     #: `_experience_for`.
-    hunter_info: dict[str, float] = field(default_factory=dict)
+    hunter_info: dict[str, tuple[int, float]] = field(default_factory=dict)
     #: Spawn-tier name -> `(impling, share)`, for `costing/implings.py`.
     spawn_tiers: dict[str, tuple[tuple[str, float], ...]] = field(default_factory=dict)
     #: Skill -> loop -> `(level, units)` steps, `""` being the skill's default.
@@ -1081,7 +1082,7 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
     )
 
     hunter_info = {
-        str(name).lower(): float(entry[1])
+        str(name).lower(): (int(entry[0]), float(entry[1]))
         for name, entry in _mapping(raw, "hunter_info").items()
         if isinstance(entry, list) and len(entry) == 2 and float(entry[1]) > 0
     }
@@ -1377,9 +1378,9 @@ def _experience_for(
     # and nowhere else. The loop comes from `loop_at` in that case, since an
     # infobox states a trap rather than a calculator's grouping.
     for key in keys:
-        paid = tables.hunter_info.get(key.lower())
-        if paid:
-            return paid, ""
+        entry = tables.hunter_info.get(key.lower())
+        if entry is not None and entry[1] > 0:
+            return entry[1], ""
     return 0.0, ""
 
 

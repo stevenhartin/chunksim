@@ -1326,7 +1326,7 @@ class TestInfoboxExperienceFallback:
     _TABLES = gathering.Tables(
         curves={"chinchompa (hunter)": (("Grey", 6.0, 268.0, 53, "confirmed"),)},
         experience={"Hunter": {"ferret (hunter)": (115.2, "Box trap")}},
-        hunter_info={"letvek (hunter)": 208.5, "ferret (hunter)": 115.2},
+        hunter_info={"letvek (hunter)": (76, 208.5), "ferret (hunter)": (27, 115.2)},
     )
 
     def _rate(self, node: str, opens: int) -> gathering.NodeRate | None:
