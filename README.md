@@ -512,6 +512,12 @@ maps are your own work and nothing can recompute them.
    never fail, yield four each and respawn in thirty seconds, none of which
    binds - so what the rate measures is six and a half seconds of running per
    pile.
+
+   A few methods are not training methods and the estimator says so rather than
+   offering a bad number: mining an elemental rock pays nothing (it spawns the
+   monster whose drop is the ore), lunar ore's own infobox states zero, a
+   Motherlode rockfall is an obstacle in front of the vein beside it, and
+   panning falls below the 1,000/hr floor anything would be quoted at.
    Sunstone's curve comes from a sentence rather than a chart - "scaling from
    75% success rate at level 50 to a 100% success rate at level 92" - and two
    points fix the game's own interpolation exactly.

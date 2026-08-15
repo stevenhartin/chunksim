@@ -179,3 +179,28 @@ class TestFishingTrawler:
 
     def test_a_map_without_it_gets_nothing(self) -> None:
         assert stated.methods(INFO, {"Fishing": {}}, None, frozenset(), {}) == {}
+
+
+class TestGuardiansOfTheRift:
+    def test_the_ceiling_is_the_cap_times_the_games_times_the_experience(self) -> None:
+        # 250 fragments a game, six games an hour, 5 experience a fragment.
+        assert stated.rift_rate() == 250.0 * 6.0 * 5.0 == 7_500.0
+
+    def test_it_reaches_mining_and_opens_at_one(self) -> None:
+        found = stated.methods(
+            INFO, {"Mining": {stated.RIFT_TASK: True}}, None, frozenset(), {}
+        )["Mining"]
+        assert [m.xp_per_hour for m in found] == [7_500.0]
+        assert found[0].level == 1
+
+    def test_it_is_a_guess_because_a_ceiling_is_not_a_rate(self) -> None:
+        # The cap is arithmetic; "six games an hour" and "mining constantly"
+        # are readings, and a ceiling overstates anyone who stops to do the
+        # rest of the minigame.
+        found = stated.methods(
+            INFO, {"Mining": {stated.RIFT_TASK: True}}, None, frozenset(), {}
+        )["Mining"]
+        assert found[0].match == GUESS
+
+    def test_a_map_that_cannot_reach_the_rift_gets_nothing(self) -> None:
+        assert stated.methods(INFO, {"Mining": {}}, None, frozenset(), {}) == {}

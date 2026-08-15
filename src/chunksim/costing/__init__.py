@@ -76,9 +76,13 @@ The modules, and what each owns:
   the lower of them decides. Four ticks each, no roll.
 - `driftnet.py` - drift net fishing, read as the hourly table the wiki costs
   it as. Pays Hunter and Fishing, and **stops scaling at 70** in both.
-- `stated.py` - the two whose rate is stated rather than computed: a moss
-  lizard's exact experience formula at a guessed pace, and Trouble Brewing,
-  which is a figure and nothing else. Every band from it is marked `guess`.
+- `stated.py` - the methods whose rate is stated rather than computed: a moss
+  lizard's exact experience formula at a guessed pace, the lantern harpoon,
+  Tempoross' harpoon tiers, the Fishing Trawler, Temple Trekking's tomes,
+  Trouble Brewing, and Guardians of the Rift - the last being the one
+  *arithmetic ceiling* here rather than an estimate, 250 fragments a game by
+  six games by 5 experience. Every band from it is marked `guess`, a ceiling
+  included, because what a cap allows is not what a player averages.
 - `rumours.py` - Hunters' Rumours: an exact experience formula at an invented
   pace, so every band it produces is marked `guess`. The one number to set.
 - `combat_xp.py` - combat XP, which is damage and almost nothing else. Owns the

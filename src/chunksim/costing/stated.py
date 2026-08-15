@@ -31,6 +31,15 @@ part was measured and which was chosen.
   figures rather than ones this project read off a page, so `GUESS` - the tier
   *structure* is the solid part and the exact numbers are somebody's estimate.
 
+- **Guardians of the Rift.** The only entry here that is an *arithmetic
+  ceiling* rather than somebody's estimate, and the distinction is worth
+  keeping: a game caps you at 250 guardian fragments however hard you mine, six
+  games fit in an hour, and a fragment pays 5 experience - so 7,500 an hour is
+  what the cap allows, not what a player averages. It is still `GUESS`, because
+  "six games an hour" and "mining constantly" are both readings rather than
+  published figures, and because a ceiling quoted as a rate overstates every
+  player who ever stops to do the rest of the minigame.
+
 - **The Fishing Trawler.** A minigame with nothing tabulated; ten thousand an
   hour is the stated figure and there is no more to it.
 - **Temple Trekking's tomes.** Seven skills have one and every one of them is a
@@ -102,6 +111,15 @@ RAMBLE_QUEST = "~|Darkness of Hallowvale|~ Complete the quest"
 
 #: The category upstream tags a minigame challenge with, and the minigame this
 #: module has a figure for.
+#: Guardians of the Rift, which caps what mining can pay however long you do it.
+RIFT_TASK = "Mine for ~|guardian fragments|~ in Guardians of the Rift"
+#: The per-game fragment cap, the games an hour, and what one fragment pays.
+#: Their product is the ceiling; see the module docstring on why a ceiling is
+#: not a rate.
+RIFT_FRAGMENT_CAP = 250.0
+RIFT_GAMES_PER_HOUR = 6.0
+RIFT_FRAGMENT_EXPERIENCE = 5.0
+
 MINIGAME_CATEGORY = "Minigame"
 TROUBLE_BREWING = "Trouble Brewing"
 
@@ -197,6 +215,11 @@ def tempoross_rate(available: frozenset[str]) -> float:
     return 0.0
 
 
+def rift_rate() -> float:
+    """The most mining in Guardians of the Rift can pay in an hour."""
+    return RIFT_FRAGMENT_CAP * RIFT_GAMES_PER_HOUR * RIFT_FRAGMENT_EXPERIENCE
+
+
 def moss_lizard_experience(level: int) -> float:
     """`floor(0.9 x level)`, capped at ninety. Exact, not fitted."""
     return min(math.floor(MOSS_LIZARD_SHARE * level), MOSS_LIZARD_CAP)
@@ -230,6 +253,16 @@ def methods(
                 )
             )
             break
+    if RIFT_TASK in (valid.get("Mining") or {}):
+        found.setdefault("Mining", []).append(
+            ComputedMethod(
+                method="Guardians of the Rift",
+                xp_per_hour=rift_rate(),
+                level=1,
+                match=GUESS,
+                knob=f"training/{RIFT_TASK}/Mining",
+            )
+        )
     reachable = valid.get("Fishing") or {}
     if TRAWLER_TASK in reachable:
         found.setdefault("Fishing", []).append(
