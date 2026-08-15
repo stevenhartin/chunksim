@@ -464,3 +464,65 @@ class TestSkillDisambiguator:
         )
         assert rate is not None
         assert rate.node == "Carnivorous chinchompa"
+
+
+@pytest.mark.real_export
+class TestTheScrapeIsNotRedundant:
+    """**The measurement that says "do not delete the scrape".**
+
+    The obvious cleanup, once all five gathering skills are modelled, is to
+    drop the training-guide stages that the model outranks. It would be wrong,
+    and the reason is structural rather than a matter of coverage improving
+    later: the model prices a *node, a roll and a chance*, and the methods only
+    the scrape reaches have none of those. Forestry events, Wintertodt bruma
+    roots, Pyramid Plunder rooms, shooting stars, Rogues' Castle chests and
+    barbarian fishing are activities, and no skill calculator states an
+    experience-per-action for an activity because there is no repeatable action
+    to state one for.
+
+    So this asserts the two sets do not nest, per skill. Sizes are not pinned -
+    upstream grows - but zero would kill the claim, which is the rule
+    `CLAUDE.md` sets for a count quoted in defence of an argument.
+    """
+
+    def _split(
+        self, real_export: ChunkInfo, skill: str
+    ) -> tuple[int, int]:
+        """`(modelled, scrape-only)` over every primary method in the export."""
+        from chunksim.costing import inputs
+
+        blobs = inputs.load_reference()
+        scraped, _ = inputs.load_heuristics(real_export, None, blobs)
+        tables = blobs.gathering
+        families = gathering.expand_families(real_export)
+        profile = gathering.PROFILES[skill]
+        best = {"Axe[+]": "Dragon axe", "Pickaxe[+]": "Dragon pickaxe"}
+
+        modelled = scrape_only = 0
+        for task, challenge in (real_export.challenges.get(skill) or {}).items():
+            if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
+                continue
+            family = gathering._tool_family(challenge)
+            rate = gathering.rate_at(
+                tables, families, profile, task, skill, challenge, 99,
+                tool=best.get(family, ""),
+            )
+            has_model = rate is not None and rate.xp_per_hour > 0
+            has_scrape = bool((scraped.training.get(task) or {}).get(skill))
+            modelled += has_model
+            scrape_only += has_scrape and not has_model
+        return modelled, scrape_only
+
+    @pytest.mark.parametrize(
+        "skill", ["Fishing", "Hunter", "Mining", "Thieving", "Woodcutting"]
+    )
+    def test_each_source_reaches_methods_the_other_cannot(
+        self, real_export: ChunkInfo, skill: str
+    ) -> None:
+        modelled, scrape_only = self._split(real_export, skill)
+        assert modelled > 0, f"the model prices nothing for {skill}"
+        assert scrape_only > 0, (
+            f"every {skill} method the scrape prices is now modelled - if that is "
+            "really true the guide stage could go, but check it is not a join "
+            "regression first"
+        )

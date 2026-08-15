@@ -190,6 +190,23 @@ reading `costing/training.py`. A gathering rate is a function of level, so
 `training_bands` then opens each point where it belongs, and a climb reads as one
 method getting faster rather than as ten methods.
 
+**The modelled layer does not make the scrape redundant, and the measurement
+says so.** Once all five gathering skills were modelled the obvious cleanup was
+to drop the training-guide stages the model outranks. It is wrong, structurally
+rather than for now: the model prices a *node, a roll and a chance*, and the
+methods only the scrape reaches have none of the three. Measured over the whole
+export, methods only the scrape can price — Fishing 15, Hunter 16, Mining 18,
+Thieving 19, Woodcutting 4 — are Forestry events, Wintertodt, Pyramid Plunder,
+shooting stars, Rogues' Castle chests and barbarian fishing. **No skill
+calculator states an experience-per-action for an activity, because there is no
+repeatable action to state one for**, which is why 196 of the model's 281
+refusals are "no experience row" and why almost all of them are right. The two
+sources partition the skill: the model owns the loop, the scrape owns the
+activities, and where they overlap the layering already prefers the model — on
+both cached maps every *reachable* gathering method is `modelled`.
+`tests/test_costing_gathering.TestTheScrapeIsNotRedundant` pins it per skill, so
+a later "these look superseded" cannot pass review by looking like a tidy-up.
+
 **`chunksim gather-tables` is the one subcommand that writes into `src/`.**
 Everything else that fetches writes a cache blob a user is expected to refresh;
 this writes `src/chunksim/heuristics/gathering.json`, which is checked in and

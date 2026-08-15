@@ -263,6 +263,14 @@ def parse_courses(text: str) -> tuple[SkillRow, ...]:
 def parse_stalls(text: str) -> tuple[SkillRow, ...]:
     """`Stall/Thievable`: level, xp a steal, and the wiki's own max xp/hour.
 
+    **`remote/gathering.py` reads the same page for the column beside this
+    one.** This takes `Max XP/Hr`; that takes the `Respawn Time` the wiki
+    computed it from, because a restock time is a *floor* the model can put a
+    rolling time against and a maximum is not. They therefore agree exactly
+    wherever a stall is restock-bound, which is every stall the wiki tabulates
+    a rate for - an identity rather than a corroboration, and
+    `costing/gathering.py` says so where it matters.
+
     The last column is already `3600 / respawn * xp`, so the arithmetic is
     upstream's rather than a second copy of it here.
     """

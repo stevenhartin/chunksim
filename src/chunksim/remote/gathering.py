@@ -58,6 +58,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from chunksim.remote.skill_tables import STALLS_PAGE
 from chunksim.remote.skillcalc import SKILL_CALC_PAGES, CalcRow, parse_rows
 from chunksim.remote.wikitable import column_index, rows, table_with
 
@@ -72,14 +73,24 @@ WOODCUTTING_PAGE = "Woodcutting"
 #: The template every success curve is written as.
 SUCCESS_TEMPLATE = "Skilling success chart"
 
-#: The thievable-stall table, transcluded into `Stall` as `{{/Thievable}}`.
-#: **The subpage rather than the article**, because a transclusion is not in
-#: the article's own wikitext and the parent page carries only the template
-#: call.
-STALL_PAGE = "Stall/Thievable"
-
 #: The Hunter skill page, for its `Multiple traps` table.
 HUNTER_PAGE = "Hunter"
+
+#: The thievable-stall table - **the same page `remote/skill_tables.py` reads,
+#: and imported from there rather than spelled twice.** It is a transclusion,
+#: `{{/Thievable}}` inside `Stall`, so the subpage is what has to be fetched;
+#: getting that wrong once is enough, and a rename upstream must not be able to
+#: fix one reader and leave the other on a 404.
+#:
+#: **Two columns, two answers, and that is the whole relationship between this
+#: model and the scrape.** `skill_tables.parse_stalls` reads the `Max XP/Hr`
+#: column, which the wiki computes as `3600 / respawn * xp`; this reads the
+#: `Respawn Time` column the wiki computed it *from*. So the two agree exactly
+#: by construction where a stall is restock-bound, and differ only where the
+#: rolling is slower than the restock - which is the half a maximum cannot
+#: express. See `costing/gathering.py` on why that agreement is an identity
+#: rather than evidence.
+STALL_PAGE = STALLS_PAGE
 
 #: One `{{Skilling success chart|...}}` invocation. Matched non-greedily and
 #: without nesting support on purpose: the template takes flat scalar
