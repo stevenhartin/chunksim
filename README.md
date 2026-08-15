@@ -506,6 +506,12 @@ maps are your own work and nothing can recompute them.
    rocks are mined with Jim's wet cloth for 40-60k/hr and are charted nowhere,
    so they keep the observed figure; the deposit beside them, which the same
    page calls AFK, is modelled from its own 6-9k.
+
+   And where a method is priced by how far you *run* rather than how fast you
+   swing, that is modelled too: sixteen ash piles scattered over a volcano
+   never fail, yield four each and respawn in thirty seconds, none of which
+   binds - so what the rate measures is six and a half seconds of running per
+   pile.
    Sunstone's curve comes from a sentence rather than a chart - "scaling from
    75% success rate at level 50 to a 100% success rate at level 92" - and two
    points fix the game's own interpolation exactly.

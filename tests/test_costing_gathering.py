@@ -1103,6 +1103,32 @@ class TestUnitsAreSpentByWhatTheNodeWaitsFor:
         assert rate.duty == pytest.approx(1.0)
         assert rate.xp_per_hour == pytest.approx(100.0 * 3600.0 / (2.0 * 0.6))
 
+    def test_a_per_node_walk_replaces_the_skill_default(self) -> None:
+        # **`node_seconds` is one tick because it was calibrated on a cluster.**
+        # Ash piles are sixteen spots over a volcano and the running is the
+        # method; charged the iron-rock tick they read 14,400/hr against a
+        # published 10,833.
+        # `worked` high enough that the fixture's 60-second respawn cannot
+        # bind, so what is left to measure is the walk.
+        near = gathering.SkillProfile(
+            roll_ticks=2.0, node_seconds=0.6, hops=True, worked=100.0
+        )
+        far = dataclasses.replace(near, node_seconds_at={"restocking": 6.5})
+        assert self._rate("restocking", far).xp_per_hour < self._rate(
+            "restocking", near
+        ).xp_per_hour
+
+    def test_a_recovered_walk_caps_the_provenance(self) -> None:
+        # A confirmed chance divided by a fitted walk is not a confirmed rate.
+        profile = gathering.SkillProfile(
+            roll_ticks=2.0,
+            node_seconds_at={"restocking": 6.5},
+            hops=True,
+            worked=100.0,
+            fixed_chances={"restocking": (1.0, gathering.CONFIRMED)},
+        )
+        assert self._rate("restocking", profile).provenance == gathering.INFERRED
+
     def test_rotation_never_divides_the_rolling(self) -> None:
         # A restocking node worked three ways still opens one at a time, so
         # once the wait stops binding the count buys nothing more.

@@ -543,6 +543,74 @@ def fit_stated_chances(map_id: str = "fray", skill: str = "Mining") -> None:
         )
 
 
+#: Nodes whose cost is the **walk** rather than the roll, as
+#: `node -> (where it says so, level, tool, xp/hr)`.
+#:
+#: **The same one-parameter-one-observation shape as `STATED_CHANCES`, varying
+#: a different field.** Volcanic ash is the case and the only one so far: the
+#: chance is certain, the yield is published, the respawn is published, and
+#: none of them binds - what is left is how far you run between sixteen ash
+#: piles spread over a volcano, which no page states in seconds.
+#:
+#: The target is the `Volcanic ash` page's own "at high Mining levels, it is
+#: possible to obtain over 6,500 ash per hour". Experience is 10 per drop
+#: "regardless of the number of ash mined at once" and the yield is six at
+#: level 97, so 6,500 ash is 1,083 mines and 10,833 experience. **The
+#: money-making guide's 5,000 is deliberately not the target** - it is quoted
+#: with a bank run inside it, which is the contamination `TRUSTED_SOURCES`
+#: excludes `mmg:` rows for.
+#: **Keyed by the name the node actually resolves under**, which is not always
+#: the one you would name it by: `Mine ~|volcanic ash|~` states `Output:
+#: Volcanic ash` before `Objects: Ash pile`, so the resolved node is the ash
+#: and not the pile. Keyed on the pile alone this fit varied a field nothing
+#: read and settled on a walk of zero, reporting 1.33x as though the walk did
+#: not help.
+STATED_WALKS: dict[str, tuple[str, int, str, float]] = {
+    "volcanic ash": (
+        "Volcanic ash (6,500 ash/hr at 97+, 6 per mine)", 97, "Dragon pickaxe", 10_833.0
+    ),
+}
+
+
+def fit_stated_walks(map_id: str = "fray", skill: str = "Mining") -> None:
+    """Recover how long a node's walk is from one published hourly figure."""
+    tables = gathering.load_tables(read_gathering())
+    args = argparse.Namespace(map_id=map_id, chunkinfo=None, recompute=False)
+    state, _unlocked = load_state(args)
+    families = gathering.expand_families(state.chunk_info)
+    base = gathering.PROFILES[skill]
+    challenges = state.chunk_info.challenges.get(skill) or {}
+
+    for node, (source, level, tool, published) in sorted(STATED_WALKS.items()):
+        task, challenge = _task_for(gathering, families, challenges, skill, node)
+        if challenge is None:
+            print(f"{node}: no challenge in this map names it\n")
+            continue
+
+        def modelled(walk: float) -> float:
+            candidate = replace(
+                base, node_seconds_at={**base.node_seconds_at, node: walk}
+            )
+            rate = gathering.rate_at(
+                tables, families, candidate, task, skill, challenge, level, tool=tool
+            )
+            return 0.0 if rate is None else rate.xp_per_hour
+
+        best = min(
+            ((abs(math.log(got / published)), walk)
+             for step in range(0, 400)
+             if (got := modelled(walk := step / 10.0)) > 0),
+            key=lambda found: found[0],
+        )
+        walk = best[1]
+        got = modelled(walk)
+        print(
+            f"{node}: walk {walk}s per depletion   modelled {got:,.0f} against "
+            f"{published:,.0f} at level {level} ({tool}, {source})   "
+            f"{got / published:.2f}x\n"
+        )
+
+
 def check_stated_rates(map_id: str = "fray", skill: str = "Mining") -> None:
     """Ask the model the question a page already answered."""
     tables = gathering.load_tables(read_gathering())
@@ -675,6 +743,7 @@ def main() -> None:
         check_stated_rates(args.map)
         fit_stated_curves(args.map)
         fit_stated_chances(args.map)
+        fit_stated_walks(args.map)
     else:
         fit(args.map)
 

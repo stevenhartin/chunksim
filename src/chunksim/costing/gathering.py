@@ -327,6 +327,19 @@ class SkillProfile:
     #: this is what standing up and starting on the next one costs. `0.0` for
     #: the skills whose nodes do not deplete at all.
     node_seconds: float = 0.0
+    #: Per-node hops, for a node you have to *run* to rather than step to.
+    #:
+    #: **`node_seconds` is one tick because it was calibrated on a cluster.**
+    #: Three iron rocks are a step apart, so standing up and starting on the
+    #: next one costs about nothing. Ash piles are sixteen spots scattered over
+    #: the whole Fossil Island Volcano, and the running between them *is* the
+    #: method - which is why the model read 14,400/hr charging them the same
+    #: tick, against a wiki figure implying 10,833 and a money-making guide
+    #: giving 5,000.
+    #:
+    #: Divided by `yields` like the default hop, because you run once per
+    #: depletion and not once per resource.
+    node_seconds_at: Mapping[str, float] = field(default_factory=dict)
     #: Whether that charge applies **as well as** a published respawn, rather
     #: than only in place of one.
     #:
@@ -606,7 +619,7 @@ class SkillProfile:
 #: | Hunter | 16 | 1.00x | 12/16 |
 #: | Thieving | 14 | 1.00x | 14/14 |
 #: | Mining | 4 | 0.86x | 1/4 |
-#: | Mining (`--stated-curves`) | 20 | 1.00x | 20/20 |
+#: | Mining (`--stated-curves`) | 21 | 1.00x | 21/21 |
 #:
 #: **Read the last three rows the opposite way round from how they look.**
 #: Thieving's 14/14 is an identity rather than evidence - the model's stall
@@ -765,6 +778,10 @@ PROFILES: dict[str, SkillProfile] = {
             # halves are the mechanic and the tool table, and they multiply out
             # to the observed figure on their own.
             "salt deposit": (1.0, CONFIRMED),
+            # An ash pile never fails either; what it costs is the walk to the
+            # next one. See `node_seconds_at`, which is where that half lives.
+            "ash pile": (1.0, CONFIRMED),
+            "volcanic ash": (1.0, CONFIRMED),
         },
         # The same rock, from the same page: it holds "an unlimited supply of
         # essence and never deplete". Its `{{Mining info}}` `time` is `N/A`,
@@ -826,6 +843,20 @@ PROFILES: dict[str, SkillProfile] = {
         # Four ticks, flat, for a spot dug with a trowel rather than swung at
         # with a pickaxe. See `SkillProfile.fixed_interval`.
         fixed_interval={"soil": 4.0, "amalgamation": 2.5},
+        # **Six and a half seconds of running per pile, and the running is the
+        # method.** Ash piles are certain, yield four, and respawn in thirty
+        # seconds - none of which binds, because sixteen of them scattered over
+        # the Fossil Island Volcano are cycled in minutes. What is left is the
+        # distance, which no page states in seconds, so it is recovered from
+        # one that states the outcome: "at high Mining levels, it is possible
+        # to obtain over 6,500 ash per hour", against 10 experience per drop
+        # "regardless of the number of ash mined at once" and six ash a mine at
+        # 97. That is 10,833/hr, and 6.5 seconds reproduces it.
+        #
+        # One parameter against one observation, the weakest shape here - but
+        # the alternative was charging a volcano the same tick that three
+        # touching iron rocks cost, which read 14,400/hr.
+        node_seconds_at={"volcanic ash": 6.5, "ash pile": 6.5},
         # **Refused because it is not mining**, which is the distinction
         # `refuses` exists for. A rockfall in the Motherlode Mine is an
         # obstacle in the player's way - clearing one is what lets the ore vein
@@ -853,6 +884,23 @@ PROFILES: dict[str, SkillProfile] = {
             # priced at 43,864/hr. It is a quest-line object paying 15, with no
             # chart of its own, so the honest answer is nothing.
             "sunstone monolith",
+            # **Legitimately worth nothing.** `Lunar ore`'s own infobox states
+            # `xp = 0`, so the model refuses it for want of a numerator - and
+            # that reads as a gap rather than as the answer. Naming it here
+            # says the difference: there is nothing missing, mining it simply
+            # pays no experience and it is not a training method.
+            "lunar ore",
+            # **Not a rock so much as a spawner.** Mining an elemental rock
+            # summons a monster; killing the monster is what drops the ore, and
+            # the swing itself pays nothing. Refused for the same reason lunar
+            # ore is - the zero is the answer, not a missing figure - and the
+            # combat half is not this module's to price.
+            "rock (elemental)",
+            # **Below the floor this project will quote.** Panning pays so
+            # little that the estimator's own 1,000/hr default would outrank
+            # anything honest here, so it is not offered as a training method
+            # at all rather than offered as the worst one.
+            "panning point",
         }),
         stated_curves={
             "rubium rocks": (69.0, 247.5),
@@ -948,6 +996,14 @@ PROFILES: dict[str, SkillProfile] = {
             "efh salt rocks": 7.0,
             "basalt rock": 7.0,
             "basalt rocks (mining)": 7.0,
+            # **"Unlike other ore rocks, ash piles can be mined several times
+            # before being depleted. Ash piles have a 1/4 chance of being
+            # depleted when they are mined."** Four mines a pile, and it is
+            # what makes the 30-second respawn stop binding entirely - sixteen
+            # piles emptied every fourth swing are cycled in minutes, so the
+            # limit is the mining and the running and never the wait.
+            "ash pile": 4.0,
+            "volcanic ash": 4.0,
         },
         # 70 seconds of yielding against a 30-second respawn - the guide states
         # the first, the infobox the second. See `SkillProfile.stated_cycles`.
@@ -2500,6 +2556,13 @@ def rate_at(
     # nothing.
     if kind in profile.inferred_loops and provenance == CONFIRMED:
         provenance = INFERRED
+    # **A recovered walk caps the rate the same way a borrowed interval does.**
+    # Volcanic ash's chance is confirmed - the pile never fails - but its
+    # 6.5-second walk was recovered from one published figure, and a rate is
+    # only as good as its weakest input. Reporting `confirmed` because half of
+    # it was measured is the exact mistake provenance exists to stop.
+    if node.lower() in profile.node_seconds_at and provenance == CONFIRMED:
+        provenance = INFERRED
 
     # **Working several of a node pays off three different ways, and which one
     # is decided by what the node makes you wait for.** All three spend the
@@ -2548,7 +2611,8 @@ def rate_at(
     if cycle is not None:
         duty = duty_cycle(cycle[0], cycle[1], units)
     elif profile.depletes and not endless and (restock is None or profile.hops):
-        per_resource = profile.node_seconds / per_depletion
+        hop = profile.node_seconds_at.get(node.lower(), profile.node_seconds)
+        per_resource = hop / per_depletion
 
     # **Several units of the loop at once**, where the game publishes how
     # many. Divides the rolling outright, unlike `duty`, which only fills a
