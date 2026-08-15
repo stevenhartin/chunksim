@@ -495,7 +495,7 @@ def _gathered(
         blobs.gathering, derived.challenges.valid
     ).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
-    for skill, methods in stated.methods(state.chunk_info, derived.challenges.valid).items():
+    for skill, methods in stated.methods(state.chunk_info, derived.challenges.valid, blobs.gathering).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     for skill, methods in chambers.methods(
         blobs.gathering, derived.challenges.valid, at_level.get("Cooking", 1)

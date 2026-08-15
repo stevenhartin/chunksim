@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from chunksim.costing import stated
-from chunksim.costing.gathering import GUESS
+from chunksim.costing.gathering import GUESS, Tables
 from chunksim.model.chunkinfo import ChunkInfo
 
 INFO = ChunkInfo({"challenges": {}})
@@ -59,3 +59,53 @@ class TestTroubleBrewing:
 
     def test_a_map_reaching_neither_gets_nothing(self) -> None:
         assert stated.methods(INFO, {"Hunter": {}}) == {}
+
+
+class TestLanternHarpoon:
+    """Two squid off one spot, with the split read and the pace guessed."""
+
+    _TABLES = Tables(
+        skill_info={
+            "Fishing": {
+                "raw swordtip squid": (52, 55.0),
+                "raw jumbo squid": (69, 75.0),
+            }
+        }
+    )
+    _VALID = {"Fishing": {stated.LANTERN_TASKS[0][0]: True}}
+
+    def test_only_the_lesser_squid_before_the_jumbo_opens(self) -> None:
+        assert stated.lantern_swordtip_share(60) == 1.0
+
+    def test_the_published_split_is_reproduced_at_both_ends(self) -> None:
+        # The page states 69% swordtip at 69 Fishing and 62% at 91.
+        assert stated.lantern_swordtip_share(69) == pytest.approx(0.69)
+        assert stated.lantern_swordtip_share(91) == pytest.approx(0.62)
+
+    def test_the_share_keeps_drifting_past_the_second_point(self) -> None:
+        # Two points describe a drift rather than a ceiling.
+        assert stated.lantern_swordtip_share(99) < stated.lantern_swordtip_share(91)
+
+    def test_the_pace_is_held_inside_the_levels_it_was_quoted_at(self) -> None:
+        assert stated.lantern_catches_per_hour(1) == 250.0
+        assert stated.lantern_catches_per_hour(120) == 400.0
+
+    def test_the_rate_is_the_pace_times_the_blended_experience(self) -> None:
+        share = stated.lantern_swordtip_share(99)
+        assert stated.lantern_rate(self._TABLES, 99) == pytest.approx(
+            400.0 * (share * 55.0 + (1 - share) * 75.0)
+        )
+
+    def test_it_is_a_guess_because_the_pace_is(self) -> None:
+        found = stated.methods(INFO, self._VALID, self._TABLES)["Fishing"]
+        assert {method.match for method in found} == {GUESS}
+
+    def test_it_opens_where_the_spot_does(self) -> None:
+        found = stated.methods(INFO, self._VALID, self._TABLES)["Fishing"]
+        assert min(method.level or 0 for method in found) == stated.LANTERN_OPENS
+
+    def test_no_experience_table_prices_nothing(self) -> None:
+        assert stated.lantern_rate(Tables(), 99) == 0.0
+
+    def test_a_map_without_the_spot_gets_nothing(self) -> None:
+        assert "Fishing" not in stated.methods(INFO, {"Fishing": {}}, self._TABLES)

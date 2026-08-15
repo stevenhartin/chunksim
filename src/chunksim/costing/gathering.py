@@ -611,9 +611,10 @@ PROFILES: dict[str, SkillProfile] = {
             node: ("Leaping sturgeon", "Leaping salmon", "Leaping trout")
             for node in ("leaping sturgeon", "leaping salmon", "leaping trout")
         },
-        # **Camdozaal is left unpriced on purpose.** Raw guppy, cavefish and
-        # tetra have their experience now - their own `{{Fishing info}}` states
-        # it - but no `{{Skilling success chart}}` exists for any of them and no
+        # **Camdozaal is left unpriced on purpose.** Raw guppy, cavefish,
+        # tetra and catfish - everything at `Fishing spot (Camdozaal)` - have
+        # their experience now, their own `{{Fishing info}}` states it, but no
+        # `{{Skilling success chart}}` exists for any of them and no
         # guide costs them, so a rate would be invented rather than read. They
         # are also among the slowest methods in the skill, so nothing would
         # ever pick one: the cost of leaving them is a gap in the coverage
