@@ -500,6 +500,7 @@ def _gathered(
         derived.challenges.valid,
         blobs.gathering,
         frozenset(derived.challenges.available_items),
+        state.completed_challenges.get("Quest") or {},
     ).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     for skill, methods in chambers.methods(

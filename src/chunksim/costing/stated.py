@@ -31,6 +31,15 @@ part was measured and which was chosen.
   figures rather than ones this project read off a page, so `GUESS` - the tier
   *structure* is the solid part and the exact numbers are somebody's estimate.
 
+- **The Fishing Trawler.** A minigame with nothing tabulated; ten thousand an
+  hour is the stated figure and there is no more to it.
+- **Temple Trekking's tomes.** Seven skills have one and every one of them is a
+  viable way to train that skill, at 2,500 an hour - and **the rate doubles if
+  the player has finished Darkness of Hallowvale**, because Burgh de Rott
+  Ramble is the same trek run in reverse and twice as quickly. That is the one
+  place in this module where a *quest* decides a rate, and the export records
+  it: `completed_challenges["Quest"]` holds the completion.
+
 **Why they are not in `gathering.PROFILES`.** Neither has a node, a chance or
 an interval, and a moss lizard's experience is a function rather than a table
 entry - shaping either like the things that do have those would invite a
@@ -71,6 +80,25 @@ TEMPOROSS_TIERS: tuple[tuple[tuple[str, ...], float], ...] = (
     (("Dragon harpoon",), 85_000.0),
     (("Harpoon", "Barb-tail harpoon"), 80_000.0),
 )
+
+#: The Fishing Trawler, which is a minigame and nothing else.
+TRAWLER_TASK = "Train fishing on the ~|Fishing Trawler|~"
+TRAWLER_OPENS = 15
+TRAWLER_PER_HOUR = 10_000.0
+
+#: What every Temple Trekking tome challenge ends with. Seven skills carry one
+#: - Agility, Firemaking, Fishing, Mining, Slayer, Thieving, Woodcutting - and
+#: reading the tome trains that skill, so the method is the trek itself.
+TOME_SUFFIX = "tome|~ from Temple Trekking"
+
+#: The trek's rate, and the rate once the Ramble is unlocked. **Doubling is the
+#: whole of the difference**: Burgh de Rott Ramble is the same journey run in
+#: reverse and twice as fast, so an hour buys two treks' worth of tomes.
+TOME_PER_HOUR = 2_500.0
+TOME_RAMBLE_PER_HOUR = 5_000.0
+
+#: The quest that unlocks the Ramble, as the export's `Quest` branch names it.
+RAMBLE_QUEST = "~|Darkness of Hallowvale|~ Complete the quest"
 
 #: The category upstream tags a minigame challenge with, and the minigame this
 #: module has a figure for.
@@ -147,6 +175,15 @@ def lantern_rate(tables: Tables, level: int) -> float:
     return lantern_catches_per_hour(level) * (share * swordtip + (1.0 - share) * jumbo)
 
 
+def tome_rate(completed_quests: Mapping[str, object]) -> float:
+    """Experience an hour from a Temple Trekking tome.
+
+    Doubled where Darkness of Hallowvale is finished, which is what unlocks
+    Burgh de Rott Ramble - the same trek in reverse, at twice the pace.
+    """
+    return TOME_RAMBLE_PER_HOUR if RAMBLE_QUEST in completed_quests else TOME_PER_HOUR
+
+
 def tempoross_rate(available: frozenset[str]) -> float:
     """Experience an hour with the best harpoon this map can reach, or `0.0`.
 
@@ -170,10 +207,40 @@ def methods(
     valid: Mapping[str, Mapping[str, object]],
     tables: Tables | None = None,
     available: frozenset[str] | None = None,
+    completed_quests: Mapping[str, object] | None = None,
 ) -> dict[str, tuple[ComputedMethod, ...]]:
     """`{skill: (...)}` for whichever of these a map can reach."""
     found: dict[str, list[ComputedMethod]] = {}
+    quests = completed_quests or {}
+    # **Seven skills, one activity.** Reading a tome trains the skill it names,
+    # so each skill's challenge carries the trek's own rate.
+    for skill, tasks in valid.items():
+        if skill in NOT_SKILLS:
+            continue
+        for task in tasks:
+            if not task.endswith(TOME_SUFFIX):
+                continue
+            found.setdefault(skill, []).append(
+                ComputedMethod(
+                    method="Temple Trekking",
+                    xp_per_hour=tome_rate(quests),
+                    level=1,
+                    match=GUESS,
+                    knob=f"training/{task}/{skill}",
+                )
+            )
+            break
     reachable = valid.get("Fishing") or {}
+    if TRAWLER_TASK in reachable:
+        found.setdefault("Fishing", []).append(
+            ComputedMethod(
+                method="Fishing Trawler",
+                xp_per_hour=TRAWLER_PER_HOUR,
+                level=TRAWLER_OPENS,
+                match=GUESS,
+                knob=f"training/{TRAWLER_TASK}/Fishing",
+            )
+        )
     if TEMPOROSS_TASK in reachable:
         paid = tempoross_rate(available or frozenset())
         if paid > 0:

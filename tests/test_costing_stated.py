@@ -138,3 +138,44 @@ class TestTempoross:
     def test_a_stated_figure_is_marked_as_one(self) -> None:
         found = stated.methods(INFO, self._VALID, None, frozenset({"Harpoon"}))["Fishing"]
         assert {method.match for method in found} == {GUESS}
+
+
+class TestTempleTrekking:
+    _VALID = {
+        "Woodcutting": {"Read a ~|woodcutting tome|~ from Temple Trekking": True},
+        "Slayer": {"Read a ~|slayer tome|~ from Temple Trekking": True},
+        "Extra": {"Read a ~|nonsense tome|~ from Temple Trekking": True},
+    }
+
+    def test_every_skill_with_a_tome_can_train_on_it(self) -> None:
+        found = stated.methods(INFO, self._VALID, None, frozenset(), {})
+        assert {"Woodcutting", "Slayer"} <= set(found)
+
+    def test_the_ramble_doubles_it(self) -> None:
+        # Burgh de Rott Ramble is the same trek in reverse at twice the pace,
+        # and finishing Darkness of Hallowvale is what unlocks it.
+        plain = stated.methods(INFO, self._VALID, None, frozenset(), {})["Slayer"]
+        ramble = stated.methods(
+            INFO, self._VALID, None, frozenset(), {stated.RAMBLE_QUEST: True}
+        )["Slayer"]
+        assert plain[0].xp_per_hour == stated.TOME_PER_HOUR
+        assert ramble[0].xp_per_hour == 2 * plain[0].xp_per_hour
+
+    def test_a_non_skill_branch_gets_no_tome(self) -> None:
+        assert "Extra" not in stated.methods(INFO, self._VALID, None, frozenset(), {})
+
+    def test_the_quest_is_read_from_the_export_branch(self) -> None:
+        assert stated.tome_rate({}) == stated.TOME_PER_HOUR
+        assert stated.tome_rate({stated.RAMBLE_QUEST: True}) == stated.TOME_RAMBLE_PER_HOUR
+
+
+class TestFishingTrawler:
+    def test_it_is_a_flat_figure(self) -> None:
+        found = stated.methods(
+            INFO, {"Fishing": {stated.TRAWLER_TASK: True}}, None, frozenset(), {}
+        )["Fishing"]
+        assert [m.xp_per_hour for m in found] == [stated.TRAWLER_PER_HOUR]
+        assert found[0].level == stated.TRAWLER_OPENS
+
+    def test_a_map_without_it_gets_nothing(self) -> None:
+        assert stated.methods(INFO, {"Fishing": {}}, None, frozenset(), {}) == {}
