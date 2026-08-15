@@ -129,6 +129,13 @@ downstream could tell the three apart, and the scraped tables carry it too so
 the file says what it is. There are three guesses today, all of them pitfall
 cats, and they are the first thing to replace.
 
+**A rate is only as good as its weakest half**, so an interval borrowed from a
+sibling loop caps the provenance too: rabbit snaring has a measured success
+chance and box trapping's cadence, and reports `inferred` for it. Where the
+calculator's own `type` is blank or a grab-bag, `loop_at` says which loop a node
+really belongs to - the export names the trap in `Items`, which is the better
+authority than a column meant for grouping a table.
+
 **A curve can be borrowed, which is one of two places this model assumes rather
 than reads.** The wiki keeps `Category:Needs skilling success chart` - its own list
 of what nobody has measured - and three butterflies on it are methods a map can
@@ -365,6 +372,23 @@ class SkillProfile:
     #: because the loop it belongs to (`Miscellaneous`) is a grab-bag that also
     #: holds cage fishing, which really is banked.
     unbanked: frozenset[str] = frozenset()
+    #: Node -> the loop it really belongs to, overriding the calculator's own
+    #: `type`.
+    #:
+    #: **The calculator's grouping is a display choice and sometimes it is
+    #: wrong.** A tropical wagtail is caught in a bird snare - the export says
+    #: so in its `Items` - and the calculator leaves its `type` blank; a white
+    #: rabbit is rabbit snaring and the calculator files it under `Other`
+    #: beside an imp, which is a different activity entirely. Neither is a
+    #: judgement about mechanics, so neither should decide which interval
+    #: applies.
+    loop_at: Mapping[str, str] = field(default_factory=dict)
+    #: Loops whose interval is **borrowed** from a sibling rather than fitted
+    #: or read. Every rate they produce is `INFERRED` at best, however well
+    #: measured its success chance is - a rate is only as good as its weakest
+    #: input, and saying `confirmed` because half of it was measured would be
+    #: the exact mistake provenance exists to stop.
+    inferred_loops: frozenset[str] = frozenset()
     #: Node -> `(chance, provenance)`, for a creature whose odds are stated in
     #: prose or are not stated at all.
     #:
@@ -613,7 +637,26 @@ PROFILES: dict[str, SkillProfile] = {
             # into a pit: 30.0 ticks off the moonlight figure and 27.3 off the
             # sunlight one, which 28.5 splits at 1.05x and 0.96x.
             "Pitfall": 28.5,
+            # **Borrowed from box trapping, not fitted**, because nothing
+            # publishes a rabbit-snaring rate to fit against. The Hunter page
+            # groups rabbit snaring with box, net and bird as the four loops
+            # run several traps at a time, so a rabbit approaching a snare is
+            # taken to happen as often as a chinchompa approaching a box. That
+            # makes every white-rabbit rate `INFERRED` - see `inferred_loops`.
+            "Rabbit snare": 101.0,
         },
+        # **What the calculator groups by is not always what the game does.**
+        # The export names the trap in each challenge's `Items`, which is the
+        # better authority: a tropical wagtail carries `Bird snare` where the
+        # calculator states no loop at all, and a white rabbit carries
+        # `Rabbit snare` where the calculator files it under `Other` next to an
+        # imp.
+        loop_at={
+            "tropical wagtail": "Bird snare",
+            "rabbit hole": "Rabbit snare",
+            "white rabbit": "Rabbit snare",
+        },
+        inferred_loops=frozenset({"Rabbit snare"}),
         # **The pitfall five, and the two kinds of number in one place.** The
         # antelope pages state the odds outright - "players will always succeed
         # in hunting sunlight antelopes" - so those are readings. The three
@@ -667,7 +710,7 @@ PROFILES: dict[str, SkillProfile] = {
         ),
         certain_kinds=frozenset({"Crab trapping"}),
         parallel_kinds=frozenset(
-            {"Box trap", "Net trapping", "Bird snare", "Crab trapping"}
+            {"Box trap", "Net trapping", "Bird snare", "Rabbit snare", "Crab trapping"}
         ),
         parallel_bonus={
             "black chinchompa (hunter)": 1.0,
@@ -1287,6 +1330,22 @@ def _cascade(
     return marginal, expected / marginal, 1.0 - survive
 
 
+def _loop_for(
+    profile: SkillProfile,
+    families: Mapping[str, Sequence[str]],
+    challenge: Mapping[str, Any],
+    skill: str,
+) -> str:
+    """The loop a profile assigns this node, or `""` to keep the calculator's."""
+    if not profile.loop_at:
+        return ""
+    for key in _join_keys(challenge, families, ("Output", "Objects", "NPCs"), skill):
+        found = profile.loop_at.get(key.lower())
+        if found:
+            return found
+    return ""
+
+
 def _fixed_chance(
     profile: SkillProfile,
     families: Mapping[str, Sequence[str]],
@@ -1407,6 +1466,7 @@ def rate_at(
     experience, kind = _experience_for(tables, families, skill, challenge, task)
     if experience <= 0:
         return None
+    kind = _loop_for(profile, families, challenge, skill) or kind
 
     node, curves = _curve_for(tables, families, challenge, task, skill)
     label = ""
@@ -1478,6 +1538,13 @@ def rate_at(
     units = units_worked(tables, profile, skill, kind, node, level)
     if units <= 0:
         return None
+
+    # **A borrowed interval caps how good the whole rate can be.** See
+    # `inferred_loops`: a measured chance divided by a guessed cadence is not a
+    # measurement, and reporting it as one would be worse than reporting
+    # nothing.
+    if kind in profile.inferred_loops and provenance == CONFIRMED:
+        provenance = INFERRED
 
     # **Working several of a node pays off three different ways, and which one
     # is decided by what the node makes you wait for.** All three spend the

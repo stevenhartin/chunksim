@@ -1075,3 +1075,54 @@ class TestProvenance:
             if source == gathering.GUESS
         }
         assert guessed == {"spined larupia", "horned graahk", "sabre-toothed kyatt"}
+
+
+class TestLoopOverride:
+    """The calculator's `type` is a display choice; the export names the trap.
+
+    Two rows needed this and neither is an edge case: a tropical wagtail is
+    filed under no loop at all, and a white rabbit under `Other` beside an imp,
+    which is a different activity entirely.
+    """
+
+    _TABLES = gathering.Tables(
+        curves={
+            "white rabbit": (("Flushing a rabbit hole", 190.0, 255.0, 27, "confirmed"),),
+            "tropical wagtail": (("Tropical wagtail", 75.0, 370.0, 19, "confirmed"),),
+        },
+        experience={
+            "Hunter": {
+                "white rabbit": (144.0, "Other"),
+                "tropical wagtail": (95.0, ""),
+            }
+        },
+        parallel={"Hunter": {"": ((1, 1.0), (80, 5.0))}},
+    )
+
+    def _rate(self, node: str, opens: int) -> gathering.NodeRate | None:
+        return gathering.rate_at(
+            self._TABLES, {}, gathering.PROFILES["Hunter"], "t", "Hunter",
+            {"Level": opens, "Primary": True, "NPCs": [node]}, 99,
+        )
+
+    def test_a_blank_loop_is_read_off_the_export_instead(self) -> None:
+        assert self._rate("Tropical wagtail", 19) is not None
+
+    def test_a_grab_bag_loop_is_overridden(self) -> None:
+        assert self._rate("White rabbit", 27) is not None
+
+    def test_a_borrowed_interval_caps_the_provenance(self) -> None:
+        # Rabbit snaring has no published rate anywhere, so its cadence is box
+        # trapping's - and a measured chance over a borrowed cadence is not a
+        # measurement.
+        rate = self._rate("White rabbit", 27)
+        assert rate is not None
+        assert rate.provenance == gathering.INFERRED
+
+    def test_a_loop_with_its_own_evidence_keeps_confirmed(self) -> None:
+        rate = self._rate("Tropical wagtail", 19)
+        assert rate is not None
+        assert rate.provenance == gathering.CONFIRMED
+
+    def test_only_rabbit_snaring_is_marked_borrowed(self) -> None:
+        assert gathering.PROFILES["Hunter"].inferred_loops == frozenset({"Rabbit snare"})
