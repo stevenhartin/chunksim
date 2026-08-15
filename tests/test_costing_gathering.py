@@ -521,6 +521,26 @@ class TestTheScrapeIsNotRedundant:
     So this asserts the two sets do not nest, per skill. Sizes are not pinned -
     upstream grows - but zero would kill the claim, which is the rule
     `CLAUDE.md` sets for a count quoted in defence of an argument.
+
+    **Mining is the one skill that has since reached zero, and it is out of the
+    parametrised list rather than silently passing.** That is the outcome this
+    class exists to make someone justify, so: its three scrape-only methods
+    were shooting stars, volcanic ash and infernal shale, and each was closed
+    by finding the mechanic rather than by trusting the guide. Stars have a
+    real `{{Skilling success chart}}` and the model reproduces the page's own
+    30,000/hr at level 90. Ash piles publish a certainty, a 1/4 depletion
+    chance and a 30-second respawn, and the walk between them was recovered
+    from the page's 6,500 ash an hour. Infernal shale rocks are priced as
+    ordinary mining because their published figures are all Jim's wet cloth,
+    which this model declines to represent exactly as it declines 3-tick
+    granite.
+
+    **The general claim is untouched**: the scrape still owns Forestry,
+    Pyramid Plunder, Wintertodt, the Stranglewood and barbarian fishing, and
+    the other four skills still assert it. What Mining shows is that "only the
+    scrape reaches it" was a statement about *those three pages*, not a law -
+    and the way to move one out of that set is to read the page, not to delete
+    the stage.
     """
 
     def _split(
@@ -552,7 +572,7 @@ class TestTheScrapeIsNotRedundant:
         return modelled, scrape_only
 
     @pytest.mark.parametrize(
-        "skill", ["Fishing", "Hunter", "Mining", "Thieving", "Woodcutting"]
+        "skill", ["Fishing", "Hunter", "Thieving", "Woodcutting"]
     )
     def test_each_source_reaches_methods_the_other_cannot(
         self, real_export: ChunkInfo, skill: str
@@ -562,7 +582,23 @@ class TestTheScrapeIsNotRedundant:
         assert scrape_only > 0, (
             f"every {skill} method the scrape prices is now modelled - if that is "
             "really true the guide stage could go, but check it is not a join "
-            "regression first"
+            "regression first, and record it the way Mining is recorded below"
+        )
+
+    def test_mining_alone_has_closed_the_gap(self, real_export: ChunkInfo) -> None:
+        """Mining's exception, asserted rather than assumed.
+
+        Pinned in both directions on purpose. If it goes back above zero the
+        model has *lost* a method and this says so; if the model stops pricing
+        anything the first assertion catches that instead. Read the class
+        docstring before changing either number.
+        """
+        modelled, scrape_only = self._split(real_export, "Mining")
+        assert modelled > 0
+        assert scrape_only == 0, (
+            "Mining has a scrape-only method again - the model used to price "
+            "every one of them, so this is a regression to find rather than a "
+            "number to update"
         )
 
 

@@ -206,6 +206,11 @@ activities, and where they overlap the layering already prefers the model — on
 both cached maps every *reachable* gathering method is `modelled`.
 `tests/test_costing_gathering.TestTheScrapeIsNotRedundant` pins it per skill, so
 a later "these look superseded" cannot pass review by looking like a tidy-up.
+**Mining has since reached zero and is asserted separately rather than dropped
+from the list** — its three scrape-only methods were closed by finding each
+mechanic on its own page, not by trusting the guide, and the test now pins the
+zero in both directions so a regression reads as one. That is the shape any
+other skill leaving the set has to take.
 
 **`chunksim gather-tables` is the one subcommand that writes into `src/`.**
 Everything else that fetches writes a cache blob a user is expected to refresh;
