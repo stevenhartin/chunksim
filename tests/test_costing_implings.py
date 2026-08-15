@@ -14,10 +14,10 @@ from chunksim.costing.gathering import Tables
 
 TABLES = Tables(
     curves={
-        "baby impling": (("Baby impling", 200.0, 400.0, 17),),
-        "eclectic impling": (("Eclectic impling", 100.0, 400.0, 50),),
-        "nature impling": (("Nature impling", 100.0, 400.0, 58),),
-        "lucky impling": (("Lucky impling", 50.0, 300.0, 89),),
+        "baby impling": (("Baby impling", 200.0, 400.0, 17, "confirmed"),),
+        "eclectic impling": (("Eclectic impling", 100.0, 400.0, 50, "confirmed"),),
+        "nature impling": (("Nature impling", 100.0, 400.0, 58, "confirmed"),),
+        "lucky impling": (("Lucky impling", 50.0, 300.0, 89, "confirmed"),),
     },
     experience={
         "Hunter": {

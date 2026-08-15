@@ -475,9 +475,11 @@ maps are your own work and nothing can recompute them.
    so the action is paid for all three of its rolls instead of one.
 
    A method the model cannot describe keeps its guide rate rather than being guessed at; `chunksim
-   estimate skilling` marks a band `modelled` when the model priced it. The one exception is a
-   handful of butterflies the wiki lists as unmeasured, which borrow the worst charted butterfly's
-   curve moved to their own unlock level — those say `assumed` and name what they borrowed from.
+   estimate skilling` marks a band `modelled` when the model priced it. Where the model does have to
+   assume, it says so: every success chance it uses is tagged `confirmed` (read off the wiki),
+   `inferred` (built from a measurement of the same kind of thing, as the uncharted butterflies borrow
+   a charted one) or `guess` (a round conservative number so the method has one at all). There are
+   three guesses, all pitfall cats.
 
    **The same tables charge a production skill for what it burns or fletches.** A published rate is
    quoted with the materials to hand — "394,778 an hour burning magic logs" describes the burning,

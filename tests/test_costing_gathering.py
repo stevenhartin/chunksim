@@ -18,9 +18,9 @@ from chunksim.model.chunkinfo import ChunkInfo
 
 TABLES = gathering.Tables(
     curves={
-        "willow tree": (("Bronze", 16.0, 50.0, 1), ("Rune", 56.0, 175.0, 1)),
-        "iron rocks": (("Iron rocks", 96.0, 350.0, 1),),
-        "raw lobster": (("Raw lobster", 6.0, 95.0, 1),),
+        "willow tree": (("Bronze", 16.0, 50.0, 1, "confirmed"), ("Rune", 56.0, 175.0, 1, "confirmed")),
+        "iron rocks": (("Iron rocks", 96.0, 350.0, 1, "confirmed"),),
+        "raw lobster": (("Raw lobster", 6.0, 95.0, 1, "confirmed"),),
     },
     tool_ticks={"Bronze pickaxe": 8.0, "Rune pickaxe": 3.0},
     cycles={"willow tree": (30.0, 8.4)},
@@ -287,7 +287,7 @@ class TestTables:
                 "tool_ticks": {"Bronze pickaxe": 8},
             }
         )
-        assert tables.curves["willow tree"][0] == ("Bronze", 16.0, 50.0, 1)
+        assert tables.curves["willow tree"][0] == ("Bronze", 16.0, 50.0, 1, "confirmed")
         assert tables.cycles["willow tree"] == (30.0, 8.4)
         assert tables.experience["Woodcutting"]["willow logs"] == (67.5, "Regular")
         assert tables.empty is False
@@ -295,11 +295,11 @@ class TestTables:
 
 TRAPPING = gathering.Tables(
     curves={
-        "black chinchompa (hunter)": (("Black chinchompa", -78.0, 228.0, 1),),
-        "carnivorous chinchompa": (("Carnivorous chinchompa", -78.0, 228.0, 1),),
-        "magic stall": (("Magic Stall", 20.0, 180.0, 1),),
-        "knight of ardougne": (("Normal", 50.0, 240.0, 1),),
-        "vegetable stall": (("Vegetable Stall", 50.0, 500.0, 1),),
+        "black chinchompa (hunter)": (("Black chinchompa", -78.0, 228.0, 1, "confirmed"),),
+        "carnivorous chinchompa": (("Carnivorous chinchompa", -78.0, 228.0, 1, "confirmed"),),
+        "magic stall": (("Magic Stall", 20.0, 180.0, 1, "confirmed"),),
+        "knight of ardougne": (("Normal", 50.0, 240.0, 1, "confirmed"),),
+        "vegetable stall": (("Vegetable Stall", 50.0, 500.0, 1, "confirmed"),),
     },
     experience={
         "Hunter": {
@@ -532,9 +532,9 @@ class TestTheScrapeIsNotRedundant:
 
 CASCADE = gathering.Tables(
     curves={
-        "leaping sturgeon": (("Leaping sturgeon", 8.0, 64.0, 1),),
-        "leaping salmon": (("Leaping salmon", 16.0, 96.0, 1),),
-        "leaping trout": (("Leaping trout", 32.0, 128.0, 1),),
+        "leaping sturgeon": (("Leaping sturgeon", 8.0, 64.0, 1, "confirmed"),),
+        "leaping salmon": (("Leaping salmon", 16.0, 96.0, 1, "confirmed"),),
+        "leaping trout": (("Leaping trout", 32.0, 128.0, 1, "confirmed"),),
         "red crab (hunter)": (),
     },
     experience={
@@ -629,7 +629,7 @@ class TestCascade:
 
     def test_half_a_cascade_is_refused_rather_than_shortened(self) -> None:
         partial = gathering.Tables(
-            curves={"leaping sturgeon": (("Leaping sturgeon", 8.0, 64.0, 1),)},
+            curves={"leaping sturgeon": (("Leaping sturgeon", 8.0, 64.0, 1, "confirmed"),)},
             experience={"Fishing": {"leaping sturgeon": (80.0, "Miscellaneous")}},
         )
         assert (
@@ -775,7 +775,7 @@ class TestUnitsAreSpentByWhatTheNodeWaitsFor:
     """The same count, three different payoffs - none of them per skill."""
 
     _TABLES = gathering.Tables(
-        curves={"n": (("n", 500.0, 500.0, 1),)},
+        curves={"n": (("n", 500.0, 500.0, 1, "confirmed"),)},
         experience={"S": {"n": (100.0, "K")}},
         cycles={"cycling": (30.0, 30.0)},
         respawns={"restocking": 60.0},
@@ -784,7 +784,7 @@ class TestUnitsAreSpentByWhatTheNodeWaitsFor:
     def _rate(self, node: str, profile: gathering.SkillProfile) -> gathering.NodeRate:
         tables = dataclasses.replace(
             self._TABLES,
-            curves={node.lower(): (("n", 500.0, 500.0, 1),)},
+            curves={node.lower(): (("n", 500.0, 500.0, 1, "confirmed"),)},
             experience={"S": {node.lower(): (100.0, "K")}},
         )
         rate = gathering.rate_at(
@@ -870,10 +870,10 @@ class TestTheShippedCountsAreConservative:
 BUTTERFLIES = gathering.Tables(
     curves={
         "black warlock": (
-            ("Butterfly net", 20.0, 296.0, 45),
-            ("Barehanded or Magic butterfly net", 40.0, 316.0, 45),
+            ("Butterfly net", 20.0, 296.0, 45, "confirmed"),
+            ("Barehanded or Magic butterfly net", 40.0, 316.0, 45, "confirmed"),
         ),
-        "moonlight moth": (("Butterfly net", 0.0, 276.0, 75),),
+        "moonlight moth": (("Butterfly net", 0.0, 276.0, 75, "confirmed"),),
     },
     experience={
         "Hunter": {
@@ -952,7 +952,7 @@ class TestCurvesCarryTheirRequirement:
         tables = gathering.load_tables(
             {"curves": {"Black warlock": [{"label": "Butterfly net", "low": 20, "high": 296, "requirement": 45}]}}
         )
-        assert tables.curves["black warlock"][0] == ("Butterfly net", 20.0, 296.0, 45)
+        assert tables.curves["black warlock"][0] == ("Butterfly net", 20.0, 296.0, 45, "confirmed")
 
     def test_a_chart_with_no_requirement_reads_as_level_one(self) -> None:
         tables = gathering.load_tables(
@@ -970,7 +970,7 @@ class TestBirdSnaring:
     """
 
     _TABLES = gathering.Tables(
-        curves={"copper longtail": (("Copper longtail", 85.0, 390.0, 9),)},
+        curves={"copper longtail": (("Copper longtail", 85.0, 390.0, 9, "confirmed"),)},
         experience={"Hunter": {"copper longtail": (61.0, "Bird snare")}},
         parallel={"Hunter": {"": ((1, 1.0), (20, 2.0), (80, 5.0))}},
     )
@@ -997,3 +997,81 @@ class TestBirdSnaring:
     def test_traps_divide_the_interval(self) -> None:
         # The step that is extrapolation past two traps - see the profile.
         assert self._rate(80).xp_per_hour / self._rate(21).xp_per_hour > 2.0
+
+
+class TestProvenance:
+    """Every success chance says where it came from, in three words.
+
+    The point is that a reading, a construction and an invention are all
+    numbers by the time they reach a rate, and nothing downstream could tell
+    them apart afterwards - so it is recorded where it is decided.
+    """
+
+    _TABLES = gathering.Tables(
+        curves={"black warlock": (("Butterfly net", 20.0, 296.0, 45, "confirmed"),)},
+        experience={
+            "Hunter": {
+                "black warlock": (54.0, "Butterfly net"),
+                "ruby harvest": (24.0, "Butterfly net"),
+                "sunlight antelope": (380.0, "Pitfall"),
+                "spined larupia": (180.0, "Pitfall"),
+            }
+        },
+    )
+    _PROFILE = gathering.SkillProfile(
+        depletes=False,
+        strict_kinds=True,
+        roll_ticks_by_kind={"Butterfly net": 7.0, "Pitfall": 28.5},
+        assumed_curves={"ruby harvest": "Black warlock"},
+        fixed_chances={
+            "sunlight antelope": (1.0, gathering.CONFIRMED),
+            "spined larupia": (0.5, gathering.GUESS),
+        },
+    )
+
+    def _rate(self, node: str, opens: int) -> gathering.NodeRate:
+        rate = gathering.rate_at(
+            self._TABLES, {}, self._PROFILE, "t", "Hunter",
+            {"Level": opens, "Primary": True, "NPCs": [node]}, 99,
+        )
+        assert rate is not None
+        return rate
+
+    def test_a_chart_is_confirmed(self) -> None:
+        assert self._rate("Black warlock", 45).provenance == gathering.CONFIRMED
+
+    def test_a_borrowed_curve_is_inferred(self) -> None:
+        assert self._rate("Ruby harvest", 15).provenance == gathering.INFERRED
+
+    def test_prose_stating_the_odds_is_confirmed_too(self) -> None:
+        # "players will always succeed in hunting sunlight antelopes" is a
+        # reading, even though there is no chart to read it off.
+        rate = self._rate("Sunlight antelope", 72)
+        assert rate.chance == 1.0
+        assert rate.provenance == gathering.CONFIRMED
+
+    def test_a_made_up_number_says_so(self) -> None:
+        rate = self._rate("Spined larupia", 31)
+        assert rate.chance == 0.5
+        assert rate.provenance == gathering.GUESS
+
+    def test_it_survives_serialisation(self) -> None:
+        assert self._rate("Spined larupia", 31).as_dict()["provenance"] == gathering.GUESS
+
+    def test_a_fixed_chance_does_not_move_with_level(self) -> None:
+        # There is no curve behind it, and pretending otherwise would dress a
+        # guess up as a measurement.
+        low = gathering.rate_at(
+            self._TABLES, {}, self._PROFILE, "t", "Hunter",
+            {"Level": 31, "Primary": True, "NPCs": ["Spined larupia"]}, 31,
+        )
+        assert low is not None
+        assert low.chance == self._rate("Spined larupia", 31).chance
+
+    def test_the_shipped_guesses_are_the_three_the_wiki_has_not_measured(self) -> None:
+        guessed = {
+            node
+            for node, (_chance, source) in gathering.PROFILES["Hunter"].fixed_chances.items()
+            if source == gathering.GUESS
+        }
+        assert guessed == {"spined larupia", "horned graahk", "sabre-toothed kyatt"}

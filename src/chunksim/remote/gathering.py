@@ -160,6 +160,11 @@ class SuccessCurve:
     low: float
     high: float
     requirement: int = 1
+    #: Where the numbers came from. **Everything read off a chart is
+    #: `confirmed`**; the other two values exist for `costing/gathering.py`,
+    #: which has to fill gaps the wiki has not measured and should not be able
+    #: to do so silently.
+    provenance: str = "confirmed"
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -167,6 +172,7 @@ class SuccessCurve:
             "low": self.low,
             "high": self.high,
             "requirement": self.requirement,
+            "provenance": self.provenance,
         }
 
 

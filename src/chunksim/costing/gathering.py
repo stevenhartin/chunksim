@@ -120,8 +120,17 @@ the location rather than about the method and has to be modelled as one:
 *wait* rather than the clicking, because three chests do not let you open any
 faster - they mean the first has restocked by the time you are back at it.
 
-**A curve can be borrowed, which is the one place this model assumes rather than
-reads.** The wiki keeps `Category:Needs skilling success chart` - its own list
+**Every success chance says where it came from**, in three words and no more:
+`confirmed` for a reading - a chart, or prose stating the odds outright -
+`inferred` for one constructed from a measurement of the same kind of thing,
+and `guess` for a number chosen so the method has one. It rides on the
+`NodeRate` because by the time a chance has been through the arithmetic nobody
+downstream could tell the three apart, and the scraped tables carry it too so
+the file says what it is. There are three guesses today, all of them pitfall
+cats, and they are the first thing to replace.
+
+**A curve can be borrowed, which is one of two places this model assumes rather
+than reads.** The wiki keeps `Category:Needs skilling success chart` - its own list
 of what nobody has measured - and three butterflies on it are methods a map can
 actually train. What makes a borrow defensible is that the charted butterflies
 climb *identically*: black warlock, sunlight moth and moonlight moth all gain
@@ -171,6 +180,23 @@ GATHERING_SOURCE = "computed:gathering"
 #: beats a scrape and that one loses to it - and a reader looking at a band
 #: should be able to tell which model produced the number.
 GATHERING_MATCH = "modelled"
+
+#: **Where a success chance came from, and the only three answers there are.**
+#: The model fills gaps the wiki has not measured, and a reader has to be able
+#: to tell a reading from a construction from an invention without going to the
+#: source. Carried on every `NodeRate`, and written into the shipped tables so
+#: the scraped half says so itself.
+#:
+#: - `confirmed` - read off the wiki, whether from a `{{Skilling success
+#:   chart}}` or from prose stating the odds outright ("players will always
+#:   succeed in hunting sunlight antelopes").
+#: - `inferred` - constructed from a measurement of the same kind of thing, as
+#:   `assumed_curves` moves a charted butterfly's line onto an uncharted one.
+#: - `guess` - a number chosen so there is one. It should be conservative, it
+#:   should be rare, and it should be the first thing replaced.
+CONFIRMED = "confirmed"
+INFERRED = "inferred"
+GUESS = "guess"
 
 #: Levels at which a curve is re-read, on top of the method's own requirement.
 #: **A gathering rate is a function of level and the band walk wants points.**
@@ -339,6 +365,19 @@ class SkillProfile:
     #: because the loop it belongs to (`Miscellaneous`) is a grab-bag that also
     #: holds cage fishing, which really is banked.
     unbanked: frozenset[str] = frozenset()
+    #: Node -> `(chance, provenance)`, for a creature whose odds are stated in
+    #: prose or are not stated at all.
+    #:
+    #: **The two shapes it holds are not alike and the provenance is what says
+    #: so.** Sunlight and moonlight antelopes are `1.0, CONFIRMED`, because
+    #: their pages say outright that "players will always succeed"; the three
+    #: cats hunted the same way are `0.5, GUESS`, because nothing anywhere
+    #: states their odds and half is a round, conservative stand-in chosen so
+    #: the method has a number rather than none. A guess should be rare, it
+    #: should be the first thing replaced, and it should never be mistaken for
+    #: the antelope beside it - which is the whole reason this is a pair and
+    #: not a float.
+    fixed_chances: Mapping[str, tuple[float, str]] = field(default_factory=dict)
     #: Node -> the node whose success chart to borrow, for a creature the wiki
     #: has not charted yet.
     #:
@@ -569,6 +608,24 @@ PROFILES: dict[str, SkillProfile] = {
             "Crab trapping": 57.0,
             "Butterfly net": 7.0,
             "Bird snare": 61.0,
+            # **Two observations, one parameter.** Both antelopes are certain
+            # catches, so their published rates say only how often one walks
+            # into a pit: 30.0 ticks off the moonlight figure and 27.3 off the
+            # sunlight one, which 28.5 splits at 1.05x and 0.96x.
+            "Pitfall": 28.5,
+        },
+        # **The pitfall five, and the two kinds of number in one place.** The
+        # antelope pages state the odds outright - "players will always succeed
+        # in hunting sunlight antelopes" - so those are readings. The three
+        # cats hunted the same way have no chart anywhere and no prose either;
+        # half is a stand-in so the method has a number, and it is marked as
+        # one. Anything that turns up about them replaces it.
+        fixed_chances={
+            "sunlight antelope": (1.0, CONFIRMED),
+            "moonlight antelope": (1.0, CONFIRMED),
+            "spined larupia": (0.5, GUESS),
+            "horned graahk": (0.5, GUESS),
+            "sabre-toothed kyatt": (0.5, GUESS),
         },
         # **Three butterflies the wiki has not charted, given the worst chart
         # it has.** `Category:Needs skilling success chart` lists ruby harvest,
@@ -689,6 +746,11 @@ class NodeRate:
     #: what it gathers. Carried rather than folded in so the two questions the
     #: model answers can be told apart - see `seconds_per_item`.
     bank_seconds_per_item: float = 0.0
+    #: Where `chance` came from: `CONFIRMED`, `INFERRED` or `GUESS`. Carried on
+    #: the rate rather than worked out again later, for the reason every other
+    #: provenance in this project is recorded where it is read - by the time a
+    #: number has been through an arithmetic nobody can tell what it was.
+    provenance: str = CONFIRMED
 
     @property
     def seconds_per_item(self) -> float:
@@ -721,6 +783,7 @@ class NodeRate:
             "duty": round(self.duty, 3),
             "node": self.node,
             "tool": self.tool,
+            "provenance": self.provenance,
         }
 
 
@@ -770,7 +833,7 @@ class Tables:
     #: `(label, low, high, req)`. **`req` is carried because a curve can be
     #: lent**: re-anchoring one creature's chart onto another needs the level
     #: the original was drawn from - see `SkillProfile.assumed_curves`.
-    curves: dict[str, tuple[tuple[str, float, float, int], ...]] = field(
+    curves: dict[str, tuple[tuple[str, float, float, int, str], ...]] = field(
         default_factory=dict
     )
     #: Tool item -> ticks between rolls.
@@ -831,7 +894,7 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
     `Soft clay rocks` against a page titled `Soft clay rock`. Case is the only
     fuzz allowed here; everything else is a whole-string match.
     """
-    curves: dict[str, tuple[tuple[str, float, float, int], ...]] = {}
+    curves: dict[str, tuple[tuple[str, float, float, int, str], ...]] = {}
     for page, series in _mapping(raw, "curves").items():
         if not isinstance(series, list):
             continue
@@ -841,6 +904,7 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
                 float(entry["low"]),
                 float(entry["high"]),
                 int(entry.get("requirement") or 1),
+                str(entry.get("provenance") or CONFIRMED),
             )
             for entry in series
             if isinstance(entry, dict) and "low" in entry and "high" in entry
@@ -1074,7 +1138,7 @@ def _curve_for(
     challenge: Mapping[str, Any],
     task: str,
     skill: str = "",
-) -> tuple[str, tuple[tuple[str, float, float, int], ...]]:
+) -> tuple[str, tuple[tuple[str, float, float, int, str], ...]]:
     """The success curve for a challenge, and the page it was read off.
 
     Keys are tried most specific first and every one is a **whole string**:
@@ -1213,6 +1277,22 @@ def _cascade(
     return marginal, expected / marginal, 1.0 - survive
 
 
+def _fixed_chance(
+    profile: SkillProfile,
+    families: Mapping[str, Sequence[str]],
+    challenge: Mapping[str, Any],
+    skill: str,
+) -> tuple[str, float, str] | None:
+    """`(node, chance, provenance)` where a profile states one outright."""
+    if not profile.fixed_chances:
+        return None
+    for key in _join_keys(challenge, families, ("Output", "Objects", "NPCs"), skill):
+        found = profile.fixed_chances.get(key.lower())
+        if found is not None:
+            return key, found[0], found[1]
+    return None
+
+
 def _borrowed_curve(
     tables: Tables,
     profile: SkillProfile,
@@ -1248,7 +1328,7 @@ def _borrowed_curve(
     opens = challenge.get("Level")
     if not donor or not isinstance(opens, (int, float)) or opens < 1:
         return None
-    label, low, high, donor_req = donor[0]
+    label, low, high, donor_req, _provenance = donor[0]
     slope = (high - low) / 98.0
     at_donor = low + slope * (donor_req - 1)
     moved = at_donor - slope * (int(opens) - 1)
@@ -1274,8 +1354,10 @@ def _respawn_key(
 
 
 def _tool_curve(
-    curves: tuple[tuple[str, float, float, int], ...], profile: SkillProfile, tool: str
-) -> tuple[str, float, float, int]:
+    curves: tuple[tuple[str, float, float, int, str], ...],
+    profile: SkillProfile,
+    tool: str,
+) -> tuple[str, float, float, int, str]:
     """Which series of a chart to spend.
 
     The first, except where the profile says the labels are tool tiers - in
@@ -1318,12 +1400,20 @@ def rate_at(
 
     node, curves = _curve_for(tables, families, challenge, task, skill)
     label = ""
+    provenance = CONFIRMED
     borrowed = _borrowed_curve(tables, profile, families, challenge, skill)
+    fixed = _fixed_chance(profile, families, challenge, skill)
     if curves:
-        label, low, high, _req = _tool_curve(curves, profile, tool)
+        label, low, high, _req, provenance = _tool_curve(curves, profile, tool)
         chance = success_chance(level, low, high)
+    elif fixed is not None:
+        # **Stated in prose, or not stated at all.** Either way there is no
+        # curve to evaluate, so the chance does not move with level - which is
+        # true of the antelopes and is the honest shape of a guess.
+        node, chance, provenance = fixed
     elif borrowed is not None:
         node, label, low, high = borrowed
+        provenance = INFERRED
         chance = success_chance(level, low, high)
     elif kind in profile.certain_kinds:
         # **No chart because there is nothing to chart.** An ordinary stall is
@@ -1459,6 +1549,7 @@ def rate_at(
         node=node,
         tool=tool or label,
         bank_seconds_per_item=banking,
+        provenance=provenance,
     )
 
 

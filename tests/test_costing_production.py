@@ -17,7 +17,7 @@ from chunksim.model.chunkinfo import ChunkInfo
 
 
 TABLES = Tables(
-    curves={"willow tree": (("Bronze", 16.0, 50.0, 1),)},
+    curves={"willow tree": (("Bronze", 16.0, 50.0, 1, "confirmed"),)},
     experience={
         "Firemaking": {
             "magic logs": (303.8, "Regular"),
