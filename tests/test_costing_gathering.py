@@ -145,12 +145,22 @@ class TestRateAt:
             is not None
         )
 
-    def test_a_name_that_is_not_a_rock_is_left_alone(self) -> None:
-        # The guard: without it every join in the project grew a
-        # `Willow tree rocks`, which is noise in the one place a miss has to
-        # stay readable.
-        keys = gathering._join_keys({"Objects": ["Willow tree"]}, {}, gathering._NAME_FIELDS)
+    def test_another_skill_is_left_alone(self) -> None:
+        # The guard is the skill, not the name: widened to every skill, every
+        # join in the project grew a `Willow tree rocks`.
+        keys = gathering._join_keys(
+            {"Objects": ["Willow tree"]}, {}, gathering._NAME_FIELDS, "Woodcutting"
+        )
         assert not any("rock" in key for key in keys)
+
+    def test_a_bare_material_reaches_the_rock_page(self) -> None:
+        # `Mine ~|limestone|~` states `Output: Limestone` and the wiki charts
+        # `Limestone rock`. Gated on the *name* carrying a suffix - which is
+        # what this was first - that join never happened.
+        keys = gathering._join_keys(
+            {"Output": "Limestone"}, {}, gathering._NAME_FIELDS, "Mining"
+        )
+        assert "Limestone rock" in keys
 
     def test_refuses_rather_than_guessing_a_missing_input(self) -> None:
         profile = gathering.SkillProfile()

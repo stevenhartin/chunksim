@@ -1647,6 +1647,17 @@ _SPAN = re.compile(r"~\|(.+?)\|~")
 #: together. See `_join_keys` for the three spellings this reconciles.
 _ROCK_SUFFIX = re.compile(r"\s+(?:ore|rocks?)$", re.I)
 
+#: The skills whose node pages are titled `<name> rock`/`<name> rocks` where
+#: the export names the ore or the material it yields.
+#:
+#: **A set applied selectively, which is what every other per-skill quirk here
+#: is.** The rewrite used to fire only on a name that already carried one of
+#: the suffixes, so it reconciled `Lovakite ore` with `Lovakite rocks` and left
+#: `Mine ~|limestone|~` - whose `Output` is the bare `Limestone` and whose
+#: chart is on `Limestone rock` - joining nothing. Widening it to every skill
+#: instead put a `Willow tree rocks` in every join in the project.
+_ROCK_SKILLS = frozenset({"Mining"})
+
 
 def _join_keys(
     challenge: Mapping[str, Any],
@@ -1704,18 +1715,16 @@ def _join_keys(
     # `Lovakite rocks`. Offering the stem and both suffixes is what makes those
     # one name. Appended after every other form, so it can only add a join.
     #
-    # **Only a name that already carries one of the suffixes is rewritten**, so
-    # this stays a rock rule rather than a general one: without the guard every
-    # join in the project grew a `Willow tree rocks` nobody would ever want,
-    # and a tidy key list is what makes a miss readable when one happens.
-    stems = [
-        _ROCK_SUFFIX.sub("", key).strip()
-        for key in list(keys)
-        if _ROCK_SUFFIX.search(key)
-    ]
-    keys.extend(stems)
-    keys.extend(f"{stem} rock" for stem in stems)
-    keys.extend(f"{stem} rocks" for stem in stems)
+    # **Gated on the skill rather than on the name**, which is the second
+    # version of this guard. The first only rewrote a name that already carried
+    # a suffix, which kept `Willow tree rocks` out of every other skill's joins
+    # but also left `Mine ~|limestone|~` - `Output: Limestone`, charted as
+    # `Limestone rock` - matching nothing at all.
+    if skill in _ROCK_SKILLS:
+        stems = [_ROCK_SUFFIX.sub("", key).strip() for key in list(keys)]
+        keys.extend(stems)
+        keys.extend(f"{stem} rock" for stem in stems)
+        keys.extend(f"{stem} rocks" for stem in stems)
     if skill:
         keys.extend(f"{key} ({skill})" for key in list(keys) if "(" not in key)
     return tuple(key for key in dict.fromkeys(keys) if key)
