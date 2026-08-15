@@ -389,6 +389,58 @@ class TestHunterInfo:
         assert gathering.parse_skill_info("{{Hunter info\n|name = X\n|level = 1\n}}", "Hunter info") is None
 
 
+#: `Iron rocks`, verbatim but for the drop table: the versioned form, where the
+#: second version is The Node and pays nothing.
+IRON_INFO_PAGE = """
+{{Mining info
+|version1 = Standard
+|version2 = The Node
+|name = Iron rocks
+|level = 15
+|xp1 = 35
+|xp2 = 0
+|tool = [[Pickaxe]]
+|time = 5.4 seconds
+}}
+"""
+
+#: `Limestone rocks`, whose `time` states three cases in one field.
+LIMESTONE_INFO_PAGE = """
+{{Mining info
+|name = Limestone rock
+|level = 10
+|xp = 26.5
+|tool = [[Pickaxe]]
+|time = 5.4 seconds if fully depleted<br/>11.4 seconds if two limestones depleted<br/>23.4 seconds if one limestone depleted
+}}
+"""
+
+
+class TestMiningInfo:
+    def test_a_versioned_rock_states_its_experience_numbered(self) -> None:
+        # The trap: `xp2 = 0` is The Node, where mining pays nothing. Reading
+        # whichever came last would price the most-mined rock in the game at
+        # zero.
+        assert gathering.parse_skill_info(IRON_INFO_PAGE, "Mining info") == (15, 35.0)
+
+    def test_the_respawn_is_the_field_only_this_template_carries(self) -> None:
+        assert gathering.parse_info_respawn(IRON_INFO_PAGE, "Mining info") == 5.4
+
+    def test_the_leading_case_wins_where_the_field_states_several(self) -> None:
+        # A rotating miner is always in the fully-depleted case; the other two
+        # describe a vein nobody waits at.
+        assert gathering.parse_info_respawn(LIMESTONE_INFO_PAGE, "Mining info") == 5.4
+
+    def test_a_plain_rock_still_reads_its_level_and_experience(self) -> None:
+        assert gathering.parse_skill_info(LIMESTONE_INFO_PAGE, "Mining info") == (10, 26.5)
+
+    def test_only_mining_states_a_respawn(self) -> None:
+        # The whole reason `RESPAWN_INFO_TEMPLATES` is a set and not a `for`
+        # over every template: a Hunter page's infobox has no `time` at all.
+        assert "Hunter info" not in gathering.RESPAWN_INFO_TEMPLATES
+        assert gathering.parse_info_respawn(HUNTER_INFO_PAGE, "Hunter info") is None
+
+
 FORESTRY_TABLE = """
 {| class="wikitable sortable"
 |-

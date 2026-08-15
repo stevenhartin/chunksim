@@ -38,8 +38,10 @@ The modules, and what each owns:
 - `gathering.py` - the inputs a gathering rate is computed from:
   `{{Skilling success chart}}`'s `low`/`high` curves, the tool page's `Ticks
   between rolls`, the despawn/respawn table, the stall and chest restock times,
-  the trap-count steps on the Hunter and crab pages, and the impling spawn-tier
-  tables. Also `build_tables`, whose **fetching
+  the trap-count steps on the Hunter and crab pages, the impling spawn-tier
+  tables, and the five skill infoboxes - one of which, `{{Mining info}}`,
+  carries **every rock's respawn**, which this project spent a long time
+  believing was published nowhere. Also `build_tables`, whose **fetching
   is injected** so the module cannot open a socket.
 - `recipes.py` - `{{Recipe}}` as the wiki's Bucket serves it: experience, ticks
   and materials per action.

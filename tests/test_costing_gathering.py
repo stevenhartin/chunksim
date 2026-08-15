@@ -119,8 +119,8 @@ class TestRateAt:
         assert rune.xp_per_hour > bronze.xp_per_hour
 
     def test_an_object_family_resolves_to_the_charted_page(self) -> None:
-        # `Iron[+]` is not a page; `Iron rocks` is. Without the expansion the
-        # whole skill joins nothing.
+        # `Iron[+]` is not a page; `Iron rocks` is, and the expansion is what
+        # says so.
         profile = gathering.SkillProfile(tool_axis="interval")
         assert (
             gathering.rate_at(
@@ -129,12 +129,28 @@ class TestRateAt:
             )
             is not None
         )
+
+    def test_the_rock_stem_reaches_the_chart_where_no_family_does(self) -> None:
+        # **The second route to the same page, and it used to be the only
+        # failure.** Drop the expansion and `Iron[+]` says nothing, but the
+        # challenge's `Output` is `Iron ore` and `Iron ore` -> `Iron rocks` is
+        # the rewrite `_ROCK_SUFFIX` exists for. Two rocks the wiki charts
+        # under a name no task uses - limestone and basalt - joined nothing at
+        # all until it did.
+        profile = gathering.SkillProfile(tool_axis="interval")
         assert (
             gathering.rate_at(
                 TABLES, {}, profile, "Mine iron", "Mining", IRON, 99, tool="Rune pickaxe"
             )
-            is None
+            is not None
         )
+
+    def test_a_name_that_is_not_a_rock_is_left_alone(self) -> None:
+        # The guard: without it every join in the project grew a
+        # `Willow tree rocks`, which is noise in the one place a miss has to
+        # stay readable.
+        keys = gathering._join_keys({"Objects": ["Willow tree"]}, {}, gathering._NAME_FIELDS)
+        assert not any("rock" in key for key in keys)
 
     def test_refuses_rather_than_guessing_a_missing_input(self) -> None:
         profile = gathering.SkillProfile()
@@ -801,6 +817,27 @@ class TestUnitsAreSpentByWhatTheNodeWaitsFor:
             gathering.SkillProfile(roll_ticks=2.0, depletes=False, worked=3.0),
         )
         assert one.xp_per_hour * 3.0 == pytest.approx(three.xp_per_hour)
+
+    def test_a_rock_pays_the_hop_as_well_as_the_respawn(self) -> None:
+        # **`hops` is the whole of the Mining rework.** A stall's restock is
+        # the whole story because you stand at it; a rock makes you walk, and
+        # where the cluster is big enough that the respawn stops binding the
+        # hop is the *only* downtime left. Without this a rock reads as pure
+        # rolling.
+        plain = gathering.SkillProfile(roll_ticks=2.0, node_seconds=5.0, worked=100.0)
+        hopping = dataclasses.replace(plain, hops=True)
+        assert self._rate("restocking", plain).xp_per_hour > self._rate(
+            "restocking", hopping
+        ).xp_per_hour
+
+    def test_a_stall_pays_its_restock_and_nothing_on_top(self) -> None:
+        # The default, and why it is the default: `hops` off means a published
+        # restock replaces the flat charge rather than adding to it.
+        charged = gathering.SkillProfile(roll_ticks=2.0, node_seconds=5.0)
+        free = gathering.SkillProfile(roll_ticks=2.0)
+        assert self._rate("restocking", charged).xp_per_hour == pytest.approx(
+            self._rate("restocking", free).xp_per_hour
+        )
 
     def test_rotation_never_divides_the_rolling(self) -> None:
         # A restocking node worked three ways still opens one at a time, so

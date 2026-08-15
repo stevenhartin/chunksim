@@ -46,7 +46,9 @@ The modules, and what each owns:
   `recipe_rates.py` loses to it**, and the docstring says why. Per-skill quirks
   are `SkillProfile` fields, never branches, and the four inactivity shapes
   (duty cycle, flat charge, restock floor, stun) are what separate a model from
-  a fitted constant. A *cascade* is the one shape that is not inactivity:
+  a fitted constant. Mining is the one skill that pays two of them - the
+  published respawn *and* the hop to the next rock - which is `hops`, and the
+  reason it is a field rather than a branch. A *cascade* is the one shape that is not inactivity:
   several success rolls inside one action, which is barbarian fishing. **How
   many of a node you work at once is one idea across all five skills** -
   `units_worked` resolves it, and what it buys depends on what that node makes

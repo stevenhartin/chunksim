@@ -6,12 +6,20 @@ it, read what it says, and change the profile if the fit has moved.
 
     .venv/bin/python -m chunksim.costing.gathering_overhead
 
-**Three of the model's inputs are published and one is not.** A success curve, a
-roll interval and a tree's despawn/respawn are all on the wiki and are read by
-`remote/gathering.py`. What is nowhere - not on the skill page, not in the
-scenery infobox, not in any Module - is what a *rock* costs you between ores, or
-a normal tree between logs, or a failed pickpocket in stun time. Those are
-fitted here against the rates the wiki does publish.
+**Most of the model's inputs are published and this file exists for the rest.**
+A success curve, a roll interval, a tree's despawn/respawn and - since the
+`{{Mining info}}` scrape - every rock's respawn are all on the wiki and read by
+`remote/gathering.py`. What is nowhere is what a normal *tree* costs you between
+logs, or a failed pickpocket in stun time. Those are fitted here against the
+rates the wiki does publish.
+
+**The rock half of that used to be here and was wrong.** This file said a rock's
+downtime was published nowhere - "not on the skill page, not in the scenery
+infobox, not in any Module" - and it is in the scenery infobox, on 96 pages, in
+a `time` field. The search had been for a Woodcutting-style *table*, and finding
+none was read as finding nothing. The superseded version is kept here because it
+is the tempting mistake: absence of a table is not absence of data, and the
+per-page infobox is where this project should look first next time.
 
 **What it is fitted against matters more than how.** The targets are the wiki's
 own training-guide figures, joined *exactly*, and nothing else:
@@ -24,8 +32,7 @@ Measured, the mmg rows disagree with the model 2.5x where the exact rows agree
 within 1.1x, and letting them into the fit moves every constant the wrong way.
 
 **One free parameter per skill, fitted on a grid.** There is not enough data for
-anything cleverer - eight woodcutting rows, five pickpocket rows, four mining
-rows - and a one-parameter fit over eight points is already the shape this
+anything cleverer - sixteen woodcutting rows and five fishing ones - and a one-parameter fit over eight points is already the shape this
 project distrusts, which is why the residuals are printed per row rather than
 summarised. Read them: a constant that fits six rows and misses two badly is
 telling you the two are a different mechanic, not that the constant is wrong.
@@ -94,7 +101,16 @@ FITTED: dict[str, tuple[tuple[str, tuple[float, ...]], ...]] = {
         ("worked", tuple(x / 2 for x in range(2, 21))),
         ("node_seconds", tuple(x / 10 for x in range(0, 301))),
     ),
-    "Mining": (("node_seconds", tuple(x / 10 for x in range(0, 301))),),
+    # **Mining is deliberately absent and its rows are deliberately still
+    # printed.** Every rock's respawn is published in its own infobox now, so
+    # the only number left in the profile is the hop, which is one tick; and
+    # the three `wiki:mining` rows below cannot judge it anyway - one is
+    # explicitly a tick-manipulation figure and the other two are the low end
+    # of a range quoted against a level band this harness does not evaluate at.
+    # The reasoning is in `gathering.PROFILES["Mining"]`. Fitting to them
+    # anyway is exactly the `mmg:` mistake in a different costume: a number
+    # that measures something else, absorbed into a constant that then means
+    # nothing.
     # **Per loop, not per skill.** `roll_ticks_by_kind` is fitted one `kind` at
     # a time against the rows of that kind alone - see `_fit_kinds`.
     # **The interval is pinned, the banking is fitted.** Net, bait, harpoon and
@@ -336,7 +352,7 @@ def fit(map_id: str = "fray") -> None:
             else f"{name} {getattr(base, name):g} -> {getattr(profile, name):g}"
             for name, _ in fields
         )
-        print(f"{skill}: {changes or 'nothing to fit - every constant is published'}")
+        print(f"{skill}: {changes or 'no free parameter - see the profile for why'}")
         print(f"  {'task':<40}{'kind':<16}{'modelled':>10}{'published':>11}{'ratio':>8}")
         ratios: list[float] = []
         for row in sorted(subject, key=lambda entry: str(entry["task"])):

@@ -323,12 +323,26 @@ class SkillProfile:
     #: wait.
     worked_at: Mapping[str, float] = field(default_factory=dict)
     #: Seconds lost per resource for a node whose cycle is **not** published.
-    #: A normal tree hands over one log and vanishes, and a rock one ore; the
-    #: wiki tabulates despawn and respawn for thirteen trees and for nothing
-    #: else, so what a rock costs you between ores is the one number here that
-    #: no page states. **Fitted against the rates the wiki does publish**, and
-    #: `0.0` for the skills whose nodes do not deplete at all.
+    #: A normal tree hands over one log and vanishes, and a rock one ore, so
+    #: this is what standing up and starting on the next one costs. `0.0` for
+    #: the skills whose nodes do not deplete at all.
     node_seconds: float = 0.0
+    #: Whether that charge applies **as well as** a published respawn, rather
+    #: than only in place of one.
+    #:
+    #: **The two are different waits and a rock pays both.** A respawn is what
+    #: you wait for when the cluster is exhausted; the hop is what you pay every
+    #: single time, respawn or no respawn - and where the cluster is big enough
+    #: that the respawn never binds, the hop is the *whole* of a rock's
+    #: downtime. Iron is the case: 5.4 seconds of respawn shared over three
+    #: rocks is 1.8, well under the 1.7 of rolling plus the hop, so a model
+    #: charging only the respawn reads iron as pure rolling and 60% too fast.
+    #:
+    #: **False for a stall, and that is not an oversight.** You do not walk
+    #: anywhere between two steals from one stall - you stand at it and wait -
+    #: so its restock really is the whole story, which is why this defaults off
+    #: and Mining is the one profile that sets it.
+    hops: bool = False
     #: The calculator `kind`s a published level table in `Tables.parallel`
     #: applies to.
     #:
@@ -499,12 +513,19 @@ class SkillProfile:
 #:
 #: | skill | rows | geometric mean | within 1.25x |
 #: |---|---|---|---|
-#: | Woodcutting | 17 | 1.07x | 12/17 |
-#: | Fishing | 4 | 1.04x | 4/4 |
-#: | Mining | 1 | 1.00x | 1/1 |
-#: | Hunter (Falconry) | 3 | 0.99x | 3/3 |
-#: | Hunter (other loops) | 3 | - | refused |
-#: | Thieving | 3 | - | refused |
+#: | Woodcutting | 16 | 1.07x | 11/16 |
+#: | Fishing | 5 | 1.03x | 5/5 |
+#: | Hunter | 16 | 1.00x | 12/16 |
+#: | Thieving | 14 | 1.00x | 14/14 |
+#: | Mining | 3 | 0.64x | 1/3 |
+#:
+#: **Read the last two rows the opposite way round from how they look.**
+#: Thieving's 14/14 is an identity rather than evidence - the model's stall
+#: rate *is* the published restock time, so agreement is arithmetic - while
+#: Mining's 1/3 is a statement about the three published rows and not about the
+#: model: one is a tick-manipulation figure, the other two are the bottom of a
+#: range quoted at a level the harness does not evaluate at. The profile's own
+#: comment carries the reasoning and the band Mining *can* be checked against.
 PROFILES: dict[str, SkillProfile] = {
     # **Four ticks is the wiki's, not a fit** - the Woodcutting page states it -
     # and pinning it is what makes the other two constants mean something. Left
@@ -519,22 +540,63 @@ PROFILES: dict[str, SkillProfile] = {
         node_seconds=2.4,
     ),
     # A pickaxe changes how often the game rolls, never whether the roll wins.
-    # **A second row arrived and it disagrees.** `Mine a ~|gem rock|~` joins now
-    # that the task's own span offers the singular the calculator uses against
-    # the export's plural `Gem rocks`, and at `node_seconds` 1.1 it reads 0.73x
-    # where iron reads 1.00x. The constant is *not* refitted on it: gem rocks
-    # come in a cluster you rotate and this model charges each one its full
-    # downtime, so the gap is most likely the mechanic rather than the number -
-    # refitting would move iron off a figure that is right to split a
-    # difference with one that is wrong for a reason.
-
-    # **No rock's respawn is published anywhere** - not on the skill page, not
-    # in the scenery infobox, not in any Module - so the whole of a rock's
-    # downtime is the fitted constant, and it is fitted against a single row.
-    # That is thin, and gem rocks are now the second row rather than a third
-    # heading that fails to join: it reproduces iron at 1.00x and gem rocks at
-    # 0.73x.
-    "Mining": SkillProfile(tool_axis="interval", node_seconds=1.1),
+    #
+    # **Every rock's respawn is published, one rock at a time.** This project
+    # spent a long time believing otherwise and fitting a single constant to
+    # stand in for all of them, because it went looking for a Woodcutting-style
+    # table - a page tabulating despawn and respawn for every rock - and there
+    # is none. The figure is in each rock's own `{{Mining info}}` infobox, in a
+    # `time` field no other skill's infobox carries, on 96 pages: copper 2.4
+    # seconds, iron 5.4, coal 30, lovakite 35, gem rocks 59.4, runite 720. That
+    # is a three-hundred-fold spread and no one constant could ever have stood
+    # for it - runite priced as iron is a training method, which it is
+    # emphatically not.
+    #
+    # So the fitted constant is gone and what is left is the *hop*: 0.6
+    # seconds, one tick, to stand up and start on the next rock. That is a game
+    # mechanic rather than a fit, and it is charged **on top of** the respawn
+    # rather than instead of it - see `SkillProfile.hops` for why a rock pays
+    # both waits where a stall pays one.
+    #
+    # `worked` is 3, the ordinary cluster. It is the one number here still
+    # chosen rather than read, and the guide's own prose is what it is chosen
+    # against: the Legends' Guild and Isle of Souls mines "have 4 iron rocks
+    # close to each other", named as the *tick-manipulation* spots, so three is
+    # the conservative reading of an ordinary one.
+    #
+    # **The Mining training guide's own figures cannot judge this and must not
+    # be fitted against**, which is why `gathering_overhead.FITTED` no longer
+    # names Mining. All three of its rows are unusable for the purpose, each
+    # for its own reason: granite's 87,000 is labelled `Granite (3-tick)` and
+    # the guide says outright the method "is not worth doing without tick
+    # manipulation", a technique this model has no representation of; gem rocks'
+    # 46,000 and iron's 45,000 are the *bottom* of ranges quoted against level
+    # bands (`46,000-75,000 ... at levels 50-99`, `45,000-55,000 below level
+    # 60`) where the harness evaluates at 99; and iron's second band,
+    # `70,000-80,000 from level 60`, is the Mining Guild, where ores respawn at
+    # twice the rate - a location property, not a rate.
+    #
+    # What the model does answer for is the band it can be compared to
+    # honestly. Iron below 60, three rocks, dragon pickaxe: 47,400 at level 45
+    # rising to 53,900 at 60, against a published `45,000-55,000 below level
+    # 60`. A band reproduced across its whole span is better evidence than the
+    # single point the old constant was fitted to.
+    "Mining": SkillProfile(
+        tool_axis="interval",
+        worked=3.0,
+        node_seconds=0.6,
+        hops=True,
+        # **Forty-eight, and the wiki counted them.** The Shilo Village Mine
+        # page states the underground portion "contains an additional 48 gem
+        # rocks", which is the rare case where the count `worked_at` wants is
+        # published outright rather than judged. The exact figure barely
+        # matters and that is the point: anything above nine puts 59.4 seconds
+        # of respawn below the rolling, so the rate stops depending on the
+        # count at all and becomes what the success chart says. An entry that
+        # is insensitive to its own value is one that cannot be a fit in
+        # disguise.
+        worked_at={"gem rocks": 48.0},
+    ),
     # **A fishing spot does not deplete**; it relocates. Five ticks a roll is
     # the game's rather than a fit - net, bait, harpoon and cage share it - and
     # what the fit moves is the bank run, which every published Fishing figure
@@ -1434,6 +1496,11 @@ def _curve_for(
 _SPAN = re.compile(r"~\|(.+?)\|~")
 
 
+#: A trailing `ore`/`rock`/`rocks`, so a name and its stem can be offered
+#: together. See `_join_keys` for the three spellings this reconciles.
+_ROCK_SUFFIX = re.compile(r"\s+(?:ore|rocks?)$", re.I)
+
+
 def _join_keys(
     challenge: Mapping[str, Any],
     families: Mapping[str, Sequence[str]],
@@ -1483,6 +1550,25 @@ def _join_keys(
     span = _SPAN.search(task)
     if span is not None:
         keys.append(span.group(1).strip())
+    # **The ore and the rock are two pages and a task may name either.** The
+    # wiki charts `Limestone rock` and `Basalt rock` while the export's task
+    # says `Mine ~|limestone|~` and `Mine ~|basalt|~`, and the `{{Mining info}}`
+    # scrape lands under a third spelling again - `Lovakite ore` beside
+    # `Lovakite rocks`. Offering the stem and both suffixes is what makes those
+    # one name. Appended after every other form, so it can only add a join.
+    #
+    # **Only a name that already carries one of the suffixes is rewritten**, so
+    # this stays a rock rule rather than a general one: without the guard every
+    # join in the project grew a `Willow tree rocks` nobody would ever want,
+    # and a tidy key list is what makes a miss readable when one happens.
+    stems = [
+        _ROCK_SUFFIX.sub("", key).strip()
+        for key in list(keys)
+        if _ROCK_SUFFIX.search(key)
+    ]
+    keys.extend(stems)
+    keys.extend(f"{stem} rock" for stem in stems)
+    keys.extend(f"{stem} rocks" for stem in stems)
     if skill:
         keys.extend(f"{key} ({skill})" for key in list(keys) if "(" not in key)
     return tuple(key for key in dict.fromkeys(keys) if key)
@@ -1811,12 +1897,14 @@ def rate_at(
             return None
         roll_seconds = ticks * TICK_SECONDS
 
-    # **Two shapes of downtime, and a node has exactly one of them.** A tree
-    # the wiki tabulates yields for its whole despawn window, so its cost is a
-    # duty cycle over the rolling. A node it does not tabulate - every rock,
-    # and every tree below oak - hands over one resource and is gone, so its
-    # cost is a flat charge per resource. Applying both would bill the same
-    # wait twice.
+    # **Two shapes of downtime.** A tree the wiki tabulates yields for its whole
+    # despawn window, so its cost is a duty cycle over the rolling. A node it
+    # does not tabulate hands over one resource and is gone, so its cost is a
+    # flat charge per resource. Applying both would bill the same wait twice.
+    #
+    # A *respawn* is a third thing and is not exclusive with the second: see
+    # `SkillProfile.hops`. A rock states its respawn and still costs you the
+    # hop to the next one.
     units = units_worked(tables, profile, skill, kind, node, level)
     if units <= 0:
         return None
@@ -1854,7 +1942,7 @@ def rate_at(
     restock = tables.respawns.get(node.lower())
     if cycle is not None:
         duty = duty_cycle(cycle[0], cycle[1], units)
-    elif restock is None and profile.depletes:
+    elif profile.depletes and (restock is None or profile.hops):
         per_resource = profile.node_seconds
 
     # **Several units of the loop at once**, where the game publishes how

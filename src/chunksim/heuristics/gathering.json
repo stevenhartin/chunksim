@@ -1,6 +1,6 @@
 {
   "name": "gathering.json",
-  "fetched_at": "2026-08-15T19:41:06.358554+00:00",
+  "fetched_at": "2026-08-15T21:33:38.626397+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "curves": {
@@ -14260,7 +14260,19 @@
       }
     },
     "respawns": {
+      "Adamant ore vein": 240.0,
+      "Adamantite ore": 240.0,
+      "Adamantite rocks": 240.0,
+      "Amalgamation": 15.0,
+      "Amethyst crystals": 75.0,
+      "Ash pile": 30.0,
       "Bakery stall": 2.4,
+      "Barronite deposit": 60.0,
+      "Barronite rocks": 60.0,
+      "Basalt rocks (mining)": 5.4,
+      "Blurite ore": 25.0,
+      "Blurite rocks": 25.0,
+      "Calcified rocks": 30.0,
       "Cannonball stall": 2.4,
       "Chest (10 coins)": 3.5,
       "Chest (50 coins)": 45.0,
@@ -14273,33 +14285,89 @@
       "Chest (blood runes)": 120.0,
       "Chest (nature runes)": 8.0,
       "Chest (steel arrowtips)": 75.0,
+      "Clay": 1.2,
+      "Clay ore vein": 1.2,
+      "Clay rocks": 1.2,
+      "Coal": 30.0,
+      "Coal ore vein": 30.0,
+      "Coal rocks": 30.0,
+      "Copper ore": 2.4,
+      "Copper ore vein": 2.4,
+      "Copper rocks": 2.4,
       "Counter (Gu'Tanoth)": 7.2,
       "Crafting stall": 4.8,
+      "Crashed Star": 420.0,
       "Crossbow stall": 4.8,
+      "Daeyalt ore": 28.0,
+      "Daeyalt rocks": 28.0,
+      "Easter egg (mined)": 6.0,
+      "Easter egg rock": 6.0,
+      "Efh salt rocks": 5.4,
       "Fish stall": 7.2,
       "Fish stall (Port Roberts)": 2.4,
       "Food Stall": 3.6,
       "Fruit Stall": 2.4,
       "Fur stall": 7.2,
       "Fur stall (Port Roberts)": 2.4,
+      "Gem rocks": 59.4,
       "Gem stall": 60.0,
       "Gem stall (Mor Ul Rek)": 105.0,
       "Gem stall (Port Roberts)": 2.4,
+      "Gold ore": 60.0,
+      "Gold rocks": 60.0,
+      "Gold vein": 60.0,
+      "Granite": 5.0,
+      "Granite rocks": 5.4,
+      "Iron ore": 5.4,
+      "Iron ore vein": 5.4,
+      "Iron rocks": 5.4,
+      "Lead ore": 12.0,
+      "Lead rocks": 6.0,
+      "Limestone": 5.6,
+      "Limestone rock": 5.4,
+      "Lovakite ore": 35.0,
+      "Lovakite rocks": 35.0,
       "Magic stall": 7.2,
+      "Magic stone (Tears of Guthix)": 5.4,
+      "Mithril ore": 120.0,
+      "Mithril ore vein": 120.0,
+      "Mithril rocks": 120.0,
       "Monkey general stall": 4.8,
+      "Nickel ore": 120.0,
+      "Nickel rocks": 120.0,
       "Ore stall (Mor Ul Rek)": 30.0,
       "Ore stall (Port Roberts)": 2.4,
+      "Ore vein": 60.0,
+      "Pay-dirt": 60.0,
+      "Pile of Rock": 5.4,
+      "Rockfall": 18.0,
+      "Rubium rocks": 35.4,
+      "Runite ore": 720.0,
+      "Runite rocks": 720.0,
+      "Sandstone rocks": 5.4,
       "Scimitar stall": 19.2,
       "Seed stall": 2.4,
       "Silk stall": 4.8,
       "Silk stall (Port Roberts)": 2.4,
+      "Silver ore": 60.0,
+      "Silver rocks": 60.0,
       "Silver stall": 19.2,
       "Silver stall (Port Roberts)": 2.4,
+      "Soft clay rocks": 1.2,
       "Spice stall": 6.0,
       "Spice stall (Port Roberts)": 2.4,
+      "Sunstone rocks": 5.4,
+      "Te salt rocks": 5.4,
       "Tea stall": 2.4,
+      "Tin ore": 2.4,
+      "Tin ore vein": 2.4,
+      "Tin rocks": 2.4,
+      "Urt salt rocks": 5.4,
       "Veg stall (Port Roberts)": 2.4,
       "Vegetable stall": 1.2,
+      "Volcanic ash": 30.0,
+      "Volcanic sulphur": 25.2,
+      "Volcanic sulphur (rock)": 25.2,
       "Wine stall": 4.8
     },
     "aerial_fish": [
@@ -14985,6 +15053,10 @@
           87,
           220.5
         ],
+        "Boat fishing spot (anglerfish)": [
+          82,
+          120.0
+        ],
         "Boat fishing spot (karambwan)": [
           65,
           50.0
@@ -15085,6 +15157,10 @@
           80,
           95.0
         ],
+        "Leechfin": [
+          78,
+          33.2
+        ],
         "Marlin shoal": [
           91,
           265.5
@@ -15104,6 +15180,10 @@
         "Raw anchovies": [
           15,
           40.0
+        ],
+        "Raw anglerfish": [
+          82,
+          120.0
         ],
         "Raw bass": [
           46,
@@ -15276,6 +15356,10 @@
         "Raw yellowfin": [
           79,
           155.5
+        ],
+        "Rod Fishing spot (anglerfish)": [
+          82,
+          120.0
         ],
         "Rod Fishing spot (infernal eel)": [
           80,
@@ -15642,6 +15726,392 @@
         "Young impling": [
           22,
           20.0
+        ]
+      },
+      "Mining": {
+        "Adamant ore vein": [
+          70,
+          95.0
+        ],
+        "Adamantite ore": [
+          70,
+          95.0
+        ],
+        "Adamantite rocks": [
+          70,
+          95.0
+        ],
+        "Amalgamation": [
+          64,
+          6.0
+        ],
+        "Amethyst crystals": [
+          92,
+          240.0
+        ],
+        "Ancient essence crystals": [
+          75,
+          13.5
+        ],
+        "Ash pile": [
+          22,
+          10.0
+        ],
+        "Barronite deposit": [
+          14,
+          32.0
+        ],
+        "Basalt rocks (mining)": [
+          72,
+          5.0
+        ],
+        "Blurite ore": [
+          10,
+          17.5
+        ],
+        "Blurite rocks": [
+          10,
+          17.5
+        ],
+        "Boulder (Shaman Caves)": [
+          52,
+          35.0
+        ],
+        "Calcified rocks": [
+          41,
+          33.0
+        ],
+        "Clay": [
+          1,
+          5.0
+        ],
+        "Clay ore vein": [
+          1,
+          5.0
+        ],
+        "Clay rocks": [
+          1,
+          5.0
+        ],
+        "Coal": [
+          30,
+          50.0
+        ],
+        "Coal ore vein": [
+          30,
+          50.0
+        ],
+        "Coal rocks": [
+          30,
+          50.0
+        ],
+        "Copper ore": [
+          1,
+          17.5
+        ],
+        "Copper ore vein": [
+          1,
+          17.5
+        ],
+        "Copper rocks": [
+          1,
+          17.5
+        ],
+        "Corrupt Deposit": [
+          1,
+          10.0
+        ],
+        "Corrupted ore": [
+          1,
+          10.0
+        ],
+        "Crystal Deposit": [
+          1,
+          10.0
+        ],
+        "Crystal ore": [
+          1,
+          10.0
+        ],
+        "Daeyalt Essence (rock)": [
+          60,
+          5.0
+        ],
+        "Daeyalt ore": [
+          20,
+          17.5
+        ],
+        "Daeyalt rocks": [
+          20,
+          17.5
+        ],
+        "Daeyalt shard": [
+          60,
+          5.0
+        ],
+        "Easter egg (mined)": [
+          1,
+          1.0
+        ],
+        "Easter egg rock": [
+          1,
+          1.0
+        ],
+        "Efh salt rocks": [
+          72,
+          5.0
+        ],
+        "Fallen guardian": [
+          1,
+          5.0
+        ],
+        "Gem rocks": [
+          40,
+          65.0
+        ],
+        "Gold ore": [
+          40,
+          65.0
+        ],
+        "Gold rocks": [
+          40,
+          65.0
+        ],
+        "Gold vein": [
+          40,
+          65.0
+        ],
+        "Granite": [
+          45,
+          50.0
+        ],
+        "Granite rocks": [
+          45,
+          50.0
+        ],
+        "Guardian essence": [
+          1,
+          5.0
+        ],
+        "Guardian fragments": [
+          1,
+          5.0
+        ],
+        "Guardian parts": [
+          1,
+          5.0
+        ],
+        "Guardian remains": [
+          1,
+          5.0
+        ],
+        "Huge guardian remains": [
+          1,
+          5.0
+        ],
+        "Iron ore": [
+          15,
+          35.0
+        ],
+        "Iron ore vein": [
+          15,
+          35.0
+        ],
+        "Iron rocks": [
+          15,
+          35.0
+        ],
+        "Large guardian remains": [
+          1,
+          5.0
+        ],
+        "Lead ore": [
+          25,
+          40.5
+        ],
+        "Lead rocks": [
+          25,
+          40.5
+        ],
+        "Limestone": [
+          10,
+          26.5
+        ],
+        "Limestone rock": [
+          10,
+          26.5
+        ],
+        "Lovakite ore": [
+          65,
+          60.0
+        ],
+        "Lovakite rocks": [
+          65,
+          60.0
+        ],
+        "Mithril ore": [
+          55,
+          80.0
+        ],
+        "Mithril ore vein": [
+          55,
+          80.0
+        ],
+        "Mithril rocks": [
+          55,
+          80.0
+        ],
+        "Nickel ore": [
+          74,
+          80.5
+        ],
+        "Nickel rocks": [
+          74,
+          80.5
+        ],
+        "Ore vein": [
+          30,
+          60.0
+        ],
+        "Pay-dirt": [
+          30,
+          60.0
+        ],
+        "Pile of Rock": [
+          1,
+          1.0
+        ],
+        "Pile of Rock (Big Cats & WWF)": [
+          10,
+          26.5
+        ],
+        "Rock (Abyss)": [
+          1,
+          25.0
+        ],
+        "Rockfall": [
+          1,
+          10.0
+        ],
+        "Rocks (The Tourist Trap)": [
+          1,
+          1.0
+        ],
+        "Rubble (In Aid of the Myreque)": [
+          15,
+          10.0
+        ],
+        "Rubium deposit": [
+          68,
+          10.0
+        ],
+        "Rubium rocks": [
+          48,
+          30.0
+        ],
+        "Rune Essence (rock)": [
+          1,
+          5.0
+        ],
+        "Rune essence": [
+          1,
+          5.0
+        ],
+        "Runite ore": [
+          85,
+          125.0
+        ],
+        "Runite rocks": [
+          85,
+          125.0
+        ],
+        "Salax salt": [
+          72,
+          5.0
+        ],
+        "Salt Deposit": [
+          1,
+          5.0
+        ],
+        "Sandstone rocks": [
+          35,
+          30.0
+        ],
+        "Silver ore": [
+          20,
+          40.0
+        ],
+        "Silver rocks": [
+          20,
+          40.0
+        ],
+        "Soft clay rocks": [
+          70,
+          5.0
+        ],
+        "Soil": [
+          1,
+          5.0
+        ],
+        "Specimen tray": [
+          1,
+          0.5
+        ],
+        "Structural pillar": [
+          10,
+          10.0
+        ],
+        "Sunstone": [
+          50,
+          15.0
+        ],
+        "Sunstone monolith": [
+          50,
+          15.0
+        ],
+        "Sunstone rocks": [
+          50,
+          23.0
+        ],
+        "Te salt rocks": [
+          72,
+          5.0
+        ],
+        "Tephra": [
+          1,
+          35.2
+        ],
+        "Tin ore": [
+          1,
+          17.5
+        ],
+        "Tin ore vein": [
+          1,
+          17.5
+        ],
+        "Tin rocks": [
+          1,
+          17.5
+        ],
+        "Urt salt rocks": [
+          72,
+          5.0
+        ],
+        "Volcanic ash": [
+          22,
+          10.0
+        ],
+        "Volcanic sulphur": [
+          42,
+          35.0
+        ],
+        "Volcanic sulphur (rock)": [
+          42,
+          35.0
+        ],
+        "Zalcano": [
+          1,
+          35.2
         ]
       }
     },
@@ -46415,13 +46885,13 @@
       ]
     },
     "sources": {
-      "creature infoboxes": [
-        168,
-        203
-      ],
       "skill calculators": [
         18,
         18
+      ],
+      "skill infoboxes": [
+        268,
+        309
       ],
       "success charts": [
         633,
@@ -46434,9 +46904,9 @@
       "forestry events": 9,
       "herbiboar levels": 26,
       "node cycles": 13,
+      "node respawns": 109,
       "parallel steps": 9,
       "spawn tiers": 4,
-      "stall respawns": 41,
       "tool speeds": 17
     }
   }

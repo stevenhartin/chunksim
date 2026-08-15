@@ -458,8 +458,8 @@ maps are your own work and nothing can recompute them.
 
    **You do not need to fetch anything for the gathering skills.** Fishing, Mining, Woodcutting,
    Hunter and Thieving are *modelled* rather than looked up - the success chance at your level, the
-   roll interval for your best reachable axe or pickaxe, how many traps your level allows, and the
-   time a node costs you between resources - and the tables behind that ship with the package. So a
+   roll interval for your best reachable axe or pickaxe, how many traps your level allows, and how
+   long the node takes to come back - and the tables behind that ship with the package. So a
    willow tree is priced for the axe your map actually holds rather than for the dragon axe a
    training guide assumes, and the rate climbs as you level instead of one figure covering the whole
    climb. Bands from that model are marked `modelled`.
@@ -470,7 +470,10 @@ maps are your own work and nothing can recompute them.
    restock time**, because each hands over one item and is empty until it comes back — which covers
    all forty-one the wiki tabulates rather than the handful a guide mentions. Where several sit
    together, as the three chests at the Rogues' Castle do, the wait is shared between them and the
-   cost becomes the looting itself. And **barbarian fishing
+   cost becomes the looting itself. **Every rock is priced at its own respawn** for the same reason,
+   read off each rock's own wiki infobox: copper comes back in 2.4 seconds and runite in 720, a
+   spread no single figure could stand for, which is why runite reads as the non-method it is rather
+   than as fast iron. And **barbarian fishing
    is priced as the cascade it is** — sturgeon, then salmon on that failing, then trout on that —
    so the action is paid for all three of its rolls instead of one.
 

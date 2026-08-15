@@ -19,6 +19,7 @@ publishes all three in machine-readable form:
 | stall restock | `Stall/Thievable`'s `Respawn Time` column | seconds per stall |
 | chest restock | the Thieving page's `Thievable chests` table | seconds per chest |
 | traps at once | `Multiple traps`, on the Hunter and crab pages | units per level |
+| rock respawn | each rock's own `{{Mining info}}` `time` field | seconds per rock |
 
 **These are what finished Thieving and Hunter**, the two skills the model refused
 longest, and none of them needed a fit. A stall or a chest hands over one item
@@ -33,6 +34,18 @@ level 1 with five steps; `Crab trapping`'s opens at 21 with four, because crab
 traps are a different activity that happens to share the mechanic. They also
 spell their heading differently - `Traps` against `Number of traps` - which is
 why `parse_trap_counts` tries both and why `Tables.parallel` is keyed by loop.
+
+**The last row is the one this project got wrong for a long time.** It looked
+for a rock respawn the way it had found a tree's - a table on the skill page
+covering every node - and there is none, which was written down as the figure
+being unpublished and a single fitted constant standing in for all 96 rocks. It
+is published one rock at a time, in the `time` field of the `{{Mining info}}`
+infobox on the rock's own page, and it spans copper's 2.4 seconds to runite's
+720. **A table is a convenience, not the data**: where a skill's numbers vary
+per node, look at the node's page before concluding nobody wrote them down.
+`{{Mining info}}` is the only one of the five skill infoboxes that carries a
+`time`, which is why `RESPAWN_INFO_TEMPLATES` is a set beside
+`SKILL_INFO_TEMPLATES` rather than a field every template is asked for.
 
 **The chart template is the find, and it is everywhere.** Over 500 article-space
 pages transclude it - every tree, rock, fishing spot, kebbit, stall and
@@ -100,13 +113,29 @@ DRIFT_NET_PAGE = "Drift net fishing"
 #: with the level written into each formula.
 FORESTRY_PAGE = "Forestry/Strategies"
 
-#: The infoboxes a skilling creature carries, by the skill they are about.
+#: The infoboxes a skilled *thing* carries, by the skill they are about.
 #: **The only place some of them state their experience** - the calculator has
-#: no row for a letvek at all, nor for any Chambers of Xeric fish.
+#: no row for a letvek at all, nor for any Chambers of Xeric fish, and it omits
+#: half the rocks in the game.
+#:
+#: Not only creatures, which is why the name is `skill_info` and not
+#: `creature_info`: `{{Mining info}}` sits on a rock.
 SKILL_INFO_TEMPLATES: dict[str, str] = {
     "Hunter": "Hunter info",
     "Fishing": "Fishing info",
+    "Mining": "Mining info",
 }
+
+#: The templates whose `time` field is a **node respawn**, which is the one
+#: field only Mining's carries.
+#:
+#: **This is where every rock's downtime was hiding.** The Woodcutting page
+#: tabulates despawn and respawn for thirteen trees and nothing does the same
+#: for rocks, from which this project concluded the figure was unpublished and
+#: fitted a single constant to stand in for all of them. It is published, one
+#: rock at a time: iron respawns in 5.4 seconds and gem rocks in 59.4, an
+#: eleven-fold spread no one constant could have covered.
+RESPAWN_INFO_TEMPLATES: frozenset[str] = frozenset({"Mining info"})
 
 #: The aerial fishing article, whose creature table is the only place the four
 #: catches' experience is stated for **both** skills they pay.
@@ -675,6 +704,12 @@ def parse_skill_info(text: str, template: str) -> tuple[int, float] | None:
         # prices - the rod is the same fish caught the slow way.
         paid = _leading(fields.get("skill1exp1", ""))
     if paid is None:
+        # **A versioned rock numbers its `xp` instead.** `Iron rocks` reads
+        # `xp1 = 35` against `xp2 = 0`, the second version being The Node,
+        # where mining pays nothing; taking whichever came last would have
+        # priced iron - the most-mined rock in the game - at zero.
+        paid = _leading(fields.get("xp1", ""))
+    if paid is None:
         # **The rod figure is exactly a fifth of the net one**, on all five
         # shoals that state both - 265.5/53.1, 220.5/44.1, 195.5/39.1,
         # 155.5/31.1, 128.5/25.7 - so the giant krill shoal, which states only
@@ -684,6 +719,21 @@ def parse_skill_info(text: str, template: str) -> tuple[int, float] | None:
     if level is None or paid is None or level < 1 or paid <= 0:
         return None
     return int(level), paid
+
+
+def parse_info_respawn(text: str, template: str) -> float | None:
+    """The `time` an infobox states, in seconds, or `None`.
+
+    **The leading figure where several are given.** Limestone reads `5.4
+    seconds if fully depleted / 11.4 if two remain / 23.4 if one`, and the
+    first is the case a player rotating rocks is actually in - the others
+    describe a partly-mined vein nobody waits at.
+    """
+    block = re.search(r"\{\{" + re.escape(template) + r"(.*?)\n\}\}", text, re.S)
+    if block is None:
+        return None
+    fields = {key: value.strip() for key, value in _INFO_FIELD.findall(block.group(1))}
+    return _duration(fields.get("time", ""))
 
 
 def parse_aerial_fish(text: str) -> tuple[tuple[str, int, float, int, float], ...]:
@@ -941,7 +991,7 @@ def build_tables(
         if charts:
             curves[title] = charts[0]
 
-    say("reading tool speeds, node cycles, stall respawns and trap counts")
+    say("reading tool speeds, node cycles, restock times and trap counts")
     mechanics = fetch_pages(
         [
             PICKAXE_PAGE,
@@ -986,7 +1036,7 @@ def build_tables(
     forestry = forestry_by_level(mechanics.get(FORESTRY_PAGE, ""), range(1, 100))
     forestry_events = len(parse_forestry_events(mechanics.get(FORESTRY_PAGE, "")))
 
-    say(f"reading creature infoboxes for {len(SKILL_INFO_TEMPLATES)} skills")
+    say(f"reading skill infoboxes for {len(SKILL_INFO_TEMPLATES)} skills")
     skill_info: dict[str, dict[str, tuple[int, float]]] = {}
     creatures: list[str] = []
     for skill, template in sorted(SKILL_INFO_TEMPLATES.items()):
@@ -996,6 +1046,10 @@ def build_tables(
             found = parse_skill_info(body, template)
             if found is not None:
                 skill_info.setdefault(skill, {})[title] = found
+            if template in RESPAWN_INFO_TEMPLATES:
+                waited = parse_info_respawn(body, template)
+                if waited is not None and waited > 0:
+                    respawns.setdefault(title, waited)
     crabs = parse_trap_counts(mechanics.get(CRAB_PAGE, ""))
     if crabs:
         parallel.setdefault("Hunter", {})["Crab trapping"] = crabs
@@ -1025,7 +1079,7 @@ def build_tables(
         sources={
             "success charts": (len(curves), len(titles)),
             "skill calculators": (len(actions), len(SKILL_CALC_PAGES)),
-            "creature infoboxes": (
+            "skill infoboxes": (
                 sum(len(entries) for entries in skill_info.values()),
                 len(creatures),
             ),
@@ -1033,7 +1087,7 @@ def build_tables(
         counts={
             "tool speeds": len(tool_ticks),
             "node cycles": len(cycles),
-            "stall respawns": len(respawns),
+            "node respawns": len(respawns),
             "spawn tiers": len(spawn_tiers),
             "herbiboar levels": len(herbiboar_xp),
             "aerial catches": len(aerial_fish),
@@ -1071,6 +1125,7 @@ __all__ = [
     "forestry_by_level",
     "parse_drift_net",
     "parse_forestry_events",
+    "parse_info_respawn",
     "parse_skill_info",
     "parse_level_experience",
     "parse_spawn_tiers",
