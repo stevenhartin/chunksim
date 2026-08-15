@@ -83,7 +83,7 @@ _TICK_GRID: tuple[float, ...] = tuple(x / 2 for x in range(2, 61)) + tuple(
 #: **A field is fitted only against the rows it actually changes**, which the
 #: harness works out by varying it - so a tree the wiki tabulates a cycle for
 #: never votes on `node_seconds`, and one it does not never votes on
-#: `nodes_worked`. Without that the two fight over every row and neither lands.
+#: `worked`. Without that the two fight over every row and neither lands.
 FITTED: dict[str, tuple[tuple[str, tuple[float, ...]], ...]] = {
     # **`roll_ticks` is not fitted here and must not be.** The Woodcutting page
     # states four ticks outright, so it is data like the success curve is; left
@@ -91,7 +91,7 @@ FITTED: dict[str, tuple[tuple[str, tuple[float, ...]], ...]] = {
     # which trades a published mechanic for noise and makes every other
     # constant meaningless.
     "Woodcutting": (
-        ("nodes_worked", tuple(x / 2 for x in range(2, 21))),
+        ("worked", tuple(x / 2 for x in range(2, 21))),
         ("node_seconds", tuple(x / 10 for x in range(0, 301))),
     ),
     "Mining": (("node_seconds", tuple(x / 10 for x in range(0, 301))),),

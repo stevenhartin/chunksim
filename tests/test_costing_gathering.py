@@ -694,8 +694,7 @@ ROTATED = gathering.SkillProfile(
     roll_ticks_by_kind={"Chests": 15.5},
     certain_kinds=frozenset({"Chests"}),
     restock_kinds=frozenset({"Chests"}),
-    parallel_kinds=frozenset({"Chests"}),
-    parallel_bonus={"chest (rogues' castle)": 2.0},
+    worked_at={"chest (rogues' castle)": 3.0},
 )
 
 
@@ -716,10 +715,115 @@ class TestRotationDividesTheWait:
         assert self._rate(ROTATED).xp_per_hour == pytest.approx(701.7 * 3600.0 / 9.3)
 
     def test_one_chest_waits_out_its_whole_restock(self) -> None:
-        alone = dataclasses.replace(ROTATED, parallel_bonus={})
+        alone = dataclasses.replace(ROTATED, worked_at={})
         assert self._rate(alone).xp_per_hour == pytest.approx(701.7 * 3600.0 / 20.4)
 
     def test_rotation_never_speeds_up_the_looting_itself(self) -> None:
         # The opposite of a trap line: you still open one chest at a time, so
         # the cycle is untouched and only the wait is shared.
         assert self._rate(ROTATED).roll_seconds == pytest.approx(15.5 * 0.6)
+
+
+class TestUnitsWorked:
+    """`units_worked` is the one place "how many at once" is decided.
+
+    Three layers and one number; what the number *buys* is `rate_at`'s
+    business, and the point of the split is that a skill nobody has modelled
+    yet gets the idea for free rather than by copying Thieving.
+    """
+
+    _TABLES = gathering.Tables(
+        parallel={"Hunter": {"": ((1, 1.0), (80, 5.0)), "Crab trapping": ((21, 2.0),)}}
+    )
+
+    def _units(self, profile: gathering.SkillProfile, kind: str, node: str, level: int) -> float:
+        return gathering.units_worked(self._TABLES, profile, "Hunter", kind, node, level)
+
+    def test_a_skill_default_applies_where_nothing_else_speaks(self) -> None:
+        assert self._units(gathering.SkillProfile(worked=2.0), "Regular", "Oak tree", 99) == 2.0
+
+    def test_a_published_table_beats_the_default(self) -> None:
+        profile = gathering.SkillProfile(worked=2.0, parallel_kinds=frozenset({"Box trap"}))
+        assert self._units(profile, "Box trap", "Ferret", 99) == 5.0
+
+    def test_the_table_only_reaches_the_loops_it_names(self) -> None:
+        # The Hunter page's table is about trapping; falconry is not trapping,
+        # and the prose that says so has to live in the profile.
+        profile = gathering.SkillProfile(parallel_kinds=frozenset({"Box trap"}))
+        assert self._units(profile, "Falconry", "Dark kebbit", 99) == 1.0
+
+    def test_a_per_node_count_beats_everything(self) -> None:
+        profile = gathering.SkillProfile(
+            worked=2.0,
+            parallel_kinds=frozenset({"Box trap"}),
+            worked_at={"ferret": 3.0},
+        )
+        assert self._units(profile, "Box trap", "Ferret", 99) == 3.0
+
+    def test_a_bonus_adds_to_the_table_rather_than_replacing_it(self) -> None:
+        # The Wilderness trap has to keep tracking the table below level 80,
+        # which writing `6` outright would not.
+        profile = gathering.SkillProfile(
+            parallel_kinds=frozenset({"Box trap"}),
+            parallel_bonus={"black chinchompa": 1.0},
+        )
+        assert self._units(profile, "Box trap", "Black chinchompa", 99) == 6.0
+        assert self._units(profile, "Box trap", "Black chinchompa", 1) == 2.0
+
+
+class TestUnitsAreSpentByWhatTheNodeWaitsFor:
+    """The same count, three different payoffs - none of them per skill."""
+
+    _TABLES = gathering.Tables(
+        curves={"n": (("n", 500.0, 500.0),)},
+        experience={"S": {"n": (100.0, "K")}},
+        cycles={"cycling": (30.0, 30.0)},
+        respawns={"restocking": 60.0},
+    )
+
+    def _rate(self, node: str, profile: gathering.SkillProfile) -> gathering.NodeRate:
+        tables = dataclasses.replace(
+            self._TABLES,
+            curves={node.lower(): (("n", 500.0, 500.0),)},
+            experience={"S": {node.lower(): (100.0, "K")}},
+        )
+        rate = gathering.rate_at(
+            tables, {}, profile, "t", "S",
+            {"Level": 1, "Primary": True, "Objects": [node]}, 99,
+        )
+        assert rate is not None
+        return rate
+
+    def test_a_restocking_node_divides_its_wait(self) -> None:
+        one = self._rate("restocking", gathering.SkillProfile(roll_ticks=2.0, depletes=False))
+        three = self._rate(
+            "restocking",
+            gathering.SkillProfile(roll_ticks=2.0, depletes=False, worked=3.0),
+        )
+        assert one.xp_per_hour * 3.0 == pytest.approx(three.xp_per_hour)
+
+    def test_rotation_never_divides_the_rolling(self) -> None:
+        # A restocking node worked three ways still opens one at a time, so
+        # once the wait stops binding the count buys nothing more.
+        slow = gathering.SkillProfile(roll_ticks=200.0, depletes=False, worked=3.0)
+        alone = gathering.SkillProfile(roll_ticks=200.0, depletes=False)
+        assert self._rate("restocking", slow).xp_per_hour == pytest.approx(
+            self._rate("restocking", alone).xp_per_hour
+        )
+
+    def test_a_simultaneous_loop_divides_the_rolling_instead(self) -> None:
+        one = self._rate("plain", gathering.SkillProfile(roll_ticks=10.0, depletes=False))
+        many = self._rate(
+            "plain",
+            gathering.SkillProfile(
+                roll_ticks=10.0, depletes=False, worked=3.0,
+                parallel_kinds=frozenset({"K"}),
+            ),
+        )
+        assert one.xp_per_hour * 3.0 == pytest.approx(many.xp_per_hour)
+
+    def test_a_cycling_node_spends_it_on_the_duty_cycle(self) -> None:
+        one = self._rate("cycling", gathering.SkillProfile(roll_ticks=4.0))
+        two = self._rate("cycling", gathering.SkillProfile(roll_ticks=4.0, worked=2.0))
+        assert two.duty > one.duty
+        assert two.duty == 1.0

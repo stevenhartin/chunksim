@@ -37,8 +37,8 @@ guide answer the same one, and the curve knows whose account it is describing.
    despawn/respawn cycle and it is 12,162, which is 0.97x the published figure.
    Measured across the nine tabulated trees, rolls-alone runs 1.05x to 3.00x
    fast and the published rate always lands *between* the no-downtime bound and
-   the single-node one; how many nodes a player rotates is what picks a point
-   between them, and it is `SkillProfile.nodes_worked`.
+   the single-node one; how many of them you work at once is what picks a point
+   between them, and it is `SkillProfile.worked`.
 
 **Inactivity has four published shapes, not one**, and which one a node has is
 the difference between a model and a fitted constant:
@@ -65,13 +65,25 @@ prices, while the *marginal* branch is what `seconds_per_item` charges, so the
 item walk still knows a sturgeon is not an average fish. Herbiboar is the other
 cascade in the game and is not modelled.
 
-**Throughput is not always one loop at a time.** Box trapping, net trapping and
-bird snaring run several traps at once, 1 to 5 across levels 1 to 80, and the
-Hunter page publishes the table; the Wilderness allows a sixth for black
-chinchompas and black salamanders. That divides the rolling outright, which is
-what makes it different from `nodes_worked` - that one fills a wait and is
-capped at having no wait, this one runs several independent loops. It is also
-most of why hunting speeds up with level, and none of it is in a success curve.
+**Throughput is not always one node at a time, and that is one idea rather than
+a per-skill quirk.** `units_worked` resolves a single count - a per-node figure
+where a location publishes one, else a published level table, else the skill's
+default - and `rate_at` spends it against whatever that node makes you wait for:
+
+- a *cycle* node fills its gap, via `duty_cycle`, capped at having no wait. Two
+  trees is Woodcutting's fitted answer.
+- a *restock* node divides its wait. Three chests share one room at the Rogues'
+  Castle, so 20.4 seconds of restock becomes 6.8 and stops binding at all.
+- a **simultaneous** loop divides the *rolling*, the only one of the three that
+  beats one-at-a-time throughput. Box trapping, net trapping and bird snaring
+  run 1 to 5 traps across levels 1 to 80 off the Hunter page's table, with a
+  sixth in the Wilderness, and it is most of why hunting speeds up with level -
+  none of which is in a success curve.
+
+Rotation never makes the *action* quicker: you swing at one tree and open one
+chest at a time. Letting the count reach the rolling was a real regression when
+these were unified, and the fit is what found it - every untabulated tree
+chopped twice as fast, and `node_seconds` moved 2.4 -> 3.7 to absorb it.
 
 **Banking is deliberately not charged here.** A published gathering rate is
 quoted for a player dropping what they gather, and that is also how the item
@@ -230,11 +242,20 @@ class SkillProfile:
     #: own `[+]` family. True for Woodcutting alone; see the module docstring
     #: for the two charts that prove it cannot be assumed.
     tool_tiers: bool = False
-    #: How many nodes a player rotates between while one respawns, **where the
-    #: wiki publishes that node's cycle**. One means standing at a single node
-    #: and waiting out every respawn; higher means walking to the next one.
-    #: Fitted rather than chosen - see `costing/gathering_overhead.py`.
-    nodes_worked: float = 1.0
+    #: **How many of a node you work at once.** One means standing at a single
+    #: one and waiting out every respawn; higher means walking to the next.
+    #:
+    #: This is the skill's default and the bottom of three layers - a per-node
+    #: count in `worked_at` beats it, and a published level table in
+    #: `Tables.parallel` beats that. See `units_worked`, which is the one place
+    #: they are resolved, and `rate_at` for the three different ways the answer
+    #: can pay off.
+    worked: float = 1.0
+    #: Per-node counts, for the places the game puts several of a thing
+    #: together. **A fact about a location rather than about a skill**, which is
+    #: why it is keyed by node: three chests share one room at the Rogues'
+    #: Castle, and nothing about Thieving in general says so.
+    worked_at: Mapping[str, float] = field(default_factory=dict)
     #: Seconds lost per resource for a node whose cycle is **not** published.
     #: A normal tree hands over one log and vanishes, and a rock one ore; the
     #: wiki tabulates despawn and respawn for thirteen trees and for nothing
@@ -242,16 +263,16 @@ class SkillProfile:
     #: no page states. **Fitted against the rates the wiki does publish**, and
     #: `0.0` for the skills whose nodes do not deplete at all.
     node_seconds: float = 0.0
-    #: The calculator `kind`s worked several units at a time, against
-    #: `Tables.parallel`'s published step table for the skill.
+    #: The calculator `kind`s a published level table in `Tables.parallel`
+    #: applies to.
     #:
-    #: **The generic form of "you can run five box traps".** Hunter publishes
-    #: the count as a function of level - 1, 2, 3, 4, 5 at 1, 20, 40, 60 and 80
-    #: - and it applies to box trapping, net trapping and bird snaring but not
-    #: to falconry or tracking, which is why it is a set of kinds rather than a
-    #: profile-wide flag. It multiplies throughput outright, which is what
-    #: makes it different from `nodes_worked`: that one fills a wait and is
-    #: capped at no wait, this one runs several loops at once.
+    #: **The table says how many; this says what it is about.** The Hunter page
+    #: tabulates 1, 2, 3, 4, 5 traps at levels 1, 20, 40, 60 and 80 and names
+    #: the loops it applies to in prose - box trapping, net trapping and bird
+    #: snaring, but not falconry or tracking - so that sentence has to be
+    #: encoded somewhere, and a set of loops beside the table is the least it
+    #: can be. Nothing else is gated on this: a node with no table and no
+    #: `worked_at` entry simply works one at a time.
     parallel_kinds: frozenset[str] = frozenset()
     #: The calculator `kind`s where a node with a published restock time and
     #: **no** success chart does not fail, rather than being unknown.
@@ -295,9 +316,12 @@ class SkillProfile:
     #: the action pays was going uncounted. Every node in one cascade names the
     #: same tuple, so the entry reads the same whichever task asked.
     cascades: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
-    #: Node -> units *beyond* what the step table allows there, where the game
-    #: says so. One entry today: the Wilderness lets a sixth trap out for black
-    #: chinchompas, which the Hunter and Box trap pages both state.
+    #: Node -> units *beyond* what the level table allows there.
+    #:
+    #: Additive rather than absolute, and it has to be: the Wilderness lets a
+    #: sixth trap out for black chinchompas and black salamanders, and writing
+    #: `6` would stop the count tracking the table at every level below 80.
+    #: Where there is no table to add to, use `worked_at` instead.
     parallel_bonus: Mapping[str, float] = field(default_factory=dict)
     #: Seconds charged for a *failed* roll, on top of the roll itself.
     #: Thieving is the skill that needs it - a failed pickpocket stuns you,
@@ -373,7 +397,7 @@ PROFILES: dict[str, SkillProfile] = {
         roll_ticks=4.0,
         tool_axis="chance",
         tool_tiers=True,
-        nodes_worked=2.0,
+        worked=2.0,
         node_seconds=2.4,
     ),
     # A pickaxe changes how often the game rolls, never whether the roll wins.
@@ -511,13 +535,13 @@ PROFILES: dict[str, SkillProfile] = {
         fail_seconds_by_kind={"Stalls": 0.0, "Chests": 0.0},
         certain_kinds=frozenset({"Stalls", "Chests"}),
         restock_kinds=frozenset({"Stalls", "Chests"}),
-        parallel_kinds=frozenset({"Chests"}),
         # **Three chests sit together at the Rogues' Castle**, which its own
-        # `{{Map}}` pins show and which is why the guide's rate beats what one
-        # chest could ever give: 20.4 seconds of restock shared three ways is
-        # 6.8, and the cycle is longer than that, so the wait stops mattering
-        # at all. Every other chest the wiki tabulates is priced as one.
-        parallel_bonus={"chest (rogues' castle)": 2.0},
+        # `{{Map}}` pins show and which is why the guide's rate beats anything
+        # one chest could give: 20.4 seconds of restock shared three ways is
+        # 6.8, shorter than the cycle, so the wait stops mattering at all.
+        # Every other chest and stall the wiki tabulates is worked one at a
+        # time, which is what the published figures for them describe.
+        worked_at={"chest (rogues' castle)": 3.0},
     ),
 }
 
@@ -772,6 +796,44 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
         respawns=respawns,
         parallel=parallel,
     )
+
+
+def units_worked(
+    tables: Tables,
+    profile: SkillProfile,
+    skill: str,
+    kind: str,
+    node: str,
+    level: int,
+) -> float:
+    """How many of `node` this player works at once.
+
+    **One number, three sources, most specific first.** A per-node count where
+    the location publishes one; else the loop's own published level table,
+    where the profile says that table applies here; else the skill's default,
+    which is one for everything but Woodcutting.
+
+    `parallel_bonus` is added on top of the table rather than replacing it,
+    because the Wilderness trap is an extra one and has to keep tracking the
+    table underneath.
+
+    **What the answer buys depends on what the node waits for, and `rate_at`
+    decides that, not this.** Three chests in a room and five box traps in a
+    field are the same number here and opposite things there.
+    """
+    override = profile.worked_at.get(node.lower())
+    if override is not None:
+        return override
+    units = profile.worked
+    if kind in profile.parallel_kinds:
+        loops = tables.parallel.get(skill) or {}
+        # **The loop's own table wins over the skill's.** Crab trapping opens
+        # at 21 where hunting generally opens at 1, and using the general table
+        # would hand a level-21 player the wrong count.
+        steps = loops.get(kind) or loops.get("")
+        if steps:
+            units = units_at(steps, level)
+    return units + profile.parallel_bonus.get(node.lower(), 0.0)
 
 
 def units_at(steps: Sequence[tuple[int, float]], level: int) -> float:
@@ -1123,37 +1185,42 @@ def rate_at(
     # and every tree below oak - hands over one resource and is gone, so its
     # cost is a flat charge per resource. Applying both would bill the same
     # wait twice.
+    units = units_worked(tables, profile, skill, kind, node, level)
+    if units <= 0:
+        return None
+
+    # **Working several of a node pays off three different ways, and which one
+    # is decided by what the node makes you wait for.** All three spend the
+    # same `units`; none of them is about which skill it is.
+    #
+    # - a node the wiki publishes a *cycle* for yields over a window and then
+    #   regrows, so more of them fills the gap: `duty_cycle`, capped at no wait.
+    # - a node it publishes a *restock* for hands over one thing and is empty,
+    #   so more of them divides the wait - three chests in a room means the
+    #   first is back by the time you return to it.
+    # - anything else with a count is a loop that runs **simultaneously**
+    #   rather than in rotation, which is a trap line: it divides the rolling
+    #   outright, and is the only one of the three that can beat one-at-a-time
+    #   throughput.
     duty = 1.0
     per_resource = 0.0
+    # **Only a simultaneous loop divides the rolling.** Rotation - a cycle or a
+    # restock - never makes the *action* quicker; you still swing at one tree
+    # and open one chest at a time. Letting `worked` reach the rolling was a
+    # real regression when these were unified: every tree the wiki tabulates no
+    # cycle for silently chopped twice as fast, and the fit absorbed it by
+    # moving `node_seconds` from 2.4 to 3.7.
+    rolling_units = units if kind in profile.parallel_kinds else 1.0
     cycle = tables.cycles.get(node.lower()) if profile.depletes else None
+    restock = tables.respawns.get(node.lower())
     if cycle is not None:
-        duty = duty_cycle(cycle[0], cycle[1], profile.nodes_worked)
-    elif profile.depletes:
+        duty = duty_cycle(cycle[0], cycle[1], units)
+    elif restock is None and profile.depletes:
         per_resource = profile.node_seconds
 
     # **Several units of the loop at once**, where the game publishes how
     # many. Divides the rolling outright, unlike `duty`, which only fills a
     # wait - five box traps really are five independent chances at a time.
-    units = 1.0
-    if kind in profile.parallel_kinds:
-        loops = tables.parallel.get(skill) or {}
-        # **The loop's own table wins over the skill's.** Crab trapping opens
-        # at 21 where hunting generally opens at 1, and using the general table
-        # would hand a level-1 player two traps they cannot set.
-        units = units_at(loops.get(kind) or loops.get("") or (), level)
-        units += profile.parallel_bonus.get(node.lower(), 0.0)
-    if units <= 0:
-        return None
-
-    # **What several units overlap depends on what the loop waits for**, and
-    # the two cases are opposite. Five box traps roll for prey at the same
-    # time, so they divide the *rolling*. Three chests in one room do not let
-    # you loot any faster - you still open them one at a time - they divide the
-    # *waiting*, because by the time you are back at the first it has restocked.
-    # Applying either divisor to the other half would be a different game.
-    rolling_units = 1.0 if kind in profile.restock_kinds else units
-    restock_units = units if kind in profile.restock_kinds else 1.0
-
     # A failed roll can cost more than the roll: see `SkillProfile.fail_seconds`.
     failures = (1.0 / chance) - 1.0
     stun = profile.fail_seconds_by_kind.get(kind, profile.fail_seconds)
@@ -1184,9 +1251,8 @@ def rate_at(
     # **The floor is over the working time and not over the banking**, which is
     # charged after it. A trip does not happen while a stall restocks; it is
     # time on top, the same way it is for every other loop here.
-    respawn = tables.respawns.get(node.lower())
-    if respawn is not None:
-        working = max(respawn / restock_units, working)
+    if restock is not None:
+        working = max(restock / units, working)
 
     seconds_per_resource = working + banking
     if seconds_per_resource <= 0:

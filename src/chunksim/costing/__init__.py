@@ -46,8 +46,11 @@ The modules, and what each owns:
   `recipe_rates.py` loses to it**, and the docstring says why. Per-skill quirks
   are `SkillProfile` fields, never branches, and the four inactivity shapes
   (duty cycle, flat charge, restock floor, stun) are what separate a model from
-  a fitted constant. A *cascade* is the one shape that is not inactivity: several
-  success rolls inside one action, which is barbarian fishing.
+  a fitted constant. A *cascade* is the one shape that is not inactivity:
+  several success rolls inside one action, which is barbarian fishing. **How
+  many of a node you work at once is one idea across all five skills** -
+  `units_worked` resolves it, and what it buys depends on what that node makes
+  you wait for.
 - `combat_xp.py` - combat XP, which is damage and almost nothing else. Owns the
   three gates and the two credits that each removed a wrong answer.
 - `slayer.py` - Slayer's rate, which is a *distribution* rather than a chosen
