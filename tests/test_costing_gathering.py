@@ -1124,8 +1124,13 @@ class TestLoopOverride:
         assert rate is not None
         assert rate.provenance == gathering.CONFIRMED
 
-    def test_only_rabbit_snaring_is_marked_borrowed(self) -> None:
-        assert gathering.PROFILES["Hunter"].inferred_loops == frozenset({"Rabbit snare"})
+    def test_the_borrowed_loops_are_the_two_with_no_evidence(self) -> None:
+        # Rabbit snaring and magic box trapping both take box trapping's
+        # cadence, because nothing published prices either one. Every other
+        # loop was fitted or derived against a figure of its own.
+        assert gathering.PROFILES["Hunter"].inferred_loops == frozenset(
+            {"Rabbit snare", "Magic box"}
+        )
 
 
 class TestSeriesMatchedToTheCreature:
@@ -1265,6 +1270,46 @@ class TestTracking:
         rate = gathering.rate_at(
             tables, {}, gathering.PROFILES["Hunter"], "t", "Hunter",
             {"Level": 39, "Primary": True, "Monsters": ["Embertailed jerboa"]}, 99,
+        )
+        assert rate is not None
+        assert rate.provenance == gathering.INFERRED
+
+
+class TestNameFieldsAreOneList:
+    """Every lookup that turns a challenge into a name reads the same fields.
+
+    Three separate defects came from keeping four copies in step, all of them
+    `Monsters` missing from one of them, and all of them silent: a method was
+    simply refused, with no way to tell a gap from a bug.
+    """
+
+    _CHALLENGE = {"Level": 71, "Primary": True, "Monsters": ["Imp"]}
+    _TABLES = gathering.Tables(
+        curves={"imp": (("Imp", 0.0, 197.0, 71, "confirmed"),)},
+        experience={"Hunter": {"imp": (450.0, "Other")}},
+        parallel={"Hunter": {"": ((1, 1.0), (80, 5.0))}},
+    )
+
+    def test_a_monsters_only_challenge_reaches_every_lookup(self) -> None:
+        # Experience, curve and loop all have to find it, and the imp names
+        # itself in `Monsters` alone.
+        rate = gathering.rate_at(
+            self._TABLES, {}, gathering.PROFILES["Hunter"], "t", "Hunter",
+            self._CHALLENGE, 99,
+        )
+        assert rate is not None
+        assert rate.experience == 450.0
+        assert rate.chance == gathering.success_chance(99, 0.0, 197.0)
+
+    def test_the_loop_override_reaches_it_too(self) -> None:
+        # Without this the imp keeps the calculator's `Other`, which has no
+        # interval, and is refused for a reason that is not true.
+        assert gathering.PROFILES["Hunter"].loop_at["imp"] == "Magic box"
+
+    def test_a_borrowed_interval_still_caps_the_provenance(self) -> None:
+        rate = gathering.rate_at(
+            self._TABLES, {}, gathering.PROFILES["Hunter"], "t", "Hunter",
+            self._CHALLENGE, 99,
         )
         assert rate is not None
         assert rate.provenance == gathering.INFERRED

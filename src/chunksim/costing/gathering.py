@@ -647,6 +647,14 @@ PROFILES: dict[str, SkillProfile] = {
             # Fitted against feldip weasel and razor-backed kebbit, the two
             # tracked creatures with published rates.
             "Tracking": 21.5,
+            # **Borrowed from box trapping, which is what it is.** A magic box
+            # is placed and an imp walks into it, and imps are ordinary fixed
+            # spawns that keep to their wander radius rather than the roaming
+            # world spawns their name suggests - so the density a box-trap
+            # interval encodes is the right kind of quantity here, where it is
+            # not for a wandering impling. Nothing publishes an imp rate, so
+            # this is `INFERRED` like rabbit snaring.
+            "Magic box": 90.0,
         },
         # **What the calculator groups by is not always what the game does.**
         # The export names the trap in each challenge's `Items`, which is the
@@ -658,8 +666,11 @@ PROFILES: dict[str, SkillProfile] = {
             "tropical wagtail": "Bird snare",
             "rabbit hole": "Rabbit snare",
             "white rabbit": "Rabbit snare",
+            # `Other` is the calculator's shrug, and the wiki's own name for
+            # this is magic box trapping.
+            "imp": "Magic box",
         },
-        inferred_loops=frozenset({"Rabbit snare"}),
+        inferred_loops=frozenset({"Rabbit snare", "Magic box"}),
         # **The pitfall five, and the two kinds of number in one place.** The
         # antelope pages state the odds outright - "players will always succeed
         # in hunting sunlight antelopes" - so those are readings. The three
@@ -737,7 +748,17 @@ PROFILES: dict[str, SkillProfile] = {
         ),
         certain_kinds=frozenset({"Crab trapping"}),
         parallel_kinds=frozenset(
-            {"Box trap", "Net trapping", "Bird snare", "Rabbit snare", "Crab trapping"}
+            {
+                "Box trap",
+                "Net trapping",
+                "Bird snare",
+                "Rabbit snare",
+                "Crab trapping",
+                # The `Magic box` page carries its own copy of the trap table,
+                # identical to the Hunter page's, so the skill-wide steps serve
+                # it and no second table is needed.
+                "Magic box",
+            }
         ),
         parallel_bonus={
             "black chinchompa (hunter)": 1.0,
@@ -1212,6 +1233,18 @@ def expand_families(chunk_info: ChunkInfo) -> dict[str, tuple[str, ...]]:
     return found
 
 
+#: The challenge fields that name the thing a method acts on, most specific
+#: first.
+#:
+#: **One list, because keeping four in step failed three times.** `Monsters`
+#: was missing from the experience lookup, so an embertailed jerboa was refused
+#: before its curve was asked for; from the borrow lookup, so it could not have
+#: been rescued; and from the loop lookup, so an imp - which names itself only
+#: there - kept the calculator's `Other` and was refused again. Every lookup
+#: that turns a challenge into a name reads this.
+_NAME_FIELDS = ("Output", "Objects", "NPCs", "Monsters")
+
+
 def _curve_for(
     tables: Tables,
     families: Mapping[str, Sequence[str]],
@@ -1229,9 +1262,7 @@ def _curve_for(
     so a page the wiki really does title `Warrior (Thieving)` matches itself
     first and this can only add a join.
     """
-    keys = _join_keys(
-        challenge, families, ("Output", "Objects", "NPCs", "Monsters"), skill
-    )
+    keys = _join_keys(challenge, families, _NAME_FIELDS, skill)
     for key in keys:
         found = tables.curves.get(key.lower())
         if found:
@@ -1310,12 +1341,7 @@ def _experience_for(
     invented wearing a citation.
     """
     by_name = tables.experience.get(skill) or {}
-    # **The same fields the curve lookup reads.** An embertailed jerboa names
-    # itself only in `Monsters` - its `Output` is `Jerboa tail` - so leaving
-    # that field out here refused the method before its curve was ever asked
-    # for, and the borrow above it could never fire.
-    fields = ("Output", "Objects", "NPCs", "Monsters")
-    for key in _join_keys(challenge, families, fields, skill):
+    for key in _join_keys(challenge, families, _NAME_FIELDS, skill):
         found = by_name.get(key.lower())
         if found:
             return found
@@ -1371,7 +1397,7 @@ def _loop_for(
     """The loop a profile assigns this node, or `""` to keep the calculator's."""
     if not profile.loop_at:
         return ""
-    for key in _join_keys(challenge, families, ("Output", "Objects", "NPCs"), skill):
+    for key in _join_keys(challenge, families, _NAME_FIELDS, skill):
         found = profile.loop_at.get(key.lower())
         if found:
             return found
@@ -1387,7 +1413,7 @@ def _fixed_chance(
     """`(node, chance, provenance)` where a profile states one outright."""
     if not profile.fixed_chances:
         return None
-    for key in _join_keys(challenge, families, ("Output", "Objects", "NPCs"), skill):
+    for key in _join_keys(challenge, families, _NAME_FIELDS, skill):
         found = profile.fixed_chances.get(key.lower())
         if found is not None:
             return key, found[0], found[1]
@@ -1418,8 +1444,7 @@ def _borrowed_curve(
         return None
     node = ""
     donor_name = ""
-    fields = ("Output", "Objects", "NPCs", "Monsters")
-    for key in _join_keys(challenge, families, fields, skill):
+    for key in _join_keys(challenge, families, _NAME_FIELDS, skill):
         found = profile.assumed_curves.get(key.lower())
         if found:
             node, donor_name = key, found
@@ -1456,7 +1481,7 @@ def _respawn_key(
     same keys: not "how often does this succeed" but "how long until there is
     another one".
     """
-    for key in _join_keys(challenge, families, ("Output", "Objects", "NPCs"), skill):
+    for key in _join_keys(challenge, families, _NAME_FIELDS, skill):
         if key.lower() in tables.respawns:
             return key
     return ""
@@ -1551,7 +1576,7 @@ def rate_at(
         # certainty rather than as ignorance.
         node = _respawn_key(tables, families, challenge, skill) or node
         if not node:
-            keys = _join_keys(challenge, families, ("Output", "Objects", "NPCs"), skill)
+            keys = _join_keys(challenge, families, _NAME_FIELDS, skill)
             node = keys[0] if keys else ""
         if not node:
             return None
