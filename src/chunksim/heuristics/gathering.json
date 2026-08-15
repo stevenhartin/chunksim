@@ -1,6 +1,6 @@
 {
   "name": "gathering.json",
-  "fetched_at": "2026-08-15T21:33:38.626397+00:00",
+  "fetched_at": "2026-08-15T22:29:51.645916+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "curves": {
@@ -15760,6 +15760,10 @@
         "Barronite deposit": [
           14,
           32.0
+        ],
+        "Barronite rocks": [
+          14,
+          16.0
         ],
         "Basalt rocks (mining)": [
           72,
@@ -46890,7 +46894,7 @@
         18
       ],
       "skill infoboxes": [
-        268,
+        269,
         309
       ],
       "success charts": [

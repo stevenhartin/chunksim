@@ -704,6 +704,15 @@ def parse_skill_info(text: str, template: str) -> tuple[int, float] | None:
         # prices - the rod is the same fish caught the slow way.
         paid = _leading(fields.get("skill1exp1", ""))
     if paid is None:
+        # **A rock paying two different things labels them instead of
+        # numbering them.** Barronite rocks read `skill1exp = 16` for shards
+        # and `skill2exp = 32` for a deposit, which the drop table splits
+        # 76/24. The first is taken and the second is not averaged in: the
+        # split lives in a table this parser does not read, and 16 is the
+        # conservative end of a figure that is really about 19.8. It is the
+        # only page of the 106 shaped this way.
+        paid = _leading(fields.get("skill1exp", ""))
+    if paid is None:
         # **A versioned rock numbers its `xp` instead.** `Iron rocks` reads
         # `xp1 = 35` against `xp2 = 0`, the second version being The Node,
         # where mining pays nothing; taking whichever came last would have

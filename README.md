@@ -490,7 +490,14 @@ maps are your own work and nothing can recompute them.
    either side, which reproduces every charted ore held out of its own
    prediction at a geometric mean of 1.03x. Crashed stars need none of that -
    the wiki charts them and states an outcome for the whole loop, and the model
-   lands on 30,212/hr against a published 30,000.
+   lands on 30,212/hr against a published 30,000. A handful of methods are
+   priced from prose alone, where the wiki states the mechanic rather than
+   charting it: an essence rock and a soil spot never fail, a soil spot is dug
+   every four ticks whatever you hold, and an amalgamation averages 2.5.
+
+   Where a method is not a training method the model says so rather than
+   omitting it - a Motherlode rockfall is an obstacle in front of the ore vein
+   beside it, and it is refused by name.
 
    **The same tables charge a production skill for what it burns or fletches.** A published rate is
    quoted with the materials to hand — "394,778 an hour burning magic logs" describes the burning,

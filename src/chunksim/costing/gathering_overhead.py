@@ -31,6 +31,14 @@ would fold somebody's banking into a constant that means "node downtime".
 Measured, the mmg rows disagree with the model 2.5x where the exact rows agree
 within 1.1x, and letting them into the fit moves every constant the wrong way.
 
+**Three fits, in descending order of how much they are worth.** `STATED_RATES`
+recovers a whole curve from a table of hourly figures against level - six or
+seven rows against two parameters, of one method. `CHECKED_RATES` fits nothing
+at all: a published figure quoted *with* its level and tool, which the model
+must reproduce. `STATED_CHANCES` is the weak one, and is labelled so - one flat
+chance against one published figure, which is all a single number supports.
+All three run under `--stated-curves`.
+
 **Two fits, and they are not alike.** `fit` pins one constant per *skill*
 against one published figure per method - the shape this project distrusts and
 prints residuals for. `fit_stated_curves` recovers a success curve for one
@@ -455,6 +463,66 @@ CHECKED_RATES: dict[str, tuple[str, int, str, float]] = {
 }
 
 
+#: Nodes with **one** published rate and no chart, as
+#: `node -> (where it says so, level, tool, xp/hr)`.
+#:
+#: **One parameter against one observation, which is the weakest shape in this
+#: file and is labelled as such.** A chart or a table of rates supports a
+#: curve; a single figure supports a single flat chance, and `fixed_chances`
+#: carries it as `INFERRED`. Reading a slope into one point would be inventing
+#: the part nobody measured.
+STATED_CHANCES: dict[str, tuple[str, int, str, float]] = {
+    "ancient essence crystals": (
+        "Ancient essence crystals", 90, "Crystal pickaxe", 10_000.0
+    ),
+}
+
+
+def fit_stated_chances(map_id: str = "fray", skill: str = "Mining") -> None:
+    """Recover one flat success chance from one published hourly figure.
+
+    Fitted through `rate_at` for the reason `fit_stated_curves` gives at
+    length: the hand-derived version of the entry below came out 14% fast the
+    moment the node became `endless` and stopped paying a hop.
+    """
+    tables = gathering.load_tables(read_gathering())
+    args = argparse.Namespace(map_id=map_id, chunkinfo=None, recompute=False)
+    state, _unlocked = load_state(args)
+    families = gathering.expand_families(state.chunk_info)
+    base = gathering.PROFILES[skill]
+    challenges = state.chunk_info.challenges.get(skill) or {}
+
+    for node, (source, level, tool, published) in sorted(STATED_CHANCES.items()):
+        task, challenge = _task_for(gathering, families, challenges, skill, node)
+        if challenge is None:
+            print(f"{node}: no challenge in this map names it\n")
+            continue
+
+        def modelled(chance: float) -> float:
+            candidate = replace(
+                base,
+                fixed_chances={**base.fixed_chances, node: (chance, gathering.INFERRED)},
+            )
+            rate = gathering.rate_at(
+                tables, families, candidate, task, skill, challenge, level, tool=tool
+            )
+            return 0.0 if rate is None else rate.xp_per_hour
+
+        best = min(
+            ((abs(math.log(got / published)), chance)
+             for step in range(1, 1000)
+             if (got := modelled(chance := step / 1000.0)) > 0),
+            key=lambda found: found[0],
+        )
+        chance = best[1]
+        got = modelled(chance)
+        print(
+            f"{node}: chance {chance}   modelled {got:,.0f} against "
+            f"{published:,.0f} at level {level} ({tool}, {source})   "
+            f"{got / published:.2f}x\n"
+        )
+
+
 def check_stated_rates(map_id: str = "fray", skill: str = "Mining") -> None:
     """Ask the model the question a page already answered."""
     tables = gathering.load_tables(read_gathering())
@@ -586,6 +654,7 @@ def main() -> None:
     if args.stated_curves:
         check_stated_rates(args.map)
         fit_stated_curves(args.map)
+        fit_stated_chances(args.map)
     else:
         fit(args.map)
 

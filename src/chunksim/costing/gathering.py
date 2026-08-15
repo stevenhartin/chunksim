@@ -497,6 +497,16 @@ class SkillProfile:
     #: that yields for a *window* is a duty cycle, not a restock, and pricing
     #: one as the other charges a fresh wait for every resource it produced.
     stated_cycles: Mapping[str, tuple[float, float]] = field(default_factory=dict)
+    #: Node -> ticks between rolls, for a node whose cadence is **not** a
+    #: tool's.
+    #:
+    #: **The escape hatch `tool_axis` needs and did not have.** Mining is
+    #: priced on the pickaxe's interval, and the five soil spots are dug with a
+    #: trowel or a rock pick - so the tool lookup found nothing and the model
+    #: refused a method whose cadence is simply four ticks, flat. Stating it
+    #: per node keeps `tool_axis` meaning what it says rather than growing a
+    #: branch for the one activity in the skill that has no tool tier at all.
+    fixed_interval: Mapping[str, float] = field(default_factory=dict)
     #: Nodes that never run out, so neither a respawn nor the hop is charged.
     #:
     #: **A stated mechanic, not an optimisation.** The rune essence rock "will
@@ -584,7 +594,7 @@ class SkillProfile:
 #: | Hunter | 16 | 1.00x | 12/16 |
 #: | Thieving | 14 | 1.00x | 14/14 |
 #: | Mining | 4 | 0.86x | 1/4 |
-#: | Mining (`--stated-curves`) | 14 | 1.00x | 14/14 |
+#: | Mining (`--stated-curves`) | 15 | 1.00x | 15/15 |
 #:
 #: **Read the last three rows the opposite way round from how they look.**
 #: Thieving's 14/14 is an identity rather than evidence - the model's stall
@@ -677,7 +687,12 @@ PROFILES: dict[str, SkillProfile] = {
         # count at all and becomes what the success chart says. An entry that
         # is insensitive to its own value is one that cannot be a fit in
         # disguise.
-        worked_at={"gem rocks": 48.0},
+        # **Eighteen, counted off the page like the gem rocks below.** The
+        # Camdozaal Mines location table lists eighteen barronite spots, and
+        # the exact figure matters no more here than it does there: four is
+        # already enough that a twenty-second yield covers a sixty-second
+        # respawn and the wait disappears.
+        worked_at={"gem rocks": 48.0, "barronite rocks": 18.0},
         # **Guaranteed, and Mod Ash said so.** `Rune essence (rock)` quotes
         # him: "the essence rock doesn't have a random roll based on your stat
         # like other rocks do - it's like everyone gets a 100% chance at any
@@ -686,7 +701,39 @@ PROFILES: dict[str, SkillProfile] = {
         # rate is the pickaxe interval alone. Both essences share the rock -
         # the challenges name `Rune Essence rock` and differ only in what comes
         # out of it - so one entry answers for both.
-        fixed_chances={"rune essence": (1.0, CONFIRMED)},
+        fixed_chances={
+            "rune essence": (1.0, CONFIRMED),
+            # **Digging never fails and the spot never runs out**, so the whole
+            # of a soil spot is its four-tick cadence - see `fixed_interval`,
+            # which is what lets a trowel be priced at all in a skill costed
+            # off pickaxes. One entry answers all five spots: upstream
+            # disambiguates them by location and they are the same action.
+            "soil": (1.0, CONFIRMED),
+            # **One published figure, so one flat chance and not a curve.**
+            # `Ancient essence crystals` states "at level 90 mining with a
+            # crystal pickaxe and Prospector kit, players can expect ~10,000
+            # mining xp per hour" against 13.5 xp a mine, and that is the only
+            # number anywhere - the essence *quantity* climbs with level but
+            # the experience does not, so nothing says the chance moves either.
+            # Recovered through `gathering_overhead --stated-curves`, which is
+            # why it is `INFERRED`: one parameter against one observation is
+            # the weakest shape this file has, and the ladder cannot help
+            # because the rock is far easier than its level implies - level 75
+            # interpolated gives 2,512/hr against a published 10,000.
+            "ancient essence crystals": (0.34, INFERRED),
+            # **Certain, and at a cadence no pickaxe changes** - an
+            # amalgamation averages 2.5 ticks whoever swings at it, which is
+            # why it needs a `fixed_interval` as well as a chance. It is a
+            # quest-line action rather than a training method and the rate it
+            # comes out at says so.
+            "amalgamation": (1.0, CONFIRMED),
+            # Certain like the ordinary clay it is, and paying the same token
+            # 5 experience - the level 70 on the challenge gates the Cam Torum
+            # mine rather than the swing. That is why the ladder is wrong for
+            # it and a stated chance is right: interpolated at 70 it would
+            # borrow adamantite's odds and read a fifteenth of the truth.
+            "soft clay rocks": (1.0, CONFIRMED),
+        },
         # The same rock, from the same page: it holds "an unlimited supply of
         # essence and never deplete". Its `{{Mining info}}` `time` is `N/A`,
         # which is the infobox saying the same thing.
@@ -699,7 +746,15 @@ PROFILES: dict[str, SkillProfile] = {
         # with the time spent *locating* stars named separately as what makes
         # a real hour vary - so this prices an hour at a star, not an hour of
         # the activity.
-        endless=frozenset({"rune essence", "shooting star", "shooting stars"}),
+        endless=frozenset({
+            "rune essence", "shooting star", "shooting stars", "soil",
+            # The crystals move rather than deplete - "only one spot will be
+            # active at a time, switching between two other nearby spots
+            # randomly with 60 to 90 seconds between each movement" - so there
+            # is nothing to wait for, and the following-around is inside the
+            # published figure the chance was recovered from.
+            "ancient essence crystals",
+        }),
         # **Two curves recovered from published rate tables**, where the wiki
         # charts neither rock but quotes hourly figures against level for both.
         # The fit is `gathering_overhead.fit_stated_curves`; re-run it rather
@@ -723,6 +778,21 @@ PROFILES: dict[str, SkillProfile] = {
         # A negative `low` is not a parse error - amethyst's real chart is
         # -18/10. It means the rock is unmineable well above its own
         # requirement, which is what the published rows say.
+        # Four ticks, flat, for a spot dug with a trowel rather than swung at
+        # with a pickaxe. See `SkillProfile.fixed_interval`.
+        fixed_interval={"soil": 4.0, "amalgamation": 2.5},
+        # **Refused because it is not mining**, which is the distinction
+        # `refuses` exists for. A rockfall in the Motherlode Mine is an
+        # obstacle in the player's way - clearing one is what lets the ore vein
+        # beside it be worked, and that vein is `pay-dirt`, already priced.
+        # Nobody trains on rockfalls, and offering a rate for one would put a
+        # method in the band walk that no player would ever pick.
+        #
+        # **Belt and braces today**: nothing charts a rockfall, so it is
+        # refused for want of a curve before this is reached. The entry is here
+        # to say the refusal is a decision rather than a gap, and to hold if a
+        # chart ever appears.
+        refuses=frozenset({"rockfall"}),
         stated_curves={
             "rubium rocks": (69.0, 247.5),
             "calcified rocks": (-11.5, 177.5),
@@ -738,7 +808,17 @@ PROFILES: dict[str, SkillProfile] = {
         },
         # 70 seconds of yielding against a 30-second respawn - the guide states
         # the first, the infobox the second. See `SkillProfile.stated_cycles`.
-        stated_cycles={"calcified rocks": (70.0, 30.0)},
+        # **Both of barronite's halves are on its own infobox**, which is the
+        # only page in the export stating a depletion time beside a respawn:
+        # `time = 1 minute` against `typename = Depletion time, type = 20
+        # seconds`, and the prose repeats it - "rocks deplete 20 seconds after
+        # they start being mined". A rock that yields for twenty seconds is a
+        # duty cycle, and priced as a restock instead it read 2,880/hr, as
+        # though sixty seconds bought one shard.
+        stated_cycles={
+            "calcified rocks": (70.0, 30.0),
+            "barronite rocks": (20.0, 60.0),
+        },
         # **Three rocks nobody charted, interpolated from the ones either
         # side.** See `_ladder_curve` for the arithmetic and the hold-out
         # measurement. Daeyalt opens at exactly silver's level, so it takes
@@ -1676,6 +1756,29 @@ _ROCK_SUFFIX = re.compile(r"\s+(?:ore|rocks?)$", re.I)
 #: instead put a `Willow tree rocks` in every join in the project.
 _ROCK_SKILLS = frozenset({"Mining"})
 
+#: Export spelling -> the wiki page the same thing is written up on, for the
+#: names no rule can bridge.
+#:
+#: **A spelling bridge, not an inference, which is why it is here and not on a
+#: profile.** Every other join rule here is a *rule* - strip a disambiguator,
+#: add a plural, swap `ore` for `rocks` - and these two are simply different
+#: names for one object: upstream writes `Rocks (Barronite)` and
+#: `Crystals (Ancient essence)`, putting the qualifier where the wiki puts the
+#: noun. No rewrite recovers that, and inventing one general enough to would
+#: match far more than it should.
+#:
+#: The rate that comes out is `CONFIRMED` where the page's own chart is, which
+#: is the point of doing it this way rather than through `assumed_curves` - a
+#: page reached under a different name is still that page, and labelling it
+#: `INFERRED` would say something untrue about how well it is known.
+#:
+#: Keep this list short. Two entries is a vocabulary gap; twenty would mean a
+#: rule is missing.
+_ALIASES: dict[str, str] = {
+    "rocks (barronite)": "Barronite rocks",
+    "crystals (ancient essence)": "Ancient essence crystals",
+}
+
 
 def _join_keys(
     challenge: Mapping[str, Any],
@@ -1753,6 +1856,9 @@ def _join_keys(
         keys.extend(stems)
         keys.extend(f"{stem} rock" for stem in stems)
         keys.extend(f"{stem} rocks" for stem in stems)
+    keys.extend(
+        found for key in list(keys) if (found := _ALIASES.get(key.lower())) is not None
+    )
     if skill:
         keys.extend(f"{key} ({skill})" for key in list(keys) if "(" not in key)
     return tuple(key for key in dict.fromkeys(keys) if key)
@@ -2192,7 +2298,10 @@ def rate_at(
     if ticks is None and profile.strict_kinds:
         return None
     roll_seconds = (ticks if ticks is not None else profile.roll_ticks) * TICK_SECONDS
-    if profile.tool_axis == "interval":
+    stated_ticks = profile.fixed_interval.get(node.lower())
+    if stated_ticks is not None:
+        roll_seconds = stated_ticks * TICK_SECONDS
+    elif profile.tool_axis == "interval":
         ticks = tables.tool_ticks.get(tool)
         if ticks is None or ticks <= 0:
             return None

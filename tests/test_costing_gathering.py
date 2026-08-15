@@ -906,6 +906,66 @@ class TestCurvesThisProjectSuppliesItself:
     def test_a_node_naming_neither_is_still_refused(self) -> None:
         assert self._rate(self._profile(), 99) is None
 
+    def test_a_stated_interval_is_used_where_no_tool_applies(self) -> None:
+        # A soil spot is dug with a trowel, and Mining is priced off pickaxe
+        # intervals - so the tool lookup found nothing and a four-tick action
+        # was refused outright.
+        profile = gathering.SkillProfile(
+            tool_axis="interval",
+            fixed_chances={"new rock": (1.0, gathering.CONFIRMED)},
+            fixed_interval={"new rock": 4.0},
+            endless=frozenset({"new rock"}),
+        )
+        got = self._rate(profile, 99)
+        assert got is not None
+        assert got.xp_per_hour == pytest.approx(50.0 * 3600.0 / (4.0 * 0.6))
+
+    def test_a_stated_interval_beats_the_tool_where_both_apply(self) -> None:
+        # An amalgamation averages 2.5 ticks whoever swings at it.
+        tables = dataclasses.replace(self._TABLES, tool_ticks={"Dragon pickaxe": 2.83})
+        profile = gathering.SkillProfile(
+            tool_axis="interval",
+            fixed_chances={"new rock": (1.0, gathering.CONFIRMED)},
+            fixed_interval={"new rock": 2.5},
+            endless=frozenset({"new rock"}),
+        )
+        got = gathering.rate_at(
+            tables, {}, profile, "t", "S",
+            {"Level": 50, "Primary": True, "Objects": ["New rock"]}, 99,
+            tool="Dragon pickaxe",
+        )
+        assert got is not None
+        assert got.roll_seconds == pytest.approx(2.5 * 0.6)
+
+
+class TestNamesNoRuleBridges:
+    def test_an_alias_reaches_the_page_the_wiki_wrote_it_up_on(self) -> None:
+        # Upstream puts the qualifier where the wiki puts the noun:
+        # `Rocks (Barronite)` against `Barronite rocks`. No rewrite recovers
+        # that, and one general enough to would match far more than it should.
+        keys = gathering._join_keys(
+            {"Objects": ["Rocks (Barronite)"]}, {}, gathering._NAME_FIELDS, "Mining"
+        )
+        assert "Barronite rocks" in keys
+
+    def test_an_aliased_page_is_still_confirmed(self) -> None:
+        # The point of doing this in the join rather than through
+        # `assumed_curves`: a page reached under a different name is still that
+        # page, and calling it INFERRED would say something untrue.
+        tables = gathering.Tables(
+            curves={"barronite rocks": (("Barronite rock", 80.0, 100.0, 14, "confirmed"),)},
+            experience={"Mining": {"barronite rocks": (16.0, "")}},
+        )
+        got = gathering.rate_at(
+            tables, {}, gathering.SkillProfile(roll_ticks=4.0), "t", "Mining",
+            {"Level": 14, "Primary": True, "Objects": ["Rocks (Barronite)"]}, 99,
+        )
+        assert got is not None and got.provenance == gathering.CONFIRMED
+
+    def test_the_alias_list_stays_short(self) -> None:
+        # Two entries is a vocabulary gap; twenty would mean a rule is missing.
+        assert len(gathering._ALIASES) <= 5
+
 
 class TestUnitsAreSpentByWhatTheNodeWaitsFor:
     """The same count, three different payoffs - none of them per skill."""
