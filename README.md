@@ -558,6 +558,16 @@ maps are your own work and nothing can recompute them.
    19,277/hr against 52,500. Nothing published chooses between them, so it
    takes the low one.
 
+   **Tempoross is priced by which harpoon you hold and at what level**, from
+   the wiki's own table of four harpoons at five levels each. It replaced three
+   invented figures - one per harpoon tier, flat across the whole climb - that
+   were wrong in both directions: a plain harpoon at level 35 is 30,000 an hour
+   rather than 80,000, and a crystal and an infernal harpoon are 95,000 and
+   76,000 rather than one number for both. The best harpoon is chosen by *rate*
+   rather than by tier, because the tiers are not ordered, and it is re-chosen
+   at every band for the reason an axe is: a map holding a crystal harpoon
+   swings a plain one until 71.
+
    **Stealing artefacts is the one activity here that derives completely.**
    Both halves of what an artefact pays are stated in prose - 750 experience
    for picking the lock, and "40 times the current Thieving level" for

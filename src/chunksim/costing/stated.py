@@ -24,12 +24,15 @@ part was measured and which was chosen.
   point: 13,750/hr at 52 and 25,244 at 99, below almost everything else
   Fishing offers.
 
-- **Tempoross.** A boss fight that pays Fishing, with no loop to model at all.
-  What decides the rate is which harpoon you hold, so it is a tier lookup: a
-  crystal or infernal harpoon is worth 100,000 an hour on the solo no-cooking
-  route, a dragon harpoon 85,000, and a plain or barb-tail one 80,000. Stated
-  figures rather than ones this project read off a page, so `GUESS` - the tier
-  *structure* is the solid part and the exact numbers are somebody's estimate.
+- **Tempoross has left this module**, and it is worth saying where it went and
+  why, because it is the shape of thing that should. It was three invented
+  figures - 100,000 an hour for a crystal or infernal harpoon, 85,000 for a
+  dragon one, 80,000 for a plain one - flat across the whole climb. The wiki
+  publishes a rate for four harpoons at five levels each, and against those the
+  guess was wrong twice: a plain harpoon at level 35 is 30,000 rather than
+  80,000, and crystal and infernal are 95,000 and 76,000 rather than one number
+  for both. See `costing/tempoross.py`. **A `GUESS` here is a placeholder for a
+  page nobody has read yet**, and the way to retire one is to go and read it.
 
 - **Guardians of the Rift.** The only entry here that is an *arithmetic
   ceiling* rather than somebody's estimate, and the distinction is worth
@@ -77,18 +80,6 @@ MOSS_LIZARD_CAP = 90.0
 #: is ten seconds each, which is where this comes from and why every rate it
 #: produces is marked as invented.
 MOSS_LIZARD_PER_HOUR = 360.0
-
-#: The export's own name for the Tempoross catch, and the level it opens at.
-TEMPOROSS_TASK = "Catch fish at ~|Tempoross|~"
-TEMPOROSS_OPENS = 35
-
-#: Experience an hour by harpoon held, best tier first. The family is
-#: `Harpoon[+]` in the export, which is where these names come from.
-TEMPOROSS_TIERS: tuple[tuple[tuple[str, ...], float], ...] = (
-    (("Crystal harpoon", "Infernal harpoon"), 100_000.0),
-    (("Dragon harpoon",), 85_000.0),
-    (("Harpoon", "Barb-tail harpoon"), 80_000.0),
-)
 
 #: The Fishing Trawler, which is a minigame and nothing else.
 TRAWLER_TASK = "Train fishing on the ~|Fishing Trawler|~"
@@ -202,19 +193,6 @@ def tome_rate(completed_quests: Mapping[str, object]) -> float:
     return TOME_RAMBLE_PER_HOUR if RAMBLE_QUEST in completed_quests else TOME_PER_HOUR
 
 
-def tempoross_rate(available: frozenset[str]) -> float:
-    """Experience an hour with the best harpoon this map can reach, or `0.0`.
-
-    **The best tier held, not the best that exists** - a map with only a plain
-    harpoon is worth 80,000 and should not be told otherwise, which is the same
-    reading `gathering.best_tool` takes of an axe.
-    """
-    for names, paid in TEMPOROSS_TIERS:
-        if any(name in available for name in names):
-            return paid
-    return 0.0
-
-
 def rift_rate() -> float:
     """The most mining in Guardians of the Rift can pay in an hour."""
     return RIFT_FRAGMENT_CAP * RIFT_GAMES_PER_HOUR * RIFT_FRAGMENT_EXPERIENCE
@@ -274,18 +252,6 @@ def methods(
                 knob=f"training/{TRAWLER_TASK}/Fishing",
             )
         )
-    if TEMPOROSS_TASK in reachable:
-        paid = tempoross_rate(available or frozenset())
-        if paid > 0:
-            found.setdefault("Fishing", []).append(
-                ComputedMethod(
-                    method="Tempoross",
-                    xp_per_hour=paid,
-                    level=TEMPOROSS_OPENS,
-                    match=GUESS,
-                    knob=f"training/{TEMPOROSS_TASK}/Fishing",
-                )
-            )
     if tables is not None and any(task in reachable for task, _page in LANTERN_TASKS):
         for level in (LANTERN_OPENS, *(step for step in CURVE_STEPS if step > LANTERN_OPENS)):
             paid = lantern_rate(tables, level)

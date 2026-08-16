@@ -50,6 +50,7 @@ from chunksim.costing import (
     sorceress,
     stated,
     swimming,
+    tempoross,
     valuables,
     wintertodt,
 )
@@ -524,6 +525,13 @@ def _gathered(
     # **The one activity that derives completely** - see
     # `costing/artefacts.py`, whose published table it reproduces exactly.
     for skill, methods in artefacts.methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **Which harpoon the map holds decides this one** - see
+    # `costing/tempoross.py`, which needs the reachable set for that and
+    # re-chooses at every band the way the node walk re-chooses an axe.
+    for skill, methods in tempoross.methods(
+        derived.challenges.valid, frozenset(derived.challenges.available_items)
+    ).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # Two activities whose rate is stated rather than computed - see
     # `costing/stated.py`, whose every band is marked `guess`.

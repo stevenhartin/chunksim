@@ -76,6 +76,9 @@ The modules, and what each owns:
   experience as multipliers on your level, so the rate is those times a count
   of games. Replaced a hand-written 400,000/hr that was one number for a method
   linear in the level.
+- `tempoross.py` - the wiki's rate for four harpoons at five levels each,
+  which **replaced three invented tier figures in `stated.py`**. Best harpoon
+  by *rate* rather than by tier, since the tiers are not ordered.
 - `artefacts.py` - stealing artefacts for Captain Khaled, and **the one
   activity here that derives completely**: both halves of what an artefact pays
   are stated in prose, the run count is the mean of six tabulated house times,
