@@ -120,6 +120,18 @@
   "rarities": {},
   "slayer": {},
   "training": {
+    "Access the ~|Rogues' Den|~ minigame": {
+      "Agility": {
+        "match": "exact",
+        "source": "hand: Rogues' Den stat drain, token",
+        "value": 10000
+      },
+      "Thieving": {
+        "match": "exact",
+        "source": "hand: Rogues' Den stat drain, token",
+        "value": 1000
+      }
+    },
     "Chop a ~|bloodwood tree|~": {
       "Woodcutting": {
         "match": "exact",

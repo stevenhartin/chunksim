@@ -54,6 +54,17 @@ Run `chunksim estimate` and look at what it flags:
   trees*, which is the right tree and the wrong question - a profit page, on
   the far side of the layering from a training figure. The tree's own page
   states 65,000-70,000, and the override takes the low end.
+- **A method that really is worth the floor, written down as such.** The
+  Rogues' Den minigame pays only by *draining* a stat and letting you regain
+  it: 12 experience a point, a wall trap drains 1 Thieving and a contortion
+  bar 5 Agility, and you can drain at most your own level before you have to
+  go and restore it. So a full Agility drain is nineteen failures for 1,140
+  experience and a full Thieving drain is ninety-nine for 1,188 - the same
+  total, five times the clicking. Both entries are hand judgements about what
+  the restoring costs, and Thieving's 1,000 is the default floor stated
+  deliberately rather than left to fall there. **That distinction is the point
+  of the entry**: a rate nobody has looked at reads the same as one somebody
+  has, and only the file can tell them apart.
 - **An `exact` join is not automatically the right one either.** The training
   guide has one arctic pine row and two tasks contain its name, so `Chop
   ~|arctic pine logs|~` and `Split ~|arctic pine logs|~` both read 19,000/hr -
