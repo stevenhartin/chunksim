@@ -652,12 +652,34 @@ PROFILES: dict[str, SkillProfile] = {
     # free the fit pulls it to 2.5 to absorb the spread between oak and willow.
     # `node_seconds` is what a tree the wiki tabulates no cycle for costs you:
     # a normal tree hands over one log and vanishes.
+    #
+    # **The blisterwood tree is the exception the two constants are wrong
+    # for, and its own page says both halves.** `{{Woodcutting info}}` gives
+    # it `time = 0 seconds` - it does not fall, it does not regrow, there is
+    # nothing to wait for - and the prose gives it "a 1/10 chance of
+    # 'depleting' with every log chopped. When this happens, the player stops
+    # woodcutting and must click again to resume." So a depletion is not a
+    # tree gone and a walk to the next; it is one interrupted action on a tree
+    # you are still standing at. Charged as an ordinary tree it read 48,122/hr
+    # against a published 85,000, because 2.4 seconds of walking was billed
+    # against every one of the ten logs a depletion covers.
+    #
+    # There is exactly one blisterwood tree, sealed in the Arboretum, so the
+    # one-tick re-click is the whole of the downtime and 0.6 is the game's own
+    # quantum for it rather than a fit. The result is 81,780/hr at 99 with a
+    # dragon axe. That reads 0.96x against the guide and cannot honestly read
+    # higher: 4 ticks at the charted 73.05% is 3.286 seconds a log whatever
+    # you do, which puts the *zero-downtime ceiling* at 83,273 - the published
+    # 85,000 is above what the mechanics allow, so it is a rounding rather
+    # than a target.
     "Woodcutting": SkillProfile(
         roll_ticks=4.0,
         tool_axis="chance",
         tool_tiers=True,
         worked=2.0,
         node_seconds=2.4,
+        yields={"blisterwood tree": 10.0},
+        node_seconds_at={"blisterwood tree": 0.6},
     ),
     # A pickaxe changes how often the game rolls, never whether the roll wins.
     #

@@ -1211,6 +1211,36 @@ class TestUnitsAreSpentByWhatTheNodeWaitsFor:
         assert two.duty == 1.0
 
 
+class TestTheBlisterwoodTree:
+    """The one tree that does not fall, and the one that states so.
+
+    `{{Woodcutting info}}` gives it `time = 0 seconds` and the prose gives it
+    "a 1/10 chance of 'depleting' with every log chopped ... the player stops
+    woodcutting and must click again to resume". Both halves are read off the
+    page; neither is fitted.
+    """
+
+    def test_a_depletion_covers_ten_logs(self) -> None:
+        assert gathering.PROFILES["Woodcutting"].yields == {"blisterwood tree": 10.0}
+
+    def test_the_interruption_is_a_click_and_not_a_walk(self) -> None:
+        # `node_seconds` is 2.4 because an ordinary tree vanishes and you walk
+        # to the next. There is one blisterwood tree, sealed in the Arboretum,
+        # and it is still there - so what a depletion costs is the tick to
+        # click it again.
+        profile = gathering.PROFILES["Woodcutting"]
+        assert profile.node_seconds_at == {"blisterwood tree": 0.6}
+        assert profile.node_seconds_at["blisterwood tree"] < profile.node_seconds
+
+    def test_no_other_tree_is_exempted(self) -> None:
+        # Both entries are exceptions to the skill's own constants, and an
+        # exception that spread would be the constants quietly changing.
+        profile = gathering.PROFILES["Woodcutting"]
+        assert set(profile.yields) == set(profile.node_seconds_at) == {
+            "blisterwood tree"
+        }
+
+
 class TestTheShippedCountsAreConservative:
     """`worked_at` is a judgement per method, so the default has to be safe.
 

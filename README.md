@@ -512,7 +512,13 @@ maps are your own work and nothing can recompute them.
    swing, that is modelled too: sixteen ash piles scattered over a volcano
    never fail, yield four each and respawn in thirty seconds, none of which
    binds - so what the rate measures is six and a half seconds of running per
-   pile.
+   pile. The blisterwood tree is the opposite case and its page states both
+   halves: it never goes away (`time = 0 seconds`) but has a flat 1/10 chance
+   of stopping you with every log, so the only downtime is the tick it takes
+   to click it again. Charged like an ordinary tree - one that falls, and a
+   walk to the next - it read 48,122/hr against a published 85,000; charged
+   for what actually happens it reads 81,780, and 4 ticks at the charted 73%
+   puts the ceiling at 83,273 whatever you do.
 
    A few methods are not training methods and the estimator says so rather than
    offering a bad number: mining an elemental rock pays nothing (it spawns the
