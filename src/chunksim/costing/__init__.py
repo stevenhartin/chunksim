@@ -87,6 +87,10 @@ The modules, and what each owns:
   calls `Varlamore thieving`. **A transcription rather than a derivation** -
   nothing in the burgling loop is charted - carried because the same page
   states the activity four other ways and all four agree with the table.
+- `courses.py` - the Agility courses, as **a lap and a lap time**: their
+  product is the guide's own figure within 5.2% on all ten that publish both.
+  Names the eight it leaves alone and why, including the Colossal Wyrm pair,
+  whose own page disagrees with the guide by 1.7x.
 - `pyramid.py` - the Agility Pyramid, whose money-making rate the scrape gave
   to a **level-1** challenge for a course needing 30. Bands from 55, which is
   where the wiki's table starts and below which it declines to guess.

@@ -602,6 +602,17 @@ maps are your own work and nothing can recompute them.
    which is priced separately - the same hour, so the two are alternatives
    rather than a total.
 
+   **An Agility course is a lap and a lap time**, and their product is the
+   guide's own figure - within 5.2% on all ten courses whose pages publish
+   both, and within 1% on six. That the numbers barely move is the point: the
+   Agility scrape was checked first and found accurate, so what the model buys
+   is that a rate is now a derivation from two facts about the game rather than
+   somebody's estimate. Eight courses are left to the guide and named with the
+   reason: five publish no lap time, Gnome Stronghold publishes a *minimum*
+   rather than an average, and the two Colossal Wyrm courses derive 25,320 an
+   hour against a scraped 44,000 - a disagreement nothing on their page
+   reconciles, and not one worth resolving by preferring the unchecked number.
+
    **The Agility Pyramid shows what a bad join costs.** Its money-making rate
    of 34,380 an hour reached all three of the export's pyramid challenges, and
    one of those opens at Agility **1** where the pyramid itself needs 30 - so a

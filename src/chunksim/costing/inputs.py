@@ -38,6 +38,7 @@ from chunksim.costing import (
     artefacts,
     chambers,
     combat_xp,
+    courses,
     dps_bridge,
     driftnet,
     forestry,
@@ -526,6 +527,10 @@ def _gathered(
     # **A money-making rate that was winning from level 1** - see
     # `costing/pyramid.py`, whose bands open where the wiki's table does.
     for skill, methods in pyramid.methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **A lap and a lap time, which is what a course is** - see
+    # `costing/courses.py`, and the eight it leaves to the guide.
+    for skill, methods in courses.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **A published curve rather than a derived one** - see
     # `costing/valuables.py`, which is a transcription and says so.
