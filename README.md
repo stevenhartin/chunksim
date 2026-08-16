@@ -593,14 +593,18 @@ maps are your own work and nothing can recompute them.
    should go and close, and a refusal reads as the decision it is.
    Sunstone's curve comes from a sentence rather than a chart - "scaling from
    75% success rate at level 50 to a 100% success rate at level 92" - and two
-   points fix the game's own interpolation exactly. The infected root is
-   refused for the opposite reason to all of those: its chart and its
-   experience are both confirmed, and what they price is 12,960/hr against a
-   page saying "rates *up to* ... ~9,100 experience per hour being possible".
-   A model above a stated ceiling is a wrong model, and the missing piece is
-   named on the same page - the action runs "until a player's inventory is
-   filled with logs", every 229.5 cuts, and there is no shape here for the trip
-   that follows. Its guide figure keeps it.
+   points fix the game's own interpolation exactly. The infected root is the case
+   where a page states the whole loop *and* then checks it: a four-tick roll,
+   a charted cut chance, 10 experience for a demon tear at 15/17 and 25 for a
+   log at 2/17, and roots that "don't deplete". Those price it at 12,960/hr at
+   99 with a dragon axe, which reads 42% over a headline of "rates *up to*
+   ... ~9,100 experience per hour" until you reach the worked example further
+   down the same page - "a single click will yield an average of 202.5 demon
+   tears and 2,700 Woodcutting experience before the inventory is filled with
+   27 logs". Twenty-seven logs at 2/17 is 229.5 cuts, which is 202.5 tears and
+   2,700 experience exactly, and 750 seconds of chopping: 12,960 an hour. The
+   two figures are one activity on different clocks, and this project prices
+   the loop rather than the trips between them, here as everywhere.
 
    Where a method is not a training method the model says so rather than
    omitting it - a Motherlode rockfall is an obstacle in front of the ore vein

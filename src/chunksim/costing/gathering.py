@@ -801,6 +801,11 @@ PROFILES: dict[str, SkillProfile] = {
             # the whole of the rate.
             "mature juniper tree": 16.0,
         },
+        # "Infected roots don't deplete, so one action will continue cutting
+        # until a player's inventory is filled with logs", and the infobox
+        # agrees with a `time = 0 seconds`. Nothing to wait for and nowhere to
+        # hop to, so the roll is the whole cost.
+        endless=frozenset({"infected root"}),
         node_seconds_at={"blisterwood tree": 0.6},
         stepped_interval={
             node: _JUNGLE_TICKS
@@ -850,24 +855,36 @@ PROFILES: dict[str, SkillProfile] = {
         # real method at 1 and a poor one at 99 - the tree it competes with
         # gets faster over the same span, and this only gets richer.
         stated_experience_at={"sapling (chambers of xeric)": _SAPLING_EXPERIENCE},
-        # **Both inputs to the roll are confirmed and the roll is not the
-        # method.** The chart is scraped, the experience is the page's own
-        # arithmetic above, and what they price is 12,960/hr at 99 with a
-        # dragon axe - against a page that says "rates *up to* 700 tears and
-        # ~9,100 experience per hour being possible". A model above a stated
-        # ceiling is a wrong model, and the missing third of it is named on the
-        # same page: "one action will continue cutting until a player's
-        # inventory is filled with logs", which is every 229.5 cuts. This has
-        # no shape for "N successes, then a trip", and inventing seconds for
-        # that trip would be one constant fitted to the one figure it would
-        # then be checked against. So the scrape keeps it - which is the
-        # partition this model already draws, with the loop on one side and
-        # what surrounds the loop on the other.
+        # **The page states the whole loop and then checks it for you**, which
+        # is why this is priced rather than left to its guide figure - and the
+        # check is what settles an apparent contradiction on the same page.
         #
-        # Left uncharged it lands at 7,472/hr, which is 0.82x and looks fine.
-        # It is not: that is Woodcutting's tree-hop billed against a node the
-        # page says "don't deplete", so the number is right by an accident of
-        # two errors and the mechanism is one the wiki denies.
+        # Every input is read: "A roll to receive a log is done every 4 game
+        # ticks when chopping", a charted cut chance, 10 experience for a tear
+        # and 25 for a log against a 15/17 and 2/17 table, and "Infected roots
+        # don't deplete" beside a `time = 0 seconds` - so there is no hop and
+        # no respawn, which is what `endless` says. That prices 12,960/hr at 99
+        # with a dragon axe.
+        #
+        # The headline reads "rates *up to* 700 tears and ~9,100 experience
+        # per hour being possible", which looks like a ceiling this sits 42%
+        # over. It is not, and the page's own worked example is the proof:
+        # "a single click will yield an average of 202.5 demon tears and 2,700
+        # Woodcutting experience before the inventory is filled with 27 logs".
+        # Twenty-seven logs at 2/17 is 229.5 successes, which pays 202.5 tears
+        # and 2,700 experience exactly, and takes 750 seconds at four ticks
+        # and 0.7344 - **12,960 an hour**. So the two figures are the same
+        # activity measured over different clocks: this one over the chopping,
+        # the headline over the chopping *and* the trips between clicks. Every
+        # other method here is priced the first way, and Woodcutting banks
+        # nothing precisely because you drop the logs.
+        #
+        # This module refused the method for a while on the ceiling reading,
+        # and the uncharged version it fell back to landed at 7,472/hr - 0.82x
+        # against the guide, which looked like agreement and was Woodcutting's
+        # tree-hop billed against a node the page says does not deplete. Two
+        # errors cancelling is the failure mode to watch for here, not a rate
+        # that disagrees with a headline.
         #
         # **Three of them are not methods at all**, which is a different
         # refusal from the one above and the same one Mining makes of lunar
@@ -886,12 +903,7 @@ PROFILES: dict[str, SkillProfile] = {
         # them fall through: an absent rate reads as a gap somebody should go
         # and close, and a refusal reads as the decision it is.
         refuses=frozenset(
-            {
-                "infected root",
-                "lumberjack outfit",
-                "forestry outfit",
-                "swaying tree",
-            }
+            {"lumberjack outfit", "forestry outfit", "swaying tree"}
         ),
     ),
     # A pickaxe changes how often the game rolls, never whether the roll wins.

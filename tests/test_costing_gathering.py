@@ -1453,11 +1453,39 @@ class TestTheChambersSapling:
         assert profile.shared_curves[node] == "Tree"
 
 
-class TestTheInfectedRootIsRefused:
-    """Two confirmed inputs are not a method when the third is unmodelled."""
+class TestTheInfectedRoot:
+    """The page states the whole loop, and then checks it for you."""
 
-    def test_it_is_refused_by_name(self) -> None:
-        assert "infected root" in gathering.PROFILES["Woodcutting"].refuses
+    def test_its_experience_is_the_mean_of_the_drop_table(self) -> None:
+        # 10 for a tear at 15/17 and 25 for a log at 2/17. The infobox says
+        # `10 - 35`, which reads as its floor; this is what a cut pays.
+        paid = gathering.PROFILES["Woodcutting"].stated_experience["infected root"]
+        assert paid == pytest.approx((10 * 15 + 25 * 2) / 17)
+
+    def test_it_never_depletes(self) -> None:
+        # "Infected roots don't deplete, so one action will continue cutting
+        # until a player's inventory is filled with logs", and `time = 0
+        # seconds`. No respawn to share and nowhere to hop to.
+        assert "infected root" in gathering.PROFILES["Woodcutting"].endless
+
+    def test_it_is_not_refused(self) -> None:
+        # It was, on a reading of "rates *up to* ... ~9,100 experience per
+        # hour" as a ceiling. See the next test for what settled that.
+        assert "infected root" not in gathering.PROFILES["Woodcutting"].refuses
+
+    def test_the_pages_worked_example_is_this_models_answer(self) -> None:
+        # **The check that reversed the refusal.** "A single click will yield
+        # an average of 202.5 demon tears and 2,700 Woodcutting experience
+        # before the inventory is filled with 27 logs." Twenty-seven logs at
+        # 2/17 is 229.5 successes; at four ticks and the charted 0.7344 that
+        # is 750 seconds, so the page's own example is 12,960/hr - and the
+        # ~9,100 headline is the same activity measured over the trips too.
+        successes = 27 / (2 / 17)
+        assert successes * (15 / 17) == pytest.approx(202.5)
+        paid = successes * (10 * 15 + 25 * 2) / 17
+        assert paid == pytest.approx(2700.0)
+        seconds = successes / gathering.success_chance(99, 60.0, 187.0) * 4 * 0.6
+        assert paid * 3600.0 / seconds == pytest.approx(12960.0, rel=1e-3)
 
     def test_an_outfit_is_refused_for_the_other_reason(self) -> None:
         # Not "the model cannot see enough of it" but "there is no action
@@ -1472,12 +1500,7 @@ class TestTheInfectedRootIsRefused:
 
     def test_nothing_else_in_the_skill_is_refused(self) -> None:
         assert gathering.PROFILES["Woodcutting"].refuses == frozenset(
-            {
-                "infected root",
-                "lumberjack outfit",
-                "forestry outfit",
-                "swaying tree",
-            }
+            {"lumberjack outfit", "forestry outfit", "swaying tree"}
         )
 
     def test_its_experience_is_the_mean_and_not_the_range(self) -> None:
