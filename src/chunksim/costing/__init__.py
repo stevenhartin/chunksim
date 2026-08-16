@@ -87,6 +87,10 @@ The modules, and what each owns:
   calls `Varlamore thieving`. **A transcription rather than a derivation** -
   nothing in the burgling loop is charted - carried because the same page
   states the activity four other ways and all four agree with the table.
+- `paydirt.py` - what a Motherlode Mine ore costs, from the **cascade** chart
+  on `Pay-dirt`: an ore's chance is its own roll times the chance every richer
+  one failed. Feeds `action_seconds`, because it is a fact about ore and not
+  about any skill that consumes it.
 - `foundry.py` - the Giants' Foundry, which is the whole of Smithing's climb
   above 15. Jagex's release patch notes give swords an hour against experience
   a sword, and their product is the scraped figure on all five alloy tiers.

@@ -693,6 +693,23 @@ maps are your own work and nothing can recompute them.
    on a chart that gets harder the deeper you go - and the two rates cannot
    both be had, because the Thieving route skips them.
 
+   **What a Motherlode Mine ore costs is a cascade**, and getting it wrong was
+   worth an order of magnitude. The export carries `Obtain ~|runite ore|~ from
+   pay-dirt` with `Output: Runite ore` and no stated pace, so the item walk
+   priced it at the four-tick default - it believed pay-dirt handed over
+   runite ore every 3.5 seconds, which made a runite bar *cheaper* than an
+   adamantite one. `Pay-dirt` publishes both halves of the real answer: a
+   success chart for mining one, and a second chart with `cascade=yes` for
+   what it turns out to be. The cascade is Mod Ash's own description - "pay-
+   dirt rolls for each ore in descending order, starting from the top tier
+   you're eligible to get" - so an ore's chance is its own roll times the
+   chance every richer one failed, and coal's series is always true, which
+   makes it the remainder. It reproduces the published shares at 99 on five of
+   six and sums to exactly 100%; the sixth is the page disagreeing with itself,
+   where its chart says 18.85% for adamantite and a sentence beside it says
+   18.18%. A runite ore goes from 3.5 seconds to 241, and the walk stops
+   preferring pay-dirt to simply mining the rock.
+
    **The Giants' Foundry is priced from an alloy, not from a tier**, which is
    the whole of Smithing's climb above level 15. A preform is 28 bars in
    whatever ratio you choose between two metals, and the strategy guide

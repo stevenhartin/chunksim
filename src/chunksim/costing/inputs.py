@@ -45,6 +45,7 @@ from chunksim.costing import (
     foundry,
     herbiboar,
     implings,
+    paydirt,
     production,
     pyramid,
     recipe_rates,
@@ -468,6 +469,13 @@ def _gathered(
         )
         if chosen.seconds_per_item > 0:
             timed[task] = chosen.seconds_per_item
+    # **What a pay-dirt turns out to be** - see `costing/paydirt.py`. It takes
+    # the figure just computed for `Mine ~|pay-dirt|~` rather than its own, so
+    # one model owns how fast a pay-dirt is mined and the other what comes out
+    # of it. Without this the item walk read `Obtain ~|runite ore|~ from
+    # pay-dirt` at the four-tick default and made a runite bar cheaper than an
+    # adamantite one.
+    timed.update(paydirt.timed(timed, at_level.get("Mining", 1)))
     # **Puro-Puro goes to the bands and not to `training`, and the difference
     # is a real one.** `apply` writes a method's opening rate into `training`,
     # where `training_options` reads the level off the *challenge* - and
