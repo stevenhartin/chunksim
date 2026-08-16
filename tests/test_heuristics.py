@@ -768,33 +768,29 @@ def test_every_gathering_skill_now_has_a_table() -> None:
     }
 
 
-def test_the_giants_foundry_rates_are_the_wikis_own_alloy_tiers() -> None:
-    """**A minigame the export models and nothing rated.** All six preform
-    challenges are reachable on both cached maps and every one had a `default`
-    rate, so `training_options` dropped them and Smithing 1-99 was walked on
-    recipe tick-math - 874 hours, topped out by a bronze platebody at 24,341/hr.
+def test_the_giants_foundry_is_no_longer_pinned_by_hand() -> None:
+    """**A pin that was standing in for a model, until there was one.**
 
-    The Giants' Foundry page publishes swords per hour against average XP per
-    hour for five alloy tiers, which map onto the export's six preforms
-    (bronze and iron are both "Lowest"). Pinned here because they are a hand
-    entry in `heuristics/overrides.json` rather than something the scrape
-    fetches, and a silent edit moves the whole climb: 874.1h -> 54.5h.
+    All six preform challenges were once unrated, so `training_options`
+    dropped them and Smithing 1-99 walked on recipe tick-math: 874 hours,
+    topped by a bronze platebody. They were then pinned to the five alloy
+    tiers of Jagex's release patch notes, which took it to 144.5h.
+
+    `costing/foundry.py` supersedes those. The patch notes are a *summary* -
+    they describe five tiers where a player picks two metals and a ratio out
+    of fifteen pairs and 27 splits, and the tier is the thing being chosen
+    against, so a tier model cannot express that a lower-scoring alloy can be
+    faster. The module derives from the strategy page's alloy table, the
+    stated mould score and the main page's closed experience formula.
+
+    **The pins had to go rather than merely be outranked**, because
+    `training.training_options` lets a hand pin beat a computed method by
+    design - which is right, and which is exactly why a pin left behind after
+    its model arrives is silently load-bearing.
     """
     overrides = json.loads(PACKAGED_OVERRIDES.read_text())
-    rates = {
-        task.split("Forge a")[-1].split("~|")[0].strip(): entry["Smithing"]["value"]
-        for task, entry in overrides["training"].items()
-        if "Giants' Foundry" in task
-    }
 
-    assert rates == {
-        "bronze": 48_000,
-        "n iron": 48_000,
-        "steel": 85_000,
-        "mithril": 135_000,
-        "n adamant": 195_000,
-        "rune": 276_000,
-    }
+    assert not [t for t in overrides["training"] if "Giants' Foundry" in t]
 
 
 def test_the_giants_foundry_charges_28_bars_and_says_so_consistently() -> None:
@@ -804,12 +800,12 @@ def test_the_giants_foundry_charges_28_bars_and_says_so_consistently() -> None:
     not items - and `Output: None`, so no recipe joins it and nothing charged
     for the metal. Smithing 1-99 on `fray` read 54.5h.
 
-    The wiki states both numbers the export does not. The crucible "needs to be
-    filled with 28 bars worth of metal", and the alloy-tier table's *average XP
-    per sword* times its *swords per hour* is exactly the hourly figure pinned
-    above - so the quantity and the experience corroborate the rate rather than
-    being a second, independent guess. That identity is what this asserts:
-    edit one column and the two blocks disagree.
+    The wiki states both numbers the export does not: the crucible "needs to
+    be filled with 28 bars worth of metal", and Jagex's alloy-tier table gives
+    the average experience a sword. Those two are what `material_seconds_per_xp`
+    is built from - bars per sword over experience per sword - and they are
+    still needed now that `costing/foundry.py` owns the *rate*, because a
+    module supplies what a method pays and not what it consumes.
 
     **Bars rather than the family's smithed members**, which the crucible also
     accepts: an item contributes one bar *less* than it cost to smith, so it is
@@ -833,21 +829,20 @@ def test_the_giants_foundry_charges_28_bars_and_says_so_consistently() -> None:
         "Forge a rune ~|preform|~ in the Giants' Foundry": {"Runite bar": 28},
     }
 
-    #: The wiki's own "Swords per hour" column, which appears nowhere else -
-    #: it is the third figure in a row whose other two are already pinned, so
-    #: it is what makes the identity checkable.
-    swords_per_hour = {
-        "bronze": 20,
-        "n iron": 20,
-        "steel": 17,
-        "mithril": 15,
-        "n adamant": 13,
-        "rune": 12,
+    #: Jagex's "Average XP per sword" column, which is what the `experience`
+    #: field on each entry has to be for `material_seconds_per_xp` to come out
+    #: as seconds of bar-gathering per experience.
+    experience_per_sword = {
+        "bronze": 2_400,
+        "n iron": 2_400,
+        "steel": 5_000,
+        "mithril": 9_000,
+        "n adamant": 15_000,
+        "rune": 23_000,
     }
     for task, entry in materials.items():
         tier = task.split("Forge a")[-1].split("~|")[0].strip()
-        rate = overrides["training"][task]["Smithing"]["value"]
-        assert entry["experience"] * swords_per_hour[tier] == rate, tier
+        assert entry["experience"] == experience_per_sword[tier], tier
 
 
 def test_the_dart_materials_are_the_published_xp_per_dart() -> None:

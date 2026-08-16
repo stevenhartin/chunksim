@@ -693,14 +693,20 @@ maps are your own work and nothing can recompute them.
    on a chart that gets harder the deeper you go - and the two rates cannot
    both be had, because the Thieving route skips them.
 
-   **The Giants' Foundry is Jagex's own arithmetic**, not a guide's estimate:
-   the release patch notes give swords an hour against average experience a
-   sword for each of five alloy tiers, and multiplying the two columns is the
-   published rate exactly - 20 x 2,400 = 48,000 on the lowest and 12 x 23,000
-   = 276,000 on the highest. It is the whole of Smithing's climb above level
-   15. Note what the estimator then does to those figures: a preform eats
-   bars, so the walk charges the time to get them and 48,000 an hour becomes
-   40,616. That is the same layering that makes `Smelt a ~|gold bar|~` read
+   **The Giants' Foundry is priced from an alloy, not from a tier**, which is
+   the whole of Smithing's climb above level 15. A preform is 28 bars in
+   whatever ratio you choose between two metals, and the strategy guide
+   tabulates all fifteen pairs against all 27 splits; that gives a metal
+   score, the mould adds a stated 59, and the main page's closed formula
+   `(floor(q^2/73) + floor(1.5q) + 1) x 30` turns the total into experience -
+   so mithril and adamant at 14 each is 59 + 95 = 154 quality and 16,680 a
+   sword. The score also sets the difficulty, and so the time: six sections at
+   45 seconds plus a 30-second hand-in is 300 seconds, twelve swords an hour,
+   200,160 experience. **The tier summary in the release patch notes cannot
+   express the actual choice**: bronze with rune scores 60 against bronze with
+   adamant's 50 and is *slower*, because 60 crosses into a fifth section. Note
+   what the estimator then does to any of these: a preform eats bars, so the
+   walk charges the time to get them and 200,160 an hour becomes 44,823. That is the same layering that makes `Smelt a ~|gold bar|~` read
    about 14,000 where the wiki's own comparison says gold at the Blast Furnace
    is 375,000 - the guide quotes a method with its bars to hand, and this
    charges you for getting them, which on a chunk-restricted map is usually

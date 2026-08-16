@@ -167,48 +167,6 @@
         "value": 165000
       }
     },
-    "Forge a bronze ~|preform|~ in the Giants' Foundry": {
-      "Smithing": {
-        "match": "exact",
-        "source": "wiki:Giants' Foundry",
-        "value": 48000
-      }
-    },
-    "Forge a mithril ~|preform|~ in the Giants' Foundry": {
-      "Smithing": {
-        "match": "exact",
-        "source": "wiki:Giants' Foundry",
-        "value": 135000
-      }
-    },
-    "Forge a rune ~|preform|~ in the Giants' Foundry": {
-      "Smithing": {
-        "match": "exact",
-        "source": "wiki:Giants' Foundry",
-        "value": 276000
-      }
-    },
-    "Forge a steel ~|preform|~ in the Giants' Foundry": {
-      "Smithing": {
-        "match": "exact",
-        "source": "wiki:Giants' Foundry",
-        "value": 85000
-      }
-    },
-    "Forge an adamant ~|preform|~ in the Giants' Foundry": {
-      "Smithing": {
-        "match": "exact",
-        "source": "wiki:Giants' Foundry",
-        "value": 195000
-      }
-    },
-    "Forge an iron ~|preform|~ in the Giants' Foundry": {
-      "Smithing": {
-        "match": "exact",
-        "source": "wiki:Giants' Foundry",
-        "value": 48000
-      }
-    },
     "Mine ~|iron ore|~": {
       "Mining": {
         "match": "exact",
