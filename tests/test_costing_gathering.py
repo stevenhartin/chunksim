@@ -1016,6 +1016,37 @@ class TestNamesNoRuleBridges:
         )
         assert "Barronite rocks" in keys
 
+    def test_a_named_state_reaches_the_one_page_it_is_a_state_of(self) -> None:
+        # `Kharidian cactus (Healthy)` is the wiki's `Kharidian cactus`, whose
+        # infobox reads `version = Healthy` - upstream is naming a version of
+        # one page, not a second object.
+        keys = gathering._join_keys(
+            {"Objects": ["Kharidian cactus (Healthy)"]},
+            {}, gathering._NAME_FIELDS, "Woodcutting",
+        )
+        assert "Kharidian cactus" in keys
+
+    def test_the_general_rule_it_replaces_would_have_been_wrong(self) -> None:
+        # **Why this is an alias and not a trailing-parenthesis strip.** That
+        # rule gains exactly two joins across the export and the other one is
+        # false: `Guard (H.A.M. storeroom)` is level 20 for 22.2 experience
+        # where the plain `Guard` is level 40 for 46.8. Nothing here may bridge
+        # the two, by any route.
+        keys = gathering._join_keys(
+            {"NPCs": ["Guard (H.A.M. storeroom)"]},
+            {}, gathering._NAME_FIELDS, "Thieving",
+        )
+        assert "Guard" not in keys
+
+    def test_an_alias_is_a_whole_name_and_not_a_pattern(self) -> None:
+        # Three entries is a vocabulary gap; a rule wearing a dict would be
+        # twenty, and each of these is one object with two spellings.
+        assert set(gathering._ALIASES) == {
+            "rocks (barronite)",
+            "crystals (ancient essence)",
+            "kharidian cactus (healthy)",
+        }
+
     def test_an_aliased_page_is_still_confirmed(self) -> None:
         # The point of doing this in the join rather than through
         # `assumed_curves`: a page reached under a different name is still that

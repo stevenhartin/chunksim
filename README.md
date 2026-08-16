@@ -535,6 +535,14 @@ maps are your own work and nothing can recompute them.
    hourly figure for jungle, so there is no row to check that against; every
    input is a sentence off the page instead.
 
+   The Kharidian cactus is the smallest thing the model prices and worth
+   reading as a shape rather than a number: one series, "no way to increase the
+   chance of success", 10 experience, and a minute before the cactus is healthy
+   again. The chance climbs from 12% to 99% across the whole skill and the rate
+   does not move, because the minute is what you wait for either way - a flat
+   1,200/hr, which says "this is a way to fill a waterskin" without having to
+   be told.
+
    A few methods are not training methods and the estimator says so rather than
    offering a bad number: mining an elemental rock pays nothing (it spawns the
    monster whose drop is the ore), lunar ore's own infobox states zero, a

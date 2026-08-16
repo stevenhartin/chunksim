@@ -2115,11 +2115,25 @@ _LOG_SKILLS = frozenset({"Woodcutting"})
 #: page reached under a different name is still that page, and labelling it
 #: `INFERRED` would say something untrue about how well it is known.
 #:
-#: Keep this list short. Two entries is a vocabulary gap; twenty would mean a
+#: Keep this list short. Three entries is a vocabulary gap; twenty would mean a
 #: rule is missing.
+#:
+#: **The third one is here because the rule that would have covered it is
+#: wrong**, and measuring said so. `Kharidian cactus (Healthy)` wants the
+#: wiki's `Kharidian cactus`, and stripping a trailing parenthesis generally
+#: gains exactly two joins across the export - that one, and
+#: `Guard (H.A.M. storeroom)` reaching the plain `Guard`, which is a level-40
+#: guard worth 46.8 experience where the H.A.M. one is level 20 and worth 22.2.
+#: That is the sunstone monolith again: a rewrite that finds a real page which
+#: is not this thing. And the vocabulary says why no narrower rule works
+#: either - of the parentheticals the export uses, almost every one is a
+#: location or a variant with a page of its own, and `(Healthy)` occurs twice,
+#: both of them this cactus. The wiki settles it: its infobox reads
+#: `version = Healthy`, so upstream is naming a *version* of one page.
 _ALIASES: dict[str, str] = {
     "rocks (barronite)": "Barronite rocks",
     "crystals (ancient essence)": "Ancient essence crystals",
+    "kharidian cactus (healthy)": "Kharidian cactus",
 }
 
 
