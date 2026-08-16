@@ -869,16 +869,29 @@ PROFILES: dict[str, SkillProfile] = {
         # page says "don't deplete", so the number is right by an accident of
         # two errors and the mechanism is one the wiki denies.
         #
-        # **Two of them are not methods at all**, which is a different refusal
-        # from the one above and the same one Mining makes of lunar ore and a
-        # Motherlode rockfall. `Wear ~|lumberjack outfit|~ pieces` and its
-        # Forestry twin are collection tasks: an outfit is a bonus on whatever
-        # you were already chopping, so there is no action to repeat and
-        # nothing that would be an experience *rate*. They name no object and
-        # no output either, so nothing here would have priced them - refusing
-        # them by name is what makes that a decision rather than a gap.
+        # **Three of them are not methods at all**, which is a different
+        # refusal from the one above and the same one Mining makes of lunar
+        # ore and a Motherlode rockfall.
+        #
+        # `Wear ~|lumberjack outfit|~ pieces` and its Forestry twin are
+        # collection tasks: an outfit is a bonus on whatever you were already
+        # chopping, so there is no action to repeat and nothing that would be
+        # an experience *rate*. The swaying tree is the other shape of
+        # non-method - a single object you chop for a `Branch`, whose own
+        # infobox states **1 experience** and which no chart or respawn
+        # describes, because there is nothing repeatable to describe.
+        #
+        # None of the three names an object this model could have priced
+        # anyway, which is the reason to refuse them by name rather than let
+        # them fall through: an absent rate reads as a gap somebody should go
+        # and close, and a refusal reads as the decision it is.
         refuses=frozenset(
-            {"infected root", "lumberjack outfit", "forestry outfit"}
+            {
+                "infected root",
+                "lumberjack outfit",
+                "forestry outfit",
+                "swaying tree",
+            }
         ),
     ),
     # A pickaxe changes how often the game rolls, never whether the roll wins.

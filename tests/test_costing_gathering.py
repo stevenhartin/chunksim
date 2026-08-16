@@ -1465,9 +1465,19 @@ class TestTheInfectedRootIsRefused:
         refuses = gathering.PROFILES["Woodcutting"].refuses
         assert {"lumberjack outfit", "forestry outfit"} <= refuses
 
+    def test_the_swaying_tree_is_refused_for_being_worth_one(self) -> None:
+        # One object, a `Branch`, and an infobox stating 1 experience. There
+        # is nothing repeatable here for a chart or a respawn to describe.
+        assert "swaying tree" in gathering.PROFILES["Woodcutting"].refuses
+
     def test_nothing_else_in_the_skill_is_refused(self) -> None:
         assert gathering.PROFILES["Woodcutting"].refuses == frozenset(
-            {"infected root", "lumberjack outfit", "forestry outfit"}
+            {
+                "infected root",
+                "lumberjack outfit",
+                "forestry outfit",
+                "swaying tree",
+            }
         )
 
     def test_its_experience_is_the_mean_and_not_the_range(self) -> None:

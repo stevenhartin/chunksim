@@ -581,11 +581,16 @@ maps are your own work and nothing can recompute them.
    comes out as the best method in the game up to level 14 and behind every
    real tree by 99, which is what a sapling should be.
 
-   A few methods are not training methods and the estimator says so rather than
-   offering a bad number: mining an elemental rock pays nothing (it spawns the
-   monster whose drop is the ore), lunar ore's own infobox states zero, a
-   Motherlode rockfall is an obstacle in front of the vein beside it, and
-   panning falls below the 1,000/hr floor anything would be quoted at.
+   A few methods are not training methods and the estimator says so rather
+   than offering a bad number. Mining has five: mining an elemental rock pays
+   nothing (it spawns the monster whose drop is the ore), lunar ore's own
+   infobox states zero, a Motherlode rockfall is an obstacle in front of the
+   vein beside it, and panning falls below the 1,000/hr floor anything would
+   be quoted at. Woodcutting has three: two outfits, which are a bonus on
+   whatever you were already chopping rather than an action you repeat, and
+   the swaying tree, which is one object worth one experience. **Refusing
+   these by name is the point** - an absent rate reads as a gap somebody
+   should go and close, and a refusal reads as the decision it is.
    Sunstone's curve comes from a sentence rather than a chart - "scaling from
    75% success rate at level 50 to a 100% success rate at level 92" - and two
    points fix the game's own interpolation exactly. The infected root is
