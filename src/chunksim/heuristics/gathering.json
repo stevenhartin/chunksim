@@ -1,6 +1,6 @@
 {
   "name": "gathering.json",
-  "fetched_at": "2026-08-15T22:29:51.645916+00:00",
+  "fetched_at": "2026-08-16T14:22:42.564326+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "curves": {
@@ -1467,6 +1467,15 @@
           "low": 240.0,
           "high": 750.0,
           "requirement": 61,
+          "provenance": "confirmed"
+        }
+      ],
+      "Cage (Underground Pass, slave)": [
+        {
+          "label": "Picking the cage lock",
+          "low": 128.0,
+          "high": 400.0,
+          "requirement": 1,
           "provenance": "confirmed"
         }
       ],
@@ -3537,6 +3546,22 @@
           "provenance": "confirmed"
         }
       ],
+      "Door (H.A.M. Storerooms)": [
+        {
+          "label": "Success chance",
+          "low": 10.0,
+          "high": 254.0,
+          "requirement": 23,
+          "provenance": "confirmed"
+        },
+        {
+          "label": "With lockpick",
+          "low": 60.0,
+          "high": 300.0,
+          "requirement": 23,
+          "provenance": "confirmed"
+        }
+      ],
       "Door (Magic axe hut)": [
         {
           "label": "Unlocking the door",
@@ -4859,6 +4884,15 @@
           "provenance": "confirmed"
         }
       ],
+      "Floor (switch, Tarn's Lair)": [
+        {
+          "label": "Disarm trap",
+          "low": 60.0,
+          "high": 300.0,
+          "requirement": 1,
+          "provenance": "confirmed"
+        }
+      ],
       "Food Stall": [
         {
           "label": "Food Stall",
@@ -5831,6 +5865,15 @@
           "low": 60.0,
           "high": 290.0,
           "requirement": 99,
+          "provenance": "confirmed"
+        }
+      ],
+      "Guide rope": [
+        {
+          "label": "Hitting the guide rope",
+          "low": 120.0,
+          "high": 300.0,
+          "requirement": 25,
           "provenance": "confirmed"
         }
       ],
@@ -7015,6 +7058,15 @@
           "provenance": "confirmed"
         }
       ],
+      "Jail Door (Ape Atoll)": [
+        {
+          "label": "Success chance",
+          "low": 64.0,
+          "high": 255.0,
+          "requirement": 1,
+          "provenance": "confirmed"
+        }
+      ],
       "Jatoba tree": [
         {
           "label": "Bronze",
@@ -7579,6 +7631,15 @@
           "low": 181.0,
           "high": 320.0,
           "requirement": 30,
+          "provenance": "confirmed"
+        }
+      ],
+      "Ledge (Underground Pass)": [
+        {
+          "label": "Crossing the ledge",
+          "low": 200.0,
+          "high": 260.0,
+          "requirement": 1,
           "provenance": "confirmed"
         }
       ],
@@ -8928,8 +8989,8 @@
       "Monkeybars (Yanille Agility Dungeon)": [
         {
           "label": "Swinging across success rate",
-          "low": 36.0,
-          "high": 330.0,
+          "low": 45.0,
+          "high": 325.0,
           "requirement": 57,
           "provenance": "confirmed"
         }
@@ -13572,6 +13633,15 @@
           "provenance": "confirmed"
         }
       ],
+      "Wall (Tarn's Lair)": [
+        {
+          "label": "Disarm trap",
+          "low": 60.0,
+          "high": 300.0,
+          "requirement": 1,
+          "provenance": "confirmed"
+        }
+      ],
       "Wall safe": [
         {
           "label": "Rogue's equipment crate",
@@ -14265,14 +14335,19 @@
       "Adamantite rocks": 240.0,
       "Amalgamation": 15.0,
       "Amethyst crystals": 75.0,
+      "Arctic pine logs": 8.4,
+      "Arctic pine tree": 8.4,
       "Ash pile": 30.0,
       "Bakery stall": 2.4,
+      "Bark": 26.4,
       "Barronite deposit": 60.0,
       "Barronite rocks": 60.0,
       "Basalt rocks (mining)": 5.4,
       "Blurite ore": 25.0,
       "Blurite rocks": 25.0,
       "Calcified rocks": 30.0,
+      "Camphor logs": 59.4,
+      "Camphor tree": 59.4,
       "Cannonball stall": 2.4,
       "Chest (10 coins)": 3.5,
       "Chest (50 coins)": 45.0,
@@ -14300,6 +14375,8 @@
       "Crossbow stall": 4.8,
       "Daeyalt ore": 28.0,
       "Daeyalt rocks": 28.0,
+      "Dead Oak (2021 Christmas event)": 8.4,
+      "Dense Jungle": 88.0,
       "Easter egg (mined)": 6.0,
       "Easter egg rock": 6.0,
       "Efh salt rocks": 5.4,
@@ -14318,34 +14395,59 @@
       "Gold vein": 60.0,
       "Granite": 5.0,
       "Granite rocks": 5.4,
+      "Hollow tree": 26.0,
       "Iron ore": 5.4,
       "Iron ore vein": 5.4,
       "Iron rocks": 5.4,
+      "Ironwood logs": 119.4,
+      "Ironwood tree": 120.0,
+      "Jatoba logs": 8.0,
+      "Jatoba tree": 8.4,
+      "Jungle Bush": 4.2,
+      "Jungle tree (Trouble Brewing)": 14.4,
+      "Jungle tree (dense Kharazi Jungle)": 4.2,
+      "Juniper logs": 8.4,
+      "Kharidian cactus": 60.0,
       "Lead ore": 12.0,
       "Lead rocks": 6.0,
+      "Light Jungle": 90.0,
       "Limestone": 5.6,
       "Limestone rock": 5.4,
       "Lovakite ore": 35.0,
       "Lovakite rocks": 35.0,
+      "Magic logs": 119.4,
       "Magic stall": 7.2,
       "Magic stone (Tears of Guthix)": 5.4,
+      "Magic tree": 119.4,
+      "Mahogany logs": 8.4,
+      "Mahogany tree": 8.4,
+      "Maple logs": 35.4,
+      "Maple tree": 35.4,
+      "Mature juniper tree": 8.0,
       "Mithril ore": 120.0,
       "Mithril ore vein": 120.0,
       "Mithril rocks": 120.0,
       "Monkey general stall": 4.8,
       "Nickel ore": 120.0,
       "Nickel rocks": 120.0,
+      "Oak logs": 8.4,
+      "Oak tree": 8.4,
+      "Oak tree (2024 Christmas event)": 8.4,
+      "Oak tree (The Node)": 8.4,
       "Ore stall (Mor Ul Rek)": 30.0,
       "Ore stall (Port Roberts)": 2.4,
       "Ore vein": 60.0,
       "Pay-dirt": 60.0,
       "Pile of Rock": 5.4,
+      "Redwood logs": 119.4,
       "Rockfall": 18.0,
       "Rubium rocks": 35.4,
       "Runite ore": 720.0,
       "Runite rocks": 720.0,
       "Sandstone rocks": 5.4,
       "Scimitar stall": 19.2,
+      "Scrapey tree": 14.4,
+      "Scrapey tree logs": 14.4,
       "Seed stall": 2.4,
       "Silk stall": 4.8,
       "Silk stall (Port Roberts)": 2.4,
@@ -14359,6 +14461,12 @@
       "Sunstone rocks": 5.4,
       "Te salt rocks": 5.4,
       "Tea stall": 2.4,
+      "Teak logs": 9.0,
+      "Teak tree": 9.0,
+      "Tendrils (Tar Swamp)": 29.4,
+      "Thatch spar dense": 88.0,
+      "Thatch spar light": 90.0,
+      "Thick vines (Tar Swamp)": 29.4,
       "Tin ore": 2.4,
       "Tin ore vein": 2.4,
       "Tin rocks": 2.4,
@@ -14368,7 +14476,11 @@
       "Volcanic ash": 30.0,
       "Volcanic sulphur": 25.2,
       "Volcanic sulphur (rock)": 25.2,
-      "Wine stall": 4.8
+      "Willow logs": 8.4,
+      "Willow tree": 8.4,
+      "Wine stall": 4.8,
+      "Yew logs": 59.4,
+      "Yew tree": 59.4
     },
     "aerial_fish": [
       [
@@ -16116,6 +16228,380 @@
         "Zalcano": [
           1,
           35.2
+        ]
+      },
+      "Woodcutting": {
+        "Achey Tree": [
+          1,
+          25.0
+        ],
+        "Achey tree logs": [
+          1,
+          25.0
+        ],
+        "Arctic pine logs": [
+          54,
+          40.0
+        ],
+        "Arctic pine tree": [
+          54,
+          40.0
+        ],
+        "Bark": [
+          45,
+          82.5
+        ],
+        "Blisterwood logs": [
+          62,
+          76.0
+        ],
+        "Blisterwood tree": [
+          62,
+          76.0
+        ],
+        "Bloodwood tree": [
+          77,
+          1364.0
+        ],
+        "Burnt tree": [
+          1,
+          25.0
+        ],
+        "Camphor logs": [
+          66,
+          143.5
+        ],
+        "Camphor tree": [
+          66,
+          143.5
+        ],
+        "Canoe": [
+          12,
+          30.0
+        ],
+        "Corrupt Phren Roots": [
+          1,
+          10.0
+        ],
+        "Dead Oak (2021 Christmas event)": [
+          15,
+          37.5
+        ],
+        "Dead tree": [
+          1,
+          25.0
+        ],
+        "Dead tree (2021 Christmas event)": [
+          1,
+          25.0
+        ],
+        "Dead tree (burnt)": [
+          1,
+          25.0
+        ],
+        "Dead tree (old)": [
+          1,
+          25.0
+        ],
+        "Dead tree (sandy)": [
+          1,
+          25.0
+        ],
+        "Dead tree (snowy)": [
+          1,
+          25.0
+        ],
+        "Dead tree (swampy)": [
+          1,
+          25.0
+        ],
+        "Dead tree (weathered)": [
+          1,
+          25.0
+        ],
+        "Dense Jungle": [
+          35,
+          80.0
+        ],
+        "Dying tree": [
+          1,
+          25.0
+        ],
+        "Engorged bloodwood tree": [
+          77,
+          165.0
+        ],
+        "Enormous Tentacle (Fishing Trawler)": [
+          1,
+          5.0
+        ],
+        "Evergreen tree": [
+          1,
+          25.0
+        ],
+        "Hollow tree": [
+          45,
+          82.5
+        ],
+        "Infected root": [
+          80,
+          10.0
+        ],
+        "Ironwood logs": [
+          80,
+          175.0
+        ],
+        "Ironwood tree": [
+          80,
+          175.0
+        ],
+        "Jatoba logs": [
+          40,
+          92.0
+        ],
+        "Jatoba tree": [
+          40,
+          92.0
+        ],
+        "Jungle Bush": [
+          1,
+          100.0
+        ],
+        "Jungle tree": [
+          1,
+          25.0
+        ],
+        "Jungle tree (Kharazi Jungle)": [
+          1,
+          25.0
+        ],
+        "Jungle tree (Trouble Brewing)": [
+          1,
+          25.0
+        ],
+        "Jungle tree (dense Kharazi Jungle)": [
+          1,
+          100.0
+        ],
+        "Juniper logs": [
+          42,
+          35.0
+        ],
+        "Kharidian cactus": [
+          1,
+          10.0
+        ],
+        "Kindling (Chambers of Xeric)": [
+          1,
+          30.0
+        ],
+        "Light Jungle": [
+          10,
+          32.0
+        ],
+        "Logs": [
+          1,
+          25.0
+        ],
+        "Magic logs": [
+          75,
+          250.0
+        ],
+        "Magic tree": [
+          75,
+          250.0
+        ],
+        "Mahogany logs": [
+          50,
+          125.0
+        ],
+        "Mahogany tree": [
+          50,
+          125.0
+        ],
+        "Maple logs": [
+          45,
+          100.0
+        ],
+        "Maple tree": [
+          45,
+          100.0
+        ],
+        "Mature juniper tree": [
+          42,
+          35.0
+        ],
+        "Meat tree": [
+          1,
+          45.0
+        ],
+        "Medium Jungle": [
+          20,
+          55.0
+        ],
+        "Oak logs": [
+          15,
+          37.5
+        ],
+        "Oak tree": [
+          15,
+          37.5
+        ],
+        "Oak tree (2024 Christmas event)": [
+          15,
+          37.5
+        ],
+        "Phren Roots": [
+          1,
+          10.0
+        ],
+        "Phren bark": [
+          1,
+          10.0
+        ],
+        "Phren bark (corrupted)": [
+          1,
+          10.0
+        ],
+        "Redwood logs": [
+          90,
+          380.0
+        ],
+        "Redwood tree": [
+          90,
+          380.0
+        ],
+        "Rosewood logs": [
+          92,
+          212.5
+        ],
+        "Rosewood tree": [
+          92,
+          212.5
+        ],
+        "Sapling (Chambers of Xeric)": [
+          1,
+          30.0
+        ],
+        "Scrapey tree": [
+          1,
+          25.0
+        ],
+        "Scrapey tree logs": [
+          1,
+          25.0
+        ],
+        "Sulliuscep": [
+          65,
+          127.0
+        ],
+        "Swaying tree": [
+          40,
+          1.0
+        ],
+        "Teak logs": [
+          35,
+          85.0
+        ],
+        "Teak tree": [
+          35,
+          85.0
+        ],
+        "Tendrils (Abyss)": [
+          1,
+          25.0
+        ],
+        "Tendrils (Tar Swamp)": [
+          1,
+          2.0
+        ],
+        "Thatch spar dense": [
+          35,
+          80.0
+        ],
+        "Thatch spar light": [
+          10,
+          32.0
+        ],
+        "Thatch spar med": [
+          20,
+          55.0
+        ],
+        "Thick vines (Tar Swamp)": [
+          1,
+          2.0
+        ],
+        "Tree": [
+          1,
+          25.0
+        ],
+        "Tree (2024 Christmas event)": [
+          1,
+          25.0
+        ],
+        "Tree (Isle of Souls)": [
+          1,
+          25.0
+        ],
+        "Tree (Pest Control)": [
+          1,
+          25.0
+        ],
+        "Tree (Prifddinas)": [
+          1,
+          25.0
+        ],
+        "Tree (Shayzien)": [
+          1,
+          25.0
+        ],
+        "Tree (Tirannwn)": [
+          1,
+          25.0
+        ],
+        "Tree (Tutorial Island 2)": [
+          1,
+          25.0
+        ],
+        "Tree (Tutorial Island)": [
+          1,
+          25.0
+        ],
+        "Tree (Varlamore)": [
+          1,
+          25.0
+        ],
+        "Tree (crystal)": [
+          1,
+          25.0
+        ],
+        "Tree (snow)": [
+          1,
+          25.0
+        ],
+        "Tree (young)": [
+          1,
+          25.0
+        ],
+        "Undead tree": [
+          35,
+          5.0
+        ],
+        "Willow logs": [
+          30,
+          67.5
+        ],
+        "Willow tree": [
+          30,
+          67.5
+        ],
+        "Yew logs": [
+          60,
+          175.0
+        ],
+        "Yew tree": [
+          60,
+          175.0
         ]
       }
     },
@@ -46894,12 +47380,12 @@
         18
       ],
       "skill infoboxes": [
-        269,
-        309
+        362,
+        412
       ],
       "success charts": [
-        633,
-        636
+        640,
+        643
       ]
     },
     "counts": {
@@ -46908,7 +47394,7 @@
       "forestry events": 9,
       "herbiboar levels": 26,
       "node cycles": 13,
-      "node respawns": 109,
+      "node respawns": 151,
       "parallel steps": 9,
       "spawn tiers": 4,
       "tool speeds": 17

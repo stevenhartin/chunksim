@@ -525,6 +525,16 @@ maps are your own work and nothing can recompute them.
    for what actually happens it reads 81,780, and 4 ticks at the charted 73%
    puts the ceiling at 83,273 whatever you do.
 
+   **Cutting jungle is the one activity that speeds up with your level rather
+   than with what you hold**, and it is modelled from the sentence that says
+   so: 16 ticks a swing at level 10, one tick less every ten levels, eight from
+   90 on. The machete is still the chance - four charted series of it - and the
+   patch is four sections before it depletes and 90 seconds before it comes
+   back. Light jungle runs 2,859/hr at level 10 to 10,240 from 90, where the
+   respawn stops the swinging being what you wait for. Nothing publishes an
+   hourly figure for jungle, so there is no row to check that against; every
+   input is a sentence off the page instead.
+
    A few methods are not training methods and the estimator says so rather than
    offering a bad number: mining an elemental rock pays nothing (it spawns the
    monster whose drop is the ore), lunar ore's own infobox states zero, a
@@ -532,7 +542,14 @@ maps are your own work and nothing can recompute them.
    panning falls below the 1,000/hr floor anything would be quoted at.
    Sunstone's curve comes from a sentence rather than a chart - "scaling from
    75% success rate at level 50 to a 100% success rate at level 92" - and two
-   points fix the game's own interpolation exactly.
+   points fix the game's own interpolation exactly. The infected root is
+   refused for the opposite reason to all of those: its chart and its
+   experience are both confirmed, and what they price is 12,960/hr against a
+   page saying "rates *up to* ... ~9,100 experience per hour being possible".
+   A model above a stated ceiling is a wrong model, and the missing piece is
+   named on the same page - the action runs "until a player's inventory is
+   filled with logs", every 229.5 cuts, and there is no shape here for the trip
+   that follows. Its guide figure keeps it.
 
    Where a method is not a training method the model says so rather than
    omitting it - a Motherlode rockfall is an obstacle in front of the ore vein

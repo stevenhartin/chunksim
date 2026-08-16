@@ -1211,6 +1211,79 @@ class TestUnitsAreSpentByWhatTheNodeWaitsFor:
         assert two.duty == 1.0
 
 
+class TestCuttingJungle:
+    """The one activity whose cadence is the level's, not the tool's.
+
+    All three jungle pages carry the same sentence: "At Woodcutting level 10,
+    players cut jungle in 16 tick intervals. Every 10 woodcutting levels the
+    time to cut is decreased by 1 tick, until at 90 Woodcutting players cut at
+    a speed of 8 ticks." The machete is still the chance - four charted series
+    of it.
+    """
+
+    _TABLES = gathering.Tables(
+        curves={"jungle": (("Plain Machete", 49.0, 169.0, 10, gathering.CONFIRMED),)},
+        skill_info={"Woodcutting": {"jungle": (10, 32.0)}},
+    )
+    _PROFILE = gathering.SkillProfile(
+        roll_ticks=4.0,
+        tool_axis="chance",
+        stepped_interval={"jungle": gathering._JUNGLE_TICKS},
+    )
+
+    def _rate(self, level: int, profile: gathering.SkillProfile) -> gathering.NodeRate:
+        rate = gathering.rate_at(
+            self._TABLES, {}, profile, "Chop it", "Woodcutting",
+            {"Objects": ["jungle"], "Level": 10}, level,
+        )
+        assert rate is not None
+        return rate
+
+    def test_the_table_transcribes_the_sentence(self) -> None:
+        steps = dict(gathering._JUNGLE_TICKS)
+        assert steps[10] == 16.0 and steps[90] == 8.0
+        assert [steps[lvl] for lvl in range(10, 100, 10)] == [
+            16.0, 15.0, 14.0, 13.0, 12.0, 11.0, 10.0, 9.0, 8.0
+        ]
+
+    def test_the_interval_reads_the_level(self) -> None:
+        assert self._rate(10, self._PROFILE).roll_seconds == pytest.approx(16 * 0.6)
+        assert self._rate(50, self._PROFILE).roll_seconds == pytest.approx(12 * 0.6)
+        assert self._rate(99, self._PROFILE).roll_seconds == pytest.approx(8 * 0.6)
+
+    def test_it_beats_the_skill_cadence_rather_than_joining_it(self) -> None:
+        # Without the table the roll is Woodcutting's flat four ticks, which is
+        # twice as fast as jungle ever gets and four times as fast as it opens.
+        flat = dataclasses.replace(self._PROFILE, stepped_interval={})
+        assert self._rate(99, flat).roll_seconds == pytest.approx(4 * 0.6)
+        assert self._rate(10, self._PROFILE).roll_seconds > self._rate(
+            99, self._PROFILE
+        ).roll_seconds
+
+    def test_a_patch_is_four_sections(self) -> None:
+        # "Jungle is cut in four sections, and once all four sections are cut
+        # the jungle becomes depleted."
+        profile = gathering.PROFILES["Woodcutting"]
+        for node in ("light jungle", "medium jungle", "dense jungle"):
+            assert profile.yields[node] == 4.0
+            assert profile.stepped_interval[node] == gathering._JUNGLE_TICKS
+
+
+class TestTheInfectedRootIsRefused:
+    """Two confirmed inputs are not a method when the third is unmodelled."""
+
+    def test_it_is_refused_by_name(self) -> None:
+        assert "infected root" in gathering.PROFILES["Woodcutting"].refuses
+
+    def test_its_experience_is_the_mean_and_not_the_range(self) -> None:
+        # The infobox says `10 - 35`; the page's drop table and its three
+        # experience values say (10*15 + 25*2) / 17, and its own "202.5 tears
+        # and 2,700 experience" per inventory checks it.
+        paid = gathering.PROFILES["Woodcutting"].stated_experience["infected root"]
+        assert paid == pytest.approx(200.0 / 17.0)
+        assert 202.5 * 10.0 + 27.0 * 25.0 == pytest.approx(229.5 * paid)
+
+
 class TestTheBlisterwoodTree:
     """The one tree that does not fall, and the one that states so.
 
@@ -1221,7 +1294,7 @@ class TestTheBlisterwoodTree:
     """
 
     def test_a_depletion_covers_ten_logs(self) -> None:
-        assert gathering.PROFILES["Woodcutting"].yields == {"blisterwood tree": 10.0}
+        assert gathering.PROFILES["Woodcutting"].yields["blisterwood tree"] == 10.0
 
     def test_the_interruption_is_a_click_and_not_a_walk(self) -> None:
         # `node_seconds` is 2.4 because an ordinary tree vanishes and you walk
@@ -1233,11 +1306,13 @@ class TestTheBlisterwoodTree:
         assert profile.node_seconds_at["blisterwood tree"] < profile.node_seconds
 
     def test_no_other_tree_is_exempted(self) -> None:
-        # Both entries are exceptions to the skill's own constants, and an
-        # exception that spread would be the constants quietly changing.
+        # The re-click is the exception, and an exception that spread would be
+        # `node_seconds` quietly changing. `yields` is shared with the jungle,
+        # which states four sections for its own reasons.
         profile = gathering.PROFILES["Woodcutting"]
-        assert set(profile.yields) == set(profile.node_seconds_at) == {
-            "blisterwood tree"
+        assert set(profile.node_seconds_at) == {"blisterwood tree"}
+        assert set(profile.yields) == {
+            "blisterwood tree", "light jungle", "medium jungle", "dense jungle"
         }
 
 

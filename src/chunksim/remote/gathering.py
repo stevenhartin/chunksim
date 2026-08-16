@@ -124,10 +124,10 @@ SKILL_INFO_TEMPLATES: dict[str, str] = {
     "Hunter": "Hunter info",
     "Fishing": "Fishing info",
     "Mining": "Mining info",
+    "Woodcutting": "Woodcutting info",
 }
 
-#: The templates whose `time` field is a **node respawn**, which is the one
-#: field only Mining's carries.
+#: The templates whose `time` field is a **node respawn**.
 #:
 #: **This is where every rock's downtime was hiding.** The Woodcutting page
 #: tabulates despawn and respawn for thirteen trees and nothing does the same
@@ -135,7 +135,17 @@ SKILL_INFO_TEMPLATES: dict[str, str] = {
 #: fitted a single constant to stand in for all of them. It is published, one
 #: rock at a time: iron respawns in 5.4 seconds and gem rocks in 59.4, an
 #: eleven-fold spread no one constant could have covered.
-RESPAWN_INFO_TEMPLATES: frozenset[str] = frozenset({"Mining info"})
+#:
+#: **`{{Woodcutting info}}` carries it too and the tabulated thirteen are why
+#: it looked as though it did not.** Those thirteen state a despawn *and* a
+#: respawn, which is a duty cycle and outranks a restock floor - so every tree
+#: this project already priced ignores what is read here, and adding the
+#: template moved not one of the sixteen fitted rows. What it reaches is the
+#: trees the table omits: the jungle at Tai Bwo Wannai, whose 90 seconds is
+#: the whole of its rate. Two spellings of "no wait" fall out on their own -
+#: `N/A` parses to nothing and blisterwood's `0 seconds` is filtered by the
+#: `> 0`, which is the right answer for both.
+RESPAWN_INFO_TEMPLATES: frozenset[str] = frozenset({"Mining info", "Woodcutting info"})
 
 #: The aerial fishing article, whose creature table is the only place the four
 #: catches' experience is stated for **both** skills they pay.

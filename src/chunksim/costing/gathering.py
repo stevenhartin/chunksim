@@ -532,6 +532,26 @@ class SkillProfile:
     #: per node keeps `tool_axis` meaning what it says rather than growing a
     #: branch for the one activity in the skill that has no tool tier at all.
     fixed_interval: Mapping[str, float] = field(default_factory=dict)
+    #: Node -> a `(level, ticks)` table, for a cadence that is neither a tool's
+    #: nor a constant.
+    #:
+    #: **One activity in the game speeds up with the level rather than with
+    #: what you hold**, and the jungle pages say so outright: "A player's
+    #: Woodcutting level also has the added effect of increasing speed that
+    #: jungle is cut at. This mechanic is unique to jungle cutting ... At
+    #: Woodcutting level 10, players cut jungle in 16 tick intervals. Every 10
+    #: woodcutting levels the time to cut is decreased by 1 tick, until at 90
+    #: Woodcutting players cut at a speed of 8 ticks."
+    #:
+    #: It is written out as the nine steps rather than as the arithmetic
+    #: because that is what `units_at` already reads, and because a table is
+    #: checkable against the sentence it came from. Halving the interval across
+    #: the climb is most of what a jungle rate does: light jungle is 8,326/hr
+    #: at level 10 and 17,547 at 99, and a flat four ticks would have said
+    #: 21,405 at both ends.
+    stepped_interval: Mapping[str, tuple[tuple[int, float], ...]] = field(
+        default_factory=dict
+    )
     #: Nodes that never run out, so neither a respawn nor the hop is charged.
     #:
     #: **A stated mechanic, not an optimisation.** The rune essence rock "will
@@ -646,6 +666,25 @@ class SkillProfile:
 #: deposit is the same shape and even barer: certain, endless, and priced by
 #: the pickaxe table alone, so 5 experience every 2.83 ticks is 10,601/hr
 #: against a reported 10,600 with nothing here chosen at all.
+#: What cutting jungle costs, level by level, in ticks.
+#:
+#: **The sentence this is a transcription of**, from all three jungle pages:
+#: "At Woodcutting level 10, players cut jungle in 16 tick intervals. Every 10
+#: woodcutting levels (20, 30, 40, so on) the time to cut is decreased by 1
+#: tick, until at 90 Woodcutting players cut at a speed of 8 ticks." Nine
+#: steps, and the last one holds to 99.
+_JUNGLE_TICKS: tuple[tuple[int, float], ...] = (
+    (10, 16.0),
+    (20, 15.0),
+    (30, 14.0),
+    (40, 13.0),
+    (50, 12.0),
+    (60, 11.0),
+    (70, 10.0),
+    (80, 9.0),
+    (90, 8.0),
+)
+
 PROFILES: dict[str, SkillProfile] = {
     # **Four ticks is the wiki's, not a fit** - the Woodcutting page states it -
     # and pinning it is what makes the other two constants mean something. Left
@@ -672,14 +711,71 @@ PROFILES: dict[str, SkillProfile] = {
     # you do, which puts the *zero-downtime ceiling* at 83,273 - the published
     # 85,000 is above what the mechanics allow, so it is a rounding rather
     # than a target.
+    #
+    # **The three jungles at Tai Bwo Wannai break all three constants at once**,
+    # which is why they went unpriced long after the chart for them was
+    # scraped. Their page states every replacement:
+    #
+    # - the cadence is the *level's*, not the machete's - see
+    #   `stepped_interval`. The machete is still the chance, which is what the
+    #   four charted series are.
+    # - "Jungle is cut in four sections, and once all four sections are cut the
+    #   jungle becomes depleted", so a patch is four resources rather than one.
+    # - the respawn is 90 seconds and now arrives from `{{Woodcutting info}}`
+    #   like every rock's. It binds: at 99 the rolling is 6 seconds and the
+    #   floor 11.25, so what a jungle rate measures is the wait.
+    #
+    # Nothing publishes an hourly figure for cutting jungle, so there is no row
+    # to check these against - which is the honest state of it and the reason
+    # every input here is a sentence off the page rather than a fit.
     "Woodcutting": SkillProfile(
         roll_ticks=4.0,
         tool_axis="chance",
         tool_tiers=True,
         worked=2.0,
         node_seconds=2.4,
-        yields={"blisterwood tree": 10.0},
+        yields={
+            "blisterwood tree": 10.0,
+            "light jungle": 4.0,
+            "medium jungle": 4.0,
+            "dense jungle": 4.0,
+        },
         node_seconds_at={"blisterwood tree": 0.6},
+        stepped_interval={
+            node: _JUNGLE_TICKS
+            for node in ("light jungle", "medium jungle", "dense jungle")
+        },
+        # **Eleven values and the wiki will not average them**, unlike the
+        # rubium geode. It states the parts instead: 10 experience for a demon
+        # tear, 25 for a log, 35 for both, against a drop table of 15/17 and
+        # 2/17 - so a cut pays `(10*15 + 25*2) / 17`. The page checks its own
+        # arithmetic two paragraphs later, quoting "an average of 202.5 demon
+        # tears and 2,700 Woodcutting experience" before 27 logs fill the
+        # inventory, and 229.5 cuts at 200/17 is 2,700 exactly.
+        #
+        # The infobox says `10 - 35`, which `parse_skill_info` reads as 10 -
+        # the leading figure, right for limestone's respawn and wrong here.
+        # Stating the mean is what stops a range being read as its floor.
+        stated_experience={"infected root": 200.0 / 17.0},
+        # **Both inputs to the roll are confirmed and the roll is not the
+        # method.** The chart is scraped, the experience is the page's own
+        # arithmetic above, and what they price is 12,960/hr at 99 with a
+        # dragon axe - against a page that says "rates *up to* 700 tears and
+        # ~9,100 experience per hour being possible". A model above a stated
+        # ceiling is a wrong model, and the missing third of it is named on the
+        # same page: "one action will continue cutting until a player's
+        # inventory is filled with logs", which is every 229.5 cuts. This has
+        # no shape for "N successes, then a trip", and inventing seconds for
+        # that trip would be one constant fitted to the one figure it would
+        # then be checked against. So the scrape keeps it - which is the
+        # partition this model already draws, with the loop on one side and
+        # what surrounds the loop on the other.
+        #
+        # Left uncharged it lands at 7,472/hr, which is 0.82x and looks fine.
+        # It is not: that is Woodcutting's tree-hop billed against a node the
+        # page says "don't deplete", so the number is right by an accident of
+        # two errors and the mechanism is one the wiki denies.
+        refuses=frozenset({"infected root"}),
     ),
     # A pickaxe changes how often the game rolls, never whether the roll wins.
     #
@@ -2584,7 +2680,13 @@ def rate_at(
         return None
     roll_seconds = (ticks if ticks is not None else profile.roll_ticks) * TICK_SECONDS
     stated_ticks = profile.fixed_interval.get(node.lower())
-    if stated_ticks is not None:
+    stepped = profile.stepped_interval.get(node.lower())
+    if stepped:
+        # **The one cadence that reads the level.** See `stepped_interval`; it
+        # is checked first because a node stating one has no tool axis and no
+        # constant to fall back to.
+        roll_seconds = units_at(stepped, level) * TICK_SECONDS
+    elif stated_ticks is not None:
         roll_seconds = stated_ticks * TICK_SECONDS
     elif profile.tool_axis == "interval":
         ticks = tables.tool_ticks.get(tool)
