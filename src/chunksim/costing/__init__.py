@@ -87,6 +87,9 @@ The modules, and what each owns:
   calls `Varlamore thieving`. **A transcription rather than a derivation** -
   nothing in the burgling loop is charted - carried because the same page
   states the activity four other ways and all four agree with the table.
+- `foundry.py` - the Giants' Foundry, which is the whole of Smithing's climb
+  above 15. Jagex's release patch notes give swords an hour against experience
+  a sword, and their product is the scraped figure on all five alloy tiers.
 - `courses.py` - the Agility courses, as **a lap and a lap time**: their
   product is the guide's own figure within 5.2% on all ten that publish both.
   Names the eight it leaves alone and why, including the Colossal Wyrm pair,

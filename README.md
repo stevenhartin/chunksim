@@ -693,6 +693,19 @@ maps are your own work and nothing can recompute them.
    on a chart that gets harder the deeper you go - and the two rates cannot
    both be had, because the Thieving route skips them.
 
+   **The Giants' Foundry is Jagex's own arithmetic**, not a guide's estimate:
+   the release patch notes give swords an hour against average experience a
+   sword for each of five alloy tiers, and multiplying the two columns is the
+   published rate exactly - 20 x 2,400 = 48,000 on the lowest and 12 x 23,000
+   = 276,000 on the highest. It is the whole of Smithing's climb above level
+   15. Note what the estimator then does to those figures: a preform eats
+   bars, so the walk charges the time to get them and 48,000 an hour becomes
+   40,616. That is the same layering that makes `Smelt a ~|gold bar|~` read
+   about 14,000 where the wiki's own comparison says gold at the Blast Furnace
+   is 375,000 - the guide quotes a method with its bars to hand, and this
+   charges you for getting them, which on a chunk-restricted map is usually
+   the truthful half.
+
    **Wintertodt is the one activity here with no chance in it at all.** The
    wiki states its experience as multipliers on your level - 0.3x to cut a
    bruma root, 0.6x to fletch it, 3.8x to burn the kindling, and 100x for

@@ -25,7 +25,13 @@ from chunksim.costing.heuristics import DEFAULT_XP_PER_HOUR
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.model.experience import MAX_LEVEL, level_for_xp, xp_for_level
 from chunksim.derive.pipeline import Derived
-from chunksim.costing.heuristics import GOTR_SOURCE, TITHE_SOURCE, Heuristics, Rate
+from chunksim.costing.heuristics import (
+    GOTR_SOURCE,
+    TITHE_SOURCE,
+    ComputedMethod,
+    Heuristics,
+    Rate,
+)
 from chunksim.costing.recipe_rates import RECIPE_SOURCE
 from chunksim.model.summary import _mapping
 from chunksim.costing.heuristics import activity_name
@@ -131,6 +137,20 @@ def training_options(
             level=option.level,
             xp_per_hour=option.xp_per_hour,
             match=option.match,
+            # **A computed method pays for what it consumes, same as a scraped
+            # one.** Missing this was a real defect and a large one: moving the
+            # Giants' Foundry out of the scrape and into a module dropped the
+            # bars it eats and read Smithing 1-99 at 54.5 hours against 144.5.
+            # Measured over the whole export, the six preforms are the only
+            # computed methods whose task has a material cost at all - every
+            # other activity here consumes nothing - so this charges what is
+            # there and is silent everywhere else.
+            #
+            # A computed activity that *includes* its own gathering must be
+            # kept out of `material_seconds_per_xp` rather than handled here;
+            # Guardians of the Rift is the precedent, and `_material_cost`
+            # carries the argument for why.
+            material_seconds_per_xp=_computed_material_cost(heuristics, option),
             knob=option.knob,
         )
         for option in heuristics.computed.get(skill) or ()
@@ -218,6 +238,24 @@ def _modelled_tasks(heuristics: Heuristics, skill: str) -> frozenset[str]:
 #: Rate sources whose figure already covers getting the materials, so the
 #: walk must not charge for them a second time. See `_material_cost`.
 _ALL_INCLUSIVE_SOURCES = frozenset({RECIPE_SOURCE, GOTR_SOURCE, TITHE_SOURCE})
+
+
+def _computed_material_cost(
+    heuristics: Heuristics, option: ComputedMethod
+) -> float:
+    """What a computed method's own task consumes, per XP it pays.
+
+    Keyed on the `knob`, which is the only handle a `ComputedMethod` carries
+    to the challenge it is about - and the same one `_modelled_tasks` uses, so
+    the two cannot disagree about which task a module is speaking for. A knob
+    naming no task, as `combat_xp`'s `monster_stats/<monster>` does, costs
+    nothing because there is nothing to look up.
+    """
+    prefix = "training/"
+    if not option.knob.startswith(prefix):
+        return 0.0
+    task = option.knob[len(prefix) :].rsplit("/", 1)[0]
+    return heuristics.material_seconds_per_xp.get(task, 0.0)
 
 
 def _material_cost(heuristics: Heuristics, name: str, rate: Rate) -> float:

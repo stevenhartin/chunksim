@@ -184,6 +184,66 @@ class TestAModelBeatsAScrapeForTheSameTask:
         assert any(o.method == "herbiboar" for o in options)
 
 
+class TestAComputedMethodPaysForWhatItConsumes:
+    """**The defect this caught, and it was a large one.**
+
+    Moving the Giants' Foundry out of the scrape and into a module dropped the
+    bars it eats, because `_material_cost` only ran on the challenge-derived
+    branch - Smithing 1-99 read 54.5 hours against a true 144.5. A computed
+    method is a different *source* for a rate, not a claim that the method has
+    become free.
+    """
+
+    _INFO = ChunkInfo(
+        {"challenges": {"Smithing": {"Forge a ~|preform|~": {"Primary": True, "Level": 15}}}}
+    )
+    _DERIVED = _derived(
+        challenges=ChallengeResult(
+            valid={"Smithing": {"Forge a ~|preform|~": True}}, unsupported=frozenset()
+        )
+    )
+
+    def _options(self, knob: str) -> tuple[TrainingOption, ...]:
+        heuristics = Heuristics(
+            computed={
+                "Smithing": (
+                    ComputedMethod(
+                        method="Giants' Foundry", xp_per_hour=48_000.0, level=15,
+                        match="confirmed", knob=knob,
+                    ),
+                )
+            },
+            material_seconds_per_xp={"Forge a ~|preform|~": 0.0136},
+        )
+        return training_options(self._DERIVED, self._INFO, heuristics, "Smithing")
+
+    def test_the_material_cost_is_charged(self) -> None:
+        option = self._options("training/Forge a ~|preform|~/Smithing")[0]
+        assert option.material_seconds_per_xp == pytest.approx(0.0136)
+        assert option.effective_xp_per_hour < option.xp_per_hour
+
+    def test_a_knob_naming_no_task_costs_nothing(self) -> None:
+        # `combat_xp` uses `monster_stats/<monster>`; there is nothing to look
+        # up and nothing to charge.
+        option = self._options("monster_stats/whatever")[0]
+        assert option.material_seconds_per_xp == 0.0
+
+    def test_a_method_whose_task_consumes_nothing_is_untouched(self) -> None:
+        heuristics = Heuristics(
+            computed={
+                "Smithing": (
+                    ComputedMethod(
+                        method="something", xp_per_hour=1_000.0, level=1,
+                        match="confirmed", knob="training/Forge a ~|preform|~/Smithing",
+                    ),
+                )
+            },
+        )
+        option = training_options(self._DERIVED, self._INFO, heuristics, "Smithing")[0]
+        assert option.material_seconds_per_xp == 0.0
+        assert option.effective_xp_per_hour == pytest.approx(option.xp_per_hour)
+
+
 # --- the band walk ---------------------------------------------------------
 
 _HERBLORE = (

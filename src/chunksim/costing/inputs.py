@@ -42,6 +42,7 @@ from chunksim.costing import (
     dps_bridge,
     driftnet,
     forestry,
+    foundry,
     herbiboar,
     implings,
     production,
@@ -531,6 +532,9 @@ def _gathered(
     # **A lap and a lap time, which is what a course is** - see
     # `costing/courses.py`, and the eight it leaves to the guide.
     for skill, methods in courses.methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **Jagex's own two columns, multiplied** - see `costing/foundry.py`.
+    for skill, methods in foundry.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **A published curve rather than a derived one** - see
     # `costing/valuables.py`, which is a transcription and says so.
