@@ -1,57 +1,64 @@
-"""Agility courses, derived from a lap rather than read off a guide.
+"""Agility courses, derived from a lap and a lap time.
 
 **Two published numbers a course, and their product is the guide's own
-figure.** Every course page states what a lap pays - as a per-obstacle table
-this parses, or in prose - and how long a lap takes; multiply and you get the
-rate `wiki:courses` publishes, within 5.2% on all ten courses that state both
-and within 1% on six of them:
+figure.** `Rooftop Agility Courses` tabulates all nine rooftop courses with
+their obstacle count, experience per lap and lap time in ticks; the four
+non-rooftop courses modelled here state the same two things in prose on their
+own pages. Multiplied out, every one lands on the rate `wiki:courses`
+publishes - within 5.2% on all thirteen and within 1% on eight:
 
-    course                       xp/lap  lap s   derived  scraped  ratio
-    Canifis Rooftop                 240   43.8    19,726   19,200  1.027
-    Seers' Village Rooftop          570   43.8    46,849   45,600  1.027
-    Pollnivneach Rooftop          1,016   60.6    60,356   60,000  1.006
-    Rellekka Rooftop                920   51.0    64,941   65,000  0.999
-    Ardougne Rooftop                889   45.6    70,184   70,000  1.003
-    Barbarian Outpost             153.3   32.0    17,246   18,200  0.948
-    Wilderness                    571.4   45.0    64,112   66,600  0.963
-    Werewolf                        730   38.0    69,158   69,500  0.995
-    Dorgesh-Kaan                  2,750  156.0    63,462   63,000  1.007
-    Falador Rooftop                 586   60.0    35,160   35,000  1.005
+    course          xp/lap   lap s   derived  published  ratio
+    Draynor            120    43.2    10,000     10,000  1.000
+    Al Kharid          216    64.2    12,112     12,000  1.009
+    Varrock            270    66.0    14,727     14,000  1.052
+    Canifis            240    43.8    19,726     19,700  1.001
+    Falador            586    58.2    36,247     35,000  1.036
+    Seers' Village     570    43.8    46,849     46,800  1.001
+    Pollnivneach       890    60.6    52,871     52,300  1.011
+    Rellekka           780    51.0    55,059     55,000  1.001
+    Ardougne           889    45.6    70,184     70,000  1.003
+    Barbarian Outpost  153.3  32.0    17,246     18,200  0.948
+    Wilderness         571.4  45.0    64,112     66,600  0.963
+    Werewolf           730    38.0    69,158     69,500  0.995
+    Dorgesh-Kaan     2,750   156.0    63,462     63,000  1.007
 
-**So this changes almost no number, and that is the point.** The Agility
-scrape was checked before any of it was written and found accurate - eleven of
-the thirteen courses whose pages state a rate agree with `wiki:courses` within
-2.6%, and the two that looked wrong were the guide being *more* right, since
-Rellekka's 65,000 is the hard Fremennik Diary figure and Wilderness's 66,600
-includes the lap bonus. What the model buys is not accuracy, it is that the
-figure is now a *derivation from two facts about the game* rather than
-somebody's estimate, so a game update that changes a lap or an obstacle can be
-followed rather than waited on.
+**That the numbers barely move is the point.** The Agility scrape was checked
+before any of this was written and found accurate, so what a model buys here
+is not a better answer but a *followable* one: a rate that is two facts about
+the game multiplied can be carried through a game update, where somebody's
+estimate has to be waited on.
 
-### The eight courses this does not model
+### The base rate is priced, not the diary rate
 
-Gnome Stronghold, Draynor, Al Kharid, Varrock, both Shayzien courses and both
-Colossal Wyrm courses keep their scraped rate, for two different reasons.
+Three of the rooftop courses pay more once a hard Achievement Diary is done -
+Seers' by way of a teleport that shortens the lap, Pollnivneach and Rellekka
+by paying more experience for the same lap - and `wiki:courses` quotes the
+*diary* figure for all three. This prices the base, which is the conservative
+reading and the likelier one on a chunk-restricted map: a hard diary wants
+tasks all over its region, which is exactly what such a map does not have.
+`diary_experience_per_lap` and `diary_lap_seconds` carry the other half so the
+difference is visible rather than lost - it is 46,849 against 58,000 on Seers',
+and 55,059 against 65,000 on Rellekka.
 
-Five simply do not state a lap time. Gnome Stronghold states a *minimum* - "a
-lap will take a minimum of 34 seconds" - which is not an average and reads
-17% fast against the guide if used as one, so it is left out rather than
-quietly treated as one.
+### The five courses this does not model
 
-**The Colossal Wyrm pair is the one real disagreement and is left alone
-deliberately.** Its pages give 633 experience for a basic lap and "about 90
-seconds per lap", which is 25,320 an hour against a scraped 44,000 - a factor
-of 1.7 that nothing on the page reconciles. A model that disagrees with a
-verified guide by that much is a question, not an improvement, and replacing
-the guide with it would be trading a checked number for an unchecked one.
+Gnome Stronghold is not a rooftop course and its own page states a *minimum*
+lap - "a lap will take a minimum of 34 seconds" - which is not an average and
+reads 17% fast against the guide if used as one. The two Shayzien courses
+publish no lap time anywhere.
+
+**The Colossal Wyrm pair is a real disagreement and is kept as one.** Its
+pages give 633 experience for a basic lap and "about 90 seconds per lap",
+which is 25,320 an hour against a scraped 44,000 - a factor of 1.7 that
+nothing on the page reconciles. Replacing a verified figure with an unverified
+one is not an improvement, so the guide keeps those two and this says why.
 
 ### `Canafis`
 
 The export spells it `Canafis Rooftop Course` and the wiki spells it
-`Canifis`. The task name is the key here, so this file carries upstream's
-spelling; nothing tries to reconcile the two, because there is nothing to
-reconcile - they are one place with two spellings and only one of them is a
-lookup.
+`Canifis`. The task name is the key, so this file carries upstream's spelling;
+there is nothing to reconcile, only one place with two spellings of which one
+happens to be a lookup.
 
 Pure: nothing but the valid set comes in.
 """
@@ -69,42 +76,59 @@ SKILL = "Agility"
 
 @dataclass(frozen=True)
 class Course:
-    """One course, as its own page states it."""
+    """One course, as its own row states it."""
 
     #: The export's challenge, which is the key everywhere.
     task: str
     #: The Agility level it opens at, per the export.
     level: int
-    #: What one full lap pays, summed over the page's obstacle table.
+    #: What one full lap pays.
     experience_per_lap: float
-    #: Seconds for a lap, "assuming perfect laps" where the page says so.
+    #: Seconds for a lap, "including running back to the first obstacle".
     lap_seconds: float
-    #: Experience an hour on top of the lapping, where a course pays one. Only
-    #: the Wilderness course does: its lap counter pays "up to 18,400 bonus
-    #: experience assuming players play for at least an hour".
+    #: Experience an hour on top of the lapping. Only the Wilderness course
+    #: pays one: its lap counter is worth "up to 18,400 bonus experience
+    #: assuming players play for at least an hour".
     bonus_per_hour: float = 0.0
+    #: What a lap pays with the relevant hard diary done, where that differs.
+    #: Carried, not spent - see the module docstring.
+    diary_experience_per_lap: float | None = None
+    #: The lap time with that diary, where the diary shortens the lap rather
+    #: than enriching it. Seers' Village is the only one.
+    diary_lap_seconds: float | None = None
 
 
 COURSES: tuple[Course, ...] = (
+    Course("Access the ~|Draynor Village Rooftop Course|~", 1, 120.0, 43.2),
+    Course("Access the ~|Al Kharid Rooftop Course|~", 20, 216.0, 64.2),
+    # 108-110 ticks; the slower end, which is the reading without the
+    # diagonal-running trick the table's footnote describes.
+    Course("Access the ~|Varrock Rooftop Course|~", 30, 270.0, 66.0),
     Course("Access the ~|Barbarian Outpost Agility Course|~", 35, 153.3, 32.0),
     Course("Access the ~|Canafis Rooftop Course|~", 40, 240.0, 43.8),
-    Course("Access the ~|Falador Rooftop Course|~", 50, 586.0, 60.0),
+    Course("Access the ~|Falador Rooftop Course|~", 50, 586.0, 58.2),
     Course("Access the ~|Wilderness Agility Course|~", 52, 571.4, 45.0, 18_400.0),
-    Course("Access the ~|Seers' Village Rooftop Course|~", 60, 570.0, 43.8),
+    Course(
+        "Access the ~|Seers' Village Rooftop Course|~", 60, 570.0, 43.8,
+        diary_experience_per_lap=570.0, diary_lap_seconds=36.0,
+    ),
     Course("Access the ~|Werewolf Agility Course|~", 60, 730.0, 38.0),
     Course("Access the ~|Dorgesh-Kaan Agility Course|~", 70, 2_750.0, 156.0),
-    Course("Access the ~|Pollnivneach Rooftop Course|~", 70, 1_016.0, 60.6),
-    Course("Access the ~|Rellekka Rooftop Course|~", 80, 920.0, 51.0),
+    Course(
+        "Access the ~|Pollnivneach Rooftop Course|~", 70, 890.0, 60.6,
+        diary_experience_per_lap=1_016.0,
+    ),
+    Course(
+        "Access the ~|Rellekka Rooftop Course|~", 80, 780.0, 51.0,
+        diary_experience_per_lap=920.0,
+    ),
     Course("Access the ~|Ardougne Rooftop Course|~", 90, 889.0, 45.6),
 )
 
-#: The courses left to the scrape, and why. Named rather than merely absent so
-#: a reader can tell "nobody has done this one" from "this one was looked at".
+#: The courses left to the guide, and why. Named rather than merely absent, so
+#: a reader can tell "nobody has looked at this" from "this was looked at".
 UNMODELLED: dict[str, str] = {
     "Access the ~|Gnome Stronghold Agility Course|~": "states a minimum lap, not an average",
-    "Access the ~|Draynor Village Rooftop Course|~": "no lap time published",
-    "Access the ~|Al Kharid Rooftop Course|~": "no lap time published",
-    "Access the ~|Varrock Rooftop Course|~": "no lap time published",
     "Access the ~|Shayzien Basic Course|~": "no lap time published",
     "Access the ~|Shayzien Advanced Course|~": "no lap time published",
     "Access the ~|Colossal Wyrm Basic Course|~": "derives 25,320 against a scraped 44,000",
@@ -112,19 +136,25 @@ UNMODELLED: dict[str, str] = {
 }
 
 
-def laps_per_hour(course: Course) -> float:
+def laps_per_hour(course: Course, *, diary: bool = False) -> float:
     """Laps an hour, from the lap time alone."""
-    return 3600.0 / course.lap_seconds
+    seconds = course.lap_seconds
+    if diary and course.diary_lap_seconds is not None:
+        seconds = course.diary_lap_seconds
+    return 3600.0 / seconds
 
 
-def rate_at(course: Course) -> float:
+def rate_at(course: Course, *, diary: bool = False) -> float:
     """Agility experience an hour: the lapping, and any lap-counter bonus.
 
     No level in it. A course is a fixed lap for a fixed reward, and what a
-    level buys is *a better course* - which is why every one of these carries
-    its own opening level instead.
+    level buys is *a better course* - which is why each carries its own
+    opening level instead.
     """
-    return course.experience_per_lap * laps_per_hour(course) + course.bonus_per_hour
+    paid = course.experience_per_lap
+    if diary and course.diary_experience_per_lap is not None:
+        paid = course.diary_experience_per_lap
+    return paid * laps_per_hour(course, diary=diary) + course.bonus_per_hour
 
 
 def methods(

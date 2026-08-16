@@ -603,13 +603,20 @@ maps are your own work and nothing can recompute them.
    rather than a total.
 
    **An Agility course is a lap and a lap time**, and their product is the
-   guide's own figure - within 5.2% on all ten courses whose pages publish
-   both, and within 1% on six. That the numbers barely move is the point: the
-   Agility scrape was checked first and found accurate, so what the model buys
-   is that a rate is now a derivation from two facts about the game rather than
-   somebody's estimate. Eight courses are left to the guide and named with the
-   reason: five publish no lap time, Gnome Stronghold publishes a *minimum*
-   rather than an average, and the two Colossal Wyrm courses derive 25,320 an
+   guide's own figure - within 5.2% on all thirteen courses that
+   publish both, and within 1% on eight. `Rooftop Agility Courses` tabulates
+   all nine rooftop courses together - obstacles, experience per lap and lap
+   time in ticks - and the other four state the same two things on their own
+   pages. That the numbers barely move is the point: the Agility scrape was
+   checked first and found accurate, so what the model buys is that a rate is
+   now two facts about the game multiplied rather than somebody's estimate,
+   which can be followed through a game update instead of waited on. **The
+   base rate is priced and not the diary one**, which the guide quotes for
+   three of the courses: a hard Achievement Diary wants tasks all over its
+   region, which is exactly what a chunk-restricted map does not have. Five
+   courses are left to the guide and named with the reason: Gnome Stronghold
+   publishes a *minimum* lap rather than an average, the two Shayzien courses
+   publish no lap time, and the two Colossal Wyrm courses derive 25,320 an
    hour against a scraped 44,000 - a disagreement nothing on their page
    reconciles, and not one worth resolving by preferring the unchecked number.
 

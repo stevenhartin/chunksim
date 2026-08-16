@@ -18,16 +18,21 @@ class TestTheDerivationReproducesTheGuide:
     """
 
     #: task suffix -> the `wiki:courses` figure the derivation must reproduce.
+    #: The wiki's own `Exp. per hour` column, base rather than diary where the
+    #: table gives both - which is what `rate_at` prices.
     PUBLISHED = {
+        "Draynor Village Rooftop Course": 10_000.0,
+        "Al Kharid Rooftop Course": 12_000.0,
+        "Varrock Rooftop Course": 14_000.0,
         "Barbarian Outpost Agility Course": 18_200.0,
-        "Canafis Rooftop Course": 19_200.0,
+        "Canafis Rooftop Course": 19_700.0,
         "Falador Rooftop Course": 35_000.0,
         "Wilderness Agility Course": 66_600.0,
-        "Seers' Village Rooftop Course": 45_600.0,
+        "Seers' Village Rooftop Course": 46_800.0,
         "Werewolf Agility Course": 69_500.0,
         "Dorgesh-Kaan Agility Course": 63_000.0,
-        "Pollnivneach Rooftop Course": 60_000.0,
-        "Rellekka Rooftop Course": 65_000.0,
+        "Pollnivneach Rooftop Course": 52_300.0,
+        "Rellekka Rooftop Course": 55_000.0,
         "Ardougne Rooftop Course": 70_000.0,
     }
 
@@ -36,13 +41,13 @@ class TestTheDerivationReproducesTheGuide:
         published = self.PUBLISHED[course.task.partition("~|")[2].rpartition("|~")[0]]
         assert co.rate_at(course) == pytest.approx(published, rel=0.06)
 
-    def test_six_of_ten_land_within_one_percent(self) -> None:
+    def test_eight_of_thirteen_land_within_one_percent(self) -> None:
         close = 0
         for course in co.COURSES:
             name = course.task.partition("~|")[2].rpartition("|~")[0]
             if abs(co.rate_at(course) / self.PUBLISHED[name] - 1.0) <= 0.01:
                 close += 1
-        assert close >= 6
+        assert close >= 8
 
     def test_every_course_is_checked(self) -> None:
         names = {c.task.partition("~|")[2].rpartition("|~")[0] for c in co.COURSES}
@@ -77,8 +82,8 @@ class TestTheLap:
 class TestWhatItLeavesAlone:
     """**Named rather than merely absent.**"""
 
-    def test_the_unmodelled_eight_are_recorded_with_a_reason(self) -> None:
-        assert len(co.UNMODELLED) == 8
+    def test_the_unmodelled_five_are_recorded_with_a_reason(self) -> None:
+        assert len(co.UNMODELLED) == 5
         assert all(reason for reason in co.UNMODELLED.values())
 
     def test_the_colossal_wyrm_pair_is_a_disagreement_not_a_gap(self) -> None:
@@ -98,6 +103,47 @@ class TestWhatItLeavesAlone:
         assert not ({c.task for c in co.COURSES} & set(co.UNMODELLED))
 
 
+class TestTheBaseRateIsPricedNotTheDiary:
+    """**Three courses pay more with a hard diary, and the guide quotes that.**
+
+    This prices the base, which is the conservative reading and the likelier
+    one on a chunk map: a hard diary wants tasks all over its region, which is
+    what such a map does not have.
+    """
+
+    def test_three_courses_carry_a_diary_figure(self) -> None:
+        with_diary = [
+            c for c in co.COURSES
+            if c.diary_experience_per_lap is not None or c.diary_lap_seconds is not None
+        ]
+        assert {c.task.partition("~|")[2].rpartition("|~")[0] for c in with_diary} == {
+            "Seers' Village Rooftop Course",
+            "Pollnivneach Rooftop Course",
+            "Rellekka Rooftop Course",
+        }
+
+    def test_the_diary_is_always_the_faster_of_the_two(self) -> None:
+        for course in co.COURSES:
+            if course.diary_experience_per_lap or course.diary_lap_seconds:
+                assert co.rate_at(course, diary=True) > co.rate_at(course)
+
+    def test_seers_gains_a_shorter_lap_and_the_others_more_experience(self) -> None:
+        # The Kandarin teleport shortens the lap; the Desert and Fremennik
+        # diaries pay more for the same one.
+        seers = next(c for c in co.COURSES if "Seers'" in c.task)
+        rellekka = next(c for c in co.COURSES if "Rellekka" in c.task)
+        assert seers.diary_lap_seconds is not None
+        assert seers.diary_experience_per_lap == seers.experience_per_lap
+        assert rellekka.diary_lap_seconds is None
+        assert rellekka.diary_experience_per_lap == 920.0
+
+    def test_what_is_priced_is_the_lower_one(self) -> None:
+        rellekka = next(c for c in co.COURSES if "Rellekka" in c.task)
+        bands = co.methods({"Agility": {rellekka.task: {}}})["Agility"]
+        assert bands[0].xp_per_hour == pytest.approx(co.rate_at(rellekka))
+        assert bands[0].xp_per_hour < co.rate_at(rellekka, diary=True)
+
+
 class TestReachability:
     _ALL: dict[str, dict[str, object]] = {
         "Agility": {c.task: {} for c in co.COURSES}
@@ -105,7 +151,7 @@ class TestReachability:
 
     def test_every_course_a_map_reaches(self) -> None:
         bands = co.methods(self._ALL)["Agility"]
-        assert len(bands) == len(co.COURSES)
+        assert len(bands) == len(co.COURSES) == 13
 
     def test_the_display_name_drops_the_markup(self) -> None:
         bands = co.methods(self._ALL)["Agility"]
