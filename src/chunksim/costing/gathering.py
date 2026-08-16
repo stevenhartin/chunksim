@@ -183,9 +183,10 @@ TICK_SECONDS = 0.6
 GATHERING_SOURCE = "computed:gathering"
 
 #: How this module labels its rates in `Rate.match`. Distinct from
-#: `recipe_rates.COMPUTED_MATCH` because the two layer differently - this one
-#: beats a scrape and that one loses to it - and a reader looking at a band
-#: should be able to tell which model produced the number.
+#: `recipe_rates.COMPUTED_MATCH` because the two still layer differently -
+#: both beat a scrape now, but this one also beats *that* one, and it is the
+#: tier `recipe_rates.REPLACEABLE` deliberately omits. A reader looking at a
+#: band should be able to tell which model produced the number.
 GATHERING_MATCH = "modelled"
 
 #: **Where a success chance came from, and the only three answers there are.**
@@ -3191,15 +3192,17 @@ def apply(
 ) -> dict[str, dict[str, Rate]]:
     """`training` with a modelled rate wherever this model has one.
 
-    **`defaults < scraped < modelled < overrides`, and the ordering is the
-    point of the module.** It is the opposite of `recipe_rates.apply`, which
-    puts its computed number *below* the scrape, and the difference is not
-    taste:
+    **`defaults < scraped < computed < modelled < overrides`, and the top of
+    that is the point of the module.** It outranks `recipe_rates.apply` as well
+    as the scrape, and the two computed layers no longer disagree about which
+    side of a guide they sit - `recipe_rates` used to sit below it. What
+    remains true is why this one sits *highest* of the three:
 
     - A recipe and a money-making guide measure different things. The guide
       assumes you bought the silver bar; the recipe charges you six minutes for
-      mining it. Neither is wrong and the guide is the better-known number, so
-      it keeps the method.
+      mining it. Both are this project's arithmetic about *this* map once the
+      materials are priced, which is why the recipe now wins - but neither is
+      a statement about how fast the action itself goes.
     - A success curve and a training guide measure the **same** thing - how
       fast this action goes - and the curve is the better-informed of the two,
       because it is evaluated at this map's level with this map's best

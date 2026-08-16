@@ -70,9 +70,18 @@ from chunksim.remote.recipes import Recipe
 #: One game tick, in seconds. The whole engine runs on it.
 TICK_SECONDS = 0.6
 
-#: How this module labels a rate it computed, in `Rate.match`. It beats only
-#: `default` - see `apply`, and the measurement behind that in the docstring.
+#: How this module labels a rate it computed, in `Rate.match`. It beats the
+#: scrape's two tiers as well as `default` - see `apply`, and `REPLACEABLE`
+#: for why that is a whitelist rather than a check against `modelled`.
 COMPUTED_MATCH = "computed"
+
+#: The `Rate.match` tiers a computed recipe rate may replace: the floor, and
+#: the scrape's `exact` and `contained` joins. **A whitelist, so it fails
+#: closed** - `gathering.py`'s `modelled` and any layer added later keep their
+#: rate without having to be named here, which is the direction a mistake
+#: should go in. `apply` never sees an override, because those arrive as
+#: `pinned`.
+REPLACEABLE = frozenset({"default", "exact", "contained"})
 
 #: `Rate.source` for a rate this project computed from a recipe. **Its figure
 #: already includes the materials**, so `training._material_cost` must not add
@@ -371,46 +380,95 @@ def computed_rates(
     return priced, RecipeCoverage(skills=coverage, dropped=tuple(sorted(dropped)))
 
 
+def _ambiguous(computed: Mapping[str, ActionRate]) -> frozenset[tuple[str, str]]:
+    """The `(skill, output)` pairs more than one task joined - see `apply`.
+
+    Computed from the rates themselves rather than passed in, because an
+    `ActionRate` already records the `output` it joined on: a second source of
+    truth for which recipe reached which task is the thing most likely to
+    drift out of step with the join that produced them.
+    """
+    seen: dict[tuple[str, str], int] = {}
+    for rate in computed.values():
+        key = (rate.skill, rate.output.lower())
+        seen[key] = seen.get(key, 0) + 1
+    return frozenset(key for key, count in seen.items() if count > 1)
+
+
 def apply(
     training: Mapping[str, Mapping[str, Rate]],
     computed: Mapping[str, ActionRate],
     pinned: frozenset[str] = frozenset(),
 ) -> dict[str, dict[str, Rate]]:
-    """`training` with a computed rate wherever there was no real one.
+    """`training` with a computed rate wherever a recipe describes the method.
 
-    **`defaults < computed < scraped < overrides`, and the ordering is the
-    measured part of this module.** It is not the layering `dps_bridge` uses,
-    which puts its computed kill rates *above* the scrape - and the difference
-    is not taste. A simulated fight and a money-making guide answer the same
-    question, so the better-informed one should win. A recipe and a guide do
-    not:
+    **`defaults < scraped < computed < modelled < overrides`, and the middle
+    step used to run the other way.** A recipe now outranks a money-making
+    guide, which is the same layering `dps_bridge` and `gathering.py` already
+    used: where this project can compute an answer for the method in front of
+    it, that answer beats a figure someone published about their own account.
 
-    - **Where the materials are cheap, tick-math is roughly the guide.** It ran
-      a median 1.38x above when materials were free; now that they cost
-      something the six comparable methods straddle it, x0.68 to x2.73. That
-      is agreement, not evidence either way.
-    - **Where the materials are expensive, it is a floor by a mile.** The other
-      26 span x0.0043 to x2.73, most of them at the bottom, because this
-      charges you six minutes for the silver bar where the guide assumes you
-      bought it. That is the right model for a chunk account and the wrong
-      number to compare against a guide.
+    The superseded argument is worth keeping, because it is the tempting one
+    and it is half right. It ran: a recipe and a guide do not measure the same
+    thing, since the guide assumes you bought the silver bar where this charges
+    you six minutes for mining it - so where materials were free the two agreed
+    (a median 1.38x, six comparable methods spanning x0.68 to x2.73) and where
+    they were not this sat below by a mile (26 methods, x0.0043 to x2.73). All
+    of that is still true. What it got wrong is which number a *chunk account*
+    wants: the guide's shopping trip is the thing a chunk map most often cannot
+    make, so being "below the guide" is the model being right about this map
+    rather than the model being pessimistic. **A guide is evidence about the
+    action; a recipe is evidence about the action plus the map**, and the
+    second is what an estimate here is for.
 
-    So a guide, when there is one, keeps the method. What this replaces is the
-    **1,000/hr floor**, which is not evidence of anything, and there are far
-    more of those: 852 methods priced on the benchmark map against 58 that had a guide.
+    Four guards keep the flip from reaching further than that:
 
-    `pinned` is the set of task names `heuristics/overrides.json` speaks about;
-    a hand pin outranks everything, as it does everywhere else.
+    - **`REPLACEABLE` is a whitelist**, so this overwrites the floor and the
+      scrape's two join tiers and nothing else. `gathering.py`'s `modelled`
+      rate still wins, because a success curve really does measure the same
+      thing as a guide and is the better-informed of the two.
+    - **A hand pin outranks everything**, as it does everywhere else - `pinned`
+      is the set of task names `heuristics/overrides.json` speaks about.
+    - **A computed rate below the floor is still skipped**, for the reason
+      below, which is what stops a badly-joined material turning into a
+      100,000-hour climb.
+    - **An ambiguous join may fill the floor but may not replace the scrape**,
+      which is `_ambiguous` and is the guard the flip actually needed.
+
+    That last one is this module's own headline contract catching up with it.
+    The join is exact *on `Output`* - and where upstream offers several ways to
+    make one thing, one recipe reaches all of them: `Craft a ~|nature rune|~`
+    and `Craft a ~|nature rune|~ with guardian essence` share an `Output` and
+    are the altar loop and a minigame. Measured on the reference export that is
+    **32 outputs covering 71 tasks**, almost all of them Runecraft's Guardians
+    of the Rift variants and Smithing's `with superheat item` ones.
+
+    While the scrape won this was invisible, which is why it survived: the
+    altar's recipe was written over a Guardians of the Rift task and then
+    discarded. Replacing the scrape made it load-bearing, and it cost Runecraft
+    its whole measured climb - the uber map went **271.4h to 474.9h**, because
+    a 16,728/hr altar recipe displaced `wiki:gotr`'s 25,000/40,000/50,000
+    bands. So a recipe that cannot say *which* of several tasks it describes is
+    not evidence against a rate that names one, and the scrape keeps the
+    method. Filling a floor is still allowed, because there the alternative is
+    nothing at all.
 
     Nothing is removed. A method this could not price keeps what it had, so the
     result is never worse-informed than the input.
     """
     merged = {task: dict(skills) for task, skills in training.items()}
+    shared = _ambiguous(computed)
     for task, rate in computed.items():
         if task in pinned:
             continue
         existing = merged.get(task, {}).get(rate.skill)
-        if existing is not None and existing.match != "default":
+        if existing is not None and existing.match not in REPLACEABLE:
+            continue
+        if (
+            existing is not None
+            and existing.match != "default"
+            and (rate.skill, rate.output.lower()) in shared
+        ):
             continue
         # **A computed rate slower than the floor is not evidence.** The floor
         # is a deliberate stand-in for ignorance, set low so a gap reads as

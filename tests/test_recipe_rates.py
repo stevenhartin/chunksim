@@ -135,10 +135,10 @@ def test_only_valid_primary_methods_are_priced() -> None:
     assert coverage.skills["Herblore"] == (1, 1)
 
 
-def test_a_computed_rate_fills_a_gap_but_never_beats_a_guide() -> None:
-    """**The layering, and the measured reason for it.** A recipe and a money
-    -making guide answer different questions - see the module docstring - so
-    the guide keeps the method and the 1,000/hr floor does not."""
+def test_a_computed_rate_beats_a_guide_and_fills_a_gap() -> None:
+    """**The layering, and the reason it was flipped.** A number this project
+    computed outranks a number somebody published - see the module docstring -
+    so the recipe takes the guide's method as well as the 1,000/hr floor."""
     computed = {
         "Cook a ~|shark|~": ActionRate(
             task="Cook a ~|shark|~", skill="Cooking", xp_per_hour=999_000.0,
@@ -156,9 +156,82 @@ def test_a_computed_rate_fills_a_gap_but_never_beats_a_guide() -> None:
 
     merged = apply(training, computed)
 
-    assert merged["Cook a ~|shark|~"]["Cooking"].value == 273_000.0
+    assert merged["Cook a ~|shark|~"]["Cooking"].value == 999_000.0
+    assert merged["Cook a ~|shark|~"]["Cooking"].match == COMPUTED_MATCH
     assert merged["Cook a ~|manta ray|~"]["Cooking"].value == 500_000.0
     assert merged["Cook a ~|manta ray|~"]["Cooking"].match == COMPUTED_MATCH
+
+
+def test_a_modelled_rate_outranks_a_computed_one() -> None:
+    """`gathering.py` sits above this module, and `REPLACEABLE` is what says
+    so: a whitelist, so a tier nobody named here keeps its rate."""
+    computed = {
+        "Chop ~|teak logs|~": ActionRate(
+            task="Chop ~|teak logs|~", skill="Woodcutting", xp_per_hour=999_000.0,
+            experience=85.0, ticks=4, input_seconds=0.0, output="Teak logs",
+        )
+    }
+    training = {"Chop ~|teak logs|~": {"Woodcutting": Rate(48_000.0, "computed:gathering", "modelled")}}
+
+    merged = apply(training, computed)
+
+    assert merged["Chop ~|teak logs|~"]["Woodcutting"].value == 48_000.0
+    assert merged["Chop ~|teak logs|~"]["Woodcutting"].match == "modelled"
+
+
+def test_an_ambiguous_join_may_fill_the_floor_but_not_replace_the_scrape() -> None:
+    """**One recipe reaching two tasks is not evidence about either of them.**
+    `Craft a ~|nature rune|~` and `... with guardian essence` share an `Output`
+    and are the altar loop and a minigame; the scraped rate names one of them
+    and this cannot say which it describes. Measured on the real export that is
+    32 outputs over 71 tasks - see `apply`."""
+    def nature(task: str) -> ActionRate:
+        return ActionRate(
+            task=task, skill="Runecraft", xp_per_hour=9_529.0, experience=9.0,
+            ticks=3, input_seconds=0.0, output="Nature rune",
+        )
+
+    computed = {
+        task: nature(task)
+        for task in (
+            "Craft a ~|nature rune|~",
+            "Craft a ~|nature rune|~ with guardian essence",
+            "Craft a ~|nature rune|~ at the false altar",
+        )
+    }
+    training = {
+        "Craft a ~|nature rune|~": {"Runecraft": Rate(26_730.0, "mmg", "contained")},
+        "Craft a ~|nature rune|~ with guardian essence": {
+            "Runecraft": Rate(25_000.0, "wiki:gotr", "exact")
+        },
+    }
+
+    merged = apply(training, computed)
+
+    # Both scraped rates survive - neither `exact` nor `contained` is safe here.
+    assert merged["Craft a ~|nature rune|~"]["Runecraft"].value == 26_730.0
+    assert merged["Craft a ~|nature rune|~ with guardian essence"]["Runecraft"].value == 25_000.0
+    # ...but the task with no rate at all still takes one, because there the
+    # alternative is the 1,000/hr floor rather than a measurement.
+    filled = merged["Craft a ~|nature rune|~ at the false altar"]["Runecraft"]
+    assert filled.value == 9_529.0
+    assert filled.match == COMPUTED_MATCH
+
+
+def test_an_unambiguous_join_still_replaces_the_scrape() -> None:
+    """The guard above is about *ambiguity*, not about the scrape - a lone
+    recipe takes the method as `apply`'s ordering says it should."""
+    computed = {
+        "Craft a ~|law tiara|~": ActionRate(
+            task="Craft a ~|law tiara|~", skill="Runecraft", xp_per_hour=16_728.0,
+            experience=95.0, ticks=3, input_seconds=0.0, output="Law tiara",
+        )
+    }
+    training = {"Craft a ~|law tiara|~": {"Runecraft": Rate(9_000.0, "mmg", "contained")}}
+
+    merged = apply(training, computed)
+
+    assert merged["Craft a ~|law tiara|~"]["Runecraft"].value == 16_728.0
 
 
 def test_a_pinned_method_is_left_alone() -> None:

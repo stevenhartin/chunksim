@@ -452,9 +452,11 @@ maps are your own work and nothing can recompute them.
    ```
 
    The second is what stops most training methods being priced at a flat 1,000 xp/hour: it brings
-   back what one action of a method actually pays and how long it takes, for 3,889 recipes. Where a
-   money-making guide exists it still wins - see `chunksim estimate skilling`, which prints where each
-   band's rate came from.
+   back what one action of a method actually pays and how long it takes, for 3,889 recipes. It now
+   outranks a money-making guide where both describe the same method, because a guide is evidence
+   about the action and a recipe is evidence about the action plus your map - the one exception is a
+   recipe that reaches several methods at once, which fills a gap but does not overrule a guide. See
+   `chunksim estimate skilling`, which prints where each band's rate came from.
 
    **You do not need to fetch anything for the gathering skills.** Fishing, Mining, Woodcutting,
    Hunter and Thieving are *modelled* rather than looked up - the success chance at your level, the

@@ -32,9 +32,10 @@ The modules, and what each owns:
   methods unlock**, so the floor can only ever be the first band. Each band
   carries the override path behind its rate, set where the rate is chosen.
 - `recipe_rates.py` - a recipe turned into an XP rate, joined exactly on
-  `Output`. Owns `defaults < computed < scraped < overrides`, **the one place a
-  computed number does *not* beat the scrape**. Also `trip_seconds`: a bank
-  trip's share, scaled by what an action consumes.
+  `Output`. Owns `defaults < scraped < computed < overrides`, and **an
+  ambiguous join may fill the floor but may not replace the scrape** - one
+  recipe reaching several tasks is the guard the flip needed. Also
+  `trip_seconds`: a bank trip's share, scaled by what an action consumes.
 - `production.py` - what a production method consumes, for the methods no
   `{{Recipe}}` describes, read off `Module:Skill calc` by way of the gathering
   tables. **It supplies a material cost, never a rate**: a calculator row has
@@ -42,8 +43,8 @@ The modules, and what each owns:
   one. Joins on upstream's own `~|...|~` span.
 - `gathering.py` - the generic node model for Fishing/Mining/Woodcutting/
   Hunter/Thieving, and the exact skilling-success formula. Owns
-  `defaults < scraped < modelled < overrides`, so **it beats the scrape where
-  `recipe_rates.py` loses to it**, and the docstring says why. Per-skill quirks
+  `defaults < scraped < modelled < overrides`, so **it outranks
+  `recipe_rates.py` as well as the scrape**, and the docstring says why. Per-skill quirks
   are `SkillProfile` fields, never branches, and the four inactivity shapes
   (duty cycle, flat charge, restock floor, stun) are what separate a model from
   a fitted constant. Mining is the one skill that pays two of them - the

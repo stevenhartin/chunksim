@@ -131,27 +131,42 @@ Each of the first three has already caused a real bug.
   and where a memo outlives a request, as the GUI's `ReferenceBlobs` does, it must be validated
   against what it caches rather than merely remembered.
 
-### The computed rate layers, and why two of them layer opposite ways
+### The computed rate layers, and the one guard that keeps them honest
 
-There are two models that compute a rate the scrape also has an answer for,
-and **they sit on opposite sides of it**:
+**A number this project computed beats a number somebody published**, without
+exception, and the two computed layers differ only in which of them wins:
 
 ```
-defaults < computed (recipe) < scraped < modelled (gathering) < overrides
+defaults < scraped < computed (recipe) < modelled (gathering) < overrides
 ```
 
-That is not an inconsistency, it is the whole argument, and each module's
-docstring carries its half:
+`recipe_rates` used to sit *below* the scrape, and the argument for that was
+the silver bar: a money-making guide assumes you bought it where the recipe
+charges you six minutes for mining it, so the two were said to measure
+different things. That is still true and it is no longer the right conclusion.
+The guide's shopping trip is the thing a chunk map most often cannot make, so a
+recipe reading *below* a guide is the model being right about this map rather
+than the model being pessimistic — **a guide is evidence about the action, a
+recipe is evidence about the action plus the map**, and the second is what an
+estimate here is for. `gathering` still outranks `recipe_rates` for its own
+reason: a success curve and a training guide measure the same thing, and the
+curve is evaluated at *this* map's level with *this* map's best reachable axe.
 
-- **A recipe and a money-making guide measure different things.** The guide
-  assumes you bought the silver bar; the recipe charges you six minutes for
-  mining it. Neither is wrong, and the guide is the better-known number — so a
-  guide keeps the method and `recipe_rates` only fills the 1,000/hr floor.
-- **A success curve and a training guide measure the same thing** — how fast
-  this action goes — and the curve is better informed, because it is evaluated
-  at *this* map's level with *this* map's best reachable axe where the guide is
-  somebody else's account. So it wins, the same way `dps_bridge` puts a
-  simulated fight above a scraped kill rate.
+**The flip needed one guard, and finding out why is the useful part.**
+`recipe_rates`' headline claim is that its join is exact — *on `Output`*. Where
+upstream offers several ways to make one thing, one recipe reaches all of them:
+`Craft a ~|nature rune|~` and `Craft a ~|nature rune|~ with guardian essence`
+share an `Output` and are the altar loop and a minigame. That is **32 outputs
+covering 71 tasks** on the reference export, almost all of them Runecraft's
+Guardians of the Rift variants and Smithing's `with superheat item` ones. While
+the scrape won this was invisible; making the recipe win made it load-bearing,
+and it cost Runecraft its whole measured climb — the uber map went 271.4h to
+474.9h as a 16,728/hr altar recipe displaced `wiki:gotr`'s 25,000/40,000/50,000
+bands. So **an ambiguous join may fill the 1,000/hr floor but may not replace
+the scrape**: a recipe that cannot say which of several tasks it describes is
+not evidence against a rate that names one. With the guard, the whole flip
+moves two climbs on the reference map (Cooking 89.9h → 63.8h, Runecraft
+1480.5h → 1448.8h) and nothing at all on the uber map.
 
 **Not every "computed" number is evidence, and the docstrings say which.**
 Thieving's fifteen tabulated stalls come out at exactly 1.00x against the
