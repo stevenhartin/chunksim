@@ -603,8 +603,8 @@ maps are your own work and nothing can recompute them.
    rather than a total.
 
    **An Agility course is a lap and a lap time**, and their product is the
-   guide's own figure - within 5.2% on eleven of the sixteen that
-   publish both, and within 1% on eight. `Rooftop Agility Courses` tabulates
+   guide's own figure - within 5.2% on thirteen of the eighteen,
+   and within 1% on eight. `Rooftop Agility Courses` tabulates
    all nine rooftop courses together - obstacles, experience per lap and lap
    time in ticks - and the other four state the same two things on their own
    pages. That the numbers barely move is the point: the Agility scrape was
@@ -620,10 +620,16 @@ maps are your own work and nothing can recompute them.
    than two measurements. The Shayzien advanced course is the one carried as
    two bands: its own page says players "stop failing the obstacles ... at
    around level 64", so its 30,000 is an average over the stretch where you
-   fail and its 39,545 is what the lap gives once you stop. Only the two
-   Colossal Wyrm courses are left to the guide, because they derive 25,320 an
-   hour against a scraped 44,000 - a disagreement nothing on their page
-   reconciles, and not one worth resolving by preferring the unchecked number.
+   fail and its 39,545 is what the lap gives once you stop. **The two Colossal Wyrm
+   courses are the case for doing any of this.** They looked like an
+   irreconcilable 1.7x disagreement, and the cause turned out to be a
+   rebalance on 12 August 2026 that lengthened both laps and raised their
+   experience - after which `wiki:courses` still carried the old figure, and
+   carried it for *both* courses. The page reconciles once the current numbers
+   are read: 31,916 an hour on the basic course and 43,900 on the advanced,
+   against one scraped 44,000 that was the basic course's *pre-buff* rate. The
+   basic course had been priced 1.38x too fast, and a guide can be right about
+   a course that no longer exists in a way a lap and a lap time cannot.
 
    **The Agility Pyramid shows what a bad join costs.** Its money-making rate
    of 34,380 an hour reached all three of the export's pyramid challenges, and

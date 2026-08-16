@@ -21,6 +21,8 @@ publishes - within 5.2% on all thirteen and within 1% on eight:
     Gnome Stronghold   110.5  34.0    11,700     10,000  1.170
     Shayzien Basic     153.5  51.0    10,835     10,000  1.084
     Shayzien Advanced  507.5  46.2    39,545     30,000  1.318
+    Colossal Wyrm Bas  633    71.4    31,916     44,000  0.725
+    Colossal Wyrm Adv  1053.6 86.4    43,900     44,000  0.998
     Wilderness         571.4  45.0    64,112     66,600  0.963
     Werewolf           730    38.0    69,158     69,500  0.995
     Dorgesh-Kaan     2,750   156.0    63,462     63,000  1.007
@@ -64,13 +66,26 @@ wrong at one end. It is the one course here carried as **two bands** - the
 stated average from 45, the lap-derived rate from 64 - which is what having
 both numbers is for.
 
-### The two courses this does not model
+### The Colossal Wyrm pair, and a guide that had gone stale
 
-**The Colossal Wyrm pair is a real disagreement and is kept as one.** Its
-pages give 633 experience for a basic lap and "about 90 seconds per lap",
-which is 25,320 an hour against a scraped 44,000 - a factor of 1.7 that
-nothing on the page reconciles. Replacing a verified figure with an unverified
-one is not an improvement, so the guide keeps those two and this says why.
+These two were left to the guide for a while on what looked like an
+irreconcilable 1.7x disagreement, and the disagreement was real but the cause
+was not the model. **Both courses were rebalanced on 12 August 2026** - "the
+duration of the basic course has been increased by ~25%", "the advanced course
+by ~40%", and "increased experience ... on both courses" - and `wiki:courses`
+still carried the figure from before it.
+
+The page reconciles every number once the current ones are read. It gives 633
+experience for a basic lap and 1,053.6 for an advanced one, laps of 1:07.80 and
+1:22.80, "3.6 seconds of downtime between laps", and its own rates of ~31,000
+and ~43,000. Those come out at 31,916 and 43,900. And the same page states the
+*pre-buff* laps, 54.0 and 58.8 seconds - at which the basic course paid
+633 / 54.0s = 42,200 an hour, which is where the scraped 44,000 came from and
+why it was given to both courses.
+
+So the guide is not wrong about a course, it is right about a course that no
+longer exists. The correction is real: **the basic course was priced 1.38x
+too fast**, at the advanced course's old figure.
 
 ### `Canafis`
 
@@ -126,6 +141,11 @@ class Course:
     #: The level the failing stops at, which is where `failing_rate` gives way
     #: to the lap-derived one.
     no_fail_level: int | None = None
+    #: Seconds between laps that the lap time does not already contain. Only
+    #: the two Colossal Wyrm courses state one - "including 3.6 seconds of
+    #: downtime between laps" - and stating it separately is what keeps
+    #: `lap_seconds` meaning the same thing on every row.
+    downtime_seconds: float = 0.0
 
 
 COURSES: tuple[Course, ...] = (
@@ -159,12 +179,23 @@ COURSES: tuple[Course, ...] = (
         failing_rate=30_000.0, no_fail_level=64,
     ),
     Course("Access the ~|Falador Rooftop Course|~", 50, 586.0, 58.2),
+    # **Both Colossal Wyrm courses were rebalanced on 12 August 2026** and the
+    # guide had not caught up - see the module docstring. "Players never fail
+    # obstacles on either course", so neither needs a failing band.
+    Course(
+        "Access the ~|Colossal Wyrm Basic Course|~", 50, 633.0, 67.8,
+        downtime_seconds=3.6,
+    ),
     Course("Access the ~|Wilderness Agility Course|~", 52, 571.4, 45.0, 18_400.0),
     Course(
         "Access the ~|Seers' Village Rooftop Course|~", 60, 570.0, 43.8,
         diary_experience_per_lap=570.0, diary_lap_seconds=36.0,
     ),
     Course("Access the ~|Werewolf Agility Course|~", 60, 730.0, 38.0),
+    Course(
+        "Access the ~|Colossal Wyrm Advanced Course|~", 62, 1_053.6, 82.8,
+        downtime_seconds=3.6,
+    ),
     Course("Access the ~|Dorgesh-Kaan Agility Course|~", 70, 2_750.0, 156.0),
     Course(
         "Access the ~|Pollnivneach Rooftop Course|~", 70, 890.0, 60.6,
@@ -179,18 +210,19 @@ COURSES: tuple[Course, ...] = (
 
 #: The courses left to the guide, and why. Named rather than merely absent, so
 #: a reader can tell "nobody has looked at this" from "this was looked at".
-UNMODELLED: dict[str, str] = {
-    "Access the ~|Colossal Wyrm Basic Course|~": "derives 25,320 against a scraped 44,000",
-    "Access the ~|Colossal Wyrm Advanced Course|~": "derives 25,320 against a scraped 44,000",
-}
+#: Courses left to the guide. **Empty, and worth keeping as a place to say
+#: so**: every one of the eighteen the export offers is now derived from a lap
+#: and a lap time, and a course that stops being derivable should be named
+#: here with the reason rather than quietly falling back.
+UNMODELLED: dict[str, str] = {}
 
 
 def laps_per_hour(course: Course, *, diary: bool = False) -> float:
-    """Laps an hour, from the lap time alone."""
+    """Laps an hour, from the lap time and any stated downtime."""
     seconds = course.lap_seconds
     if diary and course.diary_lap_seconds is not None:
         seconds = course.diary_lap_seconds
-    return 3600.0 / seconds
+    return 3600.0 / (seconds + course.downtime_seconds)
 
 
 def rate_at(course: Course, *, diary: bool = False) -> float:

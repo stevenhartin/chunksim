@@ -24,6 +24,10 @@ class TestTheDerivationReproducesTheGuide:
         "Gnome Stronghold Agility Course": 10_000.0,
         "Shayzien Basic Course": 10_000.0,
         "Shayzien Advanced Course": 30_000.0,
+        # The wiki's own post-rebalance figures; `wiki:courses` still carries
+        # the pre-buff 44,000 for both.
+        "Colossal Wyrm Basic Course": 31_000.0,
+        "Colossal Wyrm Advanced Course": 43_000.0,
         "Draynor Village Rooftop Course": 10_000.0,
         "Al Kharid Rooftop Course": 12_000.0,
         "Varrock Rooftop Course": 14_000.0,
@@ -63,7 +67,7 @@ class TestTheDerivationReproducesTheGuide:
         basic = next(c for c in co.COURSES if "Shayzien Basic" in c.task)
         assert co.rate_at(basic) == pytest.approx(10_835.0, abs=1.0)
 
-    def test_eight_of_sixteen_land_within_one_percent(self) -> None:
+    def test_eight_of_eighteen_land_within_one_percent(self) -> None:
         close = 0
         for course in co.COURSES:
             name = course.task.partition("~|")[2].rpartition("|~")[0]
@@ -107,18 +111,12 @@ class TestTheLap:
 class TestWhatItLeavesAlone:
     """**Named rather than merely absent.**"""
 
-    def test_the_unmodelled_two_are_recorded_with_a_reason(self) -> None:
-        assert len(co.UNMODELLED) == 2
-        assert all(reason for reason in co.UNMODELLED.values())
-
-    def test_the_colossal_wyrm_pair_is_a_disagreement_not_a_gap(self) -> None:
-        # 633 experience a lap and "about 90 seconds" is 25,320 an hour against
-        # a scraped 44,000, which nothing on the page reconciles. Replacing a
-        # verified guide figure with that would trade a checked number for an
-        # unchecked one.
-        for task, reason in co.UNMODELLED.items():
-            if "Colossal Wyrm" in task:
-                assert "44,000" in reason
+    def test_every_course_is_modelled(self) -> None:
+        # Kept as a place to say so: a course that stops being derivable
+        # should be named here with the reason rather than quietly falling
+        # back to the guide.
+        assert co.UNMODELLED == {}
+        assert len(co.COURSES) == 18
 
     def test_gnome_stronghold_is_modelled_rather_than_left_out(self) -> None:
         assert not any("Gnome Stronghold" in t for t in co.UNMODELLED)
@@ -203,6 +201,49 @@ class TestFailingIsTwoBandsNotAnAverage:
         assert second[0] > first[0]
 
 
+class TestTheColossalWyrmRebalance:
+    """**A guide that was right about a course that no longer exists.**
+
+    Both courses were rebalanced on 12 August 2026 - basic duration up ~25%,
+    advanced up ~40%, experience up on both - and `wiki:courses` still carried
+    the figure from before it, given to *both* courses. The page states the
+    pre-buff laps too, which is what makes the old number explicable rather
+    than merely wrong.
+    """
+
+    def _course(self, which: str) -> co.Course:
+        return next(c for c in co.COURSES if f"Colossal Wyrm {which}" in c.task)
+
+    def test_the_scraped_figure_was_the_pre_buff_basic_lap(self) -> None:
+        # 633 experience over the old 54.0-second lap is 42,200 an hour, which
+        # is where the scraped 44,000 came from.
+        assert 633.0 * 3600.0 / 54.0 == pytest.approx(42_200.0, abs=100.0)
+
+    def test_the_basic_course_was_priced_a_third_too_fast(self) -> None:
+        basic = self._course("Basic")
+        assert co.rate_at(basic) == pytest.approx(31_916.0, abs=2.0)
+        assert 44_000.0 / co.rate_at(basic) == pytest.approx(1.38, abs=0.01)
+
+    def test_the_advanced_course_was_about_right_by_luck(self) -> None:
+        advanced = self._course("Advanced")
+        assert co.rate_at(advanced) == pytest.approx(43_900.0, abs=2.0)
+
+    def test_both_carry_the_stated_downtime(self) -> None:
+        # "including 3.6 seconds of downtime between laps" - stated apart from
+        # the lap so `lap_seconds` means the same thing on every row.
+        for which in ("Basic", "Advanced"):
+            assert self._course(which).downtime_seconds == 3.6
+
+    def test_no_other_course_states_a_downtime(self) -> None:
+        with_downtime = [c for c in co.COURSES if c.downtime_seconds]
+        assert len(with_downtime) == 2
+
+    def test_neither_needs_a_failing_band(self) -> None:
+        # "Players never fail obstacles on either course."
+        for which in ("Basic", "Advanced"):
+            assert self._course(which).failing_rate is None
+
+
 class TestReachability:
     _ALL: dict[str, dict[str, object]] = {
         "Agility": {c.task: {} for c in co.COURSES}
@@ -211,8 +252,8 @@ class TestReachability:
     def test_every_course_a_map_reaches(self) -> None:
         bands = co.methods(self._ALL)["Agility"]
         # One band each, and two for the Shayzien advanced course.
-        assert len(co.COURSES) == 16
-        assert len(bands) == 17
+        assert len(co.COURSES) == 18
+        assert len(bands) == 19
 
     def test_the_display_name_drops_the_markup(self) -> None:
         bands = co.methods(self._ALL)["Agility"]
