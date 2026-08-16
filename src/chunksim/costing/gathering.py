@@ -811,7 +811,18 @@ PROFILES: dict[str, SkillProfile] = {
         # It is not: that is Woodcutting's tree-hop billed against a node the
         # page says "don't deplete", so the number is right by an accident of
         # two errors and the mechanism is one the wiki denies.
-        refuses=frozenset({"infected root"}),
+        #
+        # **Two of them are not methods at all**, which is a different refusal
+        # from the one above and the same one Mining makes of lunar ore and a
+        # Motherlode rockfall. `Wear ~|lumberjack outfit|~ pieces` and its
+        # Forestry twin are collection tasks: an outfit is a bonus on whatever
+        # you were already chopping, so there is no action to repeat and
+        # nothing that would be an experience *rate*. They name no object and
+        # no output either, so nothing here would have priced them - refusing
+        # them by name is what makes that a decision rather than a gap.
+        refuses=frozenset(
+            {"infected root", "lumberjack outfit", "forestry outfit"}
+        ),
     ),
     # A pickaxe changes how often the game rolls, never whether the roll wins.
     #

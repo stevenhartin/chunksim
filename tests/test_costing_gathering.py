@@ -1381,6 +1381,17 @@ class TestTheInfectedRootIsRefused:
     def test_it_is_refused_by_name(self) -> None:
         assert "infected root" in gathering.PROFILES["Woodcutting"].refuses
 
+    def test_an_outfit_is_refused_for_the_other_reason(self) -> None:
+        # Not "the model cannot see enough of it" but "there is no action
+        # here": an outfit is a bonus on whatever you were already chopping.
+        refuses = gathering.PROFILES["Woodcutting"].refuses
+        assert {"lumberjack outfit", "forestry outfit"} <= refuses
+
+    def test_nothing_else_in_the_skill_is_refused(self) -> None:
+        assert gathering.PROFILES["Woodcutting"].refuses == frozenset(
+            {"infected root", "lumberjack outfit", "forestry outfit"}
+        )
+
     def test_its_experience_is_the_mean_and_not_the_range(self) -> None:
         # The infobox says `10 - 35`; the page's drop table and its three
         # experience values say (10*15 + 25*2) / 17, and its own "202.5 tears
