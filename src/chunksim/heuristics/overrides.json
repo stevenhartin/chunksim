@@ -120,13 +120,6 @@
   "rarities": {},
   "slayer": {},
   "training": {
-    "Burn wood at ~|Wintertodt|~": {
-      "Firemaking": {
-        "match": "exact",
-        "source": "hand: Wintertodt, stated",
-        "value": 400000
-      }
-    },
     "Chop a ~|bloodwood tree|~": {
       "Woodcutting": {
         "match": "exact",

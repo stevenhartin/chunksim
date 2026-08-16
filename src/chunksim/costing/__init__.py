@@ -71,6 +71,11 @@ The modules, and what each owns:
 - `forestry.py` - the nine Forestry events, which you meet a share of rather
   than choose between, and which pay **six** skills at once off one table of
   level-carrying formulas.
+- `wintertodt.py` - one game paying Woodcutting, Fletching and Firemaking, and
+  the only activity here with **no chance in it at all**: the wiki states its
+  experience as multipliers on your level, so the rate is those times a count
+  of games. Replaced a hand-written 400,000/hr that was one number for a method
+  linear in the level.
 - `chambers.py` - the Chambers of Xeric ladders, seven bats for Hunter and
   seven fish for Fishing, where **two** skills gate which one you are given and
   the lower of them decides. Four ticks each, no roll.

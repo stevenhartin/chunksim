@@ -46,6 +46,7 @@ from chunksim.costing import (
     recipe_rates,
     rumours,
     stated,
+    wintertodt,
 )
 from chunksim.costing import gathering as gathering_model
 from chunksim.costing.estimate import material_seconds
@@ -487,6 +488,12 @@ def _gathered(
     for skill, methods in forestry.methods(
         blobs.gathering, state.chunk_info, derived.challenges.valid
     ).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **One game, three skills, and no chance anywhere in it** - see
+    # `costing/wintertodt.py`. Needs neither the tables nor the export: the
+    # rate is the wiki's own multipliers times a count of games, so `valid` is
+    # the whole of its input.
+    for skill, methods in wintertodt.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # Two activities whose rate is stated rather than computed - see
     # `costing/stated.py`, whose every band is marked `guess`.

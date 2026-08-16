@@ -555,6 +555,18 @@ maps are your own work and nothing can recompute them.
    19,277/hr against 52,500. Nothing published chooses between them, so it
    takes the low one.
 
+   **Wintertodt is the one activity here with no chance in it at all.** The
+   wiki states its experience as multipliers on your level - 0.3x to cut a
+   bruma root, 0.6x to fletch it, 3.8x to burn the kindling, and 100x for
+   subduing with 500+ points - so a rate is those times a count of games
+   rather than anything modelled. The regime priced is the world-hopped one:
+   twenty kindling is exactly the 500 points the reward caps at, so you earn
+   it and leave rather than spend a longer game on the same bonus. Twenty-four
+   games an hour pays 14,256 Woodcutting, 28,512 Fletching and 418,176
+   Firemaking at 99. It replaced a hand-written 400,000/hr, which was one
+   number for a rate that is linear in the level - close at the top and half
+   wrong at 50, where Firemaking opens the boss.
+
    A few methods are not training methods and the estimator says so rather than
    offering a bad number: mining an elemental rock pays nothing (it spawns the
    monster whose drop is the ore), lunar ore's own infobox states zero, a
