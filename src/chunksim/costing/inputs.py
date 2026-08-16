@@ -557,6 +557,7 @@ def _gathered(
             heuristics,
             training=gathering_model.apply(heuristics.training, priced, pinned),
             action_seconds={**heuristics.action_seconds, **timed},
+            pinned=pinned,
         ),
         banded,
         coverage,

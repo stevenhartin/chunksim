@@ -97,6 +97,93 @@ def test_training_options_lists_only_methods_with_a_real_rate() -> None:
     ]
 
 
+class TestAModelBeatsAScrapeForTheSameTask:
+    """**The layering, applied where it was not being.**
+
+    `costing/__init__.py` states `scraped < modelled < overrides`, and
+    `gathering.apply` enforces it for the node walk. A `ComputedMethod` was
+    *added* to the scraped list rather than replacing it, which is right for
+    Prayer - burying a bone is a genuine alternative to offering fish at a
+    shrine - and wrong when the two describe the same task: the flat guide
+    figure stayed in and won wherever the curve was below it, which is exactly
+    the low-level stretch a curve exists to correct.
+    """
+
+    _INFO = ChunkInfo(
+        {"challenges": {"Hunter": {"Track a ~|herbiboar|~": {"Primary": True, "Level": 80}}}}
+    )
+    _DERIVED = _derived(
+        challenges=ChallengeResult(
+            valid={"Hunter": {"Track a ~|herbiboar|~": True}}, unsupported=frozenset()
+        )
+    )
+    _KNOB = "training/Track a ~|herbiboar|~/Hunter"
+
+    def _heuristics(self, **extra: object) -> Heuristics:
+        return Heuristics(
+            training={"Track a ~|herbiboar|~": {"Hunter": Rate(137_000.0, "wiki:hunter", "exact")}},
+            computed={
+                "Hunter": (
+                    ComputedMethod(
+                        method="herbiboar", xp_per_hour=117_000.0, level=80,
+                        match="modelled", knob=self._KNOB,
+                    ),
+                )
+            },
+            **extra,  # type: ignore[arg-type]
+        )
+
+    def test_the_scrape_is_dropped_where_a_model_names_the_task(self) -> None:
+        options = training_options(self._DERIVED, self._INFO, self._heuristics(), "Hunter")
+        assert [(o.method, o.xp_per_hour) for o in options] == [("herbiboar", 117_000.0)]
+
+    def test_a_pin_still_beats_the_model(self) -> None:
+        # `overrides.json` is the top of the layering by design, and an
+        # override lands in `training` looking exactly like the guide row it
+        # replaced - which is why this needs `Heuristics.pinned` rather than a
+        # source string.
+        options = training_options(
+            self._DERIVED, self._INFO,
+            self._heuristics(pinned=frozenset({"Track a ~|herbiboar|~"})),
+            "Hunter",
+        )
+        assert {o.xp_per_hour for o in options} == {137_000.0, 117_000.0}
+
+    def test_a_model_about_a_different_task_leaves_the_scrape_alone(self) -> None:
+        # Prayer's case: a computed bury rate is an alternative to the shrine
+        # challenges, not a replacement for one of them.
+        heuristics = Heuristics(
+            training={"Track a ~|herbiboar|~": {"Hunter": Rate(137_000.0, "wiki:hunter", "exact")}},
+            computed={
+                "Hunter": (
+                    ComputedMethod(
+                        method="something else", xp_per_hour=50_000.0, level=1,
+                        match="modelled", knob="training/Catch a ~|kebbit|~/Hunter",
+                    ),
+                )
+            },
+        )
+        options = training_options(self._DERIVED, self._INFO, heuristics, "Hunter")
+        assert {o.method for o in options} == {"herbiboar", "something else"}
+
+    def test_a_knob_that_names_no_task_changes_nothing(self) -> None:
+        # `combat_xp` uses `monster_stats/<monster>` and Prayer's carries no
+        # task either, so neither may suppress anything.
+        heuristics = Heuristics(
+            training={"Track a ~|herbiboar|~": {"Hunter": Rate(137_000.0, "wiki:hunter", "exact")}},
+            computed={
+                "Hunter": (
+                    ComputedMethod(
+                        method="combat", xp_per_hour=9.0, level=None,
+                        match="computed", knob="monster_stats/whatever",
+                    ),
+                )
+            },
+        )
+        options = training_options(self._DERIVED, self._INFO, heuristics, "Hunter")
+        assert any(o.method == "herbiboar" for o in options)
+
+
 # --- the band walk ---------------------------------------------------------
 
 _HERBLORE = (

@@ -136,6 +136,10 @@ def training_options(
         for option in heuristics.computed.get(skill) or ()
         if option.xp_per_hour > 0
     ]
+    # **A computed method about the *same task* replaces the scrape rather than
+    # joining it**, which is the one place the layering in `costing/__init__.py`
+    # was not being applied. See `_modelled_tasks`.
+    modelled = _modelled_tasks(heuristics, skill)
 
     challenges = _mapping(chunk_info.challenges, skill)
     for name in derived.challenges.valid.get(skill) or {}:
@@ -144,6 +148,8 @@ def training_options(
             continue
         rate = heuristics.xp_per_hour(name, skill)
         if rate.match == "default":
+            continue
+        if name in modelled:
             continue
         level = challenge.get("Level")
         found.append(
@@ -160,6 +166,53 @@ def training_options(
             )
         )
     return tuple(sorted(found, key=lambda option: -option.effective_xp_per_hour))
+
+
+def _modelled_tasks(heuristics: Heuristics, skill: str) -> frozenset[str]:
+    """Tasks whose scraped rate a computed method supersedes.
+
+    **A guide figure is one number and a model is a curve, and where both
+    describe the same task the curve wins.** That is the argument
+    `gathering.apply` already makes for the node walk - "a success curve and a
+    training guide measure the same thing, and the curve is evaluated at *this*
+    map's level with *this* map's best axe where the guide is somebody else's
+    account" - and until this existed it stopped at the node walk. A
+    `ComputedMethod` was *added* to the scraped list instead, so the flat figure
+    stayed in and won wherever the curve happened to be below it, which is
+    precisely the low-level stretch the curve exists to correct.
+
+    Measured on the every-rollable-chunk map, five tasks were being priced by
+    the guide over part of their range despite having a model:
+
+        Underwater Thieving  84,560 flat against 1,005 at level 1 - eight of
+                             eleven points, and 84x out at the bottom
+        Tempoross            62,000 flat, which is the *level 70* figure, from
+                             level 35 where the table says 30,000
+        Mine iron ore        45,000 flat from level 20, off a guide row whose
+                             own title says "below level 60"
+        Track a herbiboar    137,000 flat against a curve the module was
+                             written because the flat number is wrong
+        Pyramid Plunder 7-8  benign, inside the model's own residual
+
+    **A hand pin still beats both**, which is why this needs `Heuristics.pinned`
+    rather than reading the source string: an override lands in `training`
+    looking exactly like the guide row it replaced, and `overrides.json` is the
+    top of the layering by design.
+
+    Keyed on the `knob`, because that is already the task-and-skill a method
+    would be corrected through and so is the only handle that cannot drift from
+    the name the file uses.
+    """
+    prefix = "training/"
+    suffix = f"/{skill}"
+    return frozenset(
+        option.knob[len(prefix) : -len(suffix)]
+        for option in heuristics.computed.get(skill) or ()
+        if option.xp_per_hour > 0
+        and option.knob.startswith(prefix)
+        and option.knob.endswith(suffix)
+        and option.knob[len(prefix) : -len(suffix)] not in heuristics.pinned
+    )
 
 
 #: Rate sources whose figure already covers getting the materials, so the

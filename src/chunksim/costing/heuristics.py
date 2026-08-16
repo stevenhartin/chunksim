@@ -461,6 +461,15 @@ class Heuristics:
     superiors: dict[str, Superior] = field(default_factory=dict)
     #: Training task name -> skill -> XP per hour.
     training: dict[str, dict[str, Rate]] = field(default_factory=dict)
+    #: The task names `heuristics/overrides.json` speaks about.
+    #:
+    #: **Carried so `training.training_options` can tell a hand figure from a
+    #: scraped one**, which it otherwise cannot: an override lands in
+    #: `training` looking exactly like the guide row it replaced. The rule that
+    #: needs it is that a *computed* method beats a scrape for the same task
+    #: and loses to a pin, which is the layering `costing/__init__.py` states
+    #: and the one place it was not being applied.
+    pinned: frozenset[str] = frozenset()
     #: `slayer[master][task]` - sizes differ by master, so the master is
     #: part of the key. See `SlayerTask`.
     slayer: dict[str, dict[str, SlayerTask]] = field(default_factory=dict)

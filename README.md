@@ -480,6 +480,15 @@ maps are your own work and nothing can recompute them.
    is priced as the cascade it is** — sturgeon, then salmon on that failing, then trout on that —
    so the action is paid for all three of its rolls instead of one.
 
+   **Where a model and a guide describe the same method, the model wins** - a
+   guide figure is one number and a model is a curve, and the curve is
+   evaluated at your level with your gear. That had been true of the node walk
+   for a long time and was not true of the computed activities until recently,
+   which cost real accuracy: an hour of Underwater Thieving reads 84,560 in the
+   money-making guide and 1,005 at level 1 in the model, and the flat figure was
+   winning the whole bottom half of the climb. A hand correction in
+   `overrides.json` still beats both.
+
    A method the model cannot describe keeps its guide rate rather than being guessed at; `chunksim
    estimate skilling` marks a band `modelled` when the model priced it. Where the model does have to
    assume, it says so: every success chance it uses is tagged `confirmed` (read off the wiki),

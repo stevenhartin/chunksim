@@ -106,6 +106,14 @@ The modules, and what each owns:
   the lower of them decides. Four ticks each, no roll.
 - `driftnet.py` - drift net fishing, read as the hourly table the wiki costs
   it as. Pays Hunter and Fishing, and **stops scaling at 70** in both.
+**A computed method replaces the scrape for the *same task*, and loses to a
+pin.** That is the layering above, and until recently `training.training_options`
+did not apply it: a `ComputedMethod` was *added* to the scraped list, so a flat
+guide figure won wherever the curve was below it - which is the low-level
+stretch a curve exists to correct. Measured, five tasks were priced by the guide
+over part of their range despite having a model, the worst being Underwater
+Thieving at 84,560 flat against 1,005 at level 1. See `_modelled_tasks`.
+
 - `stated.py` - the methods whose rate is stated rather than computed: a moss
   lizard's exact experience formula at a guessed pace, the lantern harpoon,
   Tempoross' harpoon tiers, the Fishing Trawler, Temple Trekking's tomes,
