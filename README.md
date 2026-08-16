@@ -603,7 +603,7 @@ maps are your own work and nothing can recompute them.
    rather than a total.
 
    **An Agility course is a lap and a lap time**, and their product is the
-   guide's own figure - within 5.2% on all thirteen courses that
+   guide's own figure - within 5.2% on eleven of the sixteen that
    publish both, and within 1% on eight. `Rooftop Agility Courses` tabulates
    all nine rooftop courses together - obstacles, experience per lap and lap
    time in ticks - and the other four state the same two things on their own
@@ -613,10 +613,15 @@ maps are your own work and nothing can recompute them.
    which can be followed through a game update instead of waited on. **The
    base rate is priced and not the diary one**, which the guide quotes for
    three of the courses: a hard Achievement Diary wants tasks all over its
-   region, which is exactly what a chunk-restricted map does not have. Five
-   courses are left to the guide and named with the reason: Gnome Stronghold
-   publishes a *minimum* lap rather than an average, the two Shayzien courses
-   publish no lap time, and the two Colossal Wyrm courses derive 25,320 an
+   region, which is exactly what a chunk-restricted map does not have. Three
+   courses publish a **minimum** lap rather than an average - Gnome Stronghold
+   and both Shayzien courses - and this prices the minimum, because their own
+   pages show the two figures to be the same lap run less carefully rather
+   than two measurements. The Shayzien advanced course is the one carried as
+   two bands: its own page says players "stop failing the obstacles ... at
+   around level 64", so its 30,000 is an average over the stretch where you
+   fail and its 39,545 is what the lap gives once you stop. Only the two
+   Colossal Wyrm courses are left to the guide, because they derive 25,320 an
    hour against a scraped 44,000 - a disagreement nothing on their page
    reconciles, and not one worth resolving by preferring the unchecked number.
 

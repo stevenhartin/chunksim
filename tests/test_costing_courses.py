@@ -21,6 +21,9 @@ class TestTheDerivationReproducesTheGuide:
     #: The wiki's own `Exp. per hour` column, base rather than diary where the
     #: table gives both - which is what `rate_at` prices.
     PUBLISHED = {
+        "Gnome Stronghold Agility Course": 10_000.0,
+        "Shayzien Basic Course": 10_000.0,
+        "Shayzien Advanced Course": 30_000.0,
         "Draynor Village Rooftop Course": 10_000.0,
         "Al Kharid Rooftop Course": 12_000.0,
         "Varrock Rooftop Course": 14_000.0,
@@ -36,12 +39,31 @@ class TestTheDerivationReproducesTheGuide:
         "Ardougne Rooftop Course": 70_000.0,
     }
 
-    @pytest.mark.parametrize("course", co.COURSES, ids=lambda c: c.task[:40])
+    @pytest.mark.parametrize(
+        "course",
+        [c for c in co.COURSES if not any(
+            n in c.task for n in ("Gnome Stronghold", "Shayzien"))],
+        ids=lambda c: c.task[:40],
+    )
     def test_a_course_lands_on_its_scraped_rate(self, course: co.Course) -> None:
         published = self.PUBLISHED[course.task.partition("~|")[2].rpartition("|~")[0]]
         assert co.rate_at(course) == pytest.approx(published, rel=0.06)
 
-    def test_eight_of_thirteen_land_within_one_percent(self) -> None:
+    def test_the_minimum_lap_courses_are_the_ones_that_do_not(self) -> None:
+        # **And it is a reading, not a disagreement.** Its page derives the
+        # guide's 10,000 from the *same* 34 seconds by assuming the player
+        # drifts - "a lap will take a minimum of 34 seconds ... therefore the
+        # average experience per hour will be around 10,000, depending on the
+        # player's concentration". Seven simple obstacles is about the easiest
+        # course in the game to run tick-perfect, and this prices a method run
+        # properly everywhere else.
+        gnome = next(c for c in co.COURSES if "Gnome Stronghold" in c.task)
+        assert co.rate_at(gnome) == pytest.approx(11_700.0)
+        assert co.rate_at(gnome) / 10_000.0 == pytest.approx(1.17, abs=0.01)
+        basic = next(c for c in co.COURSES if "Shayzien Basic" in c.task)
+        assert co.rate_at(basic) == pytest.approx(10_835.0, abs=1.0)
+
+    def test_eight_of_sixteen_land_within_one_percent(self) -> None:
         close = 0
         for course in co.COURSES:
             name = course.task.partition("~|")[2].rpartition("|~")[0]
@@ -74,16 +96,19 @@ class TestTheLap:
 
     def test_no_rate_reads_a_level(self) -> None:
         # A course is a fixed lap for a fixed reward; what a level buys is a
-        # better course, which is why each carries its own opening level.
+        # better course, which is why each carries its own opening level. The
+        # one exception is failing, which is a second band rather than a
+        # level term - see `TestFailingIsTwoBandsNotAnAverage`.
         assert co.rate_at(co.COURSES[0]) == co.rate_at(co.COURSES[0])
-        assert [c.level for c in co.COURSES] == sorted(c.level for c in co.COURSES)
+        levels = [c.level for c in co.COURSES]
+        assert levels == sorted(levels)
 
 
 class TestWhatItLeavesAlone:
     """**Named rather than merely absent.**"""
 
-    def test_the_unmodelled_five_are_recorded_with_a_reason(self) -> None:
-        assert len(co.UNMODELLED) == 5
+    def test_the_unmodelled_two_are_recorded_with_a_reason(self) -> None:
+        assert len(co.UNMODELLED) == 2
         assert all(reason for reason in co.UNMODELLED.values())
 
     def test_the_colossal_wyrm_pair_is_a_disagreement_not_a_gap(self) -> None:
@@ -95,9 +120,9 @@ class TestWhatItLeavesAlone:
             if "Colossal Wyrm" in task:
                 assert "44,000" in reason
 
-    def test_gnome_stronghold_states_a_minimum_not_an_average(self) -> None:
-        gnome = next(t for t in co.UNMODELLED if "Gnome Stronghold" in t)
-        assert "minimum" in co.UNMODELLED[gnome]
+    def test_gnome_stronghold_is_modelled_rather_than_left_out(self) -> None:
+        assert not any("Gnome Stronghold" in t for t in co.UNMODELLED)
+        assert any("Gnome Stronghold" in c.task for c in co.COURSES)
 
     def test_modelled_and_unmodelled_do_not_overlap(self) -> None:
         assert not ({c.task for c in co.COURSES} & set(co.UNMODELLED))
@@ -144,6 +169,40 @@ class TestTheBaseRateIsPricedNotTheDiary:
         assert bands[0].xp_per_hour < co.rate_at(rellekka, diary=True)
 
 
+class TestFailingIsTwoBandsNotAnAverage:
+    """**The Shayzien advanced course, and the only two-band row here.**
+
+    Its gap to the guide is not concentration and the page says so: "players
+    can expect to stop failing the obstacles that make up the advanced course
+    at around level 64 Agility". So 30,000 is an average over a stretch where
+    you fail and 39,545 is what the lap gives once you stop, and pricing
+    either alone would be wrong at one end.
+    """
+
+    def _advanced(self) -> co.Course:
+        return next(c for c in co.COURSES if "Shayzien Advanced" in c.task)
+
+    def test_it_is_the_only_course_with_a_failing_rate(self) -> None:
+        with_failing = [c for c in co.COURSES if c.failing_rate is not None]
+        assert [c.task for c in with_failing] == [self._advanced().task]
+
+    def test_the_two_bands_are_the_stated_and_the_derived(self) -> None:
+        bands = co.bands_for(self._advanced())
+        assert bands[0] == (45, 30_000.0)
+        assert bands[1][0] == 64
+        assert bands[1][1] == pytest.approx(39_545.0, abs=2.0)
+
+    def test_every_other_course_is_one_band(self) -> None:
+        for course in co.COURSES:
+            if course.failing_rate is None:
+                assert len(co.bands_for(course)) == 1
+
+    def test_the_second_band_is_the_faster_one(self) -> None:
+        first, second = co.bands_for(self._advanced())
+        assert second[1] > first[1]
+        assert second[0] > first[0]
+
+
 class TestReachability:
     _ALL: dict[str, dict[str, object]] = {
         "Agility": {c.task: {} for c in co.COURSES}
@@ -151,7 +210,9 @@ class TestReachability:
 
     def test_every_course_a_map_reaches(self) -> None:
         bands = co.methods(self._ALL)["Agility"]
-        assert len(bands) == len(co.COURSES) == 13
+        # One band each, and two for the Shayzien advanced course.
+        assert len(co.COURSES) == 16
+        assert len(bands) == 17
 
     def test_the_display_name_drops_the_markup(self) -> None:
         bands = co.methods(self._ALL)["Agility"]

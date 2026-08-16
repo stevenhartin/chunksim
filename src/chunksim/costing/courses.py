@@ -18,6 +18,9 @@ publishes - within 5.2% on all thirteen and within 1% on eight:
     Rellekka           780    51.0    55,059     55,000  1.001
     Ardougne           889    45.6    70,184     70,000  1.003
     Barbarian Outpost  153.3  32.0    17,246     18,200  0.948
+    Gnome Stronghold   110.5  34.0    11,700     10,000  1.170
+    Shayzien Basic     153.5  51.0    10,835     10,000  1.084
+    Shayzien Advanced  507.5  46.2    39,545     30,000  1.318
     Wilderness         571.4  45.0    64,112     66,600  0.963
     Werewolf           730    38.0    69,158     69,500  0.995
     Dorgesh-Kaan     2,750   156.0    63,462     63,000  1.007
@@ -40,12 +43,28 @@ tasks all over its region, which is exactly what such a map does not have.
 difference is visible rather than lost - it is 46,849 against 58,000 on Seers',
 and 55,059 against 65,000 on Rellekka.
 
-### The five courses this does not model
+### The three rows that do not reproduce the guide, and why that is fine
 
-Gnome Stronghold is not a rooftop course and its own page states a *minimum*
-lap - "a lap will take a minimum of 34 seconds" - which is not an average and
-reads 17% fast against the guide if used as one. The two Shayzien courses
-publish no lap time anywhere.
+Gnome Stronghold and both Shayzien courses state a **minimum** lap rather than
+an average, and this prices the minimum. The pages themselves show the two
+figures are the same lap rather than two measurements - Gnome Stronghold's
+reads "a lap will take a minimum of 34 seconds to complete. Therefore the
+average experience per hour will be around 10,000, depending on the player's
+concentration", which is its own 34 seconds run less carefully. Agility is
+about the easiest skill in the game to run tick-perfect, and this project
+prices a method done properly everywhere else - `wintertodt` world-hopped,
+`tempoross` not cooking, `sepulchre` not looting.
+
+**The Shayzien advanced course is the interesting one**, because its gap is
+not concentration and the page says what it is: "players can expect to stop
+failing the obstacles that make up the advanced course at around level 64
+Agility". So its 30,000 is an average over a stretch where you fail and its
+39,545 is what the lap gives once you stop, and pricing either alone would be
+wrong at one end. It is the one course here carried as **two bands** - the
+stated average from 45, the lap-derived rate from 64 - which is what having
+both numbers is for.
+
+### The two courses this does not model
 
 **The Colossal Wyrm pair is a real disagreement and is kept as one.** Its
 pages give 633 experience for a basic lap and "about 90 seconds per lap",
@@ -96,16 +115,49 @@ class Course:
     #: The lap time with that diary, where the diary shortens the lap rather
     #: than enriching it. Seers' Village is the only one.
     diary_lap_seconds: float | None = None
+    #: What a course pays *while you are still failing it*, where the page
+    #: states both that and the level at which failing stops. The Shayzien
+    #: advanced course is the only one that does: 30,000 an hour against the
+    #: 39,545 its lap and lap time give, and "players can expect to stop
+    #: failing the obstacles that make up the advanced course at around level
+    #: 64 Agility". Priced as two bands rather than as one average, which is
+    #: what the two figures are for.
+    failing_rate: float | None = None
+    #: The level the failing stops at, which is where `failing_rate` gives way
+    #: to the lap-derived one.
+    no_fail_level: int | None = None
 
 
 COURSES: tuple[Course, ...] = (
+    # **The one lap time here that is a minimum rather than an average**, and
+    # taken as one deliberately. The page says "a lap will take a minimum of
+    # 34 seconds to complete. Therefore the average experience per hour will
+    # be around 10,000, depending on the player's concentration" - so the
+    # guide's 10,000 is the *unconcentrated* reading of the same 34 seconds,
+    # not a different measurement. Seven simple obstacles and a completion
+    # bonus is about the easiest course in the game to run tick-perfect, so
+    # this prices the minimum and comes out at 11,700, which is 1.17x the
+    # guide and the only row here that does not reproduce it. That is the
+    # claim being made: not that the guide is wrong, but that its figure is
+    # the same lap run less carefully.
+    Course("Access the ~|Gnome Stronghold Agility Course|~", 1, 110.5, 34.0),
     Course("Access the ~|Draynor Village Rooftop Course|~", 1, 120.0, 43.2),
+    # Both Shayzien courses state their own lap experience and a minimum lap
+    # in one sentence: "yields 153.5 Agility experience for completion. The
+    # basic course takes a minimum of 51.0 seconds to complete."
+    Course("Access the ~|Shayzien Basic Course|~", 1, 153.5, 51.0),
     Course("Access the ~|Al Kharid Rooftop Course|~", 20, 216.0, 64.2),
     # 108-110 ticks; the slower end, which is the reading without the
     # diagonal-running trick the table's footnote describes.
     Course("Access the ~|Varrock Rooftop Course|~", 30, 270.0, 66.0),
     Course("Access the ~|Barbarian Outpost Agility Course|~", 35, 153.3, 32.0),
     Course("Access the ~|Canafis Rooftop Course|~", 40, 240.0, 43.8),
+    # The advanced course adds the level its failures stop at, which is what
+    # makes it two bands instead of one.
+    Course(
+        "Access the ~|Shayzien Advanced Course|~", 45, 507.5, 46.2,
+        failing_rate=30_000.0, no_fail_level=64,
+    ),
     Course("Access the ~|Falador Rooftop Course|~", 50, 586.0, 58.2),
     Course("Access the ~|Wilderness Agility Course|~", 52, 571.4, 45.0, 18_400.0),
     Course(
@@ -128,9 +180,6 @@ COURSES: tuple[Course, ...] = (
 #: The courses left to the guide, and why. Named rather than merely absent, so
 #: a reader can tell "nobody has looked at this" from "this was looked at".
 UNMODELLED: dict[str, str] = {
-    "Access the ~|Gnome Stronghold Agility Course|~": "states a minimum lap, not an average",
-    "Access the ~|Shayzien Basic Course|~": "no lap time published",
-    "Access the ~|Shayzien Advanced Course|~": "no lap time published",
     "Access the ~|Colossal Wyrm Basic Course|~": "derives 25,320 against a scraped 44,000",
     "Access the ~|Colossal Wyrm Advanced Course|~": "derives 25,320 against a scraped 44,000",
 }
@@ -157,6 +206,19 @@ def rate_at(course: Course, *, diary: bool = False) -> float:
     return paid * laps_per_hour(course, diary=diary) + course.bonus_per_hour
 
 
+def bands_for(course: Course) -> tuple[tuple[int, float], ...]:
+    """`(level, experience an hour)` for a course, one point or two.
+
+    Two where the page states both what the course pays while you are still
+    failing it and the level that stops - see `Course.failing_rate`. One
+    everywhere else, because a course is a fixed lap for a fixed reward.
+    """
+    full = rate_at(course)
+    if course.failing_rate is None or course.no_fail_level is None:
+        return ((course.level, full),)
+    return ((course.level, course.failing_rate), (course.no_fail_level, full))
+
+
 def methods(
     valid: Mapping[str, Mapping[str, object]],
 ) -> dict[str, tuple[ComputedMethod, ...]]:
@@ -165,13 +227,14 @@ def methods(
     bands = tuple(
         ComputedMethod(
             method=_display(course.task),
-            xp_per_hour=rate_at(course),
-            level=course.level,
+            xp_per_hour=paid,
+            level=level,
             match=CONFIRMED,
             knob=f"training/{course.task}/{SKILL}",
         )
         for course in COURSES
         if course.task in reachable
+        for level, paid in bands_for(course)
     )
     return {SKILL: bands} if bands else {}
 
