@@ -54,6 +54,15 @@ Run `chunksim estimate` and look at what it flags:
   trees*, which is the right tree and the wrong question - a profit page, on
   the far side of the layering from a training figure. The tree's own page
   states 65,000-70,000, and the override takes the low end.
+- **An `exact` join is not automatically the right one either.** The training
+  guide has one arctic pine row and two tasks contain its name, so `Chop
+  ~|arctic pine logs|~` and `Split ~|arctic pine logs|~` both read 19,000/hr -
+  and splitting is a 3-tick action paying 5 experience, which is 10,000/hr and
+  cannot be anything else. Chopping a log and cutting it in half are different
+  actions on the same noun; nothing in the join can see that. The wiki's own
+  `{{Recipe}}` states both halves and `cache/reference/wiki_recipes.json`
+  already carries them - the recipe layer sits *below* the scrape by design,
+  so it never got the chance.
 - **Skills still using the default rate.** The money-making guides cover 237 of
   the export's 2,710 training methods, because most ways of training a skill do
   not make money and so have no guide. What is left sits at 1,000 xp/hr,

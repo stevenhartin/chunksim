@@ -210,6 +210,13 @@
         "source": "wiki:Pay-to-play Mining training, below level 60",
         "value": 45000
       }
+    },
+    "Split ~|arctic pine logs|~": {
+      "Woodcutting": {
+        "match": "exact",
+        "source": "wiki:Split log, recipe (5 xp per 3 ticks)",
+        "value": 10000
+      }
     }
   }
 }
