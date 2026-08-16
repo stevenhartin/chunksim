@@ -138,10 +138,10 @@ def _heuristic_state(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]
 
 
 #: **A development escape hatch, deliberately unadvertised.** Typed into the
-#: fetch box it builds a map with every chunk in the export unlocked, which is
-#: the map several of this project's measurements are quoted against - "with
-#: every chunk unlocked and every level at 99" appears half a dozen times in
-#: `CLAUDE.md` and was, until now, a Python snippet somebody had to rewrite
+#: fetch box it builds a map holding every chunk a roll could ever land on,
+#: which is the map several of this project's measurements are quoted against -
+#: "with every chunk unlocked and every level at 99" appears half a dozen times
+#: in `CLAUDE.md` and was, until now, a Python snippet somebody had to rewrite
 #: each time.
 #:
 #: It is not in the README, not in the placeholder and not in any tooltip, and
@@ -155,7 +155,7 @@ UBER_MAP_SENTINEL = "__UBER__"
 
 
 def _uber_map(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
-    """Every chunk in the export, unlocked, on top of whichever map is open.
+    """Every *rollable* chunk, unlocked, on top of whichever map is open.
 
     **The base matters, so it is required rather than defaulted**: a map
     carries the player's `rules`, their `maxSkill` and their completed
@@ -163,6 +163,20 @@ def _uber_map(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     with the chunk constraint removed. Written as an ordinary edit, because
     that is what it is - a map this project made by hand from another one - so
     it removes, browses, diffs and edits like any other.
+
+    **Rollable is `chunkinfo['sections']`, not `chunkinfo['chunks']`**, and the
+    difference is the whole point of this being a ceiling worth measuring
+    against. The export lists 2,234 chunks and only 1,172 have a sections
+    entry; the rest are 747 unwalkable squares and **315 named areas** - the
+    Abyss, Ape Atoll Dungeon, Pyramid Plunder, a player-owned house. A roll can
+    never land on any of them: `derive/neighbours.py` requires a sections entry
+    before a chunk is even a candidate, and measured, no fetched map holds a
+    single non-numeric id.
+
+    So unlocking all 2,234 built a state no player can be in, and it showed:
+    it made 11,135 tasks valid where the rollable set makes 10,111, and forty
+    of the difference were Prayer tasks that **the reference map does not have
+    either**. A ceiling is only useful if a player could stand on it.
     """
     if ctx.allowed_hosts:
         raise ValueError("the uber map is a loopback-only development tool")
@@ -171,11 +185,8 @@ def _uber_map(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
         raise ValueError("the uber map needs a base map to build on")
     envelope = cache.read_cache(base, ctx.root)
     info = ctx.derivations.chunk_info()
-    chunks = [
-        chunk_id
-        for chunk_id in info.data.get("chunks", {})
-        if chunk_id not in (envelope["data"].get("chunks", {}).get("unlocked") or {})
-    ]
+    held = envelope["data"].get("chunks", {}).get("unlocked") or {}
+    chunks = [chunk_id for chunk_id in info.sections if chunk_id not in held]
     if not chunks:
         raise ValueError(f"{base!r} already holds every chunk")
 

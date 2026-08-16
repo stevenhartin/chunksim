@@ -236,8 +236,11 @@ could see — `BIS Skilling` being off there is how a whole unported `Set` sweep
 whose active set is asserted exactly. Each map's residual disagreement is pinned by *name* in
 `tests/test_other_tasks._KNOWN_ORACLE_DELTA`, and a map with no entry there fails rather than quietly
 widening what the suite asserts. The GUI's undocumented `__UBER__` fetch (see `gui/actions.py`)
-builds an every-chunk map on top of whichever map is open, which is what the docstrings' measurements
-are quoted against.
+builds a map holding every **rollable** chunk on top of whichever map is open, which is what the
+docstrings' measurements are quoted against. **Rollable is `chunkinfo['sections']`, not
+`chunkinfo['chunks']`** — 1,172 of the export's 2,234, the rest being unwalkable squares and 315
+named areas a roll can never land on. It used to unlock all 2,234, which built a state no player can
+be in and made 11,135 tasks valid against the rollable set's 10,111.
 
 ### Where things live
 

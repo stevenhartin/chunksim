@@ -769,7 +769,14 @@ def test_the_uber_sentinel_builds_every_chunk_onto_the_open_map(
     measurements are quoted against.
     """
     _write_map(tmp_path, "fray", [LUMBRIDGE])
-    derived = _derived_ctx(tmp_path, monkeypatch, {"chunks": {LUMBRIDGE: {}, NORTH: {}}})
+    derived = _derived_ctx(
+        tmp_path,
+        monkeypatch,
+        {
+            "chunks": {LUMBRIDGE: {}, NORTH: {}},
+            "sections": {LUMBRIDGE: {}, NORTH: {}},
+        },
+    )
     ctx = Context(root=tmp_path, check_origin=False, derivations=derived.derivations)
 
     job = _wait(ctx, _body(_post("/api/fetch", ctx, {"map": "__UBER__", "base": "fray"}))["job"])
@@ -778,6 +785,42 @@ def test_the_uber_sentinel_builds_every_chunk_onto_the_open_map(
     envelope = cache.read_cache(job["result"]["open"], ctx.root)
     assert envelope["kind"] == "edited"
     assert set(envelope["data"]["chunks"]["unlocked"]) == {LUMBRIDGE, NORTH}
+
+
+def test_the_uber_sentinel_holds_only_what_a_roll_could_reach(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**A ceiling is only useful if a player could stand on it.**
+
+    The export lists 2,234 chunks and only 1,172 have a `sections` entry; the
+    rest are unwalkable squares and named areas - the Abyss, Ape Atoll Dungeon,
+    a player-owned house. `derive/neighbours.py` requires a sections entry
+    before a chunk is a candidate at all, and no fetched map holds a single
+    non-numeric id, so unlocking them built a state no player can be in. It
+    showed, too: on the real export it made 11,135 tasks valid against the
+    rollable set's 10,111, forty of them Prayer tasks the reference map does
+    not have either.
+    """
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+    derived = _derived_ctx(
+        tmp_path,
+        monkeypatch,
+        {
+            "chunks": {LUMBRIDGE: {}, NORTH: {}, "Ape Atoll Dungeon": {}, "9999": {}},
+            # Only these two are walkable; the dungeon is a named area and
+            # `9999` is water.
+            "sections": {LUMBRIDGE: {}, NORTH: {}},
+        },
+    )
+    ctx = Context(root=tmp_path, check_origin=False, derivations=derived.derivations)
+
+    job = _wait(ctx, _body(_post("/api/fetch", ctx, {"map": "__UBER__", "base": "fray"}))["job"])
+    assert job["state"] == "done", job
+
+    unlocked = set(cache.read_cache(job["result"]["open"], ctx.root)["data"]["chunks"]["unlocked"])
+    assert unlocked == {LUMBRIDGE, NORTH}
+    assert "Ape Atoll Dungeon" not in unlocked
+    assert "9999" not in unlocked
 
 
 def test_the_uber_sentinel_is_refused_off_loopback(ctx: Context) -> None:
