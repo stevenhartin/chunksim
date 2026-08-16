@@ -523,6 +523,87 @@ class TestSkillDisambiguator:
         assert rate.node == "Carnivorous chinchompa"
 
 
+class TestAnInfoboxCanStateItsLoop:
+    """`strict_kinds` needs a loop, and for Thieving the calculator has none."""
+
+    _TABLES = gathering.Tables(
+        curves={"somebody": (("", 90.0, 200.0, 20, gathering.CONFIRMED),)},
+        skill_info={"Thieving": {"somebody": (20, 22.2)}},
+        skill_loops={"Thieving": {"somebody": "Pickpocket"}},
+    )
+    _PROFILE = gathering.SkillProfile(
+        depletes=False,
+        strict_kinds=True,
+        roll_ticks_by_kind={"Pickpocket": 2.0},
+        fail_seconds=3.6,
+    )
+
+    def _rate(self, tables: gathering.Tables) -> gathering.NodeRate | None:
+        return gathering.rate_at(
+            tables, {}, self._PROFILE, "Pickpocket them", "Thieving",
+            {"NPCs": ["somebody"], "Level": 20}, 99,
+        )
+
+    def test_experience_and_a_loop_together_price_it(self) -> None:
+        rate = self._rate(self._TABLES)
+        assert rate is not None and rate.xp_per_hour > 0
+        assert rate.experience == pytest.approx(22.2)
+
+    def test_experience_alone_does_not(self) -> None:
+        # **The measurement that redirected this.** Reading 240 Thieving
+        # infoboxes for their experience gained nothing at all, because a node
+        # priced from one carried no loop and `strict_kinds` refuses that - a
+        # loop is what says whether you roll every 2 ticks or every 15.5.
+        loopless = dataclasses.replace(self._TABLES, skill_loops={})
+        assert self._rate(loopless) is None
+
+    def test_a_calculator_row_still_wins(self) -> None:
+        # The infobox is the fallback, so a skill the calculator describes is
+        # untouched by any of this.
+        both = dataclasses.replace(
+            self._TABLES, experience={"Thieving": {"somebody": (99.0, "Pickpocket")}}
+        )
+        rate = self._rate(both)
+        assert rate is not None and rate.experience == pytest.approx(99.0)
+
+
+@pytest.mark.real_cache
+class TestThePickpocketGuideIsAFlatCadence:
+    """**`wiki:pickpockets` has no success chance in it, and that is measured.**
+
+    It is the reason the model disagrees with that source in both directions,
+    and the reason neither disagreement is a defect to fix. Pinned here so a
+    later "the model reads 2.3x fast on pickpockets" cannot be answered by
+    moving `fail_seconds` to match a figure that prices a 94%-success target
+    and a 59% one at the same seconds per attempt.
+    """
+
+    def test_every_row_is_experience_times_one_cadence(
+        self, real_export: ChunkInfo
+    ) -> None:
+        from chunksim.costing import inputs
+
+        blobs = inputs.load_reference()
+        scraped, _ = inputs.load_heuristics(real_export, None, blobs)
+        families = gathering.expand_families(real_export)
+        implied = []
+        for task, challenge in (real_export.challenges.get("Thieving") or {}).items():
+            if not isinstance(challenge, dict) or not task.startswith("Pickpocket"):
+                continue
+            rate = (scraped.training.get(task) or {}).get("Thieving")
+            if rate is None or rate.source != "wiki:pickpockets":
+                continue
+            paid, _kind = gathering._experience_for(
+                blobs.gathering, families, "Thieving", challenge, task
+            )
+            if paid > 0:
+                implied.append(rate.value / paid)
+        assert len(implied) > 10, "no pickpocket rows joined - check the source name"
+        # 3600 / 3.5 seconds, on every one of them.
+        for cadence in implied:
+            assert cadence == pytest.approx(3600.0 / 3.5, rel=0.03)
+
+
 @pytest.mark.real_export
 class TestTheScrapeIsNotRedundant:
     """**The measurement that says "do not delete the scrape".**

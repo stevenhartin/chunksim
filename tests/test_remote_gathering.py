@@ -416,6 +416,67 @@ LIMESTONE_INFO_PAGE = """
 """
 
 
+class TestThievingInfoLoops:
+    """The `type` field, which no other skill's infobox carries."""
+
+    def _page(self, kind: str) -> str:
+        return (
+            "==Pickpocketing==\n"
+            "{{Thieving info\n"
+            "|name = Something\n"
+            "|level = 20\n"
+            "|xp = 22.2\n"
+            f"|type = {kind}\n"
+            "|tool = None\n"
+            "}}\n"
+        )
+
+    @pytest.mark.parametrize(
+        "stated,kind",
+        [
+            ("Pickpocket", "Pickpocket"),
+            ("Stall", "Stalls"),
+            ("Chest", "Chests"),
+            ("chest", "Chests"),
+            ("STALL", "Stalls"),
+        ],
+    )
+    def test_a_loop_maps_to_the_calculators_name(
+        self, stated: str, kind: str
+    ) -> None:
+        # The infobox is singular where the calculator groups a table, so the
+        # map is what makes them one vocabulary.
+        assert gathering.parse_info_loop(self._page(stated), "Thieving info") == kind
+
+    @pytest.mark.parametrize("stated", ["Door", "Trap", "Trapdoor", "Other", ""])
+    def test_what_is_not_a_loop_is_not_mapped(self, stated: str) -> None:
+        # A door is unlocked once. Leaving these unmapped is what keeps them
+        # refused, which is what they are - not an oversight to fill in.
+        assert gathering.parse_info_loop(self._page(stated), "Thieving info") is None
+
+    def test_a_page_without_the_template_states_nothing(self) -> None:
+        assert gathering.parse_info_loop("just prose", "Thieving info") is None
+
+    def test_the_experience_still_parses_beside_it(self) -> None:
+        # The two are read off the same block, and a node needs both.
+        page = self._page("Pickpocket")
+        assert gathering.parse_skill_info(page, "Thieving info") == (20, 22.2)
+
+    def test_only_three_kinds_are_loops(self) -> None:
+        assert set(gathering.LOOP_KINDS.values()) == {
+            "Pickpocket",
+            "Stalls",
+            "Chests",
+        }
+
+    def test_the_time_field_is_not_read_as_a_respawn(self) -> None:
+        # **It means two different things in this template.** A pickpocket's
+        # `time` is the stun and a stall's is the restock, so `Thieving info`
+        # is deliberately absent from `RESPAWN_INFO_TEMPLATES`.
+        assert "Thieving info" not in gathering.RESPAWN_INFO_TEMPLATES
+        assert "Thieving info" in gathering.LOOP_INFO_TEMPLATES
+
+
 class TestMiningInfo:
     def test_a_versioned_rock_states_its_experience_numbered(self) -> None:
         # The trap: `xp2 = 0` is The Node, where mining pays nothing. Reading

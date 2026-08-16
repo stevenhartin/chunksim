@@ -125,6 +125,7 @@ SKILL_INFO_TEMPLATES: dict[str, str] = {
     "Fishing": "Fishing info",
     "Mining": "Mining info",
     "Woodcutting": "Woodcutting info",
+    "Thieving": "Thieving info",
 }
 
 #: The templates whose `time` field is a **node respawn**.
@@ -146,6 +147,43 @@ SKILL_INFO_TEMPLATES: dict[str, str] = {
 #: `N/A` parses to nothing and blisterwood's `0 seconds` is filtered by the
 #: `> 0`, which is the right answer for both.
 RESPAWN_INFO_TEMPLATES: frozenset[str] = frozenset({"Mining info", "Woodcutting info"})
+
+#: The templates whose `type` field names the **loop** a node belongs to.
+#:
+#: **The numerator was never Thieving's missing input.** Reading its 240
+#: infoboxes gained nothing at all, because `SkillProfile.strict_kinds` is on
+#: for that skill and a node priced from an infobox alone carried no loop -
+#: and a loop is what says whether you are rolling every 2 ticks at a stall or
+#: every 15.5 at a chest. The template states it outright, in a field no other
+#: skill's carries.
+LOOP_INFO_TEMPLATES: frozenset[str] = frozenset({"Thieving info"})
+
+#: Infobox `type` -> the calculator's own name for the same loop. **Only the
+#: three that are loops.** `Door`, `Trap` and `Trapdoor` are the other
+#: fourteen, twenty-two of them between them, and none is a training method:
+#: you unlock a door once and it stays unlocked. Leaving them unmapped is what
+#: keeps them refused, which is what they are.
+LOOP_KINDS: dict[str, str] = {
+    "pickpocket": "Pickpocket",
+    "stall": "Stalls",
+    "chest": "Chests",
+}
+
+
+def parse_info_loop(text: str, template: str) -> str | None:
+    """The loop an infobox's `type` names, in the calculator's vocabulary.
+
+    `None` where the field is absent, blank, or one of the kinds that is not a
+    loop - see `LOOP_KINDS`. Two pages state a `type` this cannot read at all
+    (`Chest (Dorgesh-Kaan Rich)` and `Crossbow stall`, whose values run into
+    the next template), and both are handled the same way as a door: no loop,
+    no rate, rather than a guess at which one was meant.
+    """
+    block = re.search(r"\{\{" + re.escape(template) + r"(.*?)\n\}\}", text, re.S)
+    if block is None:
+        return None
+    fields = {key: value.strip() for key, value in _INFO_FIELD.findall(block.group(1))}
+    return LOOP_KINDS.get(fields.get("type", "").strip().lower())
 
 #: The aerial fishing article, whose creature table is the only place the four
 #: catches' experience is stated for **both** skills they pay.
@@ -897,6 +935,8 @@ class GatheringTables:
     forestry_events: int = 0
     #: Skill -> creature page -> `(level, experience)` off its own infobox.
     skill_info: dict[str, dict[str, tuple[int, float]]] = field(default_factory=dict)
+    #: Skill -> node -> the loop its infobox names. See `LOOP_INFO_TEMPLATES`.
+    skill_loops: dict[str, dict[str, str]] = field(default_factory=dict)
     #: Spawn-tier heading -> `(impling, share)`, the chance table each kind of
     #: Puro-Puro spawn point rolls.
     spawn_tiers: dict[str, tuple[tuple[str, float], ...]] = field(default_factory=dict)
@@ -947,6 +987,10 @@ class GatheringTables:
                     for name, (level, paid) in sorted(entries.items())
                 }
                 for skill, entries in sorted(self.skill_info.items())
+            },
+            "skill_loops": {
+                skill: dict(sorted(entries.items()))
+                for skill, entries in sorted(self.skill_loops.items())
             },
             "herbiboar_xp": {
                 str(level): paid for level, paid in sorted(self.herbiboar_xp.items())
@@ -1057,6 +1101,7 @@ def build_tables(
 
     say(f"reading skill infoboxes for {len(SKILL_INFO_TEMPLATES)} skills")
     skill_info: dict[str, dict[str, tuple[int, float]]] = {}
+    skill_loops: dict[str, dict[str, str]] = {}
     creatures: list[str] = []
     for skill, template in sorted(SKILL_INFO_TEMPLATES.items()):
         titles_for = sorted(set(list_transclusions(f"Template:{template}")))
@@ -1069,6 +1114,10 @@ def build_tables(
                 waited = parse_info_respawn(body, template)
                 if waited is not None and waited > 0:
                     respawns.setdefault(title, waited)
+            if template in LOOP_INFO_TEMPLATES:
+                loop = parse_info_loop(body, template)
+                if loop:
+                    skill_loops.setdefault(skill, {})[title] = loop
     crabs = parse_trap_counts(mechanics.get(CRAB_PAGE, ""))
     if crabs:
         parallel.setdefault("Hunter", {})["Crab trapping"] = crabs
@@ -1093,6 +1142,7 @@ def build_tables(
         forestry=forestry,
         forestry_events=forestry_events,
         skill_info=skill_info,
+        skill_loops=skill_loops,
         parallel=parallel,
         actions=actions,
         sources={
@@ -1107,6 +1157,7 @@ def build_tables(
             "tool speeds": len(tool_ticks),
             "node cycles": len(cycles),
             "node respawns": len(respawns),
+            "infobox loops": sum(len(found) for found in skill_loops.values()),
             "spawn tiers": len(spawn_tiers),
             "herbiboar levels": len(herbiboar_xp),
             "aerial catches": len(aerial_fish),

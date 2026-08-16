@@ -1641,9 +1641,21 @@ PROFILES: dict[str, SkillProfile] = {
     # and a failure "prevents the player from ... further pickpocketing for
     # eight ticks (4.8s)". The roll already charges two of those eight, so the
     # stun costs the other six - 3.6 seconds - which is what `fail_seconds`
-    # means. This is what supersedes `wiki:pickpockets`, and non-circularly:
-    # that source is `experience * 3600 / 1.2`, the right cadence with the
-    # wrong assumption, since it prices every level as though you never fail.
+    # means. This is what supersedes `wiki:pickpockets`, and non-circularly.
+    #
+    # **That source is a flat cadence with no success chance in it at all**,
+    # which is worth measuring rather than assuming, because it is what
+    # decides whether the guide can judge this model. Across all twenty-one
+    # pickpocket rows the export joins, `published / experience` is 1028.57 -
+    # `3600 / 3.5` - to five figures on eighteen of them and within 3% on the
+    # other three. So the guide prices every target at 3.5 seconds a
+    # pickpocket whether it fails once in twenty or two times in five.
+    #
+    # That is why the model disagrees with it in *both* directions and why
+    # neither reading is a defect: a warrior at 94% success comes out 2.34x
+    # the guide, and a vyre at 59% comes out 0.59x. `TestThePickpocketGuideIs
+    # AFlatCadence` pins the measurement so a later "the model is 2.3x fast on
+    # pickpockets" cannot be answered by moving `fail_seconds`.
     #
     # *Stalls*: a stall hands over one item and restocks, so the published
     # restock time is the floor and `Tables.respawns` carries it for all
@@ -1654,7 +1666,13 @@ PROFILES: dict[str, SkillProfile] = {
     # A failed stall steal costs the attempt and nothing else - there is no
     # stun - hence `fail_seconds_by_kind`.
     #
-    # `Chests` and `Other` stay unmeasured and `strict_kinds` refuses them.
+    # *Loops from the infobox*: a `Thieving info` states its own `type`, and
+    # that is the input this skill was actually short of - see
+    # `remote/gathering.LOOP_INFO_TEMPLATES`. `strict_kinds` refuses a node
+    # with no loop, so 240 scraped experience figures moved nothing on their
+    # own; with the loop beside them, ten methods join.
+    #
+    # `Other` stays unmeasured and `strict_kinds` refuses it.
     "Thieving": SkillProfile(
         depletes=False,
         strict_kinds=True,
@@ -1842,6 +1860,12 @@ class Tables:
     #: infobox. **The fallback when no calculator lists the creature** - see
     #: `_experience_for`.
     skill_info: dict[str, dict[str, tuple[int, float]]] = field(default_factory=dict)
+    #: Skill -> node -> the loop its own infobox names, where a calculator has
+    #: no row for it. **The input Thieving was actually missing**: reading its
+    #: 240 experience figures gained nothing, because `strict_kinds` refuses a
+    #: node with no loop and an infobox-sourced figure had none. A loop is what
+    #: says whether you roll every 2 ticks at a stall or every 15.5 at a chest.
+    skill_loops: dict[str, dict[str, str]] = field(default_factory=dict)
     #: Spawn-tier name -> `(impling, share)`, for `costing/implings.py`.
     spawn_tiers: dict[str, tuple[tuple[str, float], ...]] = field(default_factory=dict)
     #: Skill -> loop -> `(level, units)` steps, `""` being the skill's default.
@@ -1980,6 +2004,16 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
         if read_info:
             skill_info[str(skill)] = read_info
 
+    skill_loops: dict[str, dict[str, str]] = {}
+    for skill, entries in _mapping(raw, "skill_loops").items():
+        read_loops = {
+            str(name).lower(): str(kind)
+            for name, kind in (entries or {}).items()
+            if isinstance(kind, str) and kind
+        }
+        if read_loops:
+            skill_loops[str(skill)] = read_loops
+
     spawn_tiers: dict[str, tuple[tuple[str, float], ...]] = {}
     for tier, entries in _mapping(raw, "spawn_tiers").items():
         if not isinstance(entries, list):
@@ -2025,6 +2059,7 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
         forestry=forestry,
         forestry_events=forestry_events,
         skill_info=skill_info,
+        skill_loops=skill_loops,
         parallel=parallel,
     )
 
@@ -2397,10 +2432,16 @@ def _experience_for(
     # `Module:Skill calc/Hunter` entirely - so its 208.5 is stated on its page
     # and nowhere else. The loop comes from `loop_at` in that case, since an
     # infobox states a trap rather than a calculator's grouping.
+    loops = tables.skill_loops.get(skill) or {}
     for key in keys:
         entry = (tables.skill_info.get(skill) or {}).get(key.lower())
         if entry is not None and entry[1] > 0:
-            return entry[1], ""
+            # **The loop comes from the infobox too, where it states one.** A
+            # calculator's `type` column groups a table; `Thieving info`'s
+            # names the loop outright, and a skill with `strict_kinds` refuses
+            # a node that has neither - which is why 240 experience figures on
+            # their own moved nothing.
+            return entry[1], loops.get(key.lower(), "")
     return 0.0, ""
 
 

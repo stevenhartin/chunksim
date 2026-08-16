@@ -465,8 +465,11 @@ maps are your own work and nothing can recompute them.
    climb. Bands from that model are marked `modelled`.
 
    Three of the five are worth knowing about specifically. **Pickpocketing is priced with its
-   failures**, where the published figure assumes you never fail: a knight reads 70,958/hr at level
-   55 climbing to 160,936 at 99, against a flat 252,900. **Stalls and chests are priced at their
+   failures**, where the published figure has no success chance in it at all - measured over every
+   pickpocket row in the export, the guide is `experience x 3600/3.5`, one cadence for a target you
+   fail once in twenty and for one you fail two times in five. So the model disagrees with it in
+   both directions and neither is a defect: a warrior at 94% success reads 2.3x the guide, and a
+   vyre at 59% reads 0.6x. **Stalls and chests are priced at their
    restock time**, because each hands over one item and is empty until it comes back — which covers
    all forty-one the wiki tabulates rather than the handful a guide mentions. Where several sit
    together, as the three chests at the Rogues' Castle do, the wait is shared between them and the
