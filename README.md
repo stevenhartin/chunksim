@@ -602,6 +602,17 @@ maps are your own work and nothing can recompute them.
    which is priced separately - the same hour, so the two are alternatives
    rather than a total.
 
+   **The Agility Pyramid shows what a bad join costs.** Its money-making rate
+   of 34,380 an hour reached all three of the export's pyramid challenges, and
+   one of those opens at Agility **1** where the pyramid itself needs 30 - so a
+   rate for a course you cannot enter won every level from 1 to 50, against
+   real courses paying 10,000. The page also scales it with level, because you
+   fail obstacles until you stop: 25,000 at 55, 33,000 at 67, 42,100 at 75 and
+   44,700 from 88. Nothing is offered below 55, and that is the wiki's own
+   limit rather than a gap - it says outright that the fail rates for lower
+   levels are not known, and inventing a curve for them would be the opposite
+   of what everything else here does.
+
    **The Hallowed Sepulchre is five floors and the guide priced them as one.**
    Its five `Access the Nth floor` challenges open at Agility 52, 62, 72, 77
    and 87 - which is the wiki's own level column exactly - and every one of

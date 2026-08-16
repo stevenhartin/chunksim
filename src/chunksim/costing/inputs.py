@@ -44,6 +44,7 @@ from chunksim.costing import (
     herbiboar,
     implings,
     production,
+    pyramid,
     recipe_rates,
     pyramid_plunder,
     rumours,
@@ -521,6 +522,10 @@ def _gathered(
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **Five floors the scrape gave one rate** - see `costing/sepulchre.py`.
     for skill, methods in sepulchre.methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **A money-making rate that was winning from level 1** - see
+    # `costing/pyramid.py`, whose bands open where the wiki's table does.
+    for skill, methods in pyramid.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **A published curve rather than a derived one** - see
     # `costing/valuables.py`, which is a transcription and says so.

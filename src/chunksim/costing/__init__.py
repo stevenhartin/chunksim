@@ -87,6 +87,9 @@ The modules, and what each owns:
   calls `Varlamore thieving`. **A transcription rather than a derivation** -
   nothing in the burgling loop is charted - carried because the same page
   states the activity four other ways and all four agree with the table.
+- `pyramid.py` - the Agility Pyramid, whose money-making rate the scrape gave
+  to a **level-1** challenge for a course needing 30. Bands from 55, which is
+  where the wiki's table starts and below which it declines to guess.
 - `sepulchre.py` - the Hallowed Sepulchre's five floors, which the scrape
   priced at **one** rate from level 52 to 87 where the published table runs
   40,000 to 98,500. Prices the no-looting column, for the reason `tempoross`
