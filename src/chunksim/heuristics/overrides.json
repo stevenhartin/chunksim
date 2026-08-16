@@ -127,6 +127,13 @@
         "value": 400000
       }
     },
+    "Chop a ~|bloodwood tree|~": {
+      "Woodcutting": {
+        "match": "exact",
+        "source": "wiki:Engorged bloodwood tree, stated",
+        "value": 65000
+      }
+    },
     "Complete a beginner contract for ~|Mahogany Homes|~": {
       "Construction": {
         "match": "exact",

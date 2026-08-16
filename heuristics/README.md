@@ -49,6 +49,11 @@ Run `chunksim estimate` and look at what it flags:
   still about the wrong thing, which is why every band prints its provenance.
   Six skills - Firemaking, Fletching, Hunter, Sailing, Smithing, Woodcutting -
   have **no** `exact` join at all, so their rates deserve more scepticism.
+  `Chop a ~|bloodwood tree|~` is the worked example of the kind that survives:
+  it reached 47,520 from *Money making guide/Chopping engorged bloodwood
+  trees*, which is the right tree and the wrong question - a profit page, on
+  the far side of the layering from a training figure. The tree's own page
+  states 65,000-70,000, and the override takes the low end.
 - **Skills still using the default rate.** The money-making guides cover 237 of
   the export's 2,710 training methods, because most ways of training a skill do
   not make money and so have no guide. What is left sits at 1,000 xp/hr,

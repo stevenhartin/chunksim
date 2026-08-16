@@ -506,7 +506,12 @@ maps are your own work and nothing can recompute them.
    quoted at 87,000/hr for 3-tick mining and infernal shale rocks at 40-60k
    with Jim's wet cloth; both are priced here for the swing a player actually
    makes, and the technique is simply absent rather than folded into a success
-   chance.
+   chance. The bloodwood tree is the same call made between two *objects*
+   rather than two techniques: the standard tree is "a two tick cycle" of
+   "clicking multiple times a tick" across three trees at once for ~210,000/hr,
+   and the engorged tree beside it is the "lower-intensity alternative more
+   similar to traditional woodcutting" at 65,000-70,000. One task covers both,
+   so it is priced at the one you can play.
 
    And where a method is priced by how far you *run* rather than how fast you
    swing, that is modelled too: sixteen ash piles scattered over a volcano
