@@ -558,6 +558,18 @@ maps are your own work and nothing can recompute them.
    19,277/hr against 52,500. Nothing published chooses between them, so it
    takes the low one.
 
+   **The Sorceress's Garden is the simplest thing here**, and the one place a
+   published lap time and a published hourly yield check each other. Each
+   garden page states how long a lap takes and how much juice an hour it
+   yields, and the two agree through a mechanic neither states: one sq'irk a
+   lap, and five, four, three or two sq'irks to a juice as the gardens get
+   deeper. So autumn has the slowest lap of the four and pays five times
+   winter. A level buys a *better garden* rather than a faster lap or a better
+   chance, which is why nothing in these rates reads one: 11,900, 33,750,
+   56,400 and 150,000 an hour. Two of the four pages check their own
+   arithmetic - spring's "about 28,350 xp/h" and summer's "maximum experience
+   possible per hour is 150,000" - and both come out.
+
    **Underwater Agility and Thieving is priced as a parabola**, because almost
    none of its experience is earned where it is paid: you collect glistening
    tears and hand them to Mairin for experience that scales with the *square*

@@ -46,6 +46,7 @@ from chunksim.costing import (
     recipe_rates,
     pyramid_plunder,
     rumours,
+    sorceress,
     stated,
     swimming,
     wintertodt,
@@ -509,6 +510,10 @@ def _gathered(
     # see `costing/swimming.py`. Each skill reads only its own level, so this
     # needs nothing handed in.
     for skill, methods in swimming.methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **Four gardens and the level picks which** - see `costing/sorceress.py`.
+    # Flat rates, so nothing but the valid set is needed.
+    for skill, methods in sorceress.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # Two activities whose rate is stated rather than computed - see
     # `costing/stated.py`, whose every band is marked `guess`.
