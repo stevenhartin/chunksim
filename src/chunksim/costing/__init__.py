@@ -87,6 +87,10 @@ The modules, and what each owns:
   calls `Varlamore thieving`. **A transcription rather than a derivation** -
   nothing in the burgling loop is charted - carried because the same page
   states the activity four other ways and all four agree with the table.
+- `sepulchre.py` - the Hallowed Sepulchre's five floors, which the scrape
+  priced at **one** rate from level 52 to 87 where the published table runs
+  40,000 to 98,500. Prices the no-looting column, for the reason `tempoross`
+  prices not-cooking.
 - `sorceress.py` - the Sorceress's Garden, where a level buys a **better
   garden** rather than a faster lap or a better chance. Flat rates, and the one
   place a published lap time and a published hourly yield check each other.

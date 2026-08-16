@@ -47,6 +47,7 @@ from chunksim.costing import (
     recipe_rates,
     pyramid_plunder,
     rumours,
+    sepulchre,
     sorceress,
     stated,
     swimming,
@@ -517,6 +518,9 @@ def _gathered(
     # **Four gardens and the level picks which** - see `costing/sorceress.py`.
     # Flat rates, so nothing but the valid set is needed.
     for skill, methods in sorceress.methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **Five floors the scrape gave one rate** - see `costing/sepulchre.py`.
+    for skill, methods in sepulchre.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **A published curve rather than a derived one** - see
     # `costing/valuables.py`, which is a transcription and says so.

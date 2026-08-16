@@ -602,6 +602,17 @@ maps are your own work and nothing can recompute them.
    which is priced separately - the same hour, so the two are alternatives
    rather than a total.
 
+   **The Hallowed Sepulchre is five floors and the guide priced them as one.**
+   Its five `Access the Nth floor` challenges open at Agility 52, 62, 72, 77
+   and 87 - which is the wiki's own level column exactly - and every one of
+   them was reading 58,425 an hour, where the published table runs 40,000 on
+   the first floor to 98,500 on the fifth. So the flat figure was half again
+   too fast at the bottom and two thirds too slow at the top, and the second
+   is the expensive half: the fifth floor is the fastest Agility in the game
+   from level 87, and a rate a third too low kept it out of the climb
+   altogether. Priced per floor, an Agility climb falls from 183.6 hours to
+   140.6.
+
    **The Sorceress's Garden is the simplest thing here**, and the one place a
    published lap time and a published hourly yield check each other. Each
    garden page states how long a lap takes and how much juice an hour it
