@@ -76,6 +76,10 @@ The modules, and what each owns:
   experience as multipliers on your level, so the rate is those times a count
   of games. Replaced a hand-written 400,000/hr that was one number for a method
   linear in the level.
+- `artefacts.py` - stealing artefacts for Captain Khaled, and **the one
+  activity here that derives completely**: both halves of what an artefact pays
+  are stated in prose, the run count is the mean of six tabulated house times,
+  and the product reproduces the wiki's own eleven-row table with no residual.
 - `valuables.py` - Stealing valuables in Civitas illa Fortis, which upstream
   calls `Varlamore thieving`. **A transcription rather than a derivation** -
   nothing in the burgling loop is charted - carried because the same page

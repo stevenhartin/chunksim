@@ -558,6 +558,17 @@ maps are your own work and nothing can recompute them.
    19,277/hr against 52,500. Nothing published chooses between them, so it
    takes the low one.
 
+   **Stealing artefacts is the one activity here that derives completely.**
+   Both halves of what an artefact pays are stated in prose - 750 experience
+   for picking the lock, and "40 times the current Thieving level" for
+   delivering it - and the page tabulates how long a run takes from each of
+   the six houses, which averages to 75 seconds and so 48 an hour, against its
+   own "approximately 48". Multiplying the two reproduces the wiki's published
+   experience table at **all eleven of its levels with no residual**: 130,080
+   at 49 and 226,080 at 99, to the coin. The mean of the six houses matters
+   rather than the quickest, because you are told which house to rob - taking
+   the best would read 60 an hour and miss the column by a quarter.
+
    **Stealing valuables is a transcription and the estimator says so**: none
    of the burgling loop is charted, so there is no curve to build a rate out
    of, and what the wiki publishes instead is the answer as a level-to-rate

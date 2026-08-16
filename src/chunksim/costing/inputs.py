@@ -35,6 +35,7 @@ from typing import Any, Mapping
 
 from chunksim.costing import (
     aerial,
+    artefacts,
     chambers,
     combat_xp,
     dps_bridge,
@@ -519,6 +520,10 @@ def _gathered(
     # **A published curve rather than a derived one** - see
     # `costing/valuables.py`, which is a transcription and says so.
     for skill, methods in valuables.methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **The one activity that derives completely** - see
+    # `costing/artefacts.py`, whose published table it reproduces exactly.
+    for skill, methods in artefacts.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # Two activities whose rate is stated rather than computed - see
     # `costing/stated.py`, whose every band is marked `guess`.
