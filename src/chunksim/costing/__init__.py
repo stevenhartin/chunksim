@@ -76,6 +76,11 @@ The modules, and what each owns:
   experience as multipliers on your level, so the rate is those times a count
   of games. Replaced a hand-written 400,000/hr that was one number for a method
   linear in the level.
+- `swimming.py` - Underwater Agility and Thieving, where the experience is
+  paid by handing in tears rather than by earning it, and **scales with the
+  square of the level**. Prices the *both-skills* exchange rather than the
+  faster single-skill one, because that is the only mode where one hour can
+  honestly be credited to two skills.
 - `pyramid_plunder.py` - a five-minute game priced from what one game holds:
   every container count, experience figure and success chart is published, and
   the only fitted number is the **between-game overhead**, which two rows agree

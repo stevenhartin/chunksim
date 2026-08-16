@@ -47,6 +47,7 @@ from chunksim.costing import (
     pyramid_plunder,
     rumours,
     stated,
+    swimming,
     wintertodt,
 )
 from chunksim.costing import gathering as gathering_model
@@ -503,6 +504,11 @@ def _gathered(
     for skill, methods in pyramid_plunder.methods(
         derived.challenges.valid, at_level.get("Strength", 1)
     ).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **One hour paying two skills at once, priced as the slower exchange** -
+    # see `costing/swimming.py`. Each skill reads only its own level, so this
+    # needs nothing handed in.
+    for skill, methods in swimming.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # Two activities whose rate is stated rather than computed - see
     # `costing/stated.py`, whose every band is marked `guess`.

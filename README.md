@@ -558,6 +558,18 @@ maps are your own work and nothing can recompute them.
    19,277/hr against 52,500. Nothing published chooses between them, so it
    takes the low one.
 
+   **Underwater Agility and Thieving is priced as a parabola**, because almost
+   none of its experience is earned where it is paid: you collect glistening
+   tears and hand them to Mairin for experience that scales with the *square*
+   of your level. One coefficient per skill reproduces every row of the wiki's
+   own table - `0.027 x level^2` for Agility alone and `0.099` for Thieving -
+   and 220 tears an hour turns those into all four of the hourly figures the
+   page quotes at 99, every one within 0.03%. What is priced is the
+   **both-skills** exchange rather than the faster single-skill one, and not
+   because it is quicker: it is the only mode where an hour credited to
+   Agility is the same hour credited to Thieving, and pricing the other would
+   let one hour be spent in two columns.
+
    **Pyramid Plunder is priced from what one five-minute game holds**, because
    the wiki publishes all of it: experience per urn, chest and door for each of
    the eight rooms, thirteen urns a room (twelve in the third), four doors with
