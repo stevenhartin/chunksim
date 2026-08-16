@@ -1368,11 +1368,89 @@ class TestTheJuniperTree:
 
     def test_the_chance_is_the_one_thing_borrowed(self) -> None:
         profile = gathering.PROFILES["Woodcutting"]
-        assert profile.shared_curves == {"mature juniper tree": "Maple tree"}
+        assert profile.shared_curves["mature juniper tree"] == "Maple tree"
         # The roll is the skill's own four ticks, which the page states too, so
         # nothing about the cadence is assumed alongside it.
         assert "mature juniper tree" not in profile.fixed_interval
         assert "mature juniper tree" not in profile.stepped_interval
+
+
+class TestTheChambersSapling:
+    """A payout that climbs, which is the third thing a level can buy here.
+
+    The wiki gives the table and two twitter citations give the formulas
+    behind it. This asserts the formulas, because the table has an error in it
+    and the formulas are what catch it.
+    """
+
+    @staticmethod
+    def _xp(k: int) -> float:
+        """`30 * H_k` - what one chop pays for `k` kindling."""
+        return 30.0 * sum(1.0 / i for i in range(1, k + 1))
+
+    @staticmethod
+    def _cap(level: int) -> int:
+        """Mod Ash: "the max is your visible Woodcutting level divided by 12"."""
+        return max(1, min(8, level // 12))
+
+    def _average(self, level: int) -> float:
+        """Mean over "a random number 0-max inclusive ... 0 ... treated as 1"."""
+        cap = self._cap(level)
+        return sum(self._xp(max(1, roll)) for roll in range(cap + 1)) / (cap + 1)
+
+    @pytest.mark.parametrize(
+        "kindling,published",
+        [(1, 30.0), (2, 45.0), (3, 55.0), (4, 62.5), (5, 68.5), (6, 73.5)],
+    )
+    def test_the_harmonic_formula_is_the_published_column(
+        self, kindling: int, published: float
+    ) -> None:
+        assert self._xp(kindling) == pytest.approx(published)
+
+    @pytest.mark.parametrize("kindling,published", [(7, 77.7), (8, 81.5)])
+    def test_the_last_two_rows_are_the_wiki_truncating(
+        self, kindling: int, published: float
+    ) -> None:
+        # 77.7857 and 81.5357 shown to one decimal, not a different formula.
+        assert self._xp(kindling) == pytest.approx(published, abs=0.09)
+        assert self._xp(kindling) > published
+
+    def test_the_shipped_table_is_the_average_at_each_step(self) -> None:
+        for level, paid in gathering._SAPLING_EXPERIENCE:
+            assert paid == pytest.approx(self._average(level))
+
+    @pytest.mark.parametrize(
+        "level,published",
+        [(1, 30.0), (24, 35.0), (36, 40.0), (48, 44.5), (60, 48.5), (72, 52.0714)],
+    )
+    def test_it_reproduces_the_wikis_own_average(
+        self, level: int, published: float
+    ) -> None:
+        assert self._average(level) == pytest.approx(published, abs=0.0001)
+
+    def test_the_wikis_kindling_column_has_one_typo(self) -> None:
+        # **The reason this table is computed and not transcribed.** Its
+        # avg-kindling column reads 2.2667 at level 60; the distribution gives
+        # 2.6667, and the wiki's *own* 48.5 experience on that row is what
+        # settles it, since only the correct one pays that.
+        rolls = [max(1, roll) for roll in range(self._cap(60) + 1)]
+        assert sum(rolls) / len(rolls) == pytest.approx(2.6667, abs=0.0001)
+        assert self._average(60) == pytest.approx(48.5)
+
+    def test_a_step_holds_until_the_next_one(self) -> None:
+        table = gathering._SAPLING_EXPERIENCE
+        assert gathering.units_at(table, 23) == pytest.approx(30.0)
+        assert gathering.units_at(table, 24) == pytest.approx(35.0)
+        assert gathering.units_at(table, 99) == pytest.approx(table[-1][1])
+
+    def test_the_payout_climbs_where_a_chart_would_not(self) -> None:
+        # The point of the field: a level buys a bigger drop here, not a
+        # faster swing or a better chance.
+        profile = gathering.PROFILES["Woodcutting"]
+        node = "sapling (chambers of xeric)"
+        assert node in profile.stated_experience_at
+        assert node not in profile.stepped_interval
+        assert profile.shared_curves[node] == "Tree"
 
 
 class TestTheInfectedRootIsRefused:

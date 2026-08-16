@@ -565,6 +565,18 @@ class SkillProfile:
     #:
     #: `INFERRED`, because the shape is a measurement of something else.
     shared_curves: Mapping[str, str] = field(default_factory=dict)
+    #: Node -> a `(level, experience)` table, for an action whose *payout*
+    #: rises with the level rather than its speed or its odds.
+    #:
+    #: **The third axis a level can move, and the only node that uses it.**
+    #: `stepped_interval` is a level buying a faster swing and a success chart
+    #: is a level buying a better chance; a Chambers sapling pays more per
+    #: chop, because what it hands over scales. `stated_experience` cannot say
+    #: that - it is one number - and neither can the calculator, which has no
+    #: row for it at all.
+    stated_experience_at: Mapping[str, tuple[tuple[int, float], ...]] = field(
+        default_factory=dict
+    )
     #: Nodes that never run out, so neither a respawn nor the hop is charged.
     #:
     #: **A stated mechanic, not an optimisation.** The rune essence rock "will
@@ -698,6 +710,37 @@ _JUNGLE_TICKS: tuple[tuple[int, float], ...] = (
     (90, 8.0),
 )
 
+#: What one chop of a Chambers sapling pays, level by level.
+#:
+#: **Two formulas, and the page hands you both.** Mod Ash on the yield: "the
+#: max is your visible Woodcutting level divided by 12 ... At level 96 that'd
+#: be 8. The game picks a random number 0-max inclusive, with equal chance of
+#: each integer. If it rolls 0, it treats it as 1." And the experience for `k`
+#: kindling is `30 * H_k`, the harmonic number - which the page does not say
+#: but its own table is, exactly, at six of eight rows.
+#:
+#: So a chop pays the mean of `30 * H_k` over that clamped uniform, and this
+#: is that mean at each level the maximum steps up. It reproduces the wiki's
+#: published `Avg` column, and where it does not the wiki is what moved: 77.7
+#: and 81.5 are its truncations of 77.7857 and 81.5357, and **its avg-kindling
+#: figure of 2.2667 at level 60 is a typo for 2.6667**, which its own 48.5
+#: experience on the same row proves, since only the correct distribution
+#: gives that.
+#:
+#: Computed rather than transcribed for exactly that reason - a table that
+#: reproduces seven of its source's rows and corrects the eighth is worth
+#: more than one that copies all eight.
+_SAPLING_EXPERIENCE: tuple[tuple[int, float], ...] = (
+    (1, 30.0),
+    (24, 35.0),
+    (36, 40.0),
+    (48, 44.5),
+    (60, 48.5),
+    (72, 364.5 / 7),
+    (84, 442.2857142857143 / 8),
+    (96, 523.8214285714286 / 9),
+)
+
 PROFILES: dict[str, SkillProfile] = {
     # **Four ticks is the wiki's, not a fit** - the Woodcutting page states it -
     # and pinning it is what makes the other two constants mean something. Left
@@ -792,7 +835,21 @@ PROFILES: dict[str, SkillProfile] = {
         # choose between them - the difference is 19,266/hr against 52,500 -
         # so this takes the conservative one and reports `inferred`, which is
         # the same posture every other assumption in this file takes.
-        shared_curves={"mature juniper tree": "Maple tree"},
+        # **A sapling is a level-1 tree and nobody has charted it**, so it
+        # spends the level-1 tree's chart - the like-for-like comparison
+        # rather than a generous one, since `Tree` is what "a tree you can
+        # chop at level 1" means everywhere else in the game.
+        shared_curves={
+            "mature juniper tree": "Maple tree",
+            "sapling (chambers of xeric)": "Tree",
+        },
+        # **The one action here whose payout climbs rather than its speed.**
+        # See `_SAPLING_EXPERIENCE`: a Chambers sapling hands over more
+        # kindling the higher you are, and is worth 30 experience a chop at
+        # level 1 against 58.2 at 96. That shape is the whole of why it is a
+        # real method at 1 and a poor one at 99 - the tree it competes with
+        # gets faster over the same span, and this only gets richer.
+        stated_experience_at={"sapling (chambers of xeric)": _SAPLING_EXPERIENCE},
         # **Both inputs to the roll are confirmed and the roll is not the
         # method.** The chart is scraped, the experience is the page's own
         # arithmetic above, and what they price is 12,960/hr at 99 with a
@@ -2489,6 +2546,24 @@ def _stated_experience(
     return None
 
 
+def _stated_experience_at(
+    profile: SkillProfile,
+    families: Mapping[str, Sequence[str]],
+    challenge: Mapping[str, Any],
+    skill: str,
+    task: str,
+    level: int,
+) -> float | None:
+    """What one action pays at `level`, where a profile tabulates it."""
+    if not profile.stated_experience_at:
+        return None
+    for key in _join_keys(challenge, families, _NAME_FIELDS, skill, task):
+        steps = profile.stated_experience_at.get(key.lower())
+        if steps:
+            return units_at(steps, level)
+    return None
+
+
 def _stated_curve(
     profile: SkillProfile,
     families: Mapping[str, Sequence[str]],
@@ -2667,6 +2742,12 @@ def rate_at(
     paid = _stated_experience(profile, families, challenge, skill, task)
     if paid is not None:
         experience = paid
+    # **A payout that reads the level.** See `stated_experience_at`; after the
+    # flat form, so a node stating both would take the table, which is the
+    # more specific of the two.
+    banded_pay = _stated_experience_at(profile, families, challenge, skill, task, level)
+    if banded_pay is not None:
+        experience = banded_pay
     if experience <= 0:
         return None
     kind = _loop_for(profile, families, challenge, skill, task) or kind

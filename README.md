@@ -567,6 +567,20 @@ maps are your own work and nothing can recompute them.
    number for a rate that is linear in the level - close at the top and half
    wrong at 50, where Firemaking opens the boss.
 
+   **A Chambers sapling is the one action whose *payout* climbs with the
+   level**, rather than its speed or its odds - it hands over more kindling
+   the higher you are, and pays 30 experience a chop at level 1 against 58.2
+   at 96. Two twitter citations on the wiki give the whole of it: the yield is
+   "a random number 0-max inclusive ... If it rolls 0, it treats it as 1" with
+   the max being your level over twelve, and a chop for `k` kindling pays
+   `30 * H_k`. That formula reproduces the wiki's published table exactly at
+   six of eight rows, shows the last two to be its own rounding, and catches a
+   typo in a seventh - its avg-kindling column says 2.2667 at level 60 where
+   the distribution gives 2.6667, which the wiki's own experience figure on
+   that row confirms. So the table here is computed rather than copied. It
+   comes out as the best method in the game up to level 14 and behind every
+   real tree by 99, which is what a sapling should be.
+
    A few methods are not training methods and the estimator says so rather than
    offering a bad number: mining an elemental rock pays nothing (it spawns the
    monster whose drop is the ore), lunar ore's own infobox states zero, a
