@@ -44,6 +44,7 @@ from chunksim.costing import (
     implings,
     production,
     recipe_rates,
+    pyramid_plunder,
     rumours,
     stated,
     wintertodt,
@@ -494,6 +495,14 @@ def _gathered(
     # rate is the wiki's own multipliers times a count of games, so `valid` is
     # the whole of its input.
     for skill, methods in wintertodt.methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **One game, two skills that cannot both be maximised** - see
+    # `costing/pyramid_plunder.py`. Strength needs its own level because the
+    # sarcophagus chart is against that and not against Thieving, which is the
+    # same second-skill hand-in `chambers` needs.
+    for skill, methods in pyramid_plunder.methods(
+        derived.challenges.valid, at_level.get("Strength", 1)
+    ).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # Two activities whose rate is stated rather than computed - see
     # `costing/stated.py`, whose every band is marked `guess`.

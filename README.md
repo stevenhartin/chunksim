@@ -558,6 +558,22 @@ maps are your own work and nothing can recompute them.
    19,277/hr against 52,500. Nothing published chooses between them, so it
    takes the low one.
 
+   **Pyramid Plunder is priced from what one five-minute game holds**, because
+   the wiki publishes all of it: experience per urn, chest and door for each of
+   the eight rooms, thirteen urns a room (twelve in the third), four doors with
+   one way onward, ten experience for the spear trap, and success charts for
+   the urn, the chest, the door and the sarcophagus. The strategy priced is the
+   wiki's own - chests from room 4, and every urn in the last two rooms. Two
+   things are not published and neither needed guessing at: the seconds per
+   action turn out not to matter, since the plan wants 4.2 seconds each and
+   anything quicker finishes it, so the answer is flat over the whole plausible
+   range; and the time between games is the one fitted number, taken from two
+   published rows that agree within 2% and checked against a third. It reads
+   1.00x, 1.00x and 0.96x against those three, and covers rooms 1 to 5 that no
+   guide prices at all. The sarcophagi pay **Strength** rather than Thieving,
+   on a chart that gets harder the deeper you go - and the two rates cannot
+   both be had, because the Thieving route skips them.
+
    **Wintertodt is the one activity here with no chance in it at all.** The
    wiki states its experience as multipliers on your level - 0.3x to cut a
    bruma root, 0.6x to fletch it, 3.8x to burn the kindling, and 100x for
