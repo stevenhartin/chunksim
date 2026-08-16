@@ -708,7 +708,16 @@ maps are your own work and nothing can recompute them.
    six and sums to exactly 100%; the sixth is the page disagreeing with itself,
    where its chart says 18.85% for adamantite and a sentence beside it says
    18.18%. A runite ore goes from 3.5 seconds to 241, and the walk stops
-   preferring pay-dirt to simply mining the rock.
+   preferring pay-dirt to simply mining the rock. **The Blast Mine is the same
+   defect in a second activity**, and it was the answer to "what shop sells
+   runite ore?" - none did, `Obtain ~|runite ore|~ from blasted ore` did, at
+   the same four-tick default. Its page publishes an ore distribution, 330
+   blasts an hour (confirmed twice, since lighting the dynamite pays 50
+   Firemaking and it quotes 16,500 an hour) and an experience figure at level
+   70 that turns the rest into a count of ores. The answer there is a number
+   rather than a refusal, because the Blast Mine genuinely is the best runite
+   in the game: 91 seconds an ore against 240 for mining the rock. It was out
+   by a factor of fourteen, not wrong to prefer it.
 
    **The Giants' Foundry is priced from an alloy, not from a tier**, which is
    the whole of Smithing's climb above level 15. A preform is 28 bars in

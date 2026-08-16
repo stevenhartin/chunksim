@@ -35,6 +35,7 @@ from typing import Any, Mapping
 
 from chunksim.costing import (
     aerial,
+    blastmine,
     artefacts,
     chambers,
     combat_xp,
@@ -476,6 +477,9 @@ def _gathered(
     # pay-dirt` at the four-tick default and made a runite bar cheaper than an
     # adamantite one.
     timed.update(paydirt.timed(timed, at_level.get("Mining", 1)))
+    # **And the same again for the Blast Mine** - see `costing/blastmine.py`,
+    # which is where the runite ore came from on a map holding every chunk.
+    timed.update(blastmine.action_seconds(at_level.get("Mining", 1)))
     # **Puro-Puro goes to the bands and not to `training`, and the difference
     # is a real one.** `apply` writes a method's opening rate into `training`,
     # where `training_options` reads the level off the *challenge* - and

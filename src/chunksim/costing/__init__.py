@@ -87,6 +87,11 @@ The modules, and what each owns:
   calls `Varlamore thieving`. **A transcription rather than a derivation** -
   nothing in the burgling loop is charted - carried because the same page
   states the activity four other ways and all four agree with the table.
+- `blastmine.py` - the same shape as `paydirt.py` in a second activity: a
+  published ore distribution, 330 blasts an hour, and an ores-per-blast derived
+  from the page's own hourly anchor. **The Blast Mine really is the best runite
+  in the game** - 91 seconds an ore against 240 for mining the rock - which is
+  why the answer is a number and not a refusal.
 - `paydirt.py` - what a Motherlode Mine ore costs, from the **cascade** chart
   on `Pay-dirt`: an ore's chance is its own roll times the chance every richer
   one failed. Feeds `action_seconds`, because it is a fact about ore and not
