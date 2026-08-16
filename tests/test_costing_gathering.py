@@ -1300,6 +1300,81 @@ class TestCuttingJungle:
             assert profile.stepped_interval[node] == gathering._JUNGLE_TICKS
 
 
+class TestASharedChartKeepsItsToolTiers:
+    """Why juniper does not go through `assumed_curves`.
+
+    That mechanism takes the donor's worst series and moves it, which is right
+    where the series are three creatures and wrong where they are nine axes:
+    it would make a tree's rate the same whatever you swing, which is the one
+    thing a tree's chart exists to say.
+    """
+
+    _TABLES = gathering.Tables(
+        curves={
+            "maple tree": (
+                ("Bronze", 8.0, 25.0, 45, gathering.CONFIRMED),
+                ("Dragon", 30.0, 93.0, 61, gathering.CONFIRMED),
+            )
+        },
+        experience={"Woodcutting": {"juniper": (35.0, "Regular")}},
+    )
+    _PROFILE = gathering.SkillProfile(
+        roll_ticks=4.0,
+        tool_axis="chance",
+        tool_tiers=True,
+        shared_curves={"juniper": "Maple tree"},
+    )
+
+    def _rate(self, tool: str) -> gathering.NodeRate:
+        rate = gathering.rate_at(
+            self._TABLES, {}, self._PROFILE, "Chop it", "Woodcutting",
+            {"Objects": ["juniper"], "Level": 42}, 99, tool=tool,
+        )
+        assert rate is not None
+        return rate
+
+    def test_the_axe_still_decides(self) -> None:
+        assert self._rate("Dragon axe").chance > self._rate("Bronze axe").chance
+
+    def test_it_spends_the_donors_own_numbers(self) -> None:
+        assert self._rate("Dragon axe").chance == pytest.approx(
+            gathering.success_chance(99, 30.0, 93.0)
+        )
+
+    def test_a_shared_chart_is_inferred(self) -> None:
+        # The shape is a measurement of something else, so it may not claim to
+        # be a reading of this.
+        assert self._rate("Dragon axe").provenance == gathering.INFERRED
+
+    def test_an_uncharted_donor_refuses_rather_than_falls_through(self) -> None:
+        # A donor that stopped being charted must read as the entry naming it
+        # being wrong, not as this node quietly losing its rate to some later
+        # branch.
+        profile = dataclasses.replace(
+            self._PROFILE, shared_curves={"juniper": "Nothing tree"}
+        )
+        assert gathering._shared_curve(
+            self._TABLES, profile, {}, {"Objects": ["juniper"]}, "Woodcutting", ""
+        ) is None
+
+
+class TestTheJuniperTree:
+    """Every half of the loop is read; only the chance is assumed."""
+
+    def test_a_depletion_covers_sixteen_logs(self) -> None:
+        # "Mature juniper trees have a 1 in 16 chance of depleting when
+        # receiving a log."
+        assert gathering.PROFILES["Woodcutting"].yields["mature juniper tree"] == 16.0
+
+    def test_the_chance_is_the_one_thing_borrowed(self) -> None:
+        profile = gathering.PROFILES["Woodcutting"]
+        assert profile.shared_curves == {"mature juniper tree": "Maple tree"}
+        # The roll is the skill's own four ticks, which the page states too, so
+        # nothing about the cadence is assumed alongside it.
+        assert "mature juniper tree" not in profile.fixed_interval
+        assert "mature juniper tree" not in profile.stepped_interval
+
+
 class TestTheInfectedRootIsRefused:
     """Two confirmed inputs are not a method when the third is unmodelled."""
 
@@ -1343,7 +1418,8 @@ class TestTheBlisterwoodTree:
         profile = gathering.PROFILES["Woodcutting"]
         assert set(profile.node_seconds_at) == {"blisterwood tree"}
         assert set(profile.yields) == {
-            "blisterwood tree", "light jungle", "medium jungle", "dense jungle"
+            "blisterwood tree", "light jungle", "medium jungle", "dense jungle",
+            "mature juniper tree",
         }
 
 

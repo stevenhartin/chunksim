@@ -543,6 +543,18 @@ maps are your own work and nothing can recompute them.
    1,200/hr, which says "this is a way to fill a waterskin" without having to
    be told.
 
+   **The juniper tree is the one assumption left in Woodcutting**, and it is
+   the shape of assumption this project prefers: everything else about it is
+   read. Its page states the four-tick roll, the 1-in-16 chance of depleting
+   and the eight-second respawn, and then says only that it has "a very low
+   cut difficulty" - prose, with no numbers behind it. So it spends the maple
+   tree's chart, which opens three levels away, and reports `inferred` for it.
+   That is deliberately a floor rather than a match: the same sentence says
+   players at a high level "likely max out the chance", where maple reaches
+   37% with a dragon axe, and the difference between those two readings is
+   19,277/hr against 52,500. Nothing published chooses between them, so it
+   takes the low one.
+
    A few methods are not training methods and the estimator says so rather than
    offering a bad number: mining an elemental rock pays nothing (it spawns the
    monster whose drop is the ore), lunar ore's own infobox states zero, a

@@ -552,6 +552,19 @@ class SkillProfile:
     stepped_interval: Mapping[str, tuple[tuple[int, float], ...]] = field(
         default_factory=dict
     )
+    #: Node -> the node whose **whole** chart it spends.
+    #:
+    #: **Not `assumed_curves`, and the difference is what a series means.**
+    #: That one takes the donor's worst series and moves the line to the
+    #: borrower's opening level, which is right where the series are three
+    #: *creatures* - a grey chinchompa is not a harder red one. Here they are
+    #: tool tiers, and collapsing nine of them to bronze would make a tree's
+    #: rate independent of the axe, which is the one thing every tree's chart
+    #: exists to say. So the family is taken intact and `_tool_curve` picks
+    #: from it exactly as it would from the node's own.
+    #:
+    #: `INFERRED`, because the shape is a measurement of something else.
+    shared_curves: Mapping[str, str] = field(default_factory=dict)
     #: Nodes that never run out, so neither a respawn nor the hop is charged.
     #:
     #: **A stated mechanic, not an optimisation.** The rune essence rock "will
@@ -739,6 +752,11 @@ PROFILES: dict[str, SkillProfile] = {
             "light jungle": 4.0,
             "medium jungle": 4.0,
             "dense jungle": 4.0,
+            # "Mature juniper trees have a 1 in 16 chance of depleting when
+            # receiving a log", so sixteen logs share the 8-second respawn -
+            # which is what makes that respawn cost nothing and the rolling
+            # the whole of the rate.
+            "mature juniper tree": 16.0,
         },
         node_seconds_at={"blisterwood tree": 0.6},
         stepped_interval={
@@ -757,6 +775,24 @@ PROFILES: dict[str, SkillProfile] = {
         # the leading figure, right for limestone's respawn and wrong here.
         # Stating the mean is what stops a range being read as its floor.
         stated_experience={"infected root": 200.0 / 17.0},
+        # **The one tree nobody has charted, and the only assumption in this
+        # skill.** Its page states every other half of the loop - "A roll to
+        # receive a log is done every 4 game ticks", the 1/16 depletion, the
+        # 8-second respawn - and then, for the chance: "The chance to
+        # successfully chop is affected by the axe used and Woodcutting level
+        # ... Mature juniper trees have a very low cut difficulty, and players
+        # with a high Woodcutting level likely max out the chance to receive a
+        # log." Prose, and no numbers behind it.
+        #
+        # Maple is the donor because it opens three levels away, at 45 against
+        # juniper's 42, so the two are asked for at the same point in a
+        # player's climb. **It is a floor rather than a match, and the sentence
+        # above says so**: maple reaches 0.367 at 99 with a dragon axe, where
+        # "max out" is what `Tree` and `Oak tree` do at 1.000. Nothing here can
+        # choose between them - the difference is 19,266/hr against 52,500 -
+        # so this takes the conservative one and reports `inferred`, which is
+        # the same posture every other assumption in this file takes.
+        shared_curves={"mature juniper tree": "Maple tree"},
         # **Both inputs to the roll are confirmed and the roll is not the
         # method.** The chart is scraped, the experience is the page's own
         # arithmetic above, and what they price is 12,960/hr at 99 with a
@@ -2349,6 +2385,32 @@ def _fixed_chance(
     return None
 
 
+def _shared_curve(
+    tables: Tables,
+    profile: SkillProfile,
+    families: Mapping[str, Sequence[str]],
+    challenge: Mapping[str, Any],
+    skill: str,
+    task: str = "",
+) -> tuple[str, tuple[tuple[str, float, float, int, str], ...]] | None:
+    """`(node, the donor's whole chart)` where a profile shares one.
+
+    `None` where nothing is shared or the donor is uncharted itself - the
+    second of which is the failure worth naming, since a donor that stops
+    being charted would otherwise turn into a silent refusal rather than an
+    error about the entry that named it.
+    """
+    if not profile.shared_curves:
+        return None
+    for key in _join_keys(challenge, families, _NAME_FIELDS, skill, task):
+        donor_name = profile.shared_curves.get(key.lower())
+        if not donor_name:
+            continue
+        donor = tables.curves.get(donor_name.lower())
+        return (key, donor) if donor else None
+    return None
+
+
 def _borrowed_curve(
     tables: Tables,
     profile: SkillProfile,
@@ -2605,6 +2667,7 @@ def rate_at(
     fixed = _fixed_chance(profile, families, challenge, skill, task)
     stated = _stated_curve(profile, families, challenge, skill, task)
     laddered = _ladder_curve(tables, profile, families, challenge, skill, task)
+    shared = _shared_curve(tables, profile, families, challenge, skill, task)
     if fixed is not None:
         # **A stated chance outranks a chart**, which is the opposite of every
         # other precedence here and is deliberate: a profile only states one
@@ -2630,6 +2693,19 @@ def rate_at(
         # `SkillProfile.stated_curves` for the residuals that make it evidence.
         node, low, high = stated
         label = "derived from published rates"
+        provenance = INFERRED
+        chance = success_chance(level, low, high)
+    elif shared is not None:
+        # **Somebody else's whole chart, tool tiers and all.** See
+        # `SkillProfile.shared_curves`; below `stated`, which is at least the
+        # wiki's own hourly figures for *this* node, and above `borrowed`,
+        # which keeps one series rather than the family.
+        node, donor = shared
+        opens = challenge.get("Level")
+        label, low, high, _req, _prov = _tool_curve(
+            donor, profile, tool, int(opens) if isinstance(opens, (int, float)) else 0
+        )
+        label = f"{label}, assumed as {node}"
         provenance = INFERRED
         chance = success_chance(level, low, high)
     elif borrowed is not None:
