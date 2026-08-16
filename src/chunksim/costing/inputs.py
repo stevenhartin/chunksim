@@ -49,6 +49,7 @@ from chunksim.costing import (
     sorceress,
     stated,
     swimming,
+    valuables,
     wintertodt,
 )
 from chunksim.costing import gathering as gathering_model
@@ -514,6 +515,10 @@ def _gathered(
     # **Four gardens and the level picks which** - see `costing/sorceress.py`.
     # Flat rates, so nothing but the valid set is needed.
     for skill, methods in sorceress.methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **A published curve rather than a derived one** - see
+    # `costing/valuables.py`, which is a transcription and says so.
+    for skill, methods in valuables.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # Two activities whose rate is stated rather than computed - see
     # `costing/stated.py`, whose every band is marked `guess`.

@@ -76,6 +76,10 @@ The modules, and what each owns:
   experience as multipliers on your level, so the rate is those times a count
   of games. Replaced a hand-written 400,000/hr that was one number for a method
   linear in the level.
+- `valuables.py` - Stealing valuables in Civitas illa Fortis, which upstream
+  calls `Varlamore thieving`. **A transcription rather than a derivation** -
+  nothing in the burgling loop is charted - carried because the same page
+  states the activity four other ways and all four agree with the table.
 - `sorceress.py` - the Sorceress's Garden, where a level buys a **better
   garden** rather than a faster lap or a better chance. Flat rates, and the one
   place a published lap time and a published hourly yield check each other.

@@ -558,6 +558,20 @@ maps are your own work and nothing can recompute them.
    19,277/hr against 52,500. Nothing published chooses between them, so it
    takes the low one.
 
+   **Stealing valuables is a transcription and the estimator says so**: none
+   of the burgling loop is charted, so there is no curve to build a rate out
+   of, and what the wiki publishes instead is the answer as a level-to-rate
+   table. It is carried because the same page states the activity four other
+   ways and all four agree - 45 experience a valuable against "about
+   1,600-2,300 valuables" an hour, a 180-190 second house cycle against "18-19
+   houses per hour", one key a house against "around 3900xp at level 50 and
+   5700xp at level 99", and a prose range whose ends are the table's own. Four
+   measurements of one activity that happen to agree is the most a
+   transcription can offer. Note that these figures are the burgling
+   "exclusively", and getting the keys means pickpocketing wealthy citizens,
+   which is priced separately - the same hour, so the two are alternatives
+   rather than a total.
+
    **The Sorceress's Garden is the simplest thing here**, and the one place a
    published lap time and a published hourly yield check each other. Each
    garden page states how long a lap takes and how much juice an hour it
