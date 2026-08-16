@@ -974,6 +974,33 @@ def _route_hours(
         # beside it at 1/2500 does not, until someone states a rate for the
         # fishing spot - at which point the activity route prices it properly.
         made = challenge.get("Output")
+        # **A monster named beside a *different* output is a kill for a drop**,
+        # and a kill is not a four-tick action. This is the same argument the
+        # branch below makes for `Output != item` - "a kill has a route of its
+        # own (`_kill_hours`, with the gear and the gates), so refusing here
+        # loses nothing" - which had simply never been applied when the output
+        # *is* the item asked for.
+        #
+        # What it was costing: `Cut magic logs from an ~|ent|~` names
+        # `Monsters: ["Ent"]` and outputs `Magic logs`, so magic logs priced at
+        # 3.6 seconds against 25.6 for chopping one - the same 3.6 as an oak
+        # log, because the default knows nothing about either. An ent is a
+        # Forestry event, not something available every four ticks.
+        #
+        # **`item not in monsters` is what keeps the slayer tokens**, where the
+        # output *is* the monster (`Slay a ~|bloodveld|~` -> `Bloodveld`).
+        # Measured over the whole export, this refuses 17 routes and 12 of them
+        # were already priced above 250 seconds by their inputs; what actually
+        # moves is the five ent challenges, which fall back to chopping.
+        monsters = challenge.get("Monsters") or ()
+        if (
+            isinstance(made, str)
+            and made == item
+            and monsters
+            and item not in monsters
+            and provider not in walk.heuristics.action_seconds
+        ):
+            return None
         if isinstance(made, str) and made != item:
             # **And only where the pace is stated rather than defaulted.**
             # `Slay the ~|Alchemical Hydra|~ alt` outputs a table holding

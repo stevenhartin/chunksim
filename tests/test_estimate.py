@@ -2146,3 +2146,78 @@ def test_a_training_knob_names_the_challenge_not_its_display_name() -> None:
 
     assert option.knob == "training/Chop ~|oak logs|~/Woodcutting"
     assert option.method != "Chop ~|oak logs|~", "the display name is not the key"
+
+
+def test_a_monster_named_beside_a_different_output_is_a_kill_not_an_action() -> None:
+    """**The ent, and why a four-tick default is the wrong shape for a kill.**
+
+    `Cut magic logs from an ~|ent|~` names `Monsters: ["Ent"]` and outputs
+    `Magic logs`, so the item walk priced a magic log at 3.6 seconds - the same
+    3.6 as an oak log, because `DEFAULT_ACTION_SECONDS` knows nothing about
+    either - against 25.6 for chopping one. An ent is a Forestry event, not
+    something available every four ticks.
+
+    `_route_hours` already made this argument for `Output != item`: "a kill has
+    a route of its own (`_kill_hours`, with the gear and the gates), so
+    refusing here loses nothing". It had never been applied when the output
+    *is* the item asked for.
+
+    Measured over the whole export the rule refuses 17 routes, 12 of them
+    already priced above 250 seconds by their own inputs; what moves is the
+    five ent challenges, and Fletching 1-99 with them - 41.3h to 84.4h,
+    because Vale Totems had been fed magic logs at an oak log's price.
+    """
+    info = ChunkInfo(
+        {
+            "chunks": {"1": {"Monsters": {"Ent": True}, "Objects": {"Magic tree": True}}},
+            "challenges": {
+                "Woodcutting": {
+                    "Cut magic logs from an ~|ent|~": {
+                        "Monsters": ["Ent"],
+                        "Output": "Magic logs",
+                        "Primary": False,
+                    },
+                    "Chop ~|magic logs|~": {
+                        "Objects": ["Magic tree"],
+                        "Output": "Magic logs",
+                        "Primary": True,
+                    },
+                }
+            },
+        }
+    )
+    # Chopping is timed; the ent is not, which is the whole distinction.
+    walk = _walk_for(info, Heuristics(action_seconds={"Chop ~|magic logs|~": 25.6}))
+
+    priced = _item_hours(walk, "Magic logs", quantity=1.0)
+
+    assert priced is not None
+    assert priced.hours * 3600 == pytest.approx(25.6)
+    assert "ent" not in priced.detail
+
+
+def test_an_output_that_is_the_monster_is_left_alone() -> None:
+    """**What `item not in monsters` keeps.** `Slay a ~|bloodveld|~` outputs
+    `Bloodveld` - a slayer token rather than a drop to price - and refusing it
+    would take the four-tick stand-in away from a hundred of them for nothing.
+    """
+    info = ChunkInfo(
+        {
+            "chunks": {"1": {"Monsters": {"Bloodveld": True}}},
+            "challenges": {
+                "Slayer": {
+                    "Slay a ~|bloodveld|~": {
+                        "Monsters": ["Bloodveld"],
+                        "Output": "Bloodveld",
+                        "Primary": True,
+                    }
+                }
+            },
+        }
+    )
+    walk = _walk_for(info)
+
+    priced = _item_hours(walk, "Bloodveld", quantity=1.0)
+
+    assert priced is not None
+    assert priced.hours * 3600 == pytest.approx(DEFAULT_ACTION_SECONDS)

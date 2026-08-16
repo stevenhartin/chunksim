@@ -719,6 +719,16 @@ maps are your own work and nothing can recompute them.
    in the game: 91 seconds an ore against 240 for mining the rock. It was out
    by a factor of fourteen, not wrong to prefer it.
 
+   **A monster named beside a different output is a kill, not an action.**
+   `Cut magic logs from an ~|ent|~` names the ent and outputs magic logs, so
+   the item walk priced a magic log at 3.6 seconds - the same 3.6 as an oak
+   log, because the four-tick default knows nothing about either - against
+   25.6 for chopping one. An ent is a Forestry event. The walk already refused
+   kills on the other side of that test, for the stated reason that "a kill
+   has a route of its own", and now does here too. Fletching 1-99 goes 41.3
+   hours to 84.4 on the back of it, because Vale Totems had been fed magic
+   logs at an oak log's price.
+
    **The Giants' Foundry is priced from an alloy, not from a tier**, which is
    the whole of Smithing's climb above level 15. A preform is 28 bars in
    whatever ratio you choose between two metals, and the strategy guide
