@@ -234,10 +234,13 @@ it is not.
 **Upstream's own flags sometimes already answer the question you were about to
 model.** Agility shortcuts looked like 58 unpriced training methods; the wiki's
 list shows **93 of 162 award no experience at all**, which would make them
-rejects rather than gaps. They already are: measured on the joined set, every
+rejects rather than gaps. Mostly they already are: **on the 28 that join today**, every
 `Primary: true` shortcut pays something and 29 of the 30 non-primary ones pay
-nothing. `Primary` *is* the filter, so adding one would have duplicated it -
-and `costing/shortcuts.py` therefore needs no rejection list. What the skill
+nothing. That is a strong signal and not a rule - widening the join turned up
+`Fence (Burgh de Rott)` and `Crevice (Fremennik Slayer Dungeon)`, both
+`Primary: true` and both 0 xp - so `costing/shortcuts.py` refuses a
+zero-experience shortcut itself (`found.experience <= 0`) rather than trusting
+the flag. What the skill
 actually needed was a rate: eight ticks an attempt, the failure experience
 from each shortcut's own `{{Agility info}}`, and the success curve from
 `{{Skilling success chart}}` through the `success_chance` the gathering model

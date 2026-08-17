@@ -34,12 +34,14 @@ Vampyrium rock slides at 27.5 experience with no failure. The median is 3,750.
 That is the honest outcome: they exist in the export as *access*, and a player
 spamming one is not training Agility so much as passing the time.
 
-**Upstream already excludes the ones that pay nothing**, so this never has to.
-Measured against the live list, 93 of 162 shortcuts award 0 experience, and of
-the shortcut challenges that join, every `Primary: true` one pays something
-while 29 of the 30 non-primary ones pay nothing. The `Primary` flag *is* the
-"is this a training method" answer for shortcuts, which is worth knowing
-before adding a filter that would duplicate it.
+**Upstream mostly excludes the ones that pay nothing, but not entirely.**
+93 of 162 shortcuts award 0 experience, and on the challenges that join today
+every `Primary: true` one pays something while 29 of the 30 non-primary ones
+pay nothing - so the flag is a strong signal for "is this a training method".
+It is not a rule: `Fence (Burgh de Rott)` and `Crevice (Fremennik Slayer
+Dungeon)` are both `Primary: true` and both pay nothing. So `heuristics.
+_add_shortcuts` drops a zero-experience shortcut on its own experience rather
+than on the flag, and a wider join cannot quietly introduce a 0/hr method.
 """
 
 from __future__ import annotations
