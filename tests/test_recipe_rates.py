@@ -19,7 +19,9 @@ from chunksim.costing.recipe_rates import (
     apply,
     computed_rates,
     index_recipes,
+    material_candidates,
     names_variant,
+    stocks,
     rate_for,
     challenge_experience,
     join_keys,
@@ -509,6 +511,69 @@ def test_an_alt_twin_is_not_a_second_method() -> None:
 
     assert merged[base]["Cooking"].value == 718.0
     assert merged[alt]["Cooking"].value == 718.0
+
+
+def test_a_task_takes_the_recipe_whose_materials_it_lists() -> None:
+    """**The field that resolved the other nineteen groups.** Every altar rune
+    shared a key with its Guardians of the Rift twin, because `rate_for`
+    maximises and pure essence is the fastest thing that prices - so the twin
+    took the pure-essence recipe too, and `apply`'s guard then held six runes
+    on a money-making guide over a collision that was never real. Upstream
+    states the essence: `Items: ["Pure essence*"]` on the altar task, and
+    nothing at all on the minigame one."""
+    def rune(essence: str, experience: float) -> Recipe:
+        return Recipe(
+            page="Nature rune", output="Nature rune", output_quantity=1.0,
+            skill="Runecraft", level=44, experience=experience, ticks=1,
+            materials=(Material(name=essence, quantity=1.0),),
+        )
+
+    pure, guardian = rune("Pure essence", 9.0), rune("Guardian essence", 9.0)
+    altar = {"Items": ["Pure essence*"], "Primary": True}
+    minigame = {"Category": ["Minigame"], "Primary": True}
+
+    assert material_candidates(altar, [pure, guardian], [minigame]) == (pure,)
+    assert material_candidates(minigame, [pure, guardian], [altar]) == (guardian,)
+
+
+def test_the_items_list_beats_the_tasks_words() -> None:
+    """**A word-subset test over the name is not enough**, and Fletching is
+    where it shows: every `Fletch ~|X logs|~ into shafts` task contains the
+    word `logs`, so the magic one reads as describing the plain-log recipe
+    too - `names_variant`'s "must not match a task that merely says furnace"
+    arriving through a different door. The `Items` list says `Magic logs` and
+    stops there."""
+    def shaft(log: str, made: float) -> Recipe:
+        return Recipe(
+            page="Arrow shaft", output="Arrow shaft", output_quantity=made,
+            skill="Fletching", level=1, experience=made / 3.0, ticks=2,
+            materials=(Material(name=log, quantity=1.0),),
+        )
+
+    plain, magic = shaft("Logs", 15.0), shaft("Magic logs", 90.0)
+    magic_task = {"Items": ["Magic logs*", "Fletching knife[+]"], "Primary": True}
+
+    assert material_candidates(magic_task, [plain, magic], []) == (magic,)
+
+
+def test_a_group_the_variant_already_resolved_is_not_widened() -> None:
+    """Applied after the variant partition and only where that left more than
+    one candidate, so the twelve bar pairs keep what `variant_candidates` gave
+    them."""
+    one = Recipe(
+        page="Bronze bar", output="Bronze bar", output_quantity=1.0, skill="Smithing",
+        level=1, experience=6.2, ticks=3, materials=(), variant="Superheat",
+    )
+
+    assert material_candidates({"Items": []}, [one], []) == (one,)
+
+
+def test_the_markers_are_stripped_before_comparing() -> None:
+    """`Magic logs*` says the action consumes it and `Fire rune[+]` says any
+    member of a family will do - the same two markers `estimate` strips."""
+    assert stocks({"Items": ["Magic logs*", "Fire rune[+]", " "]}) == frozenset(
+        {"magic logs", "fire rune"}
+    )
 
 
 def test_an_alias_registers_beside_the_name_the_wiki_renamed() -> None:

@@ -168,6 +168,30 @@ not evidence against a rate that names one. With the guard, the whole flip
 moves two climbs on the reference map (Cooking 89.9h → 63.8h, Runecraft
 1480.5h → 1448.8h) and nothing at all on the uber map.
 
+**And the last nineteen groups were resolved by the other field.**
+`variant_candidates` records them as beyond it - "Runecraft's `with guardian
+essence` and friends, where every variant is empty because the minigame has no
+`{{Recipe}}` at all" - which was half right. The minigame has no recipe, but
+the *essence* does: the wiki writes one `Nature rune` recipe per essence it
+accepts, and upstream writes `Items: ["Pure essence*"]` on the altar task and
+nothing at all on the minigame one. So the distinguishing field was never
+missing; it was in the **materials** rather than in the label, and
+`recipe_rates.material_candidates` reads it exactly as `variant_candidates`
+reads the other. What it cost: all twelve altar runes shared a key with their
+Guardians of the Rift twin, because `rate_for` maximises and pure essence is
+the fastest thing that prices - so the twin took the pure-essence recipe too,
+and `apply`'s guard held the six with a money-making guide on that guide.
+**Runecraft is now off the scrape entirely** with the climb unmoved at 228.2h,
+since Guardians of the Rift owns it either way.
+
+**The signal is upstream's `Items` and not the task's words**, which Fletching
+is the proof of: every `Fletch ~|X logs|~ into shafts` task contains the word
+`logs`, so a word-subset test says the magic one describes the plain-log recipe
+too - `names_variant`'s "must not match a task that merely says furnace"
+arriving through a different door. All six were taking one recipe regardless of
+which log they named; each now takes its own, and the rates fall away from
+plain logs at 4,390/hr to magic at 1,026 exactly as the chopping gets slower.
+
 **Then two thirds of that ambiguity turned out to be manufactured here.** The
 join threw away the field that resolves it: a `{{Recipe}}` carries the wiki's
 own *variant* label, so `Bronze bar` is three recipes — `Normal furnace`,

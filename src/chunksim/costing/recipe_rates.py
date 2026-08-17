@@ -378,6 +378,86 @@ def variant_candidates(
     return rest or tuple(recipes)
 
 
+def stocks(challenge: Mapping[str, Any]) -> frozenset[str]:
+    """The items a challenge lists, without upstream's markers, lowercased.
+
+    `Magic logs*` and `Fire rune[+]` are the same two markers `estimate`
+    strips: `*` says the action consumes it and `[+]` says any member of a
+    family will do.
+    """
+    found = {
+        item.replace("*", "").replace("[+]", "").strip().lower()
+        for item in challenge.get("Items") or ()
+        if isinstance(item, str)
+    }
+    return frozenset(name for name in found if name)
+
+
+def names_material(recipe: Recipe, challenge: Mapping[str, Any]) -> bool:
+    """Whether `challenge` lists everything `recipe` is made from.
+
+    **Upstream's own `Items`, not the task's words**, and the difference is not
+    academic. Every `Fletch ~|X logs|~ into shafts` task contains the word
+    `logs`, so a word-subset test over the name says the magic one is *also*
+    describing the plain-log recipe - which is the failure `names_variant`
+    warns about ("`Blast Furnace` must not match a task that merely says
+    furnace") arriving through a different door. The `Items` list says `Magic
+    logs` and stops there.
+
+    A challenge listing no items names nothing, which is right: `Craft a
+    ~|nature rune|~ with guardian essence` has no `Items` because the minigame
+    hands the essence over.
+    """
+    held = stocks(challenge)
+    materials = {material.name.lower() for material in recipe.materials}
+    return bool(materials) and materials <= held
+
+
+def material_candidates(
+    challenge: Mapping[str, Any],
+    recipes: Sequence[Recipe],
+    siblings: Sequence[Mapping[str, Any]],
+) -> tuple[Recipe, ...]:
+    """`variant_candidates`' rule on the *material* axis.
+
+    **The nineteen groups the variant field could not resolve.** Its docstring
+    records them as staying ambiguous - "Runecraft's `with guardian essence`
+    and friends, where every variant is empty because the minigame has no
+    `{{Recipe}}` at all" - and that was half right. The minigame has no recipe,
+    but the *essence* does: the wiki writes one `Nature rune` recipe per
+    essence it accepts, `Pure`, `Rune`, `Daeyalt` and `Guardian`, and upstream
+    writes `Items: ["Pure essence*"]` on the altar task and nothing at all on
+    the minigame one. The distinguishing field was never missing; it was in the
+    materials rather than in the label.
+
+    What it cost: all twelve altar runes shared a key with their Guardians of
+    the Rift twin, because `rate_for` maximises and pure essence is the fastest
+    thing that prices - so the twin took the pure-essence recipe too. `apply`'s
+    guard then held the six with a money-making guide (air, chaos, cosmic,
+    death, law, nature) on that guide, while the five with only the floor
+    (mind, water, earth, fire, body) took the computed rate. Six methods on a
+    scrape because of a collision that was never real.
+
+    Applied **after** the variant partition and only where that left more than
+    one candidate, so a group the wiki's own label already resolved cannot be
+    widened again. Falls back to the whole set the same way, for the same
+    reason: a vocabulary this does not understand costs a method its precision
+    rather than its rate.
+    """
+    if len(recipes) < 2:
+        return tuple(recipes)
+    mine = tuple(recipe for recipe in recipes if names_material(recipe, challenge))
+    if mine:
+        return mine
+    spoken = {
+        id(recipe)
+        for recipe in recipes
+        if any(names_material(recipe, other) for other in siblings)
+    }
+    rest = tuple(recipe for recipe in recipes if id(recipe) not in spoken)
+    return rest or tuple(recipes)
+
+
 def index_recipes(recipes: Sequence[Recipe]) -> dict[str, tuple[Recipe, ...]]:
     """`recipes` grouped by the item they produce, order preserved.
 
@@ -560,6 +640,7 @@ def _joined(
     by_output: Mapping[str, Sequence[Recipe]],
     siblings: Mapping[str, tuple[str, ...]],
     cuts: Mapping[str, tuple[Recipe, ...]],
+    challenges: Mapping[str, Any] = {},
     tablets: Mapping[str, tuple[Recipe, ...]] = {},
 ) -> tuple[str, tuple[Recipe, ...]] | None:
     """`(output, recipes)` for one challenge, or `None` where nothing joins.
@@ -590,8 +671,11 @@ def _joined(
     output = next((key for key in keys if key.lower() in by_output), None)
     if output is None:
         return None
-    candidates = variant_candidates(
-        task, by_output[output.lower()], siblings.get(output.lower(), ())
+    kin = siblings.get(output.lower(), ())
+    candidates = material_candidates(
+        challenge,
+        variant_candidates(task, by_output[output.lower()], kin),
+        [challenges[other] for other in kin if isinstance(challenges.get(other), dict)],
     )
     if output in fishcutting.CUT_OUTPUTS:
         # The family task takes what no species-specific one named - see
@@ -640,7 +724,7 @@ def challenge_experience(
         for task, challenge in challenges.items():
             if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
                 continue
-            joined = _joined(task, challenge, by_output, siblings, cuts, tablets)
+            joined = _joined(task, challenge, by_output, siblings, cuts, challenges, tablets)
             if joined is None:
                 continue
             output, candidates = joined
@@ -731,7 +815,7 @@ def computed_rates(
             if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
                 continue
             offered += 1
-            joined = _joined(task, challenge, by_output, siblings, cuts, tablets)
+            joined = _joined(task, challenge, by_output, siblings, cuts, challenges, tablets)
             if joined is None:
                 continue
             output, candidates = joined

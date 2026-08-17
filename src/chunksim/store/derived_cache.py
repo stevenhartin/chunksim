@@ -202,7 +202,9 @@ _FORMAT = "1"
 #: challenge's own `Items` - see `costing/spells.py`.
 #: 71: a teleport is priced from its tablet at a lectern, and refused where no
 #: lectern makes it - see `costing/lectern.py`.
-_PRICING_MODEL = "71"
+#: 72: a task takes the recipe whose materials its own `Items` list - see
+#: `recipe_rates.material_candidates`.
+_PRICING_MODEL = "72"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.
