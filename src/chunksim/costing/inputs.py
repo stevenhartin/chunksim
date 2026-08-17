@@ -56,6 +56,7 @@ from chunksim.costing import (
     recipe_rates,
     pyramid_plunder,
     rumours,
+    salvage,
     sepulchre,
     sorceress,
     stated,
@@ -576,6 +577,15 @@ def _gathered(
     # curve - and the bands carry the *minigame's* level rather than the
     # rune's, which is what stops a level-1 player being offered it. See
     # `costing/gotr.py`.
+    # **Shipwreck salvaging, with one crewmate rather than the guides' two.**
+    # Upstream splits finding from sorting where the guides bundle them, and a
+    # crewmate is worth D^2/125 rather than a second player - see
+    # `costing/salvage.py`.
+    for skill, methods in salvage.methods(
+        _mapping(state.chunk_info.challenges, "Sailing"),
+        derived.challenges.valid.get("Sailing") or {},
+    ).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
     for skill, methods in gotr.methods(
         _mapping(state.chunk_info.challenges, "Runecraft"),
         derived.challenges.valid.get("Runecraft") or {},

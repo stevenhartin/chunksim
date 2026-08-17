@@ -44,6 +44,11 @@ The modules, and what each owns:
   rolls are read a second time with the ancillary experience column, so the two
   cannot drift. The wiki's own Str/Agi-to-Fishing ratio checks it at 0.089
   against 0.090-0.092.
+- `salvage.py` - shipwreck salvaging, priced from the *find* experience alone
+  (upstream splits finding from sorting where the guides bundle them) and
+  raised by **one** crewmate rather than the guides' two. A crewmate is worth
+  `D^2/125` - it rolls every 5 ticks to the player's 4 and is paid `D/10` an
+  salvage - so the best in the game is +12.8%, not a second player.
 - `gotr.py` - Guardians of the Rift as **one minigame, not twelve rune
   methods**. The rune is the game's decision - two portals, one elemental and
   one catalytic - so the curve is the *rune mix* at a level, and throughput is

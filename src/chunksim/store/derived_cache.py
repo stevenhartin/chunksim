@@ -171,7 +171,9 @@ _FORMAT = "1"
 #: conflated with one nothing has priced.
 #: 57: Guardians of the Rift is one minigame with one curve, not twelve rune
 #: methods priced five different ways.
-_PRICING_MODEL = "57"
+#: 58: shipwreck salvaging is modelled from the find experience and one
+#: crewmate, where the guides bundled sorting and assumed two.
+_PRICING_MODEL = "58"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.
