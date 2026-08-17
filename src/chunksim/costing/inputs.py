@@ -38,6 +38,7 @@ from chunksim.costing import (
     barbarian,
     blastmine,
     farming,
+    gotr,
     herblore,
     artefacts,
     chambers,
@@ -429,6 +430,16 @@ def recipe_priced(
         },
     }
     per_xp.update(by_hand)
+    # **An activity that gathers what it consumes must carry no material cost
+    # at all.** Guardians of the Rift mines its own essence - that is most of
+    # what a game is - so the rate already covers it, and charging the rune's
+    # essence again bills the same twenty minutes twice. The scraped path
+    # dodged this through `training._ALL_INCLUSIVE_SOURCES`, which a
+    # `ComputedMethod` has no source to be matched by; removing the entry
+    # fixes both paths at once and is the truer statement anyway.
+    for task in list(per_xp):
+        if gotr.GUARDIAN_SUFFIX in task:
+            del per_xp[task]
     return (
         replace(
             heuristics,
@@ -444,6 +455,22 @@ def recipe_priced(
         ),
         coverage,
     )
+
+
+def _guardian_experience(recipes: Mapping[str, Any]) -> dict[str, float]:
+    """`{rune: xp per guardian essence}`, from the recipe corpus.
+
+    The minigame's own recipes, told apart by the material they consume -
+    `Guardian essence` rather than pure or daeyalt - and the plain variants
+    only, since a combination rune needs two altars and is a different action.
+    """
+    found: dict[str, float] = {}
+    for recipe in recipes.get("Runecraft") or ():
+        if recipe.variant:
+            continue
+        if any(material.name == "Guardian essence" for material in recipe.materials):
+            found[recipe.output] = recipe.experience
+    return found
 
 
 def _gathered(
@@ -543,6 +570,18 @@ def _gathered(
     # rate, for the reason Puro-Puro does: the level shape is the point, and the
     # scraped guide figure it refines is one number across twenty levels.
     for skill, methods in herbiboar.methods(blobs.gathering, derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **Guardians of the Rift is one minigame, not twelve rune methods.** The
+    # rune you get is the game's decision, so all twelve challenges share one
+    # curve - and the bands carry the *minigame's* level rather than the
+    # rune's, which is what stops a level-1 player being offered it. See
+    # `costing/gotr.py`.
+    for skill, methods in gotr.methods(
+        _mapping(state.chunk_info.challenges, "Runecraft"),
+        derived.challenges.valid.get("Runecraft") or {},
+        heuristics.gotr,
+        _guardian_experience(blobs.recipes),
+    ).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # Rumours pay an exact formula at an invented pace - see
     # `costing/rumours.py`, whose every band is marked `guess` for it.

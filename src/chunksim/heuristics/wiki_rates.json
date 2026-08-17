@@ -1,6 +1,6 @@
 {
   "name": "wiki_rates",
-  "fetched_at": "2026-08-17T14:48:10.410929+00:00",
+  "fetched_at": "2026-08-17T18:01:01.972486+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "quests": {
@@ -2447,9 +2447,9 @@
       },
       "Craft a ~|death rune|~ with guardian essence": {
         "Runecraft": {
-          "value": 40000.0,
-          "source": "wiki:gotr",
-          "match": "exact"
+          "value": 33500.0,
+          "source": "mmg:Money making guide/Crafting death runes through the Abyss",
+          "match": "contained"
         }
       },
       "Craft a ~|diamond bracelet|~": {
@@ -2489,9 +2489,9 @@
       },
       "Craft a ~|law rune|~ with guardian essence": {
         "Runecraft": {
-          "value": 40000.0,
-          "source": "wiki:gotr",
-          "match": "exact"
+          "value": 28215.0,
+          "source": "mmg:Money making guide/Crafting law runes through the Abyss",
+          "match": "contained"
         }
       },
       "Craft a ~|limestone brick|~": {
@@ -2510,9 +2510,9 @@
       },
       "Craft a ~|nature rune|~ with guardian essence": {
         "Runecraft": {
-          "value": 25000.0,
-          "source": "wiki:gotr",
-          "match": "exact"
+          "value": 26730.0,
+          "source": "mmg:Money making guide/Crafting nature runes through the Abyss",
+          "match": "contained"
         }
       },
       "Craft a ~|ruby bracelet|~": {
@@ -5312,13 +5312,6 @@
         "Woodcutting": {
           "value": 19000.0,
           "source": "wiki:woodcutting",
-          "match": "exact"
-        }
-      },
-      "Craft a ~|blood rune|~ with guardian essence": {
-        "Runecraft": {
-          "value": 50000.0,
-          "source": "wiki:gotr",
           "match": "exact"
         }
       },
@@ -8907,6 +8900,13 @@
         "base": "Hydra",
         "spawn_rate": 0.005
       }
+    },
+    "gotr": {
+      "40": 25000.0,
+      "50": 40000.0,
+      "75": 50000.0,
+      "85": 65000.0,
+      "99": 70000.0
     },
     "rarities": {
       "always": 1.0,

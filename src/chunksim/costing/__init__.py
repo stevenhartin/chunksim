@@ -44,6 +44,12 @@ The modules, and what each owns:
   rolls are read a second time with the ancillary experience column, so the two
   cannot drift. The wiki's own Str/Agi-to-Fishing ratio checks it at 0.089
   against 0.090-0.092.
+- `gotr.py` - Guardians of the Rift as **one minigame, not twelve rune
+  methods**. The rune is the game's decision - two portals, one elemental and
+  one catalytic - so the curve is the *rune mix* at a level, and throughput is
+  recovered from the published bands rather than modelled. Bands carry the
+  minigame's level, not the rune's, which is what stops a level-1 player being
+  offered it.
 - `herblore.py` - the one duration the wiki does not publish: cleaning a grimy
   herb is not tick-gated, so its `{{Recipe}}` carries `ticks = ""` and
   `recipe_rates` refused all eighteen. Timed from the bank cycle instead - 18

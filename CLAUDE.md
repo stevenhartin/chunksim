@@ -324,6 +324,30 @@ removing it **priced 218 more methods** (1,579 -> 1,797), moved 37 off a guide,
 and changed exactly one climb by 5.5h. A sub-floor rate is now a rate; what
 remains at the floor is only what nothing reached.
 
+**A minigame you cannot steer is one method, and pricing it per output invents
+a choice.** Guardians of the Rift opens exactly two portals at a time, one
+elemental and one catalytic, so which rune an essence becomes is the game's
+decision. The export carries twelve `with guardian essence` challenges and they
+were being priced **five different ways**: `air` from a money-making guide about
+the *ordinary altar* (56,760/hr), `chaos` from one about *the Abyss*, five from
+the recipe layer as a single one-tick imbue, and only the top four from
+`wiki:gotr` - because `_add_banded`'s first published band is level 40 and
+everything below it fell through to whatever else had joined on the rune's
+`Output`. `costing/gotr.py` replaces all of it with one curve: **the mix is
+modelled and the throughput is calibrated**, the published bands divided by the
+mix to recover essence an hour (3,704 at 40 rising to 9,532 at 99, which is the
+colossal pouch at 85 appearing where it should). Runecraft on the uber map goes
+**271.4h to 234.2h** and the climb reads as one activity from 30 to 99.
+
+Two things it had to get right and one bug it exposed. **Bands carry the
+minigame's level, not the rune's** - the export gives `Craft an ~|air rune|~
+with guardian essence` a `Level` of 1, and a rate written against that offers
+the minigame to a player who cannot enter it. And **an activity that gathers
+what it consumes must carry no material cost at all**: the scraped path dodged
+that through `training._ALL_INCLUSIVE_SOURCES`, which a `ComputedMethod` has no
+source to be matched by, so the essence was charged twice and the climb read
+474.9h until the entry was removed from `material_seconds_per_xp` outright.
+
 **Not every "computed" number is evidence, and the docstrings say which.**
 Thieving's fifteen tabulated stalls come out at exactly 1.00x against the
 scrape, and that is an identity rather than agreement — the wiki's column is

@@ -169,7 +169,9 @@ _FORMAT = "1"
 #: 56: the 1,000/hr floor no longer refuses a computed rate. A method slower
 #: than the stand-in for "unpriced" is now recorded as slow rather than
 #: conflated with one nothing has priced.
-_PRICING_MODEL = "56"
+#: 57: Guardians of the Rift is one minigame with one curve, not twelve rune
+#: methods priced five different ways.
+_PRICING_MODEL = "57"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

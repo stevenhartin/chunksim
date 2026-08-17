@@ -534,6 +534,12 @@ class Heuristics:
     #: never paid for its herbs won instead. Absent means one, which is every
     #: other challenge in the export.
     harvest_yield: dict[str, float] = field(default_factory=dict)
+    #: Runecraft level -> the *published* Guardians of the Rift experience an
+    #: hour, straight off `skill_tables.parse_gotr`. **Carried rather than
+    #: spent**: `costing/gotr.py` divides it by the modelled rune mix to
+    #: recover essence an hour, then rebuilds the curve - see that module for
+    #: why one minigame is not twelve rune methods.
+    gotr: dict[int, float] = field(default_factory=dict)
     #: Item -> the fee charged to make it, where a conversion has one. The
     #: export models the sawmill and not its price; see `remote/stores.py`.
     conversion_fees: dict[str, ShopPrice] = field(default_factory=dict)
@@ -1026,9 +1032,6 @@ def _table_rates(
                     )
                 break
     _add_banded(
-        chunk_info, "Runecraft", tables.get("gotr") or (), rated, GOTR_SOURCE, _is_gotr
-    )
-    _add_banded(
         chunk_info, "Farming", tables.get("tithe") or (), rated, TITHE_SOURCE, _is_tithe
     )
     return rated
@@ -1466,6 +1469,16 @@ def build_config(
             for superior, base in superiors or ()
             if superior in known
         },
+        # **The published bands, carried rather than spent.** They are the only
+        # thing `parse_gotr` reads and they exist only while the scrape is in
+        # hand, but the *model* over them needs the recipe corpus - a different
+        # blob, fetched by a different command - so `costing/gotr.py` runs at
+        # estimate time and this is what it runs on.
+        "gotr": {
+            str(row.level): round(row.xp_per_hour or 0.0, 1)
+            for row in ((skill_tables or {}).get("gotr") or ())
+            if row.xp_per_hour
+        },
         "rarities": dict(RARITY_PROBABILITY),
         # **Only the monsters an estimate could ask about.** The wiki has
         # 1,382 with hitpoints and the export knows 872; storing the rest
@@ -1652,6 +1665,7 @@ CONFIG_BRANCHES: frozenset[str] = frozenset(
         "conversions",
         "currencies",
         "farming",
+        "gotr",
         "masters",
         "monster_stats",
         "monsters",
@@ -1759,6 +1773,11 @@ def load(
             key: _float(value, 0.0)
             for key, value in _mapping(config, "farming").items()
             if isinstance(value, (int, float)) and not isinstance(value, bool)
+        },
+        gotr={
+            int(level): _float(rate, 0.0)
+            for level, rate in _mapping(config, "gotr").items()
+            if str(level).isdigit()
         },
         bones=tuple(
             Bone(
