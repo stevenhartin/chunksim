@@ -179,7 +179,9 @@ _FORMAT = "1"
 #: sorting a salvage now counts the salvaging that found it.
 #: 61: the item walk carries the experience of the route it chose, so every
 #: recipe whose materials pay their own skill is credited for them.
-_PRICING_MODEL = "61"
+#: 62: doses are fungible - a two-dose potion is priced off a three or a
+#: four, which nothing could route before.
+_PRICING_MODEL = "62"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

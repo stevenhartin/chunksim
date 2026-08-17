@@ -383,6 +383,29 @@ a minute of production paying 20,000 is 30,000 in two minutes - 900,000/hr.
 Charging the minute without crediting the experience gives 600,000; crediting
 without charging gives 1,800,000.
 
+**Doses are fungible, and the item walk did not know it.** No action in the
+game *makes* a two-dose potion - you brew a three or a four and drink one, or
+decant - so `Attack potion(2)` had no route at all while `Attack potion(3)`
+priced in a second, and every method consuming a partial dose was dropped.
+`estimate._dose_hours` prices `N` doses at `N/M` of an `M`-dose potion, taking
+the cheapest `M`. Herblore's recipe-priced methods went **66 to 77** and its
+published-rate ones **26 to 16**.
+
+**A dose hop deliberately spends no `_MAX_DEPTH`.** That bound is on how many
+*recipes* the walk will chain, and a dose is the same potion at another
+strength rather than a tier of crafting; charging it a level left `Super
+energy(2)` unpriced while `Super energy(3)` cost 241s, and sent `Combat
+potion(2)` the long way round through a four-dose at more than twice the
+price. `seen` already holds every dose visited, so cycles are stopped without
+it.
+
+**Herblore's climb got slower and that is the correction working.** The uber
+map went 29.2h to 61.0h because the recipe layer now *reaches* the low levels
+and charges for the herbs, where the `wiki:herblore` figures it displaced
+assume the materials to hand. The four bands still on that scrape read
+356,000-522,500/hr against recipe-priced neighbours at 5,000-18,000, which is
+the size of the gap that assumption hides.
+
 **Not every "computed" number is evidence, and the docstrings say which.**
 Thieving's fifteen tabulated stalls come out at exactly 1.00x against the
 scrape, and that is an identity rather than agreement — the wiki's column is

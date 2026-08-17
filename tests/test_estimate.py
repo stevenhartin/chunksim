@@ -2221,3 +2221,36 @@ def test_an_output_that_is_the_monster_is_left_alone() -> None:
 
     assert priced is not None
     assert priced.hours * 3600 == pytest.approx(DEFAULT_ACTION_SECONDS)
+
+
+def test_a_potion_dose_is_priced_off_another_dose() -> None:
+    """**Doses are fungible and nothing else in the walk knew it.** No action
+    in the game *makes* a two-dose potion - you brew a three or a four and
+    drink one, or decant - so `Attack potion(2)` had no route at all while
+    `Attack potion(3)` priced in a second. Eighteen Herblore methods were
+    dropped for it, which is why a published xp/hour survived on 26 of them.
+
+    A dose is a dose, so `N` of them cost `N/M` of an `M`-dose potion.
+    """
+    from chunksim.costing.estimate import _DOSE
+
+    found = _DOSE.match("Attack potion(2)")
+    assert found is not None
+    assert (found.group("name"), found.group("dose")) == ("Attack potion", "2")
+    assert _DOSE.match("Attack potion") is None
+    assert _DOSE.match("Bucket of sand") is None
+
+
+def test_a_dose_hop_is_not_a_level_deeper() -> None:
+    """`_MAX_DEPTH` bounds how many *recipes* the walk will chain, and a dose
+    is the same potion at another strength rather than a tier of crafting.
+    Charging it a level left `Super energy(2)` unpriced while `Super
+    energy(3)` cost 241s, and sent `Combat potion(2)` the long way round
+    through a four-dose at more than twice the price."""
+    import inspect
+
+    from chunksim.costing.estimate import _dose_hours
+
+    source = inspect.getsource(_dose_hours)
+    assert "depth=depth," in source, "a dose hop must not spend a level of depth"
+    assert "depth=depth + 1" not in source

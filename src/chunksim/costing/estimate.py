@@ -153,6 +153,7 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable, Mapping
 import dataclasses
+import re
 from dataclasses import dataclass, field
 from functools import cached_property
 from typing import Any, Callable, Sequence
@@ -823,6 +824,80 @@ def _item_hours(
         )
         if priced is not None and (best is None or priced.hours < best.hours):
             best = priced
+    decanted = _dose_hours(walk, item, quantity, amortise, depth, seen | {item})
+    if decanted is not None and (best is None or decanted.hours < best.hours):
+        best = decanted
+    return best
+
+
+#: A potion's dose, as the game and the wiki both write it: `Attack potion(3)`.
+_DOSE = re.compile(r"^(?P<name>.+?)\((?P<dose>[1-4])\)$")
+
+#: The doses a potion comes in.
+_DOSES: tuple[int, ...] = (1, 2, 3, 4)
+
+
+def _dose_hours(
+    walk: _Walk,
+    item: str,
+    quantity: float,
+    amortise: bool,
+    depth: int,
+    seen: frozenset[str],
+) -> _Priced | None:
+    """Price `item` as doses of the same potion at another strength.
+
+    **Doses are fungible and nothing else in the walk knew it.** There is no
+    action in the game that *makes* a two-dose potion: you brew a three or a
+    four and drink one, or decant. So `Attack potion(2)` had no route at all
+    while `Attack potion(3)` priced in a second, and every method consuming a
+    partial dose was dropped - 18 Herblore methods, which is why a published
+    xp/hour survived on 26 of them.
+
+    A dose is a dose, so `N` of them cost `N/M` of an `M`-dose potion, and the
+    cheapest `M` wins as everywhere else here. The `seen` guard is what stops
+    a three asking a two asking a three: `_item_hours` adds `item` to it
+    before calling this.
+
+    **Deliberately not a discount for the leftovers.** Buying a four to use
+    two really does leave two behind, and a player would drink them - but
+    counting that here would price a potion at less than its own doses and
+    let the walk arbitrage strengths against each other.
+    """
+    found = _DOSE.match(item)
+    if found is None:
+        return None
+    name, dose = found.group("name"), int(found.group("dose"))
+    best: _Priced | None = None
+    for other in _DOSES:
+        if other == dose:
+            continue
+        candidate = f"{name}({other})"
+        if candidate in seen:
+            continue
+        priced = _item_hours(
+            walk,
+            candidate,
+            quantity=quantity * dose / other,
+            amortise=amortise,
+            # **Not a level deeper.** `_MAX_DEPTH` bounds how many *recipes*
+            # the walk will chain, and a dose is the same potion at another
+            # strength rather than a tier of crafting. Charging it a level
+            # left `Super energy(2)` unpriced while `Super energy(3)` cost
+            # 241s, and sent `Combat potion(2)` the long way round through a
+            # four-dose at more than twice the price. Cycles are stopped by
+            # `seen`, which already holds every dose visited.
+            depth=depth,
+            seen=seen,
+        )
+        if priced is not None and (best is None or priced.hours < best.hours):
+            best = _Priced(
+                priced.hours,
+                f"{dose} of {other} doses: {priced.detail}",
+                priced.source,
+                priced.knobs,
+                priced.experience,
+            )
     return best
 
 
