@@ -231,6 +231,24 @@ Farming 1->99 on the uber map goes **4,222h to 230.9h**. Neither cached map
 moves, because Farming is at goal on both - this is coverage for a map where
 it is not.
 
+**Upstream's own flags sometimes already answer the question you were about to
+model.** Agility shortcuts looked like 58 unpriced training methods; the wiki's
+list shows **93 of 162 award no experience at all**, which would make them
+rejects rather than gaps. They already are: measured on the joined set, every
+`Primary: true` shortcut pays something and 29 of the 30 non-primary ones pay
+nothing. `Primary` *is* the filter, so adding one would have duplicated it -
+and `costing/shortcuts.py` therefore needs no rejection list. What the skill
+actually needed was a rate: eight ticks an attempt, the failure experience
+from each shortcut's own `{{Agility info}}`, and the success curve from
+`{{Skilling success chart}}` through the `success_chance` the gathering model
+already had. That replaced `heuristics.SHORTCUT_CYCLE_SECONDS`, an 18-second
+figure whose own comment called it "a stated target, not a measurement",
+chosen so the best shortcut reached ~5,000/hr - so every shortcut is 3.75x
+faster now except where a curve damps it (Edgeville to Varrock Sewers goes
+2,000 to 3,838 rather than 7,500, succeeding 51% at the level it opens).
+25 methods, median 4,500/hr, best 20,625 - still bad, which is the honest
+answer for a door.
+
 **Not every "computed" number is evidence, and the docstrings say which.**
 Thieving's fifteen tabulated stalls come out at exactly 1.00x against the
 scrape, and that is an identity rather than agreement — the wiki's column is

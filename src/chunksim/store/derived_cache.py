@@ -155,7 +155,10 @@ _FORMAT = "1"
 #: has not renamed yet joins the page the wiki moved it to.
 #: 51: Tithe Farm's two lower tiers are computed rather than refused, so
 #: Farming can train at the minigame from 34 instead of 74.
-_PRICING_MODEL = "51"
+#: 52: Agility shortcuts are modelled from the attempt - eight ticks, the
+#: failure experience and the published success curve - not from an 18-second
+#: cycle chosen to make the best one look like 5,000/hr.
+_PRICING_MODEL = "52"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

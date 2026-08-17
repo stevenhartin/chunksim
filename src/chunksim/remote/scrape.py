@@ -169,6 +169,16 @@ def scrape(
     say("agility and thieving tables")
     table_pages = fetch_wiki_pages(list(skill_tables.PAGES), timeout=timeout)
     tables = skill_tables.parse_pages(table_pages)
+    # **A second fetch, because the shortcut list does not price a shortcut.**
+    # It gives a level and an experience; what one attempt is actually worth
+    # needs the failure experience and the success curve, and both live on the
+    # shortcut's own page. ~155 pages, batched like every other page fetch.
+    shortcut_details = skill_tables.parse_shortcut_details(
+        fetch_wiki_pages(
+            list(skill_tables.shortcut_pages(table_pages.get(skill_tables.SHORTCUTS_PAGE, ""))),
+            timeout=timeout,
+        )
+    )
     mark_rate = skill_tables.parse_mark_rate(table_pages.get(skill_tables.ROOFTOP_PAGE, ""))
 
     say("farming crops")
@@ -220,6 +230,7 @@ def scrape(
         task_lengths=lengths,
         superiors=superiors,
         skill_tables=tables,
+        shortcuts=shortcut_details,
         monster_stats=monster_stats,
         spells=spells,
         spell_costs=spell_costs,

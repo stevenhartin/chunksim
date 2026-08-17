@@ -41,7 +41,7 @@ other host, and `costing/` decides what rate a row implies.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, Mapping
 
 import re
 
@@ -266,6 +266,159 @@ def parse_shortcuts(text: str) -> tuple[SkillRow, ...]:
         if level is None or not name or not experience:
             continue
         found.append(SkillRow(name=name, level=level, experience=experience))
+    return tuple(found)
+
+
+#: One `{{Agility info}}` invocation - the shortcut's own level, experience and
+#: failure experience. Non-greedy to the first line-leading `}}`, because the
+#: template's values are one per line and a nested `{{...}}` inside a value
+#: would otherwise end the match early.
+_AGILITY_INFO = re.compile(r"\{\{Agility info(.*?)\n\}\}", re.S | re.I)
+
+#: `|key = value` inside a template body, value ending at the line or the next
+#: pipe. Keys may carry a version index (`xp1`), which is what `_versioned`
+#: reads.
+_INFO_FIELD = re.compile(r"\|\s*([A-Za-z0-9_]+)\s*=\s*([^\n|]*)")
+
+
+@dataclass(frozen=True)
+class ShortcutInfo:
+    """One Agility shortcut, as its own page states it.
+
+    **The table on `Shortcuts` is not enough to price one.** It gives a level
+    and an experience, but a shortcut can *fail*, and a failure pays a
+    different (usually smaller) experience - so the rate depends on a success
+    chance the list does not carry. Each shortcut's own page does: an
+    `{{Agility info}}` box with `xp` and `failxp`, and, where failure is
+    possible at all, a `{{Skilling success chart}}` - the same template
+    `remote/gathering.py` reads for fishing and woodcutting.
+
+    `low`/`high` are that chart's curve, or `None` where the page publishes
+    none. **`None` means the shortcut cannot fail**, which is the reading the
+    wiki intends: it charts a shortcut precisely when there is a chance to
+    miss. Measured on the live page set, 14 of the 64 experience-paying
+    shortcuts have a curve.
+    """
+
+    #: The page (or page + version) name to join on.
+    name: str
+    level: int
+    experience: float
+    fail_experience: float = 0.0
+    low: float | None = None
+    high: float | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "level": self.level,
+            "experience": self.experience,
+            "fail_experience": self.fail_experience,
+            "low": self.low,
+            "high": self.high,
+        }
+
+
+def shortcut_pages(text: str) -> tuple[str, ...]:
+    """Every page the `Shortcuts` list links its object column to.
+
+    The second half of a two-stage fetch: the list names the shortcuts and
+    each shortcut's own page states what one use pays. Deduplicated, because a
+    page carrying several versions (`Pillar (Revenant Caves, easy)` holds all
+    three) is linked once per version.
+    """
+    table = table_with(text, "!Level(s)", "!XP")
+    found: list[str] = []
+    for cells in rows(table):
+        if len(cells) < 3:
+            continue
+        link = re.match(r"\[\[([^\]|#]+)", cells[2].strip())
+        if link:
+            found.append(link.group(1).strip())
+    return tuple(dict.fromkeys(found))
+
+
+def _fields(body: str) -> dict[str, str]:
+    return {key.strip().lower(): value.strip() for key, value in _INFO_FIELD.findall(body)}
+
+
+def parse_agility_info(text: str, page: str) -> tuple[ShortcutInfo, ...]:
+    """Every shortcut `{{Agility info}}` describes on one page.
+
+    **Versioned boxes are the normal case, not the exception.** One page often
+    holds several shortcuts over the same object - `Pillar (Revenant Caves)`
+    has easy, medium and hard - written as `level1`/`xp1`, `level2`/`xp2` and
+    so on. An unversioned box is the single-shortcut form and is read as
+    version zero.
+
+    Each version is named `<page>#<version>` when the box labels it, which is
+    also how the export writes the ones it disambiguates
+    (`Jutting wall (Zanaris)#Medium`). The bare page name is emitted too, so a
+    single-version page joins on the name the list uses.
+
+    Series in the page's success chart are matched to versions **by position**,
+    which is how the template writes them and the only correspondence it
+    offers. A page with one chart and several versions lends that one curve to
+    all of them - right for an object whose versions differ in level rather
+    than in mechanism, which is what these are.
+    """
+    # **Deferred to break a cycle**: `remote/gathering.py` imports this module
+    # for `STALLS_PAGE`, so a top-level import here would close the loop. The
+    # success chart is the one thing these two parsers share.
+    from chunksim.remote.gathering import parse_success_charts
+
+    match = _AGILITY_INFO.search(text)
+    if match is None:
+        return ()
+    fields = _fields(match.group(1))
+    charts = parse_success_charts(text)
+    series = charts[0] if charts else ()
+
+    def curve(index: int) -> tuple[float | None, float | None]:
+        if not series:
+            return (None, None)
+        found = series[index] if index < len(series) else series[0]
+        return (found.low, found.high)
+
+    def number(value: str | None) -> float | None:
+        try:
+            return float(str(value).strip())
+        except (TypeError, ValueError):
+            return None
+
+    found: list[ShortcutInfo] = []
+    indexes = sorted(
+        {key[5:] for key in fields if key.startswith("level") and key[5:].isdigit()},
+        key=int,
+    )
+    for position, index in enumerate(indexes or [""]):
+        experience = number(fields.get(f"xp{index}"))
+        level = number(fields.get(f"level{index}"))
+        if experience is None or level is None:
+            continue
+        low, high = curve(position)
+        version = fields.get(f"version{index}", "")
+        name = f"{page}#{version}" if index and version else page
+        found.append(
+            ShortcutInfo(
+                name=name,
+                level=int(level),
+                experience=experience,
+                fail_experience=number(fields.get(f"failxp{index}"))
+                or number(fields.get("failxp"))
+                or 0.0,
+                low=low,
+                high=high,
+            )
+        )
+    return tuple(found)
+
+
+def parse_shortcut_details(pages: Mapping[str, str]) -> tuple[ShortcutInfo, ...]:
+    """`parse_agility_info` over every fetched shortcut page."""
+    found: list[ShortcutInfo] = []
+    for page, text in sorted(pages.items()):
+        found.extend(parse_agility_info(text, page))
     return tuple(found)
 
 

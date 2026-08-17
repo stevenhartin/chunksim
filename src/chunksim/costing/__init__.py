@@ -39,6 +39,12 @@ The modules, and what each owns:
   tasks is the guard the flip needed, and it is keyed on the recipe chosen, not
   on the item made. Also `trip_seconds`: a bank trip's share, scaled by what an
   action consumes.
+- `shortcuts.py` - an Agility shortcut priced from the attempt: eight ticks,
+  the experience its own page states, the experience a *failure* pays, and the
+  published success curve. Replaced an 18-second cycle whose comment called it
+  "a stated target, not a measurement". **Upstream's `Primary` flag is already
+  the "is this a training method" answer here** - 93 of 162 shortcuts pay
+  nothing and are non-primary, so no filter is needed.
 - `production.py` - what a production method consumes, for the methods no
   `{{Recipe}}` describes, read off `Module:Skill calc` by way of the gathering
   tables. **It supplies a material cost, never a rate**: a calculator row has

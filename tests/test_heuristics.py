@@ -19,7 +19,6 @@ from chunksim.costing.heuristics import (
     DEFAULT_CURRENCY_PER_HOUR,
     burning_rate,
     PICKPOCKET_CYCLE_SECONDS,
-    SHORTCUT_CYCLE_SECONDS,
     DEFAULT_KPH,
     DEFAULT_QUEST_HOURS,
     DEFAULT_XP_PER_HOUR,
@@ -574,10 +573,10 @@ def test_agility_and_thieving_join_the_wiki_tables_structurally() -> None:
     training = config["training"]
 
     assert training["Access the ~|Falador Rooftop Course|~"]["Agility"]["value"] == 35_000.0
-    # A shortcut has no published rate, so it is xp over the stated cycle.
-    assert training["Access the Yanille climbing rocks ~|shortcut|~"]["Agility"][
-        "value"
-    ] == pytest.approx(25.0 * 3600.0 / SHORTCUT_CYCLE_SECONDS)
+    # **A shortcut is priced by `costing/shortcuts.py`, not by this table** -
+    # it needs the failure experience and the success curve, which a
+    # `SkillRow` cannot carry - so the list alone leaves it unrated.
+    assert "Access the Yanille climbing rocks ~|shortcut|~" not in training
     # `Farmer[+]` means "or its variants"; the wiki row is just `Farmer`.
     assert training["Pickpocket a ~|farmer|~"]["Thieving"]["value"] == pytest.approx(
         14.5 * 3600.0 / PICKPOCKET_CYCLE_SECONDS

@@ -85,6 +85,7 @@ from chunksim.remote.prayer import Altar, Bone
 from chunksim.remote.farming import Crop
 from chunksim.remote.skill_tables import (
     COURSE_ALIASES,
+    ShortcutInfo,
     GUARDIAN_SUFFIX,
     TITHE_CATEGORY,
     SkillRow,
@@ -832,13 +833,18 @@ DEFAULT_CURRENCY_PER_HOUR: dict[str, float] = {
     "Mahogany Homes Reward Shop:Points": 100.0,
 }
 
-#: Seconds one shortcut use takes, door to door. **A stated target, not a
-#: measurement**: nothing publishes a shortcut rate, so this is set so that the
-#: best shortcut in the table (25 xp) reaches ~5,000 xp/hr, which is what
-#: spamming one actually yields. Most pay 0.5-3 xp and are worth nothing as
-#: training, which is the honest outcome - they exist in the export as *access*,
-#: and pricing them generously would invent a training method out of a door.
-SHORTCUT_CYCLE_SECONDS = 18.0
+#: How this labels a shortcut rate it computed, in `Rate.match`.
+#:
+#: **The 18-second cycle this replaced was a guess and said so.** Its comment
+#: called it "a stated target, not a measurement", chosen so the best shortcut
+#: in the table reached ~5,000/hr. `costing/shortcuts.py` prices the attempt
+#: instead - eight ticks, the experience its own page states, the experience a
+#: *failure* pays, and the published success curve - and the answers come out
+#: 3.75x higher because the old cycle was 3.75x too long.
+SHORTCUT_MATCH = "modelled"
+
+#: `Rate.source` for a shortcut rate this project computed.
+SHORTCUT_SOURCE = "computed:shortcut"
 
 #: Seconds one pickpocket attempt takes, stuns and failures included.
 #: **Calibrated against the wiki's own published figure**: a Knight of Ardougne
@@ -924,7 +930,11 @@ def burning_rate(experience: float) -> float:
 #: 35.3 hours, which is roughly a third of what the fastest method in the game
 #: can do.
 TABLE_KINDS: dict[str, tuple[tuple[str, float | None], ...]] = {
-    "Agility": (("courses", None), ("shortcuts", SHORTCUT_CYCLE_SECONDS)),
+    # **Shortcuts are gone from here**, priced by `_add_shortcuts` instead:
+    # this machinery turns one experience figure into a rate with a fixed
+    # cycle, and a shortcut needs a failure experience and a success curve
+    # that a `SkillRow` cannot carry.
+    "Agility": (("courses", None),),
     "Thieving": (
         ("stalls", None),
         ("pickpockets", PICKPOCKET_CYCLE_SECONDS),
@@ -1032,6 +1042,110 @@ def _is_tithe(task: str, challenge: dict[str, Any]) -> bool:
     """
     categories = challenge.get("Category")
     return isinstance(categories, list) and TITHE_CATEGORY in categories
+
+
+def shortcut_keys(obj: str) -> tuple[str, ...]:
+    """Names a shortcut object might be filed under, most specific first.
+
+    **The export and the wiki disambiguate the same object differently**, and
+    all three rewrites here are structural rather than fuzzy:
+
+    - `Jutting wall (Zanaris)#Medium` - upstream already writes the version as
+      an anchor, which is exactly `ShortcutInfo.name`'s own form, so this is
+      tried untouched first.
+    - `Railing (Arceuus Library, middle level)` - upstream folds the version
+      into the parenthetical where the wiki keeps a separate page section, so
+      the text after the comma is dropped.
+    - the bare object, for the pages that carry no parenthetical at all.
+
+    A word-overlap join was tried and rejected: it paired "Access the
+    Lighthouse basalt rocks shortcut" with `Rocks (Wyrmscraig)` and put two
+    different Pollnivneach tasks on one row. Nothing here matches on a
+    substring, which is what keeps this an exact join.
+    """
+    keys = [obj]
+    base = obj.split("#", 1)[0].strip()
+    if base != obj:
+        keys.append(base)
+    inside = re.match(r"^(.*?)\s*\(([^)]*)\)\s*$", base)
+    if inside:
+        head, inner = inside.group(1).strip(), inside.group(2)
+        if "," in inner:
+            keys.append(f"{head} ({inner.split(',')[0].strip()})")
+        keys.append(head)
+    return tuple(key for key in dict.fromkeys(keys) if key)
+
+
+def _add_shortcuts(
+    chunk_info: ChunkInfo,
+    shortcuts: Sequence[ShortcutInfo],
+    rated: dict[str, dict[str, Rate]],
+) -> None:
+    """Price every Agility shortcut challenge from `costing/shortcuts.py`.
+
+    **Joined on the export's own `Objects`**, which names the scenery the
+    challenge acts on and is the wiki's page name for it - see `shortcut_keys`
+    for the three ways the two spell it differently. A challenge with no
+    `Objects` cannot be joined at all and keeps nothing; measured on the
+    every-rollable-chunk map that is 32 of 76, and they are the ones upstream
+    names only in prose (`Access the ~|Ardougne log balance|~ shortcut`).
+
+    Read at the level the shortcut *opens*, the conservative end taken
+    everywhere else here - a curve only improves with level, so this is the
+    worst rate a player who can use it at all would see.
+    """
+    # **Imported here rather than at module scope, to break a real cycle.**
+    # `costing/shortcuts.py` needs `gathering.success_chance` and
+    # `costing/gathering.py` imports this module for `Rate`, so a top-level
+    # import makes `heuristics -> shortcuts -> gathering -> heuristics`. Every
+    # other costing module avoids it by not being imported *by* this one; this
+    # is the one layer `build_config` has to reach forward for. Deferred, not
+    # conditional: it always runs.
+    from chunksim.costing import shortcuts as shortcut_model
+
+    index = {info.name.lower(): info for info in shortcuts}
+    # **A versioned page under its bare name too, chosen by level.** `Rocks
+    # (Vampyrium)` is one page holding a 27.5-xp slide at 78 and a 0-xp climb
+    # at 61, so `parse_agility_info` names them `...#Slide` and `...#Climb` -
+    # but the export names the object bare and says which it means with its
+    # own `Level`. Matching on that is exact; picking the better-paying
+    # version would be inventing an answer for a challenge that stated one.
+    versions: dict[str, list[ShortcutInfo]] = {}
+    for info in shortcuts:
+        versions.setdefault(info.name.split("#", 1)[0].lower(), []).append(info)
+    for task, challenge in sorted(_mapping(chunk_info.challenges, "Agility").items()):
+        if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
+            continue
+        # **`Objects` first, then the challenge's other names.** The scenery
+        # is the wiki's own page title and so is the exact key; the fallback
+        # is `_join_keys`, which is what the table join used before this and
+        # is how the handful upstream names only in prose still land.
+        offered = [
+            key
+            for obj in challenge.get("Objects") or []
+            if isinstance(obj, str)
+            for key in shortcut_keys(obj)
+        ] + _join_keys(challenge, task, COURSE_ALIASES)
+        found = next((index[key.lower()] for key in offered if key.lower() in index), None)
+        if found is None:
+            level = challenge.get("Level")
+            found = next(
+                (
+                    info
+                    for key in offered
+                    for info in versions.get(key.lower(), ())
+                    if info.level == level
+                ),
+                None,
+            )
+        if found is None or found.experience <= 0:
+            continue
+        rate = shortcut_model.xp_per_hour(found, found.level)
+        if rate <= 0:
+            continue
+        rated.setdefault(task, {})["Agility"] = Rate(
+            value=rate, source=SHORTCUT_SOURCE, match=SHORTCUT_MATCH
+        )
 
 
 def _add_banded(
@@ -1173,6 +1287,7 @@ def build_config(
     task_lengths: dict[str, dict[str, TaskLength]] | None = None,
     superiors: list[tuple[str, str]] | None = None,
     skill_tables: Mapping[str, Sequence[SkillRow]] | None = None,
+    shortcuts: Sequence[ShortcutInfo] = (),
     monster_stats: Mapping[str, MonsterStats] | None = None,
     spells: Sequence[AttackSpell] = (),
     spell_costs: Mapping[str, SpellCost] | None = None,
@@ -1304,7 +1419,12 @@ def build_config(
     # money-making guide - but an *exact* guide keeps its method, on the same
     # rule that settles every other contest here: the more specific claim wins,
     # and a guide that names the method exactly is as specific as it gets.
-    for task, skills in _table_rates(chunk_info, skill_tables or {}).items():
+    table_rated = _table_rates(chunk_info, skill_tables or {})
+    # **After the tables, so a computed shortcut rate replaces nothing it
+    # should not**: `_table_rates` no longer produces one, and the courses it
+    # does produce join on a different key space entirely.
+    _add_shortcuts(chunk_info, shortcuts, table_rated)
+    for task, skills in table_rated.items():
         for skill, rate in skills.items():
             existing = training.get(task, {}).get(skill)
             if existing is not None and existing.get("match") == "exact":
