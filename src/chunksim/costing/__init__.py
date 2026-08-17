@@ -67,11 +67,19 @@ The modules, and what each owns:
   recovered from the published bands rather than modelled. Bands carry the
   minigame's level, not the rune's, which is what stops a level-1 player being
   offered it.
-- `herblore.py` - the one duration the wiki does not publish: cleaning a grimy
+- `herblore.py` - one of three durations the wiki does not publish (see
+  `recipe_rates.stated_ticks` for the merge): cleaning a grimy
   herb is not tick-gated, so its `{{Recipe}}` carries `ticks = ""` and
   `recipe_rates` refused all eighteen. Timed from the bank cycle instead - 18
   ticks an inventory of 28 - and **detected from the recipes rather than
   listed**, so the `Degrime` spell variants stay out.
+- `fishcutting.py` - the knife, whose output upstream names `Marlin loot` and
+  the wiki has no page for. So the join runs on the **fish going in**, inside
+  this family only, and that displaced a money-making guide about *cooking* a
+  marlin which had been pricing a level-1, two-experience knife action at
+  292,500/hr - the whole Cooking climb on the uber map. Also states the three
+  ticks a knife costs on the three crabs the wiki leaves untimed, which is the
+  wiki's own figure for the same knife on a fish.
 - `chisel.py` - the other untimed duration, and it is **zero**: a dark essence
   block is chiselled *while running* to the blood or soul altar, on a trip the
   rune's own recipe already pays for. Names the one output rather than reaching

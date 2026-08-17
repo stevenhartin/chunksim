@@ -39,7 +39,6 @@ from chunksim.costing import (
     blastmine,
     farming,
     gotr,
-    herblore,
     library,
     artefacts,
     chambers,
@@ -373,7 +372,10 @@ def recipe_priced(
         # from the same join `computed_rates` uses - see
         # `recipe_rates.challenge_experience`.
         made_experience=recipe_rates.challenge_experience(
-            state.chunk_info, recipes, blobs.aliases, herblore.stated_ticks(recipes)
+            state.chunk_info,
+            recipes,
+            blobs.aliases,
+            recipe_rates.stated_ticks(state.chunk_info, recipes),
         ),
         # **The last-resort route.** An intermediate the export has no
         # challenge for is otherwise unreachable however well the wiki
@@ -422,9 +424,11 @@ def recipe_priced(
         recipes,
         seconds,
         blobs.aliases,
-        # **The durations the wiki does not publish.** Cleaning a herb is not
-        # tick-gated, so no page times it - see `costing/herblore.py`.
-        herblore.stated_ticks(recipes),
+        # **The durations the wiki does not publish** - cleaning a herb is not
+        # tick-gated and nothing times a chisel done on the run. See
+        # `recipe_rates.stated_ticks` for the three contributors and why the
+        # merge lives in one place.
+        recipe_rates.stated_ticks(state.chunk_info, recipes),
     )
     # **A recipe's tick cost is also a statement of how long the action takes**,
     # and the item walk needs that separately from the rate: it charges a

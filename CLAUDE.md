@@ -506,6 +506,43 @@ only the item walk can ever read it. Measured over both cached maps and the
 uber one it moves exactly two methods (the figures above) and **no climb at
 all**, the library still owning Runecraft wherever it is reachable.
 
+**A join that misses reads as a gap; a join that hits the *wrong* action
+reads as a fast method.** The export carries both `Cook a ~|marlin|~` - level
+91, 225 experience - and `Cut up a ~|raw marlin|~`, which is level **1** and
+pays **2**. `mmg:Money making guide/Cooking raw marlin` joined both, because
+the guide's own activity normalises to the same words the cut-up's task does,
+so a knife action carried **292,500/hr** and owned the entire Cooking climb
+from 1 to 99 on the uber map. Nothing about that is visible in the output: it
+is a plausible number on a real task from a real guide.
+
+**Four things had to be true before the recipe could displace it**, and each
+is a rule rather than a patch. The join runs on the **fish going in**, because
+upstream names the output `Marlin loot` - a bundle the wiki has no page for -
+and the wiki files the knife under the offcuts it makes (`costing/
+fishcutting.py`; the offcuts output is the other half of the key, since the
+fish alone also reaches the cooked and burnt recipes). An **`(alt)` twin is not
+a second method**: 20 of them in the export, every one with a non-alt twin, and
+every difference a flag or a second route into the same action. An
+**`ActionRate`'s key carries what it is made from**, because the wiki labels a
+variant only where the *method* differs and ten fish make `Fine fish offcuts`
+with an empty label each. And the **family task takes what no species named**,
+which is `variant_candidates`' rule on the input axis. Cooking now has **no
+scraped rate at all** on either cached map or the uber one, and the uber climb
+reads 63.8h against the reference map's 63.8h where it used to read 44.6h.
+
+**A chain that is really one thing being built should not spend the walk's
+depth budget.** Every multi-ingredient pie was unpriced: `Raw fish pie` is
+`Part fish pie (cod)` <- `Part fish pie (trout)` <- `Pie shell` <- `Pastry
+dough` <- its materials, six deep, where `Bake a ~|meat pie|~` is five and
+priced fine. Raising `_MAX_DEPTH` to six did work, and was **rejected on the
+measurement**: 2.5x on the item walk (6.6s to 14.9s on the reference map, 39s
+to 113s on the uber one) to buy the six pies plus an enchant at 52/hr, an
+infernal plate at 249/hr and a lava eel going 9/hr to 2,898. Not charging depth
+for an assembly stage prices the identical six for no runtime at all - the
+same argument a dose hop already makes, and upstream's own `Partial Products`
+category (22 challenges, all Cooking) says which steps qualify rather than a
+guess at which names look like stages.
+
 **Not every "computed" number is evidence, and the docstrings say which.**
 Thieving's fifteen tabulated stalls come out at exactly 1.00x against the
 scrape, and that is an identity rather than agreement — the wiki's column is

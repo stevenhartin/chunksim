@@ -66,6 +66,7 @@ from dataclasses import dataclass, field
 import re
 from typing import Any, Callable, Container, Iterable, Mapping, Sequence
 
+from chunksim.costing import fishcutting
 from chunksim.costing.heuristics import Rate
 from chunksim.derive.task_names import strip_task_markup
 from chunksim.model.chunkinfo import ChunkInfo
@@ -227,15 +228,30 @@ class ActionRate:
     variant: str = ""
 
     @property
-    def key(self) -> tuple[str, str, str]:
-        """What this rate describes: a skill, an item, and *which* way of
-        making it.
+    def key(self) -> tuple[str, str, str, tuple[str, ...]]:
+        """What this rate describes: a skill, an item, *which* way of making
+        it, and what it is made from.
 
         The variant is in here because it is the whole question `_ambiguous`
         asks. Keyed on the item alone, the two ways of smelting a bar are one
         answer given twice; keyed on the recipe, they are two answers.
+
+        **The materials are in here for the same reason and were missing.**
+        The wiki labels a variant only where the *method* differs (a furnace
+        against a Blast Furnace); where the difference is what goes in, every
+        recipe carries an empty label. Ten fish make `Fine fish offcuts`, so
+        four cut-up tasks that had each correctly chosen their own fish still
+        read as one recipe describing four methods - and `apply`'s guard then
+        held a money-making guide about *cooking* a marlin over the recipe for
+        the knife. Two recipes differing only in their input are two answers,
+        exactly as two differing only in their variant are.
         """
-        return (self.skill, self.output.lower(), self.variant.lower())
+        return (
+            self.skill,
+            self.output.lower(),
+            self.variant.lower(),
+            tuple(sorted(name.lower() for name in self.materials)),
+        )
 
     @property
     def performing_seconds(self) -> float:
@@ -508,6 +524,75 @@ def with_aliases(
     return merged
 
 
+def stated_ticks(
+    chunk_info: ChunkInfo, recipes: Mapping[str, Sequence[Recipe]]
+) -> dict[str, float]:
+    """Every duration this project states where the wiki publishes none.
+
+    **One answer, because three callers ask it.** `computed_rates`,
+    `challenge_experience` and the item walk's own recipe corpus
+    (`estimate._setup`) each need to know how long an untimed action takes,
+    and three copies of the merge is three chances for the walk and the rate
+    layer to disagree about the same recipe.
+
+    Each contributor fills only where the wiki says nothing, so a published
+    tick cost is never overwritten: `herblore` states the bank cycle a clean
+    herb costs, `chisel` states the zero a dark essence block costs on a run
+    already paid for, and `fishcutting` states the three ticks a knife costs
+    on a crab - the wiki's own figure for the same knife on a fish.
+    """
+    # Deferred: `estimate` imports this module for the merge and `chisel`,
+    # `herblore` and `fishcutting` are leaves, but keeping the imports local
+    # documents that nothing here depends on their module state.
+    from chunksim.costing import chisel, fishcutting as cutting, herblore
+
+    found = dict(herblore.stated_ticks(recipes))
+    found.update(chisel.stated_ticks(recipes))
+    for skill, rows in recipes.items():
+        challenges = _mapping(chunk_info.challenges, skill)
+        found.update(cutting.stated_ticks(challenges, list(rows)))
+    return found
+
+
+def _joined(
+    task: str,
+    challenge: Mapping[str, Any],
+    by_output: Mapping[str, Sequence[Recipe]],
+    siblings: Mapping[str, tuple[str, ...]],
+    cuts: Mapping[str, tuple[Recipe, ...]],
+) -> tuple[str, tuple[Recipe, ...]] | None:
+    """`(output, recipes)` for one challenge, or `None` where nothing joins.
+
+    **One answer to "which recipe is this challenge", shared.**
+    `computed_rates` and `challenge_experience` both ask it, and the second's
+    docstring already said a second answer is the thing most likely to drift -
+    so there is one.
+
+    The cut-up family is checked first because its key is not an `Output` at
+    all: upstream names a knife action's output `Marlin loot`, a bundle the
+    wiki has no page for, so the join runs on the fish going in instead. See
+    `costing/fishcutting.py` for why that is safe only inside this family.
+    """
+    cut = cuts.get(task)
+    if cut is not None:
+        # The recipe's own output stands in as the key, since upstream's is a
+        # bundle name nothing else answers to.
+        return cut[0].output, cut
+    keys = join_keys(challenge, task)
+    output = next((key for key in keys if key.lower() in by_output), None)
+    if output is None:
+        return None
+    candidates = variant_candidates(
+        task, by_output[output.lower()], siblings.get(output.lower(), ())
+    )
+    if output in fishcutting.CUT_OUTPUTS:
+        # The family task takes what no species-specific one named - see
+        # `fishcutting.unclaimed`, which is `variant_candidates`' own rule
+        # applied to the fish going in rather than the wiki's variant label.
+        candidates = fishcutting.unclaimed(candidates, cuts)
+    return output, candidates
+
+
 def challenge_experience(
     chunk_info: ChunkInfo,
     recipes: Mapping[str, Sequence[Recipe]],
@@ -535,16 +620,14 @@ def challenge_experience(
         if not isinstance(challenges, dict):
             continue
         siblings = _siblings(challenges, by_output)
+        cuts = fishcutting.cut_recipes(challenges, list(rows))
         for task, challenge in challenges.items():
             if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
                 continue
-            keys = join_keys(challenge, task)
-            output = next((key for key in keys if key.lower() in by_output), None)
-            if output is None:
+            joined = _joined(task, challenge, by_output, siblings, cuts)
+            if joined is None:
                 continue
-            candidates = variant_candidates(
-                task, by_output[output.lower()], siblings.get(output.lower(), ())
-            )
+            output, candidates = joined
             # **Per unit of output, and the lowest of them.** Superglass Make
             # pays 180 experience and returns 28.8 molten glass, so a bare
             # `max(experience)` credited nine times what a piece is worth and
@@ -621,19 +704,17 @@ def computed_rates(
         by_output = with_aliases(by_output, aliases)
         challenges = _mapping(chunk_info.challenges, skill)
         siblings = _siblings(challenges, by_output)
+        cuts = fishcutting.cut_recipes(challenges, list(rows))
         offered = found = 0
         for task in sorted(valid.get(skill) or {}):
             challenge = challenges.get(task)
             if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
                 continue
             offered += 1
-            keys = join_keys(challenge, task)
-            output = next((key for key in keys if key.lower() in by_output), None)
-            if output is None:
+            joined = _joined(task, challenge, by_output, siblings, cuts)
+            if joined is None:
                 continue
-            candidates = variant_candidates(
-                task, by_output[output.lower()], siblings.get(output.lower(), ())
-            )
+            output, candidates = joined
             chosen = rate_for(candidates, input_seconds, stated_ticks)
             if chosen is None:
                 dropped.append(task)
@@ -713,10 +794,29 @@ def refuse_dropped(
     return kept
 
 
+#: Upstream's marker for a second way into an action it already lists.
+ALT_SUFFIX = " (alt)"
+
+
+def base_task(task: str) -> str:
+    """`task` without upstream's `(alt)` marker.
+
+    **An `(alt)` twin is bookkeeping, not a second method.** Measured over the
+    whole export there are 20 of them, **every one** has a non-alt twin, and
+    every difference between a pair is a flag or a second route into the same
+    action - `ManualNonProcessing` on the fish cut-ups, `ForestryXp` on the
+    felling axes, a `Tasks` gate naming the other skill on the rations. Not
+    one names a different thing made. So two rates that differ only by this
+    suffix are one method seen twice, and `_ambiguous` must not read the pair
+    as a recipe that cannot say which task it describes.
+    """
+    return task[: -len(ALT_SUFFIX)] if task.endswith(ALT_SUFFIX) else task
+
+
 def _ambiguous(
     computed: Mapping[str, ActionRate],
-) -> frozenset[tuple[str, str, str]]:
-    """The `ActionRate.key`s more than one task landed on - see `apply`.
+) -> frozenset[tuple[str, str, str, tuple[str, ...]]]:
+    """The `ActionRate.key`s more than one *method* landed on - see `apply`.
 
     Computed from the rates themselves rather than passed in, because an
     `ActionRate` already records the recipe it joined: a second source of
@@ -727,11 +827,16 @@ def _ambiguous(
     twelve bar pairs read as ambiguous when `variant_candidates` has already
     told them apart - the guard would then hold a rate against a scrape on the
     strength of a collision that no longer exists.
+
+    **And a method, not a task**: see `base_task`. `Cut up a ~|raw marlin|~`
+    and its `(alt)` twin are one action listed twice, and counting them as two
+    held a money-making guide about *cooking* the fish over the recipe that
+    describes the knife.
     """
-    seen: dict[tuple[str, str, str], int] = {}
-    for rate in computed.values():
-        seen[rate.key] = seen.get(rate.key, 0) + 1
-    return frozenset(key for key, count in seen.items() if count > 1)
+    seen: dict[tuple[str, str, str, tuple[str, ...]], set[str]] = {}
+    for task, rate in computed.items():
+        seen.setdefault(rate.key, set()).add(base_task(task))
+    return frozenset(key for key, tasks in seen.items() if len(tasks) > 1)
 
 
 def apply(

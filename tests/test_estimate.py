@@ -2294,7 +2294,7 @@ def test_a_stated_duration_reaches_the_walk_before_the_default_does() -> None:
     from chunksim.costing.estimate import _recipe_hours, _setup
 
     source = inspect.getsource(_setup)
-    assert "chisel.stated_ticks" in source and "herblore.stated_ticks" in source
+    assert "recipe_rates.stated_ticks" in source, "one merge, not three copies"
     assert source.index("stated_ticks") < source.index("by_output[key]"), (
         "the durations must be applied before the corpus is flattened"
     )
@@ -2321,6 +2321,56 @@ def test_a_stated_duration_reaches_the_walk_before_the_default_does() -> None:
     assert free is not None and free.hours == 0.0
     assert unknown is not None
     assert unknown.hours == pytest.approx(DEFAULT_ACTION_SECONDS / 3600.0)
+
+
+def test_an_assembly_stage_costs_no_depth() -> None:
+    """**A chain that is really one thing being built must not spend the
+    budget.** `Raw fish pie` is `Part fish pie (cod)` <- `Part fish pie
+    (trout)` <- `Pie shell` <- `Pastry dough` <- its materials, so at
+    `_MAX_DEPTH` every multi-ingredient pie reported no route while `Bake a
+    ~|meat pie|~`, one ingredient shallower, priced fine.
+
+    Raising the bound to six also worked and was rejected: it cost 2.5x on the
+    item walk and bought, besides the pies, an enchant at 52/hr, an infernal
+    plate at 249/hr and a lava eel going 9/hr to 2,898. Not charging depth for
+    an assembly stage prices the identical six for no runtime at all.
+
+    Upstream's own `Partial Products` category is the authority - 22
+    challenges, all Cooking - rather than a guess at which names look like
+    stages."""
+    import inspect
+
+    from chunksim.costing.estimate import _partial_products, _recipe_hours, _route_hours
+
+    info = ChunkInfo(
+        {
+            "chunks": {},
+            "sections": {},
+            "challenges": {
+                "Cooking": {
+                    "Make a ~|raw fish pie|~": {
+                        "Category": ["Partial Products"],
+                        "Output": "Raw fish pie",
+                        "Items": ["Part fish pie (cod)*", "Potato*"],
+                        "Primary": True,
+                    },
+                    "Bake a ~|fish pie|~": {
+                        "Output": "Fish pie",
+                        "Items": ["Raw fish pie*"],
+                        "Primary": True,
+                    },
+                }
+            },
+        }
+    )
+
+    assert _partial_products(info) == frozenset({"raw fish pie"}), (
+        "the category names the stage, and only the stage"
+    )
+    for source in (inspect.getsource(_route_hours), inspect.getsource(_recipe_hours)):
+        assert "walk.partial_products" in source, (
+            "which route the walk takes must not change how far it can see"
+        )
 
 
 def test_the_walk_chases_a_chain_five_deep() -> None:

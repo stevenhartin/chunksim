@@ -173,7 +173,7 @@ from chunksim.model.experience import (
     xp_for_level,
 )
 from chunksim.costing.combat_xp import COMBAT_SKILLS, hitpoints_credit, slayer_credit
-from chunksim.costing import chisel, herblore, herbs
+from chunksim.costing import herbs, recipe_rates
 from chunksim.remote.recipes import Recipe
 from chunksim.costing.farming import (
     DEFAULT_HARVESTS_PER_DAY,
@@ -222,6 +222,19 @@ BUCKETS = ("quests", "boss drops", "activities", "skilling")
 #: Cycles are stopped by the visited set rather than by this, so what the
 #: bound really buys is a limit on work; measured, the whole suite is
 #: unchanged in runtime at five.
+#:
+#: **Six was tried and rejected, which is worth writing down.** Every
+#: multi-ingredient pie needed it - `Raw fish pie` is `Part fish pie (cod)` <-
+#: `Part fish pie (trout)` <- `Pie shell` <- `Pastry dough` <- its materials -
+#: and raising the bound did price all six. It also cost **2.5x** on the item
+#: walk (6.6s to 14.9s on the reference map, 39s to 113s on the uber one) and
+#: bought, besides the pies, exactly three things: an enchant at 52/hr, an
+#: infernal plate at 249/hr and a lava eel going 9/hr to 2,898. None of those
+#: could win a band. So the pies were reached the other way instead, by not
+#: charging depth for an assembly stage at all (`_Walk.partial_products`),
+#: which prices the identical six for no runtime at all. **A chain that is
+#: really one thing being built should not be spending this budget**, and
+#: raising the bound to accommodate it pays for every unrelated search too.
 _MAX_DEPTH = 5
 
 #: Routes that cost no meaningful time once reachable: a shop purchase and a
@@ -609,6 +622,20 @@ class _Walk:
     #: upstream lists no Runecraft challenge, and `Dark essence fragments` had
     #: no route at all on a map holding the Dark Altar.
     recipes: Mapping[str, tuple[Recipe, ...]] = field(default_factory=dict)
+    #: Every output upstream files under its `Partial Products` category,
+    #: lowercased. **A hop into one of these spends no `_MAX_DEPTH`**, for the
+    #: reason a dose hop does not (`_dose_hours`): the bound is on how many
+    #: *recipes* the walk will chain, and a part pie is the same dish one
+    #: stage earlier rather than a tier of crafting. `Raw fish pie` is
+    #: `Part fish pie (cod)` <- `Part fish pie (trout)` <- `Pie shell`, three
+    #: hops that assemble one pie, and charging each a level left every
+    #: multi-ingredient pie with no route at all while `Bake a ~|meat pie|~`,
+    #: one ingredient shallower, priced fine. Cycles are stopped by `seen`,
+    #: which already holds every item visited, so nothing is lost by not
+    #: counting these. Upstream's own category is the authority - 22
+    #: challenges, all Cooking - rather than a guess at which names look like
+    #: stages.
+    partial_products: frozenset[str] = frozenset()
     #: `{herb: seconds}` from `costing/herbs.py`. **Checked before the routes**,
     #: like currency, because both routes the walk would otherwise take are
     #: wrong on their own: farming priced at the clicking ignores the eighty
@@ -915,12 +942,17 @@ def _recipe_hours(
             if material.name in seen:
                 failed = True
                 break
+            # An assembly stage costs no depth here either - the wiki
+            # describes the same part-pie ladder the export does, and which
+            # route the walk happens to take must not change how far it can
+            # see. See `_Walk.partial_products`.
+            step = depth if material.name.lower() in walk.partial_products else depth + 1
             priced = _item_hours(
                 walk,
                 material.name,
                 quantity=quantity * material.quantity / made,
                 amortise=amortise,
-                depth=depth + 1,
+                depth=step,
                 seen=seen,
             )
             if priced is None:
@@ -1231,12 +1263,19 @@ def _route_hours(
         for required in challenge.get("Items") or ():
             if not isinstance(required, str):
                 continue
+            wanted = required.replace("*", "")
+            # **An assembly stage costs no depth** - see
+            # `_Walk.partial_products`, and `_dose_hours` for the precedent.
+            # Only the stage itself: the ingredient it is being combined with
+            # is an ordinary material with a route of its own, so a potato
+            # still costs a level.
+            step = depth if wanted.lower() in walk.partial_products else depth + 1
             priced = _item_hours(
                 walk,
-                required.replace("*", ""),
+                wanted,
                 quantity=quantity,
                 amortise=amortise,
-                depth=depth + 1,
+                depth=step,
                 seen=seen,
             )
             if priced is None:
@@ -1696,6 +1735,30 @@ def _challenge_outputs(
     return found
 
 
+#: Upstream's own category for a dish part-way through being assembled.
+_PARTIAL_PRODUCTS = "Partial Products"
+
+
+def _partial_products(chunk_info: ChunkInfo) -> frozenset[str]:
+    """Every `Partial Products` output, lowercased - see `_Walk.partial_products`.
+
+    Read from the whole export rather than a map's valid set, because whether
+    a part pie is a stage of one dish is a fact about the game rather than
+    about which chunks are held.
+    """
+    found: set[str] = set()
+    for category in chunk_info.challenges:
+        for entry in _mapping(chunk_info.challenges, category).values():
+            if not isinstance(entry, dict):
+                continue
+            if _PARTIAL_PRODUCTS not in (entry.get("Category") or ()):
+                continue
+            output = entry.get("Output")
+            if isinstance(output, str) and output.strip():
+                found.add(output.strip().lower())
+    return frozenset(found)
+
+
 def _setup(
     state: MapState,
     derived: Derived,
@@ -1764,6 +1827,7 @@ def _setup(
         chunk_info=state.chunk_info,
         world=world,
         heuristics=heuristics,
+        partial_products=_partial_products(state.chunk_info),
         tables=_mapping(state.chunk_info.code_items, "dropTables"),
         by_lower={item.lower(): item for item in world.item_sources},
         available=providers,
@@ -1800,13 +1864,11 @@ def _setup(
     #
     # **The stated durations are applied here rather than downstream**, so the
     # walk and `recipe_rates.rate_for` read one corpus and cannot disagree
-    # about how long an untimed action takes. Both modules fill only where the
-    # wiki publishes nothing: `herblore` states the bank cycle a clean herb
-    # costs, `chisel` states the zero a dark essence block costs on a run
-    # already being paid for. Anything still untimed falls back to
-    # `DEFAULT_ACTION_SECONDS` inside `_recipe_hours`, which is where an
-    # unknown belongs.
-    stated = {**herblore.stated_ticks(recipes or {}), **chisel.stated_ticks(recipes or {})}
+    # about how long an untimed action takes - `recipe_rates.stated_ticks` is
+    # the one merge and says which modules fill it. Anything still untimed
+    # falls back to `DEFAULT_ACTION_SECONDS` inside `_recipe_hours`, which is
+    # where an unknown belongs.
+    stated = recipe_rates.stated_ticks(state.chunk_info, recipes or {})
     by_output: dict[str, tuple[Recipe, ...]] = {}
     for rows in (recipes or {}).values():
         for made in rows:

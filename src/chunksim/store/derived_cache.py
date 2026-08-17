@@ -192,7 +192,10 @@ _FORMAT = "1"
 #: 67: stated durations are applied to the recipe corpus the walk reads, so
 #: chiselling a dark essence block costs nothing (`costing/chisel.py`) and a
 #: clean herb costs the bank cycle rather than the default action.
-_PRICING_MODEL = "67"
+#: 68: Cooking - an assembly stage costs no walk depth, the knife cut-ups join
+#: on the fish going in, an `(alt)` twin is not a second method, and an
+#: `ActionRate`'s key carries what it is made from.
+_PRICING_MODEL = "68"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

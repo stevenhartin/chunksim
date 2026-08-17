@@ -460,6 +460,57 @@ def test_one_recipe_reaching_two_tasks_is_still_ambiguous() -> None:
     assert merged[_SUPERHEAT]["Smithing"].value == 4_960.0
 
 
+def test_two_inputs_to_one_output_are_not_ambiguous_either() -> None:
+    """**The same defect one axis over.** The wiki labels a variant only where
+    the *method* differs; where the difference is what goes in, every recipe
+    carries an empty label. Ten fish make `Fine fish offcuts`, so four cut-up
+    tasks that had each correctly chosen their own fish still read as one
+    recipe describing four methods - and the guard then held a money-making
+    guide about *cooking* a marlin over the recipe for the knife."""
+    def rate(task: str, fish: str, xp_per_hour: float) -> ActionRate:
+        return ActionRate(
+            task=task, skill="Cooking", xp_per_hour=xp_per_hour, experience=2.0,
+            ticks=3, input_seconds=0.0, output="Fine fish offcuts",
+            materials=(fish,),
+        )
+
+    marlin, yellowfin = "Cut up a ~|raw marlin|~", "Cut up a ~|raw yellowfin|~"
+    computed = {
+        marlin: rate(marlin, "Raw marlin", 718.0),
+        yellowfin: rate(yellowfin, "Raw yellowfin", 1_009.0),
+    }
+    guide = {"Cooking": Rate(292_500.0, "mmg:Cooking raw marlin", "exact")}
+
+    merged = apply({marlin: guide, yellowfin: guide}, computed)
+
+    assert merged[marlin]["Cooking"].value == 718.0
+    assert merged[marlin]["Cooking"].match == COMPUTED_MATCH
+    assert merged[yellowfin]["Cooking"].value == 1_009.0
+
+
+def test_an_alt_twin_is_not_a_second_method() -> None:
+    """Measured over the whole export there are 20 `(alt)` tasks, every one has
+    a non-alt twin, and every difference between a pair is a flag or a second
+    route into the same action - never a different thing made. Counting the
+    pair as two methods was the other half of what held the marlin's guide."""
+    base = "Cut up a ~|raw marlin|~"
+    alt = f"{base} (alt)"
+
+    def rate(task: str) -> ActionRate:
+        return ActionRate(
+            task=task, skill="Cooking", xp_per_hour=718.0, experience=2.0,
+            ticks=3, input_seconds=0.0, output="Fine fish offcuts",
+            materials=("Raw marlin",),
+        )
+
+    guide = {"Cooking": Rate(292_500.0, "mmg:Cooking raw marlin", "exact")}
+
+    merged = apply({base: guide, alt: guide}, {base: rate(base), alt: rate(alt)})
+
+    assert merged[base]["Cooking"].value == 718.0
+    assert merged[alt]["Cooking"].value == 718.0
+
+
 def test_an_alias_registers_beside_the_name_the_wiki_renamed() -> None:
     """`Bronze javelin heads` became `Bronze javelin tips` on 5 November 2025;
     upstream's export still says `heads`, so the exact join found nothing until
