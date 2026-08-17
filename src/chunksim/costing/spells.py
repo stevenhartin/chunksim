@@ -1,0 +1,195 @@
+"""A cast priced from the wiki's own speed, for the spells nothing else reaches.
+
+**Magic was the worst-covered skill in the project and the missing number was
+one field.** The export lists 175 primary Magic challenges and 57 of them had a
+rate; the rest were `Cast ~|high level alchemy|~` and its kind - the archetypal
+Magic training method, absent entirely. What was already here is the *cost*:
+`infobox_spell` states the runes a cast eats, and `heuristics.spell_materials`
+has been joining them onto the export's `Cast ...` tasks for a while, 190 of
+214. What was missing is how long a cast takes, and the infobox states that
+too, as `|speed = 5 ticks`.
+
+**It is not in the Bucket, which is why nobody had it.** `infobox_spell`
+exposes six fields - cost, exp, level, slayerlevel, spellbook, type - and a
+duration is not among them, so `chunksim heuristics` now sends the same page
+names back through `fetch_wiki_pages` and reads the line. Four batched requests
+for 201 pages; 200 state a speed and 156 of the export's 190 joined tasks end
+up timed.
+
+### Only utility spells, and upstream's own field says which
+
+The infobox's `type` splits the 190 into **Combat 86, Utility 53, Teleport
+51**, and only one of those three has a speed that is the whole cost of a cast:
+
+- **Utility** is a spell aimed at an item in your inventory - alchemy,
+  superheat, the enchants, charge orbs, bones to bananas, plank make, tan
+  leather. You cast, the item changes, you cast again. `speed` is the loop.
+- **Teleport** is the animation and nothing else. `Cast ~|camelot teleport|~`
+  is 3 ticks to leave and then however long it takes to get back somewhere you
+  can cast it again, which no page states. Priced on the animation alone a
+  teleport reads 111,000/hr, and the money-making guides that do cover four of
+  them imply about 270 casts an hour rather than 2,000. **Refused**: the speed
+  is real and it is not the method.
+- **Combat** belongs to `costing/combat_xp.py`, which prices a cast against a
+  monster with the gear, the gates and the kill in it. A bare cast speed here
+  would be a second, worse answer to a question already answered - and the
+  page's own `(N on autocast)` aside is the giveaway that the manual figure is
+  not the combat cadence.
+
+### The materials are the export's, not the infobox's
+
+`spell_materials` carries the runes, and the runes are not the whole cost:
+`Cast ~|bones to bananas|~` eats a **big bone**, `Cast ~|lvl-3 enchant|~` a
+piece of ruby jewellery, `Smelt a ~|steel bar|~ with superheat item` an iron
+ore and a coal. Upstream lists every one of them in the challenge's own
+`Items`, so that is what is charged - through the same `input_seconds` closure
+`recipe_rates` uses, so the walk answers "how long to get a big bone" once and
+both layers spend the same answer. Priced on runes alone bones to bananas
+reads 150,000/hr, which is a spell that would have won the whole climb.
+
+**So the rate is all-inclusive and says so.** `SPELL_SOURCE` joins
+`RECIPE_SOURCE` in `training._ALL_INCLUSIVE_SOURCES`: the figure already has
+the materials in it and `material_seconds_per_xp` must not add them again.
+
+### Where it sits: under the recipes, over the scrape
+
+`apply` runs *after* `recipe_rates.apply` and fills only what that left at the
+floor or on a guide - the same `REPLACEABLE` whitelist, imported rather than
+restated. A recipe knows which variant of an action it describes and carries
+its own tick cost; where both reach a task the recipe is the more specific
+claim. Where nothing reaches it, a cast timed by the wiki and charged by the
+export beats a money-making guide, which is the layering's standing rule.
+
+Pure: the challenges, the costs and the pricing closure all come in as
+arguments.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Callable, Mapping
+
+from chunksim.costing.heuristics import MaterialCost, Rate
+from chunksim.costing.recipe_rates import REPLACEABLE
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.model.summary import _mapping
+
+#: What this labels its rates. A separate source from `recipe`'s because the
+#: two are separate claims, and because `training._ALL_INCLUSIVE_SOURCES` has
+#: to name it.
+SPELL_SOURCE = "spell"
+
+#: The tier a spell rate lands at - the same one a recipe rate uses, since both
+#: are this project computing an answer rather than reading one.
+SPELL_MATCH = "computed"
+
+#: The one `infobox_spell` type whose stated speed is the whole cost of a cast.
+#: See the module docstring for why the other two are refused rather than
+#: approximated.
+PRICED_KIND = "Utility"
+
+#: One game tick, in seconds.
+TICK_SECONDS = 0.6
+
+#: Upstream's marker for an item a challenge consumes rather than merely needs.
+#: Stripped before pricing, exactly as `estimate._route_hours` strips it.
+CONSUMED = "*"
+
+
+def castable(costs: Mapping[str, MaterialCost]) -> dict[str, MaterialCost]:
+    """The entries this module will price: utility spells with a stated speed.
+
+    A zero speed is dropped with the untimed ones. Magic Imbue states `0
+    ticks`, and an action priced at no time is the fastest method in the game -
+    the same refusal `recipe_rates.rate_for` makes of an untimed recipe.
+    """
+    return {
+        task: cost
+        for task, cost in costs.items()
+        if cost.kind == PRICED_KIND
+        and cost.ticks is not None
+        and cost.ticks > 0
+        and cost.experience > 0
+    }
+
+
+def cast_seconds(cost: MaterialCost) -> float:
+    """Seconds one cast takes, before its materials."""
+    return (cost.ticks or 0.0) * TICK_SECONDS
+
+
+def rate_for(
+    challenge: Mapping[str, Any],
+    cost: MaterialCost,
+    input_seconds: Callable[[str, float], float | None],
+) -> float | None:
+    """Experience an hour for one cast, or `None` where an input has no route.
+
+    **Refused rather than quoted**, on the rule `recipe_rates.rate_for` states:
+    tick-math over inputs nothing can price is a made-up number, and the
+    inputs in question are exactly the ones too hard to price.
+    """
+    seconds = cast_seconds(cost)
+    for item in challenge.get("Items") or ():
+        if not isinstance(item, str):
+            continue
+        priced = input_seconds(item.replace(CONSUMED, "").strip(), 1.0)
+        if priced is None:
+            return None
+        seconds += priced
+    if seconds <= 0:
+        return None
+    return cost.experience * 3600.0 / seconds
+
+
+def computed_rates(
+    chunk_info: ChunkInfo,
+    valid: Mapping[str, Mapping[str, Any]],
+    costs: Mapping[str, MaterialCost],
+    input_seconds: Callable[[str, float], float | None],
+) -> dict[str, float]:
+    """`{task: experience an hour}` for every reachable utility spell.
+
+    Only methods in `valid`, so this inherits the derivation's reachability
+    gate rather than inventing a second one - and only `Primary` ones, since a
+    challenge upstream does not call a training method is not one here either.
+    """
+    challenges = _mapping(chunk_info.challenges, "Magic")
+    priced: dict[str, float] = {}
+    for task, cost in castable(costs).items():
+        if task not in (valid.get("Magic") or {}):
+            continue
+        challenge = challenges.get(task)
+        if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
+            continue
+        rate = rate_for(challenge, cost, input_seconds)
+        if rate is not None and rate > 0:
+            priced[task] = rate
+    return priced
+
+
+def apply(
+    training: Mapping[str, Mapping[str, Rate]],
+    computed: Mapping[str, float],
+    pinned: frozenset[str] = frozenset(),
+) -> dict[str, dict[str, Rate]]:
+    """`training` with a spell rate wherever nothing better already describes it.
+
+    **Run after `recipe_rates.apply` and sharing its whitelist.** A recipe
+    knows which variant of an action it describes and carries its own tick
+    cost, so where both reach a task the recipe is the more specific claim and
+    keeps it; `REPLACEABLE` is imported rather than restated so the two
+    layers cannot drift about what a computed rate may overwrite.
+
+    A hand pin outranks both, as everywhere else.
+    """
+    merged = {task: dict(skills) for task, skills in training.items()}
+    for task, value in computed.items():
+        if task in pinned:
+            continue
+        existing = merged.get(task, {}).get("Magic")
+        if existing is not None and existing.match not in REPLACEABLE:
+            continue
+        merged.setdefault(task, {})["Magic"] = Rate(
+            value=value, source=SPELL_SOURCE, match=SPELL_MATCH
+        )
+    return merged

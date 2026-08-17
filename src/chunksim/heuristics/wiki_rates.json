@@ -1,6 +1,6 @@
 {
   "name": "wiki_rates",
-  "fetched_at": "2026-08-17T18:01:01.972486+00:00",
+  "fetched_at": "2026-08-17T22:18:49.967676+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "quests": {
@@ -12236,14 +12236,17 @@
           "Body rune": 4.0,
           "Nature rune": 3.0,
           "Soul rune": 1.0
-        }
+        },
+        "kind": "Utility"
       },
       "Cast ~|annakarl teleport|~": {
         "experience": 100.0,
         "items": {
           "Blood rune": 2.0,
           "Law rune": 2.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 5.0
       },
       "Cast ~|ape atoll teleport (arceuus)|~": {
         "experience": 100.0,
@@ -12251,7 +12254,9 @@
           "Blood rune": 2.0,
           "Law rune": 2.0,
           "Soul rune": 2.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|ape atoll teleport|~": {
         "experience": 74.0,
@@ -12260,21 +12265,27 @@
           "Fire rune": 2.0,
           "Law rune": 2.0,
           "Water rune": 2.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|arceuus library teleport|~": {
         "experience": 9.0,
         "items": {
           "Earth rune": 2.0,
           "Law rune": 1.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|ardougne teleport|~": {
         "experience": 61.0,
         "items": {
           "Law rune": 2.0,
           "Water rune": 2.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|astral contact|~": {
         "experience": 63.0,
@@ -12282,7 +12293,9 @@
           "Air rune": 2.0,
           "Astral rune": 1.0,
           "Cosmic rune": 1.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 8.0
       },
       "Cast ~|bake pie|~": {
         "experience": 60.0,
@@ -12290,7 +12303,9 @@
           "Astral rune": 1.0,
           "Fire rune": 5.0,
           "Water rune": 4.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 3.0
       },
       "Cast ~|barbarian teleport|~": {
         "experience": 76.0,
@@ -12298,7 +12313,9 @@
           "Astral rune": 2.0,
           "Fire rune": 3.0,
           "Law rune": 2.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|barrows teleport|~": {
         "experience": 90.0,
@@ -12306,14 +12323,17 @@
           "Blood rune": 1.0,
           "Law rune": 2.0,
           "Soul rune": 2.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|basic reanimation|~": {
         "experience": 32.0,
         "items": {
           "Body rune": 4.0,
           "Nature rune": 2.0
-        }
+        },
+        "kind": "Utility"
       },
       "Cast ~|battlefront teleport|~": {
         "experience": 19.0,
@@ -12321,7 +12341,8 @@
           "Earth rune": 1.0,
           "Fire rune": 1.0,
           "Law rune": 1.0
-        }
+        },
+        "kind": "Teleport"
       },
       "Cast ~|bind|~": {
         "experience": 31.0,
@@ -12329,7 +12350,9 @@
           "Earth rune": 3.0,
           "Nature rune": 2.0,
           "Water rune": 3.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|blood barrage|~": {
         "experience": 51.0,
@@ -12337,14 +12360,18 @@
           "Blood rune": 4.0,
           "Death rune": 4.0,
           "Soul rune": 1.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|blood blitz|~": {
         "experience": 45.0,
         "items": {
           "Blood rune": 4.0,
           "Death rune": 2.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|blood burst|~": {
         "experience": 39.0,
@@ -12352,7 +12379,9 @@
           "Blood rune": 2.0,
           "Chaos rune": 4.0,
           "Death rune": 2.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|blood rush|~": {
         "experience": 33.0,
@@ -12360,7 +12389,9 @@
           "Blood rune": 1.0,
           "Chaos rune": 2.0,
           "Death rune": 2.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|bones to bananas|~": {
         "experience": 25.0,
@@ -12368,7 +12399,9 @@
           "Earth rune": 2.0,
           "Nature rune": 1.0,
           "Water rune": 2.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 1.0
       },
       "Cast ~|bones to peaches|~": {
         "experience": 35.5,
@@ -12376,7 +12409,9 @@
           "Earth rune": 4.0,
           "Nature rune": 2.0,
           "Water rune": 4.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 1.0
       },
       "Cast ~|boost potion share|~": {
         "experience": 88.0,
@@ -12384,21 +12419,26 @@
           "Astral rune": 3.0,
           "Earth rune": 12.0,
           "Water rune": 10.0
-        }
+        },
+        "kind": "Combat"
       },
       "Cast ~|camelot teleport|~": {
         "experience": 55.5,
         "items": {
           "Air rune": 5.0,
           "Law rune": 1.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|carrallanger teleport|~": {
         "experience": 94.0,
         "items": {
           "Law rune": 2.0,
           "Soul rune": 2.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 5.0
       },
       "Cast ~|catherby teleport|~": {
         "experience": 92.0,
@@ -12406,7 +12446,9 @@
           "Astral rune": 3.0,
           "Law rune": 3.0,
           "Water rune": 10.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|cemetery teleport|~": {
         "experience": 82.0,
@@ -12414,7 +12456,9 @@
           "Blood rune": 1.0,
           "Law rune": 1.0,
           "Soul rune": 1.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|charge air orb|~": {
         "experience": 76.0,
@@ -12422,7 +12466,9 @@
           "Air rune": 30.0,
           "Cosmic rune": 3.0,
           "Unpowered orb": 1.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 3.0
       },
       "Cast ~|charge earth orb|~": {
         "experience": 70.0,
@@ -12430,7 +12476,9 @@
           "Cosmic rune": 3.0,
           "Earth rune": 30.0,
           "Unpowered orb": 1.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 3.0
       },
       "Cast ~|charge fire orb|~": {
         "experience": 73.0,
@@ -12438,7 +12486,9 @@
           "Cosmic rune": 3.0,
           "Fire rune": 30.0,
           "Unpowered orb": 1.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 3.0
       },
       "Cast ~|charge water orb|~": {
         "experience": 66.0,
@@ -12446,7 +12496,9 @@
           "Cosmic rune": 3.0,
           "Unpowered orb": 1.0,
           "Water rune": 30.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 3.0
       },
       "Cast ~|charge|~": {
         "experience": 180.0,
@@ -12454,7 +12506,8 @@
           "Air rune": 3.0,
           "Blood rune": 3.0,
           "Fire rune": 3.0
-        }
+        },
+        "kind": "Combat"
       },
       "Cast ~|civitas illa fortis teleport|~": {
         "experience": 64.0,
@@ -12462,7 +12515,9 @@
           "Earth rune": 1.0,
           "Fire rune": 1.0,
           "Law rune": 2.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|claws of guthix|~": {
         "experience": 35.0,
@@ -12470,7 +12525,9 @@
           "Air rune": 4.0,
           "Blood rune": 2.0,
           "Fire rune": 1.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|confuse|~": {
         "experience": 13.0,
@@ -12478,7 +12535,9 @@
           "Body rune": 1.0,
           "Earth rune": 2.0,
           "Water rune": 3.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|crumble undead|~": {
         "experience": 24.5,
@@ -12486,7 +12545,9 @@
           "Air rune": 2.0,
           "Chaos rune": 1.0,
           "Earth rune": 2.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|cure group|~": {
         "experience": 74.0,
@@ -12494,7 +12555,8 @@
           "Astral rune": 2.0,
           "Cosmic rune": 2.0,
           "Law rune": 2.0
-        }
+        },
+        "kind": "Combat"
       },
       "Cast ~|cure me|~": {
         "experience": 69.0,
@@ -12502,7 +12564,8 @@
           "Astral rune": 2.0,
           "Cosmic rune": 2.0,
           "Law rune": 1.0
-        }
+        },
+        "kind": "Combat"
       },
       "Cast ~|cure other|~": {
         "experience": 65.0,
@@ -12510,14 +12573,16 @@
           "Astral rune": 1.0,
           "Earth rune": 10.0,
           "Law rune": 1.0
-        }
+        },
+        "kind": "Combat"
       },
       "Cast ~|cure plant|~": {
         "experience": 60.0,
         "items": {
           "Astral rune": 1.0,
           "Earth rune": 8.0
-        }
+        },
+        "kind": "Utility"
       },
       "Cast ~|curse|~": {
         "experience": 29.0,
@@ -12525,7 +12590,9 @@
           "Body rune": 1.0,
           "Earth rune": 3.0,
           "Water rune": 2.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|dareeyak teleport|~": {
         "experience": 88.0,
@@ -12533,21 +12600,26 @@
           "Air rune": 2.0,
           "Fire rune": 3.0,
           "Law rune": 2.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 5.0
       },
       "Cast ~|dark demonbane|~": {
         "experience": 43.5,
         "items": {
           "Fire rune": 7.0,
           "Soul rune": 2.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|dark lure|~": {
         "experience": 60.0,
         "items": {
           "Death rune": 1.0,
           "Nature rune": 1.0
-        }
+        },
+        "kind": "Combat"
       },
       "Cast ~|death charge|~": {
         "experience": 90.0,
@@ -12555,21 +12627,25 @@
           "Blood rune": 1.0,
           "Death rune": 1.0,
           "Soul rune": 1.0
-        }
+        },
+        "kind": "Utility"
       },
       "Cast ~|degrime|~": {
         "experience": 83.0,
         "items": {
           "Earth rune": 4.0,
           "Nature rune": 2.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 8.0
       },
       "Cast ~|demonic offering|~": {
         "experience": 175.0,
         "items": {
           "Soul rune": 1.0,
           "Wrath rune": 1.0
-        }
+        },
+        "kind": "Utility"
       },
       "Cast ~|draynor manor teleport|~": {
         "experience": 16.0,
@@ -12577,7 +12653,9 @@
           "Earth rune": 1.0,
           "Law rune": 1.0,
           "Water rune": 1.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|dream|~": {
         "experience": 82.0,
@@ -12585,7 +12663,8 @@
           "Astral rune": 2.0,
           "Body rune": 5.0,
           "Cosmic rune": 1.0
-        }
+        },
+        "kind": "Combat"
       },
       "Cast ~|earth blast|~": {
         "experience": 31.5,
@@ -12593,7 +12672,9 @@
           "Air rune": 3.0,
           "Death rune": 1.0,
           "Earth rune": 4.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|earth bolt|~": {
         "experience": 19.5,
@@ -12601,7 +12682,9 @@
           "Air rune": 2.0,
           "Chaos rune": 1.0,
           "Earth rune": 3.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|earth strike|~": {
         "experience": 9.5,
@@ -12609,7 +12692,9 @@
           "Air rune": 1.0,
           "Earth rune": 2.0,
           "Mind rune": 1.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|earth surge|~": {
         "experience": 48.2,
@@ -12617,7 +12702,9 @@
           "Air rune": 7.0,
           "Earth rune": 10.0,
           "Wrath rune": 1.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|earth wave|~": {
         "experience": 40.0,
@@ -12625,7 +12712,9 @@
           "Air rune": 5.0,
           "Blood rune": 1.0,
           "Earth rune": 7.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|enchant crossbow bolt (diamond)|~": {
         "experience": 67.0,
@@ -12633,7 +12722,9 @@
           "Cosmic rune": 1.0,
           "Earth rune": 10.0,
           "Law rune": 2.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 1.0
       },
       "Cast ~|enchant crossbow bolt (dragonstone)|~": {
         "experience": 78.0,
@@ -12641,7 +12732,9 @@
           "Cosmic rune": 1.0,
           "Earth rune": 15.0,
           "Soul rune": 1.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 1.0
       },
       "Cast ~|enchant crossbow bolt (emerald)|~": {
         "experience": 37.0,
@@ -12649,14 +12742,18 @@
           "Air rune": 3.0,
           "Cosmic rune": 1.0,
           "Nature rune": 1.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 1.0
       },
       "Cast ~|enchant crossbow bolt (jade)|~": {
         "experience": 19.0,
         "items": {
           "Cosmic rune": 1.0,
           "Earth rune": 2.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 1.0
       },
       "Cast ~|enchant crossbow bolt (onyx)|~": {
         "experience": 97.0,
@@ -12664,28 +12761,36 @@
           "Cosmic rune": 1.0,
           "Death rune": 1.0,
           "Fire rune": 20.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 1.0
       },
       "Cast ~|enchant crossbow bolt (opal)|~": {
         "experience": 9.0,
         "items": {
           "Air rune": 2.0,
           "Cosmic rune": 1.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 1.0
       },
       "Cast ~|enchant crossbow bolt (pearl)|~": {
         "experience": 29.0,
         "items": {
           "Cosmic rune": 1.0,
           "Water rune": 2.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 1.0
       },
       "Cast ~|enchant crossbow bolt (red topaz)|~": {
         "experience": 33.5,
         "items": {
           "Cosmic rune": 1.0,
           "Fire rune": 2.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 1.0
       },
       "Cast ~|enchant crossbow bolt (ruby)|~": {
         "experience": 59.0,
@@ -12693,7 +12798,9 @@
           "Blood rune": 1.0,
           "Cosmic rune": 1.0,
           "Fire rune": 5.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 1.0
       },
       "Cast ~|enchant crossbow bolt (sapphire)|~": {
         "experience": 17.5,
@@ -12701,7 +12808,9 @@
           "Cosmic rune": 1.0,
           "Mind rune": 1.0,
           "Water rune": 1.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 1.0
       },
       "Cast ~|energy transfer|~": {
         "experience": 100.0,
@@ -12709,7 +12818,8 @@
           "Astral rune": 3.0,
           "Law rune": 2.0,
           "Nature rune": 1.0
-        }
+        },
+        "kind": "Combat"
       },
       "Cast ~|enfeeble|~": {
         "experience": 83.0,
@@ -12717,7 +12827,9 @@
           "Earth rune": 8.0,
           "Soul rune": 1.0,
           "Water rune": 8.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|entangle|~": {
         "experience": 89.0,
@@ -12725,7 +12837,9 @@
           "Earth rune": 5.0,
           "Nature rune": 4.0,
           "Water rune": 5.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|expert reanimation|~": {
         "experience": 138.0,
@@ -12733,7 +12847,8 @@
           "Blood rune": 1.0,
           "Nature rune": 3.0,
           "Soul rune": 2.0
-        }
+        },
+        "kind": "Utility"
       },
       "Cast ~|falador teleport|~": {
         "experience": 48.0,
@@ -12741,7 +12856,9 @@
           "Air rune": 3.0,
           "Law rune": 1.0,
           "Water rune": 1.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|fenkenstain's castle teleport|~": {
         "experience": 50.0,
@@ -12749,7 +12866,9 @@
           "Earth rune": 1.0,
           "Law rune": 1.0,
           "Soul rune": 1.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|fertile soil|~": {
         "experience": 87.0,
@@ -12757,7 +12876,8 @@
           "Astral rune": 3.0,
           "Earth rune": 15.0,
           "Nature rune": 2.0
-        }
+        },
+        "kind": "Utility"
       },
       "Cast ~|fire blast|~": {
         "experience": 34.5,
@@ -12765,7 +12885,9 @@
           "Air rune": 4.0,
           "Death rune": 1.0,
           "Fire rune": 5.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|fire bolt|~": {
         "experience": 22.5,
@@ -12773,7 +12895,9 @@
           "Air rune": 3.0,
           "Chaos rune": 1.0,
           "Fire rune": 4.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|fire strike|~": {
         "experience": 11.5,
@@ -12781,7 +12905,9 @@
           "Air rune": 2.0,
           "Fire rune": 3.0,
           "Mind rune": 1.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|fire surge|~": {
         "experience": 50.5,
@@ -12789,7 +12915,9 @@
           "Air rune": 7.0,
           "Fire rune": 10.0,
           "Wrath rune": 1.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|fire wave|~": {
         "experience": 42.5,
@@ -12797,7 +12925,9 @@
           "Air rune": 5.0,
           "Blood rune": 1.0,
           "Fire rune": 7.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|fishing guild teleport|~": {
         "experience": 89.0,
@@ -12805,7 +12935,9 @@
           "Astral rune": 3.0,
           "Law rune": 3.0,
           "Water rune": 10.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|flames of zamorak|~": {
         "experience": 35.0,
@@ -12813,7 +12945,9 @@
           "Air rune": 1.0,
           "Blood rune": 2.0,
           "Fire rune": 4.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|geomancy|~": {
         "experience": 60.0,
@@ -12821,28 +12955,34 @@
           "Astral rune": 3.0,
           "Earth rune": 8.0,
           "Nature rune": 3.0
-        }
+        },
+        "kind": "Utility"
       },
       "Cast ~|ghorrock teleport|~": {
         "experience": 106.0,
         "items": {
           "Law rune": 2.0,
           "Water rune": 8.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 5.0
       },
       "Cast ~|ghostly grasp|~": {
         "experience": 22.5,
         "items": {
           "Air rune": 4.0,
           "Chaos rune": 1.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|greater corruption|~": {
         "experience": 95.0,
         "items": {
           "Blood rune": 1.0,
           "Soul rune": 3.0
-        }
+        },
+        "kind": "Combat"
       },
       "Cast ~|harmony island teleport|~": {
         "experience": 74.0,
@@ -12850,7 +12990,9 @@
           "Law rune": 1.0,
           "Nature rune": 1.0,
           "Soul rune": 1.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|heal group|~": {
         "experience": 124.0,
@@ -12858,7 +13000,9 @@
           "Astral rune": 4.0,
           "Blood rune": 3.0,
           "Law rune": 6.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 150.0
       },
       "Cast ~|heal other|~": {
         "experience": 101.0,
@@ -12866,14 +13010,17 @@
           "Astral rune": 3.0,
           "Blood rune": 1.0,
           "Law rune": 3.0
-        }
+        },
+        "kind": "Combat"
       },
       "Cast ~|high level alchemy|~": {
         "experience": 65.0,
         "items": {
           "Fire rune": 5.0,
           "Nature rune": 1.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 5.0
       },
       "Cast ~|humidify|~": {
         "experience": 65.0,
@@ -12881,21 +13028,27 @@
           "Astral rune": 1.0,
           "Fire rune": 1.0,
           "Water rune": 3.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 3.0
       },
       "Cast ~|hunter kit (spell)|~": {
         "experience": 70.0,
         "items": {
           "Astral rune": 2.0,
           "Earth rune": 2.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 3.0
       },
       "Cast ~|iban blast|~": {
         "experience": 30.0,
         "items": {
           "Death rune": 1.0,
           "Fire rune": 5.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|ice barrage|~": {
         "experience": 52.0,
@@ -12903,7 +13056,9 @@
           "Blood rune": 2.0,
           "Death rune": 4.0,
           "Water rune": 6.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|ice blitz|~": {
         "experience": 46.0,
@@ -12911,7 +13066,9 @@
           "Blood rune": 2.0,
           "Death rune": 2.0,
           "Water rune": 3.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|ice burst|~": {
         "experience": 40.0,
@@ -12919,7 +13076,9 @@
           "Chaos rune": 4.0,
           "Death rune": 2.0,
           "Water rune": 4.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|ice plateau teleport|~": {
         "experience": 96.0,
@@ -12927,7 +13086,9 @@
           "Astral rune": 3.0,
           "Law rune": 3.0,
           "Water rune": 8.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|ice rush|~": {
         "experience": 34.0,
@@ -12935,21 +13096,27 @@
           "Chaos rune": 2.0,
           "Death rune": 2.0,
           "Water rune": 2.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|inferior demonbane|~": {
         "experience": 27.0,
         "items": {
           "Chaos rune": 1.0,
           "Fire rune": 3.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|kharyrll teleport|~": {
         "experience": 76.0,
         "items": {
           "Blood rune": 1.0,
           "Law rune": 2.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 5.0
       },
       "Cast ~|khazard teleport|~": {
         "experience": 80.0,
@@ -12957,7 +13124,9 @@
           "Astral rune": 2.0,
           "Law rune": 2.0,
           "Water rune": 4.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|kourend castle teleport|~": {
         "experience": 58.0,
@@ -12965,28 +13134,35 @@
           "Fire rune": 1.0,
           "Law rune": 2.0,
           "Water rune": 1.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|lassar teleport|~": {
         "experience": 82.0,
         "items": {
           "Law rune": 2.0,
           "Water rune": 4.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 5.0
       },
       "Cast ~|lesser corruption|~": {
         "experience": 75.0,
         "items": {
           "Death rune": 1.0,
           "Soul rune": 2.0
-        }
+        },
+        "kind": "Combat"
       },
       "Cast ~|low level alchemy|~": {
         "experience": 31.0,
         "items": {
           "Fire rune": 3.0,
           "Nature rune": 1.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 3.0
       },
       "Cast ~|lumbridge teleport|~": {
         "experience": 41.0,
@@ -12994,35 +13170,45 @@
           "Air rune": 3.0,
           "Earth rune": 1.0,
           "Law rune": 1.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|lvl-1 enchant|~": {
         "experience": 17.5,
         "items": {
           "Cosmic rune": 1.0,
           "Water rune": 1.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 3.0
       },
       "Cast ~|lvl-2 enchant|~": {
         "experience": 37.0,
         "items": {
           "Air rune": 3.0,
           "Cosmic rune": 1.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 3.0
       },
       "Cast ~|lvl-3 enchant|~": {
         "experience": 59.0,
         "items": {
           "Cosmic rune": 1.0,
           "Fire rune": 5.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 3.0
       },
       "Cast ~|lvl-4 enchant|~": {
         "experience": 67.0,
         "items": {
           "Cosmic rune": 1.0,
           "Earth rune": 10.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 3.0
       },
       "Cast ~|lvl-5 enchant|~": {
         "experience": 78.0,
@@ -13030,7 +13216,9 @@
           "Cosmic rune": 1.0,
           "Earth rune": 15.0,
           "Water rune": 15.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 3.0
       },
       "Cast ~|lvl-6 enchant|~": {
         "experience": 97.0,
@@ -13038,7 +13226,9 @@
           "Cosmic rune": 1.0,
           "Earth rune": 20.0,
           "Fire rune": 20.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 3.0
       },
       "Cast ~|lvl-7 enchant|~": {
         "experience": 110.0,
@@ -13046,14 +13236,18 @@
           "Blood rune": 20.0,
           "Cosmic rune": 1.0,
           "Soul rune": 20.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 3.0
       },
       "Cast ~|magic dart|~": {
         "experience": 30.0,
         "items": {
           "Death rune": 1.0,
           "Mind rune": 4.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|magic imbue|~": {
         "experience": 86.0,
@@ -13061,14 +13255,18 @@
           "Astral rune": 2.0,
           "Fire rune": 7.0,
           "Water rune": 7.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 0.0
       },
       "Cast ~|mark of darkness|~": {
         "experience": 70.0,
         "items": {
           "Cosmic rune": 1.0,
           "Soul rune": 1.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 0.0
       },
       "Cast ~|master reanimation|~": {
         "experience": 170.0,
@@ -13076,14 +13274,17 @@
           "Blood rune": 2.0,
           "Nature rune": 4.0,
           "Soul rune": 4.0
-        }
+        },
+        "kind": "Utility"
       },
       "Cast ~|mind altar teleport|~": {
         "experience": 22.0,
         "items": {
           "Law rune": 1.0,
           "Mind rune": 2.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|monster examine|~": {
         "experience": 61.0,
@@ -13091,14 +13292,16 @@
           "Astral rune": 1.0,
           "Cosmic rune": 1.0,
           "Mind rune": 1.0
-        }
+        },
+        "kind": "Combat"
       },
       "Cast ~|monster inspect|~": {
         "experience": 30.5,
         "items": {
           "Body rune": 2.0,
           "Mind rune": 2.0
-        }
+        },
+        "kind": "Utility"
       },
       "Cast ~|moonclan teleport|~": {
         "experience": 66.0,
@@ -13106,7 +13309,9 @@
           "Astral rune": 2.0,
           "Earth rune": 2.0,
           "Law rune": 1.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|ourania teleport|~": {
         "experience": 69.0,
@@ -13114,7 +13319,9 @@
           "Astral rune": 2.0,
           "Earth rune": 6.0,
           "Law rune": 1.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|paddewwa teleport|~": {
         "experience": 64.0,
@@ -13122,7 +13329,9 @@
           "Air rune": 1.0,
           "Fire rune": 1.0,
           "Law rune": 2.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 5.0
       },
       "Cast ~|plank make|~": {
         "experience": 90.0,
@@ -13130,7 +13339,9 @@
           "Astral rune": 2.0,
           "Earth rune": 15.0,
           "Nature rune": 1.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 3.0
       },
       "Cast ~|recharge dragonstone|~": {
         "experience": 97.5,
@@ -13138,14 +13349,17 @@
           "Astral rune": 1.0,
           "Soul rune": 1.0,
           "Water rune": 4.0
-        }
+        },
+        "kind": "Utility"
       },
       "Cast ~|respawn teleport|~": {
         "experience": 27.0,
         "items": {
           "Law rune": 1.0,
           "Soul rune": 1.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|resurrect crops|~": {
         "experience": 90.0,
@@ -13154,7 +13368,8 @@
           "Earth rune": 25.0,
           "Nature rune": 12.0,
           "Soul rune": 8.0
-        }
+        },
+        "kind": "Utility"
       },
       "Cast ~|resurrect greater ghost|~": {
         "experience": 88.0,
@@ -13162,7 +13377,9 @@
           "Blood rune": 5.0,
           "Cosmic rune": 1.0,
           "Fire rune": 10.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 4.0
       },
       "Cast ~|resurrect greater skeleton|~": {
         "experience": 88.0,
@@ -13170,7 +13387,9 @@
           "Blood rune": 5.0,
           "Cosmic rune": 1.0,
           "Fire rune": 10.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 4.0
       },
       "Cast ~|resurrect greater zombie|~": {
         "experience": 88.0,
@@ -13178,7 +13397,9 @@
           "Blood rune": 5.0,
           "Cosmic rune": 1.0,
           "Fire rune": 10.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 4.0
       },
       "Cast ~|resurrect lesser ghost|~": {
         "experience": 55.0,
@@ -13186,7 +13407,9 @@
           "Air rune": 10.0,
           "Cosmic rune": 1.0,
           "Mind rune": 5.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 4.0
       },
       "Cast ~|resurrect lesser skeleton|~": {
         "experience": 55.0,
@@ -13194,7 +13417,9 @@
           "Air rune": 10.0,
           "Cosmic rune": 1.0,
           "Mind rune": 5.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 4.0
       },
       "Cast ~|resurrect lesser zombie|~": {
         "experience": 55.0,
@@ -13202,7 +13427,9 @@
           "Air rune": 10.0,
           "Cosmic rune": 1.0,
           "Mind rune": 5.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 4.0
       },
       "Cast ~|resurrect superior ghost|~": {
         "experience": 70.0,
@@ -13210,7 +13437,9 @@
           "Cosmic rune": 1.0,
           "Death rune": 5.0,
           "Earth rune": 10.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 4.0
       },
       "Cast ~|resurrect superior skeleton|~": {
         "experience": 70.0,
@@ -13218,7 +13447,9 @@
           "Cosmic rune": 1.0,
           "Death rune": 5.0,
           "Earth rune": 10.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 4.0
       },
       "Cast ~|resurrect superior zombie|~": {
         "experience": 70.0,
@@ -13226,14 +13457,18 @@
           "Cosmic rune": 1.0,
           "Death rune": 5.0,
           "Earth rune": 10.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 4.0
       },
       "Cast ~|salve graveyard teleport|~": {
         "experience": 30.0,
         "items": {
           "Law rune": 1.0,
           "Soul rune": 2.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|saradomin strike|~": {
         "experience": 35.0,
@@ -13241,14 +13476,18 @@
           "Air rune": 4.0,
           "Blood rune": 2.0,
           "Fire rune": 2.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|senntisten teleport|~": {
         "experience": 70.0,
         "items": {
           "Law rune": 2.0,
           "Soul rune": 1.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 5.0
       },
       "Cast ~|shadow barrage|~": {
         "experience": 49.0,
@@ -13257,7 +13496,9 @@
           "Blood rune": 2.0,
           "Death rune": 4.0,
           "Soul rune": 3.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|shadow blitz|~": {
         "experience": 43.0,
@@ -13266,7 +13507,9 @@
           "Blood rune": 2.0,
           "Death rune": 2.0,
           "Soul rune": 2.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|shadow burst|~": {
         "experience": 37.0,
@@ -13275,7 +13518,9 @@
           "Chaos rune": 4.0,
           "Death rune": 2.0,
           "Soul rune": 2.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|shadow rush|~": {
         "experience": 31.0,
@@ -13284,7 +13529,9 @@
           "Chaos rune": 2.0,
           "Death rune": 2.0,
           "Soul rune": 1.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|shadow veil|~": {
         "experience": 58.0,
@@ -13292,21 +13539,25 @@
           "Cosmic rune": 5.0,
           "Earth rune": 5.0,
           "Fire rune": 5.0
-        }
+        },
+        "kind": "Utility"
       },
       "Cast ~|sinister offering|~": {
         "experience": 180.0,
         "items": {
           "Blood rune": 1.0,
           "Wrath rune": 1.0
-        }
+        },
+        "kind": "Utility"
       },
       "Cast ~|skeletal grasp|~": {
         "experience": 33.0,
         "items": {
           "Death rune": 1.0,
           "Earth rune": 8.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|smoke barrage|~": {
         "experience": 48.0,
@@ -13315,7 +13566,9 @@
           "Blood rune": 2.0,
           "Death rune": 4.0,
           "Fire rune": 4.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|smoke blitz|~": {
         "experience": 42.0,
@@ -13324,7 +13577,9 @@
           "Blood rune": 2.0,
           "Death rune": 2.0,
           "Fire rune": 2.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|smoke burst|~": {
         "experience": 36.0,
@@ -13333,7 +13588,9 @@
           "Chaos rune": 4.0,
           "Death rune": 2.0,
           "Fire rune": 2.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|smoke rush|~": {
         "experience": 30.0,
@@ -13342,7 +13599,9 @@
           "Chaos rune": 2.0,
           "Death rune": 2.0,
           "Fire rune": 1.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|snare|~": {
         "experience": 61.0,
@@ -13350,7 +13609,9 @@
           "Earth rune": 4.0,
           "Nature rune": 3.0,
           "Water rune": 4.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|spellbook swap|~": {
         "experience": 130.0,
@@ -13358,7 +13619,8 @@
           "Astral rune": 3.0,
           "Cosmic rune": 2.0,
           "Law rune": 1.0
-        }
+        },
+        "kind": "Utility"
       },
       "Cast ~|spin flax|~": {
         "experience": 75.0,
@@ -13366,7 +13628,9 @@
           "Air rune": 5.0,
           "Astral rune": 1.0,
           "Nature rune": 2.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 5.0
       },
       "Cast ~|stat restore pot share|~": {
         "experience": 84.0,
@@ -13374,7 +13638,8 @@
           "Astral rune": 2.0,
           "Earth rune": 10.0,
           "Water rune": 10.0
-        }
+        },
+        "kind": "Combat"
       },
       "Cast ~|stat spy|~": {
         "experience": 76.0,
@@ -13382,7 +13647,8 @@
           "Astral rune": 2.0,
           "Body rune": 5.0,
           "Cosmic rune": 2.0
-        }
+        },
+        "kind": "Combat"
       },
       "Cast ~|string jewellery|~": {
         "experience": 83.0,
@@ -13390,7 +13656,9 @@
           "Astral rune": 2.0,
           "Earth rune": 10.0,
           "Water rune": 5.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 3.0
       },
       "Cast ~|stun|~": {
         "experience": 90.0,
@@ -13398,7 +13666,9 @@
           "Earth rune": 12.0,
           "Soul rune": 1.0,
           "Water rune": 12.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|summon boat|~": {
         "experience": 66.0,
@@ -13406,7 +13676,8 @@
           "Earth rune": 1.0,
           "Law rune": 2.0,
           "Water rune": 1.0
-        }
+        },
+        "kind": "Teleport"
       },
       "Cast ~|superglass make|~": {
         "experience": 78.0,
@@ -13414,14 +13685,18 @@
           "Air rune": 10.0,
           "Astral rune": 2.0,
           "Fire rune": 6.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 3.0
       },
       "Cast ~|superior demonbane|~": {
         "experience": 36.0,
         "items": {
           "Fire rune": 5.0,
           "Soul rune": 1.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|tan leather|~": {
         "experience": 81.0,
@@ -13429,7 +13704,9 @@
           "Astral rune": 2.0,
           "Fire rune": 5.0,
           "Nature rune": 1.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 3.0
       },
       "Cast ~|tele group barbarian|~": {
         "experience": 77.0,
@@ -13437,7 +13714,9 @@
           "Astral rune": 2.0,
           "Fire rune": 6.0,
           "Law rune": 2.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|tele group catherby|~": {
         "experience": 93.0,
@@ -13445,7 +13724,9 @@
           "Astral rune": 3.0,
           "Law rune": 3.0,
           "Water rune": 15.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|tele group fishing guild|~": {
         "experience": 90.0,
@@ -13453,7 +13734,9 @@
           "Astral rune": 3.0,
           "Law rune": 3.0,
           "Water rune": 14.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|tele group ice plateau|~": {
         "experience": 99.0,
@@ -13461,7 +13744,9 @@
           "Astral rune": 3.0,
           "Law rune": 3.0,
           "Water rune": 16.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|tele group khazard|~": {
         "experience": 81.0,
@@ -13469,7 +13754,9 @@
           "Astral rune": 2.0,
           "Law rune": 2.0,
           "Water rune": 8.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|tele group moonclan|~": {
         "experience": 67.0,
@@ -13477,7 +13764,9 @@
           "Astral rune": 2.0,
           "Earth rune": 4.0,
           "Law rune": 1.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|tele group waterbirth|~": {
         "experience": 72.0,
@@ -13485,21 +13774,27 @@
           "Astral rune": 2.0,
           "Law rune": 1.0,
           "Water rune": 5.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|telekinetic grab|~": {
         "experience": 43.0,
         "items": {
           "Air rune": 1.0,
           "Law rune": 1.0
-        }
+        },
+        "kind": "Utility",
+        "ticks": 3.0
       },
       "Cast ~|teleother camelot|~": {
         "experience": 100.0,
         "items": {
           "Law rune": 1.0,
           "Soul rune": 2.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 10.0
       },
       "Cast ~|teleother falador|~": {
         "experience": 92.0,
@@ -13507,7 +13802,9 @@
           "Law rune": 1.0,
           "Soul rune": 1.0,
           "Water rune": 1.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 10.0
       },
       "Cast ~|teleother lumbridge|~": {
         "experience": 84.0,
@@ -13515,7 +13812,9 @@
           "Earth rune": 1.0,
           "Law rune": 1.0,
           "Soul rune": 1.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 10.0
       },
       "Cast ~|teleport block|~": {
         "experience": 83.6,
@@ -13523,7 +13822,9 @@
           "Chaos rune": 1.0,
           "Death rune": 1.0,
           "Law rune": 1.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|teleport to boat|~": {
         "experience": 77.0,
@@ -13531,7 +13832,8 @@
           "Earth rune": 2.0,
           "Law rune": 2.0,
           "Water rune": 2.0
-        }
+        },
+        "kind": "Teleport"
       },
       "Cast ~|teleport to house|~": {
         "experience": 30.0,
@@ -13539,21 +13841,27 @@
           "Air rune": 1.0,
           "Earth rune": 1.0,
           "Law rune": 1.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|trollheim teleport|~": {
         "experience": 68.0,
         "items": {
           "Fire rune": 2.0,
           "Law rune": 2.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|undead grasp|~": {
         "experience": 46.5,
         "items": {
           "Blood rune": 1.0,
           "Fire rune": 12.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|varrock teleport|~": {
         "experience": 35.0,
@@ -13561,7 +13869,9 @@
           "Air rune": 3.0,
           "Fire rune": 1.0,
           "Law rune": 1.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|vengeance other|~": {
         "experience": 108.0,
@@ -13569,7 +13879,9 @@
           "Astral rune": 3.0,
           "Death rune": 2.0,
           "Earth rune": 10.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 0.0
       },
       "Cast ~|vengeance|~": {
         "experience": 112.0,
@@ -13577,14 +13889,17 @@
           "Astral rune": 4.0,
           "Death rune": 2.0,
           "Earth rune": 10.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 0.0
       },
       "Cast ~|vile vigour|~": {
         "experience": 76.0,
         "items": {
           "Air rune": 3.0,
           "Soul rune": 1.0
-        }
+        },
+        "kind": "Utility"
       },
       "Cast ~|vulnerability|~": {
         "experience": 76.0,
@@ -13592,7 +13907,9 @@
           "Earth rune": 5.0,
           "Soul rune": 1.0,
           "Water rune": 5.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|ward of arceuus|~": {
         "experience": 83.0,
@@ -13600,14 +13917,17 @@
           "Cosmic rune": 1.0,
           "Nature rune": 2.0,
           "Soul rune": 4.0
-        }
+        },
+        "kind": "Combat"
       },
       "Cast ~|watchtower teleport|~": {
         "experience": 68.0,
         "items": {
           "Earth rune": 2.0,
           "Law rune": 2.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|water blast|~": {
         "experience": 28.5,
@@ -13615,7 +13935,9 @@
           "Air rune": 3.0,
           "Death rune": 1.0,
           "Water rune": 3.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|water bolt|~": {
         "experience": 16.5,
@@ -13623,7 +13945,9 @@
           "Air rune": 2.0,
           "Chaos rune": 1.0,
           "Water rune": 2.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|water strike|~": {
         "experience": 7.5,
@@ -13631,7 +13955,9 @@
           "Air rune": 1.0,
           "Mind rune": 1.0,
           "Water rune": 1.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|water surge|~": {
         "experience": 46.5,
@@ -13639,7 +13965,9 @@
           "Air rune": 7.0,
           "Water rune": 10.0,
           "Wrath rune": 1.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|water wave|~": {
         "experience": 37.5,
@@ -13647,7 +13975,9 @@
           "Air rune": 5.0,
           "Blood rune": 1.0,
           "Water rune": 7.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|waterbirth teleport|~": {
         "experience": 71.0,
@@ -13655,7 +13985,9 @@
           "Astral rune": 2.0,
           "Law rune": 1.0,
           "Water rune": 1.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|weaken|~": {
         "experience": 21.0,
@@ -13663,49 +13995,162 @@
           "Body rune": 1.0,
           "Earth rune": 2.0,
           "Water rune": 3.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|west ardougne teleport|~": {
         "experience": 68.0,
         "items": {
           "Law rune": 2.0,
           "Soul rune": 2.0
-        }
+        },
+        "kind": "Teleport",
+        "ticks": 4.0
       },
       "Cast ~|wind blast|~": {
         "experience": 25.5,
         "items": {
           "Air rune": 3.0,
           "Death rune": 1.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|wind bolt|~": {
         "experience": 13.5,
         "items": {
           "Air rune": 2.0,
           "Chaos rune": 1.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|wind strike|~": {
         "experience": 5.5,
         "items": {
           "Air rune": 1.0,
           "Mind rune": 1.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|wind surge|~": {
         "experience": 44.5,
         "items": {
           "Air rune": 7.0,
           "Wrath rune": 1.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
       },
       "Cast ~|wind wave|~": {
         "experience": 36.0,
         "items": {
           "Air rune": 5.0,
           "Blood rune": 1.0
-        }
+        },
+        "kind": "Combat",
+        "ticks": 5.0
+      },
+      "Smelt a ~|blurite bar|~ with superheat item": {
+        "experience": 53.0,
+        "items": {
+          "Fire rune": 4.0,
+          "Nature rune": 1.0
+        },
+        "kind": "Utility",
+        "ticks": 3.0
+      },
+      "Smelt a ~|bronze bar|~ with superheat item": {
+        "experience": 53.0,
+        "items": {
+          "Fire rune": 4.0,
+          "Nature rune": 1.0
+        },
+        "kind": "Utility",
+        "ticks": 3.0
+      },
+      "Smelt a ~|gold bar|~ with superheat item": {
+        "experience": 53.0,
+        "items": {
+          "Fire rune": 4.0,
+          "Nature rune": 1.0
+        },
+        "kind": "Utility",
+        "ticks": 3.0
+      },
+      "Smelt a ~|lovakite bar|~ with superheat item": {
+        "experience": 53.0,
+        "items": {
+          "Fire rune": 4.0,
+          "Nature rune": 1.0
+        },
+        "kind": "Utility",
+        "ticks": 3.0
+      },
+      "Smelt a ~|lunar bar|~ with superheat item": {
+        "experience": 53.0,
+        "items": {
+          "Fire rune": 4.0,
+          "Nature rune": 1.0
+        },
+        "kind": "Utility",
+        "ticks": 3.0
+      },
+      "Smelt a ~|mithril bar|~ with superheat item": {
+        "experience": 53.0,
+        "items": {
+          "Fire rune": 4.0,
+          "Nature rune": 1.0
+        },
+        "kind": "Utility",
+        "ticks": 3.0
+      },
+      "Smelt a ~|runite bar|~ with superheat item": {
+        "experience": 53.0,
+        "items": {
+          "Fire rune": 4.0,
+          "Nature rune": 1.0
+        },
+        "kind": "Utility",
+        "ticks": 3.0
+      },
+      "Smelt a ~|silver bar|~ with superheat item": {
+        "experience": 53.0,
+        "items": {
+          "Fire rune": 4.0,
+          "Nature rune": 1.0
+        },
+        "kind": "Utility",
+        "ticks": 3.0
+      },
+      "Smelt a ~|steel bar|~ with superheat item": {
+        "experience": 53.0,
+        "items": {
+          "Fire rune": 4.0,
+          "Nature rune": 1.0
+        },
+        "kind": "Utility",
+        "ticks": 3.0
+      },
+      "Smelt an ~|adamantite bar|~ with superheat item": {
+        "experience": 53.0,
+        "items": {
+          "Fire rune": 4.0,
+          "Nature rune": 1.0
+        },
+        "kind": "Utility",
+        "ticks": 3.0
+      },
+      "Smelt an ~|iron bar|~ with superheat item": {
+        "experience": 53.0,
+        "items": {
+          "Fire rune": 4.0,
+          "Nature rune": 1.0
+        },
+        "kind": "Utility",
+        "ticks": 3.0
       }
     },
     "shops": {

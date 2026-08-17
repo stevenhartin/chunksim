@@ -543,6 +543,26 @@ same argument a dose hop already makes, and upstream's own `Partial Products`
 category (22 challenges, all Cooking) says which steps qualify rather than a
 guess at which names look like stages.
 
+**Magic's missing model was one field, and it was not in the Bucket.**
+`infobox_spell` has stated the runes a cast eats for a while - 190 of the
+export's 214 `Cast` tasks join it - but nothing said how long a cast takes, so
+57 of Magic's 175 primary challenges had a rate and `Cast ~|high level
+alchemy|~` was not one of them. The infobox does state it, as `|speed = 5
+ticks`, and the Bucket exposes only six fields with the duration not among
+them; `chunksim heuristics` now sends the same page names back through
+`fetch_wiki_pages` and reads the line. Four batched requests, 200 of 201 pages,
+and `costing/spells.py` turns them into rates. **Only utility spells**, on the
+infobox's own `type` (Combat 86, Utility 53, Teleport 51): a teleport's speed
+is the animation rather than the method - priced on it a teleport reads
+111,000/hr against the guides' implied 270 casts an hour - and a combat cast
+belongs to `combat_xp.py`, which already prices it with the gear and the gates
+in it. **And the materials are the export's rather than the infobox's**: the
+runes are not the whole cost, since `Cast ~|bones to bananas|~` eats a big
+bone and `Smelt a ~|steel bar|~ with superheat item` an iron ore and a coal.
+Priced on runes alone bones to bananas reads 150,000/hr, which is a spell that
+would have won the whole climb. Magic went **57 priced methods to 87** on the
+uber map with no scraped rate left but four teleports.
+
 **Where a published figure sits above what the mechanic allows, count the
 mechanic.** Cooking's last three guide-backed methods each turned out to be
 countable, and one of them contradicted its source. `Dissect a ~|sacred eel|~`

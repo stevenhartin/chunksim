@@ -32,6 +32,7 @@ from chunksim.costing.heuristics import spell_materials
 from chunksim.remote.combat import (
     SpellCost,
     parse_cost,
+    parse_speed,
     parse_spell_costs,
     AttackSpell,
     MonsterStats,
@@ -479,12 +480,94 @@ def test_most_of_the_exports_cast_challenges_have_a_rune_cost(real_export: Chunk
     # they happened to be on 2026-08-14. Both sides are live: upstream adds
     # `Cast` challenges and the wiki scrape follows, so an exact pair fails on
     # the next good day either of them has.
+    # **Plus the ten upstream does not call a cast at all** - `Smelt a ~|steel
+    # bar|~ with superheat item` is a Superheat Item cast filed under the bar,
+    # because it pays Smithing as well. See `heuristics.SPELL_NAME_SUFFIXES`;
+    # nothing else in the export names a spell by suffix.
+    superheat = {n for n in real_export.challenges["Magic"] if n.endswith("with superheat item")}
+
     assert len(casts) > 150
+    assert len(superheat) >= 10
     assert len(priced) > len(casts) * 0.8
-    assert set(priced) <= casts
+    assert set(priced) <= casts | superheat
+    assert superheat <= set(priced), "the Magic half of superheating is a method too"
     assert all("spell sack" in n or "rune pouch" in n for n in casts - set(priced))
     assert priced["Cast ~|varrock teleport|~"].items == {
         "Air rune": 3,
         "Fire rune": 1,
         "Law rune": 1,
     }
+
+
+# --- the cast speed, which the Bucket does not carry ---------------------
+
+
+@pytest.mark.parametrize(
+    "line,ticks",
+    [
+        ("|speed = 5 ticks", 5.0),
+        ("| speed = 3 ticks (7 on autocast)", 3.0),
+        ("|speed = 1 ticks (3 on autocast)", 1.0),
+        ("|speed = 3 [[RuneScape clock|ticks]] (6 on autocast)", 3.0),
+        ("|speed = 3 ticks (5 ticks in the Alchemist's Playground)", 3.0),
+        ("|speed = 0 ticks", 0.0),
+    ],
+)
+def test_the_leading_figure_is_the_manual_cast(line: str, ticks: float) -> None:
+    """**The field is prose as often as not**, and in every one of those the
+    first number is the manual cast - which is the one a player training the
+    spell is making. An autocast is a combat cadence and belongs to
+    `costing/combat_xp.py`."""
+    assert parse_speed(line) == ticks
+
+
+@pytest.mark.parametrize("line", ["|quest = None", "|speed = 1", "", "|cooldown = 9 ticks"])
+def test_a_page_stating_no_speed_is_untimed_rather_than_instant(line: str) -> None:
+    """`None`, never a default: an unknown duration priced at zero is the
+    fastest method in the game. Measured, 200 of the export's 201 spell pages
+    state a speed, and `Shadow Veil` is the one whose value carries no unit."""
+    assert parse_speed(line) is None
+
+
+def test_the_kind_and_the_speed_travel_with_the_cost() -> None:
+    """`type` is upstream's own classification of what a cast is aimed at, and
+    it is what `costing/spells.py` reads to tell a spell-on-item loop from a
+    teleport's animation."""
+    rows = [
+        {
+            "page_name": "High Level Alchemy",
+            "json": json.dumps(
+                {
+                    "exp": "65",
+                    "type": "Utility",
+                    "cost": '<span style="white-space:nowrap"><sup>1</sup>'
+                    "[[File:Nature rune.png|Nature|link=Nature rune]]</span>",
+                }
+            ),
+        }
+    ]
+
+    found = parse_spell_costs(rows, {"High Level Alchemy": "|speed = 5 ticks"})
+
+    assert found["High Level Alchemy"].kind == "Utility"
+    assert found["High Level Alchemy"].ticks == 5.0
+
+
+def test_no_pages_leaves_every_cost_untimed() -> None:
+    """A supported way to run: the rune costs are what this fed before a rate
+    needed the duration, and `costing/spells.py` refuses an untimed spell."""
+    rows = [
+        {
+            "page_name": "High Level Alchemy",
+            "json": json.dumps(
+                {
+                    "exp": "65",
+                    "type": "Utility",
+                    "cost": '<span style="white-space:nowrap"><sup>1</sup>'
+                    "[[File:Nature rune.png|Nature|link=Nature rune]]</span>",
+                }
+            ),
+        }
+    ]
+
+    assert parse_spell_costs(rows)["High Level Alchemy"].ticks is None

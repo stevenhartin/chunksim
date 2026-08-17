@@ -205,7 +205,20 @@ def scrape(
     # **Every spell, not only the autocastable ones.** `spells` above answers
     # "what do I barrage with"; this answers "what does a cast eat", and a
     # teleport deals no damage while still costing three runes.
-    spell_costs = combat.parse_spell_costs(fetch_bucket(combat.spell_query(), timeout=timeout))
+    #
+    # **Two requests' worth, because the speed is not in the Bucket.**
+    # `infobox_spell` exposes cost, exp, level, slayerlevel, spellbook and
+    # type - and a cast duration is not among them - so the same page names go
+    # back over `fetch_wiki_pages` for the `|speed =` line. Four batched
+    # requests for 201 pages, which is what makes every utility spell
+    # priceable at all: see `costing/spells.py`.
+    spell_rows = fetch_bucket(combat.spell_query(), timeout=timeout)
+    spell_pages = [
+        str(row["page_name"]) for row in spell_rows if isinstance(row.get("page_name"), str)
+    ]
+    spell_costs = combat.parse_spell_costs(
+        spell_rows, fetch_wiki_pages(spell_pages, timeout=timeout)
+    )
 
     say("shop prices")
     lines: list[dict[str, Any]] = []

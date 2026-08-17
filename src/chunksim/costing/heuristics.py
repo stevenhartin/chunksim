@@ -401,6 +401,15 @@ SPELL_PAGE_ALIASES: dict[str, str] = {
     "teleport block": "Tele Block",
 }
 
+#: The one spell the export names as a *suffix* rather than a `Cast ...` task,
+#: and it is a family of ten: `Smelt a ~|steel bar|~ with superheat item`.
+#: **The action is a cast and upstream files it under the bar**, because it
+#: pays Smithing too - so the `Cast ` prefix below finds none of them and the
+#: Magic half of superheating went unpriced. Written as a suffix rather than
+#: ten aliases because the ten are generated from the bar list and an eleventh
+#: bar would otherwise arrive silently unpriced.
+SPELL_NAME_SUFFIXES: dict[str, str] = {"with superheat item": "Superheat Item"}
+
 #: The export's own prefix on a casting challenge. The join runs through the
 #: task's words because a spell challenge names no object, no NPC and usually
 #: no `Output` - the same reason `PLUNDER_BY_LEVEL` does.
@@ -426,9 +435,28 @@ class MaterialCost:
 
     experience: float
     items: dict[str, float] = field(default_factory=dict)
+    #: What the infobox calls the spell - `Combat`, `Utility` or `Teleport` -
+    #: and how long one cast takes. **Only a spell carries either**; a
+    #: calculator row and a hand entry both state a cost and nothing about a
+    #: duration, so both are empty there. See `costing/spells.py` for what
+    #: they are used for and why the kind decides whether the duration is the
+    #: whole cost of a cast.
+    kind: str = ""
+    ticks: float | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {"experience": self.experience, "items": dict(sorted(self.items.items()))}
+        found: dict[str, Any] = {
+            "experience": self.experience,
+            "items": dict(sorted(self.items.items())),
+        }
+        # Written only where they exist, so a calculator row's entry keeps the
+        # shape it has always had and the blob does not grow two null columns
+        # for every method in the game.
+        if self.kind:
+            found["kind"] = self.kind
+        if self.ticks is not None:
+            found["ticks"] = self.ticks
+        return found
 
 
 def spell_materials(
@@ -444,18 +472,36 @@ def spell_materials(
     24 that miss are all `... from a spell sack` and `... from a rune pouch`
     variants, where the runes come out of a container rather than being
     supplied - so a miss there is the right answer rather than a gap.
+
+    **Plus the ten upstream does not call a cast at all.** `Smelt a ~|steel
+    bar|~ with superheat item` is a Superheat Item cast filed under the bar,
+    because it pays Smithing as well; see `SPELL_NAME_SUFFIXES`.
     """
     joined: dict[str, MaterialCost] = {}
     by_page = {name.lower(): cost for name, cost in costs.items()}
     for name in chunk_info.challenges.get("Magic") or {}:
-        if not name.startswith(_CAST_PREFIX):
-            continue
-        spell = strip_task_markup(name).removeprefix(_CAST_PREFIX).strip().lower()
+        words = strip_task_markup(name).strip()
+        if name.startswith(_CAST_PREFIX):
+            spell = words.removeprefix(_CAST_PREFIX).strip().lower()
+        else:
+            # **The superheat family, which upstream files under the bar.**
+            # See `SPELL_NAME_SUFFIXES`; nothing else in the export names a
+            # spell this way.
+            spell = next(
+                (
+                    page.lower()
+                    for suffix, page in SPELL_NAME_SUFFIXES.items()
+                    if words.lower().endswith(suffix)
+                ),
+                "",
+            )
         cost = by_page.get(spell) or by_page.get(SPELL_PAGE_ALIASES.get(spell, "").lower())
         if cost is not None:
             joined[name] = MaterialCost(
                 experience=cost.experience,
                 items={item: float(count) for item, count in cost.items.items()},
+                kind=cost.kind,
+                ticks=cost.ticks,
             )
     return joined
 
@@ -1860,6 +1906,10 @@ def load(
                     for item, quantity in _mapping(entry, "items").items()
                     if _float(quantity, 0.0) > 0
                 },
+                kind=str(entry.get("kind") or ""),
+                ticks=(
+                    _float(entry.get("ticks"), 0.0) if entry.get("ticks") is not None else None
+                ),
             )
             for task, entry in _entries(config, "spell_costs")
             if isinstance(entry, dict) and _float(entry.get("experience"), 0.0) > 0

@@ -117,14 +117,30 @@ class AttackSpell:
 
 @dataclass(frozen=True)
 class SpellCost:
-    """What one cast consumes and what it pays, from `infobox_spell`."""
+    """What one cast consumes, what it pays, and how long it takes.
+
+    `ticks` is `None` when the page states no speed, which a caller must treat
+    as "cannot compute a rate from this" rather than as zero - the same rule
+    `remote/recipes.Recipe` states for the same reason.
+    """
 
     name: str
     experience: float
     items: dict[str, int] = field(default_factory=dict)
+    #: What kind of spell the infobox calls it: `Combat`, `Utility` or
+    #: `Teleport`. **Upstream's own classification of what a cast is aimed
+    #: at**, and the thing that decides whether the speed below is the whole
+    #: cost of a cast or only the visible part of it - see `costing/spells.py`.
+    kind: str = ""
+    ticks: float | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {"experience": self.experience, "items": dict(sorted(self.items.items()))}
+        return {
+            "experience": self.experience,
+            "items": dict(sorted(self.items.items())),
+            "kind": self.kind,
+            "ticks": self.ticks,
+        }
 
 
 #: The consumed half of a spell's `cost`. The wiki wraps the runes in this span
@@ -263,14 +279,53 @@ def parse_cost(cost: str) -> dict[str, int]:
     return found
 
 
-def parse_spell_costs(bucket_rows: Sequence[Mapping[str, Any]]) -> dict[str, SpellCost]:
-    """`{spell page: SpellCost}` from `infobox_spell`.
+#: `|speed = 5 ticks`, as the infobox writes it in wikitext.
+#:
+#: **The speed is not in the Bucket and the wikitext is where it lives.**
+#: `infobox_spell` exposes six fields - cost, exp, level, slayerlevel,
+#: spellbook, type - and a cast duration is not among them, which is why this
+#: needs a second, batched fetch over the same page names. Measured, 200 of the
+#: export's 201 spell pages state one.
+_SPEED_LINE = re.compile(
+    r"^\s*\|\s*speed\s*=\s*(?P<ticks>\d+(?:\.\d+)?)\s*(?:\[\[[^\]]*\]\]|ticks?)",
+    re.MULTILINE | re.IGNORECASE,
+)
+
+
+def parse_speed(text: str) -> float | None:
+    """Ticks one cast takes, from a spell page's `|speed =`, or `None`.
+
+    **The leading number and nothing else.** The field is prose as often as
+    not - `3 ticks (7 on autocast)`, `1 ticks (3 on autocast)`, `5 ticks in
+    the Alchemist's Playground`, `3 [[RuneScape clock|ticks]] (6 on autocast)`
+    - and in every one of those the first figure is the manual cast, which is
+    the one a player training the spell is making. An autocast is a *combat*
+    cadence and belongs to `combat_xp.py`, not here.
+
+    A page stating no speed, or one whose value does not begin with a number,
+    returns `None` rather than a default: an unknown duration priced at zero
+    is the fastest method in the game.
+    """
+    found = _SPEED_LINE.search(text)
+    return float(found.group("ticks")) if found else None
+
+
+def parse_spell_costs(
+    bucket_rows: Sequence[Mapping[str, Any]], pages: Mapping[str, str] = {}
+) -> dict[str, SpellCost]:
+    """`{spell page: SpellCost}` from `infobox_spell`, timed from `pages`.
 
     Covers **every** spell, attack or utility, which is the opposite of what
     `parse_attack_spells` wants and exactly what pricing wants: a teleport pays
     no damage and still costs three runes a cast. A spell with no experience or
     no cost is dropped rather than stored as a zero - both halves are needed to
     turn it into seconds per XP.
+
+    `pages` is the same pages' wikitext, for the cast speed the Bucket does not
+    carry. Omitted, every `SpellCost` comes back untimed, which is a supported
+    way to run: the rune costs are what this fed before a rate needed the
+    duration, and `costing/spells.py` refuses an untimed spell rather than
+    guessing at one.
     """
     found: dict[str, SpellCost] = {}
     for row in bucket_rows:
@@ -289,5 +344,11 @@ def parse_spell_costs(bucket_rows: Sequence[Mapping[str, Any]]) -> dict[str, Spe
             continue
         items = parse_cost(str(parsed.get("cost") or ""))
         if experience > 0 and items:
-            found[name] = SpellCost(name=name, experience=experience, items=items)
+            found[name] = SpellCost(
+                name=name,
+                experience=experience,
+                items=items,
+                kind=str(parsed.get("type") or "").strip().title(),
+                ticks=parse_speed(pages.get(name, "")),
+            )
     return found

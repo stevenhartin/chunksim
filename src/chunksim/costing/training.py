@@ -33,6 +33,7 @@ from chunksim.costing.heuristics import (
     Rate,
 )
 from chunksim.costing.recipe_rates import RECIPE_SOURCE
+from chunksim.costing.spells import SPELL_SOURCE
 from chunksim.model.summary import _mapping
 from chunksim.costing.heuristics import activity_name
 import re
@@ -256,7 +257,14 @@ def _modelled_tasks(heuristics: Heuristics, skill: str) -> frozenset[str]:
 
 #: Rate sources whose figure already covers getting the materials, so the
 #: walk must not charge for them a second time. See `_material_cost`.
-_ALL_INCLUSIVE_SOURCES = frozenset({RECIPE_SOURCE, GOTR_SOURCE, TITHE_SOURCE})
+#:
+#: **A spell is the fourth and joined for the same reason a recipe did.**
+#: `costing/spells.py` charges the challenge's own `Items` - the runes *and*
+#: the big bone, the jewellery, the ore - so `spell_material_costs` adding the
+#: runes again would bill half of it twice.
+_ALL_INCLUSIVE_SOURCES = frozenset(
+    {RECIPE_SOURCE, GOTR_SOURCE, TITHE_SOURCE, SPELL_SOURCE}
+)
 
 
 def _computed_material_cost(

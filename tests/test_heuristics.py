@@ -951,11 +951,19 @@ def test_the_rifts_rate_has_already_paid_for_its_own_essence() -> None:
         Rate,
     )
     from chunksim.costing.recipe_rates import RECIPE_SOURCE
+    from chunksim.costing.spells import SPELL_SOURCE
     from chunksim.costing.training import _ALL_INCLUSIVE_SOURCES, _material_cost
 
     # Tithe Farm is the third and for the same reason: its seeds come out of
     # the minigame, so the published figure has already paid for them.
-    assert _ALL_INCLUSIVE_SOURCES == {RECIPE_SOURCE, GOTR_SOURCE, TITHE_SOURCE}
+    # A spell is the fourth: `costing/spells.py` charges the challenge's own
+    # `Items`, so adding the runes again would bill half of it twice.
+    assert _ALL_INCLUSIVE_SOURCES == {
+        RECIPE_SOURCE,
+        GOTR_SOURCE,
+        TITHE_SOURCE,
+        SPELL_SOURCE,
+    }
 
     heuristics = Heuristics(material_seconds_per_xp={"task": 0.3})
     charged = Rate(value=40_000.0, source="mmg:whatever", match="exact")

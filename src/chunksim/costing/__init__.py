@@ -80,6 +80,14 @@ The modules, and what each owns:
   292,500/hr - the whole Cooking climb on the uber map. Also states the three
   ticks a knife costs on the three crabs the wiki leaves untimed, which is the
   wiki's own figure for the same knife on a fish.
+- `spells.py` - a cast priced from the wiki's own `|speed =` and the
+  challenge's own `Items`. **Utility spells only**, on the infobox's own
+  `type`: a teleport's speed is the animation rather than the method and a
+  combat cast belongs to `combat_xp.py`. The materials are upstream's, not the
+  infobox's - `Cast ~|bones to bananas|~` eats a big bone the rune list never
+  mentions - so the rate is all-inclusive and sits under the recipes, over the
+  scrape. Took Magic from 57 priced methods to 77 on the uber map, high level
+  alchemy included.
 - `sacredeel.py` - a Cooking method with no Cooking time in it. The knife is
   spammable, so an hour of dissecting is an hour of *catching*: throughput is
   the Fishing model's own roll read a second time (21.09% at 87, the wiki's own

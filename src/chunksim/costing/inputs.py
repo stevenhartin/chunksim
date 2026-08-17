@@ -60,6 +60,7 @@ from chunksim.costing import (
     sacredeel,
     sepulchre,
     sorceress,
+    spells,
     stated,
     troublebrewing,
     swimming,
@@ -513,8 +514,23 @@ def recipe_priced(
             # **Refused after applied, so a computed rate is never removed.**
             # A method whose inputs have no route keeps no *scraped* rate -
             # see `recipe_rates.refuse_dropped` for the bias that fixes.
+            # **Spells fill after the recipes and share their whitelist.**
+            # A recipe knows which variant of an action it describes; a cast
+            # timed by the wiki and charged by the export's own `Items` is the
+            # answer for the 100-odd Magic methods no recipe reaches. See
+            # `costing/spells.py`, and note it runs *inside* `refuse_dropped`'s
+            # argument so a spell rate is never stripped as a scrape would be.
             training=recipe_rates.refuse_dropped(
-                recipe_rates.apply(heuristics.training, computed, pinned),
+                spells.apply(
+                    recipe_rates.apply(heuristics.training, computed, pinned),
+                    spells.computed_rates(
+                        state.chunk_info,
+                        derived.challenges.valid,
+                        heuristics.spell_costs,
+                        seconds,
+                    ),
+                    pinned,
+                ),
                 coverage.dropped,
                 pinned,
             ),
