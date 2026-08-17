@@ -38,6 +38,7 @@ from chunksim.costing import (
     barbarian,
     blastmine,
     farming,
+    herblore,
     artefacts,
     chambers,
     combat_xp,
@@ -401,6 +402,9 @@ def recipe_priced(
         recipes,
         seconds,
         blobs.aliases,
+        # **The durations the wiki does not publish.** Cleaning a herb is not
+        # tick-gated, so no page times it - see `costing/herblore.py`.
+        herblore.stated_ticks(recipes),
     )
     # **A recipe's tick cost is also a statement of how long the action takes**,
     # and the item walk needs that separately from the rate: it charges a

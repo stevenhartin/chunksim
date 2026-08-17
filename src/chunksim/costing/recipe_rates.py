@@ -177,7 +177,11 @@ class ActionRate:
     skill: str
     xp_per_hour: float
     experience: float
-    ticks: int
+    #: **A float, because not every action is tick-gated.** Cleaning a herb
+    #: costs 18/28 of a tick - see `costing/herblore.py` - and truncating that
+    #: to an `int` made it free, which in the item walk is the fastest method
+    #: in the game.
+    ticks: float
     #: Seconds of gathering per action, across every material.
     input_seconds: float
     output: str
@@ -371,7 +375,9 @@ def action_seconds(
 
 
 def rate_for(
-    recipes: Sequence[Recipe], input_seconds: Callable[[str, float], float | None]
+    recipes: Sequence[Recipe],
+    input_seconds: Callable[[str, float], float | None],
+    stated_ticks: Mapping[str, float] = {},
 ) -> tuple[Recipe, float, float] | None:
     """The fastest of `recipes` that prices end to end.
 
@@ -395,9 +401,16 @@ def rate_for(
     best: tuple[Recipe, float, float] | None = None
     for recipe in recipes:
         materials = material_seconds(recipe, input_seconds)
-        if recipe.ticks is None or materials is None:
+        # **A stated duration only where the wiki publishes none.** `ticks` is
+        # `""` for every clean herb - the action is not tick-gated, so nothing
+        # could publish one - and refusing that outright cost Herblore
+        # eighteen methods. `costing/herblore.py` states the bank cycle
+        # instead; a recipe that *does* carry a tick cost keeps it, so this
+        # can never overwrite a published figure.
+        ticks = recipe.ticks if recipe.ticks is not None else stated_ticks.get(recipe.output)
+        if ticks is None or materials is None:
             continue
-        seconds = TICK_SECONDS * recipe.ticks + trip_seconds(recipe) + materials
+        seconds = TICK_SECONDS * ticks + trip_seconds(recipe) + materials
         if seconds <= 0:
             continue
         rate = recipe.experience * 3600.0 / seconds
@@ -491,6 +504,7 @@ def computed_rates(
     recipes: Mapping[str, Sequence[Recipe]],
     input_seconds: Callable[[str, float], float | None],
     aliases: Mapping[str, str] = {},
+    stated_ticks: Mapping[str, float] = {},
 ) -> tuple[dict[str, ActionRate], RecipeCoverage]:
     """Every reachable primary method `recipes` can price, keyed by task name.
 
@@ -532,18 +546,23 @@ def computed_rates(
             candidates = variant_candidates(
                 task, by_output[output.lower()], siblings.get(output.lower(), ())
             )
-            chosen = rate_for(candidates, input_seconds)
+            chosen = rate_for(candidates, input_seconds, stated_ticks)
             if chosen is None:
                 dropped.append(task)
                 continue
             recipe, rate, materials = chosen
+            ticks = (
+                recipe.ticks
+                if recipe.ticks is not None
+                else stated_ticks.get(recipe.output) or 0.0
+            )
             found += 1
             priced[task] = ActionRate(
                 task=task,
                 skill=skill,
                 xp_per_hour=rate,
                 experience=recipe.experience,
-                ticks=recipe.ticks or 0,
+                ticks=ticks,
                 input_seconds=materials,
                 output=output,
                 materials=tuple(material.name for material in recipe.materials),

@@ -44,6 +44,11 @@ The modules, and what each owns:
   rolls are read a second time with the ancillary experience column, so the two
   cannot drift. The wiki's own Str/Agi-to-Fishing ratio checks it at 0.089
   against 0.090-0.092.
+- `herblore.py` - the one duration the wiki does not publish: cleaning a grimy
+  herb is not tick-gated, so its `{{Recipe}}` carries `ticks = ""` and
+  `recipe_rates` refused all eighteen. Timed from the bank cycle instead - 18
+  ticks an inventory of 28 - and **detected from the recipes rather than
+  listed**, so the `Degrime` spell variants stay out.
 - `shortcuts.py` - an Agility shortcut priced from the attempt: eight ticks,
   the experience its own page states, the experience a *failure* pays, and the
   published success curve. Replaced an 18-second cycle whose comment called it

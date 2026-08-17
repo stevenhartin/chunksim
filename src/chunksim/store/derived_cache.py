@@ -164,7 +164,9 @@ _FORMAT = "1"
 #: whatever else a combat skill already had.
 #: 54: a herb patch yields ~8.8 herbs for one seed, so the item walk stopped
 #: charging a whole seed against every herb.
-_PRICING_MODEL = "54"
+#: 55: cleaning a grimy herb is timed from its bank cycle, 18 ticks an
+#: inventory, where the wiki publishes no tick cost at all.
+_PRICING_MODEL = "55"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.
