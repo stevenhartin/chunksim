@@ -485,9 +485,26 @@ block <- the mining challenge <- its tools, which is five, and at three the
 whole chain reported no route. Cycles are stopped by the visited set rather
 than by the bound, so what it really buys is a limit on work; at five the
 suite's runtime is unchanged. Blood runes on the second cache go 11,118/hr to
-**25,142** and soul runes from refused to **31,375** - both what the wiki's
+**31,316** and soul runes from refused to **38,880** - both what the wiki's
 own figures imply, and both a close second to the Arceuus library, which
 scales with level and still wins the climb.
+
+**An untimed recipe has to fall back to something, but a counted one must not
+reach the fallback.** `DEFAULT_ACTION_SECONDS` is right for an action nobody
+has timed and wrong for one somebody has, so the stated durations are applied
+to the recipe corpus *before* `_setup` flattens it - one corpus, which the item
+walk and `recipe_rates.rate_for` now cannot disagree about. Two modules fill
+it and both fill only where the wiki publishes nothing: `costing/herblore.py`
+states the bank cycle a clean herb costs, and `costing/chisel.py` states
+**zero** for a dark essence block, which is chiselled *while running* to the
+altar on a trip the rune's own recipe already pays for. That zero is a claim
+about this activity's geography rather than about chisels - a gem cut at a
+bank is emphatically not free - which is why it names the one output instead
+of reaching for a rule over verbs. It is also unspendable as a rate: the
+export carries no challenge whose `Output` is `Dark essence fragments`, so
+only the item walk can ever read it. Measured over both cached maps and the
+uber one it moves exactly two methods (the figures above) and **no climb at
+all**, the library still owning Runecraft wherever it is reachable.
 
 **Not every "computed" number is evidence, and the docstrings say which.**
 Thieving's fifteen tabulated stalls come out at exactly 1.00x against the

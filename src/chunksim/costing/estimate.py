@@ -173,7 +173,7 @@ from chunksim.model.experience import (
     xp_for_level,
 )
 from chunksim.costing.combat_xp import COMBAT_SKILLS, hitpoints_credit, slayer_credit
-from chunksim.costing import herbs
+from chunksim.costing import chisel, herblore, herbs
 from chunksim.remote.recipes import Recipe
 from chunksim.costing.farming import (
     DEFAULT_HARVESTS_PER_DAY,
@@ -216,7 +216,7 @@ BUCKETS = ("quests", "boss drops", "activities", "skilling")
 #: up.** A soul rune is fragments <- dark essence block <- dense essence block
 #: <- the mining challenge <- its tools, which is five, and at three the whole
 #: chain reported no route - so a map holding the Dark Altar priced blood
-#: runes off pure essence at 11,118/hr where the same altar does 25,516 off
+#: runes off pure essence at 11,118/hr where the same altar does 31,316 off
 #: fragments, and refused soul runes outright.
 #:
 #: Cycles are stopped by the visited set rather than by this, so what the
@@ -889,13 +889,20 @@ def _recipe_hours(
     for it, and `Dark essence fragments` had no route at all on a map holding
     the Dark Altar. That cost the second cache its two best Runecraft methods:
     blood runes read 11,118/hr off pure essence when the same altar does
-    25,516 off fragments, and soul runes were refused outright.
+    31,316 off fragments, and soul runes were refused outright.
 
     Tried only when every other route has failed, so nothing that already
     prices can change. `output_quantity` is honoured - one chisel yields four
     fragments - and an untimed recipe falls back to `DEFAULT_ACTION_SECONDS`
     rather than being refused, because here the alternative is not a slower
     route but no route at all.
+
+    **That default is the last word, not the first.** `_build_walk` applies the
+    stated durations to the corpus before the walk ever sees it, so an action
+    somebody has actually counted arrives timed: `chisel.CHISEL_TICKS` is zero
+    for a dark essence block, which is chiselled on a run already being paid
+    for, and `herblore.CLEAN_TICKS` is the bank cycle a grimy herb costs. What
+    reaches `DEFAULT_ACTION_SECONDS` here is only what nothing has counted.
     """
     best: _Priced | None = None
     for recipe in walk.recipes.get(item.lower(), ()):
@@ -1790,9 +1797,21 @@ def _setup(
     # **Every recipe, keyed by what it makes**, for `_recipe_hours`' last
     # resort. Flattened across skills because the walk asks "how do I get this
     # item", never "which skill makes it".
+    #
+    # **The stated durations are applied here rather than downstream**, so the
+    # walk and `recipe_rates.rate_for` read one corpus and cannot disagree
+    # about how long an untimed action takes. Both modules fill only where the
+    # wiki publishes nothing: `herblore` states the bank cycle a clean herb
+    # costs, `chisel` states the zero a dark essence block costs on a run
+    # already being paid for. Anything still untimed falls back to
+    # `DEFAULT_ACTION_SECONDS` inside `_recipe_hours`, which is where an
+    # unknown belongs.
+    stated = {**herblore.stated_ticks(recipes or {}), **chisel.stated_ticks(recipes or {})}
     by_output: dict[str, tuple[Recipe, ...]] = {}
     for rows in (recipes or {}).values():
         for made in rows:
+            if made.ticks is None and made.output in stated:
+                made = dataclasses.replace(made, ticks=stated[made.output])
             key = made.output.lower()
             by_output[key] = (*by_output.get(key, ()), made)
     if by_output:

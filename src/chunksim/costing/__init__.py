@@ -72,6 +72,12 @@ The modules, and what each owns:
   `recipe_rates` refused all eighteen. Timed from the bank cycle instead - 18
   ticks an inventory of 28 - and **detected from the recipes rather than
   listed**, so the `Degrime` spell variants stay out.
+- `chisel.py` - the other untimed duration, and it is **zero**: a dark essence
+  block is chiselled *while running* to the blood or soul altar, on a trip the
+  rune's own recipe already pays for. Names the one output rather than reaching
+  for a rule over chisels, because a gem cut at a bank is emphatically not free.
+  The export carries no challenge for it, so a stated zero can only ever be read
+  by the item walk and can never become a training rate of its own.
 - `shortcuts.py` - an Agility shortcut priced from the attempt: eight ticks,
   the experience its own page states, the experience a *failure* pays, and the
   published success curve. Replaced an 18-second cycle whose comment called it

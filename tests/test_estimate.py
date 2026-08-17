@@ -2262,7 +2262,7 @@ def test_a_recipe_is_the_last_resort_route() -> None:
     carries no Runecraft challenge for it - and `Dark essence fragments` had no
     route at all on a map holding the Dark Altar. That cost the second cache
     its two best Runecraft methods: blood runes read 11,118/hr off pure essence
-    where the same altar does 25,142 off fragments, and soul runes were
+    where the same altar does 31,316 off fragments, and soul runes were
     refused outright.
 
     Tried only when every other route has failed, so nothing that already
@@ -2276,6 +2276,51 @@ def test_a_recipe_is_the_last_resort_route() -> None:
     assert "if best is None:" in source, "the recipe route must be a last resort"
     assert source.index("_route_hours") < source.index("_recipe_hours")
     assert "output_quantity" in inspect.getsource(_recipe_hours), "one chisel makes four"
+
+
+def test_a_stated_duration_reaches_the_walk_before_the_default_does() -> None:
+    """**`DEFAULT_ACTION_SECONDS` is the last word here, not the first.** An
+    untimed recipe has to fall back to something, but where somebody has
+    actually counted the action the count must arrive first - which means the
+    stated durations are applied to the corpus `_setup` flattens, not left
+    to `recipe_rates`. Chiselling a dark essence block is the case that forced
+    it: it is done *while running* to the altar, so it costs nothing, and the
+    default charged 0.6s a fragment. Blood runes on the second cache went
+    25,802/hr to 31,316 and soul runes 32,035 to 38,880."""
+    import dataclasses
+    import inspect
+
+    from chunksim.costing import chisel
+    from chunksim.costing.estimate import _recipe_hours, _setup
+
+    source = inspect.getsource(_setup)
+    assert "chisel.stated_ticks" in source and "herblore.stated_ticks" in source
+    assert source.index("stated_ticks") < source.index("by_output[key]"), (
+        "the durations must be applied before the corpus is flattened"
+    )
+
+    # And the walk spends the zero rather than reading it as a missing figure,
+    # which is the whole difference between a stated duration and an unknown.
+    from chunksim.costing.estimate import DEFAULT_ACTION_SECONDS
+    from chunksim.remote.recipes import Recipe
+
+    def _priced(ticks: float | None) -> Any:
+        recipe = Recipe(
+            page="Thing", output="Thing", output_quantity=4.0, skill="Crafting",
+            level=1, experience=8.0, ticks=ticks, materials=(),
+        )
+        walk = dataclasses.replace(
+            _walk_for(ChunkInfo({"chunks": {}, "sections": {}, "challenges": {}})),
+            recipes={"thing": (recipe,)},
+        )
+        return _recipe_hours(
+            walk, "Thing", 4.0, amortise=False, depth=0, seen=frozenset()
+        )
+
+    free, unknown = _priced(float(chisel.CHISEL_TICKS)), _priced(None)
+    assert free is not None and free.hours == 0.0
+    assert unknown is not None
+    assert unknown.hours == pytest.approx(DEFAULT_ACTION_SECONDS / 3600.0)
 
 
 def test_the_walk_chases_a_chain_five_deep() -> None:

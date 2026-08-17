@@ -189,7 +189,10 @@ _FORMAT = "1"
 #: tome and was sitting in the export unpriced.
 #: 66: the item walk falls back to a wiki recipe when the export has no
 #: challenge for an intermediate - dark essence fragments being the case.
-_PRICING_MODEL = "66"
+#: 67: stated durations are applied to the recipe corpus the walk reads, so
+#: chiselling a dark essence block costs nothing (`costing/chisel.py`) and a
+#: clean herb costs the bank cycle rather than the default action.
+_PRICING_MODEL = "67"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

@@ -56,7 +56,10 @@ class Recipe:
 
     `ticks` is `None` when the wiki does not say. A caller must treat that as
     "cannot compute a rate from this" rather than as zero, or an unknown becomes
-    the fastest method on the map.
+    the fastest method on the map. A *published* figure is always a whole tick;
+    the field is a float because a caller may stand a **stated** duration in
+    for a missing one, and those need not be - `herblore.CLEAN_TICKS` is 18/28
+    of a tick and `chisel.CHISEL_TICKS` is zero.
     """
 
     page: str
@@ -67,7 +70,7 @@ class Recipe:
     skill: str
     level: int
     experience: float
-    ticks: int | None
+    ticks: float | None
     materials: tuple[Material, ...]
     #: The output's `subtxt` - "Normal furnace" against "Blast Furnace" - which
     #: is the only thing separating two recipes on one page.
