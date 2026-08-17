@@ -21,6 +21,8 @@ from chunksim.costing.recipe_rates import (
     index_recipes,
     names_variant,
     rate_for,
+    unjoined_outputs,
+    with_aliases,
     variant_candidates,
 )
 from chunksim.model.chunkinfo import ChunkInfo
@@ -446,3 +448,61 @@ def test_one_recipe_reaching_two_tasks_is_still_ambiguous() -> None:
 
     assert merged[_SMELT]["Smithing"].value == 4_960.0
     assert merged[_SUPERHEAT]["Smithing"].value == 4_960.0
+
+
+def test_an_alias_registers_beside_the_name_the_wiki_renamed() -> None:
+    """`Bronze javelin heads` became `Bronze javelin tips` on 5 November 2025;
+    upstream's export still says `heads`, so the exact join found nothing until
+    the wiki's own redirect was consulted."""
+    by_output = {"bronze javelin tips": _BRONZE[:1]}
+
+    merged = with_aliases(by_output, {"Bronze javelin heads": "Bronze javelin tips"})
+
+    assert merged["bronze javelin heads"] == _BRONZE[:1]
+    assert merged["bronze javelin tips"] == _BRONZE[:1]
+
+
+def test_an_alias_never_displaces_a_real_recipe() -> None:
+    """The wiki redirecting `X` to `Y` says nothing about a recipe whose own
+    output is `X`. Letting the redirect win there would trade a real join for a
+    guessed one, so this is additive only."""
+    by_output = {"bronze bar": _BRONZE, "runite bar": ()}
+
+    merged = with_aliases(by_output, {"Bronze bar": "Runite bar"})
+
+    assert merged["bronze bar"] == _BRONZE
+
+
+def test_an_alias_pointing_nowhere_is_dropped() -> None:
+    """A redirect whose target has no recipe is not a join, and keeping it
+    would grow the index without ever changing an answer."""
+    assert with_aliases({"bronze bar": _BRONZE}, {"Old name": "Something else"}) == {
+        "bronze bar": _BRONZE
+    }
+
+
+def test_unjoined_outputs_asks_only_about_names_a_recipe_could_answer() -> None:
+    """**Output names, never the task's own words.** `join_keys`' third key is
+    a sentence with the verb stripped, and handing those to the wiki asks
+    thousands of questions whose answer is always no."""
+    info = ChunkInfo(
+        {
+            "challenges": {
+                "Smithing": {
+                    "Smith ~|bronze javelin heads|~": {
+                        "Primary": True,
+                        "Output": "Bronze javelin heads",
+                    },
+                    "Smelt a ~|bronze bar|~": {"Primary": True, "Output": "Bronze bar"},
+                    "Repair a broken ~|strut|~ in the Motherlode Mine": {"Primary": True},
+                    "Smith a ~|secondary|~": {"Primary": False, "Output": "Secondary"},
+                }
+            }
+        }
+    )
+
+    wanted = unjoined_outputs(info, {"Smithing": _BRONZE})
+
+    # `Bronze bar` joined, the strut offers no `Output` and the non-primary row
+    # is not a training method - so exactly one name is worth asking about.
+    assert wanted == ("Bronze javelin heads",)

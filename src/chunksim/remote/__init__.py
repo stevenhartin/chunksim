@@ -44,7 +44,8 @@ The modules, and what each owns:
   believing was published nowhere. Also `build_tables`, whose **fetching
   is injected** so the module cannot open a socket.
 - `recipes.py` - `{{Recipe}}` as the wiki's Bucket serves it: experience, ticks
-  and materials per action.
+  and materials per action, and the `variant` label that says *which* way of
+  making the thing a row describes.
 - `stores.py` - what a shop charges, and **in what currency**.
 - `combat.py` - monster hitpoints and xp multipliers; autocastable spells and
   what each cast consumes.

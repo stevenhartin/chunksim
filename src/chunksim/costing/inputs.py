@@ -89,6 +89,8 @@ __all__ = [
     "level_overrides",
     "load_heuristics",
     "load_recipes",
+    "load_aliases",
+    "recipes_from",
     "hand_material_costs",
     "priced_materials",
     "spell_material_costs",
@@ -137,6 +139,11 @@ class ReferenceBlobs:
     overrides: dict[str, Any]
     #: `cache/reference/wiki_recipes.json`, parsed back into `Recipe`s.
     recipes: Mapping[str, tuple[Recipe, ...]]
+    #: `cache/reference/wiki_aliases.json`: upstream item names the wiki now
+    #: files elsewhere, so a rename reads as a rename rather than as a method
+    #: with no recipe. Empty when never fetched, which prices exactly as it
+    #: did before the blob existed.
+    aliases: Mapping[str, str]
     #: `src/chunksim/heuristics/gathering.json`, indexed for lookup. **Not a
     #: cache blob** - it ships with the package and only `chunksim
     #: gather-tables` writes it - but it is read here with the rest because it
@@ -186,7 +193,8 @@ def load_reference(root: Path | None = None, map_id: str | None = None) -> Refer
         scraped=scraped,
         scraped_found=scraped_found,
         overrides=overrides,
-        recipes=_recipes_from(_recipe_blob(root)),
+        recipes=recipes_from(_recipe_blob(root)),
+        aliases=load_aliases(root),
         gathering=gathering_model.load_tables(cache.read_gathering(root)),
         pricing=pricing_digests(root, map_id),
         map_id=map_id,
@@ -250,7 +258,21 @@ def load_recipes(root: Path | None = None) -> dict[str, tuple[Recipe, ...]]:
     method simply keeps whatever the guides and defaults gave it. The caller
     does not have to check - `recipe_rates.apply` over nothing is a no-op.
     """
-    return _recipes_from(_recipe_blob(root))
+    return recipes_from(_recipe_blob(root))
+
+
+def load_aliases(root: Path | None = None) -> dict[str, str]:
+    """The `chunksim recipes` alias map, or empty if never fetched.
+
+    Empty is a supported way to run, like an absent recipe blob: the join
+    simply misses the names the wiki has since renamed, which is what it did
+    before this existed.
+    """
+    try:
+        found: Mapping[str, Any] = cache.read_blob(cache.ALIASES_BLOB_NAME, root)["data"]
+    except cache.CacheMissError:
+        return {}
+    return {str(alias): str(target) for alias, target in found.items()}
 
 
 def _recipe_blob(root: Path | None = None) -> Mapping[str, Any]:
@@ -262,7 +284,7 @@ def _recipe_blob(root: Path | None = None) -> Mapping[str, Any]:
     return found
 
 
-def _recipes_from(blob: Mapping[str, Any]) -> dict[str, tuple[Recipe, ...]]:
+def recipes_from(blob: Mapping[str, Any]) -> dict[str, tuple[Recipe, ...]]:
     """`load_recipes` over bytes already read."""
     return {
         skill: tuple(
@@ -363,6 +385,7 @@ def recipe_priced(
         derived.challenges.valid,
         recipes,
         seconds,
+        blobs.aliases,
     )
     # **A recipe's tick cost is also a statement of how long the action takes**,
     # and the item walk needs that separately from the rate: it charges a

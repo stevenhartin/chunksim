@@ -33,6 +33,7 @@ from chunksim.remote.api import (
     fetch_text,
     fetch_wiki_page_titles,
     fetch_wiki_pages,
+    fetch_wiki_redirects,
     fetch_latest_release,
     fetch_map_tile_version,
     map_url,
@@ -432,3 +433,51 @@ def test_the_update_check_sends_no_custom_headers(monkeypatch: pytest.MonkeyPatc
 
     # A bare string, not a Request carrying headers.
     assert calls and isinstance(calls[0][0], str)
+
+
+def test_fetch_wiki_redirects_reports_only_the_names_that_moved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**A rename is the answer; a normalisation is not.** The API reports
+    `normalized` and `redirects` separately, and only the second means the wiki
+    files an item somewhere else - which is the whole question upstream's stale
+    vocabulary is being asked."""
+    body = json.dumps(
+        {
+            "query": {
+                "normalized": [{"from": "bronze bar", "to": "Bronze bar"}],
+                "redirects": [
+                    {"from": "Bronze javelin heads", "to": "Bronze javelin tips"},
+                    {"from": "Adamant bolts (unf)", "to": "Adamant bolts(unf)"},
+                ],
+            }
+        }
+    ).encode()
+    _patch_urlopen(monkeypatch, _responds(body))
+
+    assert fetch_wiki_redirects(["Bronze javelin heads", "Adamant bolts (unf)", "bronze bar"]) == {
+        "Bronze javelin heads": "Bronze javelin tips",
+        "Adamant bolts (unf)": "Adamant bolts(unf)",
+    }
+
+
+def test_fetch_wiki_redirects_batches_like_the_page_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One request per `WIKI_TITLES_PER_REQUEST` titles, so the whole miss list
+    is a handful of calls rather than one per name."""
+    calls = _patch_urlopen(monkeypatch, _responds(b'{"query": {}}'))
+    titles = [f"Item {index}" for index in range(WIKI_TITLES_PER_REQUEST * 2 + 1)]
+
+    assert fetch_wiki_redirects(titles) == {}
+    assert len(calls) == 3
+
+
+def test_fetch_wiki_redirects_asks_nothing_for_no_titles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No unjoined names is the healthy state, and it must not cost a request."""
+    calls = _patch_urlopen(monkeypatch, _responds(b'{"query": {}}'))
+
+    assert fetch_wiki_redirects([]) == {}
+    assert calls == []

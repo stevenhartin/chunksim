@@ -188,6 +188,28 @@ pair, refused by the sub-floor rule rather than by ambiguity. **No climb on
 either map moved**, which is the point: this buys coverage for a map that does
 not hold the Giants' Foundry, not a different answer for the two that do.
 
+**The other half of a missed join is a rename, and it reads as a slow method
+rather than as a gap.** `recipe_rates` joins on a full string, so upstream's
+vocabulary and the wiki's have to agree — and they drift, because the export
+lags the game. `Bronze javelin heads` became `Bronze javelin tips` in the
+Sailing pre-release of 5 November 2025; the wiki moved the page and left a
+redirect, the export still says `heads`, and six Smithing methods sat at the
+1,000/hr floor with no rate at all. `Adamant bolts (unf)` is the same failure
+over a *space*, against `Adamant bolts(unf)`. So `chunksim recipes` now asks
+the wiki, in the forward direction, what the names nothing joined resolve to,
+and writes `cache/reference/wiki_aliases.json`. **Direction is the whole cost
+argument**: asked forwards it is 256 names in six requests and twenty answers;
+asked backwards (`prop=redirects` over every recipe page) it is complete and
+useless — measured, 100 pages carry 1,000 redirects and page past `rdlimit=max`,
+so the corpus is ~26,000 aliases to recover the twenty anything wants. The
+alias may fill a name but **never displaces a recipe that already answers to
+it**, since a redirect from `X` says nothing about a recipe whose own output is
+`X`. It bought Smithing 7 methods on each map, Crafting 9, and left Smithing on
+the second map at **188 computed, 0 scraped, 1 unpriced**. This is also why
+`chunksim recipes` is the one fetch subcommand that reads an export: the
+question is whether two vocabularies still agree, and neither half alone can be
+asked it.
+
 **Not every "computed" number is evidence, and the docstrings say which.**
 Thieving's fifteen tabulated stalls come out at exactly 1.00x against the
 scrape, and that is an identity rather than agreement — the wiki's column is
@@ -353,7 +375,8 @@ chunksim fetch --map ID         # GET live state -> cache/maps/fetched/<map>.jso
 chunksim show  [--map ID]       # summarise the cached copy; no network
 chunksim chunkinfo              # GET upstream's chunk/challenge reference data (~10MB)
 chunksim heuristics             # GET wiki/spreadsheet rates -> cache/reference/wiki_rates.json (30+ requests)
-chunksim recipes                # GET per-action xp + tick costs -> cache/reference/wiki_recipes.json
+chunksim recipes [--chunkinfo P] # GET per-action xp + tick costs -> cache/reference/wiki_recipes.json
+                                # + the wiki's renames -> cache/reference/wiki_aliases.json
 chunksim gather-tables          # developer only: GET the gathering tables -> src/chunksim/heuristics/gathering.json
 chunksim estimate [BUCKET] [--limit N]                 # rough hours for the outstanding active tasks
 chunksim sections [list|CHUNK] [--limit N]             # reachable sections
@@ -386,7 +409,9 @@ works — except for `search`, where it is `10`. **`--map ID` is carried by ever
 cached map**, so the usage lines above name it only where the map *is* the point; `chunksim diff` is the
 one taking two, hence `--map1`/`--map2`, and it reports **both directions**, which `chunksim unlock`
 deliberately does not. **`--chunkinfo PATH` is the per-invocation form of `CHUNKSIM_CHUNKINFO`** and rides
-along on all ten subcommands that parse the export.
+along on all ten subcommands that parse the export — plus `chunksim recipes`, which is not one of
+them and reads an export for a different reason: to ask the wiki which of upstream's item names it
+has since renamed. See the vocabulary-lag paragraph above.
 
 **`cache/` is sorted by purpose, and `cache/maps/` holds maps and nothing else holds maps.** That
 sentence is the layout's whole point: `list_maps` used to glob `cache/*.json` and skip the names it
@@ -397,7 +422,8 @@ that failed the moment it was chosen. A directory cannot be forgotten.
 cache/maps/fetched/<id>.json       # from Firebase; only `chunksim fetch` writes one
 cache/maps/simulated/<batch>/…     # rolled by `chunksim simulate`
 cache/maps/edited/<batch>/…        # made by hand: `chunksim unlock --cache-map`, or the GUI
-cache/reference/                   # chunkinfo, tasks_map, wiki_rates, wiki_recipes, tile_version
+cache/reference/                   # chunkinfo, tasks_map, wiki_rates, wiki_recipes, wiki_aliases,
+                                   # tile_version
 cache/derived/                     # pipeline.derive + dps_bridge.enrich results, keyed by content
 cache/overrides/<map_id>.json      # heuristic corrections belonging to one map
 cache/assets/                      # section masks, skill icons, CA tier icons

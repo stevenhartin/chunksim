@@ -406,6 +406,65 @@ def rate_for(
     return best
 
 
+def unjoined_outputs(
+    chunk_info: ChunkInfo, recipes: Mapping[str, Sequence[Recipe]]
+) -> tuple[str, ...]:
+    """Every name a primary method offers that no recipe answers to.
+
+    **What `chunksim recipes` hands the wiki to ask "did you rename this?"** -
+    see `api.fetch_wiki_redirects`. Lives here rather than in the CLI because
+    it has to miss in exactly the way `computed_rates` misses; two
+    near-identical join loops would drift, and the one that drifted would go
+    quiet rather than fail.
+
+    **Over the whole export, not over a map's valid set**, because which name
+    the wiki files an item under is a fact about the wiki. A per-map alias
+    blob would be a cache that answered differently depending on which map
+    happened to be open when it was written.
+
+    Only the `Output` keys are asked about. `join_keys`' third key is the
+    task's own words with the verb stripped, which is a sentence rather than a
+    title (`a broken ~|strut|~ in the Motherlode Mine`) - handing those to the
+    wiki asks 2,000 questions to which the answer is always no.
+    """
+    wanted: set[str] = set()
+    for skill, rows in recipes.items():
+        by_output = {name.lower() for name in index_recipes(list(rows))}
+        challenges = _mapping(chunk_info.challenges, skill)
+        if not isinstance(challenges, dict):
+            continue
+        for task, challenge in challenges.items():
+            if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
+                continue
+            keys = join_keys(challenge, task)
+            if any(key.lower() in by_output for key in keys):
+                continue
+            for field in ("Output", "Output Object"):
+                value = challenge.get(field)
+                if isinstance(value, str) and value.strip():
+                    wanted.add(value.strip())
+    return tuple(sorted(wanted))
+
+
+def with_aliases(
+    by_output: Mapping[str, tuple[Recipe, ...]], aliases: Mapping[str, str]
+) -> dict[str, tuple[Recipe, ...]]:
+    """`by_output` with each alias registered alongside the name it renames.
+
+    **Additive, never overriding.** An alias that collides with a name the
+    recipes already answer to is dropped: the wiki redirecting `X` to `Y` says
+    nothing about a *recipe* whose own output is `X`, and letting the redirect
+    win there would trade a real join for a guessed one.
+    """
+    merged = dict(by_output)
+    for alias, target in aliases.items():
+        key = alias.lower()
+        found = by_output.get(target.lower())
+        if found is not None and key not in merged:
+            merged[key] = found
+    return merged
+
+
 def _siblings(
     challenges: Mapping[str, Any], by_output: Mapping[str, Sequence[Recipe]]
 ) -> dict[str, tuple[str, ...]]:
@@ -431,6 +490,7 @@ def computed_rates(
     valid: Mapping[str, Mapping[str, Any]],
     recipes: Mapping[str, Sequence[Recipe]],
     input_seconds: Callable[[str, float], float | None],
+    aliases: Mapping[str, str] = {},
 ) -> tuple[dict[str, ActionRate], RecipeCoverage]:
     """Every reachable primary method `recipes` can price, keyed by task name.
 
@@ -439,6 +499,10 @@ def computed_rates(
 
     Only methods in `valid` are considered, so this inherits the derivation's
     reachability gate rather than inventing a second one.
+
+    `aliases` is the wiki's own redirect map for the names this join missed -
+    empty unless `chunksim recipes` has been run against an export, and a
+    supported way to run, exactly as an absent recipe blob is.
     """
     priced: dict[str, ActionRate] = {}
     coverage: dict[str, tuple[int, int]] = {}
@@ -450,6 +514,9 @@ def computed_rates(
         # table|~` where the wiki page is `Mahogany table`, and the case is
         # the only thing between them.
         by_output = {**{name.lower(): found for name, found in by_output.items()}}
+        # **After the lowercasing, so an alias competes with the real names on
+        # the same terms** - see `with_aliases` for why it never displaces one.
+        by_output = with_aliases(by_output, aliases)
         challenges = _mapping(chunk_info.challenges, skill)
         siblings = _siblings(challenges, by_output)
         offered = found = 0

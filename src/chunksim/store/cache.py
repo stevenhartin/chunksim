@@ -23,7 +23,7 @@ way. A directory cannot be forgotten::
     cache/maps/simulated/<batch>/     # rolled by `chunksim simulate`
     cache/maps/edited/<batch>/        # made by hand: `chunksim unlock --cache-map`, or the GUI
     cache/reference/                  # chunkinfo, tasks_map, wiki_rates, wiki_recipes,
-                                      # tile_version
+                                      # wiki_aliases, tile_version
     cache/derived/                    # `pipeline.derive` results, content-keyed
     cache/assets/                     # section masks, skill icons, CA tier icons
     cache/gui/                        # window.json, settings.json, browser profile
@@ -172,6 +172,17 @@ WIKI_RATES_BLOB_NAME = "wiki_rates"
 #: blob - folding recipes in would throw away every stored enrichment each
 #: time they were refetched.
 RECIPES_BLOB_NAME = "wiki_recipes"
+
+#: Upstream item names the wiki now files under a different title, written by
+#: `chunksim recipes` beside the recipes it exists to make joinable.
+#:
+#: **Its own blob because it is about a different thing.** `wiki_recipes` is
+#: what the wiki knows; this is what upstream's vocabulary and the wiki's
+#: disagree about, which changes when the *game* renames an item rather than
+#: when a recipe does. Keeping it out of `wiki_recipes` also leaves that
+#: blob's `data` a plain skill -> rows mapping, which `recipes_from`
+#: iterates as skills.
+ALIASES_BLOB_NAME = "wiki_aliases"
 CHUNKINFO_ENV_VAR = "CHUNKSIM_CHUNKINFO"
 
 #: Where hand-written corrections live: checked in, so they are diffable and
@@ -1816,6 +1827,7 @@ def reference_stamp(
     paths = [
         blob_path(WIKI_RATES_BLOB_NAME, root),
         blob_path(RECIPES_BLOB_NAME, root),
+        blob_path(ALIASES_BLOB_NAME, root),
         overrides_path(root),
     ]
     if map_id is not None:

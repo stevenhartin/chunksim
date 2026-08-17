@@ -452,11 +452,18 @@ maps are your own work and nothing can recompute them.
    ```
 
    The second is what stops most training methods being priced at a flat 1,000 xp/hour: it brings
-   back what one action of a method actually pays and how long it takes, for 3,889 recipes. It now
+   back what one action of a method actually pays and how long it takes, for 4,043 recipes. It now
    outranks a money-making guide where both describe the same method, because a guide is evidence
    about the action and a recipe is evidence about the action plus your map - the one exception is a
    recipe that reaches several methods at once, which fills a gap but does not overrule a guide. See
    `chunksim estimate skilling`, which prints where each band's rate came from.
+
+   `chunksim recipes` also takes `--chunkinfo` and is the only fetch that reads an export. After the
+   recipes land it asks the wiki about the item names no recipe answered to, because **the chunk
+   picker's vocabulary lags the game's**: `Bronze javelin heads` was renamed to `Bronze javelin
+   tips` in November 2025 and the export still says `heads`, so six Smithing methods had no rate at
+   all. The renames it finds go in `cache/reference/wiki_aliases.json`. Skip the export and you get
+   the recipes without the rename check, which is how this worked before.
 
    **You do not need to fetch anything for the gathering skills.** Fishing, Mining, Woodcutting,
    Hunter and Thieving are *modelled* rather than looked up - the success chance at your level, the

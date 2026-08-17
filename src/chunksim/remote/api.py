@@ -430,6 +430,54 @@ def fetch_wiki_pages(
     return fetched
 
 
+def fetch_wiki_redirects(
+    titles: Sequence[str], timeout: float = DEFAULT_TIMEOUT
+) -> dict[str, str]:
+    """`{asked-for title: the page it redirects to}`, for the ones that do.
+
+    **Upstream's item names lag the wiki's, and a rename reads as a missing
+    method.** `Bronze javelin heads` was renamed to `Bronze javelin tips` in
+    the Sailing pre-release of 5 November 2025; the wiki moved the page and
+    left a redirect, the chunk export still says `heads`, and
+    `recipe_rates`' exact join simply found nothing. `Adamant bolts (unf)`
+    is the same failure over a *space*, against `Adamant bolts(unf)`.
+
+    Asked in the **forward** direction - "what does this name resolve to" -
+    which is what makes it cheap. The reverse (`prop=redirects` over every
+    recipe page) is complete but wasteful: measured, 100 recipe pages carry
+    1,000 redirects and page past `rdlimit=max`, so the whole corpus is
+    ~26,000 aliases to recover the nineteen names anything actually asks for.
+
+    Titles that exist, do not exist, or are merely normalised are all absent
+    from the result: only a real redirect is an answer here. Batched at
+    `WIKI_TITLES_PER_REQUEST` like `fetch_wiki_pages`.
+    """
+    resolved: dict[str, str] = {}
+    for start in range(0, len(titles), WIKI_TITLES_PER_REQUEST):
+        batch = list(titles[start : start + WIKI_TITLES_PER_REQUEST])
+        payload = _fetch_json_object(
+            _wiki_url(
+                {
+                    "action": "query",
+                    "redirects": "1",
+                    "titles": "|".join(batch),
+                    "format": "json",
+                    "formatversion": "2",
+                }
+            ),
+            timeout,
+            what=f"redirects for {len(batch)} title(s)",
+            wiki=True,
+        )
+        for entry in _listing(payload.get("query"), "redirects"):
+            if not isinstance(entry, dict):
+                continue
+            source, target = entry.get("from"), entry.get("to")
+            if isinstance(source, str) and isinstance(target, str):
+                resolved[source] = target
+    return resolved
+
+
 def fetch_bucket(query: str, timeout: float = DEFAULT_TIMEOUT) -> list[dict[str, Any]]:
     """Run one Bucket query against the wiki and return its rows.
 

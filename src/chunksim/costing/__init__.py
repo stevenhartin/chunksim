@@ -163,7 +163,8 @@ Thieving at 84,560 flat against 1,005 at level 1. See `_modelled_tasks`.
   assembled once, because the two had already drifted. Also `ReferenceBlobs`:
   the reference files read **once per invocation** and threaded, rather than
   four times by four callers - and the one place the four override layers are
-  merged, so no reader can apply three of them.
+  merged, so no reader can apply three of them. `aliases` is the fifth blob:
+  the wiki's redirects for the item names upstream has not renamed yet.
 - `dps_bridge.py` - the seam to `osrs-dps`. **Optional import** - check
   `DPS_AVAILABLE`, never assume it. Prices only `reachable_providers`, which it
   imports rather than copying.

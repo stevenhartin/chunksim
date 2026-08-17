@@ -1,11 +1,16 @@
-"""The four subcommands that talk to the network or summarise what they wrote.
+"""The subcommands that talk to the network or summarise what they wrote.
 
-`fetch`, `show`, `chunkinfo` and `heuristics`. They are grouped because of
-what they have in common and what they lack: each is a thin shell over
-`remote/`, none derives anything, and **none of them carries `--export-json`
-or `--recompute`** - there is no derivation to export or to recompute, and a
-flag that means one thing on nine subcommands must not mean something else on
-these.
+`fetch`, `show`, `chunkinfo`, `heuristics` and `recipes`. They are grouped
+because of what they have in common and what they lack: each is a thin shell
+over `remote/`, none derives anything, and **none of them carries
+`--export-json` or `--recompute`** - there is no derivation to export or to
+recompute, and a flag that means one thing on nine subcommands must not mean
+something else on these.
+
+**`recipes` is the one that reads an export**, and takes `--chunkinfo` for it.
+That is not a derivation - it asks the wiki which of upstream's item names
+have been renamed, and the question is "does upstream's vocabulary still match
+the wiki's", which neither half alone can be asked. See `_write_aliases`.
 
 `show` is the exception that proves it: it reads only what `fetch` already
 wrote, which is why it can report the map's shape without a `ChunkInfo` parse.
@@ -20,15 +25,19 @@ import sys
 
 from pathlib import Path
 
+from typing import Any, Mapping
+
 from chunksim.costing import dps_bridge
+from chunksim.costing import recipe_rates
+from chunksim.costing.inputs import recipes_from
 from chunksim.costing.heuristics import disagreements
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.derive.task_names import strip_task_markup
 from chunksim.model.summary import format_age, summarise
-from chunksim.remote.api import CHUNKINFO_URL, DEFAULT_TIMEOUT, TASKS_MAP_URL, fetch_chunkinfo, fetch_map, fetch_tasks_map
+from chunksim.remote.api import CHUNKINFO_URL, DEFAULT_TIMEOUT, TASKS_MAP_URL, fetch_chunkinfo, fetch_map, fetch_tasks_map, fetch_wiki_redirects
 from chunksim.remote.scrape import SOURCE as SCRAPE_SOURCE
 from chunksim.remote.scrape import recipe_coverage, scrape, scrape_recipes
-from chunksim.store.cache import CHUNKINFO_BLOB_NAME, FETCHED, RECIPES_BLOB_NAME, TASKS_MAP_BLOB_NAME, WIKI_RATES_BLOB_NAME, read_cache, read_chunkinfo, read_overrides, write_blob, write_cache
+from chunksim.store.cache import ALIASES_BLOB_NAME, CHUNKINFO_BLOB_NAME, CacheMissError, FETCHED, RECIPES_BLOB_NAME, TASKS_MAP_BLOB_NAME, WIKI_RATES_BLOB_NAME, read_cache, read_chunkinfo, read_overrides, write_blob, write_cache
 
 
 def _cmd_fetch(args: argparse.Namespace) -> int:
@@ -140,6 +149,7 @@ def _cmd_recipes(args: argparse.Namespace) -> int:
     """
     recipes = scrape_recipes(timeout=args.timeout)
     path = write_blob(RECIPES_BLOB_NAME, recipes, SCRAPE_SOURCE)
+    alias_path, aliases = _write_aliases(recipes, args)
 
     total_rows = total_ticked = 0
     for skill, (ticked, rows) in sorted(recipe_coverage(recipes).items()):
@@ -149,7 +159,46 @@ def _cmd_recipes(args: argparse.Namespace) -> int:
         total_ticked += ticked
     print(f"\n{'total':<14} {total_rows:>5} recipes, {total_ticked} with a tick cost")
     print(f"wrote {path} ({path.stat().st_size:,} bytes)")
+    if alias_path is None:
+        print("no export: skipped the rename check (run: chunksim chunkinfo)")
+    else:
+        print(f"wrote {alias_path} ({len(aliases)} renamed item(s))")
     return 0
+
+
+def _write_aliases(
+    recipes: Mapping[str, Any], args: argparse.Namespace
+) -> tuple[Path | None, dict[str, str]]:
+    """Ask the wiki which of upstream's unjoined item names it has renamed.
+
+    **A second fetch, because a rename reads as a missing method.** Upstream's
+    export lags the game: `Bronze javelin heads` became `Bronze javelin tips`
+    on 5 November 2025 and the export still says `heads`, so `recipe_rates`'
+    exact join found nothing and six Smithing methods sat at the 1,000/hr
+    floor with no rate at all. `Adamant bolts (unf)` is the same over a space.
+
+    **Needs the export, which is why this is the one fetch command that reads
+    one.** The question is "does upstream's vocabulary still match the wiki's",
+    and neither half alone can be asked it. No export is not a failure - the
+    aliases are optional exactly as the recipes themselves are, and pricing
+    without them is what this project did before the blob existed.
+    """
+    try:
+        chunk_info = ChunkInfo(read_chunkinfo(override=args.chunkinfo))
+    except CacheMissError:
+        return None, {}
+    wanted = recipe_rates.unjoined_outputs(chunk_info, recipes_from(recipes))
+    resolved = fetch_wiki_redirects(wanted, timeout=args.timeout)
+    known = {
+        row.output.lower() for rows in recipes_from(recipes).values() for row in rows
+    }
+    # **Only the ones that land somewhere with a recipe.** The wiki redirects
+    # plenty of names this project has no use for, and a blob full of them
+    # would grow without ever changing an answer.
+    aliases = {
+        source: target for source, target in resolved.items() if target.lower() in known
+    }
+    return write_blob(ALIASES_BLOB_NAME, aliases, SCRAPE_SOURCE), aliases
 
 
 def add_arguments(
@@ -224,5 +273,13 @@ def add_arguments(
         type=float,
         default=DEFAULT_TIMEOUT,
         help="request timeout in seconds (default: %(default)s)",
+    )
+    # **The one fetch command that reads the export**, and only for the rename
+    # check - see `_write_aliases`. Absent, the recipes are still fetched.
+    recipes.add_argument(
+        "--chunkinfo",
+        type=Path,
+        default=None,
+        help="path to a chunkinfo export, overriding the cache and CHUNKSIM_CHUNKINFO",
     )
     recipes.set_defaults(func=_cmd_recipes)

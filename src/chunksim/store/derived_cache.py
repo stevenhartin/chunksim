@@ -84,6 +84,7 @@ from pathlib import Path
 from chunksim.derive.active_tasks import SkillClassification, TaskClassification
 from chunksim.derive.bis import BisResult
 from chunksim.store.cache import (
+    ALIASES_BLOB_NAME,
     RECIPES_BLOB_NAME,
     WIKI_RATES_BLOB_NAME,
     CacheMissError,
@@ -150,7 +151,9 @@ _FORMAT = "1"
 #: shape of change this counter exists for.
 #: 49: `recipe_rates` joins on the recipe's variant as well as its output, so
 #: the two ways of smelting a bar stopped being one answer given twice.
-_PRICING_MODEL = "49"
+#: 50: the recipe join consults the wiki's redirect map, so an item upstream
+#: has not renamed yet joins the page the wiki moved it to.
+_PRICING_MODEL = "50"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.
@@ -252,6 +255,12 @@ class PricingDigests:
     #: different API on a different cadence, and folding the two would
     #: invalidate every stored enrichment whenever either moved.
     recipes: str = ""
+    #: The `chunksim recipes` alias map. Its own field for the reason
+    #: `recipes` has one: it is written by the same command but describes a
+    #: different thing, and a rename resolved is a *new join*, so an
+    #: enrichment computed before one arrived is stale in exactly the way this
+    #: dataclass exists to notice.
+    aliases: str = ""
     #: `heuristics/gathering.json`, the checked-in gathering tables.
     #:
     #: **The third time this dataclass fell behind its own inputs**, and the
@@ -558,6 +567,7 @@ def pricing_digests(root: Path | None = None, map_id: str | None = None) -> Pric
     """
     return PricingDigests(
         rates=_maybe_digest(lambda: blob_path(WIKI_RATES_BLOB_NAME, root)),
+        aliases=_maybe_digest(lambda: blob_path(ALIASES_BLOB_NAME, root)),
         # **`overrides_source`, not `overrides_path`.** They differ on an
         # installed build that has never had a knob edited - the write path
         # does not exist and the shipped corrections do - so digesting the
