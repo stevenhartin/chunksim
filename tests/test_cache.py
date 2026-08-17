@@ -663,7 +663,12 @@ def test_only_maps_are_listed_as_maps(tmp_path: Path) -> None:
     assert [entry.map_id for entry in list_maps(root=tmp_path)] == ["fray"]
     # And every one of those blobs really was written, under `reference/`.
     assert (tmp_path / "cache" / "reference" / "chunkinfo.json").is_file()
-    assert (tmp_path / "cache" / "reference" / "wiki_rates.json").is_file()
+    # A shipped blob writes into the checkout instead - `cache/reference/`
+    # holds only what a user is expected to refresh.
+    # A shipped blob writes beside the code instead - `cache/reference/`
+    # holds only what a user is expected to refresh. No checkout here, so
+    # `blob_write_path` falls back to the data directory.
+    assert (tmp_path / "heuristics" / "wiki_rates.json").is_file()
     assert (tmp_path / "cache" / "gui" / "window.json").is_file()
     assert not list((tmp_path / "cache").glob("*.json"))
 

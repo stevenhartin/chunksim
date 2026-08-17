@@ -211,6 +211,80 @@ PACKAGED_OVERRIDES = Path(__file__).resolve().parent.parent / HEURISTICS_DIR_NAM
 #: checkout reads what it has just regenerated, and those are the same path.
 PACKAGED_GATHERING = Path(__file__).resolve().parent.parent / HEURISTICS_DIR_NAME / GATHERING_FILE_NAME
 
+#: The wiki-derived blobs that **ship with the code** rather than being fetched
+#: by a user.
+#:
+#: **Wiki parsing is a developer activity and its output is a config file.**
+#: `chunksim heuristics` and `chunksim recipes` reach ~200 wiki pages between
+#: them to answer questions whose answers only move on a game update - what one
+#: action pays, how long it takes, what it consumes - so making every install
+#: ask them again is a network dependency the estimator does not otherwise
+#: have, and it is the difference between a GUI that works offline and one
+#: that does not. Measured before this: of 2,411 reachable training methods,
+#: **1,229 priced only when the fetched blobs were present** and 348 without.
+#:
+#: The precedent is `gathering.json`, which was already this: scraped by a
+#: developer command, checked in, shipped as package data, corrected through
+#: `overrides.json` like everything else. These three join it, read by
+#: `blob_source` and written by `blob_write_path`.
+SHIPPED_BLOB_NAMES: tuple[str, ...] = (
+    WIKI_RATES_BLOB_NAME,
+    RECIPES_BLOB_NAME,
+    ALIASES_BLOB_NAME,
+)
+
+
+def packaged_blob(name: str) -> Path:
+    """The shipped copy of `name`, `__file__`-relative like
+    `PACKAGED_GATHERING` and for the same reason: an installed build must read
+    what it shipped with, and there is no user copy to prefer.
+    """
+    return Path(__file__).resolve().parent.parent / HEURISTICS_DIR_NAME / f"{name}.json"
+
+
+def blob_write_path(name: str, root: Path | None = None) -> Path:
+    """Where the developer command for `name` writes.
+
+    The checkout's own `src/chunksim/heuristics/`, exactly as
+    `gathering_path` resolves - derived from the tree rather than from
+    `__file__` so a test standing in a throwaway root writes its own file
+    instead of the developer's real config.
+    """
+    base = root or data_root()
+    packaged = base / "src" / "chunksim" / HEURISTICS_DIR_NAME / f"{name}.json"
+    if packaged.parent.parent.is_dir():
+        return packaged
+    return base / HEURISTICS_DIR_NAME / f"{name}.json"
+
+
+def blob_source(name: str, root: Path | None = None) -> Path:
+    """The file a reader of `name` will actually open.
+
+    The `gathering_path`/`gathering_source` split, with one addition: a
+    `cache/reference/` copy is still read when nothing has shipped. That is
+    the migration path rather than a second home - a checkout fetched before
+    these moved keeps working - and it comes after the checkout's own config,
+    so a regenerated file always wins over a stale fetch.
+
+    **A checkout is a closed world, and getting that wrong reads the
+    developer's real config in every test.** `__file__`-relative is the answer
+    only for an *installed* build; a tree that looks like a checkout - which
+    is what `conftest.project` builds - must read its own copy, present or
+    not. Reaching past an empty fixture tree to the packaged file made three
+    simulate tests derive an extra state off rates they were never given.
+    """
+    written = blob_write_path(name, root)
+    if written.is_file():
+        return written
+    cached = blob_path(name, root)
+    if cached.is_file():
+        return cached
+    base = root or data_root()
+    if root is not None or (base / "src" / "chunksim").is_dir():
+        return written
+    return packaged_blob(name)
+
+
 #: Binary assets the GUI needs, kept beside the JSON blobs. Every one of them
 #: is fetched rather than committed, because all of it is somebody else's
 #: artwork - see `api.SECTION_OVERLAY_URL`.
@@ -659,8 +733,15 @@ def blob_path(name: str, root: Path | None = None) -> Path:
 
 
 def write_blob(name: str, data: dict[str, Any], source: str, root: Path | None = None) -> Path:
-    """Write `data` under `name`, in the same provenance envelope as `write_cache`."""
-    path = blob_path(name, root)
+    """Write `data` under `name`, in the same provenance envelope as `write_cache`.
+
+    **A shipped blob is written into the checkout, not into `cache/`** - see
+    `SHIPPED_BLOB_NAMES`. The commands that produce those are developer tools
+    whose output is checked in, exactly as `chunksim gather-tables` already
+    was, so writing them to a gitignored cache would put the config somewhere
+    a build could not ship it from.
+    """
+    path = blob_write_path(name, root) if name in SHIPPED_BLOB_NAMES else blob_path(name, root)
     path.parent.mkdir(parents=True, exist_ok=True)
     envelope = {
         "name": name,
@@ -679,8 +760,12 @@ def read_blob(name: str, root: Path | None = None, *, hint: str | None = None) -
     default because two of the three blobs come from `chunksim chunkinfo`, and it
     is a parameter because the third does not - a missing wiki blob telling
     you to run `chunksim chunkinfo` sends you to the wrong command entirely.
+
+    **A shipped blob is read from wherever it shipped**, not from `cache/`:
+    see `SHIPPED_BLOB_NAMES` for why the wiki-derived ones are config rather
+    than cache. Everything else is still a fetch a user is expected to refresh.
     """
-    path = blob_path(name, root)
+    path = blob_source(name, root) if name in SHIPPED_BLOB_NAMES else blob_path(name, root)
     hint = hint or "run: chunksim chunkinfo"
     try:
         raw = path.read_text(encoding="utf-8")
@@ -1825,9 +1910,9 @@ def reference_stamp(
     """
     stamps: list[tuple[int, int]] = []
     paths = [
-        blob_path(WIKI_RATES_BLOB_NAME, root),
-        blob_path(RECIPES_BLOB_NAME, root),
-        blob_path(ALIASES_BLOB_NAME, root),
+        blob_source(WIKI_RATES_BLOB_NAME, root),
+        blob_source(RECIPES_BLOB_NAME, root),
+        blob_source(ALIASES_BLOB_NAME, root),
         overrides_path(root),
     ]
     if map_id is not None:

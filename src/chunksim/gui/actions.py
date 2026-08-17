@@ -778,13 +778,20 @@ def _blob_present(what: str, ctx: Context) -> bool:
     A `stat`, not a read: the question is whether to start a scrape, and
     parsing 1.7MB of recipes to answer it would cost more than the answer is
     worth. `routes_reference._reference_state` takes the same line.
+
+    **`blob_source`, so a shipped config counts as present.** The wiki-derived
+    blobs are checked in and packaged now (`cache.SHIPPED_BLOB_NAMES`), so an
+    ordinary install already holds them and an `auto` refresh has nothing to
+    fetch. Asking `blob_path` instead would send every fresh install to the
+    wiki for data it was distributed with, which is the whole thing that
+    move was for.
     """
     name = {
         "chunkinfo": cache.CHUNKINFO_BLOB_NAME,
         "heuristics": cache.WIKI_RATES_BLOB_NAME,
         "recipes": cache.RECIPES_BLOB_NAME,
     }[what]
-    return cache.blob_path(name, ctx.root).is_file()
+    return cache.blob_source(name, ctx.root).is_file()
 
 
 def _refresh_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:

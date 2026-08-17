@@ -183,7 +183,11 @@ def test_heuristics_writes_the_config_and_reports_coverage(
     out = capsys.readouterr().out
     assert "quest pages      1/1" in out
     assert "100% from the wiki" in out
-    config = json.loads((project / "cache" / "reference" / "wiki_rates.json").read_text())["data"]
+    # **Into the checkout, not the cache.** The wiki blobs are config that
+    # ships now - see `cache.SHIPPED_BLOB_NAMES` - so this writes where a
+    # build can package it from.
+    written = project / "src" / "chunksim" / "heuristics" / "wiki_rates.json"
+    config = json.loads(written.read_text())["data"]
     assert config["quests"]["Cook's Assistant"]["hours"] == 0.17
     assert config["monsters"]["General Graardor"]["value"] == 27.0
 

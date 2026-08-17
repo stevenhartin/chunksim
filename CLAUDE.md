@@ -344,14 +344,25 @@ mechanic on its own page, not by trusting the guide, and the test now pins the
 zero in both directions so a regression reads as one. That is the shape any
 other skill leaving the set has to take.
 
-**`chunksim gather-tables` is the one subcommand that writes into `src/`.**
-Everything else that fetches writes a cache blob a user is expected to refresh;
-this writes `src/chunksim/heuristics/gathering.json`, which is checked in and
-shipped as package data. That is deliberate — the tables move about once a game
-update, and making every install re-read six hundred wiki pages would cost the
-estimator a network dependency it does not otherwise have. **`chunksim estimate`
-must never reach that code**, which is why the fetching is injected into
-`gathering.build_tables` rather than imported by it.
+**Every wiki fetch is a developer command that writes into `src/`, and the
+estimator never reaches one.** `gather-tables` was the first and the argument
+generalised: the tables move about once a game update, so making every install
+re-read the wiki costs the estimator a network dependency it does not otherwise
+have. `chunksim heuristics` and `chunksim recipes` now write beside it —
+`wiki_rates.json`, `wiki_recipes.json`, `wiki_aliases.json` — all checked in and
+shipped as package data under the existing `heuristics/*.json` glob, so adding
+one needs no packaging change.
+
+**The measurement that forced it**: of 2,411 reachable training methods,
+**1,229 priced only when the fetched blobs were present** and 348 without. Now
+all 1,577 price from a cache holding no wiki data at all, to identical values —
+`tests/test_packaging.py` pins both halves. `cache.SHIPPED_BLOB_NAMES` is the
+list, `blob_write_path` is where a developer command writes and `blob_source`
+what a reader opens. **A checkout is a closed world in `blob_source`**, real or
+a test fixture: reaching past an empty fixture tree to the packaged file made
+three simulate tests derive an extra state off rates they were never given.
+`chunksim estimate` must still never reach the fetching code, which is why it
+is injected into `gathering.build_tables` rather than imported by it.
 
 ### Test against more than one map
 
@@ -449,9 +460,9 @@ pip install -e ".[dev]"     # editable install into .venv; provides the `chunksi
 chunksim fetch --map ID         # GET live state -> cache/maps/fetched/<map>.json
 chunksim show  [--map ID]       # summarise the cached copy; no network
 chunksim chunkinfo              # GET upstream's chunk/challenge reference data (~10MB)
-chunksim heuristics             # GET wiki/spreadsheet rates -> cache/reference/wiki_rates.json (30+ requests)
-chunksim recipes [--chunkinfo P] # GET per-action xp + tick costs -> cache/reference/wiki_recipes.json
-                                # + the wiki's renames -> cache/reference/wiki_aliases.json
+chunksim heuristics             # developer only: rates -> src/chunksim/heuristics/wiki_rates.json (30+ requests)
+chunksim recipes [--chunkinfo P] # developer only: per-action xp + ticks -> .../wiki_recipes.json
+                                # + the wiki's renames -> .../wiki_aliases.json
 chunksim gather-tables          # developer only: GET the gathering tables -> src/chunksim/heuristics/gathering.json
 chunksim estimate [BUCKET] [--limit N]                 # rough hours for the outstanding active tasks
 chunksim sections [list|CHUNK] [--limit N]             # reachable sections
@@ -497,8 +508,8 @@ that failed the moment it was chosen. A directory cannot be forgotten.
 cache/maps/fetched/<id>.json       # from Firebase; only `chunksim fetch` writes one
 cache/maps/simulated/<batch>/…     # rolled by `chunksim simulate`
 cache/maps/edited/<batch>/…        # made by hand: `chunksim unlock --cache-map`, or the GUI
-cache/reference/                   # chunkinfo, tasks_map, wiki_rates, wiki_recipes, wiki_aliases,
-                                   # tile_version
+cache/reference/                   # chunkinfo, tasks_map, tile_version
+                                   # (the wiki blobs moved to src/chunksim/heuristics/)
 cache/derived/                     # pipeline.derive + dps_bridge.enrich results, keyed by content
 cache/overrides/<map_id>.json      # heuristic corrections belonging to one map
 cache/assets/                      # section masks, skill icons, CA tier icons
@@ -520,8 +531,8 @@ everywhere else.
 so is `/*.json` at the repo root, which is where `--export-json` output lands when it is aimed at
 the checkout rather than `/tmp` or stdout. A stray `tasks.json` there is that, not project data.
 
-**The estimator's numbers live in four places and only two are in `cache/`.** `chunksim heuristics`
-writes the scrape to `cache/reference/wiki_rates.json` (refetchable, gitignored); hand-written
+**The estimator's numbers live in four places and only one is in `cache/`.** `chunksim heuristics`
+writes the scrape to `src/chunksim/heuristics/wiki_rates.json` (checked in, shipped); hand-written
 corrections go in **`src/chunksim/heuristics/overrides.json`, which is checked in *and* shipped as
 package data** so they are diffable and
 survive a re-scrape; and corrections belonging to *one map* go in `cache/overrides/<map_id>.json`,

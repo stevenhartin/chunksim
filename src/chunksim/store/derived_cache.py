@@ -89,6 +89,7 @@ from chunksim.store.cache import (
     WIKI_RATES_BLOB_NAME,
     CacheMissError,
     blob_path,
+    blob_source,
     file_digest,
     gathering_source,
     map_overrides_path,
@@ -574,8 +575,8 @@ def pricing_digests(root: Path | None = None, map_id: str | None = None) -> Pric
     no corrections - correctly, since the two price identically.
     """
     return PricingDigests(
-        rates=_maybe_digest(lambda: blob_path(WIKI_RATES_BLOB_NAME, root)),
-        aliases=_maybe_digest(lambda: blob_path(ALIASES_BLOB_NAME, root)),
+        rates=_maybe_digest(lambda: blob_source(WIKI_RATES_BLOB_NAME, root)),
+        aliases=_maybe_digest(lambda: blob_source(ALIASES_BLOB_NAME, root)),
         # **`overrides_source`, not `overrides_path`.** They differ on an
         # installed build that has never had a knob edited - the write path
         # does not exist and the shipped corrections do - so digesting the
@@ -587,7 +588,7 @@ def pricing_digests(root: Path | None = None, map_id: str | None = None) -> Pric
             else _maybe_digest(lambda: map_overrides_path(map_id, root))
         ),
         library=dps_library_digest(),
-        recipes=_maybe_digest(lambda: blob_path(RECIPES_BLOB_NAME, root)),
+        recipes=_maybe_digest(lambda: blob_source(RECIPES_BLOB_NAME, root)),
         gathering=_maybe_digest(lambda: gathering_source(root)),
     )
 

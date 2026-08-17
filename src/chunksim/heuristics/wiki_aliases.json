@@ -1,0 +1,27 @@
+{
+  "name": "wiki_aliases",
+  "fetched_at": "2026-08-17T14:47:56.241621+00:00",
+  "source": "https://oldschool.runescape.wiki/api.php",
+  "data": {
+    "Adamant bolts (unf)": "Adamant bolts(unf)",
+    "Blood'n'tar snelm (pointed)": "Pointed blood'n'tar snelm",
+    "Bruise blue snelm (pointed)": "Pointed bruise blue snelm",
+    "Bruise blue snelm (round)": "Bruise blue snelm",
+    "Blood'n'tar snelm (round)": "Blood'n'tar snelm",
+    "Bronze javelin heads": "Bronze javelin tips",
+    "Adamant javelin heads": "Adamant javelin tips",
+    "Amethyst javelin heads": "Amethyst javelin tips",
+    "Chili potato": "Chilli potato",
+    "Cooked crab meat": "Cooked giant crab meat",
+    "Iron javelin heads": "Iron javelin tips",
+    "Myre snelm (pointed)": "Pointed myre snelm",
+    "Ochre snelm (pointed)": "Pointed ochre snelm",
+    "Myre snelm (round)": "Myre snelm",
+    "Ochre snelm (round)": "Ochre snelm",
+    "Mithril javelin heads": "Mithril javelin tips",
+    "Rune crossbow (u)": "Runite crossbow (u)",
+    "Split logs": "Split log",
+    "Steel javelin heads": "Steel javelin tips",
+    "Rune javelin heads": "Rune javelin tips"
+  }
+}

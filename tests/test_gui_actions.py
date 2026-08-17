@@ -414,7 +414,7 @@ def test_refreshing_the_rates_runs_the_same_scrape_the_cli_runs(
     assert job["result"]["refreshed"] == "heuristics"
     # Read off disk, not through `cache.read_blob`: `_derived_ctx` patches that
     # on the shared module, so it would answer with the fixture's stub.
-    written = json.loads(cache.blob_path(cache.WIKI_RATES_BLOB_NAME, tmp_path).read_text())
+    written = json.loads(cache.blob_source(cache.WIKI_RATES_BLOB_NAME, tmp_path).read_text())
     assert written["data"] == {"quests": {"Cook's Assistant": 5}}
 
 

@@ -443,12 +443,14 @@ maps are your own work and nothing can recompute them.
    chunksim chunkinfo
    ```
 
-   If you want `chunksim estimate`, also pull the numbers it spends. Two different sources, both from the
-   wiki and both only worth repeating occasionally:
+   **You do not need to fetch the numbers `chunksim estimate` spends** - they ship with the code, in
+   `src/chunksim/heuristics/`. The two commands below regenerate them and are *developer* tools: they
+   reach ~200 wiki pages to answer questions that only move on a game update, and their output is
+   checked in so an install never asks the wiki anything.
 
    ```sh
-   chunksim heuristics                     # 30+ requests: guides, quest lengths, skill tables, monster hp, bones
-   chunksim recipes                        # 13 requests: xp per action and tick costs, per skill
+   chunksim heuristics                     # developer: guides, quest lengths, skill tables, monster hp, bones
+   chunksim recipes                        # developer: xp per action, tick costs, and item renames
    ```
 
    The second is what stops most training methods being priced at a flat 1,000 xp/hour: it brings
