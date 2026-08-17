@@ -89,6 +89,53 @@ _CROP_YIELDS: dict[str, float] = {
 #: replant. A stated figure, and the only one that decides `active_hours`.
 HARVEST_SECONDS = 60.0
 
+#: Herbs one seed returns, on average. **The wiki's own empirical figure** -
+#: `Herb patch` states "an average of 8.8 herbs per seed in a standard
+#: (non-protected) herb patch" and computes its profit tables from it. The
+#: standard patch rather than the boosted one, which is the conservative end
+#: taken everywhere else here: ultracompost, magic secateurs and the Farming
+#: cape all raise it and a chunk map may hold none of them.
+HERBS_PER_SEED = 8.8
+
+#: The export's own marker for a herb grown in an ordinary patch. Both are
+#: required: `Category` alone also catches the allotments and trees, and
+#: `Objects` alone would catch anything else standing at a herb patch. The
+#: three Chambers of Xeric herbs (`buchu`, `golpar`, `noxifer`) carry neither
+#: and are correctly left out - they are not farmed, they are found.
+HERB_CATEGORY = "Normal Farming"
+HERB_PATCH = "Herb patch"
+
+
+def harvest_yields(
+    challenges: Mapping[str, Any], valid: Mapping[str, Any]
+) -> dict[str, float]:
+    """`{task: herbs per action}` for every herb a map can grow.
+
+    **What stops the item walk charging a whole seed against one herb.** A
+    ranarr seed prices at 163s and a patch returns 8.8 herbs for it, so the
+    per-herb cost is 19s rather than 169s - and a grimy ranarr weed was the
+    single most expensive thing in Herblore's inputs. See
+    `Heuristics.harvest_yield`, which this fills, and `estimate._route_hours`,
+    which spends it.
+
+    Joined on upstream's own `Category`/`Objects` rather than on the task's
+    words, for the reason every join in this project prefers a field: the
+    export says which challenges are ordinary farming and which are not.
+    """
+    found: dict[str, float] = {}
+    for task in valid or {}:
+        challenge = challenges.get(task)
+        if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
+            continue
+        categories = challenge.get("Category")
+        objects = challenge.get("Objects")
+        if not isinstance(categories, list) or HERB_CATEGORY not in categories:
+            continue
+        if not isinstance(objects, list) or HERB_PATCH not in objects:
+            continue
+        found[task] = HERBS_PER_SEED
+    return found
+
 
 @dataclass(frozen=True)
 class FarmingRun:

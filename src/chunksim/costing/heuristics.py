@@ -518,6 +518,16 @@ class Heuristics:
     #: (actions an hour) or a recipe's tick cost; absent means unknown, and
     #: `estimate.DEFAULT_ACTION_SECONDS` stands in.
     action_seconds: dict[str, float] = field(default_factory=dict)
+    #: Challenge name -> how many of its `Output` one performance yields.
+    #:
+    #: **One action is not one item, and assuming it was made every herb cost
+    #: a whole seed.** A herb patch returns an average of 8.8 herbs for the one
+    #: seed planted, so charging the seed per *herb* priced a grimy ranarr weed
+    #: at 168.9s - almost all of it the 163s seed - and left every potion that
+    #: consumes one under the 1,000/hr floor, where a money-making guide that
+    #: never paid for its herbs won instead. Absent means one, which is every
+    #: other challenge in the export.
+    harvest_yield: dict[str, float] = field(default_factory=dict)
     #: Item -> the fee charged to make it, where a conversion has one. The
     #: export models the sawmill and not its price; see `remote/stores.py`.
     conversion_fees: dict[str, ShopPrice] = field(default_factory=dict)

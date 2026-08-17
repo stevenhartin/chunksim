@@ -285,6 +285,27 @@ which **replaced** the whole tuple - so anything non-combat filed under a
 were computed and thrown away before a reader could see them. The comment
 above it already said "Merged, not replaced". It does now.
 
+**One action is not one item, and assuming it was cost Herblore its whole
+model.** The item walk charged a challenge's `Items` once per unit of its
+`Output`, so a grimy ranarr weed cost a whole ranarr seed - 163 seconds of
+killing for the drop - and priced at 168.9s. A herb patch returns **8.8 herbs
+for the one seed planted** (the wiki's own empirical figure for a standard,
+unprotected patch), so the true marginal cost is 19.2s. Every potion consuming
+a herb therefore fell under the 1,000/hr floor and kept a `wiki:herblore`
+figure that never paid for its herbs at all - which is exactly the
+"guides do not include gathering costs and we do" asymmetry, showing up as the
+guide *winning*. `Heuristics.harvest_yield` carries the figure and
+`estimate._route_hours` spends it; `costing/farming.harvest_yields` fills it,
+joined on upstream's own `Category`/`Objects` so the Chambers of Xeric herbs -
+found rather than farmed - are correctly left out.
+
+**Where the division goes is the whole of it.** Dividing the *quantity* going
+in does not work: `_kill_hours` floors a drop at `1/chance` kills - you cannot
+see a ranarr seed in fewer, however little of one you want - so the seed stayed
+at 163s and only the tools scaled. The action costs what it costs and hands
+back `yielded` of the output, so the division belongs on the total. Herblore's
+recipe-priced methods went 26 to 34 and its guide-backed ones 45 to 37.
+
 **Not every "computed" number is evidence, and the docstrings say which.**
 Thieving's fifteen tabulated stalls come out at exactly 1.00x against the
 scrape, and that is an identity rather than agreement — the wiki's column is

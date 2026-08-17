@@ -162,7 +162,9 @@ _FORMAT = "1"
 #: 53: barbarian fishing pays Strength and Agility, read off the Fishing
 #: model's own cascade - and combat's computed methods stopped overwriting
 #: whatever else a combat skill already had.
-_PRICING_MODEL = "53"
+#: 54: a herb patch yields ~8.8 herbs for one seed, so the item walk stopped
+#: charging a whole seed against every herb.
+_PRICING_MODEL = "54"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

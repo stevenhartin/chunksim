@@ -1059,6 +1059,18 @@ def _route_hours(
             if not math.isfinite(fee):
                 return None
             total += fee
+        # **One action can yield several of what it makes, and the division
+        # belongs here rather than on `quantity`.** A herb patch returns ~8.8
+        # herbs for the one seed planted. Dividing the quantity going *in* does
+        # not work: `_kill_hours` floors a drop at `1/chance` kills - you
+        # cannot see a ranarr seed in fewer, however little of one you want -
+        # so the seed stayed at its full 163s and only the tools scaled. The
+        # whole action costs what it costs and hands back `yielded` of the
+        # output, so the per-item cost is the total over the yield. Absent
+        # means one, which is every other challenge in the export.
+        yielded = walk.heuristics.harvest_yield.get(provider, 1.0)
+        if yielded > 1.0:
+            total /= yielded
         return _Priced(total, f"make: {provider}", f"make:{provider}", _unique(knobs))
 
     return _kill_hours(walk, provider, item, quantity)

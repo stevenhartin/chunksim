@@ -37,6 +37,7 @@ from chunksim.costing import (
     aerial,
     barbarian,
     blastmine,
+    farming,
     artefacts,
     chambers,
     combat_xp,
@@ -345,6 +346,19 @@ def recipe_priced(
         state, derived, heuristics, blobs, levels, pinned
     )
 
+    # **Before the walk, because the walk spends it.** A herb patch yields ~8.8
+    # herbs for one seed, and `_route_hours` charges the seed per *herb*
+    # without this - see `farming.harvest_yields`.
+    heuristics = replace(
+        heuristics,
+        harvest_yield={
+            **heuristics.harvest_yield,
+            **farming.harvest_yields(
+                _mapping(state.chunk_info.challenges, "Farming"),
+                derived.challenges.valid.get("Farming") or {},
+            ),
+        },
+    )
     seconds = material_seconds(state, derived, world, heuristics, level_overrides=levels)
     # **Prayer is priced here because this is where the item walk is.** Its
     # rate is a bone's experience over the time to collect one, so it needs

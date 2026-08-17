@@ -17,6 +17,7 @@ from chunksim.costing.farming import (
     plan_for,
     schedule_key,
 )
+from chunksim.costing import farming
 from chunksim.remote.farming import Crop, parse_crops
 
 _LUA = """
@@ -136,3 +137,43 @@ def test_a_schedule_with_nothing_in_it_costs_nothing_rather_than_dividing_by_zer
 
     assert plan.runs == ()
     assert plan.days_for(1_000_000) == 0.0
+
+
+
+def test_a_herb_patch_yields_more_than_one_herb() -> None:
+    """**One seed, 8.8 herbs** - the wiki's own empirical figure for a standard
+    patch. Without it the item walk charged a whole ranarr seed, 163s, against
+    every single herb, which put a grimy ranarr weed at 168.9s and left every
+    potion consuming one under the 1,000/hr floor. The guide that never paid
+    for its herbs won instead."""
+    assert farming.HERBS_PER_SEED > 1.0
+
+
+def test_only_ordinary_farmed_herbs_get_a_yield() -> None:
+    """**Both of upstream's markers, because either alone is wrong.**
+    `Category` catches the allotments and trees too; `Objects` would catch
+    anything else standing at a herb patch. The Chambers of Xeric herbs carry
+    neither - they are found rather than farmed - and must not be priced as a
+    patch."""
+    challenges = {
+        "Grow a ~|grimy ranarr weed|~": {
+            "Primary": True,
+            "Category": ["Normal Farming"],
+            "Objects": ["Herb patch"],
+        },
+        "Grow a ~|grimy golpar|~": {"Primary": True, "Category": ["CoX"]},
+        "Grow a ~|potato|~": {
+            "Primary": True,
+            "Category": ["Normal Farming"],
+            "Objects": ["Allotment patch"],
+        },
+        "Grow a ~|secondary|~": {
+            "Primary": False,
+            "Category": ["Normal Farming"],
+            "Objects": ["Herb patch"],
+        },
+    }
+
+    found = farming.harvest_yields(challenges, dict.fromkeys(challenges, {}))
+
+    assert found == {"Grow a ~|grimy ranarr weed|~": farming.HERBS_PER_SEED}
