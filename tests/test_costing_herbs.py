@@ -56,7 +56,8 @@ def test_the_drop_table_is_pooled_not_asked_for_one_herb() -> None:
 
     # 0.22 x 300 = 66 beats 0.5 x 100 = 50, which asking for ranarr alone
     # would have got backwards.
-    assert best == ("Chaos druid", pytest.approx(66.0))
+    assert best[0] == "Chaos druid"
+    assert best[1] == pytest.approx(66.0)
 
 
 def test_a_patch_location_may_name_a_section() -> None:

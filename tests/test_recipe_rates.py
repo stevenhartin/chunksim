@@ -22,6 +22,8 @@ from chunksim.costing.recipe_rates import (
     names_variant,
     rate_for,
     challenge_experience,
+    join_keys,
+    refuse_dropped,
     unjoined_outputs,
     with_aliases,
     variant_candidates,
@@ -568,3 +570,57 @@ def test_an_untimed_recipe_offers_no_credit() -> None:
 
     assert challenge_experience(info, {"Herblore": [untimed]}) == {}
     assert challenge_experience(info, {"Herblore": [untimed]}, stated_ticks={"X": 0.6})
+
+
+def test_a_method_whose_inputs_have_no_route_keeps_no_scraped_rate() -> None:
+    """**A dropped method used to keep its guide rate and pay nothing for
+    materials.** `rate_for` returns `None` when an input has no route - rightly
+    - but it is also the only source of `material_seconds_per_xp`, so the
+    scrape then ranked as though the ingredients were free, and the
+    ingredients in question are precisely the ones too hard to price.
+
+    `Mix an ~|ancient mix|~` needs an `Ancient brew(2)` the map cannot route,
+    so `wiki:herblore`'s 522,500/hr stood against recipe-priced neighbours at
+    30,546 and took the top four bands of the skill.
+    """
+    training = {
+        "Mix an ~|ancient mix|~": {"Herblore": Rate(522_500.0, "wiki:herblore", "exact")},
+        "Mix a ~|super restore|~": {"Herblore": Rate(30_546.0, "recipe", "computed")},
+        "Catch a ~|leaping trout|~": {"Fishing": Rate(3_841.0, "computed:gathering", "modelled")},
+    }
+
+    kept = refuse_dropped(training, ["Mix an ~|ancient mix|~", "Catch a ~|leaping trout|~"])
+
+    assert "Mix an ~|ancient mix|~" not in kept
+    assert kept["Mix a ~|super restore|~"]["Herblore"].value == 30_546.0
+    # **A modelled rate survives**: a model answering for a whole activity is
+    # not a claim about a recipe's inputs.
+    assert kept["Catch a ~|leaping trout|~"]["Fishing"].value == 3_841.0
+
+
+def test_a_hand_pin_survives_being_dropped() -> None:
+    """As everywhere else: someone wrote that number down deliberately."""
+    training = {"Mix a ~|thing|~": {"Herblore": Rate(1.0, "hand: measured", "exact")}}
+
+    assert refuse_dropped(training, ["Mix a ~|thing|~"], pinned={"Mix a ~|thing|~"})
+
+
+def test_a_dose_is_a_fallback_join_not_a_first_choice() -> None:
+    """**A potion's dose is a vocabulary difference as often as a real one.**
+    Upstream calls a challenge's output `Super combat potion(3)` where the only
+    recipe makes a `(4)`. But a challenge whose own dose *is* made must keep
+    it - an attack potion is not a four-dose recipe."""
+    keys = join_keys({"Output": "Attack potion(3)"}, "Mix an ~|attack potion|~")
+
+    assert keys[0] == "Attack potion(3)", "the exact output comes first"
+    assert "Attack potion(4)" in keys
+    assert keys.index("Attack potion(3)") < keys.index("Attack potion(4)")
+
+
+def test_a_bare_name_is_offered_each_dose() -> None:
+    """`join_keys`' verb-stripped key carries no dose, which is what kept
+    `Extreme potion(3)` from reaching `Extreme energy potion(3)`."""
+    keys = join_keys({}, "Mix an ~|extreme energy potion|~")
+
+    assert "extreme energy potion" in keys
+    assert "extreme energy potion(3)" in keys

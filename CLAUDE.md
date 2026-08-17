@@ -427,6 +427,32 @@ answers. **A patch location may name a section** (`11321-2`) or a whole chunk
 (`13141`), and comparing the first against unlocked-chunk keys silently
 matched nothing - it undercounted the uber map at 5 patches of 12.
 
+**A method this project cannot cost is refused, not quoted.** `rate_for`
+returns `None` when an input has no route - rightly, since tick-math over
+inputs nothing can price is a made-up number - but it is also the only source
+of `material_seconds_per_xp`, so the *scraped* rate then survived ranking as
+though the ingredients were free, and the ingredients in question are exactly
+the ones too hard to price. Its docstring recorded that bias rather than
+fixing it, on the measured grounds that **not one such method won a band**.
+That stopped being true: `Mix an ~|ancient mix|~` needs an `Ancient brew(2)`
+the map cannot route, so `wiki:herblore`'s 522,500/hr stood unchallenged
+against recipe-priced neighbours at 30,546 and took the **top four bands of
+the skill**. `recipe_rates.refuse_dropped` now strips the scrape from a
+dropped method; a hand pin survives, and so does a `modelled` rate, because a
+model answering for a whole activity is not a claim about a recipe's inputs.
+
+**Doses are a vocabulary difference as often as a real one**, so `join_keys`
+offers them as a *fallback* - exact keys first. Upstream names a challenge's
+output `Super combat potion(3)` where the only recipe makes a `(4)`, and
+`Extreme potion(3)` where the wiki says `Extreme energy potion(3)`; the
+verb-stripped key carries no dose at all, which is what kept the second from
+ever joining. Both then join, both are dropped for inputs with no route, and
+both are refused - which is how Herblore's climb came to end where it should.
+
+**Herblore is a slow skill and now reads as one.** `Mix a ~|super restore|~`
+at 30,546/hr wins from 63 to 99 and 1 -> 99 is **431.5h**, against the 46.4h
+four materials-free guide figures were claiming.
+
 **Not every "computed" number is evidence, and the docstrings say which.**
 Thieving's fifteen tabulated stalls come out at exactly 1.00x against the
 scrape, and that is an identity rather than agreement — the wiki's column is

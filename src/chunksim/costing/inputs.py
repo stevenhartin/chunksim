@@ -496,7 +496,14 @@ def recipe_priced(
             # `default`, and `gathering.apply` has already written a
             # `modelled` one. The two computed layers therefore compose
             # without either having to know the other exists.
-            training=recipe_rates.apply(heuristics.training, computed, pinned),
+            # **Refused after applied, so a computed rate is never removed.**
+            # A method whose inputs have no route keeps no *scraped* rate -
+            # see `recipe_rates.refuse_dropped` for the bias that fixes.
+            training=recipe_rates.refuse_dropped(
+                recipe_rates.apply(heuristics.training, computed, pinned),
+                coverage.dropped,
+                pinned,
+            ),
             action_seconds=timed,
             computed=_merge_computed(prayed, gathered),
             material_seconds_per_xp=per_xp,

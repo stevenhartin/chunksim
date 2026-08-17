@@ -64,7 +64,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import re
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Container, Iterable, Mapping, Sequence
 
 from chunksim.costing.heuristics import Rate
 from chunksim.derive.task_names import strip_task_markup
@@ -123,7 +123,37 @@ def join_keys(challenge: Mapping[str, Any], task: str) -> tuple[str, ...]:
         if isinstance(value, str) and value.strip():
             keys.append(value.strip())
     keys.append(_VERBS.sub("", strip_task_markup(task)).strip())
+    # **Doses last, and only as a fallback.** A potion's dose is a vocabulary
+    # difference as often as a real one: upstream calls the challenge's output
+    # `Super combat potion(3)` where the only recipe makes a `(4)`, and
+    # `Extreme potion(3)` where the wiki says `Extreme energy potion(3)`. The
+    # exact keys are tried first, so a challenge whose own dose *is* made
+    # never reaches these - `Mix an ~|attack potion|~` keeps the 3-dose recipe
+    # rather than borrowing the 4-dose one beside it.
+    keys.extend(_dose_variants(keys))
     return tuple(key for key in dict.fromkeys(keys) if key)
+
+
+def _dose_variants(keys: Sequence[str]) -> list[str]:
+    """Every other dose of each key, plus a bare name given each dose.
+
+    The second half is what reaches `Extreme energy potion(3)` from a task
+    whose words are `extreme energy potion` - `join_keys`' third key strips the
+    verb and leaves no dose at all.
+    """
+    found: list[str] = []
+    for key in keys:
+        match = _DOSED.match(key)
+        if match:
+            name, dose = match.group("name"), match.group("dose")
+            found.extend(f"{name}({other})" for other in "4321" if other != dose)
+        else:
+            found.extend(f"{key}({other})" for other in "4321")
+    return found
+
+
+#: A potion's dose as both vocabularies write it: `Attack potion(3)`.
+_DOSED = re.compile(r"^(?P<name>.+?)\((?P<dose>[1-4])\)$")
 
 
 #: Seconds one bank trip costs: the walk, the withdraw, the walk back.
@@ -631,6 +661,56 @@ def computed_rates(
             coverage[skill] = (found, offered)
 
     return priced, RecipeCoverage(skills=coverage, dropped=tuple(sorted(dropped)))
+
+
+#: The `Rate.match` tiers a dropped method loses - the scrape's two, and the
+#: floor. A `modelled` or `confirmed` rate is a model's own answer about the
+#: whole activity and says nothing about a recipe's inputs.
+REFUSED_WHEN_DROPPED = frozenset({"default", "exact", "contained"})
+
+
+def refuse_dropped(
+    training: Mapping[str, Mapping[str, Rate]],
+    dropped: Iterable[str],
+    pinned: Container[str] = frozenset(),
+) -> dict[str, dict[str, Rate]]:
+    """`training` with the scraped rate removed from every dropped method.
+
+    **A dropped method keeps its guide rate *and pays nothing for materials*,
+    which biases the wrong way.** `rate_for` returns `None` when an input has
+    no route - rightly, since tick-math over inputs nothing can price is a
+    made-up number - but it is also the only source of
+    `material_seconds_per_xp`, so the scrape then ranks as though the
+    ingredients were free. And the ingredients in question are precisely the
+    ones too hard to price.
+
+    `rate_for`'s docstring recorded this rather than fixing it, on the measured
+    grounds that **not one such method won a band**. That stopped being true:
+    `Mix an ~|ancient mix|~` needs an `Ancient brew(2)` the map cannot route,
+    so the recipe was dropped and `wiki:herblore`'s 522,500/hr stood
+    unchallenged against recipe-priced neighbours at 30,546 - and it took the
+    top four bands of the skill.
+
+    So a method this project cannot cost is refused rather than quoted. A hand
+    pin survives, as everywhere, and so does a *modelled* rate: a model
+    answering for a whole activity is not a claim about a recipe's inputs.
+    """
+    refused = {task for task in dropped if task not in pinned}
+    if not refused:
+        return {task: dict(skills) for task, skills in training.items()}
+    kept: dict[str, dict[str, Rate]] = {}
+    for task, skills in training.items():
+        if task not in refused:
+            kept[task] = dict(skills)
+            continue
+        survivors = {
+            skill: rate
+            for skill, rate in skills.items()
+            if rate.match not in REFUSED_WHEN_DROPPED
+        }
+        if survivors:
+            kept[task] = survivors
+    return kept
 
 
 def _ambiguous(
