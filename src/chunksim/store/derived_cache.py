@@ -177,7 +177,9 @@ _FORMAT = "1"
 #: finding it costs rather than the four-tick default.
 #: 60: gathering that pays the *same* skill is credited, not just charged -
 #: sorting a salvage now counts the salvaging that found it.
-_PRICING_MODEL = "60"
+#: 61: the item walk carries the experience of the route it chose, so every
+#: recipe whose materials pay their own skill is credited for them.
+_PRICING_MODEL = "61"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

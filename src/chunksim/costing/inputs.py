@@ -362,7 +362,20 @@ def recipe_priced(
             ),
         },
     )
-    seconds = material_seconds(state, derived, world, heuristics, level_overrides=levels)
+    walked = material_seconds(
+        state,
+        derived,
+        world,
+        heuristics,
+        level_overrides=levels,
+        # **What a `make:` route earned, so the walk can credit it.** Built
+        # from the same join `computed_rates` uses - see
+        # `recipe_rates.challenge_experience`.
+        made_experience=recipe_rates.challenge_experience(
+            state.chunk_info, recipes, blobs.aliases, herblore.stated_ticks(recipes)
+        ),
+    )
+    seconds = walked.seconds
     # **Prayer is priced here because this is where the item walk is.** Its
     # rate is a bone's experience over the time to collect one, so it needs
     # exactly the closure the recipes need and would otherwise build a second
@@ -452,6 +465,19 @@ def recipe_priced(
         _mapping(state.chunk_info.challenges, "Sailing"),
         derived.challenges.valid.get("Sailing") or {},
     )
+    # **And the generic half: a recipe whose materials pay their own skill.**
+    # Smelting a bar pays Smithing before you smith it and cleaning a herb
+    # pays Herblore before you mix it, and the walk has just told us whether
+    # it *made* each material or bought it. Only the same skill counts - a log
+    # chopped for a bow pays Woodcutting, which does nothing for Fletching.
+    for task, rate in computed.items():
+        if rate.experience <= 0:
+            continue
+        paid = sum(
+            walked.experience(material, 1.0, rate.skill) for material in rate.materials
+        )
+        if paid > 0:
+            credited[task] = paid / rate.experience
     # **An activity that gathers what it consumes must carry no material cost
     # at all.** Guardians of the Rift mines its own essence - that is most of
     # what a game is - so the rate already covers it, and charging the rune's

@@ -478,6 +478,64 @@ def with_aliases(
     return merged
 
 
+def challenge_experience(
+    chunk_info: ChunkInfo,
+    recipes: Mapping[str, Sequence[Recipe]],
+    aliases: Mapping[str, str] = {},
+    stated_ticks: Mapping[str, float] = {},
+) -> dict[str, tuple[str, float]]:
+    """`{task: (skill, experience one performance pays)}`, for every challenge
+    a recipe describes.
+
+    **What the item walk needs to credit its own gathering.** Charging a
+    method for the bar it consumes and discarding the Smithing the smelting
+    paid prices that half as somebody else's work - but the credit is only
+    honest for the route the walk *chose*, so the walk has to carry it and
+    this is the lookup it carries. See `estimate._Priced.experience`.
+
+    Joined exactly as `computed_rates` joins, through the same `join_keys`,
+    `with_aliases` and variant partition, because a second answer to "which
+    recipe is this challenge" is the thing most likely to drift.
+    """
+    found: dict[str, tuple[str, float]] = {}
+    for skill, rows in recipes.items():
+        by_output = {name.lower(): got for name, got in index_recipes(list(rows)).items()}
+        by_output = with_aliases(by_output, aliases)
+        challenges = _mapping(chunk_info.challenges, skill)
+        if not isinstance(challenges, dict):
+            continue
+        siblings = _siblings(challenges, by_output)
+        for task, challenge in challenges.items():
+            if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
+                continue
+            keys = join_keys(challenge, task)
+            output = next((key for key in keys if key.lower() in by_output), None)
+            if output is None:
+                continue
+            candidates = variant_candidates(
+                task, by_output[output.lower()], siblings.get(output.lower(), ())
+            )
+            # **Per unit of output, and the lowest of them.** Superglass Make
+            # pays 180 experience and returns 28.8 molten glass, so a bare
+            # `max(experience)` credited nine times what a piece is worth and
+            # made glassblowing the whole Crafting climb. The walk charges the
+            # challenge once per item, so the credit has to be per item too -
+            # and where the variants disagree the smallest is taken, because
+            # this number makes a method look *faster* and the walk cannot say
+            # which variant it used.
+            paid = min(
+                (
+                    recipe.experience / max(recipe.output_quantity, 1.0)
+                    for recipe in candidates
+                    if recipe.ticks is not None or recipe.output in stated_ticks
+                ),
+                default=0.0,
+            )
+            if paid > 0:
+                found[task] = (skill, paid)
+    return found
+
+
 def _siblings(
     challenges: Mapping[str, Any], by_output: Mapping[str, Sequence[Recipe]]
 ) -> dict[str, tuple[str, ...]]:

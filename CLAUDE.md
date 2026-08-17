@@ -359,14 +359,29 @@ gathering)`, and **the credit is only ever the same skill** - a log chopped for
 a bow pays Woodcutting, which does nothing for a Fletching climb. Opulent
 salvage sorting went 8,427/hr to 26,167.
 
-**The generic version needs the item walk to say which route it took**, and
-that is why only `costing/salvage.py` fills `Heuristics.material_xp_per_xp`
-today. Smelting a bar pays Smithing before you smith it and cleaning a herb
-pays Herblore before you mix it, so the same correction is waiting in both -
-but crediting it blindly would pay experience for a bar *bought* from a shop
-or a herb taken off a drop table. `_item_hours` takes the `min` over routes and
-returns only hours; until `_Priced` carries the same-skill experience of the
-route it actually chose, a general credit would be a guess.
+**The generic version needed the item walk to say which route it took**, and
+now it does. `_Priced.experience` accumulates `(skill, experience)` along the
+route the walk *chose*, so a bar smelted is credited and a bar bought is not -
+`_item_hours` takes the `min` over routes, and crediting the smelting to a
+shop purchase would be fabrication. `material_seconds` returns a
+`_MaterialWalk` carrying both questions over **one memo**, because "how long
+does a bar take" and "what did getting it pay" are the same decision seen
+twice. 233 methods are credited on the reference map; `Smith a ~|steel
+platebody|~` gains 9% from the bars it smelts.
+
+**The credit is per unit of output, and that is not a detail.** Superglass Make
+pays 180 experience and returns **28.8** molten glass, so crediting the
+action's experience paid nine times what a piece is worth and handed
+glassblowing the entire Crafting climb - 146.3h against 101.9h off one bad
+number. The walk charges a challenge once per item, so the credit is per item
+too, and where variants disagree the *smallest* is taken: this number makes a
+method look faster and the walk cannot say which variant it used.
+
+**Both halves or neither.** The worked case, pinned in
+`tests/test_training.py`: a material taking a minute for 10,000 experience and
+a minute of production paying 20,000 is 30,000 in two minutes - 900,000/hr.
+Charging the minute without crediting the experience gives 600,000; crediting
+without charging gives 1,800,000.
 
 **Not every "computed" number is evidence, and the docstrings say which.**
 Thieving's fifteen tabulated stalls come out at exactly 1.00x against the

@@ -595,3 +595,31 @@ def test_a_credit_of_zero_leaves_the_rate_alone() -> None:
 
     assert option.material_xp_per_xp == 0.0
     assert option.effective_xp_per_hour == 50_000.0
+
+
+def test_both_halves_of_the_combined_activity_are_counted() -> None:
+    """**The worked example, and both halves have to be in it.** If the raw
+    material takes a minute to make and pays 10,000, and using it takes a
+    minute and pays 20,000, then the pair is 30,000 experience in two minutes -
+    15,000 a minute, or 900,000 an hour.
+
+    Charging the minute without crediting the 10,000 gives 600,000; crediting
+    the 10,000 without charging the minute gives 1,800,000. Only doing both
+    lands on the answer.
+    """
+    # Production alone: 20,000 xp a minute.
+    rate = 20_000 * 60.0
+    option = TrainingOption(
+        method="produce", level=1, xp_per_hour=rate, match="modelled",
+        # A minute of gathering per 20,000 experience the method itself pays.
+        material_seconds_per_xp=60.0 / 20_000,
+        # ...which paid 10,000 of the same skill.
+        material_xp_per_xp=10_000 / 20_000,
+    )
+
+    assert option.effective_xp_per_hour == pytest.approx(900_000.0)
+
+    charged_only = replace(option, material_xp_per_xp=0.0)
+    credited_only = replace(option, material_seconds_per_xp=0.0)
+    assert charged_only.effective_xp_per_hour == pytest.approx(600_000.0)
+    assert credited_only.effective_xp_per_hour == pytest.approx(1_800_000.0)

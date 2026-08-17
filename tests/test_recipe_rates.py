@@ -21,6 +21,7 @@ from chunksim.costing.recipe_rates import (
     index_recipes,
     names_variant,
     rate_for,
+    challenge_experience,
     unjoined_outputs,
     with_aliases,
     variant_candidates,
@@ -513,3 +514,57 @@ def test_unjoined_outputs_asks_only_about_names_a_recipe_could_answer() -> None:
     # `Bronze bar` joined, the strut offers no `Output` and the non-primary row
     # is not a training method - so exactly one name is worth asking about.
     assert wanted == ("Bronze javelin heads",)
+
+
+def test_the_credit_is_per_unit_of_output_not_per_action() -> None:
+    """**Superglass Make pays 180 experience and returns 28.8 molten glass.**
+    Taking the action's experience credited nine times what a piece is worth
+    and made glassblowing the entire Crafting climb - 146.3h to 101.9h off one
+    bad number. The walk charges the challenge once per *item*, so the credit
+    has to be per item too.
+
+    Where the variants disagree the smallest is taken: this number makes a
+    method look faster, and the walk cannot say which variant it used.
+    """
+    info = ChunkInfo(
+        {
+            "challenges": {
+                "Crafting": {
+                    "Craft ~|molten glass|~": {"Primary": True, "Output": "Molten glass"},
+                }
+            }
+        }
+    )
+    furnace = Recipe(
+        page="Molten glass", output="Molten glass", output_quantity=1.0,
+        skill="Crafting", level=1, experience=20.0, ticks=2,
+        materials=(Material(name="Bucket of sand", quantity=1.0),),
+    )
+    superglass = Recipe(
+        page="Molten glass", output="Molten glass", output_quantity=28.8,
+        skill="Crafting", level=77, experience=180.0, ticks=6,
+        materials=(Material(name="Bucket of sand", quantity=18.0),),
+        variant="Superglass Make - giant seaweed",
+    )
+
+    found = challenge_experience(info, {"Crafting": [furnace, superglass]})
+
+    skill, paid = found["Craft ~|molten glass|~"]
+    assert skill == "Crafting"
+    assert paid == pytest.approx(180.0 / 28.8), "per piece, and the lower of the two"
+
+
+def test_an_untimed_recipe_offers_no_credit() -> None:
+    """`rate_for` refuses an untimed recipe, so crediting one would pay
+    experience for a route the walk never took."""
+    info = ChunkInfo(
+        {"challenges": {"Herblore": {"Clean a ~|grimy x|~": {"Primary": True, "Output": "X"}}}}
+    )
+    untimed = Recipe(
+        page="X", output="X", output_quantity=1.0, skill="Herblore",
+        level=1, experience=10.0, ticks=None,
+        materials=(Material(name="Grimy x", quantity=1.0),),
+    )
+
+    assert challenge_experience(info, {"Herblore": [untimed]}) == {}
+    assert challenge_experience(info, {"Herblore": [untimed]}, stated_ticks={"X": 0.6})

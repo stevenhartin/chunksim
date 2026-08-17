@@ -73,7 +73,7 @@ def pairs_for(map_ids: list[str]) -> tuple[list[Pair], list[Pair]]:
             info,
             derived.challenges.valid,
             recipes,
-            material_seconds(state, derived, world, heuristics),
+            material_seconds(state, derived, world, heuristics).seconds,
         )
         for task, action in priced.items():
             guide = heuristics.xp_per_hour(task, action.skill)

@@ -152,6 +152,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable, Mapping
+import dataclasses
 from dataclasses import dataclass, field
 from functools import cached_property
 from typing import Any, Callable, Sequence
@@ -318,6 +319,13 @@ class _Priced:
     #: constants records nothing, which is the honest answer rather than an
     #: empty gesture at the nearest branch.
     knobs: tuple[str, ...] = ()
+    #: `(skill, experience)` earned **along the route this actually took**,
+    #: which is why it is carried rather than looked up afterwards.
+    #: `_item_hours` takes the `min` over routes, so a bar smelted and a bar
+    #: bought cost different amounts *and pay different experience* - and
+    #: crediting the smelting to a shop purchase would be fabrication. Empty
+    #: for every route but `make:`; a kill, a spawn and a shop pay nothing.
+    experience: tuple[tuple[str, float], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -578,6 +586,10 @@ class _Walk:
     world: WorldIndex
     heuristics: Heuristics
     tables: dict[str, Any] = field(default_factory=dict)
+    #: `{challenge: (skill, experience one performance pays)}` - see
+    #: `recipe_rates.challenge_experience`. What lets a `make:` route say what
+    #: it earned as well as what it cost.
+    made_experience: Mapping[str, tuple[str, float]] = field(default_factory=dict)
     #: Everything reachable on this map that can *provide* an item: the
     #: monsters, objects and NPCs of `SourceIndex`, all past their
     #: `taskUnlocks` gates. Not monsters alone - a `skillItems` activity is
@@ -1022,6 +1034,7 @@ def _route_hours(
                 return None
             quantity = quantity / share
         total = 0.0
+        inputs: list[_Priced] = []
         knobs: list[str] = [f"actions/{provider}"]
         for required in challenge.get("Items") or ():
             if not isinstance(required, str):
@@ -1037,6 +1050,7 @@ def _route_hours(
             if priced is None:
                 return None
             total += priced.hours
+            inputs.append(priced)
             # **A made thing is its inputs, so it is their knobs too.** The
             # whip in a recipe is the whip's kill rate; correcting that is
             # what moves this number, and pointing only at the recipe would
@@ -1071,7 +1085,18 @@ def _route_hours(
         yielded = walk.heuristics.harvest_yield.get(provider, 1.0)
         if yielded > 1.0:
             total /= yielded
-        return _Priced(total, f"make: {provider}", f"make:{provider}", _unique(knobs))
+        # **What performing this paid, on top of what the inputs paid.**
+        # Scaled by the same `quantity` and divided by the same yield as the
+        # cost above, so the two halves describe one action.
+        earned: list[tuple[str, float]] = []
+        made_by = walk.made_experience.get(provider)
+        if made_by is not None:
+            earned.append((made_by[0], made_by[1] * quantity / yielded))
+        for priced in inputs:
+            earned.extend(priced.experience)
+        return _Priced(
+            total, f"make: {provider}", f"make:{provider}", _unique(knobs), tuple(earned)
+        )
 
     return _kill_hours(walk, provider, item, quantity)
 
@@ -1576,6 +1601,22 @@ def _setup(
     )
 
 
+@dataclass(frozen=True)
+class _MaterialWalk:
+    """The two questions one item walk answers, sharing one memo.
+
+    **They have to share it.** `_item_hours` takes the `min` over routes, so
+    "how long does a bar take" and "what experience did getting it pay" are
+    the same decision seen twice - answering them from two walks would let a
+    bar be *bought* for the cost and *smelted* for the credit.
+    """
+
+    #: `(item, quantity) -> seconds`, or `None` where there is no route.
+    seconds: Callable[[str, float], float | None]
+    #: `(item, quantity, skill) -> experience in that skill along the route`.
+    experience: Callable[[str, float, str], float]
+
+
 def material_seconds(
     state: MapState,
     derived: Derived,
@@ -1583,8 +1624,10 @@ def material_seconds(
     heuristics: Heuristics,
     *,
     level_overrides: dict[str, int] | None = None,
-) -> Callable[[str, float], float | None]:
-    """A callable pricing `quantity` of an item, in seconds, or `None`.
+    made_experience: Mapping[str, tuple[str, float]] | None = None,
+) -> _MaterialWalk:
+    """Two callables over one item walk: what a material costs, and what
+    obtaining it *paid*.
 
     **What `costing/recipe_rates.py` needs and cannot build for itself.** The
     item walk lives here, behind a `_Walk` carrying this map's reachability
@@ -1612,24 +1655,42 @@ def material_seconds(
     silently - the walk would answer a nested question with an outer answer.
     """
     walk = _setup(state, derived, world, heuristics, level_overrides or {}).walk
-    memo: dict[tuple[str, float], float | None] = {}
+    if made_experience:
+        walk = dataclasses.replace(walk, made_experience=made_experience)
+    memo: dict[tuple[str, float], _Priced | None] = {}
+
+    def priced_for(item: str, quantity: float) -> _Priced | None:
+        key = (walk.resolve(item), quantity)
+        if key in memo:
+            return memo[key]
+        # `amortise`: a recipe's materials are bought for a run of actions,
+        # not fetched one trip at a time. See `_route_hours`.
+        found = _item_hours(walk, item, quantity=quantity, amortise=True)
+        memo[key] = found
+        return found
+
+    def experience(item: str, quantity: float, skill: str) -> float:
+        """Experience in `skill` earned obtaining `quantity` of `item`.
+
+        **Only along the route the walk chose**, which is why this shares the
+        memo with `seconds` rather than answering separately: a bar smelted
+        and a bar bought cost different amounts and pay different experience,
+        and the two answers have to be about the same decision.
+        """
+        found = priced_for(item, quantity)
+        if found is None:
+            return 0.0
+        return sum(paid for earned, paid in found.experience if earned == skill)
 
     def seconds(item: str, quantity: float) -> float | None:
         # Keyed on the export's own spelling, since `_item_hours` resolves
         # anyway and two spellings of one item are one question.
-        key = (walk.resolve(item), quantity)
-        if key in memo:
-            # `None` is a real answer here - "no route", which the caller must
-            # treat as *drop the method* - so this asks `in`, never `or`.
-            return memo[key]
-        # `amortise`: a recipe's materials are bought for a run of actions,
-        # not fetched one trip at a time. See `_route_hours`.
-        priced = _item_hours(walk, item, quantity=quantity, amortise=True)
-        found = None if priced is None else priced.hours * 3600.0
-        memo[key] = found
-        return found
+        # `None` is a real answer here - "no route", which the caller must
+        # treat as *drop the method* - so this asks `is None`, never `or`.
+        found = priced_for(item, quantity)
+        return None if found is None else found.hours * 3600.0
 
-    return seconds
+    return _MaterialWalk(seconds=seconds, experience=experience)
 
 
 def estimate(
