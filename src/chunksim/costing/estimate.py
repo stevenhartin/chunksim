@@ -1313,13 +1313,18 @@ def _farming_bands(
     player spends is hours. When the minigame is locked the calendar stands,
     because then the waiting is the skill.
 
-    The limit of that, stated because it is a real one: the stretch below the
-    minigame's rated level is still priced at the schedule's blended rate,
-    which is only achievable by waiting - so those hours understate it. On
-    one simulated run of the second map that is 5.4h of 138.0h. The alternative is to charge
-    the level-74 figure from 34, which overstates the lower fruit tiers by as
-    much again in the other direction; there is no published rate for them,
-    which is what makes this a choice between two biases rather than a fix.
+    **That limit used to bite from 34 to 74 and now does not.** The guide
+    publishes one figure, at 74, so the two lower seed tiers were unrated and
+    `active` was 74 - the whole stretch the minigame is actually playable over
+    was priced at the schedule's blended rate, which is only achievable by
+    waiting. Charging the level-74 figure from 34 was the other bias and was
+    rejected for inventing a number. `skill_tables.parse_tithe` removed the
+    choice: the lower tiers are now computed from the minigame's own reward
+    mechanics, at roughly 23,000 and 55,000 against the top tier's 90,000, so
+    `active` is 34 and the stretch is priced at what it really pays.
+
+    What is left below 34 is the schedule's rate, and that one is unavoidable
+    - the minigame is locked, so the waiting really is the skill.
     """
     schedule = TrainingOption(
         method=f"{len(plan.runs)} patches, {plan.xp_per_day:,.0f} xp/day",

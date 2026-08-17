@@ -153,7 +153,9 @@ _FORMAT = "1"
 #: the two ways of smelting a bar stopped being one answer given twice.
 #: 50: the recipe join consults the wiki's redirect map, so an item upstream
 #: has not renamed yet joins the page the wiki moved it to.
-_PRICING_MODEL = "50"
+#: 51: Tithe Farm's two lower tiers are computed rather than refused, so
+#: Farming can train at the minigame from 34 instead of 74.
+_PRICING_MODEL = "51"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

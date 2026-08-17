@@ -106,6 +106,28 @@ BARRACUDA_RANKS: tuple[str, ...] = ("Swordfish", "Shark", "Marlin")
 #: minigame, which is what `heuristics._add_tithe` joins on.
 TITHE_CATEGORY = "Tithe Farm"
 
+#: The minigame's own page, read for the mechanics the training guide omits -
+#: see `parse_tithe`.
+TITHE_PAGE = "Tithe Farm"
+
+#: Experience one full 100-fruit sack pays, as a multiple of the fruit's
+#: *harvest* experience. **Derived from the Rewards section's own stated
+#: mechanics, not from a table**, which is what lets it price the two tiers
+#: the guide refuses to quote:
+#:
+#:   harvesting 100 fruits          100h
+#:   depositing the first 74        74 x 10h   (a deposit pays ten times harvest)
+#:   the 75th, doubled              2 x 10h
+#:   the 75th's milestone bonus     250h       ("250 times the harvest rate")
+#:   the 76th to 100th, doubled     25 x 20h
+#:                                  --------
+#:                                  1,610h
+#:
+#: At h = 6/14/23 that is 9,660, 22,540 and 37,030 - the wiki's own published
+#: per-sack totals, to the experience point, for all three fruits. Pinned by
+#: `tests/test_skill_tables.py`.
+TITHE_SACK_MULTIPLIER = 1610.0
+
 #: The task-name suffix upstream gives the twelve runes craftable inside
 #: Guardians of the Rift. **Upstream's own wording, not a pattern invented
 #: here**, which is what makes the join structural.
@@ -179,6 +201,7 @@ PAGES: tuple[str, ...] = (
     THIEVING_TRAINING_PAGE,
     RUNECRAFT_PAGE,
     FARMING_PAGE,
+    TITHE_PAGE,
     SAILING_PAGE,
     COOKING_PAGE,
     CRAFTING_PAGE,
@@ -923,19 +946,34 @@ def parse_gotr(text: str) -> tuple[SkillRow, ...]:
     return tuple(found)
 
 
-def parse_tithe(text: str) -> tuple[SkillRow, ...]:
-    """Tithe Farm's one published rate, from the one sentence stating it.
+def parse_tithe(text: str, minigame: str = "") -> tuple[SkillRow, ...]:
+    """Tithe Farm's three tiers, from one published rate and the mechanics.
 
-    **The guide gives a single figure and no table**: "From level 74 onwards,
-    players can get around 90,000-100,000 experience per hour." So this is the
-    second prose reader here after Hunter's, and the narrowest - it wants a
-    level and a rate out of one sentence in one section.
+    **The guide states one figure for a minigame with three seeds**: "From
+    level 74 onwards, players can get around 90,000-100,000 experience per
+    hour." Golovanova (34) and Bologano (54) get no number anywhere, and this
+    used to return the level-74 row alone and leave them unrated - which meant
+    a map could not train Farming at the minigame until 74, when the game lets
+    it from 34.
 
-    The bottom of the range and the level it is stated from, both the
-    conservative end as everywhere else. The 34 and 54 fruits are not rated:
-    the guide says only that experience "may be gained" at those levels and
-    quotes no figure, and the minigame's rate climbs steeply with the seed
-    tier, so lending them the level-74 number would be inventing one.
+    **Lending them the 74 figure would still be wrong, so this computes the
+    ratio instead.** The minigame's own page states its reward mechanics, and
+    they close: a full sack is `TITHE_SACK_MULTIPLIER` times the fruit's
+    harvest experience, which reproduces the wiki's three published per-sack
+    totals exactly. So the *shape* of the curve is the wiki's arithmetic and
+    only its *scale* is the published figure - one sack's duration, fixed so
+    the level-74 tier reads the 90,000 already trusted here. The two lower
+    tiers then fall out of their own experience per sack rather than being
+    invented, and they land far below it: roughly 23,000 and 55,000.
+
+    **Anchored on the bottom of the published range**, as everywhere else in
+    this module. The page's own "100 fruits in roughly 19 minutes" would put
+    the top tier at ~117,000/hr instead, which is above what the guide claims
+    anyone gets, so it is not used as the scale.
+
+    `minigame` is the `Tithe Farm` page. Without it this degrades to the single
+    published row, which is what a cache fetched before that page was read
+    holds.
     """
     section = next(
         (body for title, body in _sections(text) if TITHE_CATEGORY in title), ""
@@ -948,12 +986,61 @@ def parse_tithe(text: str) -> tuple[SkillRow, ...]:
     )
     if stated is None:
         return ()
-    return (
-        SkillRow(
-            name=TITHE_CATEGORY,
-            level=int(stated.group(1)),
-            xp_per_hour=float(stated.group(2).replace(",", "")),
-        ),
+    anchor_level = int(stated.group(1))
+    anchor_rate = float(stated.group(2).replace(",", ""))
+
+    tiers = _tithe_tiers(minigame)
+    anchor = next((xp for level, xp in tiers if level == anchor_level), None)
+    if anchor is None or anchor <= 0:
+        return (
+            SkillRow(name=TITHE_CATEGORY, level=anchor_level, xp_per_hour=anchor_rate),
+        )
+    # One sack's duration, in hours - the only thing the published figure is
+    # spent on. Every tier is then its own experience over the same sack.
+    hours = anchor / anchor_rate
+    return tuple(
+        SkillRow(name=TITHE_CATEGORY, level=level, xp_per_hour=sack / hours)
+        for level, sack in tiers
+    )
+
+
+def _tithe_tiers(minigame: str) -> tuple[tuple[int, float], ...]:
+    """`(farming level, experience per full sack)` for the three fruits.
+
+    Two reads of the minigame's page, both of things it states outright: the
+    seed requirements (`*[[Golovanova seed]]s ({{SCP|Farming|34}})`) and the
+    75th-fruit bonus, which the Rewards section gives as "250 times the
+    harvest experience rate" *and* then as the three resulting figures. The
+    second is what yields the harvest rate per fruit - 1,500/250 is 6 - so
+    this needs no table, and the two lists are zipped in the page's own order,
+    which both give as Golovanova, Bologano, Logavano.
+
+    Empty when either read fails, so `parse_tithe` falls back rather than
+    computing a curve off half the mechanics.
+    """
+    levels = [
+        int(level)
+        for level in re.findall(
+            r"\[\[(?:Golovanova|Bologano|Logavano) seed\]\]s?\s*"
+            r"\(\{\{SCP\|Farming\|(\d{1,2})\}\}\)",
+            minigame,
+        )
+    ]
+    bonus = re.search(
+        r"(\d{1,3}) times the harvest experience rate[^.]{0,80}?"
+        r"([\d,]{3,}),\s*([\d,]{3,}),\s*(?:or|and)\s*([\d,]{3,})\s*experience",
+        minigame,
+        re.S,
+    )
+    if len(levels) != 3 or bonus is None:
+        return ()
+    multiple = float(bonus.group(1))
+    if multiple <= 0:
+        return ()
+    harvest = [float(bonus.group(n).replace(",", "")) / multiple for n in (2, 3, 4)]
+    return tuple(
+        (level, TITHE_SACK_MULTIPLIER * per_fruit)
+        for level, per_fruit in zip(sorted(levels), harvest)
     )
 
 
@@ -1106,7 +1193,7 @@ def parse_pages(pages: dict[str, str]) -> dict[str, tuple[SkillRow, ...]]:
         "darts": parse_darts(pages.get(DARTS_PAGE, "")),
         "plunder": parse_plunder(pages.get(THIEVING_TRAINING_PAGE, "")),
         "gotr": parse_gotr(pages.get(RUNECRAFT_PAGE, "")),
-        "tithe": parse_tithe(pages.get(FARMING_PAGE, "")),
+        "tithe": parse_tithe(pages.get(FARMING_PAGE, ""), pages.get(TITHE_PAGE, "")),
         "sailing": parse_sailing(pages.get(SAILING_PAGE, "")),
         "cooking": parse_cooking(pages.get(COOKING_PAGE, "")),
         "glass": parse_glassblowing(pages.get(CRAFTING_PAGE, "")),

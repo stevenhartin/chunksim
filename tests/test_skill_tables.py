@@ -22,6 +22,7 @@ from chunksim.remote.skill_tables import (
     parse_plunder,
     parse_sailing,
     parse_tithe,
+    TITHE_SACK_MULTIPLIER,
     parse_woodcutting,
     parse_courses,
     parse_mark_rate,
@@ -866,28 +867,82 @@ The rates below assume using the best pouches available.
     assert rows[75].xp_per_hour == 50_000.0, "the Runecraft column, not Crafting's"
 
 
-def test_tithe_farm_is_one_sentence_rather_than_a_table() -> None:
-    """**The guide publishes a single figure and no table**, so this is the
-    narrowest prose reader here: a level and a rate out of one sentence.
-
-    The bottom of the range and the level it is stated from, both the
-    conservative end. Nothing is returned for the lower tiers, which the guide
-    mentions without quoting a rate for.
-    """
-    text = """
+#: The Farming training guide's whole statement about the minigame.
+_TITHE_GUIDE = """
 ===Tithe Farm===
 At level 34, experience may be gained at the [[Tithe Farm]] minigame. In this
 way, players can gain significant Farming experience between the time it takes
 patches to grow. From level 74 onwards, players can get around 90,000-100,000
 experience per hour.
 """
-    rows = parse_tithe(text)
-    assert len(rows) == 1, "one published figure, not one per seed tier"
-    assert rows[0].name == "Tithe Farm"
-    assert rows[0].level == 74
-    assert rows[0].xp_per_hour == 90_000.0
 
-    assert parse_tithe("===Tithe Farm===\nNo figure here.") == ()
+#: The two things `_tithe_tiers` reads off the minigame's own page.
+_TITHE_PAGE = """
+==Requirements==
+*[[Golovanova seed]]s ({{SCP|Farming|34}})
+*[[Bologano seed]]s ({{SCP|Farming|54}})
+*[[Logavano seed]]s ({{SCP|Farming|74}})
+
+==Rewards==
+Players receive bonus experience of 250 times the harvest experience rate when
+depositing the 75th fruit-1,500, 3,500, or 5,750 experience for [[Golovanova
+fruit|Golovanova]], [[Bologano fruit|Bologano]], and [[Logavano
+fruit|Logavano]] respectively.
+"""
+
+
+def test_tithe_farm_computes_the_tiers_the_guide_will_not_quote() -> None:
+    """**One published figure, three seed tiers.** The guide quotes only the
+    level-74 rate, which used to leave Golovanova (34) and Bologano (54)
+    unrated - so Farming could not train at the minigame until 74, when the
+    game allows it from 34.
+
+    Lending them the 74 figure would invent a number, so the ratio is computed
+    from the minigame's own stated mechanics and only the *scale* is the
+    published rate: one sack's duration, fixed so the top tier reads 90,000.
+    """
+    rows = parse_tithe(_TITHE_GUIDE, _TITHE_PAGE)
+
+    assert [row.level for row in rows] == [34, 54, 74], "one band per seed tier"
+    assert all(row.name == "Tithe Farm" for row in rows)
+    # The published figure is reproduced exactly, because it is the anchor.
+    assert rows[2].xp_per_hour == 90_000.0
+    # The other two follow from their own experience per sack, and land far
+    # below it rather than borrowing it.
+    assert round(rows[0].xp_per_hour or 0.0) == 23_478
+    assert round(rows[1].xp_per_hour or 0.0) == 54_783
+
+
+def test_a_tithe_sack_reproduces_the_wikis_published_totals() -> None:
+    """**The multiplier is a derivation, so it has to land on the wiki's own
+    numbers.** `TITHE_SACK_MULTIPLIER` comes from the Rewards section's stated
+    mechanics - ten times harvest to deposit, the 75th paying a 250x bonus,
+    the 75th to 100th doubled - and the wiki separately publishes what a full
+    sack pays for each fruit. If the derivation is right the two agree to the
+    experience point, for all three.
+    """
+    for harvest, published in ((6.0, 9_660.0), (14.0, 22_540.0), (23.0, 37_030.0)):
+        assert TITHE_SACK_MULTIPLIER * harvest == published
+
+
+def test_tithe_falls_back_to_the_published_row_without_the_minigame_page() -> None:
+    """A cache fetched before the minigame page was read holds one row, which
+    is what this returned before the tiers were computed. Degrading to that is
+    right; computing a curve off half the mechanics is not."""
+    rows = parse_tithe(_TITHE_GUIDE)
+
+    assert len(rows) == 1
+    assert (rows[0].level, rows[0].xp_per_hour) == (74, 90_000.0)
+
+    assert parse_tithe("===Tithe Farm===\nNo figure here.", _TITHE_PAGE) == ()
+
+
+def test_tithe_ignores_a_minigame_page_it_cannot_read_whole() -> None:
+    """Both reads or neither. Half the mechanics would still produce three
+    plausible-looking bands, and that is the failure worth refusing."""
+    levels_only = "*[[Golovanova seed]]s ({{SCP|Farming|34}})"
+
+    assert len(parse_tithe(_TITHE_GUIDE, levels_only)) == 1
 
 
 def test_the_barracuda_trials_are_nine_rows_of_trial_against_rank() -> None:

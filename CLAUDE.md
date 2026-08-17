@@ -210,6 +210,27 @@ the second map at **188 computed, 0 scraped, 1 unpriced**. This is also why
 question is whether two vocabularies still agree, and neither half alone can be
 asked it.
 
+**A published figure that covers part of an activity is a scale, not the
+answer.** Tithe Farm is the worked example and the shape is worth copying.
+The Farming guide quotes one rate, "from level 74 onwards ... 90,000-100,000",
+for a minigame the game opens at **34** - so its two lower seed tiers were
+unrated, and `estimate._farming_bands` priced the whole 34-74 stretch at the
+growing schedule's blended rate. Both available options were biased: refuse
+them (understate, because the schedule's rate is only reachable by waiting) or
+lend them the level-74 figure (overstate, because the tiers differ by nearly
+four times). The way out was to stop treating the guide as the unit of
+evidence. The minigame's *own* page states its reward mechanics, and they
+close into `skill_tables.TITHE_SACK_MULTIPLIER` - a full 100-fruit sack pays
+**1,610x the fruit's harvest experience**, which reproduces the wiki's three
+published per-sack totals (9,660 / 22,540 / 37,030) to the experience point.
+So the *shape* of the curve is the wiki's own arithmetic and the published
+figure is spent only on the *scale*: one sack's duration, fixed so the top
+tier still reads 90,000. The lower tiers then fall out at ~23,000 and ~55,000
+rather than being invented, `active` moves from 74 to 34, and a hypothetical
+Farming 1->99 on the uber map goes **4,222h to 230.9h**. Neither cached map
+moves, because Farming is at goal on both - this is coverage for a map where
+it is not.
+
 **Not every "computed" number is evidence, and the docstrings say which.**
 Thieving's fifteen tabulated stalls come out at exactly 1.00x against the
 scrape, and that is an identity rather than agreement — the wiki's column is

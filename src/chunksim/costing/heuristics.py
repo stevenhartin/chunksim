@@ -1054,9 +1054,14 @@ def _add_banded(
 
     **Below the first band there is no rate and none is invented.** The Rift
     opens at 27 where its guide tabulates from 40, so the cosmic (27) and
-    chaos (35) variants keep nothing rather than borrowing the 40-50 figure;
-    Tithe Farm opens at 34 with a figure published only from 74, so two of its
-    three fruits keep nothing. Above it, nothing in the export sits in the
+    chaos (35) variants keep nothing rather than borrowing the 40-50 figure.
+    **Tithe Farm used to be the other example here and no longer is**: it
+    opens at 34 with a figure published only from 74, which left two of its
+    three fruits unrated and Farming untrainable at the minigame until 74 -
+    when the game allows it from 34. `skill_tables.parse_tithe` now computes
+    the two lower tiers from the minigame's own stated reward mechanics and
+    spends the published figure only on the scale, so all three bands exist.
+    Above the top band, nothing in the export sits in the
     Rift's 85+ bands - there is no guardian variant of a wrath rune - so those
     rows are read and never spent, understating the top rather than the
     reverse.
