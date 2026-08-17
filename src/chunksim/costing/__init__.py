@@ -44,6 +44,11 @@ The modules, and what each owns:
   rolls are read a second time with the ancillary experience column, so the two
   cannot drift. The wiki's own Str/Agi-to-Fishing ratio checks it at 0.089
   against 0.090-0.092.
+- `library.py` - the Arceuus library, which pays **a multiple of the level you
+  already have**: 15x for Magic, 5x for Runecraft, one tome a book at a
+  measured 110 books an hour. One activity, two challenges, and a straight-line
+  curve - it was sitting in the export unpriced under a name no rate table
+  would join.
 - `herbs.py` - what a herb costs, as a **supply rather than a route**. Farming
   priced at the clicking ignores the 80 minutes a herb grows; a drop priced per
   herb asks a table that hands out thirteen without being asked which. So the

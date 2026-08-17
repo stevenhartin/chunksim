@@ -453,6 +453,23 @@ both are refused - which is how Herblore's climb came to end where it should.
 at 30,546/hr wins from 63 to 99 and 1 -> 99 is **431.5h**, against the 46.4h
 four materials-free guide figures were claiming.
 
+**A method the export carries and no rate table would ever name.** The
+Arceuus library pays a *multiple of the level you already have* - 15x for
+Magic, 5x for Runecraft, one tome per book delivered - so nothing about it has
+an hourly figure to publish, and `Turn in books at the ~|Arceuus Library|~ for
+Runecraft xp` sat unpriced. It mattered most exactly where the map was
+poorest: the second cache reaches no Guardians of the Rift and no lavas, so
+its whole Runecraft climb above 77 was blood runes at 11,118/hr, against the
+library's `5 x 77 x 110` = **42,350**. Runecraft there goes **1,225.7h to
+290.4h** and Magic 137.9h to 95.6h. The one stated number is 110 books an
+hour, measured, the middle of an observed 100-120.
+
+**The lesson is about where to look, not about Runecraft.** A skill reading
+absurdly slow on one map and fine on another is a *reachability* signal:
+`verf` had 14 valid Runecraft methods against the uber map's 50, and the gap
+was one activity nobody had modelled. Before assuming a rate is wrong, count
+what the map can actually reach.
+
 **Not every "computed" number is evidence, and the docstrings say which.**
 Thieving's fifteen tabulated stalls come out at exactly 1.00x against the
 scrape, and that is an identity rather than agreement — the wiki's column is

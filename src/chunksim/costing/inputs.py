@@ -40,6 +40,7 @@ from chunksim.costing import (
     farming,
     gotr,
     herblore,
+    library,
     artefacts,
     chambers,
     combat_xp,
@@ -643,6 +644,15 @@ def _gathered(
     # curve - and the bands carry the *minigame's* level rather than the
     # rune's, which is what stops a level-1 player being offered it. See
     # `costing/gotr.py`.
+    # **The Arceuus library pays a multiple of the level you already have**,
+    # in either Magic or Runecraft - one activity, two challenges, and no rate
+    # table would ever join a name like `Turn in books at the ~|Arceuus
+    # Library|~ for Runecraft xp`. See `costing/library.py`.
+    for skill, methods in library.methods(
+        {name: _mapping(state.chunk_info.challenges, name) for name in library.EXPERIENCE_PER_LEVEL},
+        derived.challenges.valid,
+    ).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
     # **Shipwreck salvaging, with one crewmate rather than the guides' two.**
     # Upstream splits finding from sorting where the guides bundle them, and a
     # crewmate is worth D^2/125 rather than a second player - see
