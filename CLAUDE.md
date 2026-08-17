@@ -543,6 +543,36 @@ same argument a dose hop already makes, and upstream's own `Partial Products`
 category (22 challenges, all Cooking) says which steps qualify rather than a
 guess at which names look like stages.
 
+**Where a published figure sits above what the mechanic allows, count the
+mechanic.** Cooking's last three guide-backed methods each turned out to be
+countable, and one of them contradicted its source. `Dissect a ~|sacred eel|~`
+is a knife action with no time in it - an hour of it is an hour of *fishing* -
+so `costing/sacredeel.py` reads the Fishing model's own roll a second time
+(21.09% at level 87, the wiki's own figure) and multiplies by a pay that steps
+with **Cooking** level, since that decides the scales. The bands are Cooking's
+and the Fishing level is handed in, which is the opposite assignment to
+`barbarian.py` and the same question from the other side. Tempoross' cooking
+regime is the page's other table, counted out of the `max permits`
+walkthrough: 55 fish a game, five games an hour, 10 experience a fish, 2,750 -
+against the 2,500 a money-making guide was supplying, which is the reassurance
+rather than the point.
+
+**Trouble Brewing is the one that disagreed, and the disagreement is the
+argument for modelling.** Its chain is one-to-one end to end - chop a scrapey
+tree, fletch the log, deposit the bark for 100 Cooking - so
+`costing/troublebrewing.py` prices the two mechanics the tree's page publishes
+(a chop attempt every 4 ticks, a 1/8 depletion) and charges the untimed fletch
+and deposit **nothing**, which makes the answer an arithmetic ceiling rather
+than an estimate. Two games an hour at twenty minutes is 40 minutes of play, so
+at most 1,000 logs and at most **100,000 experience an hour** - where
+theoatrix's 1-99 Cooking guide states "around 200k". That needs two logs every
+four ticks, so it is outside the mechanic rather than a near miss, and it is
+not carried. The model reads 13,820/hr at Woodcutting 1 with an iron axe -
+close to the 15,000 `stated.py` had been guessing for all eight of the
+minigame's skills - and 88,889 at 99 with a crystal one. **A community figure
+is still evidence**; what changed is that it can now be checked against the
+actions underneath it.
+
 **Not every "computed" number is evidence, and the docstrings say which.**
 Thieving's fifteen tabulated stalls come out at exactly 1.00x against the
 scrape, and that is an identity rather than agreement — the wiki's column is

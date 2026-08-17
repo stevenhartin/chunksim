@@ -465,7 +465,7 @@ def parse_stall_respawns(text: str) -> tuple[StallRespawn, ...]:
     qualify the number by location - `2.4 seconds (9.6 seconds in Keldagrim)` -
     where the leading figure is the ordinary one and the parenthesis is a
     variant this project has no way to choose between. Taking the leading
-    figure is therefore the same conservative reading `_tool_curve` takes of a
+    figure is therefore the same conservative reading `tool_curve` takes of a
     tool tier: the common case, stated first.
     """
     table = table_with(text, "Respawn Time")

@@ -189,3 +189,42 @@ class TestItIsWiredIn:
             encoding="utf-8"
         )
         assert "`tempoross.py`" in listing
+
+
+class TestTheCookingRegime:
+    """The other half of the wiki's two tables, counted rather than tabulated."""
+
+    _VALID = {tp.COOKING_SKILL: {tp.COOKING_TASK: 1}}
+
+    def test_the_fish_are_counted_out_of_the_walkthrough(self) -> None:
+        """17 then 19 to finish phase one - the page calls that "the 36 needed
+        for the first phase" - and 19 in phase two. Phase three cooks none; it
+        is spent dousing fires."""
+        assert tp.FISH_PER_GAME == 55
+
+    def test_five_games_an_hour_is_the_pages_own_permit_arithmetic(self) -> None:
+        """A game is "around 12 minutes" and yields 14-18 permits, "an average
+        game yields 15-16", for "roughly 75-80 permits per hour" - so 15.5 into
+        77.5 is exactly five, and the twelve already includes the wait."""
+        assert tp.GAMES_PER_HOUR == pytest.approx(77.5 / 15.5)
+
+    def test_the_rate_is_the_product_of_three_published_numbers(self) -> None:
+        assert tp.cooking_xp_per_hour() == pytest.approx(5 * 55 * 10)
+
+    def test_it_is_flat_because_the_shrine_cannot_burn(self) -> None:
+        """One band, at upstream's own level. What gates this is reaching
+        Tempoross, which is Fishing's business rather than Cooking's."""
+        (band,) = tp.cooking_methods(self._VALID)[tp.COOKING_SKILL]
+
+        assert band.level == tp.COOKING_OPENS_AT == 1
+        assert band.xp_per_hour == tp.cooking_xp_per_hour()
+
+    def test_the_two_challenges_are_two_choices(self) -> None:
+        """A player cooking gets less Fishing than the not-cooking table says,
+        but the export has one challenge for each skill and a climb takes the
+        best it is offered - so pricing the cooking regime's Fishing as well
+        would only offer a worse number for a skill that already has one."""
+        assert tp.SKILL not in tp.cooking_methods(self._VALID)
+
+    def test_a_map_that_cannot_reach_it_gets_nothing(self) -> None:
+        assert tp.cooking_methods({"Cooking": {}}) == {}

@@ -80,6 +80,19 @@ The modules, and what each owns:
   292,500/hr - the whole Cooking climb on the uber map. Also states the three
   ticks a knife costs on the three crabs the wiki leaves untimed, which is the
   wiki's own figure for the same knife on a fish.
+- `sacredeel.py` - a Cooking method with no Cooking time in it. The knife is
+  spammable, so an hour of dissecting is an hour of *catching*: throughput is
+  the Fishing model's own roll read a second time (21.09% at 87, the wiki's own
+  figure) and the pay is a step function of **Cooking** level, since that
+  decides the scales. The bands are Cooking's and the Fishing level is handed
+  in - the opposite assignment to `barbarian.py`, and the same question from
+  the other side.
+- `troublebrewing.py` - the minigame's Cooking, which is a woodcutting loop:
+  chop a scrapey tree, fletch the log, deposit the bark for 100 Cooking xp,
+  one to one all the way. Prices the two published mechanics (a chop attempt
+  every 4 ticks, a 1/8 depletion) and charges the untimed fletch and deposit
+  **nothing**, which makes it an arithmetic ceiling rather than an estimate -
+  and the ceiling is 100,000/hr, below a community guide's 200,000.
 - `chisel.py` - the other untimed duration, and it is **zero**: a dark essence
   block is chiselled *while running* to the blood or soul altar, on a trip the
   rune's own recipe already pays for. Names the one output rather than reaching
@@ -135,7 +148,11 @@ The modules, and what each owns:
   linear in the level.
 - `tempoross.py` - the wiki's rate for four harpoons at five levels each,
   which **replaced three invented tier figures in `stated.py`**. Best harpoon
-  by *rate* rather than by tier, since the tiers are not ordered.
+  by *rate* rather than by tier, since the tiers are not ordered. Also the
+  **cooking** regime, which is the page's other table and is one flat number
+  because every part of it is fixed: the `max permits` walkthrough counts out
+  55 fish a game, a game is 12 minutes including the wait, and a harpoonfish
+  pays 10. The two challenges are two choices rather than halves of one method.
 - `artefacts.py` - stealing artefacts for Captain Khaled, and **the one
   activity here that derives completely**: both halves of what an artefact pays
   are stated in prose, the run count is the mean of six tabulated house times,

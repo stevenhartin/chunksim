@@ -57,9 +57,11 @@ from chunksim.costing import (
     pyramid_plunder,
     rumours,
     salvage,
+    sacredeel,
     sepulchre,
     sorceress,
     stated,
+    troublebrewing,
     swimming,
     tempoross,
     valuables,
@@ -494,8 +496,11 @@ def recipe_priced(
     # dodged this through `training._ALL_INCLUSIVE_SOURCES`, which a
     # `ComputedMethod` has no source to be matched by; removing the entry
     # fixes both paths at once and is the truer statement anyway.
+    # **And a sacred eel is the same shape**: the dissection is spammable, so
+    # the whole hour is the catching that the model already prices. Charging
+    # the eel again read 26,620/hr as 13,002. See `costing/sacredeel.py`.
     for task in list(per_xp):
-        if gotr.GUARDIAN_SUFFIX in task:
+        if gotr.GUARDIAN_SUFFIX in task or task == sacredeel.TASK:
             del per_xp[task]
     return (
         replace(
@@ -743,6 +748,25 @@ def _gathered(
         derived.challenges.valid, frozenset(derived.challenges.available_items)
     ).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
+    # **And the other regime, which is a Cooking method.** The same fight,
+    # counted rather than tabulated: 55 fish loaded a game at 10 experience
+    # each, five games an hour. The two challenges are two choices - a climb
+    # takes the best of what it is offered - so Fishing keeps the not-cooking
+    # table and Cooking gets this.
+    for skill, methods in tempoross.cooking_methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **Trouble Brewing's Cooking is a woodcutting loop**, so the *Woodcutting*
+    # level and the axe the map holds decide it - see
+    # `costing/troublebrewing.py`, which retires the 15,000 `stated.py` was
+    # guessing for this one of its eight skills.
+    for skill, methods in troublebrewing.methods(
+        blobs.gathering,
+        state.chunk_info,
+        derived.challenges.valid,
+        frozenset(derived.challenges.available_items),
+        at_level.get("Woodcutting", 1),
+    ).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
     # Two activities whose rate is stated rather than computed - see
     # `costing/stated.py`, whose every band is marked `guess`.
     # Two skills at once and a ceiling at 70 - see `costing/driftnet.py`.
@@ -760,6 +784,17 @@ def _gathered(
         banded[skill] = (*banded.get(skill, ()), *methods)
     for skill, methods in chambers.methods(
         blobs.gathering, derived.challenges.valid, at_level.get("Cooking", 1)
+    ).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **A Cooking method with no Cooking time in it**, so the *Fishing* level
+    # is the second one handed in here - the cut is not tick-gated and an hour
+    # of dissecting is an hour of catching. See `costing/sacredeel.py` for why
+    # the bands are Cooking's even so.
+    for skill, methods in sacredeel.methods(
+        blobs.gathering,
+        _mapping(state.chunk_info.challenges, sacredeel.SKILL),
+        derived.challenges.valid,
+        at_level.get("Fishing", 1),
     ).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     return (

@@ -561,7 +561,7 @@ class SkillProfile:
     #: *creatures* - a grey chinchompa is not a harder red one. Here they are
     #: tool tiers, and collapsing nine of them to bronze would make a tree's
     #: rate independent of the axe, which is the one thing every tree's chart
-    #: exists to say. So the family is taken intact and `_tool_curve` picks
+    #: exists to say. So the family is taken intact and `tool_curve` picks
     #: from it exactly as it would from the node's own.
     #:
     #: `INFERRED`, because the shape is a measurement of something else.
@@ -2562,7 +2562,7 @@ def _borrowed_curve(
     curve" means here.
 
     The donor's first series is taken, which is the unassisted one - the same
-    conservative reading `_tool_curve` falls back to - and the unlock level is
+    conservative reading `tool_curve` falls back to - and the unlock level is
     the challenge's own `Level`. `None` where nothing is borrowed, where the
     donor is uncharted itself, or where the challenge states no level, since
     the whole construction is anchored on that number.
@@ -2749,7 +2749,7 @@ def _respawn_key(
     return ""
 
 
-def _tool_curve(
+def tool_curve(
     curves: tuple[tuple[str, float, float, int, str], ...],
     profile: SkillProfile,
     tool: str,
@@ -2841,7 +2841,7 @@ def rate_at(
         node, chance, provenance = fixed
     elif curves:
         opens = challenge.get("Level")
-        label, low, high, _req, provenance = _tool_curve(
+        label, low, high, _req, provenance = tool_curve(
             curves, profile, tool, int(opens) if isinstance(opens, (int, float)) else 0
         )
         chance = success_chance(level, low, high)
@@ -2861,7 +2861,7 @@ def rate_at(
         # which keeps one series rather than the family.
         node, donor = shared
         opens = challenge.get("Level")
-        label, low, high, _req, _prov = _tool_curve(
+        label, low, high, _req, _prov = tool_curve(
             donor, profile, tool, int(opens) if isinstance(opens, (int, float)) else 0
         )
         label = f"{label}, assumed as {node}"

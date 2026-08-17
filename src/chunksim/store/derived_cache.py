@@ -195,7 +195,10 @@ _FORMAT = "1"
 #: 68: Cooking - an assembly stage costs no walk depth, the knife cut-ups join
 #: on the fish going in, an `(alt)` twin is not a second method, and an
 #: `ActionRate`'s key carries what it is made from.
-_PRICING_MODEL = "68"
+#: 69: Cooking's last three published figures - the sacred eel dissection off
+#: the Fishing model's own roll, Tempoross' max-permits cooking regime counted
+#: out, and Trouble Brewing's bark chain as an arithmetic ceiling.
+_PRICING_MODEL = "69"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

@@ -45,12 +45,39 @@ Best is decided **by rate rather than by tier order**, because the tiers are not
 ordered: an infernal harpoon is better than a dragon one and worse than a
 crystal one at every level, and a list would have to encode that twice.
 
-### Not cooking
+### Cooking is the other regime, and it is a second method
 
-The wiki tabulates two regimes and this prices the faster: "not cooking the
-harpoonfish means getting lower amounts of points/loot but significantly more
-experience". Cooking pays about a third less Fishing and some Cooking, and the
-export carries no Cooking challenge for Tempoross to hang that on.
+The wiki tabulates two, and the Fishing rate above is the **not cooking** one:
+"not cooking the harpoonfish means getting lower amounts of points/loot but
+significantly more experience". This module used to stop there, on the stated
+grounds that "the export carries no Cooking challenge for Tempoross to hang
+that on". **That was simply wrong** - `Cook fish at ~|Tempoross|~` is right
+there under Cooking, and it was carrying a money-making guide's figure for
+want of anyone looking.
+
+So the cooking regime is priced too, and it is **one flat number** because
+every part of it is fixed. The wiki's own `Solo cooking + firefighting (max
+permits)` walkthrough counts the fish out: 17 in the first stretch and 19 more
+to finish phase one - "much less than the 36 needed for the first phase" - then
+19 in phase two, and none at all in phase three, which is spent dousing fires.
+**55 cooked and loaded a game.** A game is "around 12 minutes", and the page's
+own permit arithmetic agrees that the twelve includes the wait between games:
+15.5 permits a game against "roughly 75-80 permits per hour" is exactly 5.
+A harpoonfish pays **10** Cooking experience - the wiki's `{{Recipe}}`, level 1
+- and the shrine cannot burn one, so nothing about this moves with level:
+
+    5 games x 55 fish x 10 xp = 2,750 Cooking xp an hour
+
+against the 2,500 `mmg:Money making guide/Subduing Tempoross` was supplying.
+The two figures being close is the reassurance; what changes is that this one
+is derived from counted actions rather than borrowed.
+
+**The two challenges are two choices, not a split**, exactly as the Arceuus
+library's two are. A player cooking gets ~20,000 Fishing an hour at level 35
+rather than 30,000, but the export has one Fishing challenge and one Cooking
+one, and a climb takes the best of what it is offered - so Fishing keeps the
+not-cooking table and Cooking gets this. Pricing the cooking regime's *Fishing*
+as well would offer a strictly worse number for the skill that already has one.
 
 Pure: the level and the reachable set come in as arguments.
 """
@@ -67,6 +94,36 @@ TASK = "Catch fish at ~|Tempoross|~"
 OPENS_AT = 35
 
 SKILL = "Fishing"
+
+#: The other challenge, and the skill it pays. See the module docstring for
+#: why the two are choices rather than halves of one method.
+COOKING_TASK = "Cook fish at ~|Tempoross|~"
+COOKING_SKILL = "Cooking"
+
+#: What a Cooking band calls it, told apart from the Fishing bands by naming
+#: the regime rather than the harpoon.
+COOKING_ACTIVITY = "Tempoross (cooking)"
+
+#: Games an hour. **The twelve minutes a game takes already includes the wait
+#: between them**, which is the page's own permit arithmetic checking itself:
+#: an average game yields 15-16 permits and an hour yields "roughly 75-80", so
+#: 15.5 into 77.5 is exactly five.
+GAMES_PER_HOUR = 5.0
+
+#: Fish cooked and loaded in one game, off the `Solo cooking + firefighting
+#: (max permits)` walkthrough: 17 then 19 to finish phase one - the page calls
+#: that "the 36 needed for the first phase" - and 19 in phase two. Phase three
+#: cooks none; it is spent dousing fires.
+FISH_PER_GAME = 17 + 19 + 19
+
+#: Cooking experience one harpoonfish pays, from the wiki's own `{{Recipe}}`.
+#: **Flat in level**, because the shrine cannot burn a fish - which is what
+#: makes this whole method one number instead of a curve.
+COOKING_EXPERIENCE = 10.0
+
+#: The level the Cooking challenge opens at. Upstream's own, and it is 1: what
+#: gates this is reaching Tempoross, which is Fishing's business.
+COOKING_OPENS_AT = 1
 
 #: Harpoon -> the Fishing level it needs, and its `(level, xp/hr)` points from
 #: the wiki's **Not cooking** table. The plain and barb-tail harpoons share a
@@ -129,6 +186,44 @@ def rate_at(level: int, available: frozenset[str]) -> float:
     if level < OPENS_AT:
         return 0.0
     return best_harpoon(level, available)[1]
+
+
+def cooking_xp_per_hour() -> float:
+    """Cooking experience an hour under the max-permits regime.
+
+    A constant, and deliberately expressed as the product it is: every factor
+    is counted or published, so a reader can check the number by checking
+    three.
+    """
+    return GAMES_PER_HOUR * FISH_PER_GAME * COOKING_EXPERIENCE
+
+
+def cooking_methods(
+    valid: Mapping[str, Mapping[str, object]],
+) -> dict[str, tuple[ComputedMethod, ...]]:
+    """`{"Cooking": (...)}` where a map can reach Tempoross.
+
+    One band, at the challenge's own level, because nothing about the regime
+    moves with Cooking level: the fish count is the fight's and the shrine
+    cannot burn one.
+
+    Needs no harpoon check. `available` gates the Fishing bands because the
+    tier decides the rate there; here the fish are cooked whatever caught
+    them, and a map that reaches Tempoross at all reaches a harpoon.
+    """
+    if COOKING_TASK not in (valid.get(COOKING_SKILL) or {}):
+        return {}
+    return {
+        COOKING_SKILL: (
+            ComputedMethod(
+                method=COOKING_ACTIVITY,
+                xp_per_hour=cooking_xp_per_hour(),
+                level=COOKING_OPENS_AT,
+                match=CONFIRMED,
+                knob=f"training/{COOKING_TASK}/{COOKING_SKILL}",
+            ),
+        )
+    }
 
 
 def methods(

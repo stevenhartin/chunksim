@@ -1725,7 +1725,7 @@ class TestBorrowedCurves:
         assert rate.chance == gathering.success_chance(99, 0.0, 276.0)
 
     def test_the_donors_first_series_is_the_one_lent(self) -> None:
-        # The unassisted tier, matching what `_tool_curve` falls back to - a
+        # The unassisted tier, matching what `tool_curve` falls back to - a
         # borrowed number should not assume the better net as well.
         borrowed = _netted("ruby harvest", 15, 15)
         assert borrowed is not None

@@ -10,10 +10,21 @@ part was measured and which was chosen.
   fitting. The *pace* is not published: catching three takes about half a
   minute, so ten seconds each, and that is a guess. Every band is marked
   `GUESS` for it.
-- **Trouble Brewing.** A whole minigame with six skills' worth of challenges
+- **Trouble Brewing.** A whole minigame with eight skills' worth of challenges
   and nothing tabulated anywhere. Fifteen thousand an hour is a stated
   estimate, applied to each skill the export lists a challenge for, and it is
   a guess twice over: in the figure, and in giving every skill the same one.
+
+  **Cooking has left this module**, which is the second entry to do so and
+  for the reason given below about Tempoross: the way to retire a `GUESS` is
+  to go and read the pages. Seven of the eight challenges are `Participate in
+  ~|Trouble Brewing|~ **for <skill> xp**`; Cooking's is the bare one, because
+  brewing the rum *is* the minigame and the rest are side-effects of running
+  about doing it - and the rum's chain turns out to be countable end to end.
+  See `costing/troublebrewing.py`. The other seven keep the 15,000, which is
+  now explicitly a statement about the *secondary* skills, and the warning
+  below that they "are the more likely to be overstated" is the reason not to
+  lift them on the strength of the one that was measured.
 
 - **The lantern harpoon.** Two squid come off one spot and which you get is
   decided by level: the page has the split at 69 Fishing (69% swordtip, 31%
@@ -121,10 +132,17 @@ TROUBLE_BREWING = "Trouble Brewing"
 #: belong to six real skills at once.
 NOT_SKILLS = frozenset({*OTHER_CATEGORIES, "Combat", "Nonskill"})
 
-#: Experience an hour from Trouble Brewing, in **each** skill it pays. A guess
-#: in the figure and a guess again in applying one figure to six skills; the
-#: secondary ones are the more likely to be overstated.
+#: Experience an hour from Trouble Brewing, in each **secondary** skill it
+#: pays. A guess in the figure and a guess again in applying one figure to
+#: seven skills; these are the more likely to be overstated.
 TROUBLE_BREWING_PER_HOUR = 15_000.0
+
+#: The skills this module does **not** speak for, because something else does.
+#: Only Cooking, and only because it is the minigame's own skill rather than a
+#: side-effect of playing it - the export marks that itself, giving Cooking the
+#: bare `Participate in ~|Trouble Brewing|~` where the other seven are `... for
+#: <skill> xp`. See `costing/troublebrewing.py`, which counts it.
+TROUBLE_BREWING_MODELLED = frozenset({"Cooking"})
 
 
 #: The two squid a lantern harpoon spot yields, and the tasks that name them.
@@ -284,7 +302,7 @@ def methods(
         if skill in NOT_SKILLS:
             continue
         for task in tasks:
-            if TROUBLE_BREWING not in task:
+            if TROUBLE_BREWING not in task or skill in TROUBLE_BREWING_MODELLED:
                 continue
             found.setdefault(skill, []).append(
                 ComputedMethod(
