@@ -207,6 +207,48 @@ PAGES: tuple[str, ...] = (
     CRAFTING_PAGE,
 )
 
+#: Export shortcut name -> the wiki's, for the ones no rewrite reaches.
+#:
+#: **The residue after `heuristics.shortcut_keys`**, which handles the three
+#: *structural* differences (`#Version` anchors, a version folded into the
+#: parenthetical, a bare object). What is left is genuine vocabulary drift and
+#: has to be written down: an apostrophe in a different place
+#: (`Rocks (Giant's Plateau)` against `Rocks (Giants' Plateau)`), a spelling
+#: (`Burg de Rot`/`Burgh de Rott`), a qualifier the wiki has and upstream does
+#: not (`north of Sophanem`), and the several upstream names only in prose so
+#: the key is the challenge's own words with the verb stripped.
+#:
+#: **Hand-checked one by one, and deliberately not extended by guessing.** A
+#: word-overlap scorer proposed 21 more and was wrong often enough to be
+#: useless - it offered `Stepping stone (Shilo Village)` for a house window in
+#: Aldarin, and put five different Brimhaven Dungeon shortcuts on one
+#: Lumbridge stepping stone. Those stay unpriced until someone identifies them,
+#: which is the honest state for a join this project cannot verify.
+SHORTCUT_ALIASES: dict[str, str] = {
+    "Ditch (Pollnivneach)": "Slope_(Pollnivneach)",
+    "Low fence": "Fence (Burgh de Rott)",
+    "Rocks (Giant's Plateau)": "Rocks (Giants' Plateau)",
+    "Slope (Pollnivneach)": "Slope_(Pollnivneach)",
+    "Stepping stone (Sophanem)": "Stepping stone (north of Sophanem)",
+    "ardougne log balance shortcut": "Log balance (East Ardougne)",
+    "draynor manor fence shortcut": "Broken fence (Draynor Manor)",
+    "draynor manor stones to champions' guild shortcut": "Stepping stone (Champions' Guild)",
+    "eagles' peak agility shortcut": "Rocks (Eagles' Peak)",
+    "falador wall shortcut": "Crumbling wall (Falador)",
+    "forthos dungeon jump shortcut": "Strange floor (Forthos Dungeon)",
+    "fremennik slayer dungeon chasm jump shortcut": "Crevice (Fremennik Slayer Dungeon)",
+    "iorwerth dungeon southern shortcut": "Tight gap (South Iorwerth Dungeon)",
+    "north-west corner of the catacombs of kourend shortcut": "Stones (Catacombs of Kourend)",
+    "revenant caves jump (easy) shortcut": "Pillar (Revenant Caves, easy)#Easy",
+    "revenant caves jump (medium) shortcut": "Pillar (Revenant Caves, medium)#Medium",
+    "taverley dungeon pipe squeeze to blue dragon lair shortcut": "Obstacle pipe (Taverley Dungeon)",
+    "taverley dungeon spiked blades jump shortcut": "Strange floor (Taverley Dungeon)",
+    "trollheim hard cliffside scramble shortcut": "Rocks (Trollheim hard)",
+    "waterbirth island dungeon crevice shortcut": "Crevice (Waterbirth Island Dungeon)",
+    "wilderness slayer cave crevice shortcut": "Crevice (Wilderness Slayer Cave)",
+    "yanille climbing rocks shortcut": "Climbing rocks (Yanille)",
+}
+
 #: Export course name -> the wiki's spelling. **Only for the ones that differ.**
 #: Upstream's `Canafis` is a typo for Canifis, and its Colossal Wyrm courses are
 #: split where the wiki keeps one page; the export has no Prifddinas course at

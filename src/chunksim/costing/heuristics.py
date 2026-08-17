@@ -85,6 +85,7 @@ from chunksim.remote.prayer import Altar, Bone
 from chunksim.remote.farming import Crop
 from chunksim.remote.skill_tables import (
     COURSE_ALIASES,
+    SHORTCUT_ALIASES,
     ShortcutInfo,
     GUARDIAN_SUFFIX,
     TITHE_CATEGORY,
@@ -1126,6 +1127,10 @@ def _add_shortcuts(
             if isinstance(obj, str)
             for key in shortcut_keys(obj)
         ] + _join_keys(challenge, task, COURSE_ALIASES)
+        # **Hand-written names last, so they can only add a join.** An alias
+        # is the residue after `shortcut_keys`' structural rewrites - see
+        # `SHORTCUT_ALIASES` - and never displaces a name that already lands.
+        offered += [SHORTCUT_ALIASES[key] for key in offered if key in SHORTCUT_ALIASES]
         found = next((index[key.lower()] for key in offered if key.lower() in index), None)
         if found is None:
             level = challenge.get("Level")

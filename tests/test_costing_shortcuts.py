@@ -103,3 +103,27 @@ def test_a_page_with_no_agility_info_yields_nothing() -> None:
     """Four of the linked pages carry no box at all. Nothing is a better
     answer than a shortcut priced off the list's level alone."""
     assert parse_agility_info("Just prose about a wall.", "Wall") == ()
+
+
+def test_every_alias_names_a_real_shortcut_key() -> None:
+    """**A typo in an alias is a silent miss, not an error.** The left side is
+    a key `_add_shortcuts` offers and the right a `ShortcutInfo.name`; getting
+    either wrong simply fails to join, and the method goes back to unpriced
+    without anything saying so. Shape is all that can be checked without the
+    live wiki - no empty strings, no self-mappings, no duplicate targets that
+    are really one key written twice."""
+    from chunksim.remote.skill_tables import SHORTCUT_ALIASES
+
+    assert SHORTCUT_ALIASES, "the table is the point"
+    for key, target in SHORTCUT_ALIASES.items():
+        assert key.strip() and target.strip(), f"{key!r} -> {target!r}"
+        assert key != target, f"{key!r} maps to itself"
+        assert key.lower() != target.lower(), f"{key!r} differs from its target only in case"
+
+
+def test_a_zero_experience_shortcut_stays_unpriced_even_with_an_alias() -> None:
+    """Two aliases resolve to shortcuts that pay nothing - `Fence (Burgh de
+    Rott)` and `Crevice (Fremennik Slayer Dungeon)`, both of whose challenges
+    upstream marks `Primary: true`. Joining them is right; pricing them is
+    not, and `_add_shortcuts` drops them on their own experience."""
+    assert xp_per_hour(_info(experience=0.0), 99) == 0.0

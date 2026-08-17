@@ -249,8 +249,17 @@ figure whose own comment called it "a stated target, not a measurement",
 chosen so the best shortcut reached ~5,000/hr - so every shortcut is 3.75x
 faster now except where a curve damps it (Edgeville to Varrock Sewers goes
 2,000 to 3,838 rather than 7,500, succeeding 51% at the level it opens).
-25 methods, median 4,500/hr, best 20,625 - still bad, which is the honest
-answer for a door.
+45 methods, median ~3,000/hr, best 18,750 - still bad, which is the honest
+answer for a door. The join needed both halves: `heuristics.shortcut_keys`
+rewrites the three *structural* disagreements (a `#Version` anchor, a version
+folded into the parenthetical, a bare object), and
+`skill_tables.SHORTCUT_ALIASES` writes down the 22 that are genuine
+vocabulary drift - an apostrophe moved, `Burg de Rot` against `Burgh de Rott`,
+a qualifier upstream lacks. **A word-overlap scorer proposed 21 more and was
+rejected**: it offered a Shilo Village stepping stone for a house window in
+Aldarin and collapsed five Brimhaven Dungeon shortcuts onto one Lumbridge
+stone. Those 37 stay unpriced, which is the honest state for a join nothing
+here can verify.
 
 **Not every "computed" number is evidence, and the docstrings say which.**
 Thieving's fifteen tabulated stalls come out at exactly 1.00x against the
