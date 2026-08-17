@@ -173,7 +173,9 @@ _FORMAT = "1"
 #: methods priced five different ways.
 #: 58: shipwreck salvaging is modelled from the find experience and one
 #: crewmate, where the guides bundled sorting and assumed two.
-_PRICING_MODEL = "58"
+#: 59: sorting salvage at a station is priced, and a salvage now costs what
+#: finding it costs rather than the four-tick default.
+_PRICING_MODEL = "59"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

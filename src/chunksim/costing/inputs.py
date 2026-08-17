@@ -431,6 +431,16 @@ def recipe_priced(
         },
     }
     per_xp.update(by_hand)
+    # **Sorting salvage costs the salvage.** Sailing has no `{{Recipe}}` at
+    # all, so nothing above fills these in - see `salvage.material_seconds_per_xp`
+    # for why 171,000/hr on paper is not a training method.
+    per_xp.update(
+        salvage.material_seconds_per_xp(
+            _mapping(state.chunk_info.challenges, "Sailing"),
+            derived.challenges.valid.get("Sailing") or {},
+            levels.get("Sailing", 1),
+        )
+    )
     # **An activity that gathers what it consumes must carry no material cost
     # at all.** Guardians of the Rift mines its own essence - that is most of
     # what a game is - so the rate already covers it, and charging the rune's
@@ -545,6 +555,17 @@ def _gathered(
         )
         if chosen.seconds_per_item > 0:
             timed[task] = chosen.seconds_per_item
+    # **A salvage costs what finding it costs.** The sorting challenge eats
+    # one, and without a duration on the wreck the walk charged
+    # `estimate.DEFAULT_ACTION_SECONDS` - which read sorting as the fastest
+    # thing in Sailing by an order of magnitude. See `costing/salvage.py`.
+    timed.update(
+        salvage.action_seconds(
+            _mapping(state.chunk_info.challenges, "Sailing"),
+            derived.challenges.valid.get("Sailing") or {},
+            at_level.get("Sailing", 1),
+        )
+    )
     # **What a pay-dirt turns out to be** - see `costing/paydirt.py`. It takes
     # the figure just computed for `Mine ~|pay-dirt|~` rather than its own, so
     # one model owns how fast a pay-dirt is mined and the other what comes out

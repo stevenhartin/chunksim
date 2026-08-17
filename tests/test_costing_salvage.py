@@ -71,3 +71,54 @@ def test_every_wreck_opens_where_the_export_says() -> None:
     rows = sorted(salvage.SHIPWRECKS.values())
     assert [level for level, _, _ in rows] == sorted(level for level, _, _ in rows)
     assert [xp for _, xp, _ in rows] == sorted(xp for _, xp, _ in rows)
+
+
+def test_sorting_is_the_page_s_own_cadence() -> None:
+    """"When used optimally close to 1800 salvages per hour can be achieved" -
+    a three-tick sort with the banking runs already in it, since a bare three
+    ticks would be 2,000."""
+    assert salvage.SORT_PER_HOUR == 1800.0
+
+
+def test_sorting_costs_the_salvage_it_eats() -> None:
+    """**The bound that stops sorting running away with the skill.** A station
+    takes 1,800 salvages an hour whatever they are, so opulent salvage reads
+    171,000/hr on its own - more than twice the best Barracuda trial. Every one
+    of them had to be found first, at roughly 34 seconds each, and charging
+    that is what turns the pair back into one activity.
+    """
+    challenges = {
+        "Process some ~|opulent salvage|~ at a salvaging station": {
+            "Level": 87, "Primary": True, "Items": ["Opulent salvage*"],
+        },
+    }
+
+    per_xp = salvage.material_seconds_per_xp(
+        challenges, dict.fromkeys(challenges, {}), 99
+    )
+
+    (cost,) = per_xp.values()
+    assert cost == pytest.approx(salvage.salvage_seconds("Opulent salvage", 99) / 95.0)
+    # Sorting on paper against sorting once the finding is paid for.
+    raw = salvage.SORT_PER_HOUR * 95.0
+    effective = 3600.0 / (3600.0 / raw + cost)
+    assert raw > 150_000 and effective < 10_000
+
+
+def test_a_salvage_costs_what_finding_it_costs() -> None:
+    """Without this the walk charged `estimate.DEFAULT_ACTION_SECONDS` for a
+    salvage, and sorting read as the fastest thing in Sailing by an order of
+    magnitude. A crewmate makes finding faster, so the cost falls."""
+    solo = salvage.salvage_seconds("Opulent salvage", 1)
+    crewed = salvage.salvage_seconds("Opulent salvage", 60)
+
+    assert solo == pytest.approx(3600.0 / 93.3)
+    assert crewed < solo
+
+
+def test_a_wreck_is_not_a_sorting_challenge() -> None:
+    """Joined on the export's own `Items`: a sorting challenge is the one that
+    *eats* a salvage, where the wreck produces it."""
+    wreck = {"Level": 87, "Primary": True, "Output": "Opulent salvage"}
+
+    assert salvage._sorted_salvage(wreck) is None

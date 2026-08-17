@@ -48,6 +48,9 @@ from chunksim.costing.heuristics import ComputedMethod
 #: What a band calls the activity.
 ACTIVITY = "shipwreck salvaging"
 
+#: What a band calls the other half of it.
+SORTING = "sorting salvage"
+
 #: What this labels its rates.
 SALVAGE_MATCH = "modelled"
 SALVAGE_SOURCE = "computed:salvage"
@@ -76,6 +79,34 @@ SHIPWRECKS: dict[str, tuple[int, float, float]] = {
     "Fremennik salvage": (80, 162.0, 103.3),
     "Opulent salvage": (87, 200.0, 93.3),
 }
+
+#: `Output` -> experience for sorting one salvage at a station, from the
+#: `Salvaging station` table. **The other half of the activity, and upstream's
+#: own second challenge** - `Process some ~|opulent salvage|~ at a salvaging
+#: station` - which is why it is not added to the find above.
+SORTING_EXPERIENCE: dict[str, float] = {
+    "Small salvage": 5.5,
+    "Fishy salvage": 9.0,
+    "Barracuda salvage": 15.5,
+    "Large salvage": 24.0,
+    "Plundered salvage": 31.5,
+    "Martial salvage": 63.5,
+    "Fremennik salvage": 75.0,
+    "Opulent salvage": 95.0,
+}
+
+#: Salvage sorted an hour at a station. **The page's own figure** - "when used
+#: optimally close to 1800 salvages per hour can be achieved" - which is a
+#: three-tick sort with the banking runs already in it (a bare three ticks
+#: would be 2,000).
+#:
+#: **It is a cadence, not a rate**, and the difference is the whole of why
+#: sorting does not run away with the skill: you can only sort what you
+#: salvaged. The station will take 1,800 opulent salvages an hour and 95
+#: experience each - 171,000/hr on paper - but each one costs a salvage, and
+#: `estimate`'s item walk charges that through `action_seconds` on the wreck.
+#: What comes out is bounded by the finding, which is the honest answer.
+SORT_PER_HOUR = 1800.0
 
 #: Sailing level -> the best deckhandiness hireable at it. **Only the steps
 #: that matter**: Jobless Jim (D=3) at 40 is the first crewmate at all, and
@@ -116,6 +147,68 @@ def xp_per_hour(output: str, level: int) -> float:
     return per_hour * experience * (1.0 + crew_bonus(level))
 
 
+def salvage_seconds(output: str, level: int) -> float:
+    """Seconds one salvage of `output` takes to find, crewmate included.
+
+    **What the item walk charges the sorting challenge.** Without it a salvage
+    priced at `estimate.DEFAULT_ACTION_SECONDS` and sorting read as the
+    fastest thing in Sailing by an order of magnitude.
+    """
+    found = SHIPWRECKS.get(output)
+    if found is None:
+        return 0.0
+    per_hour = found[2] * (1.0 + crew_bonus(level))
+    return 3600.0 / per_hour if per_hour > 0 else 0.0
+
+
+def action_seconds(
+    challenges: Mapping[str, Any], valid: Mapping[str, Any], level: int
+) -> dict[str, float]:
+    """`{task: seconds}` for finding one salvage, per wreck a map reaches."""
+    found: dict[str, float] = {}
+    for task in valid or {}:
+        challenge = challenges.get(task)
+        if not isinstance(challenge, dict):
+            continue
+        output = challenge.get("Output")
+        if isinstance(output, str) and output in SHIPWRECKS:
+            seconds = salvage_seconds(output, level)
+            if seconds > 0:
+                found[task] = seconds
+    return found
+
+
+def material_seconds_per_xp(
+    challenges: Mapping[str, Any], valid: Mapping[str, Any], level: int
+) -> dict[str, float]:
+    """`{task: gathering seconds per experience}` for the sorting challenges.
+
+    **The bound that stops sorting running away with the skill.** A station
+    takes 1,800 salvages an hour whatever they are, so opulent salvage reads
+    171,000 experience an hour on its own - more than twice the best Barracuda
+    trial. It is not a training method at that rate, because every one of those
+    salvages had to be found first, at roughly 34 seconds each. Charging that
+    here is what turns the pair into the single activity it really is.
+
+    Sailing has no `{{Recipe}}` anywhere, so nothing else fills this in for
+    these tasks - `recipe_priced` builds the map from the recipe corpus, and
+    the whole skill is absent from it.
+    """
+    found: dict[str, float] = {}
+    for task in valid or {}:
+        challenge = challenges.get(task)
+        if not isinstance(challenge, dict):
+            continue
+        consumed = _sorted_salvage(challenge)
+        if consumed is None:
+            continue
+        experience = SORTING_EXPERIENCE[consumed]
+        seconds = salvage_seconds(consumed, level)
+        if experience > 0 and seconds > 0:
+            found[task] = seconds / experience
+    return found
+
+
 def methods(
     challenges: Mapping[str, Any], valid: Mapping[str, Any]
 ) -> dict[str, tuple[ComputedMethod, ...]]:
@@ -144,4 +237,38 @@ def methods(
             )
             for step in steps_for(opens)
         )
+    # **Sorting is flat in level and so gets one point.** Nothing about the
+    # station changes as the player climbs; what changes is the salvage it
+    # consumes, and that is charged through the item walk rather than here.
+    for task in sorted(valid or {}):
+        challenge = challenges.get(task)
+        if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
+            continue
+        consumed = _sorted_salvage(challenge)
+        if consumed is None:
+            continue
+        found.append(
+            ComputedMethod(
+                method=SORTING,
+                xp_per_hour=SORT_PER_HOUR * SORTING_EXPERIENCE[consumed],
+                level=SHIPWRECKS[consumed][0],
+                match=SALVAGE_MATCH,
+                knob=f"training/{task}/Sailing",
+            )
+        )
     return {"Sailing": tuple(found)} if found else {}
+
+
+def _sorted_salvage(challenge: Mapping[str, Any]) -> str | None:
+    """The salvage a sorting challenge consumes, or `None` if it is not one.
+
+    Joined on the export's own `Items` rather than the task's words: a sorting
+    challenge is the one that *eats* a salvage, where the wreck produces it.
+    """
+    for required in challenge.get("Items") or ():
+        if not isinstance(required, str):
+            continue
+        name = required.replace("*", "").strip()
+        if name in SORTING_EXPERIENCE and name in SHIPWRECKS:
+            return name
+    return None
