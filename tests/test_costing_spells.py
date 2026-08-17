@@ -134,3 +134,55 @@ def test_a_hand_pin_outranks_it() -> None:
     merged = spells.apply(training, computed, frozenset({_ALCH}))
 
     assert merged[_ALCH]["Magic"].source == "default"
+
+
+# --- a teleport with no lectern has no method ---------------------------
+
+
+def test_an_untabled_teleport_loses_its_guide() -> None:
+    """**A bare teleport cast is not a training method**, which is why
+    `castable` refuses the kind at all - the cast moves you somewhere you
+    cannot cast it again. So the only honest rate is a tablet rate, and a map
+    that can build no lectern making that tablet has no method rather than a
+    slow one. `mmg:Money making guide/Creating Camelot teleport tablets` is a
+    real figure for a real method that map does not have."""
+    training = {_CAMELOT: {"Magic": Rate(41_625.0, "mmg:Creating Camelot tablets", "contained")}}
+
+    merged = spells.refuse_untabled(training, _COSTS, frozenset())
+
+    assert merged[_CAMELOT] == {}
+
+
+def test_a_tabled_teleport_keeps_what_it_has() -> None:
+    training = {_CAMELOT: {"Magic": Rate(11_679.0, "recipe", "computed")}}
+
+    merged = spells.refuse_untabled(training, _COSTS, frozenset({_CAMELOT}))
+
+    assert merged[_CAMELOT]["Magic"].value == 11_679.0
+
+
+def test_a_utility_spell_is_never_refused_this_way() -> None:
+    """The rule is about teleports, and the infobox's own kind says which."""
+    training = {_ALCH: {"Magic": Rate(78_000.0, "mmg:Alching", "exact")}}
+
+    merged = spells.refuse_untabled(training, _COSTS, frozenset())
+
+    assert merged[_ALCH]["Magic"].value == 78_000.0
+
+
+def test_a_model_survives_where_a_scrape_does_not() -> None:
+    """A `modelled` rate is a model's own answer about a whole activity rather
+    than a claim about which lectern was built."""
+    training = {_CAMELOT: {"Magic": Rate(9_000.0, "computed:something", "modelled")}}
+
+    merged = spells.refuse_untabled(training, _COSTS, frozenset())
+
+    assert merged[_CAMELOT]["Magic"].match == "modelled"
+
+
+def test_a_hand_pin_survives_too() -> None:
+    training = {_CAMELOT: {"Magic": Rate(41_625.0, "mmg:Creating Camelot tablets", "contained")}}
+
+    merged = spells.refuse_untabled(training, _COSTS, frozenset(), frozenset({_CAMELOT}))
+
+    assert merged[_CAMELOT]["Magic"].value == 41_625.0

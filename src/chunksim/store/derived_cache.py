@@ -200,7 +200,9 @@ _FORMAT = "1"
 #: out, and Trouble Brewing's bark chain as an arithmetic ceiling.
 #: 70: a utility spell is priced from the wiki's own `|speed =` and the
 #: challenge's own `Items` - see `costing/spells.py`.
-_PRICING_MODEL = "70"
+#: 71: a teleport is priced from its tablet at a lectern, and refused where no
+#: lectern makes it - see `costing/lectern.py`.
+_PRICING_MODEL = "71"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

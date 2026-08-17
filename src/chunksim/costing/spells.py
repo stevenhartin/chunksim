@@ -27,9 +27,11 @@ The infobox's `type` splits the 190 into **Combat 86, Utility 53, Teleport
 - **Teleport** is the animation and nothing else. `Cast ~|camelot teleport|~`
   is 3 ticks to leave and then however long it takes to get back somewhere you
   can cast it again, which no page states. Priced on the animation alone a
-  teleport reads 111,000/hr, and the money-making guides that do cover four of
-  them imply about 270 casts an hour rather than 2,000. **Refused**: the speed
-  is real and it is not the method.
+  teleport reads 111,000/hr. **Refused here and answered elsewhere**: a
+  teleport is only castable twice at a *lectern*, and `costing/lectern.py`
+  prices that from the tablet's own recipe. Where a map can build no lectern
+  that makes the tablet, the teleport has no rate at all - see
+  `refuse_untabled`, which is why that is the honest answer rather than a gap.
 - **Combat** belongs to `costing/combat_xp.py`, which prices a cast against a
   monster with the gear, the gates and the kill in it. A bare cast speed here
   would be a second, worse answer to a question already answered - and the
@@ -66,7 +68,7 @@ arguments.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Container, Mapping
 
 from chunksim.costing.heuristics import MaterialCost, Rate
 from chunksim.costing.recipe_rates import REPLACEABLE
@@ -192,4 +194,49 @@ def apply(
         merged.setdefault(task, {})["Magic"] = Rate(
             value=value, source=SPELL_SOURCE, match=SPELL_MATCH
         )
+    return merged
+
+
+#: The infobox kind whose only repeatable form is a tablet - see
+#: `costing/lectern.py`.
+TELEPORT_KIND = "Teleport"
+
+#: The `Rate.match` tiers a teleport with no tablet route loses. The same three
+#: `recipe_rates.REPLACEABLE` names, and for the same reason: a scrape and the
+#: floor are claims this project is entitled to overrule, and a model is not.
+REFUSED_WHEN_UNTABLED = REPLACEABLE
+
+
+def refuse_untabled(
+    training: Mapping[str, Mapping[str, Rate]],
+    costs: Mapping[str, MaterialCost],
+    tabled: Container[str],
+    pinned: Container[str] = frozenset(),
+) -> dict[str, dict[str, Rate]]:
+    """`training` with the scraped rate removed from every untabled teleport.
+
+    **A bare teleport cast is not a training method**, which is the whole
+    reason `castable` refuses the kind: the cast moves you somewhere you cannot
+    cast it again. So the only honest rate a teleport can carry is a tablet
+    rate, and a map that can build no lectern making that tablet has no method
+    - not a slow one.
+
+    What this stops is the shape the marlin did: `mmg:Money making guide/
+    Creating Varrock teleport tablets` is a real figure for a real method, and
+    on a map with no player-owned house it is a figure for a method that map
+    does not have. Measured, it is one task on each cached map - Varrock on the
+    reference map, which builds no lectern at all, and teleport to house on the
+    second, which builds every lectern below the mahogany eagle one.
+
+    A hand pin survives, and so does anything above the scrape: a `modelled`
+    rate is a model's own answer about a whole activity rather than a claim
+    about which lectern was built.
+    """
+    merged = {task: dict(skills) for task, skills in training.items()}
+    for task, cost in costs.items():
+        if cost.kind != TELEPORT_KIND or task in tabled or task in pinned:
+            continue
+        rate = merged.get(task, {}).get("Magic")
+        if rate is not None and rate.match in REFUSED_WHEN_UNTABLED:
+            del merged[task]["Magic"]
     return merged

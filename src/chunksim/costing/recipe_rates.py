@@ -66,7 +66,7 @@ from dataclasses import dataclass, field
 import re
 from typing import Any, Callable, Container, Iterable, Mapping, Sequence
 
-from chunksim.costing import fishcutting
+from chunksim.costing import fishcutting, lectern
 from chunksim.costing.heuristics import Rate
 from chunksim.derive.task_names import strip_task_markup
 from chunksim.model.chunkinfo import ChunkInfo
@@ -560,6 +560,7 @@ def _joined(
     by_output: Mapping[str, Sequence[Recipe]],
     siblings: Mapping[str, tuple[str, ...]],
     cuts: Mapping[str, tuple[Recipe, ...]],
+    tablets: Mapping[str, tuple[Recipe, ...]] = {},
 ) -> tuple[str, tuple[Recipe, ...]] | None:
     """`(output, recipes)` for one challenge, or `None` where nothing joins.
 
@@ -568,11 +569,18 @@ def _joined(
     docstring already said a second answer is the thing most likely to drift -
     so there is one.
 
-    The cut-up family is checked first because its key is not an `Output` at
-    all: upstream names a knife action's output `Marlin loot`, a bundle the
-    wiki has no page for, so the join runs on the fish going in instead. See
-    `costing/fishcutting.py` for why that is safe only inside this family.
+    Two families are checked before the `Output` join, both because their key
+    is not an `Output` at all. Upstream names a knife action's output `Marlin
+    loot`, a bundle the wiki has no page for, so that join runs on the fish
+    going in (`costing/fishcutting.py`). And upstream names a teleport
+    `Cast ~|camelot teleport|~` where the only repeatable form of that cast is
+    `Camelot teleport (tablet)` at a lectern (`costing/lectern.py`) - a cast
+    that moves you is not a method, so the tablet is not a fallback here but
+    the answer.
     """
+    tablet = tablets.get(task)
+    if tablet is not None:
+        return tablet[0].output, tablet
     cut = cuts.get(task)
     if cut is not None:
         # The recipe's own output stands in as the key, since upstream's is a
@@ -598,6 +606,7 @@ def challenge_experience(
     recipes: Mapping[str, Sequence[Recipe]],
     aliases: Mapping[str, str] = {},
     stated_ticks: Mapping[str, float] = {},
+    valid: Mapping[str, Mapping[str, Any]] = {},
 ) -> dict[str, tuple[str, float]]:
     """`{task: (skill, experience one performance pays)}`, for every challenge
     a recipe describes.
@@ -608,9 +617,15 @@ def challenge_experience(
     honest for the route the walk *chose*, so the walk has to carry it and
     this is the lookup it carries. See `estimate._Priced.experience`.
 
-    Joined exactly as `computed_rates` joins, through the same `join_keys`,
-    `with_aliases` and variant partition, because a second answer to "which
-    recipe is this challenge" is the thing most likely to drift.
+    Joined exactly as `computed_rates` joins, through the same `_joined`,
+    because a second answer to "which recipe is this challenge" is the thing
+    most likely to drift.
+
+    `valid` is this map's reachable set, and it is here for one reason: which
+    lectern a map can build decides whether a teleport has a tablet route at
+    all (`costing/lectern.py`). Omitted, no teleport joins - which is the
+    conservative answer and the one a caller with no derivation to hand
+    should get.
     """
     found: dict[str, tuple[str, float]] = {}
     for skill, rows in recipes.items():
@@ -621,10 +636,11 @@ def challenge_experience(
             continue
         siblings = _siblings(challenges, by_output)
         cuts = fishcutting.cut_recipes(challenges, list(rows))
+        tablets = lectern.tablet_recipes(challenges, list(rows), valid)
         for task, challenge in challenges.items():
             if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
                 continue
-            joined = _joined(task, challenge, by_output, siblings, cuts)
+            joined = _joined(task, challenge, by_output, siblings, cuts, tablets)
             if joined is None:
                 continue
             output, candidates = joined
@@ -705,13 +721,17 @@ def computed_rates(
         challenges = _mapping(chunk_info.challenges, skill)
         siblings = _siblings(challenges, by_output)
         cuts = fishcutting.cut_recipes(challenges, list(rows))
+        # **A teleport is only castable twice at a lectern**, so its tablet is
+        # what the challenge describes - see `costing/lectern.py`, which is
+        # also where the two gates live.
+        tablets = lectern.tablet_recipes(challenges, list(rows), valid)
         offered = found = 0
         for task in sorted(valid.get(skill) or {}):
             challenge = challenges.get(task)
             if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
                 continue
             offered += 1
-            joined = _joined(task, challenge, by_output, siblings, cuts)
+            joined = _joined(task, challenge, by_output, siblings, cuts, tablets)
             if joined is None:
                 continue
             output, candidates = joined

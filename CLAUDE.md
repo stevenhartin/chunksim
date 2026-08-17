@@ -560,8 +560,28 @@ in it. **And the materials are the export's rather than the infobox's**: the
 runes are not the whole cost, since `Cast ~|bones to bananas|~` eats a big
 bone and `Smelt a ~|steel bar|~ with superheat item` an iron ore and a coal.
 Priced on runes alone bones to bananas reads 150,000/hr, which is a spell that
-would have won the whole climb. Magic went **57 priced methods to 87** on the
-uber map with no scraped rate left but four teleports.
+would have won the whole climb.
+
+**And a teleport is answered by its tablet.** The four guides still on
+teleports turned out to be describing lecterns - `mmg:Money making guide/
+Creating Camelot teleport tablets` and its siblings - which is the resolution
+rather than the problem: a travel cast moves you somewhere you cannot cast it
+again, so the *only* repeatable form of a teleport is the one made at a
+lectern, and the wiki carries a `{{Recipe}}` for every tablet with its ticks,
+its runes and its soft clay. `costing/lectern.py` says which tasks have that
+route, gated on the cheapest player-owned-house lectern that makes each
+(`Lectern space`'s own table) - and on nothing at all for the Arceuus tablets,
+whose **dark essence block is already its own gate** through the walk's
+ordinary route refusal. Ancient and Lunar tablets consume soft clay like the
+standard ones and the page does not list them, so they are refused: a
+whitelist, so the wiki's silence cannot read as permission. Where no lectern
+makes the tablet the teleport keeps **no rate at all** rather than a guide's,
+because a method the map does not have is not a slow method
+(`spells.refuse_untabled`; one task on each cached map).
+
+Magic went **47 priced methods to 62** on the reference map, 56 to 76 on the
+second and 67 to **102** on the uber one, with **no scraped rate left on any of
+them**. No climb moves: combat casting owns Magic on all three.
 
 **Where a published figure sits above what the mechanic allows, count the
 mechanic.** Cooking's last three guide-backed methods each turned out to be

@@ -379,6 +379,7 @@ def recipe_priced(
             recipes,
             blobs.aliases,
             recipe_rates.stated_ticks(state.chunk_info, recipes),
+            derived.challenges.valid,
         ),
         # **The last-resort route.** An intermediate the export has no
         # challenge for is otherwise unreachable however well the wiki
@@ -520,18 +521,25 @@ def recipe_priced(
             # answer for the 100-odd Magic methods no recipe reaches. See
             # `costing/spells.py`, and note it runs *inside* `refuse_dropped`'s
             # argument so a spell rate is never stripped as a scrape would be.
-            training=recipe_rates.refuse_dropped(
-                spells.apply(
-                    recipe_rates.apply(heuristics.training, computed, pinned),
-                    spells.computed_rates(
-                        state.chunk_info,
-                        derived.challenges.valid,
-                        heuristics.spell_costs,
-                        seconds,
+            training=spells.refuse_untabled(
+                recipe_rates.refuse_dropped(
+                    spells.apply(
+                        recipe_rates.apply(heuristics.training, computed, pinned),
+                        spells.computed_rates(
+                            state.chunk_info,
+                            derived.challenges.valid,
+                            heuristics.spell_costs,
+                            seconds,
+                        ),
+                        pinned,
                     ),
+                    coverage.dropped,
                     pinned,
                 ),
-                coverage.dropped,
+                heuristics.spell_costs,
+                # **A teleport in `computed` is one whose tablet joined**, so
+                # this is the lectern gate read back rather than applied twice.
+                computed,
                 pinned,
             ),
             action_seconds=timed,

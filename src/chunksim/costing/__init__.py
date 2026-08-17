@@ -88,6 +88,13 @@ The modules, and what each owns:
   mentions - so the rate is all-inclusive and sits under the recipes, over the
   scrape. Took Magic from 57 priced methods to 77 on the uber map, high level
   alchemy included.
+- `lectern.py` - a teleport's tablet, which is the only repeatable way to cast
+  one: the travel cast moves you somewhere you cannot cast it again. Says which
+  `Cast ~|X teleport|~` tasks have a tablet route, gated on the cheapest
+  player-owned-house lectern that makes it (`Lectern space`'s own table) - and
+  on nothing at all for the Arceuus tablets, whose dark essence block is
+  already its own gate. Everything else is refused, which is what stops the
+  wiki's silence about Ancient tablets reading as permission.
 - `sacredeel.py` - a Cooking method with no Cooking time in it. The knife is
   spammable, so an hour of dissecting is an hour of *catching*: throughput is
   the Fishing model's own roll read a second time (21.09% at 87, the wiki's own
