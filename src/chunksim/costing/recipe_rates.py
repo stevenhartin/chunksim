@@ -40,11 +40,16 @@ method at all.
 
 Two judgement calls worth knowing before reading a number:
 
-- **A variant is assumed available.** `Bronze bar` has a normal-furnace recipe
-  at 5 ticks and a Blast Furnace one at 2, and nothing in the export says
-  whether this map reaches a blast furnace. The faster of the two wins, which
-  matches how the item walk already picks the cheapest route, and is optimistic
-  in exactly the way that picks up a facility a chunk map may not hold.
+- **A variant is assumed available, but only among the ones the task did not
+  rule out.** `Bronze bar` has three recipes - a 5-tick furnace, an 11-tick
+  Blast Furnace, and a 3-tick `Superheat` - and nothing in the export says
+  whether this map reaches a blast furnace, so the fastest wins. It is
+  optimistic in exactly the way that picks up a facility a chunk map may not
+  hold. **What it may not do is cross a method the task named**: upstream
+  offers `Smelt a ~|bronze bar|~` and the same `with superheat item`, and
+  taking the fastest across all three priced the furnace task as a spell and
+  made the pair look ambiguous when it never was. `variant_candidates` gives
+  each task the variants it names, or the ones no sibling named.
 - **Input time is *serial* with the action.** A tick spent making is not a tick
   spent gathering, so the two add. That is right for the materials you buy or
   make and pessimistic for the ones that come off a monster you were killing
@@ -181,6 +186,22 @@ class ActionRate:
     #: rather than recomputed because an `ActionRate` no longer holds the
     #: recipe it came from, and the two must not be able to disagree.
     trip_seconds: float = ACTION_OVERHEAD_SECONDS
+    #: The wiki's own label for *which* way of making `output` this is -
+    #: `Superheat`, `Blast Furnace`, or empty for the ordinary one. Carried
+    #: because `_ambiguous` asks whether two tasks landed on the same recipe,
+    #: and `output` alone cannot answer that; see `variant_candidates`.
+    variant: str = ""
+
+    @property
+    def key(self) -> tuple[str, str, str]:
+        """What this rate describes: a skill, an item, and *which* way of
+        making it.
+
+        The variant is in here because it is the whole question `_ambiguous`
+        asks. Keyed on the item alone, the two ways of smelting a bar are one
+        answer given twice; keyed on the recipe, they are two answers.
+        """
+        return (self.skill, self.output.lower(), self.variant.lower())
 
     @property
     def performing_seconds(self) -> float:
@@ -211,6 +232,7 @@ class ActionRate:
             "input_seconds": round(self.input_seconds, 2),
             "output": self.output,
             "materials": list(self.materials),
+            "variant": self.variant,
         }
 
 
@@ -241,6 +263,69 @@ class RecipeCoverage:
             },
             "dropped": list(self.dropped),
         }
+
+
+#: Anything that is not a letter or a digit, for comparing a recipe's variant
+#: against a task's words.
+_WORDS = re.compile(r"[^a-z0-9]+")
+
+
+def _words(text: str) -> set[str]:
+    return set(_WORDS.sub(" ", text.lower()).split())
+
+
+def names_variant(variant: str, task: str) -> bool:
+    """Whether `task` says it is the method `variant` labels.
+
+    **Whole words, all of them, and an unlabelled variant names nothing.** The
+    wiki writes `Superheat` where upstream writes `~|... |~ with superheat
+    item`, so this is a subset test over words rather than a substring one -
+    `Blast Furnace` must not match a task that merely says "furnace". A recipe
+    whose `variant` is empty is the skill's ordinary way of making the thing
+    and is claimed by nobody, which is what leaves Runecraft's altars alone.
+    """
+    tokens = _words(variant)
+    return bool(tokens) and tokens <= _words(strip_task_markup(task))
+
+
+def variant_candidates(
+    task: str, recipes: Sequence[Recipe], siblings: Sequence[str]
+) -> tuple[Recipe, ...]:
+    """The recipes of `recipes` that `task` - rather than a sibling - describes.
+
+    **The field that resolves the join was being thrown away.** `Bronze bar`
+    has three recipes and upstream has two tasks, `Smelt a ~|bronze bar|~` and
+    the same `with superheat item`; joined on `Output` alone both got the
+    fastest recipe, which is the 3-tick Superheat one, so the furnace task was
+    priced as a spell and the pair looked ambiguous. It never was: the wiki
+    labels that recipe `Superheat` and the task says so.
+
+    So a task takes the variants it names; a task naming none takes the ones no
+    *sibling* names, leaving the qualified methods to the tasks that asked for
+    them. **Siblings come from the whole export, not from what this map can
+    reach** - otherwise a map holding only the furnace task would find nothing
+    had claimed `Superheat` and price the furnace as a spell, which is the
+    original defect back again on a smaller map.
+
+    Falls back to the whole set when the partition would leave a task nothing,
+    so a variant vocabulary this does not understand costs a method its
+    precision rather than its rate. Resolves **13 of the 32** recipe-joined
+    ambiguous groups on the reference export: all twelve bar pairs, plus
+    Cooking's chompy on `Fire` against `Ogre spit-roast`. The other nineteen
+    are Runecraft's `with guardian essence` and friends, where every variant is
+    empty because the minigame has no `{{Recipe}}` at all - they stay ambiguous
+    and `apply`'s guard still holds them.
+    """
+    mine = tuple(recipe for recipe in recipes if names_variant(recipe.variant, task))
+    if mine:
+        return mine
+    spoken = {
+        recipe.variant
+        for recipe in recipes
+        if any(names_variant(recipe.variant, other) for other in siblings)
+    }
+    rest = tuple(recipe for recipe in recipes if recipe.variant not in spoken)
+    return rest or tuple(recipes)
 
 
 def index_recipes(recipes: Sequence[Recipe]) -> dict[str, tuple[Recipe, ...]]:
@@ -321,6 +406,26 @@ def rate_for(
     return best
 
 
+def _siblings(
+    challenges: Mapping[str, Any], by_output: Mapping[str, Sequence[Recipe]]
+) -> dict[str, tuple[str, ...]]:
+    """Every primary task in one skill that joins each output, keyed by output.
+
+    Read from the **whole** export rather than from a map's valid set, because
+    `variant_candidates` asks which methods upstream offers for an item, and
+    that is a property of the game rather than of who can reach it here.
+    """
+    joined: dict[str, list[str]] = {}
+    for task, challenge in challenges.items():
+        if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
+            continue
+        for key in join_keys(challenge, task):
+            if key.lower() in by_output:
+                joined.setdefault(key.lower(), []).append(task)
+                break
+    return {output: tuple(tasks) for output, tasks in joined.items()}
+
+
 def computed_rates(
     chunk_info: ChunkInfo,
     valid: Mapping[str, Mapping[str, Any]],
@@ -346,6 +451,7 @@ def computed_rates(
         # the only thing between them.
         by_output = {**{name.lower(): found for name, found in by_output.items()}}
         challenges = _mapping(chunk_info.challenges, skill)
+        siblings = _siblings(challenges, by_output)
         offered = found = 0
         for task in sorted(valid.get(skill) or {}):
             challenge = challenges.get(task)
@@ -356,7 +462,9 @@ def computed_rates(
             output = next((key for key in keys if key.lower() in by_output), None)
             if output is None:
                 continue
-            candidates = by_output[output.lower()]
+            candidates = variant_candidates(
+                task, by_output[output.lower()], siblings.get(output.lower(), ())
+            )
             chosen = rate_for(candidates, input_seconds)
             if chosen is None:
                 dropped.append(task)
@@ -373,6 +481,7 @@ def computed_rates(
                 output=output,
                 materials=tuple(material.name for material in recipe.materials),
                 trip_seconds=trip_seconds(recipe),
+                variant=recipe.variant,
             )
         if offered:
             coverage[skill] = (found, offered)
@@ -380,18 +489,24 @@ def computed_rates(
     return priced, RecipeCoverage(skills=coverage, dropped=tuple(sorted(dropped)))
 
 
-def _ambiguous(computed: Mapping[str, ActionRate]) -> frozenset[tuple[str, str]]:
-    """The `(skill, output)` pairs more than one task joined - see `apply`.
+def _ambiguous(
+    computed: Mapping[str, ActionRate],
+) -> frozenset[tuple[str, str, str]]:
+    """The `ActionRate.key`s more than one task landed on - see `apply`.
 
     Computed from the rates themselves rather than passed in, because an
-    `ActionRate` already records the `output` it joined on: a second source of
+    `ActionRate` already records the recipe it joined: a second source of
     truth for which recipe reached which task is the thing most likely to
     drift out of step with the join that produced them.
+
+    **The key is the recipe, not the item it makes.** Keyed on the item, the
+    twelve bar pairs read as ambiguous when `variant_candidates` has already
+    told them apart - the guard would then hold a rate against a scrape on the
+    strength of a collision that no longer exists.
     """
-    seen: dict[tuple[str, str], int] = {}
+    seen: dict[tuple[str, str, str], int] = {}
     for rate in computed.values():
-        key = (rate.skill, rate.output.lower())
-        seen[key] = seen.get(key, 0) + 1
+        seen[rate.key] = seen.get(rate.key, 0) + 1
     return frozenset(key for key, count in seen.items() if count > 1)
 
 
@@ -467,7 +582,7 @@ def apply(
         if (
             existing is not None
             and existing.match != "default"
-            and (rate.skill, rate.output.lower()) in shared
+            and rate.key in shared
         ):
             continue
         # **A computed rate slower than the floor is not evidence.** The floor

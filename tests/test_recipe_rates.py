@@ -19,7 +19,9 @@ from chunksim.costing.recipe_rates import (
     apply,
     computed_rates,
     index_recipes,
+    names_variant,
     rate_for,
+    variant_candidates,
 )
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.remote.recipes import Material, Recipe
@@ -338,3 +340,109 @@ def test_a_computed_rate_slower_than_the_floor_is_refused() -> None:
 
     assert "Make ~|supercompost|~" not in merged
     assert merged["Cook a ~|shark|~"]["Cooking"].value == 250_000.0
+
+
+def _bar(variant: str, ticks: int, materials: tuple[str, ...]) -> Recipe:
+    return Recipe(
+        page="Bronze bar", output="Bronze bar", output_quantity=1.0,
+        skill="Smithing", level=1, experience=6.2, ticks=ticks,
+        materials=tuple(Material(name=name, quantity=1.0) for name in materials),
+        variant=variant,
+    )
+
+
+#: The real `Bronze bar` recipes, which are the case that motivated all of this.
+_BRONZE = (
+    _bar("Normal furnace", 5, ("Copper ore", "Tin ore")),
+    _bar("Blast Furnace", 11, ("Copper ore", "Tin ore")),
+    _bar("Superheat", 3, ("Copper ore", "Tin ore", "Nature rune", "Fire rune")),
+)
+_SMELT = "Smelt a ~|bronze bar|~"
+_SUPERHEAT = "Smelt a ~|bronze bar|~ with superheat item"
+
+
+def test_a_variant_is_named_by_whole_words() -> None:
+    """`Superheat` is claimed by a task saying "with superheat item", but
+    `Blast Furnace` must not be claimed by one that merely says "furnace" -
+    which is why this is a subset test over words rather than a substring."""
+    assert names_variant("Superheat", _SUPERHEAT)
+    assert not names_variant("Superheat", _SMELT)
+    assert not names_variant("Blast Furnace", "Smelt a ~|bronze bar|~ at a furnace")
+    assert names_variant("Ogre spit-roast", "Cook a ~|cooked chompy|~ on an ogre spit-roast")
+
+
+def test_an_unlabelled_variant_is_claimed_by_nobody() -> None:
+    """Every Runecraft recipe has an empty `variant`, so nothing there can be
+    told apart this way and the altar groups stay ambiguous on purpose."""
+    assert not names_variant("", _SUPERHEAT)
+    assert not names_variant("   ", _SUPERHEAT)
+
+
+def test_a_task_takes_the_variant_it_names_and_leaves_the_rest() -> None:
+    """The partition that stopped one recipe from describing two tasks. The
+    qualified task takes `Superheat` alone - not the faster furnace recipe it
+    does not describe - and the plain one takes what no sibling claimed."""
+    siblings = (_SMELT, _SUPERHEAT)
+
+    assert variant_candidates(_SUPERHEAT, _BRONZE, siblings) == (_BRONZE[2],)
+    assert variant_candidates(_SMELT, _BRONZE, siblings) == (_BRONZE[0], _BRONZE[1])
+
+
+def test_a_lone_task_still_sees_every_variant() -> None:
+    """No sibling claims anything, so nothing is held back: an output offered
+    by one task keeps the old "fastest variant wins" behaviour exactly."""
+    assert variant_candidates(_SMELT, _BRONZE, (_SMELT,)) == _BRONZE
+
+
+def test_a_partition_that_would_empty_a_task_falls_back() -> None:
+    """Fails open rather than dropping a method. If every variant were spoken
+    for by a sibling, the unqualified task would have nothing to price - and a
+    vocabulary this does not understand should cost a method its precision,
+    not its rate."""
+    only_superheat = (_BRONZE[2],)
+
+    assert variant_candidates(_SMELT, only_superheat, (_SMELT, _SUPERHEAT)) == only_superheat
+
+
+def test_two_variants_of_one_output_are_not_ambiguous() -> None:
+    """**The join defect the ambiguity guard was covering for.** Both tasks
+    make a `Bronze bar`, so keyed on the output they read as one answer given
+    twice and neither could replace its guide. Keyed on the recipe they are
+    two answers, and both do."""
+    def rate(task: str, variant: str, xp_per_hour: float) -> ActionRate:
+        return ActionRate(
+            task=task, skill="Smithing", xp_per_hour=xp_per_hour, experience=6.2,
+            ticks=3, input_seconds=0.0, output="Bronze bar", variant=variant,
+        )
+
+    computed = {
+        _SMELT: rate(_SMELT, "Normal furnace", 3_680.0),
+        _SUPERHEAT: rate(_SUPERHEAT, "Superheat", 1_614.0),
+    }
+    guide = {"Smithing": Rate(4_960.0, "mmg:Smelting bronze bars", "contained")}
+    training = {_SMELT: guide, _SUPERHEAT: guide}
+
+    merged = apply(training, computed)
+
+    assert merged[_SMELT]["Smithing"].value == 3_680.0
+    assert merged[_SMELT]["Smithing"].match == COMPUTED_MATCH
+    assert merged[_SUPERHEAT]["Smithing"].value == 1_614.0
+    assert merged[_SUPERHEAT]["Smithing"].match == COMPUTED_MATCH
+
+
+def test_one_recipe_reaching_two_tasks_is_still_ambiguous() -> None:
+    """The guard is unchanged where the variant cannot tell them apart: two
+    tasks landing on the *same* recipe still share a key."""
+    def rate(task: str) -> ActionRate:
+        return ActionRate(
+            task=task, skill="Smithing", xp_per_hour=3_680.0, experience=6.2,
+            ticks=5, input_seconds=0.0, output="Bronze bar", variant="Normal furnace",
+        )
+
+    computed = {_SMELT: rate(_SMELT), _SUPERHEAT: rate(_SUPERHEAT)}
+    guide = {"Smithing": Rate(4_960.0, "mmg:Smelting bronze bars", "contained")}
+
+    merged = apply({_SMELT: guide, _SUPERHEAT: guide}, computed)
+
+    assert merged[_SMELT]["Smithing"].value == 4_960.0
+    assert merged[_SUPERHEAT]["Smithing"].value == 4_960.0

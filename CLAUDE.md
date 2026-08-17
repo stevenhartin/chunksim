@@ -168,6 +168,26 @@ not evidence against a rate that names one. With the guard, the whole flip
 moves two climbs on the reference map (Cooking 89.9h → 63.8h, Runecraft
 1480.5h → 1448.8h) and nothing at all on the uber map.
 
+**Then two thirds of that ambiguity turned out to be manufactured here.** The
+join threw away the field that resolves it: a `{{Recipe}}` carries the wiki's
+own *variant* label, so `Bronze bar` is three recipes — `Normal furnace`,
+`Blast Furnace`, `Superheat` — where upstream is two tasks, `Smelt a ~|bronze
+bar|~` and the same `with superheat item`. Joined on `Output` alone the fastest
+won both, which priced the furnace task as a spell and made the pair collide.
+`recipe_rates.variant_candidates` gives a task the variants it *names* and
+otherwise the ones no sibling named, and `_ambiguous` keys on the recipe chosen
+rather than the item made. **Which groups this resolves is the interesting
+part**: 13 of the 32, being all twelve bar pairs plus Cooking's chompy on
+`Fire` against `Ogre spit-roast`. The other nineteen are Runecraft's `with
+guardian essence` and friends, where *every* variant is the empty string
+because the minigame has no `{{Recipe}}` at all — so the guard above still
+holds them, and it is the wiki rather than a heuristic deciding which case is
+which. Smithing's scraped methods went 14 → 2 on the reference map, 15 → 1 on
+the uber one and **14 → 0 on the second**; the two that survive are the runite
+pair, refused by the sub-floor rule rather than by ambiguity. **No climb on
+either map moved**, which is the point: this buys coverage for a map that does
+not hold the Giants' Foundry, not a different answer for the two that do.
+
 **Not every "computed" number is evidence, and the docstrings say which.**
 Thieving's fifteen tabulated stalls come out at exactly 1.00x against the
 scrape, and that is an identity rather than agreement — the wiki's column is

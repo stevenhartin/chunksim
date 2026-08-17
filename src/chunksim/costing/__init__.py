@@ -32,10 +32,13 @@ The modules, and what each owns:
   methods unlock**, so the floor can only ever be the first band. Each band
   carries the override path behind its rate, set where the rate is chosen.
 - `recipe_rates.py` - a recipe turned into an XP rate, joined exactly on
-  `Output`. Owns `defaults < scraped < computed < overrides`, and **an
-  ambiguous join may fill the floor but may not replace the scrape** - one
-  recipe reaching several tasks is the guard the flip needed. Also
-  `trip_seconds`: a bank trip's share, scaled by what an action consumes.
+  `Output` **and on the wiki's own variant label**, so the two ways of smelting
+  a bar are two answers rather than one given twice. Owns
+  `defaults < scraped < computed < overrides`, and **an ambiguous join may fill
+  the floor but may not replace the scrape** - one recipe reaching several
+  tasks is the guard the flip needed, and it is keyed on the recipe chosen, not
+  on the item made. Also `trip_seconds`: a bank trip's share, scaled by what an
+  action consumes.
 - `production.py` - what a production method consumes, for the methods no
   `{{Recipe}}` describes, read off `Module:Skill calc` by way of the gathering
   tables. **It supplies a material cost, never a rate**: a calculator row has

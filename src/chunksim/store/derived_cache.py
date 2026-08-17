@@ -148,7 +148,9 @@ _FORMAT = "1"
 #: 48: `recipe_rates.apply` stopped losing to the scrape. Nothing this reads
 #: changed - only which of two rates a method keeps - which is exactly the
 #: shape of change this counter exists for.
-_PRICING_MODEL = "48"
+#: 49: `recipe_rates` joins on the recipe's variant as well as its output, so
+#: the two ways of smelting a bar stopped being one answer given twice.
+_PRICING_MODEL = "49"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.
