@@ -126,6 +126,12 @@ DEFAULT_KPH: dict[str, float] = {"boss": 20.0, "slayer": 60.0, "regular": 150.0}
 
 #: The floor for a training method with no rate found anywhere. Low on
 #: purpose - see the module docstring.
+#:
+#: **It marks "nothing priced this", and nothing else.** It used to double as a
+#: guard - `recipe_rates.apply` refused any computed rate below it - which
+#: conflated a method that is genuinely slow with one no model has reached.
+#: Those are different answers and the whole point of `Rate.match` is to tell
+#: them apart, so the guard is gone and this is only ever a stand-in.
 DEFAULT_XP_PER_HOUR = 1000.0
 
 #: Slayer reward points a completed task pays, by master. Not in the export;

@@ -66,7 +66,7 @@ from dataclasses import dataclass, field
 import re
 from typing import Any, Callable, Mapping, Sequence
 
-from chunksim.costing.heuristics import DEFAULT_XP_PER_HOUR, Rate
+from chunksim.costing.heuristics import Rate
 from chunksim.derive.task_names import strip_task_markup
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.model.summary import _mapping
@@ -622,7 +622,7 @@ def apply(
     action; a recipe is evidence about the action plus the map**, and the
     second is what an estimate here is for.
 
-    Four guards keep the flip from reaching further than that:
+    Three guards keep the flip from reaching further than that:
 
     - **`REPLACEABLE` is a whitelist**, so this overwrites the floor and the
       scrape's two join tiers and nothing else. `gathering.py`'s `modelled`
@@ -630,11 +630,22 @@ def apply(
       thing as a guide and is the better-informed of the two.
     - **A hand pin outranks everything**, as it does everywhere else - `pinned`
       is the set of task names `heuristics/overrides.json` speaks about.
-    - **A computed rate below the floor is still skipped**, for the reason
-      below, which is what stops a badly-joined material turning into a
-      100,000-hour climb.
     - **An ambiguous join may fill the floor but may not replace the scrape**,
       which is `_ambiguous` and is the guard the flip actually needed.
+
+    **A fourth guard used to sit here and is gone: a computed rate below
+    `DEFAULT_XP_PER_HOUR` was skipped.** The argument was that a sub-floor
+    number says the model is missing something far more often than it says the
+    method is glacial, and it had a real case - Supercompost at 173 xp/hr, the
+    one Farming method the recipes reached, pricing Farming 1 -> 99 at 75,353
+    hours. What retired it is that the surrounding models caught up. The band
+    walk takes a running *maximum*, so a slow method decides a climb only where
+    it is the only one, and Tithe Farm now covers Farming from level 34 -
+    bounding Supercompost to the stretch below it, 236.4h rather than 75,353h.
+    Keeping the guard was costing the distinction it existed to protect:
+    a method slower than the stand-in for "unpriced" was being filed *as*
+    unpriced. Measured over both cached maps, removing it priced 218 more
+    methods, moved 37 off a guide, and changed one climb by 5.5h.
 
     That last one is this module's own headline contract catching up with it.
     The join is exact *on `Output`* - and where upstream offers several ways to
@@ -670,20 +681,6 @@ def apply(
             and existing.match != "default"
             and rate.key in shared
         ):
-            continue
-        # **A computed rate slower than the floor is not evidence.** The floor
-        # is a deliberate stand-in for ignorance, set low so a gap reads as
-        # slow rather than free; a computed number *below* it says this model
-        # is missing something about the method - a bulk action, a faster
-        # variant, materials someone already has - far more often than it says
-        # the method is genuinely glacial.
-        #
-        # It is not hypothetical. Supercompost is the one Farming method the
-        # recipe data reaches on the benchmark map, and 15 watermelons an
-        # action price it at 173 xp/hr, which the band walk then applied to
-        # the whole climb: **Farming 1 -> 99 at 75,353 hours**. 130 of 852
-        # computed rates sit below the floor, across nine skills.
-        if rate.xp_per_hour < DEFAULT_XP_PER_HOUR:
             continue
         merged.setdefault(task, {})[rate.skill] = Rate(
             value=rate.xp_per_hour, source=RECIPE_SOURCE, match=COMPUTED_MATCH

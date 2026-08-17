@@ -166,7 +166,10 @@ _FORMAT = "1"
 #: charging a whole seed against every herb.
 #: 55: cleaning a grimy herb is timed from its bank cycle, 18 ticks an
 #: inventory, where the wiki publishes no tick cost at all.
-_PRICING_MODEL = "55"
+#: 56: the 1,000/hr floor no longer refuses a computed rate. A method slower
+#: than the stand-in for "unpriced" is now recorded as slow rather than
+#: conflated with one nothing has priced.
+_PRICING_MODEL = "56"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

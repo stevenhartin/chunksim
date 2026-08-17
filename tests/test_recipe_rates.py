@@ -316,16 +316,22 @@ def test_a_recipe_priced_in_coins_costs_the_time_to_earn_them() -> None:
     assert chosen[2] == pytest.approx(20 * 3600)
 
 
-def test_a_computed_rate_slower_than_the_floor_is_refused() -> None:
-    """**The floor is a stand-in for ignorance, not a speed.** A computed rate
-    *below* it says this model is missing something about the method far more
-    often than it says the method is that slow - and the band walk applies the
-    best available rate to a whole climb, so one bad low-level number prices
-    everything above it.
+def test_a_slow_computed_rate_is_kept_rather_than_refused() -> None:
+    """**A method slower than the floor is slow, not unpriced**, and conflating
+    the two was the cost of the guard this replaced.
 
-    Supercompost is the case: 8.5 xp for an action that gathers 15 watermelons,
-    priced at 173 xp/hr, and the only Farming method the recipe data reaches on
-    the benchmark map. It made **Farming 1 -> 99 cost 75,353 hours**.
+    The floor is a stand-in for "nothing has priced this". A computed rate
+    below it used to be dropped on the argument that the model was more likely
+    missing something than the method was genuinely glacial - Supercompost at
+    173 xp/hr, the one Farming method the recipes reached, having priced
+    Farming 1 -> 99 at 75,353 hours.
+
+    **What made that safe to remove is that the surrounding models caught up.**
+    The band walk takes a running *maximum*, so a slow method can only decide a
+    climb where it is the only one - and Tithe Farm now covers Farming from 34,
+    so Supercompost is bounded to the stretch below it: 236.4h rather than
+    75,353h. Measured across both cached maps, removing the guard priced 218
+    more methods, moved 37 off a guide, and changed exactly one climb by 5.5h.
     """
     computed = {
         "Make ~|supercompost|~": ActionRate(
@@ -340,7 +346,8 @@ def test_a_computed_rate_slower_than_the_floor_is_refused() -> None:
 
     merged = apply({}, computed)
 
-    assert "Make ~|supercompost|~" not in merged
+    assert merged["Make ~|supercompost|~"]["Farming"].value == 173.0
+    assert merged["Make ~|supercompost|~"]["Farming"].match == COMPUTED_MATCH
     assert merged["Cook a ~|shark|~"]["Cooking"].value == 250_000.0
 
 

@@ -306,6 +306,24 @@ at 163s and only the tools scaled. The action costs what it costs and hands
 back `yielded` of the output, so the division belongs on the total. Herblore's
 recipe-priced methods went 26 to 34 and its guide-backed ones 45 to 37.
 
+**The 1,000/hr floor marks "nothing priced this" and no longer refuses
+anything.** It used to double as a guard in `recipe_rates.apply`: a computed
+rate below it was skipped, on the argument that a sub-floor number says the
+model is missing something far more often than it says the method is glacial.
+That had a real case - Supercompost at 173 xp/hr, the one Farming method the
+recipes reached, pricing Farming 1 -> 99 at **75,353 hours**.
+
+**What retired it is that the surrounding models caught up.** `training_bands`
+takes a running *maximum*, so a slow method decides a climb only where it is
+the only one - and Tithe Farm now covers Farming from 34, bounding Supercompost
+to the stretch below it: 236.4h rather than 75,353h. Meanwhile the guard was
+costing the distinction it existed to protect, filing a method that is
+genuinely slow *as* one nothing has priced. Those are different answers and
+`Rate.match` exists to tell them apart. Measured over both cached maps,
+removing it **priced 218 more methods** (1,579 -> 1,797), moved 37 off a guide,
+and changed exactly one climb by 5.5h. A sub-floor rate is now a rate; what
+remains at the floor is only what nothing reached.
+
 **Not every "computed" number is evidence, and the docstrings say which.**
 Thieving's fifteen tabulated stalls come out at exactly 1.00x against the
 scrape, and that is an identity rather than agreement — the wiki's column is
