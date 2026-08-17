@@ -406,6 +406,27 @@ assume the materials to hand. The four bands still on that scrape read
 356,000-522,500/hr against recipe-priced neighbours at 5,000-18,000, which is
 the size of the gap that assumption hides.
 
+**A herb is a supply, not a route, and both routes the walk had were wrong on
+their own.** Farming priced at the clicking - 60 seconds a patch over 8.8
+herbs - says nothing about the **eighty minutes** a herb takes to grow, and
+implies you can do it back to back. A drop priced per herb asks "how long for
+a ranarr" of a table that hands out thirteen herbs without being asked which.
+`costing/herbs.py` models the cycle instead: a run is 2 minutes plus 1 a
+patch, and the rest of the eighty is spent on the best **pooled** herb source
+the map can kill. On the every-rollable-chunk map that is 9 patches, an
+11-minute run for 79.2 herbs, and 336 herbs an hour at **10.7 seconds** each;
+on the reference map 2 patches and 28.1 seconds. Checked before the routes in
+`_item_hours` for the reason currency is, so nothing cheap-looking undercuts
+it.
+
+**Pooling the drops is the point of them, and it has a stated cost**: a herb
+costs the same whichever it is. That is right for a *climb*, where you brew
+whatever your herbs allow, and wrong for a single goal needing one ranarr -
+the estimate's Herblore hours are the first question, so that is the one it
+answers. **A patch location may name a section** (`11321-2`) or a whole chunk
+(`13141`), and comparing the first against unlocked-chunk keys silently
+matched nothing - it undercounted the uber map at 5 patches of 12.
+
 **Not every "computed" number is evidence, and the docstrings say which.**
 Thieving's fifteen tabulated stalls come out at exactly 1.00x against the
 scrape, and that is an identity rather than agreement — the wiki's column is

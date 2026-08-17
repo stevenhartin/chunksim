@@ -173,6 +173,7 @@ from chunksim.model.experience import (
     xp_for_level,
 )
 from chunksim.costing.combat_xp import COMBAT_SKILLS, hitpoints_credit, slayer_credit
+from chunksim.costing import herbs
 from chunksim.costing.farming import (
     DEFAULT_HARVESTS_PER_DAY,
     FarmingPlan,
@@ -591,6 +592,12 @@ class _Walk:
     #: `recipe_rates.challenge_experience`. What lets a `make:` route say what
     #: it earned as well as what it cost.
     made_experience: Mapping[str, tuple[str, float]] = field(default_factory=dict)
+    #: `{herb: seconds}` from `costing/herbs.py`. **Checked before the routes**,
+    #: like currency, because both routes the walk would otherwise take are
+    #: wrong on their own: farming priced at the clicking ignores the eighty
+    #: minutes a herb grows, and a drop priced per herb asks a table that hands
+    #: out thirteen without being asked which.
+    herb_seconds: Mapping[str, float] = field(default_factory=dict)
     #: Everything reachable on this map that can *provide* an item: the
     #: monsters, objects and NPCs of `SourceIndex`, all past their
     #: `taskUnlocks` gates. Not monsters alone - a `skillItems` activity is
@@ -811,6 +818,20 @@ def _item_hours(
             f"earn {quantity:,.0f} {item}",
             f"currency:{item}",
             (f"currencies/{item}",),
+        )
+
+    # **A herb is priced by its supply, not by a route.** See
+    # `costing/herbs.py`: farming is gated on an eighty-minute grow and a
+    # drop table is rolled for herbs rather than for one herb, so the cycle is
+    # the unit. Checked here for the reason currency is - so no spawn or
+    # cheap-looking drop can undercut the real cost.
+    steeped = walk.herb_seconds.get(item)
+    if steeped:
+        return _Priced(
+            quantity * steeped / 3600.0,
+            f"herb supply: {quantity:,.0f} {item}",
+            "herbs",
+            ("actions/herbs",),
         )
 
     shared = _superior_table_hours(walk, item, quantity)
@@ -1671,6 +1692,25 @@ def _setup(
             for rate in gate_masters
         },
     )
+    # **What a herb costs, which is a supply rather than a route.** The
+    # patches this map can stand in, plus the best *pooled* herb source it can
+    # kill - see `costing/herbs.py` for why a herb table is not thirteen
+    # separate questions. Assembled after the walk because the pool needs the
+    # walk's own drop rates and reachability.
+    grimy = herbs.herb_items(derived.source_index.items)
+    if grimy:
+        patches = herbs.patch_count(
+            world.entity_locations("Herb patch"), expanded, derived.reachable_sections
+        )
+        _, active = herbs.pooled_rate(
+            walk.available,
+            grimy,
+            lambda provider, herb: (_drop_rates(walk, provider, herb) or (0.0, 0.0))[1],
+            lambda provider: heuristics.kills_per_hour(provider).value,
+        )
+        walk = dataclasses.replace(
+            walk, herb_seconds=herbs.costs(grimy, patches, active)
+        )
     return _Setup(
         walk=walk, levels=levels, masters=reachable_rates, slayer=slayer_rate
     )

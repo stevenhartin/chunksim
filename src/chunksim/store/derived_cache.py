@@ -181,7 +181,9 @@ _FORMAT = "1"
 #: recipe whose materials pay their own skill is credited for them.
 #: 62: doses are fungible - a two-dose potion is priced off a three or a
 #: four, which nothing could route before.
-_PRICING_MODEL = "62"
+#: 63: a herb costs what a herb *supply* costs - patches on an 80-minute
+#: cycle plus the best pooled drop source - not what one route charges.
+_PRICING_MODEL = "63"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

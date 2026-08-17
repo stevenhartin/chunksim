@@ -44,6 +44,12 @@ The modules, and what each owns:
   rolls are read a second time with the ancillary experience column, so the two
   cannot drift. The wiki's own Str/Agi-to-Fishing ratio checks it at 0.089
   against 0.090-0.092.
+- `herbs.py` - what a herb costs, as a **supply rather than a route**. Farming
+  priced at the clicking ignores the 80 minutes a herb grows; a drop priced per
+  herb asks a table that hands out thirteen without being asked which. So the
+  cycle is the unit - a run of `2 + patches` minutes, then the rest of the
+  eighty spent on the best **pooled** herb source. Checked before the routes in
+  `_item_hours`, like currency.
 - `salvage.py` - shipwreck salvaging **and** the sorting upstream makes a
   second challenge of. The find is raised by *one* crewmate rather than the
   guides' two, worth `D^2/125` - it rolls every 5 ticks to the player's 4 and
