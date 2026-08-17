@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -568,3 +569,29 @@ def test_a_computed_rate_is_not_charged_for_its_materials_twice() -> None:
     assert _material_cost(heuristics, "Build a ~|4-poster|~", guide) == 0.05
     # The computed rate already has, so they are not.
     assert _material_cost(heuristics, "Build a ~|4-poster|~", computed) == 0.0
+
+
+def test_same_skill_gathering_experience_is_credited() -> None:
+    """**The generic half of it.** Sorting a salvage pays 95 Sailing and costs
+    34 seconds of salvaging, which itself pays 200 Sailing - so the pair is 295
+    experience for 36 seconds, not 95 for 36. Charging the time and discarding
+    the experience prices the gathering as though it were somebody else's work.
+    """
+    without = TrainingOption(
+        method="sorting", level=87, xp_per_hour=171_000.0, match="modelled",
+        material_seconds_per_xp=34.2 / 95.0,
+    )
+    with_credit = replace(without, material_xp_per_xp=200.0 / 95.0)
+
+    assert with_credit.effective_xp_per_hour > without.effective_xp_per_hour
+    # 295 experience per (2.0s sorting + 34.2s salvaging).
+    assert with_credit.effective_xp_per_hour == pytest.approx(295 / 36.2 * 3600, rel=1e-3)
+
+
+def test_a_credit_of_zero_leaves_the_rate_alone() -> None:
+    """The common case: a log chopped for a bow pays Woodcutting, which does
+    nothing for a Fletching climb."""
+    option = TrainingOption(method="fletch", level=1, xp_per_hour=50_000.0, match="modelled")
+
+    assert option.material_xp_per_xp == 0.0
+    assert option.effective_xp_per_hour == 50_000.0

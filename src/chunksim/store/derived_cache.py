@@ -175,7 +175,9 @@ _FORMAT = "1"
 #: crewmate, where the guides bundled sorting and assumed two.
 #: 59: sorting salvage at a station is priced, and a salvage now costs what
 #: finding it costs rather than the four-tick default.
-_PRICING_MODEL = "59"
+#: 60: gathering that pays the *same* skill is credited, not just charged -
+#: sorting a salvage now counts the salvaging that found it.
+_PRICING_MODEL = "60"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

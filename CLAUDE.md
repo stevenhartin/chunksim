@@ -348,6 +348,26 @@ that through `training._ALL_INCLUSIVE_SOURCES`, which a `ComputedMethod` has no
 source to be matched by, so the essence was charged twice and the climb read
 474.9h until the entry was removed from `material_seconds_per_xp` outright.
 
+**Gathering that pays the *same* skill must be credited, not only charged.**
+`TrainingOption.effective_xp_per_hour` has always added the time to obtain
+what a method consumes - that is what stops a guide's "with the materials to
+hand" figure winning a chunk map. It was discarding the other half: sorting a
+salvage pays 95 Sailing and costs 34 seconds of *salvaging*, which itself pays
+200 Sailing, so the pair is 295 experience for 36 seconds rather than 95. The
+formula composes as `3600 x (1 + material_xp_per_xp) / (processing +
+gathering)`, and **the credit is only ever the same skill** - a log chopped for
+a bow pays Woodcutting, which does nothing for a Fletching climb. Opulent
+salvage sorting went 8,427/hr to 26,167.
+
+**The generic version needs the item walk to say which route it took**, and
+that is why only `costing/salvage.py` fills `Heuristics.material_xp_per_xp`
+today. Smelting a bar pays Smithing before you smith it and cleaning a herb
+pays Herblore before you mix it, so the same correction is waiting in both -
+but crediting it blindly would pay experience for a bar *bought* from a shop
+or a herb taken off a drop table. `_item_hours` takes the `min` over routes and
+returns only hours; until `_Priced` carries the same-skill experience of the
+route it actually chose, a general credit would be a guess.
+
 **Not every "computed" number is evidence, and the docstrings say which.**
 Thieving's fifteen tabulated stalls come out at exactly 1.00x against the
 scrape, and that is an identity rather than agreement — the wiki's column is

@@ -209,6 +209,36 @@ def material_seconds_per_xp(
     return found
 
 
+def material_xp_per_xp(
+    challenges: Mapping[str, Any], valid: Mapping[str, Any]
+) -> dict[str, float]:
+    """`{task: same-skill experience gathering pays, per experience earned}`.
+
+    **The salvage a sorting challenge eats was found by salvaging, and that
+    paid Sailing too.** Charging the 34 seconds without crediting the 200
+    experience they earned prices the pair as though the finding were somebody
+    else's work. Opulent salvage is 95 for sorting against 200 for finding, so
+    this is 200/95 - and the effective rate stops being a fraction of the
+    station's cadence and becomes the whole activity's.
+
+    Independent of level: both halves scale with the crewmate together, so the
+    *ratio* does not move.
+    """
+    found: dict[str, float] = {}
+    for task in valid or {}:
+        challenge = challenges.get(task)
+        if not isinstance(challenge, dict):
+            continue
+        consumed = _sorted_salvage(challenge)
+        if consumed is None:
+            continue
+        sorting = SORTING_EXPERIENCE[consumed]
+        finding = SHIPWRECKS[consumed][1]
+        if sorting > 0:
+            found[task] = finding / sorting
+    return found
+
+
 def methods(
     challenges: Mapping[str, Any], valid: Mapping[str, Any]
 ) -> dict[str, tuple[ComputedMethod, ...]]:

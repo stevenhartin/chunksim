@@ -438,8 +438,19 @@ def recipe_priced(
         salvage.material_seconds_per_xp(
             _mapping(state.chunk_info.challenges, "Sailing"),
             derived.challenges.valid.get("Sailing") or {},
-            levels.get("Sailing", 1),
+            # **The same level `_gathered` timed the wreck at.** These are the
+            # two halves of one question - how long a salvage takes and what
+            # that costs per experience - and a crewmate makes both faster.
+            {**infer_levels(state), **levels}.get("Sailing", 1),
         )
+    )
+    # **And the experience that gathering paid.** The salvage a sorting
+    # challenge eats was found by salvaging, which pays Sailing too - charging
+    # the time without crediting the experience prices the pair as though the
+    # finding were somebody else's work.
+    credited = salvage.material_xp_per_xp(
+        _mapping(state.chunk_info.challenges, "Sailing"),
+        derived.challenges.valid.get("Sailing") or {},
     )
     # **An activity that gathers what it consumes must carry no material cost
     # at all.** Guardians of the Rift mines its own essence - that is most of
@@ -463,6 +474,7 @@ def recipe_priced(
             action_seconds=timed,
             computed=_merge_computed(prayed, gathered),
             material_seconds_per_xp=per_xp,
+            material_xp_per_xp=credited,
         ),
         coverage,
     )

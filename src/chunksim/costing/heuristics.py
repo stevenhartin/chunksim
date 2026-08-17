@@ -534,6 +534,11 @@ class Heuristics:
     #: never paid for its herbs won instead. Absent means one, which is every
     #: other challenge in the export.
     harvest_yield: dict[str, float] = field(default_factory=dict)
+    #: Challenge name -> experience in that challenge's **own skill** earned
+    #: while gathering what it consumes, per experience it pays. Filled by
+    #: whichever model knows both halves; zero everywhere else, which is the
+    #: common case. See `training.TrainingOption.effective_xp_per_hour`.
+    material_xp_per_xp: dict[str, float] = field(default_factory=dict)
     #: Runecraft level -> the *published* Guardians of the Rift experience an
     #: hour, straight off `skill_tables.parse_gotr`. **Carried rather than
     #: spent**: `costing/gotr.py` divides it by the modelled rune mix to

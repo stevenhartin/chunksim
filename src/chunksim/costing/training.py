@@ -56,6 +56,11 @@ class TrainingOption:
     #: consumes nothing or that no recipe describes it - see
     #: `effective_xp_per_hour`.
     material_seconds_per_xp: float = 0.0
+    #: Experience in **this same skill** earned while gathering what the
+    #: method consumes, per experience the method itself pays. Zero is the
+    #: common case - a log chopped for a bow pays Woodcutting, which does
+    #: nothing for a Fletching climb. See `effective_xp_per_hour`.
+    material_xp_per_xp: float = 0.0
     #: Which rate source won this option, as `Rate.source` spells it. Carried
     #: so a caller can prefer a *particular* method over a faster one -
     #: `estimate.py` does exactly that for Tithe Farm, which loses on hours
@@ -71,7 +76,8 @@ class TrainingOption:
 
     @property
     def effective_xp_per_hour(self) -> float:
-        """The rate including the time to obtain what the method consumes.
+        """The rate including the time to obtain what the method consumes,
+        **and the experience obtaining it pays**.
 
         **What the climb is ranked and priced on**, where `xp_per_hour` is what
         a guide publishes. The two differ because a published rate is quoted
@@ -84,15 +90,25 @@ class TrainingOption:
 
         Added as seconds per XP rather than as a ratio so the two halves
         compose exactly: `3600 / (processing + gathering)`.
+
+        **Gathering can pay the same skill, and charging its time without
+        crediting its experience is the same error in reverse.** Sorting a
+        salvage pays 95 Sailing and costs 34 seconds of *salvaging*, which
+        itself pays 200 Sailing - so the pair is 295 experience for 36
+        seconds, not 95. `material_xp_per_xp` is that credit, per experience
+        the method itself pays, and it is only ever the *same* skill: chopping
+        a log for a bow pays Woodcutting, which does nothing for a Fletching
+        climb and is not counted here.
         """
         if self.xp_per_hour <= 0:
             return 0.0
+        earned = 1.0 + max(0.0, self.material_xp_per_xp)
         if self.material_seconds_per_xp <= 0:
             # Returned unchanged rather than round-tripped through the
             # arithmetic, which is the common case and would otherwise turn
             # 50,000 into 50,000.00000000001.
-            return self.xp_per_hour
-        return 3600.0 / (3600.0 / self.xp_per_hour + self.material_seconds_per_xp)
+            return self.xp_per_hour * earned
+        return 3600.0 * earned / (3600.0 / self.xp_per_hour + self.material_seconds_per_xp)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -101,6 +117,7 @@ class TrainingOption:
             "xp_per_hour": round(self.xp_per_hour, 1),
             "effective_xp_per_hour": round(self.effective_xp_per_hour, 1),
             "material_seconds_per_xp": round(self.material_seconds_per_xp, 4),
+            "material_xp_per_xp": round(self.material_xp_per_xp, 4),
             "match": self.match,
         }
 
@@ -151,6 +168,7 @@ def training_options(
             # Guardians of the Rift is the precedent, and `_material_cost`
             # carries the argument for why.
             material_seconds_per_xp=_computed_material_cost(heuristics, option),
+            material_xp_per_xp=_computed_material_credit(heuristics, option),
             knob=option.knob,
         )
         for option in heuristics.computed.get(skill) or ()
@@ -179,6 +197,7 @@ def training_options(
                 xp_per_hour=rate.value,
                 match=rate.match,
                 material_seconds_per_xp=_material_cost(heuristics, name, rate),
+                material_xp_per_xp=heuristics.material_xp_per_xp.get(name, 0.0),
                 source=rate.source,
                 # `name`, not `activity_name(name)`: the file is keyed by the
                 # challenge, and the display string is not a key anywhere.
@@ -256,6 +275,22 @@ def _computed_material_cost(
         return 0.0
     task = option.knob[len(prefix) :].rsplit("/", 1)[0]
     return heuristics.material_seconds_per_xp.get(task, 0.0)
+
+
+def _computed_material_credit(
+    heuristics: Heuristics, option: ComputedMethod
+) -> float:
+    """Same-skill experience a computed method's gathering pays, per its own.
+
+    The `_computed_material_cost` twin, keyed the same way and for the same
+    reason: the two halves of one question must not be able to disagree about
+    which task they are answering.
+    """
+    prefix = "training/"
+    if not option.knob.startswith(prefix):
+        return 0.0
+    task = option.knob[len(prefix) :].rsplit("/", 1)[0]
+    return heuristics.material_xp_per_xp.get(task, 0.0)
 
 
 def _material_cost(heuristics: Heuristics, name: str, rate: Rate) -> float:

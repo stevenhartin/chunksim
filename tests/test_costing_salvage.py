@@ -122,3 +122,36 @@ def test_a_wreck_is_not_a_sorting_challenge() -> None:
     wreck = {"Level": 87, "Primary": True, "Output": "Opulent salvage"}
 
     assert salvage._sorted_salvage(wreck) is None
+
+
+def test_gathering_that_pays_the_same_skill_is_credited() -> None:
+    """**Charging the time without crediting the experience is the same error
+    in reverse.** The salvage a sorting challenge eats was found by salvaging,
+    which pays Sailing too - so opulent salvage is 95 for sorting *and* 200 for
+    finding, and the credit is the ratio of the two."""
+    challenges = {
+        "Process some ~|opulent salvage|~ at a salvaging station": {
+            "Level": 87, "Primary": True, "Items": ["Opulent salvage*"],
+        },
+    }
+
+    credited = salvage.material_xp_per_xp(challenges, dict.fromkeys(challenges, {}))
+
+    assert credited == {
+        "Process some ~|opulent salvage|~ at a salvaging station": pytest.approx(200 / 95)
+    }
+
+
+def test_the_credit_does_not_move_with_level() -> None:
+    """Both halves scale with the crewmate together, so the *ratio* is flat -
+    which is why this takes no level where `material_seconds_per_xp` does."""
+    challenges = {
+        "Process some ~|small salvage|~ at a salvaging station": {
+            "Level": 15, "Primary": True, "Items": ["Small salvage*"],
+        },
+    }
+    valid: dict[str, dict[str, object]] = dict.fromkeys(challenges, {})
+
+    assert salvage.material_xp_per_xp(challenges, valid) == pytest.approx(
+        {"Process some ~|small salvage|~ at a salvaging station": 10 / 5.5}
+    )
