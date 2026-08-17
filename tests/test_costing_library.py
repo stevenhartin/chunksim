@@ -42,7 +42,9 @@ def test_both_challenges_are_priced_as_the_same_activity() -> None:
             "Cast ~|arceuus library teleport|~": {"Primary": True},
         },
     }
-    valid = {skill: dict.fromkeys(tasks, {}) for skill, tasks in challenges.items()}
+    valid: dict[str, dict[str, object]] = {
+        skill: dict.fromkeys(tasks, {}) for skill, tasks in challenges.items()
+    }
 
     found = library.methods(challenges, valid)
 
@@ -60,7 +62,7 @@ def test_the_curve_is_a_straight_line_through_the_level() -> None:
     challenges = {
         "Runecraft": {"Turn in books at the ~|Arceuus Library|~ for Runecraft xp": {"Primary": True}}
     }
-    valid = {"Runecraft": dict.fromkeys(challenges["Runecraft"], {})}
+    valid: dict[str, dict[str, object]] = {"Runecraft": dict.fromkeys(challenges["Runecraft"], {})}
 
     bands = library.methods(challenges, valid)["Runecraft"]
     rates = {band.level: band.xp_per_hour for band in bands}

@@ -187,7 +187,9 @@ _FORMAT = "1"
 #: that pays nothing for them.
 #: 65: the Arceuus library, which pays 5x Runecraft or 15x Magic level a
 #: tome and was sitting in the export unpriced.
-_PRICING_MODEL = "65"
+#: 66: the item walk falls back to a wiki recipe when the export has no
+#: challenge for an intermediate - dark essence fragments being the case.
+_PRICING_MODEL = "66"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

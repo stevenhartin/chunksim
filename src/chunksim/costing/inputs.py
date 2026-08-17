@@ -375,6 +375,10 @@ def recipe_priced(
         made_experience=recipe_rates.challenge_experience(
             state.chunk_info, recipes, blobs.aliases, herblore.stated_ticks(recipes)
         ),
+        # **The last-resort route.** An intermediate the export has no
+        # challenge for is otherwise unreachable however well the wiki
+        # documents it - see `estimate._recipe_hours`.
+        recipes=recipes,
     )
     seconds = walked.seconds
     # **Prayer is priced here because this is where the item walk is.** Its
@@ -1149,5 +1153,7 @@ def estimate_answer(
         refresh=refresh,
         reference=blobs,
     )
-    result = estimate(state, derived, world, heuristics, level_overrides=levels)
+    result = estimate(
+        state, derived, world, heuristics, level_overrides=levels, recipes=blobs.recipes
+    )
     return EstimateAnswer(result=result, scraped_rates=scraped_rates, coverage=coverage)

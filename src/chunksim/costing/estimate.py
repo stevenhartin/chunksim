@@ -174,6 +174,7 @@ from chunksim.model.experience import (
 )
 from chunksim.costing.combat_xp import COMBAT_SKILLS, hitpoints_credit, slayer_credit
 from chunksim.costing import herbs
+from chunksim.remote.recipes import Recipe
 from chunksim.costing.farming import (
     DEFAULT_HARVESTS_PER_DAY,
     FarmingPlan,
@@ -209,10 +210,19 @@ from chunksim.model.summary import _mapping
 #: The buckets, in the order `chunksim estimate` reports them.
 BUCKETS = ("quests", "boss drops", "activities", "skilling")
 
-#: How far the item walk will chase "made from" chains before giving up. Three
-#: is past every real case measured (an imbued ring is output <- item <-
-#: drop); beyond it the answer is guesswork stacked on guesswork.
-_MAX_DEPTH = 3
+#: How far the item walk will chase "made from" chains before giving up.
+#:
+#: **Three was "past every real case measured" and then a real case turned
+#: up.** A soul rune is fragments <- dark essence block <- dense essence block
+#: <- the mining challenge <- its tools, which is five, and at three the whole
+#: chain reported no route - so a map holding the Dark Altar priced blood
+#: runes off pure essence at 11,118/hr where the same altar does 25,516 off
+#: fragments, and refused soul runes outright.
+#:
+#: Cycles are stopped by the visited set rather than by this, so what the
+#: bound really buys is a limit on work; measured, the whole suite is
+#: unchanged in runtime at five.
+_MAX_DEPTH = 5
 
 #: Routes that cost no meaningful time once reachable: a shop purchase and a
 #: ground spawn are both "walk there and take it".
@@ -592,6 +602,13 @@ class _Walk:
     #: `recipe_rates.challenge_experience`. What lets a `make:` route say what
     #: it earned as well as what it cost.
     made_experience: Mapping[str, tuple[str, float]] = field(default_factory=dict)
+    #: `{output (lowercased): recipes}` across every skill, for the **last
+    #: resort** route - see `_recipe_hours`. An intermediate the export has no
+    #: challenge for is otherwise unreachable however well the wiki documents
+    #: it: chiselling a dark essence block into fragments pays *Crafting*, so
+    #: upstream lists no Runecraft challenge, and `Dark essence fragments` had
+    #: no route at all on a map holding the Dark Altar.
+    recipes: Mapping[str, tuple[Recipe, ...]] = field(default_factory=dict)
     #: `{herb: seconds}` from `costing/herbs.py`. **Checked before the routes**,
     #: like currency, because both routes the walk would otherwise take are
     #: wrong on their own: farming priced at the clicking ignores the eighty
@@ -848,6 +865,78 @@ def _item_hours(
     decanted = _dose_hours(walk, item, quantity, amortise, depth, seen | {item})
     if decanted is not None and (best is None or decanted.hours < best.hours):
         best = decanted
+    if best is None:
+        best = _recipe_hours(walk, item, quantity, amortise, depth, seen | {item})
+    return best
+
+
+def _recipe_hours(
+    walk: _Walk,
+    item: str,
+    quantity: float,
+    amortise: bool,
+    depth: int,
+    seen: frozenset[str],
+) -> _Priced | None:
+    """Make `item` from a wiki recipe, when nothing else can provide it.
+
+    **The last resort, and deliberately so.** The walk routes through the
+    *export's* challenges, which is right: they carry this map's gates. But an
+    intermediate the export has no challenge for is then unreachable however
+    well the wiki documents it - and the export only lists what pays
+    experience in the skill that owns the challenge. Chiselling a dark essence
+    block into fragments pays **Crafting**, so there is no Runecraft challenge
+    for it, and `Dark essence fragments` had no route at all on a map holding
+    the Dark Altar. That cost the second cache its two best Runecraft methods:
+    blood runes read 11,118/hr off pure essence when the same altar does
+    25,516 off fragments, and soul runes were refused outright.
+
+    Tried only when every other route has failed, so nothing that already
+    prices can change. `output_quantity` is honoured - one chisel yields four
+    fragments - and an untimed recipe falls back to `DEFAULT_ACTION_SECONDS`
+    rather than being refused, because here the alternative is not a slower
+    route but no route at all.
+    """
+    best: _Priced | None = None
+    for recipe in walk.recipes.get(item.lower(), ()):
+        made = max(recipe.output_quantity, 1.0)
+        total = 0.0
+        knobs: list[str] = []
+        earned: list[tuple[str, float]] = []
+        failed = False
+        for material in recipe.materials:
+            if material.name in seen:
+                failed = True
+                break
+            priced = _item_hours(
+                walk,
+                material.name,
+                quantity=quantity * material.quantity / made,
+                amortise=amortise,
+                depth=depth + 1,
+                seen=seen,
+            )
+            if priced is None:
+                failed = True
+                break
+            total += priced.hours
+            knobs.extend(priced.knobs)
+            earned.extend(priced.experience)
+        if failed:
+            continue
+        ticks = recipe.ticks if recipe.ticks is not None else None
+        seconds = 0.6 * ticks if ticks is not None else DEFAULT_ACTION_SECONDS
+        total += seconds * quantity / made / 3600.0
+        if recipe.experience > 0:
+            earned.append((recipe.skill, recipe.experience * quantity / made))
+        if best is None or total < best.hours:
+            best = _Priced(
+                total,
+                f"make {item} from {recipe.page}",
+                f"recipe:{recipe.output}",
+                _unique(knobs),
+                tuple(earned),
+            )
     return best
 
 
@@ -1606,6 +1695,7 @@ def _setup(
     world: WorldIndex,
     heuristics: Heuristics,
     level_overrides: dict[str, int],
+    recipes: Mapping[str, Sequence[Recipe]] | None = None,
 ) -> _Setup:
     """Everything the item walk needs, assembled once."""
     levels = _levels(state, level_overrides or {})
@@ -1697,6 +1787,17 @@ def _setup(
     # kill - see `costing/herbs.py` for why a herb table is not thirteen
     # separate questions. Assembled after the walk because the pool needs the
     # walk's own drop rates and reachability.
+    # **Every recipe, keyed by what it makes**, for `_recipe_hours`' last
+    # resort. Flattened across skills because the walk asks "how do I get this
+    # item", never "which skill makes it".
+    by_output: dict[str, tuple[Recipe, ...]] = {}
+    for rows in (recipes or {}).values():
+        for made in rows:
+            key = made.output.lower()
+            by_output[key] = (*by_output.get(key, ()), made)
+    if by_output:
+        walk = dataclasses.replace(walk, recipes=by_output)
+
     grimy = herbs.herb_items(derived.source_index.items)
     if grimy:
         patches = herbs.patch_count(
@@ -1740,6 +1841,7 @@ def material_seconds(
     *,
     level_overrides: dict[str, int] | None = None,
     made_experience: Mapping[str, tuple[str, float]] | None = None,
+    recipes: Mapping[str, Sequence[Recipe]] | None = None,
 ) -> _MaterialWalk:
     """Two callables over one item walk: what a material costs, and what
     obtaining it *paid*.
@@ -1769,7 +1871,7 @@ def material_seconds(
     depends on `seen` and `depth`, so a memo inside it would be wrong, and
     silently - the walk would answer a nested question with an outer answer.
     """
-    walk = _setup(state, derived, world, heuristics, level_overrides or {}).walk
+    walk = _setup(state, derived, world, heuristics, level_overrides or {}, recipes).walk
     if made_experience:
         walk = dataclasses.replace(walk, made_experience=made_experience)
     memo: dict[tuple[str, float], _Priced | None] = {}
@@ -1815,9 +1917,10 @@ def estimate(
     heuristics: Heuristics,
     *,
     level_overrides: dict[str, int] | None = None,
+    recipes: Mapping[str, Sequence[Recipe]] | None = None,
 ) -> EstimateResult:
     """Estimate the outstanding active work. See the module docstring first."""
-    setup = _setup(state, derived, world, heuristics, level_overrides or {})
+    setup = _setup(state, derived, world, heuristics, level_overrides or {}, recipes)
     walk, levels = setup.walk, setup.levels
     reachable_rates, slayer_rate = setup.masters, setup.slayer
     tasks: list[TaskEstimate] = list(_quest_tasks(derived, heuristics))

@@ -470,6 +470,25 @@ absurdly slow on one map and fine on another is a *reachability* signal:
 was one activity nobody had modelled. Before assuming a rate is wrong, count
 what the map can actually reach.
 
+**The export lists what pays experience, not everything you can make**, and
+the item walk routed only through it. Chiselling a dark essence block into
+four fragments pays *Crafting*, so upstream carries no Runecraft challenge for
+it - and `Dark essence fragments` had **no route at all** on a map holding the
+Dark Altar, even though the mining half (`Mine a ~|dense essence block|~`) was
+priced the whole time. `estimate._recipe_hours` falls back to the wiki's own
+recipe when every other route has failed, honouring `output_quantity`, so
+nothing that already prices can change.
+
+**`_MAX_DEPTH` was 3 and its comment said that was "past every real case
+measured".** A soul rune is fragments <- dark essence block <- dense essence
+block <- the mining challenge <- its tools, which is five, and at three the
+whole chain reported no route. Cycles are stopped by the visited set rather
+than by the bound, so what it really buys is a limit on work; at five the
+suite's runtime is unchanged. Blood runes on the second cache go 11,118/hr to
+**25,142** and soul runes from refused to **31,375** - both what the wiki's
+own figures imply, and both a close second to the Arceuus library, which
+scales with level and still wins the climb.
+
 **Not every "computed" number is evidence, and the docstrings say which.**
 Thieving's fifteen tabulated stalls come out at exactly 1.00x against the
 scrape, and that is an identity rather than agreement — the wiki's column is

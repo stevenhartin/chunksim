@@ -2254,3 +2254,34 @@ def test_a_dose_hop_is_not_a_level_deeper() -> None:
     source = inspect.getsource(_dose_hours)
     assert "depth=depth," in source, "a dose hop must not spend a level of depth"
     assert "depth=depth + 1" not in source
+
+
+def test_a_recipe_is_the_last_resort_route() -> None:
+    """**The export lists what pays experience, not everything you can make.**
+    Chiselling a dark essence block into fragments pays *Crafting*, so upstream
+    carries no Runecraft challenge for it - and `Dark essence fragments` had no
+    route at all on a map holding the Dark Altar. That cost the second cache
+    its two best Runecraft methods: blood runes read 11,118/hr off pure essence
+    where the same altar does 25,142 off fragments, and soul runes were
+    refused outright.
+
+    Tried only when every other route has failed, so nothing that already
+    prices can change.
+    """
+    import inspect
+
+    from chunksim.costing.estimate import _item_hours, _recipe_hours
+
+    source = inspect.getsource(_item_hours)
+    assert "if best is None:" in source, "the recipe route must be a last resort"
+    assert source.index("_route_hours") < source.index("_recipe_hours")
+    assert "output_quantity" in inspect.getsource(_recipe_hours), "one chisel makes four"
+
+
+def test_the_walk_chases_a_chain_five_deep() -> None:
+    """`_MAX_DEPTH` was 3 and its comment said that was "past every real case
+    measured". A soul rune is fragments <- dark essence block <- dense essence
+    block <- the mining challenge <- its tools, which is five."""
+    from chunksim.costing.estimate import _MAX_DEPTH
+
+    assert _MAX_DEPTH >= 5
