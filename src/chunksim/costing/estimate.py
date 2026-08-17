@@ -1323,8 +1323,16 @@ def _farming_bands(
     mechanics, at roughly 23,000 and 55,000 against the top tier's 90,000, so
     `active` is 34 and the stretch is priced at what it really pays.
 
-    What is left below 34 is the schedule's rate, and that one is unavoidable
-    - the minigame is locked, so the waiting really is the skill.
+    **What is left below 34 is the schedule's rate, and that is the answer
+    rather than a gap.** The minigame is locked there, so the waiting really
+    is the skill - and the only legitimate *active* methods below it are
+    composting and raking, which is why a band reading a few hundred an hour
+    is not evidence of a missing method. Farming is trained passively and the
+    schedule is that model; Tithe Farm is the one reasonable active method and
+    it now opens where the game opens it. So a later pass finding 268/hr here
+    and going looking for faster low-level Farming should stop: there is
+    nothing to find, and the tempting fix - lending the minigame's rate down
+    below 34 - prices an activity the player cannot enter.
     """
     schedule = TrainingOption(
         method=f"{len(plan.runs)} patches, {plan.xp_per_day:,.0f} xp/day",
