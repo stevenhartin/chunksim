@@ -261,6 +261,30 @@ Aldarin and collapsed five Brimhaven Dungeon shortcuts onto one Lumbridge
 stone. Those 37 stay unpriced, which is the honest state for a join nothing
 here can verify.
 
+**An action that pays several skills should be read once and spent several
+times.** Barbarian fishing was already modelled - `gathering.py` rolls its
+cascade, sturgeon then salmon then trout, each on the last one failing - but
+only for Fishing, while the export carries all three challenges again under
+**Strength** and **Agility** at their own lower requirements. `costing/
+barbarian.py` adds nothing to the model: it walks the same cascade with the
+same curves and the same five-tick roll and sums a different experience
+column, so the Fishing figure it reproduces is identical to the node walk's
+and the ancillary one cannot drift from it. The check is a *ratio* rather than
+a level - the wiki publishes Str/Agi beside Fishing and the two run 0.090 to
+0.092 across the climb, where this computes **0.089 at every level** - which is
+the right shape of check when the absolute figures are known to differ
+(38,224 against the guide's 48,000 at level 70, inherited deliberately).
+**The level axis is Fishing's, not the skill being trained**: which fish you
+catch decides the ancillary pay and that depends on Fishing, so the rate is
+flat in Strength.
+
+Wiring it up found a real defect it had been hiding. `inputs.priced_heuristics`
+folded combat's computed methods in with a dict comprehension keyed by skill,
+which **replaced** the whole tuple - so anything non-combat filed under a
+*combat* skill was destroyed, and all 21 of barbarian fishing's Strength bands
+were computed and thrown away before a reader could see them. The comment
+above it already said "Merged, not replaced". It does now.
+
 **Not every "computed" number is evidence, and the docstrings say which.**
 Thieving's fifteen tabulated stalls come out at exactly 1.00x against the
 scrape, and that is an identity rather than agreement — the wiki's column is

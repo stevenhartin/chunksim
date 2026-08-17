@@ -158,7 +158,10 @@ _FORMAT = "1"
 #: 52: Agility shortcuts are modelled from the attempt - eight ticks, the
 #: failure experience and the published success curve - not from an 18-second
 #: cycle chosen to make the best one look like 5,000/hr.
-_PRICING_MODEL = "52"
+#: 53: barbarian fishing pays Strength and Agility, read off the Fishing
+#: model's own cascade - and combat's computed methods stopped overwriting
+#: whatever else a combat skill already had.
+_PRICING_MODEL = "53"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

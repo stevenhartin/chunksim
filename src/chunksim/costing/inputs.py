@@ -35,6 +35,7 @@ from typing import Any, Mapping
 
 from chunksim.costing import (
     aerial,
+    barbarian,
     blastmine,
     artefacts,
     chambers,
@@ -480,6 +481,11 @@ def _gathered(
         # Aerial fishing is one action paying two skills and never missing, so
         # it is a mix rather than a node - see `costing/aerial.py`.
         **aerial.methods(blobs.gathering, derived.challenges.valid),
+        # **The same catch the node walk already priced, read a second time.**
+        # Barbarian fishing pays Strength and Agility beside its Fishing, and
+        # the export carries all three challenges under each - see
+        # `costing/barbarian.py`. Fishing itself is not touched here.
+        **barbarian.methods(blobs.gathering, derived.challenges.valid),
     }
     # The level a player is at now is what the item walk should pay, where the
     # band walk gets the whole curve; `min` is the method's opening point and
@@ -916,27 +922,29 @@ def priced_heuristics(
             by_style=by_style,
             caps=caps,
         )
-        # **Merged, not replaced**: `recipe_priced` has already put Prayer's
-        # methods in `computed`, and combat's arrive later because they
-        # multiply the kill rates.
-        merged = {
-            **priced.computed,
-            **{
-                skill: (
-                    ComputedMethod(
-                        method=rate.source.removeprefix("combat:"),
-                        xp_per_hour=rate.value,
-                        match=rate.match,
-                        # Damage against hitpoints, so the entry a reader
-                        # could look at is the monster's - not a training
-                        # rate, which is a path nothing would read.
-                        knob=f"monster_stats/{rate.source.removeprefix('combat:')}",
-                    ),
-                )
-                for skill, rate in rates.items()
-                if rate.value > 0
-            },
-        }
+        # **Merged, not replaced - and this used to say so while replacing.**
+        # `recipe_priced` has already put Prayer's methods in `computed`, and
+        # combat's arrive later because they multiply the kill rates. A dict
+        # comprehension keyed by skill overwrote the whole tuple, so anything
+        # non-combat filed under a *combat* skill was destroyed: barbarian
+        # fishing's Strength bands, all 21 of them, computed and then thrown
+        # away before anything could read them.
+        merged = dict(priced.computed)
+        for skill, rate in rates.items():
+            if rate.value <= 0:
+                continue
+            merged[skill] = (
+                *merged.get(skill, ()),
+                ComputedMethod(
+                    method=rate.source.removeprefix("combat:"),
+                    xp_per_hour=rate.value,
+                    match=rate.match,
+                    # Damage against hitpoints, so the entry a reader could
+                    # look at is the monster's - not a training rate, which
+                    # is a path nothing would read.
+                    knob=f"monster_stats/{rate.source.removeprefix('combat:')}",
+                ),
+            )
         return (
             replace(priced, combat=rates, combat_damage=damage, computed=merged),
             coverage,

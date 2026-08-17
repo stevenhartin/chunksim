@@ -39,6 +39,11 @@ The modules, and what each owns:
   tasks is the guard the flip needed, and it is keyed on the recipe chosen, not
   on the item made. Also `trip_seconds`: a bank trip's share, scaled by what an
   action consumes.
+- `barbarian.py` - barbarian fishing's **Strength and Agility**, off the same
+  cascade the Fishing node walk already rolls. Nothing new is modelled: the
+  rolls are read a second time with the ancillary experience column, so the two
+  cannot drift. The wiki's own Str/Agi-to-Fishing ratio checks it at 0.089
+  against 0.090-0.092.
 - `shortcuts.py` - an Agility shortcut priced from the attempt: eight ticks,
   the experience its own page states, the experience a *failure* pays, and the
   published success curve. Replaced an 18-second cycle whose comment called it
