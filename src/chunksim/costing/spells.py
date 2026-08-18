@@ -24,14 +24,22 @@ The infobox's `type` splits the 190 into **Combat 86, Utility 53, Teleport
 - **Utility** is a spell aimed at an item in your inventory - alchemy,
   superheat, the enchants, charge orbs, bones to bananas, plank make, tan
   leather. You cast, the item changes, you cast again. `speed` is the loop.
-- **Teleport** is the animation and nothing else. `Cast ~|camelot teleport|~`
-  is 3 ticks to leave and then however long it takes to get back somewhere you
-  can cast it again, which no page states. Priced on the animation alone a
-  teleport reads 111,000/hr. **Refused here and answered elsewhere**: a
-  teleport is only castable twice at a *lectern*, and `costing/lectern.py`
-  prices that from the tablet's own recipe. Where a map can build no lectern
-  that makes the tablet, the teleport has no rate at all - see
-  `refuse_untabled`, which is why that is the honest answer rather than a gap.
+- **Teleport** is priced, and the reason it used to be refused was wrong. The
+  claim was that a cast "moves you somewhere you cannot cast it again" and
+  that the return trip is unstated. You cast it again from where you land, and
+  `Pay-to-play Magic training` publishes the rate for exactly that:
+  "Repeatedly casting Camelot Teleport offers around 80,000 experience per
+  hour, with 55.5 experience per cast."
+
+  What *is* true is that the animation alone overstates - 111,000/hr against
+  that observed 80,000 - and the difference is a fixed **0.698 seconds** of
+  clicking, which is what `TELEPORT_OVERHEAD_SECONDS` carries. One published
+  figure, one parameter, spent on every teleport because the overhead is the
+  interface rather than the destination.
+
+  A lectern is still the *other* answer and a better one where it applies:
+  `costing/lectern.py` prices making tablets, which pays the same experience
+  and spends no runes.
 - **Combat** is priced here too, and the figure is the **base experience a
   cast pays whether or not it lands**. That is a real method - splashing is
   what the whole of low-level Magic training used to be - and every term it
@@ -101,7 +109,33 @@ SPELL_MATCH = "computed"
 #: The `infobox_spell` types whose stated speed is the whole cost of a cast.
 #: See the module docstring for why `Teleport` is refused rather than
 #: approximated, and for what a `Combat` figure here does and does not claim.
-PRICED_KINDS = frozenset({"Utility", "Combat"})
+PRICED_KINDS = frozenset({"Utility", "Combat", "Teleport"})
+
+#: `Pay-to-play Magic training`'s own observation, and the only published
+#: cadence for repeat-casting a teleport: "Repeatedly casting Camelot Teleport
+#: offers around 80,000 experience per hour, with 55.5 experience per cast."
+CAMELOT_XP = 55.5
+CAMELOT_HOURLY = 80_000.0
+CAMELOT_TICKS = 3
+
+#: Seconds a teleport costs *beyond* its animation, calibrated from that one
+#: figure - 55.5 x 3600 / 80,000 is a 2.498s cycle against a 1.8s animation.
+#:
+#: **This is the correction the kind used to be refused over.** An earlier
+#: version of this module held that a teleport "moves you somewhere you cannot
+#: cast it again" and that the return trip is unstated, so only a lectern
+#: tablet could price one. The wiki disagrees in as many words: you cast it
+#: again from where you land, and the guide publishes the rate for doing so.
+#: What is true is that the animation alone overstates - 111,000/hr against
+#: the observed 80,000 - and the gap is this fixed 0.7s of clicking rather
+#: than an unknowable journey.
+#:
+#: Spent on every teleport rather than Camelot alone, because the overhead is
+#: the interface and not the destination: a 4-tick teleport cycles in 3.098s.
+TELEPORT_OVERHEAD_SECONDS = CAMELOT_XP * 3600.0 / CAMELOT_HOURLY - CAMELOT_TICKS * 0.6
+
+#: The kind that pays it.
+TELEPORT_KIND = "Teleport"
 
 #: One game tick, in seconds.
 TICK_SECONDS = 0.6
@@ -196,8 +230,16 @@ def castable(costs: Mapping[str, MaterialCost]) -> dict[str, MaterialCost]:
 
 
 def cast_seconds(cost: MaterialCost) -> float:
-    """Seconds one cast takes, before its materials."""
-    return (cost.ticks or 0.0) * TICK_SECONDS
+    """Seconds one cast takes, before its materials.
+
+    A teleport carries `TELEPORT_OVERHEAD_SECONDS` on top of its animation -
+    see that constant for the figure it is calibrated against and for why the
+    animation alone is 39% optimistic.
+    """
+    seconds = (cost.ticks or 0.0) * TICK_SECONDS
+    if cost.kind == TELEPORT_KIND:
+        seconds += TELEPORT_OVERHEAD_SECONDS
+    return seconds
 
 
 def quest_rewards(chunk_info: ChunkInfo) -> frozenset[str]:
@@ -358,10 +400,6 @@ def apply(
     return merged
 
 
-#: The infobox kind whose only repeatable form is a tablet - see
-#: `costing/lectern.py`.
-TELEPORT_KIND = "Teleport"
-
 #: The `Rate.match` tiers a teleport with no tablet route loses. The same three
 #: `recipe_rates.REPLACEABLE` names, and for the same reason: a scrape and the
 #: floor are claims this project is entitled to overrule, and a model is not.
@@ -376,11 +414,12 @@ def refuse_untabled(
 ) -> dict[str, dict[str, Rate]]:
     """`training` with the scraped rate removed from every untabled teleport.
 
-    **A bare teleport cast is not a training method**, which is the whole
-    reason `castable` refuses the kind: the cast moves you somewhere you cannot
-    cast it again. So the only honest rate a teleport can carry is a tablet
-    rate, and a map that can build no lectern making that tablet has no method
-    - not a slow one.
+    **Narrower than it was, because the kind is priced now.** This used to be
+    the whole answer for a teleport, on the since-disproved grounds that a
+    bare cast is not a training method - see the module docstring. What it
+    still does is stop a *guide about making tablets* standing in for a map
+    that can build no lectern; the computed cast rate survives it and is what
+    such a map actually has.
 
     What this stops is the shape the marlin did: `mmg:Money making guide/
     Creating Varrock teleport tablets` is a real figure for a real method, and

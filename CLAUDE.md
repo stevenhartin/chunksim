@@ -487,12 +487,30 @@ winning a PvP fight is not something this project can promise anybody.
 from a sack is 29,749/hr against 3,451 with the runes, because a wrath rune is
 expensive and two seconds of forfeiting is not. Magic goes 146 modelled to 154.
 
-**What is left in Magic is honest.** Of 21 unpriced methods: **17 have no
-published cast speed at all** - the wiki's `infobox_spell` carries a `speed`
-field and leaves it *blank* for the Arceuus reanimations, offerings and
-resurrections, so there is nothing to fetch and a 5-tick default would be an
-invention; and **4 are teleports**, answered by
-`costing/lectern.py` or not at all.
+**"You cannot cast it again" was the last of the three refusals, and the wiki
+publishes the rate for doing exactly that.** `spells.py` priced no teleport at
+all, on the reasoning that a cast moves you somewhere you have to travel back
+from and no page states the journey. You cast it again from where you land:
+`Pay-to-play Magic training` says "Repeatedly casting Camelot Teleport offers
+around 80,000 experience per hour, with 55.5 experience per cast". What the old
+reasoning got *right* is that the animation alone overstates - 3 ticks is
+111,000/hr against that observed 80,000 - and the difference turns out to be a
+fixed **0.698 seconds** of clicking rather than an unknowable trip.
+
+**One figure, one parameter, so reproducing it is an identity** - the thing
+`costing/gathering_overhead.py` warns to read as arithmetic rather than
+agreement. What it buys is the *shape*: the overhead is the interface and not
+the destination, so it carries to every teleport and to the 4-tick speeds the
+Camelot figure never saw. A lectern is still the other answer and a better one
+where it applies, since making tablets pays the same experience and spends no
+runes - and `Summon boat (tablet)` turned out to be missing from that
+whitelist, listed on `Lectern space` beside the two boat tablets that were
+there. Magic goes 154 modelled to 158.
+
+**What is left in Magic is honest.** Of 17 unpriced methods: **all 17 have no published cast speed** - the
+`infobox_spell` `speed` field is *blank* for the Arceuus reanimations,
+offerings, corruptions and `resurrect crops`, so there is nothing to fetch and
+a 5-tick default would be an invention.
 
 **A number in a table is only the number the column header says it is.**
 Tempoross' reward table gives "Repairing totems/masts" as **40**, and it is

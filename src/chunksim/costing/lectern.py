@@ -32,6 +32,14 @@ inventory" the guides talk about.
   method refused by `recipe_rates.rate_for` - the same refusal every
   unpriceable ingredient gets. Adding a second gate would be a worse copy of
   the one already working.
+**A tablet is no longer the *only* way to price a teleport**, and this module
+is no worse for it. `costing/spells.py` used to refuse the whole kind on the
+grounds that a cast "moves you somewhere you cannot cast it again"; the wiki
+publishes a rate for repeat-casting one, so it prices them now. What a lectern
+still answers is a different question - *making* tablets is its own method,
+with the spell's experience paid at the bench and no runes spent - and
+`training_bands` takes whichever is faster.
+
 - **Everything else is refused**, which is a whitelist and fails closed.
   Ancient and Lunar tablets consume soft clay like the standard ones, so
   nothing about their *materials* says a player-owned house cannot make them -
@@ -75,6 +83,10 @@ STANDARD_TABLETS: dict[str, str] = {
     "Civitas illa fortis teleport (tablet)": "Build a ~|mahogany eagle lectern|~",
     "Teleport to house (tablet)": "Build a ~|mahogany eagle lectern|~",
     "Teleport to boat (tablet)": "Build a ~|mahogany eagle lectern|~",
+    # **Listed on `Lectern space` beside the two above and missed here**, in
+    # the same mahogany-eagle row - newer Sailing content that arrived after
+    # this table was first read off the page.
+    "Summon boat (tablet)": "Build a ~|mahogany eagle lectern|~",
 }
 
 

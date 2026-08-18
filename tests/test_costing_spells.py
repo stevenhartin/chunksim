@@ -40,19 +40,51 @@ def _seconds(name: str, quantity: float) -> float | None:
     return {"Big bones[+]": 20.0}.get(name, 0.1) * quantity
 
 
-def test_a_teleport_alone_is_refused_on_its_kind() -> None:
-    """**Upstream's own `type` decides it.** A teleport's speed is the
-    animation and not the method - you have to get back somewhere you can cast
-    again, which no page states - so it is answered by `costing/lectern.py` or
-    not at all.
+def test_every_timed_kind_is_priced() -> None:
+    """All three of `infobox_spell`'s types carry a speed that is the whole
+    cost of a cast, once a teleport's clicking overhead is allowed for.
 
-    A **combat** cast is priced, and the figure is the base experience it pays
-    whether or not it lands: a floor, correct for splashing and conservative
-    for fighting, where the damage half is `costing/combat_xp.py`'s."""
+    A **combat** cast is the base experience it pays whether or not it lands:
+    a floor, correct for splashing and conservative for fighting, where the
+    damage half is `costing/combat_xp.py`'s. A **teleport** is its animation
+    plus `TELEPORT_OVERHEAD_SECONDS` - it used to be refused on the
+    since-disproved claim that you cannot cast it again from where you land."""
     found = spells.castable(_COSTS)
 
-    assert set(found) == {_ALCH, _BONES, _BOLT}
-    assert _CAMELOT not in found
+    assert set(found) == {_ALCH, _BONES, _BOLT, _CAMELOT}
+
+
+class TestTheTeleportOverhead:
+    """One published figure, one parameter - so reproducing that figure is an
+    **identity**, not agreement. What it buys is the *shape*: the overhead is
+    the interface rather than the destination, so it carries to every teleport
+    and to speeds the Camelot figure never saw."""
+
+    def test_it_reproduces_the_figure_it_was_fitted_to(self) -> None:
+        cost = MaterialCost(spells.CAMELOT_XP, {}, "Teleport", spells.CAMELOT_TICKS)
+
+        hourly = spells.CAMELOT_XP * 3600.0 / spells.cast_seconds(cost)
+
+        assert hourly == pytest.approx(spells.CAMELOT_HOURLY)
+
+    def test_the_animation_alone_would_overstate(self) -> None:
+        """111,000/hr against the observed 80,000 - a 39% gap, which is the
+        0.7 seconds of clicking this constant carries."""
+        animation = spells.CAMELOT_XP * 3600.0 / (spells.CAMELOT_TICKS * 0.6)
+
+        assert animation == pytest.approx(111_000.0)
+        assert spells.TELEPORT_OVERHEAD_SECONDS == pytest.approx(0.698, abs=0.001)
+
+    def test_a_slower_teleport_pays_the_same_overhead(self) -> None:
+        """It is the clicking, so a 4-tick teleport cycles in 3.098s."""
+        cost = MaterialCost(50.0, {}, "Teleport", 4.0)
+
+        assert spells.cast_seconds(cost) == pytest.approx(3.098, abs=0.001)
+
+    def test_nothing_else_pays_it(self) -> None:
+        cost = MaterialCost(65.0, {}, "Utility", 5.0)
+
+        assert spells.cast_seconds(cost) == pytest.approx(3.0)
 
 
 @pytest.mark.parametrize("ticks", [None, 0.0])
