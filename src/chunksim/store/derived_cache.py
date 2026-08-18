@@ -219,7 +219,11 @@ _FORMAT = "1"
 #: 77: a Thieving chest that can *fail* is retried in place rather than walked
 #: away from, so it no longer shares the Rogues' Castle interval - which missed
 #: the Aldarin Villas chest's own published figure by 2.9x.
-_PRICING_MODEL = "77"
+#: 78: the last published training figures are gone - a challenge whose `Output`
+#: contradicts its `Items` takes the recipe its materials own, the markup names
+#: the thing where the task names a facility, a course's second challenge takes
+#: its bands, and a method its own page disclaims keeps no rate.
+_PRICING_MODEL = "78"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

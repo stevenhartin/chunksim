@@ -675,6 +675,51 @@ rates up to 40,000 can be expected" over 36-45, where this reads 37,905 to
 the failure teleport and nothing here has a term for it. The chest goes
 **16,633/hr to 37,914** where it opens.
 
+**No published training figure decides anything on any cached map any more**,
+and the last seven went four different ways - which is the useful part, because
+each is a rule rather than a patch.
+
+**An `Output` that contradicts the `Items` is a data error, and the `Items`
+win.** Upstream files `Mix a ~|divine magic potion|~` under `Divine ranging
+potion(3)` and `Mix a ~|divine battlemage potion|~` under `Divine bastion
+potion(3)`. Each put two tasks on one recipe, so `_ambiguous` refused both and
+all four kept a `wiki:herblore` figure of 387,500-431,250/hr. `join_keys`
+already carried the right output further down the list; `_joined` now prefers
+the first key whose recipe the challenge's own `Items` own, and falls back to
+the first key otherwise - **a preference, not a filter**, so a challenge listing
+nothing prices as it did. The dose is a vocabulary difference here exactly as it
+is in `join_keys`: upstream writes the family `Ranging potion[+]` where a
+`{{Recipe}}` writes `Ranging potion(3)`, so doses are dropped *after* a literal
+comparison fails.
+
+**The markup already says what the thing is.** `Craft a ~|toy cat|~ on a
+crafting table 4` carries no `Output` and verb-strips to `toy cat on a crafting
+table 4`, which is a facility rather than a thing - eight Crafting challenges
+share that shape. The `~|...|~` span is the item, so it is the last exact key.
+Coming after `Output` is what keeps `Craft a ~|nature rune|~ with guardian
+essence` on the minigame instead of collapsing onto the plain altar rune.
+
+**One lap can be two challenges.** `Run the ~|Wilderness Agility Course|~ with
+the agility dispenser` is the lap `courses.py` already prices - the dispenser
+hands out one ticket a lap and those tickets *are* `bonus_per_hour`, the
+18,400/hr the ticket's own page publishes - so `Course.also` gives it the same
+bands. Upstream's third challenge for the course, redeeming the ticket, keeps
+**no** rate on purpose: its experience is already inside that 18,400.
+
+**And a method its own page disclaims is refused, not quoted.** The Stranglewood
+fishing spot's page says "it is not recommended for training Fishing, not even
+when trying to obtain raw pike or caskets", and the figure it carried came from
+a *money*-making guide about a table that is newspapers and old boots three
+catches in five. `{{Fishing info}}` states the experience (7.5) and nothing
+states the cadence, so a chance fitted to the guide's own figure would be the
+guide with extra steps. `costing/disclaimed.py` names it with the sentence.
+
+What is left on all three maps is **four hand pins** in `overrides.json` and
+nothing else, and only two of those decide a band. **Two of Tithe Farm's three
+bands are relabelled at the same time**: they were `exact` off `wiki:tithe`
+where they are this project's own arithmetic, which is what made Farming read as
+the one skill a scrape still owned outright.
+
 **A `{{Thieving info}}` box says what its `time` means, in its own `type`
 field**, and that is what makes the last Thieving guide replaceable. A
 `Pickpocket`'s `time` is the stun timer, a `Stall`'s the restock, and a

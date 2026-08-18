@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from chunksim.costing.heuristics import Rate
+from chunksim.costing import recipe_rates
 from chunksim.costing.recipe_rates import (
     ACTION_OVERHEAD_SECONDS,
     COMPUTED_MATCH,
@@ -740,3 +741,108 @@ def test_a_bare_name_is_offered_each_dose() -> None:
 
     assert "extreme energy potion" in keys
     assert "extreme energy potion(3)" in keys
+
+
+class TestTheItemsDecideWhenTheOutputIsWrong:
+    """**`Output` is upstream's claim about what is made and `Items` its claim
+    about what it is made from.**
+
+    Upstream files `Mix a ~|divine magic potion|~` under `Divine ranging
+    potion(3)` and `Mix a ~|divine battlemage potion|~` under `Divine bastion
+    potion(3)` - two plain data errors, each of which put two tasks on one
+    recipe and got both refused as ambiguous. Their own `Items` say `Magic
+    potion[+]` and `Battlemage potion[+]`, and `join_keys` already carried the
+    right output further down the list.
+    """
+
+    MAGIC = {
+        "Output": "Divine ranging potion(3)",
+        "Items": ["Magic potion[+]*", "Crystal dust*"],
+        "Level": 78,
+        "Primary": True,
+    }
+
+    def _corpus(self) -> dict[str, tuple[Recipe, ...]]:
+        def potion(name: str, base: str) -> Recipe:
+            return _recipe(
+                f"Divine {name} potion(3)",
+                skill="Herblore",
+                experience=100.0,
+                ticks=2,
+                materials=(
+                    Material(name=f"{base}(3)", quantity=1.0),
+                    Material(name="Crystal dust", quantity=1.0),
+                ),
+            )
+
+        return {
+            "divine ranging potion(3)": (potion("ranging", "Ranging potion"),),
+            "divine magic potion(3)": (potion("magic", "Magic potion"),),
+        }
+
+    def test_the_task_takes_the_recipe_its_items_own(self) -> None:
+        output, found = recipe_rates._joined(
+            "Mix a ~|divine magic potion|~", self.MAGIC, self._corpus(), {}, {}
+        ) or ("", ())
+
+        assert output.lower() == "divine magic potion(3)"
+        assert found[0].materials[0].name == "Magic potion(3)"
+
+    def test_a_dose_is_a_vocabulary_difference_here_too(self) -> None:
+        """Upstream writes the family - `Magic potion[+]` - where a
+        `{{Recipe}}` writes the strength it consumes, `Magic potion(3)`.
+        Compared literally the two never meet, which is why every divine potion
+        disowned its own recipe."""
+        recipe = self._corpus()["divine magic potion(3)"][0]
+
+        assert recipe_rates.names_material(recipe, self.MAGIC)
+
+    def test_a_named_strength_is_still_a_statement(self) -> None:
+        """Doses are only dropped once the literal comparison has failed, so a
+        challenge naming a *particular* strength still says so."""
+        exact = {**self.MAGIC, "Items": ["Magic potion(3)*", "Crystal dust*"]}
+        recipe = self._corpus()["divine magic potion(3)"][0]
+
+        assert recipe_rates.names_material(recipe, exact)
+
+    def test_it_is_a_preference_and_not_a_filter(self) -> None:
+        """Where nothing the challenge owns joins, the first key still wins -
+        so a challenge listing no items, or a family no recipe names, prices
+        exactly as it did before this existed."""
+        itemless = {"Output": "Divine ranging potion(3)", "Primary": True}
+
+        output, _ = recipe_rates._joined(
+            "Mix a ~|divine ranging potion|~", itemless, self._corpus(), {}, {}
+        ) or ("", ())
+
+        assert output.lower() == "divine ranging potion(3)"
+
+
+class TestTheMarkupNamesTheThing:
+    """`~|...|~` wraps the item a task names, which is what upstream writes it
+    for - and it is the answer where the task carries no `Output` and says
+    where the work happens instead."""
+
+    def test_a_facility_in_the_name_does_not_stop_the_join(self) -> None:
+        """`Craft a ~|toy cat|~ on a crafting table 4` verb-strips to `toy cat
+        on a crafting table 4`, which is a facility rather than a thing. Eight
+        Crafting challenges share that shape."""
+        keys = recipe_rates.join_keys(
+            {"Items": ["Clockwork*", "Plank*"], "Level": 85, "Primary": True},
+            "Craft a ~|toy cat|~ on a crafting table 4",
+        )
+
+        assert "toy cat" in keys
+        assert keys.index("toy cat") > keys.index("toy cat on a crafting table 4")
+
+    def test_it_comes_after_the_output_so_it_can_only_fill_a_gap(self) -> None:
+        """Which is what keeps `Craft a ~|nature rune|~ with guardian essence`
+        on the minigame rather than collapsing onto the plain altar rune this
+        would otherwise name."""
+        keys = recipe_rates.join_keys(
+            {"Output": "Nature rune", "Primary": True},
+            "Craft a ~|nature rune|~ with guardian essence",
+        )
+
+        assert keys[0] == "Nature rune"
+        assert keys.index("Nature rune") < keys.index("nature rune")

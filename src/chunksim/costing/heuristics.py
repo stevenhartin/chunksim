@@ -1115,8 +1115,15 @@ def _table_rates(
                         value=value, source=f"wiki:{kind}", match="exact"
                     )
                 break
+    # **Two of Tithe Farm's three bands are this project's arithmetic**, so
+    # they are labelled as such. `skill_tables.parse_tithe` computes the lower
+    # tiers from the minigame's own sack multiplier and spends the published
+    # 90,000 only on the scale - see its docstring. Reported as `exact` they
+    # read as three guide figures, which is what made Farming look like the one
+    # skill a scrape still owned outright.
     _add_banded(
-        chunk_info, "Farming", tables.get("tithe") or (), rated, TITHE_SOURCE, _is_tithe
+        chunk_info, "Farming", tables.get("tithe") or (), rated, TITHE_SOURCE,
+        _is_tithe, match=COMPUTED_MATCH,
     )
     return rated
 
@@ -1126,6 +1133,12 @@ def _table_rates(
 #: own materials - see `_add_banded`.
 GOTR_SOURCE = "wiki:gotr"
 TITHE_SOURCE = "wiki:tithe"
+
+#: What a rate this project computed is labelled, matching
+#: `recipe_rates.COMPUTED_MATCH`. Repeated rather than imported because
+#: `costing/recipe_rates.py` imports *this* module, and one string is a
+#: cheaper price than a cycle.
+COMPUTED_MATCH = "computed"
 
 
 def _is_gotr(task: str, challenge: dict[str, Any]) -> bool:
@@ -1263,6 +1276,7 @@ def _add_banded(
     rated: dict[str, dict[str, Rate]],
     source: str,
     belongs: Callable[[str, dict[str, Any]], bool],
+    match: str = "exact",
 ) -> None:
     """A minigame's `level -> XP/h` curve, over the challenges that are it.
 
@@ -1309,7 +1323,7 @@ def _add_banded(
         if not band or not band[-1]:
             continue
         rated.setdefault(task, {})[skill] = Rate(
-            value=band[-1], source=source, match="exact"
+            value=band[-1], source=source, match=match
         )
 
 

@@ -124,6 +124,20 @@ def join_keys(challenge: Mapping[str, Any], task: str) -> tuple[str, ...]:
         if isinstance(value, str) and value.strip():
             keys.append(value.strip())
     keys.append(_VERBS.sub("", strip_task_markup(task)).strip())
+    # **The markup already says what the thing is**, which is the whole reason
+    # upstream writes it: `~|...|~` wraps the item or monster a task names. It
+    # is the answer where the task carries no `Output` *and* says where the
+    # work happens - `Craft a ~|toy cat|~ on a crafting table 4` verb-strips to
+    # `toy cat on a crafting table 4`, which is a facility rather than a thing,
+    # and eight Crafting challenges share that shape.
+    #
+    # **Last of the exact keys, so it can only fill a gap.** Anything carrying
+    # an `Output` has already matched on it, which is what keeps `Craft a
+    # ~|nature rune|~ with guardian essence` on the minigame rather than
+    # collapsing onto the plain altar rune this would otherwise name.
+    marked = task.partition("~|")[2].rpartition("|~")[0].strip()
+    if marked:
+        keys.append(marked)
     # **Doses last, and only as a fallback.** A potion's dose is a vocabulary
     # difference as often as a real one: upstream calls the challenge's output
     # `Super combat potion(3)` where the only recipe makes a `(4)`, and
@@ -407,10 +421,28 @@ def names_material(recipe: Recipe, challenge: Mapping[str, Any]) -> bool:
     A challenge listing no items names nothing, which is right: `Craft a
     ~|nature rune|~ with guardian essence` has no `Items` because the minigame
     hands the essence over.
+
+    **The dose is a vocabulary difference here exactly as it is in
+    `join_keys`.** Upstream writes the family a potion belongs to - `Ranging
+    potion[+]` - where a `{{Recipe}}` writes the strength it consumes,
+    `Ranging potion(3)`. Compared literally the two never meet, so every
+    divine potion disowned its own recipe. Doses are only dropped when the
+    literal comparison has already failed, so a challenge naming a *particular*
+    strength still says so.
     """
     held = stocks(challenge)
     materials = {material.name.lower() for material in recipe.materials}
-    return bool(materials) and materials <= held
+    if not materials:
+        return False
+    if materials <= held:
+        return True
+    return {_undosed(name) for name in materials} <= {_undosed(name) for name in held}
+
+
+def _undosed(name: str) -> str:
+    """`attack potion(3)` -> `attack potion`; anything else unchanged."""
+    found = _DOSED.match(name)
+    return found.group("name") if found else name
 
 
 def material_candidates(
@@ -668,9 +700,29 @@ def _joined(
         # bundle name nothing else answers to.
         return cut[0].output, cut
     keys = join_keys(challenge, task)
-    output = next((key for key in keys if key.lower() in by_output), None)
-    if output is None:
+    joined = [key for key in keys if key.lower() in by_output]
+    if not joined:
         return None
+    # **`Output` is upstream's claim about what is made and `Items` its claim
+    # about what it is made from; where the two disagree, take the pair that
+    # agrees with a recipe.** Upstream files `Mix a ~|divine magic potion|~`
+    # under `Divine ranging potion(3)` and `Mix a ~|divine battlemage
+    # potion|~` under `Divine bastion potion(3)` - two plain data errors, each
+    # of which put two tasks on one recipe and got both refused as ambiguous.
+    # Their own `Items` say `Magic potion[+]` and `Battlemage potion[+]`, and
+    # the key list already carries the right output further down.
+    #
+    # **A preference, not a filter**: where nothing the challenge owns joins,
+    # the first key still wins, so a challenge that lists no items or lists a
+    # family no recipe names prices exactly as it did before this existed.
+    output = next(
+        (
+            key
+            for key in joined
+            if any(names_material(recipe, challenge) for recipe in by_output[key.lower()])
+        ),
+        joined[0],
+    )
     kin = siblings.get(output.lower(), ())
     candidates = material_candidates(
         challenge,

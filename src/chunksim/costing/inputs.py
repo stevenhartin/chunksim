@@ -46,6 +46,7 @@ from chunksim.costing import (
     chambers,
     combat_xp,
     courses,
+    disclaimed,
     dps_bridge,
     driftnet,
     forestry,
@@ -508,55 +509,53 @@ def recipe_priced(
     for task in list(per_xp):
         if gotr.GUARDIAN_SUFFIX in task or task == sacredeel.TASK:
             del per_xp[task]
+    # **The rate layers, applied and then refused, in that order.** Written as
+    # statements rather than as one nested expression: there are four refusals
+    # now and a reader of the innermost had to count brackets to find out which
+    # layer it was inside. The order is the whole of the layering and each step
+    # says what it is for.
+    #
+    # **`recipe_rates.apply` cannot overwrite a modelled rate**, and needs no
+    # telling: it only fills where the existing rate is `default`, and
+    # `gathering.apply` has already written a `modelled` one. The two computed
+    # layers therefore compose without either having to know the other exists.
+    rated = recipe_rates.apply(heuristics.training, computed, pinned)
+    # **Spells fill after the recipes and share their whitelist.** A recipe
+    # knows which variant of an action it describes; a cast timed by the wiki
+    # and charged by the export's own `Items` is the answer for the 100-odd
+    # Magic methods no recipe reaches. See `costing/spells.py`.
+    rated = spells.apply(
+        rated,
+        spells.computed_rates(
+            state.chunk_info, derived.challenges.valid, heuristics.spell_costs, seconds
+        ),
+        pinned,
+    )
+    # **Refused after applied, so a computed rate is never removed.** A method
+    # whose inputs have no route keeps no *scraped* rate - see
+    # `recipe_rates.refuse_dropped` for the bias that fixes.
+    rated = recipe_rates.refuse_dropped(rated, coverage.dropped, pinned)
+    # **A teleport in `computed` is one whose tablet joined**, so this is the
+    # lectern gate read back rather than applied twice.
+    rated = spells.refuse_untabled(rated, heuristics.spell_costs, computed, pinned)
+    # **A pickpocket nothing charts keeps no rate either.** The flat cycle it
+    # would otherwise keep is not a worse estimate but a known-wrong one: on
+    # all eighteen NPCs the wiki charts it runs 2x to 3.6x fast. See
+    # `costing/pickpocket.py`.
+    rated = pickpocket.refuse_uncharted(
+        rated,
+        heuristics.pickpockets,
+        _mapping(state.chunk_info.challenges, "Thieving"),
+        derived.challenges.valid.get("Thieving") or {},
+        pinned,
+    )
+    # **And a method its own page says is not for training keeps no rate**,
+    # which is a different claim from "slow" - see `costing/disclaimed.py`.
+    rated = disclaimed.refuse(rated, pinned)
     return (
         replace(
             heuristics,
-            # **`recipe_rates.apply` cannot overwrite a modelled rate**, and
-            # needs no telling: it only fills where the existing rate is
-            # `default`, and `gathering.apply` has already written a
-            # `modelled` one. The two computed layers therefore compose
-            # without either having to know the other exists.
-            # **Refused after applied, so a computed rate is never removed.**
-            # A method whose inputs have no route keeps no *scraped* rate -
-            # see `recipe_rates.refuse_dropped` for the bias that fixes.
-            # **Spells fill after the recipes and share their whitelist.**
-            # A recipe knows which variant of an action it describes; a cast
-            # timed by the wiki and charged by the export's own `Items` is the
-            # answer for the 100-odd Magic methods no recipe reaches. See
-            # `costing/spells.py`, and note it runs *inside* `refuse_dropped`'s
-            # argument so a spell rate is never stripped as a scrape would be.
-            # **And a pickpocket nothing charts keeps no rate either.** The
-            # flat cycle it would otherwise keep is not a worse estimate but a
-            # known-wrong one: on all eighteen NPCs the wiki charts it runs 2x
-            # to 3.6x fast. See `costing/pickpocket.py`.
-            training=pickpocket.refuse_uncharted(
-                spells.refuse_untabled(
-                    recipe_rates.refuse_dropped(
-                        spells.apply(
-                            recipe_rates.apply(heuristics.training, computed, pinned),
-                            spells.computed_rates(
-                                state.chunk_info,
-                                derived.challenges.valid,
-                                heuristics.spell_costs,
-                                seconds,
-                            ),
-                            pinned,
-                        ),
-                        coverage.dropped,
-                        pinned,
-                    ),
-                    heuristics.spell_costs,
-                    # **A teleport in `computed` is one whose tablet joined**,
-                    # so this is the lectern gate read back rather than applied
-                    # twice.
-                    computed,
-                    pinned,
-                ),
-                heuristics.pickpockets,
-                _mapping(state.chunk_info.challenges, "Thieving"),
-                derived.challenges.valid.get("Thieving") or {},
-                pinned,
-            ),
+            training=rated,
             action_seconds=timed,
             computed=_merge_computed(prayed, gathered),
             material_seconds_per_xp=per_xp,

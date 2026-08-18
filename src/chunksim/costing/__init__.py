@@ -90,6 +90,13 @@ The modules, and what each owns:
   `13,200 x p` and nothing is assumed. It reads 7,167/hr where it opens at 44
   and 12,943 at 99, against the flat 9,240 of the guide it displaces - the last
   published Thieving rate on any cached map.
+- `disclaimed.py` - the methods whose **own source says they are not for
+  training**, each quoted. One entry: the Stranglewood fishing spot, whose page
+  says "it is not recommended for training Fishing". A money-making guide's
+  experience an hour is a by-product of a rate about loot, and nothing publishes
+  the cadence a model would need - a chance fitted to the guide's own figure
+  would be the guide with extra steps. Takes away only the scrape's own tiers,
+  so a model or a hand pin survives.
 - `gotr.py` - Guardians of the Rift as **one minigame, not twelve rune
   methods**. The rune is the game's decision - two portals, one elemental and
   one catalytic - so the curve is the *rune mix* at a level, and throughput is

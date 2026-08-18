@@ -141,6 +141,23 @@ class Course:
     #: The level the failing stops at, which is where `failing_rate` gives way
     #: to the lap-derived one.
     no_fail_level: int | None = None
+    #: Other challenges upstream carries for the *same lap*, which take the
+    #: same bands.
+    #:
+    #: **One activity, two challenges, and the second was left to a guide.**
+    #: `Run the ~|Wilderness Agility Course|~ with the agility dispenser` is
+    #: the lap this already prices - the dispenser hands out one `Wilderness
+    #: agility ticket` a lap and those tickets *are* `bonus_per_hour`, so the
+    #: rate is the same number and pricing it separately would be pricing the
+    #: same 18,400 twice. Until this existed it kept
+    #: `mmg:Money making guide/Wilderness Agility Course` at 47,426/hr, a
+    #: figure about the coin loot rather than about the experience.
+    #:
+    #: Upstream's third challenge for the course, `Trade in a ~|wilderness
+    #: agility ticket|~ for xp`, deliberately gets **no** rate: redeeming is
+    #: seconds of clicking whose experience is already inside `bonus_per_hour`,
+    #: so a rate for it would be that double-count with a level attached.
+    also: tuple[str, ...] = ()
     #: Seconds between laps that the lap time does not already contain. Only
     #: the two Colossal Wyrm courses state one - "including 3.6 seconds of
     #: downtime between laps" - and stating it separately is what keeps
@@ -186,7 +203,10 @@ COURSES: tuple[Course, ...] = (
         "Access the ~|Colossal Wyrm Basic Course|~", 50, 633.0, 67.8,
         downtime_seconds=3.6,
     ),
-    Course("Access the ~|Wilderness Agility Course|~", 52, 571.4, 45.0, 18_400.0),
+    Course(
+        "Access the ~|Wilderness Agility Course|~", 52, 571.4, 45.0, 18_400.0,
+        also=("Run the ~|Wilderness Agility Course|~ with the agility dispenser",),
+    ),
     Course(
         "Access the ~|Seers' Village Rooftop Course|~", 60, 570.0, 43.8,
         diary_experience_per_lap=570.0, diary_lap_seconds=36.0,
@@ -262,10 +282,15 @@ def methods(
             xp_per_hour=paid,
             level=level,
             match=CONFIRMED,
-            knob=f"training/{course.task}/{SKILL}",
+            knob=f"training/{task}/{SKILL}",
         )
         for course in COURSES
-        if course.task in reachable
+        # **Every challenge upstream carries for the lap, not just the first.**
+        # See `Course.also`: the same rate under each, because it is the same
+        # lap - and a challenge with no `ComputedMethod` of its own keeps
+        # whatever guide happened to match its name.
+        for task in (course.task, *course.also)
+        if task in reachable
         for level, paid in bands_for(course)
     )
     return {SKILL: bands} if bands else {}

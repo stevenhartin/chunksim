@@ -5319,21 +5319,21 @@
         "Farming": {
           "value": 54782.608695652176,
           "source": "wiki:tithe",
-          "match": "exact"
+          "match": "computed"
         }
       },
       "Grow a ~|golovanova fruit|~ alt": {
         "Farming": {
           "value": 23478.260869565216,
           "source": "wiki:tithe",
-          "match": "exact"
+          "match": "computed"
         }
       },
       "Grow a ~|logavano fruit|~": {
         "Farming": {
           "value": 90000.0,
           "source": "wiki:tithe",
-          "match": "exact"
+          "match": "computed"
         }
       },
       "Access the Arceuus Library middle level railing jump ~|shortcut|~": {

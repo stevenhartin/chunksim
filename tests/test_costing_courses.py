@@ -6,7 +6,9 @@ import pathlib
 
 import pytest
 
+from chunksim.costing import courses
 from chunksim.costing import courses as co
+from chunksim.costing.heuristics import ComputedMethod
 
 
 class TestTheDerivationReproducesTheGuide:
@@ -282,3 +284,55 @@ class TestItIsWiredIn:
             encoding="utf-8"
         )
         assert "`courses.py`" in listing
+
+
+class TestOneLapTwoChallenges:
+    """**Upstream carries the Wilderness course under two challenges and only
+    one of them was priced.**
+
+    `Run the ~|Wilderness Agility Course|~ with the agility dispenser` is the
+    lap `Access the ~|Wilderness Agility Course|~` already prices: the
+    dispenser hands out one `Wilderness agility ticket` a lap and those tickets
+    *are* `bonus_per_hour`, so it is the same number. Until `Course.also`
+    existed it kept `mmg:Money making guide/Wilderness Agility Course` at
+    47,426/hr - a figure about the coin loot rather than about the experience.
+    """
+
+    DISPENSER = "Run the ~|Wilderness Agility Course|~ with the agility dispenser"
+
+    def _bands(self, *tasks: str) -> tuple[ComputedMethod, ...]:
+        return courses.methods({courses.SKILL: dict.fromkeys(tasks, {})}).get(
+            courses.SKILL, ()
+        )
+
+    def test_the_second_challenge_takes_the_same_bands(self) -> None:
+        lap = self._bands("Access the ~|Wilderness Agility Course|~")
+        dispenser = self._bands(self.DISPENSER)
+
+        assert lap and dispenser
+        assert [m.xp_per_hour for m in lap] == [m.xp_per_hour for m in dispenser]
+        assert {m.knob for m in dispenser} == {f"training/{self.DISPENSER}/Agility"}
+
+    def test_the_tickets_are_the_bonus_and_are_not_counted_twice(self) -> None:
+        """The `Wilderness agility ticket` page's own top row: 230 experience a
+        ticket at 101+ redeemed at once, "18,400" an hour. One ticket a lap, so
+        it is a flat addition to the lapping rather than a second method."""
+        course = next(
+            c for c in courses.COURSES if c.task.endswith("Wilderness Agility Course|~")
+        )
+
+        assert course.bonus_per_hour == 18_400.0
+        assert course.also == (self.DISPENSER,)
+
+    def test_redeeming_a_ticket_is_deliberately_not_a_method(self) -> None:
+        """Upstream's third challenge for the course. Redeeming is seconds of
+        clicking whose experience is already inside `bonus_per_hour`, so a rate
+        for it would be that double-count with a level attached."""
+        assert self._bands("Trade in a ~|wilderness agility ticket|~ for xp") == ()
+
+    def test_no_other_course_claims_a_second_challenge(self) -> None:
+        """`also` is a statement about one course, not a pattern to spread -
+        every other course the export offers has exactly one challenge."""
+        assert [c.task for c in courses.COURSES if c.also] == [
+            "Access the ~|Wilderness Agility Course|~"
+        ]
