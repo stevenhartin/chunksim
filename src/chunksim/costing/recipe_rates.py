@@ -552,6 +552,38 @@ def index_recipes(recipes: Sequence[Recipe]) -> dict[str, tuple[Recipe, ...]]:
     return {output: tuple(found) for output, found in grouped.items()}
 
 
+#: `(output, material)` pairs this project prices at zero because
+#: *destroying* the thing returns the material, so the loop this rate prices
+#: never actually consumes it a second time. The wiki states it identically
+#: for all three: "when the mounted sword object is destroyed, the sword is
+#: returned." **Not a general property of `(mounted)` items** - checked and
+#: rejected for the fish and head trophies beside them, whose own pages say
+#: the opposite ("cannot be removed to retrieve the stuffed fish/head"), so
+#: this is three hand-verified entries rather than a rule keyed on the name.
+#:
+#: **Safe because the rate is only ever asked for a challenge already valid**,
+#: which for these three means the one-time quest is already done - `Complete
+#: ~|Shadow of the Storm|~`/`~|Demon Slayer|~`/`~|Merlin's Crystal|~` gates
+#: the task itself, upstream's own reachability check rather than anything
+#: this table has to repeat. Zeroing the sword's cost does not claim it was
+#: free to obtain, only that obtaining it again is not part of this loop.
+#:
+#: The wiki's own `{{Recipe}}` marks `mat2cost = 0` for the sword on all
+#: three pages, which looks like the same fact stated in the template and is
+#: not: that field is exposed nowhere in the Bucket `production_json` this
+#: project reads (verified against the live table - only `output.cost`
+#: survives, no per-material `cost`), and even where present it means "the
+#: wiki's own cost calculator has no coin price for this," which is true of
+#: the fish trophies' materials too and does not imply either is returned.
+RETURNED_MATERIALS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("Darklight (mounted)", "Darklight"),
+        ("Silverlight (mounted)", "Silverlight"),
+        ("Excalibur (mounted)", "Excalibur"),
+    }
+)
+
+
 def material_seconds(
     recipe: Recipe, input_seconds: Callable[[str, float], float | None]
 ) -> float | None:
@@ -563,6 +595,8 @@ def material_seconds(
     """
     total = 0.0
     for material in recipe.materials:
+        if (recipe.output, material.name) in RETURNED_MATERIALS:
+            continue
         seconds = input_seconds(material.name, material.quantity)
         if seconds is None:
             return None

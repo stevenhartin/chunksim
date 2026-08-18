@@ -375,6 +375,31 @@ tasks read 40.8/4.5/0.5 hr against 18/180/1,800 tickets respectively, all
 under the floor anything else on the climb clears, so no climb moves on any
 of the three maps.
 
+**A quest reward can be a recurring material and still cost nothing to
+reuse.** Three sword mounts - `darklight`/`silverlight`/`excalibur (mounted)`
+- each want the one-time quest weapon as a recipe material, and pricing it
+through the item walk charged the whole cost of the quest on every cycle of
+a build-and-destroy loop that only ever needs one sword. The wiki states the
+mechanic identically on all three pages: "when the mounted sword object is
+destroyed, the sword is returned." **Checked and rejected as a general
+`(mounted)` rule** - the fish and head trophies beside them say the opposite
+on their own pages, "cannot be removed to retrieve the stuffed fish/head" -
+so `recipe_rates.RETURNED_MATERIALS` is three hand-verified `(output,
+material)` pairs, not a name-keyed heuristic. Safe because a rate is only
+ever asked for a challenge the derivation already calls valid, which for
+these three means the quest is already done - zeroing the sword's cost does
+not claim it was free to obtain, only that this loop never obtains it twice.
+
+The wiki's `{{Recipe}}` template marks `mat2cost = 0` on all three pages,
+which looks like the same fact and is not: that field is exposed nowhere in
+the Bucket `production_json` this project actually reads (verified against
+the live table - only `output.cost` survives), and even where present it
+means "the wiki's cost calculator has no coin price," which is equally true
+of the fish trophies' materials and implies nothing about return. Construction
+goes 556 modelled to 559; the three swords read 19,809-21,398 xp/hr, real
+enough to be interesting and still under `wooden fence`'s 55,436, so no
+climb moves.
+
 **A published figure that covers part of an activity is a scale, not the
 answer.** Tithe Farm is the worked example and the shape is worth copying.
 The Farming guide quotes one rate, "from level 74 onwards ... 90,000-100,000",

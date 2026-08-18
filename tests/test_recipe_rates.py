@@ -21,6 +21,7 @@ from chunksim.costing.recipe_rates import (
     computed_rates,
     index_recipes,
     material_candidates,
+    material_seconds,
     names_variant,
     stocks,
     rate_for,
@@ -118,6 +119,54 @@ def test_material_seconds_are_summed_not_recovered_by_subtraction() -> None:
 
     assert chosen is not None
     assert chosen[2] == 0.0
+
+
+class TestAReturnedMaterialIsFreeOnTheLoop:
+    """The wiki states it identically for all three sword mounts: "when the
+    mounted sword object is destroyed, the sword is returned." A rate that
+    charged the sword every action was pricing a one-time quest reward as a
+    recurring cost."""
+
+    def test_the_sword_is_not_priced(self) -> None:
+        """Only the plank should ever reach `input_seconds` - a fixture that
+        refuses everything still prices, because the sword never gets asked
+        about."""
+
+        def refuses_everything(item: str, quantity: float) -> float | None:
+            return None if item == "Darklight" else 10.0
+
+        recipe = _recipe(
+            "Darklight (mounted)",
+            skill="Construction",
+            materials=(Material("Teak plank", 2.0), Material("Darklight", 1.0)),
+        )
+
+        assert material_seconds(recipe, refuses_everything) == 10.0
+
+    def test_a_different_recipe_naming_the_same_material_still_pays(self) -> None:
+        """The exemption is keyed on `(output, material)`, not on the
+        material alone - Darklight the *unmounted* weapon is an ordinary item
+        anywhere else it appears."""
+        recipe = _recipe(
+            "Some other thing",
+            skill="Construction",
+            materials=(Material("Darklight", 1.0),),
+        )
+
+        assert material_seconds(recipe, _free) == 0.0
+        assert material_seconds(recipe, lambda item, qty: None) is None
+
+    def test_a_fish_trophy_pays_for_its_fish(self) -> None:
+        """Checked and rejected as a general `(mounted)` rule: the fish and
+        head trophies beside these say the opposite on their own pages -
+        "cannot be removed to retrieve the stuffed fish"."""
+        recipe = _recipe(
+            "Mounted bass",
+            skill="Construction",
+            materials=(Material("Oak display", 1.0), Material("Stuffed big bass", 1.0)),
+        )
+
+        assert material_seconds(recipe, lambda item, qty: None) is None
 
 
 def test_only_valid_primary_methods_are_priced() -> None:
