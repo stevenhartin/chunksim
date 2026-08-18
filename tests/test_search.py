@@ -133,6 +133,73 @@ def test_build_world_index_covers_the_challenge_output_route() -> None:
     assert source.name == "Smelt a bar"
 
 
+def test_a_shop_source_names_a_table_the_walk_can_price_deterministically() -> None:
+    """`Source: "shop"` is upstream's own flag, and a shop whose page is not
+    a `{{Shop}}` infobox - `~|Castle Wars Ticket Exchange|~` - states its
+    `Output` as a loot table the same way a monster's drop table does. The
+    `task:` route prices a table as a roll, which is wrong for a shop: every
+    item is a deterministic purchase, so a `shop` route is seeded too."""
+    info = _chunk_info(
+        challenges={
+            "Nonskill": {
+                "~|Ticket Exchange|~": {
+                    "Source": "shop",
+                    "Output": "Tickets loot",
+                }
+            }
+        },
+        skillItems={"Nonskill": {"Tickets loot": {"Decorative helm": {"1": "Always"}}}},
+    )
+
+    world = build_world_index(info)
+
+    # A plain `skillItems` route is seeded too - that is `table_contents`'s
+    # own machinery, unrelated to this change. What is new is `shop` beside
+    # the `task:` route the table already had.
+    routes = {s.route for s in world.item_sources["Decorative helm"]}
+    assert {"task:Nonskill", "shop"} <= routes
+    (shop_source,) = [s for s in world.item_sources["Decorative helm"] if s.route == "shop"]
+    assert shop_source.name == "~|Ticket Exchange|~"
+
+
+def test_a_non_shop_source_is_not_given_a_shop_route() -> None:
+    """The flag is what decides it, not the shape - a genuine random-drop
+    table stays a `task:` route only."""
+    info = _chunk_info(
+        challenges={
+            "Fishing": {
+                "Catch a ~|raw swordfish|~": {"Output": "Raw swordfish loot"}
+            }
+        },
+        skillItems={"Fishing": {"Raw swordfish loot": {"Raw swordfish": {"1": "Always"}}}},
+    )
+
+    world = build_world_index(info)
+
+    assert "shop" not in {s.route for s in world.item_sources["Raw swordfish"]}
+
+
+def test_a_shop_selling_the_item_directly_also_gets_a_shop_route() -> None:
+    """Most `Source: "shop"` challenges already name the item as their own
+    `Output` - `Buy a forestry kit from the ~|Forestry Shop|~*` - and those
+    get the same treatment, so a future price for any of them needs no
+    further change here."""
+    info = _chunk_info(
+        challenges={
+            "Nonskill": {
+                "Buy a thing from the ~|Shop|~*": {
+                    "Source": "shop",
+                    "Output": "Thing",
+                }
+            }
+        }
+    )
+
+    world = build_world_index(info)
+
+    assert {s.route for s in world.item_sources["Thing"]} == {"task:Nonskill", "shop"}
+
+
 def test_build_world_index_walks_sectioned_and_unsectioned_chunks() -> None:
     info = _chunk_info(
         chunks={

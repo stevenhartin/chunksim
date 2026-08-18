@@ -28,7 +28,15 @@ way):
 - a challenge's `Output` field - crafted/cooked/smithed/produced items,
   keyed by the producing challenge rather than a place at all; "available"
   for this route means the challenge is currently valid, not that some
-  chunk is unlocked.
+  chunk is unlocked. **A second, `shop`-routed copy is added wherever the
+  challenge's own `Source` says `"shop"`** - 46 of them, a real shop upstream
+  itself flags as one even where its `Output` names a loot table rather than
+  an item (`~|Castle Wars Ticket Exchange|~`'s is `Castle Wars tickets
+  loot`). That distinction is what lets `estimate._route_hours` price the
+  item as a deterministic purchase instead of as a roll of a table that was
+  never really random - see `costing/heuristics.DEFAULT_SHOP_PRICES` for the
+  one shop this currently prices; the other 45 gain the route for free and
+  price nothing until their own figures are supplied.
 
 Because `sources.py` covers only 3 of those 5 routes, **this module's
 availability marking is a strict superset of `chunksim sources`'s**: a query can
@@ -204,8 +212,26 @@ def build_world_index(chunk_info: ChunkInfo) -> WorldIndex:
             if not isinstance(challenge, dict):
                 continue
             output = challenge.get("Output")
+            # **Upstream's own `Source: "shop"` names a real shop, even where
+            # its `Output` is a table rather than an item.** 46 challenges
+            # carry the flag; most (`Buy a forestry kit from the ~|Forestry
+            # Shop|~*`) already have an `Output` naming the item itself, but a
+            # shop selling many things - `~|Castle Wars Ticket Exchange|~` -
+            # states its `Output` as a loot table (`Castle Wars tickets
+            # loot`) the same way a monster's drop table does, and
+            # `estimate._route_hours`'s `task:` branch prices a table as a
+            # *roll* - which is wrong for a shop, where every item is a
+            # deterministic purchase and there is no chance to roll at all.
+            # Seeding a `shop` route too, alongside the existing `task:` one,
+            # costs nothing where no price is known (`_route_hours` refuses a
+            # shop with no entry in `Heuristics.shop_prices` exactly as it
+            # refuses one with no scrape) and is what lets
+            # `heuristics.DEFAULT_SHOP_PRICES` reach the item at all.
+            is_shop = challenge.get("Source") == "shop"
             if isinstance(output, str):
                 add_source(output, ItemSource(f"task:{category}", name))
+                if is_shop:
+                    add_source(output, ItemSource("shop", name))
                 # **A challenge's `Output` is often a table, not an item**, and
                 # 223 of them are: `Catch a ~|raw swordfish|~` outputs
                 # `Raw swordfish loot`, which is
@@ -219,6 +245,8 @@ def build_world_index(chunk_info: ChunkInfo) -> WorldIndex:
                 # 1/2500 member costs 2,500 performances rather than one.
                 for made in table_contents.get(output, ()):  # noqa: B007
                     add_source(made, ItemSource(f"task:{category}", name))
+                    if is_shop:
+                        add_source(made, ItemSource("shop", name))
 
     boss_monsters = frozenset(_mapping(chunk_info.code_items, "bossMonsters"))
 

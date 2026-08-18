@@ -896,11 +896,10 @@ def primary_training_tasks(chunk_info: ChunkInfo) -> dict[str, str]:
 #: point of listing it separately - an obsidian weapon at 375 Tokkul costs
 #: fifteen times what its coin price would suggest.
 #:
-#: A currency **absent from this map is refused, not guessed**: castle wars
-#: tickets, trading sticks and the various point currencies have no exchange
-#: rate anyone would agree on, so an item sold only for those has no price
-#: here rather than a free one. Override under `currencies` in
-#: `heuristics/overrides.json`.
+#: A currency **absent from this map is refused, not guessed**: trading
+#: sticks and the various point currencies have no exchange rate anyone would
+#: agree on, so an item sold only for those has no price here rather than a
+#: free one. Override under `currencies` in `heuristics/overrides.json`.
 DEFAULT_CURRENCY_PER_HOUR: dict[str, float] = {
     "Coins": 500_000.0,
     "Tokkul": 25_000.0,
@@ -914,12 +913,58 @@ DEFAULT_CURRENCY_PER_HOUR: dict[str, float] = {
     "Abyssal pearls": 40.0,
     "Tithe": 80.0,
     "Zeal Tokens": 200.0,
+    # **The go-to method is organising scored draws, not playing to win.**
+    # Both teams score a ticket-earning draw at once, which the wiki confirms
+    # pays 2 tickets a side on a non-dedicated world (3 on a dedicated one -
+    # not modelled, since a scored draw needs cooperation either way and the
+    # smaller figure is what a solo player can rely on organising). A game is
+    # a stated 20 minutes and the wiki states the wait between games at a
+    # non-dedicated world's 2 - so 22 minutes and 2 tickets is 11 minutes a
+    # ticket, `60 / 11` an hour. User-stated method, wiki-checked timing.
+    "Castle Wars ticket": 60.0 / 11.0,
     # **`Points` is not one currency.** 127 store lines are priced in
     # something called Points and they are not interchangeable - Mahogany
     # Homes, Pest Control and the Barbarian Assault shops each mean their own.
     # So a rate may be qualified by shop, `"<shop>:<currency>"`, and that is
     # checked before the bare name. Mahogany Homes pays roughly 100 an hour.
     "Mahogany Homes Reward Shop:Points": 100.0,
+}
+
+#: `shop_prices`' own floor, for the one shop the scrape cannot reach.
+#: `~|Castle Wars Ticket Exchange|~`'s wiki page is a hand-written stock
+#: table rather than a `{{Shop}}` infobox, which is what the Bucket query
+#: `remote/stores.py` runs actually reads - so `wiki_rates.json`'s `shops`
+#: key has never carried it and a re-scrape cannot fix that. Nine rows, the
+#: decorative armour Construction's three `cw armour` tasks want, read
+#: straight off the page: red 4/5/8/6, white 40/40/80/60, gold
+#: 400/500/800/600 tickets for helm/full helm/platebody/shield - only
+#: helm/platebody/shield are named by any task, so only those are carried.
+#: Merged the same way `DEFAULT_CURRENCY_PER_HOUR` is: the scrape would win
+#: if it ever did cover this shop, exactly as `currencies` overrides these.
+DEFAULT_SHOP_PRICES: dict[str, dict[str, ShopPrice]] = {
+    "~|Castle Wars Ticket Exchange|~": {
+        "Decorative helm (red)": ShopPrice(price=4.0, currency="Castle Wars ticket"),
+        "Decorative armour (red platebody)": ShopPrice(
+            price=8.0, currency="Castle Wars ticket"
+        ),
+        "Decorative shield (red)": ShopPrice(price=6.0, currency="Castle Wars ticket"),
+        "Decorative helm (white)": ShopPrice(price=40.0, currency="Castle Wars ticket"),
+        "Decorative armour (white platebody)": ShopPrice(
+            price=80.0, currency="Castle Wars ticket"
+        ),
+        "Decorative shield (white)": ShopPrice(
+            price=60.0, currency="Castle Wars ticket"
+        ),
+        "Decorative helm (gold)": ShopPrice(
+            price=400.0, currency="Castle Wars ticket"
+        ),
+        "Decorative armour (gold platebody)": ShopPrice(
+            price=800.0, currency="Castle Wars ticket"
+        ),
+        "Decorative shield (gold)": ShopPrice(
+            price=600.0, currency="Castle Wars ticket"
+        ),
+    },
 }
 
 #: How this labels a shortcut rate it computed, in `Rate.match`.
@@ -1802,6 +1847,18 @@ def load(
     slayer_monsters: frozenset[str] = frozenset(),
 ) -> Heuristics:
     """Build a `Heuristics` from an already-merged config."""
+    scraped_shops = {
+        shop: {
+            item: ShopPrice(
+                price=_float(entry.get("price"), 0.0),
+                currency=str(entry.get("currency") or ""),
+            )
+            for item, entry in items.items()
+            if isinstance(entry, dict)
+        }
+        for shop, items in _entries(config, "shops")
+        if isinstance(items, dict)
+    }
     return Heuristics(
         quests={
             name: QuestRate(
@@ -1926,17 +1983,20 @@ def load(
             for entry in config.get("altars") or ()
             if isinstance(entry, dict) and entry.get("name")
         ),
+        # **`DEFAULT_SHOP_PRICES` underneath, the scrape on top** - the same
+        # layering `DEFAULT_CURRENCY_PER_HOUR` gets, so a shop the wiki's
+        # `{{Shop}}` scrape does reach always wins, and the one it structurally
+        # cannot (`~|Castle Wars Ticket Exchange|~`'s hand-written table) keeps
+        # its hand-verified floor. Merged shop by shop, not wholesale, so a
+        # scraped shop missing one item does not lose a default it never had.
         shop_prices={
-            shop: {
-                item: ShopPrice(
-                    price=_float(entry.get("price"), 0.0),
-                    currency=str(entry.get("currency") or ""),
-                )
-                for item, entry in items.items()
-                if isinstance(entry, dict)
-            }
-            for shop, items in _entries(config, "shops")
-            if isinstance(items, dict)
+            shop: {**DEFAULT_SHOP_PRICES.get(shop, {}), **items}
+            for shop, items in scraped_shops.items()
+        }
+        | {
+            shop: dict(items)
+            for shop, items in DEFAULT_SHOP_PRICES.items()
+            if shop not in scraped_shops
         },
         action_seconds={
             task: _float(value, 0.0)

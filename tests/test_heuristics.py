@@ -668,10 +668,67 @@ def test_every_priced_currency_is_a_stated_figure_someone_can_correct() -> None:
     assert DEFAULT_CURRENCY_PER_HOUR["Tithe"] == 80.0
     assert DEFAULT_CURRENCY_PER_HOUR["Zeal Tokens"] == 200.0
     assert DEFAULT_CURRENCY_PER_HOUR["Mahogany Homes Reward Shop:Points"] == 100.0
+    # 20 minutes a game plus a non-dedicated world's 2-minute wait, 2 tickets
+    # for a scored draw: 60/11 an hour. User-stated method, wiki-checked
+    # timing - see the constant's own comment.
+    assert DEFAULT_CURRENCY_PER_HOUR["Castle Wars ticket"] == pytest.approx(60.0 / 11.0)
     # **Unqualified `Points` must stay unrated.** 127 store lines use the name
     # and they are not interchangeable; giving it a rate would hand Mage
     # Training Arena and Pest Control gear Mahogany Homes' pace.
     assert "Points" not in DEFAULT_CURRENCY_PER_HOUR
+
+
+def test_default_shop_prices_fill_the_shop_the_scrape_cannot_reach() -> None:
+    """`~|Castle Wars Ticket Exchange|~`'s wiki page is a hand-written stock
+    table rather than a `{{Shop}}` infobox, which is the only shape
+    `remote/stores.py`'s Bucket query reads - so nothing here ever comes from
+    a re-scrape and the floor has to be right by itself."""
+    from chunksim.costing.heuristics import DEFAULT_SHOP_PRICES
+
+    prices = DEFAULT_SHOP_PRICES["~|Castle Wars Ticket Exchange|~"]
+    assert prices["Decorative helm (red)"].price == 4.0
+    assert prices["Decorative armour (red platebody)"].price == 8.0
+    assert prices["Decorative shield (red)"].price == 6.0
+    assert prices["Decorative helm (white)"].price == 40.0
+    assert prices["Decorative armour (white platebody)"].price == 80.0
+    assert prices["Decorative shield (white)"].price == 60.0
+    assert prices["Decorative helm (gold)"].price == 400.0
+    assert prices["Decorative armour (gold platebody)"].price == 800.0
+    assert prices["Decorative shield (gold)"].price == 600.0
+    assert {entry.currency for entry in prices.values()} == {"Castle Wars ticket"}
+
+
+def test_the_scrape_would_win_a_collision_with_the_default_shop() -> None:
+    """The same layering `DEFAULT_CURRENCY_PER_HOUR` gets: a shop the wiki's
+    `{{Shop}}` scrape does reach always wins, merged shop by shop rather than
+    wholesale so a scraped shop missing one item does not lose a default it
+    never had."""
+    from chunksim.costing.heuristics import load
+
+    heuristics = load(
+        {
+            "shops": {
+                "~|Castle Wars Ticket Exchange|~": {
+                    "Decorative helm (red)": {"price": 999.0, "currency": "Coins"}
+                }
+            }
+        }
+    )
+
+    prices = heuristics.shop_prices["~|Castle Wars Ticket Exchange|~"]
+    assert prices["Decorative helm (red)"].price == 999.0
+    assert prices["Decorative helm (red)"].currency == "Coins"
+    # Everything the scrape did not mention keeps the hand-verified floor.
+    assert prices["Decorative armour (red platebody)"].price == 8.0
+
+
+def test_a_default_shop_with_no_scrape_entry_at_all_still_loads() -> None:
+    from chunksim.costing.heuristics import load
+
+    heuristics = load({})
+
+    prices = heuristics.shop_prices["~|Castle Wars Ticket Exchange|~"]
+    assert prices["Decorative helm (red)"].price == 4.0
 
 
 def test_burning_a_log_is_an_inventory_at_a_time() -> None:

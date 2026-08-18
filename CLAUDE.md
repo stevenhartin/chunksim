@@ -344,6 +344,37 @@ against the wiki, is in the table. No climb moves on fray, verf or
 fray-uber; `Build an ~|ancient altar|~` prices at 761/hr, below the floor
 anything else on the climb already clears.
 
+**A currency this project would not price was a currency nobody had asked
+about.** Castle Wars armour joins a real recipe and refused on every input,
+which read as the standard shape - an item the world does not provide - and
+was not: `~|Castle Wars Ticket Exchange|~` is valid on the ceiling, upstream's
+own `Source: "shop"` flag says so, and the wiki states the price of every
+piece. What blocked it was two gaps at once. The wiki's page is a hand-written
+stock table rather than a `{{Shop}}` infobox, the one shape `remote/stores.py`'s
+Bucket query reads, so no re-scrape has ever reached it or ever will -
+`heuristics.DEFAULT_SHOP_PRICES` is nine rows read off the page by hand,
+merged under the scrape the same way `DEFAULT_CURRENCY_PER_HOUR` is. And the
+shop's own `Output` names a loot table (`Castle Wars tickets loot`) exactly
+the way a monster's drop table does, which routed it through `estimate.
+_route_hours`'s `task:` branch - pricing a deterministic purchase as a random
+roll, the wrong mechanic entirely. `derive/search.build_world_index` now
+seeds a `shop` route alongside the `task:` one wherever upstream's own
+`Source: "shop"` says so - 46 challenges carry the flag, and the change is
+inert for the other 45 until someone supplies their prices too, since a shop
+with no entry in `DEFAULT_SHOP_PRICES` prices exactly as it did before.
+
+**The rate itself is the user's own method, and the wiki checks the timing
+rather than supplying it.** The go-to approach is organising scored draws,
+which pay both teams at once rather than fighting for a win: 2 tickets a side
+on a non-dedicated world, which the wiki confirms (3 on a dedicated one, not
+modelled - a scored draw needs cooperation either way, and the smaller figure
+is what a solo player can rely on organising). A game is a stated 20 minutes
+and the wiki states a non-dedicated wait of 2, so 22 minutes for 2 tickets is
+`60/11` an hour. Construction goes 553 modelled to 556; the three armour
+tasks read 40.8/4.5/0.5 hr against 18/180/1,800 tickets respectively, all
+under the floor anything else on the climb clears, so no climb moves on any
+of the three maps.
+
 **A published figure that covers part of an activity is a scale, not the
 answer.** Tithe Farm is the worked example and the shape is worth copying.
 The Farming guide quotes one rate, "from level 74 onwards ... 90,000-100,000",
