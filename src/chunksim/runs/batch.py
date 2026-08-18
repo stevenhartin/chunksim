@@ -752,6 +752,36 @@ def price_steps(
     Capping the count keeps slices long enough for the carry to pay, and the
     wall clock barely moves because a slice is one expensive head and a tail
     of near-free steps either way.
+
+    ### Overlapping the two rounds was tried and rejected
+
+    The barrier between them looks like the obvious waste: `pool.map` over the
+    warm groups drains before a single price future is submitted, so on 51
+    steps at 16 jobs the pricing round runs nine slices while seven workers do
+    nothing. Splitting each slice's warm off separately and submitting its
+    price the moment *that* warm lands is a small change, and it cannot even
+    be wrong - warming only fills `cache/derived/`, and `price_slice` derives
+    what it does not find, so a mis-ordering costs a repeated derivation and
+    never an answer.
+
+    **It bought nothing, measured** (verf, 8 physical cores / 16 logical, cold
+    `cache/derived/` each time): 17 steps went 5.53s -> 6.38s at 4 jobs and
+    4.03s -> 4.15s at 16; 51 steps 9.10s -> 9.87s at 16. Run-to-run noise is
+    ±8% - the inline `jobs=1` path, which the change did not touch, moved
+    13.7s -> 14.9s across the same pair of runs - so nothing here clears it.
+    The reason is that the staggering it needs does not exist: with sixteen
+    workers and a run this length every warm task starts at once and they
+    finish together, so no slice is ready appreciably before the rest. The
+    idle workers are real and there is nothing to fill them with.
+
+    **What the split actually costs, for whoever measures this next**: warming
+    is 55-63% of the wall clock (51 steps at 16 jobs: 5.6s warm, 3.2s price)
+    and is already spread across every worker, while the price round is
+    bounded below by one cold `enrich` head - ~1.35s here, against ~0.09s for
+    each step after it in a slice. So the price round cannot go below ~1.35s
+    however it is scheduled, and the warm round is the work rather than an
+    overhead. The lever is making a derivation cheaper, not arranging them
+    differently.
     """
     if not held:
         return [], []
