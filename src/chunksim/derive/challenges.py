@@ -2562,13 +2562,35 @@ def calc_challenges(
       by identity is free but reads almost everything as changed - the hit rate
       went 90% to 33%.
 
-    **What would make it pay, for whoever tries next**: the invalidation has to
-    come from `_seed_items_with_outputs` reporting which names it actually
-    moved, since it is building the index anyway and knows. That turns the
-    714k comparisons into a set the seeder hands over, and the reuse rule then
-    costs one `frozenset.isdisjoint` per candidate. The ceiling is still the
-    41%, so the prize is roughly a fifth of `derive` rather than half of it -
-    worth having, but not worth reaching for through a diff.
+    **The fifth version drove the invalidation off the moved names, and it is
+    a wash.** That was the standing suggestion here - have the seeder say what
+    it moved rather than diffing for it - and the reason it does not pay is
+    worth more than the suggestion was. A reverse index from item name to the
+    candidates whose plan reads it makes invalidation proportional to the
+    **259 names that move in an average pass** rather than to the 6,000 settled
+    answers a forward sweep walks, which is what made the earlier attempts
+    quadratic. Built that way the scan carries 59% of its answers, cuts
+    `_dynamic_gates_met` to 1.39M calls, and derives byte-identically on all
+    three maps at **4.46s against the 4.45s it replaces**.
+
+    The saving is real and it is spent building the index that finds it. The
+    reader map costs 0.50s over the run because `candidates` is rebuilt every
+    *outer* pass and the memory has to be rebuilt with it - and the memory only
+    ever spans the ~4 inner passes after the first, which is all an outer pass
+    contains. Caching the index across outer passes is what would fix that, and
+    it is not available: measured, the candidate order is identical whenever
+    the count is, and changes whenever the count grows, so keying on the count
+    is *empirically* right and structurally a silent wrong answer waiting for
+    one challenge to be swapped for another. Keying on the candidate names
+    instead costs the 11,000 comparisons it was trying to save. With the cache
+    in anyway, to price the ceiling, the run is **4.38s - 1.6%**.
+
+    **So the ceiling is the thing to have measured, not the mechanism.** Three
+    of the five attempts failed on the cost of detecting a change and this one
+    does not; it fails on 41% of the gates being uncarryable and on the memory
+    being per-outer-pass, and no amount of cleverness about invalidation
+    touches either. Anyone trying a sixth time should price those two first -
+    the whole prize is 1.6%.
     """
     challenges = chunk_info.challenges
     max_skill = max_skill or {}
