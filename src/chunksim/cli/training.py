@@ -57,7 +57,6 @@ from chunksim.derive import pipeline
 from chunksim.derive.task_names import strip_task_markup
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.store import cache
-from chunksim.store.derived_cache import Digests
 
 #: What a status is called on screen, and the order they are counted in -
 #: worst first, because the tail is the work left to do.
@@ -81,10 +80,16 @@ def _report_export(args: argparse.Namespace) -> int:
     info = ChunkInfo(cache.read_chunkinfo(override=args.chunkinfo))
     base, payload = _ceiling_payload(info, args)
     state, unlocked = pipeline.load_map_state(payload, info, {})
-    derived = pipeline.derive(state, unlocked)
-    statuses = inputs.training_statuses(
-        state, unlocked, derived, Digests(chunkinfo="training"), valid=False
-    )
+    # **Cached derivation and real digests, like every other subcommand.**
+    # The ceiling state is the biggest derivation there is (~4.3s), and the
+    # first version of this called `pipeline.derive` directly - so the one
+    # command whose derive is most worth caching was the one that never did,
+    # and every invocation paid it again. The digests must be the real file
+    # hashes for the same reason `derive_cached` insists on them everywhere:
+    # a placeholder here served a stale pricing across an export refetch.
+    known = digests(args)
+    derived = derive_cached(args, state, unlocked, known)
+    statuses = inputs.training_statuses(state, unlocked, derived, known, valid=False)
     if args.export_json is not None:
         emit_json(
             {

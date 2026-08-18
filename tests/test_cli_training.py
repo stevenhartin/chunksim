@@ -89,3 +89,24 @@ def test_the_map_report_names_a_method_for_every_trainable_skill(
         # not the level-90 method.
         assert option.level is None or option.level <= answer.levels[skill]
         assert option.effective_xp_per_hour > 0
+
+
+def test_the_export_report_caches_its_derivation_and_keys_it_honestly() -> None:
+    """**The ceiling state is the biggest derivation there is, and the first
+    version of this command was the one place that never cached it** - every
+    invocation paid ~4.3s of `pipeline.derive` again, which is what made a
+    coverage report read as a slow command. It must go through
+    `derive_cached` like every other subcommand, and its digests must be the
+    real file hashes: the placeholder `Digests(chunkinfo="training")` it
+    shipped with served a stale pricing straight across an export refetch,
+    because nothing in the key moved when the export did.
+    """
+    import inspect
+
+    from chunksim.cli import training as module
+
+    source = inspect.getsource(module._report_export)
+    assert "derive_cached(" in source, "the ceiling derivation must be cached"
+    assert "digests(args)" in source, "and keyed by the real file digests"
+    assert "pipeline.derive(" not in source
+    assert 'Digests(chunkinfo="training")' not in inspect.getsource(module)
