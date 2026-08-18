@@ -1009,6 +1009,14 @@ def _gathered(
     # table and Cooking gets this.
     for skill, methods in tempoross.cooking_methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
+    # **And its repairs, which are the one guess in that module** - `4 x level`
+    # a repair is published, five games an hour is the module's own, and how
+    # many repairs a game holds is not stated anywhere. See
+    # `tempoross.REPAIRS_PER_GAME`; the bands are `GUESS` because of it.
+    for skill, methods in tempoross.construction_methods(
+        derived.challenges.valid
+    ).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
     # **Trouble Brewing's Cooking is a woodcutting loop**, so the *Woodcutting*
     # level and the axe the map holds decide it - see
     # `costing/troublebrewing.py`, which retires the 15,000 `stated.py` was

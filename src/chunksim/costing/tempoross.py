@@ -86,7 +86,7 @@ from __future__ import annotations
 
 from typing import Mapping, Sequence
 
-from chunksim.costing.gathering import CONFIRMED, CURVE_STEPS, units_at
+from chunksim.costing.gathering import CONFIRMED, CURVE_STEPS, GUESS, units_at
 from chunksim.costing.heuristics import ComputedMethod
 
 #: The export's own name for the catch, and the level Tempoross opens at.
@@ -124,6 +124,36 @@ COOKING_EXPERIENCE = 10.0
 #: The level the Cooking challenge opens at. Upstream's own, and it is 1: what
 #: gates this is reaching Tempoross, which is Fishing's business.
 COOKING_OPENS_AT = 1
+
+#: The third challenge, and the only one here whose rate rests on a guess.
+CONSTRUCTION_TASK = "Repair masts and totem poles at ~|Tempoross|~"
+CONSTRUCTION_SKILL = "Construction"
+CONSTRUCTION_ACTIVITY = "Tempoross (repairs)"
+
+#: Experience one repair pays, per point of Construction level. **Published,
+#: and not the 40 in the reward table** - that column is headed `Points`, and
+#: the 40 is what dousing a fire pays too. `Mast (Tempoross)` states the
+#: experience in prose and again in its `{{Skill info}}`: "Construction
+#: experience equal to 4 times the player's level", `skill1exp = 4 x
+#: Construction Level`.
+REPAIR_XP_PER_LEVEL = 4.0
+
+#: Repairs landed in one game. **The one invented number in this module**, and
+#: what marks the whole Construction rate a guess.
+#:
+#: Everything around it is published and none of it closes the question. A
+#: tether site breaks "between 15% and 25%" per wave, "rolled independently
+#: for each tether site" - so about one wave in five breaks any given site -
+#: and the cove has two masts and the island totem poles. What nothing states
+#: is **how many waves a game contains**: the wave is one of several attacks
+#: Tempoross chooses between, it only attacks above 10% energy, and the fight
+#: runs a variable number of phase cycles. Without that count the expected
+#: repairs cannot be derived, only estimated.
+#:
+#: One is the estimate, and it is deliberately the low end: a player fishing
+#: for max permits is not standing by a broken mast waiting to fix it, and a
+#: repair only pays if you are the one who does it.
+REPAIRS_PER_GAME = 1.0
 
 #: Harpoon -> the Fishing level it needs, and its `(level, xp/hr)` points from
 #: the wiki's **Not cooking** table. The plain and barb-tail harpoons share a
@@ -224,6 +254,49 @@ def cooking_methods(
             ),
         )
     }
+
+
+def construction_xp_per_hour(level: int) -> float:
+    """Construction an hour from repairs, at `level`.
+
+    `4 x level` a repair, one repair a game, five games an hour - so
+    **20 x level**, which is 1,980 an hour at 99 and 20 at level 1. Two of
+    those three factors are published; see `REPAIRS_PER_GAME` for the one
+    that is not, and why this method's bands are `GUESS` because of it.
+    """
+    return REPAIR_XP_PER_LEVEL * level * REPAIRS_PER_GAME * GAMES_PER_HOUR
+
+
+def construction_methods(
+    valid: Mapping[str, Mapping[str, object]],
+) -> dict[str, tuple[ComputedMethod, ...]]:
+    """`{"Construction": (...)}` where a map can reach Tempoross.
+
+    Banded, because the experience is a multiple of the *Construction* level
+    where the Cooking regime beside it is flat in Cooking - a repair pays
+    `4 x level` whoever swings the hammer.
+
+    **Marked `GUESS`, not `CONFIRMED`.** The other two regimes in this module
+    transcribe published figures; this one multiplies a published experience
+    by an invented count, and one invented factor makes the product invented.
+    Upstream's own challenge carries the house requirement the wiki notes -
+    "players without a house will no longer gain Construction experience" - so
+    that gate is the derivation's rather than this module's.
+    """
+    if CONSTRUCTION_TASK not in (valid.get(CONSTRUCTION_SKILL) or {}):
+        return {}
+    bands = tuple(
+        ComputedMethod(
+            method=CONSTRUCTION_ACTIVITY,
+            xp_per_hour=construction_xp_per_hour(level),
+            level=level,
+            match=GUESS,
+            knob=f"training/{CONSTRUCTION_TASK}/{CONSTRUCTION_SKILL}",
+        )
+        for level in (1, *CURVE_STEPS)
+        if construction_xp_per_hour(level) > 0
+    )
+    return {CONSTRUCTION_SKILL: bands} if bands else {}
 
 
 def methods(

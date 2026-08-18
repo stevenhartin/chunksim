@@ -113,6 +113,11 @@ The modules, and what each owns:
   for `troublebrewing.py`'s reason. Crafting's net repair sits in the same
   table and is **not** carried: its success chance depends on Crafting level
   and nothing charts it, which is `pickpocket.py`'s call for its seven NPCs.
+- `tempoross.py` also carries a **third regime**: repairing masts pays
+  Construction `4 x level` - the reward table's 40 is *points*, not experience
+  - and at one repair a game and five games an hour that is `20 x level`.
+  Its bands are `GUESS`, because nothing publishes how many waves a game holds
+  and one invented factor makes the product invented.
 - `valetotems.py` - the Fletching minigame, and the little Construction it
   pays. Two published tables that both close exactly: a totem is
   `4 x (build/carve + decorate)` on all six log tiers, and Construction is

@@ -7,6 +7,7 @@ import pathlib
 import pytest
 
 from chunksim.costing import tempoross as tp
+from chunksim.costing.gathering import GUESS
 
 
 class TestThePublishedTable:
@@ -228,3 +229,40 @@ class TestTheCookingRegime:
 
     def test_a_map_that_cannot_reach_it_gets_nothing(self) -> None:
         assert tp.cooking_methods({"Cooking": {}}) == {}
+
+
+class TestTheRepairsAreAGuessAroundPublishedTerms:
+    """The one regime in this module resting on an invented number, and the
+    only one whose bands are `GUESS` because of it."""
+
+    _VALID = {"Construction": {tp.CONSTRUCTION_TASK: True}}
+
+    def test_the_experience_is_four_times_the_level_not_the_forty_points(self) -> None:
+        """The reward table's 40 is under a column headed `Points` - dousing a
+        fire pays the same 40 and no experience at all. `Mast (Tempoross)`
+        states the experience twice: in prose and in its `{{Skill info}}`."""
+        assert tp.REPAIR_XP_PER_LEVEL == 4.0
+
+    def test_the_rate_is_twenty_times_the_level(self) -> None:
+        """`4 x level` a repair, one repair a game, five games an hour."""
+        assert tp.construction_xp_per_hour(99) == pytest.approx(1_980.0)
+        assert tp.construction_xp_per_hour(1) == pytest.approx(20.0)
+
+    def test_it_scales_with_construction_where_cooking_is_flat(self) -> None:
+        """A repair pays `4 x level` whoever swings the hammer, so unlike the
+        cooking regime beside it this is a curve rather than one number."""
+        assert tp.construction_xp_per_hour(80) == pytest.approx(
+            2 * tp.construction_xp_per_hour(40)
+        )
+
+    def test_the_bands_are_marked_a_guess(self) -> None:
+        """One invented factor makes the product invented, however published
+        the other two are."""
+        bands = tp.construction_methods(self._VALID)["Construction"]
+
+        assert bands
+        assert {band.match for band in bands} == {GUESS}
+
+    def test_nothing_where_the_challenge_is_unreachable(self) -> None:
+        """Upstream's own challenge carries the house the wiki requires."""
+        assert tp.construction_methods({}) == {}

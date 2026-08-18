@@ -414,6 +414,25 @@ goes 556 modelled to 559; the three swords read 19,809-21,398 xp/hr, real
 enough to be interesting and still under `wooden fence`'s 55,436, so no
 climb moves.
 
+**A number in a table is only the number the column header says it is.**
+Tempoross' reward table gives "Repairing totems/masts" as **40**, and it is
+40 *points* - the column is headed `Points` and dousing a fire pays the same
+40 for no experience at all. The experience is on the object's own page,
+stated twice: "Construction experience equal to 4 times the player's level",
+and `{{Skill info}}`'s `skill1exp = 4 x Construction Level`. So repairs are
+`4 x level`, not a flat 40, and the difference is 25x at the top of the climb.
+
+**What is left over is one honest guess, named as one.** A tether site breaks
+"between 15% and 25%" per wave, "rolled independently for each tether site" -
+but nothing states **how many waves a game contains**, because the wave is one
+of several attacks Tempoross chooses between, it only attacks above 10%
+energy, and the fight runs a variable number of phase cycles. So
+`tempoross.REPAIRS_PER_GAME` is 1, deliberately the low end, and it is the
+only invented factor in a module that otherwise transcribes: `4 x level` a
+repair and five games an hour are both published, so the rate is `20 x level`
+and the bands are `GUESS` because one invented factor makes the product
+invented.
+
 **Where an activity caps what you can earn, the mechanic is a budget and the
 model is division.** The Fishing Trawler tabulates what each action on the
 boat pays in contribution points *and* in experience, then caps a game at 255
