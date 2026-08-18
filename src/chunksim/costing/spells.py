@@ -110,6 +110,10 @@ TICK_SECONDS = 0.6
 #: Stripped before pricing, exactly as `estimate._route_hours` strips it.
 CONSUMED = "*"
 
+#: Upstream's marker for "any member of this family will do", stripped for the
+#: quest-reward test in `rate_for` - a family name never matches a prize.
+FAMILY = "[+]"
+
 
 #: How upstream names a cast paid for with a blighted sack rather than runes.
 #: Longest first, so `Cast ~|X|~ from a blighted spell sack` is not left with a
@@ -196,10 +200,56 @@ def cast_seconds(cost: MaterialCost) -> float:
     return (cost.ticks or 0.0) * TICK_SECONDS
 
 
+def quest_rewards(chunk_info: ChunkInfo) -> frozenset[str]:
+    """Every item a quest or diary hands over, from the export's own `Reward`.
+
+    206 of them, and **138 have no route in `WorldIndex.item_sources`** -
+    `derive/search.build_world_index` reads a challenge's `Output` and not its
+    `Reward`, so a quest prize is an item the walk cannot price. See
+    `held_free` for why that is not the gap it looks like.
+    """
+    found: set[str] = set()
+    for challenges in chunk_info.challenges.values():
+        if not isinstance(challenges, dict):
+            continue
+        for challenge in challenges.values():
+            if not isinstance(challenge, dict):
+                continue
+            found.update(
+                item for item in (challenge.get("Reward") or ()) if isinstance(item, str)
+            )
+    return frozenset(found)
+
+
+def held_free(item: str, rewards: frozenset[str]) -> bool:
+    """Whether `item` is a quest prize this challenge *holds* rather than eats.
+
+    **The quest is already done, or the challenge would not be valid.** Every
+    layer here prices only challenges in the derivation's `valid` set, and
+    upstream gates `Cast ~|iban blast|~` on `Underground Pass` and the nine
+    resurrections on `A Kingdom Divided`. So the staff and the book are in
+    hand before the first cast, and charging one per cast bills the whole
+    quest every three seconds - which is why both refused outright rather than
+    merely reading slow: neither has a route at all.
+
+    **Both halves are needed and the marker alone is not enough.** Upstream
+    writes `*` for an item an action consumes, and it is not reliable on its
+    own - `Cast ~|bones to bananas|~` lists `Big bones[+]` unmarked and
+    plainly eats it. What makes this safe is the conjunction: measured over
+    the whole export, six quest-reward items are named by a primary training
+    method and **every one of them is unmarked** - `Book of the dead` (nine
+    casts), `Iban's staff`, `Bosun's workbench schematic`, and the three quest
+    swords a mount displays. Not one quest prize is consumed by anything, so
+    nothing is undercharged by this.
+    """
+    return item in rewards
+
+
 def rate_for(
     challenge: Mapping[str, Any],
     cost: MaterialCost,
     input_seconds: Callable[[str, float], float | None],
+    rewards: frozenset[str] = frozenset(),
 ) -> float | None:
     """Experience an hour for one cast, or `None` where an input has no route.
 
@@ -211,7 +261,12 @@ def rate_for(
     for item in challenge.get("Items") or ():
         if not isinstance(item, str):
             continue
-        priced = input_seconds(item.replace(CONSUMED, "").strip(), 1.0)
+        wanted = item.replace(CONSUMED, "").strip()
+        bare = wanted.replace(FAMILY, "").strip()
+        # A quest prize the cast holds rather than eats - see `held_free`.
+        if CONSUMED not in item and held_free(bare, rewards):
+            continue
+        priced = input_seconds(wanted, 1.0)
         if priced is None:
             return None
         seconds += priced
@@ -223,6 +278,7 @@ def rate_for(
 def unroutable(
     challenge: Mapping[str, Any],
     input_seconds: Callable[[str, float], float | None],
+    rewards: frozenset[str] = frozenset(),
 ) -> str:
     """The first item of `challenge` the walk cannot route, or `""`.
 
@@ -236,6 +292,8 @@ def unroutable(
         if not isinstance(item, str):
             continue
         wanted = item.replace(CONSUMED, "").strip()
+        if CONSUMED not in item and held_free(wanted.replace(FAMILY, "").strip(), rewards):
+            continue
         if input_seconds(wanted, 1.0) is None:
             return wanted
     return ""
@@ -255,6 +313,7 @@ def computed_rates(
     challenge upstream does not call a training method is not one here either.
     """
     challenges = _mapping(chunk_info.challenges, "Magic")
+    rewards = quest_rewards(chunk_info)
     priced: dict[str, float] = {}
     for task, cost in castable(with_sacks(costs, challenges)).items():
         if task not in (valid.get("Magic") or {}):
@@ -262,12 +321,12 @@ def computed_rates(
         challenge = challenges.get(task)
         if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
             continue
-        rate = rate_for(challenge, cost, input_seconds)
+        rate = rate_for(challenge, cost, input_seconds, rewards)
         if rate is not None and rate > 0:
             priced[task] = rate
         elif dropped is not None:
             # Diagnosed only on failure - see `unroutable`.
-            dropped[task] = unroutable(challenge, input_seconds)
+            dropped[task] = unroutable(challenge, input_seconds, rewards)
     return priced
 
 

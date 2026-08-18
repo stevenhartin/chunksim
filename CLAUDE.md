@@ -453,14 +453,32 @@ their rune twins, which is right - `Cast ~|entangle|~ from a spell sack` is
 2,145/hr against the plain cast's 41,681, because a sack is a rare drop and
 runes are not.
 
-**What is left in Magic is honest.** Of 39 unpriced methods: **17 have no
+**A quest prize is held, not eaten, and the export says which items those
+are.** `Cast ~|iban blast|~` wanted an `Iban's staff` and the nine
+resurrections a `Book of the dead`, and both refused outright rather than
+reading slow - because `derive/search.build_world_index` reads a challenge's
+`Output` and not its `Reward`, so 138 of the export's 206 quest prizes have no
+route at all. That is not the gap it looks like: **the quest is already done,
+or the challenge would not be valid**, and every layer here prices only what
+the derivation calls valid. Charging one per cast bills the whole quest every
+three seconds.
+
+**The exemption is a conjunction and neither half would do alone.** Upstream's
+`*` marks what an action consumes and is not reliable by itself - `Cast
+~|bones to bananas|~` lists `Big bones[+]` unmarked and plainly eats it - and
+"is a quest reward" says nothing about consumption on its own. Together they
+are safe, and measured: six quest-reward items are named by a primary training
+method and **every one is unmarked** (`Book of the dead`, `Iban's staff`,
+`Bosun's workbench schematic`, and the three quest swords a mount displays), so
+nothing in the export is undercharged by this. Magic goes 136 modelled to 146.
+
+**What is left in Magic is honest.** Of 29 unpriced methods: **17 have no
 published cast speed at all** - the wiki's `infobox_spell` carries a `speed`
 field and leaves it *blank* for the Arceuus reanimations, offerings and
 resurrections, so there is nothing to fetch and a 5-tick default would be an
 invention; **8 want a `Blighted surge sack`** whose only source is a PvP Arena
-shop with no price; **10 are refused on a reagent**; and **4 are teleports**,
-answered by `costing/lectern.py` or not at all. Every one of the last two
-groups now names what it wanted.
+shop with no price, and say so; and **4 are teleports**, answered by
+`costing/lectern.py` or not at all.
 
 **A number in a table is only the number the column header says it is.**
 Tempoross' reward table gives "Repairing totems/masts" as **40**, and it is

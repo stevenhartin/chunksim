@@ -266,3 +266,55 @@ class TestSpellSacks:
 
     def test_a_variant_whose_base_is_unknown_is_skipped(self) -> None:
         assert self._SACK not in spells.with_sacks({}, self._CHALLENGES)
+
+
+class TestAQuestPrizeIsHeldNotEaten:
+    """`Cast ~|iban blast|~` needs Iban's staff and the nine resurrections a
+    Book of the dead, and both are quest rewards - so the quest is already
+    done, or the challenge would not be valid. Charging one per cast bills the
+    whole quest every three seconds, which is why both refused outright."""
+
+    _CHALLENGE = {
+        "Items": ["Fire rune[+]*", "Death rune*", "Iban's staff"],
+        "Primary": True,
+    }
+    _COST = MaterialCost(30.0, {"Fire rune": 5.0}, "Combat", 5.0)
+    _REWARDS = frozenset({"Iban's staff"})
+
+    def _refuses_the_staff(self, item: str, quantity: float) -> float | None:
+        return None if "staff" in item else 1.0
+
+    def test_the_prize_is_not_charged(self) -> None:
+        rate = spells.rate_for(
+            self._CHALLENGE, self._COST, self._refuses_the_staff, self._REWARDS
+        )
+
+        assert rate is not None and rate > 0
+
+    def test_without_the_reward_set_it_still_refuses(self) -> None:
+        """The exemption is the conjunction, not the marker - nothing is free
+        merely for being listed."""
+        assert spells.rate_for(self._CHALLENGE, self._COST, self._refuses_the_staff) is None
+
+    def test_a_consumed_item_is_charged_even_if_it_is_a_prize(self) -> None:
+        """**The marker alone is not enough and neither is the reward list.**
+        Upstream writes `*` for what an action eats, and measured over the
+        export not one quest prize carries it - but if one ever did, it would
+        be a reagent and must be paid for."""
+        challenge = {"Items": ["Iban's staff*"], "Primary": True}
+
+        assert spells.rate_for(challenge, self._COST, self._refuses_the_staff, self._REWARDS) is None
+
+    def test_the_diagnosis_does_not_blame_the_prize(self) -> None:
+        """`unroutable` must skip it too, or an unpriced cast names a staff
+        the player already owns."""
+        assert spells.unroutable(self._CHALLENGE, self._refuses_the_staff, self._REWARDS) == ""
+        assert spells.unroutable(self._CHALLENGE, self._refuses_the_staff) == "Iban's staff"
+
+    def test_the_reward_set_is_read_off_the_export(self) -> None:
+        info = ChunkInfo(
+            {"challenges": {"Quest": {"~|Underground Pass|~ Complete the quest": {
+                "Reward": ["Iban's staff", "Klank's gauntlets"]}}}}
+        )
+
+        assert spells.quest_rewards(info) == {"Iban's staff", "Klank's gauntlets"}
