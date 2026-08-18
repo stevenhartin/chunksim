@@ -609,9 +609,16 @@ def test_an_alias_pointing_nowhere_is_dropped() -> None:
 
 
 def test_unjoined_outputs_asks_only_about_names_a_recipe_could_answer() -> None:
-    """**Output names, never the task's own words.** `join_keys`' third key is
-    a sentence with the verb stripped, and handing those to the wiki asks
-    thousands of questions whose answer is always no."""
+    """**Titles, never sentences.** `Output` is upstream's own name for the
+    thing and the marked span is the item the task names - both are titles a
+    wiki page could have. `join_keys`' verb-stripped key is a sentence, and
+    handing thousands of those to the wiki asks questions whose answer is
+    always no.
+
+    The span used to be left out with the sentence, which is what kept a
+    challenge carrying no `Output` from ever being asked about - most of
+    Construction's furniture, including the `Demon throne` the wiki has filed
+    under `Demonic throne` all along."""
     info = ChunkInfo(
         {
             "challenges": {
@@ -630,9 +637,10 @@ def test_unjoined_outputs_asks_only_about_names_a_recipe_could_answer() -> None:
 
     wanted = unjoined_outputs(info, {"Smithing": _BRONZE})
 
-    # `Bronze bar` joined, the strut offers no `Output` and the non-primary row
-    # is not a training method - so exactly one name is worth asking about.
-    assert wanted == ("Bronze javelin heads",)
+    # `Bronze bar` joined and the non-primary row is not a training method.
+    # The strut offers no `Output` and is asked about by its span alone - the
+    # sentence it sits in ("a broken strut in the Motherlode Mine") never is.
+    assert wanted == ("Bronze javelin heads", "Strut")
 
 
 def test_the_credit_is_per_unit_of_output_not_per_action() -> None:

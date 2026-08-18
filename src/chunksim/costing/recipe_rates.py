@@ -620,10 +620,26 @@ def unjoined_outputs(
     blob would be a cache that answered differently depending on which map
     happened to be open when it was written.
 
-    Only the `Output` keys are asked about. `join_keys`' third key is the
-    task's own words with the verb stripped, which is a sentence rather than a
-    title (`a broken ~|strut|~ in the Motherlode Mine`) - handing those to the
-    wiki asks 2,000 questions to which the answer is always no.
+    **The two keys that are titles are asked about; the one that is a sentence
+    is not.** `Output` is upstream's own name for the thing, and the marked
+    span is the item the task names - that is what upstream writes `~|...|~`
+    *for*. `join_keys`' verb-stripped key is neither: it is a sentence (`a
+    broken ~|strut|~ in the Motherlode Mine`), and handing 2,000 of those to
+    the wiki asks questions whose answer is always no.
+
+    **Leaving the span out was costing whole families**, because a challenge
+    with no `Output` was never asked about at all - which is most of
+    Construction's furniture. It adds 465 names to 236, so 15 batched requests
+    rather than 6, and the wiki answers with **36 more aliases**: the Sailing
+    `javelin heads` -> `tips` rename across five metals that the bronze one
+    had already exposed through its `Output`, five snelms whose `(pointed)`
+    the wiki writes as a prefix, `Otherworldy` -> `Otherworldly` and `Chili` ->
+    `Chilli` where upstream's spelling is simply wrong, and eight POH pieces
+    the wiki files under another name (`Demon throne` -> `Demonic throne`,
+    `Wooden telescope` -> `Oak telescope`, `Icon of Bob` -> `Bob icon`).
+
+    An anchor is dropped first, for the reason `join_keys` offers the page
+    half: `wooden hull#Raft` is a section of a page and the page is the title.
     """
     wanted: set[str] = set()
     for skill, rows in recipes.items():
@@ -641,6 +657,13 @@ def unjoined_outputs(
                 value = challenge.get(field)
                 if isinstance(value, str) and value.strip():
                     wanted.add(value.strip())
+            span = task.partition("~|")[2].rpartition("|~")[0]
+            span = span.partition("#")[0].strip()
+            if span:
+                # Titled as the wiki titles a page, since that is what is
+                # being asked about - upstream lowercases the span inside its
+                # own sentence.
+                wanted.add(span[:1].upper() + span[1:])
     return tuple(sorted(wanted))
 
 
