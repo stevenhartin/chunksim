@@ -2474,3 +2474,55 @@ class TestTheFixpointWalk:
             window = source[at : at + 200]
             assert "fixpoint=_Fixpoint()" in window, site
             assert "leaf_routes={}" in window, site
+
+
+class TestKillFactsMatchKillHours:
+    """**Two expressions of one arithmetic, pinned against each other.**
+
+    The leaf scan prices kill routes off hoisted `_KillFact`s - gates, drop
+    rates and master waits resolved once per item - while `_kill_hours` stays
+    as the live path for superiors and any direct caller. If the two ever
+    disagree, a tie against a live route resolves differently and the winner
+    changes silently, which is exactly the class of bug an exact optimisation
+    must not have.
+    """
+
+    def _info(self) -> ChunkInfo:
+        return ChunkInfo(
+            {
+                "chunks": {"1111": {"Monsters": ["Goblin"]}},
+                "drops": {"Goblin": {"Bones": {"1": "Always"}, "Goblin mail": {"1": "1/8"}}},
+                "challenges": {},
+            }
+        )
+
+    def test_an_ungated_kill_agrees_to_the_float(self) -> None:
+        from chunksim.costing.estimate import _fact_hours, _fact_priced, _kill_facts, _kill_hours
+
+        walk = _walk_for(
+            self._info(), Heuristics(monsters={"Goblin": Rate(60.0, "mmg:x", "exact")})
+        )
+        walk = __import__("dataclasses").replace(walk, available=frozenset({"Goblin"}))
+
+        for quantity in (1.0, 3.0, 40.0):
+            live = _kill_hours(walk, "Goblin", "Goblin mail", quantity)
+            facts, _ = _kill_facts(
+                walk, "Goblin mail", walk.world.item_sources.get("Goblin mail", ())
+            )
+            assert live is not None and len(facts) == 1
+            hours, _ = _fact_hours(facts[0], quantity)
+            assert hours == live.hours, "not approx - the tie-break needs the bits"
+            assert _fact_priced(facts[0], quantity, "") == live
+
+    def test_a_source_that_cannot_price_is_dropped_once(self) -> None:
+        """Unreachable monsters produce no fact, matching `_kill_hours`'
+        `None` - and none of the per-quantity work it used to pay."""
+        from chunksim.costing.estimate import _kill_facts, _kill_hours
+
+        walk = _walk_for(self._info())  # nothing in `available`
+
+        assert _kill_hours(walk, "Goblin", "Goblin mail") is None
+        facts, live = _kill_facts(
+            walk, "Goblin mail", walk.world.item_sources.get("Goblin mail", ())
+        )
+        assert facts == () and live == ()

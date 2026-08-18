@@ -761,6 +761,20 @@ class _Walk:
     leaf_routes: dict[
         tuple[str, float, bool], tuple["_Priced", int] | None
     ] = field(default_factory=dict)
+    #: item -> the quantity-independent facts of its kill routes, plus the
+    #: leaf sources that still need a live call (free routes, and superiors,
+    #: which recurse). **What makes a leaf scan arithmetic**: on the
+    #: every-rollable-chunk map a common drop has hundreds of kill sources,
+    #: and the scan ran `_kill_hours` 1.26 million times - formatting a
+    #: detail string and allocating a `_Priced` for candidates that lose the
+    #: min. The facts hoist the gates, the drop rates and the per-master
+    #: assignment waits once per item; each `(quantity, amortise)` question
+    #: is then a few float operations per fact, and only the winner builds
+    #: its `_Priced`. Exact: same arithmetic in the same order, ties still
+    #: resolved by `item_sources` position.
+    kill_facts: dict[
+        str, tuple[tuple["_KillFact", ...], tuple[tuple[int, str, str], ...]]
+    ] = field(default_factory=dict)
     #: item -> its `task:` sources with their positions **and their
     #: challenges**, so the live half of the split loop neither re-filters
     #: `item_sources` nor re-reads the export per call - the challenge lookup
@@ -1100,15 +1114,37 @@ def _best_route(
     if key in walk.leaf_routes:
         held = walk.leaf_routes[key]
     else:
+        # **Kill routes are arithmetic over hoisted facts; only free routes
+        # and superiors run live.** See `_Walk.kill_facts`. The min is taken
+        # over `(hours, position)` so a tie between a fact and a live route
+        # still goes to whichever source `item_sources` lists first, exactly
+        # as the single loop it replaces did.
         held = None
-        for at, source in enumerate(sources):
-            if source.route.startswith("task:"):
-                continue
-            priced = _route_hours(
-                walk, item, source.route, source.name, quantity, amortise
-            )
-            if priced is not None and (held is None or priced.hours < held[0].hours):
+        parts = walk.kill_facts.get(item)
+        if parts is None:
+            parts = _kill_facts(walk, item, sources)
+            walk.kill_facts[item] = parts
+        facts, live = parts
+        best_hours = math.inf
+        best_at = -1
+        won_fact: _KillFact | None = None
+        won_master = ""
+        for fact in facts:
+            hours, master = _fact_hours(fact, quantity)
+            if hours < best_hours:
+                best_hours, best_at = hours, fact.at
+                won_fact, won_master = fact, master
+        for at, route, provider in live:
+            priced = _route_hours(walk, item, route, provider, quantity, amortise)
+            if priced is not None and (
+                priced.hours < best_hours
+                or (priced.hours == best_hours and at < best_at)
+            ):
+                best_hours, best_at = priced.hours, at
+                won_fact = None
                 held = (priced, at)
+        if won_fact is not None:
+            held = (_fact_priced(won_fact, quantity, won_master), best_at)
         walk.leaf_routes[key] = held
     best: _Priced | None
     if held is not None:
@@ -1527,6 +1563,128 @@ def _route_hours(
         )
 
     return _kill_hours(walk, provider, item, quantity)
+
+
+class _KillFact:
+    """One kill route's quantity-independent half - see `_Walk.kill_facts`."""
+
+    __slots__ = ("at", "provider", "chance", "per_kill", "kph", "task", "masters")
+
+    def __init__(
+        self,
+        at: int,
+        provider: str,
+        chance: float,
+        per_kill: float,
+        kph: float,
+        task: str | None,
+        masters: tuple[tuple[float, float, str], ...],
+    ) -> None:
+        self.at = at
+        self.provider = provider
+        self.chance = chance
+        self.per_kill = per_kill
+        self.kph = kph
+        #: The slayer task gating the monster, or `None` for a walk-up kill.
+        self.task = task
+        #: `(wait hours, assignment count, master)` per master that can
+        #: assign it - `hours_to_be_assigned` hoisted, since the wait walks
+        #: the master's whole table and depends on nothing but the task.
+        self.masters = masters
+
+
+def _kill_facts(
+    walk: _Walk, item: str, sources: Sequence[Any]
+) -> tuple[tuple[_KillFact, ...], tuple[tuple[int, str, str], ...]]:
+    """Split an item's leaf sources into kill facts and live-call leaves.
+
+    A source that can never price - unreachable, no drop rate, no kill rate,
+    gated on a task no master can assign - is dropped here once instead of
+    being refused per quantity, which is the same answer `_kill_hours` gives
+    it and none of the work.
+    """
+    facts: list[_KillFact] = []
+    live: list[tuple[int, str, str]] = []
+    waits: dict[str, tuple[tuple[float, float, str], ...]] = {}
+    for at, source in enumerate(sources):
+        route, provider = source.route, source.name
+        if route.startswith("task:"):
+            continue
+        if route in _FREE_ROUTES:
+            live.append((at, route, provider))
+            continue
+        if provider not in walk.available:
+            if walk.heuristics.superiors.get(provider):
+                # Superiors recurse into their base monster and stay live.
+                live.append((at, route, provider))
+            continue
+        rates = _drop_rates(walk, provider, item)
+        if rates is None or rates[0] <= 0 or rates[1] <= 0:
+            continue
+        rate = walk.heuristics.kills_per_hour(provider)
+        if rate.value <= 0:
+            continue
+        task = walk.task_gates.get(provider)
+        masters: tuple[tuple[float, float, str], ...] = ()
+        if task is not None:
+            if task not in waits:
+                found: list[tuple[float, float, str]] = []
+                for master in walk.masters:
+                    wait = master.hours_to_be_assigned(task)
+                    sized = (walk.heuristics.slayer.get(master.master) or {}).get(task)
+                    if wait is None or sized is None or sized.count <= 0:
+                        continue
+                    found.append((wait, sized.count, master.master))
+                waits[task] = tuple(found)
+            masters = waits[task]
+            if not masters:
+                # `_task_hours` would answer `None` at every quantity.
+                continue
+        facts.append(
+            _KillFact(at, provider, rates[0], rates[1], rate.value, task, masters)
+        )
+    return tuple(facts), tuple(live)
+
+
+def _fact_hours(fact: _KillFact, quantity: float) -> tuple[float, str]:
+    """A fact's hours at `quantity`, and the winning master where gated.
+
+    **The hot half**: pure arithmetic, no strings, no allocation - it runs
+    once per fact per question and almost every result loses the min. The
+    operations reproduce `_kill_hours`' exactly, floats and all, so a tie
+    against a live route resolves the same way it always did.
+    """
+    kills = max(1 / fact.chance, quantity / fact.per_kill)
+    if fact.task is None:
+        return kills / fact.kph, ""
+    hours = math.inf
+    won = ""
+    for wait, count, master in fact.masters:
+        assignments = max(1.0, kills / count)
+        candidate = assignments * (wait + count / fact.kph)
+        if candidate < hours:
+            hours, won = candidate, master
+    return hours, won
+
+
+def _fact_priced(fact: _KillFact, quantity: float, master: str) -> _Priced:
+    """The winner's `_Priced`, strings and knobs exactly as `_kill_hours`
+    builds them - only ever called for the route that won the min."""
+    kills = max(1 / fact.chance, quantity / fact.per_kill)
+    detail = f"{fact.provider} at 1/{1 / fact.chance:,.0f}, {fact.kph:g}/hr"
+    if kills > 1 / fact.chance:
+        detail = f"{fact.provider} x{kills:,.0f} kills, {fact.kph:g}/hr"
+    if fact.task is None:
+        return _Priced(
+            kills / fact.kph, detail, fact.provider, (f"monsters/{fact.provider}",)
+        )
+    hours, _ = _fact_hours(fact, quantity)
+    return _Priced(
+        hours,
+        f"{detail} on {fact.task} task",
+        fact.provider,
+        (f"monsters/{fact.provider}", f"slayer/{master}/{fact.task}"),
+    )
 
 
 def _kill_hours(
@@ -2059,6 +2217,8 @@ def _setup(
         # shares field references - so the subtree memo and the frame stack
         # are reset rather than inherited, or answers cached against one
         # corpus would be served against the other.
+        # `kill_facts` may ride along: nothing in it reads the recipe corpus
+        # or the experience table.
         walk = dataclasses.replace(
             walk, recipes=by_output, fixpoint=_Fixpoint(), leaf_routes={}
         )

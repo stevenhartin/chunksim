@@ -1306,6 +1306,42 @@ def price_slayer_tasks(
     wild = kit.wilderness if kit is not None else frozenset()
 
     filled: dict[str, dict[str, SlayerTask]] = {}
+    # **One fight per monster, however many masters assign it.** The loop
+    # below is master x task x candidate monster, and the same monster sits
+    # on many lists - Hellhound is priced 30 times on the every-rollable-chunk
+    # map, Greater demon 18 - while everything `best_kill` reads besides the
+    # monster is loop-invariant: the loadouts, the reductions, the wilderness
+    # and boss sets. A local memo, dying with this call like every cache in
+    # the pure layer.
+    fought: dict[str, tuple[KillEstimate | None, int]] = {}
+
+    def fight(bare: str) -> tuple[KillEstimate | None, int]:
+        held = fought.get(bare)
+        if held is not None:
+            return held
+        candidates = candidate_targets(monster_index, bare, versions)
+        kill = best_kill(
+            loadouts,
+            bare,
+            candidates,
+            on_slayer_task=True,
+            reductions=reductions,
+            wilderness=bare in wild,
+            boss=bare in boss_monsters,
+        )
+        hitpoints = 0
+        if kill is not None:
+            hitpoints = next(
+                (
+                    target.hitpoints
+                    for key, target in candidates
+                    if key == kill.monster
+                ),
+                0,
+            )
+        fought[bare] = (kill, hitpoints)
+        return kill, hitpoints
+
     for master, tasks in _mapping(chunk_info.data, "slayerMasterTasks").items():
         if not isinstance(tasks, dict):
             continue
@@ -1330,27 +1366,9 @@ def price_slayer_tasks(
             best_hitpoints = 0
             best_xp_per_hour = 0.0
             for monster in sorted(candidates_for):
-                bare = monster.split("#")[0]
-                candidates = candidate_targets(monster_index, bare, versions)
-                kill = best_kill(
-                    loadouts,
-                    bare,
-                    candidates,
-                    on_slayer_task=True,
-                    reductions=reductions,
-                    wilderness=bare in wild,
-                    boss=bare in boss_monsters,
-                )
+                kill, hitpoints = fight(monster.split("#")[0])
                 if kill is None:
                     continue
-                hitpoints = next(
-                    (
-                        target.hitpoints
-                        for key, target in candidates
-                        if key == kill.monster
-                    ),
-                    0,
-                )
                 # **XP per hour, not kills per hour.** A slayer kill is worth
                 # the monster's health, so the quickest thing on the list is
                 # routinely the worst thing to kill: a Scorpion dies in 1.9
