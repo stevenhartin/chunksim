@@ -275,3 +275,86 @@ class TestWhyTheCeilingHasNoRules:
         _, _, why = training._ceiling_payload(self._info(), self._args())
 
         assert why == "missing"
+
+
+class TestShowCategory:
+    """`--show-category unpriced` answers "what is still unpriced" - the
+    question the status table's counts provoke and could not previously be
+    followed up on without `--export-json` and a JSON tool."""
+
+    def _rows(self) -> dict[str, tuple[coverage.MethodStatus, ...]]:
+        def row(task: str, status: str, skill: str) -> coverage.MethodStatus:
+            return coverage.MethodStatus(
+                task=task, skill=skill, level=1, xp_per_hour=1000.0,
+                effective_xp_per_hour=1000.0, match="default", source="",
+                status=status, knob="", blocker="", blocked_by="",
+            )
+
+        return {
+            "Construction": (
+                row("Build a ~|thing|~", "unpriced", "Construction"),
+                row("Build a ~|fence|~", "modelled", "Construction"),
+            ),
+            "Cooking": (row("Cook a ~|fish|~", "unpriced", "Cooking"),),
+            "Mining": (row("Mine ~|ore|~", "modelled", "Mining"),),
+        }
+
+    def test_one_skill_is_filtered_to_the_status(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        training._print_skill_statuses(
+            self._rows()["Construction"], "Construction", None, "unpriced"
+        )
+
+        out = capsys.readouterr().out
+        assert "1 unpriced primary methods" in out
+        assert "Build a thing" in out
+        assert "fence" not in out
+
+    def test_without_a_skill_every_skill_is_grouped(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        training._print_category(self._rows(), "unpriced", None)
+
+        out = capsys.readouterr().out
+        assert "unpriced — 2 across 2 skill(s)" in out
+        assert "Construction (1)" in out and "Cooking (1)" in out
+        # A skill with none of the status is left out rather than printed
+        # empty - the point of asking is the list.
+        assert "Mining" not in out
+
+    def test_the_limit_says_what_it_hid(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A truncated list that does not say so reads as the whole answer."""
+        rows = self._rows()["Construction"]
+
+        training._print_skill_statuses(rows, "Construction", 1)
+
+        assert "1 more" in capsys.readouterr().out
+
+
+class TestResolvingNames:
+    """Both names are matched case-insensitively and a miss is an error -
+    they used to be `.get` lookups, so a typo printed an empty section and
+    exited 0, which is a real answer this report gives for other reasons."""
+
+    def test_a_skill_is_case_insensitive(self) -> None:
+        assert training._resolve("construction", coverage.SKILLS, "skill") == "Construction"
+
+    def test_a_category_accepts_the_label_the_table_prints(self) -> None:
+        """The table's column says `guessed` where the status is `guess`, and
+        a flag that rejects the word printed above the number it filters is a
+        trap."""
+        assert training._resolve("guessed", training._CATEGORIES, "category") == "guess"
+        assert training._resolve("guess", training._CATEGORIES, "category") == "guess"
+        assert (
+            training._resolve("hand-pinned", training._CATEGORIES, "category") == "pinned"
+        )
+
+    def test_nothing_given_stays_nothing(self) -> None:
+        assert training._resolve(None, coverage.SKILLS, "skill") is None
+
+    def test_a_miss_names_the_valid_values(self) -> None:
+        with pytest.raises(ValueError, match="unknown skill 'construcion'"):
+            training._resolve("construcion", coverage.SKILLS, "skill")

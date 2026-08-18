@@ -1223,7 +1223,7 @@ chunksim recipes [--chunkinfo P] # developer only: per-action xp + ticks -> .../
                                 # + the wiki's renames -> .../wiki_aliases.json
 chunksim gather-tables          # developer only: GET the gathering tables -> src/chunksim/heuristics/gathering.json
 chunksim estimate [BUCKET] [--limit N]                 # rough hours for the outstanding active tasks
-chunksim training [SKILL] [--map ID] [--rules-from MAP] # what trains each skill, and what priced it
+chunksim training [SKILL] [--map ID] [--rules-from MAP] [--show-category STATUS] # what trains each skill, and what priced it
 chunksim sections [list|CHUNK] [--limit N]             # reachable sections
 chunksim sources  [CATEGORY]   [--limit N]             # items/objects/monsters/npcs/shops
 chunksim tasks    [CATEGORY]   [--limit N]             # valid/active/obsolete/completed, incl. BiS
@@ -1251,7 +1251,19 @@ Env vars: `CHUNKSIM_CACHE` (the directory `cache/` is made under), `CHUNKSIM_CHU
 rather than defaulting one, which is why it sets `infer_map=False` and why `cli/app.main` has a hook
 for that. With a map it is about that world; without, it is about the *export* - how many of its
 2,707 primary methods are `modelled`, `pinned`, `published`, `guess`, `unpriced` or
-`unreachable` (`costing/coverage.py`).
+`unreachable` (`costing/coverage.py`). **`--show-category STATUS` turns any of those counts
+back into its list** - with a `SKILL` that skill's, without it every skill's grouped - which
+is the follow-up the table always provokes and which used to need `--export-json` and a JSON
+tool. Both the flag and the positional skill are matched case-insensitively against the names
+the table prints (so `guessed` reaches `guess`), and a miss names the valid values and exits
+`2` rather than printing an empty section.
+
+**And `--rules-from` is not optional in practice when several maps are cached.** With no
+rules borrowed, every rule-gated challenge fails a gate `coverage.blocker_for` cannot name -
+there is no rules branch for it to point at - so 866 land in the `unstated` bucket that is
+otherwise empty, and Construction reads 2 `unpriced` against 14. The counts are not a smaller
+version of the real answer but a different and much emptier one, so the report prints a
+warning saying so.
 
 **`uncompletable` and `unreachable` are one test asked of two worlds, and only one is
 news.** A method a particular map cannot do is the ordinary condition of a chunk map. A

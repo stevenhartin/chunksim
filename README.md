@@ -875,6 +875,18 @@ maps are your own work and nothing can recompute them.
    instead, which is not a smaller version of the real answer but a different and much emptier
    one - the report says so in a warning line, and the counts underneath it are not worth reading.
 
+   **`--show-category STATUS` turns any of those counts back into its list**, which is the
+   follow-up the table always provokes:
+
+   ```bash
+   chunksim training --rules-from fray --show-category unpriced Construction  # that skill's
+   chunksim training --rules-from fray --show-category unpriced --limit 3     # every skill's
+   ```
+
+   Both the status and the skill are matched case-insensitively against the names the table
+   prints (so `guessed` reaches `guess` and `construction` reaches `Construction`), and a name
+   that matches nothing lists the valid values rather than printing an empty section.
+
    `sections`, `sources`, `tasks` and `diff` print counts by default and take an optional positional
    to list one branch's contents in full; `--limit N` caps that.
 

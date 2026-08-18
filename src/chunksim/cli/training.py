@@ -6,6 +6,12 @@ Three questions, and which one is asked comes from the arguments:
     chunksim training --map fray      the best method for each skill on that map
     chunksim training Agility --map fray   every Agility method it can reach
 
+The status table's counts provoke a follow-up - *which* methods are those? -
+and `--show-category` answers it, for one skill or across all of them:
+
+    chunksim training --rules-from fray --show-category unpriced Construction
+    chunksim training --rules-from fray --show-category unpriced --limit 3
+
 **The no-map report is about the *project*, not about a world.** It answers
 "what has been modelled and what is still unpriced", which is a question about
 this code rather than about anybody's chunks. What it needs a world for is that
@@ -96,9 +102,62 @@ BLOCKER_LABELS: dict[str, str] = {
 
 
 def _cmd_training(args: argparse.Namespace) -> int:
+    # **Both names are matched case-insensitively, and a miss is an error.**
+    # Both used to be looked up with `.get`, so `training construcion` and
+    # `--show-category unpricd` each printed an empty section and exit 0 -
+    # a typo reading as "nothing here", which is a real answer this report
+    # gives for other reasons.
+    try:
+        args.skill = _resolve(args.skill, coverage.SKILLS, "skill")
+        args.show_category = _resolve(args.show_category, _CATEGORIES, "category")
+    except ValueError as error:
+        print(error)
+        return 2
+    if args.show_category and args.map_id is not None:
+        # The `--map` report is `TrainingAnswer` - best-per-skill and one
+        # skill's priced methods - and carries no statuses to filter by.
+        print(
+            "--show-category describes the export-wide report, so it cannot be"
+            " combined with --map; drop --map (optionally with --rules-from MAP)"
+        )
+        return 2
     if args.map_id is None:
         return _report_export(args)
     return _report_map(args)
+
+
+#: What `--show-category` accepts, mapping every spelling a reader might copy
+#: to the status itself. The table prints `STATUS_LABELS`, so `guessed` and
+#: `hand-pinned` have to be accepted beside `guess` and `pinned` - a flag that
+#: rejects the word printed in the column it filters is a trap.
+_CATEGORIES: dict[str, str] = {
+    **{status: status for status in coverage.STATUSES},
+    **{label: status for status, label in STATUS_LABELS.items()},
+}
+
+
+def _resolve(
+    given: str | None, allowed: dict[str, str] | tuple[str, ...], what: str
+) -> str | None:
+    """`given` matched case-insensitively against `allowed`, or `None`.
+
+    Raises `ValueError` naming the valid values, which the caller prints -
+    argparse `choices` would do this too, but only for the flag, and the
+    positional skill needs the same treatment.
+    """
+    if given is None:
+        return None
+    folded = {
+        name.lower(): (allowed[name] if isinstance(allowed, dict) else name)
+        for name in allowed
+    }
+    found = folded.get(given.strip().lower())
+    if found is None:
+        raise ValueError(
+            f"unknown {what} {given!r}; choose one of: "
+            + ", ".join(sorted(set(folded.values())))
+        )
+    return found
 
 
 def _report_export(args: argparse.Namespace) -> int:
@@ -161,7 +220,11 @@ def _report_export(args: argparse.Namespace) -> int:
     _print_status_table(statuses)
     _print_blockers(statuses)
     if args.skill:
-        _print_skill_statuses(statuses.get(args.skill) or (), args.skill, args.limit)
+        _print_skill_statuses(
+            statuses.get(args.skill) or (), args.skill, args.limit, args.show_category
+        )
+    elif args.show_category:
+        _print_category(statuses, args.show_category, args.limit)
     return 0
 
 
@@ -267,28 +330,68 @@ def _print_status_table(statuses: dict[str, tuple[coverage.MethodStatus, ...]]) 
     print(f"{'all':<14}{cells}{sum(totals.values()):>9,}")
 
 
-def _print_skill_statuses(
-    rows: tuple[coverage.MethodStatus, ...], skill: str, limit: int | None
+def _print_category(
+    statuses: dict[str, tuple[coverage.MethodStatus, ...]],
+    status: str,
+    limit: int | None,
 ) -> None:
-    print(f"\n{skill} — {len(rows):,} primary methods, worst first")
+    """Every method of one status, across every skill, grouped by skill.
+
+    The whole-export answer to "what is still unpriced", where
+    `_print_skill_statuses` answers it for one skill. Skills with none are
+    left out rather than printed empty - the point of asking is the list.
+    """
+    found = {
+        skill: [row for row in rows if row.status == status]
+        for skill, rows in sorted(statuses.items())
+    }
+    found = {skill: rows for skill, rows in found.items() if rows}
+    total = sum(len(rows) for rows in found.values())
+    print(f"\n{STATUS_LABELS[status]} — {total:,} across {len(found)} skill(s)")
+    for skill, rows in found.items():
+        print(f"\n  {skill} ({len(rows):,})")
+        for row in rows[: limit or len(rows)]:
+            _print_status_row(row, indent="    ")
+        if limit is not None and len(rows) > limit:
+            print(f"    … {len(rows) - limit:,} more")
+
+
+def _print_skill_statuses(
+    rows: tuple[coverage.MethodStatus, ...],
+    skill: str,
+    limit: int | None,
+    status: str | None = None,
+) -> None:
+    if status is not None:
+        rows = tuple(row for row in rows if row.status == status)
+        print(f"\n{skill} — {len(rows):,} {STATUS_LABELS[status]} primary methods")
+    else:
+        print(f"\n{skill} — {len(rows):,} primary methods, worst first")
     for row in rows[: limit or len(rows)]:
-        # **No rate beside an unpriced method.** What `heuristics.xp_per_hour`
-        # returns there is `DEFAULT_XP_PER_HOUR`, and printing the floor in a
-        # column headed by a rate is how a placeholder gets read as a number.
-        quiet = row.status in QUIET_STATUSES
-        rate = " " * 14 if quiet else f"{row.xp_per_hour:>10,.0f}/hr"
-        level = f"lvl {row.level}" if row.level else ""
-        # A blocked row says what blocked it where a priced one says what
-        # priced it: both answer "why is this number what it is".
-        source = row.source
-        if quiet:
-            source = f"needs {row.blocked_by}" if row.blocked_by else ""
-        # **The whole task, not `activity_name`.** The verb is what tells six
-        # Herblore unlocks apart; stripped, they all read `Herblore`.
-        print(
-            f"  {STATUS_LABELS[row.status]:<11} {rate}  {level:<8}"
-            f" {strip_task_markup(row.task)}{'  ' + source if source else ''}"
-        )
+        _print_status_row(row)
+    if limit is not None and len(rows) > limit:
+        print(f"  … {len(rows) - limit:,} more")
+
+
+def _print_status_row(row: coverage.MethodStatus, indent: str = "  ") -> None:
+    """One method's line, shared by the per-skill and per-category listings."""
+    # **No rate beside an unpriced method.** What `heuristics.xp_per_hour`
+    # returns there is `DEFAULT_XP_PER_HOUR`, and printing the floor in a
+    # column headed by a rate is how a placeholder gets read as a number.
+    quiet = row.status in QUIET_STATUSES
+    rate = " " * 14 if quiet else f"{row.xp_per_hour:>10,.0f}/hr"
+    level = f"lvl {row.level}" if row.level else ""
+    # A blocked row says what blocked it where a priced one says what
+    # priced it: both answer "why is this number what it is".
+    source = row.source
+    if quiet:
+        source = f"needs {row.blocked_by}" if row.blocked_by else ""
+    # **The whole task, not `activity_name`.** The verb is what tells six
+    # Herblore unlocks apart; stripped, they all read `Herblore`.
+    print(
+        f"{indent}{STATUS_LABELS[row.status]:<11} {rate}  {level:<8}"
+        f" {strip_task_markup(row.task)}{'  ' + source if source else ''}"
+    )
 
 
 def _report_map(args: argparse.Namespace) -> int:
@@ -394,6 +497,17 @@ def add_arguments(
     )
     training.add_argument(
         "--limit", type=int, default=None, help="cap the methods listed for SKILL"
+    )
+    training.add_argument(
+        "--show-category",
+        metavar="STATUS",
+        default=None,
+        help=(
+            "list the methods of one status - "
+            + ", ".join(coverage.STATUSES)
+            + ". With SKILL, that skill's; without, every skill's, grouped."
+            " Export-wide report only, so not with --map"
+        ),
     )
     training.add_argument(
         "--map",
