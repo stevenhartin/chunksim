@@ -870,7 +870,10 @@ maps are your own work and nothing can recompute them.
    while one blocked by nothing the report can name is worth chasing.
    That report still needs a world to price against, so it builds one holding every rollable chunk
    and borrows a cached map's rules (`--rules-from MAP`), because a rule is a player's choice and
-   the export has no permissive defaults to fall back on.
+   the export has no permissive defaults to fall back on. **Pass `--rules-from` whenever more than
+   one map is cached**: with no rules at all every rule-gated method reads as `uncompletable`
+   instead, which is not a smaller version of the real answer but a different and much emptier
+   one - the report says so in a warning line, and the counts underneath it are not worth reading.
 
    `sections`, `sources`, `tasks` and `diff` print counts by default and take an optional positional
    to list one branch's contents in full; `--limit N` caps that.

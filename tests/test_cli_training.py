@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import argparse
+
 import pytest
 
 from chunksim.cli import training
+from chunksim.cli.common import MapAmbiguityError
 from chunksim.costing import coverage
+from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.store import cache
 
 
 def test_the_statuses_are_ordered_least_actionable_first() -> None:
@@ -212,3 +217,61 @@ class TestWhatBlockedIt:
         blocker would report the derivation's own answer back as a defect."""
         assert coverage.blocker_for({"Chunks": ["1111"]}, self.REACH) == ("unstated", "")
         assert coverage.blocker_for({"Chunks": ["9999"]}, self.REACH) == ("location", "9999")
+
+
+class TestWhyTheCeilingHasNoRules:
+    """"No rules" has two causes and they read completely differently: a
+    checkout with nothing fetched has none to borrow, one with several has
+    plenty and no way to choose. Both used to report "none cached", which
+    contradicted the note printed directly above it in the ambiguous case."""
+
+    def _args(self, **overrides: object) -> argparse.Namespace:
+        defaults: dict[str, object] = {"rules_from": None, "map_id": None, "chunkinfo": None}
+        defaults.update(overrides)
+        return argparse.Namespace(**defaults)
+
+    def _info(self) -> ChunkInfo:
+        return ChunkInfo({"chunkinfo": {"sections": {"100": True}}})
+
+    def test_an_explicit_map_needs_no_reason(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            cache, "read_cache", lambda name: {"data": {"rules": {"Boss": True}}}
+        )
+
+        base, payload, why = training._ceiling_payload(self._info(), self._args(rules_from="fray"))
+
+        assert (base, why) == ("fray", "")
+        assert payload["rules"] == {"Boss": True}
+
+    def test_several_cached_says_which_flag_to_pass(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def ambiguous(_: str | None) -> str:
+            raise MapAmbiguityError("several")
+
+        monkeypatch.setattr(training, "resolve_map", ambiguous)
+        monkeypatch.setattr(
+            cache,
+            "list_maps",
+            lambda: [type("E", (), {"kind": cache.FETCHED})()],
+        )
+
+        _, _, why = training._ceiling_payload(self._info(), self._args())
+
+        assert why == "ambiguous"
+
+    def test_an_empty_cache_is_the_opposite_advice(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`resolve_map` raises the *same* error for an empty cache, so the
+        count has to be read rather than inferred from the exception."""
+
+        def ambiguous(_: str | None) -> str:
+            raise MapAmbiguityError("none")
+
+        monkeypatch.setattr(training, "resolve_map", ambiguous)
+        monkeypatch.setattr(cache, "list_maps", lambda: [])
+
+        _, _, why = training._ceiling_payload(self._info(), self._args())
+
+        assert why == "missing"

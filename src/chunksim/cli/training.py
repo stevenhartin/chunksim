@@ -104,7 +104,7 @@ def _cmd_training(args: argparse.Namespace) -> int:
 def _report_export(args: argparse.Namespace) -> int:
     """Every primary method in the export, priced against the ceiling."""
     info = ChunkInfo(cache.read_chunkinfo(override=args.chunkinfo))
-    base, payload = _ceiling_payload(info, args)
+    base, payload, why = _ceiling_payload(info, args)
     state, unlocked = pipeline.load_map_state(payload, info, {})
     # **Cached derivation and real digests, like every other subcommand.**
     # The ceiling state is the biggest derivation there is (~4.3s), and the
@@ -139,9 +139,23 @@ def _report_export(args: argparse.Namespace) -> int:
     if base:
         print(f"rules        {base}'s, since a rule is a player's choice")
     else:
+        # **A rules-less world is not a smaller version of a real one.** Every
+        # rule-gated challenge fails a gate `coverage.blocker_for` cannot name
+        # - there is no rules branch for it to point at - so they land in the
+        # `unstated` bucket the docstring elsewhere insists is empty: 866 of
+        # them against zero once any map's rules are borrowed. Say so, rather
+        # than letting a reader take the `unpriced` column for the real count.
         print(
-            "rules        none cached, so none applied - these counts are a floor"
-            " on what is modelled rather than a reading of it"
+            "rules        "
+            + (
+                "several maps are cached and none was chosen - pass --rules-from MAP"
+                if why == "ambiguous"
+                else "no map cached to borrow any from - run: chunksim fetch --map ID"
+            )
+        )
+        print(
+            "warning      with no rules every rule-gated method reads as"
+            " uncompletable, so `unpriced` here is far below the real count"
         )
     print(f"methods      {len(rows):,} primary training methods\n")
     _print_status_table(statuses)
@@ -184,12 +198,19 @@ def _print_blockers(statuses: dict[str, tuple[coverage.MethodStatus, ...]]) -> N
 
 def _ceiling_payload(
     info: ChunkInfo, args: argparse.Namespace
-) -> tuple[str, dict[str, object]]:
-    """`(base map or "", the payload to derive)` for the export-wide report.
+) -> tuple[str, dict[str, object], str]:
+    """`(base map or "", payload to derive, why there is no base)`.
 
     The base map is asked for its `rules` branch and its progress and nothing
     else - the chunks are replaced wholesale. See the module docstring for why
     borrowing them beats any default this could invent.
+
+    **The third element exists because "no rules" has two causes and they read
+    completely differently.** A checkout with nothing fetched has no rules to
+    borrow; a checkout with several maps has plenty and no way to choose
+    between them. Both used to return `""` and be reported as "none cached",
+    which contradicted the note printed directly above it in the ambiguous
+    case and read as "there is nothing to borrow" when the fix was one flag.
     """
     unlocked = dict.fromkeys(info.sections, True)
     base = args.rules_from
@@ -200,17 +221,22 @@ def _ceiling_payload(
             # **Several cached maps and no way to choose.** Their rules differ
             # - 41 of one real map's 104 are off - so picking one silently
             # would make the report depend on cache order. Name the flag.
-            print(
-                "note         several maps are cached; pass --rules-from MAP to borrow"
-                " one's rules"
+            #
+            # `resolve_map` raises the same error for an *empty* cache, which
+            # is the opposite situation and the opposite advice, so the count
+            # is read here rather than inferred from the exception.
+            fetched = [entry for entry in cache.list_maps() if entry.kind == cache.FETCHED]
+            return (
+                "",
+                {"chunks": {"unlocked": unlocked}},
+                "ambiguous" if fetched else "missing",
             )
-            return "", {"chunks": {"unlocked": unlocked}}
     try:
         data = dict(cache.read_cache(base)["data"])
     except cache.CacheMissError:
-        return "", {"chunks": {"unlocked": unlocked}}
+        return "", {"chunks": {"unlocked": unlocked}}, "missing"
     data["chunks"] = {**(data.get("chunks") or {}), "unlocked": unlocked}
-    return base, data
+    return base, data, ""
 
 
 def _print_status_table(statuses: dict[str, tuple[coverage.MethodStatus, ...]]) -> None:
