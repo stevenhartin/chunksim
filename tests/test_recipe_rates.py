@@ -895,3 +895,65 @@ class TestAnAnchorIsTheWikiSection:
 
         assert keys[0] == "wooden fence"
         assert all("#" not in key for key in keys)
+
+
+class TestASkillSuffixIsTheWikiDisambiguator:
+    """The wiki disambiguates by skill where the plain name collides with
+    something else's - `thistle (Construction)` next to Farming's `Thistle`,
+    a different thing entirely. Upstream's own markup carries the plain name,
+    so the suffix only has to be tried."""
+
+    def test_the_suffixed_key_is_offered_last(self) -> None:
+        keys = recipe_rates.join_keys({}, "Build a ~|thistle|~", "Construction")
+
+        assert keys[-1] == "thistle (Construction)"
+
+    def test_no_skill_means_no_suffix_offered(self) -> None:
+        """A caller that has not threaded a skill through loses nothing it
+        had - it just cannot reach this key."""
+        keys = recipe_rates.join_keys({}, "Build a ~|thistle|~")
+
+        assert "thistle (Construction)" not in keys
+        assert not any(key.endswith(")") and " (" in key for key in keys)
+
+
+class TestATrailingCountIsTheTasksOwnVocabulary:
+    """`~|rune case 1|~`, `~|rune case 2|~` and `~|rune case 3|~` are three
+    tasks for a wiki page with no numbered variants at all - `Rune case`
+    carries `Elemental`/`Low catalytic`/`High catalytic`, told apart by which
+    runes the task stocks rather than by a digit anywhere in the recipe."""
+
+    def test_the_bare_page_is_offered(self) -> None:
+        keys = recipe_rates.join_keys({}, "Build a ~|rune case 1|~")
+
+        assert keys[-1] == "rune case"
+
+    def test_a_task_with_no_trailing_digit_is_untouched(self) -> None:
+        """`wooden fence` ends in a letter, so nothing is stripped from it -
+        the dose fallback still runs, which is what the digits in the result
+        are."""
+        keys = recipe_rates.join_keys({}, "Build a ~|wooden fence|~")
+
+        assert keys[0] == "wooden fence"
+        assert "fence" not in keys
+        assert "wooden" not in keys
+
+    def test_material_candidates_still_picks_the_right_variant(self) -> None:
+        """Offering the bare page is the whole mechanism - `material_candidates`
+        already does the rest, exactly as it does for every other unlabelled
+        variant."""
+        recipes = (
+            _recipe(
+                "Rune case", level=41, experience=190.0, ticks=5,
+                materials=(Material("Air rune", 1.0),), variant="Elemental",
+            ),
+            _recipe(
+                "Rune case", level=41, experience=212.0, ticks=5,
+                materials=(Material("Body rune", 1.0),), variant="Low catalytic",
+            ),
+        )
+        chosen = recipe_rates.material_candidates(
+            {"Items": ["Air rune*"]}, recipes, []
+        )
+
+        assert [recipe.variant for recipe in chosen] == ["Elemental"]

@@ -20,6 +20,8 @@ import pytest
 
 from chunksim.costing import inputs
 from chunksim.costing import dps_bridge
+from chunksim.costing import recipe_rates
+from chunksim.store import cache
 from chunksim.cli import main
 from chunksim.gui.http import Context
 from chunksim.gui.server import handle_request
@@ -279,3 +281,43 @@ def test_an_incomplete_hand_material_entry_is_ignored(entry: Any) -> None:
     )
 
     assert costs == {}
+
+
+class TestLoadAliasesMergesTheHandTable:
+    """`recipe_rates.HAND_ALIASES` covers vocabulary drift the wiki's own
+    redirect machinery cannot see - no page exists under upstream's name for
+    a redirect to point from - so it has to be merged in regardless of
+    whether `chunksim recipes` has ever run."""
+
+    def test_present_even_with_no_fetch_at_all(self, tmp_path: Path) -> None:
+        assert inputs.load_aliases(root=tmp_path) == recipe_rates.HAND_ALIASES
+
+    def test_a_fetched_alias_wins_a_collision(self, tmp_path: Path) -> None:
+        """None is expected in practice - the fetch is what the wiki says
+        today and the hand table exists only where the wiki has nothing to
+        say - but a real collision should still resolve in the fetch's
+        favour."""
+        alias = next(iter(recipe_rates.HAND_ALIASES))
+        cache.write_blob(
+            cache.ALIASES_BLOB_NAME, {alias: "Something else entirely"}, "test",
+            root=tmp_path,
+        )
+
+        merged = inputs.load_aliases(root=tmp_path)
+
+        assert merged[alias] == "Something else entirely"
+
+    def test_a_fetched_alias_beside_the_hand_table_keeps_both(
+        self, tmp_path: Path
+    ) -> None:
+        cache.write_blob(
+            cache.ALIASES_BLOB_NAME, {"Bronze javelin heads": "Bronze javelin tips"},
+            "test", root=tmp_path,
+        )
+
+        merged = inputs.load_aliases(root=tmp_path)
+
+        assert merged["Bronze javelin heads"] == "Bronze javelin tips"
+        assert merged["Wooden dining table"] == recipe_rates.HAND_ALIASES[
+            "Wooden dining table"
+        ]

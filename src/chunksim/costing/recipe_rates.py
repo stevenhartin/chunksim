@@ -109,7 +109,7 @@ _VERBS = re.compile(
 )
 
 
-def join_keys(challenge: Mapping[str, Any], task: str) -> tuple[str, ...]:
+def join_keys(challenge: Mapping[str, Any], task: str, skill: str = "") -> tuple[str, ...]:
     """Every name a challenge offers a recipe, most specific first.
 
     `Output` is upstream's own statement of what the method produces and is
@@ -173,6 +173,27 @@ def join_keys(challenge: Mapping[str, Any], task: str) -> tuple[str, ...]:
     page = marked.partition("#")[0].strip() if "#" in marked else ""
     if page:
         keys.append(page)
+    # **The wiki disambiguates by skill where the plain name collides with
+    # something else's**, and upstream's own markup already carries the plain
+    # name - `thistle (Construction)` is the wiki's title for the sapling
+    # `~|thistle|~` builds, next to a Farming `Thistle` that is a different
+    # thing entirely. Tried last and only with a `skill` in hand, so a caller
+    # that has not threaded one through loses nothing.
+    if skill and marked:
+        keys.append(f"{marked} ({skill})")
+    # **A trailing count is the task's own vocabulary, not the recipe's.**
+    # `~|rune case 1|~`, `~|rune case 2|~` and `~|rune case 3|~` are three
+    # tasks for a wiki page with no numbered variants at all - `Rune case`
+    # carries `Elemental`/`Low catalytic`/`High catalytic`, distinguished by
+    # which runes the task stocks rather than by a digit anywhere in the
+    # recipe. Offering the bare page lets `material_candidates` do what it
+    # already does for every other unlabelled variant; measured across the
+    # whole export, three tasks carry a trailing digit whose bare form is a
+    # recipe output, and all three are this one page.
+    if marked and marked[-1].isdigit():
+        bare = marked.rstrip("0123456789").strip()
+        if bare:
+            keys.append(bare)
     return tuple(key for key in dict.fromkeys(keys) if key)
 
 
@@ -650,7 +671,7 @@ def unjoined_outputs(
         for task, challenge in challenges.items():
             if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
                 continue
-            keys = join_keys(challenge, task)
+            keys = join_keys(challenge, task, skill)
             if any(key.lower() in by_output for key in keys):
                 continue
             for field in ("Output", "Output Object"):
@@ -665,6 +686,36 @@ def unjoined_outputs(
                 # own sentence.
                 wanted.add(span[:1].upper() + span[1:])
     return tuple(sorted(wanted))
+
+
+#: Vocabulary drift the wiki's own redirect machinery cannot see, because no
+#: page exists under upstream's name for a redirect to point *from*. Each of
+#: these was verified by hand: the target's Construction level and materials
+#: match upstream's `Level`/`Items` for the source task exactly.
+#:
+#: **`wiki_aliases.json` cannot hold these**, unlike the 37 it does - that
+#: file is `chunksim recipes`' own fetch, written wholesale each time it runs,
+#: so a hand entry there would survive until the next refresh silently undid
+#: it. This constant is what `remote/skill_tables.SHORTCUT_ALIASES` is for
+#: shortcuts: a small table for drift a fetch structurally cannot find.
+#:
+#: Four are a plainer word than the wiki's title (`Wooden dining table` names
+#: the furniture upstream's own task calls it; the page is `Wood dining
+#: table`) or a shape neither an anchor nor a redirect reaches (`Teak mounted
+#: fish display` names what the export calls it; the page is `Teak display
+#: (fishing trophy)`). The other two are upstream reusing one family word,
+#: `revitalisation`, for tiers the wiki names progressively -
+#: `Restoration -> Revitalisation -> Rejuvenation -> Fancy -> Ornate` - so only
+#: the base tier's name is actually the wiki's; `Fancy revitalisation pool`
+#: and `Ornate revitalisation pool` are not pages and have no redirect to be.
+HAND_ALIASES: dict[str, str] = {
+    "Wooden dining table": "Wood dining table",
+    "Teak mounted head display": "Teak display (head trophy)",
+    "Teak mounted fish display": "Teak display (fishing trophy)",
+    "Mahogany mounted fish display": "Mahogany display (fishing trophy)",
+    "Fancy revitalisation pool": "Fancy rejuvenation pool",
+    "Ornate revitalisation pool": "Ornate rejuvenation pool",
+}
 
 
 def with_aliases(
@@ -724,6 +775,7 @@ def _joined(
     cuts: Mapping[str, tuple[Recipe, ...]],
     challenges: Mapping[str, Any] = {},
     tablets: Mapping[str, tuple[Recipe, ...]] = {},
+    skill: str = "",
 ) -> tuple[str, tuple[Recipe, ...]] | None:
     """`(output, recipes)` for one challenge, or `None` where nothing joins.
 
@@ -749,7 +801,7 @@ def _joined(
         # The recipe's own output stands in as the key, since upstream's is a
         # bundle name nothing else answers to.
         return cut[0].output, cut
-    keys = join_keys(challenge, task)
+    keys = join_keys(challenge, task, skill)
     joined = [key for key in keys if key.lower() in by_output]
     if not joined:
         return None
@@ -820,13 +872,13 @@ def challenge_experience(
         challenges = _mapping(chunk_info.challenges, skill)
         if not isinstance(challenges, dict):
             continue
-        siblings = _siblings(challenges, by_output)
+        siblings = _siblings(challenges, by_output, skill)
         cuts = fishcutting.cut_recipes(challenges, list(rows))
         tablets = lectern.tablet_recipes(challenges, list(rows), valid)
         for task, challenge in challenges.items():
             if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
                 continue
-            joined = _joined(task, challenge, by_output, siblings, cuts, challenges, tablets)
+            joined = _joined(task, challenge, by_output, siblings, cuts, challenges, tablets, skill)
             if joined is None:
                 continue
             output, candidates = joined
@@ -852,7 +904,7 @@ def challenge_experience(
 
 
 def _siblings(
-    challenges: Mapping[str, Any], by_output: Mapping[str, Sequence[Recipe]]
+    challenges: Mapping[str, Any], by_output: Mapping[str, Sequence[Recipe]], skill: str = ""
 ) -> dict[str, tuple[str, ...]]:
     """Every primary task in one skill that joins each output, keyed by output.
 
@@ -864,7 +916,7 @@ def _siblings(
     for task, challenge in challenges.items():
         if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
             continue
-        for key in join_keys(challenge, task):
+        for key in join_keys(challenge, task, skill):
             if key.lower() in by_output:
                 joined.setdefault(key.lower(), []).append(task)
                 break
@@ -905,7 +957,7 @@ def computed_rates(
         # the same terms** - see `with_aliases` for why it never displaces one.
         by_output = with_aliases(by_output, aliases)
         challenges = _mapping(chunk_info.challenges, skill)
-        siblings = _siblings(challenges, by_output)
+        siblings = _siblings(challenges, by_output, skill)
         cuts = fishcutting.cut_recipes(challenges, list(rows))
         # **A teleport is only castable twice at a lectern**, so its tablet is
         # what the challenge describes - see `costing/lectern.py`, which is
@@ -917,7 +969,7 @@ def computed_rates(
             if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
                 continue
             offered += 1
-            joined = _joined(task, challenge, by_output, siblings, cuts, challenges, tablets)
+            joined = _joined(task, challenge, by_output, siblings, cuts, challenges, tablets, skill)
             if joined is None:
                 continue
             output, candidates = joined

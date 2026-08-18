@@ -258,6 +258,58 @@ This is also why
 question is whether two vocabularies still agree, and neither half alone can be
 asked it.
 
+**Not every gap the alias fetch leaves is a rename, and two of the leftovers
+had their own small mechanism.** A trailing digit in the marked span is
+sometimes the *task's* count rather than the recipe's: `~|rune case 1|~`,
+`~|rune case 2|~` and `~|rune case 3|~` are three tasks for one wiki page with
+no numbered variants at all, told apart by which runes each stocks. Offering
+the digit-stripped page as one more join key lets `material_candidates` do
+what it already does for every other unlabelled variant — measured across the
+whole export, three tasks carry a trailing digit whose bare form is a recipe
+output, and all three are this page. And a plain name can collide with a
+different thing entirely: the wiki disambiguates `thistle (Construction)` from
+Farming's own `Thistle` the same way it disambiguates `with superheat item`,
+so `join_keys` tries the marked span with `(Construction)` appended last, and
+it does so wherever a skill is threaded through it, which two of `join_keys`'
+three callers had never done before now.
+
+**The last few misses are not a redirect and not a naming pattern — they are
+the wiki using a different word, with nothing to catch it.** `Wooden dining
+table` is the wiki's furniture name, not its title (`Wood dining table`); the
+mounted fish and head trophies are `Teak/Mahogany display (fishing trophy)`
+and `Teak display (head trophy)`; and the top two pool tiers keep upstream's
+family word `revitalisation` where the wiki's own progression moves on to
+`rejuvenation` after the second tier
+(`Restoration → Revitalisation → Rejuvenation → Fancy → Ornate`). None of these
+is a MediaWiki redirect — there is no page under upstream's name for one to
+point *from* — so `recipe_rates.HAND_ALIASES` is a small hand-verified table
+for exactly this failure mode, the same shape `remote/skill_tables.
+SHORTCUT_ALIASES` is for shortcuts. It cannot live in `wiki_aliases.json`:
+that file is `chunksim recipes`' own fetch, rewritten wholesale on every run,
+so a hand entry there would survive only until the next refresh silently
+undid it. `costing/inputs.load_aliases` merges the two, the fetch winning any
+collision. Between the three mechanisms, Construction's `Build` methods that
+join a recipe at all went from 76 unpriced to 23 — a floor of quest and drop
+gates the wiki itself cannot resolve, plus four minigame actions whose own
+page states no cycle and three boat cosmetics that are not repeatable
+training at all.
+
+**A boss played the slow way pays a skill the fast way never touches.**
+World-hopped Wintertodt earns its 500 points and leaves, so no part of its
+hour is spent on a brazier going out — which is why `Repair braziers at
+~|Wintertodt|~` sat unpriced beside a fully modelled Firemaking/Woodcutting
+loop. `Wintertodt/Strategies` publishes the solo regime as a table, and every
+column of it is linear in the *Firemaking* level: one constant per skill,
+fitted against six published rows and rounded as the wiki rounds them,
+reproduces 17 of 18 cells exactly (`costing/wintertodt.solo_rate_at`). Only
+the Construction column is spent — the other two are the evidence that the
+law is proportionality, and carrying them would change nothing, since the
+running maximum in `training_bands` keeps the fast loop's Firemaking above
+solo's everywhere. The gate is upstream's own `Access the ~|Wintertodt|~`
+rather than a level compared here, floored rather than refused below it: the
+export census `chunksim training` runs infers no Firemaking level at all, and
+comparing `1 < 50` there reported a genuinely priced method as unpriced.
+
 **A published figure that covers part of an activity is a scale, not the
 answer.** Tithe Farm is the worked example and the shape is worth copying.
 The Farming guide quotes one rate, "from level 74 onwards ... 90,000-100,000",

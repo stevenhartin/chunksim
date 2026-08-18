@@ -152,12 +152,13 @@ class ReferenceBlobs:
     #: over it, deepest value winning. Site-wide corrections are the standing
     #: opinion; a map's are what someone learned about that map, so they win.
     overrides: dict[str, Any]
-    #: `cache/reference/wiki_recipes.json`, parsed back into `Recipe`s.
+    #: `src/chunksim/heuristics/wiki_recipes.json`, parsed back into `Recipe`s.
     recipes: Mapping[str, tuple[Recipe, ...]]
-    #: `cache/reference/wiki_aliases.json`: upstream item names the wiki now
-    #: files elsewhere, so a rename reads as a rename rather than as a method
-    #: with no recipe. Empty when never fetched, which prices exactly as it
-    #: did before the blob existed.
+    #: `src/chunksim/heuristics/wiki_aliases.json` merged with
+    #: `recipe_rates.HAND_ALIASES`: upstream item names the wiki now files
+    #: elsewhere, so a rename reads as a rename rather than as a method with
+    #: no recipe. The fetched half is empty when never run, which prices
+    #: exactly as it did before the blob existed; the hand half never is.
     aliases: Mapping[str, str]
     #: `src/chunksim/heuristics/gathering.json`, indexed for lookup. **Not a
     #: cache blob** - it ships with the package and only `chunksim
@@ -411,17 +412,22 @@ def load_recipes(root: Path | None = None) -> dict[str, tuple[Recipe, ...]]:
 
 
 def load_aliases(root: Path | None = None) -> dict[str, str]:
-    """The `chunksim recipes` alias map, or empty if never fetched.
+    """The `chunksim recipes` alias map, plus `recipe_rates.HAND_ALIASES`.
 
-    Empty is a supported way to run, like an absent recipe blob: the join
-    simply misses the names the wiki has since renamed, which is what it did
-    before this existed.
+    Empty of the fetched half is a supported way to run, like an absent recipe
+    blob: the join simply misses the names the wiki has since renamed, which
+    is what it did before this existed. The hand-curated half is never empty
+    and never depends on a fetch - see `HAND_ALIASES` for why a redirect
+    cannot stand in for it. **Merged with the fetch winning a collision**,
+    though none is expected: the fetch is what the wiki says today and the
+    hand table exists only where the wiki has nothing to say at all.
     """
     try:
         found: Mapping[str, Any] = cache.read_blob(cache.ALIASES_BLOB_NAME, root)["data"]
+        fetched = {str(alias): str(target) for alias, target in found.items()}
     except cache.CacheMissError:
-        return {}
-    return {str(alias): str(target) for alias, target in found.items()}
+        fetched = {}
+    return {**recipe_rates.HAND_ALIASES, **fetched}
 
 
 def _recipe_blob(root: Path | None = None) -> Mapping[str, Any]:
