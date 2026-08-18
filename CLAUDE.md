@@ -1043,8 +1043,20 @@ for that. With a map it is about that world; without, it is about the *export* -
 2,707 primary methods are `modelled`, `pinned`, `published`, `guess`, `unpriced` or
 `unreachable` (`costing/coverage.py`).
 
-**`unreachable` is separated from the rest and it is the one that was being reported
-wrong.** Every computed layer walks the derivation's `valid` set, so a challenge outside
+**`uncompletable` and `unreachable` are one test asked of two worlds, and only one is
+news.** A method a particular map cannot do is the ordinary condition of a chunk map. A
+method the *ceiling* cannot do - every rollable chunk unlocked - says no player could ever
+perform it, so the report names it differently and says **why**, per row
+(`coverage.blocker_for`, `MethodStatus.blocker`). Measured, the 307 are: 133 wanting an
+item nothing in the world provides (Leagues rewards, `Vorkath's stuffed head`), 108 behind
+a quest the ceiling cannot finish, 32 behind a **rule the base map has off** - a player's
+choice rather than a gap - 17 an object, 9 a chunk or section outside the rollable set, 6
+upstream's own `BackupParent` fallback of a challenge that *is* valid, 2 an NPC, and
+**zero unexplained**. The order the branches are tried in is what keeps it from naming
+symptoms: a rule-gated family's items are beside the point, and a quest-gated challenge
+lists the items that quest would hand over.
+
+**Separating those from the priced statuses is the correction that mattered.** Every computed layer walks the derivation's `valid` set, so a challenge outside
 it is never offered to any of them and keeps whatever the raw scrape left in
 `Heuristics.training`. Counted as `published` that reads "somebody's guide decides this
 method", where the truth is "upstream's own gates put it out of reach and nothing here was

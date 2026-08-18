@@ -356,6 +356,11 @@ def training_statuses(
         state, unlocked, derived, heuristics, blobs.levels, digests,
         world=world, root=root, reference=blobs,
     )
+    # **The ceiling calls it `uncompletable` and says why.** A method one map
+    # cannot do is ordinary; one the every-rollable-chunk world cannot do is a
+    # finding, so the report names the requirement that blocked it rather than
+    # leaving a count.
+    reach = coverage.Reachability.from_derived(derived, state)
     return {
         skill: coverage.statuses_for(
             state.chunk_info,
@@ -363,6 +368,8 @@ def training_statuses(
             skill,
             derived.challenges.valid.get(skill) or {},
             only_reachable=valid,
+            absent=coverage.UNREACHABLE if valid else coverage.UNCOMPLETABLE,
+            reach=reach,
         )
         for skill in coverage.SKILLS
     }

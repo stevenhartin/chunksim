@@ -7,12 +7,13 @@ tell a method that is slow from one nothing has reached.
 
 ### The statuses, and why three of them are separated rather than lumped
 
-    modelled     this project computed it - a curve, a recipe, a counted mechanic
-    pinned       a hand correction in `overrides.json`, which outranks all of it
-    published    somebody's figure, joined by name
-    guess        a number chosen so there is one (`costing/rumours.py`, `stated`)
-    unpriced     nothing reached it; the 1,000/hr floor is what estimate uses
-    unreachable  no map can even *do* it, so no layer was ever asked
+    modelled       this project computed it - a curve, a recipe, a counted mechanic
+    pinned         a hand correction in `overrides.json`, which outranks all of it
+    published      somebody's figure, joined by name
+    guess          a number chosen so there is one (`costing/rumours.py`, `stated`)
+    unpriced       nothing reached it; the 1,000/hr floor is what estimate uses
+    unreachable    *this map* cannot do it, which is ordinary
+    uncompletable  *no* map can do it, which is a finding rather than a state
 
 `guess` is separated from `modelled` because it is the one that should shrink
 and the one a reader most needs warning about: it looks exactly like a rate
@@ -20,7 +21,20 @@ and is an admission. `pinned` is separated from `published` for the opposite
 reason - `overrides.json` is the top of the layering by design, so a pin is
 not a gap.
 
-**`unreachable` is separated from both, and it is the one that was wrong.**
+**`uncompletable` and `unreachable` are the same test asked of different
+worlds, and only one of them is news.** A method a particular map cannot do is
+the ordinary condition of a chunk map. A method the *ceiling* cannot do -
+every rollable chunk unlocked - is a statement that no player could ever
+perform it, which is either a fact about the game or a defect here, and the
+report says which by naming the blocker (`MethodStatus.blocker`). See
+`blocker_for`: measured against the ceiling the 307 split into 134 wanting an
+item nothing provides (Leagues rewards, `Vorkath's stuffed head`), 108 behind
+a quest the ceiling cannot finish, 18 wanting an object, 13 in a chunk or
+section the roll set does not cover, and 34 with no stated requirement at all
+- and it is that last group, plus anything unexpected in the others, that is
+worth chasing.
+
+**Separating them from the priced statuses is the correction that mattered.**
 Every computed layer walks the derivation's `valid` set, so a challenge
 outside it is never offered to any of them and keeps whatever the raw scrape
 left in `Heuristics.training`. Reported as `published` that reads "somebody's
@@ -56,7 +70,7 @@ from typing import Any, Mapping, Sequence
 from chunksim.costing.heuristics import Heuristics, activity_name
 from chunksim.costing.training import TrainingOption, training_options
 from chunksim.derive.active_tasks import DISPLAY_SKILLS
-from chunksim.derive.pipeline import Derived
+from chunksim.derive.pipeline import Derived, MapState
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.model.summary import _mapping
 
@@ -75,6 +89,7 @@ GUESS_MATCHES = frozenset({"guess"})
 #: The statuses, least actionable first - so a table printing them reversed
 #: reads best-to-worst and ends on the two that are not the model's fault.
 STATUSES: tuple[str, ...] = (
+    "uncompletable",
     "unreachable",
     "unpriced",
     "guess",
@@ -83,8 +98,20 @@ STATUSES: tuple[str, ...] = (
     "modelled",
 )
 
+#: What a method the reported world cannot do is called. The ceiling report
+#: passes `UNCOMPLETABLE`, because there nothing else can be true; a per-map
+#: report passes `UNREACHABLE`, where it is just this map.
+UNREACHABLE = "unreachable"
+UNCOMPLETABLE = "uncompletable"
 
-def status_of(match: str, *, pinned: bool = False, reachable: bool = True) -> str:
+
+def status_of(
+    match: str,
+    *,
+    pinned: bool = False,
+    reachable: bool = True,
+    absent: str = UNREACHABLE,
+) -> str:
     """Which of `STATUSES` a rate belongs to.
 
     **`reachable` is checked first and overrules everything**, including a
@@ -94,7 +121,7 @@ def status_of(match: str, *, pinned: bool = False, reachable: bool = True) -> st
     `published` was saying.
     """
     if not reachable:
-        return "unreachable"
+        return absent
     if pinned:
         return "pinned"
     if not match or match == "default":
@@ -126,6 +153,11 @@ class MethodStatus:
     status: str
     #: The `overrides.json` path that would move it, or `""`.
     knob: str
+    #: For an `unreachable`/`uncompletable` row, which requirement branch
+    #: blocked it (`BLOCKERS`) and what it named. `("", "")` for every priced
+    #: row, since there is nothing blocking one.
+    blocker: str = ""
+    blocked_by: str = ""
 
     @property
     def method(self) -> str:
@@ -144,7 +176,120 @@ class MethodStatus:
             "source": self.source,
             "status": self.status,
             "knob": self.knob,
+            "blocker": self.blocker,
+            "blocked_by": self.blocked_by,
         }
+
+
+@dataclass(frozen=True)
+class Reachability:
+    """What a derived world can provide, for explaining what it cannot do.
+
+    Assembled once per report from a `Derived` - see `from_derived` - because
+    `blocker_for` is asked about every primary challenge and each answer is a
+    few set lookups.
+    """
+
+    items: frozenset[str]
+    objects: frozenset[str]
+    #: Every valid task name across every category, which is what a
+    #: challenge's `Tasks` branch names.
+    tasks: frozenset[str]
+    #: NPCs and monsters the map can get to, which is what a challenge's
+    #: `NPCs` branch names.
+    npcs: frozenset[str]
+    #: Chunk ids the map holds, unlocked or walked into.
+    chunks: frozenset[str]
+    #: Rules the *player* turned off. Upstream gates a challenge by naming a
+    #: rule in its `Category`, so an off rule is a choice rather than a gap -
+    #: which is exactly the distinction this whole report is for.
+    rules_off: frozenset[str] = frozenset()
+
+    @classmethod
+    def from_derived(cls, derived: Derived, state: MapState | None = None) -> "Reachability":
+        return cls(
+            items=frozenset(derived.challenges.available_items),
+            objects=frozenset(derived.challenges.available_objects),
+            tasks=frozenset(
+                task for per in derived.challenges.valid.values() for task in per
+            ),
+            npcs=frozenset(derived.source_index.npcs) | frozenset(derived.source_index.monsters),
+            # Expanded as well as unlocked: a named area is walked into
+            # rather than rolled, and calling that a location blocker would
+            # report the derivation's own answer back as a defect.
+            chunks=frozenset(derived.expanded_chunks) | frozenset(derived.reachable_sections),
+            rules_off=frozenset(
+                name
+                for name, value in (state.rules if state is not None else {}).items()
+                if value is False
+            ),
+        )
+
+
+#: What `blocker_for` can say, and the order it tries them in - most specific
+#: first, since a challenge behind a quest usually also lists the items that
+#: quest would hand over.
+BLOCKERS: tuple[str, ...] = (
+    "rule",
+    "superseded",
+    "task",
+    "item",
+    "object",
+    "npc",
+    "location",
+    "unstated",
+)
+
+
+def blocker_for(
+    challenge: Mapping[str, Any], reach: Reachability
+) -> tuple[str, str]:
+    """`(kind, what)` for why a world cannot do `challenge`.
+
+    **Upstream's own requirement branches, in order, most decisive first.** A
+    rule the player turned off is checked before anything, because upstream
+    gates a whole family by naming the rule in its `Category` and the family's
+    items are then beside the point - `Make a ~|rune felling axe|~ (alt)` is
+    behind `Secondary Primary`, not behind its anvil. A missing `Tasks` entry
+    comes next for the same reason: a quest-gated challenge routinely lists
+    the items that quest hands over, so reporting the item would name a
+    symptom.
+
+    `unstated` is the one worth chasing: the challenge asks for nothing this
+    can see and is still invalid, so it is a `Category` upstream applies for
+    reasons not in `rules`, an unported pass, or a defect here.
+    """
+    for name in challenge.get("Category") or ():
+        if isinstance(name, str) and name in reach.rules_off:
+            return "rule", name
+    # **Upstream's own "this is the fallback form" marker.** A barehanded
+    # butterfly catch names the netted one as its `BackupParent`, and where
+    # the parent is valid upstream drops the backup - so it is not a gap of
+    # any kind, it is the same catch counted once. Checked before the
+    # requirement branches because the backup's own requirements are met.
+    parent = challenge.get("BackupParent")
+    if isinstance(parent, str) and parent in reach.tasks:
+        return "superseded", parent
+    for task in challenge.get("Tasks") or {}:
+        if isinstance(task, str) and task not in reach.tasks:
+            return "task", task
+    for item in challenge.get("Items") or ():
+        if isinstance(item, str):
+            name = item.replace("*", "").replace("[+]", "").strip()
+            if name and name not in reach.items:
+                return "item", name
+    for obj in challenge.get("Objects") or ():
+        if isinstance(obj, str):
+            name = obj.replace("[+]", "").strip()
+            if name and name not in reach.objects:
+                return "object", name
+    for npc in challenge.get("NPCs") or ():
+        if isinstance(npc, str) and npc not in reach.npcs:
+            return "npc", npc
+    for chunk in challenge.get("Chunks") or ():
+        if isinstance(chunk, str) and chunk not in reach.chunks:
+            return "location", chunk
+    return "unstated", ""
 
 
 def primary_tasks(chunk_info: ChunkInfo, skill: str) -> dict[str, Mapping[str, Any]]:
@@ -167,13 +312,17 @@ def statuses_for(
     reachable: Mapping[str, Any],
     *,
     only_reachable: bool = True,
+    absent: str = UNREACHABLE,
+    reach: Reachability | None = None,
 ) -> tuple[MethodStatus, ...]:
     """Every primary method of `skill`, with what priced it, worst first.
 
     `reachable` is the derivation's `valid` set for this skill and is always
-    what decides the `unreachable` status. `only_reachable` decides whether
-    the unreachable ones are *listed*: the per-map report wants only what the
-    map can do, and the export-wide one wants the whole census.
+    what decides the absent status. `only_reachable` decides whether those are
+    *listed*: the per-map report wants only what the map can do, and the
+    export-wide one wants the whole census. `absent` names them - `UNREACHABLE`
+    for one map, `UNCOMPLETABLE` for the ceiling - and `reach` is what lets
+    each say *why*.
 
     **Computed methods are folded in by knob, not appended.** A model that
     supersedes a challenge's rate (`training._modelled_tasks`) writes no entry
@@ -191,6 +340,11 @@ def statuses_for(
     for task, challenge in tasks.items():
         knob = f"training/{task}/{skill}"
         level = challenge.get("Level")
+        blocker, blocked_by = (
+            ("", "")
+            if task in reachable or reach is None
+            else blocker_for(challenge, reach)
+        )
         model = computed.get(knob)
         if model is not None:
             rate, match, source = model.xp_per_hour, model.match, model.source
@@ -210,8 +364,11 @@ def statuses_for(
                     match,
                     pinned=task in heuristics.pinned,
                     reachable=task in reachable,
+                    absent=absent,
                 ),
                 knob=knob,
+                blocker=blocker,
+                blocked_by=blocked_by,
             )
         )
     return tuple(sorted(found, key=lambda row: (STATUSES.index(row.status), -row.xp_per_hour)))

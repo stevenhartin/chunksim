@@ -41,6 +41,7 @@ from the row they see in the other.
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 from pathlib import Path
 
 from chunksim.cli.common import (
@@ -61,6 +62,7 @@ from chunksim.store import cache
 #: What a status is called on screen, and the order they are counted in -
 #: worst first, because the tail is the work left to do.
 STATUS_LABELS: dict[str, str] = {
+    "uncompletable": "uncompletable",
     "unreachable": "unreachable",
     "unpriced": "unpriced",
     "guess": "guessed",
@@ -75,7 +77,22 @@ STATUS_LABELS: dict[str, str] = {
 #: whatever the raw scrape left behind for a challenge nothing was asked
 #: about - printing either under a heading that says "rate" is how a
 #: placeholder gets read as a measurement.
-QUIET_STATUSES = frozenset({"unpriced", "unreachable"})
+QUIET_STATUSES = frozenset({"unpriced", "unreachable", "uncompletable"})
+
+#: What each `coverage.BLOCKERS` kind reads as. Printed in `BLOCKERS` order,
+#: which puts the volume first and `unstated` last - and **`unstated` is the
+#: one to chase**: it is the only kind that names nothing at all, so it is a
+#: rule, a `Category` gate or a defect here rather than a fact about the game.
+BLOCKER_LABELS: dict[str, str] = {
+    "rule": "a rule the base map has switched off — a player's choice",
+    "superseded": "upstream's own fallback form of a challenge that is valid",
+    "npc": "an NPC or monster nothing in the world provides",
+    "unstated": "no stated requirement — worth chasing",
+    "task": "a quest or task the ceiling cannot finish",
+    "item": "an item nothing in the world provides",
+    "object": "an object nothing in the world provides",
+    "location": "a chunk or section outside the rollable set",
+}
 
 
 def _cmd_training(args: argparse.Namespace) -> int:
@@ -116,8 +133,8 @@ def _report_export(args: argparse.Namespace) -> int:
     rows = [row for skill_rows in statuses.values() for row in skill_rows]
     print("scope        the whole export, against every rollable chunk")
     print(
-        "note         `unreachable` is upstream's own gates, not a modelling gap:"
-        " no layer is asked about a method no map can do"
+        "note         `uncompletable` means the ceiling itself cannot do it, so no"
+        " layer was ever asked - see the breakdown below"
     )
     if base:
         print(f"rules        {base}'s, since a rule is a player's choice")
@@ -128,9 +145,41 @@ def _report_export(args: argparse.Namespace) -> int:
         )
     print(f"methods      {len(rows):,} primary training methods\n")
     _print_status_table(statuses)
+    _print_blockers(statuses)
     if args.skill:
         _print_skill_statuses(statuses.get(args.skill) or (), args.skill, args.limit)
     return 0
+
+
+def _print_blockers(statuses: dict[str, tuple[coverage.MethodStatus, ...]]) -> None:
+    """Why the uncompletable ones are uncompletable.
+
+    **A count on its own is not actionable and this is the whole point of the
+    category.** "307 uncompletable" reads as a number to be worried about;
+    split by the requirement that blocked each one it reads as 134 items the
+    world does not contain, 108 quest gates, and a residue worth looking at.
+    """
+    blocked = [
+        row
+        for rows in statuses.values()
+        for row in rows
+        if row.status == "uncompletable"
+    ]
+    if not blocked:
+        return
+    counts = Counter(row.blocker for row in blocked)
+    print(f"\nuncompletable — {len(blocked):,}, by what upstream asks for and the world lacks")
+    for kind in coverage.BLOCKERS:
+        if not counts[kind]:
+            continue
+        print(f"  {counts[kind]:>5}  {BLOCKER_LABELS[kind]}")
+        # One example, because the label says the shape and a name says the
+        # case: `Trailblazer rug` reads as a Leagues reward at a glance.
+        example = next(row for row in blocked if row.blocker == kind)
+        named = (
+            f" ({strip_task_markup(example.blocked_by)})" if example.blocked_by else ""
+        )
+        print(f"         e.g. {strip_task_markup(example.task)}{named}")
 
 
 def _ceiling_payload(
@@ -166,19 +215,29 @@ def _ceiling_payload(
 
 def _print_status_table(statuses: dict[str, tuple[coverage.MethodStatus, ...]]) -> None:
     """One row a skill, one column a status."""
-    order = list(reversed(coverage.STATUSES))
-    head = "".join(f"{STATUS_LABELS[name]:>13}" for name in order)
+    counted = {
+        skill: Counter(row.status for row in rows)
+        for skill, rows in sorted(statuses.items())
+        if rows
+    }
+    # **Only the columns that happen.** The two absent statuses are exclusive
+    # by construction - a report is about one world, so it says `unreachable`
+    # or `uncompletable` and never both - and an always-empty column is a
+    # heading you go looking for a number under and never find.
+    order = [
+        name
+        for name in reversed(coverage.STATUSES)
+        if any(counts[name] for counts in counted.values())
+    ]
+    width = max(14, *(len(STATUS_LABELS[name]) + 2 for name in order))
+    head = "".join(f"{STATUS_LABELS[name]:>{width}}" for name in order)
     print(f"{'skill':<14}{head}{'total':>9}")
-    totals = dict.fromkeys(order, 0)
-    for skill, rows in sorted(statuses.items()):
-        if not rows:
-            continue
-        counts = {name: sum(1 for row in rows if row.status == name) for name in order}
-        for name in order:
-            totals[name] += counts[name]
-        cells = "".join(f"{counts[name] or '':>13}" for name in order)
-        print(f"{skill:<14}{cells}{len(rows):>9,}")
-    cells = "".join(f"{totals[name]:>13,}" for name in order)
+    totals: Counter[str] = Counter()
+    for skill, counts in counted.items():
+        totals.update(counts)
+        cells = "".join(f"{counts[name] or '':>{width}}" for name in order)
+        print(f"{skill:<14}{cells}{sum(counts.values()):>9,}")
+    cells = "".join(f"{totals[name]:>{width},}" for name in order)
     print(f"{'all':<14}{cells}{sum(totals.values()):>9,}")
 
 
@@ -193,7 +252,11 @@ def _print_skill_statuses(
         quiet = row.status in QUIET_STATUSES
         rate = " " * 14 if quiet else f"{row.xp_per_hour:>10,.0f}/hr"
         level = f"lvl {row.level}" if row.level else ""
-        source = "" if quiet else row.source
+        # A blocked row says what blocked it where a priced one says what
+        # priced it: both answer "why is this number what it is".
+        source = row.source
+        if quiet:
+            source = f"needs {row.blocked_by}" if row.blocked_by else ""
         # **The whole task, not `activity_name`.** The verb is what tells six
         # Herblore unlocks apart; stripped, they all read `Herblore`.
         print(

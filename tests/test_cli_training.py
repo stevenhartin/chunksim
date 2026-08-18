@@ -11,8 +11,9 @@ from chunksim.costing import coverage
 def test_the_statuses_are_ordered_least_actionable_first() -> None:
     """The table prints them reversed, so this order is what makes it read
     best-to-worst and end on the two that are not the model's fault."""
-    assert coverage.STATUSES[0] == "unreachable"
-    assert coverage.STATUSES[1] == "unpriced"
+    assert coverage.STATUSES[0] == coverage.UNCOMPLETABLE
+    assert coverage.STATUSES[1] == coverage.UNREACHABLE
+    assert coverage.STATUSES[2] == "unpriced"
     assert coverage.STATUSES[-1] == "modelled"
     assert set(coverage.STATUSES) == set(training.STATUS_LABELS)
 
@@ -38,7 +39,9 @@ def test_an_unreachable_rate_is_not_printed_as_a_rate() -> None:
     """Its number is a scrape nothing was asked to spend, and `unpriced`'s is
     the 1,000/hr floor - printing either under a heading that says "rate" is
     how a placeholder gets read as a measurement."""
-    assert training.QUIET_STATUSES == frozenset({"unpriced", "unreachable"})
+    assert training.QUIET_STATUSES == frozenset(
+        {"unpriced", coverage.UNREACHABLE, coverage.UNCOMPLETABLE}
+    )
 
 
 def test_a_guess_is_not_counted_as_modelled() -> None:
@@ -135,3 +138,77 @@ def test_the_export_report_caches_its_derivation_and_keys_it_honestly() -> None:
     assert "digests(args)" in source, "and keyed by the real file digests"
     assert "pipeline.derive(" not in source
     assert 'Digests(chunkinfo="training")' not in inspect.getsource(module)
+
+
+def test_the_ceiling_calls_it_uncompletable_rather_than_unreachable() -> None:
+    """**The same test asked of different worlds, and only one is news.** A
+    method one map cannot do is the ordinary condition of a chunk map; one the
+    every-rollable-chunk ceiling cannot do says no player could ever perform
+    it, which is either a fact about the game or a defect here."""
+    assert coverage.status_of("exact", reachable=False) == coverage.UNREACHABLE
+    assert (
+        coverage.status_of("exact", reachable=False, absent=coverage.UNCOMPLETABLE)
+        == coverage.UNCOMPLETABLE
+    )
+    assert {coverage.UNREACHABLE, coverage.UNCOMPLETABLE} <= set(coverage.STATUSES)
+    assert set(coverage.BLOCKERS) <= set(training.BLOCKER_LABELS)
+
+
+class TestWhatBlockedIt:
+    """`blocker_for` names the requirement a world lacks, so "307
+    uncompletable" is a list of causes rather than a number to worry about.
+
+    **The order is most decisive first**, which is what stops the report
+    naming symptoms: a quest-gated challenge lists the items that quest hands
+    over, and a rule-gated family's items are beside the point entirely.
+    """
+
+    REACH = coverage.Reachability(
+        items=frozenset({"Rune axe"}),
+        objects=frozenset({"Anvil"}),
+        tasks=frozenset({"Catch a ~|ruby harvest|~"}),
+        npcs=frozenset({"Ruby harvest"}),
+        chunks=frozenset({"1111"}),
+        rules_off=frozenset({"Secondary Primary"}),
+    )
+
+    def test_a_rule_the_player_turned_off_wins_over_its_items(self) -> None:
+        """`Make a ~|rune felling axe|~ (alt)` is behind `Secondary Primary`,
+        not behind its anvil - reporting the anvil would send somebody to
+        model a thing that is switched off."""
+        assert coverage.blocker_for(
+            {
+                "Category": ["ForestryXp", "Secondary Primary"],
+                "Items": ["Felling axe handle*", "Rune axe*"],
+                "Objects": ["Anvil[+]"],
+            },
+            self.REACH,
+        ) == ("rule", "Secondary Primary")
+
+    def test_upstreams_own_fallback_form_is_not_a_gap(self) -> None:
+        """A barehanded butterfly catch names the netted one as its
+        `BackupParent`; where the parent is valid upstream drops the backup,
+        so it is the same catch counted once."""
+        assert coverage.blocker_for(
+            {"BackupParent": "Catch a ~|ruby harvest|~", "NPCs": ["Ruby harvest"]},
+            self.REACH,
+        ) == ("superseded", "Catch a ~|ruby harvest|~")
+
+    def test_a_quest_gate_wins_over_the_items_that_quest_hands_over(self) -> None:
+        assert coverage.blocker_for(
+            {"Tasks": {"~|Shilo Village|~ Complete the quest": "Quest"}, "Items": ["Nihil dust"]},
+            self.REACH,
+        ) == ("task", "~|Shilo Village|~ Complete the quest")
+
+    def test_the_markers_are_stripped_before_the_lookup(self) -> None:
+        """`Items` carries `*` for "consumed" and `[+]` for "or equivalent",
+        and neither is part of the name a source index is keyed by."""
+        assert coverage.blocker_for({"Items": ["Rune axe*"]}, self.REACH) == ("unstated", "")
+        assert coverage.blocker_for({"Items": ["Nihil dust*"]}, self.REACH)[0] == "item"
+
+    def test_a_walked_into_area_is_not_a_location_block(self) -> None:
+        """`Reachability.chunks` is the expanded set, not the unlocked one -
+        a named area is walked into rather than rolled, and calling that a
+        blocker would report the derivation's own answer back as a defect."""
+        assert coverage.blocker_for({"Chunks": ["1111"]}, self.REACH) == ("unstated", "")
+        assert coverage.blocker_for({"Chunks": ["9999"]}, self.REACH) == ("location", "9999")
