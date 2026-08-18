@@ -647,6 +647,34 @@ until the docstring says otherwise; the numbers that carry information are the
 ones with several rows and a residual, like Woodcutting's 12/17 and Hunter's
 6/10.
 
+**"Nothing else published can check it" is a claim with a shelf life.** That
+sentence was in `gathering.PROFILES["Thieving"]` about its 15.5-tick chest
+interval, fitted to the Rogues' Castle guide's 270,154/hr - and `Chest (Aldarin
+Villas)` states "approximately 400 chests can be successfully opened per hour"
+at level 60, which the interval misses by **2.9x**. Two observations, one
+parameter, and they disagree.
+
+They disagree because they are not the same quantity. Every Rogues' Castle
+attempt succeeds - you "search for traps" and the chest opens - so the cost per
+chest is the **walk** to the next of the three sitting together in a room. A
+chest you *fail* at stays shut in front of you and is retried where you stand,
+so its cost is an **attempt**. One number for both prices a retry as a walk. The
+fallible chests therefore name their own interval in `fixed_interval` and the
+walk-shaped figure is left to the case it was measured on.
+
+**And the calibration reads the sentence beside the figure.** `Thieving
+training` says of the same method "bring a lockpick and some stamina or super
+energy potions", so the 400/hr is against the *lockpick* curve - 883 attempts an
+hour, 4.08 seconds each. The chance spent afterwards is still the plain one,
+because a lockpick is an item this map may not hold: the same split
+`costing/pickpocket.py` makes between what a published figure is calibrated on
+and what an estimate here may assume. The page's other sentence is then the
+residual rather than a second fit - "without a lockpick or energy potions, only
+rates up to 40,000 can be expected" over 36-45, where this reads 37,905 to
+46,868, high at the top because losing the potions lengthens the run back from
+the failure teleport and nothing here has a term for it. The chest goes
+**16,633/hr to 37,914** where it opens.
+
 **A `{{Thieving info}}` box says what its `time` means, in its own `type`
 field**, and that is what makes the last Thieving guide replaceable. A
 `Pickpocket`'s `time` is the stun timer, a `Stall`'s the restock, and a

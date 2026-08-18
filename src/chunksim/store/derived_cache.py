@@ -216,7 +216,10 @@ _FORMAT = "1"
 #: 76: the wire machine is priced from its own page - a published 10-tick cycle
 #: and a 23,848-sample success chart - rather than from a guide's flat figure.
 #: See `costing/wiremachine.py`.
-_PRICING_MODEL = "76"
+#: 77: a Thieving chest that can *fail* is retried in place rather than walked
+#: away from, so it no longer shares the Rogues' Castle interval - which missed
+#: the Aldarin Villas chest's own published figure by 2.9x.
+_PRICING_MODEL = "77"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

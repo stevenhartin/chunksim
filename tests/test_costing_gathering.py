@@ -2321,3 +2321,98 @@ class TestBreamBorrowsTheLeechfin:
             gathering.success_chance(78, 30.0, 220.0), abs=1 / 256
         )
         assert rate.provenance == gathering.INFERRED
+
+
+class TestAFallibleChestIsRetriedNotWalkedAwayFrom:
+    """**Two published chest figures, and one interval could not serve both.**
+
+    `roll_ticks_by_kind["Chests"]` is 15.5 ticks, fitted to the Rogues' Castle
+    guide's 270,154/hr, and its comment used to say "nothing else published can
+    check it". Something does: `Chest (Aldarin Villas)` states "approximately
+    400 chests can be successfully opened per hour" at level 60, which 15.5
+    ticks misses by 2.9x.
+
+    The two measure different things. Every Rogues' Castle attempt succeeds, so
+    the cost per chest is the walk to the next of three; a chest you fail at
+    stays shut in front of you and is retried where you stand. So the fallible
+    ones name their own interval and the walk-shaped number is left to the case
+    it was measured on.
+    """
+
+    #: The Aldarin chest's own plain and lockpick curves, off its page.
+    PLAIN = (0.0, 150.0)
+    LOCKPICK = (25.0, 175.0)
+
+    #: Its page's other two figures: 200 experience a chest and a 1.8-second
+    #: reset, which is far shorter than either interval and so never binds.
+    TABLES = gathering.Tables(
+        curves={
+            "chest (aldarin villas)": (
+                ("Normal", 0.0, 150.0, 36, "confirmed"),
+                ("Lockpick", 25.0, 175.0, 36, "confirmed"),
+            ),
+            "chest (rogues' castle)": (),
+        },
+        experience={
+            "Thieving": {
+                "chest (aldarin villas)": (200.0, "Chests"),
+                "chest (rogues' castle)": (701.7, "Chests"),
+            }
+        },
+        respawns={"chest (aldarin villas)": 1.8, "chest (rogues' castle)": 20.4},
+    )
+
+    def _rate(
+        self, level: int, profile: gathering.SkillProfile | None = None
+    ) -> gathering.NodeRate:
+        rate = gathering.rate_at(
+            self.TABLES, {}, profile or gathering.PROFILES["Thieving"],
+            "Loot a ~|chest (Aldarin Villas)|~", "Thieving",
+            {"Level": 36, "Primary": True, "Objects": ["Chest (Aldarin Villas)"]}, level,
+        )
+        assert rate is not None
+        return rate
+
+    def test_the_interval_reproduces_the_pages_own_four_hundred_an_hour(self) -> None:
+        """**Against the curve that figure assumes**, which `Thieving training`
+        states in the same breath: "bring a lockpick and some stamina or super
+        energy potions". 400 successes an hour at the lockpick chance is 883
+        attempts, so 4.08 seconds each."""
+        attempts = 400.0 / gathering.success_chance(60, *self.LOCKPICK)
+
+        assert self._rate(60).roll_seconds == pytest.approx(3600.0 / attempts, rel=0.01)
+
+    def test_what_is_spent_is_still_the_plain_curve(self) -> None:
+        """A lockpick is an item this map may not hold, so the interval is
+        calibrated on the geared figure and the chance is not - the same split
+        `costing/pickpocket.py` makes."""
+        assert self._rate(60).chance == pytest.approx(
+            gathering.success_chance(60, *self.PLAIN)
+        )
+        assert self._rate(60).xp_per_hour == pytest.approx(62_730, rel=0.001)
+
+    def test_the_walk_shaped_interval_would_have_been_almost_three_times_slow(self) -> None:
+        walked = dataclasses.replace(gathering.PROFILES["Thieving"], fixed_interval={})
+
+        ratio = self._rate(60).xp_per_hour / self._rate(60, walked).xp_per_hour
+
+        assert ratio == pytest.approx(2.28, rel=0.02)
+
+    def test_the_second_published_sentence_is_the_residual(self) -> None:
+        """"Without a lockpick or energy potions, only rates up to 40,000 can
+        be expected" over levels 36-45. This reads 37,905 to 46,868 - high at
+        the top of that band, because losing the potions lengthens the run back
+        from the failure teleport and nothing here has a term for it."""
+        assert self._rate(36).xp_per_hour == pytest.approx(37_905, rel=0.001)
+        assert self._rate(45).xp_per_hour == pytest.approx(46_868, rel=0.001)
+
+    def test_the_rogues_castle_chest_keeps_the_number_measured_on_it(self) -> None:
+        """It cannot fail, so nothing about this changes it - which is the
+        point of naming the fallible ones rather than moving the default."""
+        rate = gathering.rate_at(
+            self.TABLES, {}, gathering.PROFILES["Thieving"], "Loot a ~|chest|~", "Thieving",
+            {"Level": 84, "Primary": True, "Objects": ["Chest (Rogues' Castle)"]}, 99,
+        )
+        assert rate is not None
+        assert rate.roll_seconds == pytest.approx(15.5 * 0.6)
+        assert rate.chance == 1.0

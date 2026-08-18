@@ -1684,9 +1684,53 @@ PROFILES: dict[str, SkillProfile] = {
         # walk between three of them - which is the whole cost, since three in
         # rotation means the restock never binds. **One parameter against one
         # observation**, the same standing as Mining's `node_seconds`: 15.5
-        # ticks is what reproduces the Rogues' Castle figure of 270,154/hr, and
-        # nothing else published can check it.
+        # ticks is what reproduces the Rogues' Castle figure of 270,154/hr.
+        #
+        # **This used to say "nothing else published can check it", and
+        # something did.** `Chest (Aldarin Villas)` states 400 successful opens
+        # an hour at level 60, which 15.5 ticks misses by 2.9x - so the number
+        # is a measurement of Rogues' Castle rather than of a chest. What
+        # differs is whether an attempt can fail: at Rogues' Castle every one
+        # succeeds, so the cost per chest is the *walk* to the next of three,
+        # where a chest you fail at stays shut in front of you and is retried
+        # in place. The fallible ones therefore name their own interval in
+        # `fixed_interval` rather than sharing this one.
         roll_ticks_by_kind={"Pickpocket": 2.0, "Stalls": 2.0, "Chests": 15.5},
+        # **A chest that can fail is retried, not walked away from.** See the
+        # note above for why that is a different cadence from the 15.5 ticks
+        # beside it.
+        #
+        # 6.8 ticks is what reproduces `Chest (Aldarin Villas)`'s own published
+        # figure - "at level 60 Thieving, approximately 400 chests can be
+        # successfully opened per hour" - **against the curve that figure
+        # assumes**, which `Thieving training` states in the same breath:
+        # "bring a lockpick and some stamina or super energy potions". At the
+        # lockpick series that is 883 attempts an hour, so 4.08 seconds each.
+        # The chance spent afterwards is still the plain one, because a
+        # lockpick is an item this map may not hold - the same split
+        # `costing/pickpocket.py` makes between what a published figure is
+        # calibrated on and what an estimate here is allowed to assume.
+        #
+        # One parameter against one observation, like the 15.5 above, and the
+        # second published sentence is the residual rather than a second fit:
+        # "without a lockpick or energy potions, only rates up to 40,000 can be
+        # expected" over levels 36-45, where this reads 37,905 to 46,868. High
+        # at the top of that band, because losing the potions lengthens the run
+        # back from the failure teleport and nothing here has a term for it.
+        #
+        # **The Isle of Souls chest borrows that number and is the weaker of
+        # the two.** Nothing publishes a rate for it, but its own page
+        # describes the same mechanic in the same words - "it is possible to
+        # trigger a trap and get teleported out of the dungeon" - so it is a
+        # fallible chest retried in place, and 15.5 ticks would price it as a
+        # walk between three that never fail. That is `INFERRED` in this file's
+        # own vocabulary: a measurement of the same kind of thing moved onto an
+        # uncharted one. It is named here rather than defaulted by kind so the
+        # judgement is visible per node and a third chest has to make it again.
+        fixed_interval={
+            "chest (aldarin villas)": 6.8,
+            "chest (isle of souls dungeon)": 6.8,
+        },
         fail_seconds=3.6,
         fail_seconds_by_kind={"Stalls": 0.0, "Chests": 0.0},
         certain_kinds=frozenset({"Stalls", "Chests"}),
