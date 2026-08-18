@@ -344,9 +344,10 @@ def training_statuses(
 ) -> dict[str, tuple[coverage.MethodStatus, ...]]:
     """`{skill: every primary method and what priced it}`.
 
-    `valid=False` walks the whole export rather than the map's reachable set,
-    which is `chunksim training`'s no-map report: "what could ever be priced"
-    rather than "what this map can".
+    `valid=False` *lists* the methods the state cannot reach as well, which is
+    `chunksim training`'s no-map report: the whole census rather than what one
+    map can do. Either way reachability decides the `unreachable` status -
+    see `coverage.status_of`.
     """
     blobs = load_reference(root, map_id) if reference is None else reference
     heuristics, _ = load_heuristics(state.chunk_info, root, blobs)
@@ -360,7 +361,8 @@ def training_statuses(
             state.chunk_info,
             heuristics,
             skill,
-            derived.challenges.valid.get(skill) if valid else None,
+            derived.challenges.valid.get(skill) or {},
+            only_reachable=valid,
         )
         for skill in coverage.SKILLS
     }

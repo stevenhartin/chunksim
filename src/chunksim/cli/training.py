@@ -61,12 +61,21 @@ from chunksim.store import cache
 #: What a status is called on screen, and the order they are counted in -
 #: worst first, because the tail is the work left to do.
 STATUS_LABELS: dict[str, str] = {
+    "unreachable": "unreachable",
     "unpriced": "unpriced",
     "guess": "guessed",
     "published": "published",
     "pinned": "hand-pinned",
     "modelled": "modelled",
 }
+
+#: Statuses whose rate is not a number the estimator would ever spend, so the
+#: listing leaves the column blank rather than printing a leftover.
+#: `unpriced` shows `DEFAULT_XP_PER_HOUR`, the floor, and `unreachable` shows
+#: whatever the raw scrape left behind for a challenge nothing was asked
+#: about - printing either under a heading that says "rate" is how a
+#: placeholder gets read as a measurement.
+QUIET_STATUSES = frozenset({"unpriced", "unreachable"})
 
 
 def _cmd_training(args: argparse.Namespace) -> int:
@@ -106,6 +115,10 @@ def _report_export(args: argparse.Namespace) -> int:
 
     rows = [row for skill_rows in statuses.values() for row in skill_rows]
     print("scope        the whole export, against every rollable chunk")
+    print(
+        "note         `unreachable` is upstream's own gates, not a modelling gap:"
+        " no layer is asked about a method no map can do"
+    )
     if base:
         print(f"rules        {base}'s, since a rule is a player's choice")
     else:
@@ -154,7 +167,7 @@ def _ceiling_payload(
 def _print_status_table(statuses: dict[str, tuple[coverage.MethodStatus, ...]]) -> None:
     """One row a skill, one column a status."""
     order = list(reversed(coverage.STATUSES))
-    head = "".join(f"{STATUS_LABELS[name]:>12}" for name in order)
+    head = "".join(f"{STATUS_LABELS[name]:>13}" for name in order)
     print(f"{'skill':<14}{head}{'total':>9}")
     totals = dict.fromkeys(order, 0)
     for skill, rows in sorted(statuses.items()):
@@ -163,9 +176,9 @@ def _print_status_table(statuses: dict[str, tuple[coverage.MethodStatus, ...]]) 
         counts = {name: sum(1 for row in rows if row.status == name) for name in order}
         for name in order:
             totals[name] += counts[name]
-        cells = "".join(f"{counts[name] or '':>12}" for name in order)
+        cells = "".join(f"{counts[name] or '':>13}" for name in order)
         print(f"{skill:<14}{cells}{len(rows):>9,}")
-    cells = "".join(f"{totals[name]:>12,}" for name in order)
+    cells = "".join(f"{totals[name]:>13,}" for name in order)
     print(f"{'all':<14}{cells}{sum(totals.values()):>9,}")
 
 
@@ -177,9 +190,10 @@ def _print_skill_statuses(
         # **No rate beside an unpriced method.** What `heuristics.xp_per_hour`
         # returns there is `DEFAULT_XP_PER_HOUR`, and printing the floor in a
         # column headed by a rate is how a placeholder gets read as a number.
-        rate = f"{row.xp_per_hour:>10,.0f}/hr" if row.status != "unpriced" else " " * 14
+        quiet = row.status in QUIET_STATUSES
+        rate = " " * 14 if quiet else f"{row.xp_per_hour:>10,.0f}/hr"
         level = f"lvl {row.level}" if row.level else ""
-        source = row.source if row.status != "unpriced" else ""
+        source = "" if quiet else row.source
         # **The whole task, not `activity_name`.** The verb is what tells six
         # Herblore unlocks apart; stripped, they all read `Herblore`.
         print(

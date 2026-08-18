@@ -8,12 +8,37 @@ from chunksim.cli import training
 from chunksim.costing import coverage
 
 
-def test_the_statuses_are_ordered_worst_first() -> None:
-    """Which is the order a reader wants them counted in: the tail is the work
-    left to do."""
-    assert coverage.STATUSES[0] == "unpriced"
+def test_the_statuses_are_ordered_least_actionable_first() -> None:
+    """The table prints them reversed, so this order is what makes it read
+    best-to-worst and end on the two that are not the model's fault."""
+    assert coverage.STATUSES[0] == "unreachable"
+    assert coverage.STATUSES[1] == "unpriced"
     assert coverage.STATUSES[-1] == "modelled"
     assert set(coverage.STATUSES) == set(training.STATUS_LABELS)
+
+
+def test_a_method_no_map_can_do_is_not_a_modelling_gap() -> None:
+    """**The distinction the report was getting wrong.** Every computed layer
+    walks the derivation's `valid` set, so a challenge outside it is never
+    offered to any of them and keeps whatever the raw scrape left behind.
+    Reported as `published` that says "somebody's guide decides this method",
+    where the truth is "upstream's own gates put it out of reach and nothing
+    here was ever asked" - and measured against the ceiling, *all 47* of the
+    export's remaining published rows were this.
+
+    Reachability is checked before everything, including a pin: a leftover is
+    a leftover whoever wrote it."""
+    assert coverage.status_of("exact", reachable=False) == "unreachable"
+    assert coverage.status_of("exact", pinned=True, reachable=False) == "unreachable"
+    assert coverage.status_of("modelled", reachable=False) == "unreachable"
+    assert coverage.status_of("exact", reachable=True) == "published"
+
+
+def test_an_unreachable_rate_is_not_printed_as_a_rate() -> None:
+    """Its number is a scrape nothing was asked to spend, and `unpriced`'s is
+    the 1,000/hr floor - printing either under a heading that says "rate" is
+    how a placeholder gets read as a measurement."""
+    assert training.QUIET_STATUSES == frozenset({"unpriced", "unreachable"})
 
 
 def test_a_guess_is_not_counted_as_modelled() -> None:

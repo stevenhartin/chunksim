@@ -1040,8 +1040,19 @@ Env vars: `CHUNKSIM_CACHE` (the directory `cache/` is made under), `CHUNKSIM_CHU
 **`chunksim training` is the one subcommand where omitting `--map` asks a different question**
 rather than defaulting one, which is why it sets `infer_map=False` and why `cli/app.main` has a hook
 for that. With a map it is about that world; without, it is about the *export* - how many of its
-2,707 primary methods are `modelled`, `guess`, `published`, `pinned` or `unpriced`
-(`costing/coverage.py`). That report still needs a world to price against, and choosing one took
+2,707 primary methods are `modelled`, `pinned`, `published`, `guess`, `unpriced` or
+`unreachable` (`costing/coverage.py`).
+
+**`unreachable` is separated from the rest and it is the one that was being reported
+wrong.** Every computed layer walks the derivation's `valid` set, so a challenge outside
+it is never offered to any of them and keeps whatever the raw scrape left in
+`Heuristics.training`. Counted as `published` that reads "somebody's guide decides this
+method", where the truth is "upstream's own gates put it out of reach and nothing here was
+ever asked" - `Mix an ~|ancient brew|~` wants nihil dust and `Mix a ~|Guthix rest|~` a
+quest the ceiling cannot finish. Measured, **all 47 of the export's remaining `published`
+rows were this, and not one reachable method anywhere is on a published figure.**
+Reachability is checked before everything including a pin, because a leftover is a
+leftover whoever wrote it. That report still needs a world to price against, and choosing one took
 measuring: seeded with `default_rules` the state derives 4,932 valid challenges against a real map's
 10,111, because most defaults are `False` and a `False` rule *refuses* its gate; leaving the branch
 out is more permissive for refusal-gates (9,273) and still wrong for the ones that widen; every rule

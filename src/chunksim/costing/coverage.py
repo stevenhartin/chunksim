@@ -5,18 +5,33 @@ module here computes a *rate*; this one computes what the rates are made of, so
 `chunksim training` and the GUI's methods overlay can show it and a reader can
 tell a method that is slow from one nothing has reached.
 
-### The four statuses, and why `guess` is not lumped in with `modelled`
+### The statuses, and why three of them are separated rather than lumped
 
-    modelled   this project computed it - a curve, a recipe, a counted mechanic
-    guess      a number chosen so there is one (`costing/rumours.py`, `stated`)
-    published  somebody's figure, joined by name
-    pinned     a hand correction in `overrides.json`, which outranks all of it
-    unpriced   nothing reached it, and the 1,000/hr floor is what estimate uses
+    modelled     this project computed it - a curve, a recipe, a counted mechanic
+    pinned       a hand correction in `overrides.json`, which outranks all of it
+    published    somebody's figure, joined by name
+    guess        a number chosen so there is one (`costing/rumours.py`, `stated`)
+    unpriced     nothing reached it; the 1,000/hr floor is what estimate uses
+    unreachable  no map can even *do* it, so no layer was ever asked
 
-`guess` is separated because it is the one that should shrink and the one a
-reader most needs warning about: it looks exactly like a rate and is an
-admission. `pinned` is separated from `published` for the opposite reason -
-`overrides.json` is the top of the layering by design, so a pin is not a gap.
+`guess` is separated from `modelled` because it is the one that should shrink
+and the one a reader most needs warning about: it looks exactly like a rate
+and is an admission. `pinned` is separated from `published` for the opposite
+reason - `overrides.json` is the top of the layering by design, so a pin is
+not a gap.
+
+**`unreachable` is separated from both, and it is the one that was wrong.**
+Every computed layer walks the derivation's `valid` set, so a challenge
+outside it is never offered to any of them and keeps whatever the raw scrape
+left in `Heuristics.training`. Reported as `published` that reads "somebody's
+guide decides this method", when the truth is "upstream's own gates put it out
+of reach and nothing here was ever asked". Measured against the ceiling -
+every rollable chunk, a real map's rules - **all 47 of the export's remaining
+`published` rows were this**, and not one reachable method anywhere was on a
+published figure. The distinction matters because the two are different work:
+a published row is a modelling gap, an unreachable one is a fact about the
+game (`Ancient brew` wants nihil dust, `Guthix rest` wants a quest the ceiling
+cannot finish).
 
 **`match` decides the status and `pinned` overrides it**, which is the same
 reading `training._modelled_tasks` takes: an override lands in `training`
@@ -28,8 +43,7 @@ looking exactly like the guide row it replaced, so the *only* way to tell is
 Over one map it means "this map cannot price it" - the materials may be
 unreachable, or the model's own gate may not be held. Over the whole export
 (`chunksim training` with no map) it means "no map could", which is the useful
-form for deciding what to model next. The difference is entirely in the `valid`
-set handed in; nothing here knows which question it is answering.
+form for deciding what to model next.
 
 Pure: takes a derivation and a priced `Heuristics` and returns rows.
 """
@@ -58,13 +72,29 @@ MODELLED_MATCHES = frozenset({"modelled", "computed", "confirmed"})
 #: The one that is an admission rather than a measurement.
 GUESS_MATCHES = frozenset({"guess"})
 
-#: The statuses, worst first - which is the order a reader wants them counted
-#: in, because the tail is the work left to do.
-STATUSES: tuple[str, ...] = ("unpriced", "guess", "published", "pinned", "modelled")
+#: The statuses, least actionable first - so a table printing them reversed
+#: reads best-to-worst and ends on the two that are not the model's fault.
+STATUSES: tuple[str, ...] = (
+    "unreachable",
+    "unpriced",
+    "guess",
+    "published",
+    "pinned",
+    "modelled",
+)
 
 
-def status_of(match: str, *, pinned: bool = False) -> str:
-    """Which of `STATUSES` a rate belongs to."""
+def status_of(match: str, *, pinned: bool = False, reachable: bool = True) -> str:
+    """Which of `STATUSES` a rate belongs to.
+
+    **`reachable` is checked first and overrules everything**, including a
+    pin: no layer was asked about a challenge outside the derivation's `valid`
+    set, so whatever sits in `Heuristics.training` for it is a leftover rather
+    than a decision. See the module docstring for what reporting those as
+    `published` was saying.
+    """
+    if not reachable:
+        return "unreachable"
     if pinned:
         return "pinned"
     if not match or match == "default":
@@ -134,12 +164,16 @@ def statuses_for(
     chunk_info: ChunkInfo,
     heuristics: Heuristics,
     skill: str,
-    valid: Mapping[str, Any] | None = None,
+    reachable: Mapping[str, Any],
+    *,
+    only_reachable: bool = True,
 ) -> tuple[MethodStatus, ...]:
     """Every primary method of `skill`, with what priced it, worst first.
 
-    `valid` restricts the walk to a map's reachable set; omitted, the whole
-    export is walked, which is the "what could ever be priced" question.
+    `reachable` is the derivation's `valid` set for this skill and is always
+    what decides the `unreachable` status. `only_reachable` decides whether
+    the unreachable ones are *listed*: the per-map report wants only what the
+    map can do, and the export-wide one wants the whole census.
 
     **Computed methods are folded in by knob, not appended.** A model that
     supersedes a challenge's rate (`training._modelled_tasks`) writes no entry
@@ -147,7 +181,11 @@ def statuses_for(
     modelled method as unpriced - which is exactly backwards.
     """
     offered = primary_tasks(chunk_info, skill)
-    tasks = offered if valid is None else {t: c for t, c in offered.items() if t in valid}
+    tasks = (
+        {task: c for task, c in offered.items() if task in reachable}
+        if only_reachable
+        else offered
+    )
     computed = _computed_by_knob(heuristics, skill)
     found: list[MethodStatus] = []
     for task, challenge in tasks.items():
@@ -168,7 +206,11 @@ def statuses_for(
                 effective_xp_per_hour=rate,
                 match=match,
                 source=source,
-                status=status_of(match, pinned=task in heuristics.pinned),
+                status=status_of(
+                    match,
+                    pinned=task in heuristics.pinned,
+                    reachable=task in reachable,
+                ),
                 knob=knob,
             )
         )

@@ -862,7 +862,10 @@ maps are your own work and nothing can recompute them.
    **`chunksim training` is the one command where omitting `--map` asks a different question**
    rather than defaulting one: with a map it is about that world's methods, without it is about the
    *export* - how many of its 2,707 primary training methods are modelled here, how many are
-   somebody else's published figure, how many are a guess and how many nothing has priced at all.
+   somebody else's published figure, how many are a guess, how many nothing has priced at all,
+   and how many no map can even reach. That last one is upstream's own gates rather than a gap
+   here, which is why it is counted apart: a method needing an item the world does not offer is
+   not a number waiting to be improved.
    That report still needs a world to price against, so it builds one holding every rollable chunk
    and borrows a cached map's rules (`--rules-from MAP`), because a rule is a player's choice and
    the export has no permissive defaults to fall back on.
