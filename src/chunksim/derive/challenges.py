@@ -2533,6 +2533,42 @@ def calc_challenges(
     than recompiling 6,300 plans on each. Omitted, this call keeps its own, and
     behaves exactly as it did before the table existed. It is a parameter and
     never a module global, so `--jobs` is untouched.
+
+    ### A worklist over the gate scan was tried and rejected
+
+    This is the most expensive thing in `derive` - on the every-rollable-chunk
+    map, `_dynamic_gates_met` is 1.8M calls and 5.8s of a 4.4s wall - and it
+    looks wildly redundant: measured, **94.5% of those calls reproduce the
+    answer that candidate gave last pass** (11,642 candidates, 86,521 answer
+    changes in total). Carrying an answer forward while its inputs are
+    unchanged is the obvious fix, and it is exact: four versions of it were
+    built and every one produced a byte-identical derivation on all three
+    maps.
+
+    **Every one of them was also slower**, 4.4s to between 5.1s and 6.2s, and
+    two measurements say why:
+
+    - **41% of the export's challenges carry `Skills` or `Tasks`**, and those
+      gates read the validity being *built* - `new_valid`, mid-scan - so their
+      answer is position-dependent within a pass and cannot be carried at all.
+      They are re-evaluated every pass whatever else is done, which caps the
+      whole idea at 59% of the calls before any of it is paid for. The version
+      that reached furthest cut the calls to 1.39M, 23%.
+    - **Detecting that an input moved costs more than the gate does.** A gate
+      call is ~3us. Recording each read's value and checking it per candidate
+      cost about that much again; diffing the seeded item index once a pass
+      instead was **714,354 dict comparisons to find 499 invalidations**,
+      because a reseed rebuilds the per-name dicts wholesale. Comparing those
+      by identity is free but reads almost everything as changed - the hit rate
+      went 90% to 33%.
+
+    **What would make it pay, for whoever tries next**: the invalidation has to
+    come from `_seed_items_with_outputs` reporting which names it actually
+    moved, since it is building the index anyway and knows. That turns the
+    714k comparisons into a set the seeder hands over, and the reuse rule then
+    costs one `frozenset.isdisjoint` per candidate. The ceiling is still the
+    41%, so the prize is roughly a fifth of `derive` rather than half of it -
+    worth having, but not worth reaching for through a diff.
     """
     challenges = chunk_info.challenges
     max_skill = max_skill or {}
