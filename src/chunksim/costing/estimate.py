@@ -146,6 +146,37 @@ is measured from the floor up, which is the whole point of the climb.
 is where they matter most: Vannaka's basilisks want Defence 20, which
 `passiveSkill` could not confirm, so the task read as "never offered" - free -
 instead of "offered and unreachable", which costs a 30-point skip.
+
+### The item walk is memoised twice, and both memos are exact
+
+The recursion re-derived a hammer for every rung of every toolchain: 284,260
+recursive `_item_hours` calls on the reference map collapse onto 3,591
+distinct questions, `Pickaxe[+]` alone asked 11,816 times. But the answer
+genuinely depends on `seen` and `depth` - the toolchain cycle (a pickaxe is
+bars is ore is a pickaxe) and the depth budget both shape results - so a memo
+keyed on the item alone would be wrong silently, in exactly the way the
+docstring on `material_seconds` warns about.
+
+Two caches, both on the per-call `_Walk` and both provably answer-preserving
+(the pricing digest of all three cached maps is byte-identical with and
+without them):
+
+- **`_Walk.subtrees`** stores a whole subtree's answer together with what the
+  computation *tested* against `seen` and how many depth levels it needed. An
+  entry is stored only when the caller's context never shaped the result
+  (`_Frame.clean`), and reused only where the new caller's `seen` is disjoint
+  from the tested set and the remaining budget covers the levels. `_saw`
+  carries the accounting, which is why every membership test goes through it.
+- **`_Walk.leaf_routes`** is what the first cannot catch: inside a
+  context-shaped subtree, the hundreds of kill/shop/spawn routes re-scanned
+  per item are themselves context-free, so their best is computed once per
+  `(item, quantity, amortise)` and reused in every context. Only `task:`
+  routes recurse and stay live.
+
+Together they are ~3x on a cold pricing (reference map 5.8s -> 1.9s, the
+every-rollable-chunk map 48s -> 10s across pricing plus estimate) and moved
+no number anywhere. What remains hot afterwards is not this module: it is
+`dps_bridge.enrich`, whose ~5,700 monster pricings are measured 83% distinct.
 """
 
 from __future__ import annotations
@@ -603,6 +634,55 @@ class EstimateResult:
         }
 
 
+class _Frame:
+    """Accounting for one in-flight `_item_hours` subtree.
+
+    What the subtree memo (`_Walk.subtrees`) needs to know about a computation
+    before its answer can be reused somewhere else: which names it compared
+    against `seen`, how deep it reached, and whether the caller's context
+    actually shaped the result. See `_item_hours` for the reuse rule.
+    """
+
+    __slots__ = ("entry_seen", "tested", "deepest", "clean")
+
+    def __init__(self, entry_seen: frozenset[str], depth: int) -> None:
+        #: The `seen` this subtree was entered with. What tells a hit on an
+        #: ancestor (context) from a hit on something the subtree itself
+        #: added (internal) - only the first makes the result unreusable.
+        self.entry_seen = entry_seen
+        #: Every name whose membership of `seen` was consulted and found
+        #: absent. A caller whose `seen` holds any of them would flip that
+        #: test, so reuse requires disjointness.
+        self.tested: set[str] = set()
+        #: The deepest absolute `depth` the subtree reached.
+        self.deepest = depth
+        #: False once the result was shaped by the caller's context - a hit
+        #: on an ancestor name, or the depth cap firing anywhere below.
+        self.clean = True
+
+
+def _saw(walk: _Walk, name: str, seen: frozenset[str]) -> bool:
+    """`name in seen`, with the accounting the subtree memo needs.
+
+    **Every membership test the walk makes goes through here**, which is what
+    lets `_item_hours` prove a cached subtree independent of its caller. A
+    miss is recorded in the innermost frame (a future caller holding the name
+    would flip it). A hit walks outward marking frames dirty until the frame
+    that *added* the name - `seen` grows only by `seen | {item}`, one name per
+    frame, so a frame whose `entry_seen` lacks the name is where it came from,
+    and from there out the hit is internal and changes nothing.
+    """
+    if name not in seen:
+        walk.frames[-1].tested.add(name)
+        return False
+    for frame in reversed(walk.frames):
+        if name not in frame.entry_seen:
+            break
+        frame.clean = False
+        frame.tested.add(name)
+    return True
+
+
 @dataclass(frozen=True)
 class _Walk:
     """Everything the item walk reads, bundled so it isn't passed six-deep."""
@@ -679,6 +759,52 @@ class _Walk:
     drop_rates: dict[tuple[str, str], tuple[float, float] | None] = field(
         default_factory=dict
     )
+    #: The subtree memo: `(resolved item, quantity, amortise)` -> the walk's
+    #: answer, the names it tested against `seen`, and how many levels of
+    #: depth it needed. **Exact, not approximate** - an entry is stored only
+    #: for a computation the caller's context never shaped (`_Frame.clean`),
+    #: and reused only where the new context provably cannot shape it either.
+    #: Measured pricing the reference map: 284,260 recursive `_item_hours`
+    #: calls collapse onto 3,591 distinct questions, `Pickaxe[+]` alone asked
+    #: 11,816 times - and every context-dependent disagreement observed was
+    #: the depth cap truncating a deep call to `None`, which the reuse rule's
+    #: budget check reproduces exactly.
+    #:
+    #: Filled lazily on a `_Walk` built per `_setup` call, like `drop_rates`
+    #: above - never module state, so `--jobs` stays honest. **Both
+    #: `dataclasses.replace(walk, ...)` sites reset it**, because `replace`
+    #: shares field references and the fields they change (`recipes`,
+    #: `made_experience`) change answers.
+    subtrees: dict[
+        tuple[str, float, bool], tuple["_Priced | None", frozenset[str], int]
+    ] = field(default_factory=dict)
+    #: The in-flight accounting stack, sentinel at the bottom so the root
+    #: call has a frame to report into. Per-walk and single-threaded, since a
+    #: walk lives inside one call tree.
+    frames: list[_Frame] = field(default_factory=lambda: [_Frame(frozenset(), 0)])
+    #: `(item, quantity, amortise)` -> the best **leaf** route and its position
+    #: in `item_sources`, or `None` when no leaf prices. A leaf is any source
+    #: that does not recurse - a kill, a shop, a ground spawn - and none of
+    #: them reads `seen` or `depth`, so the answer is a fact about the walk
+    #: rather than about the caller. This is what the subtree memo above
+    #: cannot catch: the toolchain cycle (a pickaxe is bars is ore is a
+    #: pickaxe) makes those subtrees context-shaped, but the hundreds of kill
+    #: routes re-scanned inside every one of those contexts are not.
+    #: Measured on the reference map it takes `_kill_hours` from 2.26M calls
+    #: to the distinct few thousand.
+    leaf_routes: dict[
+        tuple[str, float, bool], tuple["_Priced", int] | None
+    ] = field(default_factory=dict)
+    #: item -> its `task:` sources with their positions **and their
+    #: challenges**, so the live half of the split loop neither re-filters
+    #: `item_sources` nor re-reads the export per call - the challenge lookup
+    #: was two `_mapping` calls inside a loop that runs a million times on the
+    #: reference map. A source whose skill the export does not carry, or whose
+    #: challenge is not a dict, is dropped here once rather than refused per
+    #: call.
+    task_routes: dict[
+        str, tuple[tuple[int, str, str, dict[str, Any]], ...]
+    ] = field(default_factory=dict)
     #: Lowercased item name -> the export's own spelling. Task names carry
     #: the item in lower case inside their `~|...|~` span
     #: (`Obtain a ~|granite ring (i)|~`) while `item_sources` is keyed by the
@@ -822,9 +948,66 @@ def _item_hours(
     and a stacked drop amortises across it. See `_drop_rates`.
     """
     item = walk.resolve(item)
-    if item in seen or depth > _MAX_DEPTH:
+    if _saw(walk, item, seen):
+        return None
+    if depth > _MAX_DEPTH:
+        # The cap is pure context: the same subtree entered shallower would
+        # have priced, so nothing on the stack may be stored.
+        for frame in walk.frames:
+            frame.clean = False
         return None
 
+    # **The subtree memo, and the whole of the reuse rule.** An entry may
+    # stand in for a recomputation only when replaying it here would go the
+    # same way: nothing it tested against `seen` is in *this* `seen`, and the
+    # depth it needed fits in the budget left. Both checks are against what
+    # the stored computation actually did, not a guess about it - which is
+    # what makes this a pure speed-up: measured over all three maps, not one
+    # priced number moves. What it buys is the walk no longer re-deriving a
+    # hammer for every rung of every toolchain: 284,260 recursive calls on
+    # the reference map collapse onto 3,591 distinct questions.
+    key = (item, quantity, amortise)
+    held = walk.subtrees.get(key)
+    if held is not None:
+        result, tested, levels = held
+        if depth + levels <= _MAX_DEPTH and seen.isdisjoint(tested):
+            frame = walk.frames[-1]
+            frame.tested |= tested
+            if depth + levels > frame.deepest:
+                frame.deepest = depth + levels
+            return result
+
+    frame = _Frame(seen, depth)
+    walk.frames.append(frame)
+    try:
+        found = _best_route(
+            walk, item, quantity=quantity, amortise=amortise, depth=depth, seen=seen
+        )
+    finally:
+        walk.frames.pop()
+        parent = walk.frames[-1]
+        parent.tested |= frame.tested
+        if frame.deepest > parent.deepest:
+            parent.deepest = frame.deepest
+    if frame.clean:
+        walk.subtrees[key] = (found, frozenset(frame.tested), frame.deepest - depth)
+    return found
+
+
+def _best_route(
+    walk: _Walk,
+    item: str,
+    *,
+    quantity: float,
+    amortise: bool,
+    depth: int,
+    seen: frozenset[str],
+) -> _Priced | None:
+    """`_item_hours` after its guard and memo: try every route, keep the best.
+
+    Split out so the wrapper above can bracket exactly one subtree with one
+    `_Frame`. `item` arrives already resolved.
+    """
     # **`[+]` means "or anything equivalent", so take the cheapest.** The
     # family is upstream's own list; picking the best of it is the same
     # reading `_required_kills` already takes for `monstersPlus`, which stops
@@ -834,7 +1017,7 @@ def _item_hours(
     if members:
         cheapest: _Priced | None = None
         for member in members:
-            if not isinstance(member, str) or member in seen:
+            if not isinstance(member, str) or _saw(walk, member, seen):
                 continue
             priced = _item_hours(
                 walk,
@@ -882,13 +1065,60 @@ def _item_hours(
     if shared is not None:
         return shared
 
-    best: _Priced | None = None
-    for source in walk.world.item_sources.get(item, ()):
-        priced = _route_hours(
-            walk, item, source.route, source.name, depth, seen | {item}, quantity, amortise
+    # **The source loop, split by whether a route can recurse.** A `task:`
+    # route walks its challenge's own `Items` and must be priced live, in this
+    # context; everything else - a kill, a shop, a spawn - reads nothing from
+    # `seen` or `depth`, so its best is computed once per question and reused
+    # in every context, including the ones the subtree memo has to refuse.
+    # The winner is still the first source reaching the minimal hours in
+    # `item_sources` order, which is what the index tie-break preserves - a
+    # tie between routes must not pick its winner by which cache answered.
+    sources = walk.world.item_sources.get(item, ())
+    tasks = walk.task_routes.get(item)
+    if tasks is None:
+        tasks = tuple(
+            (at, source.route, source.name, challenge)
+            for at, source in enumerate(sources)
+            if source.route.startswith("task:")
+            and isinstance(
+                challenge := _mapping(
+                    walk.chunk_info.challenges, source.route.removeprefix("task:")
+                ).get(source.name),
+                dict,
+            )
         )
-        if priced is not None and (best is None or priced.hours < best.hours):
-            best = priced
+        walk.task_routes[item] = tasks
+    key = (item, quantity, amortise)
+    if key in walk.leaf_routes:
+        held = walk.leaf_routes[key]
+    else:
+        held = None
+        for at, source in enumerate(sources):
+            if source.route.startswith("task:"):
+                continue
+            priced = _route_hours(
+                walk, item, source.route, source.name, depth, seen | {item},
+                quantity, amortise,
+            )
+            if priced is not None and (held is None or priced.hours < held[0].hours):
+                held = (priced, at)
+        walk.leaf_routes[key] = held
+    best: _Priced | None
+    if held is not None:
+        best, best_at = held
+    else:
+        best, best_at = None, -1
+    for at, route, provider, challenge in tasks:
+        priced = _route_hours(
+            walk, item, route, provider, depth, seen | {item}, quantity, amortise,
+            challenge=challenge,
+        )
+        if priced is not None and (
+            best is None
+            or priced.hours < best.hours
+            or (priced.hours == best.hours and at < best_at)
+        ):
+            best, best_at = priced, at
     decanted = _dose_hours(walk, item, quantity, amortise, depth, seen | {item})
     if decanted is not None and (best is None or decanted.hours < best.hours):
         best = decanted
@@ -939,7 +1169,7 @@ def _recipe_hours(
         earned: list[tuple[str, float]] = []
         failed = False
         for material in recipe.materials:
-            if material.name in seen:
+            if _saw(walk, material.name, seen):
                 failed = True
                 break
             # An assembly stage costs no depth here either - the wiki
@@ -1022,7 +1252,7 @@ def _dose_hours(
         if other == dose:
             continue
         candidate = f"{name}({other})"
-        if candidate in seen:
+        if _saw(walk, candidate, seen):
             continue
         priced = _item_hours(
             walk,
@@ -1108,6 +1338,7 @@ def _route_hours(
     seen: frozenset[str],
     quantity: float = 1.0,
     amortise: bool = False,
+    challenge: dict[str, Any] | None = None,
 ) -> _Priced | None:
     if route in _FREE_ROUTES:
         # **A shop is only free if you can walk into it.** `WorldIndex` spans
@@ -1181,12 +1412,16 @@ def _route_hours(
         )
 
     if route.startswith("task:"):
-        # Made rather than found: the cost is its inputs, recursively.
-        challenge = _mapping(walk.chunk_info.challenges, route.removeprefix("task:")).get(
-            provider
-        )
-        if not isinstance(challenge, dict):
-            return None
+        # Made rather than found: the cost is its inputs, recursively. The
+        # challenge normally rides in from `_best_route`'s per-item cache;
+        # the lookup below only serves a direct caller.
+        if challenge is None:
+            found = _mapping(
+                walk.chunk_info.challenges, route.removeprefix("task:")
+            ).get(provider)
+            if not isinstance(found, dict):
+                return None
+            challenge = found
         # **A challenge's `Output` is often a table rather than the item.** 223
         # of them are: `Catch a ~|raw swordfish|~` yields `Raw swordfish loot`,
         # `{"Raw swordfish": "Always", "Big swordfish": "1/2500"}`. So doing it
@@ -1877,7 +2112,14 @@ def _setup(
             key = made.output.lower()
             by_output[key] = (*by_output.get(key, ()), made)
     if by_output:
-        walk = dataclasses.replace(walk, recipes=by_output)
+        # **A different recipe corpus is a different walk**, and `replace`
+        # shares field references - so the subtree memo and the frame stack
+        # are reset rather than inherited, or answers cached against one
+        # corpus would be served against the other.
+        walk = dataclasses.replace(
+            walk, recipes=by_output, subtrees={}, leaf_routes={},
+            frames=[_Frame(frozenset(), 0)],
+        )
 
     grimy = herbs.herb_items(derived.source_index.items)
     if grimy:
@@ -1954,7 +2196,13 @@ def material_seconds(
     """
     walk = _setup(state, derived, world, heuristics, level_overrides or {}, recipes).walk
     if made_experience:
-        walk = dataclasses.replace(walk, made_experience=made_experience)
+        # Reset for the reason the `recipes` replace above resets: the
+        # experience credits ride on every `_Priced`, so a memo filled under
+        # one table is wrong under another.
+        walk = dataclasses.replace(
+            walk, made_experience=made_experience, subtrees={}, leaf_routes={},
+            frames=[_Frame(frozenset(), 0)],
+        )
     memo: dict[tuple[str, float], _Priced | None] = {}
 
     def priced_for(item: str, quantity: float) -> _Priced | None:

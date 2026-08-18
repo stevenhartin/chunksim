@@ -2270,9 +2270,11 @@ def test_a_recipe_is_the_last_resort_route() -> None:
     """
     import inspect
 
-    from chunksim.costing.estimate import _item_hours, _recipe_hours
+    from chunksim.costing.estimate import _best_route, _recipe_hours
 
-    source = inspect.getsource(_item_hours)
+    # `_best_route` is `_item_hours` past its guard and subtree memo - the
+    # route ordering lives there now.
+    source = inspect.getsource(_best_route)
     assert "if best is None:" in source, "the recipe route must be a last resort"
     assert source.index("_route_hours") < source.index("_recipe_hours")
     assert "output_quantity" in inspect.getsource(_recipe_hours), "one chisel makes four"
@@ -2380,3 +2382,116 @@ def test_the_walk_chases_a_chain_five_deep() -> None:
     from chunksim.costing.estimate import _MAX_DEPTH
 
     assert _MAX_DEPTH >= 5
+
+
+class TestTheSubtreeMemoIsExact:
+    """**A cache entry may stand in for a recomputation only when replaying it
+    would go the same way.**
+
+    The walk's recursion re-derived a hammer for every rung of every toolchain
+    - 284,260 recursive `_item_hours` calls on the reference map collapse onto
+    3,591 distinct questions - but the answer genuinely depends on `seen` and
+    `depth` in two places, and a memo that ignored either would be wrong
+    silently. So an entry records what its computation tested against `seen`
+    and how deep it went, and the reuse rule checks both. The strongest
+    evidence is not here: the pricing digest of all three cached maps is
+    byte-identical before and after the memo. These pin the two reuse refusals
+    individually, so a regression names the rule it broke.
+    """
+
+    def _chain_info(self) -> ChunkInfo:
+        """`Deep 0` is made from `Deep 1` is made from ... `Deep 5`, which is
+        a spawn - a chain that prices at depth 0 and refuses when entered
+        deeper, which is exactly what a depth-blind memo would get wrong."""
+        chunks = {"1111": {"Spawn": {"Deep 5": 1}}}
+        challenges: dict[str, Any] = {}
+        for step in range(5):
+            challenges[f"Make deep {step}"] = {
+                "Items": [f"Deep {step + 1}"],
+                "Output": f"Deep {step}",
+                "Primary": True,
+            }
+        return ChunkInfo({"challenges": {"Crafting": challenges}, "chunks": chunks})
+
+    def test_a_deep_answer_is_not_served_past_the_budget(self) -> None:
+        from chunksim.costing.estimate import _MAX_DEPTH, _item_hours
+
+        walk = _walk_for(self._chain_info())
+
+        # Warm the cache with the shallow answer...
+        assert _item_hours(walk, "Deep 0") is not None
+        assert ("Deep 0", 1.0, False) in walk.subtrees
+
+        # ...then ask again from a depth its five levels no longer fit.
+        # A memo keyed on the item alone would happily serve the priced
+        # answer; the exact one recomputes and refuses, as cold does.
+        deep = _item_hours(walk, "Deep 0", depth=_MAX_DEPTH - 2)
+        assert deep is None
+
+    def test_an_answer_is_not_served_into_a_cycle_it_was_computed_without(self) -> None:
+        """`Attack potion(4)` prices by decanting `(3)`s. Under `(3)`'s own
+        recursion that route is a cycle and must not be on offer - which is
+        precisely the answer a context-blind cache would serve."""
+        from chunksim.costing.estimate import _item_hours
+
+        info = ChunkInfo(
+            {
+                "challenges": {},
+                "chunks": {"1111": {"Spawn": {"Attack potion(3)": 1}}},
+            }
+        )
+        walk = _walk_for(info)
+
+        # Standalone, the four-dose prices by decanting spawned threes.
+        alone = _item_hours(walk, "Attack potion(4)")
+        assert alone is not None
+
+        # Under the three's own recursion it must not - the decant is a
+        # cycle there, and the only other route does not exist.
+        cycled = _item_hours(walk, "Attack potion(4)", seen=frozenset({"Attack potion(3)"}))
+        assert cycled is None
+
+    def test_what_a_subtree_tested_travels_with_its_entry(self) -> None:
+        """The stored `tested` set is the reuse contract: any caller whose
+        `seen` holds one of those names would flip a comparison the stored
+        run made, so it must recompute."""
+        from chunksim.costing.estimate import _item_hours
+
+        walk = _walk_for(self._chain_info())
+        _item_hours(walk, "Deep 3")
+
+        _, tested, levels = walk.subtrees[("Deep 3", 1.0, False)]
+        assert "Deep 4" in tested and "Deep 5" in tested
+        assert levels == 2, "two recipe hops below it"
+
+    def test_a_dirty_subtree_is_not_stored(self) -> None:
+        """A computation the caller's context shaped describes that context,
+        not the item - `Deep 2` entered with `Deep 4` already seen refuses,
+        and caching that refusal would poison every clean caller."""
+        from chunksim.costing.estimate import _item_hours
+
+        walk = _walk_for(self._chain_info())
+        blocked = _item_hours(walk, "Deep 2", seen=frozenset({"Deep 4"}))
+
+        assert blocked is None
+        assert ("Deep 2", 1.0, False) not in walk.subtrees
+
+        # And the clean question afterwards still prices - the refusal above
+        # neither answered for it nor barred it.
+        assert _item_hours(walk, "Deep 2") is not None
+        assert ("Deep 2", 1.0, False) in walk.subtrees
+
+    def test_replacing_walk_fields_that_move_answers_resets_the_caches(self) -> None:
+        """`dataclasses.replace` shares field references, so the two sites
+        that swap `recipes`/`made_experience` must hand the new walk empty
+        caches - answers embed experience credits and corpus routing."""
+        import inspect
+
+        from chunksim.costing import estimate as module
+
+        source = inspect.getsource(module)
+        for site in ("recipes=by_output", "made_experience=made_experience"):
+            at = source.index(site)
+            window = source[at : at + 200]
+            assert "subtrees={}" in window, site
+            assert "leaf_routes={}" in window, site
