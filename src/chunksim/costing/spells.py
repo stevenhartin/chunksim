@@ -32,11 +32,25 @@ The infobox's `type` splits the 190 into **Combat 86, Utility 53, Teleport
   prices that from the tablet's own recipe. Where a map can build no lectern
   that makes the tablet, the teleport has no rate at all - see
   `refuse_untabled`, which is why that is the honest answer rather than a gap.
-- **Combat** belongs to `costing/combat_xp.py`, which prices a cast against a
-  monster with the gear, the gates and the kill in it. A bare cast speed here
-  would be a second, worse answer to a question already answered - and the
-  page's own `(N on autocast)` aside is the giveaway that the manual figure is
-  not the combat cadence.
+- **Combat** is priced here too, and the figure is the **base experience a
+  cast pays whether or not it lands**. That is a real method - splashing is
+  what the whole of low-level Magic training used to be - and every term it
+  needs is published: 5 ticks (checked on 22 combat spells, all flat, none
+  carrying the `(N on autocast)` aside an earlier version of this docstring
+  claimed), the base experience, and the runes.
+
+  **What it deliberately does not count is damage experience.** A cast that
+  hits also pays `2 x damage`, and that depends on the target, the gear and
+  the gates - which is `costing/combat_xp.py`'s question and is answered there
+  far better than a bare speed could. So this is a *floor* on casting the
+  spell, correct for splashing and conservative for fighting, and it never
+  competes with the combat answer because `training_bands` takes the maximum.
+
+  This module used to refuse the kind outright on the grounds that
+  `combat_xp.py` "already prices it". That is true of the *skill* and false of
+  these *challenges*: `combat_xp` keys its rates on `monster_stats/<monster>`,
+  so all 56 combat `Cast ...` methods read `unpriced` while Magic itself was
+  covered - the model having an answer to a different question.
 
 ### The materials are the export's, not the infobox's
 
@@ -84,10 +98,10 @@ SPELL_SOURCE = "spell"
 #: are this project computing an answer rather than reading one.
 SPELL_MATCH = "computed"
 
-#: The one `infobox_spell` type whose stated speed is the whole cost of a cast.
-#: See the module docstring for why the other two are refused rather than
-#: approximated.
-PRICED_KIND = "Utility"
+#: The `infobox_spell` types whose stated speed is the whole cost of a cast.
+#: See the module docstring for why `Teleport` is refused rather than
+#: approximated, and for what a `Combat` figure here does and does not claim.
+PRICED_KINDS = frozenset({"Utility", "Combat"})
 
 #: One game tick, in seconds.
 TICK_SECONDS = 0.6
@@ -107,7 +121,7 @@ def castable(costs: Mapping[str, MaterialCost]) -> dict[str, MaterialCost]:
     return {
         task: cost
         for task, cost in costs.items()
-        if cost.kind == PRICED_KIND
+        if cost.kind in PRICED_KINDS
         and cost.ticks is not None
         and cost.ticks > 0
         and cost.experience > 0

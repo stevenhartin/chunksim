@@ -40,15 +40,19 @@ def _seconds(name: str, quantity: float) -> float | None:
     return {"Big bones[+]": 20.0}.get(name, 0.1) * quantity
 
 
-def test_only_a_utility_spells_speed_is_the_whole_cast() -> None:
+def test_a_teleport_alone_is_refused_on_its_kind() -> None:
     """**Upstream's own `type` decides it.** A teleport's speed is the
     animation and not the method - you have to get back somewhere you can cast
-    again, which no page states - and a combat cast belongs to
-    `costing/combat_xp.py`, which prices it against a monster with the gear
-    and the gates in it."""
+    again, which no page states - so it is answered by `costing/lectern.py` or
+    not at all.
+
+    A **combat** cast is priced, and the figure is the base experience it pays
+    whether or not it lands: a floor, correct for splashing and conservative
+    for fighting, where the damage half is `costing/combat_xp.py`'s."""
     found = spells.castable(_COSTS)
 
-    assert set(found) == {_ALCH, _BONES}
+    assert set(found) == {_ALCH, _BONES, _BOLT}
+    assert _CAMELOT not in found
 
 
 @pytest.mark.parametrize("ticks", [None, 0.0])

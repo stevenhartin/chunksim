@@ -414,6 +414,27 @@ goes 556 modelled to 559; the three swords read 19,809-21,398 xp/hr, real
 enough to be interesting and still under `wooden fence`'s 55,436, so no
 climb moves.
 
+**"Answered elsewhere" is only true if the answer lands on the same row.**
+`costing/spells.py` refused every `Combat` cast on the stated grounds that
+`costing/combat_xp.py` "already prices it". That is true of the *skill* and
+false of the *challenges*: `combat_xp` keys its rates on
+`monster_stats/<monster>`, so all 56 combat `Cast ...` methods read `unpriced`
+while Magic itself was well covered - a model answering a different question
+than the one the report asks. The other half of the old reason does not hold
+either: it claimed the infobox's `speed` carries an `(N on autocast)` aside
+making the manual figure the wrong cadence, and **22 combat spells were
+checked and every one is a flat `5 ticks`** with no such aside.
+
+So a combat cast is priced at the **base experience it pays whether or not it
+lands** - splashing, which is a real method and needs only the three published
+terms a utility cast needs. **Damage experience is deliberately not counted**:
+it depends on the target, the gear and the gates, which is exactly what
+`combat_xp.py` models, so this is a floor - correct for splashing, conservative
+for fighting - and it can never compete with the combat answer because
+`training_bands` takes the maximum. Magic goes **92 modelled to 132** and no
+climb moves on any map: fire bolt reads 11,507/hr against the Arceuus library's
+163,350.
+
 **A number in a table is only the number the column header says it is.**
 Tempoross' reward table gives "Repairing totems/masts" as **40**, and it is
 40 *points* - the column is headed `Points` and dousing a fire pays the same
