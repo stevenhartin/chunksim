@@ -38,6 +38,7 @@ from chunksim.costing import (
     coverage,
     barbarian,
     crane,
+    trawler,
     valetotems,
     barracuda,
     blastmine,
@@ -556,6 +557,9 @@ def recipe_priced(
     totemed = valetotems.methods(
         derived.challenges.valid, {**infer_levels(state), **levels}, seconds
     )
+    # **And the trawler's leaks**, which eat 51 swamp paste a game - see
+    # `costing/trawler.py`, and its docstring on why the figure is a ceiling.
+    trawled = trawler.methods(derived.challenges.valid, seconds)
     overrides = blobs.overrides
     # **The hand materials do not depend on the recipes**, so they are read
     # before the early return: a clone with no `chunksim recipes` cache still
@@ -581,7 +585,7 @@ def recipe_priced(
         return (
             replace(
                 heuristics,
-                computed=_merge_computed(prayed, craned, totemed, gathered),
+                computed=_merge_computed(prayed, craned, totemed, trawled, gathered),
                 material_seconds_per_xp={**by_calc, **by_spell, **by_hand},
             ),
             recipe_rates.RecipeCoverage(),
@@ -716,7 +720,7 @@ def recipe_priced(
             heuristics,
             training=rated,
             action_seconds=timed,
-            computed=_merge_computed(prayed, craned, totemed, gathered),
+            computed=_merge_computed(prayed, craned, totemed, trawled, gathered),
             material_seconds_per_xp=per_xp,
             material_xp_per_xp=credited,
             # **Carried so `unpriced` can say what it wanted.** Pure

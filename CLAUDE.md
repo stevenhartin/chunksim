@@ -414,6 +414,22 @@ goes 556 modelled to 559; the three swords read 19,809-21,398 xp/hr, real
 enough to be interesting and still under `wooden fence`'s 55,436, so no
 climb moves.
 
+**Where an activity caps what you can earn, the mechanic is a budget and the
+model is division.** The Fishing Trawler tabulates what each action on the
+boat pays in contribution points *and* in experience, then caps a game at 255
+points - so what a skill takes out is decided by its action's
+points-per-experience rather than by how fast anyone clicks. Filling a leak is
+one point per experience and fixing a rail is the same 5 experience for twice
+the points, so a Construction player ignores the rails: 51 leaks, 255
+experience, and at a published 6.5-minute round that is 9.23 games an hour and
+2,354/hr before the 51 swamp paste it eats. **Labelled a ceiling**, for
+`costing/troublebrewing.py`'s reason - every term is published, and the two
+assumptions on top (every point from leaks, and leaks spawning fast enough to
+absorb them) are not checkable from anything the wiki states.
+**Crafting's net repair is in the same table and is refused**: its success
+chance depends on Crafting level and the page's only success chart is for the
+fish, which is `costing/pickpocket.py`'s call for its seven uncharted NPCs.
+
 **Two published tables that close on each other are worth more than either.**
 Vale Totems states its per-totem experience by log tier and its Construction
 experience by level, and neither states a rate this project could use

@@ -103,6 +103,16 @@ The modules, and what each owns:
   the cadence a model would need - a chance fitted to the guide's own figure
   would be the guide with extra steps. Takes away only the scrape's own tiers,
   so a model or a hand pin survives.
+- `trawler.py` - filling leaks on the Fishing Trawler, which is a **budget
+  rather than a pace**: the wiki tabulates what each action pays in
+  contribution points and caps a game at 255, so what a skill can take out is
+  decided by its action's points-per-experience. A leak is one point per
+  experience - the best Construction can do, since a rail is the same 5
+  experience for twice the points - giving 51 leaks and 255 experience a game,
+  9.23 games an hour, **2,354/hr before the swamp paste**. Labelled a ceiling
+  for `troublebrewing.py`'s reason. Crafting's net repair sits in the same
+  table and is **not** carried: its success chance depends on Crafting level
+  and nothing charts it, which is `pickpocket.py`'s call for its seven NPCs.
 - `valetotems.py` - the Fletching minigame, and the little Construction it
   pays. Two published tables that both close exactly: a totem is
   `4 x (build/carve + decorate)` on all six log tiers, and Construction is
