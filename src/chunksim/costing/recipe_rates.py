@@ -822,16 +822,19 @@ def stated_ticks(
     Each contributor fills only where the wiki says nothing, so a published
     tick cost is never overwritten: `herblore` states the bank cycle a clean
     herb costs, `chisel` states the zero a dark essence block costs on a run
-    already paid for, and `fishcutting` states the three ticks a knife costs
-    on a crab - the wiki's own figure for the same knife on a fish.
+    already paid for, `fishcutting` states the three ticks a knife costs on
+    a crab - the wiki's own figure for the same knife on a fish - and
+    `yewtree` states the one cell a family of otherwise-identical garden
+    trees leaves blank on this one page.
     """
     # Deferred: `estimate` imports this module for the merge and `chisel`,
-    # `herblore` and `fishcutting` are leaves, but keeping the imports local
-    # documents that nothing here depends on their module state.
-    from chunksim.costing import chisel, fishcutting as cutting, herblore
+    # `herblore`, `fishcutting` and `yewtree` are leaves, but keeping the
+    # imports local documents that nothing here depends on their module state.
+    from chunksim.costing import chisel, fishcutting as cutting, herblore, yewtree
 
     found = dict(herblore.stated_ticks(recipes))
     found.update(chisel.stated_ticks(recipes))
+    found.update(yewtree.stated_ticks(recipes))
     for skill, rows in recipes.items():
         challenges = _mapping(chunk_info.challenges, skill)
         found.update(cutting.stated_ticks(challenges, list(rows)))

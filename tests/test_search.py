@@ -113,6 +113,19 @@ def test_build_world_index_covers_the_shop_route() -> None:
     assert world.item_sources["Pot"][0].name == "General Store"
 
 
+def test_hand_shop_sources_seed_even_with_no_export_shop_at_all() -> None:
+    """`Malignius Mortifer` names no shop and stocks nothing in the raw
+    export - upstream carries him only as an NPC in quest dialogue - so this
+    is the one route `build_world_index` states rather than derives."""
+    info = _chunk_info()
+
+    world = build_world_index(info)
+
+    (source,) = world.item_sources["Magic secateurs"]
+    assert source.route == "shop"
+    assert source.name == "Malignius Mortifer"
+
+
 def test_build_world_index_covers_the_spawn_route_and_its_own_location() -> None:
     info = _chunk_info(chunks={"100": {"Spawn": {"Iron ore": True}}})
 

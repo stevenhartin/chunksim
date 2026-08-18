@@ -400,6 +400,50 @@ goes 556 modelled to 559; the three swords read 19,809-21,398 xp/hr, real
 enough to be interesting and still under `wooden fence`'s 55,436, so no
 climb moves.
 
+**A rare drop off an already-modelled gathering action was worth trying and
+not worth keeping.** Four more Construction methods and a Smithing one
+shared a shape: their material is a rare table member of an activity
+`costing/gathering.py` already computes a real per-level pace for -
+`Big bass` at 1/1000 off ordinary bass fishing, `Granite (5kg)` at 25.39%
+off the granite rock - and `estimate._route_hours`'s certainty gate refuses
+any non-`Always` table member outright, regardless of whether the pace
+behind it is trustworthy. Measured first: 296 rare members of a
+gathering-modelled table across the whole export, 21 unpriceable, 7
+consumed as a material anywhere. Letting the share through when `Rate.match
+== GATHERING_MATCH` reopened the exact door the certainty gate's own
+comment was written to close - it names Prayer/hydra-bones as the original
+regression - and Prayer's bone-burying material walk pushed `_item_hours`
+past two million calls on `fray-uber`, a real cached map, without finishing
+in a minute: 296 near-unique `quantity / share` values barely dedup through
+the fixpoint memo, and Prayer's walk touches enough of them to matter.
+Reverted; the finding is recorded beside the check in `estimate.py` rather
+than left to be rediscovered, since seven methods near no climb's floor
+were not worth a regression that size on a map anyone might run.
+
+**And the smallest of the untimed-recipe fixes: a tick cost every sibling
+states and one page leaves blank.** `Yew tree (Construction)`'s `{{Recipe}}`
+carries no `ticks` at all, where `Oak`/`Willow`/`Maple`/`Magic`/`Spirit tree
+(Construction)` on the same POH page are all `ticks = 5` and the mechanic is
+identical across the family - plant a bagged tree, same object, same action.
+`costing/yewtree.py` names the one output rather than a rule over the
+family, for the reason `chisel.py` does: 650 of the corpus's 4,043 recipes
+carry no stated ticks, far too broad a net to trust by resemblance alone.
+Construction goes 559 modelled to 560; the tree reads 3,418 xp/hr and no
+climb moves.
+
+**And a shop the export never states exists at all, not merely one the
+scrape's shape defeats.** `Build an ~|otherworldy theme|~`'s last blocker
+was `Magic secateurs`, and upstream's own item graph names only the
+Fairytale I quest as its source - correctly, since the quest gates the
+task and the wiki confirms it: "after defeating Tanglefoot, additional
+pairs may be purchased from Malignius Mortifer for 40,000 coins each."
+That NPC is not a `shopItems` entry, not a `Source: "shop"` challenge,
+nothing the export states at all - so `derive/search.HAND_SHOP_SOURCES` is
+one hand-seeded route, the one exception to `build_world_index` reading
+only the raw export, paired with `heuristics.DEFAULT_SHOP_PRICES`'s 40,000
+coins. Construction goes 560 modelled to 561; the theme reads 2,570 xp/hr
+and no climb moves.
+
 **A published figure that covers part of an activity is a scale, not the
 answer.** Tithe Farm is the worked example and the shape is worth copying.
 The Farming guide quotes one rate, "from level 74 onwards ... 90,000-100,000",

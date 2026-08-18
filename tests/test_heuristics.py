@@ -698,6 +698,17 @@ def test_default_shop_prices_fill_the_shop_the_scrape_cannot_reach() -> None:
     assert {entry.currency for entry in prices.values()} == {"Castle Wars ticket"}
 
 
+def test_default_shop_prices_cover_the_shop_the_export_never_states() -> None:
+    """Malignius Mortifer sells a replacement Magic secateurs for 40,000
+    coins - the wiki's own figure - and the export carries him only as an
+    NPC in quest dialogue, never as a shop at all."""
+    from chunksim.costing.heuristics import DEFAULT_SHOP_PRICES
+
+    entry = DEFAULT_SHOP_PRICES["Malignius Mortifer"]["Magic secateurs"]
+    assert entry.price == 40_000.0
+    assert entry.currency == "Coins"
+
+
 def test_the_scrape_would_win_a_collision_with_the_default_shop() -> None:
     """The same layering `DEFAULT_CURRENCY_PER_HOUR` gets: a shop the wiki's
     `{{Shop}}` scrape does reach always wins, merged shop by shop rather than

@@ -930,7 +930,7 @@ DEFAULT_CURRENCY_PER_HOUR: dict[str, float] = {
     "Mahogany Homes Reward Shop:Points": 100.0,
 }
 
-#: `shop_prices`' own floor, for the one shop the scrape cannot reach.
+#: `shop_prices`' own floor, for shops the scrape cannot reach.
 #: `~|Castle Wars Ticket Exchange|~`'s wiki page is a hand-written stock
 #: table rather than a `{{Shop}}` infobox, which is what the Bucket query
 #: `remote/stores.py` runs actually reads - so `wiki_rates.json`'s `shops`
@@ -939,8 +939,15 @@ DEFAULT_CURRENCY_PER_HOUR: dict[str, float] = {
 #: straight off the page: red 4/5/8/6, white 40/40/80/60, gold
 #: 400/500/800/600 tickets for helm/full helm/platebody/shield - only
 #: helm/platebody/shield are named by any task, so only those are carried.
-#: Merged the same way `DEFAULT_CURRENCY_PER_HOUR` is: the scrape would win
-#: if it ever did cover this shop, exactly as `currencies` overrides these.
+#:
+#: `Malignius Mortifer` is the other kind of gap - not a scrape the wiki's
+#: shape defeats, but a shop the export never states exists at all. See
+#: `derive/search.HAND_SHOP_SOURCES`, whose one entry this is the price for:
+#: 40,000 coins for a replacement Magic secateurs, the wiki's own figure.
+#:
+#: Both merged the same way `DEFAULT_CURRENCY_PER_HOUR` is: the scrape would
+#: win if it ever did cover either shop, exactly as `currencies` overrides
+#: these.
 DEFAULT_SHOP_PRICES: dict[str, dict[str, ShopPrice]] = {
     "~|Castle Wars Ticket Exchange|~": {
         "Decorative helm (red)": ShopPrice(price=4.0, currency="Castle Wars ticket"),
@@ -964,6 +971,9 @@ DEFAULT_SHOP_PRICES: dict[str, dict[str, ShopPrice]] = {
         "Decorative shield (gold)": ShopPrice(
             price=600.0, currency="Castle Wars ticket"
         ),
+    },
+    "Malignius Mortifer": {
+        "Magic secateurs": ShopPrice(price=40_000.0, currency="Coins"),
     },
 }
 

@@ -21,7 +21,7 @@ way):
   fishing spot (an NPC, oddly - "Fish shoal"), for Slayer it usually is a
   monster ("Aquanite") - so resolving its location tries Monster/NPC/Object
   in turn rather than assuming one category.
-- `shopItems[shop]` - shop stock (1,385 items).
+- `shopItems[shop]` - shop stock (1,385 items). `HAND_SHOP_SOURCES` adds one more by hand, for a shop the export never states exists at all - see its own docstring.
 - a chunk's (or chunk section's) `Spawn` block - fixed ground spawns (357
   items); the spawn's own chunk-section *is* its location, so this route
   needs no further lookup.
@@ -136,6 +136,25 @@ def _expand_drop(drop: str, drop_tables: Mapping[str, Any]) -> list[str]:
     return list(table) if isinstance(table, dict) else [drop]
 
 
+#: A shop the export does not model *at all* - not even as a `Source: "shop"`
+#: challenge with a missing price, which is what `heuristics.DEFAULT_SHOP_PRICES`
+#: is for. Malignius Mortifer sells a replacement Magic secateurs for 40,000
+#: coins once Fairytale I is done ("after defeating Tanglefoot, additional
+#: pairs may be purchased from Malignius Mortifer for 40,000 coins each" -
+#: the wiki's own words), and upstream's export carries him only as an NPC in
+#: two quests' dialogue steps - no shop, no `Source` flag, nothing to hang a
+#: route off the way Castle Wars' ticket exchange had. So the source itself
+#: is hand-seeded here rather than derived, the one exception to this
+#: function reading only the raw export.
+#:
+#: **One entry, not a search for others like it.** Confirmed only for the one
+#: item a real recipe needed it for (`Build an ~|otherworldy theme|~`'s
+#: `Magic secateurs`) - finding every NPC-sold reclaim the export omits would
+#: need the same page-by-page wiki check this one got, and nothing here
+#: claims to have done that.
+HAND_SHOP_SOURCES: dict[str, str] = {"Magic secateurs": "Malignius Mortifer"}
+
+
 def build_world_index(chunk_info: ChunkInfo) -> WorldIndex:
     """Build a `WorldIndex` from the raw chunkinfo export."""
     data = chunk_info.data
@@ -144,6 +163,9 @@ def build_world_index(chunk_info: ChunkInfo) -> WorldIndex:
 
     def add_source(item: str, source: ItemSource) -> None:
         item_sources.setdefault(item, []).append(source)
+
+    for item, shop in HAND_SHOP_SOURCES.items():
+        add_source(item, ItemSource("shop", shop))
 
     drops = _mapping(data, "drops")
     for monster, table in drops.items():

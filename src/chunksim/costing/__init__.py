@@ -156,6 +156,11 @@ The modules, and what each owns:
   for a rule over chisels, because a gem cut at a bank is emphatically not free.
   The export carries no challenge for it, so a stated zero can only ever be read
   by the item walk and can never become a training rate of its own.
+- `yewtree.py` - a third untimed duration, and the smallest kind: five ticks,
+  read off every sibling on the same POH garden page (oak/willow/maple/
+  magic/spirit tree (Construction) all state it) rather than off a rule -
+  650 of the corpus's 4,043 recipes carry no stated ticks, far too broad a
+  net to trust by family resemblance alone.
 - `shortcuts.py` - an Agility shortcut priced from the attempt: eight ticks,
   the experience its own page states, the experience a *failure* pays, and the
   published success curve. Replaced an 18-second cycle whose comment called it
