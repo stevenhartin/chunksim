@@ -103,6 +103,17 @@ The modules, and what each owns:
   the cadence a model would need - a chance fitted to the guide's own figure
   would be the guide with extra steps. Takes away only the scrape's own tiers,
   so a model or a hand pin survives.
+- `crane.py` - a Port Piscarilius fishing crane, **one action paying two
+  skills** and every term published: 10 ticks an attempt, a
+  `{{Skilling success chart}}` read at the *higher* of Crafting and
+  Construction, `4 x level` experience in each separately, and nine nails plus
+  three planks a success with one more nail bent per failure. The curve check
+  is real - the chart's `low1`/`high1` reproduce the page's own "20% at 30 to
+  30% at 99". World-hopped, like `wintertodt.py`, so the crane's 30-60 second
+  respawn never binds. **Materials are folded into the rate** rather than into
+  `material_seconds_per_xp`, because upstream files one task name under both
+  skills and that table is keyed by task alone - they halve it, 71,466/hr to
+  39,546 at 99.
 - `oneoff.py` - the seven challenges upstream files as training and nobody
   trains with: four trophy mounts (the *display* is the repeatable action and
   is priced; the mount consumes a 1/1000-1/3000 fish per repeat, ~3 xp/hr) and

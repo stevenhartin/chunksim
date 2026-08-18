@@ -37,6 +37,7 @@ from chunksim.costing import (
     aerial,
     coverage,
     barbarian,
+    crane,
     barracuda,
     blastmine,
     farming,
@@ -540,6 +541,14 @@ def recipe_priced(
     # exactly the closure the recipes need and would otherwise build a second
     # `_Walk` to ask the same question.
     prayed = _prayer_methods(state, derived, heuristics, levels, seconds)
+    # **Here for the reason Prayer is: it needs the item walk.** A crane repair
+    # eats nine nails and three planks a success, and charging them is most of
+    # the answer - see `costing/crane.py`, which folds them into the rate
+    # rather than into `material_seconds_per_xp` because upstream files one
+    # task name under both skills it pays.
+    craned = crane.methods(
+        derived.challenges.valid, {**infer_levels(state), **levels}, seconds
+    )
     overrides = blobs.overrides
     # **The hand materials do not depend on the recipes**, so they are read
     # before the early return: a clone with no `chunksim recipes` cache still
@@ -565,7 +574,7 @@ def recipe_priced(
         return (
             replace(
                 heuristics,
-                computed=_merge_computed(prayed, gathered),
+                computed=_merge_computed(prayed, craned, gathered),
                 material_seconds_per_xp={**by_calc, **by_spell, **by_hand},
             ),
             recipe_rates.RecipeCoverage(),
@@ -700,7 +709,7 @@ def recipe_priced(
             heuristics,
             training=rated,
             action_seconds=timed,
-            computed=_merge_computed(prayed, gathered),
+            computed=_merge_computed(prayed, craned, gathered),
             material_seconds_per_xp=per_xp,
             material_xp_per_xp=credited,
             # **Carried so `unpriced` can say what it wanted.** Pure

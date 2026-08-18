@@ -444,6 +444,29 @@ only the raw export, paired with `heuristics.DEFAULT_SHOP_PRICES`'s 40,000
 coins. Construction goes 560 modelled to 561; the theme reads 2,570 xp/hr
 and no climb moves.
 
+**One action can pay two skills at different rates, and the table that charges
+its materials cannot say so.** A Port Piscarilius fishing crane pays `4 x
+Crafting level` *and* `4 x Construction level` for one success, rolled on a
+`{{Skilling success chart}}` read at **whichever of the two is higher** - so on
+a Construction climb below the player's Crafting level the payout moves and the
+chance does not. Every other term is published too (10 ticks an attempt, nine
+nails and three planks a success, one more nail bent per failure), and the
+curve check is a real one: the chart's `low1=41`/`high1=76` reproduce the
+page's own prose, "approximately 20% at level 30 to 30% at level 99", through
+the same `gathering.success_chance` every other chart in the project uses.
+
+**The materials are folded into the rate rather than declared**, which is the
+part worth copying. `Heuristics.material_seconds_per_xp` is keyed by *task*,
+and upstream files one task name under both skills - so a single entry would
+have to serve two different experience-per-repair figures and be wrong for
+whichever skill it was not computed against. `costing/crane.py` charges the
+nails and planks inside each skill's own rate instead, and they are most of the
+answer: 71,466/hr becomes 39,546 at level 99. The loop is world-hopped for the
+reason `costing/wintertodt.py` is - a repaired crane takes 30-60 seconds to
+break again, and hopping to one already broken is what makes the tick count the
+binding constraint. No climb moves on any map: 39,546 loses to `wooden fence`'s
+55,436 and to Crafting's `ruby` at 89,184.
+
 **An `unpriced` row can say which ingredient it wanted, and 47 of 418 do.**
 `blocker`/`blocked_by` were only ever filled for a method the *world* cannot
 reach; a reachable one that joined a recipe and lost an input is the other half
