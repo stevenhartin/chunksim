@@ -103,6 +103,16 @@ The modules, and what each owns:
   the cadence a model would need - a chance fitted to the guide's own figure
   would be the guide with extra steps. Takes away only the scrape's own tiers,
   so a model or a hand pin survives.
+- `yields.py` - a gathering action's own **weight tiers**, which are yields
+  rather than drops: mining granite hands over one of three weights at
+  20.7/22.15/25.39%, so a 5kg block is one mine in four rather than a rare
+  drop, and `estimate._route_hours`' certainty gate was refusing it. Priced as
+  a **flat per-item cost** and checked only after every route has failed -
+  routing it would divide the quantity by a fractional share, and a fractional
+  quantity is a fixpoint key nothing else matches (measured twice: `fray-uber`
+  failed to price in three minutes even gated to eight items). The boundary is
+  a gap in the data rather than a knob: nothing at all sits between 8.33% and
+  19.92%.
 - `crane.py` - a Port Piscarilius fishing crane, **one action paying two
   skills** and every term published: 10 ticks an attempt, a
   `{{Skilling success chart}}` read at the *higher* of Crafting and

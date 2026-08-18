@@ -400,6 +400,32 @@ goes 556 modelled to 559; the three swords read 19,809-21,398 xp/hr, real
 enough to be interesting and still under `wooden fence`'s 55,436, so no
 climb moves.
 
+**A weight tier is a yield, not a drop, and the difference is worth one
+module.** Mining granite hands over one of `Granite (500g)`/`(2kg)`/`(5kg)` at
+20.7/22.15/25.39% - one action, three weights of the thing you just mined - so
+a 5kg block is one mine in four, where `Raw bass loot` pairs an `Always` raw
+bass with a 1/1000 `Big bass` beside it. `estimate._route_hours`' certainty
+gate could not tell them apart and refused both, which is what left `Build a
+~|volcanic theme|~` unpriced for want of granite the map plainly mines.
+**The boundary is a gap in the data**: of the 25 unpriceable non-`Always`
+members of a gathering-modelled table, nothing at all sits between 8.33% and
+19.92%, so anywhere from 9% to 19% selects the same eight items - granite's
+three weights, sandstone's four, and the Cam Torum calcified deposit.
+
+**It is a flat cost rather than an opened route, and that is the whole
+finding.** Opening the gate was tried twice and reverted twice; the second
+attempt is the instructive one, because gated to exactly those eight items it
+*still* failed to price `fray-uber` in three minutes. The count was never the
+problem - `_route_hours` prices an uncertain member by dividing the quantity by
+the share, and a fractional quantity is a fixpoint key nothing else ever
+matches, so the memo stops hitting and Prayer's bone walk alone reached 2.5M
+`_item_hours` calls. A yield needs no route: the action's own pace is already
+in `Heuristics.action_seconds`, so the cost of one block is that over the
+share - one number the walk reads and stops, beside `costing/herbs.py`'s. It is
+checked **last**, after `_recipe_hours`, because `costing/yields.py` prices 75
+items and most of them (`Coal`, `Logs`, `Bones`) have real routes that must
+win; what is left is exactly what the gate refused.
+
 **A rare drop off an already-modelled gathering action was worth trying and
 not worth keeping.** Four more Construction methods and a Smithing one
 shared a shape: their material is a rare table member of an activity

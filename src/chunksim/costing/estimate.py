@@ -201,7 +201,7 @@ from chunksim.model.experience import (
     xp_for_level,
 )
 from chunksim.costing.combat_xp import COMBAT_SKILLS, hitpoints_credit, slayer_credit
-from chunksim.costing import herbs, recipe_rates
+from chunksim.costing import gathering, herbs, recipe_rates, yields
 from chunksim.remote.recipes import Recipe
 from chunksim.costing.farming import (
     DEFAULT_HARVESTS_PER_DAY,
@@ -703,6 +703,12 @@ class _Walk:
     #: minutes a herb grows, and a drop priced per herb asks a table that hands
     #: out thirteen without being asked which.
     herb_seconds: Mapping[str, float] = field(default_factory=dict)
+    #: `{item: seconds}` from `costing/yields.py` - a gathering action's own
+    #: weight tiers, which the certainty gate below would otherwise refuse.
+    #: **Flat, and checked before the routes**, for the reason the herb one
+    #: is: routing them would divide the quantity by a fractional share, and
+    #: a fractional quantity is a fixpoint key nothing else ever matches.
+    yield_seconds: Mapping[str, float] = field(default_factory=dict)
     #: Everything reachable on this map that can *provide* an item: the
     #: monsters, objects and NPCs of `SourceIndex`, all past their
     #: `taskUnlocks` gates. Not monsters alone - a `skillItems` activity is
@@ -1166,6 +1172,24 @@ def _best_route(
         best = decanted
     if best is None:
         best = _recipe_hours(walk, item, quantity, amortise)
+    if best is None:
+        # **A weight tier is priced by its yield** - see `costing/yields.py`,
+        # and `_route_hours`' certainty gate for what this stands in for.
+        #
+        # **A fallback, for `_recipe_hours`' reason and one of its own.** It
+        # must not displace a route: this prices 75 items and most of them -
+        # `Coal`, `Logs`, `Bones` - are ordinary yields of some action *and*
+        # have real routes of their own, which are what the walk should
+        # spend. Checked last, nothing that already prices can change, and
+        # what is left is exactly the members the certainty gate refused.
+        yielded = walk.yield_seconds.get(item)
+        if yielded:
+            best = _Priced(
+                quantity * yielded / 3600.0,
+                f"yield: {quantity:,.0f} {item}",
+                "yield",
+                ("actions/yields",),
+            )
     return best
 
 
@@ -1498,34 +1522,18 @@ def _route_hours(
                 return None
             rates = _drop_rates(walk, made, item)
             if rates is None or rates[0] < 1.0:
+                # **Opening this to an uncertain share was tried twice and
+                # reverted twice**, and the second time is the instructive
+                # one. It is not the *number* of items: gated to the eight
+                # whose share clears `yields.ORDINARY_SHARE`, `fray-uber`
+                # still failed to price in three minutes. The cost is that
+                # `quantity / share` is fractional and near-unique, so every
+                # downstream `(item, quantity, amortise)` key is distinct and
+                # the fixpoint memo never hits - Prayer's bone walk alone
+                # reached 2.5M `_item_hours` calls. An ordinary yield is
+                # priced as a flat per-item cost instead, before the routes
+                # and beside a herb: see `_Walk.yield_seconds`.
                 return None
-            # **Letting a real (non-default) pace through here was tried and
-            # rejected.** `action_seconds` is not always defaulted -
-            # `gathering.apply` writes the node walk's own per-level pace into
-            # it, so a rare member of a gathering-modelled table (`Big bass`
-            # at 1/1000 off bass fishing) has a pace exactly as real as the
-            # `Always` member beside it, and refusing it prices `Build a
-            # ~|mounted bass|~` at the 1,000/hr floor for want of a taxidermy
-            # input the map plainly fishes. Gated on `Rate.match ==
-            # GATHERING_MATCH` specifically - a first cut trusting the whole
-            # non-default vocabulary also let `confirmed`/`computed` through,
-            # which `barbarian.py`, `gotr.py` and every minigame model use,
-            # and every rare drop off any of those started succeeding too.
-            #
-            # **Even scoped to the gathering match alone, it does not pay.**
-            # This is the exact door the comment above was written to keep
-            # shut: Prayer's own bone-burying walk is what that 11.3h/hydra
-            # regression came from, and it is also what this reopens - each
-            # of 296 export-wide rare members prices at its own near-unique
-            # `quantity / share`, which the fixpoint memo rarely dedups, and
-            # Prayer's material walk touches enough of them that
-            # `_item_hours` passed two million calls pricing fray-uber's
-            # Construction alone and had not finished in a minute. The seven
-            # methods it would have unblocked (`costing/estimate.py`'s own
-            # measurement: `Build a ~|mounted bass|~`/`~|mounted shark|~`/
-            # `~|mounted swordfish|~`, `~|volcanic theme|~`, two `Extra`
-            # collection tasks, one Smithing method) are not worth a
-            # regression this size on a map anyone might actually run.
             share = rates[1] if amortise else rates[0]
             if share <= 0:
                 return None
@@ -2264,6 +2272,18 @@ def _setup(
         walk = dataclasses.replace(
             walk, herb_seconds=herbs.costs(grimy, patches, active)
         )
+    # **The action's own weight tiers**, priced flat for the reason the herbs
+    # above are - see `costing/yields.py`, and `_route_hours`' certainty gate
+    # for what it is standing in for.
+    walk = dataclasses.replace(
+        walk,
+        yield_seconds=yields.costs(
+            state.chunk_info,
+            heuristics.action_seconds,
+            lambda task, skill: heuristics.xp_per_hour(task, skill).match,
+            lambda provider, member: (_drop_rates(walk, provider, member) or (0.0, 0.0))[0],
+        ),
+    )
     return _Setup(
         walk=walk, levels=levels, masters=reachable_rates, slayer=slayer_rate
     )
