@@ -328,6 +328,20 @@ recipe's own material to the export name so the item walk can find a route.
 The two are not interchangeable: they run against different vocabularies in
 opposite directions, and conflating them would search the wrong dictionary.
 
+**Two more turned up by asking a sharper question, and both are hand-verified
+too.** Where a recipe's material has no route, does the *challenge's own*
+`Items` name a longer form of it? Measured across the export that is true
+exactly twice - `Black mask` against upstream's `Black mask (10)`, and
+`Araxyte venom sac` against its `Araxyte venom sack` - so this is a second
+hand entry rather than a rule, and each is decided by upstream itself rather
+than by resemblance. The black mask is a charge suffix the export models and
+the wiki recipe does not; the venom sac is the same vocabulary lag
+`wiki_aliases.json` handles for outputs, on the material axis where that
+fetch cannot look (renamed `sack` -> `sac` on 30 June 2026, the wiki followed
+and the export has not). Between them `Build an ~|undead combat dummy|~`, its
+ornate twin and Herblore's extended anti-venom+ all price, leaving Construction
+with **three** unpriced methods, all minigames.
+
 **The search that found it turned up twenty more, deliberately left alone.**
 Stripping a trailing parenthetical off the recipe corpus's 524 unrouted
 material names and retrying against `item_sources` resolves 21, and the

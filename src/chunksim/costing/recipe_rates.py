@@ -819,8 +819,18 @@ HAND_ALIASES: dict[str, str] = {
 #: to obtain from a fresh one, which is the same mistake pricing a shop item
 #: at its ground-spawn cousin's rate would be. This entry is the one checked;
 #: the other twenty are recorded here for whoever checks the next one.
+#: **Charge and spelling, the two shapes this keeps turning out to be.**
+#: `Black mask` is the wiki's recipe name for a mask the export models only in
+#: its dropped form, `Black mask (10)` - and upstream's own `Items` for all
+#: four challenges that want one say `Black mask (10)` outright, so the
+#: mapping is upstream's rather than a guess. `Araxyte venom sac` is the
+#: vocabulary lag `wiki_aliases.json` handles for *outputs*, seen on the
+#: material axis where that fetch cannot look: the item was renamed `sack` ->
+#: `sac` on 30 June 2026, the wiki followed and the export has not.
 MATERIAL_ALIASES: dict[str, str] = {
     "Pharaoh's sceptre (uncharged)": "Pharaoh's sceptre",
+    "Black mask": "Black mask (10)",
+    "Araxyte venom sac": "Araxyte venom sack",
 }
 
 

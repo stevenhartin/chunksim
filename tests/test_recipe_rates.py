@@ -1010,6 +1010,33 @@ class TestATrailingCountIsTheTasksOwnVocabulary:
         assert [recipe.variant for recipe in chosen] == ["Elemental"]
 
 
+class TestMaterialAliasesAreHandVerified:
+    """The reverse direction from `HAND_ALIASES`: a recipe's own material name
+    taken to the export's, so the item walk can find a route. Three entries,
+    each checked against its own wiki page."""
+
+    def test_a_charge_suffix_the_export_models_and_the_recipe_does_not(self) -> None:
+        """Upstream's own `Items` for all four challenges that want one say
+        `Black mask (10)`, so the mapping is upstream's rather than a guess."""
+        assert recipe_rates.MATERIAL_ALIASES["Black mask"] == "Black mask (10)"
+
+    def test_a_rename_the_output_fetch_cannot_see(self) -> None:
+        """`wiki_aliases.json` asks about *outputs*; this is the same
+        vocabulary lag on the material axis. The item was renamed `sack` ->
+        `sac` on 30 June 2026, the wiki followed and the export has not."""
+        assert recipe_rates.MATERIAL_ALIASES["Araxyte venom sac"] == (
+            "Araxyte venom sack"
+        )
+
+    def test_they_run_the_opposite_way_to_the_output_aliases(self) -> None:
+        """Conflating the two would search the wrong dictionary - one takes an
+        export name to a wiki title, the other a wiki material to an export
+        name."""
+        assert not set(recipe_rates.MATERIAL_ALIASES) & set(
+            recipe_rates.HAND_ALIASES
+        )
+
+
 class TestUnroutableNamesTheBlockingInput:
     """`rate_for` returns a bare `None` because it is the hot path and needs
     a yes-or-no; this is the diagnosis behind it, walked only once that has
