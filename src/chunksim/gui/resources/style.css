@@ -1160,13 +1160,46 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 
 .sheet header {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: var(--s3);
   padding: var(--s4) var(--s4) var(--s4) var(--s5);
   border-bottom: 1px solid var(--line);
 }
 
-.sheet h2 { margin: 0; font-size: var(--t-title); font-weight: var(--w-emphasis); flex: 1; }
+.sheet h2 { margin: 0; font-size: var(--t-title); font-weight: var(--w-emphasis); }
+
+/* **Where a dialog can go, not only what it is showing.** The crumbs sit
+   after the title because the title *is* the last crumb - reading left to
+   right you pass what you came through and arrive at where you are. They are
+   buttons rather than links: each runs a function that reopens a dialog, and
+   nothing about it is a URL. */
+.trail {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.crumb {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--dim);
+  font-family: var(--sans);
+  font-size: var(--t-body);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.crumb:hover { color: var(--text); text-decoration: underline; }
+
+.crumb-sep { color: var(--line-strong); font-size: var(--t-note); }
+
+/* A row for something the map cannot do yet. Dimmed rather than dropped: it
+   is what the climb is working towards, and leaving it out would make the
+   list disagree with the bands the estimate prints. */
+.list li.dim .name { color: var(--dim); }
 
 .sheet > div {
   padding: var(--s5);

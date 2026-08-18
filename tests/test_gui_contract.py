@@ -932,8 +932,8 @@ def test_a_panel_asks_about_the_step_and_the_view_asks_about_the_map() -> None:
     """
     _, js, _ = _resources()
 
-    for route in ("/api/tasks", "/api/estimate", "/api/sections", "/api/chunk",
-                  "/api/unlock", "/api/neighbours"):
+    for route in ("/api/tasks", "/api/estimate", "/api/training", "/api/sections",
+                  "/api/chunk", "/api/unlock", "/api/neighbours"):
         assert _match(rf'"{re.escape(route)}\?" \+ (\w+)\(\)', js) == "panelQuery", (
             f"{route} must scope to the step"
         )
@@ -1963,3 +1963,79 @@ def test_ticking_follows_the_row_rather_than_the_toggle() -> None:
     js = _app_js()
 
     assert 'if (!row || row.classList.contains("done")) return;' in js
+
+
+def test_the_methods_overlay_is_reachable_from_both_surfaces() -> None:
+    """**One dialog, two entrances.** The Estimate pane and a roll's Details
+    overlay both open it, and it drills one level deeper from either - so both
+    buttons have to exist and both have to hand `showMethods` a trail. A button
+    wired to no trail would open a dialog you cannot get back from.
+    """
+    html, js, _ = _resources()
+
+    assert 'id="estimate-methods"' in html
+    assert 'id="roll-methods"' in js, "the Details overlay's button is built in JS"
+    assert re.search(r'el\["estimate-methods"\]\.addEventListener\("click", \(\) => showMethods\(\[\]\)', js)
+    assert re.search(r'roll-methods"\)\.onclick = \(\) =>\s*showMethods\(\[', js)
+
+
+def test_the_trail_is_passed_in_rather_than_remembered() -> None:
+    """A stack owned by `showMethods` would have to know which entrance it came
+    through, and would be wrong the first time somebody opened it twice. Both
+    functions take the trail as an argument, and the drill-down appends to the
+    one it was given."""
+    _, js, _ = _resources()
+
+    assert "async function showMethods(trail)" in js
+    assert "async function showSkillMethods(skill, trail)" in js
+    assert "[...trail, { label: METHODS_TITLE, go: () => showMethods(trail) }]" in js
+
+
+def test_the_crumbs_come_before_the_title() -> None:
+    """The title *is* the last crumb, so reading left to right you pass what
+    you came through and arrive at where you are."""
+    html, _, _ = _resources()
+
+    assert html.index('id="overlay-trail"') < html.index('id="overlay-title"')
+
+
+def test_every_dialog_that_opened_before_still_opens_the_same_one() -> None:
+    """`openOverlay`'s trail and tools are optional, so a caller that passes
+    neither gets exactly the dialog it got before this existed - and both are
+    written unconditionally, or a breadcrumb outlives the thing it was about."""
+    _, js, _ = _resources()
+
+    assert "function openOverlay(title, html, actions, opts) {" in js
+    assert 'const { trail = [], tools = "" } = opts || {};' in js
+    assert 'el["overlay-tools"].innerHTML = tools;' in js
+    assert "renderTrail(trail);" in js
+
+
+def test_the_methods_list_ranks_on_what_a_method_is_worth_here() -> None:
+    """**Not on its headline.** A guide quotes a method with its materials to
+    hand; on a chunk map obtaining them is often most of the cost, and showing
+    only the headline is how a familiar figure comes to look wrong."""
+    _, js, _ = _resources()
+
+    body = js[js.index("function methodRate(option)"):]
+    body = body[: body.index("\n}")]
+
+    assert "effective_xp_per_hour" in body
+    assert "was " in body
+
+
+def test_the_status_vocabulary_is_the_pure_layers() -> None:
+    """`costing/coverage.status_of` sorts a `match` into a status and the page
+    renders one; a `match` the page has never heard of must read as unpriced
+    rather than as blank."""
+    from chunksim.costing import coverage
+
+    _, js, _ = _resources()
+    table = js[js.index("const METHOD_STATUS = {"):]
+    table = table[: table.index("\n};")]
+
+    assert "METHOD_STATUS[match] || METHOD_STATUS.default" in js
+    named = set(re.findall(r"^  (\w+):", table, re.M))
+    assert coverage.MODELLED_MATCHES <= named
+    assert coverage.GUESS_MATCHES <= named
+    assert {"exact", "contained", "default"} <= named

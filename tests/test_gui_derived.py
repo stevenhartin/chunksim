@@ -393,6 +393,7 @@ def test_every_derivation_route_takes_the_same_step(ctx: Context) -> None:
     for path, extra in (
         ("/api/tasks", {}),
         ("/api/estimate", {}),
+        ("/api/training", {}),
         ("/api/sections", {}),
         ("/api/chunk", {"chunk": LUMBRIDGE}),
         ("/api/unlock", {"chunk": NORTH}),

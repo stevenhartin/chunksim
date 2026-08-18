@@ -60,6 +60,7 @@ from chunksim.gui.routes_derived import (
     reachable_by_area,
     _chunk_detail,
     _estimate_payload,
+    _training_payload,
     _full_diff,
     _section_states,
     _unlock_preview,
@@ -431,6 +432,19 @@ def handle_request(
             if isinstance(at, Response):
                 return at
             return _json(_estimate_payload(at, ctx))
+
+        if path == "/api/training":
+            # **The methods behind the estimate**, and the one route that
+            # takes an optional `skill`: without it the overlay draws the
+            # per-skill summary, with it the drill-down. See
+            # `routes_derived._training_payload`.
+            map_id = _first(query, "map")
+            if map_id is None:
+                return _error("missing required parameter 'map'", HTTPStatus.BAD_REQUEST)
+            at = _state_at(query, ctx, map_id)
+            if isinstance(at, Response):
+                return at
+            return _json(_training_payload(at, ctx, _first(query, "skill")))
 
         if path == "/api/tasks":
             map_id = _first(query, "map")

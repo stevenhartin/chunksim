@@ -852,9 +852,20 @@ maps are your own work and nothing can recompute them.
    chunksim diff --map1 A --map2 B     # what's different between two cached maps, both ways
    chunksim estimate                       # roughly how long the outstanding work would take
    chunksim estimate skilling              # ... and which training method each skill would use
+   chunksim training --map fray            # the best method each skill can reach on that map
+   chunksim training Agility --map fray    # every Agility method it can reach, best first
+   chunksim training                       # every method in the export, counted by what priced it
    chunksim neighbours                     # which chunks I could unlock next, and their roll numbers
    chunksim simulate --rolls 20 --seed 1   # simulate 20 rolls; --seed makes it reproducible
    ```
+
+   **`chunksim training` is the one command where omitting `--map` asks a different question**
+   rather than defaulting one: with a map it is about that world's methods, without it is about the
+   *export* - how many of its 2,707 primary training methods are modelled here, how many are
+   somebody else's published figure, how many are a guess and how many nothing has priced at all.
+   That report still needs a world to price against, so it builds one holding every rollable chunk
+   and borrows a cached map's rules (`--rules-from MAP`), because a rule is a player's choice and
+   the export has no permissive defaults to fall back on.
 
    `sections`, `sources`, `tasks` and `diff` print counts by default and take an optional positional
    to list one branch's contents in full; `--limit N` caps that.

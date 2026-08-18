@@ -341,6 +341,30 @@ def _unlock_preview(state: DerivedState, chunk_id: str, ctx: Context) -> dict[st
     return delta.as_dict()
 
 
+def _training_payload(
+    state: DerivedState, ctx: Context, skill: str | None = None
+) -> dict[str, Any]:
+    """What can train each skill on this map, and one skill's full list.
+
+    **The same assembly `chunksim training` uses**, for the reason
+    `_estimate_payload` below gives about its own: a method shown here that
+    ranked differently from the one the CLI names would be two answers to one
+    question, which is the drift `costing/inputs.py` exists to end.
+
+    `skill` is the drill-down. Omitted, only `best` is filled - the full set is
+    ~2,400 rows on an every-chunk map and the overlay opens on the summary.
+    """
+    return inputs.training_answer(
+        state.state,
+        state.unlocked,
+        state.derived,
+        ctx.derivations.digests(),
+        skill=skill,
+        root=ctx.root,
+        reference=ctx.derivations.reference(state.map_id),
+    ).as_dict(state.map_id)
+
+
 def _estimate_payload(state: DerivedState, ctx: Context) -> dict[str, Any]:
     """`chunksim estimate`, plus whether the DPS bridge contributed.
 

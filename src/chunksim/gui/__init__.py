@@ -61,7 +61,12 @@ The modules, and what each owns:
   for a square you can reach without rolling, and **both callers share it**: the
   map outlines them and the chunk panel stops greying their contents. Those two
   disagreed until it existed. `/api/diff` derives both sides and is the one
-  route allowed to be slow. Also `reachable_by_area`, the squares a map can walk
+  route allowed to be slow. `/api/training` is here too, and takes the one
+  optional `skill` parameter in the API: without it the methods overlay draws
+  the per-skill summary and with it the drill-down. It reads the same
+  `costing/inputs.training_answer` `chunksim training` does, so a method the
+  overlay shows cannot rank differently from the one the command names. Also
+  `reachable_by_area`, the squares a map can walk
   into without having rolled them, joined to `expanded_chunks` **by name** - the
   `sections` graph does not model dungeon entrances at all.
 - `routes_reference.py` - bytes belonging to no map: the static allowlist, blob

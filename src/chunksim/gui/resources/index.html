@@ -42,6 +42,7 @@
     <g id="i-prev"><path d="m15 6-6 6 6 6"/></g>
     <g id="i-next"><path d="m9 6 6 6-6 6"/></g>
     <g id="i-skull"><path d="M5 11a7 7 0 1 1 14 0v3l-1.8 1.3V19h-2.4v-1.8h-3.6V19H8.8v-3.7L5 14z"/><circle cx="9.3" cy="11.2" r="1.7" fill="currentColor" stroke="none"/><circle cx="14.7" cy="11.2" r="1.7" fill="currentColor" stroke="none"/><path d="M12 13.6v2"/></g>
+    <g id="i-methods"><path d="M4 6h10M4 12h7M4 18h4"/><path d="M15 19v-6M19 19v-9"/></g>
     <g id="i-clock"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></g>
     <!-- Equipment slots. Eleven, because that is what `bis.slots` answers
          with, and drawn as the shape of the thing rather than as a paper-doll
@@ -200,6 +201,13 @@
   <section class="pane" data-pane="estimate">
     <div class="pane-head">
       <span class="pane-title" id="estimate-total"></span>
+      <!-- **The methods behind the total, one press away.** The list below
+           says a skill costs 40h; this says what you would actually be doing
+           for those 40 hours, which is the question the hours provoke and the
+           one the pane had no room for. -->
+      <button id="estimate-methods" class="icon-btn" type="button" data-tip="&lt;b&gt;Training methods&lt;/b&gt;&lt;span class='sub'&gt;The best method this map can reach for every skill, and every alternative behind it.&lt;/span&gt;">
+        <svg class="icon" viewBox="0 0 24 24"><use href="#i-methods"/></svg>
+      </button>
       <button id="estimate-why" class="icon-btn" type="button" data-tip="&lt;b&gt;Where these numbers come from&lt;/b&gt;&lt;span class='sub'&gt;The export carries no durations at all — every hour here is scraped or hand-corrected.&lt;/span&gt;">
         <svg class="icon" viewBox="0 0 24 24"><use href="#i-help"/></svg>
       </button>
@@ -315,7 +323,21 @@
 <div class="overlay" id="overlay" hidden>
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="overlay-title">
     <header>
+      <!-- **Where a dialog can go, rather than only what it is showing.** The
+           methods list is reached from two places and drills one level deeper
+           from either, so "back" has to mean the place you came from - a
+           breadcrumb is the only control that can say that without the dialog
+           having to remember a stack for each entrance. Empty and hidden for
+           every dialog that is one level deep, which is most of them.
+
+           **Before the title, because the title is the last crumb.** Read left
+           to right you pass what you came through and arrive at where you
+           are. -->
+      <nav id="overlay-trail" class="trail" hidden></nav>
       <h2 id="overlay-title"></h2>
+      <span class="spacer"></span>
+      <!-- Filled per dialog; see `openOverlay`'s `tools`. -->
+      <span id="overlay-tools"></span>
       <button id="overlay-close" class="icon-btn" type="button" aria-label="Close">
         <svg class="icon" viewBox="0 0 24 24"><use href="#i-close"/></svg>
       </button>

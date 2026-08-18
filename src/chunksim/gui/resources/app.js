@@ -193,9 +193,10 @@ for (const id of [
   "progress", "progress-title", "progress-count", "progress-detail",
   "progress-track", "progress-fill", "progress-cancel",
   "overlay", "overlay-title", "overlay-body", "overlay-close", "overlay-actions",
+  "overlay-trail", "overlay-tools",
   "setup", "setup-lead", "setup-steps", "setup-fill", "setup-detail",
   "chunk-head", "chunk-chips", "chunk-body", "task-chips", "tasks-body",
-  "show-done", "estimate-total", "estimate-why", "estimate-body",
+  "show-done", "estimate-total", "estimate-why", "estimate-methods", "estimate-body",
   "find-body", "find-chips", "find-form", "find-input", "maps-body", "attribution", "watermark",
   "timeline", "tl-title", "tl-chips", "tl-scale", "tl-key",
   "tl-hours", "tl-details", "tl-collapse", "tl-graph",
@@ -1705,13 +1706,40 @@ function toast(message) {
 }
 
 /* One dialog, reused. An answer you asked a question to get needs somewhere
- * to live that is not "instead of the thing you were reading". */
-function openOverlay(title, html, actions) {
+ * to live that is not "instead of the thing you were reading".
+ *
+ * `opts.trail` is the breadcrumb: `[{label, go}]`, oldest first, *excluding*
+ * the dialog now open - whose title is the last crumb and is not a link,
+ * because a control that reopens what you are already looking at is one you
+ * press once and stop trusting. `opts.tools` is markup for the header's
+ * right-hand side, which is where a dialog that can go somewhere else puts the
+ * way there.
+ *
+ * Both default to nothing, so every existing caller opens exactly the dialog
+ * it opened before. */
+function openOverlay(title, html, actions, opts) {
+  const { trail = [], tools = "" } = opts || {};
   el["overlay-title"].textContent = title;
   el["overlay-body"].innerHTML = html;
   el["overlay-actions"].innerHTML = actions || "";
   el["overlay-actions"].hidden = !actions;
+  el["overlay-tools"].innerHTML = tools;
+  renderTrail(trail);
   el.overlay.hidden = false;
+}
+
+/* The crumbs, drawn and wired. Each is a button rather than a link: it runs a
+ * function that reopens a dialog, and nothing about it is a URL. */
+function renderTrail(trail) {
+  const nav = el["overlay-trail"];
+  nav.hidden = !trail.length;
+  if (!trail.length) return (nav.innerHTML = "");
+  nav.innerHTML = trail.map((crumb, index) =>
+    tmpl`<button class="crumb" type="button" data-crumb="${String(index)}">${crumb.label}</button>`
+  ).join(tmpl`<span class="crumb-sep">›</span>`) + tmpl`<span class="crumb-sep">›</span>`;
+  for (const button of nav.querySelectorAll("[data-crumb]")) {
+    button.onclick = () => trail[Number(button.dataset.crumb)].go();
+  }
 }
 
 function closeOverlay() {
@@ -3948,6 +3976,146 @@ function renderEstimate(payload) {
   ownsMore("estimate", () => renderEstimate(estimatePayload));
 }
 
+/* ---- training methods -------------------------------------------------- */
+
+/* **What you would actually be doing for those hours.** The Estimate pane says
+ * a skill costs 40h; this says which method the estimator spent to get there
+ * and what else was available - the question the hours provoke and the one the
+ * pane has no room for.
+ *
+ * **Two entrances, one dialog.** It opens from the Estimate pane and from a
+ * roll's Details overlay, and drills one level deeper from either. What
+ * differs is only where "back" goes, which is why the trail is passed in
+ * rather than remembered here: a stack owned by this function would have to
+ * know which entrance it came through, and would be wrong the first time
+ * somebody opened it twice.
+ *
+ * `MethodStatus` is not what this draws - that is `chunksim training`'s
+ * report about the *export*. This is `/api/training`, which is about the map
+ * on screen, and the two are deliberately different questions. */
+const METHODS_TITLE = "Training methods";
+
+/* What `costing/coverage.status_of` calls a rate, rendered. Kept as a lookup
+ * rather than as prose in the template so the vocabulary is one list, and the
+ * hint is the sentence a reader needs to judge the number beside it. */
+const METHOD_STATUS = {
+  modelled: ["Modelled", "Computed here from the mechanic — a curve, a recipe, a counted action."],
+  computed: ["Modelled", "Computed here from the mechanic — a curve, a recipe, a counted action."],
+  confirmed: ["Modelled", "Computed here from the mechanic — a curve, a recipe, a counted action."],
+  guess: ["Guessed", "A number chosen so there is one. The first thing worth correcting."],
+  exact: ["Published", "Somebody else's figure, joined by name."],
+  contained: ["Published", "Somebody else's figure, joined by a name that contained this one."],
+  default: ["Unpriced", "Nothing reached this — the floor, not a rate."],
+};
+
+function methodStatus(match) {
+  return METHOD_STATUS[match] || METHOD_STATUS.default;
+}
+
+/* The rate a method is *worth here*, which is what the estimate ranks on, and
+ * the headline beside it where the two differ. A guide quotes a method with
+ * its materials to hand; on a chunk map obtaining them is often most of the
+ * cost, and showing only the headline is how a familiar figure comes to look
+ * wrong. */
+function methodRate(option) {
+  const worth = Math.round(option.effective_xp_per_hour || 0).toLocaleString();
+  const head = Math.round(option.xp_per_hour || 0).toLocaleString();
+  if (Math.abs((option.xp_per_hour || 0) - (option.effective_xp_per_hour || 0)) < 1) {
+    return tmpl`<span class="num">${worth}/hr</span>`;
+  }
+  return tmpl`<span class="num">${worth}/hr</span><span class="sub">was ${head}</span>`;
+}
+
+async function showMethods(trail) {
+  openOverlay(METHODS_TITLE, tmpl`<p class="empty">Ranking what this map can train…</p>`,
+    "", { trail });
+  let payload;
+  try {
+    payload = await getJSON("/api/training?" + panelQuery());
+  } catch (error) {
+    return openOverlay(METHODS_TITLE, tmpl`<p class="empty">${error.message}</p>`, "", { trail });
+  }
+  const skills = Object.keys(payload.best).sort();
+  const named = skills.filter((skill) => payload.best[skill]);
+  let out = tmpl`<p class="hint">The best method this map can reach for each skill, at the
+    level it is at. Ranked on what the method is worth here rather than on its
+    headline rate. Click a skill for everything behind it.</p><ul class="list">`;
+  for (const skill of named) {
+    const option = payload.best[skill];
+    const [status, why] = methodStatus(option.match);
+    const tip = tmpl`<b>${plain(option.method)}</b><span class="sub">${status} — ${why}</span><span class="hint">Click for every ${skill} method this map can reach</span>`;
+    out += tmpl`<li class="arguable" role="button" tabindex="0" data-skill="${skill}" data-tip="${tip}">
+      <img class="skill-icon" src="/assets/skill/${skill}.png" alt="">
+      <span class="name">${plain(option.method)}</span>
+      <span class="sub">${skill} ${payload.levels[skill]}</span>
+      ${raw(methodRate(option))}</li>`;
+  }
+  out += "</ul>";
+  const missing = skills.filter((skill) => !payload.best[skill]);
+  if (missing.length) {
+    /* **"No method" and "a slow method" are different answers**, and on a
+     * young map the first is common. Naming them is what stops the list
+     * reading as though those skills simply were not asked about. */
+    out += tmpl`<h3 data-tip="${"Nothing this map can reach trains these, at the level it is at."}">No reachable method <span class="num">${missing.length}</span></h3>
+      <ul class="list">` + missing.map((skill) =>
+        tmpl`<li><img class="skill-icon" src="/assets/skill/${skill}.png" alt="">
+          <span class="name">${skill}</span></li>`).join("") + "</ul>";
+  }
+  openOverlay(METHODS_TITLE, out, "", { trail });
+  for (const row of el["overlay-body"].querySelectorAll("[data-skill]")) {
+    const open = () => showSkillMethods(row.dataset.skill,
+      [...trail, { label: METHODS_TITLE, go: () => showMethods(trail) }]);
+    row.onclick = open;
+    row.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } };
+  }
+}
+
+async function showSkillMethods(skill, trail) {
+  openOverlay(skill, tmpl`<p class="empty">Reading ${skill} methods…</p>`, "", { trail });
+  let payload;
+  try {
+    payload = await getJSON("/api/training?" + panelQuery() + "&skill=" + encodeURIComponent(skill));
+  } catch (error) {
+    return openOverlay(skill, tmpl`<p class="empty">${error.message}</p>`, "", { trail });
+  }
+  const options = (payload.methods || {})[skill] || [];
+  const at = payload.levels[skill];
+  if (!options.length) {
+    return openOverlay(skill, tmpl`<p class="empty">Nothing this map can reach trains
+      ${skill} at a rate worth quoting.</p>`, "", { trail });
+  }
+  const render = () => {
+    let out = tmpl`<p class="hint">${String(options.length)} method${options.length === 1 ? "" : "s"}
+      this map can reach, best first, at ${skill} ${String(at)}. A method above that
+      level is marked — it is what the climb is working towards rather than
+      what it can do today.</p><ul class="list">`;
+    out += withMore(options, "methods:" + skill, 15, (option) => {
+      const [status, why] = methodStatus(option.match);
+      const locked = option.level && option.level > at;
+      const tip = tmpl`<b>${plain(option.method)}</b><span class="sub">${status} — ${why}</span>`
+        + (option.source ? tmpl`<span class="sub">${option.source}</span>` : "")
+        + (locked ? tmpl`<span class="hint">Needs ${skill} ${String(option.level)}</span>` : "");
+      return tmpl`<li class="${locked ? "dim" : ""}" data-tip="${tip}">
+        <span class="name">${plain(option.method)}</span>
+        <span class="sub">${option.level ? "lvl " + option.level : ""}</span>
+        ${raw(methodRate(option))}</li>`;
+    });
+    return out + "</ul>";
+  };
+  openOverlay(skill, render(), "", { trail });
+  /* **Registered under the prefix, not the key.** The delegated handler looks
+   * its owner up as `key.split(":")[0]`, so `methods:Agility` finds nothing
+   * and the control silently ignores you - which is what
+   * `test_every_collapsible_list_has_an_owner_to_redraw_it` exists to catch.
+   * One skill's dialog is open at a time, so the closure over `render` is the
+   * whole of the bookkeeping needed. */
+  ownsMore("methods", () => {
+    el["overlay-body"].innerHTML = render();
+  });
+}
+
+el["estimate-methods"].addEventListener("click", () => showMethods([]));
+
 /* Provenance is not a number you act on, it is a caveat on all of them - so
  * it is one button away rather than between you and the list. */
 el["estimate-why"].addEventListener("click", () => {
@@ -5702,14 +5870,14 @@ async function goToRoll(step) {
  * 239 tasks, so every name for every step would be most of a megabyte spent to
  * draw a bar chart. `/api/roll` is the same ledger read, one step at a time,
  * and only when somebody asks to see it. */
-async function showRoll(step) {
+async function showRoll(step, trail = []) {
   const title = "Roll " + step;
-  openOverlay(title, tmpl`<p class="empty">Reading the ledger…</p>`);
+  openOverlay(title, tmpl`<p class="empty">Reading the ledger…</p>`, "", { trail });
   let roll;
   try {
     roll = await getJSON("/api/roll?map=" + encodeURIComponent(state.map) + "&step=" + step);
   } catch (error) {
-    return openOverlay(title, tmpl`<p class="empty">${error.message}</p>`);
+    return openOverlay(title, tmpl`<p class="empty">${error.message}</p>`, "", { trail });
   }
   const sections = (roll.panel || {}).sections || [];
   let out = tmpl`<dl class="kv">
@@ -5735,16 +5903,29 @@ async function showRoll(step) {
         already had — ${roll.tasks} task${roll.tasks === 1 ? "" : "s"}, all of
         them at or below a level it has already passed.</p>`
     : tmpl`<p class="empty">This roll opened no new tasks.</p>`);
+  const heading = "Roll " + step + " · " + chunkLabel(roll.chunk);
   openOverlay(
-    "Roll " + step + " · " + chunkLabel(roll.chunk),
+    heading,
     out,
     tmpl`<button id="roll-focus" type="button">Show on map</button>`,
+    {
+      trail,
+      /* **The same dialog the Estimate pane opens, from the world this roll
+       * left behind.** `panelQuery` carries the step, so the methods it ranks
+       * are the ones that state could reach rather than the finished run's -
+       * which is the whole reason this is worth having here at all. */
+      tools: tmpl`<button id="roll-methods" class="icon-btn" type="button"
+        data-tip="${"<b>Training methods</b><span class='sub'>The best method this roll's world can reach for every skill.</span>"}"
+        aria-label="Training methods">${raw(icon("methods").__raw)}</button>`,
+    },
   );
   document.getElementById("roll-focus").onclick = () => {
     closeOverlay();
     goToRoll(step);
   };
-  ownsMore("roll", () => showRoll(step));
+  document.getElementById("roll-methods").onclick = () =>
+    showMethods([...trail, { label: "Details", go: () => showRoll(step, trail) }]);
+  ownsMore("roll", () => showRoll(step, trail));
 }
 
 /* **What this roll cost, drawn the way the Estimate tab draws the total.**

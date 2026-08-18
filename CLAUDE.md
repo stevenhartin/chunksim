@@ -1005,6 +1005,7 @@ chunksim recipes [--chunkinfo P] # developer only: per-action xp + ticks -> .../
                                 # + the wiki's renames -> .../wiki_aliases.json
 chunksim gather-tables          # developer only: GET the gathering tables -> src/chunksim/heuristics/gathering.json
 chunksim estimate [BUCKET] [--limit N]                 # rough hours for the outstanding active tasks
+chunksim training [SKILL] [--map ID] [--rules-from MAP] # what trains each skill, and what priced it
 chunksim sections [list|CHUNK] [--limit N]             # reachable sections
 chunksim sources  [CATEGORY]   [--limit N]             # items/objects/monsters/npcs/shops
 chunksim tasks    [CATEGORY]   [--limit N]             # valid/active/obsolete/completed, incl. BiS
@@ -1027,6 +1028,17 @@ Env vars: `CHUNKSIM_CACHE` (the directory `cache/` is made under), `CHUNKSIM_CHU
 `chunksim chunkinfo`'s envelope around one), `CHUNKSIM_MAP_CACHE`
 (presence-only), `CHUNKSIM_SLOW_ORACLES` (presence-only), `CHUNKSIM_NO_WATERMARK`, `CHUNKSIM_TILE_VERSION`,
 `CHUNKSIM_GUI_VERBOSE`.
+
+**`chunksim training` is the one subcommand where omitting `--map` asks a different question**
+rather than defaulting one, which is why it sets `infer_map=False` and why `cli/app.main` has a hook
+for that. With a map it is about that world; without, it is about the *export* - how many of its
+2,707 primary methods are `modelled`, `guess`, `published`, `pinned` or `unpriced`
+(`costing/coverage.py`). That report still needs a world to price against, and choosing one took
+measuring: seeded with `default_rules` the state derives 4,932 valid challenges against a real map's
+10,111, because most defaults are `False` and a `False` rule *refuses* its gate; leaving the branch
+out is more permissive for refusal-gates (9,273) and still wrong for the ones that widen; every rule
+`True` is refused outright by `derive`'s unported `KeyItem Bosses` pass. So it borrows a cached map's
+rules and says which.
 
 **Flag conventions, so each means one thing everywhere.** `--export-json PATH` (or `-` for stdout) and
 `--recompute` are carried by the nine *derivation* subcommands and nothing else (`--export-json` also
