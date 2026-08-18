@@ -647,6 +647,23 @@ until the docstring says otherwise; the numbers that carry information are the
 ones with several rows and a residual, like Woodcutting's 12/17 and Hunter's
 6/10.
 
+**A `{{Thieving info}}` box says what its `time` means, in its own `type`
+field**, and that is what makes the last Thieving guide replaceable. A
+`Pickpocket`'s `time` is the stun timer, a `Stall`'s the restock, and a
+`Chest`'s the cycle - so the Dorgesh-Kaan wire machine, which is a stall that
+can fail, prices as `6000 / 10 ticks x p x 22` with every term published: the
+cycle is stated outright ("a total of 10 ticks per wire stolen"), the
+experience is in the box, and the success chart is fitted to 23,848 logged
+attempts. It checks against the page's own "around 13,000" ceiling (12,943 at
+99) and, sharply, against the rebalance note of 8 May 2024 - "from 94.1% at
+level 99 to 98.0%" - where the chart read gives **98.05%** and the
+pre-rebalance curve still quoted in a hidden comment on the same page would
+give 94%. The guide it displaces was a flat 9,240/hr for a method running
+**7,167 to 12,943** across the climb. Measured over the wiki, 256 pages carry
+the box, 139 also carry a chart and 34 of those state a `time` - almost all
+pickpockets or stalls, both already priced - so `costing/wiremachine.py` being
+about one object is the measurement rather than a missed generalisation.
+
 **A constant standing in for a curve is not the conservative end, and saying
 so was the mistake.** `PICKPOCKET_CYCLE_SECONDS` was 3.5 seconds, fitted to one
 published figure - a Knight of Ardougne at level 55, 86,000 xp/hr - and its own

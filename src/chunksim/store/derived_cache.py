@@ -213,7 +213,10 @@ _FORMAT = "1"
 #: 75: pickpocketing is the wiki's own `np/(10-8p)` over each NPC's own success
 #: chart, where a flat 3.5-second cycle stood - 2x to 3.6x fast on every NPC
 #: that can be checked. See `costing/pickpocket.py`.
-_PRICING_MODEL = "75"
+#: 76: the wire machine is priced from its own page - a published 10-tick cycle
+#: and a 23,848-sample success chart - rather than from a guide's flat figure.
+#: See `costing/wiremachine.py`.
+_PRICING_MODEL = "76"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

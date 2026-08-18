@@ -84,6 +84,12 @@ The modules, and what each owns:
   charted keep **no rate**: the constant was 2x to 3.6x fast on all eighteen it
   can be checked against, so leaving it on the rest is quoting a number there
   is evidence against.
+- `wiremachine.py` - the Dorgesh-Kaan wire machine, which is **a stall that can
+  fail**. Its page states the cycle ("a total of 10 ticks per wire stolen"), the
+  22 experience and a success chart fitted to 23,848 attempts, so the rate is
+  `13,200 x p` and nothing is assumed. It reads 7,167/hr where it opens at 44
+  and 12,943 at 99, against the flat 9,240 of the guide it displaces - the last
+  published Thieving rate on any cached map.
 - `gotr.py` - Guardians of the Rift as **one minigame, not twelve rune
   methods**. The rune is the game's decision - two portals, one elemental and
   one catalytic - so the curve is the *rune mix* at a level, and throughput is

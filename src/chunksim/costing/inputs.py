@@ -70,6 +70,7 @@ from chunksim.costing import (
     tempoross,
     valuables,
     wintertodt,
+    wiremachine,
 )
 from chunksim.costing import gathering as gathering_model
 from chunksim.costing.estimate import material_seconds
@@ -740,6 +741,14 @@ def _gathered(
         _mapping(state.chunk_info.challenges, "Thieving"),
         derived.challenges.valid.get("Thieving") or {},
         heuristics.pickpockets,
+    ).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **A stall that can fail**, and its own page publishes the cycle, the
+    # experience and the success chart - see `costing/wiremachine.py`. It is
+    # the last money-making guide in Thieving.
+    for skill, methods in wiremachine.methods(
+        _mapping(state.chunk_info.challenges, "Thieving"),
+        derived.challenges.valid.get("Thieving") or {},
     ).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     for skill, methods in gotr.methods(
