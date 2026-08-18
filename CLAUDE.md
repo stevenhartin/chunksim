@@ -415,13 +415,9 @@ priced in a second, and every method consuming a partial dose was dropped.
 the cheapest `M`. Herblore's recipe-priced methods went **66 to 77** and its
 published-rate ones **26 to 16**.
 
-**A dose hop deliberately spends no `_MAX_DEPTH`.** That bound is on how many
-*recipes* the walk will chain, and a dose is the same potion at another
-strength rather than a tier of crafting; charging it a level left `Super
-energy(2)` unpriced while `Super energy(3)` cost 241s, and sent `Combat
-potion(2)` the long way round through a four-dose at more than twice the
-price. `seen` already holds every dose visited, so cycles are stopped without
-it.
+(A dose hop used to need a special exemption from the walk's depth budget;
+the budget is gone - see the fixpoint paragraph below - so a dose is now just
+another route.)
 
 **Herblore's climb got slower and that is the correction working.** The uber
 map went 29.2h to 61.0h because the recipe layer now *reaches* the low levels
@@ -503,15 +499,14 @@ priced the whole time. `estimate._recipe_hours` falls back to the wiki's own
 recipe when every other route has failed, honouring `output_quantity`, so
 nothing that already prices can change.
 
-**`_MAX_DEPTH` was 3 and its comment said that was "past every real case
-measured".** A soul rune is fragments <- dark essence block <- dense essence
-block <- the mining challenge <- its tools, which is five, and at three the
-whole chain reported no route. Cycles are stopped by the visited set rather
-than by the bound, so what it really buys is a limit on work; at five the
-suite's runtime is unchanged. Blood runes on the second cache go 11,118/hr to
-**31,316** and soul runes from refused to **38,880** - both what the wiki's
-own figures imply, and both a close second to the Arceuus library, which
-scales with level and still wins the climb.
+**The soul rune chain is why a depth bound kept having to grow.** It is
+fragments <- dark essence block <- dense essence block <- the mining challenge
+<- its tools - five levels, when `_MAX_DEPTH` was 3 and its comment said three
+was "past every real case measured". At five, blood runes on the second cache
+went 11,118/hr to **31,316** and soul runes from refused to **38,880**. The
+bound itself is gone now (the fixpoint paragraph below); the lesson stands:
+every value it ever held was a work-around for the walk's cost, and each next
+real chain arrived from outside the set of "measured cases".
 
 **An untimed recipe has to fall back to something, but a counted one must not
 reach the fallback.** `DEFAULT_ACTION_SECONDS` is right for an action nobody
@@ -554,18 +549,31 @@ which is `variant_candidates`' rule on the input axis. Cooking now has **no
 scraped rate at all** on either cached map or the uber one, and the uber climb
 reads 63.8h against the reference map's 63.8h where it used to read 44.6h.
 
-**A chain that is really one thing being built should not spend the walk's
-depth budget.** Every multi-ingredient pie was unpriced: `Raw fish pie` is
-`Part fish pie (cod)` <- `Part fish pie (trout)` <- `Pie shell` <- `Pastry
-dough` <- its materials, six deep, where `Bake a ~|meat pie|~` is five and
-priced fine. Raising `_MAX_DEPTH` to six did work, and was **rejected on the
-measurement**: 2.5x on the item walk (6.6s to 14.9s on the reference map, 39s
-to 113s on the uber one) to buy the six pies plus an enchant at 52/hr, an
-infernal plate at 249/hr and a lava eel going 9/hr to 2,898. Not charging depth
-for an assembly stage prices the identical six for no runtime at all - the
-same argument a dose hop already makes, and upstream's own `Partial Products`
-category (22 challenges, all Cooking) says which steps qualify rather than a
-guess at which names look like stages.
+**The item walk is a fixpoint over a table now, and the depth budget is
+gone with everything that managed it.** The old shape was a depth-first path
+search: a visited set pruning cycles per path, `_MAX_DEPTH = 5` bounding work,
+and two exemptions (`partial_products`, dose hops) letting real chains through
+the bound. Its cost was measured before it was replaced - the same subproblem
+re-priced once per *path context*, 284,260 recursive calls for 3,591 distinct
+questions on the reference map - and without the bound it hung outright on the
+every-rollable-chunk map, because simple paths are factorial. The fixpoint
+settles each `(item, quantity, amortise)` question once per round; a route
+that closes on a key still on the stack reads *last round's* answer instead of
+exploring around itself, so **a cycle is a discarded path, never a discarded
+item**, and convergence is guaranteed by positive costs - a derivation through
+a cycle can never beat the acyclic one it contains. A round whose belief-reads
+all held is exact, which is nearly every question; a stale read re-derives
+only the keys whose evaluation transitively read it (`_Fixpoint.readsets`) -
+clearing everything instead cost 4M evaluations for 137k questions.
+
+**What the bound had been distorting, measured on removal**: no climb moved on
+any of the three maps, and 29 reference-map rates *rose* - all runite and
+adamant smithing, whose bars now price through deeper, cheaper chains (rune
+platebody 1,283/hr -> 2,157). The uber map's lava eel went 9/hr to 2,898, the
+jade crossbow-bolt enchant and infernal plate priced at all, and the wild pie
+fell 20,765/hr to 3,816 because its part-pie ladder is charged in full rather
+than waved through as a `Partial Products` exemption. Cold pricing: reference
+map 5.8s -> 1.4s, the uber map 48s -> 12.5s end to end.
 
 **Magic's missing model was one field, and it was not in the Bucket.**
 `infobox_spell` has stated the runes a cast eats for a while - 190 of the

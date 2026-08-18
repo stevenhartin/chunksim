@@ -96,7 +96,7 @@ written down so the next person measures before building it.
 **Two deliberate limits, both of which would otherwise bite.**
 
 - *An item made from other items recurses*, and can cycle: A is the output of
-  a challenge needing B, which needs A. Bounded by `_MAX_DEPTH` and a visited
+  a challenge needing B, which needs A. Cycles are discarded by a visited
   set, and anything hitting either is reported `unpriced` rather than guessed
   at - the posture `challenges.py` takes with `unsupported`.
 - *A task can want a kill rather than a drop.* Several diary tasks are of
@@ -147,36 +147,33 @@ is where they matter most: Vannaka's basilisks want Defence 20, which
 `passiveSkill` could not confirm, so the task read as "never offered" - free -
 instead of "offered and unreachable", which costs a 30-point skip.
 
-### The item walk is memoised twice, and both memos are exact
+### The item walk is a fixpoint over a table, not a path search
 
-The recursion re-derived a hammer for every rung of every toolchain: 284,260
-recursive `_item_hours` calls on the reference map collapse onto 3,591
-distinct questions, `Pickaxe[+]` alone asked 11,816 times. But the answer
-genuinely depends on `seen` and `depth` - the toolchain cycle (a pickaxe is
-bars is ore is a pickaxe) and the depth budget both shape results - so a memo
-keyed on the item alone would be wrong silently, in exactly the way the
-docstring on `material_seconds` warns about.
+It used to be depth-first with a visited set and a depth bound, and the cost
+of that shape was measured before it was replaced: the same subproblem was
+re-priced once per *path context* - 284,260 recursive `_item_hours` calls on
+the reference map for 3,591 distinct questions, `Pickaxe[+]` alone asked
+11,816 times - and without the depth bound the every-rollable-chunk map hung
+outright on simple-path enumeration, because a visited set prunes cycles per
+path and the paths are factorial.
 
-Two caches, both on the per-call `_Walk` and both provably answer-preserving
-(the pricing digest of all three cached maps is byte-identical with and
-without them):
+Now each `(item, quantity, amortise)` question settles once per round into
+`_Fixpoint.settled`. A route that closes on a key still on the stack reads
+*last round's* answer for it (`_Fixpoint.belief`) instead of exploring around
+itself - `None` on the first round, which discards the cyclic path exactly as
+the visited set did while every acyclic chain still prices. A question that
+read no stale belief is exact in one round, which is nearly every question;
+otherwise it re-runs with settled answers promoted to beliefs until the
+reads hold. Positive route costs make that converge: a derivation
+through a cycle costs more than the acyclic derivation it would have to
+beat. `_MAX_ACTIVE` and `_MAX_ROUNDS` are work bounds in the old
+`_MAX_DEPTH`'s honest sense - seatbelts, not semantics.
 
-- **`_Walk.subtrees`** stores a whole subtree's answer together with what the
-  computation *tested* against `seen` and how many depth levels it needed. An
-  entry is stored only when the caller's context never shaped the result
-  (`_Frame.clean`), and reused only where the new caller's `seen` is disjoint
-  from the tested set and the remaining budget covers the levels. `_saw`
-  carries the accounting, which is why every membership test goes through it.
-- **`_Walk.leaf_routes`** is what the first cannot catch: inside a
-  context-shaped subtree, the hundreds of kill/shop/spawn routes re-scanned
-  per item are themselves context-free, so their best is computed once per
-  `(item, quantity, amortise)` and reused in every context. Only `task:`
-  routes recurse and stay live.
-
-Together they are ~3x on a cold pricing (reference map 5.8s -> 1.9s, the
-every-rollable-chunk map 48s -> 10s across pricing plus estimate) and moved
-no number anywhere. What remains hot afterwards is not this module: it is
-`dps_bridge.enrich`, whose ~5,700 monster pricings are measured 83% distinct.
+**`_Walk.leaf_routes`** sits under it: the hundreds of kill/shop/spawn routes
+per item read nothing recursive, so their best is computed once per question
+and only `task:` routes stay live. What remains hot afterwards is not this
+module: it is `dps_bridge.enrich`, whose ~5,700 monster pricings are measured
+83% distinct.
 """
 
 from __future__ import annotations
@@ -241,32 +238,34 @@ from chunksim.model.summary import _mapping
 #: The buckets, in the order `chunksim estimate` reports them.
 BUCKETS = ("quests", "boss drops", "activities", "skilling")
 
-#: How far the item walk will chase "made from" chains before giving up.
+#: There is deliberately no depth bound on the item walk any more.
 #:
-#: **Three was "past every real case measured" and then a real case turned
-#: up.** A soul rune is fragments <- dark essence block <- dense essence block
-#: <- the mining challenge <- its tools, which is five, and at three the whole
-#: chain reported no route - so a map holding the Dark Altar priced blood
-#: runes off pure essence at 11,118/hr where the same altar does 31,316 off
-#: fragments, and refused soul runes outright.
+#: **`_MAX_DEPTH` spent three values and every one of them was a work-around
+#: for cost, not a statement about the game.** Three was "past every real
+#: case measured" until the soul rune chain needed five; six priced every
+#: multi-ingredient pie and was rejected because the unmemoised walk paid
+#: 2.5x for it (6.6s to 14.9s on the reference map) - so the pies were
+#: reached by inventing `partial_products`, a category of hops that spent no
+#: budget, and dose hops were argued free the same way. Three mechanisms,
+#: each existing only to manage a bound that its own docstring said "buys a
+#: limit on work" rather than correctness.
 #:
-#: Cycles are stopped by the visited set rather than by this, so what the
-#: bound really buys is a limit on work; measured, the whole suite is
-#: unchanged in runtime at five.
+#: The fixpoint table removed the cost that justified all of it - a chain is
+#: settled once rather than re-priced per path context - and what remains is
+#: the pure semantics: the cheapest acyclic derivation, however long. A path
+#: that closes on itself is discarded; the item still prices through any
+#: acyclic chain that reaches it.
 #:
-#: **Six was tried and rejected, which is worth writing down.** Every
-#: multi-ingredient pie needed it - `Raw fish pie` is `Part fish pie (cod)` <-
-#: `Part fish pie (trout)` <- `Pie shell` <- `Pastry dough` <- its materials -
-#: and raising the bound did price all six. It also cost **2.5x** on the item
-#: walk (6.6s to 14.9s on the reference map, 39s to 113s on the uber one) and
-#: bought, besides the pies, exactly three things: an enchant at 52/hr, an
-#: infernal plate at 249/hr and a lava eel going 9/hr to 2,898. None of those
-#: could win a band. So the pies were reached the other way instead, by not
-#: charging depth for an assembly stage at all (`_Walk.partial_products`),
-#: which prices the identical six for no runtime at all. **A chain that is
-#: really one thing being built should not be spending this budget**, and
-#: raising the bound to accommodate it pays for every unrelated search too.
-_MAX_DEPTH = 5
+#: Measured on removal, against the depth-5 walk it replaced: **no climb
+#: moved on any of the three maps** (reference and second map totals
+#: identical, the every-rollable-chunk map +0.2h). What moved is the tail
+#: the bound had been distorting: 29 method rates on the reference map -
+#: all of them runite and adamant smithing, where the bars now price through
+#: deeper, cheaper chains and the rates *rose* (rune platebody 1,283/hr ->
+#: 2,157) - and on the uber map the lava eel went 9/hr to 2,898, the jade
+#: crossbow-bolt enchant and the infernal plate priced at all, and the wild
+#: pie fell 20,765/hr to 3,816 because its part-pie ladder is now charged in
+#: full rather than waved through as `partial_products`.
 
 #: Routes that cost no meaningful time once reachable: a shop purchase and a
 #: ground spawn are both "walk there and take it".
@@ -634,53 +633,49 @@ class EstimateResult:
         }
 
 
-class _Frame:
-    """Accounting for one in-flight `_item_hours` subtree.
+class _Fixpoint:
+    """Mutable state for the walk's fixpoint evaluation - see `_item_hours`.
 
-    What the subtree memo (`_Walk.subtrees`) needs to know about a computation
-    before its answer can be reused somewhere else: which names it compared
-    against `seen`, how deep it reached, and whether the caller's context
-    actually shaped the result. See `_item_hours` for the reuse rule.
+    One per `_Walk`, dying with it, which is the sanctioned cache shape. The
+    walk is single-threaded within one call tree, so none of this needs a
+    lock, and `--jobs` workers each build their own.
     """
 
-    __slots__ = ("entry_seen", "tested", "deepest", "clean")
+    __slots__ = ("settled", "belief", "active", "reads", "readsets", "pending")
 
-    def __init__(self, entry_seen: frozenset[str], depth: int) -> None:
-        #: The `seen` this subtree was entered with. What tells a hit on an
-        #: ancestor (context) from a hit on something the subtree itself
-        #: added (internal) - only the first makes the result unreusable.
-        self.entry_seen = entry_seen
-        #: Every name whose membership of `seen` was consulted and found
-        #: absent. A caller whose `seen` holds any of them would flip that
-        #: test, so reuse requires disjointness.
-        self.tested: set[str] = set()
-        #: The deepest absolute `depth` the subtree reached.
-        self.deepest = depth
-        #: False once the result was shaped by the caller's context - a hit
-        #: on an ancestor name, or the depth cap firing anywhere below.
-        self.clean = True
-
-
-def _saw(walk: _Walk, name: str, seen: frozenset[str]) -> bool:
-    """`name in seen`, with the accounting the subtree memo needs.
-
-    **Every membership test the walk makes goes through here**, which is what
-    lets `_item_hours` prove a cached subtree independent of its caller. A
-    miss is recorded in the innermost frame (a future caller holding the name
-    would flip it). A hit walks outward marking frames dirty until the frame
-    that *added* the name - `seen` grows only by `seen | {item}`, one name per
-    frame, so a frame whose `entry_seen` lacks the name is where it came from,
-    and from there out the hit is internal and changes nothing.
-    """
-    if name not in seen:
-        walk.frames[-1].tested.add(name)
-        return False
-    for frame in reversed(walk.frames):
-        if name not in frame.entry_seen:
-            break
-        frame.clean = False
-        frame.tested.add(name)
-    return True
+    def __init__(self) -> None:
+        #: `(item, quantity, amortise)` -> this round's answer. Authoritative
+        #: once a round completes without reading any belief that then moved.
+        self.settled: dict[tuple[str, float, bool], _Priced | None] = {}
+        #: Last round's answers, consulted only where evaluation closes on
+        #: itself. Empty on the first round, which prices a cycle's back-edge
+        #: as "no route" - exactly the path-discard the visited set used to
+        #: perform, but paid once per question rather than once per path.
+        self.belief: dict[tuple[str, float, bool], _Priced | None] = {}
+        #: The keys currently being evaluated on the stack.
+        self.active: set[tuple[str, float, bool]] = set()
+        #: Every belief read this round, with the value that was read. **The
+        #: whole convergence test**: a round is exact iff every value it read
+        #: matches that key's final answer - `settled` where the key settled
+        #: after the cycle unwound, the belief itself otherwise. Checking
+        #: reads rather than "did anything newly settle" is what stops a
+        #: question whose answers were already right from promoting and
+        #: re-deriving its cone: the first cut retried on any new key, and
+        #: the every-rollable-chunk map paid 7.27 million evaluations for
+        #: 1,634 questions before this rule replaced it.
+        self.reads: dict[tuple[str, float, bool], _Priced | None] = {}
+        #: key -> the belief keys its evaluation transitively read, kept only
+        #: where that set is non-empty - which is only the keys inside a
+        #: cyclic cluster, a few dozen against the uber map's 136,875. **What
+        #: makes a retry cheap**: when a read turns out stale, exactly the
+        #: keys whose readsets touch it are re-derived, and everything else
+        #: stays settled. The first cut cleared `settled` wholesale and paid
+        #: 4 million evaluations for 137 thousand distinct questions.
+        self.readsets: dict[tuple[str, float, bool], frozenset[tuple[str, float, bool]]] = {}
+        #: The evaluation stack's read-accumulators, one per active key.
+        #: A child's reads roll up into its parent on pop, which is what
+        #: makes `readsets` transitive without a graph walk.
+        self.pending: list[set[tuple[str, float, bool]]] = []
 
 
 @dataclass(frozen=True)
@@ -702,20 +697,6 @@ class _Walk:
     #: upstream lists no Runecraft challenge, and `Dark essence fragments` had
     #: no route at all on a map holding the Dark Altar.
     recipes: Mapping[str, tuple[Recipe, ...]] = field(default_factory=dict)
-    #: Every output upstream files under its `Partial Products` category,
-    #: lowercased. **A hop into one of these spends no `_MAX_DEPTH`**, for the
-    #: reason a dose hop does not (`_dose_hours`): the bound is on how many
-    #: *recipes* the walk will chain, and a part pie is the same dish one
-    #: stage earlier rather than a tier of crafting. `Raw fish pie` is
-    #: `Part fish pie (cod)` <- `Part fish pie (trout)` <- `Pie shell`, three
-    #: hops that assemble one pie, and charging each a level left every
-    #: multi-ingredient pie with no route at all while `Bake a ~|meat pie|~`,
-    #: one ingredient shallower, priced fine. Cycles are stopped by `seen`,
-    #: which already holds every item visited, so nothing is lost by not
-    #: counting these. Upstream's own category is the authority - 22
-    #: challenges, all Cooking - rather than a guess at which names look like
-    #: stages.
-    partial_products: frozenset[str] = frozenset()
     #: `{herb: seconds}` from `costing/herbs.py`. **Checked before the routes**,
     #: like currency, because both routes the walk would otherwise take are
     #: wrong on their own: farming priced at the clicking ignores the eighty
@@ -759,29 +740,14 @@ class _Walk:
     drop_rates: dict[tuple[str, str], tuple[float, float] | None] = field(
         default_factory=dict
     )
-    #: The subtree memo: `(resolved item, quantity, amortise)` -> the walk's
-    #: answer, the names it tested against `seen`, and how many levels of
-    #: depth it needed. **Exact, not approximate** - an entry is stored only
-    #: for a computation the caller's context never shaped (`_Frame.clean`),
-    #: and reused only where the new context provably cannot shape it either.
-    #: Measured pricing the reference map: 284,260 recursive `_item_hours`
-    #: calls collapse onto 3,591 distinct questions, `Pickaxe[+]` alone asked
-    #: 11,816 times - and every context-dependent disagreement observed was
-    #: the depth cap truncating a deep call to `None`, which the reuse rule's
-    #: budget check reproduces exactly.
-    #:
-    #: Filled lazily on a `_Walk` built per `_setup` call, like `drop_rates`
-    #: above - never module state, so `--jobs` stays honest. **Both
+    #: The fixpoint state: settled answers, last round's beliefs, and the
+    #: keys on the stack. See `_item_hours` for the algorithm and
+    #: `_Fixpoint` for the fields. Per-call like `drop_rates` above - never
+    #: module state, so `--jobs` stays honest. **Both
     #: `dataclasses.replace(walk, ...)` sites reset it**, because `replace`
     #: shares field references and the fields they change (`recipes`,
     #: `made_experience`) change answers.
-    subtrees: dict[
-        tuple[str, float, bool], tuple["_Priced | None", frozenset[str], int]
-    ] = field(default_factory=dict)
-    #: The in-flight accounting stack, sentinel at the bottom so the root
-    #: call has a frame to report into. Per-walk and single-threaded, since a
-    #: walk lives inside one call tree.
-    frames: list[_Frame] = field(default_factory=lambda: [_Frame(frozenset(), 0)])
+    fixpoint: _Fixpoint = field(default_factory=_Fixpoint)
     #: `(item, quantity, amortise)` -> the best **leaf** route and its position
     #: in `item_sources`, or `None` when no leaf prices. A leaf is any source
     #: that does not recurse - a kill, a shop, a ground spawn - and none of
@@ -933,8 +899,6 @@ def _item_hours(
     *,
     quantity: float = 1.0,
     amortise: bool = False,
-    depth: int = 0,
-    seen: frozenset[str] = frozenset(),
 ) -> _Priced | None:
     """Cheapest route to `quantity` of `item`, as `(hours, why)`, or `None`.
 
@@ -946,51 +910,104 @@ def _item_hours(
     abyssal whip, not forty; the parameter exists for *materials*, where a
     recipe consuming two guam leaves an action is asking a different question
     and a stacked drop amortises across it. See `_drop_rates`.
+
+    **The evaluation is a fixpoint, not a path search.** Each `(item,
+    quantity, amortise)` question is settled once per round into a table; a
+    route that closes on a key already on the stack reads *last round's*
+    answer for it instead of exploring around itself - `None` on the first
+    round, which discards the cyclic path exactly as the old visited set did,
+    while any acyclic chain to the same item still prices. A round is exact
+    when every belief it read matches that key's final answer
+    (`_Fixpoint.reads`), which is one round for nearly every question;
+    otherwise the settled answers are promoted to beliefs and the question
+    re-runs until the reads hold, which positive route costs guarantee
+    terminates - a derivation through a cycle costs more than the acyclic
+    derivation it would have to beat.
+
+    This is what replaced both the visited-set recursion and `_MAX_DEPTH`.
+    The path search priced the same subproblem once per *path context* -
+    fine at depth 5, factorial without it: the every-rollable-chunk map hung
+    on simple-path enumeration the moment the bound came off. The table
+    prices it once per round, and rounds are almost always one.
     """
     item = walk.resolve(item)
-    if _saw(walk, item, seen):
-        return None
-    if depth > _MAX_DEPTH:
-        # The cap is pure context: the same subtree entered shallower would
-        # have priced, so nothing on the stack may be stored.
-        for frame in walk.frames:
-            frame.clean = False
-        return None
-
-    # **The subtree memo, and the whole of the reuse rule.** An entry may
-    # stand in for a recomputation only when replaying it here would go the
-    # same way: nothing it tested against `seen` is in *this* `seen`, and the
-    # depth it needed fits in the budget left. Both checks are against what
-    # the stored computation actually did, not a guess about it - which is
-    # what makes this a pure speed-up: measured over all three maps, not one
-    # priced number moves. What it buys is the walk no longer re-deriving a
-    # hammer for every rung of every toolchain: 284,260 recursive calls on
-    # the reference map collapse onto 3,591 distinct questions.
+    fixpoint = walk.fixpoint
     key = (item, quantity, amortise)
-    held = walk.subtrees.get(key)
-    if held is not None:
-        result, tested, levels = held
-        if depth + levels <= _MAX_DEPTH and seen.isdisjoint(tested):
-            frame = walk.frames[-1]
-            frame.tested |= tested
-            if depth + levels > frame.deepest:
-                frame.deepest = depth + levels
-            return result
+    if fixpoint.active:
+        return _settle(walk, key)
 
-    frame = _Frame(seen, depth)
-    walk.frames.append(frame)
+    # Top level: run rounds until every belief read held. `found` is bound
+    # on the first pass, and `_MAX_ROUNDS` is a work bound in the same
+    # spirit as `_MAX_ACTIVE` - convergence is expected in two.
+    found: _Priced | None = None
+    for _ in range(_MAX_ROUNDS):
+        fixpoint.reads.clear()
+        found = _settle(walk, key)
+        settled = fixpoint.settled
+        belief = fixpoint.belief
+        stale = {
+            read
+            for read, value in fixpoint.reads.items()
+            if (settled[read] if read in settled else belief.get(read)) != value
+        }
+        if not stale:
+            break
+        # A belief that was read has since moved, so every settled answer
+        # whose evaluation transitively read one of the moved keys is
+        # re-derived - and only those. Their current values are promoted to
+        # beliefs first, so the next round's cycles read this round's
+        # answers; everything outside the cluster stays settled, which is
+        # what keeps a retry proportional to the cycle rather than to the
+        # question's whole cone.
+        doomed = [
+            settled_key
+            for settled_key, read_keys in fixpoint.readsets.items()
+            if read_keys & stale and settled_key in settled
+        ]
+        for settled_key in doomed:
+            belief[settled_key] = settled.pop(settled_key)
+            fixpoint.readsets.pop(settled_key, None)
+    return found
+
+
+#: How many keys may be mid-evaluation at once. **A work bound, not a
+#: semantic one**: it caps the recursion depth of a single derivation chain,
+#: and a chain of sixty-four distinct recipes is beyond anything the corpus
+#: holds - the longest real one measured is the nine-hop pie. Overflow reads
+#: the belief, exactly as a cycle does, so a pathological corpus degrades to
+#: an extra round rather than to a crash.
+_MAX_ACTIVE = 64
+
+#: How many promote-and-retry rounds a question may spend before its answer
+#: is taken as-is. Positive costs make improvement monotone, so this is a
+#: seatbelt; two rounds is the measured ceiling on all three maps.
+_MAX_ROUNDS = 8
+
+
+def _settle(walk: _Walk, key: tuple[str, float, bool]) -> _Priced | None:
+    """One key's answer this round: settled, believed, or evaluated now."""
+    fixpoint = walk.fixpoint
+    settled = fixpoint.settled
+    if key in settled:
+        return settled[key]
+    if key in fixpoint.active or len(fixpoint.active) >= _MAX_ACTIVE:
+        value = fixpoint.belief.get(key)
+        fixpoint.reads.setdefault(key, value)
+        if fixpoint.pending:
+            fixpoint.pending[-1].add(key)
+        return value
+    fixpoint.active.add(key)
+    fixpoint.pending.append(set())
     try:
-        found = _best_route(
-            walk, item, quantity=quantity, amortise=amortise, depth=depth, seen=seen
-        )
+        found = _best_route(walk, key[0], quantity=key[1], amortise=key[2])
     finally:
-        walk.frames.pop()
-        parent = walk.frames[-1]
-        parent.tested |= frame.tested
-        if frame.deepest > parent.deepest:
-            parent.deepest = frame.deepest
-    if frame.clean:
-        walk.subtrees[key] = (found, frozenset(frame.tested), frame.deepest - depth)
+        fixpoint.active.discard(key)
+        read_keys = fixpoint.pending.pop()
+        if read_keys:
+            fixpoint.readsets[key] = frozenset(read_keys)
+            if fixpoint.pending:
+                fixpoint.pending[-1] |= read_keys
+    settled[key] = found
     return found
 
 
@@ -1000,13 +1017,11 @@ def _best_route(
     *,
     quantity: float,
     amortise: bool,
-    depth: int,
-    seen: frozenset[str],
 ) -> _Priced | None:
-    """`_item_hours` after its guard and memo: try every route, keep the best.
+    """`_item_hours` past the fixpoint table: try every route, keep the best.
 
-    Split out so the wrapper above can bracket exactly one subtree with one
-    `_Frame`. `item` arrives already resolved.
+    `item` arrives already resolved. Cycles need no handling here - a child
+    evaluation that closes on an ancestor reads the belief inside `_settle`.
     """
     # **`[+]` means "or anything equivalent", so take the cheapest.** The
     # family is upstream's own list; picking the best of it is the same
@@ -1017,16 +1032,9 @@ def _best_route(
     if members:
         cheapest: _Priced | None = None
         for member in members:
-            if not isinstance(member, str) or _saw(walk, member, seen):
+            if not isinstance(member, str):
                 continue
-            priced = _item_hours(
-                walk,
-                member,
-                quantity=quantity,
-                amortise=amortise,
-                depth=depth + 1,
-                seen=seen | {item},
-            )
+            priced = _item_hours(walk, member, quantity=quantity, amortise=amortise)
             if priced is not None and (cheapest is None or priced.hours < cheapest.hours):
                 cheapest = priced
         return cheapest
@@ -1097,8 +1105,7 @@ def _best_route(
             if source.route.startswith("task:"):
                 continue
             priced = _route_hours(
-                walk, item, source.route, source.name, depth, seen | {item},
-                quantity, amortise,
+                walk, item, source.route, source.name, quantity, amortise
             )
             if priced is not None and (held is None or priced.hours < held[0].hours):
                 held = (priced, at)
@@ -1110,8 +1117,7 @@ def _best_route(
         best, best_at = None, -1
     for at, route, provider, challenge in tasks:
         priced = _route_hours(
-            walk, item, route, provider, depth, seen | {item}, quantity, amortise,
-            challenge=challenge,
+            walk, item, route, provider, quantity, amortise, challenge=challenge
         )
         if priced is not None and (
             best is None
@@ -1119,11 +1125,11 @@ def _best_route(
             or (priced.hours == best.hours and at < best_at)
         ):
             best, best_at = priced, at
-    decanted = _dose_hours(walk, item, quantity, amortise, depth, seen | {item})
+    decanted = _dose_hours(walk, item, quantity, amortise)
     if decanted is not None and (best is None or decanted.hours < best.hours):
         best = decanted
     if best is None:
-        best = _recipe_hours(walk, item, quantity, amortise, depth, seen | {item})
+        best = _recipe_hours(walk, item, quantity, amortise)
     return best
 
 
@@ -1132,8 +1138,6 @@ def _recipe_hours(
     item: str,
     quantity: float,
     amortise: bool,
-    depth: int,
-    seen: frozenset[str],
 ) -> _Priced | None:
     """Make `item` from a wiki recipe, when nothing else can provide it.
 
@@ -1169,21 +1173,11 @@ def _recipe_hours(
         earned: list[tuple[str, float]] = []
         failed = False
         for material in recipe.materials:
-            if _saw(walk, material.name, seen):
-                failed = True
-                break
-            # An assembly stage costs no depth here either - the wiki
-            # describes the same part-pie ladder the export does, and which
-            # route the walk happens to take must not change how far it can
-            # see. See `_Walk.partial_products`.
-            step = depth if material.name.lower() in walk.partial_products else depth + 1
             priced = _item_hours(
                 walk,
                 material.name,
                 quantity=quantity * material.quantity / made,
                 amortise=amortise,
-                depth=step,
-                seen=seen,
             )
             if priced is None:
                 failed = True
@@ -1221,8 +1215,6 @@ def _dose_hours(
     item: str,
     quantity: float,
     amortise: bool,
-    depth: int,
-    seen: frozenset[str],
 ) -> _Priced | None:
     """Price `item` as doses of the same potion at another strength.
 
@@ -1234,9 +1226,8 @@ def _dose_hours(
     xp/hour survived on 26 of them.
 
     A dose is a dose, so `N` of them cost `N/M` of an `M`-dose potion, and the
-    cheapest `M` wins as everywhere else here. The `seen` guard is what stops
-    a three asking a two asking a three: `_item_hours` adds `item` to it
-    before calling this.
+    cheapest `M` wins as everywhere else here. A three asking a two asking a
+    three closes on an active key and reads the belief, like every cycle.
 
     **Deliberately not a discount for the leftovers.** Buying a four to use
     two really does leave two behind, and a player would drink them - but
@@ -1252,22 +1243,8 @@ def _dose_hours(
         if other == dose:
             continue
         candidate = f"{name}({other})"
-        if _saw(walk, candidate, seen):
-            continue
         priced = _item_hours(
-            walk,
-            candidate,
-            quantity=quantity * dose / other,
-            amortise=amortise,
-            # **Not a level deeper.** `_MAX_DEPTH` bounds how many *recipes*
-            # the walk will chain, and a dose is the same potion at another
-            # strength rather than a tier of crafting. Charging it a level
-            # left `Super energy(2)` unpriced while `Super energy(3)` cost
-            # 241s, and sent `Combat potion(2)` the long way round through a
-            # four-dose at more than twice the price. Cycles are stopped by
-            # `seen`, which already holds every dose visited.
-            depth=depth,
-            seen=seen,
+            walk, candidate, quantity=quantity * dose / other, amortise=amortise
         )
         if priced is not None and (best is None or priced.hours < best.hours):
             best = _Priced(
@@ -1334,8 +1311,6 @@ def _route_hours(
     item: str,
     route: str,
     provider: str,
-    depth: int,
-    seen: frozenset[str],
     quantity: float = 1.0,
     amortise: bool = False,
     challenge: dict[str, Any] | None = None,
@@ -1499,20 +1474,7 @@ def _route_hours(
             if not isinstance(required, str):
                 continue
             wanted = required.replace("*", "")
-            # **An assembly stage costs no depth** - see
-            # `_Walk.partial_products`, and `_dose_hours` for the precedent.
-            # Only the stage itself: the ingredient it is being combined with
-            # is an ordinary material with a route of its own, so a potato
-            # still costs a level.
-            step = depth if wanted.lower() in walk.partial_products else depth + 1
-            priced = _item_hours(
-                walk,
-                wanted,
-                quantity=quantity,
-                amortise=amortise,
-                depth=step,
-                seen=seen,
-            )
+            priced = _item_hours(walk, wanted, quantity=quantity, amortise=amortise)
             if priced is None:
                 return None
             total += priced.hours
@@ -1974,24 +1936,6 @@ def _challenge_outputs(
 _PARTIAL_PRODUCTS = "Partial Products"
 
 
-def _partial_products(chunk_info: ChunkInfo) -> frozenset[str]:
-    """Every `Partial Products` output, lowercased - see `_Walk.partial_products`.
-
-    Read from the whole export rather than a map's valid set, because whether
-    a part pie is a stage of one dish is a fact about the game rather than
-    about which chunks are held.
-    """
-    found: set[str] = set()
-    for category in chunk_info.challenges:
-        for entry in _mapping(chunk_info.challenges, category).values():
-            if not isinstance(entry, dict):
-                continue
-            if _PARTIAL_PRODUCTS not in (entry.get("Category") or ()):
-                continue
-            output = entry.get("Output")
-            if isinstance(output, str) and output.strip():
-                found.add(output.strip().lower())
-    return frozenset(found)
 
 
 def _setup(
@@ -2062,7 +2006,6 @@ def _setup(
         chunk_info=state.chunk_info,
         world=world,
         heuristics=heuristics,
-        partial_products=_partial_products(state.chunk_info),
         tables=_mapping(state.chunk_info.code_items, "dropTables"),
         by_lower={item.lower(): item for item in world.item_sources},
         available=providers,
@@ -2117,8 +2060,7 @@ def _setup(
         # are reset rather than inherited, or answers cached against one
         # corpus would be served against the other.
         walk = dataclasses.replace(
-            walk, recipes=by_output, subtrees={}, leaf_routes={},
-            frames=[_Frame(frozenset(), 0)],
+            walk, recipes=by_output, fixpoint=_Fixpoint(), leaf_routes={}
         )
 
     grimy = herbs.herb_items(derived.source_index.items)
@@ -2184,15 +2126,12 @@ def material_seconds(
     rule that keeps `--jobs` honest is untouched.
 
     **It also remembers, and `(item, quantity)` is the whole key.** Every call
-    reaches `_item_hours` with the same `walk` and the same `depth=0`,
-    `seen=frozenset()`, `amortise=True`, so nothing else can vary the answer -
-    and the recipes ask the same question about three times over (1,235 calls
-    over 451 distinct pairs pricing the reference map's methods), because `Cosmic rune`
-    is a material of dozens of them. Worth ~4x on the recipe walk.
-
-    The memo belongs *here* and nowhere deeper: `_item_hours`' own result
-    depends on `seen` and `depth`, so a memo inside it would be wrong, and
-    silently - the walk would answer a nested question with an outer answer.
+    reaches `_item_hours` with the same `walk` and `amortise=True`, so nothing
+    else can vary the answer - and the recipes ask the same question about
+    three times over (1,235 calls over 451 distinct pairs pricing the
+    reference map's methods), because `Cosmic rune` is a material of dozens
+    of them. The fixpoint table underneath makes a miss cheap too; this keeps
+    a hit from re-entering the walk at all.
     """
     walk = _setup(state, derived, world, heuristics, level_overrides or {}, recipes).walk
     if made_experience:
@@ -2200,8 +2139,7 @@ def material_seconds(
         # experience credits ride on every `_Priced`, so a memo filled under
         # one table is wrong under another.
         walk = dataclasses.replace(
-            walk, made_experience=made_experience, subtrees={}, leaf_routes={},
-            frames=[_Frame(frozenset(), 0)],
+            walk, made_experience=made_experience, fixpoint=_Fixpoint(), leaf_routes={}
         )
     memo: dict[tuple[str, float], _Priced | None] = {}
 

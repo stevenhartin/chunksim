@@ -2241,19 +2241,25 @@ def test_a_potion_dose_is_priced_off_another_dose() -> None:
     assert _DOSE.match("Bucket of sand") is None
 
 
-def test_a_dose_hop_is_not_a_level_deeper() -> None:
-    """`_MAX_DEPTH` bounds how many *recipes* the walk will chain, and a dose
-    is the same potion at another strength rather than a tier of crafting.
-    Charging it a level left `Super energy(2)` unpriced while `Super
-    energy(3)` cost 241s, and sent `Combat potion(2)` the long way round
-    through a four-dose at more than twice the price."""
+def test_the_walk_carries_no_depth_budget() -> None:
+    """**The bound is gone, and it must not creep back as a parameter.** Three
+    mechanisms existed only to manage it - `partial_products`, dose hops
+    "spending no depth", the budget half of the memo's reuse rule - and each
+    was a work-around for the unmemoised walk's cost, not a statement about
+    the game. Cycles are the visited set's job: a path that closes on itself
+    is discarded, and the item still prices through any acyclic chain that
+    reaches it."""
     import inspect
 
-    from chunksim.costing.estimate import _dose_hours
+    from chunksim.costing import estimate as module
+    from chunksim.costing.estimate import _best_route, _dose_hours, _item_hours
 
-    source = inspect.getsource(_dose_hours)
-    assert "depth=depth," in source, "a dose hop must not spend a level of depth"
-    assert "depth=depth + 1" not in source
+    assert not hasattr(module, "_MAX_DEPTH")
+    for walker in (_item_hours, _best_route, _dose_hours):
+        assert "depth" not in inspect.signature(walker).parameters
+        # And no visited set either: cycles are the fixpoint table's job, so
+        # a `seen` parameter reappearing would mean the path search is back.
+        assert "seen" not in inspect.signature(walker).parameters
 
 
 def test_a_recipe_is_the_last_resort_route() -> None:
@@ -2315,9 +2321,7 @@ def test_a_stated_duration_reaches_the_walk_before_the_default_does() -> None:
             _walk_for(ChunkInfo({"chunks": {}, "sections": {}, "challenges": {}})),
             recipes={"thing": (recipe,)},
         )
-        return _recipe_hours(
-            walk, "Thing", 4.0, amortise=False, depth=0, seen=frozenset()
-        )
+        return _recipe_hours(walk, "Thing", 4.0, amortise=False)
 
     free, unknown = _priced(float(chisel.CHISEL_TICKS)), _priced(None)
     assert free is not None and free.hours == 0.0
@@ -2325,84 +2329,46 @@ def test_a_stated_duration_reaches_the_walk_before_the_default_does() -> None:
     assert unknown.hours == pytest.approx(DEFAULT_ACTION_SECONDS / 3600.0)
 
 
-def test_an_assembly_stage_costs_no_depth() -> None:
-    """**A chain that is really one thing being built must not spend the
-    budget.** `Raw fish pie` is `Part fish pie (cod)` <- `Part fish pie
-    (trout)` <- `Pie shell` <- `Pastry dough` <- its materials, so at
-    `_MAX_DEPTH` every multi-ingredient pie reported no route while `Bake a
-    ~|meat pie|~`, one ingredient shallower, priced fine.
-
-    Raising the bound to six also worked and was rejected: it cost 2.5x on the
-    item walk and bought, besides the pies, an enchant at 52/hr, an infernal
-    plate at 249/hr and a lava eel going 9/hr to 2,898. Not charging depth for
-    an assembly stage prices the identical six for no runtime at all.
-
-    Upstream's own `Partial Products` category is the authority - 22
-    challenges, all Cooking - rather than a guess at which names look like
-    stages."""
-    import inspect
-
-    from chunksim.costing.estimate import _partial_products, _recipe_hours, _route_hours
-
-    info = ChunkInfo(
-        {
-            "chunks": {},
-            "sections": {},
-            "challenges": {
-                "Cooking": {
-                    "Make a ~|raw fish pie|~": {
-                        "Category": ["Partial Products"],
-                        "Output": "Raw fish pie",
-                        "Items": ["Part fish pie (cod)*", "Potato*"],
-                        "Primary": True,
-                    },
-                    "Bake a ~|fish pie|~": {
-                        "Output": "Fish pie",
-                        "Items": ["Raw fish pie*"],
-                        "Primary": True,
-                    },
-                }
-            },
+def test_a_chain_prices_however_long_it_is() -> None:
+    """**The pies were the depth bound's last casualty and now need no
+    special case.** `Raw fish pie` is `Part fish pie (cod)` <- `Part fish pie
+    (trout)` <- `Pie shell` <- `Pastry dough` <- its materials - six recipe
+    hops - and under `_MAX_DEPTH = 5` it priced only because upstream's
+    `Partial Products` category exempted the assembly stages. With the bound
+    gone the chain prices on its own arithmetic, and so does anything
+    longer: the walk's limit is the cheapest acyclic derivation, not a
+    hop count."""
+    chunks = {"1111": {"Spawn": {"Link 9": 1}}}
+    challenges: dict[str, Any] = {}
+    for step in range(9):
+        challenges[f"Make link {step}"] = {
+            "Items": [f"Link {step + 1}"],
+            "Output": f"Link {step}",
+            "Primary": True,
         }
-    )
+    info = ChunkInfo({"challenges": {"Crafting": challenges}, "chunks": chunks})
 
-    assert _partial_products(info) == frozenset({"raw fish pie"}), (
-        "the category names the stage, and only the stage"
-    )
-    for source in (inspect.getsource(_route_hours), inspect.getsource(_recipe_hours)):
-        assert "walk.partial_products" in source, (
-            "which route the walk takes must not change how far it can see"
-        )
+    priced = _item_hours(_walk_for(info), "Link 0")
 
-
-def test_the_walk_chases_a_chain_five_deep() -> None:
-    """`_MAX_DEPTH` was 3 and its comment said that was "past every real case
-    measured". A soul rune is fragments <- dark essence block <- dense essence
-    block <- the mining challenge <- its tools, which is five."""
-    from chunksim.costing.estimate import _MAX_DEPTH
-
-    assert _MAX_DEPTH >= 5
+    assert priced is not None, "nine hops, every one of them acyclic"
+    # One spawn pickup plus nine defaulted actions - the chain is charged in
+    # full, not waved through.
+    assert priced.hours * 3600.0 > 9 * DEFAULT_ACTION_SECONDS
 
 
-class TestTheSubtreeMemoIsExact:
-    """**A cache entry may stand in for a recomputation only when replaying it
-    would go the same way.**
+class TestTheFixpointWalk:
+    """**A cycle is a discarded path, never a discarded item.**
 
-    The walk's recursion re-derived a hammer for every rung of every toolchain
-    - 284,260 recursive `_item_hours` calls on the reference map collapse onto
-    3,591 distinct questions - but the answer genuinely depends on `seen` and
-    `depth` in two places, and a memo that ignored either would be wrong
-    silently. So an entry records what its computation tested against `seen`
-    and how deep it went, and the reuse rule checks both. The strongest
-    evidence is not here: the pricing digest of all three cached maps is
-    byte-identical before and after the memo. These pin the two reuse refusals
-    individually, so a regression names the rule it broke.
+    The walk settles each `(item, quantity, amortise)` question into a table;
+    a route that closes on a key still being evaluated reads last round's
+    belief instead of exploring around itself. These pin the semantics the
+    user asked for by name: a chain that closes on itself contributes
+    nothing, and an item reachable by any acyclic chain still prices.
     """
 
     def _chain_info(self) -> ChunkInfo:
         """`Deep 0` is made from `Deep 1` is made from ... `Deep 5`, which is
-        a spawn - a chain that prices at depth 0 and refuses when entered
-        deeper, which is exactly what a depth-blind memo would get wrong."""
+        a spawn."""
         chunks = {"1111": {"Spawn": {"Deep 5": 1}}}
         challenges: dict[str, Any] = {}
         for step in range(5):
@@ -2413,78 +2379,91 @@ class TestTheSubtreeMemoIsExact:
             }
         return ChunkInfo({"challenges": {"Crafting": challenges}, "chunks": chunks})
 
-    def test_a_deep_answer_is_not_served_past_the_budget(self) -> None:
-        from chunksim.costing.estimate import _MAX_DEPTH, _item_hours
-
-        walk = _walk_for(self._chain_info())
-
-        # Warm the cache with the shallow answer...
-        assert _item_hours(walk, "Deep 0") is not None
-        assert ("Deep 0", 1.0, False) in walk.subtrees
-
-        # ...then ask again from a depth its five levels no longer fit.
-        # A memo keyed on the item alone would happily serve the priced
-        # answer; the exact one recomputes and refuses, as cold does.
-        deep = _item_hours(walk, "Deep 0", depth=_MAX_DEPTH - 2)
-        assert deep is None
-
-    def test_an_answer_is_not_served_into_a_cycle_it_was_computed_without(self) -> None:
-        """`Attack potion(4)` prices by decanting `(3)`s. Under `(3)`'s own
-        recursion that route is a cycle and must not be on offer - which is
-        precisely the answer a context-blind cache would serve."""
-        from chunksim.costing.estimate import _item_hours
-
+    def test_a_pure_cycle_refuses(self) -> None:
+        """Two items each made only from the other is no route at all - the
+        first round's empty beliefs discard both paths, and no later round
+        can improve on a system with no leaf anywhere."""
         info = ChunkInfo(
             {
-                "challenges": {},
-                "chunks": {"1111": {"Spawn": {"Attack potion(3)": 1}}},
+                "chunks": {},
+                "challenges": {
+                    "Crafting": {
+                        "Make an egg": {"Items": ["Chicken"], "Output": "Egg", "Primary": True},
+                        "Make a chicken": {"Items": ["Egg"], "Output": "Chicken", "Primary": True},
+                    }
+                },
             }
         )
         walk = _walk_for(info)
 
-        # Standalone, the four-dose prices by decanting spawned threes.
-        alone = _item_hours(walk, "Attack potion(4)")
-        assert alone is not None
+        assert _item_hours(walk, "Egg") is None
+        assert _item_hours(walk, "Chicken") is None
 
-        # Under the three's own recursion it must not - the decant is a
-        # cycle there, and the only other route does not exist.
-        cycled = _item_hours(walk, "Attack potion(4)", seen=frozenset({"Attack potion(3)"}))
-        assert cycled is None
+    def test_a_cycle_with_a_leaf_prices_both_members(self) -> None:
+        """The user's own statement of the semantics: discarding a cyclic
+        path must not discard the item - anything an acyclic chain reaches
+        still prices. Here the egg also spawns, so the chicken prices through
+        it and the egg never prices through the chicken."""
+        info = ChunkInfo(
+            {
+                "chunks": {"1111": {"Spawn": {"Egg": 1}}},
+                "challenges": {
+                    "Crafting": {
+                        "Make an egg": {"Items": ["Chicken"], "Output": "Egg", "Primary": True},
+                        "Make a chicken": {"Items": ["Egg"], "Output": "Chicken", "Primary": True},
+                    }
+                },
+            }
+        )
+        walk = _walk_for(info)
 
-    def test_what_a_subtree_tested_travels_with_its_entry(self) -> None:
-        """The stored `tested` set is the reuse contract: any caller whose
-        `seen` holds one of those names would flip a comparison the stored
-        run made, so it must recompute."""
-        from chunksim.costing.estimate import _item_hours
+        egg = _item_hours(walk, "Egg")
+        chicken = _item_hours(walk, "Chicken")
 
+        assert egg is not None and egg.source.startswith("spawn:")
+        assert chicken is not None and chicken.hours > egg.hours
+
+    def test_the_dose_cycle_still_prices_every_strength(self) -> None:
+        """The case the old visited set handled and the table must too: no
+        action makes a two-dose potion, so `(2)` prices as doses of the
+        spawned `(3)` while `(3)` never prices through `(2)`."""
+        info = ChunkInfo(
+            {"challenges": {}, "chunks": {"1111": {"Spawn": {"Attack potion(3)": 1}}}}
+        )
+        walk = _walk_for(info)
+
+        three = _item_hours(walk, "Attack potion(3)")
+        two = _item_hours(walk, "Attack potion(2)")
+
+        assert three is not None and three.source.startswith("spawn:")
+        assert two is not None
+        assert "doses" in two.detail
+
+    def test_a_question_that_never_met_a_cycle_settles_in_one_round(self) -> None:
+        """`_Fixpoint.consulted` stays False down an acyclic chain, which is
+        what keeps the convergence loop off the common path."""
         walk = _walk_for(self._chain_info())
-        _item_hours(walk, "Deep 3")
 
-        _, tested, levels = walk.subtrees[("Deep 3", 1.0, False)]
-        assert "Deep 4" in tested and "Deep 5" in tested
-        assert levels == 2, "two recipe hops below it"
+        assert _item_hours(walk, "Deep 0") is not None
+        assert not walk.fixpoint.reads, "an acyclic chain reads no beliefs"
+        assert ("Deep 0", 1.0, False) in walk.fixpoint.settled
 
-    def test_a_dirty_subtree_is_not_stored(self) -> None:
-        """A computation the caller's context shaped describes that context,
-        not the item - `Deep 2` entered with `Deep 4` already seen refuses,
-        and caching that refusal would poison every clean caller."""
-        from chunksim.costing.estimate import _item_hours
-
+    def test_settled_answers_are_shared_across_questions(self) -> None:
+        """The table is the memo: the second question reads what the first
+        settled rather than walking the chain again."""
         walk = _walk_for(self._chain_info())
-        blocked = _item_hours(walk, "Deep 2", seen=frozenset({"Deep 4"}))
+        _item_hours(walk, "Deep 0")
 
-        assert blocked is None
-        assert ("Deep 2", 1.0, False) not in walk.subtrees
+        before = dict(walk.fixpoint.settled)
+        again = _item_hours(walk, "Deep 3")
 
-        # And the clean question afterwards still prices - the refusal above
-        # neither answered for it nor barred it.
-        assert _item_hours(walk, "Deep 2") is not None
-        assert ("Deep 2", 1.0, False) in walk.subtrees
+        assert again == before[("Deep 3", 1.0, False)]
 
     def test_replacing_walk_fields_that_move_answers_resets_the_caches(self) -> None:
         """`dataclasses.replace` shares field references, so the two sites
-        that swap `recipes`/`made_experience` must hand the new walk empty
-        caches - answers embed experience credits and corpus routing."""
+        that swap `recipes`/`made_experience` must hand the new walk a fresh
+        fixpoint - settled answers embed experience credits and corpus
+        routing."""
         import inspect
 
         from chunksim.costing import estimate as module
@@ -2493,5 +2472,5 @@ class TestTheSubtreeMemoIsExact:
         for site in ("recipes=by_output", "made_experience=made_experience"):
             at = source.index(site)
             window = source[at : at + 200]
-            assert "subtrees={}" in window, site
+            assert "fixpoint=_Fixpoint()" in window, site
             assert "leaf_routes={}" in window, site
