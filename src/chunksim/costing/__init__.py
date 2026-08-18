@@ -61,6 +61,14 @@ The modules, and what each owns:
   is paid `D/10` a salvage - so the best in the game is +12.8%, not a second
   player. Sorting runs at the station's 1,800/hr and **is charged the salvage
   it eats**, which is what keeps 171,000/hr on paper down to 8,400 in fact.
+- `barracuda.py` - the three Barracuda trials, **counted rather than quoted**.
+  `Sailing training` states all nine rates as wiki expressions over components
+  each trial's own page publishes, so this reads the components and reproduces
+  the scrape to the experience point - deliberately, since an identity is
+  worthless as evidence and valuable as a check: the scrape is now this
+  model's oracle. A boat-speed model was attempted and **refused** - the two
+  published observations imply exponents of 0.75 and 0.235, so there is no
+  curve both support.
 - `gotr.py` - Guardians of the Rift as **one minigame, not twelve rune
   methods**. The rune is the game's decision - two portals, one elemental and
   one catalytic - so the curve is the *rune mix* at a level, and throughput is

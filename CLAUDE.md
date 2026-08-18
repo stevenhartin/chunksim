@@ -647,6 +647,37 @@ until the docstring says otherwise; the numbers that carry information are the
 ones with several rows and a residual, like Woodcutting's 12/17 and Hunter's
 6/10.
 
+**An identity is worthless as a rate and valuable as an oracle**, which is what
+to do with one rather than avoid it. Sailing's last six published figures were
+the Barracuda trials, and `Sailing training` states all nine of them as wiki
+expressions — `{{#expr:(385 + 14*15 + 2*19.5)*60*60/(108+10)}}` — over
+components each trial's *own* page publishes. So `costing/barracuda.py` reads
+the components and lands on the same nine numbers to the experience point, and
+no climb on any of the three maps moves at all. What that buys is a **check**:
+`tests/test_costing_barracuda.py` asserts every computed rate against the
+scraped row, so the day Jagex moves a trial's experience and the wiki follows,
+the next `chunksim heuristics` fails a test instead of letting the two drift.
+The scrape stops being the estimator's source and becomes the model's oracle —
+the same relationship `activeTasks` already has to the derivation. It also
+recovers what a quotient threw away: the training page's factor order is
+inconsistent (`14*15` count-then-each against `25*20` each-then-count), so only
+the component form can say how many crates a rank collects, and doing so found
+the one place two wiki pages disagree.
+
+**A model has to be refusable on the measurement, and the boat one was.** The
+wiki is insistent that a trial's rate depends on the hull — "a rosewood hull to
+increase your base boat speed by 20% ... will increase lap speeds and experience
+per hour by ~15%", and the Jubbly Jive's Marlin at 85,000/hr on mahogany against
+90,000 on camphor — and `Hull` tabulates a speed per tier against a Sailing and a
+Construction level, so the map would decide. The two observations imply exponents
+of **0.75 and 0.235**. A trial is turning, collecting and waiting as much as it is
+sailing, so there is no curve both support and none is invented; every rank is
+priced at its target time instead, which is at least the same assumption
+everywhere. **That target is a rank threshold and not a lap time** — the standing
+bias in all nine figures, scraped or computed, since completion pays "regardless
+of time taken" and the wiki's own Gwenith Glide observation is 5:20 against a 6:09
+target.
+
 **The third layer is not a rate at all, and that is what makes it compose.**
 `costing/production.py` reads the same `Module:Skill calc` tables the gathering
 model does, for a different column: what one action *consumes*, against the XP

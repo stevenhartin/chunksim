@@ -36,6 +36,7 @@ from typing import Any, Mapping
 from chunksim.costing import (
     aerial,
     barbarian,
+    barracuda,
     blastmine,
     farming,
     gotr,
@@ -695,6 +696,16 @@ def _gathered(
     # crewmate is worth D^2/125 rather than a second player - see
     # `costing/salvage.py`.
     for skill, methods in salvage.methods(
+        _mapping(state.chunk_info.challenges, "Sailing"),
+        derived.challenges.valid.get("Sailing") or {},
+    ).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **The Barracuda trials, counted rather than quoted.** `Sailing training`
+    # states all nine rates as wiki expressions over components each trial's
+    # own page publishes, so this reads the components and reproduces the
+    # scrape exactly - deliberately, since that makes the scrape this model's
+    # oracle. See `costing/barracuda.py`.
+    for skill, methods in barracuda.methods(
         _mapping(state.chunk_info.challenges, "Sailing"),
         derived.challenges.valid.get("Sailing") or {},
     ).items():

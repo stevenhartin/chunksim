@@ -1247,6 +1247,16 @@ def parse_sailing(text: str) -> tuple[SkillRow, ...]:
     nothing published a rate for any of Sailing's 27 methods, and this table
     is one of four places that now do.
 
+    **It is no longer what the estimator spends, and is kept for what it is
+    instead.** `costing/barracuda.py` prices all nine from each trial's own
+    reward table and supersedes every row here, landing on the same figures to
+    the experience point - because what this parses is not an observation but a
+    sum somebody wrote down. So the rows keep being scraped and
+    `tests/test_costing_barracuda.py` asserts the model against them: a game
+    update that moves a trial's experience arrives here first, and the next
+    `chunksim heuristics` turns it into a failing test rather than a silent
+    disagreement. Delete this and the model has nothing to check itself against.
+
     Regular in a way that needs no mapping table - `level | trial | (xp/trial,
     xp/hour) x 3` - so the export's phrasing is a format string rather than a
     hand-written list: the trial comes from the row's own wiki link and the

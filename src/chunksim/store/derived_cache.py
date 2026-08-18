@@ -204,7 +204,10 @@ _FORMAT = "1"
 #: lectern makes it - see `costing/lectern.py`.
 #: 72: a task takes the recipe whose materials its own `Items` list - see
 #: `recipe_rates.material_candidates`.
-_PRICING_MODEL = "72"
+#: 73: the Barracuda trials are counted from each trial's own reward table
+#: rather than read as a quotient off `Sailing training` - identical figures,
+#: which is what makes the scrape the model's oracle. See `costing/barracuda.py`.
+_PRICING_MODEL = "73"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.
