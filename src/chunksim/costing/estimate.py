@@ -2267,6 +2267,7 @@ def material_seconds(
     level_overrides: dict[str, int] | None = None,
     made_experience: Mapping[str, tuple[str, float]] | None = None,
     recipes: Mapping[str, Sequence[Recipe]] | None = None,
+    material_aliases: Mapping[str, str] = {},
 ) -> _MaterialWalk:
     """Two callables over one item walk: what a material costs, and what
     obtaining it *paid*.
@@ -2292,6 +2293,13 @@ def material_seconds(
     reference map's methods), because `Cosmic rune` is a material of dozens
     of them. The fixpoint table underneath makes a miss cheap too; this keeps
     a hit from re-entering the walk at all.
+
+    **`material_aliases` is tried only after the literal name fails.** A
+    recipe's material is the wiki's own vocabulary, and `world.item_sources`
+    is built entirely from the export's `Output` strings - so where the two
+    disagree, `_item_hours` sees no route for a material the map plainly
+    provides. See `recipe_rates.MATERIAL_ALIASES` for what it holds and why
+    it is one hand-verified entry rather than a general rule.
     """
     walk = _setup(state, derived, world, heuristics, level_overrides or {}, recipes).walk
     if made_experience:
@@ -2310,6 +2318,15 @@ def material_seconds(
         # `amortise`: a recipe's materials are bought for a run of actions,
         # not fetched one trip at a time. See `_route_hours`.
         found = _item_hours(walk, item, quantity=quantity, amortise=True)
+        if found is None:
+            # **The recipe's own name for a material, where the export's item
+            # graph knows it under another** - see
+            # `recipe_rates.MATERIAL_ALIASES`. Tried only once the literal
+            # name has failed, so a material the export *does* recognise is
+            # never routed through the alias table by mistake.
+            aliased = material_aliases.get(item)
+            if aliased is not None:
+                found = _item_hours(walk, aliased, quantity=quantity, amortise=True)
         memo[key] = found
         return found
 

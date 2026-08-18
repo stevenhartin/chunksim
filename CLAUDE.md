@@ -310,6 +310,40 @@ rather than a level compared here, floored rather than refused below it: the
 export census `chunksim training` runs infers no Firemaking level at all, and
 comparing `1 < 50` there reported a genuinely priced method as unpriced.
 
+**A recipe's material and the export's item graph can name the same thing
+differently, and the item walk has no reason to expect they agree.**
+`Build an ~|ancient altar|~` refused to price despite every input the export
+names being reachable, because `world.item_sources` is built entirely from
+the export's own `Output` strings (`derive/search.build_world_index`) while a
+recipe's materials are the wiki's words. The wiki's `{{Recipe}}` for
+`Ancient altar` lists `Pharaoh's sceptre (uncharged)` - correctly, Pyramid
+Plunder really does hand the sceptre over with no charges - and the only
+challenge that produces one anywhere in the export states its `Output` as
+the bare `Pharaoh's sceptre`, so the walk never seeds the wiki's exact
+string. `recipe_rates.MATERIAL_ALIASES` is a fallback `estimate.
+material_seconds` tries only once the literal name has already failed -
+**the reverse direction from `HAND_ALIASES`**, which takes an export name to
+a wiki title so a challenge can find its recipe, where this takes a
+recipe's own material to the export name so the item walk can find a route.
+The two are not interchangeable: they run against different vocabularies in
+opposite directions, and conflating them would search the wrong dictionary.
+
+**The search that found it turned up twenty more, deliberately left alone.**
+Stripping a trailing parenthetical off the recipe corpus's 524 unrouted
+material names and retrying against `item_sources` resolves 21, and the
+shapes behind the parenthesis are not one thing: Trahaearn degradation
+tiers (`Corrupted helm (attuned)`/`(basic)`), a cooking state (`Spider on
+shaft (raw)`), the same unfinished/finished split the alias fetch already
+handles for bars (`Mith grapple (unf)`), and a dose the corpus's own
+`_dose_variants` fallback was built for and cannot reach here because this
+runs after the wiki recipe is already chosen (`Super defence(4)`). A
+strip-and-retry rule applied uniformly would price a degraded item as free
+to obtain from a fresh one - the same mistake pricing a shop item at its
+ground-spawn cousin's rate would be - so only the sceptre, checked by hand
+against the wiki, is in the table. No climb moves on fray, verf or
+fray-uber; `Build an ~|ancient altar|~` prices at 761/hr, below the floor
+anything else on the climb already clears.
+
 **A published figure that covers part of an activity is a scale, not the
 answer.** Tithe Farm is the worked example and the shape is worth copying.
 The Farming guide quotes one rate, "from level 74 onwards ... 90,000-100,000",

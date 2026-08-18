@@ -518,6 +518,7 @@ def recipe_priced(
         world,
         heuristics,
         level_overrides=levels,
+        material_aliases=recipe_rates.MATERIAL_ALIASES,
         # **What a `make:` route earned, so the walk can credit it.** Built
         # from the same join `computed_rates` uses - see
         # `recipe_rates.challenge_experience`.

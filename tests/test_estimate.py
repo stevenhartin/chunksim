@@ -12,7 +12,13 @@ from chunksim.derive.active_tasks import SkillClassification, TaskClassification
 from chunksim.derive.bis import BisResult
 from chunksim.derive.challenges import ChallengeResult
 from chunksim.model.chunkinfo import ChunkInfo
-from chunksim.costing.estimate import DEFAULT_ACTION_SECONDS, _item_hours, estimate
+from chunksim.costing.estimate import (
+    DEFAULT_ACTION_SECONDS,
+    _item_hours,
+    estimate,
+    material_seconds,
+)
+from chunksim.costing import recipe_rates
 from chunksim.costing.training import training_options
 from chunksim.costing.levels import goal_levels, infer_levels, reachable_providers, task_gated_monsters
 from chunksim.remote.stores import ShopPrice
@@ -2526,3 +2532,77 @@ class TestKillFactsMatchKillHours:
             walk, "Goblin mail", walk.world.item_sources.get("Goblin mail", ())
         )
         assert facts == () and live == ()
+
+
+class TestMaterialAliases:
+    """A recipe's own material is the wiki's vocabulary; `world.item_sources`
+    is built entirely from the export's `Output` strings. Where the two
+    disagree, the literal name has no route even though the export plainly
+    provides the thing - see `recipe_rates.MATERIAL_ALIASES`."""
+
+    def _info(self) -> ChunkInfo:
+        return ChunkInfo(
+            {
+                "shopItems": {"Jalsavrah": {"Pharaoh's sceptre": True}},
+                "challenges": {
+                    "Extra": {
+                        "Obtain a ~|pharaoh's sceptre|~": {"Items": ["Pharaoh's sceptre"]}
+                    }
+                },
+            }
+        )
+
+    def _walked(
+        self, info: ChunkInfo, *, material_aliases: dict[str, str] = {}
+    ) -> Any:
+        derived = _derived(
+            challenges=ChallengeResult(
+                valid={"Extra": {"Obtain a ~|pharaoh's sceptre|~": True}},
+                unsupported=frozenset(),
+                available_items={
+                    "Pharaoh's sceptre": {
+                        "Obtain a ~|pharaoh's sceptre|~": "primary-Extra"
+                    }
+                },
+            )
+        )
+        return material_seconds(
+            _state(info),
+            derived,
+            build_world_index(info),
+            self._heuristics(),
+            material_aliases=material_aliases,
+        )
+
+    def _heuristics(self) -> Heuristics:
+        return Heuristics(
+            shop_prices={
+                "Jalsavrah": {
+                    "Pharaoh's sceptre": ShopPrice(price=100.0, currency="Coins")
+                }
+            },
+            currency_per_hour={"Coins": 500_000.0},
+        )
+
+    def test_the_literal_wiki_name_has_no_route(self) -> None:
+        walked = self._walked(self._info())
+
+        assert walked.seconds("Pharaoh's sceptre (uncharged)", 1.0) is None
+
+    def test_the_alias_finds_the_export_s_route(self) -> None:
+        walked = self._walked(
+            self._info(), material_aliases=dict(recipe_rates.MATERIAL_ALIASES)
+        )
+
+        assert walked.seconds("Pharaoh's sceptre (uncharged)", 1.0) is not None
+
+    def test_a_name_the_export_already_knows_never_reaches_the_alias(self) -> None:
+        """The alias is a fallback, tried only once the literal name fails -
+        so a material the export *does* recognise is priced on its own route
+        rather than being silently redirected."""
+        walked = self._walked(
+            self._info(),
+            material_aliases={"Pharaoh's sceptre": "Something else entirely"},
+        )
+
+        assert walked.seconds("Pharaoh's sceptre", 1.0) is not None

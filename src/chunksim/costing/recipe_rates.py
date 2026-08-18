@@ -717,6 +717,43 @@ HAND_ALIASES: dict[str, str] = {
     "Ornate revitalisation pool": "Ornate rejuvenation pool",
 }
 
+#: A recipe's own *material* named in the wiki's vocabulary, where upstream's
+#: item graph (`derive/search.build_world_index`, keyed on every `Output` the
+#: export states) knows the same thing under a plainer name. **The opposite
+#: direction from `HAND_ALIASES`** - that table takes an export name to a wiki
+#: title so a challenge can find its recipe; this takes a recipe's own
+#: material to the export name so the item walk can find a *route* to it, and
+#: the two tables are not interchangeable because the two lookups run against
+#: different vocabularies (wiki recipe outputs against export `Output`
+#: strings, respectively).
+#:
+#: **Found by asking why `Build an ~|ancient altar|~` refused to price despite
+#: every input the export names being reachable.** The wiki's `{{Recipe}}` for
+#: `Ancient altar` lists a material called `Pharaoh's sceptre (uncharged)` -
+#: correctly, Pyramid Plunder really does hand the sceptre over with no
+#: charges - but the only challenge that produces one anywhere in the export
+#: states its `Output` as the bare `Pharaoh's sceptre`, so
+#: `world.item_sources` never seeds the wiki's exact string.
+#:
+#: **One entry, deliberately, though the search that found it turned up
+#: twenty more.** Of the recipe corpus's 524 distinct material names with no
+#: literal source, 21 resolve by stripping a trailing parenthetical against
+#: `world.item_sources` - but "strips clean" is not "means the same thing".
+#: `Corrupted helm (attuned)`/`(basic)` are Trahaearn degradation tiers,
+#: `Spider on shaft (raw)` is a cooking state, `Mith grapple (unf)` is the same
+#: unfinished/finished split the alias fetch already handles for bars, and
+#: `Super defence(4)` is a dose the recipe corpus's own dose fallback
+#: (`_dose_variants`) was built for and does not reach here because this path
+#: runs after the wiki recipe is already chosen. Each needs checking against
+#: what the state actually costs to reach, the way the sceptre was - a
+#: strip-and-retry rule applied uniformly would treat a degraded item as free
+#: to obtain from a fresh one, which is the same mistake pricing a shop item
+#: at its ground-spawn cousin's rate would be. This entry is the one checked;
+#: the other twenty are recorded here for whoever checks the next one.
+MATERIAL_ALIASES: dict[str, str] = {
+    "Pharaoh's sceptre (uncharged)": "Pharaoh's sceptre",
+}
+
 
 def with_aliases(
     by_output: Mapping[str, tuple[Recipe, ...]], aliases: Mapping[str, str]
