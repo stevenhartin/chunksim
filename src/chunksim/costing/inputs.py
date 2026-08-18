@@ -687,10 +687,18 @@ def recipe_priced(
     # knows which variant of an action it describes; a cast timed by the wiki
     # and charged by the export's own `Items` is the answer for the 100-odd
     # Magic methods no recipe reaches. See `costing/spells.py`.
+    # **The casts it had to refuse, and what each wanted.** Collected into the
+    # same map `recipe_rates` fills, so an unpriced spell says "needs Book of
+    # the dead" exactly as an unpriced recipe says "needs Black mask".
+    spell_dropped: dict[str, str] = {}
     rated = spells.apply(
         rated,
         spells.computed_rates(
-            state.chunk_info, derived.challenges.valid, heuristics.spell_costs, seconds
+            state.chunk_info,
+            derived.challenges.valid,
+            heuristics.spell_costs,
+            seconds,
+            spell_dropped,
         ),
         pinned,
     )
@@ -728,7 +736,7 @@ def recipe_priced(
             # `Heuristics` rather than on `RecipeCoverage` because that is
             # what `cached_enrich` stores and `coverage.statuses_for` is
             # already handed.
-            unroutable=dict(coverage.dropped),
+            unroutable={**spell_dropped, **coverage.dropped},
         ),
         coverage,
     )

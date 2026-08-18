@@ -157,11 +157,33 @@ def rate_for(
     return cost.experience * 3600.0 / seconds
 
 
+def unroutable(
+    challenge: Mapping[str, Any],
+    input_seconds: Callable[[str, float], float | None],
+) -> str:
+    """The first item of `challenge` the walk cannot route, or `""`.
+
+    **The diagnosis behind a refused cast**, so `unpriced` can say which
+    reagent it wanted rather than only that it wanted one - the same job
+    `recipe_rates.unroutable` does for a dropped recipe, and called on the
+    same terms: only once `rate_for` has already returned `None`, over the
+    memoised closure, so the succeeding path pays nothing for it.
+    """
+    for item in challenge.get("Items") or ():
+        if not isinstance(item, str):
+            continue
+        wanted = item.replace(CONSUMED, "").strip()
+        if input_seconds(wanted, 1.0) is None:
+            return wanted
+    return ""
+
+
 def computed_rates(
     chunk_info: ChunkInfo,
     valid: Mapping[str, Mapping[str, Any]],
     costs: Mapping[str, MaterialCost],
     input_seconds: Callable[[str, float], float | None],
+    dropped: dict[str, str] | None = None,
 ) -> dict[str, float]:
     """`{task: experience an hour}` for every reachable utility spell.
 
@@ -180,6 +202,9 @@ def computed_rates(
         rate = rate_for(challenge, cost, input_seconds)
         if rate is not None and rate > 0:
             priced[task] = rate
+        elif dropped is not None:
+            # Diagnosed only on failure - see `unroutable`.
+            dropped[task] = unroutable(challenge, input_seconds)
     return priced
 
 

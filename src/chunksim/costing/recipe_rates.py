@@ -778,6 +778,15 @@ def unjoined_outputs(
 #: the base tier's name is actually the wiki's; `Fancy revitalisation pool`
 #: and `Ornate revitalisation pool` are not pages and have no redirect to be.
 HAND_ALIASES: dict[str, str] = {
+    # **A charge the export drops and the wiki keeps.** Upstream states this
+    # enchant's `Output` as the bare `Digsite pendant` where the wiki's recipe
+    # makes a `Digsite pendant (5)` - and it is inconsistent about it, since
+    # `Enchant a ~|sapphire necklace|~` right beside it says `Games
+    # necklace(8)` charge and all. `join_keys`' dose fallback tries `(1)`
+    # through `(4)`, which is a potion's range and not a jewellery charge, so
+    # a five never comes up. Measured over the whole export, this is the only
+    # unjoined key that a charge-suffixed recipe output would answer.
+    "Digsite pendant": "Digsite pendant (5)",
     "Wooden dining table": "Wood dining table",
     "Teak mounted head display": "Teak display (head trophy)",
     "Teak mounted fish display": "Teak display (fishing trophy)",

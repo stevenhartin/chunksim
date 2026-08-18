@@ -190,3 +190,31 @@ def test_a_hand_pin_survives_too() -> None:
     merged = spells.refuse_untabled(training, _COSTS, frozenset(), frozenset({_CAMELOT}))
 
     assert merged[_CAMELOT]["Magic"].value == 41_625.0
+
+
+def test_a_refused_cast_names_the_reagent_it_wanted() -> None:
+    """The diagnosis behind a refusal, so `unpriced` can say which reagent it
+    wanted - the same job `recipe_rates.unroutable` does for a recipe."""
+    challenge = {"Items": ["Fire rune[+]*", "Death rune*", "Iban's staff"]}
+
+    def priced(item: str, quantity: float) -> float | None:
+        return None if item == "Iban's staff" else 1.0
+
+    assert spells.unroutable(challenge, priced) == "Iban's staff"
+
+
+def test_a_cast_whose_reagents_all_route_names_nothing() -> None:
+    assert spells.unroutable({"Items": ["Fire rune*"]}, lambda i, q: 1.0) == ""
+
+
+def test_computed_rates_records_what_it_dropped() -> None:
+    """Only on failure, so the succeeding path pays nothing for it."""
+    costs = {_ALCH: MaterialCost(65.0, {"Fire rune": 5.0}, "Utility", 5.0)}
+    dropped: dict[str, str] = {}
+
+    priced = spells.computed_rates(
+        _INFO, _VALID, costs, lambda i, q: None, dropped
+    )
+
+    assert priced == {}
+    assert dropped[_ALCH] == "Fire rune[+]"
