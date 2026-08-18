@@ -571,3 +571,42 @@ def test_no_pages_leaves_every_cost_untimed() -> None:
     ]
 
     assert parse_spell_costs(rows)["High Level Alchemy"].ticks is None
+
+
+class TestACooldownIsACastSpeed:
+    """The two differ in *when* the wait falls - a speed blocks before the
+    spell lands, a cooldown is an instant cast followed by a wait before the
+    next one - and for experience an hour that is the same cycle either way."""
+
+    def test_a_cooldown_answers_where_the_speed_is_blank(self) -> None:
+        """Eleven of the seventeen spells with a blank `speed` state one: the
+        Arceuus offerings, corruptions, wards and charges."""
+        from chunksim.remote.combat import parse_cadence, parse_cooldown
+
+        page = "|speed =\n|cooldown = 50 ticks\n"
+
+        assert parse_cooldown(page) == 50.0
+        assert parse_cadence(page) == 50.0
+
+    def test_a_speed_wins_where_there_is_no_cooldown(self) -> None:
+        from chunksim.remote.combat import parse_cadence
+
+        assert parse_cadence("|speed = 5 ticks\n") == 5.0
+
+    def test_stating_both_takes_the_larger(self) -> None:
+        """**The correction this found.** `Mark of Darkness` is `speed = 0
+        ticks` with `cooldown = 10`, and the nine resurrections `speed = 4`
+        with `cooldown = 16` - so the speed alone priced an instant cast as
+        free and the resurrections four times too fast."""
+        from chunksim.remote.combat import parse_cadence
+
+        assert parse_cadence("|speed = 0 ticks\n|cooldown = 10 ticks\n") == 10.0
+        assert parse_cadence("|speed = 4 ticks\n|cooldown = 16 ticks\n") == 16.0
+
+    def test_neither_stays_unknown(self) -> None:
+        """The four reanimations, `Monster Examine` and `Resurrect Crops`
+        state a blank `speed` and no cooldown at all - and a duration priced
+        at zero is the fastest method in the game."""
+        from chunksim.remote.combat import parse_cadence
+
+        assert parse_cadence("|speed =\n|quest = None\n") is None

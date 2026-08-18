@@ -292,6 +292,50 @@ _SPEED_LINE = re.compile(
 )
 
 
+#: `|cooldown = 50 ticks`, the other way a spell states its cadence.
+#:
+#: **A cooldown is a cast speed for this purpose.** The two differ in *when*
+#: the wait falls - a speed blocks before the spell lands, a cooldown is an
+#: instant cast followed by a wait before the next one - and for experience an
+#: hour that is the same cycle either way. Measured over the seventeen spells
+#: whose `speed` is blank, eleven state a `cooldown` instead: the Arceuus
+#: offerings, corruptions, wards and charges.
+_COOLDOWN_LINE = re.compile(
+    r"^\s*\|\s*cooldown\s*=\s*(?P<ticks>\d+(?:\.\d+)?)\s*(?:\[\[[^\]]*\]\]|ticks?)",
+    re.MULTILINE | re.IGNORECASE,
+)
+
+
+def parse_cooldown(text: str) -> float | None:
+    """Ticks between casts, from a spell page's `|cooldown =`, or `None`.
+
+    Read on the same terms as `parse_speed`: the leading number only, and
+    `None` rather than a default where the page says nothing.
+    """
+    found = _COOLDOWN_LINE.search(text)
+    return float(found.group("ticks")) if found else None
+
+
+def parse_cadence(text: str) -> float | None:
+    """How long one cast costs, whichever field the page states it in.
+
+    **The speed first, and the cooldown only where there is none.** A spell
+    stating both is one whose cast blocks *and* which then bars a recast -
+    `Mark of Darkness` is `speed = 0 ticks` with `cooldown = 10 ticks`, and
+    `Shadow Veil` `speed = 1` with `cooldown = 50` - so taking the speed alone
+    there would price an instant cast as free and a one-tick one at 100 an
+    hour it cannot reach. The larger is the cycle, which is what a player
+    actually waits.
+    """
+    speed = parse_speed(text)
+    cooldown = parse_cooldown(text)
+    if speed is None:
+        return cooldown
+    if cooldown is None:
+        return speed
+    return max(speed, cooldown)
+
+
 def parse_speed(text: str) -> float | None:
     """Ticks one cast takes, from a spell page's `|speed =`, or `None`.
 
@@ -349,6 +393,6 @@ def parse_spell_costs(
                 experience=experience,
                 items=items,
                 kind=str(parsed.get("type") or "").strip().title(),
-                ticks=parse_speed(pages.get(name, "")),
+                ticks=parse_cadence(pages.get(name, "")),
             )
     return found

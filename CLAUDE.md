@@ -507,10 +507,26 @@ runes - and `Summon boat (tablet)` turned out to be missing from that
 whitelist, listed on `Lectern space` beside the two boat tablets that were
 there. Magic goes 154 modelled to 158.
 
-**What is left in Magic is honest.** Of 17 unpriced methods: **all 17 have no published cast speed** - the
-`infobox_spell` `speed` field is *blank* for the Arceuus reanimations,
-offerings, corruptions and `resurrect crops`, so there is nothing to fetch and
-a 5-tick default would be an invention.
+**A cooldown is a cast speed, and reading only one of the two fields was
+wrong in both directions.** `infobox_spell` states a cadence two ways: `speed`
+blocks before the spell lands, `cooldown` is an instant cast followed by a
+wait before the next - and for experience an hour they are the same cycle.
+`remote/combat.parse_cadence` takes the **larger** where a page states both,
+and that is not merely a gap-filler:
+
+- It **fills** eleven of the seventeen spells whose `speed` is blank - the
+  Arceuus offerings, corruptions, wards, charges, `dark lure`, `vile vigour`
+  and `shadow veil`.
+- It **corrects** twelve more that were already priced and priced too fast.
+  The nine resurrections read `speed = 4` and `cooldown = 16`, so they were
+  **four times** too quick - `Cast ~|resurrect lesser ghost|~` goes 32,228/hr
+  to 14,838. `Mark of Darkness` and both vengeances state `speed = 0`, which
+  `castable` had been dropping as instant; they are 10 and 50.
+
+Magic goes 158 modelled to 169 and unpriced 17 to **6**. The six state a blank
+`speed` and no cooldown at all - the four reanimations, `Monster Examine` and
+`Resurrect Crops` - and their infoboxes carry no third field, so the cadence
+is genuinely unpublished rather than unfetched.
 
 **A number in a table is only the number the column header says it is.**
 Tempoross' reward table gives "Repairing totems/masts" as **40**, and it is
