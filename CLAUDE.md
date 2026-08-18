@@ -472,12 +472,26 @@ method and **every one is unmarked** (`Book of the dead`, `Iban's staff`,
 `Bosun's workbench schematic`, and the three quest swords a mount displays), so
 nothing in the export is undercharged by this. Magic goes 136 modelled to 146.
 
-**What is left in Magic is honest.** Of 29 unpriced methods: **17 have no
+**A price the scrape reads and a quantity it cannot see.** The blighted surge
+sack refused on the same shape twice over. Its `{{StoreLine}}` is `sell=10`
+with `displayname=Blighted surge sack (x50)` - ten points for **fifty** - and
+`displayname` is exposed nowhere in the `storeline` bucket, so the scrape
+prices one sack at fifty times the truth. `heuristics.SHOP_BUNDLES` divides it
+out rather than replacing the price, so a re-scrape keeps working. And the
+currency had no rate at all: Emir's Arena pays **12 Reward Points for
+*losing***, which a queue-and-forfeit cycle collects in about two minutes, so
+360 an hour and a sack costs 2 seconds. The win figure is not modelled -
+winning a PvP fight is not something this project can promise anybody.
+
+**The result inverts a ranking, which is the interesting part.** A surge cast
+from a sack is 29,749/hr against 3,451 with the runes, because a wrath rune is
+expensive and two seconds of forfeiting is not. Magic goes 146 modelled to 154.
+
+**What is left in Magic is honest.** Of 21 unpriced methods: **17 have no
 published cast speed at all** - the wiki's `infobox_spell` carries a `speed`
 field and leaves it *blank* for the Arceuus reanimations, offerings and
 resurrections, so there is nothing to fetch and a 5-tick default would be an
-invention; **8 want a `Blighted surge sack`** whose only source is a PvP Arena
-shop with no price, and say so; and **4 are teleports**, answered by
+invention; and **4 are teleports**, answered by
 `costing/lectern.py` or not at all.
 
 **A number in a table is only the number the column header says it is.**

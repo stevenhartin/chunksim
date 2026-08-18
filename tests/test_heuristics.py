@@ -1175,3 +1175,52 @@ def test_the_declared_config_branches_are_the_ones_load_reads() -> None:
     }
 
     assert read == set(module.CONFIG_BRANCHES)
+
+
+def test_a_shop_bundle_is_divided_out_of_the_scraped_price() -> None:
+    """**A price the scrape reads correctly and a quantity it cannot see.**
+    The `{{StoreLine}}` for a blighted surge sack is `sell=10` with
+    `displayname=Blighted surge sack (x50)`, and `displayname` is exposed
+    nowhere in the `storeline` bucket - so the scrape prices one sack at ten
+    points, fifty times the truth."""
+    from chunksim.costing.heuristics import SHOP_BUNDLES, load
+
+    assert SHOP_BUNDLES[("PvP Arena Rewards", "Blighted surge sack")] == 50.0
+
+    heuristics = load(
+        {"shops": {"PvP Arena Rewards": {
+            "Blighted surge sack": {"price": 10.0, "currency": "Points"},
+            "Scroll of imbuing": {"price": 200.0, "currency": "Points"},
+        }}}
+    )
+    prices = heuristics.shop_prices["PvP Arena Rewards"]
+
+    assert prices["Blighted surge sack"].price == 0.2
+    # Inert wherever a purchase really is one item.
+    assert prices["Scroll of imbuing"].price == 200.0
+
+
+def test_emirs_arena_pays_for_losing() -> None:
+    """"Losing a battle awards 12 Reward Points", and a queue-and-forfeit
+    cycle is about two minutes - so 360 an hour, and a sack costs 2 seconds.
+
+    The win figure (16, up to 26 on a streak) is deliberately not modelled:
+    winning a PvP fight is not something this project can promise anybody."""
+    from chunksim.costing.heuristics import (
+        DEFAULT_CURRENCY_PER_HOUR, Heuristics, SHOP_BUNDLES,
+    )
+    from chunksim.remote.stores import ShopPrice
+
+    assert DEFAULT_CURRENCY_PER_HOUR["PvP Arena Rewards:Points"] == 360.0
+
+    bundle = SHOP_BUNDLES[("PvP Arena Rewards", "Blighted surge sack")]
+    heuristics = Heuristics(
+        shop_prices={"PvP Arena Rewards": {
+            "Blighted surge sack": ShopPrice(price=10.0 / bundle, currency="Points")
+        }}
+    )
+    seconds = heuristics.shop_seconds("PvP Arena Rewards", "Blighted surge sack")
+
+    assert seconds == pytest.approx(2.0)
+    # Fifty of them is the two-minute cycle the method is named for.
+    assert seconds is not None and bundle * seconds == pytest.approx(100.0)

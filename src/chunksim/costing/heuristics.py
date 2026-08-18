@@ -935,6 +935,30 @@ DEFAULT_CURRENCY_PER_HOUR: dict[str, float] = {
     # So a rate may be qualified by shop, `"<shop>:<currency>"`, and that is
     # checked before the bare name. Mahogany Homes pays roughly 100 an hour.
     "Mahogany Homes Reward Shop:Points": 100.0,
+    # **Emir's Arena pays for losing, which is the whole method.** "Losing a
+    # battle awards 12 Reward Points", and a queue-and-forfeit cycle is about
+    # two minutes - so 360 an hour. The win figure (16, up to 26 on a streak)
+    # is not modelled: winning a PvP fight is not something this project can
+    # promise anybody, and forfeiting is the reading a solo player controls.
+    "PvP Arena Rewards:Points": 360.0,
+}
+
+#: `(shop, item) -> units one purchase hands over`, where the wiki sells a
+#: bundle and the Bucket cannot say so.
+#:
+#: **A price the scrape reads correctly and a quantity it cannot see.** The
+#: `{{StoreLine}}` for a blighted surge sack is `sell=10` with
+#: `displayname=Blighted surge sack (x50)` - ten points for fifty - and
+#: `displayname` is exposed nowhere in the `storeline` bucket
+#: (`remote/stores.store_query` was asked for it and five other spellings, and
+#: the table has none of them). So the scrape prices one sack at ten points,
+#: fifty times the truth.
+#:
+#: Applied to the scrape rather than replacing it, because the scrape is not
+#: wrong about the *price* - `load` divides, so a re-scrape keeps working and
+#: a changed price still lands.
+SHOP_BUNDLES: dict[tuple[str, str], float] = {
+    ("PvP Arena Rewards", "Blighted surge sack"): 50.0,
 }
 
 #: `shop_prices`' own floor, for shops the scrape cannot reach.
@@ -1866,8 +1890,12 @@ def load(
     """Build a `Heuristics` from an already-merged config."""
     scraped_shops = {
         shop: {
+            # **Divided by the bundle the Bucket cannot see** - see
+            # `SHOP_BUNDLES`. One for everything else, so this is inert
+            # wherever a purchase really is one item.
             item: ShopPrice(
-                price=_float(entry.get("price"), 0.0),
+                price=_float(entry.get("price"), 0.0)
+                / SHOP_BUNDLES.get((shop, item), 1.0),
                 currency=str(entry.get("currency") or ""),
             )
             for item, entry in items.items()
