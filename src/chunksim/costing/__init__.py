@@ -198,11 +198,13 @@ The modules, and what each owns:
 - `forestry.py` - the nine Forestry events, which you meet a share of rather
   than choose between, and which pay **six** skills at once off one table of
   level-carrying formulas.
-- `wintertodt.py` - one game paying Woodcutting, Fletching and Firemaking, and
-  the only activity here with **no chance in it at all**: the wiki states its
-  experience as multipliers on your level, so the rate is those times a count
-  of games. Replaced a hand-written 400,000/hr that was one number for a method
-  linear in the level.
+- `wintertodt.py` - one boss, **two regimes**, and the only activity here with
+  **no chance in it at all**: the wiki states its experience as multipliers on
+  your level, so a rate is those times a count of games. World-hopped pays
+  Woodcutting, Fletching and Firemaking, and replaced a hand-written 400,000/hr
+  that was one number for a method linear in the level. Solo pays less
+  Firemaking and is the only way the boss pays **Construction**, whose whole
+  published table is one constant per skill times the *Firemaking* level.
 - `tempoross.py` - the wiki's rate for four harpoons at five levels each,
   which **replaced three invented tier figures in `stated.py`**. Best harpoon
   by *rate* rather than by tier, since the tiers are not ordered. Also the

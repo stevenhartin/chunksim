@@ -913,6 +913,16 @@ def _gathered(
     # the whole of its input.
     for skill, methods in wintertodt.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
+    # **The same boss played the slow way, which is the only way it pays
+    # Construction** - see `costing/wintertodt.solo_methods`. Firemaking's
+    # level is handed in for the reason Pyramid Plunder's Strength is: the
+    # rate is a function of a skill other than the one being trained, and
+    # upstream's Construction row says `Level: 1` because it states the boss's
+    # requirement somewhere else entirely.
+    for skill, methods in wintertodt.solo_methods(
+        derived.challenges.valid, at_level.get("Firemaking", 1)
+    ).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
     # **One game, two skills that cannot both be maximised** - see
     # `costing/pyramid_plunder.py`. Strength needs its own level because the
     # sarcophagus chart is against that and not against Thieving, which is the

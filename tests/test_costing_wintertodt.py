@@ -110,3 +110,75 @@ class TestReachability:
         assert all(
             band.knob == "training/Chop ~|bruma roots|~/Woodcutting" for band in bands
         )
+
+
+class TestTheSoloRegime:
+    """A long game pays less Firemaking an hour and is the only way the boss
+    pays Construction at all. `Wintertodt/Strategies` publishes the whole
+    regime as a table and every column of it is linear in the *Firemaking*
+    level, which is what lets one constant a skill reproduce it."""
+
+    _VALID: dict[str, dict[str, object]] = {
+        "Firemaking": {"Access the ~|Wintertodt|~": {}},
+        "Construction": {"Repair braziers at ~|Wintertodt|~": {}},
+    }
+
+    #: `Solo experience (no fletching)`, as the wiki rounds it.
+    _PUBLISHED = {
+        50: {"Firemaking": 157_000, "Woodcutting": 8_000, "Construction": 10_000},
+        60: {"Firemaking": 188_000, "Woodcutting": 9_000, "Construction": 12_000},
+        70: {"Firemaking": 219_000, "Woodcutting": 11_000, "Construction": 14_000},
+        80: {"Firemaking": 251_000, "Woodcutting": 12_000, "Construction": 16_000},
+        90: {"Firemaking": 282_000, "Woodcutting": 14_000, "Construction": 18_000},
+        99: {"Firemaking": 310_000, "Woodcutting": 15_000, "Construction": 20_000},
+    }
+
+    def test_construction_reproduces_every_published_row(self) -> None:
+        """Six rows, one parameter, and no residual at all - which is what
+        makes 200x the level a law rather than a fit."""
+        for level, row in self._PUBLISHED.items():
+            computed = wintertodt.solo_rate_at("Construction", level)
+            assert round(computed, -3) == row["Construction"], level
+
+    def test_the_columns_it_does_not_spend_hold_up_too(self) -> None:
+        """**The evidence that the law is proportionality rather than a
+        curve.** 17 of the 18 cells come back exactly; Firemaking at 80 is the
+        one that does not, and it is 0.4% out."""
+        missed = [
+            (skill, level)
+            for level, row in self._PUBLISHED.items()
+            for skill in ("Woodcutting", "Firemaking")
+            if round(wintertodt.solo_rate_at(skill, level), -3) != row[skill]
+        ]
+        assert missed == [("Firemaking", 80)]
+
+    def test_the_level_axis_is_firemaking_so_there_are_no_bands(self) -> None:
+        """How much Construction an hour of this pays depends on how fast the
+        game goes, which is Firemaking. The player's Construction level does
+        not enter it, so the method is open from the start."""
+        (band,) = wintertodt.solo_methods(self._VALID, 75)["Construction"]
+        assert band.level is None
+        assert band.xp_per_hour == 15_000
+
+    def test_the_gate_is_the_access_challenge_not_a_level_comparison(self) -> None:
+        """`Repair braziers at ~|Wintertodt|~` says `Level: 1` and asks for a
+        hammer, because upstream states the requirement on the access
+        challenge - so a rate written against the Construction row would offer
+        the minigame to a player who cannot enter it."""
+        assert wintertodt.solo_methods({"Construction": self._VALID["Construction"]}, 99) == {}
+
+    def test_an_unknown_level_reads_the_floor_rather_than_refusing(self) -> None:
+        """`chunksim training`'s export census infers no Firemaking level at
+        all, and comparing `1 < 50` there reported a priced method as
+        unpriced. Being inside the game is being at least 50."""
+        (band,) = wintertodt.solo_methods(self._VALID, 1)["Construction"]
+        assert band.xp_per_hour == 10_000
+
+    def test_it_pays_no_skill_the_fast_loop_already_pays_better(self) -> None:
+        """Carrying the other two columns would change nothing: the running
+        maximum in `training_bands` keeps the hopped loop above solo for
+        Firemaking, which is the whole trade the regime makes."""
+        assert set(wintertodt.solo_methods(self._VALID, 99)) == {"Construction"}
+        assert wintertodt.solo_rate_at("Firemaking", 99) < wintertodt.rate_at(
+            "Firemaking", 99
+        )
