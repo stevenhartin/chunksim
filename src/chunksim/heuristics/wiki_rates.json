@@ -34193,6 +34193,170 @@
       "Ironwood logs": 220.5,
       "Redwood logs": 350.0,
       "Rosewood logs": 268.0
+    },
+    "pickpockets": {
+      "Al Kharid warrior": {
+        "level": 25,
+        "experience": 26.0,
+        "low": 100.0,
+        "high": 240.0
+      },
+      "Bandit (Bandit Camp)": {
+        "level": 53,
+        "experience": 79.4,
+        "low": 50.0,
+        "high": 240.0
+      },
+      "Citizen (Civitas illa Fortis)": {
+        "level": 1,
+        "experience": 8.0,
+        "low": 180.0,
+        "high": 240.0
+      },
+      "Desert Bandit": {
+        "level": 53,
+        "experience": 79.4,
+        "low": 50.0,
+        "high": 240.0
+      },
+      "Elf": {
+        "level": 85,
+        "experience": 353.3,
+        "low": 6.0,
+        "high": 100.0
+      },
+      "Elf (Thieving)": {
+        "level": 85,
+        "experience": 353.3,
+        "low": 6.0,
+        "high": 100.0
+      },
+      "Farmer": {
+        "level": 10,
+        "experience": 14.5,
+        "low": 150.0,
+        "high": 240.0
+      },
+      "Gnome": {
+        "level": 75,
+        "experience": 133.3,
+        "low": 33.0,
+        "high": 140.0
+      },
+      "Guard": {
+        "level": 40,
+        "experience": 46.8,
+        "low": 50.0,
+        "high": 240.0
+      },
+      "H.A.M. Member": {
+        "level": 15,
+        "experience": 22.2,
+        "low": 135.0,
+        "high": 239.0
+      },
+      "Hero": {
+        "level": 80,
+        "experience": 163.3,
+        "low": 39.0,
+        "high": 160.0
+      },
+      "Knight of Ardougne": {
+        "level": 55,
+        "experience": 84.3,
+        "low": 50.0,
+        "high": 240.0
+      },
+      "Knight of Varlamore": {
+        "level": 55,
+        "experience": 84.3,
+        "low": 50.0,
+        "high": 240.0
+      },
+      "Man": {
+        "level": 1,
+        "experience": 8.0,
+        "low": 180.0,
+        "high": 240.0
+      },
+      "Master Farmer": {
+        "level": 38,
+        "experience": 43.0,
+        "low": 90.0,
+        "high": 240.0
+      },
+      "Menaphite Thug": {
+        "level": 65,
+        "experience": 137.5,
+        "low": 50.0,
+        "high": 160.0
+      },
+      "Paladin": {
+        "level": 70,
+        "experience": 131.8,
+        "low": 35.0,
+        "high": 160.0
+      },
+      "Rogue": {
+        "level": 32,
+        "experience": 36.5,
+        "low": 75.0,
+        "high": 240.0
+      },
+      "TzHaar-Hur": {
+        "level": 90,
+        "experience": 103.4,
+        "low": -200.0,
+        "high": 200.0
+      },
+      "Vyre": {
+        "level": 82,
+        "experience": 306.9,
+        "low": 8.0,
+        "high": 128.0
+      },
+      "Vyre (Thieving)": {
+        "level": 82,
+        "experience": 306.9,
+        "low": 8.0,
+        "high": 128.0
+      },
+      "Warrior": {
+        "level": 25,
+        "experience": 26.0,
+        "low": 100.0,
+        "high": 240.0
+      },
+      "Warrior (Thieving)": {
+        "level": 25,
+        "experience": 26.0,
+        "low": 100.0,
+        "high": 240.0
+      },
+      "Watchman (Yanille)": {
+        "level": 65,
+        "experience": 137.5,
+        "low": 15.0,
+        "high": 160.0
+      },
+      "Wealthy citizen": {
+        "level": 50,
+        "experience": 96.0,
+        "low": 35.0,
+        "high": 200.0
+      },
+      "Woman": {
+        "level": 1,
+        "experience": 8.0,
+        "low": 180.0,
+        "high": 240.0
+      },
+      "Yanille Watchman": {
+        "level": 65,
+        "experience": 137.5,
+        "low": 15.0,
+        "high": 160.0
+      }
     }
   }
 }

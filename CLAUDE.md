@@ -647,6 +647,44 @@ until the docstring says otherwise; the numbers that carry information are the
 ones with several rows and a residual, like Woodcutting's 12/17 and Hunter's
 6/10.
 
+**A constant standing in for a curve is not the conservative end, and saying
+so was the mistake.** `PICKPOCKET_CYCLE_SECONDS` was 3.5 seconds, fitted to one
+published figure - a Knight of Ardougne at level 55, 86,000 xp/hr - and its own
+comment argued that pricing every NPC at its opening level "understates the tail
+rather than overstating the start". Both halves were wrong. `Thieving training`
+states that the rates it publishes "assume the player has completed the medium
+Ardougne Diary and is using dodgy necklaces", so the figure it was fitted to had
+gear in it; and the success chance is not similar across NPCs, running **0.34 to
+0.71** at their own opening levels. Measured against each NPC's own curve the
+constant is **2x to 3.6x fast on every one of the eighteen the wiki charts**.
+
+Everything needed to replace it is published. The `Thieving` page writes the
+equation - "every pickpocket will take on average `2 + 8(1-p)` ticks ... [so]
+the actual amount of pickpockets in n ticks will be `np/(10-8p)`" - `Stun
+(status)` states the 8-tick lockout, and the never-failing knight rate of
+252,900 xp/hr is 3,000 an hour at 84.3 experience and so exactly a 2-tick
+attempt. `costing/pickpocket.py` then reproduces the geared 86,000 to **1.6%**,
+the tick-perfect figure exactly, and the level the page says failing stops at
+(95) to the level. It **spends the plain curve** rather than that one, which is
+30% lower and is the usual shape: a guide is evidence about the action, a model
+is evidence about the action plus the map.
+
+**A chart is matched by its own label, and three pages prove why.** The H.A.M.
+Member's first `{{Skilling success chart}}` is "Avoiding concussions using
+Agility" and the Menaphite Thug's a blackjack "knockout chance"; taking the
+first chart read the H.A.M. member at 14.5% instead of 59%. The label says
+`<NPC> pickpocket chance` and that is the join.
+
+**And the seven NPCs nothing charts keep no rate at all.** The digsite workman,
+the villager, the cave goblin, the Fremennik citizen, the two Pollnivneach
+bandits and the pirate have a `{{Thieving info}}` box and no success chart
+anywhere. Borrowing a median off the other eighteen was refused on that 0.34-0.71
+spread - a median is not evidence about any one of them - which is the same call
+`costing/shortcuts.py` makes for the 37 shortcuts nothing here can verify. The
+cost is stated rather than hidden: the reference map loses its cave-goblin band
+and the every-rollable-chunk map its Fremennik-citizen one, both of which were
+quoting roughly twice the truth.
+
 **Where a skill rolls, the published rate is the rate of somebody who has
 stopped failing.** Firemaking has a `{{Skilling success chart}}` like any
 gathering skill - 65/256 at level 1, certain from 43 - and nothing here was

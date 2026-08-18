@@ -319,8 +319,27 @@ class NodeCycle:
         return {"name": self.name, "despawn": self.despawn, "respawn": self.respawn}
 
 
+#: The chart's own `label=`, which is the one thing saying what it charts.
+#: **A page can carry two and mean different things by them** - the H.A.M.
+#: Member's first chart is "Avoiding concussions using Agility" and the
+#: Menaphite Thug's is a blackjack "knockout chance" - so a caller that wants a
+#: particular chart has to read this rather than take the first.
+_CHART_LABEL = re.compile(r"\|\s*label\s*=\s*([^|\n}]*)")
+
+
 def parse_success_charts(text: str) -> tuple[tuple[SuccessCurve, ...], ...]:
     """Every success chart on a page, each as its series in written order.
+
+    The labels dropped; see `parse_labelled_success_charts`, which this is a
+    thin wrapper on and which a caller wanting a *particular* chart needs.
+    """
+    return tuple(curves for _, curves in parse_labelled_success_charts(text))
+
+
+def parse_labelled_success_charts(
+    text: str,
+) -> tuple[tuple[str, tuple[SuccessCurve, ...]], ...]:
+    """Every success chart on a page, as `(its own label, its series)`.
 
     A tuple per chart rather than one flat list, because a page can carry more
     than one and they are about different things - `Motherlode Mine` charts the
@@ -330,7 +349,7 @@ def parse_success_charts(text: str) -> tuple[tuple[SuccessCurve, ...], ...]:
     A series missing `low` or `high` is dropped: those two *are* the curve, and
     a series without them is a legend entry rather than a rate.
     """
-    found: list[tuple[SuccessCurve, ...]] = []
+    found: list[tuple[str, tuple[SuccessCurve, ...]]] = []
     for chart in _CHART.finditer(text):
         series: dict[int, dict[str, str]] = {}
         for key, index, value in _SERIES.findall(chart.group(1)):
@@ -350,7 +369,8 @@ def parse_success_charts(text: str) -> tuple[tuple[SuccessCurve, ...], ...]:
                 )
             )
         if curves:
-            found.append(tuple(curves))
+            label = _CHART_LABEL.search(chart.group(1))
+            found.append(((label.group(1).strip() if label else ""), tuple(curves)))
     return tuple(found)
 
 
@@ -1202,5 +1222,6 @@ __all__ = [
     "parse_stall_respawns",
     "parse_trap_counts",
     "parse_success_charts",
+    "parse_labelled_success_charts",
     "parse_tool_speeds",
 ]

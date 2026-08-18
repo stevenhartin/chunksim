@@ -210,7 +210,10 @@ _FORMAT = "1"
 #: 74: burning a log is two methods - a line that rolls against the skill's own
 #: success curve and a forester's campfire at a flat 9 ticks that does not - and
 #: they cross over at level 12. See `costing/firemaking.py`.
-_PRICING_MODEL = "74"
+#: 75: pickpocketing is the wiki's own `np/(10-8p)` over each NPC's own success
+#: chart, where a flat 3.5-second cycle stood - 2x to 3.6x fast on every NPC
+#: that can be checked. See `costing/pickpocket.py`.
+_PRICING_MODEL = "75"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

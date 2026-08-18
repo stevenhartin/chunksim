@@ -180,6 +180,16 @@ def scrape(
         )
     )
     mark_rate = skill_tables.parse_mark_rate(table_pages.get(skill_tables.ROOFTOP_PAGE, ""))
+    # **And a third, for the same reason.** The NPC table gives a level and an
+    # experience; how often a pickpocket *fails* is a `{{Skilling success
+    # chart}}` on the NPC's own page, and without it the rate is a constant
+    # standing in for a curve - 2x to 3.6x fast, measured. ~37 pages, one
+    # batch. See `costing/pickpocket.py`.
+    thieving = table_pages.get(skill_tables.THIEVING_PAGE, "")
+    pickpockets = skill_tables.parse_pickpocket_curves(
+        thieving,
+        fetch_wiki_pages(list(skill_tables.pickpocket_pages(thieving)), timeout=timeout),
+    )
 
     say("farming crops")
     crops = farming.parse_crops(
@@ -244,6 +254,7 @@ def scrape(
         superiors=superiors,
         skill_tables=tables,
         shortcuts=shortcut_details,
+        pickpockets=pickpockets,
         monster_stats=monster_stats,
         spells=spells,
         spell_costs=spell_costs,
@@ -262,6 +273,10 @@ def scrape(
             "money guides": (len(mmg), len(titles)),
             "assignment pages": (len(assignments), len(masters)),
             "skill tables": (len(table_pages), len(skill_tables.PAGES)),
+            "pickpocket charts": (
+                len(pickpockets),
+                len(skill_tables.pickpocket_pages(thieving)),
+            ),
         },
         counts={
             "assignment rows": sum(len(rows) for rows in assignments.values()),

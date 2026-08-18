@@ -75,6 +75,15 @@ The modules, and what each owns:
   and a forester's campfire is a flat 9 ticks that never rolls, so the two
   cross over at level 12 - the old figure was wrong in both directions at once.
   Checked against the wiki's own two failure-docked bands to under 1%.
+- `pickpocket.py` - the wiki's own `np/(10-8p)` over each NPC's own success
+  chart, where a flat 3.5-second cycle stood. Every figure in it is published: a
+  2-tick attempt, an 8-tick stun, and a `low`/`high` per NPC. It reproduces the
+  guide's geared Knight of Ardougne to 1.6% and its tick-perfect rate exactly,
+  then **spends the plain curve** - no diary, no necklace, no gloves - because
+  those are things a map may not have. The seven NPCs the wiki has never
+  charted keep **no rate**: the constant was 2x to 3.6x fast on all eighteen it
+  can be checked against, so leaving it on the rest is quoting a number there
+  is evidence against.
 - `gotr.py` - Guardians of the Rift as **one minigame, not twelve rune
   methods**. The rune is the game's decision - two portals, one elemental and
   one catalytic - so the curve is the *rune mix* at a level, and throughput is

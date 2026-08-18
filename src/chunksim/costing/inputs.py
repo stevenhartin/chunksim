@@ -53,6 +53,7 @@ from chunksim.costing import (
     herbiboar,
     implings,
     paydirt,
+    pickpocket,
     production,
     pyramid,
     recipe_rates,
@@ -523,25 +524,36 @@ def recipe_priced(
             # answer for the 100-odd Magic methods no recipe reaches. See
             # `costing/spells.py`, and note it runs *inside* `refuse_dropped`'s
             # argument so a spell rate is never stripped as a scrape would be.
-            training=spells.refuse_untabled(
-                recipe_rates.refuse_dropped(
-                    spells.apply(
-                        recipe_rates.apply(heuristics.training, computed, pinned),
-                        spells.computed_rates(
-                            state.chunk_info,
-                            derived.challenges.valid,
-                            heuristics.spell_costs,
-                            seconds,
+            # **And a pickpocket nothing charts keeps no rate either.** The
+            # flat cycle it would otherwise keep is not a worse estimate but a
+            # known-wrong one: on all eighteen NPCs the wiki charts it runs 2x
+            # to 3.6x fast. See `costing/pickpocket.py`.
+            training=pickpocket.refuse_uncharted(
+                spells.refuse_untabled(
+                    recipe_rates.refuse_dropped(
+                        spells.apply(
+                            recipe_rates.apply(heuristics.training, computed, pinned),
+                            spells.computed_rates(
+                                state.chunk_info,
+                                derived.challenges.valid,
+                                heuristics.spell_costs,
+                                seconds,
+                            ),
+                            pinned,
                         ),
+                        coverage.dropped,
                         pinned,
                     ),
-                    coverage.dropped,
+                    heuristics.spell_costs,
+                    # **A teleport in `computed` is one whose tablet joined**,
+                    # so this is the lectern gate read back rather than applied
+                    # twice.
+                    computed,
                     pinned,
                 ),
-                heuristics.spell_costs,
-                # **A teleport in `computed` is one whose tablet joined**, so
-                # this is the lectern gate read back rather than applied twice.
-                computed,
+                heuristics.pickpockets,
+                _mapping(state.chunk_info.challenges, "Thieving"),
+                derived.challenges.valid.get("Thieving") or {},
                 pinned,
             ),
             action_seconds=timed,
@@ -719,6 +731,15 @@ def _gathered(
         _mapping(state.chunk_info.challenges, "Firemaking"),
         derived.challenges.valid.get("Firemaking") or {},
         heuristics.burning,
+    ).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **Pickpocketing is a roll and was priced as a constant.** The wiki
+    # publishes the whole mechanic - a 2-tick attempt, an 8-tick stun and
+    # `np/(10-8p)` - and a success curve per NPC. See `costing/pickpocket.py`.
+    for skill, methods in pickpocket.methods(
+        _mapping(state.chunk_info.challenges, "Thieving"),
+        derived.challenges.valid.get("Thieving") or {},
+        heuristics.pickpockets,
     ).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     for skill, methods in gotr.methods(

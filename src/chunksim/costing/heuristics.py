@@ -599,6 +599,13 @@ class Heuristics:
     #: a line that rolls against the success curve, and a campfire that does
     #: not. `burning_rate` below is what that model reduces to at level 43.
     burning: dict[str, float] = field(default_factory=dict)
+    #: NPC -> `(Thieving level, experience a successful pickpocket pays, the
+    #: plain success curve's `low` and `high`)`. **Carried rather than spent**,
+    #: like `gotr` and `burning` above: `costing/pickpocket.py` turns it into
+    #: the wiki's own `np/(10-8p)` and the flat cycle it replaces was 2x to
+    #: 3.6x fast. An NPC absent from here is one nothing charts, and it keeps
+    #: no rate at all rather than a borrowed curve.
+    pickpockets: dict[str, tuple[int, float, float, float]] = field(default_factory=dict)
     #: Item -> the fee charged to make it, where a conversion has one. The
     #: export models the sawmill and not its price; see `remote/stores.py`.
     conversion_fees: dict[str, ShopPrice] = field(default_factory=dict)
@@ -929,13 +936,22 @@ SHORTCUT_MATCH = "modelled"
 SHORTCUT_SOURCE = "computed:shortcut"
 
 #: Seconds one pickpocket attempt takes, stuns and failures included.
-#: **Calibrated against the wiki's own published figure**: a Knight of Ardougne
-#: pays 84.3 xp and `Thieving training` quotes 86,000 xp/hr at level 55, which
-#: is 3.5s an attempt. That is the rate at the level the method *opens*, which
-#: is deliberately the conservative end - the same table quotes 240,000 at 95,
-#: because success rate climbs with level and one constant cannot follow it.
-#: A band is priced from where it opens, so this understates the tail rather
-#: than overstating the start.
+#:
+#: **Superseded, and it was not the conservative end after all.** It was
+#: calibrated against one published figure - a Knight of Ardougne at level 55,
+#: 86,000 xp/hr - and this comment used to argue that pricing every NPC at its
+#: opening level "understates the tail rather than overstating the start". Two
+#: things were wrong with that. `Thieving training` says the rates it publishes
+#: "assume the player has completed the medium Ardougne Diary and is using
+#: dodgy necklaces", so the figure it was fitted to already had gear in it; and
+#: the success chance is not similar across NPCs, running 0.34 to 0.71 at their
+#: own opening levels. Measured against each NPC's own curve this is **2x to
+#: 3.6x fast on every one of the eighteen the wiki charts**.
+#:
+#: `costing/pickpocket.py` replaces it wherever a chart exists, and
+#: `refuse_uncharted` takes the rate away where one does not - so what this
+#: still produces is stripped rather than spent. It is kept because it is what
+#: the scrape writes, and taking the rate away needs something to recognise.
 PICKPOCKET_CYCLE_SECONDS = 3.5
 
 #: Seconds one dart takes to fletch. **The third assumption in this file, and
@@ -1380,6 +1396,7 @@ def build_config(
     superiors: list[tuple[str, str]] | None = None,
     skill_tables: Mapping[str, Sequence[SkillRow]] | None = None,
     shortcuts: Sequence[ShortcutInfo] = (),
+    pickpockets: Mapping[str, tuple[int, float, float, float]] | None = None,
     monster_stats: Mapping[str, MonsterStats] | None = None,
     spells: Sequence[AttackSpell] = (),
     spell_costs: Mapping[str, SpellCost] | None = None,
@@ -1552,6 +1569,14 @@ def build_config(
             row.name: row.experience
             for row in ((skill_tables or {}).get("burning") or ())
             if row.experience
+        },
+        # Level, experience and the plain success curve - see
+        # `Heuristics.pickpockets`. Absent for the seven rows the wiki has
+        # never charted, which `costing/pickpocket.py` refuses rather than
+        # borrowing a curve for.
+        "pickpockets": {
+            name: {"level": level, "experience": experience, "low": low, "high": high}
+            for name, (level, experience, low, high) in sorted((pickpockets or {}).items())
         },
         "rarities": dict(RARITY_PROBABILITY),
         # **Only the monsters an estimate could ask about.** The wiki has
@@ -1744,6 +1769,7 @@ CONFIG_BRANCHES: frozenset[str] = frozenset(
         "masters",
         "monster_stats",
         "monsters",
+        "pickpockets",
         "quests",
         "rarities",
         "shops",
@@ -1857,6 +1883,16 @@ def load(
         burning={
             str(log): _float(experience, 0.0)
             for log, experience in _mapping(config, "burning").items()
+        },
+        pickpockets={
+            str(npc): (
+                int(_float(entry.get("level"), 1.0)),
+                _float(entry.get("experience"), 0.0),
+                _float(entry.get("low"), 0.0),
+                _float(entry.get("high"), 0.0),
+            )
+            for npc, entry in _mapping(config, "pickpockets").items()
+            if isinstance(entry, dict)
         },
         bones=tuple(
             Bone(

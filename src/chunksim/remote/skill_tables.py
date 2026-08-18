@@ -534,6 +534,87 @@ def parse_pickpockets(text: str) -> tuple[SkillRow, ...]:
     return tuple(found)
 
 
+#: The chart a pickpocketable NPC's page carries about *pickpocketing* it.
+#: **Matched on the chart's own label rather than on its position**, because
+#: three pages carry another chart first and mean something else by it: the
+#: H.A.M. Member's is "Avoiding concussions using Agility" and the Menaphite
+#: Thug's a blackjack "knockout chance", either of which read as a pickpocket
+#: curve would be a plausible number for the wrong action.
+PICKPOCKET_CHART = "pickpocket chance"
+
+
+def pickpocket_rows(text: str) -> tuple[tuple[tuple[str, ...], int, float], ...]:
+    """`(names, level, experience)` per row of `Thieving`'s NPC table.
+
+    **The row rather than the name**, which is what `parse_pickpockets`
+    flattens away: one row is one NPC written several ways - a disambiguated
+    page plus its display text, or `Man`/`Woman`/`Citizen` - and only one of
+    those spellings has the page carrying the success chart. Grouping is what
+    lets `Elf` inherit `Elf (Thieving)`'s curve, which is eight of the
+    twenty-seven names that join.
+    """
+    found: list[tuple[tuple[str, ...], int, float]] = []
+    for cells in rows(table_with(text, "100% success lvl")):
+        names = names_in(" ".join(cells[:2]))
+        numbers = [value for cell in cells if (value := number(cell)) is not None]
+        if not names or len(numbers) < 2:
+            continue
+        found.append((tuple(names), int(numbers[0]), numbers[1]))
+    return tuple(found)
+
+
+def pickpocket_pages(text: str) -> tuple[str, ...]:
+    """Every NPC page worth asking for a pickpocket chart, deduplicated."""
+    return tuple(sorted({name for names, _, _ in pickpocket_rows(text) for name in names}))
+
+
+def parse_pickpocket_curves(
+    text: str, pages: Mapping[str, str]
+) -> dict[str, tuple[int, float, float, float]]:
+    """`{npc: (level, experience, low, high)}` for every NPC a chart covers.
+
+    **The plain series, which is `low1`/`high1`.** The others are the gloves of
+    silence, the Ardougne Diary and the Thieving cape - gear and a diary a
+    chunk map may not have, and the conservative reading is the player who has
+    none of them. `costing/pickpocket.py` says what that costs against the
+    published figures, which assume both.
+
+    **Where a page carries two pickpocket charts the slower is taken** - the
+    Gnome and the Paladin each have a second, better one for another variant -
+    which is the conservative end this project takes for every published range.
+
+    A row no page charts is simply absent, and stays that way: the seven the
+    wiki has never crowdsourced are refused rather than given a borrowed curve,
+    since the eighteen it has run from 0.34 to 0.71 at their own opening level
+    and a median of that spread is not evidence about any one of them.
+    """
+    found: dict[str, tuple[int, float, float, float]] = {}
+    for names, level, experience in pickpocket_rows(text):
+        curve = next(
+            (charted for name in names if (charted := _pickpocket_curve(pages.get(name, "")))),
+            None,
+        )
+        if curve is None:
+            continue
+        for name in names:
+            found[name] = (level, experience, *curve)
+    return found
+
+
+def _pickpocket_curve(text: str) -> tuple[float, float] | None:
+    """The slowest plain pickpocket curve on one NPC's page, or `None`."""
+    from chunksim.remote.gathering import parse_labelled_success_charts
+
+    best: tuple[float, float] | None = None
+    for label, series in parse_labelled_success_charts(text or ""):
+        if PICKPOCKET_CHART not in label.lower() or not series:
+            continue
+        plain = (series[0].low, series[0].high)
+        if best is None or plain < best:
+            best = plain
+    return best
+
+
 #: The page whose table carries marks of grace per hour, per course.
 ROOFTOP_PAGE = "Rooftop Agility Courses"
 
