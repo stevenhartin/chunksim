@@ -38,6 +38,7 @@ from chunksim.costing import (
     coverage,
     barbarian,
     crane,
+    valetotems,
     barracuda,
     blastmine,
     farming,
@@ -549,6 +550,12 @@ def recipe_priced(
     craned = crane.methods(
         derived.challenges.valid, {**infer_levels(state), **levels}, seconds
     )
+    # **And Vale Totems, for the same reason and with the same shape** - five
+    # logs a totem is 520 an hour, and the published figure assumes they were
+    # bought. See `costing/valetotems.py`.
+    totemed = valetotems.methods(
+        derived.challenges.valid, {**infer_levels(state), **levels}, seconds
+    )
     overrides = blobs.overrides
     # **The hand materials do not depend on the recipes**, so they are read
     # before the early return: a clone with no `chunksim recipes` cache still
@@ -574,7 +581,7 @@ def recipe_priced(
         return (
             replace(
                 heuristics,
-                computed=_merge_computed(prayed, craned, gathered),
+                computed=_merge_computed(prayed, craned, totemed, gathered),
                 material_seconds_per_xp={**by_calc, **by_spell, **by_hand},
             ),
             recipe_rates.RecipeCoverage(),
@@ -709,7 +716,7 @@ def recipe_priced(
             heuristics,
             training=rated,
             action_seconds=timed,
-            computed=_merge_computed(prayed, craned, gathered),
+            computed=_merge_computed(prayed, craned, totemed, gathered),
             material_seconds_per_xp=per_xp,
             material_xp_per_xp=credited,
             # **Carried so `unpriced` can say what it wanted.** Pure

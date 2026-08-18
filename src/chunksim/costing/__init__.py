@@ -103,6 +103,14 @@ The modules, and what each owns:
   the cadence a model would need - a chance fitted to the guide's own figure
   would be the guide with extra steps. Takes away only the scrape's own tiers,
   so a model or a hand pin survives.
+- `valetotems.py` - the Fletching minigame, and the little Construction it
+  pays. Two published tables that both close exactly: a totem is
+  `4 x (build/carve + decorate)` on all six log tiers, and Construction is
+  `104 x level` on all nine rows - which is where the 104 totems an hour comes
+  from. **The published rates assume bought logs**, so this charges the five a
+  totem eats and a chunk map turns out to be log-limited: redwood is 28.6
+  totems an hour, not 104. The two skills want different logs, since only
+  Fletching's payout scales with the tier.
 - `yields.py` - a gathering action's own **weight tiers**, which are yields
   rather than drops: mining granite hands over one of three weights at
   20.7/22.15/25.39%, so a 5kg block is one mine in four rather than a rare

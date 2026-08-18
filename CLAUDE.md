@@ -414,6 +414,30 @@ goes 556 modelled to 559; the three swords read 19,809-21,398 xp/hr, real
 enough to be interesting and still under `wooden fence`'s 55,436, so no
 climb moves.
 
+**Two published tables that close on each other are worth more than either.**
+Vale Totems states its per-totem experience by log tier and its Construction
+experience by level, and neither states a rate this project could use
+directly. They close: a totem is `4 x (build/carve + decorate)` - "the
+building action, three carvings, and four decorations" - on all six tiers to
+the tenth of a point, and the Construction table is `104 x level` on all nine
+rows, which is where the 104 totems an hour comes from and which the page
+independently calls "13 loops (104 totems) per hour". Multiplying the first by
+that constant reproduces the published Fletching-per-hour column on five of
+six rows and shows the sixth to be a **wiki typo** - redwood is 393,868.8
+where the page says 393,686.8, a digit transposition the other five agreeing
+makes readable as one.
+
+**And the correction is the whole point of charging materials.** Every
+published figure here assumes the logs were bought - the calculator's own
+assumptions say so - where a chunk map must chop them. Five logs a totem at
+104 totems an hour is 520 an hour, so redwood needs **2.6 hours of chopping
+per hour of totems** and the map is log-limited to 28.6 totems an hour. That
+took `fray-uber`'s Fletching climb from 85.0h to 231.3h, superseding a
+`{{Recipe}}`-derived rate whose 2 ticks are the *build action* against the
+whole totem's experience. The decoration's own fletching experience is
+deliberately not credited here: it is already a separate priced method, and
+folding it in would double-count.
+
 **A weight tier is a yield, not a drop, and the difference is worth one
 module.** Mining granite hands over one of `Granite (500g)`/`(2kg)`/`(5kg)` at
 20.7/22.15/25.39% - one action, three weights of the thing you just mined - so
