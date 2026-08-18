@@ -207,7 +207,10 @@ _FORMAT = "1"
 #: 73: the Barracuda trials are counted from each trial's own reward table
 #: rather than read as a quotient off `Sailing training` - identical figures,
 #: which is what makes the scrape the model's oracle. See `costing/barracuda.py`.
-_PRICING_MODEL = "73"
+#: 74: burning a log is two methods - a line that rolls against the skill's own
+#: success curve and a forester's campfire at a flat 9 ticks that does not - and
+#: they cross over at level 12. See `costing/firemaking.py`.
+_PRICING_MODEL = "74"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

@@ -647,6 +647,32 @@ until the docstring says otherwise; the numbers that carry information are the
 ones with several rows and a residual, like Woodcutting's 12/17 and Hunter's
 6/10.
 
+**Where a skill rolls, the published rate is the rate of somebody who has
+stopped failing.** Firemaking has a `{{Skilling success chart}}` like any
+gathering skill - 65/256 at level 1, certain from 43 - and nothing here was
+spending it, so the bottom of the skill was quoted at its level-43 figure and
+normal logs read 51,979/hr against a true **14,661**. The wiki has done the same
+arithmetic and published it, which is the check rather than the source:
+`Pay-to-play Firemaking training` multiplies 1,485 logs an hour by the
+experience for every band from 42 up and quotes the two bands *below* 43 lower
+than that product, under a footnote saying they include failed attempts. Those
+ratios are 0.8006 and 0.8850 against **0.7975 and 0.8759** here - two rows, a
+real residual, under 1%, which is what a check looks like when it is not an
+identity.
+
+**And a twin that needs a different object is a different method.** The export
+carries `Burn ~|X logs|~` *and* `Burn ~|X logs|~ at a fire` for fifteen logs,
+and their `Items` say what they are: one needs a `Tinderbox` and makes a `Player
+fire`, the other needs a `ForesterFire[+]` and no tinderbox at all. They were
+priced identically, because `burning_rate` turns an experience figure into a
+rate and the log is all either names. A campfire is **9 ticks a log and never
+rolls** - the wiki states the tick count in its own change note and quotes a
+flat 665 logs an hour at *every* level, where the line-burning table's rows are
+docked - so the two **cross over at level 12** and one number for both was wrong
+in both directions at once. `costing/firemaking.py` tells them apart on
+upstream's `Objects` rather than on the `at a fire` suffix, because a rename can
+take a suffix away.
+
 **An identity is worthless as a rate and valuable as an oracle**, which is what
 to do with one rather than avoid it. Sailing's last six published figures were
 the Barracuda trials, and `Sailing training` states all nine of them as wiki
@@ -695,7 +721,10 @@ fletched. The Firemaking case also shows the shape of the bug to watch for -
 the export carries `Burn ~|magic logs|~` *and* `Burn ~|magic logs|~ at a fire`,
 they render to the same words, and while only one of them joined, **the
 uncharged twin outranked the charged one**. A join that misses does not read as
-a gap; it reads as a faster method.
+a gap; it reads as a faster method. **That twin turned out to be a second
+method rather than a duplicate** - a forester's campfire, 9 ticks and no roll,
+where the line is 4 and rolls; the pair is `costing/firemaking.py`'s subject
+and the paragraph above is what it found.
 
 **A modelled rate is not one number**, which is the other thing to know before
 reading `costing/training.py`. A gathering rate is a function of level, so

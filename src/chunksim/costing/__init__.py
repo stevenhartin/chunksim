@@ -69,6 +69,12 @@ The modules, and what each owns:
   model's oracle. A boat-speed model was attempted and **refused** - the two
   published observations imply exponents of 0.75 and 0.235, so there is no
   curve both support.
+- `firemaking.py` - burning a log, which is **two methods the export always
+  carried as two and the pricing gave one number to**. A line rolls against the
+  skill's own `{{Skilling success chart}}` (65/256 at level 1, certain from 43)
+  and a forester's campfire is a flat 9 ticks that never rolls, so the two
+  cross over at level 12 - the old figure was wrong in both directions at once.
+  Checked against the wiki's own two failure-docked bands to under 1%.
 - `gotr.py` - Guardians of the Rift as **one minigame, not twelve rune
   methods**. The rune is the game's decision - two portals, one elemental and
   one catalytic - so the curve is the *rune mix* at a level, and throughput is

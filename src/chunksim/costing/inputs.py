@@ -39,6 +39,7 @@ from chunksim.costing import (
     barracuda,
     blastmine,
     farming,
+    firemaking,
     gotr,
     library,
     artefacts,
@@ -708,6 +709,16 @@ def _gathered(
     for skill, methods in barracuda.methods(
         _mapping(state.chunk_info.challenges, "Sailing"),
         derived.challenges.valid.get("Sailing") or {},
+    ).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **Burning a log is two methods and the export always said so.** A line
+    # rolls against the skill's own success curve and a forester's campfire
+    # does not, so the two cross over at level 12 - where the pricing had one
+    # number for both. See `costing/firemaking.py`.
+    for skill, methods in firemaking.methods(
+        _mapping(state.chunk_info.challenges, "Firemaking"),
+        derived.challenges.valid.get("Firemaking") or {},
+        heuristics.burning,
     ).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     for skill, methods in gotr.methods(

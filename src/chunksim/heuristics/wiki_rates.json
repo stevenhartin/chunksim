@@ -34175,6 +34175,24 @@
         "base": 1.1,
         "lit": 2.1
       }
-    ]
+    ],
+    "burning": {
+      "Logs": 40.0,
+      "Achey tree logs": 40.0,
+      "Oak logs": 60.0,
+      "Willow logs": 90.0,
+      "Teak logs": 105.0,
+      "Jatoba logs": 120.0,
+      "Arctic pine logs": 125.0,
+      "Maple logs": 135.0,
+      "Mahogany logs": 157.5,
+      "Yew logs": 202.5,
+      "Blisterwood logs": 96.0,
+      "Camphor logs": 180.0,
+      "Magic logs": 303.8,
+      "Ironwood logs": 220.5,
+      "Redwood logs": 350.0,
+      "Rosewood logs": 268.0
+    }
   }
 }

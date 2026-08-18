@@ -591,6 +591,14 @@ class Heuristics:
     #: recover essence an hour, then rebuilds the curve - see that module for
     #: why one minigame is not twelve rune methods.
     gotr: dict[int, float] = field(default_factory=dict)
+    #: Log -> the Firemaking experience burning one pays, straight off
+    #: `skill_tables.parse_burning`. **Carried rather than spent**, for the
+    #: same reason `gotr` above is: the experience column is real wiki data
+    #: and the *rate* over it was this project's arithmetic all along, so
+    #: `costing/firemaking.py` builds both of the skill's methods from it -
+    #: a line that rolls against the success curve, and a campfire that does
+    #: not. `burning_rate` below is what that model reduces to at level 43.
+    burning: dict[str, float] = field(default_factory=dict)
     #: Item -> the fee charged to make it, where a conversion has one. The
     #: export models the sawmill and not its price; see `remote/stores.py`.
     conversion_fees: dict[str, ShopPrice] = field(default_factory=dict)
@@ -983,9 +991,18 @@ def burning_rate(experience: float) -> float:
     75 and **Firemaking 1 -> 99 priced at 1,738 hours**, 1,210 of them at the
     floor. It is one of the fastest skills in the game.
 
+    **This is now the oracle rather than the answer**, and what it is an oracle
+    *for* is one branch of one method. `costing/firemaking.py` supersedes every
+    rate this produces, and what it adds is the two things a bare experience
+    figure cannot say: lighting a log is a roll, so below level 43 this reads
+    up to 3.5x high; and `Burn ~|X logs|~ at a fire` is a campfire rather than a
+    line, 9 ticks a log with no roll at all, which this priced identically to
+    its twin. What survives is that the model at level 43 *is* this function,
+    which `tests/test_costing_firemaking.py` pins.
+
     The logs are assumed to hand, which is how every published Firemaking rate
-    is quoted. Charging the walk to gather them would price the Woodcutting
-    climb twice over on any map training both.
+    is quoted. `costing/production.py` charges the chopping afterwards, which is
+    what stops a guide's assumption becoming this project's.
     """
     trip = FIRE_LOGS_PER_TRIP * FIRE_TICKS * 0.6 + FIRE_BANK_SECONDS
     return FIRE_LOGS_PER_TRIP * experience * 3600.0 / trip
@@ -1530,6 +1547,12 @@ def build_config(
             for row in ((skill_tables or {}).get("gotr") or ())
             if row.xp_per_hour
         },
+        # The experience column, not a rate - see `Heuristics.burning`.
+        "burning": {
+            row.name: row.experience
+            for row in ((skill_tables or {}).get("burning") or ())
+            if row.experience
+        },
         "rarities": dict(RARITY_PROBABILITY),
         # **Only the monsters an estimate could ask about.** The wiki has
         # 1,382 with hitpoints and the export knows 872; storing the rest
@@ -1713,6 +1736,7 @@ def disagreements(scraped: dict[str, Any], overrides: dict[str, Any]) -> list[st
 CONFIG_BRANCHES: frozenset[str] = frozenset(
     {
         "actions",
+        "burning",
         "conversions",
         "currencies",
         "farming",
@@ -1829,6 +1853,10 @@ def load(
             int(level): _float(rate, 0.0)
             for level, rate in _mapping(config, "gotr").items()
             if str(level).isdigit()
+        },
+        burning={
+            str(log): _float(experience, 0.0)
+            for log, experience in _mapping(config, "burning").items()
         },
         bones=tuple(
             Bone(
