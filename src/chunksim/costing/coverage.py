@@ -107,6 +107,12 @@ STATUSES: tuple[str, ...] = (
 #: What a decoration placed once is called - `costing/oneoff.py` names them.
 ONE_OFF = "one-off"
 
+#: `MethodStatus.blocker` for a *reachable* method whose recipe lost an
+#: input. Deliberately not in `BLOCKERS`: that tuple is the breakdown of what
+#: the world lacks, printed for `uncompletable` rows only, and this is a
+#: statement about a method the world plainly has.
+INPUT = "input"
+
 #: What a method the reported world cannot do is called. The ceiling report
 #: passes `UNCOMPLETABLE`, because there nothing else can be true; a per-map
 #: report passes `UNREACHABLE`, where it is just this map.
@@ -368,6 +374,17 @@ def statuses_for(
         else:
             found_rate = heuristics.xp_per_hour(task, skill)
             rate, match, source = found_rate.value, found_rate.match, found_rate.source
+        # **An unpriced method says which ingredient it wanted, where it
+        # wanted one.** `blocker`/`blocked_by` were only ever filled for a
+        # method the world cannot reach; a reachable one that joined a recipe
+        # and lost an input is the other half of "why is there no number
+        # here", and `recipe_rates.unroutable` is the answer. Blank stays
+        # blank: no recipe joined at all, or one joined and was refused for
+        # want of a stated duration, and neither is an ingredient to name.
+        if not blocker and task in reachable:
+            wanted = heuristics.unroutable.get(task, "")
+            if wanted:
+                blocker, blocked_by = INPUT, wanted
         found.append(
             MethodStatus(
                 task=task,

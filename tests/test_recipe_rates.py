@@ -7,6 +7,8 @@ milliseconds without a `ChunkInfo` anywhere near them.
 
 from __future__ import annotations
 
+from typing import Callable
+
 import pytest
 
 from chunksim.costing.heuristics import Rate
@@ -1006,3 +1008,42 @@ class TestATrailingCountIsTheTasksOwnVocabulary:
         )
 
         assert [recipe.variant for recipe in chosen] == ["Elemental"]
+
+
+class TestUnroutableNamesTheBlockingInput:
+    """`rate_for` returns a bare `None` because it is the hot path and needs
+    a yes-or-no; this is the diagnosis behind it, walked only once that has
+    already failed."""
+
+    def _refuses(self, *names: str) -> Callable[[str, float], float | None]:
+        def priced(item: str, quantity: float) -> float | None:
+            return None if item in names else 1.0
+
+        return priced
+
+    def test_the_first_unroutable_material_is_named(self) -> None:
+        recipe = _recipe(
+            "Volcanic theme",
+            materials=(Material("Granite (5kg)", 2.0), Material("Onyx", 6.0)),
+        )
+
+        assert recipe_rates.unroutable([recipe], self._refuses("Granite (5kg)")) == (
+            "Granite (5kg)"
+        )
+
+    def test_everything_routing_names_nothing(self) -> None:
+        """Not "nothing was wrong" - `rate_for` also refuses a recipe with no
+        tick cost, before its materials are ever asked about."""
+        recipe = _recipe("Thing", materials=(Material("Plank", 2.0),))
+
+        assert recipe_rates.unroutable([recipe], _free) == ""
+
+    def test_a_returned_material_is_never_blamed(self) -> None:
+        """Skipped for the reason `material_seconds` skips it: destroying the
+        object returns the sword, so the loop never buys a second."""
+        recipe = _recipe(
+            "Darklight (mounted)",
+            materials=(Material("Teak plank", 2.0), Material("Darklight", 1.0)),
+        )
+
+        assert recipe_rates.unroutable([recipe], self._refuses("Darklight")) == ""

@@ -354,8 +354,10 @@ class RecipeCoverage:
 
     #: Skill -> (methods priced, primary methods offered).
     skills: dict[str, tuple[int, int]] = field(default_factory=dict)
-    #: Methods that joined a recipe but lost an input to `None`.
-    dropped: tuple[str, ...] = ()
+    #: Methods that joined a recipe but lost an input to `None`, each with
+    #: the material that blocked it - `""` where the recipe was refused for
+    #: want of a duration rather than an input. See `unroutable`.
+    dropped: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def priced(self) -> int:
@@ -373,7 +375,7 @@ class RecipeCoverage:
                 skill: {"priced": priced, "offered": offered}
                 for skill, (priced, offered) in sorted(self.skills.items())
             },
-            "dropped": list(self.dropped),
+            "dropped": dict(self.dropped),
         }
 
 
@@ -602,6 +604,39 @@ def material_seconds(
             return None
         total += seconds
     return total
+
+
+def unroutable(
+    recipes: Sequence[Recipe], input_seconds: Callable[[str, float], float | None]
+) -> str:
+    """The first material of `recipes` the walk cannot route, or `""`.
+
+    **The diagnosis behind a dropped method**, so `unpriced` can say *which*
+    input it wanted rather than only that it wanted one. `rate_for` returns a
+    bare `None` because it is the hot path and the answer it needs is
+    yes-or-no; this walks the same materials again and is called only once
+    that has already failed, over the memoised `input_seconds` closure
+    `estimate.material_seconds` builds - so the second walk is a lookup.
+
+    **One name, from the first candidate.** A challenge can join several
+    recipes (`Mounted bass` joins three, one per display tier) and they
+    usually share the material that blocks them; where they do not, this
+    names one of them rather than claiming to be the whole story.
+
+    `""` where every material routes, which is not "nothing was wrong" - a
+    recipe with no tick cost and no `stated_ticks` entry is refused by
+    `rate_for` before its materials are ever asked about. Blank therefore
+    means "not an input", and the caller must not render it as one.
+    """
+    for recipe in recipes:
+        for material in recipe.materials:
+            # Skipped for the reason `material_seconds` skips them: destroying
+            # the object returns the material, so the loop never buys a second.
+            if (recipe.output, material.name) in RETURNED_MATERIALS:
+                continue
+            if input_seconds(material.name, material.quantity) is None:
+                return material.name
+    return ""
 
 
 def action_seconds(
@@ -1019,7 +1054,7 @@ def computed_rates(
     """
     priced: dict[str, ActionRate] = {}
     coverage: dict[str, tuple[int, int]] = {}
-    dropped: list[str] = []
+    dropped: dict[str, str] = {}
 
     for skill, rows in sorted(recipes.items()):
         by_output = index_recipes(list(rows))
@@ -1049,7 +1084,9 @@ def computed_rates(
             output, candidates = joined
             chosen = rate_for(candidates, input_seconds, stated_ticks)
             if chosen is None:
-                dropped.append(task)
+                # **Diagnosed only on failure**, so the succeeding path pays
+                # nothing for it - see `unroutable`.
+                dropped[task] = unroutable(candidates, input_seconds)
                 continue
             recipe, rate, materials = chosen
             ticks = (
@@ -1073,7 +1110,7 @@ def computed_rates(
         if offered:
             coverage[skill] = (found, offered)
 
-    return priced, RecipeCoverage(skills=coverage, dropped=tuple(sorted(dropped)))
+    return priced, RecipeCoverage(skills=coverage, dropped=dict(sorted(dropped.items())))
 
 
 #: The `Rate.match` tiers a dropped method loses - the scrape's two, and the

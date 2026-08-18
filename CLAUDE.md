@@ -444,6 +444,21 @@ only the raw export, paired with `heuristics.DEFAULT_SHOP_PRICES`'s 40,000
 coins. Construction goes 560 modelled to 561; the theme reads 2,570 xp/hr
 and no climb moves.
 
+**An `unpriced` row can say which ingredient it wanted, and 47 of 418 do.**
+`blocker`/`blocked_by` were only ever filled for a method the *world* cannot
+reach; a reachable one that joined a recipe and lost an input is the other half
+of "why is there no number here". `rate_for` returns a bare `None` because it
+is the hot path and needs a yes-or-no, so `recipe_rates.unroutable` walks the
+same materials again **only once that has already failed**, over the memoised
+closure `estimate.material_seconds` builds - a lookup rather than a second
+walk. It rides to the report on `Heuristics.unroutable` rather than on
+`RecipeCoverage`, because `Heuristics` is what `cached_enrich` stores and what
+`coverage.statuses_for` is already handed. **Blank stays blank**: no recipe
+joined at all, or one joined and was refused for want of a stated duration, and
+neither is an ingredient to name. `coverage.INPUT` is deliberately *not* in
+`BLOCKERS` - that tuple is the breakdown of what the world lacks, printed for
+`uncompletable` rows only.
+
 **A decoration is not a slow method, and the difference is a claim about the
 challenge rather than about the model.** Seven challenges upstream flags
 `Primary` are things nobody trains with: four trophy mounts and three boat

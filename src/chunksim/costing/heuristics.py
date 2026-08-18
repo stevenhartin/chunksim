@@ -618,6 +618,13 @@ class Heuristics:
     #: separately because it cannot be recovered from the rate: Magic's is
     #: mostly casting experience. `combat_xp.hitpoints_credit` needs it.
     combat_damage: dict[str, float] = field(default_factory=dict)
+    #: Task -> the material that stopped its recipe pricing. **Diagnosis, not
+    #: input**: nothing here changes a rate, and it exists so `unpriced` can
+    #: say *which* ingredient it wanted rather than only that it wanted one.
+    #: `recipe_rates.unroutable` fills it, and an empty string means the
+    #: recipe was refused for want of a stated duration rather than an input,
+    #: so a reader must not render it as a material.
+    unroutable: dict[str, str] = field(default_factory=dict)
 
     def quest_hours(self, quest: str) -> QuestRate:
         return self.quests.get(quest) or QuestRate(hours=DEFAULT_QUEST_HOURS)

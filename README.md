@@ -888,6 +888,10 @@ maps are your own work and nothing can recompute them.
    prints (so `guessed` reaches `guess` and `construction` reaches `Construction`), and a name
    that matches nothing lists the valid values rather than printing an empty section.
 
+   An `unpriced` row names the ingredient it wanted where it joined a recipe and lost one
+   (`needs Granite (5kg)`); a blank there means no recipe joined at all, so there is nothing
+   to name.
+
    `sections`, `sources`, `tasks` and `diff` print counts by default and take an optional positional
    to list one branch's contents in full; `--limit N` caps that.
 

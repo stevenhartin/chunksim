@@ -363,3 +363,57 @@ class TestResolvingNames:
     def test_a_miss_names_the_valid_values(self) -> None:
         with pytest.raises(ValueError, match="unknown skill 'construcion'"):
             training._resolve("construcion", coverage.SKILLS, "skill")
+
+
+class TestAnUnpricedMethodSaysWhatItWanted:
+    """`blocker`/`blocked_by` were only ever filled for a method the world
+    cannot reach. A reachable one that joined a recipe and lost an input is
+    the other half of "why is there no number here"."""
+
+    def _statuses(
+        self, unroutable: dict[str, str]
+    ) -> tuple[coverage.MethodStatus, ...]:
+        from chunksim.costing.heuristics import Heuristics
+
+        info = ChunkInfo(
+            {
+                "challenges": {
+                    "Construction": {
+                        "Build a ~|volcanic theme|~": {"Primary": True, "Level": 85},
+                        "Fill holes on ~|Fishing Trawler|~": {"Primary": True, "Level": 1},
+                    }
+                }
+            }
+        )
+        return coverage.statuses_for(
+            info,
+            Heuristics(unroutable=unroutable),
+            "Construction",
+            {"Build a ~|volcanic theme|~": True, "Fill holes on ~|Fishing Trawler|~": True},
+        )
+
+    def test_the_material_is_named(self) -> None:
+        rows = {row.task: row for row in self._statuses({"Build a ~|volcanic theme|~": "Granite (5kg)"})}
+
+        row = rows["Build a ~|volcanic theme|~"]
+        assert row.status == "unpriced"
+        assert (row.blocker, row.blocked_by) == (coverage.INPUT, "Granite (5kg)")
+
+    def test_a_method_no_recipe_joined_names_nothing(self) -> None:
+        """Blank stays blank: nothing joined, so there is no ingredient to
+        name and inventing one would be worse than silence."""
+        rows = {row.task: row for row in self._statuses({})}
+
+        assert rows["Fill holes on ~|Fishing Trawler|~"].blocked_by == ""
+
+    def test_a_recipe_refused_for_want_of_a_duration_names_nothing(self) -> None:
+        """`recipe_rates.unroutable` returns `""` there, and rendering it as
+        an ingredient would claim a material that routes fine."""
+        rows = {row.task: row for row in self._statuses({"Build a ~|volcanic theme|~": ""})}
+
+        assert rows["Build a ~|volcanic theme|~"].blocked_by == ""
+
+    def test_it_is_not_in_the_uncompletable_breakdown(self) -> None:
+        """`BLOCKERS` is what the *world* lacks, printed for uncompletable
+        rows only - this is a statement about a method the world plainly has."""
+        assert coverage.INPUT not in coverage.BLOCKERS

@@ -703,6 +703,12 @@ def recipe_priced(
             computed=_merge_computed(prayed, gathered),
             material_seconds_per_xp=per_xp,
             material_xp_per_xp=credited,
+            # **Carried so `unpriced` can say what it wanted.** Pure
+            # diagnosis - nothing downstream prices with it - and it rides on
+            # `Heuristics` rather than on `RecipeCoverage` because that is
+            # what `cached_enrich` stores and `coverage.statuses_for` is
+            # already handed.
+            unroutable=dict(coverage.dropped),
         ),
         coverage,
     )
