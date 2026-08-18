@@ -846,3 +846,44 @@ class TestTheMarkupNamesTheThing:
 
         assert keys[0] == "Nature rune"
         assert keys.index("Nature rune") < keys.index("nature rune")
+
+
+class TestAnAnchorIsTheWikiSection:
+    """Upstream writes `~|wooden hull#Raft|~`, and the wiki has one `Wooden
+    hull` page carrying three `{{Recipe}}`s labelled `Raft`, `Skiff` and
+    `Sloop`. The page is what the thing answers to; the anchor tells the three
+    apart, and it does so through the machinery that was already there."""
+
+    def test_the_page_half_is_offered_as_a_key(self) -> None:
+        keys = recipe_rates.join_keys(
+            {"Items": ["Raft", "Logs*", "Rope*", "Swamp tar*"], "Level": 1},
+            "Build a ~|wooden hull#Raft|~",
+        )
+
+        # Case-folded at the join, as every key here is.
+        assert "wooden hull" in keys
+
+    def test_it_is_the_last_key_so_it_can_only_fill_a_gap(self) -> None:
+        """An anchor is usually a place - `coal rock#Miscellania`,
+        `soil#Fossil Island` - so the page is offered after everything upstream
+        states outright, and the corpus decides whether it means anything."""
+        keys = recipe_rates.join_keys(
+            {"Output": "Wooden hull parts"}, "Build a ~|wooden hull#Raft|~"
+        )
+
+        assert keys[0] == "Wooden hull parts"
+        assert keys[-1] == "wooden hull"
+
+    def test_the_anchor_still_reaches_variant_candidates(self) -> None:
+        """**Nothing else had to be done about it.** The anchor stays in the
+        task's own words, so `names_variant` reads `Raft` out of them exactly
+        as it reads `Superheat` out of `with superheat item` - which is why
+        this change is one key rather than a variant mechanism."""
+        assert recipe_rates.names_variant("Raft", "Build a ~|wooden hull#Raft|~")
+        assert not recipe_rates.names_variant("Sloop", "Build a ~|wooden hull#Raft|~")
+
+    def test_a_task_without_an_anchor_is_untouched(self) -> None:
+        keys = recipe_rates.join_keys({}, "Build a ~|wooden fence|~")
+
+        assert keys[0] == "wooden fence"
+        assert all("#" not in key for key in keys)

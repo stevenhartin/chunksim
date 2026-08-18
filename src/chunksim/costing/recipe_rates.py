@@ -146,6 +146,33 @@ def join_keys(challenge: Mapping[str, Any], task: str) -> tuple[str, ...]:
     # never reaches these - `Mix an ~|attack potion|~` keeps the 3-dose recipe
     # rather than borrowing the 4-dose one beside it.
     keys.extend(_dose_variants(keys))
+    # **An anchored span is a wiki page and a section of it, and the section is
+    # the variant label.** Upstream writes `Build a ~|wooden hull#Raft|~`, and
+    # `Wooden hull` is one recipe page carrying three `{{Recipe}}`s labelled
+    # `Raft`, `Skiff` and `Sloop` - so the page is what the thing answers to
+    # and the anchor is what tells the three apart. Nothing else has to be
+    # done about the anchor: it stays in the task's own words, so
+    # `variant_candidates` reads `Raft` out of them exactly as it reads
+    # `Superheat` out of `with superheat item`.
+    #
+    # **Last, because an anchor is usually a place rather than a variant.**
+    # 1,872 marked spans in the export carry a `#` and most are objects -
+    # `coal rock#Miscellania`, `soil#Fossil Island` - which is why this offers
+    # only the page and lets the corpus decide: measured, 169 of them name a
+    # page that is a recipe output *and* an anchor that is one of its
+    # variants.
+    #
+    # **The four trawling nets are the one place the anchor means something
+    # else, and they are right anyway.** `#Skiff` and `#Sloop` there name the
+    # boat the net is *fitted to* rather than a way of building it - upstream's
+    # own `Items` differ by exactly that one entry and agree on every material
+    # - and the wiki publishes a single recipe it says works "on any boat". So
+    # both tasks taking it is correct for the materials and the ticks, and the
+    # only thing left unexplained is upstream giving the Skiff form Level 53
+    # against the recipe's 61.
+    page = marked.partition("#")[0].strip() if "#" in marked else ""
+    if page:
+        keys.append(page)
     return tuple(key for key in dict.fromkeys(keys) if key)
 
 
