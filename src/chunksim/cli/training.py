@@ -58,7 +58,7 @@ from chunksim.cli.common import (
     load_state,
     resolve_map,
 )
-from chunksim.costing import coverage, inputs
+from chunksim.costing import coverage, inputs, oneoff
 from chunksim.costing.training import TrainingOption
 from chunksim.derive import pipeline
 from chunksim.derive.task_names import strip_task_markup
@@ -70,6 +70,7 @@ from chunksim.store import cache
 STATUS_LABELS: dict[str, str] = {
     "uncompletable": "uncompletable",
     "unreachable": "unreachable",
+    "one-off": "one-off",
     "unpriced": "unpriced",
     "guess": "guessed",
     "published": "published",
@@ -83,7 +84,7 @@ STATUS_LABELS: dict[str, str] = {
 #: whatever the raw scrape left behind for a challenge nothing was asked
 #: about - printing either under a heading that says "rate" is how a
 #: placeholder gets read as a measurement.
-QUIET_STATUSES = frozenset({"unpriced", "unreachable", "uncompletable"})
+QUIET_STATUSES = frozenset({"unpriced", "unreachable", "uncompletable", "one-off"})
 
 #: What each `coverage.BLOCKERS` kind reads as. Printed in `BLOCKERS` order,
 #: which puts the volume first and `unstated` last - and **`unstated` is the
@@ -386,6 +387,10 @@ def _print_status_row(row: coverage.MethodStatus, indent: str = "  ") -> None:
     source = row.source
     if quiet:
         source = f"needs {row.blocked_by}" if row.blocked_by else ""
+    # A one-off says *why* it is not a training method, which is the whole
+    # content of the status - see `costing/oneoff.py`.
+    if row.status == coverage.ONE_OFF:
+        source = oneoff.reason(row.task)
     # **The whole task, not `activity_name`.** The verb is what tells six
     # Herblore unlocks apart; stripped, they all read `Herblore`.
     print(

@@ -863,8 +863,9 @@ maps are your own work and nothing can recompute them.
    rather than defaulting one: with a map it is about that world's methods, without it is about the
    *export* - how many of its 2,707 primary training methods are modelled here, how many are
    somebody else's published figure, how many are a guess, how many nothing has priced at all,
-   and how many are **uncompletable** - which the report then breaks down by *what* the world
-   lacks. That last category is upstream's own gates rather than a gap here, and it is worth
+   how many are a **one-off** (a decoration upstream files as training that nobody trains with -
+   the trophy mounts and boat cosmetics), and how many are **uncompletable** - which the report
+   then breaks down by *what* the world lacks. That last category is upstream's own gates rather than a gap here, and it is worth
    its own column for the reason the breakdown exists: a method behind a rule you switched off,
    or wanting a Leagues reward that no longer exists, is not a number waiting to be improved,
    while one blocked by nothing the report can name is worth chasing.

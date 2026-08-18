@@ -67,6 +67,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
+from chunksim.costing import oneoff
 from chunksim.costing.heuristics import Heuristics, activity_name
 from chunksim.costing.training import TrainingOption, training_options
 from chunksim.derive.active_tasks import DISPLAY_SKILLS
@@ -87,16 +88,24 @@ MODELLED_MATCHES = frozenset({"modelled", "computed", "confirmed"})
 GUESS_MATCHES = frozenset({"guess"})
 
 #: The statuses, least actionable first - so a table printing them reversed
-#: reads best-to-worst and ends on the two that are not the model's fault.
+#: reads best-to-worst and ends on the three that are not the model's fault.
+#:
+#: `one-off` sits beside the two absent statuses rather than near `unpriced`
+#: for the same reason they do: it is a statement about the *challenge*, not
+#: about how well this project priced it. See `costing/oneoff.py`.
 STATUSES: tuple[str, ...] = (
     "uncompletable",
     "unreachable",
+    "one-off",
     "unpriced",
     "guess",
     "published",
     "pinned",
     "modelled",
 )
+
+#: What a decoration placed once is called - `costing/oneoff.py` names them.
+ONE_OFF = "one-off"
 
 #: What a method the reported world cannot do is called. The ceiling report
 #: passes `UNCOMPLETABLE`, because there nothing else can be true; a per-map
@@ -111,6 +120,7 @@ def status_of(
     pinned: bool = False,
     reachable: bool = True,
     absent: str = UNREACHABLE,
+    one_off: bool = False,
 ) -> str:
     """Which of `STATUSES` a rate belongs to.
 
@@ -119,9 +129,16 @@ def status_of(
     set, so whatever sits in `Heuristics.training` for it is a leftover rather
     than a decision. See the module docstring for what reporting those as
     `published` was saying.
+
+    **`one_off` is checked second**, ahead of every priced tier: a decoration
+    a map cannot reach is still first of all unreachable, but one it *can*
+    reach is exempt from being priced at all rather than priced badly. See
+    `costing/oneoff.py`.
     """
     if not reachable:
         return absent
+    if one_off:
+        return ONE_OFF
     if pinned:
         return "pinned"
     if not match or match == "default":
@@ -365,6 +382,7 @@ def statuses_for(
                     pinned=task in heuristics.pinned,
                     reachable=task in reachable,
                     absent=absent,
+                    one_off=bool(oneoff.reason(task)),
                 ),
                 knob=knob,
                 blocker=blocker,

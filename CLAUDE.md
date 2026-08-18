@@ -444,6 +444,24 @@ only the raw export, paired with `heuristics.DEFAULT_SHOP_PRICES`'s 40,000
 coins. Construction goes 560 modelled to 561; the theme reads 2,570 xp/hr
 and no climb moves.
 
+**A decoration is not a slow method, and the difference is a claim about the
+challenge rather than about the model.** Seven challenges upstream flags
+`Primary` are things nobody trains with: four trophy mounts and three boat
+cosmetics. The mounts are the interesting case, because the obvious reason is
+wrong - `Mounted bass` says outright that "duplicate big fish can be added for
+additional experience", so it *is* repeatable. What disqualifies it is that
+the repeat consumes a fresh big fish, a 1/1000 to 1/3000 roll off ordinary
+fishing, which prices the loop at **3.0 to 3.5 xp/hr**; and that the *display*
+is the real Construction action, already priced (`Oak display`, 120 xp for two
+oak planks, and its teak and mahogany tiers). The rate alone would not settle
+it - Construction lists `steel dragon (Construction)` at 3/hr and this project
+deliberately removed the floor that used to hide such methods.
+`costing/oneoff.py` names the seven and `coverage.STATUSES` gains `one-off`,
+placed beside `unreachable` rather than near `unpriced` for the same reason:
+it says the question does not apply, not that the answer is missing. A status
+rather than a filter, so the per-skill totals still add to 602 and a reader
+looking for `Build a ~|mounted bass|~` still finds it.
+
 **A published figure that covers part of an activity is a scale, not the
 answer.** Tithe Farm is the worked example and the shape is worth copying.
 The Farming guide quotes one rate, "from level 74 onwards ... 90,000-100,000",
@@ -1250,8 +1268,8 @@ Env vars: `CHUNKSIM_CACHE` (the directory `cache/` is made under), `CHUNKSIM_CHU
 **`chunksim training` is the one subcommand where omitting `--map` asks a different question**
 rather than defaulting one, which is why it sets `infer_map=False` and why `cli/app.main` has a hook
 for that. With a map it is about that world; without, it is about the *export* - how many of its
-2,707 primary methods are `modelled`, `pinned`, `published`, `guess`, `unpriced` or
-`unreachable` (`costing/coverage.py`). **`--show-category STATUS` turns any of those counts
+2,707 primary methods are `modelled`, `pinned`, `published`, `guess`, `unpriced`,
+`one-off` or `unreachable` (`costing/coverage.py`). **`--show-category STATUS` turns any of those counts
 back into its list** - with a `SKILL` that skill's, without it every skill's grouped - which
 is the follow-up the table always provokes and which used to need `--export-json` and a JSON
 tool. Both the flag and the positional skill are matched case-insensitively against the names

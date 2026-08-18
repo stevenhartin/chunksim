@@ -103,6 +103,14 @@ The modules, and what each owns:
   the cadence a model would need - a chance fitted to the guide's own figure
   would be the guide with extra steps. Takes away only the scrape's own tiers,
   so a model or a hand pin survives.
+- `oneoff.py` - the seven challenges upstream files as training and nobody
+  trains with: four trophy mounts (the *display* is the repeatable action and
+  is priced; the mount consumes a 1/1000-1/3000 fish per repeat, ~3 xp/hr) and
+  three boat cosmetics. **Not "one-time"** - the wiki says duplicates do pay -
+  but a decoration rather than a loop, which is a claim about the challenge
+  rather than about how well this priced it, so it is its own `coverage`
+  status beside `unreachable` rather than a refusal. Named individually:
+  upstream flags all seven `Primary` exactly as it flags `wooden fence`.
 - `gotr.py` - Guardians of the Rift as **one minigame, not twelve rune
   methods**. The rune is the game's decision - two portals, one elemental and
   one catalytic - so the curve is the *rune mix* at a level, and throughput is

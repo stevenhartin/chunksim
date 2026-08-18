@@ -15,10 +15,15 @@ from chunksim.store import cache
 
 def test_the_statuses_are_ordered_least_actionable_first() -> None:
     """The table prints them reversed, so this order is what makes it read
-    best-to-worst and end on the two that are not the model's fault."""
+    best-to-worst and end on the three that are not the model's fault.
+
+    `one-off` sits with the two absent statuses rather than near `unpriced`
+    because it is a statement about the challenge, not about how well this
+    project priced it - see `costing/oneoff.py`."""
     assert coverage.STATUSES[0] == coverage.UNCOMPLETABLE
     assert coverage.STATUSES[1] == coverage.UNREACHABLE
-    assert coverage.STATUSES[2] == "unpriced"
+    assert coverage.STATUSES[2] == coverage.ONE_OFF
+    assert coverage.STATUSES[3] == "unpriced"
     assert coverage.STATUSES[-1] == "modelled"
     assert set(coverage.STATUSES) == set(training.STATUS_LABELS)
 
@@ -45,7 +50,7 @@ def test_an_unreachable_rate_is_not_printed_as_a_rate() -> None:
     the 1,000/hr floor - printing either under a heading that says "rate" is
     how a placeholder gets read as a measurement."""
     assert training.QUIET_STATUSES == frozenset(
-        {"unpriced", coverage.UNREACHABLE, coverage.UNCOMPLETABLE}
+        {"unpriced", coverage.UNREACHABLE, coverage.UNCOMPLETABLE, coverage.ONE_OFF}
     )
 
 
