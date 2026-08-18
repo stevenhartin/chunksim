@@ -212,6 +212,20 @@ pair, refused by the sub-floor rule rather than by ambiguity. **No climb on
 either map moved**, which is the point: this buys coverage for a map that does
 not hold the Giants' Foundry, not a different answer for the two that do.
 
+**A `#` in upstream's item name is a wiki section, and the section is the
+variant.** Upstream writes `Build a ~|wooden hull#Raft|~`; the wiki has one
+`Wooden hull` page carrying three `{{Recipe}}`s labelled `Raft`, `Skiff` and
+`Sloop`. Only the whole span was offered as a join key, so none of the boat
+parts joined anything and 45 Construction methods sat unpriced. Offering the
+**page half** fixes it and nothing else was needed — the anchor stays in the
+task's own words, so `variant_candidates` reads `Raft` out of them exactly as
+it reads `Superheat` out of `with superheat item`. It is offered **last**,
+because an anchor is usually a *place*: 1,872 marked spans carry a `#` and most
+are objects (`coal rock#Miscellania`, `soil#Fossil Island`), so the corpus
+decides — 169 name a page that is a recipe output whose variants include the
+anchor. Construction went **492 modelled to 531** and no climb moved on any of
+the three maps, boat parts running 89/hr to 17,763/hr.
+
 **The other half of a missed join is a rename, and it reads as a slow method
 rather than as a gap.** `recipe_rates` joins on a full string, so upstream's
 vocabulary and the wiki's have to agree — and they drift, because the export
@@ -221,15 +235,25 @@ redirect, the export still says `heads`, and six Smithing methods sat at the
 1,000/hr floor with no rate at all. `Adamant bolts (unf)` is the same failure
 over a *space*, against `Adamant bolts(unf)`. So `chunksim recipes` now asks
 the wiki, in the forward direction, what the names nothing joined resolve to,
-and writes `cache/reference/wiki_aliases.json`. **Direction is the whole cost
-argument**: asked forwards it is 256 names in six requests and twenty answers;
-asked backwards (`prop=redirects` over every recipe page) it is complete and
-useless — measured, 100 pages carry 1,000 redirects and page past `rdlimit=max`,
-so the corpus is ~26,000 aliases to recover the twenty anything wants. The
-alias may fill a name but **never displaces a recipe that already answers to
-it**, since a redirect from `X` says nothing about a recipe whose own output is
-`X`. It bought Smithing 7 methods on each map, Crafting 9, and left Smithing on
-the second map at **188 computed, 0 scraped, 1 unpriced**. This is also why
+and writes `src/chunksim/heuristics/wiki_aliases.json`. **Direction is the
+whole cost argument**: asked forwards it is 701 names in fifteen requests and
+thirty-seven answers; asked backwards (`prop=redirects` over every recipe page)
+it is complete and useless — measured, 100 pages carry 1,000 redirects and page
+past `rdlimit=max`, so the corpus is ~26,000 aliases to recover the few anything
+wants. The alias may fill a name but **never displaces a recipe that already
+answers to it**, since a redirect from `X` says nothing about a recipe whose own
+output is `X`. It bought Smithing 7 methods on each map, Crafting 9, and left
+Smithing on the second map at **188 computed, 0 scraped, 1 unpriced**.
+
+**Which names get asked is the half that was wrong for longer.** Only upstream's
+`Output` was, so a challenge carrying none was never asked at all — most of
+Construction's furniture, and the wiki has filed `Demon throne` under `Demonic
+throne` the whole time. The **marked span is a title** too, which is what
+upstream writes `~|...|~` for, so it is asked about as well; the verb-stripped
+key stays out because it is a *sentence* (`a broken strut in the Motherlode
+Mine`) and two thousand of those have the same answer. That is what took the
+question from 236 names to 701 and the answers from twenty to thirty-seven.
+This is also why
 `chunksim recipes` is the one fetch subcommand that reads an export: the
 question is whether two vocabularies still agree, and neither half alone can be
 asked it.
