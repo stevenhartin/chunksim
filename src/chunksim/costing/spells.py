@@ -111,6 +111,69 @@ TICK_SECONDS = 0.6
 CONSUMED = "*"
 
 
+#: How upstream names a cast paid for with a blighted sack rather than runes.
+#: Longest first, so `Cast ~|X|~ from a blighted spell sack` is not left with a
+#: stray `blighted` when the shorter suffix is stripped.
+SACK_SUFFIXES: tuple[str, ...] = (
+    " from a blighted spell sack",
+    " from a spell sack",
+)
+
+
+def base_cast(task: str) -> str:
+    """The plain cast a sack variant is a variant *of*, or `""`.
+
+    `Cast ~|wind wave|~ from a blighted spell sack` -> `Cast ~|wind wave|~`.
+    """
+    for suffix in SACK_SUFFIXES:
+        if task.endswith(suffix):
+            return task[: -len(suffix)]
+    return ""
+
+
+def with_sacks(
+    costs: Mapping[str, MaterialCost], challenges: Mapping[str, Any]
+) -> dict[str, MaterialCost]:
+    """`costs` plus every sack variant, taking its base spell's numbers.
+
+    **A blighted sack is a replacement for the runes and nothing else** - the
+    same spell, the same experience, the same cast speed - so the variant
+    borrows all three from the cast it names and differs only in what it eats.
+    That difference costs nothing here: `rate_for` charges the *challenge's*
+    own `Items`, which is the sack, so the runes are never charged for a cast
+    that does not use them.
+
+    Upstream carries 18 of these and no `infobox_spell` covers one, because
+    the sack is an item rather than a spell - which is why they were the only
+    `Cast ...` methods with no entry at all rather than a partial one.
+
+    Never overwrites: a variant upstream also gave its own infobox entry keeps
+    it, for the reason `with_aliases` never displaces a real name.
+    """
+    found = dict(costs)
+    for task, challenge in challenges.items():
+        if task in found or not isinstance(challenge, dict):
+            continue
+        base = found.get(base_cast(task))
+        if base is None:
+            continue
+        found[task] = MaterialCost(
+            experience=base.experience,
+            # **The sack, not the base spell's runes.** Nothing here prices
+            # with it - `rate_for` reads the challenge - but
+            # `inputs.spell_material_costs` does, and charging runes for a
+            # sack cast would bill a cost the method exists to avoid.
+            items={
+                item.replace(CONSUMED, "").strip(): 1.0
+                for item in (challenge.get("Items") or ())
+                if isinstance(item, str)
+            },
+            kind=base.kind,
+            ticks=base.ticks,
+        )
+    return found
+
+
 def castable(costs: Mapping[str, MaterialCost]) -> dict[str, MaterialCost]:
     """The entries this module will price: utility spells with a stated speed.
 
@@ -193,7 +256,7 @@ def computed_rates(
     """
     challenges = _mapping(chunk_info.challenges, "Magic")
     priced: dict[str, float] = {}
-    for task, cost in castable(costs).items():
+    for task, cost in castable(with_sacks(costs, challenges)).items():
         if task not in (valid.get("Magic") or {}):
             continue
         challenge = challenges.get(task)

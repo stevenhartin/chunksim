@@ -218,3 +218,51 @@ def test_computed_rates_records_what_it_dropped() -> None:
 
     assert priced == {}
     assert dropped[_ALCH] == "Fire rune[+]"
+
+
+class TestSpellSacks:
+    """A blighted sack replaces the runes and nothing else - the same spell,
+    the same experience, the same cast speed - so the variant borrows all
+    three from the cast it names and differs only in what it eats."""
+
+    _SACK = "Cast ~|wind wave|~ from a blighted spell sack"
+    _BASE = "Cast ~|wind wave|~"
+    _CHALLENGES = {
+        _BASE: {"Items": ["Air rune[+]*", "Blood rune*"], "Primary": True},
+        _SACK: {"Items": ["Blighted surge sack*"], "Primary": True},
+    }
+    _COSTS = {_BASE: MaterialCost(36.0, {"Air rune": 5.0}, "Combat", 5.0)}
+
+    def test_the_suffix_names_the_base_cast(self) -> None:
+        assert spells.base_cast(self._SACK) == self._BASE
+        assert spells.base_cast("Cast ~|snare|~ from a spell sack") == "Cast ~|snare|~"
+
+    def test_a_plain_cast_is_not_a_variant(self) -> None:
+        assert spells.base_cast(self._BASE) == ""
+
+    def test_the_variant_takes_the_base_numbers(self) -> None:
+        found = spells.with_sacks(self._COSTS, self._CHALLENGES)
+
+        assert found[self._SACK].experience == 36.0
+        assert found[self._SACK].ticks == 5.0
+        assert found[self._SACK].kind == "Combat"
+
+    def test_it_eats_the_sack_and_not_the_runes(self) -> None:
+        """Nothing in this module prices with `items` - `rate_for` reads the
+        challenge - but `inputs.spell_material_costs` does, and charging runes
+        for a sack cast would bill the cost the method exists to avoid."""
+        found = spells.with_sacks(self._COSTS, self._CHALLENGES)
+
+        assert found[self._SACK].items == {"Blighted surge sack": 1.0}
+
+    def test_a_variant_with_its_own_entry_keeps_it(self) -> None:
+        """Never overwrites, for the reason `with_aliases` never displaces a
+        real name."""
+        mine = MaterialCost(1.0, {}, "Combat", 1.0)
+
+        found = spells.with_sacks({**self._COSTS, self._SACK: mine}, self._CHALLENGES)
+
+        assert found[self._SACK] is mine
+
+    def test_a_variant_whose_base_is_unknown_is_skipped(self) -> None:
+        assert self._SACK not in spells.with_sacks({}, self._CHALLENGES)

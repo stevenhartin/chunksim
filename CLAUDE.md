@@ -441,13 +441,26 @@ once `rate_for` has already returned `None`, and its answers land in the same
 `Heuristics.unroutable` map, so `Cast ~|iban blast|~` reads "needs Iban's
 staff" and the nine resurrections "needs Book of the dead".
 
-**What is left in Magic is honest.** Of 42 unpriced methods: **17 have no
+**A blighted spell sack replaces the runes and nothing else**, so a sack
+variant borrows its base cast's experience, speed and kind and differs only in
+what it eats. No `infobox_spell` covers one - the sack is an *item* rather
+than a spell - which is why upstream's 18 of them were the only `Cast ...`
+methods with no entry at all rather than a partial one. `spells.with_sacks`
+derives them from the cast each names, and the difference costs nothing:
+`rate_for` charges the *challenge's* `Items`, which is the sack, so runes are
+never billed for a cast that does not use them. They price as far worse than
+their rune twins, which is right - `Cast ~|entangle|~ from a spell sack` is
+2,145/hr against the plain cast's 41,681, because a sack is a rare drop and
+runes are not.
+
+**What is left in Magic is honest.** Of 39 unpriced methods: **17 have no
 published cast speed at all** - the wiki's `infobox_spell` carries a `speed`
 field and leaves it *blank* for the Arceuus reanimations, offerings and
 resurrections, so there is nothing to fetch and a 5-tick default would be an
-invention; **11 are `from a spell sack` variants** upstream lists and no
-infobox covers; **10 are refused on a reagent** and now say so; and **4 are
-teleports**, answered by `costing/lectern.py` or not at all.
+invention; **8 want a `Blighted surge sack`** whose only source is a PvP Arena
+shop with no price; **10 are refused on a reagent**; and **4 are teleports**,
+answered by `costing/lectern.py` or not at all. Every one of the last two
+groups now names what it wanted.
 
 **A number in a table is only the number the column header says it is.**
 Tempoross' reward table gives "Repairing totems/masts" as **40**, and it is
