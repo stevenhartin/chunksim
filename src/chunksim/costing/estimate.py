@@ -1499,6 +1499,33 @@ def _route_hours(
             rates = _drop_rates(walk, made, item)
             if rates is None or rates[0] < 1.0:
                 return None
+            # **Letting a real (non-default) pace through here was tried and
+            # rejected.** `action_seconds` is not always defaulted -
+            # `gathering.apply` writes the node walk's own per-level pace into
+            # it, so a rare member of a gathering-modelled table (`Big bass`
+            # at 1/1000 off bass fishing) has a pace exactly as real as the
+            # `Always` member beside it, and refusing it prices `Build a
+            # ~|mounted bass|~` at the 1,000/hr floor for want of a taxidermy
+            # input the map plainly fishes. Gated on `Rate.match ==
+            # GATHERING_MATCH` specifically - a first cut trusting the whole
+            # non-default vocabulary also let `confirmed`/`computed` through,
+            # which `barbarian.py`, `gotr.py` and every minigame model use,
+            # and every rare drop off any of those started succeeding too.
+            #
+            # **Even scoped to the gathering match alone, it does not pay.**
+            # This is the exact door the comment above was written to keep
+            # shut: Prayer's own bone-burying walk is what that 11.3h/hydra
+            # regression came from, and it is also what this reopens - each
+            # of 296 export-wide rare members prices at its own near-unique
+            # `quantity / share`, which the fixpoint memo rarely dedups, and
+            # Prayer's material walk touches enough of them that
+            # `_item_hours` passed two million calls pricing fray-uber's
+            # Construction alone and had not finished in a minute. The seven
+            # methods it would have unblocked (`costing/estimate.py`'s own
+            # measurement: `Build a ~|mounted bass|~`/`~|mounted shark|~`/
+            # `~|mounted swordfish|~`, `~|volcanic theme|~`, two `Extra`
+            # collection tasks, one Smithing method) are not worth a
+            # regression this size on a map anyone might actually run.
             share = rates[1] if amortise else rates[0]
             if share <= 0:
                 return None
