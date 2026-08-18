@@ -5,12 +5,12 @@ skill has several tiered challenges available (e.g. "Chop with a bronze axe"
 *and* "Chop with a rune axe"), every tier stays in `ChallengeResult.valid`
 simultaneously - there's no notion of a lower tier being superseded. This
 module adds that on top, for the ~25 real skill categories only
-(`_DISPLAY_SKILLS` - Quest/Diary/Extra/Nonskill/BiS are structurally
+(`DISPLAY_SKILLS` - Quest/Diary/Extra/Nonskill/BiS are structurally
 flat lists with no tier progression, and BiS gets its own completed/active
 split in `bis.py` instead, since its own argmax already discards lower-tier
 candidates before a task is ever generated).
 
-`_DISPLAY_SKILLS` is `challenges._SKILL_NAMES` **less `Combat`**. `Combat` is
+`DISPLAY_SKILLS` is `challenges._SKILL_NAMES` **less `Combat`**. `Combat` is
 in upstream's `skillNames` because `Skills: {Combat: N}` requirements and its
 own `universalPrimary` line need it there, but it is not a levelled skill and
 upstream's own per-skill view filters it out (index.js:9570). Its 14
@@ -164,7 +164,12 @@ from chunksim.derive.challenges import _SKILL_NAMES, _check_primary_method, _eff
 #: Slayer assignment from ~|Vannaka|~ in Edgeville Dungeon`, whose only
 #: distinguishing requirement is `Skills: {Slayer: 1}`, long since exceeded
 #: by Slayer's own Level 92 pick.
-_DISPLAY_SKILLS = _SKILL_NAMES - {"Combat"}
+#: **Public**, because it is the answer to "which of the export's
+#: challenge categories is a skill somebody trains", and
+#: `costing/coverage.py` asks it too - the export files `Quest`, `Diary`,
+#: `Extra` and `Nonskill` alongside the real skills, and a training report
+#: listing those would be listing four things nobody levels.
+DISPLAY_SKILLS = _SKILL_NAMES - {"Combat"}
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.derive.sources import SourceIndex
 
@@ -207,7 +212,7 @@ class SkillClassification:
 
 @dataclass(frozen=True)
 class TaskClassification:
-    """`skills` covers only `_DISPLAY_SKILLS` categories present in the
+    """`skills` covers only `DISPLAY_SKILLS` categories present in the
     `valid` passed to `classify_tasks` - every other category (Quest, Diary,
     Extra, Nonskill, BiS, **and `Combat`**) is absent, not empty.
     """
@@ -542,7 +547,7 @@ def classify_tasks(
     rules: Mapping[str, Any] | None = None,
     available_items: Mapping[str, Any] | None = None,
 ) -> TaskClassification:
-    """Classify every `_DISPLAY_SKILLS` category present in `valid`.
+    """Classify every `DISPLAY_SKILLS` category present in `valid`.
 
     `source_index` is what `checkPrimaryMethod` needs to decide whether each
     skill is trainable at all (see `_is_eligible`). It defaults to an empty
@@ -558,7 +563,7 @@ def classify_tasks(
     available_items = index.items if available_items is None else available_items
     skills: dict[str, SkillClassification] = {}
     for skill, valid_names in valid.items():
-        if skill not in _DISPLAY_SKILLS or not valid_names:
+        if skill not in DISPLAY_SKILLS or not valid_names:
             continue
         skills[skill] = _classify_skill(
             skill,

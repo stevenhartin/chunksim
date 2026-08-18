@@ -50,6 +50,7 @@ from chunksim.cli import (
     neighbours,
     search,
     simulate,
+    training,
     unlock,
 )
 from chunksim.cli.common import MapAmbiguityError, error, load_state, resolve_map
@@ -69,6 +70,12 @@ def build_parser() -> argparse.ArgumentParser:
     gather_tables.add_arguments(subcommands)
 
     estimate.add_arguments(subcommands)
+
+    # **`--map` is optional here and means something**: without it the
+    # report is about the export rather than about a world, which is the
+    # one place in this CLI where omitting it is not a default but a
+    # different question. See `cli/training.py`.
+    training.add_arguments(subcommands)
 
     listing.add_arguments(subcommands)
 
@@ -106,7 +113,12 @@ def main(argv: list[str] | None = None) -> int:
     # exported JSON - and every one of them wants the id that was *meant*. So
     # the omitted-`--map` case is settled before any handler runs, and no
     # handler has to know the default is inferred rather than declared.
-    if hasattr(args, "map_id") and args.map_id is None:
+    #
+    # **`infer_map` is how a subcommand opts out**, and there is exactly one:
+    # `chunksim training` asks a different question without `--map` - about the
+    # export rather than about a world - so inferring one there would answer
+    # something nobody asked. Every other family leaves it at the default.
+    if getattr(args, "infer_map", True) and hasattr(args, "map_id") and args.map_id is None:
         try:
             args.map_id = resolve_map(None)
         except MapAmbiguityError as exc:

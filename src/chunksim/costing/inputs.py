@@ -35,6 +35,7 @@ from typing import Any, Mapping
 
 from chunksim.costing import (
     aerial,
+    coverage,
     barbarian,
     barracuda,
     blastmine,
@@ -86,6 +87,7 @@ from chunksim.store.derived_cache import (
     pricing_digests,
 )
 from chunksim.costing.estimate import EstimateResult, estimate
+from chunksim.costing.training import TrainingOption
 from chunksim.derive.search import WorldIndex
 from chunksim.remote.recipes import Material as RecipeMaterial, Recipe
 from chunksim.costing.levels import goal_levels, infer_levels, reachable_providers
@@ -237,6 +239,131 @@ class EstimateAnswer:
             "dps": self.coverage.as_dict() if self.coverage is not None else None,
             **self.result.as_dict(),
         }
+
+
+@dataclass(frozen=True)
+class TrainingAnswer:
+    """What every skill on one map can be trained with, and by what.
+
+    **Assembled here for the reason everything else in this module is**: the
+    CLI's `chunksim training` and the GUI's methods overlay ask the same
+    question, and two assemblies of it would drift exactly as `chunksim
+    estimate` and the Estimate tab already did once.
+    """
+
+    #: Skill -> the best method its current level can use, or `None`.
+    best: dict[str, TrainingOption | None]
+    #: Skill -> every reachable method, best first. Only filled for the skill
+    #: a caller asked to drill into: the full set is ~2,400 rows and neither
+    #: app draws them all at once.
+    methods: dict[str, tuple[TrainingOption, ...]]
+    #: The levels `best` was gated on, so a reader can see why a method was
+    #: left out.
+    levels: dict[str, int]
+
+    def as_dict(self, map_id: str) -> dict[str, Any]:
+        """The JSON both apps emit."""
+        return {
+            "map_id": map_id,
+            "levels": dict(sorted(self.levels.items())),
+            "best": {
+                skill: (option.as_dict() if option is not None else None)
+                for skill, option in sorted(self.best.items())
+            },
+            "methods": {
+                skill: [option.as_dict() for option in options]
+                for skill, options in sorted(self.methods.items())
+            },
+        }
+
+
+def training_answer(
+    state: MapState,
+    unlocked: Mapping[str, bool],
+    derived: Derived,
+    digests: Digests,
+    *,
+    skill: str | None = None,
+    root: Path | None = None,
+    refresh: bool = False,
+    reference: ReferenceBlobs | None = None,
+    map_id: str | None = None,
+) -> TrainingAnswer:
+    """Every skill's best method on one map, and one skill's full list.
+
+    The same layers `estimate_answer` prices with, in the same order, because
+    the method a reader is shown here has to be the method the estimate spent
+    - a list that ranked differently from the total beside it would be worse
+    than no list.
+
+    `skill` fills `methods` for that skill alone. The full set is ~2,400 rows
+    on an every-chunk map and the point of the overlay is the best few.
+    """
+    blobs = load_reference(root, map_id) if reference is None else reference
+    heuristics, _ = load_heuristics(state.chunk_info, root, blobs)
+    world = build_world_index(state.chunk_info)
+    heuristics, _ = priced_heuristics(
+        state,
+        unlocked,
+        derived,
+        heuristics,
+        blobs.levels,
+        digests,
+        world=world,
+        root=root,
+        refresh=refresh,
+        reference=blobs,
+    )
+    # **The levels the estimate itself is about**, which is the map's floor
+    # raised by the hand overrides - the same `{**infer_levels, **levels}`
+    # every other caller here builds. A method gated above them is not one
+    # this map can train with today, which is what "best" has to mean.
+    at = {**infer_levels(state), **blobs.levels}
+    skills = coverage.SKILLS
+    return TrainingAnswer(
+        best=coverage.best_methods(derived, state.chunk_info, heuristics, at, skills),
+        methods=(
+            {skill: coverage.skill_methods(derived, state.chunk_info, heuristics, skill)}
+            if skill
+            else {}
+        ),
+        levels={name: at.get(name, 1) for name in skills},
+    )
+
+
+def training_statuses(
+    state: MapState,
+    unlocked: Mapping[str, bool],
+    derived: Derived,
+    digests: Digests,
+    *,
+    root: Path | None = None,
+    reference: ReferenceBlobs | None = None,
+    map_id: str | None = None,
+    valid: bool = True,
+) -> dict[str, tuple[coverage.MethodStatus, ...]]:
+    """`{skill: every primary method and what priced it}`.
+
+    `valid=False` walks the whole export rather than the map's reachable set,
+    which is `chunksim training`'s no-map report: "what could ever be priced"
+    rather than "what this map can".
+    """
+    blobs = load_reference(root, map_id) if reference is None else reference
+    heuristics, _ = load_heuristics(state.chunk_info, root, blobs)
+    world = build_world_index(state.chunk_info)
+    heuristics, _ = priced_heuristics(
+        state, unlocked, derived, heuristics, blobs.levels, digests,
+        world=world, root=root, reference=blobs,
+    )
+    return {
+        skill: coverage.statuses_for(
+            state.chunk_info,
+            heuristics,
+            skill,
+            derived.challenges.valid.get(skill) if valid else None,
+        )
+        for skill in coverage.SKILLS
+    }
 
 
 def load_heuristics(

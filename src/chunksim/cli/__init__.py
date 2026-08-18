@@ -21,7 +21,12 @@ The modules, and what each owns:
 - `render.py` - the shared terminal formatting.
 - one module per family, each holding its handlers **and** its `add_parser`
   block: `io_commands`, `listing`, `search`, `unlock`, `diff`, `estimate`,
-  `neighbours`, `maps`, `derived`, `simulate`, `gather_tables`.
+  `neighbours`, `maps`, `derived`, `simulate`, `gather_tables`, `training`.
+
+`training` is the one family where **omitting `--map` asks a different
+question** rather than defaulting one - the export's coverage rather than a
+world's methods - which is why it sets `infer_map=False` and why `app.main`
+has a hook for it.
 
 `gather_tables` is the odd one and says so in its own docstring: **the one
 subcommand here that writes into `src/`**, and the one a user never runs.

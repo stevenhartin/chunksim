@@ -120,6 +120,13 @@ class TrainingOption:
             "material_seconds_per_xp": round(self.material_seconds_per_xp, 4),
             "material_xp_per_xp": round(self.material_xp_per_xp, 4),
             "match": self.match,
+            # **Added for the methods overlay and the `training` subcommand.**
+            # A rate without its provenance is the thing this whole layering
+            # exists to stop being shown: `source` says which layer answered
+            # and `knob` is the path that would move it, which is what makes a
+            # row clickable in the GUI rather than a line of text.
+            "source": self.source,
+            "knob": self.knob,
         }
 
 
