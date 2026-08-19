@@ -523,10 +523,21 @@ and that is not merely a gap-filler:
   to 14,838. `Mark of Darkness` and both vengeances state `speed = 0`, which
   `castable` had been dropping as instant; they are 10 and 50.
 
-Magic goes 158 modelled to 169 and unpriced 17 to **6**. The six state a blank
-`speed` and no cooldown at all - the four reanimations, `Monster Examine` and
-`Resurrect Crops` - and their infoboxes carry no third field, so the cadence
-is genuinely unpublished rather than unfetched.
+Magic goes 158 modelled to 169 and unpriced 17 to **6**, and the six split two
+ways rather than being one gap. **Five are supply-bound**: the four Arceuus
+reanimations wait on ensouled heads dropped by monsters and `Resurrect Crops`
+on a patch having died, so the cast is instant beside the wait and a figure
+computed from it would describe the spell where the answer is the drop table's
+or the growth clock's. They join `costing/oneoff.py`, which now carries two
+shapes - a decoration placed once, and a loop whose cadence is not the
+action's - with the `reason` beside each saying which. **The sixth is an
+ordinary cast the infobox forgot**: `Monster Examine` is neither instant nor
+on a cooldown, so `spells.STATED_TICKS` states its five ticks the way
+`recipe_rates.stated_ticks` states an untimed recipe's, filling only where
+the wiki is blank and never overwriting.
+
+**Magic now has no unpriced method at all** - 170 modelled, 5 one-off, 90
+uncompletable of 265.
 
 **A number in a table is only the number the column header says it is.**
 Tempoross' reward table gives "Repairing totems/masts" as **40**, and it is

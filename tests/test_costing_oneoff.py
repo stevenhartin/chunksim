@@ -5,11 +5,11 @@ from __future__ import annotations
 from chunksim.costing import coverage, oneoff
 
 
-def test_the_four_mounts_and_three_cosmetics_are_named() -> None:
-    """**Named individually, never inferred.** Upstream flags all seven
+def test_every_entry_is_named_individually() -> None:
+    """**Named individually, never inferred.** Upstream flags all of these
     `Primary: True`, exactly as it flags `Build a ~|wooden fence|~`, so there
     is no property of the export to key a rule on."""
-    assert set(oneoff.ONE_OFF) == {
+    decorations = {
         "Build a ~|mounted bass|~",
         "Build a ~|mounted swordfish|~",
         "Build a ~|mounted shark|~",
@@ -18,6 +18,17 @@ def test_the_four_mounts_and_three_cosmetics_are_named() -> None:
         "Apply a ~|boat paint|~ to a boat",
         "Apply a ~|sail colour|~ to a sail",
     }
+    # The second shape: a loop whose cadence belongs to a supply nothing
+    # states - a drop table's or a growth clock's, not the action's.
+    supply_bound = {
+        "Cast ~|basic reanimation|~",
+        "Cast ~|adept reanimation|~",
+        "Cast ~|expert reanimation|~",
+        "Cast ~|master reanimation|~",
+        "Cast ~|resurrect crops|~",
+    }
+
+    assert set(oneoff.ONE_OFF) == decorations | supply_bound
 
 
 def test_every_entry_says_why() -> None:

@@ -1,9 +1,23 @@
 """Actions upstream files as training methods and nobody trains with.
 
+**Two shapes, and the `reason` beside each says which.** The status is named
+for the first because it came first; what the two have in common is that
+"how fast can this be repeated" is not a question about the action.
+
+- **A decoration placed once** - the trophy mounts and boat cosmetics. Doing
+  it twice is not the point and mostly not possible.
+- **A loop whose cadence belongs to a supply nothing states** - the Arceuus
+  reanimations wait on ensouled heads dropped by monsters, and `Resurrect
+  Crops` on a farming patch having died. Both are repeatable and neither has
+  a rate: the spell's own cast is instant beside the wait, so a figure
+  computed from the cast would be a claim about the spell when the answer is
+  a property of the drop table or the growth clock. That is the shape
+  `costing/disclaimed.py` describes as "everything needed for a model is
+  published except the one thing that matters".
+
 **A method's rate is only meaningful if repeating it is the point.** Every
 other status this project reports answers "what priced this"; these are
-challenges where that question does not arise, because the action is a
-decoration placed once rather than a loop run for experience. Reporting them
+challenges where that question does not arise. Reporting them
 as `unpriced` says the model has a gap, and reporting them at their arithmetic
 rate says something is worth doing that nothing is.
 
@@ -84,6 +98,17 @@ ONE_OFF: dict[str, str] = {
     "Build one of the boat ~|flags|~": "a boat cosmetic, not a hull upgrade",
     "Apply a ~|boat paint|~ to a boat": "a boat cosmetic, not a hull upgrade",
     "Apply a ~|sail colour|~ to a sail": "a sail cosmetic, not a mast upgrade",
+    # **The cadence is the head supply, not the cast.** An ensouled head is a
+    # monster drop, and the spell is instant beside the wait for one - so a
+    # rate computed from the cast would describe the spell where the answer
+    # is a property of the drop table.
+    "Cast ~|basic reanimation|~": "waits on ensouled heads, which are a drop",
+    "Cast ~|adept reanimation|~": "waits on ensouled heads, which are a drop",
+    "Cast ~|expert reanimation|~": "waits on ensouled heads, which are a drop",
+    "Cast ~|master reanimation|~": "waits on ensouled heads, which are a drop",
+    # Same shape against a different clock: you cannot resurrect a crop that
+    # has not died, so the cadence is the growth schedule's.
+    "Cast ~|resurrect crops|~": "waits on a farming patch dying",
 }
 
 

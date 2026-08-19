@@ -350,3 +350,41 @@ class TestAQuestPrizeIsHeldNotEaten:
         )
 
         assert spells.quest_rewards(info) == {"Iban's staff", "Klank's gauntlets"}
+
+
+class TestAStatedCadence:
+    """The spell layer's `recipe_rates.stated_ticks`, and held to the same
+    rule: fills only where the wiki is blank, never overwrites."""
+
+    def test_monster_examine_is_an_ordinary_manual_cast(self) -> None:
+        """Neither instant nor on a cooldown - its infobox simply leaves
+        `speed` blank where every other Combat and Utility spell fills it."""
+        assert spells.STATED_TICKS["Cast ~|monster inspect|~"] == 5.0
+
+    def test_it_fills_only_a_blank(self) -> None:
+        task = "Cast ~|monster inspect|~"
+        blank = {task: MaterialCost(30.5, {"Body rune": 2.0}, "Utility", None)}
+
+        assert spells.timed(blank)[task].ticks == 5.0
+
+    def test_a_published_figure_survives(self) -> None:
+        task = "Cast ~|monster inspect|~"
+        stated = {task: MaterialCost(30.5, {"Body rune": 2.0}, "Utility", 3.0)}
+
+        assert spells.timed(stated)[task].ticks == 3.0
+
+    def test_a_spell_it_does_not_name_is_untouched(self) -> None:
+        costs = {_ALCH: MaterialCost(65.0, {}, "Utility", None)}
+
+        assert spells.timed(costs)[_ALCH].ticks is None
+
+    def test_the_supply_bound_spells_are_not_here(self) -> None:
+        """The other five the wiki leaves untimed belong to
+        `costing/oneoff.py`: their wait is a drop table's or a growth
+        clock's, so a figure from the cast would answer the wrong question."""
+        from chunksim.costing import oneoff
+
+        for task in spells.STATED_TICKS:
+            assert oneoff.reason(task) == ""
+        assert oneoff.reason("Cast ~|basic reanimation|~")
+        assert oneoff.reason("Cast ~|resurrect crops|~")

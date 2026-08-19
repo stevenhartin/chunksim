@@ -212,6 +212,40 @@ def with_sacks(
     return found
 
 
+#: Ticks a cast takes where the wiki states none, keyed by the export's task.
+#:
+#: **The spell layer's `recipe_rates.stated_ticks`**, and held to the same
+#: rule: it fills only where `infobox_spell` is blank and can never overwrite
+#: a published figure. A default would be an invention, but a *stated* figure
+#: for one named spell is a claim somebody can check.
+#:
+#: One entry. `Monster Examine` is an ordinary manual cast at the standard
+#: five ticks - it is neither instant nor on a cooldown, and its infobox
+#: simply leaves `speed` blank where every other Combat and Utility spell in
+#: the book fills it. The other five spells whose cadence the wiki omits are
+#: not this: they are in `costing/oneoff.py`, because their wait belongs to a
+#: drop table or a growth clock rather than to the cast.
+STATED_TICKS: dict[str, float] = {
+    "Cast ~|monster inspect|~": 5.0,
+}
+
+
+def timed(costs: Mapping[str, MaterialCost]) -> dict[str, MaterialCost]:
+    """`costs` with `STATED_TICKS` filled in where the wiki states nothing."""
+    found = dict(costs)
+    for task, ticks in STATED_TICKS.items():
+        cost = found.get(task)
+        if cost is None or cost.ticks:
+            continue
+        found[task] = MaterialCost(
+            experience=cost.experience,
+            items=dict(cost.items),
+            kind=cost.kind,
+            ticks=ticks,
+        )
+    return found
+
+
 def castable(costs: Mapping[str, MaterialCost]) -> dict[str, MaterialCost]:
     """The entries this module will price: utility spells with a stated speed.
 
@@ -357,7 +391,7 @@ def computed_rates(
     challenges = _mapping(chunk_info.challenges, "Magic")
     rewards = quest_rewards(chunk_info)
     priced: dict[str, float] = {}
-    for task, cost in castable(with_sacks(costs, challenges)).items():
+    for task, cost in castable(timed(with_sacks(costs, challenges))).items():
         if task not in (valid.get("Magic") or {}):
             continue
         challenge = challenges.get(task)
