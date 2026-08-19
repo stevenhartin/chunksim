@@ -2640,3 +2640,99 @@ class TestATaskCanNameTheWrongThingEntirely:
         )
         assert keys[0] == "Paladin"
         assert "Door (Ardougne Castle)" not in keys
+
+
+class TestOnlyOneChartOnAPageIsAboutIt:
+    """**Measured before it was fixed**: 31 of the 643 pages carrying
+    `{{Skilling success chart}}` carry more than one, and on 29 the first is
+    the one about the page's own action. The two that are not are NPCs you can
+    also fight, and both were priced off the wrong curve."""
+
+    def test_the_hand_table_names_both_and_no_more(self) -> None:
+        from chunksim.remote.gathering import CHART_LABELS
+
+        assert set(CHART_LABELS) == {"H.A.M. Member", "Menaphite Thug"}
+
+    def test_the_shipped_curve_is_the_pickpocket_one(self) -> None:
+        """The H.A.M. Member's first chart is "Avoiding concussions using
+        Agility" - `low=0 high=254` - which read the NPC at 99.6% at level 99
+        against a true 93.8%, and 65,571/hr against 49,950."""
+        tables = gathering.load_tables(cache.read_gathering())
+        first = tables.curves["h.a.m. member"][0]
+        assert (first[1], first[2]) == (135.0, 239.0)
+
+    def test_and_the_thug_is_not_on_its_blackjack_chart(self) -> None:
+        # `Menaphite Thug knockout chance` is `78/240` and priced the NPC at
+        # **330,274/hr**, which would have beaten the Rogues' Castle chest.
+        tables = gathering.load_tables(cache.read_gathering())
+        first = tables.curves["menaphite thug"][0]
+        assert (first[1], first[2]) == (50.0, 160.0)
+
+
+class TestACurveCanBeSharedWholesale:
+    """`Guard (H.A.M. Storerooms)` has no chart anywhere and is not like the
+    six uncharted pickpockets that stay refused: it is a H.A.M. member with a
+    different loot table, paying the same 22.2 experience, and the member's
+    chart is its chart."""
+
+    def test_the_guard_borrows_the_members_line_unmoved(self) -> None:
+        profile = gathering.PROFILES["Thieving"]
+        assert profile.shared_curves["guard (h.a.m. storerooms)"] == "H.A.M. Member"
+
+    def test_shared_not_assumed_because_the_chance_is_the_same(self) -> None:
+        """`assumed_curves` would re-anchor the line to open at 20 with the
+        member's level-15 chance; the claim here is that the chance is the same
+        function of level, so the line is taken where it is drawn."""
+        assert "guard (h.a.m. storerooms)" not in gathering.PROFILES["Thieving"].assumed_curves
+
+
+class TestAFailedAttemptCanPayToo:
+    """Three pages in the whole `{{Thieving info}}` corpus state one, all of
+    them 0.5 - and it matters most where the model is worst."""
+
+    def test_the_table_is_the_measured_three(self) -> None:
+        assert set(gathering.PROFILES["Thieving"].fail_experience) == {
+            "ogre coffin",
+            "door (h.a.m. hideout jail)",
+            "door (port sarim jail)",
+        }
+
+    def test_it_is_worth_a_sixth_of_a_coffin_at_the_opening_level(self) -> None:
+        # One attempt in ten succeeds at level 20, so eight and a half misses
+        # pay 4.4 against the success's 27.
+        tables = gathering.Tables(
+            curves={"ogre coffin": (("Toolless", 0.0, 127.0, 20, "confirmed"),)},
+            skill_info={"Thieving": {"ogre coffin": (20, 27.0)}},
+            skill_loops={"Thieving": {"ogre coffin": "Chests"}},
+        )
+        challenge = {"Objects": ["Ogre Coffin"], "Level": 20, "Primary": True}
+        profile = gathering.PROFILES["Thieving"]
+        paid = gathering.rate_at(tables, {}, profile, "t", "Thieving", challenge, 20)
+        bare = gathering.rate_at(
+            tables, {}, dataclasses.replace(profile, fail_experience={}),
+            "t", "Thieving", challenge, 20,
+        )
+        assert paid is not None and bare is not None
+        assert paid.xp_per_hour / bare.xp_per_hour == pytest.approx(1.164, abs=0.005)
+
+
+class TestAStatedRestockIsNotAMissingOne:
+    """`restock_kinds` refuses a chest with no entry in `Tables.respawns`, and
+    rightly - but a node the wiki never tabulated is refused for a reason about
+    the *table* rather than about the node."""
+
+    def test_the_ogre_coffin_states_its_own(self) -> None:
+        # "They can be safespotted by standing between the northern coffin and
+        # the centre coffin allowing you to continuously pick the coffins."
+        assert gathering.PROFILES["Thieving"].stated_respawns["ogre coffin"] == 0.0
+
+    def test_a_chest_with_neither_is_still_refused(self) -> None:
+        tables = gathering.Tables(
+            curves={"nowhere chest": (("", 100.0, 200.0, 1, "confirmed"),)},
+            skill_info={"Thieving": {"nowhere chest": (1, 50.0)}},
+            skill_loops={"Thieving": {"nowhere chest": "Chests"}},
+        )
+        challenge = {"Objects": ["Nowhere chest"], "Level": 1, "Primary": True}
+        assert gathering.rate_at(
+            tables, {}, gathering.PROFILES["Thieving"], "t", "Thieving", challenge, 99
+        ) is None

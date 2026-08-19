@@ -1,6 +1,6 @@
 {
   "name": "gathering.json",
-  "fetched_at": "2026-08-19T08:07:08.000569+00:00",
+  "fetched_at": "2026-08-19T09:36:01.630174+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "curves": {
@@ -5909,10 +5909,31 @@
       ],
       "H.A.M. Member": [
         {
-          "label": "",
-          "low": 0.0,
-          "high": 254.0,
-          "requirement": 1,
+          "label": "Normal",
+          "low": 135.0,
+          "high": 239.0,
+          "requirement": 15,
+          "provenance": "confirmed"
+        },
+        {
+          "label": "Gloves of silence",
+          "low": 141.0,
+          "high": 250.0,
+          "requirement": 15,
+          "provenance": "confirmed"
+        },
+        {
+          "label": "Ardougne Diary",
+          "low": 148.0,
+          "high": 262.0,
+          "requirement": 72,
+          "provenance": "confirmed"
+        },
+        {
+          "label": "Thieving cape + Ardougne Diary",
+          "low": 162.0,
+          "high": 288.0,
+          "requirement": 99,
           "provenance": "confirmed"
         }
       ],
@@ -8610,10 +8631,31 @@
       ],
       "Menaphite Thug": [
         {
-          "label": "Menaphite Thug",
-          "low": 78.0,
-          "high": 240.0,
+          "label": "Normal",
+          "low": 50.0,
+          "high": 160.0,
           "requirement": 65,
+          "provenance": "confirmed"
+        },
+        {
+          "label": "Gloves of silence",
+          "low": 52.0,
+          "high": 168.0,
+          "requirement": 65,
+          "provenance": "confirmed"
+        },
+        {
+          "label": "Ardougne Diary",
+          "low": 55.0,
+          "high": 176.0,
+          "requirement": 65,
+          "provenance": "confirmed"
+        },
+        {
+          "label": "Thieving cape + Ardougne Diary",
+          "low": 60.0,
+          "high": 193.0,
+          "requirement": 99,
           "provenance": "confirmed"
         }
       ],

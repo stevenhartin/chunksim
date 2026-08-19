@@ -363,6 +363,53 @@ class NodeCycle:
 _CHART_LABEL = re.compile(r"\|\s*label\s*=\s*([^|\n}]*)")
 
 
+#: Page -> the label of the chart to keep, where the **first** chart on the
+#: page is about something else entirely.
+#:
+#: **Measured before it was written**: 31 of the 643 pages carrying
+#: `{{Skilling success chart}}` carry more than one, and on 29 of them the
+#: first is the one about the page's own action - a chest's teleport-on-failure
+#: chart, a fishing spot's second rod, the Motherlode ore split. Two are not,
+#: and both are NPCs you can also *fight*: the H.A.M. Member's first chart is
+#: "Avoiding concussions using Agility" and the Menaphite Thug's a blackjack
+#: "knockout chance".
+#:
+#: **Both were wrong in the tables and priced**, which is what makes this a
+#: defect rather than a gap: the H.A.M. Member read 65,571/hr at 99 off the
+#: concussion curve against a true 49,950, and the Menaphite Thug **330,274**
+#: off the knockout curve against 104,422 - a fake method that would have beaten
+#: the Rogues' Castle chest on any map holding it. `costing/pickpocket.py`
+#: already knew: "a chart is matched by its own label, and three pages prove
+#: why". Its own scrape does that and this one did not.
+#:
+#: A hand table rather than a rule, for `recipe_rates.HAND_ALIASES`' reason: two
+#: cases out of 31 is a vocabulary gap, and a rule general enough to catch them
+#: would have to guess which of a page's charts is about the skill being asked -
+#: which the label says only sometimes, and which "first" says correctly 29
+#: times out of 31.
+CHART_LABELS: dict[str, str] = {
+    "H.A.M. Member": "H.A.M Member pickpocket chance",
+    "Menaphite Thug": "Menaphite Thug pickpocket chance",
+}
+
+
+def chart_for(title: str, text: str) -> tuple[SuccessCurve, ...]:
+    """The chart on `title` that is about `title`'s own action.
+
+    The first, except on the pages `CHART_LABELS` names - see it for the
+    measurement and for the two that need it.
+    """
+    charts = parse_labelled_success_charts(text)
+    if not charts:
+        return ()
+    wanted = CHART_LABELS.get(title)
+    if wanted:
+        for label, curves in charts:
+            if label.strip() == wanted:
+                return curves
+    return charts[0][1]
+
+
 def parse_success_charts(text: str) -> tuple[tuple[SuccessCurve, ...], ...]:
     """Every success chart on a page, each as its series in written order.
 
@@ -1125,9 +1172,9 @@ def build_tables(
         text = pages.get(title)
         if not text:
             continue
-        charts = parse_success_charts(text)
-        if charts:
-            curves[title] = charts[0]
+        chart = chart_for(title, text)
+        if chart:
+            curves[title] = chart
 
     say("reading tool speeds, node cycles, restock times and trap counts")
     mechanics = fetch_pages(
@@ -1246,6 +1293,8 @@ def build_tables(
 
 
 __all__ = [
+    "CHART_LABELS",
+    "chart_for",
     "AERIAL_PAGE",
     "FORESTRY_PAGE",
     "DRIFT_NET_PAGE",

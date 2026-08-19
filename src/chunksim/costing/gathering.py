@@ -570,6 +570,30 @@ class SkillProfile:
     stepped_interval: Mapping[str, tuple[tuple[int, float], ...]] = field(
         default_factory=dict
     )
+    #: Node -> what a *failed* attempt pays, where the wiki states one.
+    #:
+    #: **Measured over the whole `{{Thieving info}}` corpus, three pages carry
+    #: it** - the ogre coffin's `XP on failure` and the H.A.M. and Port Sarim
+    #: jail doors' `Failure XP`, all of them 0.5 - so this is a hand table
+    #: rather than a scrape field, and `costing/shortcuts.py`'s `failxp` is the
+    #: same arithmetic on the Agility side.
+    #:
+    #: It matters most exactly where the model is worst: a coffin picked at
+    #: level 20 succeeds once in ten, so the eight and a half failures pay 4.4
+    #: experience against the success's 27 - **16% of the answer**, and a model
+    #: counting only successes would be wrong in the safe direction but wrong.
+    fail_experience: Mapping[str, float] = field(default_factory=dict)
+    #: Node -> a restock the wiki tabulates for nothing, in seconds.
+    #:
+    #: **"No restock stated" and "no restock, stated" are different answers**,
+    #: which is the same distinction `coverage.REFUSED` draws one layer up.
+    #: `restock_kinds` refuses a stall or a chest with no entry in
+    #: `Tables.respawns`, and rightly - without one a stall falls back to the
+    #: interaction cadence and reads as the fastest method in the game. But a
+    #: node the wiki simply never tabulated is refused by that guard for a
+    #: reason that is about the *table* rather than about the node, and this is
+    #: how a profile says so on the record.
+    stated_respawns: Mapping[str, float] = field(default_factory=dict)
     #: Node -> the node whose **whole** chart it spends.
     #:
     #: **Not `assumed_curves`, and the difference is what a series means.**
@@ -1794,6 +1818,40 @@ PROFILES: dict[str, SkillProfile] = {
             "tarnished chest": 6.8,
             "stone chest": 6.8,
             "reinforced chest": 6.8,
+            # **And a coffin, which is the shape rather than the wording this
+            # time.** An ogre coffin is picked where you stand until it opens
+            # - its own page describes nothing but the lock - and at level 20
+            # the toolless chart gives one attempt in ten, so what an hour of
+            # it costs is attempts and not walking. The Rogues' Castle 15.5
+            # measures a walk between three chests that never fail, which is
+            # the wrong half of the pair.
+            "ogre coffin": 6.8,
+        },
+        # **There is no restock to wait for and the page says why**: the
+        # coffins sit together, and "they can be safespotted by standing
+        # between the northern coffin and the centre coffin allowing you to
+        # continuously pick the coffins". One opens and you turn to the next.
+        #
+        # Stated as nought here rather than left missing because the Thieving
+        # page's `Respawn Time` table carries every other chest and not these -
+        # they are quest scenery rather than a thieving loop - and a guard that
+        # exists to catch an untabulated *stall* should not refuse a node whose
+        # own page describes the loop. See `stated_respawns`.
+        #
+        # **Not modelled, and named so it is not mistaken for an oversight**:
+        # every failure drains 1-4 Thieving levels and the drain stacks, so a
+        # long session runs below the level this prices it at. Nothing states
+        # how fast it is restored in practice, and the rate is 2,816/hr at the
+        # bottom of the climb either way.
+        stated_respawns={"ogre coffin": 0.0},
+        # **The three pages in the whole corpus that state one**, and the two
+        # doors are here for completeness rather than for effect: both are
+        # chartless, so they never fail and the figure is never spent. See
+        # `fail_experience`.
+        fail_experience={
+            "ogre coffin": 0.5,
+            "door (h.a.m. hideout jail)": 0.5,
+            "door (port sarim jail)": 0.5,
         },
         fail_seconds=3.6,
         # **A door that does not open costs another attempt and nothing
@@ -1819,6 +1877,23 @@ PROFILES: dict[str, SkillProfile] = {
         # where every sibling fills it, so the kind comes from here - which is
         # what `loop_at` is for.
         loop_at={"door (h.a.m. hideout jail)": "Door"},
+        # **The same NPC with a different loot table.** `Guard (H.A.M.
+        # Storerooms)` has no success chart anywhere, which is why it was
+        # refused with the other six uncharted pickpockets - and it is not
+        # like them: the H.A.M. Member's chart is *its* chart. Both are H.A.M.
+        # members, both pay **22.2** experience, and the guard's own infobox
+        # differs only in stating level 20 where the member's says 15.
+        #
+        # **`shared_curves` rather than `assumed_curves`**, so the line is
+        # taken where it is drawn rather than re-anchored to open at 20: the
+        # claim is that the chance is the same function of level, not that the
+        # two creatures are equally hard at their own opening levels. It reads
+        # 61.3% at 20 against the member's 59.0% at 15.
+        #
+        # It is `INFERRED`, which is right: nobody has charted this NPC, and
+        # what makes it defensible where a median over the eighteen is not is
+        # that this names one donor for one borrower and says why.
+        shared_curves={"guard (h.a.m. storerooms)": "H.A.M. Member"},
         # **A trap is the one kind here that pays nothing.** Six of the seven
         # `{{Thieving info}}` pages typed `Trap` state `xp = 0` and the
         # seventh is a speartrap the export carries no challenge for - a trap
@@ -3208,7 +3283,11 @@ def rate_at(
     # **Restock-bound loops need their restock.** See `restock_kinds`: without
     # it a stall falls back to the interaction cadence and reads as the fastest
     # method in the game.
-    if kind in profile.restock_kinds and node.lower() not in tables.respawns:
+    if (
+        kind in profile.restock_kinds
+        and node.lower() not in tables.respawns
+        and node.lower() not in profile.stated_respawns
+    ):
         return None
     if chance <= 0:
         return None
@@ -3305,7 +3384,13 @@ def rate_at(
     # the cycle said "no wait" and the floor went on charging 10 seconds an
     # action anyway. This never showed on a tree because the wiki tabulates a
     # cycle *or* a respawn and never both; a rock states both.
-    restock = None if endless or cycle is not None else tables.respawns.get(node.lower())
+    restock = (
+        None
+        if endless or cycle is not None
+        else tables.respawns.get(
+            node.lower(), profile.stated_respawns.get(node.lower())
+        )
+    )
     # **A node that hands over several things is emptied once, not once per
     # thing.** See `SkillProfile.yields`: both the respawn and the hop are
     # charged per depletion, so they are shared over what the depletion paid
@@ -3356,11 +3441,16 @@ def rate_at(
     seconds_per_resource = working + banking
     if seconds_per_resource <= 0:
         return None
+    # **A failed attempt can pay too.** `experience` is per *success* and
+    # `failures` is how many misses one costs, so the pair is what an attempt
+    # is worth - see `SkillProfile.fail_experience` for the three nodes the
+    # wiki states one for and for how much it moves the worst of them.
+    paid = experience + profile.fail_experience.get(node.lower(), 0.0) * failures
     return NodeRate(
         task=task,
         skill=skill,
         level=level,
-        xp_per_hour=experience * 3600.0 / seconds_per_resource,
+        xp_per_hour=paid * 3600.0 / seconds_per_resource,
         experience=experience,
         chance=chance,
         roll_seconds=roll_seconds,

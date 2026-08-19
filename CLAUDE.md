@@ -1436,6 +1436,63 @@ separately and which the wiki also calls a cage in its prose.
 Thieving is **96 modelled, 3 guessed, 4 unpriced and 8 refused** of 118, from
 76/1/34/0 when this started, and no climb has moved for any of it.
 
+**Only one chart on a page is about the page, and taking the first was
+pricing two NPCs off the wrong one.** `costing/pickpocket.py` already knew -
+"a chart is matched by its own label, and three pages prove why" - and fixed
+it for *its* scrape; the gathering scrape kept `charts[0]` and did not.
+Measured, **31 of the 643 pages carrying `{{Skilling success chart}}` carry
+more than one**, and on 29 the first is the right one - a chest's
+teleport-on-failure chart, a fishing spot's second rod, the Motherlode ore
+split. The two that are not are NPCs you can also *fight*: the H.A.M. Member's
+first chart is "Avoiding concussions using Agility" and the Menaphite Thug's a
+blackjack "knockout chance". Both were priced off them - the member at
+65,571/hr against a true 49,950, and the thug at **330,274 against 122,759**,
+a fake method that beat the Rogues' Castle chest. `remote/gathering.
+CHART_LABELS` is a two-row hand table for `recipe_rates.HAND_ALIASES`' reason:
+a rule general enough to catch them would have to guess which of a page's
+charts is about the skill being asked, and "first" is right 29 times in 31.
+**It is the one change in this stretch that moved a climb** - fray-uber's
+Thieving 47.4h to 50.1h, the thug's fake band coming out.
+
+**And a curve can be shared outright where the two really are the same
+creature.** `Guard (H.A.M. Storerooms)` has no chart anywhere and was refused
+with the six uncharted pickpockets, which it is not like: it is a H.A.M.
+member with a different loot table, paying the same **22.2** experience, its
+own infobox differing only in stating level 20 where the member's says 15. So
+`shared_curves` takes the member's line **unmoved** rather than
+`assumed_curves` re-anchoring it to open at 20 - the claim is that the chance
+is the same function of level, not that the two are equally hard where each
+opens. 60.9% at 20 against the member's 59.0% at 15, `INFERRED`, and
+defensible where a median over the eighteen charted NPCs is not because it
+names one donor for one borrower.
+
+**A failed attempt can pay, and the three pages that say so are all 0.5.**
+The ogre coffin's `XP on failure` and the H.A.M. and Port Sarim jail doors'
+`Failure XP` are the whole corpus, so `SkillProfile.fail_experience` is a hand
+table and `costing/shortcuts.py`'s `failxp` is the same arithmetic on the
+Agility side. It matters most where the model is worst: a coffin picked at
+level 20 succeeds once in ten, so the eight and a half misses pay 4.4 against
+the success's 27 - **16% of the answer**.
+
+**And "no restock stated" is not "no restock, stated".** `restock_kinds`
+refuses a chest with no row in the Thieving page's `Respawn Time` table, and
+rightly - without one a stall falls back to the interaction cadence and reads
+as the fastest method in the game. But the ogre coffins are quest scenery and
+were never tabulated, while their own page describes the loop outright: "they
+can be safespotted by standing between the northern coffin and the centre
+coffin allowing you to continuously pick the coffins". `stated_respawns` is
+how a profile says that on the record, and the coffin takes `fixed_interval`'s
+6.8 ticks for the reason the pirate chests do - it is picked where you stand.
+It reads 2,816/hr at 20 and 12,132 at 99, and the **chart reproduces the
+page's own prose exactly**: "without a lockpick, the success rate ranges from
+around 10% at level 20, up to a 50% chance at level 99" against 10.16% and
+50.00%. What is deliberately not modelled is the drain - every failure costs
+1-4 Thieving levels and it stacks - because nothing states how fast it is
+restored.
+
+Thieving is **98 modelled, 3 guessed, 2 unpriced and 8 refused** of 118, from
+76/1/34/0 when this started.
+
 **A constant standing in for a curve is not the conservative end, and saying
 so was the mistake.** `PICKPOCKET_CYCLE_SECONDS` was 3.5 seconds, fitted to one
 published figure - a Knight of Ardougne at level 55, 86,000 xp/hr - and its own
