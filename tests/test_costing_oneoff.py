@@ -38,6 +38,8 @@ def test_every_entry_is_named_individually() -> None:
         "Create ~|avernic treads (pr)(et)|~",
         "Create ~|avernic treads (pr)(pe)|~",
         "Create ~|avernic treads (max)|~",
+        # The same shape one weapon over: three unique Araxxor drops.
+        "Craft a ~|noxious halberd|~",
     }
 
     assert set(oneoff.ONE_OFF) == decorations | supply_bound | fusions

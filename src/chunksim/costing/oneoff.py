@@ -14,12 +14,13 @@ for the first because it came first; what the two have in common is that
   a property of the drop table or the growth clock. That is the shape
   `costing/disclaimed.py` describes as "everything needed for a model is
   published except the one thing that matters".
-- **A permanent upgrade fused once, which eats both halves.** The seven
+- **A permanent upgrade assembled once out of unique drops.** The seven
   avernic tread variants each destroy a pair of boss-drop treads and one or
-  more of the three boot upgrades and hand back a single better boot. There
-  is one slot and the inputs are gone, so a second is not a slower repeat of
-  the first - it is a thing nobody does. This is the *mounts* argument
-  without their complication: no page anywhere says a duplicate pays again.
+  more of the three boot upgrades and hand back a single better boot; the
+  noxious halberd is three Araxxor drops made into one weapon. There is one
+  slot and the inputs are gone, so a second is not a slower repeat of the
+  first - it is a thing nobody does. This is the *mounts* argument without
+  their complication: no page anywhere says a duplicate pays again.
 
 **A method's rate is only meaningful if repeating it is the point.** Every
 other status this project reports answers "what priced this"; these are
@@ -134,6 +135,11 @@ ONE_OFF: dict[str, str] = {
     "Create ~|avernic treads (pr)(et)|~": "a permanent fusion that eats both boots",
     "Create ~|avernic treads (pr)(pe)|~": "a permanent fusion that eats both boots",
     "Create ~|avernic treads (max)|~": "a permanent fusion that eats both boots",
+    # **The same fusion shape one weapon over.** A noxious halberd is three
+    # unique Araxxor drops - point, blade and pommel - assembled into one
+    # weapon. Upstream files it under Crafting and Smithing alike and one
+    # entry covers both, since `ONE_OFF` is keyed by task.
+    "Craft a ~|noxious halberd|~": "three unique drops assembled into one weapon",
 }
 
 

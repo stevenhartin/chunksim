@@ -754,6 +754,11 @@ def recipe_priced(
                 **disclaimed.DISCLAIMED,
                 **gathering_coverage.refused,
                 **uncharted,
+                # **The band is on another challenge, not missing.** See
+                # `foundry.refused`: bronze is never an alloy's dearer half,
+                # so its preform carries no band of its own while the
+                # activity is fully covered.
+                **foundry.refused(derived.challenges.valid),
             },
         ),
         coverage,

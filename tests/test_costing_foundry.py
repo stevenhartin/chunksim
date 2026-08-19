@@ -207,3 +207,40 @@ class TestItIsWiredIn:
             encoding="utf-8"
         )
         assert "`foundry.py`" in listing
+
+
+class TestTheBronzePreformCarriesNoBandOnPurpose:
+    """**A decision that was reading as a gap.** Bronze is never an alloy's
+    dearer half, so `methods` emits nothing on its challenge - and the
+    activity is fully covered, because bronze's one good alloy is filed on the
+    *iron* preform. Moving it would attach bronze's cheap bars to an alloy
+    that is 23 parts adamant."""
+
+    _ALL: dict[str, dict[str, object]] = {
+        "Smithing": {task: {} for task in f.PREFORMS.values()}
+    }
+
+    def test_no_band_lands_on_it(self) -> None:
+        knobs = {band.knob for band in f.methods(self._ALL)["Smithing"]}
+        assert f"training/{f.PREFORMS['bronze']}/Smithing" not in knobs
+
+    def test_so_it_says_so_rather_than_reading_unpriced(self) -> None:
+        why = f.refused(self._ALL)
+        assert set(why) == {f.PREFORMS["bronze"]}
+        assert "iron preform" in why[f.PREFORMS["bronze"]]
+
+    def test_bronzes_own_alloy_is_on_the_iron_challenge(self) -> None:
+        bands = f.methods(self._ALL)["Smithing"]
+        first = min(bands, key=lambda band: band.level or 0)
+        assert first.method == "Giants' Foundry (bronze/iron)"
+        assert first.knob == f"training/{f.PREFORMS['iron']}/Smithing"
+
+    def test_a_map_with_only_bronze_gets_the_ordinary_unpriced(self) -> None:
+        """One preform needs 28 bars of *two* metals, so there the activity
+        really is out of reach rather than filed elsewhere - and a refusal
+        pointing at the iron preform would be a lie."""
+        only: dict[str, dict[str, object]] = {
+            "Smithing": {f.PREFORMS["bronze"]: {}}
+        }
+        assert f.methods(only) == {}
+        assert f.refused(only) == {}

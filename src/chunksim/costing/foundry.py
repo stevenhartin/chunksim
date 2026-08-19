@@ -254,3 +254,28 @@ def methods(
             )
         )
     return {SKILL: tuple(found)} if found else {}
+
+
+def refused(valid: Mapping[str, Mapping[str, object]]) -> dict[str, str]:
+    """`{task: why}` for the preform this deliberately carries no band on.
+
+    **A decision reading as a gap, which is what `coverage.REFUSED` is for.**
+    Bronze is never an alloy's dearer half, so `methods` emits nothing on its
+    challenge and it printed as `unpriced` - the word that means "nothing
+    reached this", where the truth is that the activity is fully covered and
+    bronze's one good alloy is filed on the *iron* preform. See `methods` for
+    why moving it would attach bronze's cheap bars to an alloy that is 23
+    parts adamant.
+
+    **Only where a band was actually emitted.** A map holding bronze and
+    nothing else can make no preform at all - one needs 28 bars of two metals
+    - and there the honest answer is the ordinary `unpriced`, since the
+    activity really is out of reach rather than filed elsewhere.
+    """
+    if not methods(valid):
+        return {}
+    return {
+        PREFORMS["bronze"]: (
+            "bronze is never an alloy's dearer half - its band is on the iron preform"
+        )
+    }

@@ -1652,7 +1652,23 @@ boot upgrades and hand back a single better boot - one slot, inputs gone, so a
 second is not a slower repeat of the first. It is the mounts' argument without
 their complication: no page anywhere says a duplicate pays again. Naming all
 seven rather than the three a real map reaches is deliberate, since upstream
-carries them identically under Smithing and Runecraft.
+carries them identically under Smithing and Runecraft. The **noxious halberd**
+is the same shape one weapon over - three unique Araxxor drops assembled into
+one - and one entry covers both the Crafting and the Smithing copy, since
+`ONE_OFF` is keyed by task.
+
+**And the Giants' Foundry's bronze preform was `coverage.REFUSED`'s own case
+turning up inside a module that had already written the reason.**
+`foundry.py` prices the activity by **alloy** rather than by tier, and emits
+each band on the challenge for the alloy's *dearer* metal so the bar cost
+matches the rate - bronze is never anyone's dearer half, so nothing lands on
+its challenge and it printed `unpriced`. Its own docstring said what that
+means: "the activity is still fully covered - bronze's one good alloy is
+bronze-and-iron, which is emitted on the *iron* challenge - so what is missing
+is a label rather than a method". `foundry.refused` says it where a reader
+can see it, and **only where a band was actually emitted**: a map holding
+bronze and nothing else can make no preform at all, since one needs 28 bars of
+two metals, and there the ordinary `unpriced` is the honest answer.
 
 **A constant standing in for a curve is not the conservative end, and saying
 so was the mistake.** `PICKPOCKET_CYCLE_SECONDS` was 3.5 seconds, fitted to one
