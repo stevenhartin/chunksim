@@ -1575,8 +1575,25 @@ makes it independent of the yield rule. Above 49 the yield rises and nothing
 says whether the experience follows, which the module names rather than
 hides.
 
-Thieving is down to **one** unpriced method - Entrana's candles, whose infobox
-carries no `type` and whose page carries no chart.
+**And the last one is a candle stand that is not a stall, which its own page
+says outright.** `Candles` states a level and 20 experience and leaves `type`
+blank, so `strict_kinds` refused it - and the obvious repair, calling it a
+stall, is the one reading the prose rules out: "this stand is unique compared
+to **stalls** where there is no respawn time to continue to steal from it, and
+**it can be failed**", with a failure that moves you a square, deals a damage
+and leaves you "stunned for a few seconds". A roll, a stun and nothing to wait
+for is a *pickpocket's* loop wearing an object's name, so `loop_at` says so.
+Its chance is the one thing nothing states, and `assumed_curves` borrows the
+nearest charted thing of the same shape - `Warrior (Thieving)`, a fallible
+steal that stuns, opening at 25 against the candles' 20 and paying 26 against
+20. The rate reports `inferred` and carries `assumed: Warrior (Thieving)` in
+its own label, which is what that mechanism exists to make visible. It reads
+13,086/hr where it opens, a tenth of what the same map's blackjacking pays, so
+a borrow is tolerable here in a way it would not be near the top of a climb.
+
+**Thieving has no unpriced method left** - 99 modelled, 1 pinned, 4 guessed, 8
+refused and 6 uncompletable of 118, from 76/1/0/34/0 when this started, and
+one climb moved in the whole stretch.
 
 **A constant standing in for a curve is not the conservative end, and saying
 so was the mistake.** `PICKPOCKET_CYCLE_SECONDS` was 3.5 seconds, fitted to one

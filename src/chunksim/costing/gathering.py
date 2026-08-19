@@ -1843,7 +1843,14 @@ PROFILES: dict[str, SkillProfile] = {
         # long session runs below the level this prices it at. Nothing states
         # how fast it is restored in practice, and the rate is 2,816/hr at the
         # bottom of the climb either way.
-        stated_respawns={"ogre coffin": 0.0},
+        stated_respawns={
+            "ogre coffin": 0.0,
+            # **Stated outright, which is rare**: "there is no respawn time to
+            # continue to steal from it". Carried even though `Pickpocket` is
+            # not a `restock_kinds` member, so the fact is on the record next
+            # to the loop it explains.
+            "candles": 0.0,
+        },
         # **The three pages in the whole corpus that state one**, and the two
         # doors are here for completeness rather than for effect: both are
         # chartless, so they never fail and the figure is never spent. See
@@ -1876,7 +1883,36 @@ PROFILES: dict[str, SkillProfile] = {
         # states its level and its 4 experience and leaves the field empty
         # where every sibling fills it, so the kind comes from here - which is
         # what `loop_at` is for.
-        loop_at={"door (h.a.m. hideout jail)": "Door"},
+        loop_at={
+            "door (h.a.m. hideout jail)": "Door",
+            # **A candle stand that behaves like an NPC, and its own page says
+            # so.** `{{Thieving info}}` gives it a level and 20 experience and
+            # leaves `type` blank, and the prose explains why the obvious
+            # answer is wrong: "this stand is unique compared to **stalls**
+            # where there is no respawn time to continue to steal from it, and
+            # **it can be failed**". A stall is certain and restock-bound and
+            # this is neither - it fails, and "upon failing to steal the
+            # candle, the player is moved 1 space south-west, **stunned for a
+            # few seconds**, dealt 1 damage". A roll, a stun and nothing to
+            # wait for is a pickpocket's loop wearing an object's name.
+            "candles": "Pickpocket",
+        },
+        # **Its chance is borrowed and nothing charts it**, which is what makes
+        # this one a `GUESS`-grade reading however exactly the rest is stated.
+        # The warrior is the nearest thing the wiki does chart: a fallible
+        # steal that stuns, opening five levels above the candles at 25 against
+        # 20 and paying 26 against 20. `assumed_curves` keeps the slope and
+        # moves the line, so the candles reach the warrior's opening chance
+        # where *they* open - 52.7% at level 20 - and it is reported
+        # `inferred` and labelled `assumed as Candles` in the rate itself.
+        #
+        # **It cannot decide a climb and that is why a borrow is tolerable
+        # here.** 13,000/hr at its own level is a tenth of what the same map's
+        # blackjacking pays and a fortieth of the Rogues' Castle chest; the
+        # alternative was the last `unpriced` row in the skill, which says
+        # "nothing reached this" where the truth is "everything but one
+        # number".
+        assumed_curves={"candles": "Warrior (Thieving)"},
         # **The same NPC with a different loot table.** `Guard (H.A.M.
         # Storerooms)` has no success chart anywhere, which is why it was
         # refused with the other six uncharted pickpockets - and it is not

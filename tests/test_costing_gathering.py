@@ -2736,3 +2736,55 @@ class TestAStatedRestockIsNotAMissingOne:
         assert gathering.rate_at(
             tables, {}, gathering.PROFILES["Thieving"], "t", "Thieving", challenge, 99
         ) is None
+
+
+class TestACandleStandThatIsNotAStall:
+    """`Candles` states a level and 20 experience and leaves `type` blank, and
+    its prose says why the obvious answer is wrong: "this stand is unique
+    compared to stalls where there is no respawn time to continue to steal
+    from it, and it can be failed"."""
+
+    _PROFILE = gathering.PROFILES["Thieving"]
+
+    def test_its_loop_is_a_pickpockets(self) -> None:
+        # A roll, a stun on failure and nothing to wait for. A stall is
+        # certain and restock-bound and this is neither.
+        assert self._PROFILE.loop_at["candles"] == "Pickpocket"
+        assert "Pickpocket" not in self._PROFILE.certain_kinds
+        assert "Pickpocket" not in self._PROFILE.restock_kinds
+
+    def test_the_stun_is_charged(self) -> None:
+        # "Upon failing to steal the candle, the player is ... stunned for a
+        # few seconds" - so the failure costs more than the retry.
+        assert "Pickpocket" not in self._PROFILE.fail_seconds_by_kind
+        assert self._PROFILE.fail_seconds > 0
+
+    def test_its_chance_is_borrowed_from_the_nearest_charted_thing(self) -> None:
+        """The warrior is a fallible steal that stuns, opening five levels
+        above the candles and paying 26 against 20 - and nothing charts the
+        candles at all."""
+        assert self._PROFILE.assumed_curves["candles"] == "Warrior (Thieving)"
+
+    def test_a_borrow_reports_itself(self) -> None:
+        # `inferred`, and `assumed as <donor>` in the rate's own label, which
+        # is what `assumed_curves` exists to make visible.
+        tables = gathering.Tables(
+            curves={"warrior (thieving)": (("Normal", 100.0, 240.0, 25, "confirmed"),)},
+            skill_info={"Thieving": {"candles": (20, 20.0)}},
+        )
+        challenge = {"Objects": ["Candles"], "Level": 20, "Primary": True}
+        rate = gathering.rate_at(
+            tables, {}, self._PROFILE, "t", "Thieving", challenge, 20
+        )
+        assert rate is not None
+        assert rate.provenance == gathering.INFERRED
+        assert "Warrior (Thieving)" in rate.tool
+        # The warrior's own opening chance, reached where the candles open.
+        assert rate.chance == pytest.approx(
+            gathering.success_chance(25, 100.0, 240.0), abs=0.005
+        )
+
+    def test_the_page_states_it_has_no_respawn(self) -> None:
+        # Carried even though a `Pickpocket` needs none, so the fact sits next
+        # to the loop it explains.
+        assert self._PROFILE.stated_respawns["candles"] == 0.0
