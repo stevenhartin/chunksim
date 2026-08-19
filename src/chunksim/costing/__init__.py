@@ -266,6 +266,12 @@ The modules, and what each owns:
   and it is constant to 4.9% across the whole table - where the success chance
   it would otherwise depend on runs 12.11% to 27.73%. The chart is carried as
   the check that this is the right page and deliberately not spent.
+- `valeoffering.py` - what a vale offering's reward table costs, which is
+  the totem behind it: 100 offerings a rummage, one roll, `Ent branch` at
+  65/399 - and a totem is priced by `valetotems` with its five logs charged,
+  so a map that must chop redwood pays for chopping redwood. Flat
+  `{item: seconds}` like `yields.py`, for the same reason: the share is
+  fractional and the route would never memo.
 - `feathering.py` - the largest `stated_ticks` contributor: **145 of
   Fletching's 158 untimed recipes** are a stack of feathers onto a stack of
   tips, and the four feathered recipes the wiki *does* time are all **2

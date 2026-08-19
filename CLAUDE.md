@@ -1767,12 +1767,44 @@ unjoined `Output` has a recipe output that is its plural (`Wolfbone arrowtip`
 against `Wolfbone arrowtips`), so it is a `HAND_ALIASES` entry rather than an
 `s` rule that would risk every singular meaning something.
 
-Fletching goes **126 modelled to 147 and 31 unpriced to 10**. What is left is
-five methods behind an `Ent branch` or the atlatl chain it feeds, three behind
-a material nothing routes (`Hunter spear tips`, `Barb bolttips`, `Dragon bolts
-(unf)`), and two more untimed recipes that are *not* feathered - the bone
-shortbow and the toxic blowpipe, whose siblings are timed but whose action is
-a different one.
+**And the `Ent branch` behind five more of them is a reward table whose
+action this project already prices.** `Vale offerings` states its mechanic in
+one sentence - "rummaging the offerings consumes **100** of them for one Vale
+Research Point and **one roll** of the loot table" - and lists `Ent branch` at
+**65/399**, which is the 1-in-6.14 the chain needs. `Vale Totems/Strategies`
+states how many offerings a totem leaves per log tier, 20 for oak up to 105
+for redwood. So the cost of a branch is those numbers times something
+`costing/valetotems.py` already computes: what a totem costs **once its five
+logs are charged**, which is the whole point - a map that must chop redwood
+pays for chopping redwood, and which tier is cheapest per branch is therefore
+a property of the map rather than of the minigame.
+
+**Flat `{item: seconds}` rather than a route**, merged into the same map
+`costing/yields.py` fills and for its reasons: the share is fractional, the
+certainty gate refuses it by design, and routing a fractional quantity is what
+put 2.5 million calls into the fixpoint. The `Vale Research Exchange` route is
+refused for the other standing reason - it is priced in `points`, a currency
+`DEFAULT_CURRENCY_PER_HOUR` will not invent a rate for - and it would never
+win anyway: 20 points is twenty rummages against the roll's 6.14.
+
+**The offerings column disagrees with its own page, and the per-totem one
+wins.** `Offerings per Hour` divides by **112** on every row where the prose
+says "13 loops (104 totems) per hour" and the Construction table divides out
+to exactly 104. So the per-totem figure is the primitive, which is also the
+conservative reading.
+
+**And the level is floored rather than compared**, which is
+`costing/wintertodt.solo_methods`' rule arriving a second time: upstream's
+challenge being valid *is* the statement that this map can play, and the
+export census infers no Fletching level at all - comparing `1 < 20` there
+reported a routable material as unroutable and cost four methods.
+
+Fletching goes **126 modelled to 151 and 31 unpriced to 6**. What is left is
+three behind a material nothing routes (`Hunter spear tips`, `Barb bolttips`,
+`Dragon bolts (unf)` - two shop currencies and a boss drop), two untimed
+recipes that are *not* feathered (the bone shortbow and the toxic blowpipe,
+whose siblings are timed but whose action differs), and the greenman carving,
+which its own page leaves untimed where the statue beside it says 4.
 
 **A constant standing in for a curve is not the conservative end, and saying
 so was the mistake.** `PICKPOCKET_CYCLE_SECONDS` was 3.5 seconds, fitted to one

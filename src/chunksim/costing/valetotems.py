@@ -98,6 +98,9 @@ class Totem:
     build_carve: float
     #: Experience for *each* of the four decorations.
     decorate: float
+    #: Vale offerings one totem's ent visit leaves. **The per-totem column**,
+    #: not the hourly one beside it - see `TOTEMS` for why they disagree.
+    offerings: float
 
     @property
     def fletching_xp(self) -> float:
@@ -107,13 +110,21 @@ class Totem:
 
 
 #: `Vale Totems/Strategies`' "Base Totem XP and Offerings", cheapest first.
+#:
+#: **The offerings column is per totem, and the page's hourly one beside it
+#: disagrees with the page.** That table divides by **112** on every row -
+#: 20 x 112 is 2,240, 105 x 112 is 11,760 - where the prose says "13 loops
+#: (104 totems) per hour as a standard for comparison" and the Construction
+#: table divides out to exactly 104 on all nine of its rows. So the per-totem
+#: figure is the primitive and `TOTEMS_PER_HOUR` is this file's own constant
+#: for both, which is also the conservative reading of the two.
 TOTEMS: tuple[Totem, ...] = (
-    Totem("Oak logs", 20, 12.5, 51.2),
-    Totem("Willow logs", 35, 31.7, 126.9),
-    Totem("Maple logs", 50, 50.8, 201.0),
-    Totem("Yew logs", 65, 82.6, 326.2),
-    Totem("Magic logs", 80, 156.1, 619.8),
-    Totem("Redwood logs", 90, 221.3, 725.5),
+    Totem("Oak logs", 20, 12.5, 51.2, 20.0),
+    Totem("Willow logs", 35, 31.7, 126.9, 30.0),
+    Totem("Maple logs", 50, 50.8, 201.0, 40.0),
+    Totem("Yew logs", 65, 82.6, 326.2, 65.0),
+    Totem("Magic logs", 80, 156.1, 619.8, 90.0),
+    Totem("Redwood logs", 90, 221.3, 725.5, 105.0),
 )
 
 #: The Fletching level the minigame itself opens at, and the lowest totem's.
@@ -151,6 +162,18 @@ def _affordable(
         if seconds is not None and seconds > 0:
             found.append((totem, seconds))
     return found
+
+
+def affordable(
+    level: int, material_seconds: Callable[[str, float], float | None] | None
+) -> list[tuple[Totem, float]]:
+    """`_affordable`, exported for `costing/valeoffering.py`.
+
+    The offerings a totem leaves are decided by the totem, so pricing one
+    needs exactly the same "which tiers can this map build, and what does each
+    cost once its five logs are charged" answer this file already computes.
+    """
+    return _affordable(level, material_seconds)
 
 
 def fletching_rate(

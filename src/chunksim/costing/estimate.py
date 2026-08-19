@@ -201,7 +201,7 @@ from chunksim.model.experience import (
     xp_for_level,
 )
 from chunksim.costing.combat_xp import COMBAT_SKILLS, hitpoints_credit, slayer_credit
-from chunksim.costing import gathering, herbs, recipe_rates, yields
+from chunksim.costing import gathering, herbs, recipe_rates, valeoffering, yields
 from chunksim.remote.recipes import Recipe
 from chunksim.costing.farming import (
     DEFAULT_HARVESTS_PER_DAY,
@@ -2275,14 +2275,34 @@ def _setup(
     # **The action's own weight tiers**, priced flat for the reason the herbs
     # above are - see `costing/yields.py`, and `_route_hours`' certainty gate
     # for what it is standing in for.
+    # **And a minigame's own reward roll, which is the same shape.** A vale
+    # offering is rummaged a hundred at a time for one roll of a published
+    # table, and the totem that produced it is priced by `valetotems` with its
+    # five logs charged - so the pace behind the share is computed rather than
+    # defaulted. See `costing/valeoffering.py`; it is merged into the same map
+    # because the walk asks one question of it.
     walk = dataclasses.replace(
         walk,
-        yield_seconds=yields.costs(
-            state.chunk_info,
-            heuristics.action_seconds,
-            lambda task, skill: heuristics.xp_per_hour(task, skill).match,
-            lambda provider, member: (_drop_rates(walk, provider, member) or (0.0, 0.0))[0],
-        ),
+        yield_seconds={
+            **yields.costs(
+                state.chunk_info,
+                heuristics.action_seconds,
+                lambda task, skill: heuristics.xp_per_hour(task, skill).match,
+                lambda provider, member: (
+                    _drop_rates(walk, provider, member) or (0.0, 0.0)
+                )[0],
+            ),
+            **valeoffering.costs(
+                derived.challenges.valid,
+                levels,
+                # **The walk as it stands, which is sound here and only
+                # here.** A totem's logs are ordinary items, priced by routes
+                # that cannot themselves pass through a vale offering - so
+                # reading the pre-`yield_seconds` walk for them is not a
+                # missing answer, it is the only one there is.
+                lambda item, quantity: _log_seconds(walk, item, quantity),
+            ),
+        },
     )
     return _Setup(
         walk=walk, levels=levels, masters=reachable_rates, slayer=slayer_rate
@@ -2303,6 +2323,12 @@ class _MaterialWalk:
     seconds: Callable[[str, float], float | None]
     #: `(item, quantity, skill) -> experience in that skill along the route`.
     experience: Callable[[str, float, str], float]
+
+
+def _log_seconds(walk: _Walk, item: str, quantity: float) -> float | None:
+    """Seconds for `quantity` of `item`, for `valeoffering`'s log bill."""
+    priced = _item_hours(walk, item, quantity=quantity, amortise=True)
+    return None if priced is None else priced.hours * 3600.0
 
 
 def material_seconds(
