@@ -260,6 +260,13 @@ The modules, and what each owns:
 - `forestry.py` - the nine Forestry events, which you meet a share of rather
   than choose between, and which pay **six** skills at once off one table of
   level-carrying formulas.
+- `wallsafe.py` - the Rogues' Den lobby safes, where **one click is a run of
+  attempts**: the safe re-tries itself every 4 ticks until it cracks or springs
+  the trap, so the thing with a success chance is the attempt and the thing
+  that pays 70 experience is the run. The page's own trap rule -
+  `(100% - p) / 2` - turns the chart into the published 49%/77% overall rates
+  with no free parameter, and its "looted every 8 ticks ... 52,500 an hour"
+  ceiling is what the model reduces to when nothing fails.
 - `wintertodt.py` - one boss, **two regimes**, and the only activity here with
   **no chance in it at all**: the wiki states its experience as multipliers on
   your level, so a rate is those times a count of games. World-hopped pays

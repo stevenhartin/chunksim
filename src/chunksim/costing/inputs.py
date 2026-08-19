@@ -74,6 +74,7 @@ from chunksim.costing import (
     swimming,
     tempoross,
     valuables,
+    wallsafe,
     wintertodt,
     wiremachine,
 )
@@ -994,6 +995,11 @@ def _gathered(
     # **Four gardens and the level picks which** - see `costing/sorceress.py`.
     # Flat rates, so nothing but the valid set is needed.
     for skill, methods in sorceress.methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **A safe is worried at rather than opened once** - one click is a run of
+    # automatic attempts, so the thing with a chance is the attempt and the
+    # thing that pays is the run. See `costing/wallsafe.py`.
+    for skill, methods in wallsafe.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **One lap, two skills** - see `costing/sepulchre.py`. How deep the lap
     # goes is upstream's own `Access the Nth floor` gate rather than a level

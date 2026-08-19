@@ -1356,6 +1356,38 @@ rather than off an Agility level**, for `costing/wintertodt.py`'s reason: the
 no-map census infers no level, and comparing `1 < 52` there reports a priced
 method as unpriced.
 
+**A safe is not opened once, it is worried at - and that is why nothing could
+price it.** Every other Thieving object rolls once and you click again; a
+Rogues' Den lobby safe keeps going by itself, "another attempt to crack the
+safe every 4 ticks (2.4 seconds) until they either crack the safe or trigger a
+trap". So the thing with a success chance is the *attempt* and the thing that
+pays 70 experience is the *run*, which is a shape `costing/gathering.py` has no
+vocabulary for - it wanted a restock, and a safe has nothing to restock.
+
+**Three published numbers and no free parameter**, which is why
+`costing/wallsafe.py` is unusually well checked. The chart reproduces the
+page's own prose exactly (85/256 and 161/256 against "33.2% at level 50 ...
+62.9% at level 99"). The page's trap rule - "the chance of triggering a trap
+per attempt appears to be (100% - success chance) / 2" - makes an attempt a
+three-way roll and a run a race, so a run cracks with `2p/(1+p)`: **0.4985 and
+0.7722** against a published "49%" and "77%", neither of them fitted. And the
+cadence is recovered rather than guessed: "the safe can theoretically be looted
+every 8 ticks, granting up to 52,500 experience per hour, assuming no failures"
+is exactly `70 x 6000 / 8`, so the eight is four ticks of attempt plus four of
+re-click, and the model **reduces to that ceiling when `p` is 1**.
+
+It reads 20,926/hr at level 50 and 36,394 at 99, against the page's
+"realistically ... around 30-40k xp per hour". The stethoscope series is
+charted beside the plain one and not spent - Martin Thwait's shop needs
+Agility 50, so it is an item a map may not hold.
+
+**And the last of Thieving's obstacles is 0.2 experience.** `Climb the
+~|crumbling wall (Grim Tales)|~` awards a fifth of a point for a long climb
+during a quest, per its own `{{Skill info}}`, so it joins the doors in
+`refuses` rather than reading as a gap. Thieving is **86 modelled, 3 guessed,
+5 unpriced and 17 refused** of 118, from 76/1/34/0 when this started, and no
+climb moved for any of it.
+
 **A constant standing in for a curve is not the conservative end, and saying
 so was the mistake.** `PICKPOCKET_CYCLE_SECONDS` was 3.5 seconds, fitted to one
 published figure - a Knight of Ardougne at level 55, 86,000 xp/hr - and its own

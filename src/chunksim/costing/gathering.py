@@ -1809,6 +1809,14 @@ PROFILES: dict[str, SkillProfile] = {
                 "a lock you pick to get through, not an action you repeat"
             ),
             "grubby door": "a lock you pick to get through, not an action you repeat",
+            # **0.2 experience and a long animation.** The Grim Tales
+            # obstacle's `{{Skill info}}` states `skill1exp = 0.2` - a fifth
+            # of a point for climbing over a wall once during a quest. Named
+            # here rather than left blank for Woodcutting's swaying-tree
+            # reason: an absent rate reads as a gap, and this is the answer.
+            "crumbling wall (grim tales)": (
+                "0.2 experience for a long climb, and it is a quest obstacle"
+            ),
         },
         # **Three chests sit together at the Rogues' Castle**, which its own
         # `{{Map}}` pins show and which is why the guide's rate beats anything
