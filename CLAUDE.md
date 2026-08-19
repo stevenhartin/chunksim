@@ -1270,15 +1270,13 @@ chest opens - what a figure quoted without a level should look like.
 
 **Half of what the box describes is not a loop, and leaving that unsaid was
 the same mistake `coverage.REFUSED` exists for.** `Door`, `Trap` and
-`Trapdoor` are twenty-two pages: you pick a lock to get through, and then you
-are through. They used to stay refused by being *absent* from
-`remote/gathering.LOOP_KINDS`, and an absent kind is indistinguishable from a
-page nobody scraped - so eleven deliberate refusals printed as `unpriced`.
-Carrying the name lets `gathering.SkillProfile.refused_kinds` say it, and
-`strict_kinds` still refuses the rate because no profile gives one of them a
-roll interval. **Refused by kind rather than by name** because the kind is
-what disqualifies them; naming the eleven the export happens to carry would
-need editing the day upstream adds a twelfth.
+`Trapdoor` are twenty-two pages, and they used to stay refused by being
+*absent* from `remote/gathering.LOOP_KINDS` - where an absent kind is
+indistinguishable from a page nobody scraped, so eleven deliberate refusals
+printed as `unpriced`. Carrying the name lets
+`gathering.SkillProfile.refused_kinds` say it. **Only `Trap` is still refused**
+- six of its seven pages state `xp = 0`, so a trap is a hazard to avoid rather
+than an action that pays - and the doors are priced; see below.
 
 **And a refusal by name catches whatever else generates that name, which this
 walked straight into.** `Ore stall` looked unanswerable - the wiki's page is a
@@ -1387,6 +1385,56 @@ during a quest, per its own `{{Skill info}}`, so it joins the doors in
 `refuses` rather than reading as a gap. Thieving is **86 modelled, 3 guessed,
 5 unpriced and 17 refused** of 118, from 76/1/34/0 when this started, and no
 climb moved for any of it.
+
+**"You unlock a door once and it stays unlocked" is not what disqualifies a
+method, and the module that proves it was already in the tree.**
+`costing/shortcuts.py` prices an Agility shortcut - a thing in the way, an
+experience for getting past it, and no page anywhere stating how often you can
+do it - at a stated **eight ticks**, and its own conclusion is that most of
+them are not training methods and the numbers say so. A picked lock is that
+shape exactly, so refusing doors as a class was inconsistent rather than
+careful. Measured first: **not one of the 22 `Door`/`Trap`/`Trapdoor` pages
+carries a `time`**, so there was nothing inside the family to infer from and
+the borrow is from the nearest published obstacle instead, with
+`inferred_loops` capping every door rate at `INFERRED` for it.
+
+**What the charts do to the answer is the interesting part.** A flat eight
+ticks would put the Yanille Dungeon door at 37,500/hr, beating every Agility
+shortcut in the game; its own `{{Skilling success chart}}` is `low1=4
+high1=40` and drops it to **6,006**. Seven of the eleven doors carry a chart
+and every one of them is damped like that, so the family runs 2,250/hr for the
+Underground Pass cage to 11,602 for the Magic axe hut - which is
+`shortcuts.py`'s own finding arriving a second time, from a different skill.
+`certain_kinds` is checked *after* every curve source, so the four with no
+chart read as certain, which is the wiki's convention and which the
+Underground Pass gate's prose confirms outright: "100% successful below the
+required level".
+
+**And a task can name the wrong thing entirely.** `Unlock the ~|paladin|~
+door` states no `Objects`, so its only join key is the span - and `paladin` is
+a real page with a real chart. It priced at **117,670/hr**, a door read as a
+pickpocket, and `_ALIASES` could not fix it because the *pickpocket* challenge
+offers that key too. `gathering._TASK_NODES` is keyed by whole task name and
+**replaces** the key list rather than leading it, which is the half that
+mattered: `_experience_for` scans the calculator across every key before it
+looks at any infobox, and the calculator has a `Paladin` row and no door, so
+leading left the door on the NPC's 131.8 experience and its two-tick cadence.
+It reads 6,006/hr against the wiki's own `Door (Ardougne Castle)`, level 61
+and 50 experience - upstream's `Level: 61` exactly.
+
+**Upstream names a place where the wiki names the thing**, which is the last
+of Thieving's join misses. `Unlock the cage in the ~|Underground Pass|~`
+carries no `Objects` and only a chunk, where the wiki has `Cage (Underground
+Pass, slave)` and the dungeon walkthrough states its mechanic: "Pick-locking
+these cage doors gives 3 experience in the Thieving skill when successful and
+can be done at level 1 Thieving" - upstream's `Level: 1` exactly. **Safe
+because it is measured**: across every gathering skill in the export, one
+challenge offers `Underground Pass` as a key and it is this one. It is *not*
+the level-50 `Gate (Underground Pass Shortcut)`, which upstream carries
+separately and which the wiki also calls a cage in its prose.
+
+Thieving is **96 modelled, 3 guessed, 4 unpriced and 8 refused** of 118, from
+76/1/34/0 when this started, and no climb has moved for any of it.
 
 **A constant standing in for a curve is not the conservative end, and saying
 so was the mistake.** `PICKPOCKET_CYCLE_SECONDS` was 3.5 seconds, fitted to one

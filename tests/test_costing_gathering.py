@@ -1131,6 +1131,7 @@ class TestNamesNoRuleBridges:
             "guard (h.a.m. storeroom)",
             "chest (chaos druid tower)",
             "ore stall",
+            "underground pass",
         }
 
     def test_an_aliased_page_is_still_confirmed(self) -> None:
@@ -2490,10 +2491,10 @@ class TestARefusalCarriesItsOwnReason:
 
 
 class TestARefusalByKind:
-    """Half of what `{{Thieving info}}` describes is not a loop: 14 `Door`s, 7
-    `Trap`s and a `Trapdoor`. You pick a lock to get through and then you are
-    through, so there is no action to repeat and no rate - and what
-    disqualifies them is the kind rather than any of their names."""
+    """A `Trap` is the one Thieving kind that pays nothing - six of its seven
+    pages state `xp = 0`. Doors were refused beside it and are not any more:
+    `costing/shortcuts.py` prices an Agility shortcut, the same shape, at a
+    stated eight ticks."""
 
     def _tables(self) -> gathering.Tables:
         return gathering.Tables(skill_loops={"Thieving": {"door (yanille dungeon)": "Door"}})
@@ -2551,3 +2552,91 @@ class TestAZeroRestockIsARestock:
         shipped = gathering.load_tables(cache.read_gathering())
         for chest in ("rusty chest", "tarnished chest", "stone chest", "reinforced chest"):
             assert shipped.respawns[chest] == 0.0
+
+
+class TestADoorIsAnObstacleAndIsPricedLikeOne:
+    """**The refusal that was reversed, and why.** "You unlock a door once and
+    it stays unlocked" is not what disqualifies a method - `shortcuts.py`
+    prices an Agility shortcut, a thing in the way with an experience for
+    getting past it, at a stated eight ticks and reports the honest low
+    numbers. Measured over the wiki, not one of the 22 `Door`/`Trap`/
+    `Trapdoor` pages carries a `time`, so the borrow is from the nearest
+    published obstacle rather than from inside the family."""
+
+    _PROFILE = gathering.PROFILES["Thieving"]
+
+    def test_the_interval_is_the_shortcut_modules_own(self) -> None:
+        from chunksim.costing.shortcuts import SHORTCUT_TICKS
+
+        assert self._PROFILE.roll_ticks_by_kind["Door"] == SHORTCUT_TICKS
+        assert self._PROFILE.roll_ticks_by_kind["Trapdoor"] == SHORTCUT_TICKS
+
+    def test_a_borrowed_interval_caps_the_provenance(self) -> None:
+        # A rate is only as good as its weakest input; saying `confirmed`
+        # because the chance was charted is what provenance exists to stop.
+        assert {"Door", "Trapdoor"} <= self._PROFILE.inferred_loops
+
+    def test_a_door_with_no_chart_cannot_fail(self) -> None:
+        """The wiki's own convention, and its own prose for the one door that
+        says anything: `Gate (Underground Pass Shortcut)` is "100% successful
+        below the required level"."""
+        assert {"Door", "Trapdoor"} <= self._PROFILE.certain_kinds
+
+    def test_a_chart_still_wins_where_there_is_one(self) -> None:
+        # `certain_kinds` is the fallback, checked after every curve source -
+        # seven doors carry a chart and the Yanille one is brutal.
+        tables = gathering.Tables(
+            curves={"door (yanille dungeon)": (("Unlocking the door", 4.0, 40.0, 82, "confirmed"),)},
+            skill_info={"Thieving": {"door (yanille dungeon)": (82, 50.0)}},
+            skill_loops={"Thieving": {"door (yanille dungeon)": "Door"}},
+        )
+        challenge = {"Objects": ["Door (Yanille Dungeon)"], "Level": 82, "Primary": True}
+        rate = gathering.rate_at(
+            tables, {}, self._PROFILE, "t", "Thieving", challenge, 99
+        )
+        assert rate is not None
+        assert rate.chance < 0.2
+        assert rate.provenance == gathering.INFERRED
+
+    def test_a_door_has_nothing_to_restock(self) -> None:
+        assert "Door" not in self._PROFILE.restock_kinds
+
+    def test_a_trap_is_still_refused(self) -> None:
+        # Six of the seven `Trap` pages state `xp = 0`; a trap is a hazard to
+        # avoid rather than an action that pays.
+        assert set(self._PROFILE.refused_kinds) == {"Trap"}
+
+
+class TestATaskCanNameTheWrongThingEntirely:
+    """`Unlock the ~|paladin|~ door` states no `Objects`, so its only key is
+    the span - and `paladin` is a real page with a real chart. It priced at
+    117,670/hr, a door read as a pickpocket."""
+
+    def test_the_table_replaces_the_keys_rather_than_leading_them(self) -> None:
+        """**Leading was not enough**: `_experience_for` scans the calculator
+        across every key before it looks at any infobox, and the calculator
+        has a `Paladin` row and no door - so the door kept the NPC's 131.8
+        experience and its two-tick cadence."""
+        keys = gathering._join_keys(
+            {"Chunks": ["10291"]},
+            {},
+            gathering._NAME_FIELDS,
+            "Thieving",
+            "Unlock the ~|paladin|~ door",
+        )
+        assert keys == ("Door (Ardougne Castle)",)
+
+    def test_it_is_keyed_by_whole_task_and_stays_tiny(self) -> None:
+        # A task name cannot be reached by accident, which is what makes a
+        # replacement safe; twenty entries would mean a rule is missing.
+        assert len(gathering._TASK_NODES) <= 3
+        for task in gathering._TASK_NODES:
+            assert task.startswith(("Unlock", "Steal", "Loot", "Pickpocket", "Crack"))
+
+    def test_an_ordinary_task_is_untouched(self) -> None:
+        keys = gathering._join_keys(
+            {"Monsters": ["Paladin"]}, {}, gathering._NAME_FIELDS, "Thieving",
+            "Pickpocket a ~|paladin|~",
+        )
+        assert keys[0] == "Paladin"
+        assert "Door (Ardougne Castle)" not in keys

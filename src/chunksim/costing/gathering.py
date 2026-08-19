@@ -1715,7 +1715,29 @@ PROFILES: dict[str, SkillProfile] = {
         # where a chest you fail at stays shut in front of you and is retried
         # in place. The fallible ones therefore name their own interval in
         # `fixed_interval` rather than sharing this one.
-        roll_ticks_by_kind={"Pickpocket": 2.0, "Stalls": 2.0, "Chests": 15.5},
+        # **A door is an obstacle and `costing/shortcuts.py` already prices
+        # one.** Eight ticks an attempt is that module's `SHORTCUT_TICKS`,
+        # borrowed outright: an Agility shortcut and a picked lock are the
+        # same shape - a thing in the way, an experience for getting past it,
+        # and no page anywhere stating how often you can do it. Measured over
+        # the whole wiki, **not one of the 22 `Door`/`Trap`/`Trapdoor` pages
+        # carries a `time`**, so there was nothing inside the family to infer
+        # from and the borrow is from the nearest published obstacle instead.
+        #
+        # `inferred_loops` marks what that costs: a borrowed interval caps the
+        # whole rate at `INFERRED` however well charted its chance is.
+        #
+        # **What the numbers say is that doors are bad methods**, which is
+        # `shortcuts.py`'s own finding about shortcuts: 2,250/hr for the
+        # Underground Pass cage up to 37,500 for the Yanille Dungeon door,
+        # against a Rogues' Castle chest at 271,626.
+        roll_ticks_by_kind={
+            "Pickpocket": 2.0,
+            "Stalls": 2.0,
+            "Chests": 15.5,
+            "Door": 8.0,
+            "Trapdoor": 8.0,
+        },
         # **A chest that can fail is retried, not walked away from.** See the
         # note above for why that is a different cadence from the 15.5 ticks
         # beside it.
@@ -1774,41 +1796,52 @@ PROFILES: dict[str, SkillProfile] = {
             "reinforced chest": 6.8,
         },
         fail_seconds=3.6,
-        fail_seconds_by_kind={"Stalls": 0.0, "Chests": 0.0},
-        certain_kinds=frozenset({"Stalls", "Chests"}),
-        restock_kinds=frozenset({"Stalls", "Chests"}),
-        # **Half of what `{{Thieving info}}` describes is not a loop.** The
-        # box's `type` runs to six values and three of them are obstacles:
-        # 14 `Door`s, 7 `Trap`s and a `Trapdoor`. You pick a lock to get
-        # through, and then you are through - there is no action to repeat, so
-        # there is no rate, which is the same shape as Woodcutting's outfits.
-        #
-        # **Refused by kind rather than by name** because the kind is what
-        # disqualifies them: naming the eleven the export happens to carry
-        # would need editing the day upstream adds a twelfth, and the wiki has
-        # already made the call on every one of the twenty-two.
-        refused_kinds={
-            "Door": "a lock you pick to get through, not an action you repeat",
-            "Trapdoor": "a lock you pick to get through, not an action you repeat",
-            "Trap": "an obstacle in the way of the thing being stolen",
+        # **A door that does not open costs another attempt and nothing
+        # else** - there is no stun and no teleport, you simply try again, and
+        # `roll_seconds / chance` is already that.
+        fail_seconds_by_kind={
+            "Stalls": 0.0,
+            "Chests": 0.0,
+            "Door": 0.0,
+            "Trapdoor": 0.0,
         },
+        # **A door with no chart cannot fail**, which is the wiki's own
+        # convention and which its own prose confirms for the one door that
+        # says anything: `Gate (Underground Pass Shortcut)` is "100%
+        # successful below the required level". `certain_kinds` is checked
+        # *after* a chart, so the seven doors carrying one still use it.
+        certain_kinds=frozenset({"Stalls", "Chests", "Door", "Trapdoor"}),
+        # A door has nothing to restock: it is a lock, not a container.
+        restock_kinds=frozenset({"Stalls", "Chests"}),
+        inferred_loops=frozenset({"Door", "Trapdoor"}),
+        # **A door whose own `type` is blank.** `Door (H.A.M. Hideout Jail)`
+        # states its level and its 4 experience and leaves the field empty
+        # where every sibling fills it, so the kind comes from here - which is
+        # what `loop_at` is for.
+        loop_at={"door (h.a.m. hideout jail)": "Door"},
+        # **A trap is the one kind here that pays nothing.** Six of the seven
+        # `{{Thieving info}}` pages typed `Trap` state `xp = 0` and the
+        # seventh is a speartrap the export carries no challenge for - a trap
+        # is a hazard to avoid rather than an action that pays, so there is no
+        # numerator and none is coming.
+        #
+        # **Doors were refused beside it and are not any more.** The argument
+        # was that "you unlock a door once and it stays unlocked", which is
+        # not what disqualifies a method: `costing/shortcuts.py` prices an
+        # Agility shortcut, the same shape, at a stated eight ticks and
+        # reports the honest low numbers. See `roll_ticks_by_kind`.
+        refused_kinds={"Trap": "a hazard to avoid rather than an action that pays"},
         refuses={
             # **Legitimately worth nothing**, the same shape as Mining's lunar
             # ore: `{{Thieving info}}` on `Movario` states `xp = 0`. He is
             # pickpocketed for a quest item, and the zero is the answer rather
             # than a figure nobody has scraped.
             "movario": "its own infobox states xp = 0, and the zero is the answer",
-            # **Two doors the kind rule cannot reach, for two different
-            # reasons - so they are named the way `recipe_rates.HAND_ALIASES`
-            # names what no rule recovers.** `Door (H.A.M. Hideout Jail)`
-            # carries a `{{Thieving info}}` whose `type` is blank where every
-            # sibling fills it, and `Grubby Door` has no infobox at all. Both
-            # were read on their own pages: a lock, a level, and a room on the
-            # other side.
-            "door (h.a.m. hideout jail)": (
-                "a lock you pick to get through, not an action you repeat"
-            ),
-            "grubby door": "a lock you pick to get through, not an action you repeat",
+            # **The one door with no data at all.** `Grubby Door` has no
+            # `{{Thieving info}}`, so nothing states its experience and the
+            # eight-tick interval has no numerator to spend. Named here rather
+            # than left blank for Woodcutting's swaying-tree reason.
+            "grubby door": "no infobox anywhere states its experience",
             # **0.2 experience and a long animation.** The Grim Tales
             # obstacle's `{{Skill info}}` states `skill1exp = 0.2` - a fifth
             # of a point for climbing over a wall once during a quest. Named
@@ -2446,6 +2479,20 @@ _ALIASES: dict[str, str] = {
     # Singular against plural, and a capital the plural brought with it - so
     # the `s`-rule above cannot reach it on its own.
     "guard (h.a.m. storeroom)": "Guard (H.A.M. Storerooms)",
+    # **Upstream names a place where the wiki names the thing.** `Unlock the
+    # cage in the ~|Underground Pass|~` states no `Objects` at all, so its
+    # only join key is the span - which is a *chunk*. The wiki has the object
+    # under `Cage (Underground Pass, slave)`, and the dungeon walkthrough says
+    # what it is: "Pick-locking these cage doors gives 3 experience in the
+    # Thieving skill when successful and can be done at level 1 Thieving",
+    # which is upstream's `Level: 1` exactly. **Safe because it is measured**:
+    # across every gathering skill in the export, one challenge offers
+    # `Underground Pass` as a key and it is this one.
+    #
+    # It is *not* the level-50 `Gate (Underground Pass Shortcut)`, which
+    # upstream carries separately and which bypasses the maze - two objects,
+    # two pages, and the wiki calls both of them cages in its prose.
+    "underground pass": "Cage (Underground Pass, slave)",
     # **The chest is filed by what is in it.** Upstream names the Chaos Druid
     # Tower chest by where it is; the Thieving page's own restock table calls
     # it `Chest (blood runes)` and gives it 120 seconds. Both pages exist, and
@@ -2475,6 +2522,44 @@ _ALIASES: dict[str, str] = {
 }
 
 
+#: Task -> the page the wiki files it under, where the task's own words name
+#: something else entirely. **Replaces the key list rather than leading it**,
+#: and is keyed by whole task name so it cannot reach anything but the
+#: challenge it is written for.
+#:
+#: `Unlock the ~|paladin|~ door` is the case that needed it and the reason a
+#: name-keyed table could not have. The challenge states no `Objects` at all,
+#: so its only key is the span - `paladin` - which is a real page with a real
+#: chart, the Ardougne Castle NPC. It priced at **117,670/hr**, a door read as
+#: a pickpocket, and an `_ALIASES` entry on `paladin` cannot fix it: the
+#: pickpocket challenge offers that key too, and both would follow it. The
+#: wiki's `Door (Ardougne Castle)` is level 61 and 50 experience, which is
+#: upstream's own `Level: 61` exactly.
+#:
+#: **Leading the list was not enough and the reason is worth knowing**:
+#: `_experience_for` scans the *calculator* across every key before it looks
+#: at any infobox, and the calculator has a `Paladin` row and no door. So the
+#: door kept the NPC's 131.8 experience and its two-tick pickpocket cadence
+#: while resolving its curve correctly - a rate wrong in three places out of
+#: four. A replacement says what is true: this challenge is about that page
+#: and about nothing else.
+#:
+#: The door's page charts two series and only one of them gates the method -
+#: "the first one is for a trap that if failed deals 10% of your maximum
+#: hitpoints in damage ... the second is to unlock the door". Damage is not a
+#: failed action, so `Unlocking the door` is the series to spend and
+#: `tool_curve` picks it by its `req`.
+#:
+#: **Two more are known and deliberately absent.** `Unlock the east ~|chest
+#: (10 coins)|~ door` and `Unlock the ~|chest (nature runes)|~ door` are doors
+#: that join their chests, and the Thieving page's `Pickable doors` table has
+#: their experience where their pages leave it blank - so the fix there is a
+#: table nothing here parses yet, rather than another line in this one.
+_TASK_NODES: dict[str, str] = {
+    "Unlock the ~|paladin|~ door": "Door (Ardougne Castle)",
+}
+
+
 def _join_keys(
     challenge: Mapping[str, Any],
     families: Mapping[str, Sequence[str]],
@@ -2501,6 +2586,8 @@ def _join_keys(
     is five methods on the reference map and every salamander in the export.
     Added last, so a page that really is titled plainly still wins.
     """
+    if task in _TASK_NODES:
+        return (_TASK_NODES[task],)
     keys: list[str] = []
     for field_name in fields:
         value = challenge.get(field_name)
