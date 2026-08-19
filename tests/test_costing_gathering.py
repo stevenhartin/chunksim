@@ -14,6 +14,7 @@ import pytest
 from chunksim.costing import gathering
 from chunksim.costing.heuristics import Rate
 from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.store import cache
 
 
 TABLES = gathering.Tables(
@@ -1120,12 +1121,16 @@ class TestNamesNoRuleBridges:
         assert "Guard" not in keys
 
     def test_an_alias_is_a_whole_name_and_not_a_pattern(self) -> None:
-        # Three entries is a vocabulary gap; a rule wearing a dict would be
+        # Seven entries is a vocabulary gap; a rule wearing a dict would be
         # twenty, and each of these is one object with two spellings.
         assert set(gathering._ALIASES) == {
             "rocks (barronite)",
             "crystals (ancient essence)",
             "kharidian cactus (healthy)",
+            "al-kharid warrior",
+            "guard (h.a.m. storeroom)",
+            "chest (chaos druid tower)",
+            "ore stall",
         }
 
     def test_an_aliased_page_is_still_confirmed(self) -> None:
@@ -1182,8 +1187,24 @@ class TestNamesNoRuleBridges:
         assert "Infernal shale rocks" in keys
 
     def test_the_alias_list_stays_short(self) -> None:
-        # Two entries is a vocabulary gap; twenty would mean a rule is missing.
-        assert len(gathering._ALIASES) <= 5
+        # A handful is a vocabulary gap; twenty would mean a rule is missing.
+        assert len(gathering._ALIASES) <= 10
+
+    def test_an_alias_supplies_and_never_displaces(self) -> None:
+        """**The hazard of `_ALIASES` is that it redirects every lookup, not
+        just the one that was short.** `Shop Counter (gems)` needed a restock
+        the stall table files under `Gem stall (Mor Ul Rek)`, and aliasing the
+        name would have taken the *calculator's* 160 experience for that row
+        over the 408 both its own infobox and the stall table state - so its
+        restock is read off its own page instead. Every alias kept here was
+        checked for this: the original name is offered first, so an alias can
+        only fill what nothing else answered."""
+        assert "shop counter (gems)" not in gathering._ALIASES
+        assert "shop counter (ore)" not in gathering._ALIASES
+        keys = gathering._join_keys(
+            {"Objects": ["Ore stall"]}, {}, gathering._NAME_FIELDS, "Thieving"
+        )
+        assert keys.index("Ore stall") < keys.index("Ore stall (Mor Ul Rek)")
 
 
 class TestUnitsAreSpentByWhatTheNodeWaitsFor:
@@ -2441,10 +2462,10 @@ class TestARefusalCarriesItsOwnReason:
             refuses={"sunstone monolith": "a quest-line object"}
         )
         challenge = {"Output": "Sunstone", "Objects": ["Sunstone monolith"]}
-        assert gathering.refusal(profile, {}, challenge, "Mining", "t") == (
+        assert gathering.refusal(TABLES, profile, {}, challenge, "Mining", "t") == (
             "a quest-line object"
         )
-        assert gathering.refusal(profile, {}, {"Output": "Sunstone"}, "Mining", "t") == ""
+        assert gathering.refusal(TABLES, profile, {}, {"Output": "Sunstone"}, "Mining", "t") == ""
 
     def test_a_refused_method_is_reported_rather_than_counted_as_a_miss(self) -> None:
         """`no_curve` means "this named a node the wiki charts nothing for",
@@ -2466,3 +2487,67 @@ class TestARefusalCarriesItsOwnReason:
         assert "one experience" in coverage.refused["Chop the ~|swaying tree|~"]
         assert coverage.no_curve == ()
         assert coverage.no_experience == ()
+
+
+class TestARefusalByKind:
+    """Half of what `{{Thieving info}}` describes is not a loop: 14 `Door`s, 7
+    `Trap`s and a `Trapdoor`. You pick a lock to get through and then you are
+    through, so there is no action to repeat and no rate - and what
+    disqualifies them is the kind rather than any of their names."""
+
+    def _tables(self) -> gathering.Tables:
+        return gathering.Tables(skill_loops={"Thieving": {"door (yanille dungeon)": "Door"}})
+
+    def _profile(self) -> gathering.SkillProfile:
+        return gathering.SkillProfile(
+            refused_kinds={"Door": "a lock you pick to get through"}
+        )
+
+    def test_the_kind_is_read_off_the_infobox(self) -> None:
+        challenge = {"Objects": ["Door (Yanille Dungeon)"], "Level": 82}
+        assert gathering.refusal(
+            self._tables(), self._profile(), {}, challenge, "Thieving", "t"
+        ) == "a lock you pick to get through"
+
+    def test_a_node_of_another_kind_is_untouched(self) -> None:
+        challenge = {"Objects": ["Silk stall"]}
+        assert gathering.refusal(
+            self._tables(), self._profile(), {}, challenge, "Thieving", "t"
+        ) == ""
+
+    def test_a_name_outranks_a_kind(self) -> None:
+        """The more specific statement wins, so a profile can say "no door is
+        a training method" and "not this one either, for its own reason"."""
+        profile = dataclasses.replace(
+            self._profile(), refuses={"door (yanille dungeon)": "its own reason"}
+        )
+        challenge = {"Objects": ["Door (Yanille Dungeon)"]}
+        assert gathering.refusal(
+            self._tables(), profile, {}, challenge, "Thieving", "t"
+        ) == "its own reason"
+
+    def test_the_export_carries_no_priced_door(self) -> None:
+        """`strict_kinds` is what refuses the rate and this only says why, so
+        naming the kinds cannot take a number away: no profile gives one of
+        them a roll interval."""
+        for profile in gathering.PROFILES.values():
+            assert not set(profile.refused_kinds) & set(profile.roll_ticks_by_kind)
+
+
+class TestAZeroRestockIsARestock:
+    """The same `> 0` guard was in two places, and both read a real nought as
+    a missing figure - see `remote/gathering.parse_stall_respawns`."""
+
+    def test_load_tables_keeps_it(self) -> None:
+        tables = gathering.load_tables({"respawns": {"Stone chest": 0, "Silk stall": 4.8}})
+        assert tables.respawns == {"stone chest": 0.0, "silk stall": 4.8}
+
+    def test_a_negative_is_still_unreadable(self) -> None:
+        assert gathering.load_tables({"respawns": {"Nonsense": -1}}).respawns == {}
+
+    def test_the_four_instant_chests_are_shipped_with_one(self) -> None:
+        """They are what the guard was costing: the rusty, tarnished, stone and
+        reinforced chests, all `0 seconds` on the Thieving page's own table."""
+        shipped = gathering.load_tables(cache.read_gathering())
+        for chest in ("rusty chest", "tarnished chest", "stone chest", "reinforced chest"):
+            assert shipped.respawns[chest] == 0.0

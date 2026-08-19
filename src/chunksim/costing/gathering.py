@@ -292,6 +292,16 @@ class SkillProfile:
     #: `GatheringCoverage.refused`, so it is written once and printed where
     #: the question is asked. Keep it to a line - it prints beside the method.
     refuses: Mapping[str, str] = field(default_factory=dict)
+    #: Infobox loop -> why nothing of that kind is a training method. **The
+    #: same statement as `refuses` one level up**, for a case where naming
+    #: nodes would be naming the wrong thing: the wiki calls twenty-two
+    #: Thieving objects a `Door`, a `Trapdoor` or a `Trap`, and what
+    #: disqualifies them is the kind rather than any of their names - you
+    #: unlock a door once and it stays unlocked. Listing the eleven the export
+    #: happens to carry would need editing every time upstream adds a
+    #: twelfth. `strict_kinds` already refuses the rate, since no kind here
+    #: has a roll interval; this says why, so the row does not read as a gap.
+    refused_kinds: Mapping[str, str] = field(default_factory=dict)
     #: What the tool changes: `"chance"` (Woodcutting - a better axe raises the
     #: success curve), `"interval"` (Mining - a better pickaxe rolls more
     #: often), or `""` (the rest - the tool is a gate, not a speed).
@@ -1737,14 +1747,69 @@ PROFILES: dict[str, SkillProfile] = {
         # own vocabulary: a measurement of the same kind of thing moved onto an
         # uncharted one. It is named here rather than defaulted by kind so the
         # judgement is visible per node and a third chest has to make it again.
+        #
+        # **Four more borrow it, and the stone chest is what settles them.**
+        # The Thieving page's own table gives the rusty, tarnished, stone and
+        # reinforced chests a restock of `0 seconds` - "the chest's loot
+        # respawns instantly", as the stone chest's page puts it - so there is
+        # no wait to walk off and the attempt is the whole cost. All four also
+        # carry a `Teleport chance upon failure` chart, which is the Aldarin
+        # mechanic stated outright.
+        #
+        # **The published figure decides between the two intervals rather than
+        # fitting a third.** `Stone chest` says "players can expect to gain
+        # over 85,000 experience per hour", and at 280 experience that is 304
+        # opens an hour. At 15.5 ticks it would need a success chance of
+        # 0.784, where its chart tops out at **0.605** at level 99 - so the
+        # walk-between-three interval cannot produce the wiki's own number at
+        # any level. At 6.8 it is reached at level 68, twelve above where the
+        # chest opens, which is what a figure quoted without a level should
+        # look like.
         fixed_interval={
             "chest (aldarin villas)": 6.8,
             "chest (isle of souls dungeon)": 6.8,
+            "rusty chest": 6.8,
+            "tarnished chest": 6.8,
+            "stone chest": 6.8,
+            "reinforced chest": 6.8,
         },
         fail_seconds=3.6,
         fail_seconds_by_kind={"Stalls": 0.0, "Chests": 0.0},
         certain_kinds=frozenset({"Stalls", "Chests"}),
         restock_kinds=frozenset({"Stalls", "Chests"}),
+        # **Half of what `{{Thieving info}}` describes is not a loop.** The
+        # box's `type` runs to six values and three of them are obstacles:
+        # 14 `Door`s, 7 `Trap`s and a `Trapdoor`. You pick a lock to get
+        # through, and then you are through - there is no action to repeat, so
+        # there is no rate, which is the same shape as Woodcutting's outfits.
+        #
+        # **Refused by kind rather than by name** because the kind is what
+        # disqualifies them: naming the eleven the export happens to carry
+        # would need editing the day upstream adds a twelfth, and the wiki has
+        # already made the call on every one of the twenty-two.
+        refused_kinds={
+            "Door": "a lock you pick to get through, not an action you repeat",
+            "Trapdoor": "a lock you pick to get through, not an action you repeat",
+            "Trap": "an obstacle in the way of the thing being stolen",
+        },
+        refuses={
+            # **Legitimately worth nothing**, the same shape as Mining's lunar
+            # ore: `{{Thieving info}}` on `Movario` states `xp = 0`. He is
+            # pickpocketed for a quest item, and the zero is the answer rather
+            # than a figure nobody has scraped.
+            "movario": "its own infobox states xp = 0, and the zero is the answer",
+            # **Two doors the kind rule cannot reach, for two different
+            # reasons - so they are named the way `recipe_rates.HAND_ALIASES`
+            # names what no rule recovers.** `Door (H.A.M. Hideout Jail)`
+            # carries a `{{Thieving info}}` whose `type` is blank where every
+            # sibling fills it, and `Grubby Door` has no infobox at all. Both
+            # were read on their own pages: a lock, a level, and a room on the
+            # other side.
+            "door (h.a.m. hideout jail)": (
+                "a lock you pick to get through, not an action you repeat"
+            ),
+            "grubby door": "a lock you pick to get through, not an action you repeat",
+        },
         # **Three chests sit together at the Rogues' Castle**, which its own
         # `{{Map}}` pins show and which is why the guide's rate beats anything
         # one chest could give: 20.4 seconds of restock shared three ways is
@@ -2019,10 +2084,15 @@ def load_tables(raw: Mapping[str, Any]) -> Tables:
         for name, value in _mapping(raw, "tool_ticks").items()
         if isinstance(value, (int, float))
     }
+    # **A zero restock is a restock.** Four chests state `0 seconds` on the
+    # Thieving page's own table and say what that means in words - "the
+    # chest's loot respawns instantly" - so dropping the row as falsy left
+    # them with no restock at all and `restock_kinds` refused them. The same
+    # `> 0` guard was in the scraper too; both are `>= 0` now.
     respawns = {
         str(name).lower(): float(value)
         for name, value in _mapping(raw, "respawns").items()
-        if isinstance(value, (int, float)) and value > 0
+        if isinstance(value, (int, float)) and value >= 0
     }
 
     herbiboar_xp = {
@@ -2359,6 +2429,41 @@ _ALIASES: dict[str, str] = {
     "rocks (barronite)": "Barronite rocks",
     "crystals (ancient essence)": "Ancient essence crystals",
     "kharidian cactus (healthy)": "Kharidian cactus",
+    # **Four Thieving names where the two vocabularies simply disagree.** Each
+    # was checked against the page it lands on rather than inferred from
+    # resemblance, and each buys a whole method.
+    #
+    # A hyphen upstream the wiki does not write.
+    "al-kharid warrior": "Al Kharid warrior",
+    # Singular against plural, and a capital the plural brought with it - so
+    # the `s`-rule above cannot reach it on its own.
+    "guard (h.a.m. storeroom)": "Guard (H.A.M. Storerooms)",
+    # **The chest is filed by what is in it.** Upstream names the Chaos Druid
+    # Tower chest by where it is; the Thieving page's own restock table calls
+    # it `Chest (blood runes)` and gives it 120 seconds. Both pages exist, and
+    # only one of them is in the table.
+    "chest (chaos druid tower)": "Chest (blood runes)",
+    # **The wiki's own calculator resolves a disambiguation page.** `Ore
+    # stall` as an article is a disambiguation - two thievable ore stalls,
+    # both level 82, paying 350 in Mor Ul Rek and 191 in Port Roberts over
+    # restocks of 30 seconds and 2.4 - so upstream's bare `Ore stall` looks
+    # unanswerable. It is not: `Module:Skill calc/Thieving` carries one row
+    # called exactly `Ore stall`, at 350, and files the gem counter beside it
+    # as `Gem stall (Mor Ul Rek)`. The wiki uses the bare name for Mor Ul
+    # Rek's, so this follows it rather than guessing.
+    #
+    # **Only the restock travels.** The calculator's own `Ore stall` row is
+    # hit first for the experience, so the alias cannot move that figure - it
+    # supplies the one thing the bare name has no row for.
+    "ore stall": "Ore stall (Mor Ul Rek)",
+    # **Mor Ul Rek's two counters are deliberately not here.**
+    # `Stall/Thievable` files them as `Gem stall (Mor Ul Rek)` and `Ore stall
+    # (Mor Ul Rek)` where their pages are `Shop Counter (gems)`/`(ore)`, so an
+    # alias looks like the obvious fix and is the wrong one: it redirects
+    # *every* lookup, and the Thieving calculator's row for the gem counter
+    # states 160 experience where both the stall table and the counter's own
+    # infobox say 408. Their restock is read off their own page instead - see
+    # `remote/gathering.RESPAWN_INFO_TEMPLATES`.
 }
 
 
@@ -2847,24 +2952,41 @@ def tool_curve(
 
 
 def refusal(
+    tables: Tables,
     profile: SkillProfile,
     families: Mapping[str, Sequence[str]],
     challenge: Mapping[str, Any],
     skill: str,
     task: str,
 ) -> str:
-    """Why this model declines `task` by name, or `""` if it does not.
+    """Why this model declines `task`, by name or by kind, or `""`.
 
     **Asked of every name the challenge offers, not just the one a curve
     resolved under** - see the comment at the call site in `rate_at` for the
     sunstone monolith, which is the case that forced it.
 
+    The name is asked first and the kind second, because a name is the more
+    specific statement: `refused_kinds` says "no door is a training method"
+    and `refuses` says "not this one", and a profile could want both.
+
     Split out of `rate_at` so `priced_methods` can ask the same question
     without pricing anything: a refusal has to reach the report, or it is
     counted as the gap it exists to say it is not.
     """
-    for key in _join_keys(challenge, families, _NAME_FIELDS, skill, task):
+    keys = _join_keys(challenge, families, _NAME_FIELDS, skill, task)
+    for key in keys:
         why = profile.refuses.get(key.lower())
+        if why:
+            return why
+    if not profile.refused_kinds:
+        return ""
+    # **The infobox's own `type`, not the calculator's grouping.** A door has
+    # no calculator row at all, so this is the only field that says what it
+    # is - and it is read straight rather than through `_experience_for`,
+    # which returns no kind at all for a node paying nothing.
+    loops = tables.skill_loops.get(skill) or {}
+    for key in keys:
+        why = profile.refused_kinds.get(loops.get(key.lower(), ""))
         if why:
             return why
     return ""
@@ -2986,7 +3108,7 @@ def rate_at(
     # resolved node cannot express that, because the resolved node is the
     # rocks'. Measured over the export, widening this refuses five methods and
     # all five were already meant to be refused.
-    if refusal(profile, families, challenge, skill, task):
+    if refusal(tables, profile, families, challenge, skill, task):
         return None
     # **Restock-bound loops need their restock.** See `restock_kinds`: without
     # it a stall falls back to the interaction cadence and reads as the fastest
@@ -3213,7 +3335,7 @@ def priced_methods(
                 # **A refusal is not a miss**, so it is recorded before
                 # `_record_miss` rather than counted as a method that named a
                 # node nothing charts. See `refusal`.
-                why = refusal(profile, families, challenge, skill, task)
+                why = refusal(tables, profile, families, challenge, skill, task)
                 if why:
                     refused[task] = why
                 else:

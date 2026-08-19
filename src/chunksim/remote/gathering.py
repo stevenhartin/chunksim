@@ -146,7 +146,27 @@ SKILL_INFO_TEMPLATES: dict[str, str] = {
 #: the whole of its rate. Two spellings of "no wait" fall out on their own -
 #: `N/A` parses to nothing and blisterwood's `0 seconds` is filtered by the
 #: `> 0`, which is the right answer for both.
-RESPAWN_INFO_TEMPLATES: frozenset[str] = frozenset({"Mining info", "Woodcutting info"})
+#: **And `Thieving info` states one too, for two of its six kinds.** Its own
+#: `type` field says what the `time` means, which is the whole reason it can
+#: be read at all: a `Stall`'s is the restock and a `Chest`'s the loot
+#: respawn - the same mechanic, take the one thing and wait - while a
+#: `Pickpocket`'s is the **stun timer**, sixty pages of it, and reading that
+#: as a restock would price every NPC as a stall. `parse_info_respawn` gates
+#: on the kind for exactly that reason.
+#:
+#: The curated tables still win, because `respawns` is filled with
+#: `setdefault` and they are read first. What this adds is the two Mor Ul Rek
+#: counters, which `Stall/Thievable` files under names their own pages do not
+#: carry (`Gem stall (Mor Ul Rek)` against `Shop Counter (gems)`) - and
+#: reading their own page is better than aliasing the names, because an alias
+#: redirects *every* lookup and the calculator's row for the gem counter
+#: states 160 experience where both its page and the stall table say 408.
+RESPAWN_INFO_TEMPLATES: frozenset[str] = frozenset(
+    {"Mining info", "Woodcutting info", "Thieving info"}
+)
+
+#: The `Thieving info` kinds whose `time` is a restock rather than a stun.
+RESTOCK_KINDS: frozenset[str] = frozenset({"stall", "chest"})
 
 #: The templates whose `type` field names the **loop** a node belongs to.
 #:
@@ -158,26 +178,42 @@ RESPAWN_INFO_TEMPLATES: frozenset[str] = frozenset({"Mining info", "Woodcutting 
 #: skill's carries.
 LOOP_INFO_TEMPLATES: frozenset[str] = frozenset({"Thieving info"})
 
-#: Infobox `type` -> the calculator's own name for the same loop. **Only the
-#: three that are loops.** `Door`, `Trap` and `Trapdoor` are the other
-#: fourteen, twenty-two of them between them, and none is a training method:
-#: you unlock a door once and it stays unlocked. Leaving them unmapped is what
-#: keeps them refused, which is what they are.
+#: Infobox `type` -> the calculator's own name for the same loop.
+#:
+#: **Three are loops and three are not, and both halves are carried.** `Door`,
+#: `Trap` and `Trapdoor` are twenty-two pages between them and none is a
+#: training method: you unlock a door once and it stays unlocked. Leaving them
+#: *unmapped* used to be how they stayed refused, and that was a mistake of
+#: exactly the kind `coverage.REFUSED` exists for - an unmapped kind is
+#: indistinguishable from a page nobody scraped, so eleven deliberate
+#: refusals printed as `unpriced`, the word that means "somebody should go and
+#: close this". Carrying the name is what lets
+#: `gathering.SkillProfile.refused_kinds` say the decision out loud, and
+#: `strict_kinds` still refuses the rate because no profile gives these a roll
+#: interval.
 LOOP_KINDS: dict[str, str] = {
     "pickpocket": "Pickpocket",
     "stall": "Stalls",
     "chest": "Chests",
+    "door": "Door",
+    "trapdoor": "Trapdoor",
+    "trap": "Trap",
 }
 
 
 def parse_info_loop(text: str, template: str) -> str | None:
     """The loop an infobox's `type` names, in the calculator's vocabulary.
 
-    `None` where the field is absent, blank, or one of the kinds that is not a
-    loop - see `LOOP_KINDS`. Two pages state a `type` this cannot read at all
-    (`Chest (Dorgesh-Kaan Rich)` and `Crossbow stall`, whose values run into
-    the next template), and both are handled the same way as a door: no loop,
-    no rate, rather than a guess at which one was meant.
+    `None` where the field is absent, blank, or a value `LOOP_KINDS` does not
+    list. Two pages state a `type` this cannot read at all (`Chest
+    (Dorgesh-Kaan Rich)` and `Crossbow stall`, whose values run into the next
+    template), and both keep no loop and so no rate, rather than a guess at
+    which one was meant.
+
+    **A door is named rather than dropped.** It is still not a training
+    method - see `LOOP_KINDS` - but "the wiki calls this a door" and "nobody
+    scraped this page" have to be different answers, or a refusal reads as a
+    gap.
     """
     block = re.search(r"\{\{" + re.escape(template) + r"(.*?)\n\}\}", text, re.S)
     if block is None:
@@ -487,6 +523,14 @@ def parse_stall_respawns(text: str) -> tuple[StallRespawn, ...]:
     variant this project has no way to choose between. Taking the leading
     figure is therefore the same conservative reading `tool_curve` takes of a
     tool tier: the common case, stated first.
+
+    **A zero is a restock and not a missing one**, which this refused for a
+    long time. Four chests on the Thieving page's own table state `0 seconds`
+    - the rusty, tarnished, stone and reinforced ones - and their pages say
+    what that means in words: "the chest's loot respawns instantly". Dropped
+    as falsy they had no restock at all, so `restock_kinds` refused them and
+    four real methods read `unpriced`. Only `None` and a negative are
+    unreadable; a nought is the answer.
     """
     table = table_with(text, "Respawn Time")
     if not table:
@@ -501,7 +545,7 @@ def parse_stall_respawns(text: str) -> tuple[StallRespawn, ...]:
             continue
         name = _plink_name(cells[0])
         respawn = _duration(cells[respawn_at])
-        if not name or respawn is None or respawn <= 0:
+        if not name or respawn is None or respawn < 0:
             continue
         found.append(StallRespawn(name=name, respawn=respawn))
     return tuple(found)
@@ -805,11 +849,22 @@ def parse_info_respawn(text: str, template: str) -> float | None:
     seconds if fully depleted / 11.4 if two remain / 23.4 if one`, and the
     first is the case a player rotating rocks is actually in - the others
     describe a partly-mined vein nobody waits at.
+
+    **`Thieving info` is asked what its own `time` means before it is
+    believed.** A `Stall` states a restock and a `Chest` its loot respawn; a
+    `Pickpocket` states the **stun timer**, which is not a wait between
+    actions at all but the price of failing one - `costing/pickpocket.py`
+    already spends it, from `Stun (status)`. Sixty of the box's ninety-four
+    `time` fields are stuns, so reading the field without the gate would price
+    every pickpocketable NPC as a stall restocking every five seconds.
     """
     block = re.search(r"\{\{" + re.escape(template) + r"(.*?)\n\}\}", text, re.S)
     if block is None:
         return None
     fields = {key: value.strip() for key, value in _INFO_FIELD.findall(block.group(1))}
+    if template in LOOP_INFO_TEMPLATES:
+        if fields.get("type", "").strip().lower() not in RESTOCK_KINDS:
+            return None
     return _duration(fields.get("time", ""))
 
 

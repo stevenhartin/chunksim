@@ -1235,6 +1235,70 @@ the box, 139 also carry a chart and 34 of those state a `time` - almost all
 pickpockets or stalls, both already priced - so `costing/wiremachine.py` being
 about one object is the measurement rather than a missed generalisation.
 
+**And that same `type` field is what makes the box's `time` readable at all,
+which took twenty-two more Thieving methods off the floor.** The field was
+being read for the *loop* and thrown away for the *duration*, because it means
+two things: a `Stall`'s `time` is the restock and a `Chest`'s the loot
+respawn, where a `Pickpocket`'s is the **stun timer** - sixty of the box's
+ninety-four - so reading it ungated would price every NPC as a stall
+restocking every five seconds. Gated on the kind it supplies exactly what
+`Stall/Thievable` files under a name the object's own page does not carry:
+Mor Ul Rek's counters are `Shop Counter (gems)`/`(ore)` as pages and `Gem
+stall (Mor Ul Rek)`/`Ore stall (Mor Ul Rek)` as rows. **Reading the page beats
+aliasing the name**, and the gem counter is why - an alias redirects *every*
+lookup, and the Thieving calculator's row for it states 160 experience where
+both the stall table and its own infobox say 408. It prices at 13,989/hr,
+which is the stall table's own `Max XP/Hr` column exactly.
+
+**A nought is a restock and `> 0` read it as a missing one.** Four chests -
+rusty, tarnished, stone and reinforced - state `0 seconds` on the Thieving
+page's own table, and their pages say what that means: "the chest's loot
+respawns instantly". Dropped as falsy they had no restock at all, so
+`restock_kinds` refused them and four real methods read as gaps. The guard was
+in two places, the scraper and `load_tables`, and both are `>= 0` now.
+
+**Which interval they take is decided by a published figure rather than by a
+third fit.** They are fallible chests retried in place, the Aldarin mechanic -
+all four carry a `Teleport chance upon failure` chart - so `fixed_interval`'s
+6.8 ticks is the candidate against the 15.5 that measures the walk between
+three Rogues' Castle chests. `Stone chest` says "players can expect to gain
+over 85,000 experience per hour", which at 280 experience is 304 opens; at
+15.5 ticks that needs a success chance of 0.784 where its chart tops out at
+**0.605 at level 99**, so the walk interval cannot produce the wiki's own
+number at any level. At 6.8 it arrives at level 68, twelve above where the
+chest opens - what a figure quoted without a level should look like.
+
+**Half of what the box describes is not a loop, and leaving that unsaid was
+the same mistake `coverage.REFUSED` exists for.** `Door`, `Trap` and
+`Trapdoor` are twenty-two pages: you pick a lock to get through, and then you
+are through. They used to stay refused by being *absent* from
+`remote/gathering.LOOP_KINDS`, and an absent kind is indistinguishable from a
+page nobody scraped - so eleven deliberate refusals printed as `unpriced`.
+Carrying the name lets `gathering.SkillProfile.refused_kinds` say it, and
+`strict_kinds` still refuses the rate because no profile gives one of them a
+roll interval. **Refused by kind rather than by name** because the kind is
+what disqualifies them; naming the eleven the export happens to carry would
+need editing the day upstream adds a twelfth.
+
+**And a refusal by name catches whatever else generates that name, which this
+walked straight into.** `Ore stall` looked unanswerable - the wiki's page is a
+disambiguation of two level-82 stalls paying 350 in Mor Ul Rek and 191 in Port
+Roberts - so it was refused by that name, and the refusal also took `Steal
+from a ~|Shop Counter (ore)|~`, whose `Output` is *also* `Ore stall`. The
+resolution was better than the refusal anyway: `Module:Skill calc/Thieving`
+carries one row called exactly `Ore stall`, at 350, and files the gem counter
+beside it as `Gem stall (Mor Ul Rek)` - so the wiki's own calculator uses the
+bare name for Mor Ul Rek's, and following it is evidence rather than a guess.
+
+Thieving went **76 modelled to 85 and 34 unpriced to 9**, and no climb moved
+on any of the three maps. What is left splits three ways: two Hallowed
+Sepulchre coffins and the Rogues' Den wall safe, which are minigame objects
+nothing states a cadence for; the ogre coffin and Entrana's candles, whose
+boxes carry no `time` and, for the candles, no `type` either; and four with no
+Thieving data anywhere - the Grim Tales crumbling wall, Chambers of Xeric
+cavern grubs, the H.A.M. storeroom guard (a pickpocket the wiki does not
+chart) and the Underground Pass cage, which upstream names no object for.
+
 **A constant standing in for a curve is not the conservative end, and saying
 so was the mistake.** `PICKPOCKET_CYCLE_SECONDS` was 3.5 seconds, fitted to one
 published figure - a Knight of Ardougne at level 55, 86,000 xp/hr - and its own

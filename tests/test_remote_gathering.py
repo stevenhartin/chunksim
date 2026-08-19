@@ -244,6 +244,18 @@ STALL_TABLE = """
 |}
 """
 
+#: The Thieving page's `Thievable chests` table, cut to the two rows that
+#: matter: one stating a real zero and one stating an ordinary wait.
+INSTANT_CHEST_TABLE = """
+{| class="wikitable sortable align-center-1"
+! colspan=2 |Chest!!Level!!Experience!!Location(s)!!Respawn Time
+|-
+|{{plinkt|Stone chest|pic=Xerician fabric}}||64||280||[[Lizardman Temple]]||0 seconds
+|-
+|{{plinkt|Chest (blood runes)|pic=Blood rune}}||59||250||[[Chaos Druid Tower]]||120 seconds
+|}
+"""
+
 TRAP_TABLE = """
 ===Multiple traps===
 Box trapping, net trapping and bird snaring can be done with multiple traps.
@@ -282,6 +294,17 @@ class TestStallRespawns:
         assert "Cannonballs" not in {
             stall.name for stall in gathering.parse_stall_respawns(STALL_TABLE)
         }
+
+    def test_a_zero_is_a_restock_and_not_a_missing_one(self) -> None:
+        """Four chests on the Thieving page's own table state `0 seconds`, and
+        their pages say what that means - "the chest's loot respawns
+        instantly". Dropped as falsy they had no restock at all, so
+        `restock_kinds` refused them and four real methods read `unpriced`."""
+        found = {
+            stall.name: stall.respawn
+            for stall in gathering.parse_stall_respawns(INSTANT_CHEST_TABLE)
+        }
+        assert found == {"Stone chest": 0.0, "Chest (blood runes)": 120.0}
 
     def test_a_stall_with_no_time_is_dropped(self) -> None:
         assert "Cannonball stall" not in {
@@ -448,10 +471,18 @@ class TestThievingInfoLoops:
         # map is what makes them one vocabulary.
         assert gathering.parse_info_loop(self._page(stated), "Thieving info") == kind
 
-    @pytest.mark.parametrize("stated", ["Door", "Trap", "Trapdoor", "Other", ""])
-    def test_what_is_not_a_loop_is_not_mapped(self, stated: str) -> None:
-        # A door is unlocked once. Leaving these unmapped is what keeps them
-        # refused, which is what they are - not an oversight to fill in.
+    @pytest.mark.parametrize(
+        "stated,kind", [("Door", "Door"), ("Trap", "Trap"), ("Trapdoor", "Trapdoor")]
+    )
+    def test_what_is_not_a_loop_is_still_named(self, stated: str, kind: str) -> None:
+        """A door is unlocked once and stays unlocked, so it is not a training
+        method - but "the wiki calls this a door" and "nobody scraped this
+        page" have to be different answers, or the refusal reads as a gap.
+        See `gathering.SkillProfile.refused_kinds`."""
+        assert gathering.parse_info_loop(self._page(stated), "Thieving info") == kind
+
+    @pytest.mark.parametrize("stated", ["Other", "", "openings}}"])
+    def test_a_value_the_map_does_not_list_is_no_loop(self, stated: str) -> None:
         assert gathering.parse_info_loop(self._page(stated), "Thieving info") is None
 
     def test_a_page_without_the_template_states_nothing(self) -> None:
@@ -463,18 +494,32 @@ class TestThievingInfoLoops:
         assert gathering.parse_skill_info(page, "Thieving info") == (20, 22.2)
 
     def test_only_three_kinds_are_loops(self) -> None:
-        assert set(gathering.LOOP_KINDS.values()) == {
-            "Pickpocket",
-            "Stalls",
-            "Chests",
+        """The other three are carried so they can be named, not priced - no
+        profile gives `Door`, `Trap` or `Trapdoor` a roll interval, so
+        `strict_kinds` refuses them exactly as it did when they were
+        unmapped."""
+        loops = {"Pickpocket", "Stalls", "Chests"}
+        assert loops <= set(gathering.LOOP_KINDS.values())
+        assert set(gathering.LOOP_KINDS.values()) - loops == {
+            "Door",
+            "Trap",
+            "Trapdoor",
         }
 
-    def test_the_time_field_is_not_read_as_a_respawn(self) -> None:
-        # **It means two different things in this template.** A pickpocket's
-        # `time` is the stun and a stall's is the restock, so `Thieving info`
-        # is deliberately absent from `RESPAWN_INFO_TEMPLATES`.
-        assert "Thieving info" not in gathering.RESPAWN_INFO_TEMPLATES
+    def test_the_time_field_is_read_only_where_it_is_a_restock(self) -> None:
+        """**It means two different things in this template**, and its own
+        `type` says which: a `Stall`'s `time` is the restock and a `Chest`'s
+        the loot respawn, where a `Pickpocket`'s is the **stun timer** -
+        sixty of the box's ninety-four, and `costing/pickpocket.py`'s to
+        spend. Reading the field ungated would price every NPC as a stall."""
+        assert "Thieving info" in gathering.RESPAWN_INFO_TEMPLATES
         assert "Thieving info" in gathering.LOOP_INFO_TEMPLATES
+        stall = self._page("Stall").replace("|xp = 22.2", "|xp = 22.2\n|time = 105 seconds")
+        chest = self._page("Chest").replace("|xp = 22.2", "|xp = 22.2\n|time = 1.8 seconds")
+        stun = self._page("Pickpocket").replace("|xp = 22.2", "|xp = 22.2\n|time = 5s")
+        assert gathering.parse_info_respawn(stall, "Thieving info") == 105.0
+        assert gathering.parse_info_respawn(chest, "Thieving info") == 1.8
+        assert gathering.parse_info_respawn(stun, "Thieving info") is None
 
 
 class TestMiningInfo:
