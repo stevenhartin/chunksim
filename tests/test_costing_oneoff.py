@@ -28,7 +28,19 @@ def test_every_entry_is_named_individually() -> None:
         "Cast ~|resurrect crops|~",
     }
 
-    assert set(oneoff.ONE_OFF) == decorations | supply_bound
+    # The third: a permanent fusion that destroys both halves. There is one
+    # boot slot and the inputs are gone, so a second is not a slower repeat.
+    fusions = {
+        "Create ~|avernic treads (et)|~",
+        "Create ~|avernic treads (pe)|~",
+        "Create ~|avernic treads (pr)|~",
+        "Create ~|avernic treads (pe)(et)|~",
+        "Create ~|avernic treads (pr)(et)|~",
+        "Create ~|avernic treads (pr)(pe)|~",
+        "Create ~|avernic treads (max)|~",
+    }
+
+    assert set(oneoff.ONE_OFF) == decorations | supply_bound | fusions
 
 
 def test_every_entry_says_why() -> None:
@@ -75,3 +87,11 @@ def test_unreachable_still_wins() -> None:
         )
         == coverage.UNCOMPLETABLE
     )
+
+
+def test_the_whole_tread_family_is_named() -> None:
+    """Upstream carries all seven under Smithing and Runecraft alike, with the
+    same `Items` and the same `Priority` block - so naming six would leave one
+    reading as a gap for no reason."""
+    named = {task for task in oneoff.ONE_OFF if "avernic treads" in task}
+    assert len(named) == 7

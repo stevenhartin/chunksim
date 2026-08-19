@@ -937,6 +937,20 @@ DEFAULT_CURRENCY_PER_HOUR: dict[str, float] = {
     # non-dedicated world's 2 - so 22 minutes and 2 tickets is 11 minutes a
     # ticket, `60 / 11` an hour. User-stated method, wiki-checked timing.
     "Castle Wars ticket": 60.0 / 11.0,
+    # **Four pools wearing one name, and the wiki does the integration for
+    # us.** Telekinetic, Graveyard, Enchantment and Alchemist points are
+    # earned in four different rooms at four different paces, so their sum is
+    # not a currency anyone earns at a single rate - but `Mage Training Arena`
+    # publishes something better: the *hours* each reward takes, one row per
+    # item, and its own total of 28.6 for the lot.
+    #
+    # Against the five whose point costs the shop template states, those hours
+    # imply between **1,037 and 1,362** points an hour, and 19,385 points over
+    # 15.7 hours is the aggregate. So one rate reproduces the wiki's own times
+    # to within -16% and +10%, which is the price of pretending four pools are
+    # one - and the shop-qualified key is what keeps that pretence inside this
+    # shop instead of leaking to anything else called `Pizazz points`.
+    "~|Pizazz points|~*:Pizazz points": 19_385.0 / 15.7,
     # **`Points` is not one currency.** 127 store lines are priced in
     # something called Points and they are not interchangeable - Mahogany
     # Homes, Pest Control and the Barbarian Assault shops each mean their own.
@@ -1013,6 +1027,22 @@ DEFAULT_SHOP_PRICES: dict[str, dict[str, ShopPrice]] = {
     },
     "Malignius Mortifer": {
         "Magic secateurs": ShopPrice(price=40_000.0, currency="Coins"),
+    },
+    # **The Mage Training Arena, whose shop the `{{Shop}}` scrape cannot see
+    # either**: `Template:Mage Training Arena Shop stock` is a hand-written
+    # table of four point columns rather than a `{{StoreLine}}`, so this is
+    # the `~|Castle Wars Ticket Exchange|~` shape a second time.
+    #
+    # **Priced at the *total* across the four pools**, which is a real
+    # simplification and the reason `DEFAULT_CURRENCY_PER_HOUR` carries a
+    # shop-qualified rate rather than a general one - see it for what a single
+    # rate costs against the wiki's own per-item hours.
+    "~|Pizazz points|~*": {
+        "Infinity hat": ShopPrice(price=4_100.0, currency="Pizazz points"),
+        "Infinity top": ShopPrice(price=5_250.0, currency="Pizazz points"),
+        "Infinity bottoms": ShopPrice(price=6_400.0, currency="Pizazz points"),
+        "Infinity gloves": ShopPrice(price=2_075.0, currency="Pizazz points"),
+        "Infinity boots": ShopPrice(price=1_560.0, currency="Pizazz points"),
     },
 }
 

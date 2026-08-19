@@ -14,6 +14,12 @@ for the first because it came first; what the two have in common is that
   a property of the drop table or the growth clock. That is the shape
   `costing/disclaimed.py` describes as "everything needed for a model is
   published except the one thing that matters".
+- **A permanent upgrade fused once, which eats both halves.** The seven
+  avernic tread variants each destroy a pair of boss-drop treads and one or
+  more of the three boot upgrades and hand back a single better boot. There
+  is one slot and the inputs are gone, so a second is not a slower repeat of
+  the first - it is a thing nobody does. This is the *mounts* argument
+  without their complication: no page anywhere says a duplicate pays again.
 
 **A method's rate is only meaningful if repeating it is the point.** Every
 other status this project reports answers "what priced this"; these are
@@ -109,6 +115,25 @@ ONE_OFF: dict[str, str] = {
     # Same shape against a different clock: you cannot resurrect a crop that
     # has not died, so the cadence is the growth schedule's.
     "Cast ~|resurrect crops|~": "waits on a farming patch dying",
+    # **A permanent upgrade fused once, and the fusion eats both halves.**
+    # The seven avernic tread variants each consume a pair of `Avernic
+    # treads` - a Doom of Mokhaiotl drop - plus one or more of the three
+    # boot upgrades, and hand back a single better boot. Nobody makes a
+    # second pair: there is one slot, the inputs are destroyed, and each of
+    # the boots behind them is itself a one-time build (`Eternal boots` is
+    # an eternal crystal from Cerberus fused onto infinity boots bought over
+    # an hour at the Mage Training Arena).
+    #
+    # **Named individually like everything else here**, and the seven are
+    # the whole family: upstream carries them under Smithing and Runecraft
+    # alike, with the same `Items` and the same `Priority` block.
+    "Create ~|avernic treads (et)|~": "a permanent fusion that eats both boots",
+    "Create ~|avernic treads (pe)|~": "a permanent fusion that eats both boots",
+    "Create ~|avernic treads (pr)|~": "a permanent fusion that eats both boots",
+    "Create ~|avernic treads (pe)(et)|~": "a permanent fusion that eats both boots",
+    "Create ~|avernic treads (pr)(et)|~": "a permanent fusion that eats both boots",
+    "Create ~|avernic treads (pr)(pe)|~": "a permanent fusion that eats both boots",
+    "Create ~|avernic treads (max)|~": "a permanent fusion that eats both boots",
 }
 
 

@@ -1625,6 +1625,35 @@ number.
 
 **Strength has no unpriced method either**, 5 modelled and 1 guessed of 6.
 
+**The second shop nobody had asked about, and it was the guess that found
+it.** Three Smithing methods read `needs Eternal boots`, and the chain behind
+them is entirely inside the export: an eternal crystal from Cerberus fused
+onto infinity boots, which upstream models as a `Source: "shop"` challenge
+(`~|Pizazz points|~*`) exactly as it models Castle Wars. And it failed for the
+same two reasons - `Template:Mage Training Arena Shop stock` is a hand-written
+table of four point columns rather than a `{{StoreLine}}`, so no re-scrape
+will ever reach it, and `Pizazz points` had no rate.
+
+**Four pools wear one name, and the wiki does the integration itself.**
+Telekinetic, Graveyard, Enchantment and Alchemist points are earned in four
+rooms at four paces, so their sum is not something anyone earns at a single
+rate - but `Mage Training Arena` publishes the **hours** each reward takes,
+one row per item. Against the five whose point costs the shop template states,
+those hours imply between **1,037 and 1,362** points an hour, and the
+aggregate is 19,385 points over 15.7 hours. So one rate reproduces the wiki's
+own times to within -16% and +10%, and the **shop-qualified key** is what
+keeps that simplification inside this shop rather than leaking to anything
+else called `Pizazz points`. `Avernic treads (et)` prices at 136.7h on the
+uber map where it had no route at all.
+
+**And the treads themselves are a third shape of `one-off`.** The seven
+variants each destroy a pair of boss-drop treads and one or more of the three
+boot upgrades and hand back a single better boot - one slot, inputs gone, so a
+second is not a slower repeat of the first. It is the mounts' argument without
+their complication: no page anywhere says a duplicate pays again. Naming all
+seven rather than the three a real map reaches is deliberate, since upstream
+carries them identically under Smithing and Runecraft.
+
 **A constant standing in for a curve is not the conservative end, and saying
 so was the mistake.** `PICKPOCKET_CYCLE_SECONDS` was 3.5 seconds, fitted to one
 published figure - a Knight of Ardougne at level 55, 86,000 xp/hr - and its own
