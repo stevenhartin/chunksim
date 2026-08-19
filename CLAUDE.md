@@ -1312,35 +1312,49 @@ stated on both coffin pages and again in the Strategies page's own note, on a
 published `Coffin opening success chance` chart - so the expected pay runs
 83.6 at level 66 to 149.2 at 99 rather than being flat.
 
-**The published column becomes the oracle rather than the source**, the
-relationship `costing/barracuda.py` describes. The model runs **1.16x to
-1.54x** above it, which is the expected direction - realistic against
-tick-perfect - and the page's own note is the only quantitative check on
-perfect play: "It is possible to reach rates above 100,000 XP/hr at maximum
-efficiency without mistakes", where floor 5 computes 118,768. **No constant
-overhead reconciles the two**, which is the finding that settles they are
-different quantities: fitting the inter-floor cost to each published row gives
-21.8, 19.5, 10.8, 12.8 and 27.9 seconds, so the gap is mistakes rather than a
-missing term. And the check caught a stale figure of this project's own -
-floor 5 carried 90,000/98,500 where the page says 75,800/88,500, the 90,000
-being a *footnote* about looting only the Grand Hallowed Coffin.
+**Tick-perfect is not a rate, and the gap is not one term.** Spent raw the
+table prices perfect play - floor 5 at 118,768 against the main page's
+`Realistic No looting XP/hour` of 88,500 - which the page's own note says is
+possible ("above 100,000 XP/hr at maximum efficiency without mistakes") and
+which is therefore a check on the arithmetic rather than the answer. **No
+constant overhead reconciles the two**: solving the published column for a
+per-floor cost gives 21.8, 19.5, 10.8, 12.8 and 27.9 seconds, so the gap is
+mistakes, and mistakes do not scale with the count of staircases. A
+`MISTAKE_FACTOR` on the floor time does, calibrated to put a five-floor
+no-looting lap at **91,805**, inside the 90,000-95,000 a good player sustains
+- and that lands **1.04x** the wiki's own floor-5 figure, a second and
+independent check on the same number.
+
+**Twenty seconds between laps is the term that matters more than its size.**
+It is the timer running out and putting you back in the lobby, and it is
+charged per *lap*: 4% of a five-floor lap and a third of a floor-1 one. That
+is why the lower floors read **0.84x to 0.95x** their published rows while the
+deepest reads 1.04x - a short lap really is mostly overhead - and it is most of
+what closes the gap between shallow and deep coffin runs, which without it
+favoured floor 1 by a factor of two.
+
+**The published column is the oracle rather than the source**, the
+relationship `costing/barracuda.py` describes - and the check caught a stale
+figure of this project's own: floor 5 carried 90,000/98,500 where the page says
+75,800/88,500, the 90,000 being a *footnote* about looting only the Grand
+Hallowed Coffin.
 
 **Every band is `GUESS`, and the Agility floors moved out of `modelled` to say
-so.** Two factors are invented - the six ticks between floors and the fifteen
-to reach a coffin - and `costing/tempoross.py`'s rule is that one invented
-factor makes the product invented. The cost is stated: fray-uber's Agility
-climb goes **80.9h to 67.1h**, which is the only climb that moves on any map,
-and a reader now sees `guessed` where the row used to read `modelled`.
+so.** Three factors are invented - the staircase, the lobby and the mistake
+factor - and `costing/tempoross.py`'s rule is that one invented factor makes
+the product invented. The cost is stated: fray-uber's Agility climb goes
+**80.9h to 86.8h**, the only climb that moves on any map, and almost all of
+that is the stale 98,500 being corrected rather than the model disagreeing
+with the page.
 
 **The depth is taken rather than maximised over.** A lap runs to the deepest
-floor the map holds, which is what every guide describes and is *not* the best
-coffin rate available: floor 1 is 33.6 seconds for one coffin where a full lap
-is 399.6 for five. What the shallow reading needs is the cost of getting back
-to the lobby and starting again, which no page states, so charging nothing for
-it would make the shallowest lap win by default. **And the depth is read off
-upstream's own `Access the Nth floor` challenges rather than off an Agility
-level**, for `costing/wintertodt.py`'s reason: the no-map census infers no
-level, and comparing `1 < 52` there reports a priced method as unpriced.
+floor the map holds, which is what every guide describes and is still *not* the
+best coffin rate available - 7,663/hr on floor 1 against 5,331 on five, at
+Thieving 99. Maximising would rest the whole answer on one invented number.
+**And the depth is read off upstream's own `Access the Nth floor` challenges
+rather than off an Agility level**, for `costing/wintertodt.py`'s reason: the
+no-map census infers no level, and comparing `1 < 52` there reports a priced
+method as unpriced.
 
 **A constant standing in for a curve is not the conservative end, and saying
 so was the mistake.** `PICKPOCKET_CYCLE_SECONDS` was 3.5 seconds, fitted to one

@@ -305,10 +305,11 @@ The modules, and what each owns:
   1 to N in order, so the Strategies page's tick-perfect floor times plus six
   ticks a staircase give the Agility rate, and fifteen more per floor for one
   coffin give the **Thieving** one, which no rate table anywhere states. The
-  published `Realistic No looting XP/hour` column is kept as the oracle - the
-  model runs 1.16x to 1.54x above it, being tick-perfect against realistic,
-  and no constant overhead reconciles them. `GUESS`, because the two overheads
-  are invented.
+  published `Realistic No looting XP/hour` column is kept as the oracle: no
+  constant overhead reconciles it with tick-perfect play, so a `MISTAKE_FACTOR`
+  on the floor time is calibrated to 91,805 for five floors - inside what a
+  good player sustains, and 1.04x the wiki's own row. `GUESS`, because the
+  staircase, the lobby return and the mistake factor are all invented.
 - `sorceress.py` - the Sorceress's Garden, where a level buys a **better
   garden** rather than a faster lap or a better chance. Flat rates, and the one
   place a published lap time and a published hourly yield check each other.

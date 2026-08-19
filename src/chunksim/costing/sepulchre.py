@@ -21,27 +21,41 @@ Published: every floor time in `FLOOR_TIMES`, every floor's experience in
 `FLOORS`, the coffin's 200 experience, and its `{{Skilling success chart}}`.
 
 Not published, and therefore what makes every rate here a `GUESS`:
-`BETWEEN_FLOORS_TICKS`, the six ticks spent recharging run and clicking the
-staircase, and - for the looting regime - `COFFIN_DETOUR_TICKS` and
-`COFFINS_PER_FLOOR`, one coffin a floor at fifteen ticks to reach it, open it
-and get back on route. That is `costing/tempoross.py`'s rule: one invented
-factor makes the product invented, however many of the others are read off a
-page.
+`BETWEEN_FLOORS_TICKS`, `BETWEEN_LAPS_SECONDS`, `MISTAKE_FACTOR`, and - for
+the looting regime - `COFFIN_DETOUR_TICKS` and `COFFINS_PER_FLOOR`. That is
+`costing/tempoross.py`'s rule: one invented factor makes the product invented,
+however many of the others are read off a page.
 
-### The check, and what it says about the size of the answer
+### Tick-perfect is not a rate, and the gap is not one term
 
-The main page tabulates a "Realistic No looting XP/hour" per floor, and this
-model runs **1.16x to 1.54x** above it - which is the expected direction and
-not a disagreement: that column is realistic and this is tick-perfect, and the
-page says so in its own note, "It is possible to reach rates above 100,000
-XP/hr at maximum efficiency without mistakes". Floor 5 here is 118,769, which
-is the only quantitative check the page offers and the model clears it.
+The tick-perfect table says outright that it assumes "no mistakes made", so
+spending it raw prices perfect play: floor 5 comes out at 118,768 an hour
+against the main page's "Realistic No looting XP/hour" of 88,500, and floors 1
+to 4 at 1.16x to 1.54x their own rows. The page's only quantitative statement
+about perfect play is a note - "It is possible to reach rates above 100,000
+XP/hr at maximum efficiency without mistakes" - which that clears, and which is
+the check that the raw arithmetic is right rather than that it is the answer.
 
-**So the published column is kept as `LOOTING_PER_HOUR`/`NO_LOOTING_PER_HOUR`
-and is the oracle rather than the source**, the relationship
-`costing/barracuda.py` describes: `tests/test_costing_sepulchre.py` pins the
-ratios, so the day the wiki's figures move the next run fails a test instead of
-letting the two drift silently.
+**Nothing reconciles the two as a missing term, which is how we know they are
+different quantities.** Solving the published column for a constant inter-floor
+overhead gives 21.8, 19.5, 10.8, 12.8 and 27.9 seconds - no single number fits,
+because the gap is mistakes and mistakes do not scale with the count of
+staircases. So the model carries `MISTAKE_FACTOR` on the floor time instead,
+calibrated to put a five-floor no-looting lap at **91,805**, inside the
+90,000-95,000 a good player sustains. That is 1.04x the wiki's own floor-5
+figure, which is a second and independent check on the same number.
+
+**The lower floors then read 0.84x to 0.95x their published rows**, and that is
+the `BETWEEN_LAPS_SECONDS` twenty seconds doing its job rather than a defect:
+a floor-1 lap is 37.5 seconds of running and the lobby return is twenty of
+them, where on floor 5 the same twenty seconds is 4% of the lap. A short lap
+really is mostly overhead.
+
+**So the published column is the oracle rather than the source**, the
+relationship `costing/barracuda.py` describes:
+`tests/test_costing_sepulchre.py` pins both the table and the ratios, so the
+day the wiki's figures move the next run fails a test instead of letting the
+two drift silently.
 
 **Floor 5's published pair moved under this project and nobody noticed**,
 which is the reason that test exists. This module used to carry 90,000 and
@@ -59,16 +73,14 @@ Agility level is handed in - the same split `costing/wintertodt.py` makes for
 its solo regime and `costing/sacredeel.py` for its Fishing.
 
 **A lap always runs to the deepest floor the map holds**, which is the
-activity every guide describes and is *not* the best Thieving rate a player
-could get: floor 1 is 33.6 seconds for one coffin where a full lap is 399.6
-for five, so shallow laps open more coffins an hour. What that reading needs
-and this does not have is the cost of getting back to the lobby and starting
-again - the timer runs out and teleports you, and no page states how long a
-fresh entry takes. Charging nothing for it would make the shallowest lap win
-by default, so the depth is taken rather than maximised over, and the
-consequence is stated rather than hidden: a map holding all five floors reads
-a *lower* coffin rate than one holding the first, and the truth is somewhere
-above both.
+activity every guide describes and is *not* the best coffin rate a player
+could get: a floor-1 lap is 70.1 seconds for one coffin where a five-floor lap
+is 503.8 for five, so shallow laps still open more an hour - 7,663 against
+5,331 at Thieving 99. **`BETWEEN_LAPS_SECONDS` is most of what closes that
+gap**, and it is why the twenty seconds matters more than its size suggests:
+without it a shallow lap is nearly free to repeat and wins by a factor of two.
+The depth is still taken rather than maximised over, because a maximum would
+be resting the whole answer on one invented number.
 
 **And the looting lap pays Agility too, more slowly.** It is deliberately not
 offered as an Agility method: `training_bands` takes a running maximum, so the
@@ -119,8 +131,27 @@ FLOOR_TIMES: dict[int, tuple[float, ...]] = {
 }
 
 #: Ticks between one floor and the next: recharge run, click the staircase.
-#: **Invented**, and the reason every rate here is a `GUESS`.
+#: **Invented**, and one of the three reasons every rate here is a `GUESS`.
 BETWEEN_FLOORS_TICKS = 6.0
+
+#: Seconds between one lap and the next: the timer runs out, you are put back
+#: in the lobby and you start again. **Invented**, and it is what makes a
+#: shallow lap cost something - see the note on depth in the module docstring.
+BETWEEN_LAPS_SECONDS = 20.0
+
+#: What a real run costs over the tick-perfect one. **Invented, and calibrated
+#: rather than fitted**: the tick-perfect table assumes "no mistakes made", and
+#: a quarter more time is what puts a five-floor no-looting lap at **91,805
+#: an hour**, inside the 90,000-95,000 a good player sustains. It lands 1.04x
+#: the wiki's own `Realistic No looting XP/hour` for floor 5 (88,500), which is
+#: a second and independent check on the same number rather than the thing it
+#: was fitted to.
+#:
+#: **Applied to the floor time alone**, not to the staircase or the lobby: a
+#: mistake is a tick lost inside a floor, and the two overheads are already
+#: estimates of a whole action rather than of a perfect one. Nor to the coffin
+#: detour - failing a lock is already the success chart's business.
+MISTAKE_FACTOR = 1.25
 
 #: Ticks to leave the route for a coffin, open it and get back on it.
 #: **Invented**, like the figure above.
@@ -190,13 +221,16 @@ def lap_seconds(floors: int, *, looting: bool = False) -> float:
     """One lap through floors 1 to `floors`, in seconds.
 
     Every floor carries `BETWEEN_FLOORS_TICKS` including the first, which is
-    the descent into it; `looting` adds the coffin detour on each.
+    the descent into it; `looting` adds the coffin detour on each; and the lap
+    as a whole carries `BETWEEN_LAPS_SECONDS`, the return to the lobby.
+
+    **Only the floor time is inflated by `MISTAKE_FACTOR`** - see its note.
     """
     overhead = BETWEEN_FLOORS_TICKS + (
         COFFIN_DETOUR_TICKS * COFFINS_PER_FLOOR if looting else 0.0
     )
-    return sum(
-        floor_seconds(floor) + overhead * TICK_SECONDS
+    return BETWEEN_LAPS_SECONDS + sum(
+        floor_seconds(floor) * MISTAKE_FACTOR + overhead * TICK_SECONDS
         for floor in range(1, floors + 1)
     )
 

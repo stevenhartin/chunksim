@@ -47,16 +47,46 @@ class TestThePublishedTableIsTheOracle:
         # join structural rather than a guess at which one means which.
         assert [sp.level_for(f) for f in sorted(sp.FLOORS)] == [52, 62, 72, 77, 87]
 
-    def test_the_model_sits_above_the_realistic_column_but_not_wildly(self) -> None:
+    def test_the_model_lands_near_the_realistic_column(self) -> None:
+        """Not on it - the twenty seconds between laps is a third of a
+        floor-1 lap and 4% of a floor-5 one, so the short floors read below
+        their published rows and the deep ones just above."""
         for floor in sorted(sp.FLOORS):
             ratio = sp.agility_rate(floor) / sp.FLOORS[floor][3]
-            assert 1.1 < ratio < 1.6, floor
+            assert 0.8 < ratio < 1.1, floor
 
-    def test_the_top_floor_clears_the_pages_own_ceiling_note(self) -> None:
+    def test_the_top_floor_is_what_a_good_player_sustains(self) -> None:
+        """What `MISTAKE_FACTOR` is calibrated on: 90,000-95,000 for five
+        floors, no looting."""
+        assert 90_000.0 < sp.agility_rate(5) < 95_000.0
+
+    def test_and_that_is_within_four_percent_of_the_wikis_own_figure(self) -> None:
+        """The independent half of the check - the calibration targets a
+        sustainable rate and lands beside a published one."""
+        assert sp.agility_rate(5) / sp.FLOORS[5][3] == pytest.approx(1.04, abs=0.01)
+
+    def test_perfect_play_clears_the_pages_own_note(self) -> None:
         """"It is possible to reach rates above 100,000 XP/hr at maximum
         efficiency without mistakes" - the only quantitative statement the page
-        makes about perfect play, and the only check on this arithmetic."""
-        assert sp.agility_rate(5) > 100_000.0
+        makes about perfect play, and so the check on the raw arithmetic
+        underneath `MISTAKE_FACTOR` rather than on the rate this spends."""
+        perfect = sp.agility_xp(5) * 3600.0 / (
+            sp.lap_seconds(5) - sp.BETWEEN_LAPS_SECONDS
+            - sum(sp.floor_seconds(f) for f in sp.FLOORS) * (sp.MISTAKE_FACTOR - 1.0)
+        )
+        assert perfect > 100_000.0
+
+    def test_no_constant_overhead_reconciles_the_two(self) -> None:
+        """**The finding that settles they are different quantities.** Solving
+        the published column for a per-floor overhead gives 21.8, 19.5, 10.8,
+        12.8 and 27.9 seconds - so the gap is mistakes, which do not scale with
+        the count of staircases, and a term could never have expressed it."""
+        solved = []
+        for floor in sorted(sp.FLOORS):
+            lap = sp.agility_xp(floor) * 3600.0 / sp.FLOORS[floor][3]
+            running = sum(sp.floor_seconds(f) for f in range(1, floor + 1))
+            solved.append((lap - running) / floor)
+        assert max(solved) / min(solved) > 2.0
 
 
 class TestTheLap:
@@ -72,9 +102,29 @@ class TestTheLap:
 
     def test_every_floor_carries_the_descent_into_it(self) -> None:
         gap = sp.BETWEEN_FLOORS_TICKS * sp.TICK_SECONDS
-        assert sp.lap_seconds(1) == pytest.approx(sp.floor_seconds(1) + gap)
-        assert sp.lap_seconds(2) == pytest.approx(
-            sp.floor_seconds(1) + sp.floor_seconds(2) + 2 * gap
+        one = sp.floor_seconds(1) * sp.MISTAKE_FACTOR + gap
+        assert sp.lap_seconds(1) == pytest.approx(one + sp.BETWEEN_LAPS_SECONDS)
+        assert sp.lap_seconds(2) - sp.lap_seconds(1) == pytest.approx(
+            sp.floor_seconds(2) * sp.MISTAKE_FACTOR + gap
+        )
+
+    def test_a_lap_is_charged_the_return_to_the_lobby_once(self) -> None:
+        # The timer runs out and puts you back; it is per lap, not per floor,
+        # which is what makes a shallow lap expensive rather than free.
+        bare = sum(
+            sp.floor_seconds(f) * sp.MISTAKE_FACTOR
+            + sp.BETWEEN_FLOORS_TICKS * sp.TICK_SECONDS
+            for f in range(1, 6)
+        )
+        assert sp.lap_seconds(5) - bare == pytest.approx(sp.BETWEEN_LAPS_SECONDS)
+
+    def test_only_the_running_is_inflated_by_mistakes(self) -> None:
+        """A mistake is a tick lost inside a floor; the staircase and the
+        lobby are already estimates of a whole action."""
+        overheads = 5 * sp.BETWEEN_FLOORS_TICKS * sp.TICK_SECONDS + sp.BETWEEN_LAPS_SECONDS
+        running = sum(sp.floor_seconds(f) for f in range(1, 6))
+        assert sp.lap_seconds(5) == pytest.approx(
+            running * sp.MISTAKE_FACTOR + overheads
         )
 
     def test_looting_adds_the_detour_once_per_floor(self) -> None:
@@ -123,6 +173,10 @@ class TestTheCoffin:
         shallowest lap win by default. The consequence is real and stated: a
         map with Agility 87 reads a lower coffin rate than one with 52."""
         assert sp.thieving_rate(99, 1) > sp.thieving_rate(99, 5)
+        # **And `BETWEEN_LAPS_SECONDS` is most of what closes the gap**, which
+        # is why twenty seconds matters more than its size suggests: without a
+        # lobby return a shallow lap is nearly free to repeat.
+        assert sp.thieving_rate(99, 1) / sp.thieving_rate(99, 5) < 1.5
 
     def test_the_grand_coffin_is_one_per_lap(self) -> None:
         # It sits at the end of floor 5, so it is one two-hundred-experience
@@ -138,6 +192,8 @@ class TestEveryRateIsAGuess:
 
     def test_the_invented_factors_are_named(self) -> None:
         assert sp.BETWEEN_FLOORS_TICKS == 6.0
+        assert sp.BETWEEN_LAPS_SECONDS == 20.0
+        assert sp.MISTAKE_FACTOR == 1.25
         assert sp.COFFIN_DETOUR_TICKS == 15.0
         assert sp.COFFINS_PER_FLOOR == 1.0
 
