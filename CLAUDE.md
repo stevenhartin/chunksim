@@ -1299,6 +1299,49 @@ Thieving data anywhere - the Grim Tales crumbling wall, Chambers of Xeric
 cavern grubs, the H.A.M. storeroom guard (a pickpocket the wiki does not
 chart) and the Underground Pass cage, which upstream names no object for.
 
+**Where a page publishes a rate for one skill and a tick-perfect account of
+the mechanic, the second answers for the skill the first never mentions.**
+The Hallowed Sepulchre's `Experience rates` table is entirely Agility, so both
+coffin challenges sat unpriced while `costing/sepulchre.py` quoted that table
+for the five floors. `Hallowed Sepulchre/Strategies` states a tick-perfect
+time for every entrance of every floor, and a lap runs floors 1 to N in order
+- you cannot start on floor 5 - so the mean of those rows plus six ticks a
+staircase is the whole no-looting lap, and fifteen more ticks a floor for one
+coffin is the looting one. A coffin pays a flat **200** Thieving experience,
+stated on both coffin pages and again in the Strategies page's own note, on a
+published `Coffin opening success chance` chart - so the expected pay runs
+83.6 at level 66 to 149.2 at 99 rather than being flat.
+
+**The published column becomes the oracle rather than the source**, the
+relationship `costing/barracuda.py` describes. The model runs **1.16x to
+1.54x** above it, which is the expected direction - realistic against
+tick-perfect - and the page's own note is the only quantitative check on
+perfect play: "It is possible to reach rates above 100,000 XP/hr at maximum
+efficiency without mistakes", where floor 5 computes 118,768. **No constant
+overhead reconciles the two**, which is the finding that settles they are
+different quantities: fitting the inter-floor cost to each published row gives
+21.8, 19.5, 10.8, 12.8 and 27.9 seconds, so the gap is mistakes rather than a
+missing term. And the check caught a stale figure of this project's own -
+floor 5 carried 90,000/98,500 where the page says 75,800/88,500, the 90,000
+being a *footnote* about looting only the Grand Hallowed Coffin.
+
+**Every band is `GUESS`, and the Agility floors moved out of `modelled` to say
+so.** Two factors are invented - the six ticks between floors and the fifteen
+to reach a coffin - and `costing/tempoross.py`'s rule is that one invented
+factor makes the product invented. The cost is stated: fray-uber's Agility
+climb goes **80.9h to 67.1h**, which is the only climb that moves on any map,
+and a reader now sees `guessed` where the row used to read `modelled`.
+
+**The depth is taken rather than maximised over.** A lap runs to the deepest
+floor the map holds, which is what every guide describes and is *not* the best
+coffin rate available: floor 1 is 33.6 seconds for one coffin where a full lap
+is 399.6 for five. What the shallow reading needs is the cost of getting back
+to the lobby and starting again, which no page states, so charging nothing for
+it would make the shallowest lap win by default. **And the depth is read off
+upstream's own `Access the Nth floor` challenges rather than off an Agility
+level**, for `costing/wintertodt.py`'s reason: the no-map census infers no
+level, and comparing `1 < 52` there reports a priced method as unpriced.
+
 **A constant standing in for a curve is not the conservative end, and saying
 so was the mistake.** `PICKPOCKET_CYCLE_SECONDS` was 3.5 seconds, fitted to one
 published figure - a Knight of Ardougne at level 55, 86,000 xp/hr - and its own

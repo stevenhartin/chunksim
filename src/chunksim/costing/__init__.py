@@ -301,10 +301,14 @@ The modules, and what each owns:
 - `pyramid.py` - the Agility Pyramid, whose money-making rate the scrape gave
   to a **level-1** challenge for a course needing 30. Bands from 55, which is
   where the wiki's table starts and below which it declines to guess.
-- `sepulchre.py` - the Hallowed Sepulchre's five floors, which the scrape
-  priced at **one** rate from level 52 to 87 where the published table runs
-  40,000 to 98,500. Prices the no-looting column, for the reason `tempoross`
-  prices not-cooking.
+- `sepulchre.py` - the Hallowed Sepulchre, counted in ticks: a lap runs floors
+  1 to N in order, so the Strategies page's tick-perfect floor times plus six
+  ticks a staircase give the Agility rate, and fifteen more per floor for one
+  coffin give the **Thieving** one, which no rate table anywhere states. The
+  published `Realistic No looting XP/hour` column is kept as the oracle - the
+  model runs 1.16x to 1.54x above it, being tick-perfect against realistic,
+  and no constant overhead reconciles them. `GUESS`, because the two overheads
+  are invented.
 - `sorceress.py` - the Sorceress's Garden, where a level buys a **better
   garden** rather than a faster lap or a better chance. Flat rates, and the one
   place a published lap time and a published hourly yield check each other.

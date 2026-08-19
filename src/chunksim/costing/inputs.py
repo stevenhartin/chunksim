@@ -995,7 +995,9 @@ def _gathered(
     # Flat rates, so nothing but the valid set is needed.
     for skill, methods in sorceress.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
-    # **Five floors the scrape gave one rate** - see `costing/sepulchre.py`.
+    # **One lap, two skills** - see `costing/sepulchre.py`. How deep the lap
+    # goes is upstream's own `Access the Nth floor` gate rather than a level
+    # handed in, which is what keeps the coffins priced in the no-map census.
     for skill, methods in sepulchre.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **A money-making rate that was winning from level 1** - see

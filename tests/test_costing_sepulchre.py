@@ -1,4 +1,4 @@
-"""The Hallowed Sepulchre: five floors, and the one rate that stood for all."""
+"""The Hallowed Sepulchre, counted in ticks rather than quoted in rates."""
 
 from __future__ import annotations
 
@@ -7,9 +7,21 @@ import pathlib
 import pytest
 
 from chunksim.costing import sepulchre as sp
+from chunksim.costing.gathering import GUESS
+
+#: Every floor's challenge, as a map that reaches all of them.
+_ALL: dict[str, dict[str, object]] = {
+    "Agility": {task: {} for task in sp.TASKS.values()},
+    "Thieving": {sp.COFFIN_TASK: {}, sp.GRAND_TASK: {}},
+}
 
 
-class TestThePublishedTable:
+class TestThePublishedTableIsTheOracle:
+    """**The wiki's `Realistic No looting XP/hour` column is a check on this
+    model rather than its source** - the relationship `costing/barracuda.py`
+    describes. It is realistic where this is tick-perfect, so the model should
+    sit above it by a modest factor and never below."""
+
     @pytest.mark.parametrize(
         "floor,level,no_loot,loot",
         [
@@ -17,66 +29,127 @@ class TestThePublishedTable:
             (2, 62, 50_000.0, 40_000.0),
             (3, 72, 71_700.0, 63_000.0),
             (4, 77, 81_000.0, 73_000.0),
-            (5, 87, 98_500.0, 90_000.0),
+            (5, 87, 88_500.0, 75_800.0),
         ],
     )
     def test_a_row_is_the_wikis(
         self, floor: int, level: int, no_loot: float, loot: float
     ) -> None:
+        """Floor 5's pair moved under this project and nothing caught it: the
+        module carried 90,000/98,500, where 90,000 is a *footnote* about
+        looting only the Grand Hallowed Coffin."""
         assert sp.level_for(floor) == level
-        assert sp.rate_at(floor) == no_loot
-        assert sp.rate_at(floor, looting=True) == loot
+        assert sp.FLOORS[floor][3] == no_loot
+        assert sp.FLOORS[floor][2] == loot
 
     def test_the_levels_are_the_exports_own(self) -> None:
         # 52, 62, 72, 77, 87 in both, which is what makes the floor-to-challenge
         # join structural rather than a guess at which one means which.
         assert [sp.level_for(f) for f in sorted(sp.FLOORS)] == [52, 62, 72, 77, 87]
 
-    def test_looting_is_always_the_slower_column(self) -> None:
-        for floor in sp.FLOORS:
-            assert sp.rate_at(floor, looting=True) < sp.rate_at(floor)
+    def test_the_model_sits_above_the_realistic_column_but_not_wildly(self) -> None:
+        for floor in sorted(sp.FLOORS):
+            ratio = sp.agility_rate(floor) / sp.FLOORS[floor][3]
+            assert 1.1 < ratio < 1.6, floor
 
-    def test_every_floor_beats_the_one_below(self) -> None:
-        rates = [sp.rate_at(f) for f in sorted(sp.FLOORS)]
+    def test_the_top_floor_clears_the_pages_own_ceiling_note(self) -> None:
+        """"It is possible to reach rates above 100,000 XP/hr at maximum
+        efficiency without mistakes" - the only quantitative statement the page
+        makes about perfect play, and the only check on this arithmetic."""
+        assert sp.agility_rate(5) > 100_000.0
+
+
+class TestTheLap:
+    def test_a_floor_time_is_the_mean_of_the_rows(self) -> None:
+        # Which entrance a run gets is not the player's choice, so an hour is
+        # a mix of them and the fastest row would be a claim about luck.
+        assert sp.floor_seconds(1) == pytest.approx(30.0)
+        assert sp.floor_seconds(3) == pytest.approx(54.24)
+
+    def test_a_range_contributes_its_midpoint(self) -> None:
+        # Floor 4 states `1:22 - 1:34` and `1:30 - 1:38` rather than times.
+        assert sp.floor_seconds(4) == pytest.approx(91.0)
+
+    def test_every_floor_carries_the_descent_into_it(self) -> None:
+        gap = sp.BETWEEN_FLOORS_TICKS * sp.TICK_SECONDS
+        assert sp.lap_seconds(1) == pytest.approx(sp.floor_seconds(1) + gap)
+        assert sp.lap_seconds(2) == pytest.approx(
+            sp.floor_seconds(1) + sp.floor_seconds(2) + 2 * gap
+        )
+
+    def test_looting_adds_the_detour_once_per_floor(self) -> None:
+        detour = sp.COFFIN_DETOUR_TICKS * sp.COFFINS_PER_FLOOR * sp.TICK_SECONDS
+        assert sp.lap_seconds(5, looting=True) - sp.lap_seconds(5) == pytest.approx(
+            5 * detour
+        )
+
+    def test_a_lap_pays_the_cumulative_experience(self) -> None:
+        # `Cumulative Exp` in the wiki's own table: you cannot start on floor 5.
+        assert sp.agility_xp(5) == 11_700.0
+        assert sp.agility_xp(3) == 3_100.0
+
+    def test_a_deeper_lap_is_worth_more_an_hour(self) -> None:
+        rates = [sp.agility_rate(f) for f in sorted(sp.FLOORS)]
         assert rates == sorted(rates)
 
 
-class TestTheFlatRateItReplaced:
-    """**Wrong in both directions, and the top one was the expensive half.**"""
+class TestTheCoffin:
+    def test_its_experience_is_the_wikis_flat_two_hundred(self) -> None:
+        """Stated on both coffin pages and again in the Strategies page's
+        skill-challenge note. It does not vary by floor - what varies by floor
+        is hallowed marks."""
+        assert sp.COFFIN_XP == 200.0
 
-    SCRAPED = 58_425.0
+    def test_the_chance_is_charted_and_the_plain_series_is_spent(self) -> None:
+        # 41.8% where it opens, 74.6% at 99, no lockpick.
+        assert sp.coffin_xp(66) == pytest.approx(83.6, abs=0.1)
+        assert sp.coffin_xp(99) == pytest.approx(149.2, abs=0.1)
 
-    def test_the_first_floor_was_over_by_half(self) -> None:
-        assert self.SCRAPED / sp.rate_at(1) > 1.4
+    def test_a_map_that_cannot_enter_gets_no_rate(self) -> None:
+        assert sp.deepest_floor({}) == 0
+        assert sp.thieving_rate(99, 0) == 0.0
 
-    def test_the_last_floor_was_under_by_two_thirds(self) -> None:
-        # The fifth floor is the fastest Agility in the game from 87, and a
-        # rate a third too low kept it out of the band walk entirely.
-        assert sp.rate_at(5) / self.SCRAPED > 1.6
+    def test_the_depth_is_upstreams_own_gate(self) -> None:
+        """Read off the `Access the Nth floor` challenges rather than off an
+        Agility level - the export census infers none, and `1 < 52` there
+        reports a priced method as unpriced."""
+        assert sp.deepest_floor({sp.TASKS[1]: {}, sp.TASKS[3]: {}}) == 3
+        assert sp.deepest_floor({task: {} for task in sp.TASKS.values()}) == 5
 
-    def test_the_top_floor_beats_the_best_rooftop(self) -> None:
-        # Ardougne is 70,000; if this ever stops being true the walk has
-        # changed, not the wiki.
-        assert sp.rate_at(5) > 70_000.0
+    def test_the_depth_is_taken_and_not_maximised_over(self) -> None:
+        """**A shallow lap opens more coffins an hour and is not offered**,
+        because what makes it possible - getting back to the lobby and starting
+        again - is not published, and charging nothing for it would make the
+        shallowest lap win by default. The consequence is real and stated: a
+        map with Agility 87 reads a lower coffin rate than one with 52."""
+        assert sp.thieving_rate(99, 1) > sp.thieving_rate(99, 5)
+
+    def test_the_grand_coffin_is_one_per_lap(self) -> None:
+        # It sits at the end of floor 5, so it is one two-hundred-experience
+        # roll over the whole four hundred seconds - not a training method, and
+        # priced so a reader can see that rather than see a blank.
+        deep = sp.thieving_rate(84, 5)
+        assert sp.thieving_rate(84, 5, coffins=1.0) == pytest.approx(deep / 5.0)
 
 
-class TestAFloorIsARateNotAStage:
-    def test_the_floors_are_not_summed(self) -> None:
-        # `Cumulative Exp` in the same table is what a run through all five
-        # pays; the challenges are `Access the Nth floor`, each gated on its
-        # own level, so the band walk wants the best rate open at each level.
-        assert sp.rate_at(5) < sum(sp.rate_at(f) for f in sp.FLOORS)
-        bands = sp.methods({"Agility": {t: {} for t in sp.TASKS.values()}})["Agility"]
-        assert [b.xp_per_hour for b in bands] == [sp.rate_at(f) for f in sorted(sp.FLOORS)]
+class TestEveryRateIsAGuess:
+    """One invented factor makes the product invented, however many of the
+    others are read off a page - `costing/tempoross.py`'s rule."""
+
+    def test_the_invented_factors_are_named(self) -> None:
+        assert sp.BETWEEN_FLOORS_TICKS == 6.0
+        assert sp.COFFIN_DETOUR_TICKS == 15.0
+        assert sp.COFFINS_PER_FLOOR == 1.0
+
+    def test_no_band_claims_better(self) -> None:
+        for bands in sp.methods(_ALL).values():
+            for band in bands:
+                assert band.match == GUESS
 
 
 class TestReachability:
-    _ALL: dict[str, dict[str, object]] = {
-        "Agility": {task: {} for task in sp.TASKS.values()}
-    }
-
     def test_every_floor_a_map_reaches(self) -> None:
-        bands = sp.methods(self._ALL)["Agility"]
+        bands = sp.methods(_ALL)["Agility"]
         assert [b.level for b in bands] == [52, 62, 72, 77, 87]
 
     def test_only_the_floors_it_reaches(self) -> None:
@@ -88,10 +161,30 @@ class TestReachability:
         assert sp.methods({}) == {}
         assert sp.methods({"Agility": {}}) == {}
 
+    def test_the_coffin_bands_carry_the_thieving_level(self) -> None:
+        # Upstream gates the challenge on Thieving; Agility decides the lap.
+        bands = sp.methods(_ALL)["Thieving"]
+        levels = [
+            b.level
+            for b in bands
+            if b.knob.startswith(f"training/{sp.COFFIN_TASK}") and b.level is not None
+        ]
+        assert levels[0] == sp.COFFIN_LEVEL
+        assert levels == sorted(levels)
+
+    def test_the_grand_coffin_needs_the_fifth_floor(self) -> None:
+        shallow: dict[str, dict[str, object]] = {
+            "Agility": {sp.TASKS[4]: {}},
+            "Thieving": {sp.GRAND_TASK: {}},
+        }
+        assert "Thieving" not in sp.methods(shallow)
+        assert sp.methods(_ALL)["Thieving"]
+
     def test_a_band_names_the_task_it_would_be_overridden_through(self) -> None:
-        for band in sp.methods(self._ALL)["Agility"]:
-            assert band.knob.startswith("training/Access the ")
-            assert band.knob.endswith("/Agility")
+        for skill, bands in sp.methods(_ALL).items():
+            for band in bands:
+                assert band.knob.startswith("training/")
+                assert band.knob.endswith(f"/{skill}")
 
 
 class TestItIsWiredIn:
