@@ -266,6 +266,12 @@ The modules, and what each owns:
   and it is constant to 4.9% across the whole table - where the success chance
   it would otherwise depend on runs 12.11% to 27.73%. The chart is carried as
   the check that this is the right page and deliberately not spent.
+- `feathering.py` - the largest `stated_ticks` contributor: **145 of
+  Fletching's 158 untimed recipes** are a stack of feathers onto a stack of
+  tips, and the four feathered recipes the wiki *does* time are all **2
+  ticks** (`Headless arrow`, `Headless atlatl dart`, `Flighted ogre arrow`,
+  `Seeking headless arrow`). Twenty of Fletching's unpriced methods were that
+  one gap wearing twenty names.
 - `calcified.py` - smashing a calcified deposit, the Smithing third of Cam
   Torum mining: 1 experience in 3 ticks, stated twice on the deposit's own
   page. The headline 2,000/hr is the action's; a deposit is a 1/75 roll off a

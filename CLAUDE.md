@@ -1730,6 +1730,50 @@ top-end mean of 418.3 overshoots level 90 by 540 an hour. **Smithing now has
 no unpriced method at all** - 256 modelled, 1 refused, 4 one-off, 37
 uncompletable of 298.
 
+**One missing field can be twenty missing methods, and Fletching was the
+worst case of it.** Every dart and every unfinished bolt is finished by
+putting a stack of feathers onto a stack of tips, and the `{{Recipe}}` for
+each states a level, an experience, an output of ten - and **no `ticks` at
+all**. So `rate_for` refused the lot, and twenty of Fletching's thirty-one
+unpriced methods were that one gap wearing twenty names.
+
+**The wiki times the same action elsewhere, four times, identically.**
+`Headless arrow`, `Headless atlatl dart`, `Flighted ogre arrow` and `Seeking
+headless arrow` all carry **2 ticks**, and all four are feathers onto shafts -
+the same interface as feathers onto bolts. Widening the question agrees: of
+the 267 Fletching recipes that combine two stacks into ten or more, 107 state
+2, sixteen state 1 (javelins, which are left alone) and 144 state nothing. And
+the training page states the interface in words - darts "only require **two
+clicks per a set**". So `costing/feathering.py` is `stated_ticks`' largest
+contributor by far, filling 145 of Fletching's 158 untimed recipes.
+
+**The rate it produces is enormous and none of it survives the materials**,
+which is the check that the arrangement is right rather than a worry: a dragon
+dart is 250 experience for ten and 2 ticks is 750,000 an hour, and once
+`training.effective_xp_per_hour` charges ten dragon dart tips the row reads
+**1,889**. The whole family lands between 400 and 3,500, below eight other
+Fletching methods, and no climb moves anywhere. That is also why the wiki
+files them under **zero time methods** and publishes no hourly figure - the
+two clicks are done while running somewhere else - which is why this is a
+duration rather than a rate.
+
+**Two naming shapes fell out beside it, and the corpus said which needed a
+rule and which a hand entry.** Six recipe outputs end in `(empty)` - a
+blowpipe is fletched empty and filled later - and exactly five are the
+`(empty)` form of an upstream `Output`, the sixth having no upstream twin to
+reach. That bound makes it a rule in `join_keys`, offered last so it can only
+add a join. The other is a single plural: across the whole export exactly one
+unjoined `Output` has a recipe output that is its plural (`Wolfbone arrowtip`
+against `Wolfbone arrowtips`), so it is a `HAND_ALIASES` entry rather than an
+`s` rule that would risk every singular meaning something.
+
+Fletching goes **126 modelled to 147 and 31 unpriced to 10**. What is left is
+five methods behind an `Ent branch` or the atlatl chain it feeds, three behind
+a material nothing routes (`Hunter spear tips`, `Barb bolttips`, `Dragon bolts
+(unf)`), and two more untimed recipes that are *not* feathered - the bone
+shortbow and the toxic blowpipe, whose siblings are timed but whose action is
+a different one.
+
 **A constant standing in for a curve is not the conservative end, and saying
 so was the mistake.** `PICKPOCKET_CYCLE_SECONDS` was 3.5 seconds, fitted to one
 published figure - a Knight of Ardougne at level 55, 86,000 xp/hr - and its own

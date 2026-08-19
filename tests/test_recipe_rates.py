@@ -931,7 +931,12 @@ class TestAnAnchorIsTheWikiSection:
         )
 
         assert keys[0] == "Wooden hull parts"
-        assert keys[-1] == "wooden hull"
+        # **After every plain form, so it can only fill a gap.** Not literally
+        # last any more - `join_keys` appends an `(empty)` variant of every
+        # key after this - but still behind everything the task states
+        # directly.
+        assert "wooden hull" in keys
+        assert keys.index("wooden hull") > keys.index("Wooden hull parts")
 
     def test_the_anchor_still_reaches_variant_candidates(self) -> None:
         """**Nothing else had to be done about it.** The anchor stays in the
@@ -957,7 +962,8 @@ class TestASkillSuffixIsTheWikiDisambiguator:
     def test_the_suffixed_key_is_offered_last(self) -> None:
         keys = recipe_rates.join_keys({}, "Build a ~|thistle|~", "Construction")
 
-        assert keys[-1] == "thistle (Construction)"
+        assert "thistle (Construction)" in keys
+        assert keys.index("thistle (Construction)") > keys.index("thistle")
 
     def test_no_skill_means_no_suffix_offered(self) -> None:
         """A caller that has not threaded a skill through loses nothing it
@@ -965,7 +971,9 @@ class TestASkillSuffixIsTheWikiDisambiguator:
         keys = recipe_rates.join_keys({}, "Build a ~|thistle|~")
 
         assert "thistle (Construction)" not in keys
-        assert not any(key.endswith(")") and " (" in key for key in keys)
+        # The skill suffix specifically; `join_keys` offers an `(empty)`
+        # variant of every key regardless, which is a different fallback.
+        assert not any(key.endswith(" (Construction)") for key in keys)
 
 
 class TestATrailingCountIsTheTasksOwnVocabulary:
@@ -977,7 +985,8 @@ class TestATrailingCountIsTheTasksOwnVocabulary:
     def test_the_bare_page_is_offered(self) -> None:
         keys = recipe_rates.join_keys({}, "Build a ~|rune case 1|~")
 
-        assert keys[-1] == "rune case"
+        assert "rune case" in keys
+        assert keys.index("rune case") > keys.index("rune case 1")
 
     def test_a_task_with_no_trailing_digit_is_untouched(self) -> None:
         """`wooden fence` ends in a letter, so nothing is stripped from it -

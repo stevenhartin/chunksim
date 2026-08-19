@@ -194,6 +194,18 @@ def join_keys(challenge: Mapping[str, Any], task: str, skill: str = "") -> tuple
         bare = marked.rstrip("0123456789").strip()
         if bare:
             keys.append(bare)
+    # **The wiki titles a container by the state it is made in, and upstream
+    # by what it is.** A blowpipe is fletched empty and filled later, so the
+    # recipe page is `Toxic blowpipe (empty)` where the export's `Output` is
+    # `Toxic blowpipe` - four blowpipes and a bullseye lantern.
+    #
+    # **A rule rather than five hand entries, because the corpus bounds it
+    # exactly**: six recipe outputs end in `(empty)`, five of them are the
+    # `(empty)` form of an upstream `Output`, and the sixth (`Crab trap
+    # (empty)`) has no upstream twin to reach. So this can add those five
+    # joins and cannot reach anything else - and it is offered last, so a page
+    # that really is titled plainly still wins.
+    keys.extend(f"{key} (empty)" for key in list(keys))
     return tuple(key for key in dict.fromkeys(keys) if key)
 
 
@@ -793,6 +805,13 @@ HAND_ALIASES: dict[str, str] = {
     "Mahogany mounted fish display": "Mahogany display (fishing trophy)",
     "Fancy revitalisation pool": "Fancy rejuvenation pool",
     "Ornate revitalisation pool": "Ornate rejuvenation pool",
+    # **A plural the wiki writes and upstream does not.** `Fletch a
+    # ~|wolfbone arrowtip|~` makes four at a time and the wiki titles the
+    # page `Wolfbone arrowtips`. **Measured, this is the only one**: across
+    # the whole export exactly one `Output` that joins nothing has a recipe
+    # output that is its plural, so a general `s` rule would buy this join and
+    # nothing else while risking every singular that means something.
+    "Wolfbone arrowtip": "Wolfbone arrowtips",
 }
 
 #: A recipe's own *material* named in the wiki's vocabulary, where upstream's
@@ -879,16 +898,25 @@ def stated_ticks(
     already paid for, `fishcutting` states the three ticks a knife costs on
     a crab - the wiki's own figure for the same knife on a fish - and
     `yewtree` states the one cell a family of otherwise-identical garden
-    trees leaves blank on this one page.
+    trees leaves blank on this one page. `feathering` is the largest of them
+    by far: 145 of Fletching's 158 untimed recipes are a stack of feathers
+    onto a stack of tips, and the four the wiki *does* time are all 2 ticks.
     """
     # Deferred: `estimate` imports this module for the merge and `chisel`,
     # `herblore`, `fishcutting` and `yewtree` are leaves, but keeping the
     # imports local documents that nothing here depends on their module state.
-    from chunksim.costing import chisel, fishcutting as cutting, herblore, yewtree
+    from chunksim.costing import (
+        chisel,
+        feathering,
+        fishcutting as cutting,
+        herblore,
+        yewtree,
+    )
 
     found = dict(herblore.stated_ticks(recipes))
     found.update(chisel.stated_ticks(recipes))
     found.update(yewtree.stated_ticks(recipes))
+    found.update(feathering.stated_ticks(recipes))
     for skill, rows in recipes.items():
         challenges = _mapping(chunk_info.challenges, skill)
         found.update(cutting.stated_ticks(challenges, list(rows)))
