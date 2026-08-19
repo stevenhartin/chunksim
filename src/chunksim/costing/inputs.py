@@ -72,6 +72,7 @@ from chunksim.costing import (
     sacredeel,
     sepulchre,
     sorceress,
+    strut,
     spells,
     stated,
     troublebrewing,
@@ -1004,6 +1005,11 @@ def _gathered(
     # **Four gardens and the level picks which** - see `costing/sorceress.py`.
     # Flat rates, so nothing but the valid set is needed.
     for skill, methods in sorceress.methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **A method whose rate is the world-hopping and not the hammering** -
+    # see `costing/strut.py`, where the published table divides out to one
+    # level-independent repairs-an-hour figure.
+    for skill, methods in strut.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **The Smithing third of Cam Torum mining** - see
     # `costing/calcified.py`, whose 1 experience in 3 ticks is stated twice on

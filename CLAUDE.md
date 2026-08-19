@@ -1705,6 +1705,31 @@ reachable at the ceiling, because blessing one is itself a Prayer challenge
 above level 1 and **Prayer has only six `Primary` challenges in the whole
 export**, none of them valid there.
 
+**A published table can divide out to the thing that was actually missing.**
+Repairing a Motherlode Mine strut pays `1.5 x` the Smithing level held, and
+the struts break on their own 58-second rounds - "an absolute maximum of 4,600
+experience an hour at 99" if you simply stand there, which nobody does. The
+method is to repair a world's pair, hop, and repair the next, and `Strut`
+tabulates experience an hour against level for it. Divide each row by the
+published `1.5 x level` and what is left is **repairs an hour** - and it barely
+moves: **362.4, within 4.9% across all eight rows**, and the same at either end
+of the bands.
+
+**That constancy is the model rather than a coincidence.** If the hammering
+were the constraint the figure would climb with the success chance, which the
+page states as **12.11% at level 1 rising to 27.73% at 99** - a factor of 2.3
+that leaves no trace at all. What a player waits for is the hop. So
+`costing/strut.py` reads the constant *out of* the table rather than fitting
+one to it, spends `1.5 x level` as stated, and lands inside all eight bands;
+the chart is carried as the check that this is the right page's chart and
+deliberately **not** spent, since the hammering it describes is already inside
+the hourly figures.
+
+The midpoint is what it takes, and that is the only reading that fits: the
+top-end mean of 418.3 overshoots level 90 by 540 an hour. **Smithing now has
+no unpriced method at all** - 256 modelled, 1 refused, 4 one-off, 37
+uncompletable of 298.
+
 **A constant standing in for a curve is not the conservative end, and saying
 so was the mistake.** `PICKPOCKET_CYCLE_SECONDS` was 3.5 seconds, fitted to one
 published figure - a Knight of Ardougne at level 55, 86,000 xp/hr - and its own

@@ -260,6 +260,12 @@ The modules, and what each owns:
 - `forestry.py` - the nine Forestry events, which you meet a share of rather
   than choose between, and which pay **six** skills at once off one table of
   level-carrying formulas.
+- `strut.py` - repairing Motherlode Mine struts, where **the rate is the
+  world-hopping and not the hammering**. Dividing the wiki's eight-row hourly
+  table by the published `1.5 x level` a repair pays leaves repairs an hour,
+  and it is constant to 4.9% across the whole table - where the success chance
+  it would otherwise depend on runs 12.11% to 27.73%. The chart is carried as
+  the check that this is the right page and deliberately not spent.
 - `calcified.py` - smashing a calcified deposit, the Smithing third of Cam
   Torum mining: 1 experience in 3 ticks, stated twice on the deposit's own
   page. The headline 2,000/hr is the action's; a deposit is a 1/75 roll off a
