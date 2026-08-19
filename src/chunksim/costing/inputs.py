@@ -50,6 +50,7 @@ from chunksim.costing import (
     artefacts,
     chambers,
     combat_xp,
+    coxchest,
     courses,
     disclaimed,
     dps_bridge,
@@ -996,6 +997,11 @@ def _gathered(
     # **Four gardens and the level picks which** - see `costing/sorceress.py`.
     # Flat rates, so nothing but the valid set is needed.
     for skill, methods in sorceress.methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **A roll every single tick**, which is the fastest cadence in the skill
+    # and the only method here whose experience had to be recovered rather
+    # than read - see `costing/coxchest.py`.
+    for skill, methods in coxchest.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **One knockout buys two pickpockets and no stun at all**, which is what
     # anybody actually does to these three NPCs - see `costing/blackjack.py`.

@@ -1535,6 +1535,49 @@ restored.
 Thieving is **98 modelled, 3 guessed, 2 unpriced and 8 refused** of 118, from
 76/1/34/0 when this started.
 
+**Where the wiki states the mechanic and not the number, two of its own
+sentences can bound the number.** The Chambers of Xeric thieving room has the
+sharpest cadence in the skill - "upon clicking the chest, an attempt to open
+it will be made **every game tick** until the player succeeds", sourced to Mod
+Ash - and a chart whose plain series reproduces the page's own prose exactly
+("around 39% at level 1, scaling to about 61% at level 99"). What it states
+nowhere is **what one open pays**: no `{{Thieving info}}` on the chest's page,
+no row in the Thieving page's chest table, no row in `Module:Skill calc/
+Thieving`, and nothing in the Module namespace - searched rather than assumed.
+
+So `costing/coxchest.py` recovers it, and the recovery is bounded rather than
+fitted. `Thieving training` says two independent things about the room: "it
+only requires about **one hour of raid time to level from 1-40**", which
+integrated over that climb implies 9.75 an open and bounds it to
+**[8.36, 11.70]** if "about an hour" is 50 to 70 minutes; and "you can expect
+experience rates of **up to 30,000-50,000** experience an hour", which over
+the levels the method covers bounds it to **[8.67, 12.51]**. The intervals
+overlap on **[8.67, 11.70]** and the figure is the round 10 inside it, at
+which the guide's hour is **59 minutes**. That is one unknown against two
+observations rather than `costing/disclaimed.py`'s "the guide with extra
+steps" - and it is still a `GUESS`, because a figure the wiki declines to
+state is not one this project read.
+
+**It is also the one place here that spends a tooled curve.** Everywhere else -
+`pickpocket.py`'s gloves, the Hallowed coffins' lockpick, the wall safe's
+stethoscope - the plain series is spent because the item comes from a shop a
+chunk map may not hold. This lockpick comes from *inside the raid*, "can
+obtain from a Scavenger inside the raid", and both bounding observations
+assume it; spending the plain series would apply a figure recovered under one
+regime to another, and would put the whole climb below the guide's own band.
+
+**The grub cap is arithmetic rather than a caveat.** You cannot carry more
+than 28 and the guide's own instruction is to "drop the grubs, then continue
+picking locks"; the yield rule is published down to its rounding, and it is
+exactly one grub an open below level 50 - so a two-tick drop every 28 opens,
+about 4%. That the recovery sits entirely inside that flat stretch is what
+makes it independent of the yield rule. Above 49 the yield rises and nothing
+says whether the experience follows, which the module names rather than
+hides.
+
+Thieving is down to **one** unpriced method - Entrana's candles, whose infobox
+carries no `type` and whose page carries no chart.
+
 **A constant standing in for a curve is not the conservative end, and saying
 so was the mistake.** `PICKPOCKET_CYCLE_SECONDS` was 3.5 seconds, fitted to one
 published figure - a Knight of Ardougne at level 55, 86,000 xp/hr - and its own

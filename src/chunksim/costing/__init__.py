@@ -266,6 +266,13 @@ The modules, and what each owns:
   nobody uses it on these: the Menaphite Thug is 104,422/hr awake against a
   published 265,000 blackjacked. One knockout attempt plus two pockets at two
   ticks each reproduces the page's own stated ceiling of 275,000 exactly.
+- `coxchest.py` - the Chambers of Xeric thieving room, whose chest **rolls
+  every game tick** until it opens, the sharpest cadence in the skill. The one
+  method here whose experience the wiki states nowhere, so it is recovered:
+  the guide's "about one hour of raid time to level from 1-40" and its
+  "30,000-50,000 experience an hour" bound one open to `[8.67, 11.70]` and 10
+  is the round number inside. `GUESS` for that, and the only place this project
+  spends a tooled curve - the lockpick comes from inside the raid.
 - `wallsafe.py` - the Rogues' Den lobby safes, where **one click is a run of
   attempts**: the safe re-tries itself every 4 ticks until it cracks or springs
   the trap, so the thing with a success chance is the attempt and the thing
