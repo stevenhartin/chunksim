@@ -228,3 +228,35 @@ def test_the_shipped_curves_cover_the_npcs_the_charts_exist_for() -> None:
     }
     # An alias inherits its row's curve; see `skill_tables.pickpocket_rows`.
     assert charted["Elf"] == charted["Elf (Thieving)"]
+
+
+def test_what_it_takes_away_is_reported_as_a_decision() -> None:
+    """**The blank it leaves is not the same blank as "nothing reached this".**
+    This module has positive evidence against the flat cycle, which is why the
+    rate goes; reported as `unpriced` that reads as a gap somebody should close.
+    See `coverage.REFUSED`."""
+    challenges = _challenges()
+    training = {"Pickpocket a ~|cave goblin|~": {"Thieving": _Rate("wiki:pickpockets")}}
+    refused: dict[str, str] = {}
+
+    pickpocket.refuse_uncharted(
+        training, CURVES, challenges, dict.fromkeys(challenges, {}), frozenset(), refused
+    )
+
+    assert refused == {"Pickpocket a ~|cave goblin|~": pickpocket.REASON}
+    assert "no success chart" in pickpocket.REASON
+
+
+def test_a_charted_npc_is_not_reported_as_refused() -> None:
+    """Nothing was taken away from it, so there is nothing to explain."""
+    challenges = _challenges()
+    training = {
+        "Pickpocket a ~|knight of Ardougne|~": {"Thieving": _Rate("wiki:pickpockets")}
+    }
+    refused: dict[str, str] = {}
+
+    pickpocket.refuse_uncharted(
+        training, CURVES, challenges, dict.fromkeys(challenges, {}), frozenset(), refused
+    )
+
+    assert refused == {}

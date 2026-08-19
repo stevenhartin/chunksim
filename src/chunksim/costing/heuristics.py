@@ -625,6 +625,14 @@ class Heuristics:
     #: recipe was refused for want of a stated duration rather than an input,
     #: so a reader must not render it as a material.
     unroutable: dict[str, str] = field(default_factory=dict)
+    #: Task -> why this project declined to quote a number for it. **The
+    #: opposite claim to `unroutable`**: that one says a rate is missing and
+    #: names what is in the way, this one says the absence is the answer.
+    #: Filled by whichever model made the call - `gathering.SkillProfile`'s
+    #: `refuses` and `costing/disclaimed.py` today - and spent by
+    #: `coverage.REFUSED`, which renames an otherwise-`unpriced` row so a
+    #: decision is not read as a gap.
+    refused: dict[str, str] = field(default_factory=dict)
 
     def quest_hours(self, quest: str) -> QuestRate:
         return self.quests.get(quest) or QuestRate(hours=DEFAULT_QUEST_HOURS)

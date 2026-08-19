@@ -19,11 +19,14 @@ def test_the_statuses_are_ordered_least_actionable_first() -> None:
 
     `one-off` sits with the two absent statuses rather than near `unpriced`
     because it is a statement about the challenge, not about how well this
-    project priced it - see `costing/oneoff.py`."""
+    project priced it - see `costing/oneoff.py`. `refused` sits between them
+    for the same reason from the other side: it is an absence somebody chose.
+    """
     assert coverage.STATUSES[0] == coverage.UNCOMPLETABLE
     assert coverage.STATUSES[1] == coverage.UNREACHABLE
     assert coverage.STATUSES[2] == coverage.ONE_OFF
-    assert coverage.STATUSES[3] == "unpriced"
+    assert coverage.STATUSES[3] == coverage.REFUSED
+    assert coverage.STATUSES[4] == "unpriced"
     assert coverage.STATUSES[-1] == "modelled"
     assert set(coverage.STATUSES) == set(training.STATUS_LABELS)
 
@@ -50,7 +53,13 @@ def test_an_unreachable_rate_is_not_printed_as_a_rate() -> None:
     the 1,000/hr floor - printing either under a heading that says "rate" is
     how a placeholder gets read as a measurement."""
     assert training.QUIET_STATUSES == frozenset(
-        {"unpriced", coverage.UNREACHABLE, coverage.UNCOMPLETABLE, coverage.ONE_OFF}
+        {
+            "unpriced",
+            coverage.UNREACHABLE,
+            coverage.UNCOMPLETABLE,
+            coverage.ONE_OFF,
+            coverage.REFUSED,
+        }
     )
 
 
@@ -417,3 +426,37 @@ class TestAnUnpricedMethodSaysWhatItWanted:
         """`BLOCKERS` is what the *world* lacks, printed for uncompletable
         rows only - this is a statement about a method the world plainly has."""
         assert coverage.INPUT not in coverage.BLOCKERS
+
+
+class TestARefusalIsNotAGap:
+    """**`unpriced` and `refused` are opposite claims.** Several models decline
+    a method by name - Woodcutting's swaying tree, an impling, a page that
+    disclaims itself - precisely so that no number is quoted for it, and every
+    one of those decisions then read as `unpriced`, the one word that means
+    "somebody should go and close this". See `coverage.REFUSED`."""
+
+    def test_it_renames_only_an_otherwise_unpriced_row(self) -> None:
+        assert coverage.status_of("default", refused=True) == coverage.REFUSED
+        assert coverage.status_of("", refused=True) == coverage.REFUSED
+
+    def test_a_model_that_later_prices_it_wins_without_an_edit(self) -> None:
+        """The difference from `one-off`, and what `costing/disclaimed.py`
+        promises about its own entry: a refusal says nothing about a rate
+        somebody else computed, so it is checked *after* every priced tier."""
+        assert coverage.status_of("modelled", refused=True) == "modelled"
+        assert coverage.status_of("exact", refused=True) == "published"
+        assert coverage.status_of("modelled", pinned=True, refused=True) == "pinned"
+
+    def test_being_out_of_reach_still_comes_first(self) -> None:
+        """A method this world cannot do is that before it is anything else -
+        the same order every other status is decided in."""
+        assert coverage.status_of("default", refused=True, reachable=False) == (
+            coverage.UNREACHABLE
+        )
+
+    def test_a_decoration_outranks_it(self) -> None:
+        """They cannot both be true of one row, and `one-off` is the stronger
+        claim: it exempts a method that *has* a rate."""
+        assert coverage.status_of(
+            "default", one_off=True, refused=True
+        ) == coverage.ONE_OFF

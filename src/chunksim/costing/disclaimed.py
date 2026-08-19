@@ -27,8 +27,15 @@ loot`, which no experience table answers to.
 steps** - one parameter against one observation, where the observation *is* the
 number being replaced, so the model could never disagree with it. That is the
 shape `costing/gathering_overhead.py` warns about when it says to read a 1.00x
-as a claim about arithmetic. So this refuses, and the 1,000/hr floor says what
-is true: nothing priced it.
+as a claim about arithmetic. So this refuses.
+
+**And the report says so rather than saying nothing.** `DISCLAIMED` is keyed
+by task and its value is the sentence, so it rides straight to
+`Heuristics.refused` and the row reads `refused` with the wiki's own words
+beside it. That is the correction to what this module used to claim - "the
+1,000/hr floor says what is true: nothing priced it". The floor says *nothing
+reached this*, which is a gap somebody should go and close, and it is the one
+reading a refusal exists to deny.
 
 ### What it will not take away
 

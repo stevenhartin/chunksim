@@ -214,7 +214,7 @@ class TestRateAt:
         profile = gathering.SkillProfile(
             strict_kinds=True,
             roll_ticks_by_kind={"Miscellaneous": 5.0},
-            refuses=frozenset({"raw lobster"}),
+            refuses={"raw lobster": "the kind is a grab-bag"},
         )
         lobster = {"Level": 40, "Primary": True, "Output": "Raw lobster"}
         assert (
@@ -1162,7 +1162,7 @@ class TestNamesNoRuleBridges:
             tables, {}, priced, "t", "Mining", challenge, 99
         ) is not None
         refusing = dataclasses.replace(
-            priced, refuses=frozenset({"sunstone monolith"})
+            priced, refuses={"sunstone monolith": "a quest-line object"}
         )
         assert gathering.rate_at(
             tables, {}, refusing, "t", "Mining", challenge, 99
@@ -1572,7 +1572,10 @@ class TestTheInfectedRoot:
         # Not "the model cannot see enough of it" but "there is no action
         # here": an outfit is a bonus on whatever you were already chopping.
         refuses = gathering.PROFILES["Woodcutting"].refuses
-        assert {"lumberjack outfit", "forestry outfit"} <= refuses
+        assert {"lumberjack outfit", "forestry outfit"} <= set(refuses)
+        # And the reason is data, because the report prints it - see
+        # `coverage.REFUSED`.
+        assert "not an action" in refuses["lumberjack outfit"]
 
     def test_the_swaying_tree_is_refused_for_being_worth_one(self) -> None:
         # One object, a `Branch`, and an infobox stating 1 experience. There
@@ -1580,9 +1583,11 @@ class TestTheInfectedRoot:
         assert "swaying tree" in gathering.PROFILES["Woodcutting"].refuses
 
     def test_nothing_else_in_the_skill_is_refused(self) -> None:
-        assert gathering.PROFILES["Woodcutting"].refuses == frozenset(
-            {"lumberjack outfit", "forestry outfit", "swaying tree"}
-        )
+        assert set(gathering.PROFILES["Woodcutting"].refuses) == {
+            "lumberjack outfit",
+            "forestry outfit",
+            "swaying tree",
+        }
 
     def test_its_experience_is_the_mean_and_not_the_range(self) -> None:
         # The infobox says `10 - 35`; the page's drop table and its three
@@ -1687,7 +1692,7 @@ NETTING = gathering.SkillProfile(
     strict_kinds=True,
     roll_ticks_by_kind={"Butterfly net": 7.0},
     assumed_curves={"ruby harvest": "Black warlock"},
-    refuses=frozenset({"baby impling"}),
+    refuses={"baby impling": "a wandering rare spawn"},
 )
 
 
@@ -2416,3 +2421,48 @@ class TestAFallibleChestIsRetriedNotWalkedAwayFrom:
         assert rate is not None
         assert rate.roll_seconds == pytest.approx(15.5 * 0.6)
         assert rate.chance == 1.0
+
+
+class TestARefusalCarriesItsOwnReason:
+    """The sentence is data rather than a comment because the report prints
+    it: a refusal reported as `unpriced` reads as the gap it was made to deny.
+    See `coverage.REFUSED`."""
+
+    def test_every_named_refusal_states_one(self) -> None:
+        for skill, profile in gathering.PROFILES.items():
+            for key, why in profile.refuses.items():
+                assert why.strip(), f"{skill}/{key}"
+
+    def test_it_is_asked_of_every_name_the_challenge_offers(self) -> None:
+        """The sunstone monolith is why: its `Output` is `Sunstone`, so the
+        rock rewrite reaches it under the *rocks'* name and refusing on the
+        resolved node cannot express the refusal at all."""
+        profile = gathering.SkillProfile(
+            refuses={"sunstone monolith": "a quest-line object"}
+        )
+        challenge = {"Output": "Sunstone", "Objects": ["Sunstone monolith"]}
+        assert gathering.refusal(profile, {}, challenge, "Mining", "t") == (
+            "a quest-line object"
+        )
+        assert gathering.refusal(profile, {}, {"Output": "Sunstone"}, "Mining", "t") == ""
+
+    def test_a_refused_method_is_reported_rather_than_counted_as_a_miss(self) -> None:
+        """`no_curve` means "this named a node the wiki charts nothing for",
+        which is a gap somebody could close. A refusal is the opposite claim
+        and must not be filed under it."""
+        info = ChunkInfo(
+            {
+                "challenges": {
+                    "Woodcutting": {
+                        "Chop the ~|swaying tree|~": {"Primary": True, "Level": 40}
+                    }
+                }
+            }
+        )
+        _, coverage = gathering.priced_methods(
+            info, {"Woodcutting": {"Chop the ~|swaying tree|~": {}}}, TABLES, frozenset()
+        )
+        assert "Chop the ~|swaying tree|~" in coverage.refused
+        assert "one experience" in coverage.refused["Chop the ~|swaying tree|~"]
+        assert coverage.no_curve == ()
+        assert coverage.no_experience == ()

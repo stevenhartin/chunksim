@@ -92,10 +92,15 @@ The modules, and what each owns:
   published Thieving rate on any cached map.
 - `coverage.py` - **what the rates are made of**, rather than what they are.
   Every primary method with the status that priced it - `modelled`, `guess`,
-  `published`, `pinned`, `unpriced` - plus the best method per skill and one
-  skill's full list. `guess` is separated from `modelled` because it is the one
-  that should shrink; `pinned` from `published` because an override is not a
-  gap. What `chunksim training` and the GUI's methods overlay both read.
+  `published`, `pinned`, `unpriced`, `refused` - plus the best method per skill
+  and one skill's full list. `guess` is separated from `modelled` because it is
+  the one that should shrink; `pinned` from `published` because an override is
+  not a gap; and **`refused` from `unpriced` because they are opposite claims**
+  - a gap somebody should close against an absence some model chose, with that
+  module's own sentence beside the row (`Heuristics.refused`). It renames only
+  what would otherwise be `unpriced`, so a model that later prices the method
+  simply wins. What `chunksim training` and the GUI's methods overlay both
+  read.
 - `disclaimed.py` - the methods whose **own source says they are not for
   training**, each quoted. One entry: the Stranglewood fishing spot, whose page
   says "it is not recommended for training Fishing". A money-making guide's

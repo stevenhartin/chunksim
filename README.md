@@ -794,7 +794,9 @@ maps are your own work and nothing can recompute them.
    whatever you were already chopping rather than an action you repeat, and
    the swaying tree, which is one object worth one experience. **Refusing
    these by name is the point** - an absent rate reads as a gap somebody
-   should go and close, and a refusal reads as the decision it is.
+   should go and close, and a refusal reads as the decision it is, which is
+   why `chunksim training` files them under `refused` rather than `unpriced`
+   and prints the sentence that settled each.
    Sunstone's curve comes from a sentence rather than a chart - "scaling from
    75% success rate at level 50 to a 100% success rate at level 92" - and two
    points fix the game's own interpolation exactly. The infected root is the case
@@ -863,6 +865,8 @@ maps are your own work and nothing can recompute them.
    rather than defaulting one: with a map it is about that world's methods, without it is about the
    *export* - how many of its 2,707 primary training methods are modelled here, how many are
    somebody else's published figure, how many are a guess, how many nothing has priced at all,
+   how many are **refused** (this project declined to quote a number and the row says why -
+   an impling nothing publishes a rate for, a fishing spot whose own page disclaims it),
    how many are a **one-off** (a decoration upstream files as training that nobody trains with -
    the trophy mounts and boat cosmetics), and how many are **uncompletable** - which the report
    then breaks down by *what* the world lacks. That last category is upstream's own gates rather than a gap here, and it is worth
@@ -890,7 +894,8 @@ maps are your own work and nothing can recompute them.
 
    An `unpriced` row names the ingredient it wanted where it joined a recipe and lost one
    (`needs Granite (5kg)`); a blank there means no recipe joined at all, so there is nothing
-   to name.
+   to name. A `refused` row is the other half of that question - the absence is deliberate,
+   and the sentence beside it says whose call it was and on what grounds.
 
    `sections`, `sources`, `tasks` and `diff` print counts by default and take an optional positional
    to list one branch's contents in full; `--limit N` caps that.

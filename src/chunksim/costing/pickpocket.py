@@ -189,6 +189,7 @@ def refuse_uncharted(
     challenges: Mapping[str, Any],
     valid: Mapping[str, Any],
     pinned: frozenset[str] = frozenset(),
+    refused: dict[str, str] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Strip the flat-cycle rate from a pickpocket nothing charts.
 
@@ -200,6 +201,12 @@ def refuse_uncharted(
 
     A hand pin survives, as everywhere: `overrides.json` is the top of the
     layering and somebody who has measured a cave goblin outranks this.
+
+    **`refused` collects what was taken away and why**, because the absence
+    that is left is a decision rather than a gap and the report has to be able
+    to tell them apart - see `coverage.REFUSED`. That is the correction to the
+    sentence above: the 1,000/hr floor says "nothing priced this", which is
+    the one reading this refusal exists to deny.
     """
     charted = charted_tasks(challenges, valid, curves)
     kept: dict[str, dict[str, Any]] = {}
@@ -214,10 +221,17 @@ def refuse_uncharted(
         if not drop:
             kept[task] = per_skill
             continue
+        if refused is not None:
+            refused[task] = REASON
         rest = {skill: value for skill, value in per_skill.items() if skill != SKILL}
         if rest:
             kept[task] = rest
     return kept
+
+
+#: Why a stripped NPC keeps no rate, printed beside it by `chunksim training`.
+#: One sentence for all seven: they share the reason exactly.
+REASON = "no success chart, and the flat cycle runs 2x-3.6x fast where checked"
 
 
 #: `Rate.source` the flat-cycle scrape writes, and the only source this will

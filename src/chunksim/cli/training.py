@@ -71,6 +71,7 @@ STATUS_LABELS: dict[str, str] = {
     "uncompletable": "uncompletable",
     "unreachable": "unreachable",
     "one-off": "one-off",
+    "refused": "refused",
     "unpriced": "unpriced",
     "guess": "guessed",
     "published": "published",
@@ -84,7 +85,9 @@ STATUS_LABELS: dict[str, str] = {
 #: whatever the raw scrape left behind for a challenge nothing was asked
 #: about - printing either under a heading that says "rate" is how a
 #: placeholder gets read as a measurement.
-QUIET_STATUSES = frozenset({"unpriced", "unreachable", "uncompletable", "one-off"})
+QUIET_STATUSES = frozenset(
+    {"unpriced", "unreachable", "uncompletable", "one-off", "refused"}
+)
 
 #: What each `coverage.BLOCKERS` kind reads as. Printed in `BLOCKERS` order,
 #: which puts the volume first and `unstated` last - and **`unstated` is the
@@ -391,6 +394,10 @@ def _print_status_row(row: coverage.MethodStatus, indent: str = "  ") -> None:
     # content of the status - see `costing/oneoff.py`.
     if row.status == coverage.ONE_OFF:
         source = oneoff.reason(row.task)
+    # And a refusal says whose decision the blank is, which is the whole
+    # difference between it and `unpriced` - see `coverage.REFUSED`.
+    elif row.status == coverage.REFUSED:
+        source = row.source
     # **The whole task, not `activity_name`.** The verb is what tells six
     # Herblore unlocks apart; stripped, they all read `Herblore`.
     print(

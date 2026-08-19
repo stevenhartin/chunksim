@@ -1531,7 +1531,7 @@ Env vars: `CHUNKSIM_CACHE` (the directory `cache/` is made under), `CHUNKSIM_CHU
 rather than defaulting one, which is why it sets `infer_map=False` and why `cli/app.main` has a hook
 for that. With a map it is about that world; without, it is about the *export* - how many of its
 2,707 primary methods are `modelled`, `pinned`, `published`, `guess`, `unpriced`,
-`one-off` or `unreachable` (`costing/coverage.py`). **`--show-category STATUS` turns any of those counts
+`refused`, `one-off` or `unreachable` (`costing/coverage.py`). **`--show-category STATUS` turns any of those counts
 back into its list** - with a `SKILL` that skill's, without it every skill's grouped - which
 is the follow-up the table always provokes and which used to need `--export-json` and a JSON
 tool. Both the flag and the positional skill are matched case-insensitively against the names
@@ -1544,6 +1544,28 @@ there is no rules branch for it to point at - so 866 land in the `unstated` buck
 otherwise empty, and Construction reads 2 `unpriced` against 14. The counts are not a smaller
 version of the real answer but a different and much emptier one, so the report prints a
 warning saying so.
+
+**An absence somebody chose is not the same absence as a gap, and for a long time
+the report could not tell them apart.** Several models decline a method *by name* so
+that no number is quoted for it - `gathering.SkillProfile.refuses` (the swaying tree
+is one object worth one experience, an impling is a wandering spawn nothing publishes
+a rate for), `costing/disclaimed.py` (a page whose own words disclaim it),
+`pickpocket.refuse_uncharted` (a flat cycle this project has evidence runs 2x-3.6x
+fast). Every one of those decisions then printed as **`unpriced`**, the one word that
+means "somebody should go and close this" - so the report was stating the opposite of
+what the refusal decided, and each module's docstring had to argue against its own
+output. `coverage.REFUSED` is the same absence with the deciding module's sentence
+beside it, carried on `Heuristics.refused` the way `unroutable` carries "needs Black
+mask". **Nineteen rows move on the export** - Woodcutting and Mining reach zero
+`unpriced` outright - and the reason is data rather than a comment, which is what
+turned four `frozenset`s into mappings.
+
+**It renames only what would otherwise be `unpriced`**, and that is the difference
+from `one-off`. A decoration has an arithmetic rate and is exempt anyway, so
+`one_off` is checked *ahead* of every priced tier; a refusal has no rate by
+construction, so it is checked *last* - and the day somebody finds the missing
+mechanic the model wins and the refusal goes quiet with nothing edited, which is
+exactly what `costing/disclaimed.py` promises about its own entry.
 
 **`uncompletable` and `unreachable` are one test asked of two worlds, and only one is
 news.** A method a particular map cannot do is the ordinary condition of a chunk map. A

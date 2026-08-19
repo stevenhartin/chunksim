@@ -68,3 +68,13 @@ def test_another_skill_on_a_disclaimed_task_is_dropped_with_it() -> None:
     }
 
     assert set(disclaimed.refuse(training)[task]) == {"Hunter"}
+
+
+def test_the_sentence_is_what_the_report_prints() -> None:
+    """`DISCLAIMED` is keyed by task and valued by the wiki's own words, which
+    is exactly the shape `Heuristics.refused` wants - so the entry is written
+    once and the row reads `refused` with its reason rather than `unpriced`.
+    See `coverage.REFUSED`."""
+    for task, why in disclaimed.DISCLAIMED.items():
+        assert task.startswith(("Fish", "Catch", "Cast", "Build", "Mine", "Chop")), task
+        assert why.strip()

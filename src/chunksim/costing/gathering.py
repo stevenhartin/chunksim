@@ -284,7 +284,14 @@ class SkillProfile:
     #: implement - so refusing the kind loses lobster and keeping it invents a
     #: rate for the other two. Naming the exceptions is the only reading that
     #: gets both right, and each name here has a stated reason.
-    refuses: frozenset[str] = frozenset()
+    #:
+    #: **The reason is data rather than a comment**, because the report needs
+    #: it: a refusal reported as `unpriced` reads as a gap somebody should go
+    #: and close, which is the opposite of what naming it here decided. The
+    #: sentence rides to `coverage.REFUSED` through
+    #: `GatheringCoverage.refused`, so it is written once and printed where
+    #: the question is asked. Keep it to a line - it prints beside the method.
+    refuses: Mapping[str, str] = field(default_factory=dict)
     #: What the tool changes: `"chance"` (Woodcutting - a better axe raises the
     #: success curve), `"interval"` (Mining - a better pickaxe rolls more
     #: often), or `""` (the rest - the tool is a gate, not a speed).
@@ -903,9 +910,11 @@ PROFILES: dict[str, SkillProfile] = {
         # anyway, which is the reason to refuse them by name rather than let
         # them fall through: an absent rate reads as a gap somebody should go
         # and close, and a refusal reads as the decision it is.
-        refuses=frozenset(
-            {"lumberjack outfit", "forestry outfit", "swaying tree"}
-        ),
+        refuses={
+            "lumberjack outfit": "a bonus on whatever you were chopping, not an action",
+            "forestry outfit": "a bonus on whatever you were chopping, not an action",
+            "swaying tree": "one object worth one experience, with nothing to repeat",
+        },
     ),
     # A pickaxe changes how often the game rolls, never whether the roll wins.
     #
@@ -1124,32 +1133,32 @@ PROFILES: dict[str, SkillProfile] = {
         # as the deposit's curve fitting to nothing at all. Both are priced
         # now, but the trap is general: anything keyed by name can catch a
         # method that merely generates that name.
-        refuses=frozenset({
-            "rockfall",
+        refuses={
+            "rockfall": "an obstacle in front of the vein, and the vein is priced",
             # **A different object that shares a name with the rocks.** The
             # monolith's `Output` is `Sunstone` like theirs, so it reached
             # their curve and their 28 experience through the rock rewrite and
             # priced at 43,864/hr. It is a quest-line object paying 15, with no
             # chart of its own, so the honest answer is nothing.
-            "sunstone monolith",
+            "sunstone monolith": "a quest-line object paying 15, with no chart of its own",
             # **Legitimately worth nothing.** `Lunar ore`'s own infobox states
             # `xp = 0`, so the model refuses it for want of a numerator - and
             # that reads as a gap rather than as the answer. Naming it here
             # says the difference: there is nothing missing, mining it simply
             # pays no experience and it is not a training method.
-            "lunar ore",
+            "lunar ore": "its own infobox states xp = 0, and the zero is the answer",
             # **Not a rock so much as a spawner.** Mining an elemental rock
             # summons a monster; killing the monster is what drops the ore, and
             # the swing itself pays nothing. Refused for the same reason lunar
             # ore is - the zero is the answer, not a missing figure - and the
             # combat half is not this module's to price.
-            "rock (elemental)",
+            "rock (elemental)": "a spawner - the swing pays nothing and the kill is combat's",
             # **Below the floor this project will quote.** Panning pays so
             # little that the estimator's own 1,000/hr default would outrank
             # anything honest here, so it is not offered as a training method
             # at all rather than offered as the worst one.
-            "panning point",
-        }),
+            "panning point": "pays less than the floor this project would quote",
+        },
         stated_curves={
             "rubium rocks": (69.0, 247.5),
             "calcified rocks": (-11.5, 177.5),
@@ -1405,19 +1414,22 @@ PROFILES: dict[str, SkillProfile] = {
         # are also among the slowest methods in the skill, so nothing would
         # ever pick one: the cost of leaving them is a gap in the coverage
         # count and nothing in an estimate. Decided rather than overlooked.
-        refuses=frozenset(
-            {
-                # **Aerial fishing has no success roll at all** - "a catch
-                # is guaranteed each time the bird is sent" - so there is
-                # nothing here for a success curve to describe. It is priced
-                # as one activity paying two skills by `costing/aerial.py`,
-                # and refused from the node walk so it cannot be priced twice.
-                "greater siren",
-                "mottled eel",
-                "bluegill",
-                "common tench",
-            }
-        ),
+        refuses={
+            # **Aerial fishing has no success roll at all** - "a catch
+            # is guaranteed each time the bird is sent" - so there is
+            # nothing here for a success curve to describe. It is priced
+            # as one activity paying two skills by `costing/aerial.py`,
+            # and refused from the node walk so it cannot be priced twice.
+            #
+            # **These four are priced, so the sentence is never printed.**
+            # `coverage.REFUSED` renames an *unpriced* row, and `aerial.py`
+            # answers for all four - it is here because a refusal states its
+            # reason whether or not anybody reads it.
+            "greater siren": "aerial fishing never misses - costing/aerial.py prices it",
+            "mottled eel": "aerial fishing never misses - costing/aerial.py prices it",
+            "bluegill": "aerial fishing never misses - costing/aerial.py prices it",
+            "common tench": "aerial fishing never misses - costing/aerial.py prices it",
+        },
         bank_seconds=74.0,
     ),
     # **Traps are the mechanic, and they are published.** Box trapping, net
@@ -1591,32 +1603,30 @@ PROFILES: dict[str, SkillProfile] = {
             "desert devil": "Polar kebbit",
             "razor-backed kebbit": "Polar kebbit",
         },
-        refuses=frozenset(
-            {
-                # **`Butterfly net` is a grab-bag, the way Fishing's
-                # `Miscellaneous` is**, and the twelve implings in it share the
-                # tool and nothing else. A butterfly field puts one in front of
-                # you; an impling is a rare wandering spawn you chase, and the
-                # seven-tick interval is fitted against ruby harvest and
-                # sapphire glacialis, which are neither. Nothing published
-                # prices an impling, so there is no way to tell how far wrong
-                # that would be - and unrefused they took 50 -> 99 on the
-                # second cached map at 24,750/hr, which is a whole climb
-                # decided by an extrapolation.
-                "baby impling",
-                "young impling",
-                "gourmet impling",
-                "earth impling",
-                "essence impling",
-                "eclectic impling",
-                "nature impling",
-                "magpie impling",
-                "ninja impling",
-                "crystal impling",
-                "dragon impling",
-                "lucky impling",
-            }
-        ),
+        refuses={
+            # **`Butterfly net` is a grab-bag, the way Fishing's
+            # `Miscellaneous` is**, and the twelve implings in it share the
+            # tool and nothing else. A butterfly field puts one in front of
+            # you; an impling is a rare wandering spawn you chase, and the
+            # seven-tick interval is fitted against ruby harvest and
+            # sapphire glacialis, which are neither. Nothing published
+            # prices an impling, so there is no way to tell how far wrong
+            # that would be - and unrefused they took 50 -> 99 on the
+            # second cached map at 24,750/hr, which is a whole climb
+            # decided by an extrapolation.
+            "baby impling": "a wandering rare spawn, and no published figure prices one",
+            "young impling": "a wandering rare spawn, and no published figure prices one",
+            "gourmet impling": "a wandering rare spawn, and no published figure prices one",
+            "earth impling": "a wandering rare spawn, and no published figure prices one",
+            "essence impling": "a wandering rare spawn, and no published figure prices one",
+            "eclectic impling": "a wandering rare spawn, and no published figure prices one",
+            "nature impling": "a wandering rare spawn, and no published figure prices one",
+            "magpie impling": "a wandering rare spawn, and no published figure prices one",
+            "ninja impling": "a wandering rare spawn, and no published figure prices one",
+            "crystal impling": "a wandering rare spawn, and no published figure prices one",
+            "dragon impling": "a wandering rare spawn, and no published figure prices one",
+            "lucky impling": "a wandering rare spawn, and no published figure prices one",
+        },
         certain_kinds=frozenset({"Crab trapping"}),
         parallel_kinds=frozenset(
             {
@@ -1821,6 +1831,11 @@ class GatheringCoverage:
     no_curve: tuple[str, ...] = ()
     #: Methods whose experience no skill calculator states.
     no_experience: tuple[str, ...] = ()
+    #: `{task: why}` for every method this model declined by name, from the
+    #: profile's own `refuses`. **Not a miss**: it rides to `Heuristics` and
+    #: out to `coverage.REFUSED`, which is what stops a decision being
+    #: reported as the gap it was made to deny.
+    refused: dict[str, str] = field(default_factory=dict)
 
     @property
     def priced(self) -> int:
@@ -1840,6 +1855,7 @@ class GatheringCoverage:
             },
             "no_curve": list(self.no_curve),
             "no_experience": list(self.no_experience),
+            "refused": dict(sorted(self.refused.items())),
         }
 
 
@@ -2830,6 +2846,30 @@ def tool_curve(
     return curves[0]
 
 
+def refusal(
+    profile: SkillProfile,
+    families: Mapping[str, Sequence[str]],
+    challenge: Mapping[str, Any],
+    skill: str,
+    task: str,
+) -> str:
+    """Why this model declines `task` by name, or `""` if it does not.
+
+    **Asked of every name the challenge offers, not just the one a curve
+    resolved under** - see the comment at the call site in `rate_at` for the
+    sunstone monolith, which is the case that forced it.
+
+    Split out of `rate_at` so `priced_methods` can ask the same question
+    without pricing anything: a refusal has to reach the report, or it is
+    counted as the gap it exists to say it is not.
+    """
+    for key in _join_keys(challenge, families, _NAME_FIELDS, skill, task):
+        why = profile.refuses.get(key.lower())
+        if why:
+            return why
+    return ""
+
+
 def rate_at(
     tables: Tables,
     families: Mapping[str, Sequence[str]],
@@ -2946,10 +2986,7 @@ def rate_at(
     # resolved node cannot express that, because the resolved node is the
     # rocks'. Measured over the export, widening this refuses five methods and
     # all five were already meant to be refused.
-    if any(
-        key.lower() in profile.refuses
-        for key in _join_keys(challenge, families, _NAME_FIELDS, skill, task)
-    ):
+    if refusal(profile, families, challenge, skill, task):
         return None
     # **Restock-bound loops need their restock.** See `restock_kinds`: without
     # it a stall falls back to the interaction cadence and reads as the fastest
@@ -3146,6 +3183,7 @@ def priced_methods(
     coverage: dict[str, tuple[int, int]] = {}
     no_curve: list[str] = []
     no_experience: list[str] = []
+    refused: dict[str, str] = {}
 
     for skill, profile in sorted(PROFILES.items()):
         challenges = _mapping(chunk_info.challenges, skill)
@@ -3172,9 +3210,16 @@ def priced_methods(
                 if rate is not None and rate.xp_per_hour > 0:
                     rates.append(rate)
             if not rates:
-                _record_miss(
-                    tables, families, skill, challenge, task, no_curve, no_experience
-                )
+                # **A refusal is not a miss**, so it is recorded before
+                # `_record_miss` rather than counted as a method that named a
+                # node nothing charts. See `refusal`.
+                why = refusal(profile, families, challenge, skill, task)
+                if why:
+                    refused[task] = why
+                else:
+                    _record_miss(
+                        tables, families, skill, challenge, task, no_curve, no_experience
+                    )
                 continue
             found += 1
             priced[task] = tuple(rates)
@@ -3185,6 +3230,7 @@ def priced_methods(
         skills=coverage,
         no_curve=tuple(sorted(no_curve)),
         no_experience=tuple(sorted(no_experience)),
+        refused=refused,
     )
 
 

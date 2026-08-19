@@ -12,8 +12,28 @@ tell a method that is slow from one nothing has reached.
     published      somebody's figure, joined by name
     guess          a number chosen so there is one (`costing/rumours.py`, `stated`)
     unpriced       nothing reached it; the 1,000/hr floor is what estimate uses
+    refused        nothing quoted it *on purpose*, and the row says whose call
     unreachable    *this map* cannot do it, which is ordinary
     uncompletable  *no* map can do it, which is a finding rather than a state
+
+**`refused` is `unpriced` with a reason, and separating them is the point.**
+Several models decline a method by name - Woodcutting's swaying tree is one
+object worth one experience, an impling is a wandering spawn nothing publishes
+a rate for, `costing/disclaimed.py` carries a page that disclaims itself. Each
+of those refusals was made *so that* the method would not be quoted a number,
+and every one of them then read as `unpriced` - the one word that means
+"somebody should go and close this". The two are opposite claims and the
+report now says which: **`unpriced` is a gap and `refused` is a decision**,
+with the deciding module's own sentence printed beside the row
+(`Heuristics.refused`).
+
+**It renames only what would otherwise be `unpriced`**, which is what keeps it
+honest and is the difference from `one-off`. A decoration has an arithmetic
+rate and is exempt anyway, so `one_off` is checked ahead of every priced tier;
+a refusal has no rate by construction, so it is checked last - and the day
+somebody finds the missing mechanic, the model wins and the refusal goes quiet
+without anything having to be edited. That is exactly what
+`costing/disclaimed.py` promises about its own entry.
 
 `guess` is separated from `modelled` because it is the one that should shrink
 and the one a reader most needs warning about: it looks exactly like a rate
@@ -97,12 +117,19 @@ STATUSES: tuple[str, ...] = (
     "uncompletable",
     "unreachable",
     "one-off",
+    "refused",
     "unpriced",
     "guess",
     "published",
     "pinned",
     "modelled",
 )
+
+#: What a method some model declined to quote is called. Distinct from
+#: `unpriced`, which is the same absence with nobody's name on it, and from
+#: `ONE_OFF`, which exempts a method that *does* have a rate. See the module
+#: docstring; the sentence comes from `Heuristics.refused`.
+REFUSED = "refused"
 
 #: What a decoration placed once is called - `costing/oneoff.py` names them.
 ONE_OFF = "one-off"
@@ -127,6 +154,7 @@ def status_of(
     reachable: bool = True,
     absent: str = UNREACHABLE,
     one_off: bool = False,
+    refused: bool = False,
 ) -> str:
     """Which of `STATUSES` a rate belongs to.
 
@@ -140,6 +168,10 @@ def status_of(
     a map cannot reach is still first of all unreachable, but one it *can*
     reach is exempt from being priced at all rather than priced badly. See
     `costing/oneoff.py`.
+
+    **`refused` is checked last**, and only ever renames `unpriced`: a model
+    that declined to quote a number has not thereby claimed a number somebody
+    else computed is wrong. See the module docstring.
     """
     if not reachable:
         return absent
@@ -148,7 +180,7 @@ def status_of(
     if pinned:
         return "pinned"
     if not match or match == "default":
-        return "unpriced"
+        return REFUSED if refused else "unpriced"
     if match in MODELLED_MATCHES:
         return "modelled"
     if match in GUESS_MATCHES:
@@ -385,6 +417,12 @@ def statuses_for(
             wanted = heuristics.unroutable.get(task, "")
             if wanted:
                 blocker, blocked_by = INPUT, wanted
+        # **A refusal replaces the source rather than the rate**, because
+        # there is no rate: the column that would say `wiki:herblore` says
+        # whose decision the blank is instead. See `REFUSED`.
+        why = heuristics.refused.get(task, "") if task in reachable else ""
+        if why:
+            source = why
         found.append(
             MethodStatus(
                 task=task,
@@ -400,6 +438,7 @@ def statuses_for(
                     reachable=task in reachable,
                     absent=absent,
                     one_off=bool(oneoff.reason(task)),
+                    refused=bool(why),
                 ),
                 knob=knob,
                 blocker=blocker,

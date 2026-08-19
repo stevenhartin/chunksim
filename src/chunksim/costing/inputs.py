@@ -713,12 +713,16 @@ def recipe_priced(
     # would otherwise keep is not a worse estimate but a known-wrong one: on
     # all eighteen NPCs the wiki charts it runs 2x to 3.6x fast. See
     # `costing/pickpocket.py`.
+    # **What it took away, so the blank can say whose call it was.** Same
+    # shape as `spell_dropped` above and spent by `coverage.REFUSED`.
+    uncharted: dict[str, str] = {}
     rated = pickpocket.refuse_uncharted(
         rated,
         heuristics.pickpockets,
         _mapping(state.chunk_info.challenges, "Thieving"),
         derived.challenges.valid.get("Thieving") or {},
         pinned,
+        uncharted,
     )
     # **And a method its own page says is not for training keeps no rate**,
     # which is a different claim from "slow" - see `costing/disclaimed.py`.
@@ -737,6 +741,16 @@ def recipe_priced(
             # what `cached_enrich` stores and `coverage.statuses_for` is
             # already handed.
             unroutable={**spell_dropped, **coverage.dropped},
+            # **And the opposite claim, carried the same way.** `unroutable`
+            # says a rate is missing and names what is in the way; this says
+            # the absence *is* the answer and names who decided. Both are
+            # diagnosis only - see `coverage.REFUSED` for why a refusal
+            # reported as `unpriced` is the one reading it exists to deny.
+            refused={
+                **disclaimed.DISCLAIMED,
+                **gathering_coverage.refused,
+                **uncharted,
+            },
         ),
         coverage,
     )
