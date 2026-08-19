@@ -979,8 +979,24 @@ DEFAULT_CURRENCY_PER_HOUR: dict[str, float] = {
 #: Applied to the scrape rather than replacing it, because the scrape is not
 #: wrong about the *price* - `load` divides, so a re-scrape keeps working and
 #: a changed price still lands.
+#: **And the Ranging Guild's ticket exchange is three more of the same.**
+#: `Archery ticket`'s own page says it in words - "you buy the whole quantity
+#: of items for the indicated price... for example, you buy **30 barb
+#: bolttips at once for 140 Archery tickets**" - and its `{{StoreLine}}`s
+#: carry the count in `displayname` exactly as the surge sack does. Three of
+#: the six rows are bundled and the scrape prices each at its whole bundle's
+#: cost: a bolttip 30x, a rune arrow 50x, an adamant javelin 20x.
+#:
+#: **Carried even though nothing spends them yet.** `Archery ticket` has no
+#: entry in `DEFAULT_CURRENCY_PER_HOUR`, so `shop_seconds` refuses these rows
+#: for want of a rate rather than pricing them wrongly - but the figures are
+#: wrong in the data whichever way that goes, and the day a rate arrives they
+#: would be wrong by thirty.
 SHOP_BUNDLES: dict[tuple[str, str], float] = {
     ("PvP Arena Rewards", "Blighted surge sack"): 50.0,
+    ("Ranging Guild Ticket Exchange", "Barb bolttips"): 30.0,
+    ("Ranging Guild Ticket Exchange", "Rune arrow"): 50.0,
+    ("Ranging Guild Ticket Exchange", "Adamant javelin"): 20.0,
 }
 
 #: `shop_prices`' own floor, for shops the scrape cannot reach.

@@ -1224,3 +1224,27 @@ def test_emirs_arena_pays_for_losing() -> None:
     assert seconds == pytest.approx(2.0)
     # Fifty of them is the two-minute cycle the method is named for.
     assert seconds is not None and bundle * seconds == pytest.approx(100.0)
+
+
+def test_the_ranging_guild_sells_by_the_bundle() -> None:
+    """`Archery ticket`'s own page says it in words - "you buy the whole
+    quantity of items for the indicated price... you buy 30 barb bolttips at
+    once for 140 Archery tickets" - and the count lives in `displayname`,
+    which the `storeline` bucket does not expose. So the scrape prices one
+    bolttip at the whole bundle's cost, thirty times the truth."""
+    from chunksim.costing.heuristics import SHOP_BUNDLES
+
+    shop = "Ranging Guild Ticket Exchange"
+    assert SHOP_BUNDLES[(shop, "Barb bolttips")] == 30.0
+    assert SHOP_BUNDLES[(shop, "Rune arrow")] == 50.0
+    assert SHOP_BUNDLES[(shop, "Adamant javelin")] == 20.0
+
+
+def test_an_unbundled_row_in_the_same_shop_is_untouched() -> None:
+    """Three of the shop's six rows carry a count and three do not - a rule
+    over the shop would divide a coif by something."""
+    from chunksim.costing.heuristics import SHOP_BUNDLES
+
+    shop = "Ranging Guild Ticket Exchange"
+    for name in ("Coif", "Studded body", "Green d'hide body"):
+        assert (shop, name) not in SHOP_BUNDLES
