@@ -1595,6 +1595,36 @@ a borrow is tolerable here in a way it would not be near the top of a climb.
 refused and 6 uncompletable of 118, from 76/1/0/34/0 when this started, and
 one climb moved in the whole stretch.
 
+**One lap can pay two skills, and the second is not a share of the first.**
+The Barbarian Outpost course is the only one of the eighteen `costing/
+courses.py` prices that pays anything but Agility - "the Agility course
+rewards 153.3 Agility experience and **41.3 Strength** experience per
+completed lap" - so `Course.ancillary` is a per-lap figure of its own that the
+same laps-per-hour multiplies. `Course.also` is the other shape and does not
+fit: that is one rate under two challenge names, where this is two rates under
+one. The page checks it from the other side, "leading to about 5,000 Strength
+experience per hour" against 120 tick-perfect laps, which is 4,956; this
+spends the page's own *average* 32-second lap as the Agility side does and
+comes out at 4,646, on the same 0.948. **Upstream states the real gate
+correctly and this follows it**: `Level: 1` with `Skills: {"Agility": 35}`
+beside it, because Strength does not gate a lap and a band's level is the
+skill being climbed.
+
+**And the simplest mechanic in the project turned out to be its own check.**
+`Pump (Blast Furnace)` states "2 Strength experience every tick", "up to 100
+minutes before automatically stopping", and "12,000 experience per hour" - the
+same arithmetic twice, so `costing/blastpump.py` has nothing to fit and no
+curve to read. A hundred minutes between reclicks is a rounding error rather
+than a cadence, which makes it one of very few rates in the game that does not
+move with level, gear or concentration. It is a **ceiling** in
+`costing/trawler.py`'s sense - the page says the furnace must stay full of
+coke and draws its own conclusion, "achieving the maximum theoretical
+experience rate is unlikely" - and `CONFIRMED` rather than `GUESS`, because
+what is unmodelled is a dependency on other players rather than an invented
+number.
+
+**Strength has no unpriced method either**, 5 modelled and 1 guessed of 6.
+
 **A constant standing in for a curve is not the conservative end, and saying
 so was the mistake.** `PICKPOCKET_CYCLE_SECONDS` was 3.5 seconds, fitted to one
 published figure - a Knight of Ardougne at level 55, 86,000 xp/hr - and its own

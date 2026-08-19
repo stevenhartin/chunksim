@@ -260,6 +260,10 @@ The modules, and what each owns:
 - `forestry.py` - the nine Forestry events, which you meet a share of rather
   than choose between, and which pay **six** skills at once off one table of
   level-carrying formulas.
+- `blastpump.py` - the Blast Furnace pump, the simplest mechanic here: "2
+  Strength experience every tick", a hundred minutes between reclicks, and so
+  a flat 12,000/hr at every level - which is the page's own stated figure and
+  the same arithmetic twice. A ceiling, because the furnace has to stay stoked.
 - `blackjack.py` - the three NPCs you knock out before taking their pocket, so
   the chart that decides the rate is the **knock-out** one and the two
   pickpockets after it are free. `pickpocket.py` prices the awake method and

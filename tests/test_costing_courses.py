@@ -336,3 +336,50 @@ class TestOneLapTwoChallenges:
         assert [c.task for c in courses.COURSES if c.also] == [
             "Access the ~|Wilderness Agility Course|~"
         ]
+
+
+class TestOneLapCanPayTwoSkills:
+    """The Barbarian Outpost course is the only one of the eighteen that pays
+    anything but Agility: "the Agility course rewards 153.3 Agility experience
+    and 41.3 Strength experience per completed lap"."""
+
+    _COURSE = next(c for c in courses.COURSES if c.ancillary is not None)
+
+    def test_only_one_course_has_an_ancillary_skill(self) -> None:
+        assert sum(1 for c in courses.COURSES if c.ancillary is not None) == 1
+        assert "Barbarian Outpost" in self._COURSE.task
+
+    def test_it_is_a_per_lap_figure_and_not_a_share(self) -> None:
+        assert self._COURSE.ancillary == ("Strength", 41.3)
+
+    def test_the_pages_own_hourly_figure_checks_it(self) -> None:
+        """"The course completion bonus also includes 41.3 Strength
+        experience, leading to about 5,000 Strength experience per hour" -
+        against 120 tick-perfect laps, which is 4,956."""
+        assert 120.0 * 41.3 == pytest.approx(4_956.0)
+
+    def test_it_rides_the_same_lap_as_the_agility_rate(self) -> None:
+        # So the Strength rate is on the same 0.948 against its published
+        # figure as its Agility twin is against 18,200.
+        valid: dict[str, dict[str, object]] = {
+            "Agility": {self._COURSE.task: {}},
+            "Strength": {self._COURSE.task: {}},
+        }
+        found = courses.methods(valid)
+        (band,) = found["Strength"]
+        laps = 3600.0 / self._COURSE.lap_seconds
+        assert band.xp_per_hour == pytest.approx(laps * 41.3)
+        assert band.knob.endswith("/Strength")
+
+    def test_the_second_skill_needs_its_own_challenge_to_be_valid(self) -> None:
+        # Upstream carries the same task name under both skills, so a map
+        # reaching one need not have derived the other.
+        found = courses.methods({"Agility": {self._COURSE.task: {}}})
+        assert "Strength" not in found
+
+    def test_its_band_opens_at_upstreams_own_level(self) -> None:
+        """Level 1, with the Agility 35 stated in `Skills` beside it - a
+        band's level is the skill being climbed."""
+        valid: dict[str, dict[str, object]] = {"Strength": {self._COURSE.task: {}}}
+        (band,) = courses.methods(valid)["Strength"]
+        assert band.level == 1

@@ -38,6 +38,7 @@ from chunksim.costing import (
     coverage,
     barbarian,
     blackjack,
+    blastpump,
     crane,
     trawler,
     valetotems,
@@ -997,6 +998,11 @@ def _gathered(
     # **Four gardens and the level picks which** - see `costing/sorceress.py`.
     # Flat rates, so nothing but the valid set is needed.
     for skill, methods in sorceress.methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **Two Strength experience a tick and nothing else** - see
+    # `costing/blastpump.py`, the one method here whose rate does not move
+    # with level, gear or concentration.
+    for skill, methods in blastpump.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **A roll every single tick**, which is the fastest cadence in the skill
     # and the only method here whose experience had to be recovered rather

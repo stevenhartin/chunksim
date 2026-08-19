@@ -158,6 +158,24 @@ class Course:
     #: seconds of clicking whose experience is already inside `bonus_per_hour`,
     #: so a rate for it would be that double-count with a level attached.
     also: tuple[str, ...] = ()
+    #: A second skill the *same lap* pays, as `(skill, experience per lap)`.
+    #:
+    #: **One lap, two skills, and the second one is not a share of the
+    #: first.** The Barbarian Outpost course is the only one of the eighteen
+    #: that pays anything but Agility - "the Agility course rewards 153.3
+    #: Agility experience and **41.3 Strength** experience per completed lap"
+    #: - so it is a per-lap figure of its own rather than a ratio, and the
+    #: same laps-per-hour multiplies both. `Course.also` is the other shape
+    #: and does not fit: that is one rate under two challenge names, where
+    #: this is two rates under one.
+    #:
+    #: The page checks it from the other side: "the course completion bonus
+    #: also includes 41.3 Strength experience, leading to about **5,000
+    #: Strength experience per hour**", against 120 tick-perfect laps - and
+    #: 120 x 41.3 is 4,956. This spends the page's own *average* 32-second lap
+    #: rather than the 49-tick one, as the Agility side does, so it comes out
+    #: at 4,646 on the same 0.948 as its Agility twin.
+    ancillary: tuple[str, float] | None = None
     #: Seconds between laps that the lap time does not already contain. Only
     #: the two Colossal Wyrm courses state one - "including 3.6 seconds of
     #: downtime between laps" - and stating it separately is what keeps
@@ -187,7 +205,18 @@ COURSES: tuple[Course, ...] = (
     # 108-110 ticks; the slower end, which is the reading without the
     # diagonal-running trick the table's footnote describes.
     Course("Access the ~|Varrock Rooftop Course|~", 30, 270.0, 66.0),
-    Course("Access the ~|Barbarian Outpost Agility Course|~", 35, 153.3, 32.0),
+    Course(
+        "Access the ~|Barbarian Outpost Agility Course|~",
+        35,
+        153.3,
+        32.0,
+        # **Upstream files the same task under Strength as well**, at
+        # `Level: 1` with `Skills: {"Agility": 35}` beside it - so it states
+        # the real gate as a *requirement* rather than as the band's level,
+        # which is exactly right: Strength does not gate a lap.
+        # See `Course.ancillary`.
+        ancillary=("Strength", 41.3),
+    ),
     Course("Access the ~|Canafis Rooftop Course|~", 40, 240.0, 43.8),
     # The advanced course adds the level its failures stop at, which is what
     # makes it two bands instead of one.
@@ -274,7 +303,12 @@ def bands_for(course: Course) -> tuple[tuple[int, float], ...]:
 def methods(
     valid: Mapping[str, Mapping[str, object]],
 ) -> dict[str, tuple[ComputedMethod, ...]]:
-    """`{"Agility": (...)}` for whichever courses a map can reach."""
+    """`{skill: (...)}` for whichever courses a map can reach.
+
+    Agility for every course, and **Strength for the one lap that pays it** -
+    see `Course.ancillary`, which is a second rate under one challenge rather
+    than `Course.also`'s one rate under two.
+    """
     reachable = valid.get(SKILL) or {}
     bands = tuple(
         ComputedMethod(
@@ -293,7 +327,33 @@ def methods(
         if task in reachable
         for level, paid in bands_for(course)
     )
-    return {SKILL: bands} if bands else {}
+    found: dict[str, tuple[ComputedMethod, ...]] = {SKILL: bands} if bands else {}
+    for course in COURSES:
+        if course.ancillary is None:
+            continue
+        skill, per_lap = course.ancillary
+        # **The ancillary challenge is the map's to hold, separately.**
+        # Upstream carries the same task name under both skills, so a map
+        # reaching one need not have derived the other valid.
+        if course.task not in (valid.get(skill) or {}):
+            continue
+        laps = 3600.0 / (course.lap_seconds + course.downtime_seconds)
+        found[skill] = (
+            *found.get(skill, ()),
+            ComputedMethod(
+                method=_display(course.task),
+                xp_per_hour=laps * per_lap,
+                # **Upstream's own level for *that* challenge**, which is 1
+                # - it states the Agility 35 in `Skills` instead, because
+                # Strength does not gate a lap. A band's level is the skill
+                # being climbed, and the other requirement is the derivation's
+                # to enforce.
+                level=1,
+                match=CONFIRMED,
+                knob=f"training/{course.task}/{skill}",
+            ),
+        )
+    return found
 
 
 def _display(task: str) -> str:
