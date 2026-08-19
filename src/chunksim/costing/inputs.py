@@ -37,6 +37,7 @@ from chunksim.costing import (
     aerial,
     coverage,
     barbarian,
+    blackjack,
     crane,
     trawler,
     valetotems,
@@ -995,6 +996,12 @@ def _gathered(
     # **Four gardens and the level picks which** - see `costing/sorceress.py`.
     # Flat rates, so nothing but the valid set is needed.
     for skill, methods in sorceress.methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **One knockout buys two pickpockets and no stun at all**, which is what
+    # anybody actually does to these three NPCs - see `costing/blackjack.py`.
+    # It shares its challenges with `pickpocket.methods`, and `training_bands`
+    # takes the maximum, so the awake rate stays as the floor it is.
+    for skill, methods in blackjack.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **A safe is worried at rather than opened once** - one click is a run of
     # automatic attempts, so the thing with a chance is the attempt and the

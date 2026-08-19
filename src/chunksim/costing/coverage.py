@@ -420,8 +420,25 @@ def statuses_for(
         # **A refusal replaces the source rather than the rate**, because
         # there is no rate: the column that would say `wiki:herblore` says
         # whose decision the blank is instead. See `REFUSED`.
+        #
+        # **Only where the row really is refused**, which is not the same as
+        # "somebody refused something about this task". A model can refuse a
+        # method for one reading and another price it for a different one -
+        # the Pollnivneach bandits are refused by the node walk, whose only
+        # chart for them is a knock-out chance, and priced by
+        # `costing/blackjack.py`, which is what that chart is *for*. Written
+        # unconditionally this put a refusal's sentence in the source column of
+        # a `modelled` row.
         why = heuristics.refused.get(task, "") if task in reachable else ""
-        if why:
+        status = status_of(
+            match,
+            pinned=task in heuristics.pinned,
+            reachable=task in reachable,
+            absent=absent,
+            one_off=bool(oneoff.reason(task)),
+            refused=bool(why),
+        )
+        if status == REFUSED:
             source = why
         found.append(
             MethodStatus(
@@ -432,14 +449,7 @@ def statuses_for(
                 effective_xp_per_hour=rate,
                 match=match,
                 source=source,
-                status=status_of(
-                    match,
-                    pinned=task in heuristics.pinned,
-                    reachable=task in reachable,
-                    absent=absent,
-                    one_off=bool(oneoff.reason(task)),
-                    refused=bool(why),
-                ),
+                status=status,
                 knob=knob,
                 blocker=blocker,
                 blocked_by=blocked_by,

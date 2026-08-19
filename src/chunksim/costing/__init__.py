@@ -260,6 +260,12 @@ The modules, and what each owns:
 - `forestry.py` - the nine Forestry events, which you meet a share of rather
   than choose between, and which pay **six** skills at once off one table of
   level-carrying formulas.
+- `blackjack.py` - the three NPCs you knock out before taking their pocket, so
+  the chart that decides the rate is the **knock-out** one and the two
+  pickpockets after it are free. `pickpocket.py` prices the awake method and
+  nobody uses it on these: the Menaphite Thug is 104,422/hr awake against a
+  published 265,000 blackjacked. One knockout attempt plus two pockets at two
+  ticks each reproduces the page's own stated ceiling of 275,000 exactly.
 - `wallsafe.py` - the Rogues' Den lobby safes, where **one click is a run of
   attempts**: the safe re-tries itself every 4 ticks until it cracks or springs
   the trap, so the thing with a success chance is the attempt and the thing

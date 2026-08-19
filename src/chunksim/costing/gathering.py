@@ -1912,6 +1912,21 @@ PROFILES: dict[str, SkillProfile] = {
             # pickpocketed for a quest item, and the zero is the answer rather
             # than a figure nobody has scraped.
             "movario": "its own infobox states xp = 0, and the zero is the answer",
+            # **The only chart on their page is a knock-out chance, and the
+            # node walk read it as a pickpocket one.** Both Pollnivneach
+            # bandits are blackjacked - see `costing/blackjack.py`, which
+            # prices the method they are actually used for - and their *awake*
+            # chance is one of the seven nothing charts. Left to this model
+            # they came out at 202,488/hr apiece, three errors compounding:
+            # the knockout curve read as a steal, the two-tick awake cadence
+            # with no stun, and the bearded bandit taking the no-beard one's
+            # 84.3 experience because `#Bearded` is stripped before the join.
+            #
+            # One key catches both, which is the point: `_names` drops the
+            # anchor, so `bandit (pollnivneach)` is what each of them offers.
+            "bandit (pollnivneach)": (
+                "only a knock-out chart, and blackjacking is what it is for"
+            ),
             # **The one door with no data at all.** `Grubby Door` has no
             # `{{Thieving info}}`, so nothing states its experience and the
             # eight-tick interval has no numerator to spend. Named here rather

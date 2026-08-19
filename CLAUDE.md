@@ -1451,8 +1451,50 @@ a fake method that beat the Rogues' Castle chest. `remote/gathering.
 CHART_LABELS` is a two-row hand table for `recipe_rates.HAND_ALIASES`' reason:
 a rule general enough to catch them would have to guess which of a page's
 charts is about the skill being asked, and "first" is right 29 times in 31.
-**It is the one change in this stretch that moved a climb** - fray-uber's
-Thieving 47.4h to 50.1h, the thug's fake band coming out.
+It moved fray-uber's Thieving climb from 47.4h to 50.1h, the thug's fake band
+coming out.
+
+**But a knock-out chart is not junk data, it is a different method's chart** -
+which is the correction to the paragraph above, and it is worth more than the
+bug was. `Thieving training` gives blackjacking three brackets of the climb:
+"knock out the bandit and pickpocket them twice while they are unconscious.
+**The timing is right when the player receives experience drops every two
+ticks**". So the chance that decides the rate is the knockout's and the two
+pickpockets after it are free, which is why the wiki charts a knock-out chance
+for these three NPCs and an *awake* chance for only one of them. Priced awake
+the Menaphite Thug reads 104,422/hr against a published **265,000**, and the
+two Pollnivneach bandits were refused outright as uncharted - true only of a
+method nobody uses.
+
+**The cycle lands on the page's own ceiling exactly**: two thug pickpockets at
+137.5 over six ticks is **275,000 an hour**, against "at maximum efficiency,
+it is possible to gain up to 270,000-275,000 experience per hour at level 99".
+That also settles a silence - the bandits' page states that "knocking out
+either bandit rewards 10 Thieving experience" and the thug's states nothing,
+and crediting the thug a knockout bonus would put perfect play at 285,000,
+above the page's own maximum. Against the published brews column
+`costing/blackjack.py` runs **1.16x at level 45 falling to 1.02x at 99**, and
+**nothing is fitted to close that** because nothing could: a constant
+multiplier cannot produce a residual that shrinks, and neither can a constant
+overhead - solving the column for extra ticks per cycle gives 1.14 at 45 down
+to 0.10 at 99. The page says what the shape is in its own hidden comment,
+"lower levels scale down more to factor in that you fail more often and likely
+make more mistakes", and practice is not a term this model has.
+
+**Finding it meant the node walk had to stop pricing the bandits**, which had
+been the worse half of the same confusion: their only chart is the knock-out
+one, so the walk read it as a steal, spent the two-tick awake cadence with no
+stun, and gave the bearded bandit the no-beard one's 84.3 experience because
+`_names` strips `#Bearded` before the join - **202,488/hr apiece**, three
+errors compounding. They are `refuses`d by the one key both offer.
+
+**And a refusal's sentence belongs only on a refused row.** `coverage.build`
+was overwriting the source column whenever *anything* had refused the task,
+which is not the same claim: the bandits are refused by the node walk and
+priced by `blackjack.py`, and the row read `modelled` with "only a knock-out
+chart" in the column that should have said `computed:blackjacking`. fray-uber's
+Thieving goes 50.1h to **42.5h** with the method in, and no climb moves on
+either real map.
 
 **And a curve can be shared outright where the two really are the same
 creature.** `Guard (H.A.M. Storerooms)` has no chart anywhere and was refused
