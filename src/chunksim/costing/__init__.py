@@ -260,6 +260,12 @@ The modules, and what each owns:
 - `forestry.py` - the nine Forestry events, which you meet a share of rather
   than choose between, and which pay **six** skills at once off one table of
   level-carrying formulas.
+- `calcified.py` - smashing a calcified deposit, the Smithing third of Cam
+  Torum mining: 1 experience in 3 ticks, stated twice on the deposit's own
+  page. The headline 2,000/hr is the action's; a deposit is a 1/75 roll off a
+  mine, and `training.effective_xp_per_hour` plus `yields.py` are what turn
+  that into an honest figure. The Mining third is already
+  `gathering.stated_curves`; the Prayer third is blocked upstream.
 - `blastpump.py` - the Blast Furnace pump, the simplest mechanic here: "2
   Strength experience every tick", a hundred minutes between reclicks, and so
   a flat 12,000/hr at every level - which is the page's own stated figure and

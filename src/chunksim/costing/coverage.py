@@ -84,10 +84,11 @@ Pure: takes a derivation and a priced `Heuristics` and returns rows.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
 from chunksim.costing import oneoff
+from chunksim.costing.gathering import expand_families
 from chunksim.costing.heuristics import Heuristics, activity_name
 from chunksim.costing.training import TrainingOption, training_options
 from chunksim.derive.active_tasks import DISPLAY_SKILLS
@@ -259,6 +260,17 @@ class Reachability:
     #: rule in its `Category`, so an off rule is a choice rather than a gap -
     #: which is exactly the distinction this whole report is for.
     rules_off: frozenset[str] = frozenset()
+    #: `Name[+]` -> its members, off the export's own family tables.
+    #:
+    #: **Without this a family reads as a missing item, and the name it
+    #: reports does not exist.** `Offer a ~|blessed bone shards|~ at the
+    #: libation bowl` asks for `Blessed wine[+]`, which the export defines as
+    #: `Jug of blessed wine` and `Jug of blessed sunfire wine` - and stripping
+    #: the marker asked the world for a bare "Blessed wine", which is not an
+    #: item anywhere and never could be. The derivation expands the family
+    #: (`derive/challenges._compile_items`); this is the *report*, and it was
+    #: naming a thing that does not exist as the reason.
+    families: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
 
     @classmethod
     def from_derived(cls, derived: Derived, state: MapState | None = None) -> "Reachability":
@@ -278,7 +290,22 @@ class Reachability:
                 for name, value in (state.rules if state is not None else {}).items()
                 if value is False
             ),
+            families=(
+                expand_families(state.chunk_info) if state is not None else {}
+            ),
         )
+
+    def has_item(self, name: str) -> bool:
+        """Whether the world provides `name`, expanding a `[+]` family.
+
+        **One member is enough**, which is upstream's own reading and the
+        derivation's - see `derive/challenges._compile_items`. A family with
+        no table is not satisfiable by anything, so it stays a blocker.
+        """
+        members = self.families.get(name)
+        if members is not None:
+            return any(member in self.items for member in members)
+        return name.replace("[+]", "").strip() in self.items
 
 
 #: What `blocker_for` can say, and the order it tries them in - most specific
@@ -330,9 +357,11 @@ def blocker_for(
             return "task", task
     for item in challenge.get("Items") or ():
         if isinstance(item, str):
-            name = item.replace("*", "").replace("[+]", "").strip()
-            if name and name not in reach.items:
-                return "item", name
+            # **The family is asked as a family**, so a blocker names something
+            # that exists - see `Reachability.has_item`.
+            asked = item.replace("*", "").strip()
+            if asked and not reach.has_item(asked):
+                return "item", asked.replace("[+]", "").strip()
     for obj in challenge.get("Objects") or ():
         if isinstance(obj, str):
             name = obj.replace("[+]", "").strip()

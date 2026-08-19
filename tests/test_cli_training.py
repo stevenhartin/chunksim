@@ -460,3 +460,35 @@ class TestARefusalIsNotAGap:
         assert coverage.status_of(
             "default", one_off=True, refused=True
         ) == coverage.ONE_OFF
+
+
+def test_a_family_blocker_names_something_that_exists() -> None:
+    """**Without expanding the family the report named a phantom.** `Offer a
+    ~|blessed bone shards|~ at the libation bowl` asks for `Blessed wine[+]`,
+    which the export defines as two jugs - and stripping the marker asked the
+    world for a bare "Blessed wine", which is not an item anywhere. Measured
+    over the ceiling, expanding it moved 15 rows off `item` and onto the
+    object they were really missing."""
+    reach = coverage.Reachability(
+        items=frozenset({"Jug of blessed wine"}),
+        objects=frozenset(),
+        tasks=frozenset(),
+        npcs=frozenset(),
+        chunks=frozenset(),
+        families={"Blessed wine[+]": ("Jug of blessed wine", "Jug of blessed sunfire wine")},
+    )
+    assert reach.has_item("Blessed wine[+]")
+    assert not reach.has_item("Superior dragon bones")
+
+
+def test_a_family_with_no_table_is_still_a_blocker() -> None:
+    """One member is enough, but a family nothing defines is satisfiable by
+    nothing - which is the derivation's reading too."""
+    reach = coverage.Reachability(
+        items=frozenset({"Jug of blessed wine"}),
+        objects=frozenset(),
+        tasks=frozenset(),
+        npcs=frozenset(),
+        chunks=frozenset(),
+    )
+    assert not reach.has_item("Blessed wine[+]")

@@ -1670,6 +1670,41 @@ can see it, and **only where a band was actually emitted**: a map holding
 bronze and nothing else can make no preform at all, since one needs 28 bars of
 two metals, and there the ordinary `unpriced` is the honest answer.
 
+**One activity can pay three skills and only need modelling for one of
+them.** Cam Torum's calcified rocks yield blessed bone shards and, at 1/75, a
+calcified deposit; the deposit is crushed on an anvil for Smithing and the
+shards are offered at the libation bowl for Prayer. Mining was already
+modelled - `gathering.stated_curves`' `calcified rocks` entry is a curve
+recovered from `Pay-to-play Mining training`'s own table and reads 50,344/hr
+against its published 49,000 at 99 - and Prayer is blocked upstream rather
+than here. So `costing/calcified.py` is the middle third alone: "this process
+provides **1 Smithing experience** and takes **3 ticks** per deposit", stated
+twice on the deposit's own page, which is 2,000/hr and nothing to fit.
+
+**The headline is the action's and the supply is somebody else's job**, which
+is the arrangement worth copying: a deposit is a 1/75 roll, so an hour of
+smashing is not an hour anyone can have, and `training.effective_xp_per_hour`
+already charges a method for the time to obtain what it eats while
+`costing/yields.py` already prices a calcified deposit as a weighted yield off
+the rock. What the module adds is the numerator, without which the walk had
+nothing to charge against.
+
+**And chasing the Prayer third found the report naming a thing that does not
+exist.** `Offer a ~|blessed bone shards|~ at the libation bowl` asks for
+`Blessed wine[+]`, which the export defines as `Jug of blessed wine` and `Jug
+of blessed sunfire wine` - and `coverage.blocker_for` stripped the marker and
+asked the world for a bare "Blessed wine", which is not an item anywhere and
+never could be. The *derivation* expands the family
+(`derive/challenges._compile_items`); the **report** did not.
+`Reachability.has_item` does now, and measured over the ceiling it moved **15
+rows off `item` and onto the object they were really missing** - the four
+Camdozaal fish offerings onto `Fishing spot (Camdozaal)`, the corals onto
+`Coral nursery (patch)`, the basalt shortcuts onto their stepping stones. The
+libation bowl keeps its blocker, which is the honest answer: neither jug is
+reachable at the ceiling, because blessing one is itself a Prayer challenge
+above level 1 and **Prayer has only six `Primary` challenges in the whole
+export**, none of them valid there.
+
 **A constant standing in for a curve is not the conservative end, and saying
 so was the mistake.** `PICKPOCKET_CYCLE_SECONDS` was 3.5 seconds, fitted to one
 published figure - a Knight of Ardougne at level 55, 86,000 xp/hr - and its own

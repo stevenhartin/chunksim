@@ -39,6 +39,7 @@ from chunksim.costing import (
     barbarian,
     blackjack,
     blastpump,
+    calcified,
     crane,
     trawler,
     valetotems,
@@ -1003,6 +1004,11 @@ def _gathered(
     # **Four gardens and the level picks which** - see `costing/sorceress.py`.
     # Flat rates, so nothing but the valid set is needed.
     for skill, methods in sorceress.methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **The Smithing third of Cam Torum mining** - see
+    # `costing/calcified.py`, whose 1 experience in 3 ticks is stated twice on
+    # the deposit's own page and whose real cost is the mining behind it.
+    for skill, methods in calcified.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **Two Strength experience a tick and nothing else** - see
     # `costing/blastpump.py`, the one method here whose rate does not move
