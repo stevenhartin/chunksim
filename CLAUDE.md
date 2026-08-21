@@ -772,8 +772,21 @@ vocabulary drift - an apostrophe moved, `Burg de Rot` against `Burgh de Rott`,
 a qualifier upstream lacks. **A word-overlap scorer proposed 21 more and was
 rejected**: it offered a Shilo Village stepping stone for a house window in
 Aldarin and collapsed five Brimhaven Dungeon shortcuts onto one Lumbridge
-stone. Those 37 stay unpriced, which is the honest state for a join nothing
-here can verify.
+stone. Those stay **`unpriced`, and that is the right word rather than
+`refused`**: 33 of the 80 shortcut challenges state no `Objects` at all, so
+there is no structural key and the only route left is a hand lookup - which is
+exactly how those 22 aliases were made. The scorer refused to *guess* the link,
+not to have one, so the row really does mean "somebody should go and close
+this".
+
+**What *is* refused is the other kind of miss.** `shortcuts.REFUSED` names the
+two challenges that join a real page and are declined because it awards
+nothing - `Fence (Burgh de Rott)` and `Crevice (Fremennik Slayer Dungeon)`,
+the two the flag-versus-experience measurement above turned up. They are
+written by hand because `heuristics._add_shortcuts` runs inside `chunksim
+heuristics`, and by the time an estimate reads `wiki_rates.json` a
+zero-experience refusal is indistinguishable from a name that never joined:
+both are simply absent from `training`.
 
 **An action that pays several skills should be read once and spent several
 times.** Barbarian fishing was already modelled - `gathering.py` rolls its

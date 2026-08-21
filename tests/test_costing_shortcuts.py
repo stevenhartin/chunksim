@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.costing.shortcuts import (
     ATTEMPT_SECONDS,
     SHORTCUT_TICKS,
@@ -127,3 +128,50 @@ def test_a_zero_experience_shortcut_stays_unpriced_even_with_an_alias() -> None:
     upstream marks `Primary: true`. Joining them is right; pricing them is
     not, and `_add_shortcuts` drops them on their own experience."""
     assert xp_per_hour(_info(experience=0.0), 99) == 0.0
+
+
+class TestARefusalIsNotAGap:
+    """A shortcut read and declined printed as `unpriced`, the word that means
+    "nothing reached this". Two of them, both hand-named because the deciding
+    code is `chunksim heuristics`' and its output cannot tell a zero-experience
+    refusal from a name that never joined."""
+
+    def test_both_zero_experience_shortcuts_are_named(self) -> None:
+        from chunksim.costing import shortcuts
+
+        assert set(shortcuts.refused()) == {
+            "Access the Burg de Rot fence ~|shortcut|~",
+            "Access the Fremennik Slayer Dungeon chasm jump ~|shortcut|~",
+        }
+
+    def test_each_says_which_page_pays_nothing(self) -> None:
+        from chunksim.costing import shortcuts
+
+        assert all(why.strip() for why in shortcuts.refused().values())
+
+    @pytest.mark.real_export
+    def test_the_named_tasks_exist_and_are_primary_shortcuts(
+        self, real_export: ChunkInfo
+    ) -> None:
+        """**A key that matches nothing is silently inert** - `Heuristics.
+        refused` simply never fires and the row goes back to reading
+        `unpriced`. Upstream must also still call each one a `Primary`
+        Agility `Shortcut`, since that is what makes it a training method
+        whose absence needed explaining."""
+        from chunksim.costing import shortcuts
+
+        agility = real_export.challenges["Agility"]
+        for task in shortcuts.refused():
+            entry = agility.get(task)
+            assert isinstance(entry, dict), task
+            assert entry.get("Primary") is True, task
+            assert "Shortcut" in (entry.get("Category") or ()), task
+
+    def test_an_unjoined_shortcut_is_not_swept_in(self) -> None:
+        """**The 33 challenges upstream states no `Objects` for are a name
+        lookup, not a decision** - it is how `SHORTCUT_ALIASES`' 22 entries
+        were made. Calling them refused would say "do not bother" where the
+        truth is "this is still to do", so they stay `unpriced`."""
+        from chunksim.costing import shortcuts
+
+        assert "Access the Watchtower trellis ~|shortcut|~" not in shortcuts.refused()

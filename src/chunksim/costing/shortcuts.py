@@ -42,6 +42,29 @@ It is not a rule: `Fence (Burgh de Rott)` and `Crevice (Fremennik Slayer
 Dungeon)` are both `Primary: true` and both pay nothing. So `heuristics.
 _add_shortcuts` drops a zero-experience shortcut on its own experience rather
 than on the flag, and a wider join cannot quietly introduce a 0/hr method.
+
+**And a drop is a decision, so `refused` says so.** Those two challenges join
+a real wiki page, are read, and are declined - which printed as `unpriced`,
+the word that means "nothing reached this". `coverage.REFUSED` is for exactly
+that gap between what a model decided and what the report said.
+
+**Named by hand, because the deciding code runs at a different time.**
+`_add_shortcuts` is `chunksim heuristics`' - it turns the scrape into
+`wiki_rates.json` - and by the time an estimate runs, a zero-experience
+shortcut is indistinguishable from one whose name never joined: both are
+simply absent from `training`. Carrying the distinction in the blob would
+mean a re-scrape to fill it, so the two are written down here instead, with
+the measurement above as their provenance. `tests/test_costing_shortcuts.py`
+pins that both are still `Primary: true` Agility shortcuts upstream, since a
+name that matches nothing would be silently inert.
+
+**The other misses are *not* this, and calling them refusals would be
+wrong.** 33 of the 80 shortcut challenges state no `Objects` at all, so there
+is no structural key to join a wiki page on and the fallback is the
+challenge's own prose. That is a name lookup somebody can do - it is how
+`skill_tables.SHORTCUT_ALIASES`' 22 entries were made - so those stay
+`unpriced`, which is precisely "somebody should go and close this". The
+rejected word-overlap scorer refused to *guess* the link, not to have one.
 """
 
 from __future__ import annotations
@@ -77,3 +100,30 @@ def expected_experience(info: ShortcutInfo, level: int) -> float:
 def xp_per_hour(info: ShortcutInfo, level: int) -> float:
     """`info`'s rate at `level`, in experience per hour."""
     return expected_experience(info, level) * 3600.0 / ATTEMPT_SECONDS
+
+
+#: `{task: why}` for a shortcut this project reads and then declines.
+#:
+#: **A hand table for the reason `remote/gathering.CHART_LABELS` is one**: the
+#: fact behind each is measured (see the module docstring) but is decided in
+#: `chunksim heuristics`, whose output cannot tell a zero-experience refusal
+#: from a name that never joined. Two rows, both `Primary: true` upstream and
+#: both awarding nothing on their own wiki page.
+REFUSED: dict[str, str] = {
+    "Access the Burg de Rot fence ~|shortcut|~": (
+        "Fence (Burgh de Rott) awards no experience"
+    ),
+    "Access the Fremennik Slayer Dungeon chasm jump ~|shortcut|~": (
+        "Crevice (Fremennik Slayer Dungeon) awards no experience"
+    ),
+}
+
+
+def refused() -> dict[str, str]:
+    """`{task: why}` for the shortcuts read and declined - see `REFUSED`.
+
+    A function rather than the bare mapping so callers match `foundry.refused`
+    and `courses.refused`, and so a future version can take the valid set if
+    one of these ever becomes conditional.
+    """
+    return dict(REFUSED)

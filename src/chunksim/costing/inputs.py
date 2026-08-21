@@ -84,6 +84,7 @@ from chunksim.costing import (
     wiremachine,
 )
 from chunksim.costing import gathering as gathering_model
+from chunksim.costing import shortcuts as shortcut_model
 from chunksim.costing.estimate import material_seconds
 from chunksim.costing import prayer as prayer_costing
 from chunksim.costing.heuristics import ComputedMethod, MaterialCost
@@ -766,6 +767,10 @@ def recipe_priced(
                 # already `bonus_per_hour`, so redeeming one carries no rate
                 # rather than lacking one.
                 **courses.refused(derived.challenges.valid),
+                # **And the two shortcuts that join a page and pay nothing.**
+                # See `shortcuts.REFUSED`: read and declined, which is a
+                # decision rather than the gap `unpriced` announces.
+                **shortcut_model.refused(),
             },
         ),
         coverage,

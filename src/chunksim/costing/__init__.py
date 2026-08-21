@@ -226,9 +226,12 @@ The modules, and what each owns:
 - `shortcuts.py` - an Agility shortcut priced from the attempt: eight ticks,
   the experience its own page states, the experience a *failure* pays, and the
   published success curve. Replaced an 18-second cycle whose comment called it
-  "a stated target, not a measurement". **Upstream's `Primary` flag is already
+  "a stated target, not a measurement". **Upstream's `Primary` flag is nearly
   the "is this a training method" answer here** - 93 of 162 shortcuts pay
-  nothing and are non-primary, so no filter is needed.
+  nothing and almost all are non-primary - but not quite, so `REFUSED` names
+  the two that are primary, join a real page and award nothing. The 33
+  challenges upstream states no `Objects` for are deliberately *not* in there:
+  that is a hand lookup somebody can do, which is what `unpriced` means.
 - `production.py` - what a production method consumes, for the methods no
   `{{Recipe}}` describes, read off `Module:Skill calc` by way of the gathering
   tables. **It supplies a material cost, never a rate**: a calculator row has
