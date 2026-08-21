@@ -156,8 +156,12 @@ class Course:
     #: Upstream's third challenge for the course, `Trade in a ~|wilderness
     #: agility ticket|~ for xp`, deliberately gets **no** rate: redeeming is
     #: seconds of clicking whose experience is already inside `bonus_per_hour`,
-    #: so a rate for it would be that double-count with a level attached.
+    #: so a rate for it would be that double-count with a level attached. It is
+    #: named in `redeems` so the report can say that rather than `unpriced`.
     also: tuple[str, ...] = ()
+    #: A challenge that *spends* what this course's `bonus_per_hour` already
+    #: counts, and therefore carries no rate of its own. See `refused`.
+    redeems: tuple[str, ...] = ()
     #: A second skill the *same lap* pays, as `(skill, experience per lap)`.
     #:
     #: **One lap, two skills, and the second one is not a share of the
@@ -235,6 +239,7 @@ COURSES: tuple[Course, ...] = (
     Course(
         "Access the ~|Wilderness Agility Course|~", 52, 571.4, 45.0, 18_400.0,
         also=("Run the ~|Wilderness Agility Course|~ with the agility dispenser",),
+        redeems=("Trade in a ~|wilderness agility ticket|~ for xp",),
     ),
     Course(
         "Access the ~|Seers' Village Rooftop Course|~", 60, 570.0, 43.8,
@@ -354,6 +359,35 @@ def methods(
             ),
         )
     return found
+
+
+def refused(valid: Mapping[str, Mapping[str, object]]) -> dict[str, str]:
+    """`{task: why}` for a challenge that spends what a lap already counted.
+
+    **A decision reading as a gap, which is what `coverage.REFUSED` is for.**
+    The Wilderness course's agility dispenser hands out one ticket a lap and
+    those tickets *are* `bonus_per_hour`, so `Trade in a ~|wilderness agility
+    ticket|~ for xp` has had no rate on purpose since `bonus_per_hour` existed
+    - the reasoning was in `Course.also`'s docstring and nowhere a reader of
+    the report could see it, so the row printed `unpriced`: the one word that
+    means "somebody should go and close this".
+
+    **Only where the lap it double-counts was actually priced.** A map that
+    cannot reach the course has no bonus for the ticket to be inside, and
+    there the ordinary `unpriced` is the honest answer - the same gate
+    `foundry.refused` puts on the bronze preform.
+    """
+    reachable = valid.get(SKILL) or {}
+    return {
+        task: (
+            f"redeeming a ticket the {_display(course.task)} lap already counts"
+            " in its completion bonus"
+        )
+        for course in COURSES
+        if course.task in reachable and course.bonus_per_hour
+        for task in course.redeems
+        if task in reachable
+    }
 
 
 def _display(task: str) -> str:

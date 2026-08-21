@@ -38,7 +38,7 @@ from chunksim.costing import (
     coverage,
     barbarian,
     blackjack,
-    blastpump,
+    blastfurnace,
     calcified,
     crane,
     trawler,
@@ -761,6 +761,11 @@ def recipe_priced(
                 # so its preform carries no band of its own while the
                 # activity is fully covered.
                 **foundry.refused(derived.challenges.valid),
+                # **And the ticket whose experience is inside a lap.** See
+                # `courses.refused`: the Wilderness dispenser's tickets are
+                # already `bonus_per_hour`, so redeeming one carries no rate
+                # rather than lacking one.
+                **courses.refused(derived.challenges.valid),
             },
         ),
         coverage,
@@ -1016,10 +1021,11 @@ def _gathered(
     # the deposit's own page and whose real cost is the mining behind it.
     for skill, methods in calcified.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
-    # **Two Strength experience a tick and nothing else** - see
-    # `costing/blastpump.py`, the one method here whose rate does not move
-    # with level, gear or concentration.
-    for skill, methods in blastpump.methods(derived.challenges.valid).items():
+    # **An experience a tick and nothing else** - see
+    # `costing/blastfurnace.py`, the two methods here whose rates do not move
+    # with level, gear or concentration: the pump pays Strength and the pedals
+    # beside it pay Agility at half the rate.
+    for skill, methods in blastfurnace.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **A roll every single tick**, which is the fastest cadence in the skill
     # and the only method here whose experience had to be recovered rather

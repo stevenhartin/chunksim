@@ -1613,7 +1613,7 @@ skill being climbed.
 **And the simplest mechanic in the project turned out to be its own check.**
 `Pump (Blast Furnace)` states "2 Strength experience every tick", "up to 100
 minutes before automatically stopping", and "12,000 experience per hour" - the
-same arithmetic twice, so `costing/blastpump.py` has nothing to fit and no
+same arithmetic twice, so `costing/blastfurnace.py` has nothing to fit and no
 curve to read. A hundred minutes between reclicks is a rounding error rather
 than a cadence, which makes it one of very few rates in the game that does not
 move with level, gear or concentration. It is a **ceiling** in
@@ -1622,6 +1622,19 @@ coke and draws its own conclusion, "achieving the maximum theoretical
 experience rate is unlikely" - and `CONFIRMED` rather than `GUESS`, because
 what is unmodelled is a dependency on other players rather than an invented
 number.
+
+**The same building has a second one, and it pays a different skill.**
+`Pedals` states "1 xp" a tick at Agility 30 and "up to 6,000 Agility
+experience ... per hour" - the identical shape at half the rate, which is why
+the module is the Blast Furnace's rather than the pump's. **Its ceiling rests
+on something different, and that is the part worth carrying**: pedalling costs
+"0.5% energy per tick", so it runs 271-385 ticks unaided and then stops, and
+the 6,000 is quoted only "with energy restoration items". A map may not hold
+those - `costing/pickpocket.py`'s split between what a figure is calibrated on
+and what an estimate here may assume - and unlike the pickpockets there is no
+unaided figure published to fall back to, so the tooled one is spent for
+`costing/coxchest.py`'s reason. It is coverage either way: 6,000/hr is a
+twelfth of the slowest cached Agility climb.
 
 **Strength has no unpriced method either**, 5 modelled and 1 guessed of 6.
 

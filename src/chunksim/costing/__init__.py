@@ -297,10 +297,14 @@ The modules, and what each owns:
   mine, and `training.effective_xp_per_hour` plus `yields.py` are what turn
   that into an honest figure. The Mining third is already
   `gathering.stated_curves`; the Prayer third is blocked upstream.
-- `blastpump.py` - the Blast Furnace pump, the simplest mechanic here: "2
-  Strength experience every tick", a hundred minutes between reclicks, and so
-  a flat 12,000/hr at every level - which is the page's own stated figure and
-  the same arithmetic twice. A ceiling, because the furnace has to stay stoked.
+- `blastfurnace.py` - the building's two treadmills, the simplest mechanics
+  here: the pump is "2 Strength experience every tick" and the pedals "1 xp",
+  a hundred minutes between reclicks, and so a flat 12,000 and 6,000 an hour
+  at every level - each the page's own stated figure and the same arithmetic
+  twice, so `published_per_hour` is carried as a *check*. Both are ceilings
+  and on different things: the pump on the furnace staying stoked by other
+  players, the pedals on energy restoration items, since pedalling costs 0.5%
+  energy a tick and runs out after 271-385 of them.
 - `blackjack.py` - the three NPCs you knock out before taking their pocket, so
   the chart that decides the rate is the **knock-out** one and the two
   pickpockets after it are free. `pickpocket.py` prices the awake method and
