@@ -17,10 +17,17 @@ for the first because it came first; what the two have in common is that
 - **A permanent upgrade assembled once out of unique drops.** The seven
   avernic tread variants each destroy a pair of boss-drop treads and one or
   more of the three boot upgrades and hand back a single better boot; the
-  noxious halberd is three Araxxor drops made into one weapon. There is one
+  noxious halberd is three Araxxor drops made into one weapon; the toxic
+  blowpipe is one Zulrah fang and a chisel. There is one
   slot and the inputs are gone, so a second is not a slower repeat of the
   first - it is a thing nobody does. This is the *mounts* argument without
   their complication: no page anywhere says a duplicate pays again.
+
+  **"The inputs are gone" is a claim to check, not to assume**, and the
+  blowpipe is where it earns its keep: destroying a *sword mount* hands the
+  quest weapon straight back, which is why those are a priced build-and-destroy
+  loop in `recipe_rates.RETURNED_MATERIALS` rather than an entry here.
+  Dismantling a blowpipe yields 20,000 Zulrah's scales and no fang.
 
 **A method's rate is only meaningful if repeating it is the point.** Every
 other status this project reports answers "what priced this"; these are
@@ -140,6 +147,15 @@ ONE_OFF: dict[str, str] = {
     # weapon. Upstream files it under Crafting and Smithing alike and one
     # entry covers both, since `ONE_OFF` is keyed by task.
     "Craft a ~|noxious halberd|~": "three unique drops assembled into one weapon",
+    # **And the same shape from a single drop, with the check that matters.**
+    # A toxic blowpipe is a chisel on a `Tanzanite fang`, which upstream puts
+    # at 1/1024 off Zulrah. The tempting objection is the sword mounts', where
+    # destroying the object hands the quest weapon back and the loop is real
+    # (`recipe_rates.RETURNED_MATERIALS`) - so the page was checked and says
+    # the opposite: "players can dismantle an uncharged blowpipe to receive
+    # 20,000 Zulrah's scales", and nothing anywhere returns the fang. It never
+    # breaks either, so one is made and kept.
+    "Fletch a ~|toxic blowpipe|~": "one Zulrah drop consumed into a permanent weapon",
 }
 
 

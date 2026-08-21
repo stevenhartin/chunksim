@@ -1799,12 +1799,16 @@ challenge being valid *is* the statement that this map can play, and the
 export census infers no Fletching level at all - comparing `1 < 20` there
 reported a routable material as unroutable and cost four methods.
 
-Fletching goes **126 modelled to 151 and 31 unpriced to 6**. What is left is
-three behind a material nothing routes (`Hunter spear tips`, `Barb bolttips`,
-`Dragon bolts (unf)` - two shop currencies and a boss drop), two untimed
-recipes that are *not* feathered (the bone shortbow and the toxic blowpipe,
-whose siblings are timed but whose action differs), and the greenman carving,
-which its own page leaves untimed where the statue beside it says 4.
+Fletching goes **126 modelled to 152 and 31 unpriced to 4**. What is left is
+two behind a material nothing routes (`Hunter spear tips` and `Barb bolttips`,
+both shop currencies); the bone shortbow, an untimed recipe that is *not*
+feathered, whose siblings are timed but whose action differs; and the greenman
+carving, which its own page leaves untimed where the statue beside it says 4.
+`Dragon bolts (unf)` was a third blocked material and turned out not to be one
+- see `cli/training._unsealed` - and the **toxic blowpipe** was the other
+untimed recipe and is `one-off` instead: one Zulrah fang consumed into a
+permanent weapon, checked against the sword mounts' return rule and refused by
+it.
 
 **A constant standing in for a curve is not the conservative end, and saying
 so was the mistake.** `PICKPOCKET_CYCLE_SECONDS` was 3.5 seconds, fitted to one

@@ -40,6 +40,10 @@ def test_every_entry_is_named_individually() -> None:
         "Create ~|avernic treads (max)|~",
         # The same shape one weapon over: three unique Araxxor drops.
         "Craft a ~|noxious halberd|~",
+        # And from a single drop - a `Tanzanite fang` at 1/1024 off Zulrah.
+        # Dismantling returns 20,000 Zulrah's scales and no fang, which is
+        # what separates it from the sword mounts below.
+        "Fletch a ~|toxic blowpipe|~",
     }
 
     assert set(oneoff.ONE_OFF) == decorations | supply_bound | fusions
@@ -65,6 +69,17 @@ def test_a_sword_mount_is_not_swept_in() -> None:
 
 def test_ordinary_furniture_is_not_swept_in() -> None:
     assert oneoff.reason("Build a ~|wooden fence|~") == ""
+
+
+def test_the_other_blowpipes_are_ordinary_fletching() -> None:
+    """The Sailing-era blowpipes share a word and nothing else: each is logs
+    and a squid beak, both of which the world provides repeatedly."""
+    for task in (
+        "Fletch a ~|camphor blowpipe|~",
+        "Fletch an ~|ironwood blowpipe|~",
+        "Fletch a ~|rosewood blowpipe|~",
+    ):
+        assert oneoff.reason(task) == ""
 
 
 def test_the_status_beats_every_priced_tier() -> None:
