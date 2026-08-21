@@ -1799,16 +1799,25 @@ challenge being valid *is* the statement that this map can play, and the
 export census infers no Fletching level at all - comparing `1 < 20` there
 reported a routable material as unroutable and cost four methods.
 
-Fletching goes **126 modelled to 153 and 31 unpriced to 3**. What is left is
-`Barb bolttips`, behind a shop currency nothing rates; the bone shortbow, an
-untimed recipe that is *not* feathered, whose siblings are timed but whose
-action differs; and the greenman carving, which its own page leaves untimed
-where the statue beside it says 4. Of the three that closed, none was the gap
-it looked like: `Dragon bolts (unf)` was a reachability defect in the *report*
-rather than a missing route (`cli/training._unsealed`), the **toxic blowpipe**
-is `one-off` - one Zulrah fang consumed into a permanent weapon, checked
-against the sword mounts' return rule and refused by it - and `Hunter spear
-tips` was the export being read wrong, below.
+Fletching goes **126 modelled to 153 and 31 unpriced to 2**: `Barb bolttips`,
+behind a shop currency nothing rates, and the greenman carving, which its own
+page leaves untimed where the statue beside it says 4. **Not one of the four
+that closed was the gap it looked like.** `Dragon bolts (unf)` was a
+reachability defect in the *report* rather than a missing route
+(`cli/training._unsealed`); `Hunter spear tips` was the export being read wrong
+(below); and two are `one-off` - the **toxic blowpipe**, one Zulrah fang
+consumed into a permanent weapon, and the **bone shortbow**, one of three
+mutually exclusive rat bone weapons a single `Scurrius' spine` makes.
+
+**A rate is not evidence that repeating is the point, and the bone mace is the
+proof.** Its `{{Recipe}}` states ticks where the shortbow's and the staff's
+leave them blank, so it alone priced - at 357/hr, a plausible number on a real
+task - while two identical challenges read `unpriced` in two other skills. An
+accident of the wiki's coverage was deciding which third of one mechanic
+counted as training, which is why `costing/oneoff.py` is checked *ahead* of
+every priced tier and why all three are named there. The game states the
+disqualifier itself: "excess spines can be traded to Historian Aldo for
+experience lamps".
 
 **A reward sack's share is stated per *roll*, and an open is several.** The
 export writes `Hunter spear tips` as `1/7` in a basic Hunters' loot sack, which

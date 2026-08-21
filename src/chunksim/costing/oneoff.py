@@ -18,10 +18,24 @@ for the first because it came first; what the two have in common is that
   avernic tread variants each destroy a pair of boss-drop treads and one or
   more of the three boot upgrades and hand back a single better boot; the
   noxious halberd is three Araxxor drops made into one weapon; the toxic
-  blowpipe is one Zulrah fang and a chisel. There is one
+  blowpipe is one Zulrah fang and a chisel; the three rat bone weapons are one
+  `Scurrius' spine` and a base weapon. There is one
   slot and the inputs are gone, so a second is not a slower repeat of the
   first - it is a thing nobody does. This is the *mounts* argument without
   their complication: no page anywhere says a duplicate pays again.
+
+  **The rat bone three are where the game says it in so many words**: one
+  spine makes a mace, a shortbow *or* a staff, so at most one of the three
+  happens at all - and "excess spines can be traded to Historian Aldo for
+  experience lamps", which is upstream stating the use of a second spine and
+  it is not a second bow.
+
+  **A rate is not the test, and the mace is the proof.** `Make a ~|bone
+  mace|~` was the only one of the three whose `{{Recipe}}` states ticks, so it
+  alone priced - at 357/hr, a plausible number on a real task - while its two
+  identical siblings read `unpriced`. `one_off` is checked *ahead* of every
+  priced tier precisely so an accident of the wiki's coverage cannot decide
+  which of three identical challenges is a training method.
 
   **"The inputs are gone" is a claim to check, not to assume**, and the
   blowpipe is where it earns its keep: destroying a *sword mount* hands the
@@ -156,6 +170,25 @@ ONE_OFF: dict[str, str] = {
     # 20,000 Zulrah's scales", and nothing anywhere returns the fang. It never
     # breaks either, so one is made and kept.
     "Fletch a ~|toxic blowpipe|~": "one Zulrah drop consumed into a permanent weapon",
+    # **Three weapons and one spine, so at most one of them happens.** A
+    # `Scurrius' spine` (1/33) is attached to a rune mace, a yew shortbow or a
+    # battlestaff to make the rat bone weapon of that class - each permanent,
+    # each non-degrading, each one slot. The game says outright what a second
+    # spine is for and it is not a second bow: "excess spines can be traded to
+    # Historian Aldo for experience lamps".
+    #
+    # **The mace is why "it has a rate" is not the test.** Its `{{Recipe}}`
+    # states ticks where the other two leave them blank, so it alone priced -
+    # at 357/hr, a plausible number on a real task for a thing nobody repeats -
+    # while its two identical siblings read `unpriced`. Naming one and not the
+    # others would file the same mechanic three ways.
+    #
+    # The staff's 1,000 chaos runes are a *charge*, not a material -
+    # "uncharging the staff returns all remaining runes back" - and no page
+    # states a reversion for any of the three, so the spine is gone.
+    "Make a ~|bone mace|~": "one spine, one weapon slot, and a second is a lamp",
+    "Make a ~|bone shortbow|~": "one spine, one weapon slot, and a second is a lamp",
+    "Make a ~|bone staff|~": "one spine, one weapon slot, and a second is a lamp",
 }
 
 

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
 from chunksim.costing import coverage, oneoff
+from chunksim.model.chunkinfo import ChunkInfo
 
 
 def test_every_entry_is_named_individually() -> None:
@@ -45,8 +48,34 @@ def test_every_entry_is_named_individually() -> None:
         # what separates it from the sword mounts below.
         "Fletch a ~|toxic blowpipe|~",
     }
+    # One `Scurrius' spine` and three mutually exclusive weapons, so at most
+    # one of the three ever happens. The wiki says what a second spine is for
+    # and it is not a second bow: an experience lamp from Historian Aldo.
+    rat_bone = {
+        "Make a ~|bone mace|~",
+        "Make a ~|bone shortbow|~",
+        "Make a ~|bone staff|~",
+    }
 
-    assert set(oneoff.ONE_OFF) == decorations | supply_bound | fusions
+    assert set(oneoff.ONE_OFF) == decorations | supply_bound | fusions | rat_bone
+
+
+@pytest.mark.real_export
+def test_every_named_task_exists_and_is_primary(real_export: ChunkInfo) -> None:
+    """**A key that matches nothing is silently inert**, which is the failure
+    mode this whole module is one typo away from: `reason` returns `""` and the
+    row goes back to reading `unpriced` with nothing to say it was meant to be
+    exempt. Upstream also has to still call each one `Primary`, since a status
+    that renames a training method has no business on anything else."""
+    primary = {
+        name
+        for challenges in real_export.challenges.values()
+        if isinstance(challenges, dict)
+        for name, entry in challenges.items()
+        if isinstance(entry, dict) and entry.get("Primary")
+    }
+
+    assert set(oneoff.ONE_OFF) <= primary
 
 
 def test_every_entry_says_why() -> None:
@@ -69,6 +98,14 @@ def test_a_sword_mount_is_not_swept_in() -> None:
 
 def test_ordinary_furniture_is_not_swept_in() -> None:
     assert oneoff.reason("Build a ~|wooden fence|~") == ""
+
+
+def test_a_rat_bone_weapon_that_had_a_rate_is_still_exempt() -> None:
+    """`Make a ~|bone mace|~` was the only one of the three with stated ticks
+    on its `{{Recipe}}`, so it alone priced - at 357/hr, a plausible number on
+    a real task. Having a rate is not the test; repeating being the point is."""
+    assert oneoff.reason("Make a ~|bone mace|~")
+    assert coverage.status_of("modelled", one_off=True) == coverage.ONE_OFF
 
 
 def test_the_other_blowpipes_are_ordinary_fletching() -> None:
