@@ -678,6 +678,27 @@ def test_every_priced_currency_is_a_stated_figure_someone_can_correct() -> None:
     assert "Points" not in DEFAULT_CURRENCY_PER_HOUR
 
 
+def test_an_archery_ticket_is_five_ranged_experience() -> None:
+    """**Two published ratios over one published rate, with nothing fitted.**
+    The Ranging Guild target pays 1 Ranged experience per 2 points and 1
+    ticket per 10, so a ticket is exactly 5 experience whatever the gear -
+    both halves are linear in the same score. The page's own "roughly 45,000
+    Ranged experience per hour" then divides straight through.
+
+    Unqualified on purpose: `Archery ticket` names one shop's currency and
+    only one, unlike the `Points` above it."""
+    assert DEFAULT_CURRENCY_PER_HOUR["Archery ticket"] == 45_000.0 / 5.0
+
+    # The tick count is the *check* and it overstates: 10 provided arrows at a
+    # bow's 4 ticks is 24 seconds a round, which at the same page's 893.2
+    # points would be 13,400 tickets an hour. The published figure is 1.49x
+    # lower because paying the judge, walking and collecting are in it.
+    tick_perfect = 893.2 / 10.0 * 3600.0 / (10 * 4 * 0.6)
+    assert tick_perfect / DEFAULT_CURRENCY_PER_HOUR["Archery ticket"] == pytest.approx(
+        1.489, abs=0.01
+    )
+
+
 def test_default_shop_prices_fill_the_shop_the_scrape_cannot_reach() -> None:
     """`~|Castle Wars Ticket Exchange|~`'s wiki page is a hand-written stock
     table rather than a `{{Shop}}` infobox, which is the only shape

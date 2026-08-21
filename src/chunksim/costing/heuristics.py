@@ -963,6 +963,30 @@ DEFAULT_CURRENCY_PER_HOUR: dict[str, float] = {
     # is not modelled: winning a PvP fight is not something this project can
     # promise anybody, and forfeiting is the reading a solo player controls.
     "PvP Arena Rewards:Points": 360.0,
+    # **Two published ratios turn a published experience rate into a currency
+    # one.** Shooting the Ranging Guild target pays "1 Ranged experience ...
+    # for every 2 points obtained" and "one archery ticket ... for every 10
+    # points", so a ticket is **exactly 5 Ranged experience** - a conversion
+    # with no gear, level or luck in it, since both halves are linear in the
+    # same score. The page then states the pace outright, "roughly 45,000
+    # Ranged experience per hour", and 45,000 / 5 is the whole derivation.
+    #
+    # **A ceiling, in `costing/trawler.py`'s sense**: that figure is quoted
+    # "in such a setup" - best in slot, Rigour, a ranging potion, accurate
+    # style - and the page publishes no figure for anything less, so the
+    # assumption on top of the published terms is not checkable here. It is
+    # also self-limiting: fewer points is fewer tickets *and* less experience
+    # in the same proportion, so only the throughput moves, never the ratio.
+    #
+    # **The tick count is the check and it overstates, which is the usual
+    # shape.** A round is 10 provided arrows at a bow's 4 ticks - 24 seconds -
+    # and the same page's 893.2 points a game makes that 13,400 tickets an
+    # hour against the published 9,000. The 1.49x is the 200 coins paid to the
+    # Competition Judge, the walk and the collection, none of which a tick
+    # count sees: `costing/sepulchre.py`'s "tick-perfect is not a rate" from a
+    # different skill. The arrows are handed over free, so nothing is charged
+    # for them.
+    "Archery ticket": 45_000.0 / 5.0,
 }
 
 #: `(shop, item) -> units one purchase hands over`, where the wiki sells a
@@ -987,11 +1011,10 @@ DEFAULT_CURRENCY_PER_HOUR: dict[str, float] = {
 #: the six rows are bundled and the scrape prices each at its whole bundle's
 #: cost: a bolttip 30x, a rune arrow 50x, an adamant javelin 20x.
 #:
-#: **Carried even though nothing spends them yet.** `Archery ticket` has no
-#: entry in `DEFAULT_CURRENCY_PER_HOUR`, so `shop_seconds` refuses these rows
-#: for want of a rate rather than pricing them wrongly - but the figures are
-#: wrong in the data whichever way that goes, and the day a rate arrives they
-#: would be wrong by thirty.
+#: **They were carried before anything spent them, and now something does.**
+#: `Archery ticket` has a rate above, so `shop_seconds` prices these rows
+#: rather than refusing them for want of one - which is exactly when a bundle
+#: left undivided would have been wrong by thirty.
 SHOP_BUNDLES: dict[tuple[str, str], float] = {
     ("PvP Arena Rewards", "Blighted surge sack"): 50.0,
     ("Ranging Guild Ticket Exchange", "Barb bolttips"): 30.0,

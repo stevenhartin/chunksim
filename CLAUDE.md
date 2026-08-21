@@ -1799,15 +1799,32 @@ challenge being valid *is* the statement that this map can play, and the
 export census infers no Fletching level at all - comparing `1 < 20` there
 reported a routable material as unroutable and cost four methods.
 
-Fletching goes **126 modelled to 153 and 31 unpriced to 2**: `Barb bolttips`,
-behind a shop currency nothing rates, and the greenman carving, which its own
-page leaves untimed where the statue beside it says 4. **Not one of the four
-that closed was the gap it looked like.** `Dragon bolts (unf)` was a
-reachability defect in the *report* rather than a missing route
+Fletching goes **126 modelled to 154 and 31 unpriced to 1** - the greenman
+carving, whose own page leaves `ticks` blank where the statue beside it says 4.
+**Not one of the five that closed was the gap it looked like.** `Dragon bolts
+(unf)` was a reachability defect in the *report* rather than a missing route
 (`cli/training._unsealed`); `Hunter spear tips` was the export being read wrong
-(below); and two are `one-off` - the **toxic blowpipe**, one Zulrah fang
-consumed into a permanent weapon, and the **bone shortbow**, one of three
-mutually exclusive rat bone weapons a single `Scurrius' spine` makes.
+(below); `Barb bolttips` needed a currency rather than a recipe (below); and
+two are `one-off` - the **toxic blowpipe**, one Zulrah fang consumed into a
+permanent weapon, and the **bone shortbow**, one of three mutually exclusive
+rat bone weapons a single `Scurrius' spine` makes.
+
+**Two published ratios can turn a published experience rate into a currency
+one.** Nothing earns an `Archery ticket` but shooting the Ranging Guild target,
+and that pays "1 Ranged experience ... for every 2 points" and "one archery
+ticket ... for every 10" - so a ticket is **exactly 5 Ranged experience**,
+whatever the gear, since both halves are linear in the same score. The page
+states the pace as "roughly 45,000 Ranged experience per hour" and the division
+is the whole model. It is a **ceiling** in `costing/trawler.py`'s sense - that
+figure is quoted "in such a setup", best in slot with Rigour and a potion, and
+the page publishes nothing for less - but the assumption is self-limiting:
+fewer points is fewer tickets *and* less experience in the same proportion, so
+only the throughput moves. **The tick count is the check, and it overstates by
+1.49x**: ten provided arrows at a bow's four ticks is 24 seconds a round, which
+against the same page's 893.2 points a game gives 13,400 an hour - the gap
+being the 200 coins paid to the judge, the walk and the collection, which is
+`costing/sepulchre.py`'s "tick-perfect is not a rate" arriving in a fourth
+skill.
 
 **A rate is not evidence that repeating is the point, and the bone mace is the
 proof.** Its `{{Recipe}}` states ticks where the shortbow's and the staff's
