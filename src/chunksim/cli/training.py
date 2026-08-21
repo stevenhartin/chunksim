@@ -33,7 +33,15 @@ permissive still for refusal-gates (9,273) and stays wrong for the ones that
 *widen* - `Boosting` is the example, and Construction reads 566 unpriced there
 against 83 on a real ceiling. Setting every rule `True` is refused outright by
 `derive`, which has an unported `KeyItem Bosses` pass. So the base map is asked
-for its rules and nothing else, and the report says which map it borrowed.
+for its rules and its progress, and the report says which map it borrowed.
+
+**What it does *not* borrow is that map's closures**, and the distinction took a
+real defect to find: `manualSections`/`manualAreas` override reachability in
+either direction, so a base map that sealed a section by hand sealed it inside a
+chunk the ceiling holds - and 29 rows read `uncompletable`, the one status this
+report promises is a finding, when the truth was that one player shut a door.
+`_unsealed` drops the `false` entries and keeps the `true` ones, which its own
+docstring measures.
 
 With no cached map at all there is nothing to borrow and the rules-free state is
 used, with a warning: the counts are then a floor on what is modelled rather
@@ -48,7 +56,9 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 from chunksim.cli.common import (
     MapAmbiguityError,
@@ -200,7 +210,10 @@ def _report_export(args: argparse.Namespace) -> int:
         " layer was ever asked - see the breakdown below"
     )
     if base:
-        print(f"rules        {base}'s, since a rule is a player's choice")
+        print(
+            f"rules        {base}'s, since a rule is a player's choice"
+            " (its hand-sealed sections are dropped - see _unsealed)"
+        )
     else:
         # **A rules-less world is not a smaller version of a real one.** Every
         # rule-gated challenge fails a gate `coverage.blocker_for` cannot name
@@ -263,14 +276,64 @@ def _print_blockers(statuses: dict[str, tuple[coverage.MethodStatus, ...]]) -> N
         print(f"         e.g. {strip_task_markup(example.task)}{named}")
 
 
+def _unsealed(chunkinfo: Mapping[str, Any] | None) -> dict[str, Any]:
+    """The base map's progress with its *closures* dropped.
+
+    **A door a player shut is a choice, and the ceiling is not about
+    choices.** `manualSections` and `manualAreas` override reachability in
+    **either** direction (`sections.reachable_sections`), and the report
+    borrows them along with the rules - so a `false` entry seals a section
+    *inside* a chunk the ceiling holds, and every method behind it prints as
+    `uncompletable`. That is the one status the report promises is a finding:
+    "no player could ever do this". A sealed door says the opposite.
+
+    The worked case, and it is not small. `fray` marks Canifis' sections 2-5
+    shut; `13877-3` and `14133-1` are a two-section pocket whose only other
+    door is `13878-4`, so both strand, `Desert Treasure I` step 7a6 (Dessous,
+    in the graveyard) fails with them, and fourteen quest rows fall over
+    behind it - through Jaldraocht Pyramid to `The Frozen Door` to the Ancient
+    Prison. Nex goes unreachable, and with it the only live route to `Dragon
+    bolts (unf)`. Dropping the four `false` entries moves **31 methods from
+    `uncompletable` to `modelled`** on the export-wide report, 29 rows off
+    that column in total.
+
+    **Only the `false` half, and the measurement is why.** A `true` entry
+    *opens* a section nothing else reaches, which is evidence a player can get
+    there rather than a choice to stay out - and it is load-bearing: dropping
+    the whole branch costs `fray` 22 reachable sections and takes
+    `uncompletable` to **340**, worse than leaving the seals in. Keeping the
+    openings and dropping the closures is the only one of the three that is
+    strictly the most permissive world (1,358 sections against 1,351 as-is and
+    1,336 dropped wholesale).
+    """
+    branch = dict(chunkinfo or {})
+    areas = branch.get("manualAreas")
+    if isinstance(areas, dict):
+        branch["manualAreas"] = {
+            area: flag for area, flag in areas.items() if flag is not False
+        }
+    sections = branch.get("manualSections")
+    if isinstance(sections, dict):
+        branch["manualSections"] = {
+            chunk: {
+                section: flag for section, flag in entry.items() if flag is not False
+            }
+            for chunk, entry in sections.items()
+            if isinstance(entry, dict)
+        }
+    return branch
+
+
 def _ceiling_payload(
     info: ChunkInfo, args: argparse.Namespace
 ) -> tuple[str, dict[str, object], str]:
     """`(base map or "", payload to derive, why there is no base)`.
 
     The base map is asked for its `rules` branch and its progress and nothing
-    else - the chunks are replaced wholesale. See the module docstring for why
-    borrowing them beats any default this could invent.
+    else - the chunks are replaced wholesale, and the progress has its
+    *closures* stripped by `_unsealed`. See the module docstring for why
+    borrowing them beats any default this could invent, and `_unsealed` for
+    why one half of one branch is not borrowed.
 
     **The third element exists because "no rules" has two causes and they read
     completely differently.** A checkout with nothing fetched has no rules to
@@ -303,6 +366,7 @@ def _ceiling_payload(
     except cache.CacheMissError:
         return "", {"chunks": {"unlocked": unlocked}}, "missing"
     data["chunks"] = {**(data.get("chunks") or {}), "unlocked": unlocked}
+    data["chunkinfo"] = _unsealed(data.get("chunkinfo"))
     return base, data, ""
 
 

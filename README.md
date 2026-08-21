@@ -879,6 +879,9 @@ maps are your own work and nothing can recompute them.
    one map is cached**: with no rules at all every rule-gated method reads as `uncompletable`
    instead, which is not a smaller version of the real answer but a different and much emptier
    one - the report says so in a warning line, and the counts underneath it are not worth reading.
+   What it does **not** borrow is that map's *closures*: a section or area the player sealed by
+   hand is dropped, since the ceiling asks whether anybody could ever do a thing and a shut door
+   is one player's choice. The openings are kept, because those reach places nothing else does.
 
    **`--show-category STATUS` turns any of those counts back into its list**, which is the
    follow-up the table always provokes:

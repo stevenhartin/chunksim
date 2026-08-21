@@ -291,6 +291,73 @@ class TestWhyTheCeilingHasNoRules:
         assert why == "missing"
 
 
+class TestTheCeilingDropsWhatAPlayerSealed:
+    """`manualSections`/`manualAreas` override reachability in *either*
+    direction, and the ceiling borrows the base map's progress - so a section
+    one player shut by hand printed as `uncompletable`, the one status this
+    report promises means "no player could ever do this". Dropping the `false`
+    entries moves 29 rows off that column on the real export."""
+
+    def _args(self) -> argparse.Namespace:
+        return argparse.Namespace(rules_from="fray", map_id=None, chunkinfo=None)
+
+    def _info(self) -> ChunkInfo:
+        return ChunkInfo({"chunkinfo": {"sections": {"100": True}}})
+
+    def _payload(self, monkeypatch: pytest.MonkeyPatch, chunkinfo: object) -> dict[str, object]:
+        monkeypatch.setattr(cache, "read_cache", lambda name: {"data": {"chunkinfo": chunkinfo}})
+        _, payload, _ = training._ceiling_payload(self._info(), self._args())
+        branch = payload["chunkinfo"]
+        assert isinstance(branch, dict)
+        return branch
+
+    def test_a_sealed_section_is_dropped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        branch = self._payload(
+            monkeypatch, {"manualSections": {"13878": {"1": True, "2": False, "3": False}}}
+        )
+
+        assert branch["manualSections"] == {"13878": {"1": True}}
+
+    def test_an_opened_section_is_kept(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """**Load-bearing, not symmetry.** A `true` entry opens a section
+        nothing else reaches - dropping the whole branch costs the real
+        reference map 22 reachable sections and takes `uncompletable` to 340,
+        *worse* than leaving the seals in."""
+        branch = self._payload(monkeypatch, {"manualSections": {"6705": {"1": True}}})
+
+        assert branch["manualSections"] == {"6705": {"1": True}}
+
+    def test_a_sealed_area_is_dropped_too(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """`expand_chunk_areas` pops on `False`, so an area is the same claim
+        one level up."""
+        branch = self._payload(
+            monkeypatch, {"manualAreas": {"Lithkren Vault": False, "Yama's Domain": True}}
+        )
+
+        assert branch["manualAreas"] == {"Yama's Domain": True}
+
+    def test_the_rest_of_the_progress_is_untouched(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Only reachability overrides are two-directional. `manualMonsters`
+        and the rest only ever *add*, so borrowing them is what makes the
+        ceiling a ceiling."""
+        branch = self._payload(
+            monkeypatch,
+            {"manualMonsters": {"Monsters": {"Artio": True}}, "maxSkill": {"Mining": 70}},
+        )
+
+        assert branch == {
+            "manualMonsters": {"Monsters": {"Artio": True}},
+            "maxSkill": {"Mining": 70},
+        }
+
+    def test_a_map_with_no_progress_branch_is_fine(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        assert self._payload(monkeypatch, None) == {}
+
+
 class TestShowCategory:
     """`--show-category unpriced` answers "what is still unpriced" - the
     question the status table's counts provoke and could not previously be

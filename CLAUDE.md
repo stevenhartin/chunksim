@@ -2142,14 +2142,28 @@ exactly what `costing/disclaimed.py` promises about its own entry.
 news.** A method a particular map cannot do is the ordinary condition of a chunk map. A
 method the *ceiling* cannot do - every rollable chunk unlocked - says no player could ever
 perform it, so the report names it differently and says **why**, per row
-(`coverage.blocker_for`, `MethodStatus.blocker`). Measured, the 307 are: 133 wanting an
-item nothing in the world provides (Leagues rewards, `Vorkath's stuffed head`), 108 behind
+(`coverage.blocker_for`, `MethodStatus.blocker`). Measured, the 278 are: 117 wanting an
+item nothing in the world provides (Leagues rewards, `Vorkath's stuffed head`), 80 behind
 a quest the ceiling cannot finish, 32 behind a **rule the base map has off** - a player's
-choice rather than a gap - 17 an object, 9 a chunk or section outside the rollable set, 6
+choice rather than a gap - 32 an object, 9 a chunk or section outside the rollable set, 6
 upstream's own `BackupParent` fallback of a challenge that *is* valid, 2 an NPC, and
 **zero unexplained**. The order the branches are tried in is what keeps it from naming
 symptoms: a rule-gated family's items are beside the point, and a quest-gated challenge
 lists the items that quest would hand over.
+
+**A door one player shut is not the ceiling's answer, and 29 rows used to say it
+was.** The ceiling borrows the base map's *progress* as well as its rules, and
+`manualSections`/`manualAreas` override reachability in **either** direction - so a
+section sealed by hand stayed sealed inside a chunk the ceiling holds, and everything
+behind it read `uncompletable`. `cli/training._unsealed` drops the `false` entries and
+keeps the `true` ones. **Only the `false` half, and that is measured rather than
+symmetrical**: a `true` entry opens a section nothing else reaches, and dropping the
+whole branch costs the reference map 22 reachable sections and takes `uncompletable`
+to 340 - worse than leaving the seals in. The worked case is `fray` sealing Canifis'
+sections 2-5, which strands the `13877-3`/`14133-1` pocket, fails `Desert Treasure I`
+at Dessous and closes the whole chain to the Ancient Prison - so **Nex** went
+unreachable, and with it the only live route to `Dragon bolts (unf)`. Unsealing moves
+**31 methods into `modelled`**, most of them Magic's.
 
 **Separating those from the priced statuses is the correction that mattered.** Every computed layer walks the derivation's `valid` set, so a challenge outside
 it is never offered to any of them and keeps whatever the raw scrape left in
