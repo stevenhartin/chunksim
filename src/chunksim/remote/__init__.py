@@ -31,7 +31,10 @@ The modules, and what each owns:
 - `skill_tables.py` - rates from wiki tables, headings and prose, for the skills
   `{{Recipe}}` and the money-making guides cannot describe. **Published hourly
   figures** - somebody else's account; contrast `gathering.py`, which reads what
-  a rate is computed *from*.
+  a rate is computed *from*. Also the Agility shortcut corpus, where **a list
+  is not the world**: `shortcut_pages` reads *every* matching table on the
+  `Shortcuts` page rather than the first (the second is headed `Obstacle`), and
+  `EXTRA_SHORTCUT_PAGES` names eight more that appear on no list at all.
 - `skillcalc.py` - reading a `Module:Skill calc/<Skill>` Lua table, one format
   across eighteen skills. Owns the brace matching, which `farming.py` measured
   first and now imports.

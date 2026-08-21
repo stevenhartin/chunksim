@@ -49,6 +49,7 @@ from collections import Counter
 
 from chunksim.remote.wiki import parse_amount
 from chunksim.remote.wikitable import (
+    tables_with,
     SCP_LEVEL,
     column_index,
     header_columns,
@@ -247,6 +248,42 @@ SHORTCUT_ALIASES: dict[str, str] = {
     "waterbirth island dungeon crevice shortcut": "Crevice (Waterbirth Island Dungeon)",
     "wilderness slayer cave crevice shortcut": "Crevice (Wilderness Slayer Cave)",
     "yanille climbing rocks shortcut": "Climbing rocks (Yanille)",
+    # **The `Shortcuts` page's second table, read since `shortcut_pages` was
+    # taught to see it.** Each is checked by level against the wiki's own row
+    # and the destination page's `{{Agility info}}`, not by resemblance - see
+    # the paragraph below on the four that are still refused for want of one.
+    "yanille agility dungeon balance ledge shortcut": (
+        "Balancing ledge (Yanille Agility Dungeon)"  # 40 == 40, 22.5 xp
+    ),
+    "monkey bars under yanille shortcut": (
+        "Monkeybars (Yanille Agility Dungeon)"  # 57 == 57, 20 xp
+    ),
+    # **One page, two versions, and upstream's own `Level` picks between
+    # them.** `Pipe (Brimhaven Dungeon)` is `level1 = 34` ("To the demons")
+    # and `level2 = 1` ("To the dragons") under a single unversioned `xp = 10`
+    # - so its forward and reverse challenges offer the same key and
+    # `_add_shortcuts`' version-by-level lookup resolves each. The log balance
+    # is the same shape (`level1 = 30`, `level2 = 1`), but only its *reverse*
+    # challenge is `Primary: true` upstream, so the forward alias is carried
+    # for the pair rather than because anything reads it today.
+    "advanced pipe contortion in brimhaven dungeon shortcut": "Pipe (Brimhaven Dungeon)",
+    "reverse advanced pipe contortion in brimhaven dungeon shortcut": (
+        "Pipe (Brimhaven Dungeon)"
+    ),
+    "red dragon log balance in brimhaven dungeon shortcut": (
+        "Log balance (Brimhaven Dungeon)"
+    ),
+    "reverse red dragon log balance in brimhaven dungeon shortcut": (
+        "Log balance (Brimhaven Dungeon)"
+    ),
+    # From the `Agility` page's own `Other` table rather than `Shortcuts` -
+    # obstacles the world map does not mark at all. 18 == 18, 31 xp.
+    "watchtower trellis shortcut": "Trellis",
+    # **Confirmed three ways**, which is more than any other entry here: the
+    # level (60), the infobox's 18 xp, and the Agility page's own prose - "it
+    # is possible to train Agility by repeatedly using the gap-jump shortcut
+    # in the Wintertodt's prison. Each jump gives 18 experience".
+    "pillars in the wintertodt's prison shortcut": "Gap (Wintertodt)",
 }
 
 #: Export course name -> the wiki's spelling. **Only for the ones that differ.**
@@ -361,6 +398,34 @@ class ShortcutInfo:
         }
 
 
+#: Shortcut pages the wiki's own lists do not link, added by hand.
+#:
+#: **The list is not the world.** `shortcut_pages` reads what the `Shortcuts`
+#: page links, and eight obstacles upstream files as Agility shortcuts are not
+#: on it in any form - seven appear nowhere, and `Trellis` only in the
+#: *Agility* page's own `Other` table (a differently-headed list of things the
+#: world map does not mark with the shortcut icon). Every one has a real
+#: `{{Agility info}}` and every one is verified the same way: upstream's
+#: `Objects` names the page exactly, and the page's own `level` equals
+#: upstream's `Level`.
+#:
+#: **A hand list rather than driving the fetch off the export**, which is the
+#: obvious generalisation and a real architectural change: `chunksim recipes`
+#: is deliberately the only fetch subcommand that reads a chunkinfo, and
+#: taking the union of the wiki's list and upstream's `Objects` would make
+#: this a second. Worth doing the day this list stops being eight rows.
+EXTRA_SHORTCUT_PAGES: tuple[str, ...] = (
+    "A wooden log",  # 1 == 1, 4 xp (2 on failure)
+    "Boulder (Mountain Camp)",  # 10 == 10, and 0 xp - see `shortcuts.REFUSED`
+    "Broken bridge (Lighthouse)",  # 1 == 1, 1 xp (0.7 on failure)
+    "House window",  # 32 == 32, 1 xp
+    "Pipe (Underground Pass)",  # 1 == 1, 3 xp
+    "Rocks (Troll arena)",  # 15 == 15, 1 xp
+    "Trellis",  # 18 == 18, 31 xp
+    "Winch",  # 10 == 10, 2 xp
+)
+
+
 def shortcut_pages(text: str) -> tuple[str, ...]:
     """Every page the `Shortcuts` list links its object column to.
 
@@ -368,15 +433,32 @@ def shortcut_pages(text: str) -> tuple[str, ...]:
     each shortcut's own page states what one use pays. Deduplicated, because a
     page carrying several versions (`Pillar (Revenant Caves, easy)` holds all
     three) is linked once per version.
+
+    **Both tables, and reading only the first was a real gap.** The page ends
+    with a second list under the same `Level(s)`/`XP` headers, headed
+    `Obstacle` rather than `Shortcut` - twenty rows of things the world map
+    does not mark with the shortcut icon, which are shortcuts in every way
+    that matters here: an Agility level, an obstacle, and an experience. Taking
+    `table_with`'s first match left all twenty unfetched, so nine Agility
+    challenges that name their object perfectly well had nothing to join and
+    read `unpriced` - the monkey bars under Edgeville and Yanille, the Yanille
+    balancing ledge, Brimhaven's pipe and log balance, the Brimhaven ropeswing,
+    the Lighthouse basalt rock, the Nature Grotto bridge and the God Wars
+    Dungeon rock. `wikitable.tables_with` is the plural, added for this.
+
+    **And eight more the list does not carry at all** - see
+    `EXTRA_SHORTCUT_PAGES`, each named by upstream's own `Objects` and checked
+    against its page's `level`.
     """
-    table = table_with(text, "!Level(s)", "!XP")
     found: list[str] = []
-    for cells in rows(table):
-        if len(cells) < 3:
-            continue
-        link = re.match(r"\[\[([^\]|#]+)", cells[2].strip())
-        if link:
-            found.append(link.group(1).strip())
+    for table in tables_with(text, "!Level(s)", "!XP"):
+        for cells in rows(table):
+            if len(cells) < 3:
+                continue
+            link = re.match(r"\[\[([^\]|#]+)", cells[2].strip())
+            if link:
+                found.append(link.group(1).strip())
+    found.extend(EXTRA_SHORTCUT_PAGES)
     return tuple(dict.fromkeys(found))
 
 
@@ -397,6 +479,10 @@ def parse_agility_info(text: str, page: str) -> tuple[ShortcutInfo, ...]:
     also how the export writes the ones it disambiguates
     (`Jutting wall (Zanaris)#Medium`). The bare page name is emitted too, so a
     single-version page joins on the name the list uses.
+
+    **An unversioned field covers every version.** `xp` and `failxp` are both
+    read that way - a page stating one `xp = 10` beside `level1`/`level2` means
+    both versions pay 10, and asking only for `xp1` dropped the page entirely.
 
     Series in the page's success chart are matched to versions **by position**,
     which is how the template writes them and the only correspondence it
@@ -434,7 +520,15 @@ def parse_agility_info(text: str, page: str) -> tuple[ShortcutInfo, ...]:
         key=int,
     )
     for position, index in enumerate(indexes or [""]):
+        # **An unversioned field applies to every version**, which is the
+        # template's own convention and was honoured for `failxp` and not for
+        # `xp`. `Pipe (Brimhaven Dungeon)` is `level1 = 34`, `level2 = 1` and a
+        # single `xp = 10` covering both - so asking only for `xp1`/`xp2` found
+        # neither and dropped the whole page, forward shortcut included. Four
+        # pages and nine challenges were lost to it.
         experience = number(fields.get(f"xp{index}"))
+        if experience is None:
+            experience = number(fields.get("xp"))
         level = number(fields.get(f"level{index}"))
         if experience is None or level is None:
             continue

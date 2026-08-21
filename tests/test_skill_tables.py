@@ -1093,3 +1093,109 @@ def test_glassblowing_is_craftings_one_table_of_plain_figures() -> None:
     assert set(rows) == {"Unpowered orb"}
     assert rows["Unpowered orb"].level == 46
     assert rows["Unpowered orb"].xp_per_hour == 91_875.0
+
+
+class TestTheShortcutListHasTwoTables:
+    """`Shortcuts` ends with a second list under the same `Level(s)`/`XP`
+    headers, headed `Obstacle` rather than `Shortcut` - twenty rows of things
+    the world map does not mark with the icon. `table_with` returns the first
+    match, so all twenty went unfetched and nine Agility challenges that name
+    their object perfectly well had nothing to join."""
+
+    _PAGE = """
+{| class="wikitable"
+!Level(s)
+!Icon
+!Shortcut
+!Notes
+!XP
+|-
+|1
+|x
+|[[Stepping stone (Lumbridge Swamp Caves)|stone]]
+|n
+|3
+|}
+
+Some prose.
+
+{| class="wikitable"
+!Level(s)
+!Icon
+!Obstacle
+!Notes
+!XP
+|-
+|15
+|x
+|[[Monkey bars (Edgeville Dungeon)|bars]]
+|n
+|20
+|}
+"""
+
+    def test_both_tables_are_read(self) -> None:
+        from chunksim.remote.skill_tables import shortcut_pages
+
+        found = shortcut_pages(self._PAGE)
+
+        assert "Stepping stone (Lumbridge Swamp Caves)" in found
+        assert "Monkey bars (Edgeville Dungeon)" in found
+
+    def test_table_with_still_returns_only_the_first(self) -> None:
+        """The singular is unchanged - callers that really do want one table
+        keep it, and only `shortcut_pages` asked for the plural."""
+        from chunksim.remote.wikitable import table_with, tables_with
+
+        assert "!Shortcut" in table_with(self._PAGE, "!Level(s)", "!XP")
+        assert len(list(tables_with(self._PAGE, "!Level(s)", "!XP"))) == 2
+
+    def test_the_hand_listed_pages_are_appended(self) -> None:
+        """Eight obstacles are on neither list - see `EXTRA_SHORTCUT_PAGES`."""
+        from chunksim.remote.skill_tables import EXTRA_SHORTCUT_PAGES, shortcut_pages
+
+        found = shortcut_pages(self._PAGE)
+
+        assert set(EXTRA_SHORTCUT_PAGES) <= set(found)
+
+    def test_nothing_is_listed_twice(self) -> None:
+        from chunksim.remote.skill_tables import shortcut_pages
+
+        found = shortcut_pages(self._PAGE + self._PAGE)
+
+        assert len(found) == len(set(found))
+
+
+class TestAnUnversionedFieldCoversEveryVersion:
+    """`Pipe (Brimhaven Dungeon)` is `level1 = 34`, `level2 = 1` and a single
+    `xp = 10`. Asking only for `xp1`/`xp2` found neither and dropped the whole
+    page - the forward shortcut with it. `failxp` already fell back this way."""
+
+    _BOX = """{{Agility info
+|version1 = To the demons
+|version2 = To the dragons
+|name = Pipe
+|level1 = 34
+|level2 = 1
+|xp = 10
+|type = Shortcut
+}}"""
+
+    def test_both_versions_take_the_shared_experience(self) -> None:
+        from chunksim.remote.skill_tables import parse_agility_info
+
+        found = parse_agility_info(self._BOX, "Pipe (Brimhaven Dungeon)")
+
+        assert [(info.level, info.experience) for info in found] == [(34, 10.0), (1, 10.0)]
+
+    def test_a_versioned_experience_still_wins(self) -> None:
+        """The fallback fills, it does not overwrite - a page stating `xp1`
+        means that version pays it."""
+        from chunksim.remote.skill_tables import parse_agility_info
+
+        found = parse_agility_info(
+            self._BOX.replace("|xp = 10", "|xp1 = 25\n|xp = 10"),
+            "Pipe (Brimhaven Dungeon)",
+        )
+
+        assert [info.experience for info in found] == [25.0, 10.0]

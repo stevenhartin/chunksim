@@ -772,17 +772,36 @@ vocabulary drift - an apostrophe moved, `Burg de Rot` against `Burgh de Rott`,
 a qualifier upstream lacks. **A word-overlap scorer proposed 21 more and was
 rejected**: it offered a Shilo Village stepping stone for a house window in
 Aldarin and collapsed five Brimhaven Dungeon shortcuts onto one Lumbridge
-stone. Those stay **`unpriced`, and that is the right word rather than
-`refused`**: 33 of the 80 shortcut challenges state no `Objects` at all, so
-there is no structural key and the only route left is a hand lookup - which is
-exactly how those 22 aliases were made. The scorer refused to *guess* the link,
-not to have one, so the row really does mean "somebody should go and close
-this".
+stone. Those stayed **`unpriced`, which was the right word rather than
+`refused`** - a hand lookup somebody can do, exactly as those 22 aliases were
+made - and doing it turned up something better than 23 more aliases.
+
+**Two of the three causes were parser defects, not vocabulary.** The
+`Shortcuts` page ends with a *second* list under the same `Level(s)`/`XP`
+headers, headed `Obstacle` rather than `Shortcut` - twenty rows of things the
+world map does not mark with the icon - and `table_with` returns the first
+match, so none of it was ever fetched (`wikitable.tables_with` is the plural,
+added for this; `remote/gathering.chart_for` is the same mistake found
+earlier). And `parse_agility_info` read `xp{N}` without the unversioned
+fallback it already gave `failxp`, so `Pipe (Brimhaven Dungeon)` -
+`level1 = 34`, `level2 = 1`, one shared `xp = 10` - lost **both** versions and
+the page with them. **The third is that the list is not the world**: eight
+obstacles upstream files as shortcuts appear on no list at all yet have a real
+`{{Agility info}}`, so `skill_tables.EXTRA_SHORTCUT_PAGES` names them, each
+verified by upstream's `Objects` matching the page title and the page's own
+`level` matching upstream's `Level`.
+
+**16 rates, no drift.** Agility went 72 modelled to **88** and 28 unpriced to
+11, and re-running `chunksim heuristics` added those 16 and changed nothing
+else at all - which is the reassurance that a wholesale re-scrape is safe to
+run. No climb moved on any map: the best of them is the Watchtower trellis at
+23,250/hr, which the courses beat everywhere.
 
 **What *is* refused is the other kind of miss.** `shortcuts.REFUSED` names the
-two challenges that join a real page and are declined because it awards
-nothing - `Fence (Burgh de Rott)` and `Crevice (Fremennik Slayer Dungeon)`,
-the two the flag-versus-experience measurement above turned up. They are
+three challenges that join a real page and are declined because it awards
+nothing - `Fence (Burgh de Rott)`, `Crevice (Fremennik Slayer Dungeon)` and
+`Boulder (Mountain Camp)`, the third found the moment its page became
+reachable. They are
 written by hand because `heuristics._add_shortcuts` runs inside `chunksim
 heuristics`, and by the time an estimate reads `wiki_rates.json` a
 zero-experience refusal is indistinguishable from a name that never joined:

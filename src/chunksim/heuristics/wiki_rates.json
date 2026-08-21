@@ -1,6 +1,6 @@
 {
   "name": "wiki_rates",
-  "fetched_at": "2026-08-18T23:50:41.612894+00:00",
+  "fetched_at": "2026-08-21T16:49:25.965241+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "quests": {
@@ -5336,6 +5336,13 @@
           "match": "computed"
         }
       },
+      "Access the Aldarin house window ~|shortcut|~": {
+        "Agility": {
+          "value": 750.0,
+          "source": "computed:shortcut",
+          "match": "modelled"
+        }
+      },
       "Access the Arceuus Library middle level railing jump ~|shortcut|~": {
         "Agility": {
           "value": 2250.0,
@@ -5455,6 +5462,20 @@
           "match": "modelled"
         }
       },
+      "Access the Karamja wooden log ~|shortcut|~": {
+        "Agility": {
+          "value": 2033.203125,
+          "source": "computed:shortcut",
+          "match": "modelled"
+        }
+      },
+      "Access the Lighthouse basalt rocks ~|shortcut|~": {
+        "Agility": {
+          "value": 401.3671875,
+          "source": "computed:shortcut",
+          "match": "modelled"
+        }
+      },
       "Access the Lumbridge Swamp Caves stepping stones ~|shortcut|~": {
         "Agility": {
           "value": 1054.6875,
@@ -5465,6 +5486,13 @@
       "Access the Lumbridge cow pen stones to Champions' Guild ~|shortcut|~": {
         "Agility": {
           "value": 3750.0,
+          "source": "computed:shortcut",
+          "match": "modelled"
+        }
+      },
+      "Access the Nature Spirit swampy bridge ~|shortcut|~": {
+        "Agility": {
+          "value": 3823.2421875,
           "source": "computed:shortcut",
           "match": "modelled"
         }
@@ -5574,6 +5602,13 @@
           "match": "modelled"
         }
       },
+      "Access the Underground Pass pipe ~|shortcut|~": {
+        "Agility": {
+          "value": 2250.0,
+          "source": "computed:shortcut",
+          "match": "modelled"
+        }
+      },
       "Access the Vampyrium forest crawl ~|shortcut|~": {
         "Agility": {
           "value": 1500.0,
@@ -5595,6 +5630,13 @@
           "match": "modelled"
         }
       },
+      "Access the Watchtower trellis ~|shortcut|~": {
+        "Agility": {
+          "value": 23250.0,
+          "source": "computed:shortcut",
+          "match": "modelled"
+        }
+      },
       "Access the Waterbirth Island Dungeon crevice ~|shortcut|~": {
         "Agility": {
           "value": 7500.0,
@@ -5609,9 +5651,23 @@
           "match": "modelled"
         }
       },
+      "Access the Yanille Agility Dungeon balance ledge ~|shortcut|~": {
+        "Agility": {
+          "value": 11931.15234375,
+          "source": "computed:shortcut",
+          "match": "modelled"
+        }
+      },
       "Access the Yanille climbing rocks ~|shortcut|~": {
         "Agility": {
           "value": 18750.0,
+          "source": "computed:shortcut",
+          "match": "modelled"
+        }
+      },
+      "Access the advanced pipe contortion in Brimhaven Dungeon ~|shortcut|~": {
+        "Agility": {
+          "value": 7500.0,
           "source": "computed:shortcut",
           "match": "modelled"
         }
@@ -5623,9 +5679,30 @@
           "match": "modelled"
         }
       },
+      "Access the broken Lighthouse bridge ~|shortcut|~": {
+        "Agility": {
+          "value": 530.2734375,
+          "source": "computed:shortcut",
+          "match": "modelled"
+        }
+      },
+      "Access the monkey bars under Yanille ~|shortcut|~": {
+        "Agility": {
+          "value": 12070.3125,
+          "source": "computed:shortcut",
+          "match": "modelled"
+        }
+      },
       "Access the north-west corner of the Catacombs of Kourend ~|shortcut|~": {
         "Agility": {
           "value": 1500.0,
+          "source": "computed:shortcut",
+          "match": "modelled"
+        }
+      },
+      "Access the pillars in the Wintertodt's Prison ~|shortcut|~": {
+        "Agility": {
+          "value": 13500.0,
           "source": "computed:shortcut",
           "match": "modelled"
         }
@@ -5644,6 +5721,20 @@
           "match": "modelled"
         }
       },
+      "Access the reverse advanced pipe contortion in Brimhaven Dungeon ~|shortcut|~": {
+        "Agility": {
+          "value": 7500.0,
+          "source": "computed:shortcut",
+          "match": "modelled"
+        }
+      },
+      "Access the reverse red dragon log balance in Brimhaven Dungeon ~|shortcut|~": {
+        "Agility": {
+          "value": 7500.0,
+          "source": "computed:shortcut",
+          "match": "modelled"
+        }
+      },
       "Access the rocks in the Corsair Cove Resource Area ~|shortcut|~": {
         "Agility": {
           "value": 1500.0,
@@ -5651,9 +5742,23 @@
           "match": "modelled"
         }
       },
+      "Access the rope swing to Moss Giant Island ~|shortcut|~": {
+        "Agility": {
+          "value": 2250.0,
+          "source": "computed:shortcut",
+          "match": "modelled"
+        }
+      },
       "Access the slippery basalt stepping stone ~|shortcut|~": {
         "Agility": {
           "value": 3750.0,
+          "source": "computed:shortcut",
+          "match": "modelled"
+        }
+      },
+      "Access the troll arena rocks ~|shortcut|~": {
+        "Agility": {
+          "value": 536.1328125,
           "source": "computed:shortcut",
           "match": "modelled"
         }
@@ -5668,6 +5773,13 @@
       "Access the west Pollnivneach scramble ~|shortcut|~": {
         "Agility": {
           "value": 3000.0,
+          "source": "computed:shortcut",
+          "match": "modelled"
+        }
+      },
+      "Climb the ~|winch|~ at the digsite": {
+        "Agility": {
+          "value": 1500.0,
           "source": "computed:shortcut",
           "match": "modelled"
         }
@@ -9496,7 +9608,7 @@
       },
       "Brutal black dragon": {
         "hitpoints": 315.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 7.5
       },
       "Brutal blue dragon": {
         "hitpoints": 245.0,
@@ -15088,23 +15200,23 @@
       },
       "Alry the Angler's Angling Accessories": {
         "Angler boots": {
-          "price": 100.0,
+          "price": 50.0,
           "currency": "Molch pearl"
         },
         "Angler hat": {
-          "price": 100.0,
+          "price": 50.0,
           "currency": "Molch pearl"
         },
         "Angler top": {
-          "price": 100.0,
+          "price": 50.0,
           "currency": "Molch pearl"
         },
         "Angler waders": {
-          "price": 100.0,
+          "price": 50.0,
           "currency": "Molch pearl"
         },
         "Fish sack": {
-          "price": 1000.0,
+          "price": 500.0,
           "currency": "Molch pearl"
         },
         "Pearl barbarian rod": {
@@ -15117,6 +15229,10 @@
         },
         "Pearl fly fishing rod": {
           "price": 120.0,
+          "currency": "Molch pearl"
+        },
+        "Shark lure pack": {
+          "price": 1.0,
           "currency": "Molch pearl"
         }
       },
@@ -18339,7 +18455,7 @@
           "price": 750.0,
           "currency": "Coins"
         },
-        "Disk of returning": {
+        "Disk of Returning": {
           "price": 21000.0,
           "currency": "Coins"
         },
@@ -18375,7 +18491,7 @@
           "price": 150.0,
           "currency": "Coins"
         },
-        "Mask of balance": {
+        "Mask of Balance": {
           "price": 1.0,
           "currency": "Coins"
         },
@@ -18511,7 +18627,7 @@
           "price": 60.0,
           "currency": "NMZ"
         },
-        "Scroll of redirection": {
+        "Scroll of Redirection": {
           "price": 775.0,
           "currency": "NMZ"
         },
@@ -19007,7 +19123,7 @@
           "price": 20000.0,
           "currency": "Coins"
         },
-        "Rod of ivandis (10)": {
+        "Rod of Ivandis": {
           "price": 1000.0,
           "currency": "Coins"
         },
@@ -21351,31 +21467,31 @@
       "Grace's Graceful Clothing": {
         "Amylase pack": {
           "price": 10.0,
-          "currency": "Mark of grace"
+          "currency": "Mark of Grace"
         },
         "Graceful boots": {
           "price": 40.0,
-          "currency": "Mark of grace"
+          "currency": "Mark of Grace"
         },
         "Graceful cape": {
           "price": 40.0,
-          "currency": "Mark of grace"
+          "currency": "Mark of Grace"
         },
         "Graceful gloves": {
           "price": 30.0,
-          "currency": "Mark of grace"
+          "currency": "Mark of Grace"
         },
         "Graceful hood": {
           "price": 35.0,
-          "currency": "Mark of grace"
+          "currency": "Mark of Grace"
         },
         "Graceful legs": {
           "price": 60.0,
-          "currency": "Mark of grace"
+          "currency": "Mark of Grace"
         },
         "Graceful top": {
           "price": 55.0,
-          "currency": "Mark of grace"
+          "currency": "Mark of Grace"
         }
       },
       "Grand Tree Groceries": {
@@ -22593,7 +22709,7 @@
           "price": 20000.0,
           "currency": "Coins"
         },
-        "Rod of ivandis (10)": {
+        "Rod of Ivandis (10)": {
           "price": 1000.0,
           "currency": "Coins"
         },
@@ -24515,7 +24631,7 @@
           "price": 23000.0,
           "currency": "Coins"
         },
-        "Helm of neitiznot": {
+        "Helm of Neitiznot": {
           "price": 95000.0,
           "currency": "Coins"
         },
@@ -24599,7 +24715,7 @@
           "price": 23000.0,
           "currency": "Coins"
         },
-        "Thread of elidinis": {
+        "Thread of Elidinis": {
           "price": 350000.0,
           "currency": "Coins"
         },
@@ -29853,6 +29969,14 @@
         }
       },
       "Temple Supplies": {
+        "Abyssal lantern": {
+          "price": 1500.0,
+          "currency": "Abyssal pearls"
+        },
+        "Abyssal needle": {
+          "price": 750.0,
+          "currency": "Abyssal pearls"
+        },
         "Air talisman": {
           "price": 10.0,
           "currency": "Abyssal pearls"
@@ -29865,7 +29989,7 @@
           "price": 10.0,
           "currency": "Abyssal pearls"
         },
-        "Boots of the eye": {
+        "Boots of the Eye": {
           "price": 250.0,
           "currency": "Abyssal pearls"
         },
@@ -29893,7 +30017,7 @@
           "price": 3000.0,
           "currency": "Abyssal pearls"
         },
-        "Hat of the eye": {
+        "Hat of the Eye": {
           "price": 400.0,
           "currency": "Abyssal pearls"
         },
@@ -29913,11 +30037,11 @@
           "price": 400.0,
           "currency": "Abyssal pearls"
         },
-        "Robe bottoms of the eye": {
+        "Robe bottoms of the Eye": {
           "price": 350.0,
           "currency": "Abyssal pearls"
         },
-        "Robe top of the eye": {
+        "Robe top of the Eye": {
           "price": 350.0,
           "currency": "Abyssal pearls"
         },
@@ -33442,13 +33566,15 @@
     "currencies": {
       "Coins": 500000.0,
       "Tokkul": 25000.0,
-      "Mark of grace": 19.5,
+      "Mark of grace": 12.0,
       "Abyssal pearls": 40.0,
       "Tithe": 80.0,
       "Zeal Tokens": 200.0,
       "Castle Wars ticket": 5.454545454545454,
+      "~|Pizazz points|~*:Pizazz points": 1234.7133757961783,
       "Mahogany Homes Reward Shop:Points": 100.0,
-      "PvP Arena Rewards:Points": 360.0
+      "PvP Arena Rewards:Points": 360.0,
+      "Archery ticket": 9000.0
     },
     "crops": [
       {

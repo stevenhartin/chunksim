@@ -79,21 +79,35 @@ def tables(text: str) -> Iterator[str]:
                 yield text[start : match.end()]
 
 
-def table_with(text: str, *needles: str) -> str:
-    """The first table whose header cells mention all of `needles`.
+def tables_with(text: str, *needles: str) -> Iterator[str]:
+    """Every table whose header cells mention all of `needles`, in page order.
 
     **Header lines, not "everything before the first row separator".** A table
     may open with `|-` and put its `!` lines after it - the sawmill's fee table
     does - and looking only at the text before that separator finds nothing but
     the `{| class="wikitable"` line.
+
+    **All of them, because "the first" has been wrong twice.** `remote/
+    gathering.chart_for` was written after taking `charts[0]` priced two NPCs
+    off a chart about a different method, and `skill_tables.shortcut_pages`
+    after taking the first table left the `Shortcuts` page's whole second
+    table - twenty obstacles, headed `Obstacle` rather than `Shortcut` -
+    unread. A caller that really does want one takes `table_with`.
     """
     for table in tables(text):
         head = "\n".join(
             line for line in table.splitlines() if line.lstrip().startswith("!")
         )
         if all(needle in head for needle in needles):
-            return table
-    return ""
+            yield table
+
+
+def table_with(text: str, *needles: str) -> str:
+    """The first table whose header cells mention all of `needles`.
+
+    See `tables_with` for when the first is not the one you want.
+    """
+    return next(tables_with(text, *needles), "")
 
 
 def rows(table: str) -> Iterator[list[str]]:

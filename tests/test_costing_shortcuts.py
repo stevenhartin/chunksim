@@ -136,12 +136,13 @@ class TestARefusalIsNotAGap:
     code is `chunksim heuristics`' and its output cannot tell a zero-experience
     refusal from a name that never joined."""
 
-    def test_both_zero_experience_shortcuts_are_named(self) -> None:
+    def test_every_zero_experience_shortcut_is_named(self) -> None:
         from chunksim.costing import shortcuts
 
         assert set(shortcuts.refused()) == {
             "Access the Burg de Rot fence ~|shortcut|~",
             "Access the Fremennik Slayer Dungeon chasm jump ~|shortcut|~",
+            "Access the Mountain Camp boulder ~|shortcut|~",
         }
 
     def test_each_says_which_page_pays_nothing(self) -> None:

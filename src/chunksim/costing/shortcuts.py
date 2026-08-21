@@ -14,6 +14,17 @@ Three things replace it, all read rather than chosen:
   than a stepping-stone chain - and eight ticks is the average across them.
   The one number here that is stated rather than derived, and the one to
   correct if a measurement turns up.
+
+  **One has now turned up, and it is recorded rather than spent.** The
+  `Agility` page says of the Wintertodt prison gap that "the player can expect
+  experience rates of up to 21,000 Agility experience per hour" at 18
+  experience a jump - which is 1,167 jumps an hour, or **5.1 ticks**, against
+  the eight this model charges. So the model reads that shortcut 1.56x slow.
+  It is the only published hourly figure for any single shortcut in the game,
+  and one observation cannot re-fit an average over sixty-four - a gap-jump
+  done on the spot while waiting for a boss is also the fastest shape a
+  shortcut has, not a typical one. It is the first evidence there has ever
+  been about this constant, and it says the constant is conservative.
 - **`failxp`, from each shortcut's own `{{Agility info}}`.** A failed attempt
   still pays, usually less: the Cosmic altar narrow walkway pays 9.9 on a
   success and 6 on a failure, so a model that counted only successes would be
@@ -115,6 +126,13 @@ REFUSED: dict[str, str] = {
     ),
     "Access the Fremennik Slayer Dungeon chasm jump ~|shortcut|~": (
         "Crevice (Fremennik Slayer Dungeon) awards no experience"
+    ),
+    # A third, found the moment `EXTRA_SHORTCUT_PAGES` made its page
+    # reachable: the boulder is `level = 10` and `xp = 0`, and its `{{Agility
+    # info}}` calls it an `Obstacle` rather than a `Shortcut`. It also wants a
+    # rope, which is beside the point once the experience is nought.
+    "Access the Mountain Camp boulder ~|shortcut|~": (
+        "Boulder (Mountain Camp) awards no experience"
     ),
 }
 
