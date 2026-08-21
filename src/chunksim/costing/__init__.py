@@ -218,6 +218,11 @@ The modules, and what each owns:
   magic/spirit tree (Construction) all state it) rather than off a rule -
   650 of the corpus's 4,043 recipes carry no stated ticks, far too broad a
   net to trust by family resemblance alone.
+- `greenman.py` - the same shape with the evidence the other way round: the
+  carving's four ticks were **measured in game**, and `Greenman statue`'s
+  published 4 for the same action one log tier down is the check on that
+  rather than its source. One named output, and not the `(Construction)` page
+  of the same name, which times itself. **Fletching's last unpriced method.**
 - `shortcuts.py` - an Agility shortcut priced from the attempt: eight ticks,
   the experience its own page states, the experience a *failure* pays, and the
   published success curve. Replaced an 18-second cycle whose comment called it

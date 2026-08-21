@@ -898,17 +898,22 @@ def stated_ticks(
     already paid for, `fishcutting` states the three ticks a knife costs on
     a crab - the wiki's own figure for the same knife on a fish - and
     `yewtree` states the one cell a family of otherwise-identical garden
-    trees leaves blank on this one page. `feathering` is the largest of them
-    by far: 145 of Fletching's 158 untimed recipes are a stack of feathers
-    onto a stack of tips, and the four the wiki *does* time are all 2 ticks.
+    trees leaves blank on this one page, and `greenman` the one cell its
+    two-recipe family leaves blank - measured in game rather than borrowed,
+    with the sibling's published 4 as the check. `feathering` is the largest
+    of them by far: 145 of Fletching's 158 untimed recipes are a stack of
+    feathers onto a stack of tips, and the four the wiki *does* time are all
+    2 ticks.
     """
     # Deferred: `estimate` imports this module for the merge and `chisel`,
-    # `herblore`, `fishcutting` and `yewtree` are leaves, but keeping the
-    # imports local documents that nothing here depends on their module state.
+    # `herblore`, `fishcutting`, `yewtree` and `greenman` are leaves, but
+    # keeping the imports local documents that nothing here depends on their
+    # module state.
     from chunksim.costing import (
         chisel,
         feathering,
         fishcutting as cutting,
+        greenman,
         herblore,
         yewtree,
     )
@@ -916,6 +921,7 @@ def stated_ticks(
     found = dict(herblore.stated_ticks(recipes))
     found.update(chisel.stated_ticks(recipes))
     found.update(yewtree.stated_ticks(recipes))
+    found.update(greenman.stated_ticks(recipes))
     found.update(feathering.stated_ticks(recipes))
     for skill, rows in recipes.items():
         challenges = _mapping(chunk_info.challenges, skill)

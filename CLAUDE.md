@@ -1799,9 +1799,13 @@ challenge being valid *is* the statement that this map can play, and the
 export census infers no Fletching level at all - comparing `1 < 20` there
 reported a routable material as unroutable and cost four methods.
 
-Fletching goes **126 modelled to 154 and 31 unpriced to 1** - the greenman
-carving, whose own page leaves `ticks` blank where the statue beside it says 4.
-**Not one of the five that closed was the gap it looked like.** `Dragon bolts
+**Fletching has no unpriced method left** - 155 modelled, 1 guessed, 2 one-off
+and 7 uncompletable of 165, from 126/1/0/0 when this started. The last one was
+the greenman carving, whose `{{Recipe}}` leaves `ticks` blank where the statue
+beside it publishes 4: `costing/greenman.py` states **4**, measured in game,
+with the sibling's published figure as the check rather than the source - the
+inverse of `yewtree.py`, where every sibling was published and the subject was
+not. **Not one of the six that closed was the gap it looked like.** `Dragon bolts
 (unf)` was a reachability defect in the *report* rather than a missing route
 (`cli/training._unsealed`); `Hunter spear tips` was the export being read wrong
 (below); `Barb bolttips` needed a currency rather than a recipe (below); and
