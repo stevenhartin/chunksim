@@ -272,6 +272,14 @@ The modules, and what each owns:
   so a map that must chop redwood pays for chopping redwood. Flat
   `{item: seconds}` like `yields.py`, for the same reason: the share is
   fractional and the route would never memo.
+- `lootsack.py` - what a Hunters' loot sack's reward table costs, which is the
+  rumour behind it. **The export records the share of one *roll* and an open is
+  5/7/9/11 of them**, per tier and published, so reading the figure as a
+  per-open chance undercounts a sack by that factor. Flat `{item: seconds}`
+  beside `valeoffering.py`, and the only one of the three whose pace is a guess
+  - it spends `rumours.RUMOURS_PER_HOUR` and adds nothing to it. One item,
+  because `Hunter spear tips` is the only one of the four sacks' 31 members a
+  `Primary` method consumes.
 - `feathering.py` - the largest `stated_ticks` contributor: **145 of
   Fletching's 158 untimed recipes** are a stack of feathers onto a stack of
   tips, and the four feathered recipes the wiki *does* time are all **2

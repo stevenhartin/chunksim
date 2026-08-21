@@ -1799,16 +1799,33 @@ challenge being valid *is* the statement that this map can play, and the
 export census infers no Fletching level at all - comparing `1 < 20` there
 reported a routable material as unroutable and cost four methods.
 
-Fletching goes **126 modelled to 152 and 31 unpriced to 4**. What is left is
-two behind a material nothing routes (`Hunter spear tips` and `Barb bolttips`,
-both shop currencies); the bone shortbow, an untimed recipe that is *not*
-feathered, whose siblings are timed but whose action differs; and the greenman
-carving, which its own page leaves untimed where the statue beside it says 4.
-`Dragon bolts (unf)` was a third blocked material and turned out not to be one
-- see `cli/training._unsealed` - and the **toxic blowpipe** was the other
-untimed recipe and is `one-off` instead: one Zulrah fang consumed into a
-permanent weapon, checked against the sword mounts' return rule and refused by
-it.
+Fletching goes **126 modelled to 153 and 31 unpriced to 3**. What is left is
+`Barb bolttips`, behind a shop currency nothing rates; the bone shortbow, an
+untimed recipe that is *not* feathered, whose siblings are timed but whose
+action differs; and the greenman carving, which its own page leaves untimed
+where the statue beside it says 4. Of the three that closed, none was the gap
+it looked like: `Dragon bolts (unf)` was a reachability defect in the *report*
+rather than a missing route (`cli/training._unsealed`), the **toxic blowpipe**
+is `one-off` - one Zulrah fang consumed into a permanent weapon, checked
+against the sword mounts' return rule and refused by it - and `Hunter spear
+tips` was the export being read wrong, below.
+
+**A reward sack's share is stated per *roll*, and an open is several.** The
+export writes `Hunter spear tips` as `1/7` in a basic Hunters' loot sack, which
+is the share of **one roll**; the sack's own page says "opening them rolls 5
+times on the loot table", and the wiki's rarity column writes the pair out as
+`5 x 1/7` - so the two are the same number seen twice and reading the export's
+half alone undercounts a sack five to eleven times, the count rising with the
+tier (5/7/9/11). `costing/lootsack.py` is the flat `{item: seconds}` that
+follows, beside `valeoffering.py` and for its reasons, and it is **the only one
+of the three whose pace is a guess**: it spends `rumours.RUMOURS_PER_HOUR` and
+invents nothing further. A `yield_seconds` entry is a material cost rather than
+a rate, so it has no provenance channel to carry that on - which is worth
+knowing and, here, cannot decide anything, since `Make a ~|hunter's spear|~`
+reads **84/hr** against the same map's 67,302. One item, because measured over
+all four sacks exactly **one of 31 members** is consumed by a `Primary` method;
+the other ten unrouted ones are armour, blueprints and a pet, wanted only by
+`Wield`-shaped challenges no costing layer asks about.
 
 **A constant standing in for a curve is not the conservative end, and saying
 so was the mistake.** `PICKPOCKET_CYCLE_SECONDS` was 3.5 seconds, fitted to one
