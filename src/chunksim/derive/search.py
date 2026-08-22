@@ -22,6 +22,7 @@ way):
   monster ("Aquanite") - so resolving its location tries Monster/NPC/Object
   in turn rather than assuming one category.
 - `shopItems[shop]` - shop stock (1,385 items). `HAND_SHOP_SOURCES` adds one more by hand, for a shop the export never states exists at all - see its own docstring.
+- `HAND_TASK_SOURCES` adds one more, for a challenge that produces an item and states no `Output` for it to be found under - see its own docstring.
 - a chunk's (or chunk section's) `Spawn` block - fixed ground spawns (357
   items); the spawn's own chunk-section *is* its location, so this route
   needs no further lookup.
@@ -154,6 +155,35 @@ def _expand_drop(drop: str, drop_tables: Mapping[str, Any]) -> list[str]:
 #: claims to have done that.
 HAND_SHOP_SOURCES: dict[str, str] = {"Magic secateurs": "Malignius Mortifer"}
 
+#: `{item: (skill, challenge)}` for a challenge that **produces an item and
+#: states no `Output`**, so nothing below can see what it makes.
+#:
+#: Upstream writes `Catch a ~|raw bream|~` with a level and a chunk and
+#: nothing else - no `Output`, no `Objects`, no `NPCs` - so `Raw bream` has no
+#: route at all, and `Cook a ~|cooked bream|~` was dropped for want of an
+#: input the world plainly provides. The catch itself is already priced:
+#: `costing/gathering.py` models the bream as a big-net fish borrowing the
+#: leechfin's curve, and `inputs.priced_heuristics` writes its per-item pace
+#: into `Heuristics.action_seconds`, which is exactly what
+#: `estimate._route_hours` charges for performing a challenge. Only the route
+#: was missing.
+#:
+#: **One entry, and the measurement is what says so.** Reading the `~|...|~`
+#: span as an output wherever a challenge lacks one is not safe: 84 primary
+#: gathering challenges state none, and most of their spans are places or
+#: events rather than items - `Forestry`, `Puro-Puro`, `Tempoross`, `Fishing
+#: Trawler`, `Duke Sucellus`. Measured across the export, exactly **one**
+#: challenge that `gathering.py` prices states no `Output` and has a span some
+#: `{{Recipe}}` wants as a material, and this is it.
+#:
+#: **Not the moss lizard**, whose trap is the same shape and is handled
+#: differently on purpose: its pace is `costing/stated.py`'s invented ten
+#: seconds rather than a modelled curve, so it fills no `action_seconds` and
+#: routing it here would launder a `GUESS` into a `modelled` recipe rate.
+HAND_TASK_SOURCES: dict[str, tuple[str, str]] = {
+    "Raw bream": ("Fishing", "Catch a ~|raw bream|~"),
+}
+
 
 def build_world_index(chunk_info: ChunkInfo) -> WorldIndex:
     """Build a `WorldIndex` from the raw chunkinfo export."""
@@ -166,6 +196,9 @@ def build_world_index(chunk_info: ChunkInfo) -> WorldIndex:
 
     for item, shop in HAND_SHOP_SOURCES.items():
         add_source(item, ItemSource("shop", shop))
+
+    for item, (skill, task) in HAND_TASK_SOURCES.items():
+        add_source(item, ItemSource(f"task:{skill}", task))
 
     drops = _mapping(data, "drops")
     for monster, table in drops.items():

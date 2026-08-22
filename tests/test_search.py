@@ -452,3 +452,73 @@ def test_the_item_index_itself_is_untouched(real_export: ChunkInfo) -> None:
     world = build_world_index(real_export)
 
     assert "Abyssal demon" in world.item_sources
+
+
+class TestAChallengeThatMakesSomethingAndSaysNothing:
+    """**`HAND_TASK_SOURCES`**, for a challenge that produces an item and
+    states no `Output` for it to be found under. Upstream writes `Catch a
+    ~|raw bream|~` with a level and a chunk and nothing else, so `Raw bream`
+    had no route at all and the bream cook was dropped for want of an input
+    the world plainly provides."""
+
+    def test_the_route_is_seeded(self) -> None:
+        from chunksim.derive.search import HAND_TASK_SOURCES
+
+        world = build_world_index(_chunk_info())
+        for item, (skill, task) in HAND_TASK_SOURCES.items():
+            assert ItemSource(f"task:{skill}", task) in world.item_sources[item]
+
+    def test_it_is_the_bream_and_only_the_bream(self) -> None:
+        from chunksim.derive.search import HAND_TASK_SOURCES
+
+        assert HAND_TASK_SOURCES == {
+            "Raw bream": ("Fishing", "Catch a ~|raw bream|~")
+        }
+
+    def test_a_real_output_is_not_displaced(self) -> None:
+        """Seeded before the export is read, so anything upstream *does* state
+        for the same item is added beside it and the walk takes the cheaper."""
+        info = _chunk_info(
+            challenges={
+                "Fishing": {"Catch a ~|raw bream|~": {"Output": "Raw bream"}}
+            }
+        )
+        found = build_world_index(info).item_sources["Raw bream"]
+
+        assert len(found) == 2
+
+    @pytest.mark.real_export
+    def test_the_named_challenges_exist_and_state_no_output(
+        self, real_export: ChunkInfo
+    ) -> None:
+        """**A key that matches nothing is silently inert**, and an entry that
+        stopped being needed is worse than inert - it would shadow upstream
+        finally stating the `Output` itself."""
+        from chunksim.derive.search import HAND_TASK_SOURCES
+
+        for item, (skill, task) in HAND_TASK_SOURCES.items():
+            entry = real_export.challenges[skill].get(task)
+            assert isinstance(entry, dict), task
+            assert entry.get("Primary") is True, task
+            assert not entry.get("Output"), (task, "upstream states one now")
+
+    @pytest.mark.real_export
+    def test_reading_every_span_as_an_output_is_refused(
+        self, real_export: ChunkInfo
+    ) -> None:
+        """Why this is a table and not a rule: most spans on a challenge with
+        no `Output` are places or events rather than items."""
+        gathering = ("Fishing", "Hunter", "Mining", "Woodcutting", "Thieving", "Farming")
+        spans = []
+        for skill in gathering:
+            for task, body in real_export.challenges[skill].items():
+                if not isinstance(body, dict) or body.get("Primary") is not True:
+                    continue
+                if body.get("Output") or body.get("Output Object"):
+                    continue
+                spans.append(task.partition("~|")[2].rpartition("|~")[0].strip())
+
+        assert len(spans) > 50
+        # Places and events, not items - one of these would be a route to
+        # "obtain a Forestry".
+        assert {"Forestry", "Puro-Puro", "Tempoross"} <= set(spans)

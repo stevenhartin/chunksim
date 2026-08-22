@@ -1257,6 +1257,32 @@ only `{{Skilling success chart}}` is for the *fish*. The report said
 `unpriced`. `trawler.refused` says it where a reader can see it, gated on the
 leaks actually being priced for `foundry.refused`'s reason.
 
+**The bream is the same activity as the moss lizard and is handled the other
+way, which is the interesting part.** `Cook a ~|cooked bream|~` joined its
+recipe perfectly well and was dropped for an unroutable input: upstream writes
+`Catch a ~|raw bream|~` with a level and a chunk and **nothing else** - no
+`Output`, no `Objects`, no `NPCs` - so `derive/search.build_world_index` had no
+route to `Raw bream`. Everything else was already there. `costing/gathering.py`
+models the bream as a big-net fish borrowing the leechfin's curve, and
+`inputs.priced_heuristics` already writes its per-item pace into
+`Heuristics.action_seconds`, which is exactly what `estimate._route_hours`
+charges for performing a challenge. So the fix is one seeded route
+(`search.HAND_TASK_SOURCES`) and the ordinary recipe layer does the rest -
+**40,500/hr**, being 45 experience over a 3-second catch, the cook's tick and
+its trip share.
+
+**Reading the span as an output is refused, and the census says why**: 84
+primary gathering challenges state no `Output`, and most of their spans are
+places or events rather than items - `Forestry`, `Puro-Puro`, `Tempoross`,
+`Fishing Trawler`, `Duke Sucellus`. Exactly **one** challenge that
+`gathering.py` prices states no `Output` and has a span some `{{Recipe}}`
+wants, so this is a hand table beside `HAND_SHOP_SOURCES` rather than a rule.
+
+**And the moss lizard is deliberately not routed the same way.** Its pace is
+`costing/stated.py`'s invented ten seconds rather than a modelled curve, so it
+fills no `action_seconds` - and routing it here would launder a `GUESS` into a
+`modelled` recipe rate, which is the one thing provenance exists to stop.
+
 **A trap that pays two skills, and only one of them was being spent.** The
 moss lizard's Hunter side has been modelled since `costing/stated.py` was
 written - nine tenths of the Hunter level, floored and capped at ninety, at a
