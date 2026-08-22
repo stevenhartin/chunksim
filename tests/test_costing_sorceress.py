@@ -7,6 +7,7 @@ import pathlib
 import pytest
 
 from chunksim.costing import sorceress as sg
+from chunksim.model.chunkinfo import ChunkInfo
 
 
 class TestTheLapTimeAgreesWithTheYield:
@@ -135,3 +136,90 @@ class TestItIsWiredIn:
             encoding="utf-8"
         )
         assert "`sorceress.py`" in listing
+
+
+class TestTheFarmingHalfIsTheSameLap:
+    """**"You can only pick one fruit per trip, *or* if you pick herbs
+    instead"** - so a herb trip is not a detour, it is the trip. And the
+    payout is published without a caveat: 50 Farming experience, "regardless
+    of which garden is chosen"."""
+
+    _VALID: dict[str, dict[str, object]] = {
+        "Farming": {sg.HERB_TASK: {}},
+    }
+
+    def test_the_payout_is_flat_across_the_gardens(self) -> None:
+        assert sg.HERB_EXPERIENCE == 50.0
+
+    def test_the_laps_come_from_the_figures_the_thieving_side_spends(self) -> None:
+        """The stated juice an hour times the sq'irks a juice - so the two
+        halves cannot disagree about how fast the garden is run."""
+        for garden in sg.GARDENS.values():
+            assert sg.laps_per_hour(garden) == (
+                garden.juice_per_hour * garden.sqirks_per_juice
+            )
+
+    def test_they_agree_with_the_lap_times_within_a_few_percent(self) -> None:
+        """Which is the module's own check, read a second time."""
+        for garden in sg.GARDENS.values():
+            implied = 3600.0 / garden.lap_seconds
+            assert 0.95 < sg.laps_per_hour(garden) / implied < 1.05
+
+    def test_the_winter_garden_wins_and_needs_nothing(self) -> None:
+        """**The garden is not a choice.** The payout is flat, so the best
+        rate is the most trips an hour - and that is winter's, which is also
+        the only garden with no Thieving requirement."""
+        best = max(sg.GARDENS.values(), key=sg.laps_per_hour)
+
+        assert best is sg.GARDENS["winter"]
+        assert best.level == 1
+
+    def test_the_rate_is_eighty_five_hundred(self) -> None:
+        assert sg.farming_rate() == 8_500.0
+
+    def test_it_opens_at_level_one(self) -> None:
+        (band,) = sg.methods(self._VALID)["Farming"]
+
+        assert band.level == 1
+        assert band.knob == f"training/{sg.HERB_TASK}/Farming"
+
+    def test_it_does_not_scale(self) -> None:
+        """25 experience a herb is 25 at level 99 - the shape to expect, and
+        why this is for the bottom of a skill with almost nothing active
+        below Tithe Farm's 34."""
+        assert len(sg.methods(self._VALID)["Farming"]) == 1
+
+    def test_nothing_when_the_herb_challenge_is_out_of_reach(self) -> None:
+        assert "Farming" not in sg.methods({})
+        assert "Farming" not in sg.methods({"Farming": {}})
+
+    def test_the_thieving_side_is_unaffected(self) -> None:
+        """The herbs are a different pick on the same trip, not a share of
+        the juice - so a map with only the Farming challenge gets no Thieving
+        bands and vice versa."""
+        assert "Thieving" not in sg.methods(self._VALID)
+
+        thieving: dict[str, dict[str, object]] = {
+            "Thieving": {garden.task: {} for garden in sg.GARDENS.values()}
+        }
+        assert "Farming" not in sg.methods(thieving)
+
+
+class TestTheFarmingHalfIsWiredIn:
+    def test_inputs_calls_it(self) -> None:
+        from chunksim.costing import inputs
+
+        source = pathlib.Path(inputs.__file__).read_text(encoding="utf-8")
+        assert "sorceress.methods(" in source
+
+    @pytest.mark.real_export
+    def test_upstream_carries_one_herb_challenge_at_level_one(
+        self, real_export: ChunkInfo
+    ) -> None:
+        """One challenge for the herbs where there are four for the juice,
+        which matches the game: the herbs pay the same in every garden."""
+        entry = real_export.challenges["Farming"].get(sg.HERB_TASK)
+
+        assert isinstance(entry, dict)
+        assert entry.get("Primary") is True
+        assert entry.get("Level") == 1

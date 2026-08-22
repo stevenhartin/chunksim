@@ -1308,6 +1308,28 @@ is one. Farming goes **85 unpriced to 3**, and the three name no patch because
 they are not farmed: the two Chambers of Xeric herbs this module already calls
 "not farmed, they are found", and the Sorceress's Garden, which is a minigame.
 
+**And that minigame's Farming half was the same lap with something else
+picked.** `costing/sorceress.py` had modelled the Thieving side and its
+docstring said of the rest "the export carries no challenge for either" -
+which was false for Farming and is the sort of claim worth re-checking. The
+wiki states the mechanic without a caveat: "you can only pick one fruit per
+trip, **or** if you pick herbs instead, you will always get two clean herbs at
+once before you are teleported out", paying "**50 Farming experience**, or 25
+per herb, **regardless of which garden is chosen**". So a herb trip is not a
+detour, it is the trip, and the rate is the lap rate the module already has
+times fifty - taken from the *stated* juice an hour times the sq'irks a juice,
+so the two halves cannot disagree about how fast the garden is run.
+
+**Which garden is not a choice, which is the pleasant part**: the payout is
+flat, so the best Farming rate is simply the most trips an hour - and that is
+the **winter** garden, which is also the only one with no Thieving requirement
+at all. 170 trips and **8,500/hr** at level 1, and it does not scale, because
+25 experience a herb is 25 at level 99. What it is for is the bottom of a
+skill with almost nothing active below Tithe Farm's 34, and it shows: `fray`,
+which reaches no Tithe Farm, goes **2,157.1h to 1,533.5h** with the garden
+owning the whole climb, and `fray-uber` 163.2h to **157.8h** with it owning 1
+to 34.
+
 **Crafting's join misses were four names and one of them was a whole other
 skill's answer.** Nine methods closed and the shapes are worth separating:
 

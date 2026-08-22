@@ -42,10 +42,32 @@ worst kind of error here, since the band walk would spend the whole of 25-45
 on a garden the player cannot enter. Upstream still owns *reachability*: a
 garden is offered only where its challenge is valid.
 
-**Only Thieving.** Squeezing the juice pays a little Cooking and the fruit and
-herbs pay some Farming - summer's page puts an inventory at 110 and 2,760
-against its 69,000 Thieving - but the export carries no challenge for either,
-and picking the fruit is a detour rather than part of the lap.
+### The Farming half is the same lap with something else picked
+
+**"You can only pick one fruit per trip, *or* if you pick herbs instead, you
+will always get two clean herbs at once before you are teleported out of the
+garden"** - so a herb trip is not a detour, it is the trip. And what it pays
+is published without a single caveat: "picking them will always yield **50
+Farming experience**, or 25 experience per herb, **regardless of which garden
+is chosen**".
+
+So the Farming rate is the lap rate this module already has, times fifty. The
+laps come from the same place the Thieving rates do - the *stated* juice an
+hour times the sq'irks a juice - so the two halves cannot disagree about how
+fast the garden is run, which is `costing/barbarian.py`'s rule.
+
+**Which garden is not a choice, and that is the pleasant part.** The herb
+payout is flat, so the best Farming rate is simply the fastest lap - and the
+fastest lap is the **winter** garden's, which is also the one with no Thieving
+requirement at all. So a map that can enter the garden gets 170 trips an hour
+and **8,500 Farming experience**, whatever its Thieving level.
+
+**It does not scale**, which is the shape to expect: 25 experience a herb is
+25 at level 99. What it is for is the bottom of a skill that has almost
+nothing active below Tithe Farm's 34.
+
+*(Squeezing a sq'irk also pays 5 Cooking, and the export carries no challenge
+for it.)*
 
 Pure: nothing but the valid set comes in.
 """
@@ -119,6 +141,14 @@ GARDENS: dict[str, Garden] = {
 
 SKILL = "Thieving"
 
+#: The other skill the garden pays, and upstream's own challenge for it.
+FARMING_SKILL = "Farming"
+HERB_TASK = "Pick herbs or fruit in the ~|Sorceress's Garden|~"
+
+#: What one herb trip pays - two clean herbs at 25 each, "regardless of which
+#: garden is chosen".
+HERB_EXPERIENCE = 50.0
+
 
 def derived_juice_per_hour(garden: Garden) -> float:
     """What the lap time says the yield should be: one sq'irk a lap.
@@ -140,10 +170,37 @@ def rate_at(garden: Garden) -> float:
     return garden.juice_per_hour * garden.experience
 
 
+def laps_per_hour(garden: Garden) -> float:
+    """Trips into `garden` an hour, from the figures the Thieving side spends.
+
+    The stated juice an hour times the sq'irks a juice, rather than
+    `3600 / lap_seconds` - the two agree to within 3% on every garden (that
+    agreement is the module's own check) and this is the half the wiki wrote
+    down.
+    """
+    return garden.juice_per_hour * garden.sqirks_per_juice
+
+
+def farming_rate() -> float:
+    """Farming experience an hour picking herbs, in the fastest garden.
+
+    **The garden is not a choice.** The herb payout is flat across all four,
+    so the best rate is the most trips an hour - and that is the winter
+    garden, which is also the only one with no Thieving requirement. Taken as
+    a maximum rather than named, so the code says why winter wins.
+    """
+    return max(laps_per_hour(garden) for garden in GARDENS.values()) * HERB_EXPERIENCE
+
+
 def methods(
     valid: Mapping[str, Mapping[str, object]],
 ) -> dict[str, tuple[ComputedMethod, ...]]:
-    """`{"Thieving": (...)}` for whichever gardens a map can reach."""
+    """`{skill: (...)}` for whichever gardens a map can reach.
+
+    Thieving per garden, and Farming once: upstream carries one challenge for
+    the herbs where it carries four for the juice, which matches the game -
+    the herbs pay the same in every garden.
+    """
     reachable = valid.get(SKILL) or {}
     bands = tuple(
         ComputedMethod(
@@ -156,4 +213,19 @@ def methods(
         for name, garden in sorted(GARDENS.items(), key=lambda kv: kv[1].level)
         if garden.task in reachable
     )
-    return {SKILL: bands} if bands else {}
+    found: dict[str, tuple[ComputedMethod, ...]] = {SKILL: bands} if bands else {}
+    # **Gated on its own challenge and nothing else.** The winter garden has
+    # no Thieving requirement and the herb pick has none of its own, so a map
+    # holding the garden can do this at level 1 - which is upstream's `Level`
+    # for it exactly.
+    if HERB_TASK in (valid.get(FARMING_SKILL) or {}):
+        found[FARMING_SKILL] = (
+            ComputedMethod(
+                method="Sorceress's Garden (herbs)",
+                xp_per_hour=farming_rate(),
+                level=1,
+                match=CONFIRMED,
+                knob=f"training/{HERB_TASK}/{FARMING_SKILL}",
+            ),
+        )
+    return found
