@@ -1257,6 +1257,50 @@ only `{{Skilling success chart}}` is for the *fish*. The report said
 `unpriced`. `trawler.refused` says it where a reader can see it, gated on the
 leaks actually being priced for `foundry.refused`'s reason.
 
+**Crafting's join misses were four names and one of them was a whole other
+skill's answer.** Nine methods closed and the shapes are worth separating:
+
+- **A state the recipe's output carries and upstream's does not.** Chiselling
+  a serpentine visage makes what the wiki titles `Serpentine helm
+  (uncharged)`, because scales are what charge it afterwards; glassblowing
+  makes an `Empty fishbowl`, which is what the *filled* one is called on the
+  wiki. Levels agree exactly on both, 52 and 42.
+- **A family where upstream names no variant and the wiki has a page per
+  colour.** Four toy horseys (Crafting 10, 15 xp, 3 ticks, one plank), nine
+  snelms (Crafting 15, 32.5 xp, 2 ticks, differing only in which blamish
+  shell) and every dyed cape (Crafting 1, 2.5 xp) - so the alias fixes which
+  *material* the walk reaches rather than what the method pays, and the nine
+  snelm challenges upstream carries individually all read the same 4,570/hr.
+  **`cape` is a generic word**, so the check that matters is measured: exactly
+  one primary challenge in the whole export offers that key, and no recipe
+  output is named it.
+- **One of four published and three blank**, which is `costing/gnomecooking.py`
+  the other way up: `Seers icon` states 4 ticks where the archer, warrior and
+  berserker icons state none, for the identical chisel on the identical ring
+  at the same level for the same 400 experience. `costing/fremennikicons.py`.
+
+**And the one that was a different skill's answer.** `Mine a ~|dense essence
+block|~` is filed by upstream under Mining *and* Crafting - the block is
+quarried and chiselled loose in the same nine ticks - and `{{Skill info}}` on
+`Dense runestone` states the pair: **12 Mining and 8 Crafting** at level 38.
+The Mining side has been modelled all along, with the runestone's own
+persistence chart in it; the Crafting side read `unpriced`, because there is
+no `{{Recipe}}` for a mining action and the gathering tables carry no Crafting
+rows. `costing/denserunestone.py` scales the node walk's **own bands** by 8/12
+rather than recomputing - `costing/barbarian.py`'s rule, and the difference is
+not cosmetic: nine ticks alone gives 5,333/hr where the model gives 11,859,
+because the model knows about the pillar depleting and the tick count does
+not.
+
+**Crafting is 227 modelled and 15 unpriced**, from 195/48 when this stretch
+began. What is left is three groups and none is a join: **9 want a drop-table
+or currency route the item walk deliberately refuses** (`estimate._route_hours`'
+certainty gate, reverted twice and documented there) - Forestry pheasant
+feathers, key-loot fine cloth, a nugget-shop gem bag, Varlamore thieving's
+statuette; **2 are the heraldic pieces**, whose wiki page carries no
+`{{Recipe}}` and states no experience anywhere; and **2 are minigames**, Pest
+Control's barricades and Guardians of the Rift's essence.
+
 **A `{{Recipe}}` that pays nothing is filed under no skill, and the whole
 corpus is fetched per skill.** That is one query shape hiding an entire class
 of data: `bucket('recipe').where('uses_skill', <skill>)` cannot see the

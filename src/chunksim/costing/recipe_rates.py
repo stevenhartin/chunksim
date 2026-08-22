@@ -859,6 +859,38 @@ HAND_ALIASES: dict[str, str] = {
     # output that is its plural, so a general `s` rule would buy this join and
     # nothing else while risking every singular that means something.
     "Wolfbone arrowtip": "Wolfbone arrowtips",
+    # **A state the wiki's recipe makes and upstream's `Output` skips.**
+    # Chiselling a `Serpentine visage` produces a *charged*-name-less helm;
+    # the wiki titles its recipe output `Serpentine helm (uncharged)` because
+    # scales are what charge it afterwards. Levels agree exactly (52) and so
+    # does the material.
+    "Serpentine helm": "Serpentine helm (uncharged)",
+    # **Same shape one word over.** Glassblowing makes an `Empty fishbowl`;
+    # upstream calls the challenge's output `Fishbowl`, which on the wiki is
+    # the page holding three recipes and is what the *filled* one is called.
+    # Crafting 42 and one molten glass on both sides.
+    "Fishbowl": "Empty fishbowl",
+    # **Two family names, where upstream states no `Output` at all and the
+    # wiki has a page per variant.** Both are cases where the variants are
+    # identical in everything a rate reads:
+    #
+    # - four toy horseys, all Crafting 10, 15 experience, 3 ticks, one
+    #   `Plank` - so the colour is not a choice a rate can see, and upstream
+    #   carries no per-colour challenge either;
+    # - nine snelms, all Crafting 15, 32.5 experience, 2 ticks, differing
+    #   only in which blamish shell goes in. Upstream *does* carry the nine
+    #   individually and they price on their own; this is its extra family
+    #   challenge, `Items: ["Snelm shell[+]*"]`, and the alias fixes which
+    #   shell it walks to rather than what it pays.
+    "toy horsey": "Grey toy horsey",
+    "snelm": "Myre snelm",
+    # **And a third of the same shape.** `Dye a ~|cape|~` states no `Output`
+    # and `Items: ["Cape[+]*", "Dye[+]*"]`; the wiki has a page per colour and
+    # every one is Crafting 1, 2.5 experience, a base cape and a dye.
+    # **Measured, exactly one primary challenge in the export offers the key
+    # `cape`**, and no recipe output is named that, so the alias cannot reach
+    # anything else.
+    "cape": "Blue cape",
 }
 
 #: A recipe's own *material* named in the wiki's vocabulary, where upstream's
@@ -977,6 +1009,7 @@ def stated_ticks(
         chisel,
         feathering,
         fishcutting as cutting,
+        fremennikicons,
         gnomecooking,
         greenman,
         measured,
@@ -989,6 +1022,7 @@ def stated_ticks(
     found.update(yewtree.stated_ticks(recipes))
     found.update(greenman.stated_ticks(recipes))
     found.update(gnomecooking.stated_ticks(recipes))
+    found.update(fremennikicons.stated_ticks(recipes))
     found.update(measured.stated_ticks(recipes))
     found.update(feathering.stated_ticks(recipes))
     for skill, rows in recipes.items():

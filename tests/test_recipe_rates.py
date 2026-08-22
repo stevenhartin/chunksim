@@ -1228,3 +1228,58 @@ class TestOneChallengeUnderTwoSkills:
         )
 
         assert merged["Make a ~|thing|~"]["Crafting"].source.startswith("recipe")
+
+
+class TestTheCraftingHandAliases:
+    """Four names the join missed, each checked against its own wiki page.
+    Two are a **state** the recipe's output carries and upstream's does not;
+    three are a **family** where upstream names no variant and the wiki has a
+    page per colour."""
+
+    def test_a_state_the_recipe_output_carries(self) -> None:
+        """Chiselling a serpentine visage makes a helm the wiki titles
+        `(uncharged)`, because scales are what charge it afterwards. Glass
+        blows into an `Empty fishbowl`, which is the filled one's name on the
+        wiki. Levels agree exactly on both - 52 and 42."""
+        assert recipe_rates.HAND_ALIASES["Serpentine helm"] == (
+            "Serpentine helm (uncharged)"
+        )
+        assert recipe_rates.HAND_ALIASES["Fishbowl"] == "Empty fishbowl"
+
+    def test_a_family_where_every_variant_is_identical(self) -> None:
+        """Four toy horseys, nine snelms and every dyed cape agree on level,
+        experience and ticks - so the alias fixes which *material* the walk
+        reaches rather than what the method pays."""
+        assert recipe_rates.HAND_ALIASES["toy horsey"] == "Grey toy horsey"
+        assert recipe_rates.HAND_ALIASES["snelm"] == "Myre snelm"
+        assert recipe_rates.HAND_ALIASES["cape"] == "Blue cape"
+
+    @pytest.mark.real_export
+    def test_the_family_keys_are_upstreams_own_and_unambiguous(
+        self, real_export: ChunkInfo
+    ) -> None:
+        """**`cape` is a generic word**, so the check that matters is that
+        exactly one primary challenge in the whole export offers it."""
+        from chunksim.costing.recipe_rates import join_keys
+
+        for key in ("cape", "snelm", "toy horsey"):
+            offering = [
+                task
+                for skill, challenges in real_export.challenges.items()
+                if isinstance(challenges, dict)
+                for task, body in challenges.items()
+                if isinstance(body, dict)
+                and body.get("Primary") is True
+                and key in [k.lower() for k in join_keys(body, task, skill)]
+            ]
+            assert len(offering) == 1, (key, offering)
+
+    def test_an_alias_never_displaces_a_real_recipe(self) -> None:
+        """`with_aliases` is additive: a recipe whose own output is `Cape`
+        would keep the key. Pinned because these three keys are common
+        words."""
+        recipes = {"cape": (_recipe("Cape"),)}
+
+        merged = recipe_rates.with_aliases(recipes, {"cape": "Blue cape"})
+
+        assert merged["cape"][0].output == "Cape"

@@ -386,6 +386,13 @@ The modules, and what each owns:
   and ball positioning are the one invented number, which makes every band a
   `GUESS`. Bounded rather than open-ended - the lap dominates - and it names
   the single band on one map its guess decides.
+- `denserunestone.py` - the Crafting half of mining dense essence, which one
+  swing pays alongside Mining. Scales the node walk's own Mining bands by the
+  wiki's stated `8/12` rather than recomputing the loop, so the two cannot
+  drift - `barbarian.py`'s rule.
+- `fremennikicons.py` - three of the four Fremennik ring icons, which the wiki
+  leaves untimed against a `Seers icon` that states 4 ticks. `gnomecooking.py`
+  the other way up: one published sibling and three blanks.
 - `gnomecooking.py` - the one gnome crunchy the wiki leaves untimed, against
   three siblings on the same page that all state one tick. `costing/yewtree.py`
   reversed: a small, closed, uniform family where the odd one out is the blank.

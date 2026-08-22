@@ -55,6 +55,7 @@ from chunksim.costing import (
     combat_xp,
     coxchest,
     courses,
+    denserunestone,
     disclaimed,
     dps_bridge,
     driftnet,
@@ -958,6 +959,13 @@ def _gathered(
     # rate, for the reason Puro-Puro does: the level shape is the point, and the
     # scraped guide figure it refines is one number across twenty levels.
     for skill, methods in herbiboar.methods(blobs.gathering, derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **One swing pays Mining and Crafting**, and only the first was spent -
+    # see `costing/denserunestone.py`, which scales the bands the node walk
+    # has just produced rather than recomputing the loop.
+    for skill, methods in denserunestone.methods(
+        banded.get(denserunestone.FROM_SKILL, ()), derived.challenges.valid
+    ).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **Guardians of the Rift is one minigame, not twelve rune methods.** The
     # rune you get is the game's decision, so all twelve challenges share one
