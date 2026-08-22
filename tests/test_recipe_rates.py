@@ -1054,6 +1054,24 @@ class TestMaterialAliasesAreHandVerified:
         material axis where `wiki_aliases.json` cannot look."""
         assert recipe_rates.MATERIAL_ALIASES["Giant crab meat"] == "Crab meat"
 
+    def test_a_redirect_upstream_is_inconsistent_about(self) -> None:
+        """`Grimy buchu` redirects to `Grimy buchu leaf`, and upstream writes
+        the grimy form without the word and the clean form with it - so all
+        four Chambers of Xeric buchu methods joined their recipe and were
+        dropped for an input the raid plainly grows, while golpar and noxifer
+        beside them priced."""
+        assert recipe_rates.MATERIAL_ALIASES["Grimy buchu leaf"] == "Grimy buchu"
+
+    @pytest.mark.real_export
+    def test_upstream_really_does_spell_the_two_forms_differently(
+        self, real_export: ChunkInfo
+    ) -> None:
+        grown = real_export.challenges["Farming"]["Grow a ~|grimy buchu|~"]
+        cleaned = real_export.challenges["Herblore"]["Clean a ~|grimy buchu leaf|~"]
+
+        assert grown.get("Output") == "Grimy buchu"
+        assert cleaned.get("Output") == "Buchu leaf"
+
     def test_the_gnome_dough_entries_were_retired_rather_than_kept(self) -> None:
         """**They were the wrong fix, not an obsolete one.** `Raw batta` and
         its two siblings were mapped to `Gianne dough` because the wiki

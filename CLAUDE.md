@@ -1257,6 +1257,20 @@ only `{{Skilling success chart}}` is for the *fish*. The report said
 `unpriced`. `trawler.refused` says it where a reader can see it, gated on the
 leaks actually being priced for `foundry.refused`'s reason.
 
+**The Chambers of Xeric is nearly all modelled already, and the one family
+that was not turned on a word.** The raid's seven bats, eight fish, sixteen
+cooks, its kindling and its grubs all price through the ordinary layers - the
+node walk for the bats and fish, recipes for the cooks, `costing/coxchest.py`
+for the grubs. What did not was **buchu**, and only buchu: `Clean a ~|grimy
+buchu leaf|~` and its three potions joined their recipe and were dropped for
+an input the raid plainly grows, while golpar and noxifer beside them priced.
+
+**Upstream spells the two forms differently and the wiki has one page.**
+`Grimy buchu` redirects to `Grimy buchu leaf`; upstream writes the grimy form
+*without* the word (`Grow a ~|grimy buchu|~` outputs `Grimy buchu`) and the
+clean form *with* it (`Output: "Buchu leaf"`). One `MATERIAL_ALIASES` entry -
+the `Giant crab meat` shape again - and Herblore goes 101 modelled to **105**.
+
 **Farming's 85 `unpriced` rows were the report contradicting the estimate.**
 `farming.plan_for` picks one crop per line of the growing schedule and the
 estimate's whole Farming answer *is* those picks - so `Grow a ~|grimy

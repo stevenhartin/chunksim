@@ -226,7 +226,7 @@ _FORMAT = "1"
 #: 79: the item walk is a fixpoint with no depth bound - the cheapest acyclic
 #: derivation however long, so runite smithing prices through its full chain
 #: and the multi-ingredient pies need no `partial_products` exemption.
-_PRICING_MODEL = "177"
+_PRICING_MODEL = "178"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.

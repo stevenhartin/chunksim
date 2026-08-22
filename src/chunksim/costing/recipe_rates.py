@@ -972,6 +972,14 @@ MATERIAL_ALIASES: dict[str, str] = {
     # the vocabulary lag `wiki_aliases.json` handles for *outputs*, on the
     # material axis where that fetch cannot look.
     "Giant crab meat": "Crab meat",
+    # **Another redirect, and upstream is inconsistent with itself here.** The
+    # wiki has one page, `Grimy buchu leaf`, which `Grimy buchu` redirects to.
+    # Upstream writes the grimy form *without* the word - `Grow a ~|grimy
+    # buchu|~` outputs `Grimy buchu` - and the clean form *with* it, `Output:
+    # "Buchu leaf"`. So all four Chambers of Xeric buchu methods joined their
+    # recipe and were dropped for an input the raid plainly grows, while
+    # golpar and noxifer beside them priced.
+    "Grimy buchu leaf": "Grimy buchu",
 }
 
 
