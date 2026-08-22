@@ -1271,6 +1271,33 @@ an input the raid plainly grows, while golpar and noxifer beside them priced.
 clean form *with* it (`Output: "Buchu leaf"`). One `MATERIAL_ALIASES` entry -
 the `Giant crab meat` shape again - and Herblore goes 101 modelled to **105**.
 
+**And the last two needed a module, which is `costing/cox.py`.** The raid's
+**herb patches** are published end to end and no `{{Recipe}}` could ever
+describe them, because growing a herb is not a production: `Chambers of Xeric`
+states "there are **two farming plots** in each resource room ... fully grown
+in **30 seconds**", and each plant's `{{Farming info}}` states the pay -
+golpar 4 + 10, buchu 6 + 15, noxifer 12 + 30. Two plots on a 30-second cycle
+is 240 an hour and **3,360 / 5,040 / 10,080**. A **ceiling** in
+`costing/trawler.py`'s sense, said rather than hidden: the four clicks a cycle
+costs are not added, and the seeds are not charged because nothing states how
+fast a boss drop or a rake supplies them. It costs nothing either way - golpar
+is below the Sorceress's Garden's 8,500.
+
+**The raid's braziers are refused, and the contrast with the toy mouse is the
+reason.** `Burn ~|kindling (Chambers of Xeric)|~` has its payout published
+exactly - `{{Firemaking info}}` gives level 1 and **48 experience** - and
+nothing anywhere times the burn: the infobox carries no `time`, the brazier's
+page states only the chance of *lighting* one, and the kindling's own page
+times the chopping instead. The chop is modelled at 38,398 Woodcutting an
+hour, which is on the order of two thousand kindling, so 48 experience each is
+a six-figure Firemaking rate before any cadence is charged. `costing/
+toymouse.py` carries an invented cadence *because* its whole plausible range
+loses to everything; this one would win outright on an invented number, which
+is the opposite case and the line between a `GUESS` and a refusal.
+
+**Farming has no unpriced method at all** - 10 modelled, 82 refused and 6
+uncompletable of 98, from 4/0/6 when this stretch began.
+
 **Farming's 85 `unpriced` rows were the report contradicting the estimate.**
 `farming.plan_for` picks one crop per line of the growing schedule and the
 estimate's whole Farming answer *is* those picks - so `Grow a ~|grimy

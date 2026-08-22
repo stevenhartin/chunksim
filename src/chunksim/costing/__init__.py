@@ -386,6 +386,12 @@ The modules, and what each owns:
   and ball positioning are the one invented number, which makes every band a
   `GUESS`. Bounded rather than open-ended - the lap dominates - and it names
   the single band on one map its guess decides.
+- `cox.py` - the two Chambers of Xeric methods the ordinary layers cannot
+  reach: its **herb patches**, where two plots and a 30-second grow are stated
+  outright and each plant's `{{Farming info}}` gives the pay (3,360 to
+  10,080/hr, a ceiling because seeds are not charged); and its **braziers**,
+  refused because 48 experience a kindling is published and nothing times the
+  burn - a gap that would decide bands here rather than nothing.
 - `denserunestone.py` - the Crafting half of mining dense essence, which one
   swing pays alongside Mining. Scales the node walk's own Mining bands by the
   wiki's stated `8/12` rather than recomputing the loop, so the two cannot

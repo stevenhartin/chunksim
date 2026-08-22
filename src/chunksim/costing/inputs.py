@@ -53,6 +53,7 @@ from chunksim.costing import (
     artefacts,
     chambers,
     combat_xp,
+    cox,
     coxchest,
     courses,
     denserunestone,
@@ -589,6 +590,9 @@ def recipe_priced(
     # whose output upstream names as a loot table and whose whole cost is the
     # fish. Charged below.
     cut = leechfin.methods(derived.challenges.valid)
+    # **The raid's herb patches**, which no `{{Recipe}}` describes because
+    # growing a herb is not a production - see `costing/cox.py`.
+    raided = cox.methods(derived.challenges.valid)
     # **A by-product of somebody else's minigame** - see
     # `costing/statuette.py`, whose whole rate is upstream's own drop share
     # times the wiki's valuables-an-hour.
@@ -619,7 +623,7 @@ def recipe_priced(
             replace(
                 heuristics,
                 computed=_merge_computed(
-                    prayed, craned, totemed, trawled, polished, messed, cut, chipped, gathered
+                    prayed, craned, totemed, trawled, polished, messed, cut, chipped, raided, gathered
                 ),
                 material_seconds_per_xp={**by_calc, **by_spell, **by_hand},
             ),
@@ -796,7 +800,7 @@ def recipe_priced(
             training=rated,
             action_seconds=timed,
             computed=_merge_computed(
-                prayed, craned, totemed, trawled, polished, messed, cut, chipped, gathered
+                prayed, craned, totemed, trawled, polished, messed, cut, chipped, raided, gathered
             ),
             material_seconds_per_xp=per_xp,
             material_xp_per_xp=credited,
@@ -834,6 +838,11 @@ def recipe_priced(
                 # that decides it is charted for the fish rather than for the
                 # repair.
                 **trawler.refused(derived.challenges.valid),
+                # **And the raid's braziers.** 48 experience a kindling is
+                # published and nothing times the burn - see `costing/cox.py`
+                # on why that decides bands here where `toymouse.py`'s guess
+                # decides nothing.
+                **cox.refused(derived.challenges.valid),
                 # **And every crop the growing schedule already answers
                 # for.** `plan_for` picks one crop a line and the estimate's
                 # Farming answer *is* those picks, so the report was
