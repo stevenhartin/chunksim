@@ -53,6 +53,17 @@ def _recipe(output: str, **kwargs: object) -> Recipe:
     return Recipe(**{**defaults, **kwargs})  # type: ignore[arg-type]
 
 
+def _keyed(computed: dict[str, ActionRate]) -> dict[tuple[str, str], ActionRate]:
+    """`computed_rates`' real key shape, from a test's task-keyed literal.
+
+    **The key is `(task, skill)` because upstream files one challenge under
+    both skills it pays** - see `computed_rates`. These fixtures name one skill
+    each, so the re-key is mechanical; writing it out at every literal would
+    bury what each test is about.
+    """
+    return {(task, rate.skill): rate for task, rate in computed.items()}
+
+
 def _free(item: str, quantity: float) -> float | None:
     return 0.0
 
@@ -192,7 +203,7 @@ def test_only_valid_primary_methods_are_priced() -> None:
 
     priced, coverage = computed_rates(info, valid, recipes, _free)
 
-    assert set(priced) == {"Mix an ~|attack potion|~"}
+    assert set(priced) == {("Mix an ~|attack potion|~", "Herblore")}
     assert coverage.skills["Herblore"] == (1, 1)
 
 
@@ -215,7 +226,7 @@ def test_a_computed_rate_beats_a_guide_and_fills_a_gap() -> None:
         "Cook a ~|manta ray|~": {"Cooking": Rate(1_000.0, "default", "default")},
     }
 
-    merged = apply(training, computed)
+    merged = apply(training, _keyed(computed))
 
     assert merged["Cook a ~|shark|~"]["Cooking"].value == 999_000.0
     assert merged["Cook a ~|shark|~"]["Cooking"].match == COMPUTED_MATCH
@@ -234,7 +245,7 @@ def test_a_modelled_rate_outranks_a_computed_one() -> None:
     }
     training = {"Chop ~|teak logs|~": {"Woodcutting": Rate(48_000.0, "computed:gathering", "modelled")}}
 
-    merged = apply(training, computed)
+    merged = apply(training, _keyed(computed))
 
     assert merged["Chop ~|teak logs|~"]["Woodcutting"].value == 48_000.0
     assert merged["Chop ~|teak logs|~"]["Woodcutting"].match == "modelled"
@@ -267,7 +278,7 @@ def test_an_ambiguous_join_may_fill_the_floor_but_not_replace_the_scrape() -> No
         },
     }
 
-    merged = apply(training, computed)
+    merged = apply(training, _keyed(computed))
 
     # Both scraped rates survive - neither `exact` nor `contained` is safe here.
     assert merged["Craft a ~|nature rune|~"]["Runecraft"].value == 26_730.0
@@ -290,7 +301,7 @@ def test_an_unambiguous_join_still_replaces_the_scrape() -> None:
     }
     training = {"Craft a ~|law tiara|~": {"Runecraft": Rate(9_000.0, "mmg", "contained")}}
 
-    merged = apply(training, computed)
+    merged = apply(training, _keyed(computed))
 
     assert merged["Craft a ~|law tiara|~"]["Runecraft"].value == 16_728.0
 
@@ -304,7 +315,7 @@ def test_a_pinned_method_is_left_alone() -> None:
         )
     }
 
-    merged = apply({}, computed, pinned=frozenset({"Cook a ~|shark|~"}))
+    merged = apply({}, _keyed(computed), pinned=frozenset({"Cook a ~|shark|~"}))
 
     assert merged == {}
 
@@ -348,8 +359,8 @@ def test_construction_joins_on_the_task_name_where_output_fails() -> None:
 
     priced, _ = computed_rates(info, valid, recipes, _free)
 
-    assert "Build a ~|mahogany table|~" in priced
-    assert priced["Build a ~|mahogany table|~"].experience == 840.0
+    assert ("Build a ~|mahogany table|~", "Construction") in priced
+    assert priced["Build a ~|mahogany table|~", "Construction"].experience == 840.0
 
 
 def test_a_recipe_priced_in_coins_costs_the_time_to_earn_them() -> None:
@@ -401,7 +412,7 @@ def test_a_slow_computed_rate_is_kept_rather_than_refused() -> None:
         ),
     }
 
-    merged = apply({}, computed)
+    merged = apply({}, _keyed(computed))
 
     assert merged["Make ~|supercompost|~"]["Farming"].value == 173.0
     assert merged["Make ~|supercompost|~"]["Farming"].match == COMPUTED_MATCH
@@ -488,7 +499,7 @@ def test_two_variants_of_one_output_are_not_ambiguous() -> None:
     guide = {"Smithing": Rate(4_960.0, "mmg:Smelting bronze bars", "contained")}
     training = {_SMELT: guide, _SUPERHEAT: guide}
 
-    merged = apply(training, computed)
+    merged = apply(training, _keyed(computed))
 
     assert merged[_SMELT]["Smithing"].value == 3_680.0
     assert merged[_SMELT]["Smithing"].match == COMPUTED_MATCH
@@ -508,7 +519,7 @@ def test_one_recipe_reaching_two_tasks_is_still_ambiguous() -> None:
     computed = {_SMELT: rate(_SMELT), _SUPERHEAT: rate(_SUPERHEAT)}
     guide = {"Smithing": Rate(4_960.0, "mmg:Smelting bronze bars", "contained")}
 
-    merged = apply({_SMELT: guide, _SUPERHEAT: guide}, computed)
+    merged = apply({_SMELT: guide, _SUPERHEAT: guide}, _keyed(computed))
 
     assert merged[_SMELT]["Smithing"].value == 4_960.0
     assert merged[_SUPERHEAT]["Smithing"].value == 4_960.0
@@ -535,7 +546,7 @@ def test_two_inputs_to_one_output_are_not_ambiguous_either() -> None:
     }
     guide = {"Cooking": Rate(292_500.0, "mmg:Cooking raw marlin", "exact")}
 
-    merged = apply({marlin: guide, yellowfin: guide}, computed)
+    merged = apply({marlin: guide, yellowfin: guide}, _keyed(computed))
 
     assert merged[marlin]["Cooking"].value == 718.0
     assert merged[marlin]["Cooking"].match == COMPUTED_MATCH
@@ -559,7 +570,7 @@ def test_an_alt_twin_is_not_a_second_method() -> None:
 
     guide = {"Cooking": Rate(292_500.0, "mmg:Cooking raw marlin", "exact")}
 
-    merged = apply({base: guide, alt: guide}, {base: rate(base), alt: rate(alt)})
+    merged = apply({base: guide, alt: guide}, _keyed({base: rate(base), alt: rate(alt)}))
 
     assert merged[base]["Cooking"].value == 718.0
     assert merged[alt]["Cooking"].value == 718.0
@@ -1145,3 +1156,58 @@ class TestAStatedInstantIsChargedOneTick:
 
         assert found is not None
         assert found[1] == pytest.approx(6.0 * 3600.0 / TICK_SECONDS)
+
+
+class TestOneChallengeUnderTwoSkills:
+    """**The key is `(task, skill)` and used to be the task alone**, so a
+    challenge upstream files under both skills it pays kept only whichever
+    skill this loop reached last - in *alphabetical* order, which is as silent
+    a failure as this project has had. `Fletch a ~|wolfbone arrowtip|~` kept
+    Fletching and read `unpriced` under Crafting."""
+
+    _INFO = ChunkInfo(
+        {
+            "challenges": {
+                "Crafting": {"Make a ~|thing|~": {"Primary": True, "Output": "Thing"}},
+                "Fletching": {"Make a ~|thing|~": {"Primary": True, "Output": "Thing"}},
+            }
+        }
+    )
+    _RECIPES = {
+        "Crafting": (_recipe("Thing", skill="Crafting", experience=10.0),),
+        "Fletching": (_recipe("Thing", skill="Fletching", experience=40.0),),
+    }
+    _VALID = {
+        "Crafting": {"Make a ~|thing|~": True},
+        "Fletching": {"Make a ~|thing|~": True},
+    }
+
+    def test_both_skills_are_priced(self) -> None:
+        priced, _ = computed_rates(self._INFO, self._VALID, self._RECIPES, _free)
+
+        assert set(priced) == {
+            ("Make a ~|thing|~", "Crafting"),
+            ("Make a ~|thing|~", "Fletching"),
+        }
+
+    def test_each_keeps_its_own_experience(self) -> None:
+        priced, _ = computed_rates(self._INFO, self._VALID, self._RECIPES, _free)
+
+        assert priced["Make a ~|thing|~", "Crafting"].experience == 10.0
+        assert priced["Make a ~|thing|~", "Fletching"].experience == 40.0
+
+    def test_apply_writes_both(self) -> None:
+        priced, _ = computed_rates(self._INFO, self._VALID, self._RECIPES, _free)
+        merged = apply({}, priced)
+
+        assert set(merged["Make a ~|thing|~"]) == {"Crafting", "Fletching"}
+
+    def test_they_are_not_ambiguous_with_each_other(self) -> None:
+        """`ActionRate.key` leads with the skill, so two skills paying for one
+        action are two answers rather than one recipe describing two tasks."""
+        priced, _ = computed_rates(self._INFO, self._VALID, self._RECIPES, _free)
+        merged = apply(
+            {"Make a ~|thing|~": {"Crafting": Rate(5.0, "mmg", "exact")}}, priced
+        )
+
+        assert merged["Make a ~|thing|~"]["Crafting"].source.startswith("recipe")

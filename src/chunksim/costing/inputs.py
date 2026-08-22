@@ -624,8 +624,16 @@ def recipe_priced(
     # and the item walk needs that separately from the rate: it charges a
     # conversion's inputs itself, so only the performing half belongs here.
     # Guides cover 248 methods; recipes cover an order of magnitude more.
+    #
+    # **Keyed by task, where `computed` is keyed by `(task, skill)`** - the
+    # walk asks "how long does this action take" and a challenge upstream
+    # files under two skills is one action either way, so a collision here is
+    # two spellings of the same answer. `Heuristics.material_seconds_per_xp`
+    # below has the same shape and the same reason; see `costing/crane.py`,
+    # which folds its materials into the rate rather than into that map
+    # precisely because one task there really does pay two different figures.
     timed = {
-        **{task: rate.performing_seconds for task, rate in computed.items()},
+        **{task: rate.performing_seconds for (task, _skill), rate in computed.items()},
         **heuristics.action_seconds,
     }
     # **What a method consumes, per XP it pays.** The rate a guide publishes is
@@ -638,7 +646,7 @@ def recipe_priced(
         **by_spell,
         **{
             task: rate.input_seconds / rate.experience
-            for task, rate in computed.items()
+            for (task, _skill), rate in computed.items()
             if rate.experience > 0 and rate.input_seconds > 0
         },
     }
@@ -680,7 +688,7 @@ def recipe_priced(
     # pays Herblore before you mix it, and the walk has just told us whether
     # it *made* each material or bought it. Only the same skill counts - a log
     # chopped for a bow pays Woodcutting, which does nothing for Fletching.
-    for task, rate in computed.items():
+    for (task, _skill), rate in computed.items():
         if rate.experience <= 0:
             continue
         paid = sum(
@@ -737,7 +745,9 @@ def recipe_priced(
     rated = recipe_rates.refuse_dropped(rated, coverage.dropped, pinned)
     # **A teleport in `computed` is one whose tablet joined**, so this is the
     # lectern gate read back rather than applied twice.
-    rated = spells.refuse_untabled(rated, heuristics.spell_costs, computed, pinned)
+    rated = spells.refuse_untabled(
+        rated, heuristics.spell_costs, {task for task, _skill in computed}, pinned
+    )
     # **A pickpocket nothing charts keeps no rate either.** The flat cycle it
     # would otherwise keep is not a worse estimate but a known-wrong one: on
     # all eighteen NPCs the wiki charts it runs 2x to 3.6x fast. See

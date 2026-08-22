@@ -75,7 +75,7 @@ def pairs_for(map_ids: list[str]) -> tuple[list[Pair], list[Pair]]:
             recipes,
             material_seconds(state, derived, world, heuristics).seconds,
         )
-        for task, action in priced.items():
+        for (task, _skill), action in priced.items():
             guide = heuristics.xp_per_hour(task, action.skill)
             if guide.match != "exact" or guide.value <= 0 or task in seen:
                 continue

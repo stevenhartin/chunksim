@@ -1257,6 +1257,20 @@ only `{{Skilling success chart}}` is for the *fish*. The report said
 `unpriced`. `trawler.refused` says it where a reader can see it, gated on the
 leaks actually being priced for `foundry.refused`'s reason.
 
+**One challenge under two skills kept whichever skill came last
+alphabetically.** `recipe_rates.computed_rates` loops once per skill and keyed
+its result by *task*, so `Fletch a ~|wolfbone arrowtip|~` - which upstream
+files under Crafting and Fletching alike - was priced twice and stored once.
+The key is `(task, skill)` now. Measured on the every-rollable-chunk map, 37
+primary challenges are valid under more than one skill and 13 reach this join;
+all but two are already answered elsewhere (the ten `with superheat item`
+smelts by `costing/spells.py`, an avernic tread by `costing/oneoff.py`), so it
+is one row and a silent failure mode closed rather than a haul.
+**`Heuristics.material_seconds_per_xp` and `action_seconds` stay keyed by
+task**, which is not the same oversight: an action is one action whichever
+skill pays for it, and where a task really does need two different figures
+`costing/crane.py` already folds them into its rates instead.
+
 **An untimed recipe has to fall back to something, but a counted one must not
 reach the fallback.** `DEFAULT_ACTION_SECONDS` is right for an action nobody
 has timed and wrong for one somebody has, so the stated durations are applied

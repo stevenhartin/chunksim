@@ -1139,10 +1139,10 @@ def computed_rates(
     input_seconds: Callable[[str, float], float | None],
     aliases: Mapping[str, str] = {},
     stated_ticks: Mapping[str, float] = {},
-) -> tuple[dict[str, ActionRate], RecipeCoverage]:
-    """Every reachable primary method `recipes` can price, keyed by task name.
+) -> tuple[dict[tuple[str, str], ActionRate], RecipeCoverage]:
+    """Every reachable primary method `recipes` can price, by task and skill.
 
-    The key is the raw challenge name, because that is what
+    The task half of the key is the raw challenge name, because that is what
     `Heuristics.training` is keyed by everywhere else - markup and all.
 
     Only methods in `valid` are considered, so this inherits the derivation's
@@ -1151,8 +1151,20 @@ def computed_rates(
     `aliases` is the wiki's own redirect map for the names this join missed -
     empty unless `chunksim recipes` has been run against an export, and a
     supported way to run, exactly as an absent recipe blob is.
+
+    **Keyed by `(task, skill)` rather than by task, because upstream files one
+    challenge under both skills it pays** and this loop runs once per skill.
+    Keyed by task alone the later skill silently overwrote the earlier one, in
+    *alphabetical* order - so `Fletch a ~|wolfbone arrowtip|~` kept Fletching
+    and read `unpriced` under Crafting, and `Replace a ~|light orb|~ in
+    Dorgesh-Kaan` kept Crafting and lost Firemaking. Measured over the
+    every-rollable-chunk map, 37 primary challenges are valid under more than
+    one skill and 13 of them reach this; those two are the ones no other layer
+    already answers for, the rest being the ten `with superheat item` smelts
+    (`costing/spells.py` prices the Magic copies) and an avernic tread
+    (`costing/oneoff.py`).
     """
-    priced: dict[str, ActionRate] = {}
+    priced: dict[tuple[str, str], ActionRate] = {}
     coverage: dict[str, tuple[int, int]] = {}
     dropped: dict[str, str] = {}
 
@@ -1191,7 +1203,7 @@ def computed_rates(
             recipe, rate, materials = chosen
             ticks = ticks_for(recipe, stated_ticks) or 0.0
             found += 1
-            priced[task] = ActionRate(
+            priced[task, skill] = ActionRate(
                 task=task,
                 skill=skill,
                 xp_per_hour=rate,
@@ -1279,7 +1291,7 @@ def base_task(task: str) -> str:
 
 
 def _ambiguous(
-    computed: Mapping[str, ActionRate],
+    computed: Mapping[tuple[str, str], ActionRate],
 ) -> frozenset[tuple[str, str, str, tuple[str, ...]]]:
     """The `ActionRate.key`s more than one *method* landed on - see `apply`.
 
@@ -1299,14 +1311,14 @@ def _ambiguous(
     describes the knife.
     """
     seen: dict[tuple[str, str, str, tuple[str, ...]], set[str]] = {}
-    for task, rate in computed.items():
+    for (task, _skill), rate in computed.items():
         seen.setdefault(rate.key, set()).add(base_task(task))
     return frozenset(key for key, tasks in seen.items() if len(tasks) > 1)
 
 
 def apply(
     training: Mapping[str, Mapping[str, Rate]],
-    computed: Mapping[str, ActionRate],
+    computed: Mapping[tuple[str, str], ActionRate],
     pinned: frozenset[str] = frozenset(),
 ) -> dict[str, dict[str, Rate]]:
     """`training` with a computed rate wherever a recipe describes the method.
@@ -1378,7 +1390,7 @@ def apply(
     """
     merged = {task: dict(skills) for task, skills in training.items()}
     shared = _ambiguous(computed)
-    for task, rate in computed.items():
+    for (task, _skill), rate in computed.items():
         if task in pinned:
             continue
         existing = merged.get(task, {}).get(rate.skill)
