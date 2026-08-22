@@ -39,6 +39,7 @@ from chunksim.costing import (
     barbarian,
     blackjack,
     blastfurnace,
+    brimhaven,
     calcified,
     crane,
     trawler,
@@ -1056,6 +1057,11 @@ def _gathered(
     # **A money-making rate that was winning from level 1** - see
     # `costing/pyramid.py`, whose bands open where the wiki's table does.
     for skill, methods in pyramid.methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **A tag rate and a downtime rate added together** - see
+    # `costing/brimhaven.py`. Three challenges, one arena, and its bands open
+    # at 20 whichever asked, for `pyramid.py`'s reason.
+    for skill, methods in brimhaven.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **A lap and a lap time, which is what a course is** - see
     # `costing/courses.py`, and the eight it leaves to the guide.

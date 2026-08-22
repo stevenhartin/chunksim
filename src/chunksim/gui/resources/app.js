@@ -4002,6 +4002,7 @@ const METHOD_STATUS = {
   modelled: ["Modelled", "Computed here from the mechanic — a curve, a recipe, a counted action."],
   computed: ["Modelled", "Computed here from the mechanic — a curve, a recipe, a counted action."],
   confirmed: ["Modelled", "Computed here from the mechanic — a curve, a recipe, a counted action."],
+  inferred: ["Modelled", "Computed here, with one term borrowed from a sibling or recovered from a published figure."],
   guess: ["Guessed", "A number chosen so there is one. The first thing worth correcting."],
   exact: ["Published", "Somebody else's figure, joined by name."],
   contained: ["Published", "Somebody else's figure, joined by a name that contained this one."],

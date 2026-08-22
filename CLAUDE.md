@@ -815,7 +815,7 @@ serves each pair and upstream's own `Level` picks the version. Agility is
 **And it moved a climb, which none of the sixteen before it did.** The
 Edgeville monkey bars cannot fail and pay 20, so the model reads 15,000/hr at
 level 15 - enough to own `fray`'s Agility from 15 to 40, displacing the Al
-Kharid and Varrock rooftop courses and taking the climb 193.5h to **192.8h**.
+Kharid and Varrock rooftop courses and taking the climb 194.2h to **193.7h**.
 The page publishes "up to 13,000 experience per hour" for it, which is a real
 check rather than a source: 1.15x, the gap between a tick-perfect model and
 somebody actually swinging. It is also **the second published hourly figure
@@ -823,6 +823,64 @@ for a single shortcut anywhere**, and the pair now brackets `SHORTCUT_TICKS` -
 the Wintertodt gap implies 5.1 ticks and this implies 9.2, against the stated
 8. One observation had looked like evidence the constant was conservative;
 two say it is an average with real spread either side, and neither is spent.
+
+**An activity is not a lap, and the thing that made this one unmodellable was
+that nobody publishes what the waiting costs.** The Brimhaven Agility Arena
+has no lap: one of its 24 ticket dispensers activates every 60 seconds, and
+an hour is a *tag* rate and a *downtime* rate added together. The tagging half
+derives outright - `30 x (level // 10)` a tag, 345 a ticket, 60 tags an hour,
+all stated - and reproduces every passive figure the page publishes within
+0.5%, plus the elite diary's stated 2,277 bonus, which is what pins the
+reading of "10% chance of two tickets". The downtime half needs one number
+nothing anywhere states: **what share of each minute is spent travelling to
+the dispenser** rather than crossing the same obstacle back and forth.
+
+**Recovered rather than chosen, and checked at the far end.**
+`Pay-to-play Agility training` states 45,000-50,000 at level 40 *without*
+gloves; solving its midpoint gives 27.3 seconds a tag, about 45 ticks, which
+is the right size for crossing the arena. The arena page's own 68,000 at 99
+*with* gloves and the elite diary is then a prediction rather than an
+identity - `costing/brimhaven.py` computes 62,807, **0.92x**, under a figure
+hedged with "up to" because the constant carries a level-40 player's failures
+into every band above ("players will no longer fail this obstacle at level
+50"). And the guide's "approximately 36,000" for the floor spikes alone is
+exactly 24 experience every 4 ticks, which is the downtime arithmetic checked
+with the travel term removed.
+
+**Level 40 unlocks nothing worth using, which is the finding.** The obvious
+reading of upstream's three tiers is that each buys a faster obstacle; the
+published table says spinning blades (5.6 xp/tick) and darts (3.0) are both
+slower than the level-20 floor spikes (6.0), before their 153/256 success
+chart is even applied. What 40 buys is route options, and a detour is inside
+the recovered constant rather than beside it - so every band boundary is the
+tag formula's, at each multiple of ten. **The pressure pad is the same trap
+one step down**: highest-paying crossing in the arena and not the best
+method, because the 17 July 2024 change made it two paid crossings then eight
+dead ticks - 3.25 rather than 6.5.
+
+**And nothing is offered below 20, which is where the evidence stops rather
+than where the arena opens.** 20 is where the floor spikes open and where
+every published figure about the arena starts, including the guide's own
+"Levels 20-47" bracket. Below it the model would be optimistic twice over -
+the travel constant is recovered from a route using 4-tick spikes where a
+level-1 route is 9 to 13 ticks an obstacle, and a failed rope swing drops the
+player off the platform where a failed spike merely hurts. Priced anyway the
+arena reads **~37,000/hr at level 1**, because the ticket is level-independent
+and dominates, and it would own the bottom of every Agility climb on the
+strength of those two silences. All three challenges take the bands and they
+open at 20 whichever asked, which is `costing/pyramid.py`'s arrangement for
+its own reason. Agility is **96 modelled and 2 unpriced**; `fray-uber`'s climb
+goes 158.1h to **156.3h** with the arena owning 20 to 52, and neither cached
+map holds the chunk.
+
+**`inferred` is a rate this project computed and the report was calling it
+`published`.** `coverage.MODELLED_MATCHES`' own comment says it lists "values
+this project produced itself", and `inferred` - one term borrowed from a
+sibling or recovered from a figure - is exactly that, where `published` means
+a guide decided the number. It had been inert: `costing/gathering.py` keeps
+provenance in a *separate* field that `gathering_overhead` prints, so nothing
+had ever put `inferred` on a `ComputedMethod` until `brimhaven.py`. Adding it
+needed the GUI's own table too, which `tests/test_gui_contract.py` caught.
 
 **The one place two wiki sources disagree is settled by not needing either.**
 `Rock (God Wars Dungeon)` states `xp = 0` in its own infobox and 6 in the

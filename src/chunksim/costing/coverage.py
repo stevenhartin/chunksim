@@ -103,7 +103,16 @@ from chunksim.model.summary import _mapping
 SKILLS: tuple[str, ...] = tuple(sorted(DISPLAY_SKILLS))
 
 #: `Rate.match` values this project produced itself.
-MODELLED_MATCHES = frozenset({"modelled", "computed", "confirmed"})
+#:
+#: **`inferred` belongs here and used to fall through to `published`**, which
+#: was the wrong word by the definition three lines up: `published` means a
+#: guide decided the number, and an inferred rate is this project's own
+#: arithmetic with one term borrowed or recovered rather than read. The
+#: distinction it *does* carry is provenance, which `costing/gathering.py`
+#: keeps in its own field and `gathering_overhead` prints - not the report's
+#: status column. Inert until `costing/brimhaven.py`, the first module to put
+#: it on a `ComputedMethod`.
+MODELLED_MATCHES = frozenset({"modelled", "computed", "confirmed", "inferred"})
 
 #: The one that is an admission rather than a measurement.
 GUESS_MATCHES = frozenset({"guess"})

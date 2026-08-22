@@ -369,6 +369,16 @@ The modules, and what each owns:
 - `pyramid.py` - the Agility Pyramid, whose money-making rate the scrape gave
   to a **level-1** challenge for a course needing 30. Bands from 55, which is
   where the wiki's table starts and below which it declines to guess.
+- `brimhaven.py` - the Brimhaven Agility Arena, which is **a tag rate plus a
+  downtime rate** rather than a lap. The tagging half derives exactly and
+  reproduces four published passive figures plus the elite diary's stated
+  bonus; the downtime half needs one number nothing states - what share of
+  each minute is travel - recovered from the training guide's ungloved
+  45,000-50,000 at level 40 and checked against the arena page's own 68,000
+  at 99 with gloves and the elite diary, which it predicts at 0.92x. Three
+  challenges, one arena, bands from 20 whichever asked. Its finding: the
+  level-40 obstacles are **slower per tick** than the level-20 floor spikes,
+  so 40 buys route options rather than a method.
 - `sepulchre.py` - the Hallowed Sepulchre, counted in ticks: a lap runs floors
   1 to N in order, so the Strategies page's tick-perfect floor times plus six
   ticks a staircase give the Agility rate, and fifteen more per floor for one
