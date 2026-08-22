@@ -1292,14 +1292,28 @@ not cosmetic: nine ticks alone gives 5,333/hr where the model gives 11,859,
 because the model knows about the pillar depleting and the tick count does
 not.
 
-**Crafting is 227 modelled and 15 unpriced**, from 195/48 when this stretch
-began. What is left is three groups and none is a join: **9 want a drop-table
-or currency route the item walk deliberately refuses** (`estimate._route_hours`'
-certainty gate, reverted twice and documented there) - Forestry pheasant
-feathers, key-loot fine cloth, a nugget-shop gem bag, Varlamore thieving's
-statuette; **2 are the heraldic pieces**, whose wiki page carries no
-`{{Recipe}}` and states no experience anywhere; and **2 are minigames**, Pest
-Control's barricades and Guardians of the Rift's essence.
+**And five of what was left are `one-off` rather than a gap**, which is the
+same distinction `costing/oneoff.py` was written for and the same second
+shape the Arceuus reanimations sit in. Splitbark is sewn from bark and a
+`Fine cloth`, and fine cloth comes only from the Shades of Mort'ton reward
+chests - upstream states the shares and the best is a **gold chest at
+21/143.91**, about one open in seven, against a steel one at 1/1679.42, with
+eleven pieces to a set. **The share is not the argument**: what disqualifies
+them is that a chest is earned by running the whole minigame - kindling,
+cremations, keys - and nothing publishes how long that takes, so a figure
+computed from the sewing would describe the sewing when the answer is the
+minigame's. Left alone they would read `unpriced`, which says a model has a
+gap where the truth is that the question does not arise.
+
+**Crafting is 227 modelled, 7 one-off and 10 unpriced**, from 195/2/48 when
+this stretch began. What is left is three groups and none is a join: **4 want
+a drop-table route the item walk deliberately refuses** (`estimate.
+_route_hours`' certainty gate, reverted twice and documented there) - Forestry
+pheasant feathers; **2 want a currency or a rare roll nothing prices** - a
+nugget-shop gem bag and Varlamore thieving's bone statuette; **2 are the
+heraldic pieces**, whose wiki page carries no `{{Recipe}}` and states no
+experience anywhere; and **2 are minigames**, Pest Control's barricades and
+Guardians of the Rift's essence.
 
 **A `{{Recipe}}` that pays nothing is filed under no skill, and the whole
 corpus is fetched per skill.** That is one query shape hiding an entire class

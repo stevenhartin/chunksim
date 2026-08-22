@@ -57,6 +57,18 @@ def test_every_entry_is_named_individually() -> None:
         "Make a ~|bone staff|~",
     }
 
+    # Also the second shape, wearing a minigame's name: splitbark is sewn from
+    # a `Fine cloth`, which comes only from the Shades of Mort'ton reward
+    # chests - so how often one can be sewn is how fast that minigame's whole
+    # loop runs, and nothing publishes that.
+    splitbark = {
+        "Craft a ~|splitbark body|~",
+        "Craft a ~|splitbark boots|~",
+        "Craft a ~|splitbark gauntlets|~",
+        "Craft a ~|splitbark helm|~",
+        "Craft a ~|splitbark legs|~",
+    }
+
     # The fourth: an obstacle opened once and permanently open after. A rope
     # is tied to the God Wars Dungeon rock at Agility 70 and climbed free for
     # ever, so there is no second tie to put a cadence on.
@@ -65,7 +77,7 @@ def test_every_entry_is_named_individually() -> None:
     }
 
     assert set(oneoff.ONE_OFF) == (
-        decorations | supply_bound | fusions | rat_bone | opened_once
+        decorations | supply_bound | splitbark | fusions | rat_bone | opened_once
     )
 
 
@@ -91,6 +103,47 @@ def test_every_entry_says_why() -> None:
     """The reason is the whole content of the status - it is printed in the
     column a priced method uses for its source."""
     assert all(reason.strip() for reason in oneoff.ONE_OFF.values())
+
+
+@pytest.mark.real_export
+def test_the_splitbark_five_all_eat_a_fine_cloth(real_export: ChunkInfo) -> None:
+    """**The reason is the material and not the rate.** All five list `Fine
+    cloth*` starred, so upstream agrees it is consumed - and it comes only
+    from the Shades of Mort'ton reward chests, whose own cadence is the
+    minigame's."""
+    crafting = real_export.challenges["Crafting"]
+    for task in (
+        "Craft a ~|splitbark body|~",
+        "Craft a ~|splitbark boots|~",
+        "Craft a ~|splitbark gauntlets|~",
+        "Craft a ~|splitbark helm|~",
+        "Craft a ~|splitbark legs|~",
+    ):
+        entry = crafting.get(task)
+        assert isinstance(entry, dict), task
+        assert "Fine cloth*" in (entry.get("Items") or ()), task
+
+
+@pytest.mark.real_export
+def test_the_chest_shares_upstream_states_are_what_the_reason_rests_on(
+    real_export: ChunkInfo,
+) -> None:
+    """Recorded because the entries quote them: the best is a gold chest at
+    21/143.91, about one open in seven, and a steel one is 1/1679.42."""
+    tables = {
+        name: table
+        for skill, activities in (real_export.data.get("skillItems") or {}).items()
+        if isinstance(activities, dict)
+        for name, table in activities.items()
+        if isinstance(table, dict) and "Fine cloth" in table
+    }
+
+    assert set(tables) == {
+        "Black key loot",
+        "Gold key loot",
+        "Silver key loot",
+        "Steel key loot",
+    }
 
 
 def test_the_god_wars_rope_is_here_and_not_among_the_refusals() -> None:

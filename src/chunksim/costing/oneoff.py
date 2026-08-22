@@ -14,6 +14,12 @@ for the first because it came first; what they have in common is that
   a property of the drop table or the growth clock. That is the shape
   `costing/disclaimed.py` describes as "everything needed for a model is
   published except the one thing that matters".
+
+  **The five splitbark pieces are the same shape wearing a minigame's name.**
+  Each is sewn from bark and a `Fine cloth`, and fine cloth comes only from
+  the Shades of Mort'ton reward chests - so what decides how often one can be
+  sewn is how fast the minigame's whole loop can be run, and nothing
+  publishes that. See their entries for the shares upstream states.
 - **A permanent upgrade assembled once out of unique drops.** The seven
   avernic tread variants each destroy a pair of boss-drop treads and one or
   more of the three boot upgrades and hand back a single better boot; the
@@ -212,6 +218,28 @@ ONE_OFF: dict[str, str] = {
     "Access the rope descent to ~|Saradomin's Encampment|~": (
         "a rope tied to the rock once at level 70, then climbed free forever"
     ),
+    # **The supply is a reward chest in a minigame nothing times.** Splitbark
+    # is sewn from `Bark` and `Fine cloth`, and fine cloth comes only from the
+    # Shades of Mort'ton reward chests - "from any level of chest other than
+    # bronze, but the higher level chests have a better chance". Upstream
+    # states the shares and the best of them is a **gold chest at 21/143.91**,
+    # about one open in seven, with a silver at the same rate, a black at one
+    # in twenty and a steel at one in 1,679. Eleven pieces make the set.
+    #
+    # **The rate is not the test and the chest's share is not either.** What
+    # disqualifies these is the shape the Arceuus reanimations are in: a chest
+    # is earned by running the whole minigame - gathering kindling, cremating
+    # shades, buying keys - and nothing anywhere publishes how long that
+    # takes, so a figure computed from the sewing would describe the sewing
+    # when the answer is a property of the minigame. `estimate._route_hours`'
+    # certainty gate refuses the chest roll for its own reasons and would
+    # leave these five reading `unpriced`, which says a model has a gap where
+    # the truth is that the question does not arise.
+    "Craft a ~|splitbark body|~": "fine cloth is a Shades of Mort'ton chest roll",
+    "Craft a ~|splitbark boots|~": "fine cloth is a Shades of Mort'ton chest roll",
+    "Craft a ~|splitbark gauntlets|~": "fine cloth is a Shades of Mort'ton chest roll",
+    "Craft a ~|splitbark helm|~": "fine cloth is a Shades of Mort'ton chest roll",
+    "Craft a ~|splitbark legs|~": "fine cloth is a Shades of Mort'ton chest roll",
 }
 
 
