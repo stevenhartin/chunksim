@@ -412,6 +412,10 @@ The modules, and what each owns:
   check the third. **Charges nothing for materials**, which is the point - the
   page's own "without any requirements to gather materials" is why the Mess
   beats fish this project has to charge for.
+- `statuette.py` - chipping a blessed bone statuette, whose rate is an hour of
+  Stealing valuables rather than anything about the chip: upstream's `3/520.8`
+  share times the wiki's 1,600-2,300 valuables an hour, at 5 experience each.
+  **46/hr**, the slowest Crafting method there is, and every term published.
 - `tarnished.py` - polishing the nine Vampyrium tarnished items, which no
   `{{Recipe}}` describes because upstream's `Output` is a **loot-table name**.
   One tick and 200-250 experience, both stated on every one of the nine pages,

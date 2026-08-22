@@ -80,6 +80,7 @@ from chunksim.costing import (
     strut,
     spells,
     stated,
+    statuette,
     troublebrewing,
     swimming,
     tarnished,
@@ -588,6 +589,10 @@ def recipe_priced(
     # whose output upstream names as a loot table and whose whole cost is the
     # fish. Charged below.
     cut = leechfin.methods(derived.challenges.valid)
+    # **A by-product of somebody else's minigame** - see
+    # `costing/statuette.py`, whose whole rate is upstream's own drop share
+    # times the wiki's valuables-an-hour.
+    chipped = statuette.methods(derived.challenges.valid)
     overrides = blobs.overrides
     # **The hand materials do not depend on the recipes**, so they are read
     # before the early return: a clone with no `chunksim recipes` cache still
@@ -614,7 +619,7 @@ def recipe_priced(
             replace(
                 heuristics,
                 computed=_merge_computed(
-                    prayed, craned, totemed, trawled, polished, messed, cut, gathered
+                    prayed, craned, totemed, trawled, polished, messed, cut, chipped, gathered
                 ),
                 material_seconds_per_xp={**by_calc, **by_spell, **by_hand},
             ),
@@ -791,7 +796,7 @@ def recipe_priced(
             training=rated,
             action_seconds=timed,
             computed=_merge_computed(
-                prayed, craned, totemed, trawled, polished, messed, cut, gathered
+                prayed, craned, totemed, trawled, polished, messed, cut, chipped, gathered
             ),
             material_seconds_per_xp=per_xp,
             material_xp_per_xp=credited,

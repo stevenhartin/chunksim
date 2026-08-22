@@ -1318,13 +1318,32 @@ exempt: both containers are combined **into** the sack, so there is one slot,
 and `Immaculate mole skin` states what a spare is for - "exchanged with Wyson
 the gardener for five bird nests", the rat bone weapons' clincher exactly.
 
-**Crafting is 227 modelled, 12 one-off and 5 unpriced**, from 195/2/48 when
-this stretch began. What is left is three groups and none is a join: **1 wants
-a drop-table route the item walk deliberately refuses** (`estimate.
-_route_hours`' certainty gate, reverted twice and documented there) -
-Varlamore thieving's bone statuette; **2 are the heraldic pieces**, whose wiki
-page carries no `{{Recipe}}` and states no experience anywhere; and **2 are
-minigames**, Pest Control's barricades and Guardians of the Rift's essence.
+**And the one that looked like it needed the closed gate did not.** `Chip a
+~|blessed bone statuette|~` is bounded by nothing about the chip - the recipe
+states `ticks = 0` and the statuette's page states 5 Crafting experience -
+but by how many statuettes an hour of Stealing valuables hands over, which is
+two published numbers neither of which is Crafting's: upstream's own
+**`3/520.8`** share (the eagle, fox and buffalo at 1/520.8 each) and the wiki's
+"about **1,600-2,300 valuables** from 18-19 houses per hour". The table's
+`Always` member is `Valuables`, so the roll unit is one valuable and the two
+multiply directly: 9.2 statuettes an hour and **46 Crafting experience**.
+
+**Spending the share here rather than routing it is what avoids the gate.**
+`estimate._route_hours` refuses a non-`Always` table member by design and would
+leave this `unpriced` for ever; `costing/statuette.py` reads the share the way
+`costing/yields.py` reads a weight tier. **And no material cost**, because the
+statuettes-an-hour figure already *is* an hour of the minigame - charging the
+thieving again would bill the same hour twice, `costing/gotr.py`'s trap. It is
+the slowest Crafting method there is and decides nothing anywhere; it is
+carried because every term is published and `unpriced` is the wrong word for a
+method whose rate is known - the same reason this project removed the floor
+that used to hide `steel dragon (Construction)` at 3/hr.
+
+**Crafting is 228 modelled, 12 one-off and 4 unpriced**, from 195/2/48 when
+this stretch began, and what is left is two pairs: **the heraldic pieces**,
+whose wiki page carries no `{{Recipe}}` and states no experience anywhere, and
+**two minigames**, Pest Control's barricades and Guardians of the Rift's
+essence.
 
 **A `{{Recipe}}` that pays nothing is filed under no skill, and the whole
 corpus is fetched per skill.** That is one query shape hiding an entire class
