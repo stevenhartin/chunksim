@@ -4,8 +4,9 @@
 for the first because it came first; what they have in common is that
 "how fast can this be repeated" is not a question about the action.
 
-- **A decoration placed once** - the trophy mounts and boat cosmetics. Doing
-  it twice is not the point and mostly not possible.
+- **A decoration placed once** - the trophy mounts, the boat cosmetics and the
+  four pheasant costume pieces. Doing it twice is not the point and mostly not
+  possible.
 - **A loop whose cadence belongs to a supply nothing states** - the Arceuus
   reanimations wait on ensouled heads dropped by monsters, and `Resurrect
   Crops` on a farming patch having died. Both are repeatable and neither has
@@ -240,6 +241,35 @@ ONE_OFF: dict[str, str] = {
     "Craft a ~|splitbark gauntlets|~": "fine cloth is a Shades of Mort'ton chest roll",
     "Craft a ~|splitbark helm|~": "fine cloth is a Shades of Mort'ton chest roll",
     "Craft a ~|splitbark legs|~": "fine cloth is a Shades of Mort'ton chest roll",
+    # **A costume, and the tempting reason is the wrong one.** The four
+    # pheasant pieces are "a piece of the pheasant costume", stored in a
+    # magic wardrobe - so they are the *first* shape here, a decoration made
+    # once, beside the trophy mounts and the boat cosmetics.
+    #
+    # **Not the event's cadence**, which is what this looked like: the
+    # feathers come from the Pheasant Control Forestry event, and
+    # `costing/forestry.py` already states 30 events an hour force-spawned, so
+    # "nothing publishes how often" would simply be false. Nor is it rarity -
+    # upstream puts the feather at `1/2` on the event's own table, a coin
+    # flip. What settles it is that a costume piece is not a thing anybody
+    # makes twice.
+    "Craft a ~|pheasant hat|~": "a pheasant costume piece, stored in a wardrobe",
+    "Craft ~|pheasant legs|~": "a pheasant costume piece, stored in a wardrobe",
+    "Craft ~|pheasant boots|~": "a pheasant costume piece, stored in a wardrobe",
+    "Craft a ~|pheasant cape|~": "a pheasant costume piece, stored in a wardrobe",
+    # **The top of a one-slot ladder, and the game states what a spare is
+    # for.** A gem sack is made "by combining a gem tote, gem bag, and
+    # immaculate mole skin" - both containers go *into* it, so there is one
+    # sack and no second to make. That is the same third shape as the avernic
+    # treads, and it has the rat bone weapons' clincher beside it:
+    # `Immaculate mole skin` says outright that "extra immaculate mole skins
+    # can be exchanged with Wyson the gardener for five bird nests", which is
+    # the game naming the use of a second one and it is not a second sack.
+    #
+    # (Upstream marks the bag and the tote *unmarked* while the wiki says
+    # both are combined in. `*` is not reliable by itself - see the quest
+    # prizes in `costing/spells.py` - and the wiki is explicit here.)
+    "Craft a ~|gem sack|~": "one gem slot: the bag and tote are combined into it",
 }
 
 

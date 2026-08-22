@@ -20,6 +20,12 @@ def test_every_entry_is_named_individually() -> None:
         "Build one of the boat ~|flags|~",
         "Apply a ~|boat paint|~ to a boat",
         "Apply a ~|sail colour|~ to a sail",
+        # And the pheasant costume, which is the same shape - a piece is
+        # stored in a magic wardrobe, not made twice.
+        "Craft a ~|pheasant hat|~",
+        "Craft ~|pheasant legs|~",
+        "Craft ~|pheasant boots|~",
+        "Craft a ~|pheasant cape|~",
     }
     # The second shape: a loop whose cadence belongs to a supply nothing
     # states - a drop table's or a growth clock's, not the action's.
@@ -43,6 +49,9 @@ def test_every_entry_is_named_individually() -> None:
         "Create ~|avernic treads (max)|~",
         # The same shape one weapon over: three unique Araxxor drops.
         "Craft a ~|noxious halberd|~",
+        # The top of a one-slot ladder: a gem sack combines the bag and the
+        # tote, and the game says a spare mole skin is five bird nests.
+        "Craft a ~|gem sack|~",
         # And from a single drop - a `Tanzanite fang` at 1/1024 off Zulrah.
         # Dismantling returns 20,000 Zulrah's scales and no fang, which is
         # what separates it from the sword mounts below.
@@ -103,6 +112,34 @@ def test_every_entry_says_why() -> None:
     """The reason is the whole content of the status - it is printed in the
     column a priced method uses for its source."""
     assert all(reason.strip() for reason in oneoff.ONE_OFF.values())
+
+
+def test_the_pheasant_four_are_not_here_for_the_events_cadence() -> None:
+    """**The tempting reason is the wrong one**, which is why the entries say
+    so. `costing/forestry.py` already states 30 events an hour force-spawned,
+    so "nothing publishes how often" would be false; and upstream puts the
+    feather at `1/2` on the event's own table, a coin flip rather than a rare
+    roll. What settles it is that a costume piece is not made twice."""
+    from chunksim.costing import forestry
+
+    assert forestry.EVENTS_PER_HOUR > 0
+    for task in (
+        "Craft a ~|pheasant hat|~",
+        "Craft ~|pheasant legs|~",
+        "Craft ~|pheasant boots|~",
+        "Craft a ~|pheasant cape|~",
+    ):
+        assert "costume" in oneoff.reason(task)
+
+
+def test_the_gem_sack_reason_is_the_slot_rather_than_the_nuggets() -> None:
+    """It blocked on a `Gem bag` bought for golden nuggets, which is a
+    currency gap - but that is not why it is here. Both containers are
+    combined *into* the sack, so there is one slot and no second to make."""
+    reason = oneoff.reason("Craft a ~|gem sack|~")
+
+    assert "slot" in reason
+    assert "nugget" not in reason
 
 
 @pytest.mark.real_export
