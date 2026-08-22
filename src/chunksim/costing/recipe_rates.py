@@ -979,6 +979,7 @@ def stated_ticks(
         fishcutting as cutting,
         gnomecooking,
         greenman,
+        measured,
         herblore,
         yewtree,
     )
@@ -988,6 +989,7 @@ def stated_ticks(
     found.update(yewtree.stated_ticks(recipes))
     found.update(greenman.stated_ticks(recipes))
     found.update(gnomecooking.stated_ticks(recipes))
+    found.update(measured.stated_ticks(recipes))
     found.update(feathering.stated_ticks(recipes))
     for skill, rows in recipes.items():
         challenges = _mapping(chunk_info.challenges, skill)

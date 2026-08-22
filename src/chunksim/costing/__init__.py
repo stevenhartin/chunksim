@@ -394,6 +394,10 @@ The modules, and what each owns:
   because the cut makes a *chance* of a blood sac rather than a product. The
   fish is the whole cost and is charged in full through
   `material_seconds_per_xp`.
+- `measured.py` - the last resort: a duration somebody **timed in game** where
+  the wiki states none and no sibling could fill it. Two outputs, both
+  Cooking. Fills only where the wiki is blank, so a published figure appearing
+  later wins with nothing edited.
 - `mess.py` - the Hosidius Mess, whose three foods join a `{{Recipe}}` and lose
   their inputs because a servery pie shell exists nowhere in the export's item
   graph. Priced as an activity instead: the page states a level, a turn-in

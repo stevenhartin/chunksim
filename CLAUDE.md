@@ -1298,9 +1298,27 @@ the two interleave. And `Giant crab meat` is a MediaWiki **redirect** to the
 `Crab meat` upstream names, which is the cleanest `MATERIAL_ALIASES` entry
 there is: one page, one item id.
 
-**Cooking is 192 modelled, 2 guessed and 2 unpriced of 208**, from 175/1/20
-when this stretch began. The two left are `nettle tea` and `raw swamp paste`,
-whose recipes carry a genuinely blank `ticks` with no sibling to borrow from.
+**And the last two were closed with a stopwatch.** `Nettle tea` and `Swamp
+paste` carry a genuinely blank `ticks` - not a stated zero - and neither could
+be filled the way `costing/yewtree.py` and `costing/gnomecooking.py` fill
+theirs, because there is no agreeing family to borrow from. `costing/
+measured.py` is the last resort before a method stays unpriced: **4 ticks
+each, timed in game**. It fills only where the wiki is blank, so a published
+figure appearing later wins with nothing edited.
+
+**The tea's nearest sibling disagrees by a tick and the measurement still
+wins.** `Damiana tea` is the same shape of action - a flavoured water heated
+into a tea - and its `{{Recipe}}` states 3. What decides it is that the
+measurement is of *this* action where the sibling's figure is of another one,
+and borrowing across pages is something `yewtree.py` does only where every
+sibling agrees. Recorded rather than smoothed over, because it is the first
+thing to look at if either is re-timed. The tea reads 24,828/hr and the paste
+820, which is right: two experience for an action that eats a pot of flour and
+a swamp tar.
+
+**Cooking has no unpriced method at all** - 194 modelled, 2 guessed and 12
+uncompletable of 208, from 175/1/20/12 when this stretch began, and two climbs
+moved in the whole of it.
 
 **Gnome Restaurant needed no model at all - it needed a step the wiki
 documents in prose and never writes a `{{Recipe}}` for.** Every gnome dish
