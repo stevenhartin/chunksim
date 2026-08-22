@@ -1227,6 +1227,36 @@ for `costing/feathering.py` that is its own argument arriving from the wiki -
 the training page files darts under *zero time methods* because the two clicks
 are done while running somewhere else.
 
+**A loot-table `Output` is the other half of "no recipe joins", and this time
+the wiki has no page at all.** Nine tarnished items drop in Vampyrium and are
+polished into random jewellery or weapons for Crafting; upstream states each
+`Output` as `Tarnished X loot`, so `recipe_rates`' join can never land -
+`costing/fishcutting.py`'s shape - and the wiki writes no `{{Recipe}}` either,
+because a polish is a roll on a drop table rather than a production. Both
+numbers a rate needs are stated elsewhere and identically on all nine pages:
+`{{Skill info}}`'s `skill1lvl = 64` and `skill1exp = 200-250`, and a change
+note reading "Tarnished items now take **1 tick** to polish, down from 3
+ticks".
+
+**The headline is 1,200,000/hr and declaring the drop is the whole module.**
+One tick for 200 experience would own the Crafting climb outright, so
+`costing/tarnished.py` fills `Heuristics.material_seconds_per_xp` from the item
+walk - `costing/salvage.py`'s arrangement for a family the recipe corpus cannot
+reach - and the nine read **92 to 549/hr**, because one tarnished item is half
+an hour of killing. The low end of the experience range is taken for
+`costing/pyramid.py`'s reason, and no bank trip is charged: the page's own
+message is "you rub the tarnished ring on your clothes", so the travel is
+inside the kill the walk already timed. Crafting goes 208 modelled to **217**
+and no climb moves.
+
+**And the trawler's net was a refusal printing as a gap.** `costing/trawler.py`
+has argued since it was written that Crafting's net repair cannot be priced -
+its row is in the same published table as the leaks, but "the chance to
+successfully fix the net depends on the player's Crafting level" and the page's
+only `{{Skilling success chart}}` is for the *fish*. The report said
+`unpriced`. `trawler.refused` says it where a reader can see it, gated on the
+leaks actually being priced for `foundry.refused`'s reason.
+
 **An untimed recipe has to fall back to something, but a counted one must not
 reach the fallback.** `DEFAULT_ACTION_SECONDS` is right for an action nobody
 has timed and wrong for one somebody has, so the stated durations are applied

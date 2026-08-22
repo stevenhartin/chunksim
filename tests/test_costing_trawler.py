@@ -80,3 +80,42 @@ class TestTheGate:
         (band,) = trawler.methods(self._VALID)["Construction"]
 
         assert band.level is None
+
+
+class TestTheNetIsRefusedRatherThanMissing:
+    """**A decision that had been printing as a gap.** This module's docstring
+    has argued since it was written that a repair priced as though it always
+    landed would be wrong by exactly the thing nobody has charted; the report
+    said `unpriced`, which is the one word meaning "nothing reached this"."""
+
+    _VALID: dict[str, dict[str, object]] = {
+        "Fishing": {trawler.GATE_TASK: True},
+        "Construction": {trawler.TASK: True},
+        "Crafting": {trawler.NET_TASK: True},
+    }
+
+    def test_it_is_named_with_its_reason(self) -> None:
+        found = trawler.refused(self._VALID)
+
+        assert set(found) == {trawler.NET_TASK}
+        assert "chart" in found[trawler.NET_TASK]
+
+    def test_only_where_the_leaks_were_priced(self) -> None:
+        """`foundry.refused`'s gate: a map that cannot board the trawler has
+        no decision to report, and the ordinary `unpriced` is honest there."""
+        without_boat = {"Crafting": self._VALID["Crafting"]}
+
+        assert trawler.refused(without_boat) == {}
+
+    def test_nothing_where_the_challenge_itself_is_out_of_reach(self) -> None:
+        assert trawler.refused(
+            {k: v for k, v in self._VALID.items() if k != "Crafting"}
+        ) == {}
+
+    def test_a_map_with_no_paste_route_refuses_nothing(self) -> None:
+        """Because the leaks are unpriced there too - the gate is the whole
+        activity, not just the challenge list."""
+        assert trawler.refused(self._VALID, lambda item, quantity: None) == {}
+
+    def test_the_construction_twin_is_still_priced(self) -> None:
+        assert set(trawler.methods(self._VALID)) == {"Construction"}

@@ -386,6 +386,12 @@ The modules, and what each owns:
   and ball positioning are the one invented number, which makes every band a
   `GUESS`. Bounded rather than open-ended - the lap dominates - and it names
   the single band on one map its guess decides.
+- `tarnished.py` - polishing the nine Vampyrium tarnished items, which no
+  `{{Recipe}}` describes because upstream's `Output` is a **loot-table name**.
+  One tick and 200-250 experience, both stated on every one of the nine pages,
+  which is 1,200,000/hr on paper - so the drop behind it is declared through
+  `material_seconds_per_xp` (`costing/salvage.py`'s arrangement) and the nine
+  read 92 to 549/hr.
 - `toymouse.py` - catching a wound-up clockwork mouse for 3 experience, whose
   charted catch chance reproduces **Mod Ash's own** "24% - 98%" for levels 1
   and 99. Nothing states how long a wind-release-catch cycle takes, on the

@@ -55,6 +55,14 @@ Woodcutting is the same, and has no challenge in the export either.
 **Filling a leak has no such chance** - swamp paste on a leak simply works -
 which is why Construction is modelled and its two neighbours are not.
 
+**And a refusal has to say so where a reader can see it.** The net repair
+printed `unpriced` - the one word that means "nothing reached this" - while
+this docstring argued the opposite, which is exactly what `coverage.REFUSED`
+exists to stop. `refused` names it, and **only where the leaks were actually
+priced**: a map that cannot reach the trawler has no decision to report and
+the ordinary `unpriced` is the honest answer there, the same gate
+`foundry.refused` puts on the bronze preform.
+
 Pure: the levels and the item walk come in as arguments.
 """
 
@@ -125,6 +133,36 @@ def rate(
     if seconds is None or seconds <= 0:
         return 0.0
     return xp_per_game() * 3600.0 / seconds
+
+
+#: Upstream's Crafting challenge for the same boat, and why it keeps no rate.
+NET_TASK = "Repair the net on the ~|Fishing Trawler|~"
+NET_REASON = (
+    "the chance to fix the net depends on Crafting level and the page's only"
+    " success chart is for the fish"
+)
+
+
+def refused(
+    valid: Mapping[str, Mapping[str, object]],
+    material_seconds: Callable[[str, float], float | None] | None = None,
+) -> dict[str, str]:
+    """`{task: why}` for the net repair, which this module declines to price.
+
+    **A decision that had been printing as a gap.** The module docstring has
+    argued since it was written that a repair priced as though it always
+    landed would be wrong by exactly the thing nobody has charted; the report
+    said `unpriced`, which means "nothing reached this". See `coverage.REFUSED`.
+
+    **Only where the leaks were priced.** A map that cannot board the trawler
+    has no decision to report and the ordinary `unpriced` is the honest answer
+    - `foundry.refused`'s gate, for its reason.
+    """
+    if not methods(valid, material_seconds):
+        return {}
+    if NET_TASK not in (valid.get("Crafting") or {}):
+        return {}
+    return {NET_TASK: NET_REASON}
 
 
 def methods(

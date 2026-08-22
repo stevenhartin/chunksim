@@ -79,6 +79,7 @@ from chunksim.costing import (
     stated,
     troublebrewing,
     swimming,
+    tarnished,
     tempoross,
     toymouse,
     valuables,
@@ -570,6 +571,11 @@ def recipe_priced(
     # **And the trawler's leaks**, which eat 51 swamp paste a game - see
     # `costing/trawler.py`, and its docstring on why the figure is a ceiling.
     trawled = trawler.methods(derived.challenges.valid, seconds)
+    # **And the nine tarnished polishes**, which no `{{Recipe}}` describes
+    # because upstream's output is a loot-table name - see
+    # `costing/tarnished.py`. One tick for 200 experience is 1,200,000/hr on
+    # paper; the drop behind it is charged below.
+    polished = tarnished.methods(derived.challenges.valid)
     overrides = blobs.overrides
     # **The hand materials do not depend on the recipes**, so they are read
     # before the early return: a clone with no `chunksim recipes` cache still
@@ -595,7 +601,9 @@ def recipe_priced(
         return (
             replace(
                 heuristics,
-                computed=_merge_computed(prayed, craned, totemed, trawled, gathered),
+                computed=_merge_computed(
+                    prayed, craned, totemed, trawled, polished, gathered
+                ),
                 material_seconds_per_xp={**by_calc, **by_spell, **by_hand},
             ),
             recipe_rates.RecipeCoverage(),
@@ -638,6 +646,17 @@ def recipe_priced(
     # **Sorting salvage costs the salvage.** Sailing has no `{{Recipe}}` at
     # all, so nothing above fills these in - see `salvage.material_seconds_per_xp`
     # for why 171,000/hr on paper is not a training method.
+    # **And the nine tarnished polishes**, for the same reason: a polish is a
+    # roll on a loot table rather than a production, so the wiki writes no
+    # `{{Recipe}}` and the drop behind it would otherwise be free. See
+    # `costing/tarnished.py`.
+    per_xp.update(
+        tarnished.material_seconds_per_xp(
+            _mapping(state.chunk_info.challenges, "Crafting"),
+            derived.challenges.valid,
+            seconds,
+        )
+    )
     per_xp.update(
         salvage.material_seconds_per_xp(
             _mapping(state.chunk_info.challenges, "Sailing"),
@@ -742,7 +761,9 @@ def recipe_priced(
             heuristics,
             training=rated,
             action_seconds=timed,
-            computed=_merge_computed(prayed, craned, totemed, trawled, gathered),
+            computed=_merge_computed(
+                prayed, craned, totemed, trawled, polished, gathered
+            ),
             material_seconds_per_xp=per_xp,
             material_xp_per_xp=credited,
             # **Carried so `unpriced` can say what it wanted.** Pure
@@ -774,6 +795,11 @@ def recipe_priced(
                 # See `shortcuts.REFUSED`: read and declined, which is a
                 # decision rather than the gap `unpriced` announces.
                 **shortcut_model.refused(),
+                # **And the trawler's net.** See `trawler.refused`: its row is
+                # in the same published table as the leaks, and the chance
+                # that decides it is charted for the fish rather than for the
+                # repair.
+                **trawler.refused(derived.challenges.valid),
             },
         ),
         coverage,
