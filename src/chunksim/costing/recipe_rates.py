@@ -902,24 +902,26 @@ HAND_ALIASES: dict[str, str] = {
 #: vocabulary lag `wiki_aliases.json` handles for *outputs*, seen on the
 #: material axis where that fetch cannot look: the item was renamed `sack` ->
 #: `sac` on 30 June 2026, the wiki followed and the export has not.
-#: **And a third shape: a step the wiki documents in prose and never writes a
-#: `{{Recipe}}` for.** Gnome cooking starts by pressing `Gianne dough` into a
-#: `Batta tin`, a `Crunchy tray` or a `Gnomebowl mould`; the wiki names what
-#: comes out (`Raw batta`, `Raw crunchies`, `Raw gnomebowl`) and states no
-#: recipe for it, so those three names have no route anywhere and every gnome
-#: dish was dropped for want of one. **Upstream states the cost itself**, and
-#: in its own notation: all three `Bake a ~|half baked ...|~` challenges list
-#: the container *unmarked* and `Gianne dough*` starred, which is exactly
-#: "one dough is spent and the tin is not". So this is the `Black mask` shape
-#: rather than a guess - the mapping is upstream's - and pricing a raw batta
-#: as one Gianne dough charges what upstream says it charges.
+#: **A fourth shape was here and has been retired**, which is worth recording
+#: because it was the wrong fix rather than an obsolete one. `Raw batta`,
+#: `Raw crunchies` and `Raw gnomebowl` were mapped to `Gianne dough` on the
+#: strength of upstream's own `Items`, because the wiki appeared to state no
+#: `{{Recipe}}` for pressing dough into a tin. It states one - the recipe
+#: simply pays no skill, and `bucket('recipe').where('uses_skill', ...)` can
+#: only see recipes that award experience. `remote/recipes.parse_unskilled`
+#: sweeps those now, so all three route properly and charge the tin as well as
+#: the dough. **The lesson is to check whether the wiki is silent before
+#: writing down what it should have said**: 53 materials had no route for
+#: exactly this reason and an alias each would have been 53 hand entries.
 MATERIAL_ALIASES: dict[str, str] = {
     "Pharaoh's sceptre (uncharged)": "Pharaoh's sceptre",
     "Black mask": "Black mask (10)",
     "Araxyte venom sac": "Araxyte venom sack",
-    "Raw batta": "Gianne dough",
-    "Raw crunchies": "Gianne dough",
-    "Raw gnomebowl": "Gianne dough",
+    # A MediaWiki redirect, which is what makes it the cleanest entry here:
+    # `Crab meat` and `Giant crab meat` are one page and one item id. It is
+    # the vocabulary lag `wiki_aliases.json` handles for *outputs*, on the
+    # material axis where that fetch cannot look.
+    "Giant crab meat": "Crab meat",
 }
 
 

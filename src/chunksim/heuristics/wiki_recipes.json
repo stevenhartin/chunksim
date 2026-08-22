@@ -1,6 +1,6 @@
 {
   "name": "wiki_recipes",
-  "fetched_at": "2026-08-22T14:20:49.118407+00:00",
+  "fetched_at": "2026-08-22T16:32:25.740714+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "Cooking": [
@@ -79975,6 +79975,5424 @@
           }
         ],
         "variant": "Costume needle"
+      }
+    ],
+    "Unskilled": [
+      {
+        "page": "Bread dough",
+        "output": "Bread dough",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Pot of flour",
+            "quantity": 1.0
+          },
+          {
+            "name": "Bucket of water",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Bread dough",
+        "output": "Bread dough",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Pot of flour",
+            "quantity": 1.0
+          },
+          {
+            "name": "Bowl of water",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Bread dough",
+        "output": "Bread dough",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Pot of flour",
+            "quantity": 1.0
+          },
+          {
+            "name": "Jug of water",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Rope",
+        "output": "Rope",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Ball of wool",
+            "quantity": 4.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Splitbark boots",
+        "output": "Splitbark boots",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Bark",
+            "quantity": 1.0
+          },
+          {
+            "name": "Fine cloth",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 1000.0
+          }
+        ],
+        "variant": "Wizard Jalarast"
+      },
+      {
+        "page": "Splitbark legs",
+        "output": "Splitbark legs",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Bark",
+            "quantity": 3.0
+          },
+          {
+            "name": "Fine cloth",
+            "quantity": 3.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 32000.0
+          }
+        ],
+        "variant": "Wizard Jalarast"
+      },
+      {
+        "page": "Vial of water",
+        "output": "Vial of water",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Vial",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Plank",
+        "output": "Plank",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 100.0
+          }
+        ],
+        "variant": "Sawmill"
+      },
+      {
+        "page": "Plank",
+        "output": "Plank",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Sawmill coupon (wood plank)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Sawmill + Sawmill coupon"
+      },
+      {
+        "page": "Plank",
+        "output": "Plank",
+        "output_quantity": 2.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 100.0
+          },
+          {
+            "name": "Sawmill voucher",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Sawmill + Sawmill voucher"
+      },
+      {
+        "page": "Hard leather",
+        "output": "Hard leather",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Cowhide",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 3.0
+          }
+        ],
+        "variant": "Normal tanner"
+      },
+      {
+        "page": "Hard leather",
+        "output": "Hard leather",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Cowhide",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 5.0
+          }
+        ],
+        "variant": "Sbott"
+      },
+      {
+        "page": "Unicorn horn dust",
+        "output": "Unicorn horn dust",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Unicorn horn",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Bowl of water",
+        "output": "Bowl of water",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Bowl",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Chocolate dust",
+        "output": "Chocolate dust",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Chocolate bar",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Chocolate dust",
+        "output": "Chocolate dust",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Chocolate bar",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Bucket of water",
+        "output": "Bucket of water",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Bucket",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Jug of water",
+        "output": "Jug of water",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Jug",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Soft clay",
+        "output": "Soft clay",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Clay",
+            "quantity": 1.0
+          },
+          {
+            "name": "Bucket of water",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Bucket"
+      },
+      {
+        "page": "Soft clay",
+        "output": "Soft clay",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Clay",
+            "quantity": 1.0
+          },
+          {
+            "name": "Bowl of water",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Bowl"
+      },
+      {
+        "page": "Soft clay",
+        "output": "Soft clay",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Clay",
+            "quantity": 1.0
+          },
+          {
+            "name": "Jug of water",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Jug"
+      },
+      {
+        "page": "Soft clay",
+        "output": "Soft clay",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Clay",
+            "quantity": 1.0
+          },
+          {
+            "name": "Vial of water",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Vial"
+      },
+      {
+        "page": "Pot of flour",
+        "output": "Pot of flour",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Grain",
+            "quantity": 1.0
+          },
+          {
+            "name": "Pot",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Bucket of sand",
+        "output": "Bucket of sand",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Bucket",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Sandpit"
+      },
+      {
+        "page": "Bucket of sand",
+        "output": "Bucket of sand",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Sandstone (1kg)",
+            "quantity": 1.0
+          },
+          {
+            "name": "Bucket",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 50.0
+          }
+        ],
+        "variant": "Sandstorm"
+      },
+      {
+        "page": "Bucket of sand",
+        "output": "Bucket of sand",
+        "output_quantity": 2.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Sandstone (2kg)",
+            "quantity": 1.0
+          },
+          {
+            "name": "Bucket",
+            "quantity": 2.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 100.0
+          }
+        ],
+        "variant": "Sandstorm"
+      },
+      {
+        "page": "Bucket of sand",
+        "output": "Bucket of sand",
+        "output_quantity": 4.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Sandstone (5kg)",
+            "quantity": 1.0
+          },
+          {
+            "name": "Bucket",
+            "quantity": 4.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 200.0
+          }
+        ],
+        "variant": "Sandstorm"
+      },
+      {
+        "page": "Bucket of sand",
+        "output": "Bucket of sand",
+        "output_quantity": 8.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Sandstone (10kg)",
+            "quantity": 1.0
+          },
+          {
+            "name": "Bucket",
+            "quantity": 8.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 400.0
+          }
+        ],
+        "variant": "Sandstorm"
+      },
+      {
+        "page": "Bucket of milk",
+        "output": "Bucket of milk",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 3.0,
+        "materials": [
+          {
+            "name": "Bucket",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Blue dye",
+        "output": "Blue dye",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Woad leaf",
+            "quantity": 2.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 5.0
+          }
+        ],
+        "variant": "Aggie"
+      },
+      {
+        "page": "Blue dye",
+        "output": "Blue dye",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Woad leaf",
+            "quantity": 2.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 25.0
+          }
+        ],
+        "variant": "Ali the dyer"
+      },
+      {
+        "page": "Orange dye",
+        "output": "Orange dye",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Red dye",
+            "quantity": 1.0
+          },
+          {
+            "name": "Yellow dye",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Mahogany plank",
+        "output": "Mahogany plank",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Mahogany logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 1500.0
+          }
+        ],
+        "variant": "Sawmill"
+      },
+      {
+        "page": "Mahogany plank",
+        "output": "Mahogany plank",
+        "output_quantity": 2.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Mahogany logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 1500.0
+          },
+          {
+            "name": "Sawmill voucher",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Sawmill + Sawmill voucher"
+      },
+      {
+        "page": "Teak plank",
+        "output": "Teak plank",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Teak logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 500.0
+          }
+        ],
+        "variant": "Sawmill"
+      },
+      {
+        "page": "Teak plank",
+        "output": "Teak plank",
+        "output_quantity": 2.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Teak logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 500.0
+          },
+          {
+            "name": "Sawmill voucher",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Sawmill + Sawmill voucher"
+      },
+      {
+        "page": "Red dye",
+        "output": "Red dye",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Redberries",
+            "quantity": 3.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 5.0
+          }
+        ],
+        "variant": "Aggie"
+      },
+      {
+        "page": "Red dye",
+        "output": "Red dye",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Redberries",
+            "quantity": 3.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 25.0
+          }
+        ],
+        "variant": "Ali the dyer"
+      },
+      {
+        "page": "Yellow dye",
+        "output": "Yellow dye",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Onion",
+            "quantity": 2.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 5.0
+          }
+        ],
+        "variant": "Aggie"
+      },
+      {
+        "page": "Yellow dye",
+        "output": "Yellow dye",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Onion",
+            "quantity": 2.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 25.0
+          }
+        ],
+        "variant": "Ali the dyer"
+      },
+      {
+        "page": "Green dye",
+        "output": "Green dye",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Blue dye",
+            "quantity": 1.0
+          },
+          {
+            "name": "Yellow dye",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Purple dye",
+        "output": "Purple dye",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Blue dye",
+            "quantity": 1.0
+          },
+          {
+            "name": "Red dye",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Crystal key",
+        "output": "Crystal key",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Loop half of key",
+            "quantity": 1.0
+          },
+          {
+            "name": "Tooth half of key",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Bucket of slime",
+        "output": "Bucket of slime",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Bucket",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Supercompost",
+        "output": "Supercompost",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Compost",
+            "quantity": 1.0
+          },
+          {
+            "name": "Compost potion(1)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Compost potion (direct)"
+      },
+      {
+        "page": "Ground cod",
+        "output": "Ground cod",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Raw cod",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Pastry dough",
+        "output": "Pastry dough",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Pot of flour",
+            "quantity": 1.0
+          },
+          {
+            "name": "Bucket of water",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Pastry dough",
+        "output": "Pastry dough",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Pot of flour",
+            "quantity": 1.0
+          },
+          {
+            "name": "Bowl of water",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Pastry dough",
+        "output": "Pastry dough",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Pot of flour",
+            "quantity": 1.0
+          },
+          {
+            "name": "Jug of water",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Leather",
+        "output": "Leather",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Cowhide",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Normal tanner"
+      },
+      {
+        "page": "Leather",
+        "output": "Leather",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Cowhide",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 3.0
+          }
+        ],
+        "variant": "Sbott"
+      },
+      {
+        "page": "Ground bat bones",
+        "output": "Ground bat bones",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Bat bones",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Bowl of hot water",
+        "output": "Bowl of hot water",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Bowl of water",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Green dragon leather",
+        "output": "Green dragon leather",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Green dragonhide",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 20.0
+          }
+        ],
+        "variant": "Normal tanner"
+      },
+      {
+        "page": "Green dragon leather",
+        "output": "Green dragon leather",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Green dragonhide",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 45.0
+          }
+        ],
+        "variant": "Sbott"
+      },
+      {
+        "page": "Pineapple chunks",
+        "output": "Pineapple chunks",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Pineapple",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Pineapple chunks",
+        "output": "Pineapple chunks",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Tenti pineapple",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Splitbark helm",
+        "output": "Splitbark helm",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Bark",
+            "quantity": 2.0
+          },
+          {
+            "name": "Fine cloth",
+            "quantity": 2.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 6000.0
+          }
+        ],
+        "variant": "Wizard Jalarast"
+      },
+      {
+        "page": "Splitbark body",
+        "output": "Splitbark body",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Bark",
+            "quantity": 4.0
+          },
+          {
+            "name": "Fine cloth",
+            "quantity": 4.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 37000.0
+          }
+        ],
+        "variant": "Wizard Jalarast"
+      },
+      {
+        "page": "Splitbark gauntlets",
+        "output": "Splitbark gauntlets",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Bark",
+            "quantity": 1.0
+          },
+          {
+            "name": "Fine cloth",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 1000.0
+          }
+        ],
+        "variant": "Wizard Jalarast"
+      },
+      {
+        "page": "Blue dragon leather",
+        "output": "Blue dragon leather",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Blue dragonhide",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 20.0
+          }
+        ],
+        "variant": "Normal tanner"
+      },
+      {
+        "page": "Blue dragon leather",
+        "output": "Blue dragon leather",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Blue dragonhide",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 45.0
+          }
+        ],
+        "variant": "Sbott"
+      },
+      {
+        "page": "Black candle",
+        "output": "Black candle",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Bucket of wax",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Silver dust",
+        "output": "Silver dust",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 4.0,
+        "materials": [
+          {
+            "name": "Silver bar",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Goat horn dust",
+        "output": "Goat horn dust",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Goat horn",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Cured yak-hide",
+        "output": "Cured yak-hide",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Yak-hide",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 5.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Ground charcoal",
+        "output": "Ground charcoal",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Charcoal",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Oak plank",
+        "output": "Oak plank",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Oak logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 250.0
+          }
+        ],
+        "variant": "Sawmill"
+      },
+      {
+        "page": "Oak plank",
+        "output": "Oak plank",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Oak logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Sawmill coupon (oak plank)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Sawmill + Sawmill coupon"
+      },
+      {
+        "page": "Oak plank",
+        "output": "Oak plank",
+        "output_quantity": 2.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Oak logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 250.0
+          },
+          {
+            "name": "Sawmill voucher",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Sawmill + Sawmill voucher"
+      },
+      {
+        "page": "Silver sickle (b)",
+        "output": "Silver sickle (b)",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Silver sickle",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Snakeskin",
+        "output": "Snakeskin",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Snake hide",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 15.0
+          }
+        ],
+        "variant": "Normal tanners"
+      },
+      {
+        "page": "Snakeskin",
+        "output": "Snakeskin",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Snake hide",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 25.0
+          }
+        ],
+        "variant": "Sbott"
+      },
+      {
+        "page": "Snakeskin",
+        "output": "Snakeskin",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Snake hide (swamp)",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 20.0
+          }
+        ],
+        "variant": "Normal tanners"
+      },
+      {
+        "page": "Snakeskin",
+        "output": "Snakeskin",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Snake hide (swamp)",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 45.0
+          }
+        ],
+        "variant": "Sbott"
+      },
+      {
+        "page": "Blue dragon scale",
+        "output": "Blue dragon scale",
+        "output_quantity": 50.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Scaly blue dragonhide",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Crushed nest",
+        "output": "Crushed nest",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Bird nest (empty)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Anchovy paste",
+        "output": "Anchovy paste",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Anchovies",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Black dragon leather",
+        "output": "Black dragon leather",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Black dragonhide",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 20.0
+          }
+        ],
+        "variant": "Normal tanner"
+      },
+      {
+        "page": "Black dragon leather",
+        "output": "Black dragon leather",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Black dragonhide",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 45.0
+          }
+        ],
+        "variant": "Sbott"
+      },
+      {
+        "page": "Coconut milk",
+        "output": "Coconut milk",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Vial",
+            "quantity": 1.0
+          },
+          {
+            "name": "Half coconut",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Calquat keg",
+        "output": "Calquat keg",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Calquat fruit",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Dragon scale dust",
+        "output": "Dragon scale dust",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Blue dragon scale",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Toad's legs",
+        "output": "Toad's legs",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Swamp toad (item)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Black dye",
+        "output": "Black dye",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Vial",
+            "quantity": 1.0
+          },
+          {
+            "name": "Black mushroom",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Black mask (i)",
+        "output": "Black mask (i)",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Black mask",
+            "quantity": 1.0
+          },
+          {
+            "name": "Nightmare Zone points",
+            "quantity": 1250000.0
+          }
+        ],
+        "variant": "Nightmare Zone"
+      },
+      {
+        "page": "Black mask (i)",
+        "output": "Black mask (i)",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Black mask",
+            "quantity": 1.0
+          },
+          {
+            "name": "Zeal Tokens",
+            "quantity": 500.0
+          }
+        ],
+        "variant": "Soul Wars"
+      },
+      {
+        "page": "Black mask (i)",
+        "output": "Black mask (i)",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Black mask",
+            "quantity": 1.0
+          },
+          {
+            "name": "Scroll of imbuing",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Emir's Arena"
+      },
+      {
+        "page": "Raw stuffed snake",
+        "output": "Raw stuffed snake",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Snake corpse",
+            "quantity": 1.0
+          },
+          {
+            "name": "Sliced red banana",
+            "quantity": 1.0
+          },
+          {
+            "name": "Tchiki nut paste",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Sliced red banana",
+        "output": "Sliced red banana",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Red banana",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Tchiki nut paste",
+        "output": "Tchiki nut paste",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Tchiki monkey nuts",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Pink dye",
+        "output": "Pink dye",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Redberry juice",
+            "quantity": 1.0
+          },
+          {
+            "name": "White berries",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Redberry juice",
+        "output": "Redberry juice",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Bottled water",
+            "quantity": 1.0
+          },
+          {
+            "name": "Redberries",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Pineapple ring",
+        "output": "Pineapple ring",
+        "output_quantity": 4.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Pineapple",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Pineapple ring",
+        "output": "Pineapple ring",
+        "output_quantity": 4.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Tenti pineapple",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Lime slices",
+        "output": "Lime slices",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Lime",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Ground kelp",
+        "output": "Ground kelp",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Kelp",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Ground giant crab meat",
+        "output": "Ground giant crab meat",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Giant crab meat",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Lime chunks",
+        "output": "Lime chunks",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Lime",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Orange slices",
+        "output": "Orange slices",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Orange",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Orange chunks",
+        "output": "Orange chunks",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Orange",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Lemon slices",
+        "output": "Lemon slices",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Lemon",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Lemon chunks",
+        "output": "Lemon chunks",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Lemon",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Raw batta",
+        "output": "Raw batta",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Batta tin",
+            "quantity": 1.0
+          },
+          {
+            "name": "Gianne dough",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Raw gnomebowl",
+        "output": "Raw gnomebowl",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Gianne dough",
+            "quantity": 1.0
+          },
+          {
+            "name": "Gnomebowl mould",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Raw crunchies",
+        "output": "Raw crunchies",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Crunchy tray",
+            "quantity": 1.0
+          },
+          {
+            "name": "Gianne dough",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Skewer stick",
+        "output": "Skewer stick",
+        "output_quantity": 4.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Thatch spar light",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Skewer stick",
+        "output": "Skewer stick",
+        "output_quantity": 4.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Thatch spar med",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Skewer stick",
+        "output": "Skewer stick",
+        "output_quantity": 4.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Thatch spar dense",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Ground tooth",
+        "output": "Ground tooth",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Suqah tooth",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Astral rune shards",
+        "output": "Astral rune shards",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Astral rune",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Ground astral rune",
+        "output": "Ground astral rune",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Astral rune shards",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Suqah leather",
+        "output": "Suqah leather",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Suqah hide",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 100.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Chopped onion",
+        "output": "Chopped onion",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Bowl",
+            "quantity": 1.0
+          },
+          {
+            "name": "Onion",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Onion & tomato",
+        "output": "Onion & tomato",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Chopped onion",
+            "quantity": 1.0
+          },
+          {
+            "name": "Tomato",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Onion & tomato",
+        "output": "Onion & tomato",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Chopped tomato",
+            "quantity": 1.0
+          },
+          {
+            "name": "Onion",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Chopped tomato",
+        "output": "Chopped tomato",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Bowl",
+            "quantity": 1.0
+          },
+          {
+            "name": "Tomato",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Sliced mushrooms",
+        "output": "Sliced mushrooms",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Bowl",
+            "quantity": 1.0
+          },
+          {
+            "name": "Mushroom",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Chopped garlic",
+        "output": "Chopped garlic",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Bowl",
+            "quantity": 1.0
+          },
+          {
+            "name": "Garlic",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Dragon pickaxe",
+        "output": "Dragon pickaxe",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Dragon pickaxe (broken)",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 2500000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Stuffed big shark",
+        "output": "Stuffed big shark",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Big shark",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 5000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Chopped tuna",
+        "output": "Chopped tuna",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Bowl",
+            "quantity": 1.0
+          },
+          {
+            "name": "Tuna",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Lava scale shard",
+        "output": "Lava scale shard",
+        "output_quantity": 4.5,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Lava scale",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Lava scale shard",
+        "output": "Lava scale shard",
+        "output_quantity": 6.5,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Lava scale",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Stuffed kq head",
+        "output": "Stuffed kq head",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Kq head",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 50000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Kebbit teeth dust",
+        "output": "Kebbit teeth dust",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Kebbit teeth",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Stuffed cockatrice head",
+        "output": "Stuffed cockatrice head",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Cockatrice head",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 2000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Stuffed crawling hand",
+        "output": "Stuffed crawling hand",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Crawling hand (item)",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 1000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Stuffed basilisk head",
+        "output": "Stuffed basilisk head",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Basilisk head",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 4000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Stuffed kurask head",
+        "output": "Stuffed kurask head",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Kurask head",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 6000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Stuffed abyssal head",
+        "output": "Stuffed abyssal head",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Abyssal head",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 12000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Stuffed big bass",
+        "output": "Stuffed big bass",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Big bass",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 1000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Stuffed big swordfish",
+        "output": "Stuffed big swordfish",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Big swordfish",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 2500.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Enchanted bar",
+        "output": "Enchanted bar",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Gold bar",
+            "quantity": 1.0
+          },
+          {
+            "name": "Monkey dentures",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Dried thistle",
+        "output": "Dried thistle",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Troll thistle",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Ground thistle",
+        "output": "Ground thistle",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Dried thistle",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Gorak claw powder",
+        "output": "Gorak claw powder",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Gorak claws",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Breadcrumbs",
+        "output": "Breadcrumbs",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Bread",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Ground guam",
+        "output": "Ground guam",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Guam leaf",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Cup of hot water",
+        "output": "Cup of hot water",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Bowl of hot water",
+            "quantity": 1.0
+          },
+          {
+            "name": "Empty cup",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Cup of hot water",
+        "output": "Cup of hot water",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Cup of water",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Sweetcorn (bowl)",
+        "output": "Sweetcorn (bowl)",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Cooked sweetcorn",
+            "quantity": 1.0
+          },
+          {
+            "name": "Bowl",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Blamish snail slime",
+        "output": "Blamish snail slime",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Sample bottle",
+            "quantity": 1.0
+          },
+          {
+            "name": "Thin snail",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Blamish snail slime",
+        "output": "Blamish snail slime",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Sample bottle",
+            "quantity": 1.0
+          },
+          {
+            "name": "Lean snail",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Blamish snail slime",
+        "output": "Blamish snail slime",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Sample bottle",
+            "quantity": 1.0
+          },
+          {
+            "name": "Fat snail",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Rune pouch",
+        "output": "Rune pouch",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Rune pouch note",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Raw swamp paste",
+        "output": "Raw swamp paste",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Pot of flour",
+            "quantity": 1.0
+          },
+          {
+            "name": "Swamp tar",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Red dragon leather",
+        "output": "Red dragon leather",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Red dragonhide",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 20.0
+          }
+        ],
+        "variant": "Normal tanner"
+      },
+      {
+        "page": "Red dragon leather",
+        "output": "Red dragon leather",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Red dragonhide",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 45.0
+          }
+        ],
+        "variant": "Sbott"
+      },
+      {
+        "page": "Half coconut",
+        "output": "Half coconut",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Coconut",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Hay sack",
+        "output": "Hay sack",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Empty sack",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Hay bale"
+      },
+      {
+        "page": "Hay sack",
+        "output": "Hay sack",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Empty sack",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Haystack"
+      },
+      {
+        "page": "Zulrah's scales",
+        "output": "Zulrah's scales",
+        "output_quantity": 20000.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Tanzanite fang",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Zulrah's scales",
+        "output": "Zulrah's scales",
+        "output_quantity": 20000.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Toxic blowpipe (empty)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Zulrah's scales",
+        "output": "Zulrah's scales",
+        "output_quantity": 20000.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Serpentine visage",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Zulrah's scales",
+        "output": "Zulrah's scales",
+        "output_quantity": 20000.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Serpentine helm (uncharged)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Zulrah's scales",
+        "output": "Zulrah's scales",
+        "output_quantity": 20000.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Magic fang",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Anchovy oil",
+        "output": "Anchovy oil",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Vial",
+            "quantity": 1.0
+          },
+          {
+            "name": "Anchovy paste",
+            "quantity": 8.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Teak cape rack",
+        "output": "Teak cape rack",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 5.0,
+        "materials": [
+          {
+            "name": "Oak cape rack",
+            "quantity": 1.0
+          },
+          {
+            "name": "Teak cape rack (flatpack)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Upgrade - flatpack"
+      },
+      {
+        "page": "Mahogany cape rack",
+        "output": "Mahogany cape rack",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 5.0,
+        "materials": [
+          {
+            "name": "Teak cape rack",
+            "quantity": 1.0
+          },
+          {
+            "name": "Mahogany cape rack (flatpack)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Upgrade - flatpack"
+      },
+      {
+        "page": "Gilded cape rack",
+        "output": "Gilded cape rack",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 5.0,
+        "materials": [
+          {
+            "name": "Mahogany cape rack",
+            "quantity": 1.0
+          },
+          {
+            "name": "Gilded cape rack (flatpack)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Upgrade - flatpack"
+      },
+      {
+        "page": "Marble cape rack",
+        "output": "Marble cape rack",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 5.0,
+        "materials": [
+          {
+            "name": "Gilded cape rack",
+            "quantity": 1.0
+          },
+          {
+            "name": "Marble cape rack (flatpack)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Upgrade - flatpack"
+      },
+      {
+        "page": "Teak treasure chest",
+        "output": "Teak treasure chest",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 5.0,
+        "materials": [
+          {
+            "name": "Oak treasure chest",
+            "quantity": 1.0
+          },
+          {
+            "name": "Teak treasure chest (flatpack)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Upgrade - flatpack"
+      },
+      {
+        "page": "Teak armour case",
+        "output": "Teak armour case",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 5.0,
+        "materials": [
+          {
+            "name": "Oak armour case",
+            "quantity": 1.0
+          },
+          {
+            "name": "Teak armour case (flatpack)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Upgrade - flatpack"
+      },
+      {
+        "page": "Carved oak magic wardrobe",
+        "output": "Carved oak magic wardrobe",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 5.0,
+        "materials": [
+          {
+            "name": "Oak magic wardrobe",
+            "quantity": 1.0
+          },
+          {
+            "name": "Carved oak magic wardrobe (flatpack)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Upgrade - flatpack"
+      },
+      {
+        "page": "Teak magic wardrobe",
+        "output": "Teak magic wardrobe",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 5.0,
+        "materials": [
+          {
+            "name": "Carved oak magic wardrobe",
+            "quantity": 1.0
+          },
+          {
+            "name": "Teak magic wardrobe (flatpack)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Upgrade - flatpack"
+      },
+      {
+        "page": "Carved teak magic wardrobe",
+        "output": "Carved teak magic wardrobe",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 5.0,
+        "materials": [
+          {
+            "name": "Teak magic wardrobe",
+            "quantity": 1.0
+          },
+          {
+            "name": "Carved teak magic wardrobe (flatpack)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Upgrade - flatpack"
+      },
+      {
+        "page": "Mahogany magic wardrobe",
+        "output": "Mahogany magic wardrobe",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 5.0,
+        "materials": [
+          {
+            "name": "Carved teak magic wardrobe",
+            "quantity": 1.0
+          },
+          {
+            "name": "Mahogany magic wardrobe (flatpack)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Upgrade - flatpack"
+      },
+      {
+        "page": "Gilded magic wardrobe",
+        "output": "Gilded magic wardrobe",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 5.0,
+        "materials": [
+          {
+            "name": "Mahogany magic wardrobe",
+            "quantity": 1.0
+          },
+          {
+            "name": "Gilded magic wardrobe (flatpack)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Upgrade - flatpack"
+      },
+      {
+        "page": "Teak fancy dress box",
+        "output": "Teak fancy dress box",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 5.0,
+        "materials": [
+          {
+            "name": "Oak fancy dress box",
+            "quantity": 1.0
+          },
+          {
+            "name": "Teak fancy dress box (flatpack)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Upgrade - flatpack"
+      },
+      {
+        "page": "Lizardman fang",
+        "output": "Lizardman fang",
+        "output_quantity": 100.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Xeric's talisman (inert)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Lizardman fang",
+        "output": "Lizardman fang",
+        "output_quantity": 100.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Xeric's talisman (inert)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Pet rock"
+      },
+      {
+        "page": "Dynamite",
+        "output": "Dynamite",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 3.0,
+        "materials": [
+          {
+            "name": "Dynamite pot",
+            "quantity": 1.0
+          },
+          {
+            "name": "Ball of wool",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Juniper charcoal",
+        "output": "Juniper charcoal",
+        "output_quantity": 50.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 99000.0,
+        "materials": [
+          {
+            "name": "Juniper logs",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Servery pastry dough",
+        "output": "Servery pastry dough",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Servery flour",
+            "quantity": 1.0
+          },
+          {
+            "name": "Bowl of water",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Servery pie shell",
+        "output": "Servery pie shell",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Servery dish",
+            "quantity": 1.0
+          },
+          {
+            "name": "Servery pastry dough",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Servery pineapple chunks",
+        "output": "Servery pineapple chunks",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Servery pineapple",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Dynamite pot",
+        "output": "Dynamite pot",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 3.0,
+        "materials": [
+          {
+            "name": "Pot",
+            "quantity": 1.0
+          },
+          {
+            "name": "Saltpetre",
+            "quantity": 1.0
+          },
+          {
+            "name": "Juniper charcoal",
+            "quantity": 1.0
+          },
+          {
+            "name": "Volcanic sulphur",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Chopped ugthanki",
+        "output": "Chopped ugthanki",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Bowl",
+            "quantity": 1.0
+          },
+          {
+            "name": "Ugthanki meat",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Ugthanki & onion",
+        "output": "Ugthanki & onion",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Chopped onion",
+            "quantity": 1.0
+          },
+          {
+            "name": "Ugthanki meat",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Ugthanki & onion",
+        "output": "Ugthanki & onion",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Chopped ugthanki",
+            "quantity": 1.0
+          },
+          {
+            "name": "Onion",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Ugthanki & tomato",
+        "output": "Ugthanki & tomato",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Chopped tomato",
+            "quantity": 1.0
+          },
+          {
+            "name": "Ugthanki meat",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Ugthanki & tomato",
+        "output": "Ugthanki & tomato",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Chopped ugthanki",
+            "quantity": 1.0
+          },
+          {
+            "name": "Tomato",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Cup of water",
+        "output": "Cup of water",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Empty cup",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Stuffed kbd heads",
+        "output": "Stuffed kbd heads",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Kbd heads",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 50000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Minced meat",
+        "output": "Minced meat",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 2.0,
+        "materials": [
+          {
+            "name": "Bowl",
+            "quantity": 1.0
+          },
+          {
+            "name": "Cooked meat",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Arclight",
+        "output": "Arclight",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Darklight",
+            "quantity": 1.0
+          },
+          {
+            "name": "Ancient shard",
+            "quantity": 3.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Filled plant pot",
+        "output": "Filled plant pot",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 3.0,
+        "materials": [
+          {
+            "name": "Empty plant pot",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Water-filled gourd vial",
+        "output": "Water-filled gourd vial",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Empty gourd vial",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Vorkath's stuffed head",
+        "output": "Vorkath's stuffed head",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Vorkath's head",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 50000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Crushed superior dragon bones",
+        "output": "Crushed superior dragon bones",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Superior dragon bones",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Trident of the Seas (e)",
+        "output": "Uncharged trident (e)",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 3.0,
+        "materials": [
+          {
+            "name": "Uncharged trident",
+            "quantity": 1.0
+          },
+          {
+            "name": "Kraken tentacle",
+            "quantity": 10.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Vial of blood",
+        "output": "Vial of blood",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Blood sac",
+            "quantity": 50.0
+          },
+          {
+            "name": "Vial",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Stuffed kq head (tattered)",
+        "output": "Stuffed kq head (tattered)",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Kq head (tattered)",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 50000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Curator's medallion",
+        "output": "Curator's medallion",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Digsite pendant",
+            "quantity": 1.0
+          },
+          {
+            "name": "Ruby",
+            "quantity": 250.0
+          },
+          {
+            "name": "Fire rune",
+            "quantity": 500.0
+          },
+          {
+            "name": "Cosmic rune",
+            "quantity": 100.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Stuffed hydra heads",
+        "output": "Stuffed hydra heads",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Alchemical hydra heads",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 50000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Spider on stick (raw)",
+        "output": "Spider on stick (raw)",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Skewer stick",
+            "quantity": 1.0
+          },
+          {
+            "name": "Spider carcass",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Spider on shaft (raw)",
+        "output": "Spider on shaft (raw)",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Arrow shaft",
+            "quantity": 1.0
+          },
+          {
+            "name": "Spider carcass",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Crystal shards (The Gauntlet)",
+        "output": "Crystal shards (The Gauntlet)",
+        "output_quantity": 80.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Crystal spike",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Crystal shards (The Gauntlet)",
+        "output": "Crystal shards (The Gauntlet)",
+        "output_quantity": 80.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Crystalline bowstring",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Crystal shards (The Gauntlet)",
+        "output": "Crystal shards (The Gauntlet)",
+        "output_quantity": 80.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Crystal orb",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Corrupted shards",
+        "output": "Corrupted shards",
+        "output_quantity": 80.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Corrupted spike",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Corrupted shards",
+        "output": "Corrupted shards",
+        "output_quantity": 80.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Corrupted bowstring",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Corrupted shards",
+        "output": "Corrupted shards",
+        "output_quantity": 80.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Corrupted orb",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Corrupted dust",
+        "output": "Corrupted dust",
+        "output_quantity": 10.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Corrupted shards",
+            "quantity": 10.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Crystal acorn",
+        "output": "Crystal acorn",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Crystal weapon seed",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Crystal acorn",
+        "output": "Crystal acorn",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Crystal armour seed",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Crystal acorn",
+        "output": "Crystal acorn",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Crystal tool seed",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Crystal dust (Song of the Elves)",
+        "output": "Crystal dust (Song of the Elves)",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Crystal (Song of the Elves)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Crystal dust",
+        "output": "Crystal dust",
+        "output_quantity": 10.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Crystal shard",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Grym potion (unf)",
+        "output": "Grym potion (unf)",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Grym leaf",
+            "quantity": 1.0
+          },
+          {
+            "name": "Water-filled vial",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Grym potion (unf)",
+        "output": "Grym potion (unf)",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Grym leaf (corrupted)",
+            "quantity": 1.0
+          },
+          {
+            "name": "Water-filled vial",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Crystal dust (The Gauntlet)",
+        "output": "Crystal dust (The Gauntlet)",
+        "output_quantity": 10.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Crystal shards (The Gauntlet)",
+            "quantity": 10.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Water-filled vial",
+        "output": "Water-filled vial",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Vial (The Gauntlet)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "The Gauntlet"
+      },
+      {
+        "page": "Water-filled vial",
+        "output": "Water-filled vial",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Vial (The Gauntlet)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "The Corrupted Gauntlet"
+      },
+      {
+        "page": "Stuffed big harpoonfish",
+        "output": "Stuffed big harpoonfish",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Big harpoonfish",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 3500.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Nihil dust",
+        "output": "Nihil dust",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Nihil shard",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Bandosian components",
+        "output": "Bandosian components",
+        "output_quantity": 3.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 4.0,
+        "materials": [
+          {
+            "name": "Bandos chestplate",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Bandosian components",
+        "output": "Bandosian components",
+        "output_quantity": 2.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 4.0,
+        "materials": [
+          {
+            "name": "Bandos tassets",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Abyssal needle",
+        "output": "Abyssal needle",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Needle",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Ancient essence",
+        "output": "Ancient essence",
+        "output_quantity": 5000.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Ancient icon",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Ancient essence",
+        "output": "Ancient essence",
+        "output_quantity": 50000.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Venator shard",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Anima-infused bark",
+        "output": "Anima-infused bark",
+        "output_quantity": 5.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Pheasant tail feathers",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Anima-infused bark",
+        "output": "Anima-infused bark",
+        "output_quantity": 25.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Sturdy beehive parts",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Anima-infused bark",
+        "output": "Anima-infused bark",
+        "output_quantity": 150.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Petal garland",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Anima-infused bark",
+        "output": "Anima-infused bark",
+        "output_quantity": 250.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Golden pheasant egg",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Anima-infused bark",
+        "output": "Anima-infused bark",
+        "output_quantity": 250.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Fox whistle",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Log brace",
+        "output": "Log brace",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Anima-infused bark",
+            "quantity": 3000.0
+          },
+          {
+            "name": "Maple logs",
+            "quantity": 300.0
+          },
+          {
+            "name": "Yew logs",
+            "quantity": 300.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Ritual mulch",
+        "output": "Ritual mulch",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Anima-infused bark",
+            "quantity": 150.0
+          },
+          {
+            "name": "Maple logs",
+            "quantity": 10.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Secateurs blade",
+        "output": "Secateurs blade",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Anima-infused bark",
+            "quantity": 20.0
+          },
+          {
+            "name": "Oak logs",
+            "quantity": 10.0
+          },
+          {
+            "name": "Willow logs",
+            "quantity": 5.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Clothes pouch blueprint",
+        "output": "Clothes pouch blueprint",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Anima-infused bark",
+            "quantity": 10000.0
+          },
+          {
+            "name": "Willow logs",
+            "quantity": 300.0
+          },
+          {
+            "name": "Maple logs",
+            "quantity": 300.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Felling axe handle",
+        "output": "Felling axe handle",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Anima-infused bark",
+            "quantity": 10000.0
+          },
+          {
+            "name": "Oak logs",
+            "quantity": 500.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Arder powder",
+        "output": "Arder powder",
+        "output_quantity": 6.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Arder mushroom",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Musca powder",
+        "output": "Musca powder",
+        "output_quantity": 6.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Musca mushroom",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Warped extract",
+        "output": "Warped extract",
+        "output_quantity": 5.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Tainted essence chunk",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 5000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Twisted extract",
+        "output": "Twisted extract",
+        "output_quantity": 5.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Tainted essence chunk",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 30000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Mangled extract",
+        "output": "Mangled extract",
+        "output_quantity": 5.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Tainted essence chunk",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 60000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Scarred extract",
+        "output": "Scarred extract",
+        "output_quantity": 5.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Tainted essence chunk",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 120000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Fox whistle",
+        "output": "Fox whistle",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Anima-infused bark",
+            "quantity": 75000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Golden pheasant egg",
+        "output": "Golden pheasant egg",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Anima-infused bark",
+            "quantity": 75000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Sawmill voucher",
+        "output": "Sawmill voucher",
+        "output_quantity": 10.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Anima-infused bark",
+            "quantity": 150.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Blessed bat bones",
+        "output": "Blessed bat bones",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Bat bones",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Blessed babydragon bones",
+        "output": "Blessed babydragon bones",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Babydragon bones",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Blessed babywyrm bones",
+        "output": "Blessed babywyrm bones",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Wyrmling bones",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Blessed big bones",
+        "output": "Blessed big bones",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Big bones",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Blessed bones",
+        "output": "Blessed bones",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Bones",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Blessed dragon bones",
+        "output": "Blessed dragon bones",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Dragon bones",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Blessed drake bones",
+        "output": "Blessed drake bones",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Drake bones",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Blessed fayrg bones",
+        "output": "Blessed fayrg bones",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Fayrg bones",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Blessed hydra bones",
+        "output": "Blessed hydra bones",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Hydra bones",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Blessed lava dragon bones",
+        "output": "Blessed lava dragon bones",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Lava dragon bones",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Blessed ourg bones",
+        "output": "Blessed ourg bones",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Ourg bones",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Blessed raurg bones",
+        "output": "Blessed raurg bones",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Raurg bones",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Blessed wyrm bones",
+        "output": "Blessed wyrm bones",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Wyrm bones",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Blessed wyvern bones",
+        "output": "Blessed wyvern bones",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Wyvern bones",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Blessed zogre bones",
+        "output": "Blessed zogre bones",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Zogre bones",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Moonlight grub paste",
+        "output": "Moonlight grub paste",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Moonlight grub",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Sunfire splinters",
+        "output": "Sunfire splinters",
+        "output_quantity": 4000.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Dizana's quiver",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Dagannoth bones (blessed)",
+        "output": "Dagannoth bones (blessed)",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Dagannoth bones",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Rosewood plank",
+        "output": "Rosewood plank",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Rosewood logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 7500.0
+          }
+        ],
+        "variant": "Sawmill"
+      },
+      {
+        "page": "Rosewood plank",
+        "output": "Rosewood plank",
+        "output_quantity": 2.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Rosewood logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 7500.0
+          },
+          {
+            "name": "Sawmill voucher",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Sawmill + Sawmill voucher"
+      },
+      {
+        "page": "Stuffed huge halibut",
+        "output": "Stuffed huge halibut",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Huge halibut",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 5500.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Crushed infernal shale",
+        "output": "Crushed infernal shale",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Infernal shale",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Oathplate shards",
+        "output": "Oathplate shards",
+        "output_quantity": 50.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 4.0,
+        "materials": [
+          {
+            "name": "Oathplate helm",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Oathplate shards",
+        "output": "Oathplate shards",
+        "output_quantity": 50.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 4.0,
+        "materials": [
+          {
+            "name": "Oathplate chest",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Oathplate shards",
+        "output": "Oathplate shards",
+        "output_quantity": 50.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 4.0,
+        "materials": [
+          {
+            "name": "Oathplate legs",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Rainbow crab paste",
+        "output": "Rainbow crab paste",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Rainbow crab",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Stuffed purplefin",
+        "output": "Stuffed purplefin",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Purplefin",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 6000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Stuffed giant blue krill",
+        "output": "Stuffed giant blue krill",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Giant blue krill",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 5000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Stuffed golden haddock",
+        "output": "Stuffed golden haddock",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Golden haddock",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 5000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Stuffed orangefin",
+        "output": "Stuffed orangefin",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Orangefin",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 5000.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Stuffed swift marlin",
+        "output": "Stuffed swift marlin",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Swift marlin",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 6500.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Camphor plank",
+        "output": "Camphor plank",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Camphor logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 2500.0
+          }
+        ],
+        "variant": "Sawmill"
+      },
+      {
+        "page": "Camphor plank",
+        "output": "Camphor plank",
+        "output_quantity": 2.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Camphor logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 2500.0
+          },
+          {
+            "name": "Sawmill voucher",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Sawmill + Sawmill voucher"
+      },
+      {
+        "page": "Ironwood plank",
+        "output": "Ironwood plank",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Ironwood logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 5000.0
+          }
+        ],
+        "variant": "Sawmill"
+      },
+      {
+        "page": "Ironwood plank",
+        "output": "Ironwood plank",
+        "output_quantity": 2.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 1.0,
+        "materials": [
+          {
+            "name": "Ironwood logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Coins",
+            "quantity": 5000.0
+          },
+          {
+            "name": "Sawmill voucher",
+            "quantity": 1.0
+          }
+        ],
+        "variant": "Sawmill + Sawmill voucher"
+      },
+      {
+        "page": "Squid paste",
+        "output": "Squid paste",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 3.0,
+        "materials": [
+          {
+            "name": "Raw swordtip squid",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Squid paste",
+        "output": "Squid paste",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 3.0,
+        "materials": [
+          {
+            "name": "Raw jumbo squid",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Alan's blessed bones",
+        "output": "Alan's blessed bones",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Alan's bones",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Demon tear",
+        "output": "Demon tear",
+        "output_quantity": 10000.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Eye of Ayak (uncharged)",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Crab paste",
+        "output": "Crab paste",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Red crab",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Crab paste",
+        "output": "Crab paste",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Blue crab",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Merchant's paint",
+        "output": "Merchant's paint",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Shark paint",
+            "quantity": 1.0
+          },
+          {
+            "name": "Inky paint",
+            "quantity": 1.0
+          },
+          {
+            "name": "Barracuda paint",
+            "quantity": 1.0
+          },
+          {
+            "name": "Salvor's paint",
+            "quantity": 1.0
+          },
+          {
+            "name": "Angler's paint",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Blessed frost dragon bones",
+        "output": "Blessed frost dragon bones",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Frost dragon bones",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Blessed strykewyrm bones",
+        "output": "Blessed strykewyrm bones",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Strykewyrm bones",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Sap-treated logs",
+        "output": "Sap-treated logs",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Bucket of bloodwood sap",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Sap-treated magic logs",
+        "output": "Sap-treated magic logs",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Magic logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Bucket of bloodwood sap",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Sap-treated yew logs",
+        "output": "Sap-treated yew logs",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Yew logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Bucket of bloodwood sap",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Sap-treated maple logs",
+        "output": "Sap-treated maple logs",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Maple logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Bucket of bloodwood sap",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Sap-treated willow logs",
+        "output": "Sap-treated willow logs",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Willow logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Bucket of bloodwood sap",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Sap-treated oak logs",
+        "output": "Sap-treated oak logs",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Oak logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Bucket of bloodwood sap",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Sap-treated redwood logs",
+        "output": "Sap-treated redwood logs",
+        "output_quantity": 1.0,
+        "skill": "Unskilled",
+        "level": 1,
+        "experience": 0.0,
+        "ticks": 0.0,
+        "materials": [
+          {
+            "name": "Redwood logs",
+            "quantity": 1.0
+          },
+          {
+            "name": "Bucket of bloodwood sap",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
       }
     ]
   }

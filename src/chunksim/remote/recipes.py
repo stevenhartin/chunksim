@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Sequence
 
 
 @dataclass(frozen=True)
@@ -195,3 +195,137 @@ def recipe_query(skill: str, limit: int = 5000) -> str:
         "bucket('recipe').select('page_name','production_json')"
         f".where('uses_skill','{skill}').limit({limit}).run()"
     )
+
+
+#: The corpus key for a recipe that pays **no skill at all**.
+#:
+#: Not a skill and deliberately not spellable as one, because everything that
+#: reads the corpus by skill has to be inert for these: `computed_rates` looks
+#: challenges up under the key and finds none, `challenge_experience` walks the
+#: valid set per skill and never asks, and `estimate._setup` flattens every
+#: skill's rows into one `by_output` and so picks them up without being told.
+UNSKILLED = "Unskilled"
+
+#: What one Bucket page returns at most, measured: `limit(6000)` yields 5,000
+#: exactly where `limit(4000)` yields 4,000, so this is a server cap rather
+#: than the table's size. The table is 7,646 rows, so the unskilled sweep
+#: pages with `offset`.
+BUCKET_PAGE = 5000
+
+
+def reachable_unskilled(
+    skilled: Sequence[Recipe], unskilled: Sequence[Recipe]
+) -> tuple[Recipe, ...]:
+    """The skill-less recipes some chain can actually walk to.
+
+    **1,950 of them exist and a corpus wants about a tenth.** The item walk
+    only ever reaches an unskilled recipe as the *material* of something, so
+    the set that matters is the closure of "named by a skilled recipe, or by
+    an unskilled one already in the set". Everything outside it is a route to
+    a thing no chain asks for.
+
+    **Kept because the walk is not free.** Carrying all 1,950 doubled a cold
+    every-rollable-chunk estimate (14s to 26s) and added 900KB to a blob that
+    ships in the wheel, for five methods and two corrected Construction costs.
+    The closure keeps both and costs neither.
+
+    **Seeded from recipe materials rather than from the export**, so this needs
+    no `ChunkInfo` and behaves identically wherever `scrape_recipes` is called
+    from. A challenge's `Items` are plain items the export itself routes; what
+    the export never names is the *middle* of a wiki chain, which is exactly
+    what a skilled recipe's materials point at.
+    """
+    by_output: dict[str, list[Recipe]] = {}
+    for recipe in unskilled:
+        by_output.setdefault(recipe.output.lower(), []).append(recipe)
+    wanted = {
+        material.name.lower() for recipe in skilled for material in recipe.materials
+    }
+    keep: dict[int, Recipe] = {}
+    frontier = [name for name in wanted if name in by_output]
+    seen: set[str] = set()
+    while frontier:
+        name = frontier.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        for recipe in by_output.get(name, ()):
+            keep[id(recipe)] = recipe
+            for material in recipe.materials:
+                nxt = material.name.lower()
+                if nxt in by_output and nxt not in seen:
+                    frontier.append(nxt)
+    return tuple(recipe for recipe in unskilled if id(recipe) in keep)
+
+
+def unskilled_query(limit: int = BUCKET_PAGE, offset: int = 0) -> str:
+    """The Bucket query for one page of *every* recipe, skilled or not.
+
+    **There is no `where` that selects the skill-less ones**, so the whole
+    table is swept and `parse_unskilled` keeps what has no `skills` block.
+    """
+    tail = f".offset({offset})" if offset else ""
+    return (
+        "bucket('recipe').select('page_name','production_json')"
+        f".limit({limit}){tail}.run()"
+    )
+
+
+def parse_unskilled(rows: list[dict[str, Any]]) -> tuple[Recipe, ...]:
+    """Every recipe in `rows` that pays **no skill**, as a zero-XP `Recipe`.
+
+    **A step that pays nothing is still a step**, and the item walk needs it.
+    `{{Recipe}}` files a recipe under a skill only where it awards experience,
+    so `bucket('recipe').where('uses_skill', ...)` cannot see the assembly
+    moves in the middle of a chain - pressing `Gianne dough` into a `Batta
+    tin`, threading a `Spider carcass` onto a `Skewer stick`, grinding a
+    `Raw cod`. Those outputs then have no route anywhere and everything behind
+    them is dropped for want of an input.
+
+    Measured over the whole table: 1,163 of 7,646 recipes pay no skill, and
+    **53 of them make a material some skilled recipe wants and nothing else
+    can reach**.
+
+    `experience` is `0.0` and `level` is `1` because that is what the wiki
+    says: the row carries neither, and inventing either would put a training
+    method where there is none. `skill` is `UNSKILLED`, which no challenge
+    category answers to, so the rate layers never see these at all.
+    """
+    found: list[Recipe] = []
+    for row in rows:
+        raw = row.get("production_json")
+        if not isinstance(raw, str):
+            continue
+        try:
+            production = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(production, dict) or production.get("skills"):
+            continue
+        output = production.get("output")
+        if not isinstance(output, dict) or not isinstance(output.get("name"), str):
+            continue
+        materials = tuple(
+            Material(name=material["name"], quantity=_number(material.get("quantity")) or 1.0)
+            for material in production.get("materials") or []
+            if isinstance(material, dict) and isinstance(material.get("name"), str)
+        )
+        if not materials:
+            # Nothing to charge and nothing to walk through - a row that makes
+            # something out of thin air is not a route.
+            continue
+        ticks = _number(production.get("ticks"))
+        found.append(
+            Recipe(
+                page=str(row.get("page_name") or ""),
+                output=output["name"],
+                output_quantity=_number(output.get("quantity")) or 1.0,
+                skill=UNSKILLED,
+                level=1,
+                experience=0.0,
+                ticks=float(ticks) if ticks is not None and ticks >= 0 else None,
+                materials=materials,
+                variant=str(output.get("subtxt") or ""),
+            )
+        )
+    return tuple(found)

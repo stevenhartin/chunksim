@@ -1257,18 +1257,61 @@ only `{{Skilling success chart}}` is for the *fish*. The report said
 `unpriced`. `trawler.refused` says it where a reader can see it, gated on the
 leaks actually being priced for `foundry.refused`'s reason.
 
+**A `{{Recipe}}` that pays nothing is filed under no skill, and the whole
+corpus is fetched per skill.** That is one query shape hiding an entire class
+of data: `bucket('recipe').where('uses_skill', <skill>)` cannot see the
+assembly moves in the middle of a chain, because the wiki files a recipe under
+a skill only where it awards experience. Pressing `Gianne dough` into a
+`Batta tin`, threading a `Spider carcass` onto a `Skewer stick`, grinding a
+`Raw cod` - each has a real `{{Recipe}}` with real ticks and real materials,
+and none of them was ever fetched. Measured over the whole table, **1,163 of
+the first 5,000 rows pay no skill and 53 of those make a material some skilled
+recipe wants and nothing else can reach.**
+
+**It retired a hand table written an hour earlier**, which is the lesson worth
+keeping: three `MATERIAL_ALIASES` entries had just mapped `Raw batta` and its
+siblings to `Gianne dough` on the strength of upstream's own `Items`, because
+the wiki *appeared* to state no recipe. It states one. **Check whether the
+wiki is silent before writing down what it should have said** - an alias each
+would have been 53 hand entries for a gap one query closes.
+
+**Two mechanics, both measured.** The Bucket caps a page at 5,000 rows
+(`limit(6000)` returns 5,000 where `limit(4000)` returns 4,000) against a
+7,646-row table, so `scrape_unskilled` pages with `offset`. And carrying all
+1,950 skill-less recipes doubled a cold every-rollable-chunk estimate - 14s to
+26s - and added 900KB to a blob that ships in the wheel, for five methods.
+`recipes.reachable_unskilled` keeps the closure of "named by a skilled recipe,
+or by an unskilled one already in the set": **292 rows, 16.9s, +124KB**, and
+the same five methods. Seeded from recipe materials rather than from the
+export, so it needs no `ChunkInfo` and behaves the same wherever
+`scrape_recipes` is called from.
+
+**And two more Cooking methods that no recipe could ever describe.** `Cut up a
+~|leechfin|~` states `Output: "Leechfin loot"` and the wiki writes no recipe
+for it either - a cut makes a *chance* of a blood sac rather than a product -
+but the fish's own page times it in prose, "automatically cut once per tick
+(which cannot be sped up), providing 20 Cooking experience each". So
+`costing/leechfin.py` is 120,000/hr headline and **11,942 effective**, the
+fish charged in full through `material_seconds_per_xp` even though the page
+says cutting only "reduces experience rates by about 40%" - nothing states how
+the two interleave. And `Giant crab meat` is a MediaWiki **redirect** to the
+`Crab meat` upstream names, which is the cleanest `MATERIAL_ALIASES` entry
+there is: one page, one item id.
+
+**Cooking is 192 modelled, 2 guessed and 2 unpriced of 208**, from 175/1/20
+when this stretch began. The two left are `nettle tea` and `raw swamp paste`,
+whose recipes carry a genuinely blank `ticks` with no sibling to borrow from.
+
 **Gnome Restaurant needed no model at all - it needed a step the wiki
 documents in prose and never writes a `{{Recipe}}` for.** Every gnome dish
 priced out at the first move: pressing `Gianne dough` into a `Batta tin`, a
 `Crunchy tray` or a `Gnomebowl mould`. The wiki names what comes out (`Raw
 batta`, `Raw crunchies`, `Raw gnomebowl`), states no recipe for it, and those
 three names therefore have no route anywhere in the export - so the whole
-chain behind them was dropped for want of an input. **Upstream states the cost
-itself and in its own notation**: all three `Bake a ~|half baked ...|~`
-challenges list the container *unmarked* and `Gianne dough*` starred, which is
-exactly "one dough is spent and the tin is not". So this is
-`recipe_rates.MATERIAL_ALIASES`' `Black mask` shape - the mapping is
-upstream's rather than a guess - and three entries closed it.
+chain behind them was dropped for want of an input. **The wiki was not silent after all** - see the paragraph
+above: it writes a `{{Recipe}}` for each, the recipe simply pays no skill, and
+the per-skill sweep could not see it. Three `MATERIAL_ALIASES` entries closed
+it first and were retired within the hour.
 
 **And the fourth crunchy.** `Worm crunchies` carries no stated ticks where
 `Toad`, `Spicy` and `Chocchip` on the same page all state **1** for the

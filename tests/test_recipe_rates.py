@@ -1048,36 +1048,22 @@ class TestMaterialAliasesAreHandVerified:
             "Araxyte venom sack"
         )
 
-    def test_a_step_the_wiki_documents_and_never_writes_a_recipe_for(self) -> None:
-        """**The third shape.** Gnome cooking starts by pressing `Gianne
-        dough` into a tin, a tray or a mould; the wiki names what comes out
-        and states no `{{Recipe}}` for it, so `Raw batta` and its two siblings
-        have no route anywhere and every gnome dish was dropped for want of
-        one."""
-        for raw in ("Raw batta", "Raw crunchies", "Raw gnomebowl"):
-            assert recipe_rates.MATERIAL_ALIASES[raw] == "Gianne dough"
+    def test_a_redirect_the_output_fetch_cannot_see(self) -> None:
+        """The cleanest entry here: `Crab meat` and `Giant crab meat` are one
+        wiki page and one item id, so this is a MediaWiki redirect seen on the
+        material axis where `wiki_aliases.json` cannot look."""
+        assert recipe_rates.MATERIAL_ALIASES["Giant crab meat"] == "Crab meat"
 
-    @pytest.mark.real_export
-    def test_upstream_states_that_cost_in_its_own_notation(
-        self, real_export: ChunkInfo
-    ) -> None:
-        """**The mapping is upstream's rather than a guess**, which is what
-        the `Black mask` entry above rests on too: all three `Bake a ~|half
-        baked ...|~` challenges list the container *unmarked* and `Gianne
-        dough*` starred, so one dough is spent and the tin is not."""
-        cooking = real_export.challenges["Cooking"]
-        for task in (
-            "Bake a ~|half baked batta|~",
-            "Bake a ~|half baked crunchy|~",
-            "Bake a ~|half baked bowl|~",
-        ):
-            entry = cooking.get(task)
-            assert isinstance(entry, dict), task
-            items = list(entry.get("Items") or ())
-            assert "Gianne dough*" in items, task
-            container = [item for item in items if item != "Gianne dough*"]
-            assert len(container) == 1, task
-            assert not container[0].endswith("*"), (task, container)
+    def test_the_gnome_dough_entries_were_retired_rather_than_kept(self) -> None:
+        """**They were the wrong fix, not an obsolete one.** `Raw batta` and
+        its two siblings were mapped to `Gianne dough` because the wiki
+        appeared to state no `{{Recipe}}` for pressing dough into a tin. It
+        states one - the recipe just pays no skill, and the per-skill Bucket
+        sweep could not see it. `remote/recipes.parse_unskilled` fetches those
+        now, and 53 materials had no route for the same reason: an alias each
+        would have been 53 hand entries."""
+        for raw in ("Raw batta", "Raw crunchies", "Raw gnomebowl"):
+            assert raw not in recipe_rates.MATERIAL_ALIASES
 
     def test_they_run_the_opposite_way_to_the_output_aliases(self) -> None:
         """Conflating the two would search the wrong dictionary - one takes an

@@ -389,6 +389,11 @@ The modules, and what each owns:
 - `gnomecooking.py` - the one gnome crunchy the wiki leaves untimed, against
   three siblings on the same page that all state one tick. `costing/yewtree.py`
   reversed: a small, closed, uniform family where the odd one out is the blank.
+- `leechfin.py` - cutting a leechfin, which the wiki times in prose ("once per
+  tick ... providing 20 Cooking experience each") and never in a `{{Recipe}}`,
+  because the cut makes a *chance* of a blood sac rather than a product. The
+  fish is the whole cost and is charged in full through
+  `material_seconds_per_xp`.
 - `mess.py` - the Hosidius Mess, whose three foods join a `{{Recipe}}` and lose
   their inputs because a servery pie shell exists nowhere in the export's item
   graph. Priced as an activity instead: the page states a level, a turn-in

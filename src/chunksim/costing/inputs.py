@@ -62,6 +62,7 @@ from chunksim.costing import (
     foundry,
     herbiboar,
     implings,
+    leechfin,
     mess,
     paydirt,
     pickpocket,
@@ -582,6 +583,10 @@ def recipe_priced(
     # inputs, because a servery pie shell is made in a kitchen and exists
     # nowhere in the export's item graph.
     messed = mess.methods(derived.challenges.valid)
+    # **A knife action the wiki times in prose** - see `costing/leechfin.py`,
+    # whose output upstream names as a loot table and whose whole cost is the
+    # fish. Charged below.
+    cut = leechfin.methods(derived.challenges.valid)
     overrides = blobs.overrides
     # **The hand materials do not depend on the recipes**, so they are read
     # before the early return: a clone with no `chunksim recipes` cache still
@@ -608,7 +613,7 @@ def recipe_priced(
             replace(
                 heuristics,
                 computed=_merge_computed(
-                    prayed, craned, totemed, trawled, polished, messed, gathered
+                    prayed, craned, totemed, trawled, polished, messed, cut, gathered
                 ),
                 material_seconds_per_xp={**by_calc, **by_spell, **by_hand},
             ),
@@ -668,6 +673,9 @@ def recipe_priced(
     # states no `Output` for - so the item walk has no route to a raw lizard
     # and the recipe's 360,000/hr would stand. See `costing/stated.py`.
     per_xp.update(stated.moss_lizard_cook_material_seconds_per_xp(derived.challenges.valid))
+    # **And the leechfin cut**, whose fish the walk can price and whose action
+    # no `{{Recipe}}` describes - see `costing/leechfin.py`.
+    per_xp.update(leechfin.material_seconds_per_xp(derived.challenges.valid, seconds))
     per_xp.update(
         tarnished.material_seconds_per_xp(
             _mapping(state.chunk_info.challenges, "Crafting"),
@@ -782,7 +790,7 @@ def recipe_priced(
             training=rated,
             action_seconds=timed,
             computed=_merge_computed(
-                prayed, craned, totemed, trawled, polished, messed, gathered
+                prayed, craned, totemed, trawled, polished, messed, cut, gathered
             ),
             material_seconds_per_xp=per_xp,
             material_xp_per_xp=credited,

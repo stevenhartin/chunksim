@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from chunksim.remote.recipes import parse_recipes, recipe_query
+from chunksim.remote.recipes import Recipe, parse_recipes, recipe_query
 
 
 def _row(page: str, **production: Any) -> dict[str, Any]:
@@ -192,3 +192,176 @@ def test_the_query_asks_for_one_skill() -> None:
     assert "bucket('recipe')" in query
     assert "where('uses_skill','Herblore')" in query
     assert "production_json" in query
+
+
+class TestARecipeThatPaysNothingIsStillARoute:
+    """**`{{Recipe}}` files a recipe under a skill only where it awards
+    experience**, so `bucket('recipe').where('uses_skill', ...)` cannot see
+    the assembly moves in the middle of a chain - pressing `Gianne dough` into
+    a `Batta tin`, threading a `Spider carcass` onto a `Skewer stick`. Those
+    outputs then had no route anywhere and everything behind them was dropped
+    for want of an input."""
+
+    def test_a_skill_less_row_becomes_a_zero_xp_recipe(self) -> None:
+        from chunksim.remote.recipes import UNSKILLED, parse_unskilled
+
+        row = _row(
+            "Spider on stick (raw)",
+            ticks="1",
+            skills=[],
+            output={"name": "Spider on stick (raw)", "quantity": "1"},
+            materials=[
+                {"name": "Skewer stick", "quantity": "1"},
+                {"name": "Spider carcass", "quantity": "1"},
+            ],
+        )
+
+        (recipe,) = parse_unskilled([row])
+
+        assert recipe.output == "Spider on stick (raw)"
+        assert recipe.skill == UNSKILLED
+        assert (recipe.experience, recipe.level) == (0.0, 1)
+        assert recipe.ticks == 1.0
+        assert [m.name for m in recipe.materials] == ["Skewer stick", "Spider carcass"]
+
+    def test_a_row_that_pays_a_skill_is_left_to_the_per_skill_sweep(self) -> None:
+        from chunksim.remote.recipes import parse_unskilled
+
+        row = _row(
+            "Bread",
+            ticks="1",
+            skills=[{"experience": "40", "level": "1", "name": "Cooking"}],
+            output={"name": "Bread", "quantity": "1"},
+            materials=[{"name": "Bread dough", "quantity": "1"}],
+        )
+
+        assert parse_unskilled([row]) == ()
+
+    def test_a_row_with_no_materials_is_not_a_route(self) -> None:
+        """Nothing to charge and nothing to walk through."""
+        from chunksim.remote.recipes import parse_unskilled
+
+        row = _row(
+            "Thing",
+            ticks="1",
+            skills=[],
+            output={"name": "Thing", "quantity": "1"},
+            materials=[],
+        )
+
+        assert parse_unskilled([row]) == ()
+
+    def test_the_query_pages_past_the_row_cap(self) -> None:
+        """Measured: `limit(6000)` yields 5,000 exactly where `limit(4000)`
+        yields 4,000, so it is a server cap and the table is bigger."""
+        from chunksim.remote.recipes import BUCKET_PAGE, unskilled_query
+
+        first = unskilled_query(BUCKET_PAGE, 0)
+        second = unskilled_query(BUCKET_PAGE, BUCKET_PAGE)
+
+        assert "offset" not in first
+        assert f".offset({BUCKET_PAGE})" in second
+        assert "uses_skill" not in first
+
+    def test_the_key_is_not_a_skill_any_challenge_answers_to(self) -> None:
+        """Everything that reads the corpus by skill has to be inert for
+        these: `computed_rates` looks challenges up under the key and finds
+        none."""
+        from chunksim.costing import coverage
+        from chunksim.remote.recipes import UNSKILLED
+
+        assert UNSKILLED not in coverage.SKILLS
+
+
+class TestAgainstTheShippedCorpus:
+    def test_the_unskilled_rows_are_there_and_pay_nothing(self) -> None:
+        from chunksim.costing.inputs import load_reference
+        from chunksim.remote.recipes import UNSKILLED
+
+        rows = load_reference(None, None).recipes.get(UNSKILLED, ())
+
+        assert len(rows) > 100
+        assert {recipe.experience for recipe in rows} == {0.0}
+        assert all(recipe.materials for recipe in rows)
+
+    def test_the_three_that_prompted_it_are_present(self) -> None:
+        from chunksim.costing.inputs import load_reference
+        from chunksim.remote.recipes import UNSKILLED
+
+        made = {
+            recipe.output for recipe in load_reference(None, None).recipes.get(UNSKILLED, ())
+        }
+
+        assert {"Raw batta", "Spider on stick (raw)", "Spider on shaft (raw)"} <= made
+
+
+class TestOnlyTheReachableUnskilledRecipesAreKept:
+    """1,950 skill-less recipes exist and a corpus wants about a tenth. The
+    walk only ever reaches one as the *material* of something, so the set that
+    matters is the closure of "named by a skilled recipe, or by an unskilled
+    one already in the set"."""
+
+    def _recipe(self, output: str, materials: list[str], skill: str) -> Recipe:
+        from chunksim.remote.recipes import Material
+
+        return Recipe(
+            page=output,
+            output=output,
+            output_quantity=1.0,
+            skill=skill,
+            level=1,
+            experience=0.0,
+            ticks=1.0,
+            materials=tuple(Material(name, 1.0) for name in materials),
+        )
+
+    def test_a_material_a_skilled_recipe_wants_is_kept(self) -> None:
+        from chunksim.remote.recipes import UNSKILLED, reachable_unskilled
+
+        skilled = [self._recipe("Pie", ["Raw batta"], "Cooking")]
+        unskilled = [self._recipe("Raw batta", ["Gianne dough"], UNSKILLED)]
+
+        assert reachable_unskilled(skilled, unskilled) == tuple(unskilled)
+
+    def test_the_closure_follows_the_chain(self) -> None:
+        from chunksim.remote.recipes import UNSKILLED, reachable_unskilled
+
+        skilled = [self._recipe("Pie", ["Shell"], "Cooking")]
+        unskilled = [
+            self._recipe("Shell", ["Dough"], UNSKILLED),
+            self._recipe("Dough", ["Flour"], UNSKILLED),
+        ]
+
+        assert reachable_unskilled(skilled, unskilled) == tuple(unskilled)
+
+    def test_what_no_chain_asks_for_is_dropped(self) -> None:
+        from chunksim.remote.recipes import UNSKILLED, reachable_unskilled
+
+        skilled = [self._recipe("Pie", ["Shell"], "Cooking")]
+        unskilled = [
+            self._recipe("Shell", ["Dough"], UNSKILLED),
+            self._recipe("Toy", ["Wood"], UNSKILLED),
+        ]
+
+        assert [r.output for r in reachable_unskilled(skilled, unskilled)] == ["Shell"]
+
+    def test_a_cycle_does_not_hang_it(self) -> None:
+        from chunksim.remote.recipes import UNSKILLED, reachable_unskilled
+
+        skilled = [self._recipe("Pie", ["A"], "Cooking")]
+        unskilled = [
+            self._recipe("A", ["B"], UNSKILLED),
+            self._recipe("B", ["A"], UNSKILLED),
+        ]
+
+        assert len(reachable_unskilled(skilled, unskilled)) == 2
+
+    def test_the_shipped_corpus_is_the_closure_rather_than_the_table(self) -> None:
+        """Carrying all 1,950 doubled a cold every-rollable-chunk estimate and
+        added 900KB to a blob that ships in the wheel."""
+        from chunksim.costing.inputs import load_reference
+        from chunksim.remote.recipes import UNSKILLED
+
+        rows = load_reference(None, None).recipes.get(UNSKILLED, ())
+
+        assert 100 < len(rows) < 800

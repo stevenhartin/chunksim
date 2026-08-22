@@ -48,7 +48,16 @@ from chunksim.costing.heuristics import (
 )
 from chunksim.costing.slayer import SheetFormatError, parse_mob_data, parse_task_lengths
 from chunksim.model.summary import _mapping
-from chunksim.remote.recipes import parse_recipes, recipe_query
+from chunksim.remote.recipes import (
+    Recipe,
+    BUCKET_PAGE,
+    UNSKILLED,
+    parse_recipes,
+    parse_unskilled,
+    reachable_unskilled,
+    recipe_query,
+    unskilled_query,
+)
 from chunksim.remote import combat, farming, prayer, skill_tables, stores
 from chunksim.remote.wiki import (
     ASSIGNMENTS_PAGE,
@@ -329,12 +338,45 @@ def scrape_recipes(
     the game* rather than somebody's estimate of a rate - which is why they get
     their own blob and their own refresh, and why a method priced from them
     needs no join at all.
+
+    **And two more requests for the recipes that pay nothing.** `{{Recipe}}`
+    files a recipe under a skill only where it awards experience, so a
+    per-skill sweep cannot see the assembly moves in the middle of a chain -
+    and the item walk needs them, or the chain behind them has no route. See
+    `recipes.parse_unskilled`; the paging is the Bucket's 5,000-row cap.
     """
     found: dict[str, Any] = {}
+    skilled: list[Recipe] = []
     for skill in skills:
         rows = fetch_bucket(recipe_query(skill), timeout)
-        found[skill] = [recipe.as_dict() for recipe in parse_recipes(rows, skill)]
+        parsed = parse_recipes(rows, skill)
+        skilled.extend(parsed)
+        found[skill] = [recipe.as_dict() for recipe in parsed]
+    # **Only the ones a chain can walk to** - see `recipes.reachable_unskilled`
+    # for the closure and for what carrying all 1,950 cost.
+    found[UNSKILLED] = [
+        recipe.as_dict()
+        for recipe in reachable_unskilled(skilled, scrape_unskilled(timeout))
+    ]
     return found
+
+
+def scrape_unskilled(timeout: float = DEFAULT_TIMEOUT) -> tuple[Recipe, ...]:
+    """Every recipe in the table that pays no skill, paged past the row cap.
+
+    **The whole table has to be swept**, because nothing selects the
+    skill-less rows: `where('uses_skill', ...)` needs a skill to name. Pages
+    stop when one comes back short, which is what says the table has ended
+    rather than the cap having been hit.
+    """
+    found: list[Recipe] = []
+    offset = 0
+    while True:
+        rows = fetch_bucket(unskilled_query(BUCKET_PAGE, offset), timeout)
+        found.extend(parse_unskilled(rows))
+        if len(rows) < BUCKET_PAGE:
+            return tuple(found)
+        offset += BUCKET_PAGE
 
 
 def recipe_coverage(recipes: Mapping[str, Any]) -> dict[str, tuple[int, int]]:
