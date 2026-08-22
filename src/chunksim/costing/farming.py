@@ -245,6 +245,45 @@ CROP_ALIASES: dict[str, str] = {
 #: The prefix upstream gives an uncleaned herb, which the calculator does not.
 _GRIMY = "grimy "
 
+#: Upstream's own patch name -> the schedule line it is, for the patches that
+#: are one. **The second half of the join, and the better half**: a crop
+#: challenge states `Objects: ["Hops Patch"]` whether or not the calculator's
+#: table has heard of the crop, so where `CROP_ALIASES` is a rename this is
+#: upstream telling us what kind of thing a crop is.
+#:
+#: `flax`, `hemp` and `cotton` are why it exists: all three are planted in a
+#: hops patch exactly as barley and the four hops are, and none of them has a
+#: row in `Module:Skill calc/Farming`. Upstream says `Hops Patch` on all
+#: eight, so they classify together without the calculator having to catch up.
+#:
+#: **`Hops` and `Flower` are deliberately absent from
+#: `DEFAULT_HARVESTS_PER_DAY`** and are listed here anyway, because the point
+#: is to reach the "not in the schedule" sentence rather than to fall off the
+#: end of the join. A patch not named here, and a challenge that states no
+#: patch at all, keep `unpriced`.
+PATCH_KEYS: dict[str, str] = {
+    "allotment patch": "Allotment",
+    "bush patch": "Bush",
+    "cactus patch": "Cactus",
+    "flower patch": "Flower",
+    "fruit tree patch": "Fruit tree",
+    "hardwood tree patch": "Hardwood",
+    "herb patch": "Herb",
+    "hops patch": "Hops",
+    "redwood tree patch": "Redwood",
+    "tree patch": "Tree",
+}
+
+
+def patch_key(challenge: Mapping[str, Any]) -> str | None:
+    """The schedule line upstream's own `Objects` says this crop grows on."""
+    for name in challenge.get("Objects") or ():
+        if isinstance(name, str):
+            found = PATCH_KEYS.get(name.strip().lower())
+            if found is not None:
+                return found
+    return None
+
 
 def crop_for(task: str, crops: Sequence[Crop]) -> Crop | None:
     """The crop a `Grow a ~|...|~` challenge is about, or `None`.
@@ -268,6 +307,7 @@ def crop_for(task: str, crops: Sequence[Crop]) -> Crop | None:
 def refused(
     valid: Mapping[str, Any],
     crops: Sequence[Crop],
+    challenges: Mapping[str, Any] = {},
     *,
     harvests_per_day: Mapping[str, float] | None = None,
     level: int = 99,
@@ -295,15 +335,27 @@ def refused(
     enormous and would win every band - the exact error `estimate.
     _farming_bands` exists to avoid, and the reason this module reports days.
 
+    **Two ways in, and the second is upstream's rather than the wiki's.**
+    `crop_for` matches the calculator's table; where that has no row,
+    `patch_key` reads the patch off the challenge's own `Objects` - which is
+    how `flax`, `hemp` and `cotton` classify with the hops they are planted
+    beside despite the calculator carrying none of the three. A challenge that
+    states neither keeps `unpriced`, which is honest and is what the two
+    Chambers of Xeric herbs and the Sorceress's Garden get: they name no patch
+    because they are not farmed.
+
     `level` is where the schedule is read, and only the *winner named in a
     sentence* depends on it: at 99 the herb line takes torstol, lower down it
     takes something else, and either way there is no hourly rate for any of
-    them. A crop this cannot join keeps `unpriced`, which is honest - the
-    join is what says which sentence applies.
+    them.
     """
     reachable = valid.get(SKILL) or {}
-    if not reachable or not crops:
+    if not reachable:
         return {}
+    # **The crop table is optional and the patch fallback is not.** With no
+    # table `plan_for` names no winner, so an in-schedule line reads
+    # "another crop" - vague but true; what still works is the sentence that
+    # matters most here, since a hops patch is excluded whatever is planted.
     rates = dict(
         DEFAULT_HARVESTS_PER_DAY if harvests_per_day is None else harvests_per_day
     )
@@ -313,14 +365,20 @@ def refused(
     found: dict[str, str] = {}
     for task in reachable:
         crop = crop_for(task, crops)
-        if crop is None:
-            continue
-        key = schedule_key(crop)
+        if crop is not None:
+            key = schedule_key(crop)
+            mine = crop.name
+        else:
+            body = challenges.get(task)
+            key = patch_key(body) if isinstance(body, dict) else None
+            mine = ""
+            if key is None:
+                continue
         if key is None or rates.get(key, 0.0) <= 0:
             found[task] = (
                 "deliberately not in the growing schedule - see costing/farming.py"
             )
-        elif winners.get(key) == crop.name:
+        elif mine and winners.get(key) == mine:
             found[task] = (
                 f"the growing schedule's {key} crop - Farming is priced in days"
             )

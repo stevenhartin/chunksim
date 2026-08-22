@@ -305,10 +305,73 @@ class TestTheScheduleAnswersForTheCrops:
         found = farming.refused(self._VALID, self._CROPS, harvests_per_day={})
 
         assert all("deliberately not" in why for why in found.values())
-
     def test_it_invents_no_rate(self) -> None:
         """The one thing that must not happen: a herb harvest is a hundred
         experience for a few seconds of clicking, so a per-crop rate reads
         enormous and would win every band - `estimate._farming_bands`' error."""
         assert all(isinstance(why, str) for why in self._found().values())
         assert not hasattr(farming, "crop_rate")
+
+
+class TestUpstreamsOwnPatchIsTheOtherWayIn:
+    """**The better half of the join.** A crop challenge states its patch
+    whether or not the calculator's table has heard of the crop, so `flax`,
+    `hemp` and `cotton` classify with the hops they are planted beside
+    despite `Module:Skill calc/Farming` carrying none of the three."""
+
+    _VALID = {"Farming": {"Grow ~|flax|~": True, "Grow ~|barley|~": True}}
+    _CHALLENGES = {
+        "Grow ~|flax|~": {"Objects": ["Hops Patch"]},
+        "Grow ~|barley|~": {"Objects": ["Hops Patch"]},
+    }
+
+    def test_a_patch_name_reads_as_its_schedule_line(self) -> None:
+        assert farming.patch_key({"Objects": ["Hops Patch"]}) == "Hops"
+        assert farming.patch_key({"Objects": ["Herb patch"]}) == "Herb"
+        assert farming.patch_key({"Objects": ["Fruit Tree Patch"]}) == "Fruit tree"
+
+    def test_a_patch_nothing_answers_to_is_none(self) -> None:
+        assert farming.patch_key({"Objects": ["Belladonna patch"]}) is None
+        assert farming.patch_key({}) is None
+
+    def test_the_three_fibres_read_as_the_hops_they_grow_beside(self) -> None:
+        found = farming.refused(self._VALID, [], self._CHALLENGES)
+
+        assert set(found) == {"Grow ~|flax|~", "Grow ~|barley|~"}
+        assert len(set(found.values())) == 1
+        assert "deliberately not in the growing schedule" in found["Grow ~|flax|~"]
+
+    def test_the_calculators_row_still_wins_where_there_is_one(self) -> None:
+        """`crop_for` is tried first, so a crop the table knows keeps the
+        sentence its own row earns rather than its patch's."""
+        crops = [_crop("Torstol", "Herb", 85, 20.0), _crop("Guam leaf", "Herb", 9, 1.0)]
+        found = farming.refused(
+            {"Farming": {"Grow a ~|grimy guam leaf|~": True}},
+            crops,
+            {"Grow a ~|grimy guam leaf|~": {"Objects": ["Herb patch"]}},
+        )
+
+        assert "outranked on the Herb line" in found["Grow a ~|grimy guam leaf|~"]
+
+    def test_a_challenge_naming_no_patch_keeps_unpriced(self) -> None:
+        """Which is what the two Chambers of Xeric herbs and the Sorceress's
+        Garden get: they name no patch because they are not farmed."""
+        found = farming.refused(
+            {"Farming": {"Grow a ~|grimy buchu|~": True}},
+            [],
+            {"Grow a ~|grimy buchu|~": {"Category": ["CoX"]}},
+        )
+
+        assert found == {}
+
+    def test_a_patch_line_the_schedule_does_farm_reads_as_outranked(self) -> None:
+        """A future crop the calculator has no row for still classifies: it is
+        not the winner, because the winner comes from the table."""
+        crops = [_crop("Torstol", "Herb", 85, 20.0)]
+        found = farming.refused(
+            {"Farming": {"Grow a ~|grimy newherb|~": True}},
+            crops,
+            {"Grow a ~|grimy newherb|~": {"Objects": ["Herb patch"]}},
+        )
+
+        assert "outranked on the Herb line" in found["Grow a ~|grimy newherb|~"]

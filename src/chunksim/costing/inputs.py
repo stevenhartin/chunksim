@@ -843,6 +843,7 @@ def recipe_priced(
                 **farming.refused(
                     derived.challenges.valid,
                     heuristics.crops,
+                    _mapping(state.chunk_info.challenges, "Farming"),
                     harvests_per_day={
                         **farming.DEFAULT_HARVESTS_PER_DAY,
                         **heuristics.farming_schedule,

@@ -1294,10 +1294,19 @@ a plural the calculator writes and upstream does not (`Marigolds`), a
 *product* where upstream names the plant (`Calquat fruit`, `Cactus spine`, and
 the three anima seeds). `farming.CROP_ALIASES` closes them, and what it buys
 is the sentence rather than a rate: each lands in the outranked or excluded
-bucket once it joins. Farming goes **85 unpriced to 6**, and the six are the
-two Chambers of Xeric herbs this module already calls "not farmed, they are
-found", three Sailing fibres the calculator has no rows for, and the
-Sorceress's Garden, which is not a patch at all.
+bucket once it joins.
+
+**The last three needed no rename because upstream states the patch itself**,
+which turns out to be the better half of the join. `flax`, `hemp` and `cotton`
+have no row in `Module:Skill calc/Farming` at all - and all three carry
+`Objects: ["Hops Patch"]`, exactly as `barley` and the four hops do. So
+`farming.patch_key` reads the schedule line off the challenge rather than the
+crop, and the eight hops-patch crops classify together without the calculator
+having to catch up. Where `CROP_ALIASES` is a rename, this is upstream telling
+us what kind of thing a crop is; the calculator's row still wins where there
+is one. Farming goes **85 unpriced to 3**, and the three name no patch because
+they are not farmed: the two Chambers of Xeric herbs this module already calls
+"not farmed, they are found", and the Sorceress's Garden, which is a minigame.
 
 **Crafting's join misses were four names and one of them was a whole other
 skill's answer.** Nine methods closed and the shapes are worth separating:
