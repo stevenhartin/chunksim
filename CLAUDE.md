@@ -1362,10 +1362,22 @@ five a guardian stone, plus the end-of-game charge - which inflates the count
 when you divide it back out. `gotr.py` divides and multiplies by the same mix
 and cancels it; spending it on a *different* skill would spend the inflation.
 
-**Crafting is 228 modelled, 12 one-off and 3 unpriced**, from 195/2/48 when
-this stretch began. What is left is **the two heraldic pieces**, whose wiki
-page carries no `{{Recipe}}` and states no experience anywhere, and **Pest
-Control's barricades**.
+**And the heraldic pair was a reading error of this project's, not a gap in
+the wiki.** `Heraldic helmet (Construction)` really does carry no `{{Recipe}}`
+and state no experience - but the *variants* do, and there are ninety-six of
+them: three metals by sixteen crests, per piece. Measured over the corpus
+every helm is Crafting **38, 37 experience, 6 ticks** and every kiteshield
+**43, 40 and 6**, which are upstream's own `Level`s exactly. So it is the
+snelm's family shape at scale - the crest is invisible to a rate and the metal
+is only what the base costs - and the alias names **steel**, because the
+experience is identical and `rate_for` maximises, so given all forty-eight it
+would pick the cheapest base itself. The lowercase `(construction)` was never
+the problem: `by_output` is matched case-insensitively and would have found
+the page if it carried a recipe.
+
+**Crafting is 230 modelled, 12 one-off and 1 unpriced**, from 195/2/48 when
+this stretch began, and the one left is **Pest Control's barricades** - a
+minigame that joins nothing and publishes no repair rate.
 
 **A `{{Recipe}}` that pays nothing is filed under no skill, and the whole
 corpus is fetched per skill.** That is one query shape hiding an entire class

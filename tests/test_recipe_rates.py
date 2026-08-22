@@ -1254,6 +1254,49 @@ class TestTheCraftingHandAliases:
         assert recipe_rates.HAND_ALIASES["snelm"] == "Myre snelm"
         assert recipe_rates.HAND_ALIASES["cape"] == "Blue cape"
 
+    def test_the_heraldic_pair_names_the_cheapest_metal(self) -> None:
+        """**96 variants, three metals by sixteen crests**, and the crest is
+        invisible to a rate. The metal is only what the base costs, so steel
+        is named - `rate_for` maximises, so given all forty-eight it would
+        choose the cheapest base itself."""
+        assert recipe_rates.HAND_ALIASES["heraldic helmet (construction)"] == (
+            "Steel heraldic helm (Arrav)"
+        )
+        assert recipe_rates.HAND_ALIASES["heraldic kiteshield (construction)"] == (
+            "Steel kiteshield (Arrav)"
+        )
+
+    def test_the_heraldic_family_really_is_uniform(self) -> None:
+        """The whole of the argument, against the shipped corpus: if a game
+        update splits the family by metal or crest this fails rather than
+        letting one variant stand for ninety-six."""
+        from chunksim.costing.inputs import load_reference
+
+        rows = load_reference(None, None).recipes["Crafting"]
+        helms = {
+            (r.level, r.experience, r.ticks)
+            for r in rows
+            if "heraldic helm" in r.output.lower()
+        }
+        shields = {
+            (r.level, r.experience, r.ticks)
+            for r in rows
+            if r.materials and r.materials[0].name.endswith("kiteshield")
+        }
+
+        assert helms == {(38, 37.0, 6.0)}
+        assert shields == {(43, 40.0, 6.0)}
+
+    def test_the_lowercase_suffix_was_never_the_problem(self) -> None:
+        """`by_output` is matched case-insensitively, so upstream's
+        `(construction)` would have found a `(Construction)` page carrying a
+        recipe. That page is prose; the recipes live on the 96 variants."""
+        recipes = {"heraldic helmet (construction)": (_recipe("X"),)}
+
+        assert "heraldic helmet (construction)" in recipe_rates.with_aliases(
+            recipes, recipe_rates.HAND_ALIASES
+        )
+
     @pytest.mark.real_export
     def test_the_family_keys_are_upstreams_own_and_unambiguous(
         self, real_export: ChunkInfo

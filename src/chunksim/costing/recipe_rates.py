@@ -891,6 +891,24 @@ HAND_ALIASES: dict[str, str] = {
     # `cape`**, and no recipe output is named that, so the alias cannot reach
     # anything else.
     "cape": "Blue cape",
+    # **The largest family of the four, and the one where the metal is a
+    # cost rather than a variant.** Upstream carries one challenge for the
+    # whole of painted heraldic armour; the wiki has a page per metal *and*
+    # per crest - **48 helms and 48 kiteshields**, three metals by sixteen
+    # crests. Measured over the corpus every helm is Crafting 38, 37
+    # experience, 6 ticks and every kiteshield Crafting 43, 40 and 6, which
+    # are upstream's own `Level`s exactly. So the crest is invisible to a rate
+    # and the metal is only what the base costs - and **steel is what the
+    # alias names**, because the experience is identical and `rate_for`
+    # maximises, so given all forty-eight it would choose the cheapest base
+    # itself.
+    #
+    # **The lowercase `(construction)` is not the problem** - `by_output` is
+    # matched case-insensitively, so upstream's spelling would have found a
+    # page called `Heraldic helmet (Construction)` if one carried a recipe. It
+    # does not: that page is prose, and the recipes live on the 96 variants.
+    "heraldic helmet (construction)": "Steel heraldic helm (Arrav)",
+    "heraldic kiteshield (construction)": "Steel kiteshield (Arrav)",
 }
 
 #: A recipe's own *material* named in the wiki's vocabulary, where upstream's
