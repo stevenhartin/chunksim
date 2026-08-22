@@ -379,6 +379,13 @@ The modules, and what each owns:
   challenges, one arena, bands from 20 whichever asked. Its finding: the
   level-40 obstacles are **slower per tick** than the level-20 floor spikes,
   so 40 buys route options rather than a method.
+- `skullball.py` - Werewolf Skullball, where the lap is published three ways
+  and the **reset between laps is not**. 750 experience under four minutes and
+  a stated decay past it, against a `Run recommended route` of 2:20-2:45; the
+  run back is 8 tiles off the wiki's own tile-marker module and the dialogue
+  and ball positioning are the one invented number, which makes every band a
+  `GUESS`. Bounded rather than open-ended - the lap dominates - and it names
+  the single band on one map its guess decides.
 - `sepulchre.py` - the Hallowed Sepulchre, counted in ticks: a lap runs floors
   1 to N in order, so the Strategies page's tick-perfect floor times plus six
   ticks a staircase give the Agility rate, and fifteen more per floor for one

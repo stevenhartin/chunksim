@@ -72,6 +72,7 @@ from chunksim.costing import (
     salvage,
     sacredeel,
     sepulchre,
+    skullball,
     sorceress,
     strut,
     spells,
@@ -1062,6 +1063,11 @@ def _gathered(
     # `costing/brimhaven.py`. Three challenges, one arena, and its bands open
     # at 20 whichever asked, for `pyramid.py`'s reason.
     for skill, methods in brimhaven.methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **A published lap and an unpublished reset** - see
+    # `costing/skullball.py`, whose one invented number is named there and is
+    # why its band is a `GUESS`.
+    for skill, methods in skullball.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **A lap and a lap time, which is what a course is** - see
     # `costing/courses.py`, and the eight it leaves to the guide.

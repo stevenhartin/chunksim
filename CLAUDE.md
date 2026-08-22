@@ -873,6 +873,43 @@ its own reason. Agility is **96 modelled and 2 unpriced**; `fray-uber`'s climb
 goes 158.1h to **156.3h** with the arena owning 20 to 52, and neither cached
 map holds the chunk.
 
+**A guess is worth making when the thing it guesses at cannot move the
+answer far.** Werewolf Skullball publishes everything except the one term that
+is not part of the game's own timer. The payout is a stopwatch - "750 Agility
+experience if you complete the game in under 4 minutes. For every 3 seconds
+over 4 minutes, you'll lose 8 experience" - and the page tabulates three ways
+of running it (2:20-2:45, 2:45-3:15, 3:00-3:49), all of which pay the full 750
+*because* they are inside the window, which is the decay rule checking the
+table rather than a second fact. What nothing states is the **reset**: running
+back to the Skullball Boss, the dialogue, and tapping a fresh skull into
+position, all of which sit outside the timer by design.
+
+**One component of the reset is published and it is the small one.** The wiki
+ships the route as tile markers, so `End` at region (43, 8) and goal 1 at
+(35, 13) is 8 tiles - 4 ticks at a run, 2.4 seconds. The dialogue and the ball
+positioning the page calls "lots of manual tapping" are
+`skullball.RESET_SECONDS`, the module's one invented number, and one invented
+factor makes the product invented (`costing/tempoross.py`'s rule) so every
+band is `GUESS`.
+
+**What makes it worth making is that the lap dominates.** The same 750 over a
+165-second lap reads 16,364/hr at no reset at all and 12,000/hr at a full
+minute, so the honest range is a quarter wide rather than open-ended - which
+is the difference between this and `costing/oneoff.py`'s supply-bound spells,
+where the unstated term *is* the answer. 30 seconds is the pessimistic end of
+what the geometry and the action count suggest, and it reads **13,846/hr**.
+**Where the guess decides something is stated rather than hidden**: the
+Edgeville monkey bars are 15,000/hr from level 15, so a reset under 15 seconds
+would take `fray`'s 25-40 band off them and 30 does not. That is the only
+place on any cached map it changes an answer, which is why the conservative
+end was taken. The optimal route - "times as fast as 1:45 can be achieved" -
+is the ceiling at 20,000/hr and deliberately not spent, being tile markers and
+mid-flight ball redirection rather than what the page presents as the route.
+
+**Agility now has one unpriced method**, the toy mouse: 96 modelled, 1 pinned,
+8 guessed, 1 unpriced, 4 refused, 1 one-off and 10 uncompletable of 121, from
+72/1/0/28/0/0 when this stretch started.
+
 **`inferred` is a rate this project computed and the report was calling it
 `published`.** `coverage.MODELLED_MATCHES`' own comment says it lists "values
 this project produced itself", and `inferred` - one term borrowed from a
