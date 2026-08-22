@@ -658,6 +658,10 @@ def recipe_priced(
     # roll on a loot table rather than a production, so the wiki writes no
     # `{{Recipe}}` and the drop behind it would otherwise be free. See
     # `costing/tarnished.py`.
+    # **And the moss lizard cook**, whose supply is a Hunter trap upstream
+    # states no `Output` for - so the item walk has no route to a raw lizard
+    # and the recipe's 360,000/hr would stand. See `costing/stated.py`.
+    per_xp.update(stated.moss_lizard_cook_material_seconds_per_xp(derived.challenges.valid))
     per_xp.update(
         tarnished.material_seconds_per_xp(
             _mapping(state.chunk_info.challenges, "Crafting"),

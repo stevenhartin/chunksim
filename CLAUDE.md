@@ -1257,6 +1257,32 @@ only `{{Skilling success chart}}` is for the *fish*. The report said
 `unpriced`. `trawler.refused` says it where a reader can see it, gated on the
 leaks actually being priced for `foundry.refused`'s reason.
 
+**A trap that pays two skills, and only one of them was being spent.** The
+moss lizard's Hunter side has been modelled since `costing/stated.py` was
+written - nine tenths of the Hunter level, floored and capped at ninety, at a
+guessed ten seconds a catch. Its Cooking side read `unpriced`, and everything
+it needed was published: `Cooked moss lizard`'s `{{Recipe}}` is level 30, **60
+experience, one tick**. So the cook lives beside the catch rather than with
+the other recipes - `costing/barbarian.py`'s rule that an action paying
+several skills should be read once and spent several times, here applied to
+the one constant that file invents, so a measurement of the catch retires both
+at once.
+
+**Two things had kept it out, and both are worth knowing.** The join misses
+because upstream names the challenge after the *creature* (`Cook a ~|moss
+lizard|~`) where the wiki's recipe output is `Cooked moss lizard`; and even
+joined it would have been dropped for an unroutable input, because `Trap a
+~|moss lizard|~` states no `Output` and so `derive/search.build_world_index`
+gives `Raw moss lizard` no route at all. The catch is charged through
+`Heuristics.material_seconds_per_xp` instead, which is the same arrangement
+`costing/tarnished.py` uses and for the same reason: the recipe read literally
+is **360,000/hr** and a lizard is 10 seconds to trap against 0.6 to cook, so
+the honest figure is **20,377/hr** and both columns are printed. `GUESS`,
+because the ten seconds is - `costing/tempoross.py`'s rule - even though every
+term the recipe states is published. **The Hunter band does not move**: you
+can catch without cooking, so the 0.6 seconds is charged to the Cooking side
+only.
+
 **One challenge under two skills kept whichever skill came last
 alphabetically.** `recipe_rates.computed_rates` loops once per skill and keyed
 its result by *task*, so `Fletch a ~|wolfbone arrowtip|~` - which upstream

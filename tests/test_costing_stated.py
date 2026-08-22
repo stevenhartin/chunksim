@@ -36,6 +36,80 @@ class TestMossLizard:
         assert min(method.level or 0 for method in found) == 20
 
 
+class TestTheMossLizardCook:
+    """**The same trap spent a second time.** `Cooked moss lizard`'s
+    `{{Recipe}}` is entirely published - level 30, 60 experience, one tick -
+    and the answer is still decided by how fast lizards are caught."""
+
+    _BOTH: dict[str, dict[str, object]] = {
+        "Hunter": {stated.MOSS_LIZARD_TASK: True},
+        "Cooking": {stated.MOSS_LIZARD_COOK_TASK: True},
+    }
+
+    def test_the_published_terms(self) -> None:
+        assert (
+            stated.MOSS_LIZARD_COOK_XP,
+            stated.MOSS_LIZARD_COOK_TICKS,
+            stated.MOSS_LIZARD_COOK_LEVEL,
+        ) == (60.0, 1.0, 30)
+
+    def test_the_headline_is_the_recipe_read_literally(self) -> None:
+        """60 experience every tick, which is not a method - it is what the
+        material cost exists to correct."""
+        assert stated.moss_lizard_cook_per_hour() == pytest.approx(360_000.0)
+
+    def test_the_supply_is_charged_and_it_is_nearly_all_of_it(self) -> None:
+        per_xp = stated.moss_lizard_cook_material_seconds_per_xp(self._BOTH)
+        effective = 3600.0 / (
+            3600.0 / stated.moss_lizard_cook_per_hour()
+            + per_xp[stated.MOSS_LIZARD_COOK_TASK]
+        )
+
+        assert effective == pytest.approx(20_377.0, abs=1.0)
+
+    def test_it_is_the_trapping_pace_and_nothing_else(self) -> None:
+        """Ten seconds a lizard over sixty experience - so a measurement of
+        the catch retires this and the Hunter bands together, which is the
+        reason both live in one file."""
+        assert stated.moss_lizard_cook_seconds_per_xp() == pytest.approx(
+            (3600.0 / stated.MOSS_LIZARD_PER_HOUR) / stated.MOSS_LIZARD_COOK_XP
+        )
+
+    def test_the_band_is_a_guess_although_the_recipe_is_not(self) -> None:
+        """`costing/tempoross.py`'s rule: the effective rate contains an
+        invented pace, so the product is invented."""
+        found = stated.methods(INFO, self._BOTH)["Cooking"]
+
+        assert {method.match for method in found} == {GUESS}
+        assert {method.level for method in found} == {stated.MOSS_LIZARD_COOK_LEVEL}
+
+    def test_both_challenges_are_needed(self) -> None:
+        """A map holding the campsite and not the cavern can cook nothing."""
+        only_cooking = {"Cooking": self._BOTH["Cooking"]}
+        only_hunter = {"Hunter": self._BOTH["Hunter"]}
+
+        assert "Cooking" not in stated.methods(INFO, only_cooking)
+        assert "Cooking" not in stated.methods(INFO, only_hunter)
+        assert stated.moss_lizard_cook_material_seconds_per_xp(only_cooking) == {}
+        assert stated.moss_lizard_cook_material_seconds_per_xp(only_hunter) == {}
+
+    def test_the_hunter_band_does_not_change(self) -> None:
+        """Catching without cooking is still a method, and still 360 an hour -
+        the 0.6-second cook is charged to the Cooking side only."""
+        alone = stated.methods(INFO, {"Hunter": {stated.MOSS_LIZARD_TASK: True}})["Hunter"]
+        both = stated.methods(INFO, self._BOTH)["Hunter"]
+
+        assert [m.xp_per_hour for m in alone] == [m.xp_per_hour for m in both]
+
+    def test_it_is_wired_in(self) -> None:
+        import pathlib
+
+        from chunksim.costing import inputs
+
+        source = pathlib.Path(inputs.__file__).read_text(encoding="utf-8")
+        assert "stated.moss_lizard_cook_material_seconds_per_xp(" in source
+
+
 class TestTroubleBrewing:
     _VALID = {
         "Cooking": {"Participate in ~|Trouble Brewing|~": True},

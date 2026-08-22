@@ -10,6 +10,23 @@ part was measured and which was chosen.
   fitting. The *pace* is not published: catching three takes about half a
   minute, so ten seconds each, and that is a guess. Every band is marked
   `GUESS` for it.
+
+  **And the same trap pays Cooking**, which is why the cook lives here rather
+  than beside the other recipes: `costing/barbarian.py`'s rule that an action
+  paying several skills should be read once and spent several times, applied
+  to the one constant this file invents. `Cooked moss lizard`'s `{{Recipe}}`
+  is entirely published - level 30, 60 experience, one tick - so the headline
+  is 360,000 an hour, and it is not the answer: a lizard is 10 seconds to trap
+  and 0.6 to cook, so an hour of catching-and-cooking is ~340 of each and
+  Cooking reads **~20,400**. The catch is charged through
+  `Heuristics.material_seconds_per_xp` rather than folded in, so a reader sees
+  both columns, and the band is `GUESS` because the ten seconds is.
+
+  **It joined no recipe for a naming reason worth knowing**: upstream calls the
+  challenge `Cook a ~|moss lizard|~`, after the creature, where the wiki's
+  recipe output is `Cooked moss lizard`. And nothing could have priced the
+  material either - `Trap a ~|moss lizard|~` states no `Output`, so
+  `derive/search.build_world_index` gives `Raw moss lizard` no route at all.
 - **Trouble Brewing.** A whole minigame with eight skills' worth of challenges
   and nothing tabulated anywhere. Fifteen thousand an hour is a stated
   estimate, applied to each skill the export lists a challenge for, and it is
@@ -91,6 +108,62 @@ MOSS_LIZARD_CAP = 90.0
 #: is ten seconds each, which is where this comes from and why every rate it
 #: produces is marked as invented.
 MOSS_LIZARD_PER_HOUR = 360.0
+
+#: The Cooking half of the same activity, which is entirely published.
+#: `{{Recipe}}` for `Cooked moss lizard`: level 30, **60 experience**, **1
+#: tick**, one `Raw moss lizard` in. The catch drops one `Always`.
+MOSS_LIZARD_COOK_TASK = "Cook a ~|moss lizard|~"
+MOSS_LIZARD_COOK_XP = 60.0
+MOSS_LIZARD_COOK_TICKS = 1.0
+MOSS_LIZARD_COOK_LEVEL = 30
+
+#: What a tick is worth, for the cook.
+TICK_SECONDS = 0.6
+
+
+def moss_lizard_cook_per_hour() -> float:
+    """Cooking experience an hour if the cook took no time at all.
+
+    60 experience every tick, which is the recipe read literally and is not
+    the answer - see `moss_lizard_cook_seconds_per_xp`, which charges the
+    catch behind it.
+    """
+    return MOSS_LIZARD_COOK_XP * 3600.0 / (MOSS_LIZARD_COOK_TICKS * TICK_SECONDS)
+
+
+def moss_lizard_cook_seconds_per_xp() -> float:
+    """Seconds of trapping per Cooking experience the cook pays.
+
+    **The whole activity is the catching.** A lizard is 10 seconds to trap and
+    0.6 to cook, so an hour of catching-and-cooking is 340 of each and the
+    Cooking rate is ~20,400 rather than the recipe's 360,000. The 10 seconds
+    is `MOSS_LIZARD_PER_HOUR`'s guess, which is why the band is `GUESS` even
+    though every term the recipe states is published.
+    """
+    return (3600.0 / MOSS_LIZARD_PER_HOUR) / MOSS_LIZARD_COOK_XP
+
+
+def moss_lizard_cook_material_seconds_per_xp(
+    valid: Mapping[str, Mapping[str, object]],
+) -> dict[str, float]:
+    """`{task: seconds of trapping per experience}`, where the map can do both.
+
+    Nothing else fills this in: upstream states no `Output` on `Trap a
+    ~|moss lizard|~`, so `derive/search.build_world_index` gives `Raw moss
+    lizard` no route and the item walk cannot price one.
+    """
+    if not _moss_lizard_cookable(valid):
+        return {}
+    return {MOSS_LIZARD_COOK_TASK: moss_lizard_cook_seconds_per_xp()}
+
+
+def _moss_lizard_cookable(valid: Mapping[str, Mapping[str, object]]) -> bool:
+    """**Both challenges, because the supply is the other one.** A map holding
+    the campsite and not the cavern can cook nothing, and upstream files the
+    two separately - Hunter 20 in the cavern, Cooking 30 at the fire."""
+    return MOSS_LIZARD_COOK_TASK in (valid.get("Cooking") or {}) and MOSS_LIZARD_TASK in (
+        valid.get("Hunter") or {}
+    )
 
 #: The Fishing Trawler, which is a minigame and nothing else.
 TRAWLER_TASK = "Train fishing on the ~|Fishing Trawler|~"
@@ -298,6 +371,21 @@ def methods(
                     knob=f"training/{MOSS_LIZARD_TASK}/Hunter",
                 )
             )
+    # **The same trap, spent a second time.** Cooking what was caught pays 60
+    # for a tick, and upstream files it as its own challenge - which joined no
+    # recipe, because it names the *raw* creature where the wiki names the
+    # cooked item. See `moss_lizard_cook_seconds_per_xp` for why the headline
+    # is not the answer.
+    if _moss_lizard_cookable(valid):
+        found.setdefault("Cooking", []).append(
+            ComputedMethod(
+                method="moss lizard",
+                xp_per_hour=moss_lizard_cook_per_hour(),
+                level=MOSS_LIZARD_COOK_LEVEL,
+                match=GUESS,
+                knob=f"training/{MOSS_LIZARD_COOK_TASK}/Cooking",
+            )
+        )
     for skill, tasks in valid.items():
         if skill in NOT_SKILLS:
             continue
