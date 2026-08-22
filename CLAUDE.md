@@ -1339,11 +1339,33 @@ carried because every term is published and `unpriced` is the wrong word for a
 method whose rate is known - the same reason this project removed the floor
 that used to hide `steel dragon (Construction)` at 3/hr.
 
-**Crafting is 228 modelled, 12 one-off and 4 unpriced**, from 195/2/48 when
-this stretch began, and what is left is two pairs: **the heraldic pieces**,
-whose wiki page carries no `{{Recipe}}` and states no experience anywhere, and
-**two minigames**, Pest Control's barricades and Guardians of the Rift's
-essence.
+**And the Rift's Crafting half is the same fragments spent twice, which is why
+it went beside the Mining ceiling rather than into a module.** One fragment
+makes one essence, so whatever count the Mining side assumes the Crafting side
+must assume too - `costing/stated.py` holds both, and a measurement of the
+minigame's throughput now retires the pair together. What a level buys is only
+the payout, and `Guardian essence`'s `{{Recipe}}` states it exactly: "the
+experience is `CraftingLevel / 10`, clamped between 1 and 5". So the curve is
+1,500/hr below Crafting 10 rising to **7,500 from 50**, `GUESS` because the
+fragment count is.
+
+**`costing/gotr.py`'s essence-an-hour is deliberately not spent, and finding
+out why is the useful part.** It is the obvious number to reach for - the
+module already recovers throughput - but it recovers it by dividing the
+published Runecraft bands by its own modelled rune mix, which its docstring
+calls "calibrated, not modelled". That division is exact for reproducing the
+bands it came from and was never checked *as a count*, and it does not survive
+being checked: it implies **9,532 essence an hour** at Runecraft 99 against
+the **1,500 fragments** the Mining ceiling assumes, a factor of six. The gap is
+that the published Runecraft rate includes experience the imbue does not pay -
+five a guardian stone, plus the end-of-game charge - which inflates the count
+when you divide it back out. `gotr.py` divides and multiplies by the same mix
+and cancels it; spending it on a *different* skill would spend the inflation.
+
+**Crafting is 228 modelled, 12 one-off and 3 unpriced**, from 195/2/48 when
+this stretch began. What is left is **the two heraldic pieces**, whose wiki
+page carries no `{{Recipe}}` and states no experience anywhere, and **Pest
+Control's barricades**.
 
 **A `{{Recipe}}` that pays nothing is filed under no skill, and the whole
 corpus is fetched per skill.** That is one query shape hiding an entire class

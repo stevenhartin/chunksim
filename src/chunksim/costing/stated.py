@@ -71,6 +71,27 @@ part was measured and which was chosen.
   published figures, and because a ceiling quoted as a rate overstates every
   player who ever stops to do the rest of the minigame.
 
+  **The Crafting half is the same fragments turned into essence**, and it is
+  here rather than in a module of its own precisely because it must spend the
+  *same count*: one fragment makes one essence, so a measurement of the
+  minigame's throughput retires both bands at once. What a level buys is only
+  the payout, which `Guardian essence`'s `{{Recipe}}` states exactly - "the
+  experience is `CraftingLevel / 10`, clamped between 1 and 5" - so the curve
+  runs 1,500/hr below Crafting 10 to **7,500 from 50**.
+
+  **`costing/gotr.py`'s essence-an-hour is deliberately not used**, and the
+  reason is worth keeping. That module recovers throughput by dividing the
+  published Runecraft bands by its own modelled rune mix, and its docstring
+  says so: "calibrated, not modelled". The division is exact for reproducing
+  the bands it came from and was never checked *as a count* - and it does not
+  survive one: it implies 9,532 essence an hour at Runecraft 99 against the
+  1,500 fragments the Mining ceiling here assumes, a factor of six. The gap is
+  that the published Runecraft rate includes experience the imbue does not pay
+  (five a guardian stone, and the end-of-game charge), which inflates the
+  count when you divide it back out. Spending it on a *different* skill would
+  spend that inflation, where `gotr.py` divides and multiplies by the same mix
+  and cancels it.
+
 - **The Fishing Trawler.** A minigame with nothing tabulated; ten thousand an
   hour is the stated figure and there is no more to it.
 - **Temple Trekking's tomes.** Seven skills have one and every one of them is a
@@ -195,6 +216,19 @@ RIFT_FRAGMENT_CAP = 250.0
 RIFT_GAMES_PER_HOUR = 6.0
 RIFT_FRAGMENT_EXPERIENCE = 5.0
 
+#: The Crafting half of the same fragments. Upstream carries `Craft guardian
+#: fragments into ~|guardian essence|~ in Guardians of the Rift` as its own
+#: challenge, and `Guardian essence`'s `{{Recipe}}` states what one workbench
+#: use pays: "the experience is `CraftingLevel / 10`, clamped between 1 and 5
+#: experience (1xp below level 10; 5xp above level 50, or using the formula
+#: otherwise)". One fragment makes one essence, so the *count* is the same one
+#: the Mining side above already spends - which is the point of putting it
+#: here rather than in a module of its own.
+RIFT_ESSENCE_TASK = "Craft guardian fragments into ~|guardian essence|~ in Guardians of the Rift"
+RIFT_ESSENCE_DIVISOR = 10.0
+RIFT_ESSENCE_MIN = 1.0
+RIFT_ESSENCE_MAX = 5.0
+
 MINIGAME_CATEGORY = "Minigame"
 TROUBLE_BREWING = "Trouble Brewing"
 
@@ -289,6 +323,24 @@ def rift_rate() -> float:
     return RIFT_FRAGMENT_CAP * RIFT_GAMES_PER_HOUR * RIFT_FRAGMENT_EXPERIENCE
 
 
+def rift_fragments_per_hour() -> float:
+    """Fragments mined an hour, which both halves of the minigame spend."""
+    return RIFT_FRAGMENT_CAP * RIFT_GAMES_PER_HOUR
+
+
+def rift_essence_experience(level: int) -> float:
+    """What one workbench use pays at `level` - `level / 10`, clamped to 1..5.
+
+    The wiki's own words, and the whole of what a Crafting level buys here.
+    """
+    return min(max(level / RIFT_ESSENCE_DIVISOR, RIFT_ESSENCE_MIN), RIFT_ESSENCE_MAX)
+
+
+def rift_essence_rate(level: int) -> float:
+    """Crafting an hour from turning fragments into essence at `level`."""
+    return rift_fragments_per_hour() * rift_essence_experience(level)
+
+
 def moss_lizard_experience(level: int) -> float:
     """`floor(0.9 x level)`, capped at ninety. Exact, not fitted."""
     return min(math.floor(MOSS_LIZARD_SHARE * level), MOSS_LIZARD_CAP)
@@ -332,6 +384,25 @@ def methods(
                 knob=f"training/{RIFT_TASK}/Mining",
             )
         )
+    # **The same fragments, spent a second time.** One fragment makes one
+    # essence, so whatever count the Mining ceiling above assumes, this must
+    # assume the same - which is why both live here and why measuring the
+    # minigame retires the pair together. Banded because the payout is a
+    # function of the Crafting level where the fragment count is not.
+    if RIFT_ESSENCE_TASK in (valid.get("Crafting") or {}):
+        for level in (1, *CURVE_STEPS):
+            paid = rift_essence_rate(level)
+            if paid <= 0:
+                continue
+            found.setdefault("Crafting", []).append(
+                ComputedMethod(
+                    method="Guardians of the Rift",
+                    xp_per_hour=paid,
+                    level=level,
+                    match=GUESS,
+                    knob=f"training/{RIFT_ESSENCE_TASK}/Crafting",
+                )
+            )
     reachable = valid.get("Fishing") or {}
     if TRAWLER_TASK in reachable:
         found.setdefault("Fishing", []).append(

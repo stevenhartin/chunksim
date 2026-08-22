@@ -110,6 +110,68 @@ class TestTheMossLizardCook:
         assert "stated.moss_lizard_cook_material_seconds_per_xp(" in source
 
 
+class TestTheRiftsCraftingHalf:
+    """**The same fragments, spent a second time.** One fragment makes one
+    essence, so this must assume the same count the Mining ceiling does - and
+    that is why both live in one file."""
+
+    _VALID: dict[str, dict[str, object]] = {
+        "Crafting": {stated.RIFT_ESSENCE_TASK: True}
+    }
+
+    def test_the_payout_is_the_recipes_own_formula(self) -> None:
+        """"The experience is `CraftingLevel / 10`, clamped between 1 and 5
+        experience (1xp below level 10; 5xp above level 50)"."""
+        assert stated.rift_essence_experience(1) == 1.0
+        assert stated.rift_essence_experience(9) == 1.0
+        assert stated.rift_essence_experience(25) == 2.5
+        assert stated.rift_essence_experience(50) == 5.0
+        assert stated.rift_essence_experience(99) == 5.0
+
+    def test_it_spends_the_same_fragment_count_as_the_mining_side(self) -> None:
+        assert stated.rift_fragments_per_hour() == (
+            stated.RIFT_FRAGMENT_CAP * stated.RIFT_GAMES_PER_HOUR
+        )
+        assert stated.rift_rate() == (
+            stated.rift_fragments_per_hour() * stated.RIFT_FRAGMENT_EXPERIENCE
+        )
+
+    def test_the_curve_runs_from_fifteen_hundred_to_seventy_five_hundred(
+        self,
+    ) -> None:
+        assert stated.rift_essence_rate(1) == 1_500.0
+        assert stated.rift_essence_rate(50) == 7_500.0
+        assert stated.rift_essence_rate(99) == stated.rift_essence_rate(50)
+
+    def test_the_bands_are_a_guess_because_the_count_is(self) -> None:
+        """The payout is published exactly; "six games an hour" and "mining
+        constantly" are not - `costing/tempoross.py`'s rule."""
+        found = stated.methods(INFO, self._VALID)["Crafting"]
+
+        assert {m.match for m in found} == {GUESS}
+        assert min(m.level or 0 for m in found) == 1
+
+    def test_nothing_when_unreachable(self) -> None:
+        assert "Crafting" not in stated.methods(INFO, {})
+        assert "Crafting" not in stated.methods(INFO, {"Crafting": {}})
+
+    def test_gotrs_recovered_essence_count_is_not_what_this_spends(self) -> None:
+        """**Recorded because it is the tempting number.** `costing/gotr.py`
+        recovers throughput by dividing published Runecraft bands by its own
+        modelled mix - exact for reproducing those bands, never checked as a
+        count, and six times the fragments the Mining ceiling here assumes,
+        because the published rate includes experience the imbue does not
+        pay."""
+        import pathlib
+
+        from chunksim.costing import gotr
+
+        source = pathlib.Path(stated.__file__).read_text(encoding="utf-8")
+        assert "calibrated, not modelled" in source
+        assert hasattr(gotr, "essence_per_hour")
+        assert stated.rift_fragments_per_hour() == 1_500.0
+
+
 class TestTroubleBrewing:
     _VALID = {
         "Cooking": {"Participate in ~|Trouble Brewing|~": True},
