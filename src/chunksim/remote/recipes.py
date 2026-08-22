@@ -25,8 +25,13 @@ Three shapes to know about, all measured against the live table:
 - **`production_json` is JSON inside JSON.** The Bucket row's field is a string
   that has to be decoded a second time.
 - **Every number is a string**, including the fractional ones (`"6.2"`), and
-  `"ticks": ""` means *unknown* rather than instant - Cooking has one such row
-  in twenty-five. `None` is the honest answer there.
+  `"ticks"` says three different things: a positive count, `""` for *nobody has
+  timed this*, and `"0"` for *the action is instant* - which `Module:Recipe`
+  renders as "0 (0s) per action". `None` is the honest answer for the blank;
+  a zero is a claim and is kept as one. Measured over the whole table that is
+  3,466 positive, 168 blank and **448 zero**, so collapsing the last two - as
+  this did until the count was taken - discards a published fact about an
+  eighth of the corpus. `Recipe.timed` is the predicate a caller wants.
 - **One page can produce several recipes.** `Bronze bar` has three - a normal
   furnace, the Blast Furnace, and a third - distinguished only by the output's
   `subtxt`. Keying on the page alone would silently keep whichever came last.
@@ -79,6 +84,19 @@ class Recipe:
     @property
     def key(self) -> tuple[str, str]:
         return self.output, self.variant
+
+    @property
+    def timed(self) -> bool:
+        """Whether the wiki gave this action a duration a rate can be built on.
+
+        **A stated `0` is a claim and not a blank**, which is the distinction
+        this property exists to keep: `ticks = 0` says the action is instant -
+        `Module:Recipe` renders it "0 (0s) per action" - where `ticks = ""`
+        says nobody has timed it. Both need a caller to supply something, and
+        they are not the same something, so the field keeps them apart and
+        this is what "has a usable published duration" means.
+        """
+        return self.ticks is not None and self.ticks > 0
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -160,7 +178,10 @@ def parse_recipes(rows: list[dict[str, Any]], skill: str) -> tuple[Recipe, ...]:
                 skill=skill,
                 level=int(level),
                 experience=experience,
-                ticks=int(ticks) if ticks is not None and ticks > 0 else None,
+                # **A stated zero survives as a zero.** It used to be
+                # collapsed into `None` beside the blanks, which threw away a
+                # claim the wiki makes on 448 recipes - see `Recipe.timed`.
+                ticks=float(ticks) if ticks is not None and ticks >= 0 else None,
                 materials=materials,
                 variant=str(output.get("subtxt") or ""),
             )

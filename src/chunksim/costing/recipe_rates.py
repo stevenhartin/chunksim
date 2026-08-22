@@ -651,14 +651,60 @@ def unroutable(
     return ""
 
 
+#: What an action the wiki states as **instant** is charged, in ticks.
+#:
+#: **The game's own floor rather than a fitted number.** `ticks = 0` is a
+#: claim - `Module:Recipe` renders it "0 (0s) per action" - and it means the
+#: game imposes no delay, not that the action is free: a player still has to
+#: click, and two distinct actions cannot resolve in one tick. So one tick is
+#: the shortest cycle the game allows and this is a **ceiling** on the rate,
+#: `costing/trawler.py`'s sense of the word.
+#:
+#: **Checked against the only two published families that price a zero-tick
+#: action**, by dividing their rate back out: `wiki:darts` implies exactly
+#: **1.00** tick across all eight dart recipes, and the twelve
+#: `mmg:Money making guide/Cleaning grimy ...` guides imply exactly **1.20**.
+#: So the floor is not merely a bound - it is within 20% of what the two
+#: independent observations say a player sustains, and the difference is
+#: 0.12 seconds against material costs that are usually seconds.
+#:
+#: **A module that states a duration still wins**, because `ticks_for` asks
+#: `stated_ticks` first: `costing/chisel.py` says a dark essence block really
+#: is free on a run already being paid for, and `costing/herblore.py` counts
+#: the bank trip a clean herb sits inside at 18/28 of a tick. Both of those
+#: are about a *cycle* where this is about an action, and both are better
+#: answers where they apply.
+ZERO_TICK_TICKS = 1.0
+
+
+def ticks_for(recipe: Recipe, stated_ticks: Mapping[str, float] = {}) -> float | None:
+    """Ticks one action of `recipe` costs, or `None` where nothing says.
+
+    Three sources in order, and the order is the whole of it: a duration the
+    wiki published, then one a module stated for an action the wiki left
+    blank *or* called instant, then `ZERO_TICK_TICKS` for a stated instant
+    nothing else spoke for. A blank with no stated figure stays `None`, which
+    is what drops the method.
+    """
+    if recipe.timed:
+        return recipe.ticks
+    stated = stated_ticks.get(recipe.output)
+    if stated is not None:
+        return stated
+    return ZERO_TICK_TICKS if recipe.ticks == 0.0 else None
+
+
 def action_seconds(
-    recipe: Recipe, input_seconds: Callable[[str, float], float | None]
+    recipe: Recipe,
+    input_seconds: Callable[[str, float], float | None],
+    stated_ticks: Mapping[str, float] = {},
 ) -> float | None:
     """Seconds for one whole action of `recipe`, or `None`."""
     materials = material_seconds(recipe, input_seconds)
-    if recipe.ticks is None or materials is None:
+    ticks = ticks_for(recipe, stated_ticks)
+    if ticks is None or materials is None:
         return None
-    return TICK_SECONDS * recipe.ticks + trip_seconds(recipe) + materials
+    return TICK_SECONDS * ticks + trip_seconds(recipe) + materials
 
 
 def rate_for(
@@ -689,12 +735,13 @@ def rate_for(
     for recipe in recipes:
         materials = material_seconds(recipe, input_seconds)
         # **A stated duration only where the wiki publishes none.** `ticks` is
-        # `""` for every clean herb - the action is not tick-gated, so nothing
-        # could publish one - and refusing that outright cost Herblore
+        # `0` for every clean herb - the wiki's way of saying the action is
+        # not tick-gated - and reading that as no time at all is the fastest
+        # method in the game, while refusing it outright cost Herblore
         # eighteen methods. `costing/herblore.py` states the bank cycle
-        # instead; a recipe that *does* carry a tick cost keeps it, so this
-        # can never overwrite a published figure.
-        ticks = recipe.ticks if recipe.ticks is not None else stated_ticks.get(recipe.output)
+        # instead; a recipe carrying a *positive* tick cost keeps it, so this
+        # can never overwrite a published duration. See `ticks_for`.
+        ticks = ticks_for(recipe, stated_ticks)
         if ticks is None or materials is None:
             continue
         seconds = TICK_SECONDS * ticks + trip_seconds(recipe) + materials
@@ -1056,7 +1103,7 @@ def challenge_experience(
                 (
                     recipe.experience / max(recipe.output_quantity, 1.0)
                     for recipe in candidates
-                    if recipe.ticks is not None or recipe.output in stated_ticks
+                    if recipe.timed or recipe.output in stated_ticks
                 ),
                 default=0.0,
             )
@@ -1142,11 +1189,7 @@ def computed_rates(
                 dropped[task] = unroutable(candidates, input_seconds)
                 continue
             recipe, rate, materials = chosen
-            ticks = (
-                recipe.ticks
-                if recipe.ticks is not None
-                else stated_ticks.get(recipe.output) or 0.0
-            )
+            ticks = ticks_for(recipe, stated_ticks) or 0.0
             found += 1
             priced[task] = ActionRate(
                 task=task,

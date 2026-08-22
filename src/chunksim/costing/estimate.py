@@ -2235,16 +2235,21 @@ def _setup(
     #
     # **The stated durations are applied here rather than downstream**, so the
     # walk and `recipe_rates.rate_for` read one corpus and cannot disagree
-    # about how long an untimed action takes - `recipe_rates.stated_ticks` is
-    # the one merge and says which modules fill it. Anything still untimed
-    # falls back to `DEFAULT_ACTION_SECONDS` inside `_recipe_hours`, which is
-    # where an unknown belongs.
+    # about how long an untimed action takes - `recipe_rates.ticks_for` is the
+    # one answer and `stated_ticks` the one merge, which says which modules
+    # fill it. Anything still untimed falls back to `DEFAULT_ACTION_SECONDS`
+    # inside `_recipe_hours`, which is where an unknown belongs.
+    #
+    # **A stated instant is resolved here too, and it has to be.** `ticks = 0`
+    # survives parsing now (`Recipe.timed`), and left alone it would make the
+    # walk price 448 recipes as costing no time at all - the exact failure
+    # `rate_for`'s old refusal existed to avoid.
     stated = recipe_rates.stated_ticks(state.chunk_info, recipes or {})
     by_output: dict[str, tuple[Recipe, ...]] = {}
     for rows in (recipes or {}).values():
         for made in rows:
-            if made.ticks is None and made.output in stated:
-                made = dataclasses.replace(made, ticks=stated[made.output])
+            if not made.timed:
+                made = dataclasses.replace(made, ticks=recipe_rates.ticks_for(made, stated))
             key = made.output.lower()
             by_output[key] = (*by_output.get(key, ()), made)
     if by_output:

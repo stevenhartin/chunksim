@@ -1,8 +1,9 @@
 """Chiselling a dark essence block, which the wiki does not time and which costs nothing.
 
-**The `{{Recipe}}` for `Dark essence fragments` carries `ticks = ""`**, and the
-item walk's last resort (`estimate._recipe_hours`) stood `DEFAULT_ACTION_SECONDS`
-in its place - 2.4 seconds a chisel, 0.6 a fragment, since one block yields
+**The `{{Recipe}}` for `Dark essence fragments` carries `ticks = 0`** - the
+wiki's way of saying the game imposes no delay, which is true and is not the
+same as free - and the item walk's last resort (`estimate._recipe_hours`) stood
+`DEFAULT_ACTION_SECONDS` in its place - 2.4 seconds a chisel, 0.6 a fragment, since one block yields
 four. That is the right default for an untimed action in general and the wrong
 one here, because this action is not performed at a bank: you chisel the blocks
 **while running** from the Dark Altar to the blood or soul altar, on a trip the
@@ -59,7 +60,11 @@ def stated_ticks(recipes: Mapping[str, Sequence[Recipe]]) -> dict[str, float]:
     """
     found: dict[str, float] = {}
     for recipe in recipes.get("Crafting") or ():
-        if recipe.ticks is not None:
+        # **A stated `0` is not a published duration**, which is what
+        # `Recipe.timed` says and `ticks is not None` did not: every
+        # recipe this module fills carries `ticks = 0`, and reading
+        # that as "already timed" would silently retire the module.
+        if recipe.timed:
             continue
         if recipe.output != FRAGMENT_OUTPUT:
             continue

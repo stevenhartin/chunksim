@@ -80,7 +80,7 @@ class TestAgainstTheShippedCorpus:
         timed = {
             recipe.output
             for recipe in self._corpus().get("Fletching", ())
-            if fe.is_feathered(recipe) and recipe.ticks is not None
+            if fe.is_feathered(recipe) and recipe.timed
         }
         assert timed == {
             "Headless arrow",
@@ -93,13 +93,31 @@ class TestAgainstTheShippedCorpus:
         ticks = {
             recipe.ticks
             for recipe in self._corpus().get("Fletching", ())
-            if fe.is_feathered(recipe) and recipe.ticks is not None
+            if fe.is_feathered(recipe) and recipe.timed
         }
         assert ticks == {fe.FEATHER_TICKS}
 
+    def test_the_rest_say_zero_rather_than_nothing_at_all(self) -> None:
+        """**Which is the module's own argument arriving from the wiki.**
+        `feathering.py` says the training page files these under *zero time
+        methods* because the two clicks are done while running somewhere else;
+        the corpus now agrees literally - `ticks = 0`, not a blank - since
+        `Recipe.timed` stopped collapsing the two. The stated 2 still wins,
+        because it is a duration for the *action* where a zero is a claim
+        about the game's delay."""
+        rows = self._corpus().get("Fletching", ())
+        feathered = [r for r in rows if not r.timed and fe.is_feathered(r)]
+        stated_instant = [r for r in feathered if r.ticks == 0.0]
+
+        assert len(stated_instant) == 144
+        # The one exception is `Prototype dart`, which carries no `ticks` field
+        # at all - a genuine blank, and the reason this counts rather than
+        # asserting the set.
+        assert len(feathered) - len(stated_instant) == 1
+
     def test_it_covers_most_of_what_fletching_left_untimed(self) -> None:
         rows = self._corpus().get("Fletching", ())
-        untimed = [r for r in rows if r.ticks is None]
+        untimed = [r for r in rows if not r.timed]
         feathered = [r for r in untimed if fe.is_feathered(r)]
         assert len(untimed) > 100
         assert len(feathered) / len(untimed) > 0.9

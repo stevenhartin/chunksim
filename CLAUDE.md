@@ -1185,6 +1185,48 @@ bound itself is gone now (the fixpoint paragraph below); the lesson stands:
 every value it ever held was a work-around for the walk's cost, and each next
 real chain arrived from outside the set of "measured cases".
 
+**A zero is a claim and a blank is a gap, and the parser had been collapsing
+them for the life of the project.** `remote/recipes.py`'s own docstring said
+`"ticks": ""` means unknown rather than instant; the code then wrote
+`int(ticks) if ticks > 0 else None`, so a wiki-stated `ticks = 0` arrived
+indistinguishable from a blank and every layer refused it. `Module:Recipe`
+renders that zero as **"0 (0s) per action"** - it is the wiki saying the *game*
+imposes no delay, which is a published fact about the action rather than a
+silence about it. Measured over the live table it is **448 rows of 4,082**,
+against 168 real blanks: Fletching 149, Crafting 133, Herblore 66, Farming 50,
+Cooking 30.
+
+**`Recipe.timed` is the predicate every caller actually wanted**, and it is
+false for both - which is why the fix is a property rather than a changed
+number. Five modules that fill an untimed action tested `ticks is not None`,
+and reading a stated zero as "already timed" would have retired all five
+silently.
+
+**What a stated instant costs is one tick, and that is the game's floor rather
+than a fit.** A player still has to click and two actions cannot resolve in
+one tick, so `recipe_rates.ZERO_TICK_TICKS` is a **ceiling** on the rate in
+`costing/trawler.py`'s sense. **Checked by dividing the rate back out of the
+only two published families that price such an action**: `wiki:darts` implies
+exactly **1.00** tick across all eight dart recipes and the twelve
+`mmg:Money making guide/Cleaning grimy ...` guides imply exactly **1.20**, so
+the floor is within 20% of what two independent observations say a player
+sustains - 0.12 seconds against material costs usually measured in seconds.
+`ticks_for` asks `stated_ticks` first, so a module that counted the *cycle*
+still wins: `costing/herblore.py`'s bank trip is 18/28 of a tick and
+`costing/chisel.py`'s run-along chisel is genuinely zero, and both are better
+answers than a bound.
+
+**It priced 22 more methods and moved four climbs, all Farming's and one
+Herblore's.** Crafting went 195 modelled to 208 and Cooking 175 to 180;
+`fray`, which had **no** priced Farming method at all and read the 13,034-hour
+floor, now climbs on a scarecrow at 6,057/hr from level 23. `verf` went 175.7h
+to 163.2h and `fray-uber` 236.4h to 163.2h, both on `sulphurous fertiliser`
+opening the stretch below Tithe Farm. Four module docstrings claimed their
+targets carried `ticks = ""` and have been corrected: all four say `0`, and
+for `costing/feathering.py` that is its own argument arriving from the wiki -
+the training page files darts under *zero time methods* because the two clicks
+are done while running somewhere else.
+
 **An untimed recipe has to fall back to something, but a counted one must not
 reach the fallback.** `DEFAULT_ACTION_SECONDS` is right for an action nobody
 has timed and wrong for one somebody has, so the stated durations are applied

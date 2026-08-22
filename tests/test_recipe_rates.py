@@ -1083,3 +1083,65 @@ class TestUnroutableNamesTheBlockingInput:
         )
 
         assert recipe_rates.unroutable([recipe], self._refuses("Darklight")) == ""
+
+
+class TestAStatedInstantIsChargedOneTick:
+    """**`ticks = 0` is a claim and `ticks = ""` is a blank**, and the join
+    used to refuse both. The wiki says the *game* imposes no delay; a player
+    still has to click, and two actions cannot resolve in one tick, so one
+    tick is the shortest cycle the game allows - a ceiling on the rate rather
+    than a fitted number."""
+
+    def test_the_floor_is_one_tick(self) -> None:
+        assert recipe_rates.ZERO_TICK_TICKS == 1.0
+        assert recipe_rates.ticks_for(_recipe("Thing", ticks=0.0)) == 1.0
+
+    def test_a_published_duration_is_untouched(self) -> None:
+        assert recipe_rates.ticks_for(_recipe("Thing", ticks=3.0)) == 3.0
+
+    def test_a_blank_still_drops_the_method(self) -> None:
+        """Which is the half that must not change: an untimed action priced at
+        no time is the fastest method in the game."""
+        assert recipe_rates.ticks_for(_recipe("Thing", ticks=None)) is None
+        assert rate_for([_recipe("Thing", ticks=None)], _free) is None
+
+    def test_a_stated_duration_beats_the_floor(self) -> None:
+        """**A module that counted the cycle wins**, because it is answering a
+        different question: `costing/chisel.py` says a dark essence block is
+        genuinely free on a run already being paid for, and
+        `costing/herblore.py` counts the bank trip a clean herb sits inside.
+        Both target recipes the wiki marks `0`, so a floor that ignored them
+        would silently retire two modules."""
+        recipe = _recipe("Dark essence fragments", ticks=0.0)
+
+        assert recipe_rates.ticks_for(recipe, {"Dark essence fragments": 0.0}) == 0.0
+        assert recipe_rates.ticks_for(recipe, {"Dark essence fragments": 18 / 28}) == 18 / 28
+
+    def test_a_stated_duration_still_only_fills_an_untimed_action(self) -> None:
+        recipe = _recipe("Thing", ticks=4.0)
+
+        assert recipe_rates.ticks_for(recipe, {"Thing": 99.0}) == 4.0
+
+    def test_the_rate_it_produces(self) -> None:
+        """One tick and, since this recipe eats one thing, one action's share
+        of a bank trip - the same cycle any other recipe is charged."""
+        recipe = _recipe(
+            "Thing", ticks=0.0, experience=6.0, materials=(Material("Bit", 1.0),)
+        )
+        found = rate_for([recipe], _free)
+
+        assert found is not None
+        _, rate, _ = found
+        assert rate == pytest.approx(
+            6.0 * 3600.0 / (TICK_SECONDS + ACTION_OVERHEAD_SECONDS)
+        )
+
+    def test_it_is_slower_than_reading_the_zero_literally(self) -> None:
+        """Which is the point: a literal zero on a recipe that eats nothing is
+        an infinite rate, and `rate_for`'s `seconds <= 0` guard used to be the
+        only thing between the corpus and one."""
+        instant = _recipe("Thing", ticks=0.0, experience=6.0)
+        found = rate_for([instant], _free)
+
+        assert found is not None
+        assert found[1] == pytest.approx(6.0 * 3600.0 / TICK_SECONDS)

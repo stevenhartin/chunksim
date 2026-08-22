@@ -51,7 +51,11 @@ def stated_ticks(recipes: Mapping[str, Sequence[Recipe]]) -> dict[str, float]:
     """
     found: dict[str, float] = {}
     for recipe in recipes.get("Fletching") or ():
-        if recipe.ticks is not None:
+        # **A stated `0` is not a published duration**, which is what
+        # `Recipe.timed` says and `ticks is not None` did not: every
+        # recipe this module fills carries `ticks = 0`, and reading
+        # that as "already timed" would silently retire the module.
+        if recipe.timed:
             continue
         if recipe.output != GREENMAN_CARVING_OUTPUT:
             continue

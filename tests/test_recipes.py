@@ -59,6 +59,56 @@ def test_an_unknown_tick_cost_is_none_rather_than_zero() -> None:
     assert recipe.ticks is None
 
 
+def test_a_stated_zero_is_kept_and_is_not_a_published_duration() -> None:
+    """**The two used to be the same thing here and are not.** `ticks = 0` is
+    a claim - `Module:Recipe` renders it "0 (0s) per action", meaning the game
+    imposes no delay - where `ticks = ""` means nobody has timed it. Collapsing
+    the zero into `None` beside the blank threw away a published fact about
+    448 of the table's 4,082 rows. `Recipe.timed` is what a caller asking
+    "did the wiki give me a duration" wants, and it is false for both."""
+    row = _row(
+        "Instant",
+        ticks="0",
+        skills=[{"experience": "10", "level": "1", "name": "Crafting"}],
+        output={"name": "Something", "quantity": "1"},
+    )
+
+    (recipe,) = parse_recipes([row], "Crafting")
+
+    assert recipe.ticks == 0.0
+    assert recipe.timed is False
+
+
+def test_a_positive_tick_cost_is_timed() -> None:
+    row = _row(
+        "Timed",
+        ticks="3",
+        skills=[{"experience": "10", "level": "1", "name": "Crafting"}],
+        output={"name": "Something", "quantity": "1"},
+    )
+
+    (recipe,) = parse_recipes([row], "Crafting")
+
+    assert recipe.ticks == 3.0
+    assert recipe.timed is True
+
+
+def test_a_blank_is_untimed_and_is_not_a_zero() -> None:
+    """The distinction the other way round: a caller must be able to tell
+    "instant" from "unknown", because they get different answers."""
+    row = _row(
+        "Unknown",
+        ticks="",
+        skills=[{"experience": "10", "level": "1", "name": "Crafting"}],
+        output={"name": "Something", "quantity": "1"},
+    )
+
+    (recipe,) = parse_recipes([row], "Crafting")
+
+    assert recipe.ticks is None
+    assert recipe.timed is False
+
+
 def test_only_the_skill_asked_about_is_returned() -> None:
     """A recipe paying two skills is two different training methods, and the
     caller asked about one of them."""

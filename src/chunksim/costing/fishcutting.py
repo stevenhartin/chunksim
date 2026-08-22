@@ -107,8 +107,8 @@ def stated_ticks(
 
     **Three crabs, over the whole export.** `Cut a red crab into ~|raw red
     crab meat|~` and its blue and rainbow siblings each join a `{{Recipe}}`
-    carrying `ticks = ""`, so `rate_for` refused all three - rightly, since an
-    untimed action priced at no time is the fastest method in the game. What
+    carrying `ticks = 0`, so `rate_for` refused all three - rightly, since an
+    action priced at no time at all is the fastest method in the game. What
     makes a figure available here rather than a guess is that the *same knife*
     is timed elsewhere: the offcuts recipes state three ticks for every raw
     fish they accept.
@@ -132,7 +132,7 @@ def stated_ticks(
         if not isinstance(output, str):
             continue
         rows = untimed.get(output)
-        if rows and all(recipe.ticks is None for recipe in rows):
+        if rows and not any(recipe.timed for recipe in rows):
             found[output] = CUT_TICKS
     return found
 

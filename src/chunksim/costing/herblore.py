@@ -1,11 +1,19 @@
 """Cleaning a grimy herb, which the wiki does not time.
 
-**The `{{Recipe}}` for every clean herb carries `ticks = ""`**, and
-`recipe_rates.rate_for` is right to refuse that rather than read it as zero -
-an untimed action priced at no time is the fastest method in the game. But the
+**The `{{Recipe}}` for every clean herb carries `ticks = 0`**, which is the
+wiki saying the *game* imposes no delay rather than saying nobody has timed
+it - and `recipe_rates.rate_for` is right to refuse reading that as no time at
+all, since an action priced at zero is the fastest method in the game. But the
 refusal cost Herblore eighteen methods: `Clean a ~|grimy ranarr weed|~` and its
 seventeen siblings joined a recipe, priced their input, and were dropped for
 want of a duration.
+
+**This module answers a different question from `ZERO_TICK_TICKS`, and that is
+why it still wins.** The floor charges one tick because two actions cannot
+resolve in one; this counts the *cycle* a clean herb sits inside, which is a
+bank trip and a click, and comes out **faster** than the floor. `ticks_for`
+asks `stated_ticks` before it reaches the floor, so counting the cycle beats
+bounding the action wherever a module has done the counting.
 
 **It is untimed for the same reason dart fletching is** - see
 `heuristics.DART_CYCLE_SECONDS`, the precedent this follows. Cleaning is not
@@ -56,7 +64,11 @@ def cleaning_ticks(recipes: Sequence[Recipe]) -> dict[str, float]:
     """
     found: dict[str, float] = {}
     for recipe in recipes:
-        if recipe.ticks is not None:
+        # **A stated `0` is not a published duration**, which is what
+        # `Recipe.timed` says and `ticks is not None` did not: every
+        # recipe this module fills carries `ticks = 0`, and reading
+        # that as "already timed" would silently retire the module.
+        if recipe.timed:
             continue
         if len(recipe.materials) != 1:
             continue

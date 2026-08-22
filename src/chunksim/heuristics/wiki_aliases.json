@@ -1,6 +1,6 @@
 {
   "name": "wiki_aliases",
-  "fetched_at": "2026-08-18T14:49:37.338365+00:00",
+  "fetched_at": "2026-08-22T14:20:49.908891+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "Adamant bolts (unf)": "Adamant bolts(unf)",
@@ -26,19 +26,20 @@
     "Myre snelm (round)": "Myre snelm",
     "Mithril javelin heads": "Mithril javelin tips",
     "Mahogany mounted head display": "Mahogany display (head trophy)",
+    "Oak mounted fish display": "Oak display",
     "Pysk fish": "Pysk fish (0)",
     "Otherworldy theme": "Otherworldly theme",
     "Ochre snelm (pointed)": "Pointed ochre snelm",
     "Ochre snelm (round)": "Ochre snelm",
-    "Oak mounted fish display": "Oak display",
-    "Rune crossbow (u)": "Runite crossbow (u)",
     "Roqed fish": "Roqed fish (5)",
+    "Rune crossbow (u)": "Runite crossbow (u)",
+    "Suphi fish": "Suphi fish (1)",
     "Spirit tree and fairy ring": "Spirit tree & fairy ring",
     "Split logs": "Split log",
     "Servant's moneybag": "Servant's money bag",
     "Steel javelin heads": "Steel javelin tips",
     "Rune javelin heads": "Rune javelin tips",
-    "Suphi fish": "Suphi fish (1)",
+    "Teak mounted head display": "Teak display (head trophy)",
     "Wooden telescope": "Oak telescope"
   }
 }

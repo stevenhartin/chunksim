@@ -3,9 +3,17 @@
 **145 of Fletching's 158 untimed recipes are the same action.** Every dart and
 every unfinished bolt is finished by putting a stack of feathers onto a stack
 of tips or shafts, and the `{{Recipe}}` for each states a level, an
-experience, an output of ten - and no `ticks` at all. So `recipe_rates.
-rate_for` refused the lot, and twenty of Fletching's thirty-one unpriced
-methods were this one gap wearing twenty names.
+experience, an output of ten - and `ticks = 0`. So `recipe_rates.rate_for`
+refused the lot, and twenty of Fletching's thirty-one unpriced methods were
+this one gap wearing twenty names.
+
+**That zero is this module's own argument arriving from the wiki**, which is
+worth knowing now `Recipe.timed` keeps it distinct from a blank: `ticks = 0`
+means the game imposes no delay, and the reason the training page files darts
+under *zero time methods* is that the two clicks are done while running
+somewhere else. The 2 stated here still wins over `ZERO_TICK_TICKS`, because
+it is a duration for *this action*, read off four siblings, where the floor is
+a bound on any action at all.
 
 ### The wiki times the same action elsewhere, four times, identically
 
@@ -95,7 +103,11 @@ def stated_ticks(recipes: Mapping[str, Sequence[Recipe]]) -> dict[str, float]:
     """
     found: dict[str, float] = {}
     for recipe in recipes.get(SKILL) or ():
-        if recipe.ticks is not None:
+        # **A stated `0` is not a published duration**, which is what
+        # `Recipe.timed` says and `ticks is not None` did not: every
+        # recipe this module fills carries `ticks = 0`, and reading
+        # that as "already timed" would silently retire the module.
+        if recipe.timed:
             continue
         if not is_feathered(recipe):
             continue
