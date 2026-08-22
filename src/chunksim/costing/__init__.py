@@ -386,6 +386,13 @@ The modules, and what each owns:
   and ball positioning are the one invented number, which makes every band a
   `GUESS`. Bounded rather than open-ended - the lap dominates - and it names
   the single band on one map its guess decides.
+- `mess.py` - the Hosidius Mess, whose three foods join a `{{Recipe}}` and lose
+  their inputs because a servery pie shell exists nowhere in the export's item
+  graph. Priced as an activity instead: the page states a level, a turn-in
+  figure, a per-inventory figure and an hourly band for each, and the first two
+  check the third. **Charges nothing for materials**, which is the point - the
+  page's own "without any requirements to gather materials" is why the Mess
+  beats fish this project has to charge for.
 - `tarnished.py` - polishing the nine Vampyrium tarnished items, which no
   `{{Recipe}}` describes because upstream's `Output` is a **loot-table name**.
   One tick and 200-250 experience, both stated on every one of the nine pages,

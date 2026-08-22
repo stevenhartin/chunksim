@@ -1257,6 +1257,42 @@ only `{{Skilling success chart}}` is for the *fish*. The report said
 `unpriced`. `trawler.refused` says it where a reader can see it, gated on the
 leaks actually being priced for `foundry.refused`'s reason.
 
+**A minigame that hands you the ingredients is where charging for materials
+pays off, and the Mess is the case.** Its three foods each join a `{{Recipe}}`
+perfectly well and each lost its input - `Servery uncooked pie` has no route
+anywhere in the export and never will, being made in a kitchen a chunk map
+either holds or does not. Priced through the recipe layer they are dropped;
+priced as an activity the pizza is one of the best Cooking rates in the game,
+**because** everything else this project quotes is charged for its raw fish
+and the Mess's own page says it is not: "notable for offering Cooking training
+without any requirements to gather materials".
+
+**Two published columns that check each other.** `Mess` states a turn-in
+figure (~160 / ~168 / ~369) *and* a per-inventory figure (~2,300 for 14 /
+~2,400 for 14 / ~5,000 for 13), and multiplying the first gives 2,240, 2,352
+and 4,797 - each 2.5% to 4% low, in the same direction, for the same reason:
+cooking the servery raw meat and cooking the uncooked pie are Cooking actions
+the turn-in figure does not carry. The gates are the page's own and upstream's
+exactly - 20, 25, 65.
+
+**The low end of the realistic band is spent** (`costing/pyramid.py`'s rule
+for a range hedged "depending on Cooking level and concentration levels"), so
+the pizza reads **165,000/hr** against the page's "above 200,000 with perfect
+clicks" and a 94,000/hr stew variant that needs a strictly harder regime than
+the band beside it was observed under. Both are recorded and neither is spent
+- `costing/sepulchre.py`'s "tick-perfect is not a rate". **Nothing is banded
+within a food**: the page ties the level dependence to burning and states two
+of the three thresholds, but bundles it with concentration in one range, so
+three foods opening at 20, 25 and 65 are the curve.
+
+**No material cost, and it is the right answer rather than a lucky one.**
+`material_seconds_per_xp` is filled from the recipe corpus and these three
+fill nothing there, so a `ComputedMethod` carries no charge - the same trap
+`costing/gotr.py` fell into from the other direction. Cooking goes 181
+modelled to **184** and two climbs move: `verf` 89.3h to **79.5h** with the
+pizza owning 65-99, and `fray-uber` 63.8h to **61.9h** with it owning 65-82
+before the sea turtle takes over.
+
 **The bream is the same activity as the moss lizard and is handled the other
 way, which is the interesting part.** `Cook a ~|cooked bream|~` joined its
 recipe perfectly well and was dropped for an unroutable input: upstream writes

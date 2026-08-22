@@ -62,6 +62,7 @@ from chunksim.costing import (
     foundry,
     herbiboar,
     implings,
+    mess,
     paydirt,
     pickpocket,
     production,
@@ -576,6 +577,11 @@ def recipe_priced(
     # `costing/tarnished.py`. One tick for 200 experience is 1,200,000/hr on
     # paper; the drop behind it is charged below.
     polished = tarnished.methods(derived.challenges.valid)
+    # **And the Hosidius Mess, which hands you the ingredients** - see
+    # `costing/mess.py`. Its three foods join a `{{Recipe}}` and lose their
+    # inputs, because a servery pie shell is made in a kitchen and exists
+    # nowhere in the export's item graph.
+    messed = mess.methods(derived.challenges.valid)
     overrides = blobs.overrides
     # **The hand materials do not depend on the recipes**, so they are read
     # before the early return: a clone with no `chunksim recipes` cache still
@@ -602,7 +608,7 @@ def recipe_priced(
             replace(
                 heuristics,
                 computed=_merge_computed(
-                    prayed, craned, totemed, trawled, polished, gathered
+                    prayed, craned, totemed, trawled, polished, messed, gathered
                 ),
                 material_seconds_per_xp={**by_calc, **by_spell, **by_hand},
             ),
@@ -776,7 +782,7 @@ def recipe_priced(
             training=rated,
             action_seconds=timed,
             computed=_merge_computed(
-                prayed, craned, totemed, trawled, polished, gathered
+                prayed, craned, totemed, trawled, polished, messed, gathered
             ),
             material_seconds_per_xp=per_xp,
             material_xp_per_xp=credited,
