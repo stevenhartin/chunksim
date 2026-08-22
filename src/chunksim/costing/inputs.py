@@ -80,6 +80,7 @@ from chunksim.costing import (
     troublebrewing,
     swimming,
     tempoross,
+    toymouse,
     valuables,
     wallsafe,
     wintertodt,
@@ -1068,6 +1069,11 @@ def _gathered(
     # `costing/skullball.py`, whose one invented number is named there and is
     # why its band is a `GUESS`.
     for skill, methods in skullball.methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **A charted chance and an invented cadence** - see
+    # `costing/toymouse.py`, whose guess is safe for the opposite reason
+    # `skullball.py`'s is: it cannot decide a band at any plausible value.
+    for skill, methods in toymouse.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **A lap and a lap time, which is what a course is** - see
     # `costing/courses.py`, and the eight it leaves to the guide.

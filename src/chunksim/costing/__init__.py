@@ -386,6 +386,12 @@ The modules, and what each owns:
   and ball positioning are the one invented number, which makes every band a
   `GUESS`. Bounded rather than open-ended - the lap dominates - and it names
   the single band on one map its guess decides.
+- `toymouse.py` - catching a wound-up clockwork mouse for 3 experience, whose
+  charted catch chance reproduces **Mod Ash's own** "24% - 98%" for levels 1
+  and 99. Nothing states how long a wind-release-catch cycle takes, on the
+  toy's page or on its three clockwork siblings, so `CATCH_TICKS` is invented
+  and every band is a `GUESS` - safe because the whole plausible range sits
+  below every other Agility method on every map.
 - `sepulchre.py` - the Hallowed Sepulchre, counted in ticks: a lap runs floors
   1 to N in order, so the Strategies page's tick-perfect floor times plus six
   ticks a staircase give the Agility rate, and fifteen more per floor for one

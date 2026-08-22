@@ -906,9 +906,32 @@ end was taken. The optimal route - "times as fast as 1:45 can be achieved" -
 is the ceiling at 20,000/hr and deliberately not spent, being tile markers and
 mid-flight ball redirection rather than what the page presents as the route.
 
-**Agility now has one unpriced method**, the toy mouse: 96 modelled, 1 pinned,
-8 guessed, 1 unpriced, 4 refused, 1 one-off and 10 uncompletable of 121, from
-72/1/0/28/0/0 when this stretch started.
+**And the last of them is a guess that is safe for the opposite reason.** A
+clockwork toy mouse is wound, released and chased: 3 experience if you catch
+it before it stops moving, nothing if you do not - it used to pay 15 either
+way, which is what made spamming it fast until the 21 March 2013 change. The
+catch chance is charted, and it is one of very few charts on the wiki with a
+**developer statement beside it**: Mod Ash's "Mouse: 24% - 98%.... Those
+figures are for level 1 and level 99; interpolate linearly between them",
+against `success_chance`'s 23.83% and 98.05% - the chart checked against its
+own source rather than this project checked against the chart.
+
+What nothing states is the cycle, and the family is no help: `Clockwork
+suit`, `Toy doll` and `Toy soldier` are the same `type = Clockwork toy` and
+not one carries a duration. So `toymouse.CATCH_TICKS` is invented, and where
+`costing/skullball.py`'s guess is safe because the published lap dominates,
+this one is the **whole denominator** - five ticks reads 3,530/hr at 99 and
+fifteen reads 1,177. What makes it safe instead is the magnitude: every value
+in that range loses to every opening band on every map (15,000/hr on the uber
+map, 10,835 on the second), so the guess buys coverage without buying an
+answer. Ten ticks reads 429/hr at level 1 to 1,765 at 99. **The tempting
+objection is that this looks too low to be right**, and the arithmetic
+answers it: 5,000/hr at 3 experience a catch is one catch every 2.2 seconds
+including the wind and the release.
+
+**Agility has no unpriced method at all** - 96 modelled, 1 pinned, 9 guessed,
+4 refused, 1 one-off and 10 uncompletable of 121, from 72/1/0/28/0/0 when this
+stretch started, and two climbs moved in the whole of it.
 
 **`inferred` is a rate this project computed and the report was calling it
 `published`.** `coverage.MODELLED_MATCHES`' own comment says it lists "values
