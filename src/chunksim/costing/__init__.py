@@ -386,6 +386,9 @@ The modules, and what each owns:
   and ball positioning are the one invented number, which makes every band a
   `GUESS`. Bounded rather than open-ended - the lap dominates - and it names
   the single band on one map its guess decides.
+- `gnomecooking.py` - the one gnome crunchy the wiki leaves untimed, against
+  three siblings on the same page that all state one tick. `costing/yewtree.py`
+  reversed: a small, closed, uniform family where the odd one out is the blank.
 - `mess.py` - the Hosidius Mess, whose three foods join a `{{Recipe}}` and lose
   their inputs because a servery pie shell exists nowhere in the export's item
   graph. Priced as an activity instead: the page states a level, a turn-in

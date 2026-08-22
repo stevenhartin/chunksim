@@ -1257,6 +1257,33 @@ only `{{Skilling success chart}}` is for the *fish*. The report said
 `unpriced`. `trawler.refused` says it where a reader can see it, gated on the
 leaks actually being priced for `foundry.refused`'s reason.
 
+**Gnome Restaurant needed no model at all - it needed a step the wiki
+documents in prose and never writes a `{{Recipe}}` for.** Every gnome dish
+priced out at the first move: pressing `Gianne dough` into a `Batta tin`, a
+`Crunchy tray` or a `Gnomebowl mould`. The wiki names what comes out (`Raw
+batta`, `Raw crunchies`, `Raw gnomebowl`), states no recipe for it, and those
+three names therefore have no route anywhere in the export - so the whole
+chain behind them was dropped for want of an input. **Upstream states the cost
+itself and in its own notation**: all three `Bake a ~|half baked ...|~`
+challenges list the container *unmarked* and `Gianne dough*` starred, which is
+exactly "one dough is spent and the tin is not". So this is
+`recipe_rates.MATERIAL_ALIASES`' `Black mask` shape - the mapping is
+upstream's rather than a guess - and three entries closed it.
+
+**And the fourth crunchy.** `Worm crunchies` carries no stated ticks where
+`Toad`, `Spicy` and `Chocchip` on the same page all state **1** for the
+identical action, so `costing/gnomecooking.py` states it - `costing/yewtree.py`
+reversed, a small closed uniform family whose odd one out is the blank.
+
+**The chains credit themselves, which is the check that the walk is composing
+right.** A spicy crunchy reads **33,505/hr effective against a 13,796
+headline** - the reverse of the usual direction - because the half-baked,
+half-made and unfinished steps each pay Cooking on the way, and
+`TrainingOption.effective_xp_per_hour` credits same-skill gathering. 42
+experience on the last step against 102 for the chain is 2.43x, which is the
+ratio the report prints. Cooking goes 184 modelled to **188** and 10 unpriced
+to **6**; no climb moves.
+
 **A minigame that hands you the ingredients is where charging for materials
 pays off, and the Mess is the case.** Its three foods each join a `{{Recipe}}`
 perfectly well and each lost its input - `Servery uncooked pie` has no route

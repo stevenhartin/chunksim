@@ -902,10 +902,24 @@ HAND_ALIASES: dict[str, str] = {
 #: vocabulary lag `wiki_aliases.json` handles for *outputs*, seen on the
 #: material axis where that fetch cannot look: the item was renamed `sack` ->
 #: `sac` on 30 June 2026, the wiki followed and the export has not.
+#: **And a third shape: a step the wiki documents in prose and never writes a
+#: `{{Recipe}}` for.** Gnome cooking starts by pressing `Gianne dough` into a
+#: `Batta tin`, a `Crunchy tray` or a `Gnomebowl mould`; the wiki names what
+#: comes out (`Raw batta`, `Raw crunchies`, `Raw gnomebowl`) and states no
+#: recipe for it, so those three names have no route anywhere and every gnome
+#: dish was dropped for want of one. **Upstream states the cost itself**, and
+#: in its own notation: all three `Bake a ~|half baked ...|~` challenges list
+#: the container *unmarked* and `Gianne dough*` starred, which is exactly
+#: "one dough is spent and the tin is not". So this is the `Black mask` shape
+#: rather than a guess - the mapping is upstream's - and pricing a raw batta
+#: as one Gianne dough charges what upstream says it charges.
 MATERIAL_ALIASES: dict[str, str] = {
     "Pharaoh's sceptre (uncharged)": "Pharaoh's sceptre",
     "Black mask": "Black mask (10)",
     "Araxyte venom sac": "Araxyte venom sack",
+    "Raw batta": "Gianne dough",
+    "Raw crunchies": "Gianne dough",
+    "Raw gnomebowl": "Gianne dough",
 }
 
 
@@ -947,8 +961,9 @@ def stated_ticks(
     `yewtree` states the one cell a family of otherwise-identical garden
     trees leaves blank on this one page, and `greenman` the one cell its
     two-recipe family leaves blank - measured in game rather than borrowed,
-    with the sibling's published 4 as the check. `feathering` is the largest
-    of them by far: 145 of Fletching's 158 untimed recipes are a stack of
+    with the sibling's published 4 as the check; `gnomecooking` states the one
+    tick three of the four gnome crunchies publish and the fourth does not.
+    `feathering` is the largest of them by far: 145 of Fletching's 158 untimed recipes are a stack of
     feathers onto a stack of tips, and the four the wiki *does* time are all
     2 ticks.
     """
@@ -960,6 +975,7 @@ def stated_ticks(
         chisel,
         feathering,
         fishcutting as cutting,
+        gnomecooking,
         greenman,
         herblore,
         yewtree,
@@ -969,6 +985,7 @@ def stated_ticks(
     found.update(chisel.stated_ticks(recipes))
     found.update(yewtree.stated_ticks(recipes))
     found.update(greenman.stated_ticks(recipes))
+    found.update(gnomecooking.stated_ticks(recipes))
     found.update(feathering.stated_ticks(recipes))
     for skill, rows in recipes.items():
         challenges = _mapping(chunk_info.challenges, skill)

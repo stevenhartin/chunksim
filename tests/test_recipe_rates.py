@@ -1032,8 +1032,8 @@ class TestATrailingCountIsTheTasksOwnVocabulary:
 
 class TestMaterialAliasesAreHandVerified:
     """The reverse direction from `HAND_ALIASES`: a recipe's own material name
-    taken to the export's, so the item walk can find a route. Three entries,
-    each checked against its own wiki page."""
+    taken to the export's, so the item walk can find a route. Each entry is
+    checked against its own wiki page."""
 
     def test_a_charge_suffix_the_export_models_and_the_recipe_does_not(self) -> None:
         """Upstream's own `Items` for all four challenges that want one say
@@ -1047,6 +1047,37 @@ class TestMaterialAliasesAreHandVerified:
         assert recipe_rates.MATERIAL_ALIASES["Araxyte venom sac"] == (
             "Araxyte venom sack"
         )
+
+    def test_a_step_the_wiki_documents_and_never_writes_a_recipe_for(self) -> None:
+        """**The third shape.** Gnome cooking starts by pressing `Gianne
+        dough` into a tin, a tray or a mould; the wiki names what comes out
+        and states no `{{Recipe}}` for it, so `Raw batta` and its two siblings
+        have no route anywhere and every gnome dish was dropped for want of
+        one."""
+        for raw in ("Raw batta", "Raw crunchies", "Raw gnomebowl"):
+            assert recipe_rates.MATERIAL_ALIASES[raw] == "Gianne dough"
+
+    @pytest.mark.real_export
+    def test_upstream_states_that_cost_in_its_own_notation(
+        self, real_export: ChunkInfo
+    ) -> None:
+        """**The mapping is upstream's rather than a guess**, which is what
+        the `Black mask` entry above rests on too: all three `Bake a ~|half
+        baked ...|~` challenges list the container *unmarked* and `Gianne
+        dough*` starred, so one dough is spent and the tin is not."""
+        cooking = real_export.challenges["Cooking"]
+        for task in (
+            "Bake a ~|half baked batta|~",
+            "Bake a ~|half baked crunchy|~",
+            "Bake a ~|half baked bowl|~",
+        ):
+            entry = cooking.get(task)
+            assert isinstance(entry, dict), task
+            items = list(entry.get("Items") or ())
+            assert "Gianne dough*" in items, task
+            container = [item for item in items if item != "Gianne dough*"]
+            assert len(container) == 1, task
+            assert not container[0].endswith("*"), (task, container)
 
     def test_they_run_the_opposite_way_to_the_output_aliases(self) -> None:
         """Conflating the two would search the wrong dictionary - one takes an
