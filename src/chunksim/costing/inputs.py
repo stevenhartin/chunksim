@@ -834,6 +834,20 @@ def recipe_priced(
                 # that decides it is charted for the fish rather than for the
                 # repair.
                 **trawler.refused(derived.challenges.valid),
+                # **And every crop the growing schedule already answers
+                # for.** `plan_for` picks one crop a line and the estimate's
+                # Farming answer *is* those picks, so the report was
+                # contradicting it - see `farming.refused` for the three
+                # sentences and for why a per-crop hourly rate is the one
+                # thing that must not be invented here.
+                **farming.refused(
+                    derived.challenges.valid,
+                    heuristics.crops,
+                    harvests_per_day={
+                        **farming.DEFAULT_HARVESTS_PER_DAY,
+                        **heuristics.farming_schedule,
+                    },
+                ),
             },
         ),
         coverage,

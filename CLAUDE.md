@@ -1257,6 +1257,48 @@ only `{{Skilling success chart}}` is for the *fish*. The report said
 `unpriced`. `trawler.refused` says it where a reader can see it, gated on the
 leaks actually being priced for `foundry.refused`'s reason.
 
+**Farming's 85 `unpriced` rows were the report contradicting the estimate.**
+`farming.plan_for` picks one crop per line of the growing schedule and the
+estimate's whole Farming answer *is* those picks - so `Grow a ~|grimy
+torstol|~` printed the one word that means "nothing reached this" about the
+very method the model spends. Classified against the schedule the 85 are five
+different things, and only the last two are gaps:
+
+     8  the schedule's own pick - torstol, magic tree, rosewood, dragonfruit,
+        snape grass, poison ivy, potato cactus, redwood
+    36  a crop outranked on its own line (15 herb, 7 fruit tree, 7 allotment,
+        5 bush, 4 hardwood, 2 tree)
+    20  a crop the schedule deliberately excludes - hops, flowers, celastrus,
+        crystal tree, spirit tree, cave nightshade
+    15  a name that did not join the calculator's table
+     6  genuinely outside it
+
+**Three sentences rather than one**, because those are three different
+statements: priced-on-the-calendar, outranked-by-name, and a decision this
+module's docstring already records. `farming.refused` derives all of them from
+the schedule rather than a hand table, so a change to `DEFAULT_HARVESTS_PER_DAY`
+moves the sentences with it - emptying the schedule makes every row read
+"deliberately not in it", which is `plan_for`'s own "someone who farms nothing
+farms nothing".
+
+**What must not happen here is a per-crop hourly rate**, and it is worth
+saying because it is the obvious move: a herb harvest is a hundred experience
+for a few seconds of clicking, so per-crop rates read enormous, win every band
+and are exactly the error `estimate._farming_bands` was written to avoid. The
+skill is measured in days; `refused` says there is deliberately no hourly
+figure, where `unpriced` said somebody should go and find one.
+
+**And eleven of the fifteen misses were vocabulary in three familiar shapes** -
+a plural the calculator writes and upstream does not (`Marigolds`), a
+`(Farming)` disambiguator (`Oak (Farming)`), and the calculator naming the
+*product* where upstream names the plant (`Calquat fruit`, `Cactus spine`, and
+the three anima seeds). `farming.CROP_ALIASES` closes them, and what it buys
+is the sentence rather than a rate: each lands in the outranked or excluded
+bucket once it joins. Farming goes **85 unpriced to 6**, and the six are the
+two Chambers of Xeric herbs this module already calls "not farmed, they are
+found", three Sailing fibres the calculator has no rows for, and the
+Sorceress's Garden, which is not a patch at all.
+
 **Crafting's join misses were four names and one of them was a whole other
 skill's answer.** Nine methods closed and the shapes are worth separating:
 

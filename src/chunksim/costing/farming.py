@@ -41,6 +41,8 @@ from typing import Any, Mapping, Sequence
 
 from chunksim.remote.farming import Crop
 
+SKILL = "Farming"
+
 #: Harvests a day, by schedule key. See the module docstring: stated figures,
 #: and the model rather than an input to it.
 DEFAULT_HARVESTS_PER_DAY: dict[str, float] = {
@@ -214,6 +216,118 @@ def expected_yield(crop: Crop) -> float:
 def harvest_experience(crop: Crop) -> float:
     """Experience one harvest pays: planting once, then per item taken."""
     return crop.plant_experience + crop.experience * expected_yield(crop)
+
+
+#: Export span -> the crop name `Module:Skill calc/Farming` uses, for the
+#: eleven that differ. **A vocabulary difference and nothing more**: every one
+#: of these lands in the same bucket its neighbours do once it joins, so what
+#: the table buys is the *sentence* a reader sees rather than a rate.
+#:
+#: Three shapes, all of which turn up elsewhere in this project: a plural the
+#: calculator writes and upstream does not (`Marigolds`), a `(Farming)`
+#: disambiguator the calculator carries (`Oak (Farming)`), and the calculator
+#: naming the *product* where upstream names the plant (`Calquat fruit`,
+#: `Cactus spine`, and the three anima seeds).
+CROP_ALIASES: dict[str, str] = {
+    "attas plant": "Attas",
+    "cactus (farming)": "Cactus spine",
+    "calquat tree": "Calquat fruit",
+    "huasca": "Huasca",
+    "iasor plant": "Iasor",
+    "kronos plant": "Kronos",
+    "marigold": "Marigolds",
+    "nasturtium": "Nasturtiums",
+    "oak tree": "Oak (Farming)",
+    "willow tree": "Willow Tree (Farming)",
+    "zamorak's grapes": "Grapes",
+}
+
+#: The prefix upstream gives an uncleaned herb, which the calculator does not.
+_GRIMY = "grimy "
+
+
+def crop_for(task: str, crops: Sequence[Crop]) -> Crop | None:
+    """The crop a `Grow a ~|...|~` challenge is about, or `None`.
+
+    Joined on upstream's own marked span, which is what `~|...|~` is for -
+    the challenge states no `Output` for a crop and its verb-stripped words
+    are a sentence. Doses of vocabulary are stripped in the order they matter:
+    the `grimy ` prefix first, then `CROP_ALIASES`.
+    """
+    span = task.partition("~|")[2].rpartition("|~")[0].strip().lower()
+    if not span:
+        return None
+    by_name = {crop.name.lower(): crop for crop in crops}
+    for key in (span, span.removeprefix(_GRIMY)):
+        found = by_name.get(key) or by_name.get(CROP_ALIASES.get(key, "").lower())
+        if found is not None:
+            return found
+    return None
+
+
+def refused(
+    valid: Mapping[str, Any],
+    crops: Sequence[Crop],
+    *,
+    harvests_per_day: Mapping[str, float] | None = None,
+    level: int = 99,
+) -> dict[str, str]:
+    """`{task: why}` for every crop the schedule already answers for.
+
+    **The report was contradicting the estimate.** `plan_for` picks one crop
+    per line of the schedule and the estimate's whole Farming answer *is*
+    those picks - so `Grow a ~|grimy torstol|~` printed `unpriced`, the one
+    word meaning "nothing reached this", about the very method the model
+    spends. See `coverage.REFUSED`.
+
+    Three sentences, because the rows are three different things:
+
+    - **the schedule's own pick** - priced, on the calendar axis, and there is
+      deliberately no hourly figure for it;
+    - **outranked on its line** - a ranking rather than a gap; the schedule
+      takes the best crop per line and this one lost;
+    - **not in the schedule at all** - the decision this module's docstring
+      already records for hops, flowers, belladonna, spirit trees and
+      celastrus.
+
+    **What it must not do is invent an hourly rate.** A herb harvest is a
+    hundred experience for a few seconds of clicking, so a per-crop rate reads
+    enormous and would win every band - the exact error `estimate.
+    _farming_bands` exists to avoid, and the reason this module reports days.
+
+    `level` is where the schedule is read, and only the *winner named in a
+    sentence* depends on it: at 99 the herb line takes torstol, lower down it
+    takes something else, and either way there is no hourly rate for any of
+    them. A crop this cannot join keeps `unpriced`, which is honest - the
+    join is what says which sentence applies.
+    """
+    reachable = valid.get(SKILL) or {}
+    if not reachable or not crops:
+        return {}
+    rates = dict(
+        DEFAULT_HARVESTS_PER_DAY if harvests_per_day is None else harvests_per_day
+    )
+    winners = {run.key: run.crop for run in plan_for(
+        crops, level, harvests_per_day=rates
+    ).runs}
+    found: dict[str, str] = {}
+    for task in reachable:
+        crop = crop_for(task, crops)
+        if crop is None:
+            continue
+        key = schedule_key(crop)
+        if key is None or rates.get(key, 0.0) <= 0:
+            found[task] = (
+                "deliberately not in the growing schedule - see costing/farming.py"
+            )
+        elif winners.get(key) == crop.name:
+            found[task] = (
+                f"the growing schedule's {key} crop - Farming is priced in days"
+            )
+        else:
+            found[task] = f"outranked on the {key} line, where the schedule takes "
+            found[task] += str(winners.get(key) or "another crop")
+    return found
 
 
 def plan_for(

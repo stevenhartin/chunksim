@@ -177,3 +177,138 @@ def test_only_ordinary_farmed_herbs_get_a_yield() -> None:
     found = farming.harvest_yields(challenges, dict.fromkeys(challenges, {}))
 
     assert found == {"Grow a ~|grimy ranarr weed|~": farming.HERBS_PER_SEED}
+
+
+def _crop(name: str, patch: str, level: int = 1, xp: float = 10.0) -> Crop:
+    return Crop(
+        name=name,
+        level=level,
+        experience=xp,
+        plant_experience=0.0,
+        patch=patch,
+        seed="",
+    )
+
+
+class TestTheCropAChallengeIsAbout:
+    """Joined on upstream's own marked span, which is what `~|...|~` is for -
+    a `Grow a ...` challenge states no `Output` and its verb-stripped words are
+    a sentence."""
+
+    _CROPS = [
+        _crop("Torstol", "Herb", 85),
+        _crop("Marigolds", "Flower"),
+        _crop("Oak (Farming)", "Tree", 15),
+        _crop("Calquat fruit", "Special", 72),
+    ]
+
+    def test_a_plain_name_joins(self) -> None:
+        found = farming.crop_for("Grow a ~|torstol|~", self._CROPS)
+
+        assert found is not None and found.name == "Torstol"
+
+    def test_the_grimy_prefix_is_stripped(self) -> None:
+        found = farming.crop_for("Grow a ~|grimy torstol|~", self._CROPS)
+
+        assert found is not None and found.name == "Torstol"
+
+    def test_a_plural_the_calculator_writes(self) -> None:
+        found = farming.crop_for("Grow a ~|marigold|~", self._CROPS)
+
+        assert found is not None and found.name == "Marigolds"
+
+    def test_a_disambiguator_the_calculator_carries(self) -> None:
+        found = farming.crop_for("Grow an ~|oak tree|~", self._CROPS)
+
+        assert found is not None and found.name == "Oak (Farming)"
+
+    def test_the_calculator_naming_the_product(self) -> None:
+        found = farming.crop_for("Grow a ~|calquat tree|~", self._CROPS)
+
+        assert found is not None and found.name == "Calquat fruit"
+
+    def test_a_name_nothing_answers_to_is_none(self) -> None:
+        assert farming.crop_for("Grow ~|flax|~", self._CROPS) is None
+        assert farming.crop_for("Do a thing", self._CROPS) is None
+
+    def test_every_alias_names_a_crop_the_shipped_tables_carry(self) -> None:
+        """**A typo in an alias is a silent miss**: the row goes back to
+        reading `unpriced` with nothing to say it was meant to be explained."""
+        from chunksim.costing.inputs import load_reference
+        from chunksim.model.chunkinfo import ChunkInfo
+        from chunksim.costing.inputs import load_heuristics
+
+        blobs = load_reference(None, None)
+        heuristics, _ = load_heuristics(ChunkInfo({}), None, blobs)
+        names = {crop.name for crop in heuristics.crops}
+
+        assert names, "no crop table shipped"
+        for span, crop in farming.CROP_ALIASES.items():
+            assert crop in names, (span, crop)
+
+
+class TestTheScheduleAnswersForTheCrops:
+    """**The report was contradicting the estimate.** `plan_for` picks one
+    crop a line and the estimate's whole Farming answer *is* those picks, so
+    the schedule's own herb printed `unpriced`."""
+
+    _CROPS = [
+        _crop("Torstol", "Herb", 85, 20.0),
+        _crop("Guam leaf", "Herb", 9, 1.0),
+        _crop("Marigolds", "Flower"),
+    ]
+    _VALID = {
+        "Farming": {
+            "Grow a ~|grimy torstol|~": True,
+            "Grow a ~|grimy guam leaf|~": True,
+            "Grow a ~|marigold|~": True,
+            "Grow ~|flax|~": True,
+        }
+    }
+
+    def _found(self) -> dict[str, str]:
+        return farming.refused(self._VALID, self._CROPS)
+
+    def test_the_schedules_own_pick_says_so(self) -> None:
+        why = self._found()["Grow a ~|grimy torstol|~"]
+
+        assert "schedule's Herb crop" in why
+        assert "days" in why
+
+    def test_an_outranked_crop_names_the_winner(self) -> None:
+        why = self._found()["Grow a ~|grimy guam leaf|~"]
+
+        assert "outranked on the Herb line" in why
+        assert "Torstol" in why
+
+    def test_a_crop_the_schedule_excludes_says_that_instead(self) -> None:
+        """Flowers are absent from `DEFAULT_HARVESTS_PER_DAY` on purpose -
+        "nobody trains on them", this module's own docstring says."""
+        why = self._found()["Grow a ~|marigold|~"]
+
+        assert "deliberately not in the growing schedule" in why
+
+    def test_a_crop_it_cannot_join_keeps_unpriced(self) -> None:
+        """Honest: the join is what says which sentence applies."""
+        assert "Grow ~|flax|~" not in self._found()
+
+    def test_nothing_where_farming_is_unreachable(self) -> None:
+        assert farming.refused({}, self._CROPS) == {}
+        assert farming.refused({"Farming": {}}, self._CROPS) == {}
+
+    def test_nothing_without_a_crop_table(self) -> None:
+        assert farming.refused(self._VALID, []) == {}
+
+    def test_an_emptied_schedule_refuses_everything_as_excluded(self) -> None:
+        """"Someone who farms nothing farms nothing" - `plan_for`'s rule, and
+        the sentences have to follow it."""
+        found = farming.refused(self._VALID, self._CROPS, harvests_per_day={})
+
+        assert all("deliberately not" in why for why in found.values())
+
+    def test_it_invents_no_rate(self) -> None:
+        """The one thing that must not happen: a herb harvest is a hundred
+        experience for a few seconds of clicking, so a per-crop rate reads
+        enormous and would win every band - `estimate._farming_bands`' error."""
+        assert all(isinstance(why, str) for why in self._found().values())
+        assert not hasattr(farming, "crop_rate")
