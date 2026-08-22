@@ -1,7 +1,7 @@
 """Actions upstream files as training methods and nobody trains with.
 
-**Two shapes, and the `reason` beside each says which.** The status is named
-for the first because it came first; what the two have in common is that
+**Four shapes, and the `reason` beside each says which.** The status is named
+for the first because it came first; what they have in common is that
 "how fast can this be repeated" is not a question about the action.
 
 - **A decoration placed once** - the trophy mounts and boat cosmetics. Doing
@@ -42,6 +42,11 @@ for the first because it came first; what the two have in common is that
   quest weapon straight back, which is why those are a priced build-and-destroy
   loop in `recipe_rates.RETURNED_MATERIALS` rather than an entry here.
   Dismantling a blowpipe yields 20,000 Zulrah's scales and no fang.
+
+- **An obstacle opened once and then permanently open.** The God Wars
+  Dungeon rope descent is a `Tie-rope` at Agility 70 followed by a free
+  `Climb-down` for ever, which is precisely what `costing/shortcuts.py`
+  assumes no shortcut is - see the entry's own note.
 
 **A method's rate is only meaningful if repeating it is the point.** Every
 other status this project reports answers "what priced this"; these are
@@ -189,6 +194,24 @@ ONE_OFF: dict[str, str] = {
     "Make a ~|bone mace|~": "one spine, one weapon slot, and a second is a lamp",
     "Make a ~|bone shortbow|~": "one spine, one weapon slot, and a second is a lamp",
     "Make a ~|bone staff|~": "one spine, one weapon slot, and a second is a lamp",
+    # **A door opened once stays open, which is the opposite of every other
+    # Agility obstacle.** `costing/shortcuts.py`'s whole argument is that a
+    # shortcut is used again every time you pass, so eight ticks is a cadence;
+    # the God Wars Dungeon rocks are not that. `Rock (God Wars Dungeon)` says
+    # "a rope must be attached to each rock one time, requiring 70 Agility
+    # before it can be used", and the infobox carries the tie and the climb as
+    # separate versions - `Tie-rope` at level 70, `Climb-down` free forever
+    # after. There is no second tie to time.
+    #
+    # **This is also how the one place two wiki sources disagree stops
+    # mattering.** The page's own `{{Agility info}}` states `xp = 0` where the
+    # `Shortcuts` list's `XP` column says 6, and nothing here can say which is
+    # right. `one_off` is checked ahead of every priced tier, so the answer is
+    # the same either way - which is the better resolution than picking a
+    # number, and better than `shortcuts.REFUSED`, whose test *is* the zero.
+    "Access the rope descent to ~|Saradomin's Encampment|~": (
+        "a rope tied to the rock once at level 70, then climbed free forever"
+    ),
 }
 
 

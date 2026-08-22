@@ -1,6 +1,6 @@
 {
   "name": "wiki_rates",
-  "fetched_at": "2026-08-21T16:49:25.965241+00:00",
+  "fetched_at": "2026-08-22T12:40:06.134567+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "quests": {
@@ -5371,6 +5371,13 @@
           "match": "modelled"
         }
       },
+      "Access the Brimhaven Dungeon pipe to moss giants ~|shortcut|~": {
+        "Agility": {
+          "value": 6375.0,
+          "source": "computed:shortcut",
+          "match": "modelled"
+        }
+      },
       "Access the Chasm of Fire chain ~|shortcut|~": {
         "Agility": {
           "value": 3000.0,
@@ -5679,9 +5686,23 @@
           "match": "modelled"
         }
       },
+      "Access the beginner stepping stones in Brimhaven Dungeon ~|shortcut|~": {
+        "Agility": {
+          "value": 5625.0,
+          "source": "computed:shortcut",
+          "match": "modelled"
+        }
+      },
       "Access the broken Lighthouse bridge ~|shortcut|~": {
         "Agility": {
           "value": 530.2734375,
+          "source": "computed:shortcut",
+          "match": "modelled"
+        }
+      },
+      "Access the monkey bars under Edgeville ~|shortcut|~": {
+        "Agility": {
+          "value": 15000.0,
           "source": "computed:shortcut",
           "match": "modelled"
         }
@@ -5721,9 +5742,23 @@
           "match": "modelled"
         }
       },
+      "Access the reverse Brimhaven Dungeon pipe to moss giants ~|shortcut|~": {
+        "Agility": {
+          "value": 6375.0,
+          "source": "computed:shortcut",
+          "match": "modelled"
+        }
+      },
       "Access the reverse advanced pipe contortion in Brimhaven Dungeon ~|shortcut|~": {
         "Agility": {
           "value": 7500.0,
+          "source": "computed:shortcut",
+          "match": "modelled"
+        }
+      },
+      "Access the reverse beginner stepping stones in Brimhaven Dungeon ~|shortcut|~": {
+        "Agility": {
+          "value": 5625.0,
           "source": "computed:shortcut",
           "match": "modelled"
         }

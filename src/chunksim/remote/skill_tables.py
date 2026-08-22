@@ -276,6 +276,36 @@ SHORTCUT_ALIASES: dict[str, str] = {
     "reverse red dragon log balance in brimhaven dungeon shortcut": (
         "Log balance (Brimhaven Dungeon)"
     ),
+    # **Three more of the same shape, and the page title is the wiki's own
+    # redirect rather than its canonical one.** The `Shortcuts` list links
+    # `Stepping stones (Western Brimhaven Dungeon)`,
+    # `Pipe (Brimhaven Dungeon Entrance)` and `Monkey bars (Edgeville
+    # Dungeon)`; the wiki files each under a slightly different title and
+    # `fetch_wiki_pages` follows the redirect, so `ShortcutInfo.name` carries
+    # the *linked* form and that is what an alias has to say. Each is a
+    # challenge upstream states no `Objects` for, so the verb-stripped words
+    # are the only key it offers - the failure is a join and not a missing
+    # infobox, which is what makes them aliases rather than a parser change.
+    # The two Brimhaven pages hold both directions under one unversioned `xp`,
+    # so one alias serves each pair and `_add_shortcuts` picks the version by
+    # upstream's own `Level` - 22/1 for the pipe, 12/1 for the stones.
+    "brimhaven dungeon pipe to moss giants shortcut": (
+        "Pipe (Brimhaven Dungeon Entrance)"  # level1 = 22 == 22, 8.5 xp
+    ),
+    "reverse brimhaven dungeon pipe to moss giants shortcut": (
+        "Pipe (Brimhaven Dungeon Entrance)"  # level2 = 1 == 1, 8.5 xp
+    ),
+    "beginner stepping stones in brimhaven dungeon shortcut": (
+        "Stepping stones (Western Brimhaven Dungeon)"  # level1 = 12 == 12, 7.5 xp
+    ),
+    "reverse beginner stepping stones in brimhaven dungeon shortcut": (
+        "Stepping stones (Western Brimhaven Dungeon)"  # level2 = 1 == 1, 7.5 xp
+    ),
+    # **Not the eastern stones**, which are a separate page at level 56 paying
+    # nothing, and which upstream carries as its own non-`Primary` challenge.
+    "monkey bars under edgeville shortcut": (
+        "Monkey bars (Edgeville Dungeon)"  # 15 == 15, 20 xp
+    ),
     # From the `Agility` page's own `Other` table rather than `Shortcuts` -
     # obstacles the world map does not mark at all. 18 == 18, 31 xp.
     "watchtower trellis shortcut": "Trellis",
@@ -439,12 +469,20 @@ def shortcut_pages(text: str) -> tuple[str, ...]:
     `Obstacle` rather than `Shortcut` - twenty rows of things the world map
     does not mark with the shortcut icon, which are shortcuts in every way
     that matters here: an Agility level, an obstacle, and an experience. Taking
-    `table_with`'s first match left all twenty unfetched, so nine Agility
-    challenges that name their object perfectly well had nothing to join and
-    read `unpriced` - the monkey bars under Edgeville and Yanille, the Yanille
-    balancing ledge, Brimhaven's pipe and log balance, the Brimhaven ropeswing,
-    the Lighthouse basalt rock, the Nature Grotto bridge and the God Wars
-    Dungeon rock. `wikitable.tables_with` is the plural, added for this.
+    `table_with`'s first match left all twenty unfetched, so a dozen Agility
+    challenges had no page in the index to join at all: the monkey bars under
+    Edgeville and Yanille, the Yanille balancing ledge, both directions of
+    Brimhaven's two pipes and its log balance, the beginner stepping stones
+    and their reverse, the Brimhaven ropeswing, the Lighthouse basalt rock and
+    the Nature Grotto bridge. `wikitable.tables_with` is the plural, added for
+    this.
+
+    **Fetching a page is necessary and not sufficient**, which is worth saying
+    because it was got wrong here once: none of those challenges states
+    `Objects`, so a fetched page still has to be reached by name and five of
+    them needed a `SHORTCUT_ALIASES` entry as well. A page absent from this
+    list and a page present but unnamed by any challenge look identical
+    downstream - both are simply missing from `training`.
 
     **And eight more the list does not carry at all** - see
     `EXTRA_SHORTCUT_PAGES`, each named by upstream's own `Objects` and checked

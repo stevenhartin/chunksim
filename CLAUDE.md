@@ -797,6 +797,43 @@ else at all - which is the reassurance that a wholesale re-scrape is safe to
 run. No climb moved on any map: the best of them is the Watchtower trellis at
 23,250/hr, which the courses beat everywhere.
 
+**Fetching a page is necessary and not sufficient, and reading the count as an
+answer hid five more.** Those two parser fixes put `Monkey bars (Edgeville
+Dungeon)` and both Brimhaven entrance pages into the index, and the five
+challenges wanting them still read `unpriced` - which was reported here as
+"the wiki page carries no `{{Agility info}}`" and is simply false: all three
+carry one, and upstream states no `Objects` for any of the five, so the only
+key on offer was the challenge's own words. **The alias has to say the title
+the list *links*, not the one the wiki files the page under** - `Stepping
+stones (Western Brimhaven Dungeon)` against `Stepping stone (western Brimhaven
+Dungeon)`, `Monkey bars` against `Monkeybars` - because `fetch_wiki_pages`
+follows the redirect and keys the result by what was asked for. Both Brimhaven
+pages hold their two directions under one unversioned `xp`, so one alias
+serves each pair and upstream's own `Level` picks the version. Agility is
+**93 modelled and 5 unpriced**.
+
+**And it moved a climb, which none of the sixteen before it did.** The
+Edgeville monkey bars cannot fail and pay 20, so the model reads 15,000/hr at
+level 15 - enough to own `fray`'s Agility from 15 to 40, displacing the Al
+Kharid and Varrock rooftop courses and taking the climb 193.5h to **192.8h**.
+The page publishes "up to 13,000 experience per hour" for it, which is a real
+check rather than a source: 1.15x, the gap between a tick-perfect model and
+somebody actually swinging. It is also **the second published hourly figure
+for a single shortcut anywhere**, and the pair now brackets `SHORTCUT_TICKS` -
+the Wintertodt gap implies 5.1 ticks and this implies 9.2, against the stated
+8. One observation had looked like evidence the constant was conservative;
+two say it is an average with real spread either side, and neither is spent.
+
+**The one place two wiki sources disagree is settled by not needing either.**
+`Rock (God Wars Dungeon)` states `xp = 0` in its own infobox and 6 in the
+`Shortcuts` list, and nothing here can adjudicate that - but its page also
+says "a rope must be attached to each rock one time", with the infobox
+carrying `Tie-rope` at 70 and `Climb-down` free for ever after. That is
+`costing/oneoff.py`'s fourth shape and the exact negation of what
+`costing/shortcuts.py` assumes about every other obstacle, so the row reads
+the same whichever number is right. Filing it under `shortcuts.REFUSED`
+instead would have rested it on the zero.
+
 **What *is* refused is the other kind of miss.** `shortcuts.REFUSED` names the
 three challenges that join a real page and are declined because it awards
 nothing - `Fence (Burgh de Rott)`, `Crevice (Fremennik Slayer Dungeon)` and

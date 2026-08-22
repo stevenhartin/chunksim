@@ -57,7 +57,16 @@ def test_every_entry_is_named_individually() -> None:
         "Make a ~|bone staff|~",
     }
 
-    assert set(oneoff.ONE_OFF) == decorations | supply_bound | fusions | rat_bone
+    # The fourth: an obstacle opened once and permanently open after. A rope
+    # is tied to the God Wars Dungeon rock at Agility 70 and climbed free for
+    # ever, so there is no second tie to put a cadence on.
+    opened_once = {
+        "Access the rope descent to ~|Saradomin's Encampment|~",
+    }
+
+    assert set(oneoff.ONE_OFF) == (
+        decorations | supply_bound | fusions | rat_bone | opened_once
+    )
 
 
 @pytest.mark.real_export
@@ -82,6 +91,21 @@ def test_every_entry_says_why() -> None:
     """The reason is the whole content of the status - it is printed in the
     column a priced method uses for its source."""
     assert all(reason.strip() for reason in oneoff.ONE_OFF.values())
+
+
+def test_the_god_wars_rope_is_here_and_not_among_the_refusals() -> None:
+    """**Two homes were possible and only one survives the disagreement.**
+    `Rock (God Wars Dungeon)`'s own `{{Agility info}}` states `xp = 0` where
+    the `Shortcuts` list's `XP` column says 6, and `shortcuts.REFUSED`'s test
+    *is* the zero - so filing it there would rest the answer on the half of a
+    contradiction this project cannot adjudicate. `one_off` is checked ahead
+    of every priced tier, so the row reads the same whichever figure is
+    right, and the reason it gives is the mechanic rather than the number."""
+    from chunksim.costing import shortcuts
+
+    task = "Access the rope descent to ~|Saradomin's Encampment|~"
+    assert oneoff.reason(task)
+    assert task not in shortcuts.refused()
 
 
 def test_a_sword_mount_is_not_swept_in() -> None:

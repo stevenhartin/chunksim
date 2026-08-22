@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.remote.skill_tables import (
     parse_fishing,
     parse_herblore,
@@ -1099,8 +1100,9 @@ class TestTheShortcutListHasTwoTables:
     """`Shortcuts` ends with a second list under the same `Level(s)`/`XP`
     headers, headed `Obstacle` rather than `Shortcut` - twenty rows of things
     the world map does not mark with the icon. `table_with` returns the first
-    match, so all twenty went unfetched and nine Agility challenges that name
-    their object perfectly well had nothing to join."""
+    match, so all twenty went unfetched and a dozen Agility challenges had no
+    page in the index to reach - see `TestAFetchedPageStillHasToBeReachedByName`
+    for why five of them needed an alias on top."""
 
     _PAGE = """
 {| class="wikitable"
@@ -1164,6 +1166,70 @@ Some prose.
         found = shortcut_pages(self._PAGE + self._PAGE)
 
         assert len(found) == len(set(found))
+
+
+class TestAFetchedPageStillHasToBeReachedByName:
+    """**Fetching a page is necessary and not sufficient**, which was got
+    wrong here once. Reading the `Shortcuts` page's second table put
+    `Monkey bars (Edgeville Dungeon)` and the two Brimhaven entrance pages
+    into the index, and all five challenges that want them still read
+    `unpriced` - because upstream states no `Objects` for any of them, so the
+    only key on offer is the challenge's own words with the verb stripped."""
+
+    _WANT = {
+        "brimhaven dungeon pipe to moss giants shortcut": (
+            "Pipe (Brimhaven Dungeon Entrance)"
+        ),
+        "reverse brimhaven dungeon pipe to moss giants shortcut": (
+            "Pipe (Brimhaven Dungeon Entrance)"
+        ),
+        "beginner stepping stones in brimhaven dungeon shortcut": (
+            "Stepping stones (Western Brimhaven Dungeon)"
+        ),
+        "reverse beginner stepping stones in brimhaven dungeon shortcut": (
+            "Stepping stones (Western Brimhaven Dungeon)"
+        ),
+        "monkey bars under edgeville shortcut": "Monkey bars (Edgeville Dungeon)",
+    }
+
+    def test_each_is_aliased(self) -> None:
+        from chunksim.remote.skill_tables import SHORTCUT_ALIASES
+
+        for key, page in self._WANT.items():
+            assert SHORTCUT_ALIASES.get(key) == page, key
+
+    def test_the_targets_are_the_titles_the_list_links(self) -> None:
+        """**The alias must say the *linked* title, not the canonical one.**
+        The wiki files these under `Pipe (Brimhaven Dungeon entrance)`,
+        `Stepping stone (western Brimhaven Dungeon)` and `Monkeybars
+        (Edgeville Dungeon)`; `fetch_wiki_pages` follows the redirect and
+        keys the result by what was asked for, so `ShortcutInfo.name` carries
+        the list's spelling and an alias written from the address bar joins
+        nothing."""
+        from chunksim.remote.skill_tables import shortcut_pages
+
+        found = set(shortcut_pages(TestTheShortcutListHasTwoTables._PAGE))
+
+        assert {"Monkey bars (Edgeville Dungeon)"} <= found
+
+    @pytest.mark.real_export
+    def test_none_of_them_states_an_objects_to_join_on(
+        self, real_export: ChunkInfo
+    ) -> None:
+        """The reason an alias is needed at all. If upstream ever names the
+        scenery, `shortcut_keys` reaches the page unaided and these five
+        entries become dead weight rather than load-bearing."""
+        agility = real_export.challenges["Agility"]
+        wanted = {key for key in self._WANT}
+        seen = set()
+        for task, entry in agility.items():
+            if not isinstance(entry, dict) or entry.get("Primary") is not True:
+                continue
+            key = task.removeprefix("Access the ").replace("~|", "").replace("|~", "")
+            if key.lower() in wanted:
+                seen.add(key.lower())
+                assert not entry.get("Objects"), task
+        assert seen == wanted
 
 
 class TestAnUnversionedFieldCoversEveryVersion:

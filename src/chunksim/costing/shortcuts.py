@@ -15,16 +15,25 @@ Three things replace it, all read rather than chosen:
   The one number here that is stated rather than derived, and the one to
   correct if a measurement turns up.
 
-  **One has now turned up, and it is recorded rather than spent.** The
-  `Agility` page says of the Wintertodt prison gap that "the player can expect
-  experience rates of up to 21,000 Agility experience per hour" at 18
-  experience a jump - which is 1,167 jumps an hour, or **5.1 ticks**, against
-  the eight this model charges. So the model reads that shortcut 1.56x slow.
-  It is the only published hourly figure for any single shortcut in the game,
-  and one observation cannot re-fit an average over sixty-four - a gap-jump
-  done on the spot while waiting for a boss is also the fastest shape a
-  shortcut has, not a typical one. It is the first evidence there has ever
-  been about this constant, and it says the constant is conservative.
+  **Two have now turned up, and between them they bracket the eight.** They
+  are the only published hourly figures for a single shortcut anywhere, and
+  they disagree in opposite directions:
+
+  - The `Agility` page says of the Wintertodt prison gap that "the player can
+    expect experience rates of up to 21,000 Agility experience per hour" at 18
+    experience a jump - 1,167 jumps an hour, or **5.1 ticks**.
+  - `Monkey bars (Edgeville Dungeon)` says "players can gain up to 13,000
+    experience per hour" at 20 experience a swing, which cannot fail - 650
+    swings an hour, or **9.2 ticks**.
+
+  So the stated eight sits between them, and the pair says more than either
+  did alone: a single observation looked like evidence that the constant was
+  conservative, where two say it is an average with real spread on both sides.
+  Neither is re-fitted. A gap jumped on the spot while waiting for a boss is
+  the fastest shape a shortcut has and monkey bars traversed as an idle method
+  are among the slowest, so the honest reading is that the shapes differ by
+  nearly a factor of two, and one number standing for all sixty-four is what
+  this model is.
 - **`failxp`, from each shortcut's own `{{Agility info}}`.** A failed attempt
   still pays, usually less: the Cosmic altar narrow walkway pays 9.9 on a
   success and 6 on a failure, so a model that counted only successes would be
