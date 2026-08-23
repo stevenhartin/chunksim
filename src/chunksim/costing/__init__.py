@@ -490,6 +490,15 @@ The modules, and what each owns:
   `Reinvigorate` cadence, and a page is stackable so the plinth trip
   amortises. `costing/dps_bridge.py` puts the same figure at 258-303, inside
   the boss bias it documents on itself.
+- `lightorb.py` - fixing a Dorgesh-Kaan lamp, which pays **500 Crafting and
+  500 Firemaking** for one click and had been priced off the glassblowing that
+  makes the orb it consumes - a level 87 recipe standing in for a level 52
+  action. The orb is ~19 seconds of the walk's own arithmetic and is folded
+  into the rate, `crane.py`-style, because upstream files one task under both
+  skills; the wrong join's `material_seconds_per_xp` **and its credit** are
+  dropped by name, the credit being the half that was false rather than merely
+  imprecise. A ceiling - the walk between lamps is uncharged - and it decides
+  Firemaking bands on a map without Wintertodt.
 - `potionsteps.py` - two Herblore durations the wiki leaves blank in families
   that publish the rest: the one barbarian potion mix of twenty-nine it never
   timed, and the sanfew serum's collapsed recipe, whose three combines are

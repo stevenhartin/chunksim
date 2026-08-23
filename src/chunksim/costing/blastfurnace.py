@@ -1,8 +1,9 @@
-"""The Blast Furnace's two treadmills: a flat experience a tick, and no curve.
+"""The Blast Furnace's three side jobs: flat experience, and no curve on any.
 
 **The simplest mechanics this project prices, and the only ones with no roll,
-no material and no level curve at all.** One building carries two of them, and
-each page states the whole of itself:
+no material and no level curve at all.** One building carries all three - two
+treadmills paid by the tick and a stove paid by the spadeful - and each page
+states the whole of itself:
 
 | Object | Skill | Stated | Published rate |
 |---|---|---|---|
@@ -16,7 +17,30 @@ and `published_per_hour` is carried beside it as the check - the relationship
 `costing/barracuda.py` describes, and `tests/test_costing_blastfurnace.py`
 asserts it so a wiki rebalance fails a test rather than drifting quietly.
 
-**Neither has a cadence worth the name.** The pump "can be operated for up to
+### The stove is the odd one, and the only one with a cadence
+
+`Stove (Blast Furnace)` pays by the action rather than the tick: "every
+spadeful grants 5 Firemaking experience", and its `{{Firemaking info}}` says
+the same with `level = 30`, which upstream's own challenge agrees with. A
+spadeful is two clicks - a spade on the coke heap, then the stove - and
+**nothing anywhere times them**, so `SPADE_TICKS` is invented where the two
+treadmills invent nothing.
+
+**It is safe to invent because the whole plausible range loses.** Even at one
+tick a click, two clicks a spadeful is 15,000/hr, and the slowest reading
+anyone would defend is nearer 3,600 - against a Firemaking climb that is
+39,627 on the poorest cached map at the level the stove opens, and 126,720
+where Wintertodt is reachable. That is `costing/toymouse.py`'s argument, and
+it is why this is a `GUESS` that closes a row rather than a refusal: unlike
+`Burn kindling (Chambers of Xeric)`, which is refused a few lines away in the
+same skill, a guess here cannot decide a band.
+
+The coke is not charged. It is dug from the heap beside the stove, in the
+building the challenge is already standing in, so it is part of the action
+rather than a material - which is also why `Spadeful of coke` has no route in
+the item graph and needs none.
+
+**Neither treadmill has a cadence worth the name.** The pump "can be operated for up to
 100 minutes before automatically stopping"; one reclick every hour and forty
 minutes is a rounding error, which is what makes these among the few rates in
 the game that do not move with level, gear or concentration. `{{Skill info}}`
@@ -59,11 +83,30 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping
 
-from chunksim.costing.gathering import CONFIRMED
+from chunksim.costing.gathering import CONFIRMED, GUESS
 from chunksim.costing.heuristics import ComputedMethod
 
 #: Ticks in an hour.
 TICKS_PER_HOUR = 6000.0
+
+SECONDS_PER_TICK = 0.6
+
+#: Upstream's own challenge for the stove.
+STOVE_TASK = "Operate the stove at the ~|Blast Furnace|~"
+
+#: What a band calls it.
+STOVE_METHOD = "Blast Furnace stove"
+
+#: **Published** on `Stove (Blast Furnace)` and in its `{{Firemaking info}}`.
+STOVE_XP = 5.0
+
+#: And the level both that infobox and upstream state.
+STOVE_LEVEL = 30
+
+#: Ticks a spadeful costs: a click on the coke and a click on the stove, at
+#: the game's floor of one tick an action. **Invented** - see the module
+#: docstring for why that is safe here and is not for the kindling.
+SPADE_TICKS = 2.0
 
 
 @dataclass(frozen=True)
@@ -110,6 +153,11 @@ TREADMILLS: tuple[Treadmill, ...] = (
 )
 
 
+def stove_xp_per_hour() -> float:
+    """Five experience a spadeful at the game's floor of a tick a click."""
+    return STOVE_XP * TICKS_PER_HOUR / SPADE_TICKS
+
+
 def methods(
     valid: Mapping[str, Mapping[str, object]],
 ) -> dict[str, tuple[ComputedMethod, ...]]:
@@ -131,6 +179,21 @@ def methods(
                 level=mill.level,
                 match=CONFIRMED,
                 knob=f"training/{mill.task}/{mill.skill}",
+            ),
+        )
+    # **The stove, and `GUESS` rather than `CONFIRMED`**, because its cadence
+    # is invented where the treadmills' is not. Gated on its own challenge
+    # like they are: upstream files it under Firemaking and a map can reach
+    # the building without it.
+    if STOVE_TASK in (valid.get("Firemaking") or {}):
+        found["Firemaking"] = (
+            *found.get("Firemaking", ()),
+            ComputedMethod(
+                method=STOVE_METHOD,
+                xp_per_hour=stove_xp_per_hour(),
+                level=STOVE_LEVEL,
+                match=GUESS,
+                knob=f"training/{STOVE_TASK}/Firemaking",
             ),
         )
     return found

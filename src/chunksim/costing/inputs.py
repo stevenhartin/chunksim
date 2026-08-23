@@ -68,6 +68,7 @@ from chunksim.costing import (
     herbiboar,
     implings,
     leechfin,
+    lightorb,
     mess,
     nagua,
     paydirt,
@@ -642,6 +643,11 @@ def recipe_priced(
     # whose output upstream names as a loot table and whose whole cost is the
     # fish. Charged below.
     cut = leechfin.methods(derived.challenges.valid)
+    # **A challenge whose real action no `{{Recipe}}` describes**, which fell
+    # through to the glassblowing that makes the orb it consumes - see
+    # `costing/lightorb.py`. Here because the orb is most of the cycle and
+    # that is the item walk's answer.
+    lamped = lightorb.methods(derived.challenges.valid, seconds)
     # **The raid's herb patches**, which no `{{Recipe}}` describes because
     # growing a herb is not a production - see `costing/cox.py`.
     raided = cox.methods(derived.challenges.valid)
@@ -700,7 +706,7 @@ def recipe_priced(
                 heuristics,
                 computed=_merge_computed(
                     prayed, craned, totemed, trawled, polished, messed, cut, chipped,
-                    raided, gathered, zmi, naguad, couriered
+                    raided, gathered, zmi, naguad, couriered, lamped
                 ),
                 material_seconds_per_xp={**by_calc, **by_spell, **by_hand},
             ),
@@ -801,6 +807,15 @@ def recipe_priced(
         )
         if paid > 0:
             credited[task] = paid / rate.experience
+    # **The Dorgesh-Kaan lamp's entries are the wrong action's**, and both maps
+    # are keyed by task alone so neither can be corrected per skill - see
+    # `costing/lightorb.py`, which folds the orb into its own rate instead.
+    # Dropping the credit is the half that matters: making an orb is
+    # glassblowing, so it pays *Crafting*, and a Firemaking climb must not be
+    # credited with it.
+    for stale in lightorb.SUPERSEDED_TASKS:
+        per_xp.pop(stale, None)
+        credited.pop(stale, None)
     # **An activity that gathers what it consumes must carry no material cost
     # at all.** Guardians of the Rift mines its own essence - that is most of
     # what a game is - so the rate already covers it, and charging the rune's
@@ -878,7 +893,7 @@ def recipe_priced(
             action_seconds=timed,
             computed=_merge_computed(
                 prayed, craned, totemed, trawled, polished, messed, cut, chipped,
-                raided, gathered, zmi, naguad, couriered
+                raided, gathered, zmi, naguad, couriered, lamped
             ),
             material_seconds_per_xp=per_xp,
             material_xp_per_xp=credited,

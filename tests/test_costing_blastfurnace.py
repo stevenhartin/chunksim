@@ -5,7 +5,7 @@ from __future__ import annotations
 import pathlib
 
 from chunksim.costing import blastfurnace as bf
-from chunksim.costing.gathering import CONFIRMED
+from chunksim.costing.gathering import CONFIRMED, GUESS
 
 _PUMP, _PEDALS = bf.TREADMILLS
 _VALID: dict[str, dict[str, object]] = {
@@ -46,6 +46,34 @@ class TestTheyAreFlat:
         invented number in it."""
         found = bf.methods(_VALID)
         assert {b.match for bands in found.values() for b in bands} == {CONFIRMED}
+
+
+class TestTheStove:
+    def test_five_experience_a_spadeful(self) -> None:
+        """Published on `Stove (Blast Furnace)` and in its `{{Firemaking
+        info}}`, which also carries the level upstream states."""
+        assert bf.STOVE_XP == 5.0
+        assert bf.STOVE_LEVEL == 30
+
+    def test_two_clicks_at_the_games_floor(self) -> None:
+        """A spade on the coke and a click on the stove. **Invented**, unlike
+        the treadmills' cadence, which is why the band is a `GUESS`."""
+        assert bf.SPADE_TICKS == 2.0
+        assert bf.stove_xp_per_hour() == 15_000.0
+
+    def test_the_whole_plausible_range_loses(self) -> None:
+        """`costing/toymouse.py`'s argument, and the reason a guess closes this
+        row where `Burn kindling` a few lines away is refused: even at one tick
+        a click the stove is a third of the poorest cached map's Firemaking
+        climb at the level it opens."""
+        fastest = bf.STOVE_XP * bf.TICKS_PER_HOUR / 1.0
+        assert fastest < 39_627
+
+    def test_it_is_gated_on_its_own_challenge(self) -> None:
+        assert bf.methods({"Firemaking": {}}) == {}
+        found = bf.methods({"Firemaking": {bf.STOVE_TASK: {}}})
+        assert [b.method for b in found["Firemaking"]] == [bf.STOVE_METHOD]
+        assert found["Firemaking"][0].match == GUESS
 
 
 class TestReachability:
