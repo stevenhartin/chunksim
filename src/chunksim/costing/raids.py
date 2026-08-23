@@ -212,9 +212,9 @@ def item_seconds() -> dict[str, float]:
     **That direction is optimistic and the docstring should say so rather
     than claim otherwise.** A guide's raid is an established raider's, and a
     chunk map's party is slower: the Theatre's trio is twenty published
-    minutes against the ninety-five `costing/theatre.py` computes for the
-    every-rollable-chunk map's gear, so these figures are roughly five times
-    too fast there. They are still two orders of magnitude better than the
+    minutes against the forty-six `costing/theatre.py` computes for the
+    every-rollable-chunk map's gear, so these figures are roughly twice as
+    fast there. They are still two orders of magnitude better than the
     twenty-four seconds they replace, and the honest fix is to price goals
     after the enrichment rather than to fudge a multiplier here.
     """
