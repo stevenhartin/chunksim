@@ -37,6 +37,7 @@ from chunksim.costing import (
     aerial,
     coverage,
     barbarian,
+    barricade,
     blackjack,
     blastfurnace,
     bounty,
@@ -634,6 +635,10 @@ def recipe_priced(
     # `costing/tarnished.py`. One tick for 200 experience is 1,200,000/hr on
     # paper; the drop behind it is charged below.
     polished = tarnished.methods(derived.challenges.valid)
+    # **A ceiling built on purpose** - see `costing/barricade.py`, whose two
+    # published terms carry one invented one and which loses by six times to
+    # the slowest Crafting band on any map.
+    barricaded = barricade.methods(derived.challenges.valid)
     # **And the Hosidius Mess, which hands you the ingredients** - see
     # `costing/mess.py`. Its three foods join a `{{Recipe}}` and lose their
     # inputs, because a servery pie shell is made in a kitchen and exists
@@ -706,7 +711,7 @@ def recipe_priced(
                 heuristics,
                 computed=_merge_computed(
                     prayed, craned, totemed, trawled, polished, messed, cut, chipped,
-                    raided, gathered, zmi, naguad, couriered, lamped
+                    raided, gathered, zmi, naguad, couriered, lamped, barricaded
                 ),
                 material_seconds_per_xp={**by_calc, **by_spell, **by_hand},
             ),
@@ -893,7 +898,7 @@ def recipe_priced(
             action_seconds=timed,
             computed=_merge_computed(
                 prayed, craned, totemed, trawled, polished, messed, cut, chipped,
-                raided, gathered, zmi, naguad, couriered, lamped
+                raided, gathered, zmi, naguad, couriered, lamped, barricaded
             ),
             material_seconds_per_xp=per_xp,
             material_xp_per_xp=credited,

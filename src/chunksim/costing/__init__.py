@@ -490,6 +490,14 @@ The modules, and what each owns:
   `Reinvigorate` cadence, and a page is stackable so the plinth trip
   amortises. `costing/dps_bridge.py` puts the same figure at 258-303, inside
   the boss bias it documents on itself.
+- `barricade.py` - repairing Pest Control's barricades, an upper bound built
+  deliberately. Five experience a repair and two minutes a game are both the
+  wiki's (the second is its own ideal-conditions assumption, published with the
+  warning that reality is three times worse); **how many repairs a game is
+  invented**, at four times the commendation threshold the game dropped for
+  being too easy to meet. 6,000/hr, and the whole plausible range loses by six
+  times to the slowest Crafting band - which is why a guess closes the row
+  where a refusal would only have named it.
 - `lightorb.py` - fixing a Dorgesh-Kaan lamp, which pays **500 Crafting and
   500 Firemaking** for one click and had been priced off the glassblowing that
   makes the orb it consumes - a level 87 recipe standing in for a level 52
