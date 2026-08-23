@@ -443,6 +443,16 @@ The modules, and what each owns:
   on the floor time is calibrated to 91,805 for five floors - inside what a
   good player sustains, and 1.04x the wiki's own row. `GUESS`, because the
   staircase, the lobby return and the mistake factor are all invented.
+- `desiccated.py` - the Royal Titans' `Take pages` option turned into
+  Runecraft: 14.5 pages a kill (the wiki's own mean of a `10-19` `Always`
+  line), 48 kills an hour from the two money-making guides, and 50 experience
+  a page at any of the three plinths. **The guides' `*0.5` duo contribution
+  cancels against their kill rate**, so 348 pages an hour is one player's
+  share however many are fighting - which is the one thing about this boss a
+  chunk map could not otherwise answer. A ceiling: nothing states the
+  `Reinvigorate` cadence, and a page is stackable so the plinth trip
+  amortises. `costing/dps_bridge.py` puts the same figure at 258-303, inside
+  the boss bias it documents on itself.
 - `sailtrim.py` - trimming the sails, the one Sailing method paid by a clock
   rather than by an action: 120 trims an hour at the tier's own published
   payout, 1,260/hr on the quest raft up to 15,000 on rosewood. The hull is

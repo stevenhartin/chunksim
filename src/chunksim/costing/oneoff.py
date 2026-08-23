@@ -138,6 +138,21 @@ ONE_OFF: dict[str, str] = {
     "Build one of the boat ~|flags|~": "a boat cosmetic, not a hull upgrade",
     "Apply a ~|boat paint|~ to a boat": "a boat cosmetic, not a hull upgrade",
     "Apply a ~|sail colour|~ to a sail": "a sail cosmetic, not a mast upgrade",
+    # **A head slot filled once, out of a reward pool rather than a drop
+    # table.** The twelve ordinary tiaras beside this one are priced and
+    # rightly so - their talismans are common drops and the loop really is
+    # repeatable, which is why `Craft an air tiara` reads 184/hr. The
+    # catalytic talisman is not a drop at all: it comes "from the Rewards
+    # Guardian, using points earned while playing Guardians of the Rift",
+    # and making the tiara consumes it. What is left is a permanent
+    # convenience - the tiara opens every catalytic altar from the head
+    # slot, "freeing up an inventory slot that the catalytic talisman would
+    # otherwise occupy" - so a second one does nothing, exactly as a second
+    # pair of avernic treads does nothing.
+    "Craft a ~|catalytic tiara|~": (
+        "a head slot filled once - the talisman is a Guardians of the Rift "
+        "reward rather than a common drop, and the tiara consumes it"
+    ),
     # **The cadence is the head supply, not the cast.** An ensouled head is a
     # monster drop, and the spell is instant beside the wait for one - so a
     # rate computed from the cast would describe the spell where the answer

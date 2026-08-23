@@ -56,6 +56,12 @@ def test_every_entry_is_named_individually() -> None:
         # Dismantling returns 20,000 Zulrah's scales and no fang, which is
         # what separates it from the sword mounts below.
         "Fletch a ~|toxic blowpipe|~",
+        # A head slot rather than a boot one, and the input comes out of a
+        # reward pool: the catalytic talisman is the Rewards Guardian's, and
+        # the tiara consumes it to open every catalytic altar hands-free.
+        # The twelve ordinary tiaras stay priced - their talismans are
+        # common drops and that loop really does repeat.
+        "Craft a ~|catalytic tiara|~",
     }
     # One `Scurrius' spine` and three mutually exclusive weapons, so at most
     # one of the three ever happens. The wiki says what a second spine is for
@@ -206,6 +212,20 @@ def test_a_sword_mount_is_not_swept_in() -> None:
         "Build a ~|darklight (mounted)|~",
         "Build a ~|silverlight (mounted)|~",
         "Build an ~|excalibur (mounted)|~",
+    ):
+        assert oneoff.reason(task) == ""
+
+
+def test_the_catalytic_tiara_is_exempt_and_the_twelve_beside_it_are_not() -> None:
+    """**The talisman decides it, not the tiara.** An air talisman is a common
+    drop and `Craft an air tiara` is a real if slow loop at 184/hr; the
+    catalytic talisman comes only from the Rewards Guardian's pool, and the
+    tiara consumes it to fill a head slot that then stays filled."""
+    assert oneoff.reason("Craft a ~|catalytic tiara|~")
+    for task in (
+        "Craft an ~|air tiara|~",
+        "Craft a ~|law tiara|~",
+        "Craft a ~|cosmic tiara|~",
     ):
         assert oneoff.reason(task) == ""
 

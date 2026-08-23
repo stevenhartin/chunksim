@@ -57,6 +57,7 @@ from chunksim.costing import (
     coxchest,
     courses,
     denserunestone,
+    desiccated,
     disclaimed,
     dps_bridge,
     driftnet,
@@ -1133,6 +1134,13 @@ def _gathered(
     # upstream states on its own `Build a ~|...|~` challenge, and the wooden
     # one exempt because the quest raft arrives carrying it.
     for skill, methods in sailtrim.methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **A Runecraft method whose whole cost is a boss fight** - see
+    # `costing/desiccated.py`. The Royal Titans' `Take pages` option is a
+    # published 14.5 pages a kill and each converts for 50 at a plinth; the
+    # guides' kill rate and their own contribution factor cancel, so the
+    # party size never enters it.
+    for skill, methods in desiccated.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **A roll every single tick**, which is the fastest cadence in the skill
     # and the only method here whose experience had to be recovered rather
