@@ -84,6 +84,13 @@ def test_every_entry_is_named_individually() -> None:
         "Craft a ~|splitbark legs|~",
     }
 
+    # The fifth: a quest's own experience reward filed under the skill it
+    # pays. `training.quest_xp_grants` already grants it, so a rate here
+    # would be the double count that function exists to prevent.
+    quest_reward = {
+        "Unlock ~|Herblore|~ after Druidic Ritual",
+    }
+
     # The fourth: an obstacle opened once and permanently open after. A rope
     # is tied to the God Wars Dungeon rock at Agility 70 and climbed free for
     # ever, so there is no second tie to put a cadence on.
@@ -92,7 +99,13 @@ def test_every_entry_is_named_individually() -> None:
     }
 
     assert set(oneoff.ONE_OFF) == (
-        decorations | supply_bound | splitbark | fusions | rat_bone | opened_once
+        decorations
+        | supply_bound
+        | splitbark
+        | fusions
+        | rat_bone
+        | opened_once
+        | quest_reward
     )
 
 
@@ -226,6 +239,20 @@ def test_the_catalytic_tiara_is_exempt_and_the_twelve_beside_it_are_not() -> Non
         "Craft an ~|air tiara|~",
         "Craft a ~|law tiara|~",
         "Craft a ~|cosmic tiara|~",
+    ):
+        assert oneoff.reason(task) == ""
+
+
+def test_a_quest_unlock_is_not_a_second_helping_of_its_reward() -> None:
+    """**The double count `training.quest_xp_grants` exists to prevent.**
+    Upstream files the unlock under Herblore so the skill shows how it opens,
+    but the 250 experience sits on the quest terminal as `XpReward` and is
+    granted there. The six `Snake Weed` unlocks beside it are a different
+    shape - they consume a herb - and stay out of this table."""
+    assert oneoff.reason("Unlock ~|Herblore|~ after Druidic Ritual")
+    for task in (
+        "Unlock ~|Herblore|~ with snake weed",
+        "Unlock ~|Herblore|~ with guam leaf",
     ):
         assert oneoff.reason(task) == ""
 

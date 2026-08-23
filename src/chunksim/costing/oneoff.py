@@ -138,6 +138,18 @@ ONE_OFF: dict[str, str] = {
     "Build one of the boat ~|flags|~": "a boat cosmetic, not a hull upgrade",
     "Apply a ~|boat paint|~ to a boat": "a boat cosmetic, not a hull upgrade",
     "Apply a ~|sail colour|~ to a sail": "a sail cosmetic, not a mast upgrade",
+    # **A quest's own experience reward, wearing a skill's name.** Upstream
+    # files this under Herblore so the skill shows how it is unlocked, but
+    # the 250 experience is on `~|Druidic Ritual|~ Complete the quest` as
+    # `XpReward`, and `training.quest_xp_grants` already grants it - that
+    # function's whole docstring is about the double count it prevents.
+    # Pricing this row as a method would be that double count, and there is
+    # no second unlock to put a cadence on besides.
+    "Unlock ~|Herblore|~ after Druidic Ritual": (
+        "the quest's own reward - Druidic Ritual's 250 Herblore is granted "
+        "once by `training.quest_xp_grants`, and pricing this would count it "
+        "twice"
+    ),
     # **A head slot filled once, out of a reward pool rather than a drop
     # table.** The twelve ordinary tiaras beside this one are priced and
     # rightly so - their talismans are common drops and the loop really is
