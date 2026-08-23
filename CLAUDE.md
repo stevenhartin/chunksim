@@ -1257,6 +1257,26 @@ only `{{Skilling success chart}}` is for the *fish*. The report said
 `unpriced`. `trawler.refused` says it where a reader can see it, gated on the
 leaks actually being priced for `foundry.refused`'s reason.
 
+**A model can price a skill and never tell the report it did.** Slayer's whole
+rate comes from `costing/slayer.py` - a time-weighted distribution over a
+master's task list - and `estimate._skill_estimate` special-cases it, building
+the climb from `best_master` and ignoring `training_options` entirely. So
+nothing ever wrote a `ComputedMethod` for a master, and all eight reachable
+`Receive a Slayer assignment from ~|X|~` challenges printed **`unpriced`** -
+"nothing reached this", about the one skill in the project with a module of
+its own.
+
+`slayer.methods` reads the rates back, joined on upstream's own `NPCs` (exact,
+where the task's own words carry a *place* as well). **It changes no number**,
+and the reasoning is worth keeping: where `best_master` returns a rate the
+estimate ignores these, and where it does not there are no reachable masters
+so `rates` is empty here too - checked by diffing the estimate's own Slayer
+entry, which is identical. **The provenance is the model's self-assessment**:
+`MasterRate.unpriced` is the share of a list folded in at
+`DEFAULT_SLAYER_XP_PER_HOUR`, so a master with none of that is `CONFIRMED` and
+one with any of it `INFERRED`. Three milliseconds, measured. Slayer goes 0
+modelled to **8** and 8 unpriced to **0**.
+
 **A second skill in a gate can hide a method from the report without moving a
 single rate.** `costing/chambers.py` read `Psykk bat`'s sentence - "they
 require a **Hunter** level of 90 **to catch** ... Once caught, raw psykk bats

@@ -996,3 +996,100 @@ def test_best_master_still_answers_when_every_master_is_blocked() -> None:
     slow = MasterRate(master="Slow", xp_per_hour=10_000.0, points_delta=-5.0)
 
     assert best_master([fast, slow]) is fast
+
+
+class TestTheMastersReachTheReport:
+    """**The estimate never reads these and the report only ever did.**
+    `estimate._skill_estimate` special-cases Slayer: where `best_master`
+    returns a rate it builds the climb from that single distribution and
+    ignores `training_options`, and where it does not there are no reachable
+    masters and `rates` is empty here too. So this changes no number - what it
+    changes is that ten master challenges stop printing `unpriced` about the
+    one skill with a module of its own."""
+
+    _CHALLENGES: dict[str, Any] = {
+        "Receive a Slayer assignment from ~|Nieve|~ in Tree Gnome Stronghold": {
+            "NPCs": ["Nieve"],
+            "Level": 1,
+            "Primary": True,
+        },
+        "Receive a Slayer assignment from ~|Duradel|~ in Shilo Village": {
+            "NPCs": ["Duradel"],
+            "Level": 50,
+            "Primary": True,
+        },
+        "Slay a ~|banshee|~": {"Monsters": ["Banshee"]},
+    }
+    _VALID = {
+        "Slayer": {
+            "Receive a Slayer assignment from ~|Nieve|~ in Tree Gnome Stronghold": True,
+            "Receive a Slayer assignment from ~|Duradel|~ in Shilo Village": True,
+        }
+    }
+
+    def test_the_join_is_upstreams_own_npcs(self) -> None:
+        """Exact where the task's own words carry a *place* as well."""
+        from chunksim.costing.slayer import master_tasks
+
+        found = master_tasks(self._CHALLENGES)
+
+        assert set(found) == {"Nieve", "Duradel"}
+        assert found["Nieve"].endswith("in Tree Gnome Stronghold")
+
+    def test_a_band_a_master_at_upstreams_level(self) -> None:
+        from chunksim.costing.slayer import methods
+
+        rates = [
+            MasterRate(master="Nieve", xp_per_hour=58_617.0),
+            MasterRate(master="Duradel", xp_per_hour=57_013.0),
+        ]
+        found = methods(rates, self._CHALLENGES, self._VALID)["Slayer"]
+
+        assert {(m.method, m.level) for m in found} == {("Nieve", 1), ("Duradel", 50)}
+        assert {round(m.xp_per_hour) for m in found} == {58_617, 57_013}
+
+    def test_the_provenance_is_the_models_own_self_assessment(self) -> None:
+        """`MasterRate.unpriced` is the share of a master's list folded in at
+        the default - a rate with a hole in it is `inferred`."""
+        from chunksim.costing.gathering import CONFIRMED, INFERRED
+        from chunksim.costing.slayer import methods
+
+        rates = [
+            MasterRate(master="Nieve", xp_per_hour=1.0, unpriced=0.0),
+            MasterRate(master="Duradel", xp_per_hour=1.0, unpriced=0.2),
+        ]
+        found = {m.method: m.match for m in methods(rates, self._CHALLENGES, self._VALID)["Slayer"]}
+
+        assert found == {"Nieve": CONFIRMED, "Duradel": INFERRED}
+
+    def test_a_master_the_map_cannot_reach_gets_no_band(self) -> None:
+        from chunksim.costing.slayer import methods
+
+        rates = [MasterRate(master="Nieve", xp_per_hour=1.0)]
+        only_duradel = {
+            "Slayer": {
+                "Receive a Slayer assignment from ~|Duradel|~ in Shilo Village": True
+            }
+        }
+
+        assert methods(rates, self._CHALLENGES, only_duradel) == {}
+
+    def test_a_zero_rate_is_not_a_band(self) -> None:
+        from chunksim.costing.slayer import methods
+
+        rates = [MasterRate(master="Nieve", xp_per_hour=0.0)]
+
+        assert methods(rates, self._CHALLENGES, self._VALID) == {}
+
+    def test_nothing_at_all_where_no_master_is_reachable(self) -> None:
+        from chunksim.costing.slayer import methods
+
+        assert methods([], self._CHALLENGES, self._VALID) == {}
+
+    def test_it_is_wired_in(self) -> None:
+        import pathlib
+
+        from chunksim.costing import inputs
+
+        source = pathlib.Path(inputs.__file__).read_text(encoding="utf-8")
+        assert "slayer_model.methods(" in source

@@ -114,11 +114,13 @@ import io
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Sequence
 
 from chunksim.derive.challenges import chunks_requirement_met
 from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.costing.gathering import CONFIRMED, INFERRED
 from chunksim.costing.heuristics import (
+    ComputedMethod,
     DEFAULT_SLAYER_XP_PER_HOUR,
     RESET_MASTERS,
     TASKS_BEFORE_POINTS,
@@ -914,3 +916,68 @@ def superior_table_items(chunk_info: ChunkInfo) -> dict[str, float]:
         if not math.isnan(rate) and rate > 0:
             shares[str(item)] = rate
     return shares
+
+
+#: The prefix upstream gives every "go and get a task" challenge.
+MASTER_PREFIX = "Receive a Slayer assignment from "
+
+#: The skill they all pay.
+SKILL = "Slayer"
+
+
+def master_tasks(challenges: Mapping[str, Any]) -> dict[str, str]:
+    """`{master: challenge}`, joined on upstream's own `NPCs`.
+
+    Ten challenges, one a master, and each names its master in `NPCs` - which
+    is exact where the task's own words carry a *place* as well ("...from
+    ~|Chaeldar|~ in Zanaris").
+    """
+    found: dict[str, str] = {}
+    for task, body in challenges.items():
+        if not task.startswith(MASTER_PREFIX) or not isinstance(body, Mapping):
+            continue
+        for npc in body.get("NPCs") or ():
+            if isinstance(npc, str):
+                found.setdefault(npc, task)
+    return found
+
+
+def methods(
+    rates: Sequence[MasterRate],
+    challenges: Mapping[str, Any],
+    valid: Mapping[str, Mapping[str, Any]],
+) -> dict[str, tuple[ComputedMethod, ...]]:
+    """`{"Slayer": (...)}`, one band a master, from rates already computed.
+
+    **The estimate never reads these and the report only ever did.**
+    `estimate._skill_estimate` special-cases Slayer: where `best_master`
+    returns a rate it builds the climb from that single distribution and
+    ignores `training_options` entirely, and where it does not there are no
+    reachable masters and `rates` is empty here too. So this changes no
+    number - what it changes is that `Receive a Slayer assignment from
+    ~|Nieve|~ in Tree Gnome Stronghold` stops printing **`unpriced`**, the
+    one word meaning "nothing reached this", about the only skill in the
+    project with a module of its own.
+
+    **The provenance is the model's own self-assessment.** `MasterRate.
+    unpriced` is the share of a master's list that had no rate data and was
+    folded in at `DEFAULT_SLAYER_XP_PER_HOUR`; a master with none of that is
+    `CONFIRMED` and a master with any of it is `INFERRED`, because a rate is
+    only as good as its weakest input.
+    """
+    by_master = master_tasks(challenges)
+    reachable = valid.get(SKILL) or {}
+    found = tuple(
+        ComputedMethod(
+            method=rate.master,
+            xp_per_hour=rate.xp_per_hour,
+            level=int((challenges.get(by_master[rate.master]) or {}).get("Level") or 1),
+            match=CONFIRMED if rate.unpriced <= 0 else INFERRED,
+            knob=f"training/{by_master[rate.master]}/{SKILL}",
+        )
+        for rate in rates
+        if rate.xp_per_hour > 0
+        and rate.master in by_master
+        and by_master[rate.master] in reachable
+    )
+    return {SKILL: found} if found else {}

@@ -77,6 +77,7 @@ from chunksim.costing import (
     sacredeel,
     sepulchre,
     skullball,
+    slayer as slayer_model,
     sorceress,
     strut,
     spells,
@@ -1232,6 +1233,28 @@ def _gathered(
         banded[skill] = (*banded.get(skill, ()), *methods)
     for skill, methods in chambers.methods(
         blobs.gathering, derived.challenges.valid
+    ).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **Slayer's own module, read back into the report.** The estimate builds
+    # the Slayer climb straight from `best_master` and never looks at these -
+    # see `slayer.methods` - so this changes no number; what it changes is
+    # that ten master challenges stop printing `unpriced` about the one skill
+    # with a module of its own. Three milliseconds, measured.
+    goals = goal_levels(state, derived, at_level)
+    for skill, methods in slayer_model.methods(
+        slayer_model.master_rates(
+            state.chunk_info,
+            heuristics,
+            reachable_monsters=frozenset(derived.source_index.monsters),
+            valid=derived.challenges.valid,
+            unlocked=dict(derived.expanded_chunks),
+            reachable_sections=derived.reachable_sections,
+            levels=goals,
+            combat_level=goals.get("Combat", 126),
+            reachable_masters=frozenset(derived.source_index.npcs),
+        ),
+        _mapping(state.chunk_info.challenges, slayer_model.SKILL),
+        derived.challenges.valid,
     ).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **A Cooking method with no Cooking time in it**, so the *Fishing* level
