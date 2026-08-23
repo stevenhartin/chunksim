@@ -443,6 +443,14 @@ The modules, and what each owns:
   on the floor time is calibrated to 91,805 for five floors - inside what a
   good player sustains, and 1.04x the wiki's own row. `GUESS`, because the
   staircase, the lobby return and the mistake factor are all invented.
+- `nagua.py` - sulphurous essence, a Runecraft rate paid as a by-product of
+  melee training: 12.5 experience a kill is published and the kills an hour
+  are `Heuristics.kills_per_hour`'s, so the answer moves with the map's gear.
+  Where that lookup is still a bare `DEFAULT_KPH` the page's own
+  2,500-3,400/hr stands in, recovered as 200 kills an hour and reported
+  `INFERRED` rather than `CONFIRMED`. No material cost and no combat credit -
+  the hour is already the killing, and combat experience does nothing for a
+  Runecraft climb.
 - `ourania.py` - the ZMI altar, whose published table is a wiki expression per
   cell rather than a set of observations, so reading the components lands on
   the column exactly and the scrape becomes the oracle. Every step in

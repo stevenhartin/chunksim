@@ -67,6 +67,7 @@ from chunksim.costing import (
     implings,
     leechfin,
     mess,
+    nagua,
     paydirt,
     ourania,
     pickpocket,
@@ -606,6 +607,11 @@ def recipe_priced(
     # the oracle. Its rates assume the essence was bought; mining it is three
     # quarters of a lap, so it is folded in here where the walk is.
     zmi = ourania.methods(derived.challenges.valid, seconds)
+    # **A Runecraft rate whose whole clock is somebody's DPS** - see
+    # `costing/nagua.py`. 12.5 experience a kill is published; the kills an
+    # hour are `kills_per_hour`'s, and the page's own figure stands in only
+    # where that is still a bare default.
+    naguad = nagua.methods(derived.challenges.valid, heuristics.kills_per_hour)
     overrides = blobs.overrides
     # **The hand materials do not depend on the recipes**, so they are read
     # before the early return: a clone with no `chunksim recipes` cache still
@@ -633,7 +639,7 @@ def recipe_priced(
                 heuristics,
                 computed=_merge_computed(
                     prayed, craned, totemed, trawled, polished, messed, cut, chipped,
-                    raided, gathered, zmi
+                    raided, gathered, zmi, naguad
                 ),
                 material_seconds_per_xp={**by_calc, **by_spell, **by_hand},
             ),
@@ -811,7 +817,7 @@ def recipe_priced(
             action_seconds=timed,
             computed=_merge_computed(
                 prayed, craned, totemed, trawled, polished, messed, cut, chipped,
-                raided, gathered, zmi
+                raided, gathered, zmi, naguad
             ),
             material_seconds_per_xp=per_xp,
             material_xp_per_xp=credited,
