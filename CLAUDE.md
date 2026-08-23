@@ -302,6 +302,7 @@ chunksim fetch --map ID         # GET live state -> cache/maps/fetched/<map>.jso
 chunksim show  [--map ID]       # summarise the cached copy; no network
 chunksim chunkinfo              # GET upstream's chunk/challenge reference data (~10MB)
 chunksim heuristics             # developer only: rates -> src/chunksim/heuristics/wiki_rates.json (30+ requests)
+                                # + the courier task table -> .../courier_tasks.json
 chunksim recipes [--chunkinfo P] # developer only: per-action xp + ticks -> .../wiki_recipes.json
                                 # + the wiki's renames -> .../wiki_aliases.json
 chunksim gather-tables          # developer only: GET the gathering tables -> src/chunksim/heuristics/gathering.json
@@ -374,11 +375,12 @@ project, and an installed `chunksim` run from inside one must not decide that pr
 so is `/*.json` at the repo root, which is where `--export-json` output lands when it is aimed at
 the checkout rather than `/tmp` or stdout. A stray `tasks.json` there is that, not project data.
 
-**The estimator's numbers live in four files and only one is in `cache/`.**
-`src/chunksim/heuristics/wiki_rates.json` (the scrape), `gathering.json` (the scraped gathering
-tables) and `overrides.json` (hand corrections) are all checked in *and* shipped as package data, so
-corrections are diffable and survive a re-scrape; corrections belonging to *one map* go in
-`cache/overrides/<map_id>.json`, which is gitignored with the rest. `heuristics/README.md` is the
+**The estimator's numbers are all checked in and shipped, and only one layer is in `cache/`.**
+`src/chunksim/heuristics/` holds the scrapes — `wiki_rates.json`, `wiki_recipes.json`,
+`wiki_aliases.json`, `courier_tasks.json` and `gathering.json` — beside `overrides.json`, the hand
+corrections, so a correction is diffable and survives a re-scrape. Corrections belonging to *one map*
+go in `cache/overrides/<map_id>.json`, which is gitignored with the rest. `cache.SHIPPED_BLOB_NAMES`
+is the list a developer command writes and a reader opens. `heuristics/README.md` is the
 guide to which numbers are worth correcting.
 
 The merge is `defaults < scraped < overrides < map overrides`, and it happens **once**, in

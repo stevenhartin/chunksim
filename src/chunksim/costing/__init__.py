@@ -443,6 +443,16 @@ The modules, and what each owns:
   on the floor time is calibrated to 91,805 for five floors - inside what a
   good player sustains, and 1.04x the wiki's own row. `GUESS`, because the
   staircase, the lobby return and the mistake factor are all invented.
+- `courier.py` - courier tasks, the one method whose rate is the map's shape.
+  Reads the scraped table of 432 deliveries over 30 ports and finds the best
+  sailing leg the map's boards, ledgers and water allow. **The travelling
+  salesman collapses**: the notice board is always on the leg (all 432 rows)
+  and summoning a boat to any dock is free, so a circuit can never beat the
+  best leg in it - the circuits in the guide are about board supply, which is
+  not geometry. Ports come from upstream's own per-port challenges; the sea is
+  grid adjacency over the ocean group, because the `sections` branch is
+  walking connectivity and breaks the water into 56 pieces. Both time
+  constants are fitted to the guide's 200k/hr, so every band is a `GUESS`.
 - `nagua.py` - sulphurous essence, a Runecraft rate paid as a by-product of
   melee training: 12.5 experience a kill is published and the kills an hour
   are `Heuristics.kills_per_hour`'s, so the answer moves with the map's gear.

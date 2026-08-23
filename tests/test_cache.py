@@ -831,7 +831,10 @@ def test_reference_stamp_moves_when_a_blob_is_written(tmp_path: Path) -> None:
     pre-edit key.
     """
     empty = reference_stamp(tmp_path)
-    assert empty == ((0, 0), (0, 0), (0, 0), (0, 0)), "nothing on disk stamps as absent"
+    # One entry per reference file: the rate scrape, the recipes, the aliases,
+    # the courier table and the checked-in overrides. A missing file stamps as
+    # `(0, 0)`, so appearing or vanishing both move it.
+    assert empty == ((0, 0),) * 5, "nothing on disk stamps as absent"
 
     write_blob(WIKI_RATES_BLOB_NAME, {"a": 1}, "test", tmp_path)
     written = reference_stamp(tmp_path)

@@ -183,6 +183,16 @@ RECIPES_BLOB_NAME = "wiki_recipes"
 #: blob's `data` a plain skill -> rows mapping, which `recipes_from`
 #: iterates as skills.
 ALIASES_BLOB_NAME = "wiki_aliases"
+
+#: The courier task table and the coordinates that place its ports, written by
+#: `chunksim heuristics` beside the rates.
+#:
+#: **Its own blob for `wiki_aliases`' reason**: it is a different kind of fact.
+#: `wiki_rates` is what somebody observed an hour of a method to pay and moves
+#: when a guide is re-timed; this is the game's own table of deliveries and
+#: moves only when Jagex adds a port. Keeping it out also leaves `wiki_rates`'
+#: `data` the flat section -> rates mapping every reader of it iterates.
+COURIER_BLOB_NAME = "courier_tasks"
 CHUNKINFO_ENV_VAR = "CHUNKSIM_CHUNKINFO"
 
 #: Where hand-written corrections live: checked in, so they are diffable and
@@ -231,6 +241,7 @@ SHIPPED_BLOB_NAMES: tuple[str, ...] = (
     WIKI_RATES_BLOB_NAME,
     RECIPES_BLOB_NAME,
     ALIASES_BLOB_NAME,
+    COURIER_BLOB_NAME,
 )
 
 
@@ -1913,6 +1924,7 @@ def reference_stamp(
         blob_source(WIKI_RATES_BLOB_NAME, root),
         blob_source(RECIPES_BLOB_NAME, root),
         blob_source(ALIASES_BLOB_NAME, root),
+        blob_source(COURIER_BLOB_NAME, root),
         overrides_path(root),
     ]
     if map_id is not None:

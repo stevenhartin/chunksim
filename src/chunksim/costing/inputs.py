@@ -53,6 +53,7 @@ from chunksim.costing import (
     artefacts,
     chambers,
     combat_xp,
+    courier,
     cox,
     coxchest,
     courses,
@@ -190,6 +191,12 @@ class ReferenceBlobs:
     #: is the same kind of thing to every reader downstream: numbers the
     #: estimator spends, read once per invocation and threaded.
     gathering: gathering_model.Tables
+    #: `src/chunksim/heuristics/courier_tasks.json`'s `data`: the wiki's 432
+    #: courier deliveries and the coordinates that place their thirty ports.
+    #: Read here with the rest for `gathering`'s reason - it is numbers the
+    #: estimator spends. Empty when never fetched, which prices courier tasks
+    #: exactly as they were before the blob existed, which is not at all.
+    courier: dict[str, Any]
     #: What this machine would price against, for the enrichment cache key.
     pricing: PricingDigests
     #: Which map `overrides` was assembled for, or `None` for the site-wide
@@ -206,6 +213,22 @@ class ReferenceBlobs:
     def pinned(self) -> tuple[frozenset[str], dict[str, frozenset[str]]]:
         """The hand-written rates the computed layer must not overwrite."""
         return _pinned_from(self.overrides)
+
+
+def _courier_blob(root: Path | None) -> dict[str, Any]:
+    """`courier_tasks.json`'s `data`, or `{}` when it was never fetched.
+
+    Absent is a supported way to run - the blob ships with the package, so a
+    checkout that has not run `chunksim heuristics` simply prices no courier
+    tasks rather than failing.
+    """
+    try:
+        blob = cache.read_blob(
+            cache.COURIER_BLOB_NAME, root, hint="run: chunksim heuristics"
+        )["data"]
+    except cache.CacheMissError:
+        return {}
+    return blob if isinstance(blob, dict) else {}
 
 
 def load_reference(root: Path | None = None, map_id: str | None = None) -> ReferenceBlobs:
@@ -236,6 +259,7 @@ def load_reference(root: Path | None = None, map_id: str | None = None) -> Refer
         recipes=recipes_from(_recipe_blob(root)),
         aliases=load_aliases(root),
         gathering=gathering_model.load_tables(cache.read_gathering(root)),
+        courier=_courier_blob(root),
         pricing=pricing_digests(root, map_id),
         map_id=map_id,
     )
@@ -612,6 +636,20 @@ def recipe_priced(
     # hour are `kills_per_hour`'s, and the page's own figure stands in only
     # where that is still a bare default.
     naguad = nagua.methods(derived.challenges.valid, heuristics.kills_per_hour)
+    # **The one method whose rate is the map's shape** - see
+    # `costing/courier.py`. Which ports have boards, which have ledgers and
+    # which stretches of water join them decide the best leg, and upstream's
+    # own per-port challenges are the gate.
+    couriered = courier.methods(
+        derived.challenges.valid,
+        # **`expanded_chunks`, not the raw unlocked set** - see its own note:
+        # anything evaluating a `Chunks` requirement outside `derive` wants
+        # this, or it judges half the world locked.
+        derived.expanded_chunks,
+        state.chunk_info.rolling_chunks.get("ocean") or (),
+        state.chunk_info.sections,
+        blobs.courier,
+    )
     overrides = blobs.overrides
     # **The hand materials do not depend on the recipes**, so they are read
     # before the early return: a clone with no `chunksim recipes` cache still
@@ -639,7 +677,7 @@ def recipe_priced(
                 heuristics,
                 computed=_merge_computed(
                     prayed, craned, totemed, trawled, polished, messed, cut, chipped,
-                    raided, gathered, zmi, naguad
+                    raided, gathered, zmi, naguad, couriered
                 ),
                 material_seconds_per_xp={**by_calc, **by_spell, **by_hand},
             ),
@@ -817,7 +855,7 @@ def recipe_priced(
             action_seconds=timed,
             computed=_merge_computed(
                 prayed, craned, totemed, trawled, polished, messed, cut, chipped,
-                raided, gathered, zmi, naguad
+                raided, gathered, zmi, naguad, couriered
             ),
             material_seconds_per_xp=per_xp,
             material_xp_per_xp=credited,
