@@ -93,12 +93,21 @@ def tables_with(text: str, *needles: str) -> Iterator[str]:
     after taking the first table left the `Shortcuts` page's whole second
     table - twenty obstacles, headed `Obstacle` rather than `Shortcut` -
     unread. A caller that really does want one takes `table_with`.
+
+    **Case-insensitively, because a header is prose somebody typed.**
+    `skill_tables.parse_mark_rate` asked for `Marks of grace` where the
+    rooftop table writes `{{plink|Mark of Grace|txt=Marks of Grace}}`, so it
+    matched nothing and returned `None` - and a `None` currency rate is not an
+    error anywhere: it leaves `heuristics.DEFAULT_CURRENCY_PER_HOUR`'s figure
+    standing while the docstring beside it claims the scrape overwrote it.
+    Folding can only widen a match, and the whole blob was regenerated across
+    the change to check that it widens nothing else.
     """
     for table in tables(text):
         head = "\n".join(
             line for line in table.splitlines() if line.lstrip().startswith("!")
-        )
-        if all(needle in head for needle in needles):
+        ).lower()
+        if all(needle.lower() in head for needle in needles):
             yield table
 
 

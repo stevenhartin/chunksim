@@ -22,6 +22,7 @@ from chunksim.costing.heuristics import (
     DEFAULT_KPH,
     DEFAULT_QUEST_HOURS,
     DEFAULT_XP_PER_HOUR,
+    Heuristics,
     Rate,
     SlayerTask,
     activity_name,
@@ -1269,3 +1270,39 @@ def test_an_unbundled_row_in_the_same_shop_is_untouched() -> None:
     shop = "Ranging Guild Ticket Exchange"
     for name in ("Coif", "Studded body", "Green d'hide body"):
         assert (shop, name) not in SHOP_BUNDLES
+
+
+class TestACurrencyIsNamedByWhoeverTypedIt:
+    """`Heuristics.currency_rate` folds case as a last resort.
+
+    **One capital letter left the amylase chain unpriced.** The shop's
+    `{{StoreLine}}` writes `Mark of Grace` where the item, and the rate table
+    beside it, write `Mark of grace` - so `shop_seconds` found no rate,
+    returned `None`, and seven Construction and Herblore methods read as
+    though nothing in the world sold an amylase pack.
+    """
+
+    def _rates(self) -> Heuristics:
+        return Heuristics(currency_per_hour={"Mark of grace": 18.1, "Coins": 500_000.0})
+
+    def test_an_exact_name_is_found(self) -> None:
+        assert self._rates().currency_rate("Mark of grace") == 18.1
+
+    def test_a_differently_capitalised_name_is_found_too(self) -> None:
+        assert self._rates().currency_rate("Mark of Grace") == 18.1
+
+    def test_a_currency_nothing_rates_is_still_refused(self) -> None:
+        """Folding widens the lookup; it does not invent an entry. Trading
+        sticks and the point currencies stay refused."""
+        assert self._rates().currency_rate("Trading sticks") is None
+
+    def test_a_shop_qualified_rate_still_wins(self) -> None:
+        """**Tried in order, so an exact name always beats a fold.** Four Mage
+        Training Arena pools wear one name, and the shop-qualified key is what
+        keeps that simplification inside that shop."""
+        rates = Heuristics(
+            currency_per_hour={"Shop:Points": 1_200.0, "Points": 10.0},
+        )
+
+        assert rates.currency_rate("Points", "Shop") == 1_200.0
+        assert rates.currency_rate("Points") == 10.0

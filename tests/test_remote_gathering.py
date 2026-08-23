@@ -248,7 +248,7 @@ STALL_TABLE = """
 #: matter: one stating a real zero and one stating an ordinary wait.
 INSTANT_CHEST_TABLE = """
 {| class="wikitable sortable align-center-1"
-! colspan=2 |Chest!!Level!!Experience!!Location(s)!!Respawn Time
+! colspan=2 |Chest!!{{SCP|Thieving}} Level!![[Experience]]!!Location(s)!!Respawn Time
 |-
 |{{plinkt|Stone chest|pic=Xerician fabric}}||64||280||[[Lizardman Temple]]||0 seconds
 |-
@@ -311,8 +311,18 @@ class TestStallRespawns:
             stall.name for stall in gathering.parse_stall_respawns(STALL_TABLE)
         }
 
-    def test_a_page_without_the_column_yields_nothing(self) -> None:
+    def test_a_woodcutting_despawn_table_is_not_a_chest_table(self) -> None:
+        """**It really does have a `Respawn time` column**, which is why the
+        needle is two words now. The capitalisation used to keep these apart
+        by accident - the Thieving page writes `Respawn Time` - and that
+        stopped being true the moment `wikitable.tables_with` folded case.
+        Its rows are trees, so reading them as chests would put an oak's 8.4
+        seconds where a stall's restock belongs."""
+        assert "Respawn time" in DESPAWN_PAGE
         assert gathering.parse_stall_respawns(DESPAWN_PAGE) == ()
+
+    def test_a_page_without_the_column_yields_nothing(self) -> None:
+        assert gathering.parse_stall_respawns("Just prose.") == ()
 
 
 class TestTrapCounts:
@@ -379,8 +389,8 @@ class TestLuaEscapes:
 
 class TestTrapTableHeadings:
     def test_the_crab_pages_own_wording_is_read(self) -> None:
-        # `Number of traps` there against `Traps` on the Hunter page, and
-        # `table_with` compares header text exactly.
+        # `Number of traps` there against `Traps` on the Hunter page. `table_with`
+        # folds case but not wording, so each page needs its own needle.
         assert gathering.parse_trap_counts(CRAB_TRAPS) == ((21, 2.0), (80, 5.0))
 
     def test_the_hunter_pages_wording_still_works(self) -> None:

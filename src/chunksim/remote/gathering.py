@@ -579,7 +579,13 @@ def parse_stall_respawns(text: str) -> tuple[StallRespawn, ...]:
     four real methods read `unpriced`. Only `None` and a negative are
     unreadable; a nought is the answer.
     """
-    table = table_with(text, "Respawn Time")
+    # **Two needles, because one stopped being enough when `tables_with`
+    # folded case.** `Respawn Time` alone also matches a Woodcutting despawn
+    # table headed `Respawn time`, whose rows are trees rather than chests -
+    # the capitalisation had been doing work nobody meant it to do. The
+    # Thieving page's own header names the thing as well, and a tree table
+    # never will.
+    table = table_with(text, "Respawn Time", "Thieving")
     if not table:
         return ()
     body = [cells for cells in rows(table) if not cells[0].lstrip().startswith("!")]

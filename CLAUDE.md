@@ -2398,6 +2398,65 @@ keeps that simplification inside this shop rather than leaking to anything
 else called `Pizazz points`. `Avernic treads (et)` prices at 136.7h on the
 uber map where it had no route at all.
 
+**An item pack is a hundred of the thing and upstream models it as one.**
+Every `<X> pack` challenge in the export states `Items: ["<X> pack*"]` and an
+`Output` of the bare item, with no quantity anywhere - so `estimate.
+_route_hours` charged a whole pack for one crystal, one feather, one bucket,
+a hundred times the truth. The count is **not a guess**: each pack's own
+examine text states it ("A pack containing 100 feathers"), and it is 100 on
+every one of the **23** the export carries, checked against all 23 pages. Six
+more `Open a ... pack*` challenges name a loot *table* instead (`Herb pack
+loot`, `Seed pack loot`) and are left alone, because those are rolls rather
+than a hundred of one thing. `estimate.PACK_UNITS` divides into the quantity
+rather than out of the total, the same arithmetic as the drop-share line above
+it and safe from the fractional-key problem that line warns about, since a
+pack is *bought*: one shop hop and no chain behind it.
+
+**And the currency it is bought with cost one capital letter.** An amylase
+pack is 10 marks of grace, and the scrape reads the `{{StoreLine}}`'s currency
+as `Mark of Grace` where the item - and `DEFAULT_CURRENCY_PER_HOUR` - write
+`Mark of grace`, so `shop_seconds` found no rate and returned `None`.
+`Heuristics.currency_rate` now folds case **last**, after the shop-qualified
+key and the exact name, so the Mage Training Arena's four-pools-in-one-name
+simplification still wins where it applies. Measured across every scraped
+shop, that capital is the only currency a fold reaches; the remaining misses
+(`Points`, `League Points`, `Trading sticks`) are the point currencies
+`DEFAULT_CURRENCY_PER_HOUR`'s docstring refuses on purpose, and folding widens
+the lookup without inventing an entry.
+
+**The rate behind it had been silently stale for the life of the code.**
+`skill_tables.parse_mark_rate` asked `table_with` for a header spelled `Marks
+of grace` where `Rooftop Agility Courses` writes `{{plink|Mark of
+Grace|txt=Marks of Grace}}` - so it matched nothing, returned `None`, and a
+`None` currency rate is an error nowhere: it simply left the default's 12
+standing while the comment beside it claimed the scrape overwrote it. **The
+test fixture is what hid it**, because it carried the parser's capitalisation
+rather than the page's. `wikitable.tables_with` folds case now, and the whole
+`wiki_rates.json` and `gathering.json` blobs were regenerated across the
+change to check what else it widens: **nothing at all in either**, beyond the
+one intended row.
+
+The one place it *would* have widened is caught rather than left: `remote/
+gathering.parse_stall_respawns` asked for `Respawn Time`, which folded also
+matches a Woodcutting despawn table headed `Respawn time`, whose rows are
+trees - so the needle is two words now (`Respawn Time` **and** `Thieving`),
+which a tree table can never carry. **The capitalisation had been doing work
+nobody meant it to do**, which is the general shape of this whole finding.
+
+**And the figure the parse now reads excludes the diary rows**, for
+`costing/pickpocket.py`'s reason: six of the table's rows are an achievement
+diary's improved rate - Rellekka at 16-19.5 with the hard Fremennik diary,
+Ardougne's elite row a flat 22 - and spending one would price an estimate on
+a reward this world may not have earned. Excluding them takes the answer from
+19.5 to **18.1**, the base Ardougne course. The chain then prices end to end:
+a pack is 1,990s (10 marks at 18.1/hr), a crystal 19.9s, a `Stamina potion(4)`
+29.5s. Seven methods that read `unpriced` - the four Construction pools and
+three stamina mixes - now price, and the export-wide `unpriced` count goes
+**25 to 18**. Two climbs move a tenth of an hour each (verf Farming 163.2h ->
+162.2h off a cheaper compost pack, fray-uber Herblore 414.8h -> 414.6h) and no
+band changes anywhere, which is what coverage rather than a different answer
+looks like.
+
 **And the treads themselves are a third shape of `one-off`.** The seven
 variants each destroy a pair of boss-drop treads and one or more of the three
 boot upgrades and hand back a single better boot - one slot, inputs gone, so a

@@ -1373,12 +1373,17 @@ def test_a_shop_costs_the_money_and_the_walk() -> None:
 
 
 def test_a_currency_with_no_rate_has_no_price_rather_than_a_free_one() -> None:
-    """Castle wars tickets and trading sticks have no exchange rate anyone
-    would agree on, so an item sold only for those is refused."""
+    """Trading sticks and the various point currencies have no exchange rate
+    anyone would agree on, so an item sold only for those is refused.
+
+    **Castle Wars tickets used to be the example and are not any more**: they
+    have a rate now (a scored draw is 2 tickets in 22 minutes), and once
+    `currency_rate` folded case they were found through this spelling too.
+    Which is the behaviour wanted - the refusal is about a currency nothing
+    rates, not about how a `{{StoreLine}}` capitalises one.
+    """
     heuristics = Heuristics(
-        shop_prices={
-            "Shop": {"Thing": ShopPrice(price=10.0, currency="Castle wars ticket")}
-        }
+        shop_prices={"Shop": {"Thing": ShopPrice(price=10.0, currency="Trading sticks")}}
     )
 
     assert heuristics.shop_seconds("Shop", "Thing") is None
@@ -2606,3 +2611,85 @@ class TestMaterialAliases:
         )
 
         assert walked.seconds("Pharaoh's sceptre", 1.0) is not None
+
+
+class TestAnItemPackIsAHundred:
+    """**Upstream models a pack conversion as one-for-one and it is not.**
+    Every `<X> pack` challenge states `Items: ["<X> pack*"]` and an `Output` of
+    the bare item, so the walk charged a whole pack - ten marks of grace, half
+    an hour - for a single amylase crystal. The count is stated on each pack's
+    own page ("A pack containing 100 feathers") and is 100 on all twenty-three
+    the export carries - each checked against its own page - which is why it
+    is a constant rather than a table.
+    """
+
+    def test_a_pack_yields_a_hundred(self) -> None:
+        from chunksim.costing.estimate import PACK_UNITS, _pack_units
+
+        challenge = {"Items": ["Amylase pack*"], "Output": "Amylase crystal"}
+
+        assert _pack_units(challenge) == PACK_UNITS == 100.0
+
+    def test_an_ordinary_challenge_yields_one(self) -> None:
+        from chunksim.costing.estimate import _pack_units
+
+        challenge = {"Items": ["Iron ore*", "Coal*"], "Output": "Steel bar"}
+
+        assert _pack_units(challenge) == 1.0
+
+    def test_a_loot_table_is_a_roll_rather_than_a_hundred(self) -> None:
+        """Six `Open a ... pack*` challenges name a table instead - `Herb pack
+        loot`, `Seed pack loot`. Those are rolls, and dividing one by a hundred
+        would claim an open hands over a hundred of whatever came out."""
+        from chunksim.costing.estimate import _pack_units
+
+        challenge = {"Items": ["Herb pack*"], "Output": "Herb pack loot"}
+
+        assert _pack_units(challenge) == 1.0
+
+    def test_the_pack_itself_is_still_whole(self) -> None:
+        """**The division is the contents, not the price.** `heuristics.
+        SHOP_BUNDLES` divides a scraped shop price where a `{{StoreLine}}`
+        sells a stack under one name; reusing it here would say a pack costs a
+        tenth of a mark, where the truth is that it costs ten and holds a
+        hundred."""
+        from chunksim.costing.estimate import _pack_units
+
+        assert _pack_units({"Items": ["Bucket pack*"], "Output": "Bucket"}) == 100.0
+        assert _pack_units({"Items": [], "Output": "Amylase pack"}) == 1.0
+
+
+@pytest.mark.real_export
+def test_every_item_pack_upstream_carries_is_the_same_shape(
+    real_export: ChunkInfo,
+) -> None:
+    """**The measurement behind `PACK_UNITS` being a constant.** 23 challenges
+    turn a `<X> pack` into a plain item and every one of their packs states
+    "A pack containing 100 ..." on its own page - checked by hand across all
+    23 when this was written. Six more name a loot table instead and are the
+    reason `_pack_units` looks at the `Output`.
+    """
+    from chunksim.costing.estimate import _pack_units
+
+    units: list[str] = []
+    loot: list[str] = []
+    for challenges in real_export.challenges.values():
+        if not isinstance(challenges, dict):
+            continue
+        for entry in challenges.values():
+            if not isinstance(entry, dict):
+                continue
+            made = entry.get("Output")
+            if not isinstance(made, str):
+                continue
+            if not any(
+                isinstance(item, str)
+                and item.replace("*", "").strip().lower().endswith(" pack")
+                for item in entry.get("Items") or ()
+            ):
+                continue
+            (loot if made.endswith(" loot") else units).append(made)
+            assert _pack_units(entry) == (1.0 if made.endswith(" loot") else 100.0)
+
+    assert len(set(units)) == len(units) == 23, sorted(units)
+    assert len(loot) == 6, sorted(loot)

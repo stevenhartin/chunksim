@@ -219,11 +219,9 @@ def test_an_absent_page_parses_to_nothing_rather_than_raising() -> None:
     assert parse_pickpockets("") == ()
 
 
-def test_marks_of_grace_come_from_the_rooftop_table() -> None:
-    """**The lap-time column is also a range**, two along, and the header spans
-    two rows so the marks column cannot be found by index. `108-110t` has to be
-    told apart from `16-18` by shape."""
-    table = """
+#: Two rows of `Rooftop Agility Courses`' hourly table, in the page's own
+#: capitalisation - see `test_the_header_is_the_wikis_own_capitalisation`.
+_ROOFTOP_TABLE = """
 {| class="wikitable"
 ! rowspan="2" |{{SCP|Agility}}
 ! rowspan="2" |Course
@@ -232,7 +230,7 @@ def test_marks_of_grace_come_from_the_rooftop_table() -> None:
 ! colspan="2" |Hourly rates
 |-
 !Exp. per hour
-!{{plink|Mark of grace|txt=Marks of grace}}
+!{{plink|Mark of Grace|txt=Marks of Grace}}
 |-
 |30
 |[[Varrock Rooftop Course]]
@@ -249,7 +247,40 @@ def test_marks_of_grace_come_from_the_rooftop_table() -> None:
 |16–18
 |}
 """
+
+
+def test_marks_of_grace_come_from_the_rooftop_table() -> None:
+    """**The lap-time column is also a range**, two along, and the header spans
+    two rows so the marks column cannot be found by index. `108-110t` has to be
+    told apart from `16-18` by shape."""
+    table = _ROOFTOP_TABLE
     assert parse_mark_rate(table) == pytest.approx(18.0)
+
+
+def test_the_header_is_the_wikis_own_capitalisation() -> None:
+    """**This fixture is why the defect was invisible.** It used to write the
+    header `Marks of grace`, which is how `parse_mark_rate` asks for it and
+    not how the page spells it - the live table says `{{plink|Mark of
+    Grace|txt=Marks of Grace}}`. So the parser returned `None` against the
+    real wiki and 18.0 against the test, and a `None` currency rate is silent
+    everywhere: it simply leaves `DEFAULT_CURRENCY_PER_HOUR`'s figure standing
+    at a stale 12. `wikitable.tables_with` folds case now, and the fixture
+    carries the capital letters so the two cannot drift apart again."""
+    assert "Marks of Grace" in _ROOFTOP_TABLE
+    assert parse_mark_rate(_ROOFTOP_TABLE) == pytest.approx(18.0)
+
+
+def test_a_diary_row_is_not_the_rate() -> None:
+    """**A diary is not something a map holds.** Six rows of the live table
+    are an achievement diary's improved rate, and Rellekka's hard-diary
+    16-19.5 outranks every base row - so spending it would price an estimate
+    on a reward this world may not have earned. Excluding them takes the
+    answer from 19.5 to the base Ardougne course's 18.1."""
+    table = _ROOFTOP_TABLE.replace(
+        "|16–18\n", "|16–19.5 ([[Fremennik Diary#Hard|hard diary]])\n"
+    )
+
+    assert parse_mark_rate(table) == pytest.approx(11.3), "only the base row is left"
 
 
 def test_a_page_without_the_column_yields_nothing() -> None:

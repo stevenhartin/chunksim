@@ -1,6 +1,6 @@
 {
   "name": "wiki_rates",
-  "fetched_at": "2026-08-22T12:40:06.134567+00:00",
+  "fetched_at": "2026-08-23T00:40:18.377558+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "quests": {
@@ -33601,7 +33601,7 @@
     "currencies": {
       "Coins": 500000.0,
       "Tokkul": 25000.0,
-      "Mark of grace": 12.0,
+      "Mark of grace": 18.1,
       "Abyssal pearls": 40.0,
       "Tithe": 80.0,
       "Zeal Tokens": 200.0,

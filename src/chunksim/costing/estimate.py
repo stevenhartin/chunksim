@@ -1366,6 +1366,37 @@ def _rolls_label(walk: _Walk, master: str) -> str:
     return f"1 table roll per {1 / rolls:,.0f}h" if rolls > 0 else "no supers"
 
 
+#: What an item pack holds. **Stated on every pack's own page** - "A pack
+#: containing 100 feathers", "...100 pieces of soft clay", "...100 empty
+#: buckets" - and it is 100 on all twenty-three the export carries, which is
+#: why this is a constant rather than a table.
+PACK_UNITS = 100.0
+
+#: The suffix upstream gives the pack itself. The conversion challenge states
+#: `Items: ["<X> pack*"]` and an `Output` of the bare item, which is the shape
+#: `_pack_units` recognises.
+_PACK_SUFFIX = " pack"
+
+
+def _pack_units(challenge: Mapping[str, Any]) -> float:
+    """`PACK_UNITS` where this challenge opens an item pack, else `1.0`.
+
+    **Only where the output is a plain item.** Six `Open a ... pack*`
+    challenges name a loot *table* instead (`Herb pack loot`, `Seed pack
+    loot`); those are rolls rather than a hundred of one thing, and
+    `_route_hours`' certainty gate already handles them.
+    """
+    made = challenge.get("Output")
+    if not isinstance(made, str) or made.endswith(" loot"):
+        return 1.0
+    for item in challenge.get("Items") or ():
+        if isinstance(item, str) and item.replace("*", "").strip().lower().endswith(
+            _PACK_SUFFIX
+        ):
+            return PACK_UNITS
+    return 1.0
+
+
 def _route_hours(
     walk: _Walk,
     item: str,
@@ -1538,6 +1569,22 @@ def _route_hours(
             if share <= 0:
                 return None
             quantity = quantity / share
+        # **An item pack is a hundred of the thing and upstream models it as
+        # one.** Every `<X> pack` challenge in the export states `Items: ["<X>
+        # pack*"]` and an `Output` of the bare item, so the walk charged a
+        # whole pack for one crystal, one feather, one bucket - a hundred
+        # times the truth. The count is not a guess: each pack's own examine
+        # text states it ("A pack containing 100 feathers"), and it is 100 on
+        # every one of the twenty-three the export carries.
+        #
+        # Divided into the quantity rather than out of the total, which is the
+        # same arithmetic and matches the `share` line above. It is safe from
+        # the fractional-key problem `_route_hours`' certainty gate warns
+        # about because a pack is *bought*: one shop hop and no chain behind
+        # it, so the fixpoint memo never sees the fraction twice.
+        units = _pack_units(challenge)
+        if units > 1:
+            quantity = quantity / units
         total = 0.0
         inputs: list[_Priced] = []
         knobs: list[str] = [f"actions/{provider}"]

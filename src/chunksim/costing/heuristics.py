@@ -665,14 +665,37 @@ class Heuristics:
         entry = self.shop_prices.get(shop, {}).get(item)
         if entry is None:
             return None
-        # Shop-qualified first: see `DEFAULT_CURRENCY_PER_HOUR` on why
-        # `Points` cannot have one rate.
-        rate = self.currency_per_hour.get(f"{shop}:{entry.currency}")
-        if rate is None:
-            rate = self.currency_per_hour.get(entry.currency)
+        rate = self.currency_rate(entry.currency, shop)
         if rate is None or rate <= 0:
             return None
         return entry.price * 3600.0 / rate
+
+    def currency_rate(self, currency: str, shop: str = "") -> float | None:
+        """What `currency` is worth an hour, or `None` where nothing says.
+
+        **Shop-qualified first**: see `DEFAULT_CURRENCY_PER_HOUR` on why
+        `Points` cannot have one rate.
+
+        **And case-folded last, because a `{{StoreLine}}` writes the currency
+        in its own hand.** The wiki's Grace's Graceful Clothing rows say `Mark
+        of Grace` where the item - and this table - say `Mark of grace`, and
+        one capital letter left the amylase pack unpriced, which left the
+        crystal with no route, which left seven Construction and Herblore
+        methods reading `unpriced`. Measured across every shop the scrape
+        holds, that capital is the **only** currency a fold reaches; the other
+        misses are the point currencies the docstring above refuses on
+        purpose. Tried last, so an exact name always wins.
+        """
+        for key in (f"{shop}:{currency}" if shop else "", currency):
+            if key:
+                found = self.currency_per_hour.get(key)
+                if found is not None:
+                    return found
+        wanted = {f"{shop}:{currency}".lower() if shop else "", currency.lower()}
+        for name, rate in self.currency_per_hour.items():
+            if name.lower() in wanted:
+                return rate
+        return None
 
     def conversion_seconds(self, item: str) -> float:
         """Seconds of earning to pay the fee for making `item`, or zero.
@@ -685,7 +708,7 @@ class Heuristics:
         entry = self.conversion_fees.get(item)
         if entry is None:
             return 0.0
-        rate = self.currency_per_hour.get(entry.currency)
+        rate = self.currency_rate(entry.currency)
         if rate is None or rate <= 0:
             return math.inf
         return entry.price * 3600.0 / rate
@@ -919,9 +942,13 @@ DEFAULT_CURRENCY_PER_HOUR: dict[str, float] = {
     "Coins": 500_000.0,
     "Tokkul": 25_000.0,
     # **Overwritten by the scrape**, which reads the rooftop table's own
-    # column; this is the floor if that ever fails to parse. Every course pays
-    # between 8 and 18 an hour, so one figure is honest here.
-    "Mark of grace": 12.0,
+    # column; this is what stands if that ever fails to parse - and for a long
+    # time it *was* what stood, at a stale 12, because `skill_tables.
+    # parse_mark_rate` asked for a header the wiki capitalises differently and
+    # a `None` currency rate is silent everywhere. Now both say 18.1, the base
+    # Ardougne course; every course pays between 8 and 18.1 an hour without a
+    # diary, so one figure is honest here.
+    "Mark of grace": 18.1,
     # Minigame currencies, each earned at its own activity's pace: Guardians
     # of the Rift pays pearls, the Tithe Farm points, Soul Wars zeal. Stated
     # figures rather than measured ones, and tunable like the rest.

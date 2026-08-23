@@ -767,11 +767,22 @@ def parse_mark_rate(text: str) -> float | None:
 
     The top of the range, because a rate is what the best available method
     pays; that is the convention every other rate in this project follows.
+
+    **Base rows only, because a diary is not something a map holds.** Six of
+    the table's rows are an achievement diary's improved rate - Rellekka at
+    16-19.5 with the hard Fremennik diary against 13-15.5 without, Ardougne's
+    elite row a flat 22 - and spending one would price an estimate on a
+    reward this world may not have earned, which is `costing/pickpocket.py`'s
+    split between what a published figure is calibrated on and what may be
+    assumed here. Excluding them takes the answer from 19.5 to **18.1**, the
+    base Ardougne course, with Canifis' diary-free 18 just behind it.
     """
     table = table_with(text, "Marks of grace")
     best: float | None = None
     for cells in rows(table):
         for cell in cells:
+            if "diary" in cell.lower():
+                continue
             found = _MARK_RANGE.match(cell.strip())
             if found is None:
                 continue
