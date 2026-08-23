@@ -190,7 +190,10 @@ prices every method identically.
 `one-off`, `uncompletable` or `unreachable` (`costing/coverage.py`). The statuses each mean one
 thing, and keeping them apart is what makes the report worth reading:
 
-- **`unpriced` means "somebody should go and close this"** and nothing else. A method a model
+- **`unpriced` means "somebody should go and close this"** and nothing else,
+  and the export currently has none - every one of its ~2,700 primary methods
+  carries a real status. A new one appearing is a game update this project has
+  not caught up with, not a backlog. A method a model
   declines *by name* is `refused`, carried with the deciding module's own sentence; a thing nobody
   trains with (a trophy mount, a one-slot upgrade) is `one-off`. `one_off` is checked **ahead** of
   every priced tier because such a method usually does have an arithmetic rate; `refused` is checked

@@ -36,6 +36,17 @@ look **less** likely to bind. Every conclusion below of the form "the cape
 binds" is therefore conservative, and closing the gap would only strengthen
 it.
 
+**And the gap is now measured rather than estimated.** `Money making guide/
+Tombs of Amascut (Expert)` prices a level-300 solo raid and states its Lily of
+the Sands yield as `3 * ((1/27) * 19) * regchance`. Nineteen is
+`Points / 1100 * 1.15` by the chest's own common-loot formula, so the guide is
+asserting **18,174 points** where `points_for` derives 7,475 - the six health
+bars are 41% of a raid's score.
+
+That is recorded and **not** corrected by a multiplier, because a fitted factor
+would bury the missing rooms inside a constant nobody could audit. What the
+guide *is* used for is the item walk below, where it answers directly.
+
 ### The unique chance, which is where the dial bites
 
 "Players will have a 1% chance to receive a unique item for every
@@ -180,6 +191,101 @@ CAPE_COMPLETIONS = 2_000
 #: The lowest level that counts towards the shroud, and therefore the lowest
 #: worth running at all for a collection log.
 LOWEST_COUNTING_LEVEL = 150
+
+#: The common reward table's size, **read out of the guides** rather than
+#: counted off the page: they all write `(1/27)`, where the chest lists 26
+#: items plus the cache of runes that does not follow the quantity formula.
+COMMON_TABLE_SIZE = 27
+
+#: Rolls on the common table when no unique came out. **Published**: "three
+#: rolls are also made on the common drop table".
+COMMON_ROLLS = 3
+
+#: `Money making guide/Tombs of Amascut (Expert)`, "Completing Expert solo
+#: Tombs of Amascut (lvl 300)": `kph = 1.75`.
+GUIDE_RAID_LEVEL = 300
+GUIDE_RAIDS_PER_HOUR = 1.75
+
+#: The same guide's stated per-roll quantities, which are what make the item
+#: walk's answer published rather than derived. Only the entries something
+#: else in this project asks for are carried; the table has 27.
+GUIDE_QUANTITIES: Mapping[str, float] = {
+    "Lily of the Sands": 19.0,
+}
+
+#: The chance a raid gives *no* unique, which is what the common table is
+#: rolled behind. The guides call it `regchance`.
+def regular_chance(raid_level: int, points: float) -> float:
+    """`1 - unique_chance`, the guides' `regchance`."""
+    return 1.0 - unique_chance(points, raid_level)
+
+
+def guide_item_seconds(item: str, points: float | None = None) -> float | None:
+    """Seconds of raiding for one `item` from the common table, or `None`.
+
+    **Published end to end.** The guide states the yield as
+    `3 * ((1/27) * q) * regchance` and the raid rate beside it, so this is
+    those two divided rather than anything modelled - the reason it exists at
+    all is that `estimate.material_seconds` runs *before* the DPS enrichment
+    and so has no raid duration of its own to use.
+
+    `points` overrides the guide's own implied total, for a caller that has a
+    better one; omitted, the guide's raid level and its 55%-capped chance are
+    used, which is what makes the answer the guide's rather than a blend.
+    """
+    quantity = GUIDE_QUANTITIES.get(item)
+    if quantity is None or GUIDE_RAIDS_PER_HOUR <= 0:
+        return None
+    implied = points if points is not None else guide_implied_points()
+    per_raid = (
+        COMMON_ROLLS
+        * quantity
+        / COMMON_TABLE_SIZE
+        * regular_chance(GUIDE_RAID_LEVEL, implied)
+    )
+    if per_raid <= 0:
+        return None
+    return (3600.0 / GUIDE_RAIDS_PER_HOUR) / per_raid
+
+
+#: The raid-level bonus to common loot: 15% at 300, and an additive 1% every
+#: five levels above it.
+def common_bonus(raid_level: int) -> float:
+    """The multiplier on a common item's quantity at `raid_level`."""
+    if raid_level < 300:
+        return 1.0
+    return 1.15 + 0.01 * (raid_level - 300) / 5
+
+
+def guide_implied_points() -> float:
+    """The points the guide's own Lily quantity implies at its raid level.
+
+    **A measurement of this module's understatement**, kept because it is the
+    only number anywhere that says how much of a raid's score the six boss
+    health bars are: 18,174 against `points_for`'s 7,475, so 41%.
+    """
+    divisor = 1_100.0
+    return GUIDE_QUANTITIES["Lily of the Sands"] * divisor / common_bonus(
+        GUIDE_RAID_LEVEL
+    )
+
+
+def item_seconds() -> dict[str, float]:
+    """`{item: seconds}` to merge into `estimate._Walk.yield_seconds`.
+
+    Upstream spells the lily with a small `s` and the wiki now capitalises it -
+    see `recipe_rates.MATERIAL_ALIASES` - so **both spellings are emitted**.
+    The walk is keyed by the export's vocabulary and the recipe layer by the
+    wiki's, and one entry each is cheaper than making either guess.
+    """
+    found: dict[str, float] = {}
+    for item in GUIDE_QUANTITIES:
+        seconds = guide_item_seconds(item)
+        if seconds is None:
+            continue
+        found[item] = seconds
+        found[item.replace("of the Sands", "of the sands")] = seconds
+    return found
 
 
 def scaled_raid_level(raid_level: float) -> float:

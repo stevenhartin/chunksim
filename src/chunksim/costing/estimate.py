@@ -202,6 +202,7 @@ from chunksim.model.experience import (
 )
 from chunksim.costing.combat_xp import COMBAT_SKILLS, hitpoints_credit, slayer_credit
 from chunksim.costing import gathering, herbs, lootsack, recipe_rates, valeoffering, yields
+from chunksim.costing import tombs
 from chunksim.remote.recipes import Recipe
 from chunksim.costing.farming import (
     DEFAULT_HARVESTS_PER_DAY,
@@ -2354,6 +2355,15 @@ def _setup(
                 # missing answer, it is the only one there is.
                 lambda item, quantity: _log_seconds(walk, item, quantity),
             ),
+            # **And a raid's common chest**, which is the same shape again and
+            # is the only route this project has to a raid drop: the item
+            # graph knows `Tombs of Amascut loot*` provides a lily and nothing
+            # could price it, so `Mix a ~|menaphite remedy|~` was the last
+            # unpriced method in the export. `costing/tombs.py` answers from
+            # the money-making guide rather than from its own raid model,
+            # because this walk runs *before* the DPS enrichment and so has no
+            # raid duration of its own to divide by.
+            **tombs.item_seconds(),
             # **And a reward sack, which is the same shape with one twist.**
             # The export records a sack's share *per roll* and an open is five
             # to eleven of them - see `costing/lootsack.py`, whose pace comes

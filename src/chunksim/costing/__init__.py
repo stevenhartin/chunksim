@@ -490,6 +490,13 @@ The modules, and what each owns:
   `Reinvigorate` cadence, and a page is stackable so the plinth trip
   amortises. `costing/dps_bridge.py` puts the same figure at 258-303, inside
   the boss bias it documents on itself.
+- `raids.py` - all three raids at once, and the only place that **adds**
+  rather than picks: the export carries each raid's rewards as its own
+  collection log entries, so a player needs all three logs and the total is
+  their sum. Each tier-five cape wants 2,000 completions, so the answer is
+  very nearly "six thousand raids" and **where a cape binds the best drop rate
+  is the wrong thing to optimise** - the Theatre's hard mode is better per raid
+  and loses. `best_for` picks, and is only meaningful for a named unique.
 - `encounter.py` - the generic sequencer: a run of fights and puzzles priced as
   one unit, because a raid's duration belongs to the *run* and its chance
   belongs to the run's end. Knows no raid. Carries `Mechanic` (uptime and idle
