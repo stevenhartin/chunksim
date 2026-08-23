@@ -68,6 +68,7 @@ from chunksim.costing import (
     leechfin,
     mess,
     paydirt,
+    ourania,
     pickpocket,
     production,
     pyramid,
@@ -600,6 +601,11 @@ def recipe_priced(
     # `costing/statuette.py`, whose whole rate is upstream's own drop share
     # times the wiki's valuables-an-hour.
     chipped = statuette.methods(derived.challenges.valid)
+    # **A published table whose every cell is a wiki expression** - see
+    # `costing/ourania.py`, which reads the components so the column becomes
+    # the oracle. Its rates assume the essence was bought; mining it is three
+    # quarters of a lap, so it is folded in here where the walk is.
+    zmi = ourania.methods(derived.challenges.valid, seconds)
     overrides = blobs.overrides
     # **The hand materials do not depend on the recipes**, so they are read
     # before the early return: a clone with no `chunksim recipes` cache still
@@ -626,7 +632,8 @@ def recipe_priced(
             replace(
                 heuristics,
                 computed=_merge_computed(
-                    prayed, craned, totemed, trawled, polished, messed, cut, chipped, raided, gathered
+                    prayed, craned, totemed, trawled, polished, messed, cut, chipped,
+                    raided, gathered, zmi
                 ),
                 material_seconds_per_xp={**by_calc, **by_spell, **by_hand},
             ),
@@ -803,7 +810,8 @@ def recipe_priced(
             training=rated,
             action_seconds=timed,
             computed=_merge_computed(
-                prayed, craned, totemed, trawled, polished, messed, cut, chipped, raided, gathered
+                prayed, craned, totemed, trawled, polished, messed, cut, chipped,
+                raided, gathered, zmi
             ),
             material_seconds_per_xp=per_xp,
             material_xp_per_xp=credited,

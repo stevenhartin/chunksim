@@ -443,6 +443,15 @@ The modules, and what each owns:
   on the floor time is calibrated to 91,805 for five floors - inside what a
   good player sustains, and 1.04x the wiki's own row. `GUESS`, because the
   staircase, the lobby return and the mistake factor are all invented.
+- `ourania.py` - the ZMI altar, whose published table is a wiki expression per
+  cell rather than a set of observations, so reading the components lands on
+  the column exactly and the scrape becomes the oracle. Every step in
+  `essence_per_lap` is a pouch unlocking, and the Astral Contact term goes to
+  zero at 99 because the Runecraft cape stops pouches degrading. **The
+  published rates assume the essence was bought**; mining it at 2.4s a piece
+  is three quarters of a lap, which takes level 99 from 77,121/hr to 17,935
+  and flattens the 1-99 span from 3.8x to 2.2x - a bigger pouch saves running
+  and saves nothing at the rock.
 - `desiccated.py` - the Royal Titans' `Take pages` option turned into
   Runecraft: 14.5 pages a kill (the wiki's own mean of a `10-19` `Always`
   line), 48 kills an hour from the two money-making guides, and 50 experience
