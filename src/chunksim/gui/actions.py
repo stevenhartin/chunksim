@@ -140,9 +140,8 @@ def _heuristic_state(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]
 #: **A development escape hatch, deliberately unadvertised.** Typed into the
 #: fetch box it builds a map holding every chunk a roll could ever land on,
 #: which is the map several of this project's measurements are quoted against -
-#: "with every chunk unlocked and every level at 99" appears half a dozen times
-#: in `CLAUDE.md` and was, until now, a Python snippet somebody had to rewrite
-#: each time.
+#: the ceiling `CLAUDE.md` names, and which was, until now, a Python snippet
+#: somebody had to rewrite each time.
 #:
 #: It is not in the README, not in the placeholder and not in any tooltip, and
 #: it is refused unless the server is bound to loopback alone - `allowed_hosts`
