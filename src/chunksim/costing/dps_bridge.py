@@ -136,7 +136,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace, field, replace
 from typing import Any
 
 from chunksim.derive.boosts import combat_boost
@@ -933,6 +933,7 @@ def kills_by_style(
     wilderness: bool = False,
     boss: bool = False,
     prefer: str = "ttk",
+    raid: RaidInputs | None = None,
 ) -> dict[str, KillEstimate]:
     """The best kill **per combat style**, for every style that can kill.
 
@@ -973,8 +974,17 @@ def kills_by_style(
         fight = target
         if on_slayer_task and not target.is_slayer_monster:
             fight = _slayer_target(target)
-        if reductions is not None:
-            fight = scale(fight, RaidInputs(defence_reductions=reductions))
+        # **The raid inputs and the drain are one call, not two.** `scale`
+        # reads every rule off one `RaidInputs`, so applying the defence drain
+        # separately from a party size would run the scaling twice and compound
+        # what the second pass read off the first pass's output.
+        if raid is not None or reductions is not None:
+            fight = scale(
+                fight,
+                replace(raid, defence_reductions=reductions)
+                if raid is not None and reductions is not None
+                else raid or RaidInputs(defence_reductions=reductions or DefenceReductions()),
+            )
         for style, armed in armed_by_style.items():
             try:
                 result = dps(armed, fight)
@@ -1021,6 +1031,7 @@ def best_kill(
     reductions: DefenceReductions | None = None,
     wilderness: bool = False,
     boss: bool = False,
+    raid: RaidInputs | None = None,
 ) -> KillEstimate | None:
     """The fastest way to kill `name` with the gear on offer, or `None`.
 
@@ -1047,6 +1058,7 @@ def best_kill(
         reductions=reductions,
         wilderness=wilderness,
         boss=boss,
+        raid=raid,
     )
     return min(found.values(), key=lambda kill: kill.ttk, default=None)
 

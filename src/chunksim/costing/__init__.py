@@ -490,6 +490,22 @@ The modules, and what each owns:
   `Reinvigorate` cadence, and a page is stackable so the plinth trip
   amortises. `costing/dps_bridge.py` puts the same figure at 258-303, inside
   the boss bias it documents on itself.
+- `encounter.py` - the generic sequencer: a run of fights and puzzles priced as
+  one unit, because a raid's duration belongs to the *run* and its chance
+  belongs to the run's end. Knows no raid. Carries `Mechanic` (uptime and idle
+  seconds, so a fight is not assumed to be a damage race - usable by standalone
+  bosses too), `Objective` (green log by default, or a named unique, or
+  experience), and the coupon-collector arithmetic a green log actually is.
+  **`attackers` divides the time-to-kill and nothing else**, which is the line
+  between a party helping and a party making a raid free.
+- `theatre.py` - the Theatre of Blood: six rooms in a fixed order, no puzzles,
+  no points, which is why the sequencer was built against it. Three modes as
+  separate `osrs-dps` monsters whose suffixes do not follow a rule, so every
+  key is spelled out. **The chest rolls once per team and one player keeps
+  it**, so a trio sees 1/27.3 rather than 1/9.1. The money-making guide's
+  twenty-minute trio is a **floor** rather than a fit - its gear list contains
+  a Scythe of Vitur, a Theatre drop - so `UPTIME` is invented and every figure
+  is a `GUESS`.
 - `barricade.py` - repairing Pest Control's barricades, an upper bound built
   deliberately. Five experience a repair and two minutes a game are both the
   wiki's (the second is its own ideal-conditions assumption, published with the
