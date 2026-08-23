@@ -125,6 +125,86 @@ class TestTheStore:
         path.write_text("{not json", encoding="utf-8")
         assert cache.read_player("fray", tmp_path) == {}
 
+class TestInheritance:
+    """A map made from another one is played by the same person."""
+
+    def test_a_run_reads_its_batch_s_account(self, tmp_path: Path) -> None:
+        cache.write_player("batch", "someone", {"Attack": 100}, root=tmp_path)
+        assert cache.read_player("batch/run-003", tmp_path)["rsn"] == "someone"
+
+    def test_a_run_s_own_file_shadows_the_batch_s(self, tmp_path: Path) -> None:
+        cache.write_player("batch", "someone", {"Attack": 100}, root=tmp_path)
+        cache.write_player("batch/run-003", "somebody", {"Attack": 200}, root=tmp_path)
+        assert cache.read_player("batch/run-003", tmp_path)["rsn"] == "somebody"
+        assert cache.read_player("batch/run-004", tmp_path)["rsn"] == "someone"
+
+    def test_copying_carries_the_link_to_a_new_map(self, tmp_path: Path) -> None:
+        cache.write_player("fray", "someone", {"Attack": 100}, root=tmp_path)
+        assert cache.copy_player("fray", "fray-sim", tmp_path) is not None
+        assert cache.read_player("fray-sim", tmp_path)["linked_xp"] == {"Attack": 100}
+
+    def test_copying_follows_a_run_up_to_its_batch(self, tmp_path: Path) -> None:
+        """A snapshot of `batch/run-003` is played by whoever the batch is."""
+        cache.write_player("batch", "someone", {"Attack": 100}, root=tmp_path)
+        assert cache.copy_player("batch/run-003", "snap", tmp_path) is not None
+        assert cache.read_player("snap", tmp_path)["rsn"] == "someone"
+
+    def test_copying_never_overwrites(self, tmp_path: Path) -> None:
+        """A `replace` Commit must not undo the link made on the copy."""
+        cache.write_player("fray", "someone", {"Attack": 100}, root=tmp_path)
+        cache.write_player("fray-edit", "somebody", {"Attack": 200}, root=tmp_path)
+        assert cache.copy_player("fray", "fray-edit", tmp_path) is None
+        assert cache.read_player("fray-edit", tmp_path)["rsn"] == "somebody"
+
+    def test_copying_nothing_writes_nothing(self, tmp_path: Path) -> None:
+        assert cache.copy_player("fray", "fray-sim", tmp_path) is None
+        assert not cache.player_path("fray-sim", tmp_path).exists()
+
+    def test_both_files_a_run_resolves_through_are_stamped(self, tmp_path: Path) -> None:
+        """Linking on a batch has to move the stamp its runs are drawn from,
+        or every panel keeps the levels it had before."""
+        before = cache.reference_stamp(tmp_path, "batch/run-003")
+        cache.write_player("batch", "someone", {"Attack": 100}, root=tmp_path)
+        assert cache.reference_stamp(tmp_path, "batch/run-003") != before
+
+
+class TestRemoval:
+    """A name is reclaimable, so what was keyed by it goes with it."""
+
+    def test_removing_a_map_takes_its_link_with_it(self, tmp_path: Path) -> None:
+        cache.write_cache("fray", {"chunks": {}}, tmp_path)
+        cache.write_player("fray", "someone", {"Attack": 100}, root=tmp_path)
+        cache.remove_map("fray", tmp_path, include_fetched=True)
+        assert cache.read_player("fray", tmp_path) == {}
+
+    def test_removing_a_batch_takes_its_runs_files_too(self, tmp_path: Path) -> None:
+        directory = cache.claim_sim_batch("batch", tmp_path)
+        cache.write_sim_run(
+            cache.run_dir(directory, 1),
+            map_id="batch/run-001",
+            data={"chunks": {}},
+            simulation={},
+            ledger=[],
+        )
+        cache.write_player("batch", "someone", {"Attack": 100}, root=tmp_path)
+        cache.write_player("batch/run-001", "somebody", {"Attack": 2}, root=tmp_path)
+        cache.remove_map("batch", tmp_path)
+        assert cache.read_player("batch/run-001", tmp_path) == {}
+
+
+class TestThePricingKey:
+    def test_a_run_s_key_follows_the_file_it_reads(self, tmp_path: Path) -> None:
+        """**Keyed on the run's own path, every simulated map digested an
+        empty input** - so linking an account served back the answer computed
+        at the floor, to the person who had just linked it."""
+        from chunksim.store import derived_cache
+
+        before = derived_cache.pricing_digests(tmp_path, "batch/run-001").player
+        cache.write_player("batch", "someone", {"Attack": 100}, root=tmp_path)
+        after = derived_cache.pricing_digests(tmp_path, "batch/run-001").player
+        assert before == ""
+        assert after and after != before
+
     def test_it_is_in_the_pricing_key(self) -> None:
         """**Without it a fresh link served the answer computed against the
         floor**, which is the one failure a cache key exists to prevent."""

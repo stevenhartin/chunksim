@@ -179,7 +179,10 @@ ticked `Buy the Defence cape` is 99 Defence, and nothing at all proves anything 
 then reads as whatever the ledger happens to show. The Stats icon on the **Maps** tab opens the grid
 of all twenty-four, each coloured by what decided it — blue for that inferred floor, yellow for a
 linked account, green for a figure typed in here — and lets you **Link RSN** to pull an account's
-hiscores, or set any single skill's experience by hand.
+hiscores, or set any single skill's experience by hand. **A map made from another one inherits
+it** — a simulated batch, an unlocked candidate, a committed edit — since rolling two more chunks
+does not change who is playing. Every run of a batch reads the batch's link, so linking an account
+against a forty-run batch relinks all forty futures at once.
 
 **No layer may lower a skill**, because a floor is a proof rather than a guess: a linked account
 reading below one is a different account, a reset, or a typo, so the floor is priced instead and the

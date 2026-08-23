@@ -71,6 +71,7 @@ import os
 import re
 import sys
 import shutil
+from contextlib import suppress
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -1027,12 +1028,9 @@ def read_player(map_id: str, root: Path | None = None) -> dict[str, Any]:
     corrupt one degrades to the floor rather than taking the estimate down
     with it.
     """
-    path = player_path(map_id, root)
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if not isinstance(raw, dict):
+    found = player_source(map_id, root)
+    raw = _read_player_file(found) if found is not None else None
+    if raw is None:
         return {}
     rsn = raw.get("rsn")
     fetched = raw.get("fetched_at")
@@ -1042,6 +1040,39 @@ def read_player(map_id: str, root: Path | None = None) -> dict[str, Any]:
         "xp": _experience(raw.get("xp")),
         "fetched_at": fetched if isinstance(fetched, str) else "",
     }
+
+
+def player_source(map_id: str, root: Path | None = None) -> Path | None:
+    """The player file `map_id` actually reads, or `None` if it has none.
+
+    **A run inherits its batch's account, and that is the whole inheritance
+    rule.** `run_batch` copies the base map's link to the batch once rather
+    than into forty run directories, so forty runs read one file - and
+    linking an account against a batch relinks every run of it, which is what
+    somebody comparing forty futures meant. A run with a file of its own
+    shadows it, since writing one is a deliberate act.
+
+    Its own function because `copy_player` has to follow the same chain: a
+    snapshot taken of `batch/run-003` is played by whoever the batch is.
+    """
+    own = player_path(map_id, root)
+    if own.is_file():
+        return own
+    name, run = split_map_id(map_id)
+    if run:
+        shared = player_path(name, root)
+        if shared.is_file():
+            return shared
+    return None
+
+
+def _read_player_file(path: Path) -> dict[str, Any] | None:
+    """One player file's JSON object, or `None` for absent or unreadable."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return raw if isinstance(raw, dict) else None
 
 
 def write_player(
@@ -1084,6 +1115,31 @@ def write_player(
             "xp": kept,
         },
     )
+
+
+def copy_player(source: str, target: str, root: Path | None = None) -> Path | None:
+    """Give `target` the account `source` is linked to, and return where.
+
+    **A map made from another one inherits who is playing it.** A floor is
+    read out of a map's own completions, so a simulated or edited copy of a
+    linked map computes a floor and then has nothing to lay over it - every
+    hour it prices would be against levels the person does not have, and
+    silently lower than the map it was made from.
+
+    `None` when there is nothing to copy, and **never overwrites**: an edited
+    map is one you keep committing to, and a Commit that replaced the account
+    you linked on the copy with the one on the map it forked from would undo
+    an edit as a side effect of making one.
+    """
+    # **A map made from nothing has nobody to inherit from.** The GUI's blank
+    # map is a real map with an empty base, so this is a condition rather than
+    # a bad argument - and `split_map_id` would rightly refuse `""`.
+    origin = player_source(source, root) if source else None
+    destination = player_path(target, root)
+    if origin is None or destination.exists():
+        return None
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    return _atomic_write_json(destination, json.loads(origin.read_text(encoding="utf-8")))
 
 
 def map_overrides_path(map_id: str, root: Path | None = None) -> Path:
@@ -1548,6 +1604,7 @@ def remove_map(map_id: str, root: Path | None = None, *, include_fetched: bool =
                 "pass --include-fetched to remove it"
             )
         fetched.unlink()
+        _remove_sidecars(map_id, root)
         return fetched
 
     directory = _find_batch(name, root)
@@ -1556,7 +1613,31 @@ def remove_map(map_id: str, root: Path | None = None, *, include_fetched: bool =
     if directory is None or not directory.is_dir():
         raise CacheMissError(f"no cached map {map_id!r}; run: chunksim maps list")
     shutil.rmtree(directory)
+    _remove_sidecars(map_id, root)
     return directory
+
+
+def _remove_sidecars(map_id: str, root: Path | None) -> None:
+    """Drop the files that belong to a map but do not live beside it.
+
+    **A name is reclaimable, so what was keyed by it has to go with it.**
+    `cache/overrides/` and `cache/players/` are addressed by map id rather
+    than stored in the map's own directory, so removing a batch and rolling a
+    new one under the same name used to hand the new one the old one's
+    corrections and the old one's linked account - a map inheriting from a map
+    that no longer exists, with nothing on screen saying so.
+    """
+    _, run = split_map_id(map_id)
+    for path in (map_overrides_path(map_id, root), player_path(map_id, root)):
+        path.unlink(missing_ok=True)
+        if run:
+            # The per-run directory it sat in, once its last run has gone.
+            with suppress(OSError):
+                path.parent.rmdir()
+        else:
+            # A whole batch went, so its runs' own files go with it - the
+            # sibling directory named for the batch rather than the file.
+            shutil.rmtree(path.with_suffix(""), ignore_errors=True)
 
 
 def remove_computed(root: Path | None = None, *, kinds: Sequence[str] = COMPUTED_KINDS) -> list[str]:
@@ -1573,6 +1654,7 @@ def remove_computed(root: Path | None = None, *, kinds: Sequence[str] = COMPUTED
         for directory in sorted(base.iterdir()):
             if directory.is_dir():
                 shutil.rmtree(directory)
+                _remove_sidecars(directory.name, root)
                 removed.append(directory.name)
     return removed
 
@@ -2054,8 +2136,13 @@ def reference_stamp(
         paths.append(map_overrides_path(map_id, root))
         # And its sibling, for the same reason: the linked account's experience is
         # a layer under `resolve_levels`, and the Skills panel writes it while
-        # the server is up.
+        # the server is up. **Both files a run resolves through** - see
+        # `read_player` - or linking an account on a batch would leave every
+        # run of it drawing the levels it had before.
         paths.append(player_path(map_id, root))
+        name, run = split_map_id(map_id)
+        if run:
+            paths.append(player_path(name, root))
     for path in paths:
         try:
             info = path.stat()

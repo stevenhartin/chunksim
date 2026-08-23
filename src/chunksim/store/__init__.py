@@ -27,7 +27,12 @@ The modules, and what each owns:
   checkout, else the user's own data directory - and the envelope, the
   `--chunkinfo`/`CHUNKSIM_CHUNKINFO` override, `--map` resolution across kinds,
   the atomic writes, the cross-kind name claim, `migrate_layout`, and both
-  override files.
+  override files. **The two sidecars keyed by map id rather than stored beside
+  the map** - `cache/overrides/` and `cache/players/` - travel with it:
+  `copy_player` gives a map made from another one its account, `player_source`
+  is the single place a run's read falls back to its batch's file, and
+  `_remove_sidecars` takes both away with the map, since a name is
+  reclaimable.
 - `derived_cache.py` - the on-disk cache of the **two** expensive per-state
   computations, and both their keys. **Read it before changing what `derive`
   returns**, including a *nested* result dataclass, which `_RESULT_TYPES` must

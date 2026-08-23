@@ -362,6 +362,7 @@ cache/reference/                   # chunkinfo, tasks_map, tile_version
                                    # (the wiki blobs live in src/chunksim/heuristics/)
 cache/derived/                     # pipeline.derive + dps_bridge.enrich results, keyed by content
 cache/overrides/<map_id>.json      # heuristic corrections belonging to one map
+cache/players/<map_id>.json        # the account a map is linked to, and any xp set by hand
 cache/assets/                      # section masks, skill icons, CA tier icons
 cache/gui/                         # window.json, settings.json, and the browser profile
 ```
@@ -369,6 +370,15 @@ cache/gui/                         # window.json, settings.json, and the browser
 A batch of any computed kind holds `batch.json` (seeds, rolls, `batch_id`, and the payload it rolled
 from) beside one directory per run holding `map.json`, `rolls.json`, `run.json` and `timeline.json`.
 **A name is claimed across every kind**, so `--map foo` never has to guess which directory meant it.
+
+**The two sidecars are addressed by map id rather than stored beside the map, and both follow it.**
+`cache/overrides/` and `cache/players/` are keyed by name, so a map made from another inherits its
+player file at creation (`cache.copy_player`, never overwriting) and removing a map takes both with
+it — a name is reclaimable, and a re-rolled batch inheriting the deleted one's account is a map
+priced against a person nothing on screen names. **A run reads its batch's player file** rather than
+one per run directory, so linking an account on a batch relinks all forty of its futures at once;
+`cache.player_source` is the one place that chain is walked, and `derived_cache.pricing_digests`
+walks it too or a fresh link serves back the answer computed at the floor.
 **Where `cache/` itself lands is `data_root`'s answer, and it is three answers in order**:
 `CHUNKSIM_CACHE` if set; else the checkout you are standing in; else the user's own data directory
 (`%LOCALAPPDATA%\chunksim`, `~/Library/Application Support/chunksim`, `~/.local/share/chunksim`).

@@ -84,6 +84,26 @@ def test_unlock_cache_map_suffixes_a_name_already_taken(
     assert (project / "cache" / "maps" / "edited" / "Candidate-2" / "run-001" / "map.json").is_file()
 
 
+def test_an_unlocked_map_inherits_the_base_map_s_account(
+    project: Path, cached_map: Callable[[dict[str, Any], dict[str, Any]], None],
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """One chunk added does not change who is playing the map."""
+    from chunksim.store import cache
+
+    payload = {"chunks": {"unlocked": {"100": True}}}
+    cached_map(payload, {"sections": {"101": {"0": ["100"]}}})
+    cache.write_player("fray", "someone", {"Attack": 5_000_000}, root=project)
+    capsys.readouterr()
+
+    assert main(["unlock", "--chunk", "101", "--cache-map", "Candidate"]) == 0
+
+    assert cache.read_player("Candidate", project)["rsn"] == "someone"
+    assert cache.read_player("Candidate/run-001", project)["linked_xp"] == {
+        "Attack": 5_000_000
+    }
+
+
 def test_unlock_cache_map_export_json_reports_the_name(
     project: Path, cached_map: Callable[[dict[str, Any], dict[str, Any]], None],
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

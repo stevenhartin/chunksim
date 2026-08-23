@@ -93,6 +93,7 @@ from chunksim.store.cache import (
     file_digest,
     gathering_source,
     map_overrides_path,
+    player_source,
     player_path,
     overrides_source,
     read_derived,
@@ -224,10 +225,14 @@ _FORMAT = "1"
 #: contradicts its `Items` takes the recipe its materials own, the markup names
 #: the thing where the task names a facility, a course's second challenge takes
 #: its bands, and a method its own page disclaims keeps no rate.
+#: 80: a simulated or edited map inherits its base's linked account, and the
+#: key follows the file a run actually reads. Retires every stored enrichment
+#: because the old key digested a run's own (absent) player file, so an
+#: entry priced at the floor could be served to a linked map.
 #: 79: the item walk is a fixpoint with no depth bound - the cheapest acyclic
 #: derivation however long, so runite smithing prices through its full chain
 #: and the multi-ingredient pies need no `partial_products` exemption.
-_PRICING_MODEL = "214"
+_PRICING_MODEL = "215"
 
 #: zstd's own default. Level 9 buys 2.6 percentage points for 4x the write
 #: cost, which is the wrong trade for something written once and read often.
@@ -660,7 +665,18 @@ def pricing_digests(root: Path | None = None, map_id: str | None = None) -> Pric
             else _maybe_digest(lambda: map_overrides_path(map_id, root))
         ),
         player=(
-            "" if map_id is None else _maybe_digest(lambda: player_path(map_id, root))
+            ""
+            if map_id is None
+            # **`player_source`, and for the same reason as `overrides_source`
+            # above.** A run has no file of its own and reads its batch's, so
+            # digesting its own path described an empty input for every
+            # simulated map - and served back the answer computed at the floor
+            # to the person who had just linked an account. `player_path` is
+            # the fallback only so a map with no link at all still digests
+            # `""` rather than raising.
+            else _maybe_digest(
+                lambda: player_source(map_id, root) or player_path(map_id, root)
+            )
         ),
         library=dps_library_digest(),
         recipes=_maybe_digest(lambda: blob_source(RECIPES_BLOB_NAME, root)),

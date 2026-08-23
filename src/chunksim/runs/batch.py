@@ -55,6 +55,7 @@ from chunksim.store.cache import (
     kind_root,
     read_batch,
     read_rolls,
+    copy_player,
     claim_sim_batch,
     file_digest,
     overrides_path,
@@ -273,6 +274,7 @@ class _Pricer:
         root: Path | None,
         digests: Digests,
         reference: ReferenceBlobs | None = None,
+        map_id: str | None = None,
     ) -> _Pricer | None:
         """A pricer, or `None` when this machine cannot price anything.
 
@@ -281,7 +283,7 @@ class _Pricer:
         answer than no timeline at all, because a graph does not carry the
         caveat that `chunksim show` prints beside the figure.
         """
-        blobs = load_reference(root) if reference is None else reference
+        blobs = load_reference(root, map_id) if reference is None else reference
         if not blobs.scraped_found:
             return None
         return cls(
@@ -524,7 +526,14 @@ def _walk(
             chunkinfo=file_digest(chunkinfo_source(spec.chunkinfo_path, spec.root)),
             tasks_map=file_digest(blob_path(TASKS_MAP_BLOB_NAME, spec.root)),
         )
-        reference = load_reference(spec.root)
+        # **Named, like every other reader of these blobs.** The GUI hands
+        # this walk a `ReferenceBlobs` built for the run (`routes_view`), so a
+        # worker that loaded the site-wide set instead priced the same
+        # timeline off different layers than the click that asked for it -
+        # the drift `costing/inputs.py` exists to prevent, in the hardest
+        # place to see it. Carries the run's own corrections and, through
+        # `cache.read_player`'s fallback, its batch's linked account.
+        reference = load_reference(spec.root, spec.map_id)
     else:
         info, tasks_map = prepared.info, prepared.tasks_map
         digests, reference = prepared.digests, prepared.reference
@@ -880,7 +889,11 @@ def run_one(
         chunkinfo=file_digest(chunkinfo_source(spec.chunkinfo_path, spec.root)),
         tasks_map=file_digest(blob_path(TASKS_MAP_BLOB_NAME, spec.root)),
     )
-    pricer = _Pricer.build(info, spec.root, digests)
+    # **Named with the batch it is writing into**, so the levels this run is
+    # priced against are the ones `run_batch` copied off the base map. Without
+    # it every simulated run prices a linked account's world at the floor its
+    # own ledger proves, which is silently and often wildly cheaper.
+    pricer = _Pricer.build(info, spec.root, digests, map_id=spec.directory.parent.name)
     ledger = simulate_rolls(
         state,
         unlocked,
@@ -1105,6 +1118,11 @@ def run_batch(
     workers = jobs if jobs > 0 else (os.process_cpu_count() or 1)
 
     directory = claim_sim_batch(name, root)
+    # **Before any run starts, because a run prices against it.** Every run
+    # of this batch reads the batch's file (`cache.read_player`), and the
+    # first thing `run_one` does with it is price a timeline - so a copy made
+    # after the pool returned would be a link nothing had used.
+    copy_player(base_map, directory.name, root)
     # Minted before any run starts, so every one of them records the same
     # value and an interrupted batch is still recognisable as one job.
     batch_id = uuid4().hex
@@ -1542,6 +1560,10 @@ def _write_one_run_batch(
         "unlocked_chunks": chunks,
         **dict(extra_meta or {}),
     }
+    # An edited or unlocked map is the map it was made from plus a change, so
+    # it is played by the same person. Never overwrites - see `copy_player` -
+    # which is what lets a `replace` Commit keep the copy's own link.
+    copy_player(base_map, directory.name, root)
     write_sim_run(
         run,
         map_id=f"{directory.name}/{run.name}",

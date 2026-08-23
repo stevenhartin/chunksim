@@ -96,6 +96,27 @@ def test_simulate_cache_map_suffixes_a_taken_name(
     assert (project / "cache" / "maps" / "simulated" / "Demo-2").is_dir()
 
 
+def test_a_simulated_batch_inherits_the_base_map_s_account(
+    project: Path, simulatable: Callable[[], None],
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """**A rolled map is the same person's world with more of it unlocked.**
+    Its own ledger proves a floor and nothing lays a linked account over it,
+    so without this every simulated run prices at levels the player does not
+    have - silently, and always low."""
+    from chunksim.store import cache
+
+    simulatable()
+    cache.write_player("fray", "someone", {"Attack": 5_000_000}, root=project)
+    capsys.readouterr()
+
+    assert main(["simulate", "--rolls", "1", "--seed", "1", "--cache-map", "Demo"]) == 0
+
+    assert cache.read_player("Demo", project)["linked_xp"] == {"Attack": 5_000_000}
+    # And every run of it, through the batch rather than a file each.
+    assert cache.read_player("Demo/run-001", project)["rsn"] == "someone"
+
+
 def test_simulate_runs_need_a_cache_to_go_into(
     project: Path, simulatable: Callable[[], None],
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
