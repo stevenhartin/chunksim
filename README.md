@@ -449,13 +449,15 @@ maps are your own work and nothing can recompute them.
    checked in so an install never asks the wiki anything.
 
    ```sh
-   chunksim heuristics                     # developer: guides, skill tables, monster hp, courier tasks
+   chunksim heuristics                     # developer: guides, skill tables, monster hp, port tasks
    chunksim recipes                        # developer: xp per action, tick costs, and item renames
    ```
 
-   The first also brings back the **courier task table** - all 432 deliveries between the game's 30
-   ports, with the coordinates that place them - which is what lets `chunksim estimate` work out
-   which sailing route your ports and your stretch of ocean make best. See `costing/courier.py`.
+   The first also brings back both **port task tables** - all 432 courier deliveries between the
+   game's 30 ports with the coordinates that place them, and all 163 bounties with the health of
+   every sea monster. Those are what let `chunksim estimate` work out which sailing route your ports
+   and your stretch of ocean make best, and which sea monster is worth hunting. See
+   `costing/courier.py` and `costing/bounty.py`.
 
    The second is what stops most training methods being priced at a flat 1,000 xp/hour: it brings
    back what one action of a method actually pays and how long it takes, for 4,043 recipes. It now

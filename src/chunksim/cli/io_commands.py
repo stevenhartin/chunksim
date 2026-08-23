@@ -35,10 +35,11 @@ from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.derive.task_names import strip_task_markup
 from chunksim.model.summary import format_age, summarise
 from chunksim.remote.api import CHUNKINFO_URL, DEFAULT_TIMEOUT, TASKS_MAP_URL, fetch_chunkinfo, fetch_map, fetch_tasks_map, fetch_wiki_pages, fetch_wiki_redirects
+from chunksim.remote.bounty import build_tables as build_bounty_tables
 from chunksim.remote.courier import build_tables as build_courier_tables
 from chunksim.remote.scrape import SOURCE as SCRAPE_SOURCE
 from chunksim.remote.scrape import recipe_coverage, scrape, scrape_recipes
-from chunksim.store.cache import ALIASES_BLOB_NAME, CHUNKINFO_BLOB_NAME, COURIER_BLOB_NAME, CacheMissError, FETCHED, RECIPES_BLOB_NAME, TASKS_MAP_BLOB_NAME, WIKI_RATES_BLOB_NAME, read_cache, read_chunkinfo, read_overrides, write_blob, write_cache
+from chunksim.store.cache import ALIASES_BLOB_NAME, BOUNTY_BLOB_NAME, CHUNKINFO_BLOB_NAME, COURIER_BLOB_NAME, CacheMissError, FETCHED, RECIPES_BLOB_NAME, TASKS_MAP_BLOB_NAME, WIKI_RATES_BLOB_NAME, read_cache, read_chunkinfo, read_overrides, write_blob, write_cache
 
 
 def _cmd_fetch(args: argparse.Namespace) -> int:
@@ -123,6 +124,10 @@ def _cmd_heuristics(args: argparse.Namespace) -> int:
         lambda titles: fetch_wiki_pages(titles, timeout=args.timeout)
     )
     courier_path = write_blob(COURIER_BLOB_NAME, courier.as_dict(), SCRAPE_SOURCE)
+    bounty = build_bounty_tables(
+        lambda titles: fetch_wiki_pages(titles, timeout=args.timeout)
+    )
+    bounty_path = write_blob(BOUNTY_BLOB_NAME, bounty.as_dict(), SCRAPE_SOURCE)
 
     for source, (found, asked) in result.sources.items():
         print(f"{source:<16} {found}/{asked}")
@@ -142,8 +147,13 @@ def _cmd_heuristics(args: argparse.Namespace) -> int:
         f"{'courier':<16} {len(courier.tasks)} tasks,"
         f" {len(courier.ledgers)} ports ({len(courier.boards)} with a board)"
     )
+    print(
+        f"{'bounty':<16} {len(bounty.tasks)} tasks,"
+        f" {len(bounty.hitpoints)} monsters with health"
+    )
     print(f"\nwrote {path} ({path.stat().st_size:,} bytes)")
     print(f"wrote {courier_path} ({courier_path.stat().st_size:,} bytes)")
+    print(f"wrote {bounty_path} ({bounty_path.stat().st_size:,} bytes)")
     return 0
 
 

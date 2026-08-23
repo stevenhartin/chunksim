@@ -38,6 +38,9 @@ The modules, and what each owns:
 - `skillcalc.py` - reading a `Module:Skill calc/<Skill>` Lua table, one format
   across eighteen skills. Owns the brace matching, which `farming.py` measured
   first and now imports.
+- `bounty.py` - the wiki's bounty table and, from `Boat combat`, the health of
+  every sea monster. Health is half the rate, because damage *is* the
+  experience.
 - `courier.py` - the wiki's courier task table and the coordinates that place
   its ports, from `Courier tasks` and `Module:CourierTaskLine`. Two pages, and
   the second is what turns a port's name into a chunk - which is why this is a

@@ -193,6 +193,15 @@ ALIASES_BLOB_NAME = "wiki_aliases"
 #: moves only when Jagex adds a port. Keeping it out also leaves `wiki_rates`'
 #: `data` the flat section -> rates mapping every reader of it iterates.
 COURIER_BLOB_NAME = "courier_tasks"
+
+#: The bounty table and the sea monsters' health, written on the same trip.
+#:
+#: **Its own blob rather than part of `courier_tasks`** for that blob's own
+#: reason: a courier task is a delivery between two ports and a bounty is a
+#: monster with a drop rate, and the second carries `Boat combat`'s health
+#: table with it. One blob holding both would make `data` a union nobody
+#: iterates.
+BOUNTY_BLOB_NAME = "bounty_tasks"
 CHUNKINFO_ENV_VAR = "CHUNKSIM_CHUNKINFO"
 
 #: Where hand-written corrections live: checked in, so they are diffable and
@@ -242,6 +251,7 @@ SHIPPED_BLOB_NAMES: tuple[str, ...] = (
     RECIPES_BLOB_NAME,
     ALIASES_BLOB_NAME,
     COURIER_BLOB_NAME,
+    BOUNTY_BLOB_NAME,
 )
 
 
@@ -1925,6 +1935,7 @@ def reference_stamp(
         blob_source(RECIPES_BLOB_NAME, root),
         blob_source(ALIASES_BLOB_NAME, root),
         blob_source(COURIER_BLOB_NAME, root),
+        blob_source(BOUNTY_BLOB_NAME, root),
         overrides_path(root),
     ]
     if map_id is not None:

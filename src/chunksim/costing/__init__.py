@@ -443,6 +443,16 @@ The modules, and what each owns:
   on the floor time is calibrated to 91,805 for five floors - inside what a
   good player sustains, and 1.04x the wiki's own row. `GUESS`, because the
   staircase, the lobby return and the mistake factor are all invented.
+- `bounty.py` - bounty tasks, the other half of a port's notice board. **Boat
+  combat pays one Sailing experience a point of damage**, so a kill is worth
+  the monster's hitpoints before the bounty pays - and the bounty pays far
+  more, which is what makes it a training method. Gated on a board, on the
+  monster being in the map's chunks, and on a sea route out to it over
+  `courier.py`'s graph. Stacking is **sequential** since 17 June 2026, so two
+  tasks cost the sum of their kills; `CANNON_DPS` is a named term that fitted
+  to zero, because `kills_per_hour` already carries overhead boat combat does
+  not have. `GUESS`, checked against the wiki's "middle ground between
+  salvaging and trials".
 - `courier.py` - courier tasks, the one method whose rate is the map's shape.
   Reads the scraped table of 432 deliveries over 30 ports and finds the best
   sailing leg the map's boards, ledgers and water allow. **The travelling

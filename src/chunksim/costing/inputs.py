@@ -39,6 +39,7 @@ from chunksim.costing import (
     barbarian,
     blackjack,
     blastfurnace,
+    bounty,
     brimhaven,
     calcified,
     crane,
@@ -197,6 +198,9 @@ class ReferenceBlobs:
     #: estimator spends. Empty when never fetched, which prices courier tasks
     #: exactly as they were before the blob existed, which is not at all.
     courier: dict[str, Any]
+    #: `src/chunksim/heuristics/bounty_tasks.json`'s `data`: the 163 bounties
+    #: and `Boat combat`'s health table. Empty when never fetched.
+    bounty: dict[str, Any]
     #: What this machine would price against, for the enrichment cache key.
     pricing: PricingDigests
     #: Which map `overrides` was assembled for, or `None` for the site-wide
@@ -213,6 +217,24 @@ class ReferenceBlobs:
     def pinned(self) -> tuple[frozenset[str], dict[str, frozenset[str]]]:
         """The hand-written rates the computed layer must not overwrite."""
         return _pinned_from(self.overrides)
+
+
+def _bounty_monsters(chunk_info: ChunkInfo) -> tuple[str, ...]:
+    """Upstream's own `BountyMonster[+]` family - the twenty a bounty can name."""
+    family = chunk_info.code_items.get("monstersPlus") or {}
+    names = family.get("BountyMonster[+]")
+    return tuple(str(name) for name in names) if isinstance(names, list) else ()
+
+
+def _bounty_blob(root: Path | None) -> dict[str, Any]:
+    """`bounty_tasks.json`'s `data`, or `{}` - see `_courier_blob`."""
+    try:
+        blob = cache.read_blob(
+            cache.BOUNTY_BLOB_NAME, root, hint="run: chunksim heuristics"
+        )["data"]
+    except cache.CacheMissError:
+        return {}
+    return blob if isinstance(blob, dict) else {}
 
 
 def _courier_blob(root: Path | None) -> dict[str, Any]:
@@ -260,6 +282,7 @@ def load_reference(root: Path | None = None, map_id: str | None = None) -> Refer
         aliases=load_aliases(root),
         gathering=gathering_model.load_tables(cache.read_gathering(root)),
         courier=_courier_blob(root),
+        bounty=_bounty_blob(root),
         pricing=pricing_digests(root, map_id),
         map_id=map_id,
     )
@@ -1654,6 +1677,25 @@ def priced_heuristics(
         # fishing's Strength bands, all 21 of them, computed and then thrown
         # away before anything could read them.
         merged = dict(priced.computed)
+        # **After `enrich` for the reason the block above gives.** A bounty's
+        # rate is the monster's kill rate times its hitpoints, so running it
+        # on the scraped rates would price boat combat off `DEFAULT_KPH` and
+        # then throw the simulated answer away - see `costing/bounty.py`.
+        for skill, found in bounty.methods(
+            derived.challenges.valid,
+            derived.source_index.monsters,
+            state.chunk_info.chunks,
+            derived.expanded_chunks,
+            state.chunk_info.rolling_chunks.get("ocean") or (),
+            state.chunk_info.sections,
+            blobs.courier,
+            blobs.bounty,
+            {
+                name: priced.kills_per_hour(name).value
+                for name in _bounty_monsters(state.chunk_info)
+            },
+        ).items():
+            merged[skill] = (*merged.get(skill, ()), *found)
         for skill, rate in rates.items():
             if rate.value <= 0:
                 continue

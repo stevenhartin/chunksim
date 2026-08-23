@@ -303,6 +303,7 @@ chunksim show  [--map ID]       # summarise the cached copy; no network
 chunksim chunkinfo              # GET upstream's chunk/challenge reference data (~10MB)
 chunksim heuristics             # developer only: rates -> src/chunksim/heuristics/wiki_rates.json (30+ requests)
                                 # + the courier task table -> .../courier_tasks.json
+                                # + the bounty table and sea monster hp -> .../bounty_tasks.json
 chunksim recipes [--chunkinfo P] # developer only: per-action xp + ticks -> .../wiki_recipes.json
                                 # + the wiki's renames -> .../wiki_aliases.json
 chunksim gather-tables          # developer only: GET the gathering tables -> src/chunksim/heuristics/gathering.json
@@ -377,7 +378,7 @@ the checkout rather than `/tmp` or stdout. A stray `tasks.json` there is that, n
 
 **The estimator's numbers are all checked in and shipped, and only one layer is in `cache/`.**
 `src/chunksim/heuristics/` holds the scrapes — `wiki_rates.json`, `wiki_recipes.json`,
-`wiki_aliases.json`, `courier_tasks.json` and `gathering.json` — beside `overrides.json`, the hand
+`wiki_aliases.json`, `courier_tasks.json`, `bounty_tasks.json` and `gathering.json` — beside `overrides.json`, the hand
 corrections, so a correction is diffable and survives a re-scrape. Corrections belonging to *one map*
 go in `cache/overrides/<map_id>.json`, which is gitignored with the rest. `cache.SHIPPED_BLOB_NAMES`
 is the list a developer command writes and a reader opens. `heuristics/README.md` is the

@@ -1,0 +1,1501 @@
+{
+  "name": "bounty_tasks",
+  "fetched_at": "2026-08-23T10:39:03.711236+00:00",
+  "source": "https://oldschool.runescape.wiki/api.php",
+  "data": {
+    "tasks": [
+      {
+        "level": 50,
+        "experience": 14575,
+        "notice_board": "Catherby",
+        "monster": "Albatross",
+        "item": "Albatross beak",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 50,
+        "experience": 14575,
+        "notice_board": "Port Khazard",
+        "monster": "Albatross",
+        "item": "Albatross beak",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 50,
+        "experience": 14575,
+        "notice_board": "Port Roberts",
+        "monster": "Albatross",
+        "item": "Albatross beak",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 50,
+        "experience": 14575,
+        "notice_board": "Ruins of Unkah",
+        "monster": "Albatross",
+        "item": "Albatross beak",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 50,
+        "experience": 14575,
+        "notice_board": "The Summer Shore",
+        "monster": "Albatross",
+        "item": "Albatross beak",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 76,
+        "experience": 14575,
+        "notice_board": "Lunar Isle",
+        "monster": "Albatross",
+        "item": "Albatross beak",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 50,
+        "experience": 14575,
+        "notice_board": "Brimhaven",
+        "monster": "Albatross",
+        "item": "Albatross feather",
+        "quantity": 20,
+        "rarity": "1/2"
+      },
+      {
+        "level": 62,
+        "experience": 14575,
+        "notice_board": "Rellekka",
+        "monster": "Albatross",
+        "item": "Albatross feather",
+        "quantity": 25,
+        "rarity": "1/2"
+      },
+      {
+        "level": 65,
+        "experience": 14575,
+        "notice_board": "Etceteria",
+        "monster": "Albatross",
+        "item": "Albatross feather",
+        "quantity": 30,
+        "rarity": "1/2"
+      },
+      {
+        "level": 75,
+        "experience": 40370,
+        "notice_board": "Etceteria",
+        "monster": "Armoured kraken",
+        "item": "Armoured kraken ink sac",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 75,
+        "experience": 40370,
+        "notice_board": "Port Piscarilius",
+        "monster": "Armoured kraken",
+        "item": "Armoured kraken ink sac",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 76,
+        "experience": 40370,
+        "notice_board": "Lunar Isle",
+        "monster": "Armoured kraken",
+        "item": "Armoured kraken tentacle",
+        "quantity": 20,
+        "rarity": "1/2"
+      },
+      {
+        "level": 75,
+        "experience": 40370,
+        "notice_board": "Port Roberts",
+        "monster": "Armoured kraken",
+        "item": "Armoured kraken tentacle",
+        "quantity": 20,
+        "rarity": "1/2"
+      },
+      {
+        "level": 75,
+        "experience": 40370,
+        "notice_board": "Civitas illa Fortis",
+        "monster": "Armoured kraken",
+        "item": "Armoured kraken tentacle",
+        "quantity": 25,
+        "rarity": "1/2"
+      },
+      {
+        "level": 75,
+        "experience": 40370,
+        "notice_board": "Rellekka",
+        "monster": "Armoured kraken",
+        "item": "Armoured kraken tentacle",
+        "quantity": 25,
+        "rarity": "1/2"
+      },
+      {
+        "level": 75,
+        "experience": 40370,
+        "notice_board": "Port Tyras",
+        "monster": "Armoured kraken",
+        "item": "Armoured kraken tentacle",
+        "quantity": 30,
+        "rarity": "1/2"
+      },
+      {
+        "level": 75,
+        "experience": 40370,
+        "notice_board": "Prifddinas",
+        "monster": "Armoured kraken",
+        "item": "Armoured kraken tentacle",
+        "quantity": 30,
+        "rarity": "1/2"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Musa Point",
+        "monster": "Bull shark",
+        "item": "Bull shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Port Sarim",
+        "monster": "Bull shark",
+        "item": "Bull shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Ardougne",
+        "monster": "Bull shark",
+        "item": "Bull shark jaw",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Brimhaven",
+        "monster": "Bull shark",
+        "item": "Bull shark jaw",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Catherby",
+        "monster": "Bull shark",
+        "item": "Bull shark jaw",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Land's End",
+        "monster": "Bull shark",
+        "item": "Bull shark jaw",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Musa Point",
+        "monster": "Bull shark",
+        "item": "Bull shark jaw",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Port Khazard",
+        "monster": "Bull shark",
+        "item": "Bull shark jaw",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Port Piscarilius",
+        "monster": "Bull shark",
+        "item": "Bull shark jaw",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Port Sarim",
+        "monster": "Bull shark",
+        "item": "Bull shark jaw",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "The Pandemonium",
+        "monster": "Bull shark",
+        "item": "Bull shark jaw",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 48,
+        "experience": 3465,
+        "notice_board": "Ruins of Unkah",
+        "monster": "Bull shark",
+        "item": "Bull shark jaw",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 38,
+        "experience": 3465,
+        "notice_board": "Civitas illa Fortis",
+        "monster": "Bull shark",
+        "item": "Bull shark jaw",
+        "quantity": 20,
+        "rarity": "1/2"
+      },
+      {
+        "level": 66,
+        "experience": 3465,
+        "notice_board": "Port Tyras",
+        "monster": "Bull shark",
+        "item": "Bull shark jaw",
+        "quantity": 25,
+        "rarity": "1/2"
+      },
+      {
+        "level": 40,
+        "experience": 8800,
+        "notice_board": "Land's End",
+        "monster": "Butterfly ray",
+        "item": "Butterfly ray skin",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 40,
+        "experience": 8800,
+        "notice_board": "Port Piscarilius",
+        "monster": "Butterfly ray",
+        "item": "Butterfly ray skin",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 40,
+        "experience": 8800,
+        "notice_board": "Musa Point",
+        "monster": "Butterfly ray",
+        "item": "Butterfly ray fin",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 40,
+        "experience": 8800,
+        "notice_board": "The Pandemonium",
+        "monster": "Butterfly ray",
+        "item": "Butterfly ray fin",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 48,
+        "experience": 8800,
+        "notice_board": "Ruins of Unkah",
+        "monster": "Butterfly ray",
+        "item": "Butterfly ray fin",
+        "quantity": 20,
+        "rarity": "1/2"
+      },
+      {
+        "level": 45,
+        "experience": 8800,
+        "notice_board": "The Summer Shore",
+        "monster": "Butterfly ray",
+        "item": "Butterfly ray fin",
+        "quantity": 25,
+        "rarity": "1/2"
+      },
+      {
+        "level": 46,
+        "experience": 8800,
+        "notice_board": "Aldarin",
+        "monster": "Butterfly ray",
+        "item": "Butterfly ray fin",
+        "quantity": 25,
+        "rarity": "1/2"
+      },
+      {
+        "level": 66,
+        "experience": 8800,
+        "notice_board": "Port Tyras",
+        "monster": "Butterfly ray",
+        "item": "Butterfly ray fin",
+        "quantity": 30,
+        "rarity": "1/2"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Musa Point",
+        "monster": "Eagle ray",
+        "item": "Eagle ray skin",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Port Khazard",
+        "monster": "Eagle ray",
+        "item": "Eagle ray skin",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 38,
+        "experience": 3465,
+        "notice_board": "Civitas illa Fortis",
+        "monster": "Eagle ray",
+        "item": "Eagle ray skin",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 48,
+        "experience": 3465,
+        "notice_board": "Ruins of Unkah",
+        "monster": "Eagle ray",
+        "item": "Eagle ray skin",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 50,
+        "experience": 3465,
+        "notice_board": "Void Knights' Outpost",
+        "monster": "Eagle ray",
+        "item": "Eagle ray skin",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 45,
+        "experience": 3465,
+        "notice_board": "The Summer Shore",
+        "monster": "Eagle ray",
+        "item": "Eagle ray fin",
+        "quantity": 25,
+        "rarity": "1/2"
+      },
+      {
+        "level": 52,
+        "experience": 3465,
+        "notice_board": "Red Rock",
+        "monster": "Eagle ray",
+        "item": "Eagle ray fin",
+        "quantity": 25,
+        "rarity": "1/2"
+      },
+      {
+        "level": 67,
+        "experience": 3465,
+        "notice_board": "Deepfin Point",
+        "monster": "Eagle ray",
+        "item": "Eagle ray fin",
+        "quantity": 25,
+        "rarity": "1/2"
+      },
+      {
+        "level": 46,
+        "experience": 11825,
+        "notice_board": "Aldarin",
+        "monster": "Frigatebird",
+        "item": "Frigatebird beak",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 45,
+        "experience": 11825,
+        "notice_board": "Catherby",
+        "monster": "Frigatebird",
+        "item": "Frigatebird beak",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 45,
+        "experience": 11825,
+        "notice_board": "Civitas illa Fortis",
+        "monster": "Frigatebird",
+        "item": "Frigatebird beak",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 45,
+        "experience": 11825,
+        "notice_board": "The Pandemonium",
+        "monster": "Frigatebird",
+        "item": "Frigatebird beak",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 45,
+        "experience": 11825,
+        "notice_board": "The Summer Shore",
+        "monster": "Frigatebird",
+        "item": "Frigatebird feather",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 50,
+        "experience": 11825,
+        "notice_board": "Void Knights' Outpost",
+        "monster": "Frigatebird",
+        "item": "Frigatebird feather",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 52,
+        "experience": 11825,
+        "notice_board": "Red Rock",
+        "monster": "Frigatebird",
+        "item": "Frigatebird feather",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 67,
+        "experience": 11825,
+        "notice_board": "Deepfin Point",
+        "monster": "Frigatebird",
+        "item": "Frigatebird feather",
+        "quantity": 20,
+        "rarity": "1/2"
+      },
+      {
+        "level": 75,
+        "experience": 40370,
+        "notice_board": "Corsair Cove",
+        "monster": "Great white shark",
+        "item": "Great white shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 75,
+        "experience": 40370,
+        "notice_board": "Land's End",
+        "monster": "Great white shark",
+        "item": "Great white shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 75,
+        "experience": 40370,
+        "notice_board": "Port Tyras",
+        "monster": "Great white shark",
+        "item": "Great white shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 75,
+        "experience": 40370,
+        "notice_board": "Prifddinas",
+        "monster": "Great white shark",
+        "item": "Great white shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 75,
+        "experience": 40370,
+        "notice_board": "Ruins of Unkah",
+        "monster": "Great white shark",
+        "item": "Great white shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 75,
+        "experience": 40370,
+        "notice_board": "Void Knights' Outpost",
+        "monster": "Great white shark",
+        "item": "Great white shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 75,
+        "experience": 40370,
+        "notice_board": "Port Khazard",
+        "monster": "Great white shark",
+        "item": "Great white shark jaw",
+        "quantity": 25,
+        "rarity": "1/2"
+      },
+      {
+        "level": 75,
+        "experience": 40370,
+        "notice_board": "Port Roberts",
+        "monster": "Great white shark",
+        "item": "Great white shark jaw",
+        "quantity": 25,
+        "rarity": "1/2"
+      },
+      {
+        "level": 75,
+        "experience": 40370,
+        "notice_board": "The Summer Shore",
+        "monster": "Great white shark",
+        "item": "Great white shark jaw",
+        "quantity": 25,
+        "rarity": "1/2"
+      },
+      {
+        "level": 75,
+        "experience": 40370,
+        "notice_board": "Aldarin",
+        "monster": "Great white shark",
+        "item": "Great white shark jaw",
+        "quantity": 30,
+        "rarity": "1/2"
+      },
+      {
+        "level": 75,
+        "experience": 40370,
+        "notice_board": "Red Rock",
+        "monster": "Great white shark",
+        "item": "Great white shark jaw",
+        "quantity": 30,
+        "rarity": "1/2"
+      },
+      {
+        "level": 40,
+        "experience": 8800,
+        "notice_board": "Ardougne",
+        "monster": "Hammerhead shark",
+        "item": "Hammerhead shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 40,
+        "experience": 8800,
+        "notice_board": "Brimhaven",
+        "monster": "Hammerhead shark",
+        "item": "Hammerhead shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 40,
+        "experience": 8800,
+        "notice_board": "Land's End",
+        "monster": "Hammerhead shark",
+        "item": "Hammerhead shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 40,
+        "experience": 8800,
+        "notice_board": "Musa Point",
+        "monster": "Hammerhead shark",
+        "item": "Hammerhead shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 40,
+        "experience": 8800,
+        "notice_board": "The Pandemonium",
+        "monster": "Hammerhead shark",
+        "item": "Hammerhead shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 46,
+        "experience": 8800,
+        "notice_board": "Aldarin",
+        "monster": "Hammerhead shark",
+        "item": "Hammerhead shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 67,
+        "experience": 8800,
+        "notice_board": "Deepfin Point",
+        "monster": "Hammerhead shark",
+        "item": "Hammerhead shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 70,
+        "experience": 8800,
+        "notice_board": "Prifddinas",
+        "monster": "Hammerhead shark",
+        "item": "Hammerhead shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 40,
+        "experience": 8800,
+        "notice_board": "Corsair Cove",
+        "monster": "Hammerhead shark",
+        "item": "Hammerhead shark jaw",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 40,
+        "experience": 8800,
+        "notice_board": "Port Khazard",
+        "monster": "Hammerhead shark",
+        "item": "Hammerhead shark jaw",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 50,
+        "experience": 8800,
+        "notice_board": "Port Roberts",
+        "monster": "Hammerhead shark",
+        "item": "Hammerhead shark jaw",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 40,
+        "experience": 8800,
+        "notice_board": "Civitas illa Fortis",
+        "monster": "Hammerhead shark",
+        "item": "Hammerhead shark jaw",
+        "quantity": 20,
+        "rarity": "1/2"
+      },
+      {
+        "level": 62,
+        "experience": 8800,
+        "notice_board": "Rellekka",
+        "monster": "Hammerhead shark",
+        "item": "Hammerhead shark jaw",
+        "quantity": 20,
+        "rarity": "1/2"
+      },
+      {
+        "level": 48,
+        "experience": 8800,
+        "notice_board": "Ruins of Unkah",
+        "monster": "Hammerhead shark",
+        "item": "Hammerhead shark jaw",
+        "quantity": 25,
+        "rarity": "1/2"
+      },
+      {
+        "level": 66,
+        "experience": 8800,
+        "notice_board": "Port Tyras",
+        "monster": "Hammerhead shark",
+        "item": "Hammerhead shark jaw",
+        "quantity": 30,
+        "rarity": "1/2"
+      },
+      {
+        "level": 70,
+        "experience": 8800,
+        "notice_board": "Prifddinas",
+        "monster": "Hammerhead shark",
+        "item": "Hammerhead shark jaw",
+        "quantity": 30,
+        "rarity": "1/2"
+      },
+      {
+        "level": 60,
+        "experience": 25135,
+        "notice_board": "Void Knights' Outpost",
+        "monster": "Manta ray (monster)",
+        "item": "Manta ray skin",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 66,
+        "experience": 25135,
+        "notice_board": "Port Tyras",
+        "monster": "Manta ray (monster)",
+        "item": "Manta ray skin",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 70,
+        "experience": 25135,
+        "notice_board": "Prifddinas",
+        "monster": "Manta ray (monster)",
+        "item": "Manta ray skin",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Brimhaven",
+        "monster": "Mogre (sea)",
+        "item": "Mogre head",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Catherby",
+        "monster": "Mogre (sea)",
+        "item": "Mogre head",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Port Khazard",
+        "monster": "Mogre (sea)",
+        "item": "Mogre head",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Ardougne",
+        "monster": "Mogre (sea)",
+        "item": "Mogre mace",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Musa Point",
+        "monster": "Mogre (sea)",
+        "item": "Mogre mace",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Port Khazard",
+        "monster": "Mogre (sea)",
+        "item": "Mogre mace",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Port Sarim",
+        "monster": "Mogre (sea)",
+        "item": "Mogre mace",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "The Pandemonium",
+        "monster": "Mogre (sea)",
+        "item": "Mogre mace",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 40,
+        "experience": 3465,
+        "notice_board": "Corsair Cove",
+        "monster": "Mogre (sea)",
+        "item": "Mogre mace",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 76,
+        "experience": 19910,
+        "notice_board": "Lunar Isle",
+        "monster": "Narwhal",
+        "item": "Narwhal tusk",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 76,
+        "experience": 19910,
+        "notice_board": "Lunar Isle",
+        "monster": "Narwhal",
+        "item": "Narwhal blubber",
+        "quantity": 25,
+        "rarity": "1/2"
+      },
+      {
+        "level": 62,
+        "experience": 19910,
+        "notice_board": "Rellekka",
+        "monster": "Narwhal",
+        "item": "Narwhal blubber",
+        "quantity": 30,
+        "rarity": "1/2"
+      },
+      {
+        "level": 65,
+        "experience": 19910,
+        "notice_board": "Etceteria",
+        "monster": "Narwhal",
+        "item": "Narwhal blubber",
+        "quantity": 30,
+        "rarity": "1/2"
+      },
+      {
+        "level": 80,
+        "experience": 47080,
+        "notice_board": "Etceteria",
+        "monster": "Orca",
+        "item": "Orca teeth",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 80,
+        "experience": 47080,
+        "notice_board": "Port Roberts",
+        "monster": "Orca",
+        "item": "Orca teeth",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 80,
+        "experience": 47080,
+        "notice_board": "Rellekka",
+        "monster": "Orca",
+        "item": "Orca teeth",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 80,
+        "experience": 47080,
+        "notice_board": "Etceteria",
+        "monster": "Orca",
+        "item": "Orca blubber",
+        "quantity": 30,
+        "rarity": "1/2"
+      },
+      {
+        "level": 80,
+        "experience": 47080,
+        "notice_board": "Lunar Isle",
+        "monster": "Orca",
+        "item": "Orca blubber",
+        "quantity": 30,
+        "rarity": "1/2"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Port Sarim",
+        "monster": "Osprey",
+        "item": "Osprey beak",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 40,
+        "experience": 3465,
+        "notice_board": "Corsair Cove",
+        "monster": "Osprey",
+        "item": "Osprey beak",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Ardougne",
+        "monster": "Osprey",
+        "item": "Osprey feather",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Brimhaven",
+        "monster": "Osprey",
+        "item": "Osprey feather",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Catherby",
+        "monster": "Osprey",
+        "item": "Osprey feather",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Land's End",
+        "monster": "Osprey",
+        "item": "Osprey feather",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Port Piscarilius",
+        "monster": "Osprey",
+        "item": "Osprey feather",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "The Pandemonium",
+        "monster": "Osprey",
+        "item": "Osprey feather",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 38,
+        "experience": 3465,
+        "notice_board": "Civitas illa Fortis",
+        "monster": "Osprey",
+        "item": "Osprey feather",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 50,
+        "experience": 3465,
+        "notice_board": "Port Roberts",
+        "monster": "Osprey",
+        "item": "Osprey feather",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 46,
+        "experience": 3465,
+        "notice_board": "Aldarin",
+        "monster": "Osprey",
+        "item": "Osprey feather",
+        "quantity": 20,
+        "rarity": "1/2"
+      },
+      {
+        "level": 67,
+        "experience": 3465,
+        "notice_board": "Deepfin Point",
+        "monster": "Osprey",
+        "item": "Osprey feather",
+        "quantity": 20,
+        "rarity": "1/2"
+      },
+      {
+        "level": 50,
+        "experience": 3465,
+        "notice_board": "Void Knights' Outpost",
+        "monster": "Osprey",
+        "item": "Osprey feather",
+        "quantity": 25,
+        "rarity": "1/2"
+      },
+      {
+        "level": 70,
+        "experience": 3465,
+        "notice_board": "Prifddinas",
+        "monster": "Osprey",
+        "item": "Osprey feather",
+        "quantity": 30,
+        "rarity": "1/2"
+      },
+      {
+        "level": 50,
+        "experience": 14575,
+        "notice_board": "Port Sarim",
+        "monster": "Pygmy kraken",
+        "item": "Pygmy kraken ink sac",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 66,
+        "experience": 14575,
+        "notice_board": "Port Tyras",
+        "monster": "Pygmy kraken",
+        "item": "Pygmy kraken ink sac",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 50,
+        "experience": 14575,
+        "notice_board": "Corsair Cove",
+        "monster": "Pygmy kraken",
+        "item": "Pygmy kraken tentacle",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 50,
+        "experience": 14575,
+        "notice_board": "Land's End",
+        "monster": "Pygmy kraken",
+        "item": "Pygmy kraken tentacle",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 50,
+        "experience": 14575,
+        "notice_board": "Ardougne",
+        "monster": "Pygmy kraken",
+        "item": "Pygmy kraken tentacle",
+        "quantity": 30,
+        "rarity": "1/2"
+      },
+      {
+        "level": 50,
+        "experience": 14575,
+        "notice_board": "Catherby",
+        "monster": "Pygmy kraken",
+        "item": "Pygmy kraken tentacle",
+        "quantity": 30,
+        "rarity": "1/2"
+      },
+      {
+        "level": 50,
+        "experience": 14575,
+        "notice_board": "Void Knights' Outpost",
+        "monster": "Pygmy kraken",
+        "item": "Pygmy kraken tentacle",
+        "quantity": 30,
+        "rarity": "1/2"
+      },
+      {
+        "level": 70,
+        "experience": 14575,
+        "notice_board": "Prifddinas",
+        "monster": "Pygmy kraken",
+        "item": "Pygmy kraken tentacle",
+        "quantity": 30,
+        "rarity": "1/2"
+      },
+      {
+        "level": 65,
+        "experience": 30965,
+        "notice_board": "Aldarin",
+        "monster": "Spined kraken",
+        "item": "Spined kraken ink sac",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 65,
+        "experience": 30965,
+        "notice_board": "Ardougne",
+        "monster": "Spined kraken",
+        "item": "Spined kraken ink sac",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 65,
+        "experience": 30965,
+        "notice_board": "Etceteria",
+        "monster": "Spined kraken",
+        "item": "Spined kraken ink sac",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 65,
+        "experience": 30965,
+        "notice_board": "Rellekka",
+        "monster": "Spined kraken",
+        "item": "Spined kraken ink sac",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 65,
+        "experience": 30965,
+        "notice_board": "Red Rock",
+        "monster": "Spined kraken",
+        "item": "Spined kraken ink sac",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 65,
+        "experience": 30965,
+        "notice_board": "Port Piscarilius",
+        "monster": "Spined kraken",
+        "item": "Spined kraken tentacle",
+        "quantity": 20,
+        "rarity": "1/2"
+      },
+      {
+        "level": 67,
+        "experience": 30965,
+        "notice_board": "Deepfin Point",
+        "monster": "Spined kraken",
+        "item": "Spined kraken tentacle",
+        "quantity": 25,
+        "rarity": "1/2"
+      },
+      {
+        "level": 45,
+        "experience": 11825,
+        "notice_board": "Ardougne",
+        "monster": "Stingray",
+        "item": "Stingray skin",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 45,
+        "experience": 11825,
+        "notice_board": "The Summer Shore",
+        "monster": "Stingray",
+        "item": "Stingray skin",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 67,
+        "experience": 11825,
+        "notice_board": "Deepfin Point",
+        "monster": "Stingray",
+        "item": "Stingray skin",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 46,
+        "experience": 11825,
+        "notice_board": "Aldarin",
+        "monster": "Stingray",
+        "item": "Stingray fin",
+        "quantity": 20,
+        "rarity": "1/2"
+      },
+      {
+        "level": 50,
+        "experience": 11825,
+        "notice_board": "Void Knights' Outpost",
+        "monster": "Stingray",
+        "item": "Stingray fin",
+        "quantity": 20,
+        "rarity": "1/2"
+      },
+      {
+        "level": 45,
+        "experience": 11825,
+        "notice_board": "Corsair Cove",
+        "monster": "Stingray",
+        "item": "Stingray fin",
+        "quantity": 25,
+        "rarity": "1/2"
+      },
+      {
+        "level": 52,
+        "experience": 11825,
+        "notice_board": "Red Rock",
+        "monster": "Stingray",
+        "item": "Stingray skin",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "The Pandemonium",
+        "monster": "Tern",
+        "item": "Tern beak",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 38,
+        "experience": 3465,
+        "notice_board": "Civitas illa Fortis",
+        "monster": "Tern",
+        "item": "Tern beak",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 50,
+        "experience": 3465,
+        "notice_board": "Port Roberts",
+        "monster": "Tern",
+        "item": "Tern beak",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Brimhaven",
+        "monster": "Tern",
+        "item": "Tern feather",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Catherby",
+        "monster": "Tern",
+        "item": "Tern feather",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Land's End",
+        "monster": "Tern",
+        "item": "Tern feather",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Musa Point",
+        "monster": "Tern",
+        "item": "Tern feather",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Port Piscarilius",
+        "monster": "Tern",
+        "item": "Tern feather",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 30,
+        "experience": 3465,
+        "notice_board": "Port Sarim",
+        "monster": "Tern",
+        "item": "Tern feather",
+        "quantity": 15,
+        "rarity": "1/3"
+      },
+      {
+        "level": 55,
+        "experience": 19910,
+        "notice_board": "Brimhaven",
+        "monster": "Tiger shark",
+        "item": "Tiger shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 55,
+        "experience": 19910,
+        "notice_board": "Corsair Cove",
+        "monster": "Tiger shark",
+        "item": "Tiger shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 55,
+        "experience": 19910,
+        "notice_board": "Port Piscarilius",
+        "monster": "Tiger shark",
+        "item": "Tiger shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 55,
+        "experience": 19910,
+        "notice_board": "The Summer Shore",
+        "monster": "Tiger shark",
+        "item": "Tiger shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 55,
+        "experience": 19910,
+        "notice_board": "Red Rock",
+        "monster": "Tiger shark",
+        "item": "Tiger shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 67,
+        "experience": 19910,
+        "notice_board": "Deepfin Point",
+        "monster": "Tiger shark",
+        "item": "Tiger shark liver",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 55,
+        "experience": 19910,
+        "notice_board": "Ruins of Unkah",
+        "monster": "Tiger shark",
+        "item": "Tiger shark jaw",
+        "quantity": 20,
+        "rarity": "1/2"
+      },
+      {
+        "level": 55,
+        "experience": 19910,
+        "notice_board": "Red Rock",
+        "monster": "Tiger shark",
+        "item": "Tiger shark jaw",
+        "quantity": 20,
+        "rarity": "1/2"
+      },
+      {
+        "level": 55,
+        "experience": 19910,
+        "notice_board": "Port Sarim",
+        "monster": "Tiger shark",
+        "item": "Tiger shark jaw",
+        "quantity": 25,
+        "rarity": "1/2"
+      },
+      {
+        "level": 80,
+        "experience": 47080,
+        "notice_board": "Lunar Isle",
+        "monster": "Vampyre kraken",
+        "item": "Vampyre kraken ink sac",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 80,
+        "experience": 47080,
+        "notice_board": "Rellekka",
+        "monster": "Vampyre kraken",
+        "item": "Vampyre kraken ink sac",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 80,
+        "experience": 47080,
+        "notice_board": "Etceteria",
+        "monster": "Vampyre kraken",
+        "item": "Vampyre kraken tentacle",
+        "quantity": 20,
+        "rarity": "1/2"
+      },
+      {
+        "level": 80,
+        "experience": 47080,
+        "notice_board": "Lunar Isle",
+        "monster": "Vampyre kraken",
+        "item": "Vampyre kraken tentacle",
+        "quantity": 30,
+        "rarity": "1/2"
+      },
+      {
+        "level": 80,
+        "experience": 47080,
+        "notice_board": "Port Tyras",
+        "monster": "Veiled kraken",
+        "item": "Veiled kraken ink sac",
+        "quantity": 5,
+        "rarity": "1/10"
+      },
+      {
+        "level": 80,
+        "experience": 47080,
+        "notice_board": "Deepfin Point",
+        "monster": "Veiled kraken",
+        "item": "Veiled kraken tentacle",
+        "quantity": 15,
+        "rarity": "1/3"
+      }
+    ],
+    "hitpoints": {
+      "Albatross": 135,
+      "Armoured kraken": 231,
+      "Bull shark": 81,
+      "Butterfly ray": 83,
+      "Dolphin": 45,
+      "Eagle ray": 55,
+      "Frigatebird": 79,
+      "Great white shark": 243,
+      "Hammerhead shark": 125,
+      "Manta ray": 194,
+      "Manta ray (monster)": 194,
+      "Mogre": 59,
+      "Mogre (sea)": 59,
+      "Narwhal": 187,
+      "Orca": 370,
+      "Osprey": 72,
+      "Pygmy kraken": 150,
+      "Spined kraken": 177,
+      "Stingray": 106,
+      "Tern": 22,
+      "Tiger shark": 174,
+      "Vampyre kraken": 311,
+      "Veiled kraken": 225
+    }
+  }
+}
