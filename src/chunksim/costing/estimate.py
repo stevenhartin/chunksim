@@ -202,7 +202,7 @@ from chunksim.model.experience import (
 )
 from chunksim.costing.combat_xp import COMBAT_SKILLS, hitpoints_credit, slayer_credit
 from chunksim.costing import gathering, herbs, lootsack, recipe_rates, valeoffering, yields
-from chunksim.costing import tombs
+from chunksim.costing import raids
 from chunksim.remote.recipes import Recipe
 from chunksim.costing.farming import (
     DEFAULT_HARVESTS_PER_DAY,
@@ -704,6 +704,25 @@ class _Walk:
     #: minutes a herb grows, and a drop priced per herb asks a table that hands
     #: out thirteen without being asked which.
     herb_seconds: Mapping[str, float] = field(default_factory=dict)
+    #: `{lowercased item: seconds}` from `costing/raids.py` - a raid reward
+    #: priced by the raid rather than by the drop table the export files it
+    #: under.
+    #:
+    #: **Lowercased, because three vocabularies meet here.** The wiki writes
+    #: `Scythe of Vitur (uncharged)`, upstream's drop table writes `Scythe of
+    #: vitur`, and `world.item_sources` does not carry it at all - so neither
+    #: the wiki's spelling nor `by_lower` reaches it. Folding the case is the
+    #: only lookup that finds every one, and an item name is not a place two
+    #: different things differ only by capitalisation.
+    #:
+    #: **Checked before the routes, for `herb_seconds`' reason and more
+    #: sharply.** The export models each raid as a monster carrying a table,
+    #: so `Heuristics.kills_per_hour` fell back to `DEFAULT_KPH` and the walk
+    #: read 150 raids an hour: a twisted bow priced at 5.7 hours against 289,
+    #: and `Xeric's champion` - two thousand completions - at **24 seconds**.
+    #: A route that wrong cannot be allowed to win, and `yield_seconds` is a
+    #: last-resort fallback that by design never displaces one.
+    raid_seconds: Mapping[str, float] = field(default_factory=dict)
     #: `{item: seconds}` from `costing/yields.py` - a gathering action's own
     #: weight tiers, which the certainty gate below would otherwise refuse.
     #: **Flat, and checked before the routes**, for the reason the herb one
@@ -1074,6 +1093,18 @@ def _best_route(
             f"earn {quantity:,.0f} {item}",
             f"currency:{item}",
             (f"currencies/{item}",),
+        )
+
+    # **A raid reward is priced by the raid.** See `_Walk.raid_seconds`: the
+    # export files these under a drop table and the walk would otherwise read
+    # a raid as a monster killed 150 times an hour.
+    raided = walk.raid_seconds.get(item.lower())
+    if raided:
+        return _Priced(
+            quantity * raided / 3600.0,
+            f"raid: {quantity:,.0f} {item}",
+            "raids",
+            ("actions/raids",),
         )
 
     # **A herb is priced by its supply, not by a route.** See
@@ -2187,7 +2218,21 @@ def _setup(
     level_overrides: dict[str, int],
     recipes: Mapping[str, Sequence[Recipe]] | None = None,
 ) -> _Setup:
-    """Everything the item walk needs, assembled once."""
+    """Everything the item walk needs, assembled once.
+
+    **The goal walk carries the raid rewards and nothing else from
+    `yield_seconds`**, which is a deliberate asymmetry rather than an
+    oversight. That map's other contributors - a gathering action's weight
+    tiers, a vale offering, a reward sack - are *material* costs, and this
+    walk is the one pricing goals; they are assembled in `material_seconds`
+    where the recipe layer reads them.
+
+    The raids are here because without them a goal walk prices a raid as a
+    monster. The export models each raid as a drop table, so
+    `Heuristics.kills_per_hour` fell back to `DEFAULT_KPH` and the walk read
+    150 completions an hour: `Xeric's champion`, which wants two thousand
+    raids, came out at **24 seconds**. See `costing/raids.item_seconds`.
+    """
     levels = _levels(state, level_overrides or {})
     reachable = frozenset(derived.source_index.monsters)
     providers = reachable_providers(derived)
@@ -2243,12 +2288,13 @@ def _setup(
     )
     providers = providers | unlocked_activities
     gate_masters = reachable_rates
+    by_lower = {item.lower(): item for item in world.item_sources}
     walk = _Walk(
         chunk_info=state.chunk_info,
         world=world,
         heuristics=heuristics,
         tables=_mapping(state.chunk_info.code_items, "dropTables"),
-        by_lower={item.lower(): item for item in world.item_sources},
+        by_lower=by_lower,
         available=providers,
         # **`available_items`, not `SourceIndex.items`** - the project's first
         # cross-cutting rule, and this module was the third to get it wrong
@@ -2270,6 +2316,18 @@ def _setup(
         superior_rolls={
             rate.master: superior_rolls_per_hour(rate, state.chunk_info, heuristics)
             for rate in gate_masters
+        },
+        # **The raids** - see `_Walk.raid_seconds`. A cape is a *counter*
+        # rather than a drop, so no rate the export carries could have
+        # expressed it, and the drop route it does carry is wrong by two
+        # orders of magnitude.
+        #
+        # **Lowercased**, because the wiki, the export's drop table and
+        # `world.item_sources` disagree about capitalisation and one of them
+        # does not carry the item at all - see `_Walk.raid_seconds`.
+        raid_seconds={
+            item.lower(): seconds
+            for item, seconds in raids.item_seconds().items()
         },
     )
     # **What a herb costs, which is a supply rather than a route.** The
@@ -2336,6 +2394,12 @@ def _setup(
     # because the walk asks one question of it.
     walk = dataclasses.replace(
         walk,
+        # **The same raid answers the goal walk gets**, so the two layers
+        # cannot disagree about what a raid drop costs - `costing/inputs.py`
+        # exists because two apps drifted on exactly this kind of split.
+        raid_seconds={
+            item.lower(): seconds for item, seconds in raids.item_seconds().items()
+        },
         yield_seconds={
             **yields.costs(
                 state.chunk_info,
@@ -2355,15 +2419,6 @@ def _setup(
                 # missing answer, it is the only one there is.
                 lambda item, quantity: _log_seconds(walk, item, quantity),
             ),
-            # **And a raid's common chest**, which is the same shape again and
-            # is the only route this project has to a raid drop: the item
-            # graph knows `Tombs of Amascut loot*` provides a lily and nothing
-            # could price it, so `Mix a ~|menaphite remedy|~` was the last
-            # unpriced method in the export. `costing/tombs.py` answers from
-            # the money-making guide rather than from its own raid model,
-            # because this walk runs *before* the DPS enrichment and so has no
-            # raid duration of its own to divide by.
-            **tombs.item_seconds(),
             # **And a reward sack, which is the same shape with one twist.**
             # The export records a sack's share *per roll* and an open is five
             # to eleven of them - see `costing/lootsack.py`, whose pace comes

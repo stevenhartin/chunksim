@@ -110,11 +110,81 @@ class TestTheItemWalkSeam:
     def test_an_item_the_guide_does_not_state_is_not_invented(self) -> None:
         assert tombs.guide_item_seconds("Dragon med helm") is None
 
-    def test_estimate_merges_it(self) -> None:
+    def test_it_reaches_the_walk_through_raids(self) -> None:
+        """`raids.item_seconds` folds the Tombs' own answer in, so both walks
+        get one map rather than two that could drift."""
+        assert "Lily of the sands" in raids.item_seconds()
+
+
+class TestTheGoalWalkSeam:
+    """**The number this replaces was wrong by two orders of magnitude.**
+
+    The export models each raid as a monster carrying a drop table, so
+    `Heuristics.kills_per_hour` fell back to `DEFAULT_KPH` and the goal walk
+    read 150 completions an hour.
+    """
+
+    def test_a_cape_is_a_counter_and_not_a_drop(self) -> None:
+        """`Xeric's champion` wants 2,000 Challenge Mode raids and used to
+        price at 24 seconds. There is no rate to divide by here, only a count
+        to multiply - which is why no drop table could ever have said it."""
+        found = raids.item_seconds()
+        champion = found["Xeric's champion"]
+        assert champion == pytest.approx(
+            raids.PUBLISHED_RAID_SECONDS[f"{raids.CHAMBERS} (challenge)"] * 2_000
+        )
+        assert champion / 3600 > 1_000
+
+    def test_every_cape_tier_of_every_raid_is_priced(self) -> None:
+        found = raids.item_seconds()
+        for raid, tiers in raids.CAPE_TIERS.items():
+            assert len(tiers) == 5, raid
+            for cape in tiers:
+                assert cape in found, cape
+
+    def test_the_tiers_rise_with_the_count(self) -> None:
+        found = raids.item_seconds()
+        for tiers in raids.CAPE_TIERS.values():
+            ordered = sorted(tiers.items(), key=lambda pair: pair[1])
+            hours = [found[cape] for cape, _n in ordered]
+            assert hours == sorted(hours)
+
+    def test_the_pets_are_tertiary_rolls_and_priced_apart(self) -> None:
+        """Each raid does it differently: the olmlet is conditional on the
+        raid having given a unique, Lil' Zik is flat, and Tumeken's guardian
+        reuses the Tombs' own formula with other constants."""
+        found = raids.item_seconds()
+        for pet in ("Olmlet", "Lil' Zik", "Tumeken's guardian"):
+            assert found[pet] / 3600 > 100, pet
+
+    def test_the_olmlet_is_conditional_on_a_unique(self) -> None:
+        found = raids.item_seconds()
+        unique = sum(xeric.item_chances(xeric.NORMAL).values())
+        assert found["Olmlet"] == pytest.approx(
+            raids.PUBLISHED_RAID_SECONDS[raids.CHAMBERS]
+            / (unique * raids.OLMLET_GIVEN_UNIQUE)
+        )
+
+    def test_estimate_consults_it_before_the_routes(self) -> None:
+        """**Before, not as a fallback.** `yield_seconds` is a last-resort map
+        that by design never displaces a route, and the route here is the
+        wrong one - so this needed `herb_seconds`' position instead."""
         from chunksim.costing import estimate
 
         source = pathlib.Path(estimate.__file__).read_text(encoding="utf-8")
-        assert "tombs.item_seconds()" in source
+        assert "raid_seconds=" in source
+        assert source.index("walk.raid_seconds.get") < source.index(
+            "walk.herb_seconds.get"
+        )
+
+    def test_the_lookup_folds_case(self) -> None:
+        """Three vocabularies meet: the wiki writes `Scythe of Vitur
+        (uncharged)`, the export's drop table writes `Scythe of vitur`, and
+        `world.item_sources` does not carry it at all."""
+        from chunksim.costing import estimate
+
+        source = pathlib.Path(estimate.__file__).read_text(encoding="utf-8")
+        assert "walk.raid_seconds.get(item.lower())" in source
 
 
 class TestItIsListed:
