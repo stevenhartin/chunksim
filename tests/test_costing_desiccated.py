@@ -35,6 +35,33 @@ class TestTheArithmetic:
         solo = (desiccated.KILLS_PER_HOUR * 0.5) * 1.0 * desiccated.PAGES_PER_KILL
         assert duo == solo == desiccated.pages_per_hour()
 
+    def test_one_roll_per_encounter_and_kph_counts_the_encounter(self) -> None:
+        """**The tempting error, pinned.** A player fights two titans and
+        loots one, which invites halving `KILLS_PER_HOUR`. It is already the
+        encounter rate: both guides state the same 48 for the same hour
+        differing only in which corpse is looted, so an hour cannot hold 48
+        of each. What this asserts is that exactly one 14.5-roll is spent per
+        unit of `KILLS_PER_HOUR`, which is where a halving would land."""
+        assert desiccated.pages_per_hour() == (
+            desiccated.KILLS_PER_HOUR
+            * desiccated.CONTRIBUTION
+            * desiccated.PAGES_PER_KILL
+        )
+
+    def test_the_halved_reading_is_the_wrong_side_of_the_dps_bias(self) -> None:
+        """The independent check. A solo hour of the ceiling map's gear is
+        172.6s of fighting plus 29.3s of overhead - 259 pages - which is
+        0.74x this model and 1.48x the halved one. `dps_bridge` reports
+        bosses *slow* against the wiki (0.71 measured), so only 348 sits on
+        the side of the bias it documents on itself."""
+        solo_pages = 3600 / (172.6 + 29.3) * desiccated.PAGES_PER_KILL
+        assert solo_pages == pytest.approx(259, abs=1)
+        assert solo_pages / desiccated.pages_per_hour() == pytest.approx(
+            0.74, abs=0.01
+        )
+        halved = desiccated.pages_per_hour() / 2
+        assert solo_pages / halved > 1.0
+
     def test_the_guides_own_factor_is_what_is_spent(self) -> None:
         """Not an assumption about how anybody plays: every `Output` on both
         guides carries `*0.5`, which is the duo the fight is built around."""

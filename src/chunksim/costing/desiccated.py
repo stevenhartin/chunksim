@@ -26,6 +26,33 @@ an hour, and:
     348 pages an hour = 48 kph x 0.5 contribution x 14.5 pages
                       = 17,400 Runecraft experience
 
+### One roll per encounter, and `kph` counts the encounter
+
+**The tempting error is to read `48` as boss kills and halve everything**, on
+the true observation that a player fights two titans and loots only one. Three
+things say it is already the encounter rate.
+
+- **Both guides state the same 48.** They are the same hour differing only in
+  which corpse is looted - "Killing Royal Titans and looting Eldric the Ice
+  King" against "...Branda the Fire Queen". If a `kill` were one titan, an
+  hour could not hold 48 Eldric loots *and* 48 Branda loots.
+- **`Template:Mmgtable` calls `kph` "a number of kills or actions per hour"
+  paired with `isperkill`, which makes the outputs per-kill** - and the outputs
+  listed are one titan's drop table, received by looting it once, which takes
+  the whole encounter.
+- **The arithmetic only works one way round.** Both titans are 600 hitpoints,
+  so an encounter is 1,200. At 48 an hour that is 75 seconds each, about 20
+  combined damage a second, or 10 per player in the duo the guide is written
+  for - ordinary for the 70+ stats and Piety it asks for. At 24 an hour it
+  would be 8.9 combined, 4.4 each, which nobody with that gear is doing.
+
+**And the DPS check discriminates between the two readings**, which is the
+strongest of the three because it is independent of the guide: it puts a solo
+hour at 259 pages, which is 0.74x the 348 below and 1.48x the 174 the halved
+reading would give. `dps_bridge` runs *slow* on bosses by construction and
+says so - 0.71 measured - so only the first of those is the right side of a
+bias this project has already measured.
+
 **The contribution cancels, which is what makes this robust.** Quantities scale
 linearly with damage dealt - the wiki's own worked example is a player at 50%
 rolling for 140-160 coal against 280-320 at 100% - so a solo player kills half
