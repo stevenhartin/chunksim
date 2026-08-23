@@ -44,6 +44,7 @@ from chunksim.remote.api import (
     fetch_ca_tier_icon,
     fetch_section_overlay,
     fetch_skill_icon,
+    fetch_stats_icon,
 )
 from chunksim.store.build_info import read_build
 from chunksim.costing.estimate import estimate
@@ -54,7 +55,7 @@ from chunksim.model.summary import summarise
 from chunksim.gui.derivation import DerivedState
 from chunksim.gui.panels import roll_panel, task_panel
 from chunksim.gui.actions import _ACTIONS
-from chunksim.gui import knobs, settings
+from chunksim.gui import knobs, players, settings
 from chunksim.gui.http import Context, Response, _error, _first, _json, touch
 from chunksim.gui.routes_derived import (
     reachable_by_area,
@@ -247,6 +248,11 @@ def handle_request(
             target, lambda: fetch_ca_tier_icon(tier), what=f"{tier} tier icon"
         )
 
+    if path == "/assets/stats.png":
+        return _cached_upstream_asset(
+            cache.stats_icon_path(ctx.root), fetch_stats_icon, what="stats icon"
+        )
+
     if path.startswith("/assets/skill/") and path.endswith(".png"):
         skill = path.removeprefix("/assets/skill/").removesuffix(".png")
         try:
@@ -349,6 +355,21 @@ def handle_request(
                     "missing required parameter 'map1' or 'map2'", HTTPStatus.BAD_REQUEST
                 )
             return _json({"map1": map1, "map2": map2, **_full_diff(map1, map2, ctx)})
+
+        if path == "/api/player":
+            map_id = _first(query, "map")
+            if map_id is None:
+                return _error(
+                    "missing required parameter 'map'", HTTPStatus.BAD_REQUEST
+                )
+            found = ctx.derivations.load(map_id)
+            stored = cache.read_player(map_id, ctx.root)
+            return _json(
+                {
+                    **players.panel(found.state, ctx.derivations.reference(map_id)),
+                    "fetched_at": str(stored.get("fetched_at") or ""),
+                }
+            )
 
         if path == "/api/chunk":
             map_id = _first(query, "map")

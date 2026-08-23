@@ -132,8 +132,8 @@ class Derivations:
         enrichment cache, so a stale copy would file fresh numbers under a
         pre-edit key.
 
-        So it is validated, not just remembered: four `stat` calls per access
-        against re-reading 2.5MB. See `cache.reference_stamp`.
+        So it is validated, not just remembered: a handful of `stat` calls
+        per access against re-reading 2.5MB. See `cache.reference_stamp`.
 
         **One entry per map**, because a map's own corrections are one of the
         layers (`ReferenceBlobs.overrides`). Keyed rather than replaced, so

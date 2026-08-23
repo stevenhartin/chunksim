@@ -1694,6 +1694,12 @@ def skill_icon_path(skill: str, root: Path | None = None) -> Path:
     return asset_path(f"{SKILL_ICON_DIR}/{skill}.png", root)
 
 
+def stats_icon_path(root: Path | None = None) -> Path:
+    """Where the Stats tab icon is cached. No argument, so nothing to
+    validate - the one icon standing for all twenty-four skills."""
+    return asset_path("stats.png", root)
+
+
 def ca_tier_icon_path(tier: str, root: Path | None = None) -> Path:
     """Where one Combat Achievement tier badge is cached.
 
@@ -2026,7 +2032,7 @@ def reference_stamp(
     the caches, where being wrong means serving numbers computed against data
     that has since changed; this only decides whether an in-process memo of
     those files is still worth keeping, where being wrong once in a while
-    means re-reading 2.5MB. Three `stat` calls against ~9ms of hashing is what
+    means re-reading 2.5MB. A handful of `stat` calls against ~9ms of hashing is what
     makes it worth having a separate answer.
 
     A missing file stamps as `(0, 0)`, so appearing or vanishing both move it.
@@ -2041,11 +2047,15 @@ def reference_stamp(
         overrides_path(root),
     ]
     if map_id is not None:
-        # A fourth file, and the one most likely to move while the server is
-        # up: it is what the Estimate tab writes when someone corrects a
-        # number, so a memo that did not watch it would serve the pre-edit
-        # answer back to the person who just made the edit.
+        # The map's own two, and the ones most likely to move while the
+        # server is up: this is what the Estimate tab writes when someone
+        # corrects a number, so a memo that did not watch it would serve the
+        # pre-edit answer back to the person who just made the edit.
         paths.append(map_overrides_path(map_id, root))
+        # And its sibling, for the same reason: the linked account's experience is
+        # a layer under `resolve_levels`, and the Skills panel writes it while
+        # the server is up.
+        paths.append(player_path(map_id, root))
     for path in paths:
         try:
             info = path.stat()

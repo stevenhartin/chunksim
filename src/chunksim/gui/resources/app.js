@@ -4627,10 +4627,17 @@ async function loadMapsPane() {
        * beside it, so the only way back is the network - which is a fine
        * answer and not a reason to leave the row without the control every
        * other row has. `include_fetched` is what the API wants to hear. */
-      const remove = '<button class="link danger" data-rm="'
-        + m.map_id.replace(/"/g, "&quot;") + '">Remove</button>';
+      const quoted = m.map_id.replace(/"/g, "&quot;");
+      const remove = '<button class="link danger" data-rm="' + quoted + '">Remove</button>';
+      /* **An icon rather than a word, because the row already has two.**
+       * "Skills" beside "Remove" reads as a pair of equals, and they are not:
+       * one opens something and the other destroys something. The Stats tab's
+       * own icon is what the game labels this with, so it needs no gloss. */
+      const skills = '<button class="link icon-button" data-skills="' + quoted
+        + '" data-tip="Levels this map prices against, and the account they came from."'
+        + ' aria-label="Skills"><img src="/assets/stats.png" alt=""></button>';
       out += tmpl`<li data-tip="${mapTip(m)}"><span class="tag" data-kind="${m.kind}">${KIND_LABELS[m.kind] || label(m.kind)}</span>
-        <span class="name">${m.map_id}</span><span class="num">${note}</span>${raw(remove)}</li>`;
+        <span class="name">${m.map_id}</span><span class="num">${note}</span>${raw(skills)}${raw(remove)}</li>`;
     }
     out += `</ul><div class="actions">
       <button id="rm-sims" class="danger" type="button"
@@ -4702,6 +4709,10 @@ async function loadMapsPane() {
       await loadView();
     };
 
+    for (const button of body.querySelectorAll("button[data-skills]")) {
+      button.onclick = () => askSkills(button.dataset.skills);
+    }
+
     for (const button of body.querySelectorAll("button[data-rm]")) {
       const kind = (batches.find((m) => m.map_id === button.dataset.rm) || {}).kind;
       button.onclick = () =>
@@ -4739,6 +4750,146 @@ async function loadMapsPane() {
  * keeping the
  * other thirty-nine to save one. Each run keeps the tooltip it has in the
  * list, so hovering says what that run holds before you tick it. */
+/* **The Skills panel: twenty-four levels and, for each, who said so.**
+ *
+ * The grid is the game's own Stats tab because that is the layout anyone
+ * playing already reads without being taught it - down the columns, three
+ * across. What it adds is colour, and the colour is *provenance* rather than
+ * quality: blue is the floor this project inferred from ticked challenges,
+ * yellow came off the linked account, green was typed in here, red is a
+ * figure that was refused for falling under the floor.
+ *
+ * **Red is the state the panel exists for.** `levels.resolve_levels` raises a
+ * below-floor figure rather than spending it, so without somewhere to say so
+ * the correction is invisible and the panel would agree with a number it did
+ * not use. The cell shows both halves - what was said, and what is being
+ * priced against.
+ *
+ * The states are `gui/players.STATE_COLOURS`, and `test_gui_contract.py`
+ * reads this file and that one so the two cannot drift.
+ */
+const SKILL_STATES = {
+  floor: ["Inferred", "The lowest level the map's completed challenges prove."],
+  linked: ["Linked", "Read from the linked account's hiscores."],
+  set: ["Set", "Experience typed in for this map."],
+  error: ["Refused", "Below what this map's completions prove, so the floor is priced instead."],
+};
+
+async function askSkills(mapId) {
+  /* Redrawn in place rather than reopened, so the scroll position and the
+   * skill you were editing survive a Set. `openOverlay` replaces the body,
+   * which is exactly what re-fetching after every edit must not do. */
+  const draw = (data, chosen) => {
+    const cells = data.skills.map((row) => {
+      const [name, why] = SKILL_STATES[row.state] || SKILL_STATES.floor;
+      /* A refused row is two numbers, and the tooltip is where the second
+       * one belongs - the cell has room for the level being priced and
+       * nothing else. */
+      const tip = row.state === "error"
+        ? tmpl`<b>${row.skill} ${row.given}, priced as ${row.level}</b><span class='sub'>${why}</span><span class='hint'>Floor ${row.floor}</span>`
+        : tmpl`<b>${row.skill} ${row.level}</b><span class='sub'>${why}</span><span class='hint'>${Number(row.xp).toLocaleString()} xp · floor ${row.floor}</span>`;
+      return tmpl`<button type="button" class="skill-cell" data-state="${row.state}"
+        data-skill="${row.skill}" data-chosen="${row.skill === chosen ? "1" : ""}"
+        data-tip="${tip}">
+        <img class="skill-icon" src="/assets/skill/${row.skill}.png" alt="">
+        <span class="lvl">${row.level}</span></button>`;
+    }).join("");
+
+    const row = data.skills.find((s) => s.skill === chosen);
+    /* The editor is one skill's, and appears only once one is picked. An
+     * always-present box with a skill `<select>` in it would be a second way
+     * to choose a skill next to twenty-four buttons that already do. */
+    const editor = !row ? `<p class="empty">Pick a skill to set its experience.</p>`
+      : tmpl`<div class="row">
+          <img class="skill-icon" src="/assets/skill/${row.skill}.png" alt="">
+          <span class="name">${row.skill}</span>
+          <input id="skill-xp" type="number" min="0" step="1" value="${row.xp}"
+            style="width:12ch" aria-label="${row.skill} experience"
+            data-tip="Experience, not level — that is what the hiscores publish and what survives a curve change.">
+          <button id="skill-set" type="button">Set</button>
+          <button id="skill-clear" class="link" type="button" ${row.set ? "" : "disabled"}
+            data-tip="Drop the figure typed in for this skill, so the linked account or the floor decides it again.">Clear</button>
+        </div>`;
+
+    const legend = Object.keys(SKILL_STATES).map((key) =>
+      tmpl`<span class="skill-key" data-state="${key}" data-tip="${SKILL_STATES[key][1]}">${SKILL_STATES[key][0]}</span>`
+    ).join("");
+
+    /* **Refresh is offered only when there is something to refresh**, and
+     * Clear only when something is linked - a control that does nothing is a
+     * control you learn to distrust. */
+    const linkRow = tmpl`<div class="row">
+        <input id="rsn" type="text" placeholder="RuneScape name" autocomplete="off"
+          spellcheck="false" value="${data.rsn}" aria-label="RuneScape name"
+          data-tip="<b>Link an account</b><span class='sub'>Reads its hiscores and lays that experience over this map's floor.</span>">
+        <button id="rsn-link" type="button"
+          data-tip="Fetch this account's hiscores and link it to this map.">${data.linked ? "Relink" : "Link RSN"}</button>`
+      + (data.linked ? tmpl`<button id="rsn-refresh" class="link" type="button"
+          data-tip="Read the hiscores again — levels move.">Refresh</button>
+        <button id="rsn-clear" class="link danger" type="button"
+          data-tip="Unlink the account. Anything set by hand is kept.">Unlink</button>` : "")
+      + `</div>`;
+
+    const fetched = data.fetched_at
+      ? tmpl`<p class="sub">Hiscores read ${data.fetched_at}.</p>` : "";
+
+    openOverlay("Skills — " + mapId,
+      `<div class="skill-grid">` + cells + `</div>
+       <div class="skill-legend">` + legend + `</div>
+       <h3>Override</h3>` + editor
+      + `<h3>Linked account</h3>` + linkRow + fetched);
+
+    for (const cell of el["overlay-body"].querySelectorAll("button[data-skill]")) {
+      cell.onclick = () => draw(data, cell.dataset.skill);
+    }
+    /* Every control here posts to the same action and is answered with the
+     * whole panel, so there is one place that knows what to do with a reply. */
+    const send = async (payload, verb) => {
+      try {
+        draw(await postJSON("/api/player", { map: mapId, ...payload }), chosen);
+      } catch (error) {
+        toast(verb + " failed — " + error.message);
+      }
+    };
+    const setButton = document.getElementById("skill-set");
+    if (setButton) {
+      const xp = document.getElementById("skill-xp");
+      setButton.onclick = () =>
+        send({ do: "set", skill: chosen, xp: Number(xp.value) || 0 }, "Set");
+      xp.onkeydown = (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        setButton.onclick();
+      };
+      document.getElementById("skill-clear").onclick = () =>
+        send({ do: "set", skill: chosen, xp: null }, "Clear");
+    }
+    const rsn = document.getElementById("rsn");
+    const link = () => {
+      const wanted = rsn.value.trim();
+      if (!wanted) return rsn.focus();
+      send({ do: "link", rsn: wanted }, "Link");
+    };
+    document.getElementById("rsn-link").onclick = link;
+    rsn.onkeydown = (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      link();
+    };
+    const refresh = document.getElementById("rsn-refresh");
+    if (refresh) refresh.onclick = () => send({ do: "refresh" }, "Refresh");
+    const clear = document.getElementById("rsn-clear");
+    if (clear) clear.onclick = () => send({ do: "unlink" }, "Unlink");
+  };
+
+  openOverlay("Skills — " + mapId, `<p class="empty">Reading levels…</p>`);
+  try {
+    draw(await getJSON("/api/player?map=" + encodeURIComponent(mapId)), "");
+  } catch (error) {
+    openOverlay("Skills — " + mapId, tmpl`<p class="empty">${error.message}</p>`);
+  }
+}
+
 async function askRemoveBatch(name, runs, afterRemoval, kind) {
   const fetched = kind === "fetched";
   if (runs.length < 2) {

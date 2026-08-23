@@ -135,6 +135,11 @@ SKILL_ICON_URL = _UPSTREAM_RAW.format(path="resources/{skill}_skill.png")
 #: upstream - source-chunk ships no icon for them. ~300 bytes each, and the
 #: **wiki**, so this is the one image fetch that needs `WIKI_USER_AGENT`.
 CA_TIER_ICON_URL = "https://oldschool.runescape.wiki/images/Combat_Achievements_-_{tier}_tier_icon.png"
+#: The Stats tab's own icon, which labels the button that opens the skills
+#: panel. The wiki again, for the same reason as the tier badges - upstream
+#: ships icons for the twenty-four skills and nothing standing for all of
+#: them - and so under `WIKI_USER_AGENT` too.
+STATS_ICON_URL = "https://oldschool.runescape.wiki/images/Stats_icon.png"
 
 
 WIKI_API_URL = "https://oldschool.runescape.wiki/api.php"
@@ -681,6 +686,12 @@ def fetch_ca_tier_icon(tier: str, timeout: float = DEFAULT_TIMEOUT) -> bytes:
     return _fetch_bytes(
         CA_TIER_ICON_URL.format(tier=tier), timeout, what=f"{tier} tier icon", wiki=True
     )
+
+
+def fetch_stats_icon(timeout: float = DEFAULT_TIMEOUT) -> bytes:
+    """The Stats tab icon. A wiki fetch, so `WIKI_USER_AGENT` - see
+    `fetch_ca_tier_icon`."""
+    return _fetch_bytes(STATS_ICON_URL, timeout, what="stats icon", wiki=True)
 
 
 def _fetch_bytes(url: str, timeout: float, *, what: str, wiki: bool = False) -> bytes:

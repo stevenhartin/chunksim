@@ -41,6 +41,14 @@
      contract test, because a dialog calling one thing two colours is worse
      than either colour. */
   --reachable: #5abeff;
+  /* **Provenance, not quality**, for the Skills panel - so they are aliases of
+     colours this page already uses rather than four more hues: the level came
+     from the map (blue, as `reachable` is), from the linked account (amber),
+     from a figure typed in (a gain), or was refused (a loss). */
+  --level-floor: var(--reachable);
+  --level-linked: var(--amber);
+  --level-set: var(--gain);
+  --level-error: var(--loss);
   --gain: #3cc85a;
   --loss: #dc3c3c;
 
@@ -869,6 +877,76 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   align-self: center;
   flex: none;
 }
+
+/* **The Skills panel.** The game's own Stats tab is three columns read
+   downwards, and this is that: `SKILL_ORDER` is already in that order, so the
+   grid only has to be three wide. Fixed columns rather than `auto-fit`,
+   because a panel that reflows to four across at one width and two at another
+   stops being the layout the player already knows. */
+.skill-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--s1);
+}
+
+/* A cell says a level and, in its left border, who decided it. The border is
+   the colour rather than the text, so the number stays as legible at a glance
+   as it is on the Stats tab - and so red reads as "look here" without making
+   the level itself look like an error. */
+.skill-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--level-floor);
+  border-radius: var(--r1);
+  color: var(--text);
+  font-size: var(--t-body);
+  cursor: pointer;
+  text-align: left;
+}
+
+.skill-cell:hover { background: var(--surface-3); }
+.skill-cell[data-chosen="1"] { border-color: var(--line-strong); }
+.skill-cell .lvl { margin-left: auto; font-weight: var(--w-emphasis); }
+
+.skill-cell[data-state="linked"] { border-left-color: var(--level-linked); }
+.skill-cell[data-state="set"] { border-left-color: var(--level-set); }
+.skill-cell[data-state="error"] { border-left-color: var(--level-error); }
+.skill-cell[data-chosen="1"] { border-left-width: 3px; }
+
+/* The key to those four colours, which is not optional: the colours are
+   provenance rather than good and bad, and nothing about blue says "inferred"
+   until something does. */
+.skill-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  margin-top: var(--s3);
+  font-size: var(--t-note);
+  color: var(--dim);
+}
+
+.skill-key { display: inline-flex; align-items: center; gap: var(--s1); }
+
+.skill-key::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: var(--pill);
+  background: var(--level-floor);
+}
+
+.skill-key[data-state="linked"]::before { background: var(--level-linked); }
+.skill-key[data-state="set"]::before { background: var(--level-set); }
+.skill-key[data-state="error"]::before { background: var(--level-error); }
+
+/* A `link` button whose label is a picture. The padding is the hit target;
+   the image is 15px of pixel art like every other icon here. */
+.icon-button { display: inline-flex; align-items: center; padding: 0 var(--s1); }
+.icon-button img { width: 15px; height: 15px; image-rendering: pixelated; }
 
 /* A pill is a box around one word, so the word has to sit in the middle of it.
    Left to `inline` it inherited the body line-height and baseline-aligned

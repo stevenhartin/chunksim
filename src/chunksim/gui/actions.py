@@ -24,9 +24,14 @@ from chunksim.remote.scrape import SOURCE as SCRAPE_SOURCE
 from chunksim.remote.scrape import scrape_recipes
 
 from typing import Any
+import datetime
+from chunksim.gui import players
+from chunksim.remote import hiscores
 from chunksim.remote.api import CHUNKINFO_URL
+from chunksim.remote.api import fetch_hiscores
 from collections.abc import Callable
 from chunksim.remote.api import DEFAULT_TIMEOUT
+from chunksim.remote.api import FetchError
 from collections.abc import Mapping
 from chunksim.gui.jobs import Progress
 from chunksim.runs.batch import RunResult
@@ -135,6 +140,81 @@ def _heuristic_state(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]
     # so it is the one place that knows for certain something moved.
     ctx.derivations.forget_reference()
     return resolve_knob(path, str(payload.get("map") or ""), ctx)
+
+
+def _player_state(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
+    """Link, unlink, refresh or set experience for one map, and answer with
+    the panel as it now stands.
+
+    **Answers inline** for `_settings_state`'s reason: `app.js` polls any
+    reply carrying a `job` key, and this has no job to poll.
+
+    **The one action here that reaches the network, and only on `link` and
+    `refresh`.** `cache.write_player`'s docstring carries why the hiscores are
+    stored rather than read under the estimator; this is the "where a person
+    asks for it" half of that. A `set` or a `clear` touches no socket.
+
+    A name the hiscores do not know raises, which `_handle_post` turns into a
+    400 - visible, because the user typed it.
+    """
+    map_id = str(payload.get("map") or "")
+    if not map_id:
+        raise ValueError("a player link needs a map")
+    what = str(payload.get("do") or "")
+    stored = cache.read_player(map_id, ctx.root)
+    rsn = str(stored.get("rsn") or "")
+    linked = dict(stored.get("linked_xp") or {})
+    written = dict(stored.get("xp") or {})
+    fetched = str(stored.get("fetched_at") or "")
+
+    if what == "link" or (what == "refresh" and rsn):
+        wanted = str(payload.get("rsn") or rsn).strip()
+        if not wanted:
+            raise ValueError("no account name given")
+        try:
+            payload_in = fetch_hiscores(wanted, timeout=DEFAULT_TIMEOUT)
+        except FetchError as exc:
+            # **A 400, not a 500**, because the input came from a person: an
+            # unknown name is answered with HTTP 404 by the hiscores, and
+            # "internal error; see the terminal" for a typo sends the user to
+            # a log to read a message they should have been handed.
+            raise ValueError(str(exc)) from exc
+        linked = hiscores.parse(payload_in)
+        if not linked:
+            raise ValueError(f"the hiscores returned no skills for {wanted!r}")
+        rsn = hiscores.account_name(payload_in) or wanted
+        fetched = datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds")
+    elif what == "unlink":
+        # **The set experience survives an unlink**, because it was typed for
+        # this map rather than read off the account: throwing it away would
+        # make unlinking a destructive act wearing the name of a reversible
+        # one.
+        rsn, linked, fetched = "", {}, ""
+    elif what == "set":
+        skill = str(payload.get("skill") or "")
+        if skill not in players.SKILL_ORDER:
+            raise ValueError(f"not a skill: {skill!r}")
+        raw = payload.get("xp")
+        if raw is None:
+            written.pop(skill, None)
+        elif isinstance(raw, bool) or not isinstance(raw, (int, float)):
+            raise ValueError("xp must be a number, or null to clear it")
+        elif raw < 0:
+            raise ValueError("xp cannot be negative")
+        else:
+            written[skill] = int(raw)
+    elif what != "refresh":
+        raise ValueError(f"unknown player action: {what!r}")
+
+    cache.write_player(map_id, rsn, linked, written, fetched, ctx.root)
+    # The reference memo holds the layers this just moved, and this is the one
+    # writer - so it is the one place that knows for certain something did.
+    ctx.derivations.forget_reference()
+    found = ctx.derivations.load(map_id)
+    return {
+        **players.panel(found.state, ctx.derivations.reference(map_id)),
+        "fetched_at": fetched,
+    }
 
 
 #: **A development escape hatch, deliberately unadvertised.** Typed into the
@@ -909,4 +989,5 @@ _ACTIONS: dict[str, Callable[[Mapping[str, Any], Context], dict[str, Any]]] = {
     "/api/window": _window_state,
     "/api/settings": _settings_state,
     "/api/heuristic": _heuristic_state,
+    "/api/player": _player_state,
 }

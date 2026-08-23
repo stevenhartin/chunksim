@@ -170,7 +170,23 @@ is saved depends on where you are: in **Browse** it goes to `src/chunksim/heuris
 checked in and applies to every map; in **Timeline** or **Edit** it belongs to that map alone, in
 `cache/overrides/`. Emptying the box takes the correction back out. **Find** searches the
 whole world as you type, puts what you can reach first, and fits the camera around every place a
-thing comes from. **Maps** lists what is cached, with the actions that make and remove it — including the two things every number rests on, the chunk export and the wiki rates, each with the date it was last fetched. The rates are scraped automatically the first time you open the GUI without them, since otherwise every hour in **Estimate** is a fallback default.
+thing comes from. **Maps** lists what is cached, with the actions that make and remove it — including the two things every number rests on, the chunk export and the wiki rates, each with the date it was last fetched. Each row also carries a **Stats icon**, which opens that map's skill levels as the game's own Stats tab. The rates are scraped automatically the first time you open the GUI without them, since otherwise every hour in **Estimate** is a fallback default.
+
+
+**The levels every hour is priced against are a floor, and a map can say who is playing it.** With
+nothing else to go on, a skill's level is the highest one this map's *completed* challenges prove: a
+ticked `Buy the Defence cape` is 99 Defence, and nothing at all proves anything about Attack, which
+then reads as whatever the ledger happens to show. The Stats icon on the **Maps** tab opens the grid
+of all twenty-four, each coloured by what decided it — blue for that inferred floor, yellow for a
+linked account, green for a figure typed in here — and lets you **Link RSN** to pull an account's
+hiscores, or set any single skill's experience by hand.
+
+**No layer may lower a skill**, because a floor is a proof rather than a guess: a linked account
+reading below one is a different account, a reset, or a typo, so the floor is priced instead and the
+cell turns red saying both numbers. That state is not hypothetical — the reference account reads
+Fishing 80 against a floor of 85 and Smithing 98 against 99, which are the exact margins of an
+admiral pie and a dwarven stout. The map proves a *boosted* level, which is worth knowing about a
+ledger and is now visible rather than averaged away.
 
 A simulated run gets a **timeline**: a strip across the bottom with a slider that steps through the
 rolls, redrawing the world after each one. `chunksim simulate` has always written every roll down and

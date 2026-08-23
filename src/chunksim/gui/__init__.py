@@ -104,6 +104,12 @@ The modules, and what each owns:
   number. **New shaping goes here, not into the JavaScript.** A *roll* is shaped
   from the ledger alone, so anything the selection compares has to be in the
   ledger.
+- `players.py` - the Skills panel: every skill's level and **which layer
+  decided it**, from `costing/levels.resolve_levels`. Owns the four state names
+  the interface paints - inferred floor, linked account, set by hand, and the
+  refused figure that fell under the floor - and `SKILL_ORDER`, which is the
+  game's own Stats tab read down the columns. A derived route, because a floor
+  cannot be read without the export.
 - `worldmap.py` - where a chunk sits on the map and which sides face outward.
   Owns the projection (the y axis is flipped) and `hull_edges`.
 - `browser.py` - finding a Chromium-family browser and opening an app window

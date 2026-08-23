@@ -25,6 +25,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from chunksim.gui import players
 from chunksim.store import cache
 
 def _app_js() -> str:
@@ -261,6 +262,25 @@ def test_the_reachable_blue_is_one_colour() -> None:
     assert _match(r"--reachable: (#[0-9a-f]{6});", css) == _match(
         r'const REACHABLE_STROKE = "(#[0-9a-f]{6})";', js
     )
+
+
+def test_the_skill_states_are_one_vocabulary() -> None:
+    """`players.STATE_COLOURS` names four states; `app.js` labels them and
+    `style.css` paints them. Nothing links the three, so a fifth state added
+    to the model would render as an unlabelled blue cell - the default - and
+    look like a working panel showing the wrong thing."""
+    _, js, css = _resources()
+
+    model = set(players.STATE_COLOURS.values())
+    labelled = set(re.findall(r"^  (\w+): \[\"", _match(r"const SKILL_STATES = \{(.*?)\n\};", js), re.MULTILINE))
+
+    assert labelled == model, f"app.js and players.py disagree: {labelled ^ model}"
+    for state in model:
+        # `floor` is the unqualified rule the others override, so it is painted
+        # by `.skill-cell` itself rather than by a `[data-state=]` of its own.
+        token = f"--level-{state}"
+        assert f"{token}:" in css, f"no colour defined for {state}"
+        assert f"var({token})" in css, f"{state} has a colour nothing uses"
 
 
 def test_every_style_token_is_defined() -> None:
