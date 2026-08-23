@@ -490,6 +490,12 @@ The modules, and what each owns:
   `Reinvigorate` cadence, and a page is stackable so the plinth trip
   amortises. `costing/dps_bridge.py` puts the same figure at 258-303, inside
   the boss bias it documents on itself.
+- `potionsteps.py` - two Herblore durations the wiki leaves blank in families
+  that publish the rest: the one barbarian potion mix of twenty-nine it never
+  timed, and the sanfew serum's collapsed recipe, whose three combines are
+  checked by the steps' experience summing to its own. A `stated_ticks`
+  contributor like `greenman.py` and `gnomecooking.py`, never overwriting a
+  published figure.
 - `sailtrim.py` - trimming the sails, the one Sailing method paid by a clock
   rather than by an action: 120 trims an hour at the tier's own published
   payout, 1,260/hr on the quest raft up to 15,000 on rosewood. The hull is

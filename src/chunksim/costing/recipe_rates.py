@@ -980,6 +980,16 @@ MATERIAL_ALIASES: dict[str, str] = {
     # recipe and were dropped for an input the raid plainly grows, while
     # golpar and noxifer beside them priced.
     "Grimy buchu leaf": "Grimy buchu",
+    # **The third rename, and the same shape as the venom sac.** `Lily of the
+    # sands` became `Lily of the Sands` in the Summer Sweep Up of 19 August
+    # 2026 - the item's own `{{Subject changes}}` says so - and the wiki
+    # followed while the export did not, so `Menaphite remedy(3)`'s recipe
+    # asks for a material upstream spells with a small `s`. Capitalisation
+    # rather than a word this time, which is why it is an entry and not a
+    # fold: `world.item_sources` is keyed by upstream's own `Output` strings
+    # and matching them case-insensitively would be a general rule over a
+    # vocabulary nobody has checked for collisions.
+    "Lily of the Sands": "Lily of the sands",
 }
 
 
@@ -1023,7 +1033,10 @@ def stated_ticks(
     two-recipe family leaves blank - measured in game rather than borrowed,
     with the sibling's published 4 as the check; `gnomecooking` states the one
     tick three of the four gnome crunchies publish and the fourth does not.
-    `feathering` is the largest of them by far: 145 of Fletching's 158 untimed recipes are a stack of
+    `potionsteps` fills two Herblore blanks in families that publish the rest -
+    the one barbarian mix of twenty-nine the wiki left untimed, and the two
+    middle combines of the sanfew serum, whose third step states the two ticks
+    all three share. `feathering` is the largest of them by far: 145 of Fletching's 158 untimed recipes are a stack of
     feathers onto a stack of tips, and the four the wiki *does* time are all
     2 ticks.
     """
@@ -1040,6 +1053,7 @@ def stated_ticks(
         greenman,
         measured,
         herblore,
+        potionsteps,
         yewtree,
     )
 
@@ -1051,6 +1065,7 @@ def stated_ticks(
     found.update(fremennikicons.stated_ticks(recipes))
     found.update(measured.stated_ticks(recipes))
     found.update(feathering.stated_ticks(recipes))
+    found.update(potionsteps.stated_ticks(recipes))
     for skill, rows in recipes.items():
         challenges = _mapping(chunk_info.challenges, skill)
         found.update(cutting.stated_ticks(challenges, list(rows)))
