@@ -93,6 +93,7 @@ from chunksim.store.cache import (
     file_digest,
     gathering_source,
     map_overrides_path,
+    player_path,
     overrides_source,
     read_derived,
     write_derived,
@@ -323,6 +324,13 @@ class PricingDigests:
     #: cadences and folding them would throw away every other map's stored
     #: enrichment whenever one map's corrections changed.
     map_overrides: str = ""
+    #: `cache/players/<map_id>.json` - the account linked to this map and any
+    #: experience set for it. **Its own field for `map_overrides`' reason**,
+    #: and it has to be here at all because linking an account moves every
+    #: level the estimate counts from: without it a fresh link served the
+    #: stored answer computed against the floor, which is the one failure a
+    #: cache key exists to prevent.
+    player: str = ""
     library: str = ""
     #: The `chunksim recipes` blob. Separate from `rates` because it is a
     #: different API on a different cadence, and folding the two would
@@ -650,6 +658,9 @@ def pricing_digests(root: Path | None = None, map_id: str | None = None) -> Pric
             ""
             if map_id is None
             else _maybe_digest(lambda: map_overrides_path(map_id, root))
+        ),
+        player=(
+            "" if map_id is None else _maybe_digest(lambda: player_path(map_id, root))
         ),
         library=dps_library_digest(),
         recipes=_maybe_digest(lambda: blob_source(RECIPES_BLOB_NAME, root)),

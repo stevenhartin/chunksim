@@ -607,7 +607,12 @@ Thieving at 84,560 flat against 1,005 at level 1. See `_modelled_tasks`.
   supply, and a **schedule** measured in calendar days beside its active hours.
 - `levels.py` - `infer_levels`/`goal_levels`/`reachable_providers` and the
   gating helpers. **The map records no skill levels**; the floor is read out of
-  completed challenges.
+  completed challenges. `resolve_levels` lays two more layers over that floor -
+  the experience of an account linked to the map, then any set by hand for it -
+  and **no layer may lower a skill**: a floor is a proof, so each is `max`ed
+  against it and a figure that would have crossed it is reported as
+  `BELOW_FLOOR` rather than quietly raised. The usual cause of a real
+  disagreement is a *boosted* completion, which proves the boosted level.
 - `inputs.py` - what `chunksim estimate` and the Estimate tab must agree about,
   assembled once, because the two had already drifted. Also `ReferenceBlobs`:
   the reference files read **once per invocation** and threaded, rather than

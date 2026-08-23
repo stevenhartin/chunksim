@@ -38,6 +38,11 @@ The modules, and what each owns:
 - `skillcalc.py` - reading a `Module:Skill calc/<Skill>` Lua table, one format
   across eighteen skills. Owns the brace matching, which `farming.py` measured
   first and now imports.
+- `hiscores.py` - one account's experience, from the official hiscores. The
+  other end of `costing/levels.infer_levels`: that reads a *floor* out of what
+  a map has ticked off, this reads what the player actually holds. **No alias
+  table** - the 24 hiscores skills are all skills the export names, and a test
+  asserts they still are.
 - `bounty.py` - the wiki's bounty table and, from `Boat combat`, the health of
   every sea monster. Health is half the rate, because damage *is* the
   experience.

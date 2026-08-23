@@ -28,7 +28,7 @@ the pure layer - `cli.py` and `gui/server.py` are its only callers.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from collections.abc import Callable
 from typing import Any, Mapping
@@ -118,7 +118,13 @@ from chunksim.costing.estimate import EstimateResult, estimate
 from chunksim.costing.training import TrainingOption
 from chunksim.derive.search import WorldIndex
 from chunksim.remote.recipes import Material as RecipeMaterial, Recipe
-from chunksim.costing.levels import goal_levels, infer_levels, reachable_providers
+from chunksim.costing.levels import (
+    goal_levels,
+    infer_levels,
+    levels_from,
+    reachable_providers,
+    resolve_levels,
+)
 from chunksim.costing.heuristics import Heuristics, load, merge
 from chunksim.derive.pipeline import Derived, MapState
 from chunksim.derive.search import build_world_index
@@ -205,6 +211,14 @@ class ReferenceBlobs:
     bounty: dict[str, Any]
     #: What this machine would price against, for the enrichment cache key.
     pricing: PricingDigests
+    #: The last-fetched experience of the account linked to this map, and any
+    #: experience set by hand for it - `cache/players/<map>.json`, read from
+    #: disk. **Not fetched here**: see `cache.write_player` on why an estimate
+    #: makes no network call.
+    linked_experience: dict[str, int] = field(default_factory=dict)
+    set_experience: dict[str, int] = field(default_factory=dict)
+    #: The account's name, for anything that reports which one answered.
+    rsn: str = ""
     #: Which map `overrides` was assembled for, or `None` for the site-wide
     #: layer alone. Carried so a caller can tell whether it is holding the
     #: right blobs for the map it is about to price.
@@ -237,6 +251,40 @@ def _bounty_blob(root: Path | None) -> dict[str, Any]:
     except cache.CacheMissError:
         return {}
     return blob if isinstance(blob, dict) else {}
+
+
+def _player_layers(map_id: str | None, root: Path | None) -> dict[str, Any]:
+    """The linked account's layers for `map_id`, or empty without one."""
+    if map_id is None:
+        return {}
+    found = cache.read_player(map_id, root)
+    if not found:
+        return {}
+    return {
+        "linked_experience": found.get("linked_xp") or {},
+        "set_experience": found.get("xp") or {},
+        "rsn": found.get("rsn") or "",
+    }
+
+
+def effective_levels(state: MapState, blobs: "ReferenceBlobs") -> dict[str, int]:
+    """The level to count each skill from, across all three layers.
+
+    **One answer, because seven callers asked it.** Every one of them wrote
+    `effective_levels(state, blobs)`, which was right while a level
+    could only be raised by a hand-set override - and is wrong the moment a
+    linked account can supply one, because a dict merge *replaces* where this
+    has to `max`. See `costing/levels.resolve_levels` for the ordering and for
+    why no layer may lower a skill.
+    """
+    return levels_from(
+        resolve_levels(
+            state,
+            blobs.levels,
+            blobs.linked_experience,
+            blobs.set_experience,
+        )
+    )
 
 
 def _courier_blob(root: Path | None) -> dict[str, Any]:
@@ -285,6 +333,7 @@ def load_reference(root: Path | None = None, map_id: str | None = None) -> Refer
         gathering=gathering_model.load_tables(cache.read_gathering(root)),
         courier=_courier_blob(root),
         bounty=_bounty_blob(root),
+        **_player_layers(map_id, root),
         pricing=pricing_digests(root, map_id),
         map_id=map_id,
     )
@@ -392,7 +441,7 @@ def training_answer(
     # raised by the hand overrides - the same `{**infer_levels, **levels}`
     # every other caller here builds. A method gated above them is not one
     # this map can train with today, which is what "best" has to mean.
-    at = {**infer_levels(state), **blobs.levels}
+    at = effective_levels(state, blobs)
     skills = coverage.SKILLS
     return TrainingAnswer(
         best=coverage.best_methods(derived, state.chunk_info, heuristics, at, skills),
@@ -619,13 +668,13 @@ def recipe_priced(
     # rather than into `material_seconds_per_xp` because upstream files one
     # task name under both skills it pays.
     craned = crane.methods(
-        derived.challenges.valid, {**infer_levels(state), **levels}, seconds
+        derived.challenges.valid, effective_levels(state, blobs), seconds
     )
     # **And Vale Totems, for the same reason and with the same shape** - five
     # logs a totem is 520 an hour, and the published figure assumes they were
     # bought. See `costing/valetotems.py`.
     totemed = valetotems.methods(
-        derived.challenges.valid, {**infer_levels(state), **levels}, seconds
+        derived.challenges.valid, effective_levels(state, blobs), seconds
     )
     # **And the trawler's leaks**, which eat 51 swamp paste a game - see
     # `costing/trawler.py`, and its docstring on why the figure is a ceiling.
@@ -788,7 +837,7 @@ def recipe_priced(
             # **The same level `_gathered` timed the wreck at.** These are the
             # two halves of one question - how long a salvage takes and what
             # that costs per experience - and a crewmate makes both faster.
-            {**infer_levels(state), **levels}.get("Sailing", 1),
+            effective_levels(state, blobs).get("Sailing", 1),
         )
     )
     # **And the experience that gathering paid.** The salvage a sorting
@@ -1012,7 +1061,7 @@ def _gathered(
     """
     if blobs.gathering.empty:
         return heuristics, {}, gathering_model.GatheringCoverage()
-    at_level = {**infer_levels(state), **levels}
+    at_level = effective_levels(state, blobs)
     priced, coverage = gathering_model.priced_methods(
         state.chunk_info,
         derived.challenges.valid,
@@ -1539,7 +1588,7 @@ def _prayer_methods(
         derived,
         heuristics.bones,
         heuristics.altars,
-        {**infer_levels(state), **levels},
+        levels,
         collect,
     )
     if not found:
@@ -1633,7 +1682,7 @@ def priced_heuristics(
     index = build_world_index(state.chunk_info) if world is None else world
     blobs = load_reference(root) if reference is None else reference
     pinned_monsters, pinned_slayer = blobs.pinned
-    goals = goal_levels(state, derived, {**infer_levels(state), **levels})
+    goals = goal_levels(state, derived, effective_levels(state, blobs))
 
     def compute() -> tuple[Heuristics, dps_bridge.DpsCoverage | None]:
         priced, _ = recipe_priced(

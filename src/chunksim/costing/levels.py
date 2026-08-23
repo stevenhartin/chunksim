@@ -17,8 +17,9 @@ reimplemented, so the gate cannot drift from the thing it gates.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NamedTuple
 from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.model.experience import MAX_SKILL_LEVEL, level_for_xp
 from chunksim.derive.pipeline import Derived
 from chunksim.derive.pipeline import MapState
 from collections.abc import Mapping
@@ -175,6 +176,86 @@ def infer_levels(state: MapState) -> dict[str, int]:
                 raise_to(str(skill), challenge.get("Level"))
 
     return levels
+
+
+#: What decided a skill's level, for a reader and for the interface.
+FLOOR = "floor"
+LINKED = "linked"
+SET = "set"
+#: A figure below the floor, which is refused rather than spent - see
+#: `resolve_levels`.
+BELOW_FLOOR = "below-floor"
+
+
+class SkillLevel(NamedTuple):
+    """One skill's level and where it came from."""
+
+    level: int
+    source: str
+    #: The floor, carried so a caller can say what a refused figure fell under.
+    floor: int
+    #: The experience behind `level`, or `0` where the floor decided it.
+    experience: int = 0
+
+
+def resolve_levels(
+    state: MapState,
+    overrides: Mapping[str, int] | None = None,
+    linked_experience: Mapping[str, int] | None = None,
+    set_experience: Mapping[str, int] | None = None,
+) -> dict[str, SkillLevel]:
+    """Every skill's level, and which of the three layers decided it.
+
+    **Three sources, most specific first**: experience set by hand for this
+    map, then the experience of the account linked to it, then the floor -
+    `infer_levels` raised by any hand-set *level* in `overrides.json`, which
+    is what this project answered with before an account could be linked.
+
+    **No layer may lower a skill**, which is the rule that makes the whole
+    thing safe to bolt on. A floor is a proof: a ticked `Buy the ~|Defence
+    cape|~` is 99 Defence whatever an account says, and a linked account
+    reading lower is a different account, a reset, or a typo. So every layer
+    is `max`ed against the floor rather than trusted, and a figure that
+    *would* have lowered one is reported as `BELOW_FLOOR` rather than quietly
+    raised - the interface paints those red, because silently agreeing with a
+    number you refused is the worse failure.
+
+    Experience rather than levels, because that is what the hiscores publish
+    and what a curve change survives. `model/experience.level_for_xp` is the
+    one conversion.
+    """
+    floor = infer_levels(state)
+    for skill, level in (overrides or {}).items():
+        floor[skill] = max(floor.get(skill, 1), int(level))
+
+    found: dict[str, SkillLevel] = {
+        skill: SkillLevel(level=level, source=FLOOR, floor=level)
+        for skill, level in floor.items()
+    }
+
+    def apply(experience: Mapping[str, int], source: str) -> None:
+        for skill, total in experience.items():
+            under = floor.get(skill, 1)
+            # **A skill stops at 99.** `level_for_xp` is the curve's inverse
+            # and the curve runs to 126 because it also answers for Combat
+            # level, so an account with 30m Strength reads 107 unless this
+            # clamps - see `experience.MAX_SKILL_LEVEL`.
+            level = min(level_for_xp(int(total)), MAX_SKILL_LEVEL)
+            found[skill] = SkillLevel(
+                level=max(level, under),
+                source=BELOW_FLOOR if level < under else source,
+                floor=under,
+                experience=int(total),
+            )
+
+    apply(linked_experience or {}, LINKED)
+    apply(set_experience or {}, SET)
+    return found
+
+
+def levels_from(resolved: Mapping[str, SkillLevel]) -> dict[str, int]:
+    """Just the numbers, for every caller that wants what it always wanted."""
+    return {skill: found.level for skill, found in resolved.items()}
 
 
 def _levels(state: MapState, overrides: dict[str, int]) -> dict[str, int]:

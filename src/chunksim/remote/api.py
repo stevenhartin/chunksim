@@ -158,6 +158,16 @@ _SHEET_CSV = "https://docs.google.com/spreadsheets/d/{doc}/gviz/tq?tqx=out:csv&s
 #: running it.
 WIKI_USER_AGENT = "chunksim/0.1 (+https://github.com/stevenhartin/chunksim)"
 
+#: The official Old School hiscores, which answer for any account by name.
+#:
+#: **No `User-Agent`**, for the reason Firebase and GitHub get none: the
+#: endpoint is public and unauthenticated, so a header would only publish
+#: something nobody asked for. It is also the one endpoint here that takes a
+#: *person's* name, which is the more reason to send nothing else about them.
+HISCORES_URL = (
+    "https://secure.runescape.com/m=hiscore_oldschool/index_lite.json?player={player}"
+)
+
 #: The MediaWiki API's cap on `titles` for an anonymous caller.
 WIKI_TITLES_PER_REQUEST = 50
 
@@ -307,6 +317,28 @@ def fetch_map(map_id: str, timeout: float = DEFAULT_TIMEOUT) -> dict[str, Any]:
             f"expected an object for map {map_id!r}, got {type(payload).__name__}"
         )
     return payload
+
+
+def hiscores_url(player: str) -> str:
+    """The hiscores endpoint for one account name."""
+    import urllib.parse
+
+    return HISCORES_URL.format(player=urllib.parse.quote(player.strip()))
+
+
+def fetch_hiscores(player: str, timeout: float = DEFAULT_TIMEOUT) -> dict[str, Any]:
+    """One account's hiscores, or `FetchError`.
+
+    **An unknown name is an HTTP 404**, unlike Firebase's `null`, so this is
+    the one fetch here whose "does not exist" is the transport's own answer.
+    That is worth saying because it is the error a *user* will see most: they
+    typed a name.
+    """
+    if not player.strip():
+        raise FetchError("no account name given")
+    return _fetch_json_object(
+        hiscores_url(player), timeout, what=f"hiscores for {player.strip()!r}"
+    )
 
 
 def fetch_chunkinfo(timeout: float = DEFAULT_TIMEOUT) -> dict[str, Any]:

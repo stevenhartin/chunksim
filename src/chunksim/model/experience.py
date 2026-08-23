@@ -33,6 +33,13 @@ from bisect import bisect_right
 #: because `max_skill` can hold either.
 MAX_LEVEL = 126
 
+#: Where a *skill* stops. `MAX_LEVEL` is the Combat-level ceiling and the
+#: curve runs that far because `max_skill` can hold either, but no skill goes
+#: past 99 - so anything converting an experience total into a **skill** level
+#: clamps here instead. `level_for_xp` deliberately does not: it is the
+#: curve's inverse and the curve is defined to 126.
+MAX_SKILL_LEVEL = 99
+
 
 def xp_for_level(level: int) -> int:
     """Cumulative XP needed to reach `level`, from 1 (0 XP) to `MAX_LEVEL`."""

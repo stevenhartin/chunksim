@@ -156,6 +156,15 @@ DERIVED_DIR_NAME = "derived"
 #: rest of `cache/`.
 MAP_OVERRIDES_DIR_NAME = "overrides"
 
+#: Which account a map is played by, and any experience set by hand for it.
+#:
+#: **Its own directory rather than a key in `overrides/`**, for the reason
+#: `cache/maps/` holds maps and nothing else does: an override is a
+#: *correction to a number this project computed* and a linked account is a
+#: statement about who the player is. One file per map, mirroring the map id
+#: through `split_map_id` exactly as the overrides do.
+PLAYERS_DIR_NAME = "players"
+
 #: The GUI's own state: remembered window geometry and the browser profile it
 #: launches with. Neither is data about the game.
 GUI_DIR_NAME = "gui"
@@ -982,6 +991,99 @@ def write_overrides(overrides: Mapping[str, Any], root: Path | None = None) -> P
     working tree rather than the absence of data.
     """
     return _atomic_write_json(overrides_path(root), dict(overrides))
+
+
+def player_path(map_id: str, root: Path | None = None) -> Path:
+    """Where one map's linked account and hand-set experience live.
+
+    Mirrors `map_overrides_path` - the id goes through `split_map_id`, which
+    is the traversal guard the rest of this module already trusts.
+    """
+    name, run = split_map_id(map_id)
+    directory = (root or data_root()) / CACHE_DIR_NAME / PLAYERS_DIR_NAME
+    return directory / name / f"{run}.json" if run else directory / f"{name}.json"
+
+
+def _experience(raw: Any) -> dict[str, int]:
+    """A `{skill: experience}` mapping, ignoring anything that is not one."""
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        str(skill): int(value)
+        for skill, value in raw.items()
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0
+    }
+
+
+def read_player(map_id: str, root: Path | None = None) -> dict[str, Any]:
+    """One map's account link, as `{rsn, linked_xp, xp, fetched_at}`.
+
+    `linked_xp` is the **last fetched** hiscores, and `xp` is what a user set
+    by hand. Both are on disk, which is the whole point of the file - see
+    `write_player`.
+
+    **Never raises for a missing or malformed file.** A linked account is a
+    convenience laid over an answer this project can already give, so a
+    corrupt one degrades to the floor rather than taking the estimate down
+    with it.
+    """
+    path = player_path(map_id, root)
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    rsn = raw.get("rsn")
+    fetched = raw.get("fetched_at")
+    return {
+        "rsn": rsn if isinstance(rsn, str) else "",
+        "linked_xp": _experience(raw.get("linked_xp")),
+        "xp": _experience(raw.get("xp")),
+        "fetched_at": fetched if isinstance(fetched, str) else "",
+    }
+
+
+def write_player(
+    map_id: str,
+    rsn: str = "",
+    linked_experience: Mapping[str, int] | None = None,
+    experience: Mapping[str, int] | None = None,
+    fetched_at: str = "",
+    root: Path | None = None,
+) -> Path:
+    """Write one map's link, its last fetched hiscores and its hand-set
+    experience, and return the path.
+
+    **The hiscores are stored rather than fetched on demand**, and that is a
+    deliberate departure worth stating. Reading them live inside
+    `costing/inputs.load_reference` would put a network call under every
+    estimate, every test and every simulate worker - and this project's
+    estimator makes *no* network call by design, which is the difference
+    between a GUI that works offline and one that does not. So the fetch
+    happens where a person asks for it - linking, refreshing, or `chunksim
+    estimate --refresh-player` - and everything downstream reads this file.
+
+    An empty link with nothing set **removes** the file rather than leaving an
+    empty one, so "unlinked" is the absence the reader already treats as the
+    default rather than a second way of saying it.
+    """
+    path = player_path(map_id, root)
+    linked = _experience(linked_experience)
+    kept = _experience(experience)
+    if not rsn.strip() and not kept and not linked:
+        path.unlink(missing_ok=True)
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return _atomic_write_json(
+        path,
+        {
+            "rsn": rsn.strip(),
+            "fetched_at": fetched_at,
+            "linked_xp": linked,
+            "xp": kept,
+        },
+    )
 
 
 def map_overrides_path(map_id: str, root: Path | None = None) -> Path:
