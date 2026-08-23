@@ -443,6 +443,13 @@ The modules, and what each owns:
   on the floor time is calibrated to 91,805 for five floors - inside what a
   good player sustains, and 1.04x the wiki's own row. `GUESS`, because the
   staircase, the lobby return and the mistake factor are all invented.
+- `sailtrim.py` - trimming the sails, the one Sailing method paid by a clock
+  rather than by an action: 120 trims an hour at the tier's own published
+  payout, 1,260/hr on the quest raft up to 15,000 on rosewood. The hull is
+  irrelevant (the wiki's three tables carry the same trimming column) and a
+  band opens at the level to **build** its mast, which upstream states on its
+  own `Build a ~|...|~` challenge. A ceiling, and an ancillary one - what it
+  decides is the stretch below Sailing 15 where nothing was priced at all.
 - `sorceress.py` - the Sorceress's Garden, where a level buys a **better
   garden** rather than a faster lap or a better chance. Flat rates, and the one
   place a published lap time and a published hourly yield check each other.

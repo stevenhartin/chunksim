@@ -73,6 +73,7 @@ from chunksim.costing import (
     recipe_rates,
     pyramid_plunder,
     rumours,
+    sailtrim,
     salvage,
     sacredeel,
     sepulchre,
@@ -1126,6 +1127,12 @@ def _gathered(
     # with level, gear or concentration: the pump pays Strength and the pedals
     # beside it pay Agility at half the rate.
     for skill, methods in blastfurnace.methods(derived.challenges.valid).items():
+        banded[skill] = (*banded.get(skill, ()), *methods)
+    # **A clock rather than an action** - see `costing/sailtrim.py`. One
+    # challenge and seven mast tiers, each opening at the Sailing level
+    # upstream states on its own `Build a ~|...|~` challenge, and the wooden
+    # one exempt because the quest raft arrives carrying it.
+    for skill, methods in sailtrim.methods(derived.challenges.valid).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **A roll every single tick**, which is the fastest cadence in the skill
     # and the only method here whose experience had to be recovered rather
