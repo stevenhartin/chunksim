@@ -89,6 +89,15 @@ LOOT_TASK = "Theatre of Blood loot*"
 #: The party the money-making guide describes and this models.
 PARTY_SIZE = 3
 
+#: `Sinhaza shroud tier 5`, and the export carries all five tiers as
+#: collection log entries - so the shroud is not optional and a Theatre green
+#: log cannot be closed in fewer raids than this however the chest rolls.
+#:
+#: **Missed when this module was first written**, and found by the Tombs,
+#: which has the same constraint under a different name. All three raids cap
+#: out at two thousand.
+CAPE_COMPLETIONS = 2_000
+
 ENTRY, NORMAL, HARD = "entry", "normal", "hard"
 
 #: The rooms in order. Each maps a mode to the `osrs-dps` keys a run fights -
@@ -231,6 +240,8 @@ class Answer:
     run: encounter.Encounter
     #: Completions expected, or `inf` where the objective cannot be met.
     runs: float
+    #: What forced the count, for a reader: `"drops"` or `"cape"`.
+    bound_by: str = "drops"
 
     @property
     def seconds(self) -> float:
@@ -266,7 +277,16 @@ def answer(
         # which is `costing/combat_xp.py`'s question and not this module's.
         return None
     else:
-        runs = encounter.runs_for_all(list(chances.values()))
+        # **The shroud binds as often as the chest does.** Two thousand
+        # completions is a collection log entry in its own right, so a green
+        # log cannot be closed in fewer raids than that however well the
+        # uniques roll.
+        drops = encounter.runs_for_all(list(chances.values()))
+        cape = float(CAPE_COMPLETIONS)
+        return Answer(
+            mode=mode, run=run, runs=max(drops, cape),
+            bound_by="cape" if cape >= drops else "drops",
+        )
     return Answer(mode=mode, run=run, runs=runs)
 
 

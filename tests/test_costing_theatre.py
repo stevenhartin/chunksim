@@ -126,10 +126,25 @@ class TestTheAnswer:
     def test_an_unpriceable_room_drops_the_mode(self) -> None:
         assert theatre.answer(theatre.NORMAL, lambda target: None) is None
 
-    def test_best_prefers_hard_mode_for_the_log(self) -> None:
-        """Hard mode's rooms are longer but its unique rate is better, and the
-        log is what decides - which is exactly what an objective is for."""
+    def test_the_shroud_binds_and_that_reverses_the_answer(self) -> None:
+        """**Two thousand completions is a collection log entry**, and once it
+        binds the drop rate stops deciding anything: the fastest qualifying
+        mode wins instead. Hard mode is better per raid and still loses,
+        because both modes need the same 2,000 raids and its rooms are
+        longer. Missed when this module was written and found by the Tombs,
+        which has the same constraint under another name."""
+        every = theatre.answer(theatre.HARD, _seconds)
+        assert every is not None
+        assert every.runs == theatre.CAPE_COMPLETIONS
+        assert every.bound_by == "cape"
         got = theatre.best(_seconds)
+        assert got is not None and got.mode == theatre.NORMAL
+
+    def test_a_named_unique_is_not_capped_by_the_shroud(self) -> None:
+        """The cape is a green-log constraint, not a drop-rate one - so asking
+        for one item still gets hard mode, where it is likelier."""
+        scythe = encounter.Objective.for_unique("Scythe of Vitur (uncharged)")
+        got = theatre.best(_seconds, scythe)
         assert got is not None and got.mode == theatre.HARD
 
 

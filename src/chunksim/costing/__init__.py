@@ -498,6 +498,16 @@ The modules, and what each owns:
   experience), and the coupon-collector arithmetic a green log actually is.
   **`attackers` divides the time-to-kill and nothing else**, which is the line
   between a party helping and a party making a raid free.
+- `tombs.py` - the Tombs of Amascut, whose reward is a function of a *setting*
+  rather than a mode, so the answer is an optimisation over the invocation
+  dial. **Points are damage here** - the wiki says so outright and tabulates
+  the multipliers - which is the exact contrast with `xeric.py`, where they
+  are not. The chest's piecewise `RL` scaling reproduces the wiki's own worked
+  example (level 400 -> 3,700 points a percent), caps at 55% and never rolls
+  twice. `Icthlarin's shroud (tier 5)` wants 2,000 completions and entry mode
+  does not advance it. **The six boss health bars understate the points about
+  fourfold** - the raid scores on every NPC in it - which biases the safe way:
+  it makes the cape look less likely to bind, not more.
 - `xeric.py` - the Chambers of Xeric: a drawn layout priced as its **mean**
   rather than as a draw, since a player running 2,000 raids gets the average.
   **Points are not damage** - a solo raid's rooms come to ~4,300 hitpoints
