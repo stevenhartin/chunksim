@@ -802,6 +802,16 @@ _SAPLING_EXPERIENCE: tuple[tuple[int, float], ...] = (
     (96, 523.8214285714286 / 9),
 )
 
+#: The level-99 end of the Civitas fishing spot's curve, **solved** from the
+#: one row its page publishes. See the note beside `stated_curves` below.
+CIVITAS_HIGH = 56.0
+
+#: Raw shrimps' charted ends, the only other level-1 net curve the wiki draws.
+#: Their ratio is what stands in for the Civitas spot's unpublished low end.
+SHRIMP_LOW = 48.0
+SHRIMP_HIGH = 256.0
+
+
 PROFILES: dict[str, SkillProfile] = {
     # **Four ticks is the wiki's, not a fit** - the Woodcutting page states it -
     # and pinning it is what makes the other two constants mean something. Left
@@ -1420,6 +1430,12 @@ PROFILES: dict[str, SkillProfile] = {
             # the bream has neither, so it borrows the one and takes its loop
             # from here. Its own experience is stated on its page.
             "raw bream": "Big net",
+            # **The calculator files this spot under no loop at all**, so
+            # `strict_kinds` refused it however well its chance were known.
+            # Its own `{{Fishing info}}` names the tool - `Big fishing net` -
+            # which is the loop the calculator would have given it, so this
+            # reads the page rather than choosing a pace.
+            "fishing spot (civitas illa fortis)": "Big net",
             "bluefin shoal": "Trawling",
             "halibut shoal": "Trawling",
             "yellowfin shoal": "Trawling",
@@ -1443,6 +1459,35 @@ PROFILES: dict[str, SkillProfile] = {
             }
         ),
         assumed_curves={"raw bream": "Leechfin"},
+        # **One published point, so half solved and half borrowed** - weaker
+        # than Mining's pair above, and said rather than hidden.
+        #
+        # `Fishing spot (Civitas illa Fortis)` is tagged "Needs skilling
+        # success chart" and never charted, but its page states one row: "at
+        # level 99, players can expect 20-30 house keys per hour and around
+        # 2,000 Fishing experience". Its `{{Fishing info}}` gives 7.5
+        # experience a catch and its drop table puts house keys at 1/10, so
+        # that sentence says the same thing twice - 2,000/7.5 is **267 catches
+        # an hour**, and a tenth of 267 is 26.7 keys, inside the 20-30 beside
+        # it. Two figures written for different reasons agreeing is what makes
+        # this evidence rather than a reading.
+        #
+        # A big net rolls every 5 ticks, so an hour is 1,200 rolls and the
+        # chance at 99 is 267/1200 = 0.2225. Inverting `success_chance` there
+        # gives `CIVITAS_HIGH`, which reproduces 2,004/hr and 26.7 keys.
+        #
+        # **The low end is borrowed and nothing checks it.** No level below 99
+        # is published, so it comes from the shape of the only other level-1
+        # net curve the wiki draws - raw shrimps at 48/256 - applied to this
+        # high end. That is `assumed_curves`' kind of inference wearing
+        # `stated_curves`' clothes, which is why the entry is `INFERRED` and
+        # why a reader doubting the climb below 99 is right to.
+        stated_curves={
+            "fishing spot (civitas illa fortis)": (
+                CIVITAS_HIGH * SHRIMP_LOW / SHRIMP_HIGH,
+                CIVITAS_HIGH,
+            ),
+        },
         cascades={
             # **Barbarian fishing, and the order is the mechanic.** The best
             # fish is rolled first and each failure falls through to the next,
@@ -1452,12 +1497,27 @@ PROFILES: dict[str, SkillProfile] = {
             node: ("Leaping sturgeon", "Leaping salmon", "Leaping trout")
             for node in ("leaping sturgeon", "leaping salmon", "leaping trout")
         },
-        # **The junk spots are left unpriced on purpose too.** Civitas illa
-        # Fortis, The Stranglewood, panning points and the big-net junk loot
-        # are all the same thing - a spot that yields refuse rather than fish,
-        # worth about 2,000 an hour at 99 - so none of them is a training
-        # method and costing one would only put a floor-height band in front of
-        # a reader. Decided, not overlooked.
+        # **The junk spots were left unpriced on purpose, and one of them is
+        # now priced.** They are all the same thing - a spot that yields refuse
+        # rather than fish, worth about 2,000 an hour at 99 - and the standing
+        # decision was that none is a training method so costing one would only
+        # put a floor-height band in front of a reader.
+        #
+        # **That reasoning still holds and the status was still wrong.** A band
+        # that cannot win costs a reader nothing, because `training_bands`
+        # takes a running maximum; what does cost them is `unpriced`, which
+        # means "somebody should go and close this" and was saying it about a
+        # decision. So Civitas illa Fortis is priced below - its page turned
+        # out to state enough to solve, which is more than the comment
+        # crediting it with "about 2,000" implied - and the big-net junk loot
+        # is `refused` with its reason, which is what the other three needed
+        # all along.
+        #
+        # `Fishing spot (The Stranglewood)` is the same shape as Civitas, level
+        # 1 and 7.5 experience, and states no rate at any level - so it keeps
+        # the refusal it already had rather than borrowing Civitas's curve:
+        # two spots yielding refuse are not evidence about each other's
+        # chance.
         #
         # **Camdozaal is left unpriced on purpose.** Raw guppy, cavefish,
         # tetra and catfish - everything at `Fishing spot (Camdozaal)` - have
@@ -1468,6 +1528,18 @@ PROFILES: dict[str, SkillProfile] = {
         # ever pick one: the cost of leaving them is a gap in the coverage
         # count and nothing in an estimate. Decided rather than overlooked.
         refuses={
+            # **Keyed by the challenge's `Output`, not by its node, and that
+            # distinction is the whole entry.** The junk loot comes out of
+            # `Fishing spot (big net, harpoon)` - the same object that yields
+            # raw bass, cod, mackerel and shark - so naming the node refused
+            # all four and dropped shark onto a money-making guide, measured.
+            # `Big net junk loot` is upstream's own name for what this
+            # challenge alone produces. Unlike Civitas illa Fortis beside it,
+            # no page states a rate for it at any level, so there is nothing
+            # to solve from and a chance would be invented.
+            "big net junk loot": (
+                "yields refuse rather than fish and no page states a rate for it"
+            ),
             # **Aerial fishing has no success roll at all** - "a catch
             # is guaranteed each time the bird is sent" - so there is
             # nothing here for a success curve to describe. It is priced

@@ -2867,3 +2867,53 @@ class TestTheDeadfallRunsTwoTraps:
         )
 
         assert (monkey, kebbit) == (1.0, 2.0)
+
+
+class TestTheCivitasFishingSpot:
+    """**One published row, solved and borrowed from in equal parts.**
+
+    `Fishing spot (Civitas illa Fortis)` is tagged "Needs skilling success
+    chart" and never charted, so the curve here is recovered from the single
+    sentence its page does state.
+    """
+
+    NODE = "fishing spot (civitas illa fortis)"
+
+    def test_the_two_published_figures_say_the_same_thing(self) -> None:
+        """"20-30 house keys per hour and around 2,000 Fishing experience" at
+        99, against 7.5 experience a catch and house keys at 1/10. Two figures
+        written for different reasons, agreeing - which is what makes this
+        evidence rather than a reading."""
+        catches = 2_000 / 7.5
+        assert catches == pytest.approx(266.7, abs=0.1)
+        assert 20 <= catches / 10 <= 30
+
+    def test_the_high_end_reproduces_both(self) -> None:
+        """A big net rolls every 5 ticks, so an hour is 1,200 rolls."""
+        low, high = gathering.PROFILES["Fishing"].stated_curves[self.NODE]
+        rolls = 3600 / (gathering.PROFILES["Fishing"].roll_ticks_by_kind["Big net"] * 0.6)
+        assert rolls == 1200.0
+        catches = gathering.success_chance(99, low, high) * rolls
+        assert catches * 7.5 == pytest.approx(2_000, rel=0.01)
+        assert 20 <= catches / 10 <= 30
+
+    def test_the_low_end_is_borrowed_from_the_shrimp_curve(self) -> None:
+        """Nothing below 99 is published, so the level-1 end takes the shape of
+        the only other level-1 net curve the wiki draws. Borrowed, and nothing
+        checks it - which is why the entry is `INFERRED`."""
+        low, high = gathering.PROFILES["Fishing"].stated_curves[self.NODE]
+        assert low / high == pytest.approx(gathering.SHRIMP_LOW / gathering.SHRIMP_HIGH)
+
+    def test_it_needs_the_loop_as_well_as_the_curve(self) -> None:
+        """The calculator files this spot under no loop at all, so
+        `strict_kinds` refused it however well the chance were known."""
+        assert gathering.PROFILES["Fishing"].loop_at[self.NODE] == "Big net"
+
+    def test_the_junk_loot_is_refused_by_output_not_by_node(self) -> None:
+        """**Measured, not theoretical.** The junk loot shares `Fishing spot
+        (big net, harpoon)` with raw bass, cod, mackerel and shark; keying the
+        refusal on the node refused all four and dropped shark onto a
+        money-making guide."""
+        refuses = gathering.PROFILES["Fishing"].refuses
+        assert "big net junk loot" in refuses
+        assert "fishing spot (big net, harpoon)" not in refuses
