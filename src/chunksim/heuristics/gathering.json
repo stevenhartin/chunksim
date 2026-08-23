@@ -1,6 +1,6 @@
 {
   "name": "gathering.json",
-  "fetched_at": "2026-08-19T09:36:01.630174+00:00",
+  "fetched_at": "2026-08-23T00:44:27.020399+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "curves": {
@@ -10702,7 +10702,7 @@
           "provenance": "confirmed"
         }
       ],
-      "Ring of charos": [
+      "Ring of Charos": [
         {
           "label": "Ring recovery success rate",
           "low": 33.0,
@@ -14299,7 +14299,7 @@
       ]
     },
     "tool_ticks": {
-      "3rd age pickaxe": 2.83,
+      "3rd Age pickaxe": 2.83,
       "Adamant pickaxe": 4.0,
       "Black pickaxe": 5.0,
       "Bronze pickaxe": 8.0,
@@ -15556,11 +15556,11 @@
         ],
         "Barb-tailed kebbit": [
           33,
-          168.0
+          134.4
         ],
         "Birdhouse (scenery)": [
           5,
-          280.0
+          112.0
         ],
         "Black chinchompa (Hunter)": [
           73,
@@ -15688,7 +15688,7 @@
         ],
         "Magic birdhouse": [
           74,
-          1140.0
+          969.0
         ],
         "Magpie impling": [
           65,
@@ -15696,7 +15696,7 @@
         ],
         "Mahogany birdhouse": [
           49,
-          960.0
+          480.0
         ],
         "Maniacal monkey (Hunter)": [
           60,
@@ -15704,7 +15704,7 @@
         ],
         "Maple birdhouse": [
           44,
-          820.0
+          369.0
         ],
         "Moonlight antelope": [
           91,
@@ -15732,7 +15732,7 @@
         ],
         "Oak birdhouse": [
           14,
-          420.0
+          168.0
         ],
         "Orange salamander (Hunter)": [
           47,
@@ -15752,7 +15752,7 @@
         ],
         "Prickly kebbit": [
           37,
-          204.0
+          147.2
         ],
         "Psykk bat": [
           90,
@@ -15760,7 +15760,7 @@
         ],
         "Pyre fox": [
           57,
-          222.0
+          177.6
         ],
         "Rainbow crab (Hunter)": [
           77,
@@ -15816,7 +15816,7 @@
         ],
         "Sabre-toothed kebbit": [
           51,
-          200.0
+          160.0
         ],
         "Sabre-toothed kyatt": [
           55,
@@ -15860,7 +15860,7 @@
         ],
         "Teak birdhouse": [
           34,
-          700.0
+          280.0
         ],
         "Tecu salamander (Hunter)": [
           79,
@@ -15876,11 +15876,11 @@
         ],
         "Wild kebbit": [
           23,
-          128.0
+          102.4
         ],
         "Willow birdhouse": [
           24,
-          560.0
+          224.0
         ],
         "Wyrmscraig Goat": [
           60,
@@ -15888,7 +15888,7 @@
         ],
         "Yew birdhouse": [
           59,
-          1020.0
+          612.0
         ],
         "Young impling": [
           22,
@@ -16520,7 +16520,7 @@
         ],
         "Door (H.A.M. Hideout Jail)": [
           1,
-          4.0
+          3.8
         ],
         "Door (H.A.M. Storerooms)": [
           23,
@@ -17996,10 +17996,6 @@
         "": [
           [
             1,
-            1.0
-          ],
-          [
-            20,
             2.0
           ],
           [
@@ -18374,7 +18370,7 @@
           "materials": []
         },
         {
-          "name": "Colossal_Wyrm_Agility_Course",
+          "name": "Colossal Wyrm Agility Course",
           "level": 62,
           "experience": 749.6,
           "kind": "Agility Course",
@@ -18382,7 +18378,7 @@
           "materials": []
         },
         {
-          "name": "Colossal_Wyrm_Agility_Course",
+          "name": "Colossal Wyrm Agility Course",
           "level": 50,
           "experience": 504.1,
           "kind": "Agility Course",
@@ -18390,7 +18386,7 @@
           "materials": []
         },
         {
-          "name": "Leaping_trout",
+          "name": "Leaping trout",
           "level": 15,
           "experience": 5.0,
           "kind": "Barbarian Fishing",
@@ -18398,7 +18394,7 @@
           "materials": []
         },
         {
-          "name": "Leaping_salmon",
+          "name": "Leaping salmon",
           "level": 30,
           "experience": 6.0,
           "kind": "Barbarian Fishing",
@@ -18406,7 +18402,7 @@
           "materials": []
         },
         {
-          "name": "Leaping_sturgeon",
+          "name": "Leaping sturgeon",
           "level": 45,
           "experience": 7.0,
           "kind": "Barbarian Fishing",
@@ -31976,7 +31972,7 @@
               "quantity": 1.0
             },
             {
-              "name": "Lily of the sands",
+              "name": "Lily of the Sands",
               "quantity": 1.0
             }
           ]
@@ -48652,7 +48648,7 @@
       "infobox loops": 235,
       "node cycles": 13,
       "node respawns": 164,
-      "parallel steps": 9,
+      "parallel steps": 8,
       "spawn tiers": 4,
       "tool speeds": 17
     }
