@@ -900,7 +900,7 @@ class TestRotationDividesTheWait:
 class TestUnitsWorked:
     """`units_worked` is the one place "how many at once" is decided.
 
-    Three layers and one number; what the number *buys* is `rate_at`'s
+    Four layers and one number; what the number *buys* is `rate_at`'s
     business, and the point of the split is that a skill nobody has modelled
     yet gets the idea for free rather than by copying Thieving.
     """
@@ -942,6 +942,33 @@ class TestUnitsWorked:
         )
         assert self._units(profile, "Box trap", "Black chinchompa", 99) == 6.0
         assert self._units(profile, "Box trap", "Black chinchompa", 1) == 2.0
+
+    def test_a_flat_loop_limit_beats_the_table(self) -> None:
+        """**A limit the game states without a level cannot go in the
+        table.** The deadfall's is "increased from 1 to 2" and nothing more,
+        while `Tables.parallel` describes the four snare-and-box loops - so
+        left to fall through, a deadfall would be handed five traps at level
+        80, which the game does not allow."""
+        profile = gathering.SkillProfile(
+            parallel_kinds=frozenset({"Box trap", "Deadfall"}),
+            worked_by_kind={"Deadfall": 2.0},
+        )
+
+        assert self._units(profile, "Deadfall", "Wild kebbit", 99) == 2.0
+        assert self._units(profile, "Deadfall", "Wild kebbit", 1) == 2.0
+        assert self._units(profile, "Box trap", "Ferret", 99) == 5.0, "table untouched"
+
+    def test_a_per_node_count_still_beats_a_flat_loop_limit(self) -> None:
+        """The same update states the exception in the same breath - "maniacal
+        monkeys remain limited to one trap" - and it is also the row the
+        deadfall interval is fitted against, so it has to stay at one."""
+        profile = gathering.SkillProfile(
+            parallel_kinds=frozenset({"Deadfall"}),
+            worked_by_kind={"Deadfall": 2.0},
+            worked_at={"maniacal monkey (hunter)": 1.0},
+        )
+
+        assert self._units(profile, "Deadfall", "Maniacal monkey (Hunter)", 99) == 1.0
 
 
 class TestCurvesThisProjectSuppliesItself:
@@ -2788,3 +2815,55 @@ class TestACandleStandThatIsNotAStall:
         # Carried even though a `Pickpocket` needs none, so the fact sits next
         # to the loop it explains.
         assert self._PROFILE.stated_respawns["candles"] == 0.0
+
+
+class TestTheDeadfallRunsTwoTraps:
+    """The 19 August 2026 `Summer Sweep Up - Hunter & Skilling` rebalance.
+
+    It moved two things at once and reading only one of them was wrong in a
+    way no total would show: Hunter experience from the deadfall creatures
+    fell ~20% (prickly kebbit ~27%, oak birdhouse 60%), and **the deadfall
+    trap limit went from 1 to 2**. Taking the cut without the doubling made
+    every deadfall creature read a fifth slow.
+    """
+
+    def test_the_limit_is_flat_rather_than_a_level_table(self) -> None:
+        """Neither the update note nor the `Deadfall` page puts a level on it,
+        and `Tables.parallel` is a scrape of the *multi-trap* table, which is
+        about box, net, bird and rabbit."""
+        profile = gathering.PROFILES["Hunter"]
+
+        assert profile.worked_by_kind == {"Deadfall": 2.0}
+
+    def test_the_loop_is_simultaneous_so_the_count_divides_the_rolling(self) -> None:
+        """**`parallel_kinds` carries two meanings and this is the second.**
+        Two boulders set at once really do halve the wait, where rotating
+        between three chests never makes one chest open faster."""
+        assert "Deadfall" in gathering.PROFILES["Hunter"].parallel_kinds
+
+    def test_the_maniacal_monkey_is_exempt(self) -> None:
+        """Stated in the same breath - "maniacal monkeys remain limited to one
+        trap" - and it matters twice over, because it is also the single row
+        the 105-tick deadfall interval is fitted against."""
+        profile = gathering.PROFILES["Hunter"]
+
+        assert profile.worked_at["maniacal monkey (hunter)"] == 1.0
+        assert profile.roll_ticks_by_kind["Deadfall"] == 105.0
+
+    def test_the_exemption_is_what_leaves_the_fit_standing(self) -> None:
+        """Had the monkey taken the second trap, the interval fitted to
+        `wiki:hunter`'s 51,000 would have reproduced 1.6x its own source - so
+        this is the fit's own precondition, not a detail of one creature."""
+        tables = gathering.Tables(
+            parallel={"Hunter": {"": ((1, 2.0), (80, 5.0))}},
+        )
+        profile = gathering.PROFILES["Hunter"]
+
+        monkey = gathering.units_worked(
+            tables, profile, "Hunter", "Deadfall", "Maniacal monkey (Hunter)", 99
+        )
+        kebbit = gathering.units_worked(
+            tables, profile, "Hunter", "Deadfall", "Wild kebbit", 99
+        )
+
+        assert (monkey, kebbit) == (1.0, 2.0)

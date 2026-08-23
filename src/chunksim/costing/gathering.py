@@ -378,13 +378,32 @@ class SkillProfile:
     #: applies to.
     #:
     #: **The table says how many; this says what it is about.** The Hunter page
-    #: tabulates 1, 2, 3, 4, 5 traps at levels 1, 20, 40, 60 and 80 and names
-    #: the loops it applies to in prose - box trapping, net trapping and bird
-    #: snaring, but not falconry or tracking - so that sentence has to be
-    #: encoded somewhere, and a set of loops beside the table is the least it
-    #: can be. Nothing else is gated on this: a node with no table and no
-    #: `worked_at` entry simply works one at a time.
+    #: tabulates 2, 3, 4, 5 traps at levels 1, 40, 60 and 80 and names the
+    #: loops it applies to in prose - box trapping, net trapping, bird snaring
+    #: and rabbit snaring, but not falconry or tracking - so that sentence has
+    #: to be encoded somewhere, and a set of loops beside the table is the
+    #: least it can be. Nothing else is gated on this: a node with no table and
+    #: no `worked_at` entry simply works one at a time.
+    #:
+    #: **Membership is also what lets a count divide the rolling interval**
+    #: (`rate_at`'s `rolling_units`), because only a *simultaneous* loop can -
+    #: rotation between three chests never makes one chest open faster. So a
+    #: loop that runs several traps at once belongs here even when the scraped
+    #: table is about other loops; `worked_by_kind` is how it says its own
+    #: count.
     parallel_kinds: frozenset[str] = frozenset()
+    #: Flat per-loop counts, for a limit the game states as one number rather
+    #: than as a level table.
+    #:
+    #: **The deadfall is the case and it is the middle of three layers.** The
+    #: 19 August 2026 rebalance says "the deadfall trap limit has increased
+    #: from 1 to 2" with no level in it, so it cannot go in `Tables.parallel`,
+    #: which is a scrape of the Hunter page's *multi-trap* table and describes
+    #: the four snare-and-box loops. Left to fall through to that table a
+    #: deadfall would be handed five traps at level 80, which the game does not
+    #: allow. Checked after `worked_at`, so the same update's exception -
+    #: "maniacal monkeys remain limited to one trap" - is one entry there.
+    worked_by_kind: Mapping[str, float] = field(default_factory=dict)
     #: The calculator `kind`s where a node with a published restock time and
     #: **no** success chart does not fail, rather than being unknown.
     #:
@@ -1662,6 +1681,11 @@ PROFILES: dict[str, SkillProfile] = {
             "lucky impling": "a wandering rare spawn, and no published figure prices one",
         },
         certain_kinds=frozenset({"Crab trapping"}),
+        # **The deadfall is here for the second reason `parallel_kinds` gives
+        # and not the first.** The scraped multi-trap table is about box, net,
+        # bird and rabbit; the deadfall's own limit is flat and lives in
+        # `worked_by_kind`. What membership buys is that two traps set at once
+        # divide the rolling interval, which is the whole point of the change.
         parallel_kinds=frozenset(
             {
                 "Box trap",
@@ -1669,12 +1693,35 @@ PROFILES: dict[str, SkillProfile] = {
                 "Bird snare",
                 "Rabbit snare",
                 "Crab trapping",
+                "Deadfall",
                 # The `Magic box` page carries its own copy of the trap table,
                 # identical to the Hunter page's, so the skill-wide steps serve
                 # it and no second table is needed.
                 "Magic box",
             }
         ),
+        # **Stated as one number by the update that introduced it**: "the
+        # deadfall trap limit has increased from 1 to 2" (19 August 2026,
+        # `Summer Sweep Up - Hunter & Skilling`), repeated on the `Deadfall`
+        # page itself. No level appears in either statement, which is why this
+        # is flat rather than a table.
+        worked_by_kind={"Deadfall": 2.0},
+        # **The one creature the two-trap change exempts**, and the same
+        # update says so in the same breath: "maniacal monkeys remain limited
+        # to one trap". It is also the row `Deadfall`'s 105-tick interval is
+        # fitted against - `wiki:hunter`'s 51,000, reproduced at 1.00x - so
+        # keeping it at one trap is what leaves that fit standing rather than
+        # silently making it 1.6x its own source.
+        #
+        # **Which also means the two-trap end is unanchored**, the caveat
+        # `Bird snare` carries one step further out: the only published
+        # deadfall figure is the exempt creature's, so nothing checks that a
+        # second boulder really halves the wait. It is the same assumption
+        # every other trap loop here makes, and it is a doubling from the
+        # anchor rather than bird snaring's 2-to-5, so it is carried without a
+        # provenance cap - but one published post-rebalance figure for any of
+        # the five would settle it, and that is the first thing to look for.
+        worked_at={"maniacal monkey (hunter)": 1.0},
         parallel_bonus={
             "black chinchompa (hunter)": 1.0,
             "black salamander (hunter)": 1.0,
@@ -2372,10 +2419,11 @@ def units_worked(
 ) -> float:
     """How many of `node` this player works at once.
 
-    **One number, three sources, most specific first.** A per-node count where
-    the location publishes one; else the loop's own published level table,
-    where the profile says that table applies here; else the skill's default,
-    which is one for everything but Woodcutting.
+    **One number, four sources, most specific first.** A per-node count where
+    the location publishes one; else a flat per-loop limit the game states
+    without a level (`worked_by_kind`); else the loop's own published level
+    table, where the profile says that table applies here; else the skill's
+    default, which is one for everything but Woodcutting.
 
     `parallel_bonus` is added on top of the table rather than replacing it,
     because the Wilderness trap is an extra one and has to keep tracking the
@@ -2388,6 +2436,9 @@ def units_worked(
     override = profile.worked_at.get(node.lower())
     if override is not None:
         return override
+    flat = profile.worked_by_kind.get(kind)
+    if flat is not None:
+        return flat + profile.parallel_bonus.get(node.lower(), 0.0)
     units = profile.worked
     if kind in profile.parallel_kinds:
         loops = tables.parallel.get(skill) or {}

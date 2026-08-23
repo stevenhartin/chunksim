@@ -1884,6 +1884,44 @@ until the docstring says otherwise; the numbers that carry information are the
 ones with several rows and a residual, like Woodcutting's 12/17 and Hunter's
 6/10.
 
+**A game update can move two numbers in opposite directions, and reading one
+of them is worse than reading neither.** `Summer Sweep Up - Hunter & Skilling`
+(19 August 2026) cut the deadfall creatures' experience ~20% - prickly kebbit
+~27%, oak birdhouse 60% - **and** raised the deadfall trap limit from 1 to 2.
+The blob was last taken the same day, so a re-scrape four days later brought
+the cut and left the doubling in prose, which read as a fifth-slower model
+rather than as a missing mechanic. Every changed value was checked against the
+page's own `{{Subject changes}}` entry rather than inferred from the diff -
+`420 -> 168` against "reduced by 60%" - which is what made the other half
+visible at all.
+
+**The limit is flat, so it cannot live in the scraped table.**
+`Tables.parallel` is the Hunter page's *multi-trap* table, which the same
+update moved to 2/3/4/5 at levels 1/40/60/80 and which names box, net, bird
+and rabbit in prose. A deadfall left to fall through it would be handed five
+traps at 80. `SkillProfile.worked_by_kind` is a flat per-loop count checked
+between `worked_at` and that table, and `Deadfall` joins `parallel_kinds` for
+the **second** thing membership means - only a simultaneous loop lets the
+count divide the rolling interval, where rotation between three chests never
+makes one chest open faster.
+
+**The exemption is the fit's own precondition, which is the part worth
+keeping.** "Maniacal monkeys remain limited to one trap" is stated in the same
+breath, and the monkey is also the single row `Deadfall`'s 105-tick interval
+is fitted against - `wiki:hunter`'s 51,000, reproduced at 1.00x. Had it taken
+the second trap the interval would have reproduced 1.6x its own source. So the
+exemption is what leaves the fit standing, and no provenance cap was needed:
+the anchor is untouched by both halves of the update. **What is unanchored is
+the two-trap end** - the only published deadfall figure is the exempt
+creature's - so nothing checks that a second boulder halves the wait. It is
+the assumption every other trap loop here already makes and a doubling rather
+than `Bird snare`'s 2-to-5, so it is carried and recorded rather than capped;
+one published post-rebalance figure for any of the five would settle it.
+
+Barb-tailed kebbit reads 19,200/hr against 12,000 before the update and 9,600
+with the cut alone. No climb moves on any of the three maps and the coverage
+census is unchanged - none of them trains Hunter on a deadfall.
+
 **"Nothing else published can check it" is a claim with a shelf life.** That
 sentence was in `gathering.PROFILES["Thieving"]` about its 15.5-tick chest
 interval, fitted to the Rogues' Castle guide's 270,154/hr - and `Chest (Aldarin
