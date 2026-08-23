@@ -498,6 +498,16 @@ The modules, and what each owns:
   experience), and the coupon-collector arithmetic a green log actually is.
   **`attackers` divides the time-to-kill and nothing else**, which is the line
   between a party helping and a party making a raid free.
+- `xeric.py` - the Chambers of Xeric: a drawn layout priced as its **mean**
+  rather than as a draw, since a player running 2,000 raids gets the average.
+  **Points are not damage** - a solo raid's rooms come to ~4,300 hitpoints
+  against a published 30,000 points, because the braziers and the grubs
+  dominate - so the guide's own figure is the anchor and reproduces its other
+  two. The chest is exact: 1% a 8,676 points, capped at 65.7% per roll, up to
+  six rolls. **Only Challenge Mode can close the log** (the colour kit and the
+  dust are its alone, named at zero elsewhere so the arithmetic says so), and
+  what binds it is `Xeric's champion` at 2,000 completions rather than any
+  drop rate. The Guardians are a puzzle, not a fight.
 - `theatre.py` - the Theatre of Blood: six rooms in a fixed order, no puzzles,
   no points, which is why the sequencer was built against it. Three modes as
   separate `osrs-dps` monsters whose suffixes do not follow a rule, so every
