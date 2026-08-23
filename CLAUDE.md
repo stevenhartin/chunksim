@@ -1257,6 +1257,26 @@ only `{{Skilling success chart}}` is for the *fish*. The report said
 `unpriced`. `trawler.refused` says it where a reader can see it, gated on the
 leaks actually being priced for `foundry.refused`'s reason.
 
+**A second skill in a gate can hide a method from the report without moving a
+single rate.** `costing/chambers.py` read `Psykk bat`'s sentence - "they
+require a **Hunter** level of 90 **to catch** ... Once caught, raw psykk bats
+can be **cooked** ... requiring a **Cooking** level of 90" - as a compound
+gate, `min(skill, Cooking) >= requirement`. It is two requirements for two
+actions: `{{Hunter info}}` states `level = 90` and no Cooking, and upstream
+files `Catch a ~|psykk bat|~` and `Cook a ~|psykk bat|~` as separate
+challenges with separate levels.
+
+**What the misreading cost was the report rather than a number.** The two
+ladders match tier for tier, so on a map whose Cooking keeps up nothing moves
+- and a band for a tier the map's Cooking could not reach was never emitted at
+all, so its challenge got **no knob** and read `unpriced`: the one word meaning
+"nothing reached this" about a method the module prices exactly. The export
+census borrows a map's progress and infers Cooking in the thirties, so it hid
+**six of the seven bats and six of the eight fish**. Hunter goes 60 modelled
+to **66** and 6 unpriced to **0**; Fishing 49 to **55** and 9 to 3. No climb
+moves on any cached map, which is the point: the bug was invisible in every
+number and only ever showed in the coverage column.
+
 **The Chambers of Xeric is nearly all modelled already, and the one family
 that was not turned on a word.** The raid's seven bats, eight fish, sixteen
 cooks, its kindling and its grubs all price through the ordinary layers - the

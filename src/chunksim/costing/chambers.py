@@ -1,17 +1,28 @@
-"""Chambers of Xeric: whichever creature your two levels allow.
+"""Chambers of Xeric: whichever creature your level allows.
 
-**You do not choose, you are given the best one you qualify for**, and the
-qualification is on *two* skills at once. Every page states its requirement
-twice - "a Hunter level of 90 to catch" against "requiring a Cooking level of
-90", and for the fish "a Fishing level of 90" against "Cooking ... 90" - and
-the pair is equal on every page that states both. So the gate is
-`min(skill, Cooking) >= requirement`, and a player with 99 Hunter and 89
-Cooking is a level-89 bat hunter.
+**You do not choose, you are given the best one you qualify for.**
+
+**The gate is one skill and used to be two, which was a misreading of the
+sentence it came from.** Every page states two requirements - `Psykk bat` says
+"they require a **Hunter** level of 90 to catch and grant 29 Hunter
+experience. Once caught, raw psykk bats can be **cooked** into a psykk bat
+(6), requiring a **Cooking** level of 90" - and this module read the pair as a
+compound gate, `min(skill, Cooking) >= requirement`. It is two requirements
+for two actions. `{{Hunter info}}` states `level = 90` and no Cooking, and
+upstream agrees: `Catch a ~|psykk bat|~` is Hunter 90 and `Cook a ~|psykk
+bat|~` is a separate Cooking 90 challenge priced by its own recipe.
+
+**What the misreading cost was the report rather than a rate.** The ladders
+happen to match tier for tier, so on a map whose Cooking keeps up nothing
+moved - but the band for a tier the map's Cooking could not reach was never
+emitted at all, so its challenge got no knob and read **`unpriced`**: the one
+word meaning "nothing reached this" about a method this module knows exactly
+how to price. On the export census, which borrows a map's progress and infers
+Cooking in the thirties, that hid six of the seven bats and six of the eight
+fish.
 
 Two families, one mechanic. Seven bats netted for Hunter and seven fish caught
-for Fishing, on the same ladder of requirements - 1, 15, 30, 45, 60, 75, 90 -
-and both gated by Cooking, because in the raid what you catch is what you are
-about to cook.
+for Fishing, on the same ladder of requirements - 1, 15, 30, 45, 60, 75, 90.
 
 That makes each of them one method stepping through seven tiers rather than
 seven methods competing, which is why they sit beside the gathering walk like
@@ -87,15 +98,14 @@ def catches_per_hour() -> float:
 
 
 def best(
-    tables: Tables, family: Family, level: int, cooking: int
-) -> tuple[str, float] | None:
-    """`(creature, experience)` for the best one both levels allow, or `None`.
+    tables: Tables, family: Family, level: int) -> tuple[str, float] | None:
+    """`(creature, experience)` for the best one `level` allows, or `None`.
 
-    **The lower of the two decides it**, which is the whole point: 99 in the
-    catching skill with 89 Cooking gets what 89 of each would.
+    **One skill, not two** - see the module docstring on the sentence that
+    used to be read as a compound gate.
     """
     entries = tables.skill_info.get(family.skill) or {}
-    held = min(level, cooking)
+    held = level
     found: tuple[str, float] | None = None
     for name, page in family.members:
         entry = entries.get(page)
@@ -108,7 +118,7 @@ def best(
 
 
 def methods(
-    tables: Tables, valid: Mapping[str, Mapping[str, object]], cooking: int
+    tables: Tables, valid: Mapping[str, Mapping[str, object]]
 ) -> dict[str, tuple[ComputedMethod, ...]]:
     """`{skill: (...)}` stepping through the tiers this map can reach."""
     if not tables.skill_info:
@@ -124,7 +134,7 @@ def methods(
             continue
         banded: list[ComputedMethod] = []
         for level in (1, *CURVE_STEPS):
-            chosen = best(tables, family, level, cooking)
+            chosen = best(tables, family, level)
             if chosen is None or chosen[0] not in reachable:
                 continue
             name, paid = chosen

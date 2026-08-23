@@ -1231,7 +1231,7 @@ def _gathered(
     ).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     for skill, methods in chambers.methods(
-        blobs.gathering, derived.challenges.valid, at_level.get("Cooking", 1)
+        blobs.gathering, derived.challenges.valid
     ).items():
         banded[skill] = (*banded.get(skill, ()), *methods)
     # **A Cooking method with no Cooking time in it**, so the *Fishing* level
