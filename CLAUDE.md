@@ -1257,6 +1257,20 @@ only `{{Skilling success chart}}` is for the *fish*. The report said
 `unpriced`. `trawler.refused` says it where a reader can see it, gated on the
 leaks actually being priced for `foundry.refused`'s reason.
 
+**Three of these in a row is a pattern, so the remaining `unpriced` set was
+swept for it deliberately.** The question - "is this priced somewhere the
+report cannot see?" - has a mechanical form: a module emitting one band for an
+activity upstream carries under *several* challenge names, where the knob
+names only one of them. Grepping `knob=f"training/` for anything that is not
+the loop's own task found two, and one was live: `costing/stated.py` emitted
+the lantern harpoon on `LANTERN_TASKS[0][0]`, so `Catch a ~|raw jumbo squid|~`
+read `unpriced` about a rate that is the **mix of the two squid** - the split
+between them is the whole model. `courses.Course.also`'s rule fixes it: the
+same band under each name, because it is the same spot. The other,
+`costing/forestry.py`'s `sorted(tasks)[0]`, is the same shape and costs
+nothing today because the other four Woodcutting event challenges are covered
+elsewhere - recorded here rather than left to be rediscovered.
+
 **A model can price a skill and never tell the report it did.** Slayer's whole
 rate comes from `costing/slayer.py` - a time-weighted distribution over a
 master's task list - and `estimate._skill_estimate` special-cases it, building

@@ -44,7 +44,9 @@ part was measured and which was chosen.
   lift them on the strength of the one that was measured.
 
 - **The lantern harpoon.** Two squid come off one spot and which you get is
-  decided by level: the page has the split at 69 Fishing (69% swordtip, 31%
+  decided by level - and **the band lands on both challenges**, because the
+  rate is the *mix* of the two: emitted on the swordtip alone it left `Catch a
+  ~|raw jumbo squid|~` reading `unpriced` about the very number it is half of: the page has the split at 69 Fishing (69% swordtip, 31%
   jumbo) and again at 91 (62%/38%), so the share is read at both ends and
   straight-lined between them. The *catch rate* is not on any page - 250 an
   hour at 52 rising to 400 at 99 comes from a video - so this is `GUESS` too,
@@ -419,15 +421,24 @@ def methods(
             paid = lantern_rate(tables, level)
             if paid <= 0:
                 continue
-            found.setdefault("Fishing", []).append(
-                ComputedMethod(
-                    method="lantern harpoon",
-                    xp_per_hour=paid,
-                    level=level,
-                    match=GUESS,
-                    knob=f"training/{LANTERN_TASKS[0][0]}/Fishing",
+            # **The band lands on both challenges, because it is one spot.**
+            # `lantern_rate` is a *mix* of the two squid - the split is the
+            # whole model - so a rate emitted on the swordtip alone left `Catch
+            # a ~|raw jumbo squid|~` reading `unpriced` about the very number
+            # it is half of. `courses.Course.also`'s rule: the same rate under
+            # each name, because it is the same action.
+            for task, _page in LANTERN_TASKS:
+                if task not in reachable:
+                    continue
+                found.setdefault("Fishing", []).append(
+                    ComputedMethod(
+                        method="lantern harpoon",
+                        xp_per_hour=paid,
+                        level=level,
+                        match=GUESS,
+                        knob=f"training/{task}/Fishing",
+                    )
                 )
-            )
     if MOSS_LIZARD_TASK in (valid.get("Hunter") or {}):
         for level in (20, *(step for step in CURVE_STEPS if step > 20)):
             paid = moss_lizard_experience(level)

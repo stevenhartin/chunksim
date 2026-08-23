@@ -110,6 +110,51 @@ class TestTheMossLizardCook:
         assert "stated.moss_lizard_cook_material_seconds_per_xp(" in source
 
 
+class TestTheLanternBandLandsOnBothSquid:
+    """**The rate is the mix of the two**, so emitting it on the swordtip
+    alone left `Catch a ~|raw jumbo squid|~` reading `unpriced` about the very
+    number it is half of. `courses.Course.also`'s rule."""
+
+    _TABLES = Tables(
+        skill_info={
+            "Fishing": {
+                "raw swordtip squid": (52, 100.0),
+                "raw jumbo squid": (69, 200.0),
+            }
+        }
+    )
+    _VALID: dict[str, dict[str, object]] = {
+        "Fishing": {task: True for task, _page in stated.LANTERN_TASKS}
+    }
+
+    def test_both_challenges_get_a_knob(self) -> None:
+        found = stated.methods(INFO, self._VALID, self._TABLES)["Fishing"]
+        knobs = {m.knob for m in found if m.method == "lantern harpoon"}
+
+        assert knobs == {
+            f"training/{task}/Fishing" for task, _page in stated.LANTERN_TASKS
+        }
+
+    def test_they_carry_the_same_rate_because_it_is_one_spot(self) -> None:
+        found = [
+            m
+            for m in stated.methods(INFO, self._VALID, self._TABLES)["Fishing"]
+            if m.method == "lantern harpoon" and m.level == stated.LANTERN_OPENS
+        ]
+
+        assert len({m.xp_per_hour for m in found}) == 1
+        assert len(found) == len(stated.LANTERN_TASKS)
+
+    def test_only_the_challenges_the_map_holds(self) -> None:
+        one: dict[str, dict[str, object]] = {
+            "Fishing": {stated.LANTERN_TASKS[0][0]: True}
+        }
+        found = stated.methods(INFO, one, self._TABLES)["Fishing"]
+        knobs = {m.knob for m in found if m.method == "lantern harpoon"}
+
+        assert knobs == {f"training/{stated.LANTERN_TASKS[0][0]}/Fishing"}
+
+
 class TestTheRiftsCraftingHalf:
     """**The same fragments, spent a second time.** One fragment makes one
     essence, so this must assume the same count the Mining ceiling does - and
