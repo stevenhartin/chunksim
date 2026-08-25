@@ -1806,19 +1806,24 @@ ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
  * corner.
  *
  * **Pivoted on the corner itself, not offset from an edge and rotated about
- * its own centre.** Three earlier attempts all used `bottom`/`right` offsets
- * (mirroring the old top-right ribbon's `top`/`right`) tuned against one
- * card's height - which is exactly the bug: `.knob-layers` wraps
- * (`flex-wrap`), so a card is one line tall with three short values and
- * three lines tall with a note or a long path, and an offset measured in
- * pixels from an edge is right for only one of those. `bottom: 0; right: 0;
- * transform-origin: bottom right` anchors the word's own bottom-right corner
- * exactly on the card's, so rotating around that fixed point never depends
- * on the card's height at all - verified by rendering the same two widths
- * against a one-line card and a three-line one in a headless browser: the
- * ribbon lands identically in both. Positive `rotate(45deg)`, not the
- * negative angle a `bottom`-anchored version needed, because pivoting on the
- * opposite corner reverses which way "ascending" comes out clockwise.
+ * its own centre.** `.knob-layers` wraps (`flex-wrap`), so a card is one
+ * line tall with three short values and three lines tall with a note or a
+ * long path - a `bottom`/`right` *offset*, measured in pixels from an edge,
+ * is only ever right for one of those. `bottom: 0; right: 0` anchors the
+ * band's own corner exactly on the card's, so rotating around that fixed
+ * point never depends on the card's height at all.
+ *
+ * **`transform-origin: bottom left`, not `bottom right`.** Anchoring the
+ * translate/rotate on the corner nearer the text's own *start* is what lets
+ * `translate(35px, 15px)` slide the whole band down-and-right from there
+ * without walking the far end of the word off the card - pivoting on the
+ * opposite corner (tried first) needed a much smaller nudge and still
+ * clipped depending on the card's height, which is what the translate here
+ * replaces. Watch the hyphen: `bottom-left` is not a valid keyword pair (CSS
+ * wants the two words space-separated) and a browser drops the whole
+ * declaration rather than warn - it silently keeps whatever
+ * `transform-origin` cascaded from earlier, which is an easy way to tune a
+ * translate against a pivot that was never the one actually applied.
  *
  * **Behind the card's own text, and faint.** The border already carries
  * "yours" at a glance (see `.knob.mine` above), so the ribbon is a second,
@@ -1843,10 +1848,10 @@ ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
   position: absolute;
   bottom: 0;
   right: 0;
-  transform-origin: bottom right;
+  transform-origin: bottom left;
   width: max-content;
-  transform: rotate(45deg);
-  padding: 2px var(--s3);
+  transform: translate(35px, 15px) rotate(-45deg);
+  padding: 2px 20px;
   background: var(--amber);
   opacity: 0.55;
   z-index: -1;
