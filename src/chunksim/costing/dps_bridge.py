@@ -146,6 +146,7 @@ from chunksim.costing.heuristics import Heuristics, Rate, SlayerTask
 from chunksim.derive.pipeline import Derived
 from chunksim.costing.slayer import task_monsters
 from chunksim.model.summary import _mapping
+from chunksim.costing import doom_of_mokhaiotl as _doom_of_mokhaiotl
 from chunksim.costing import duke_sucellus as _duke_sucellus
 from chunksim.costing import giant_mole as _giant_mole
 from chunksim.costing import grotesque_guardians as _grotesque_guardians
@@ -163,6 +164,7 @@ from chunksim.costing import sire as _sire
 from chunksim.costing import skotizo as _skotizo
 from chunksim.costing import vetion as _vetion
 from chunksim.costing import vorkath as _vorkath
+from chunksim.costing import yama as _yama
 from chunksim.costing import zalcano as _zalcano
 from chunksim.costing import zulrah as _zulrah
 from chunksim.costing.fightscripts import FightScript, Phase
@@ -469,6 +471,7 @@ GROUP_BOSSES = frozenset(
 #: than the downtime shape a `Phase` prices. Neither omission is a
 #: `costing/` module - there is nothing here to write a docstring next to.
 SCRIPTS: Mapping[str, FightScript] = {
+    _doom_of_mokhaiotl.SCRIPT.name: _doom_of_mokhaiotl.SCRIPT,
     _duke_sucellus.SCRIPT.name: _duke_sucellus.SCRIPT,
     _grotesque_guardians.SCRIPT.name: _grotesque_guardians.SCRIPT,
     _hueycoatl.SCRIPT.name: _hueycoatl.SCRIPT,
@@ -479,6 +482,7 @@ SCRIPTS: Mapping[str, FightScript] = {
     _phantom_muspah.SCRIPT.name: _phantom_muspah.SCRIPT,
     _sire.SCRIPT.name: _sire.SCRIPT,
     _vorkath.SCRIPT.name: _vorkath.SCRIPT,
+    _yama.SCRIPT.name: _yama.SCRIPT,
     _zulrah.SCRIPT.name: _zulrah.SCRIPT,
     **_moons.SCRIPTS,
     **_royal_titans.SCRIPTS,

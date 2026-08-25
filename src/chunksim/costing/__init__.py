@@ -1081,6 +1081,24 @@ Thieving at 84,560 flat against 1,005 at level 1. See `_modelled_tasks`.
   stops the player attacking her directly, so it is a resource cost, not
   the downtime shape a `Phase` prices. Neither got a module - there was
   nothing to write one about.
+- `yama.py` - two `osrs_dps` stat blocks for her own bar (`hp_share=2/3` +
+  `1/3` against the published 66.6%/33.3% thresholds, exact thirds rather
+  than the page's rounding) plus a Judge of Yama fought twice in between,
+  the "small target killed several times over" shape (`hp_share=2.0`). The
+  Judge's own "always land as both successful and maximum hits" and
+  alternating-style requirement have no path into `osrs_dps`'s ordinary
+  formula, so that phase is a **ceiling in the slow direction**, same
+  posture as `nightmare.py`'s totems.
+- `doom_of_mokhaiotl.py` - eight independent full-health targets, one per
+  delve level (`#Delve 1`-`#Delve 8`, hitpoints rising 525 to 675, matched
+  exactly), each carrying a guessed `MECHANIC_SECONDS_PER_DELVE` for the
+  shield/larvae/rock-throw mechanics none of which states its own downtime.
+  **The one thing this module states rather than resolves**: the wiki
+  publishes that loot rolls once per delve level, but the export's own
+  drop table is one flat rate with no notion of depth - whether that rate
+  means one level's roll or a whole climb's is not knowable from what
+  either side publishes, and an hours figure for a specific unique should
+  be read with that in mind.
 - `dps_overhead.py`, `recipe_overhead.py`, `gathering_overhead.py` - the
   harnesses that fitted the overhead constants. **No caller in `src/`**; they
   exist to be re-run when someone doubts them.

@@ -1405,6 +1405,7 @@ class TestScriptedBossesDoNotDisturbOrdinaryOnes:
 
     def test_scripts_is_keyed_by_the_real_boss_modules(self) -> None:
         from chunksim.costing import (
+            doom_of_mokhaiotl,
             duke_sucellus,
             grotesque_guardians,
             hueycoatl,
@@ -1418,6 +1419,7 @@ class TestScriptedBossesDoNotDisturbOrdinaryOnes:
             sire,
             vetion,
             vorkath,
+            yama,
             zulrah,
         )
 
@@ -1433,6 +1435,8 @@ class TestScriptedBossesDoNotDisturbOrdinaryOnes:
             "Nex": nex.SCRIPT,
             "Phantom Muspah": phantom_muspah.SCRIPT,
             "Vorkath": vorkath.SCRIPT,
+            "Yama": yama.SCRIPT,
+            "Doom of Mokhaiotl": doom_of_mokhaiotl.SCRIPT,
             **moons.SCRIPTS,
             **royal_titans.SCRIPTS,
             **vetion.SCRIPTS,
