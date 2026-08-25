@@ -6146,12 +6146,21 @@ function knobLayers(knob) {
   /* **Whenever the config stack was outrun, not only when it is empty.**
    * A layer holding a number is already shown above - but where `computed`
    * is true that number is not what the estimate spent, so the row this
-   * prints is the only place that says so. `knob.layer === null` still
-   * takes the plain "Default" label; anything else means a real config
-   * value lost to a fresher computation. */
+   * prints is the only place that says so.
+   *
+   * **Always "Computed", never "Default".** This used to say "Default"
+   * when `knob.layer` was `null` - but the three rows above already show
+   * whether a config layer had an opinion (a number, or a dash), so that
+   * distinction is not this row's to repeat. What this row adds is that
+   * the figure below it is a live model's answer rather than anything
+   * written to a file, whether or not a file happened to hold something
+   * else: a raid's own published run duration with nothing to override it
+   * and a DPS-simulated kill rate that beat a real wiki scrape are the same
+   * kind of number from this row's point of view; "Default" on the first
+   * one read as a low-confidence guess, which it was not. */
   if (computed) {
     out += tmpl`<div class="knob-layer on">
-      <span class="knob-layer-name">${knob.layer === null ? "Default" : "Computed"}</span>
+      <span class="knob-layer-name">Computed</span>
       <span class="knob-layer-value">${formatKnobNumber(knob.effective, knob.branch)}</span></div>`;
   }
   return out;
