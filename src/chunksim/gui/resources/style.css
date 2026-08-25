@@ -1803,23 +1803,22 @@ ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
 .knob.mine { border-color: var(--amber); }
 
 /* A corner ribbon in the bottom-right, ascending left-to-right through the
- * corner - the mirror image of the top-right ribbon this replaced (which
- * descended left-to-right: `top`/`right`/`rotate(45deg)`), not a redesign of
- * it. `right` alone anchors it toward that corner; a *symmetric* `left`/
- * `right` offset was tried first and centred the band on the whole card
- * instead, crossing the middle rather than sitting in the corner - the bug
- * behind the first two attempts at this.
+ * corner.
  *
- * **`bottom` is small, and deliberately not a mirror of the old `top`
- * value.** The old ribbon's `top: 56px` gave the *descending* band room to
- * clear the card's own top edge before its word started - flipping to
- * ascending moves that same clearance requirement to the *bottom* edge, but
- * the corner it now has to clear is shallower (measured against `--s3`
- * rather than `--s6*2+s3`), because ascending toward the right foreshortens
- * against a wide, short card differently than descending from the top did.
- * Verified by rendering both the old and new ribbon against the real markup
- * in a headless browser and comparing pixel for pixel, not by eye against
- * this comment's own arithmetic.
+ * **Pivoted on the corner itself, not offset from an edge and rotated about
+ * its own centre.** Three earlier attempts all used `bottom`/`right` offsets
+ * (mirroring the old top-right ribbon's `top`/`right`) tuned against one
+ * card's height - which is exactly the bug: `.knob-layers` wraps
+ * (`flex-wrap`), so a card is one line tall with three short values and
+ * three lines tall with a note or a long path, and an offset measured in
+ * pixels from an edge is right for only one of those. `bottom: 0; right: 0;
+ * transform-origin: bottom right` anchors the word's own bottom-right corner
+ * exactly on the card's, so rotating around that fixed point never depends
+ * on the card's height at all - verified by rendering the same two widths
+ * against a one-line card and a three-line one in a headless browser: the
+ * ribbon lands identically in both. Positive `rotate(45deg)`, not the
+ * negative angle a `bottom`-anchored version needed, because pivoting on the
+ * opposite corner reverses which way "ascending" comes out clockwise.
  *
  * **Behind the card's own text, and faint.** The border already carries
  * "yours" at a glance (see `.knob.mine` above), so the ribbon is a second,
@@ -1831,21 +1830,23 @@ ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
  * fades the band itself for the same reason, not just to dim it against
  * the text on top.
  *
- * **Sized in `ch`, snug against the word rather than padded around it** -
- * `padding: 1px 0` leaves no horizontal breathing room at all, so the band
- * is exactly as wide as "EDITED" needs and no wider - the word was
- * "Overridden" and 20ch, sized the same way for it; verified against a
- * headless render for both that "EDITED" fits **and** that going narrower
- * still (9ch, tried first) clips it against the card's own right edge
- * instead of centering it. A future label longer than this needs the width
- * raised with it, same as before. */
+ * **`width: max-content`, not a `ch` count.** A fixed character width has to
+ * be hand-tuned per label and still depends on the font's own metrics for
+ * that many characters to actually fit - "Overridden" needed 20ch and
+ * "Edited" clipped at both 9ch and 11ch despite being the shorter word,
+ * because the card that clipped it wrapped its layers onto more lines than
+ * the one either number was checked against. Auto-sizing to the content
+ * removes the guess entirely: the band is exactly as wide as the word plus
+ * this padding, on any card, correct by construction rather than by
+ * measurement. */
 .knob-flag {
   position: absolute;
-  bottom: var(--s3);
-  right: calc(var(--s6) * -1);
-  width: 11ch;
-  transform: rotate(-45deg);
-  padding: 1px 0;
+  bottom: 0;
+  right: 0;
+  transform-origin: bottom right;
+  width: max-content;
+  transform: rotate(45deg);
+  padding: 2px var(--s3);
   background: var(--amber);
   opacity: 0.55;
   z-index: -1;
