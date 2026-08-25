@@ -50,7 +50,13 @@ ArchitecturesInstallIn64BitMode=x64compatible
 ; Files under Program Files need elevation; the data directory does not, and
 ; deliberately is not written here.
 PrivilegesRequired=admin
-UninstallDisplayIcon={app}\python\pythonw.exe
+; A limpwurt root, cropped from the OSRS Wiki's own item-detail render and
+; converted to a multi-resolution icon (CC BY-NC-SA 3.0 - see README.md's
+; Credits section). `chunksim.ico` is checked in as a binary; nothing here
+; regenerates it from the source render, so replacing the art means
+; replacing the file directly.
+SetupIconFile=chunksim.ico
+UninstallDisplayIcon={app}\chunksim.ico
 ; Lets the updater replace files this process has open rather than failing on
 ; a lock. chunksim also stands its own server down before launching us.
 CloseApplications=yes
@@ -68,10 +74,14 @@ Source: "{#Payload}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs cr
 
 [Icons]
 ; pythonw.exe rather than python.exe: a window opening behind a black console
-; is the tell of a Python program pretending to be an application.
-Name: "{group}\{#AppName}"; Filename: "{app}\python\pythonw.exe"; Parameters: "-m chunksim.gui"; WorkingDir: "{app}"
-Name: "{group}\{#AppName} on GitHub"; Filename: "{#AppURL}"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\python\pythonw.exe"; Parameters: "-m chunksim.gui"; WorkingDir: "{app}"; Tasks: desktopicon
+; is the tell of a Python program pretending to be an application. The
+; shortcut's own icon is named separately (`IconFilename`) because a shortcut
+; otherwise takes the icon baked into its target, which here is the generic
+; embedded-Python interpreter's - not something a user launching "chunksim"
+; should be looking for on their desktop.
+Name: "{group}\{#AppName}"; Filename: "{app}\python\pythonw.exe"; Parameters: "-m chunksim.gui"; WorkingDir: "{app}"; IconFilename: "{app}\chunksim.ico"
+Name: "{group}\{#AppName} on GitHub"; Filename: "{#AppURL}"; IconFilename: "{app}\chunksim.ico"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\python\pythonw.exe"; Parameters: "-m chunksim.gui"; WorkingDir: "{app}"; Tasks: desktopicon; IconFilename: "{app}\chunksim.ico"
 
 [Registry]
 ; PATH gets the install root, where chunksim.cmd is - not the python directory,

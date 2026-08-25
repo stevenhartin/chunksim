@@ -1028,3 +1028,13 @@ It was MIT until the optional [`osrs-dps`](https://github.com/stevenhartin/osrs-
 ship in the same distribution. That library is GPL-3.0, so a combined work has to be, and matching it
 was the simpler half of the choice. Versions released before the change stay MIT; nothing takes that
 back.
+
+## Credits
+
+The world map is the OSRS Wiki's own cartography, loaded live from its CDN and never cached by this
+project — see `gui/routes_reference.py`'s `_tile_source` for why. Section masks, skill icons and
+the Windows installer's icon (a limpwurt root, cropped from the
+[wiki's own item-detail render](https://oldschool.runescape.wiki/w/Limpwurt_root)) are the OSRS
+Wiki's [CC BY-NC-SA 3.0](https://creativecommons.org/licenses/by-nc-sa/3.0/) media, used under that
+license — non-commercial, attributed here, and any redistributed derivative (the installer icon
+among them) carries the same terms.

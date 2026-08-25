@@ -289,6 +289,7 @@ def verify_payload(*, with_dps: bool) -> list[str]:
         PAYLOAD / "chunksim.cmd",
         PAYLOAD / "chunksim-gui.cmd",
         PAYLOAD / "LICENSE",
+        PAYLOAD / "chunksim.ico",
     ]
     problems += [f"missing {path.relative_to(PAYLOAD)}" for path in required if not path.exists()]
     if not any((PAYLOAD / "python").glob("_zstd*.pyd")):
@@ -350,6 +351,13 @@ def main(argv: list[str] | None = None) -> int:
     launchers()
     for extra in EXTRAS:
         shutil.copy2(PROJECT / extra, PAYLOAD / extra)
+    # **The installer's own icon, copied flat into the payload root** - not
+    # through `EXTRAS`, which mirrors a checkout-relative path onto the
+    # payload and would put this under a `packaging/` subdirectory nothing
+    # else there needs. `chunksim.iss`'s `SetupIconFile` and every `[Icons]`
+    # entry point at `{app}\chunksim.ico`, so it has to sit beside
+    # `chunksim.cmd`, not just in the checkout the `.iss` is compiled from.
+    shutil.copy2(PROJECT / "packaging" / "chunksim.ico", PAYLOAD / "chunksim.ico")
 
     problems = verify_payload(with_dps=with_dps)
     for problem in problems:
