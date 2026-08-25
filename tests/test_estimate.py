@@ -524,6 +524,20 @@ def test_a_skill_with_no_joined_method_is_flagged_as_defaulted() -> None:
     assert result.skills[0].xp_per_hour == DEFAULT_XP_PER_HOUR
 
 
+def test_a_skill_already_past_its_goal_is_not_a_row() -> None:
+    """`Mine a ~|rune ore|~` wants level 85; a level override of 99 clears it
+    before this ever asks a rate for it. **Hidden, not a zero-hour row** -
+    `xp` reaching 0 means nothing is left to charge for, whether the level
+    came from a hand override, a linked account's real XP, or a quest
+    grant, and a row with nothing behind it is noise rather than a naming of
+    what already happened."""
+    result = _run(
+        _skilling_info(), _skilling_derived(), Heuristics(), level_overrides={"Mining": 99}
+    )
+
+    assert result.skills == ()
+
+
 def test_the_level_override_beats_the_passive_floor() -> None:
     # The map records no current level; `passive_skill` is the floor and an
     # override replaces it. See the module docstring.

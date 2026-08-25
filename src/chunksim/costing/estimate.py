@@ -3305,7 +3305,16 @@ def estimate(
         unallocated_quest_xp=lamps,
         tasks=tuple(tasks),
         items=tuple(items),
-        skills=tuple(skills),
+        # **A skill already past its goal is not a row, it is noise.** `xp`
+        # is what is still outstanding after the quest grant and the
+        # Slayer/Hitpoints credit above are both taken off the front, so a
+        # zero here means nothing this estimate can still charge for -
+        # `effective_levels` reaching the target from a linked account, a
+        # quest reward covering the rest, or the two crediting passes just
+        # above finishing the job. Filtered here rather than in the loop
+        # because the crediting passes need `combat_at`'s indices into
+        # `skills` to stay valid until they are done running.
+        skills=tuple(entry for entry in skills if entry.xp > 0),
         slayer=slayer_rate,
         slayer_masters=reachable_rates,
         superior_rolls=dict(walk.superior_rolls),
