@@ -580,3 +580,10 @@ a green `.venv/bin/pytest` as a change being verified.
   (why), this file (what spans modules) and the README (what a user types). It is the one that
   drifts, because nothing in the test suite reads it.
 - Run `mypy` and `.venv/bin/pytest`, then commit and push per change. Tracks `main` over SSH.
+- **This line is the standing authorization, so commit and push without asking first.** Run `mypy`
+  and `.venv/bin/pytest` green, then `git commit` and `git push` after every change (a discrete
+  task or fix, not every intermediate edit) — do not stop to confirm the commit or the push
+  themselves, only the git-safety cases (force-push, history rewrite, `--no-verify`, and the like)
+  still need it. **A push that fails is left alone, not retried or investigated** — a rejected
+  non-fast-forward push usually means the user pushed from elsewhere, and it is theirs to reconcile
+  and push later. A short factual note that it failed is fine; do not treat it as a blocker.
