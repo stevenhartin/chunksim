@@ -823,6 +823,74 @@ def test_the_uber_sentinel_holds_only_what_a_roll_could_reach(
     assert "9999" not in unlocked
 
 
+def test_the_uber_sentinel_forces_every_section_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unlocking a chunk alone only opens the section a real roll lands in -
+    the rest need a `Connect` link from somewhere already reachable, and on
+    a real map that strands real content (`Shilo Village` step 3 needs
+    `11566-3`, which nothing else connects to; a base map's own closed
+    `manualSections` seal strands more). The ceiling forces every section
+    of every chunk it holds `sections` for, wholesale, replacing whatever
+    the base map's own `manualSections` said - a deliberately broader
+    ceiling than `cli.training._unsealed`'s, see the module docstring.
+    """
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+    derived = _derived_ctx(
+        tmp_path,
+        monkeypatch,
+        {
+            "chunks": {LUMBRIDGE: {}, NORTH: {}},
+            "sections": {
+                LUMBRIDGE: {"0": {}, "1": {}, "2": {}},
+                NORTH: {"0": {}},
+            },
+        },
+    )
+    ctx = Context(root=tmp_path, check_origin=False, derivations=derived.derivations)
+
+    job = _wait(ctx, _body(_post("/api/fetch", ctx, {"map": "__UBER__", "base": "fray"}))["job"])
+    assert job["state"] == "done", job
+
+    envelope = cache.read_cache(job["result"]["open"], ctx.root)
+    sections = envelope["data"]["chunkinfo"]["manualSections"]
+    assert sections[LUMBRIDGE] == {"0": True, "1": True, "2": True}
+    assert sections[NORTH] == {"0": True}
+
+
+def test_the_uber_sentinel_drops_the_base_maps_own_manual_sections(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A player's own closed door - `manualSections: {chunk: {section:
+    false}}` - is a choice the ceiling has no business inheriting, so it is
+    replaced wholesale rather than merged."""
+    cache.write_cache(
+        "fray",
+        {
+            "chunks": {"unlocked": {LUMBRIDGE: LUMBRIDGE}},
+            "chunkinfo": {"manualSections": {LUMBRIDGE: {"1": False}}},
+        },
+        root=tmp_path,
+    )
+    derived = _derived_ctx(
+        tmp_path,
+        monkeypatch,
+        {
+            "chunks": {LUMBRIDGE: {}, NORTH: {}},
+            "sections": {LUMBRIDGE: {"0": {}, "1": {}}, NORTH: {"0": {}}},
+        },
+    )
+    ctx = Context(root=tmp_path, check_origin=False, derivations=derived.derivations)
+
+    job = _wait(ctx, _body(_post("/api/fetch", ctx, {"map": "__UBER__", "base": "fray"}))["job"])
+    assert job["state"] == "done", job
+
+    envelope = cache.read_cache(job["result"]["open"], ctx.root)
+    assert envelope["data"]["chunkinfo"]["manualSections"][LUMBRIDGE] == {
+        "0": True, "1": True,
+    }
+
+
 def test_the_uber_sentinel_is_refused_off_loopback(ctx: Context) -> None:
     """It is not a permission system; it is a statement that this is a local
     tool. `allowed_hosts` is non-empty exactly when `--host`/`--allow-host`

@@ -256,6 +256,30 @@ def _uber_map(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     it made 11,135 tasks valid where the rollable set makes 10,111, and forty
     of the difference were Prayer tasks that **the reference map does not have
     either**. A ceiling is only useful if a player could stand on it.
+
+    **Every section of every unlocked chunk is forced reachable too, not
+    just section `0`.** Unlocking a chunk alone only opens the section a
+    real roll lands you in - the rest need a `Connect` link from somewhere
+    already reachable, and measured on a real map that leaves real content
+    stranded: `Shilo Village` step 3 needs `11566-3`, which nothing else
+    here connects to, and the whole `Desert Treasure I`/`The Frozen
+    Door`/`Nex` chain strands behind `fray`'s own `manualSections` closing
+    `13878`'s sections 2-5 - a player's choice, carried over from the base
+    map, that a ceiling map has no business inheriting.
+
+    **This is a deliberate, broader choice than `cli.training._unsealed`
+    makes for the training coverage report**, which only drops a base map's
+    own `false` seals and leaves connectivity to decide the rest - reasoned
+    there as the more honest ceiling, since a `true` entry "opens a section
+    nothing else reaches, which is evidence a player can get there rather
+    than a choice to stay out." Forcing every section here does exactly
+    that "invented" thing on purpose: some of what it opens (`11566-3`) has
+    no real connection anywhere in the export at all, so this map is a
+    stronger ceiling than "everything a real roll could ever reach" -
+    useful for finding what the *derivation* refuses regardless of world
+    state, not for finding what a real player's route through the map
+    could prove. Both apps' Estimate/training reports already say when a
+    figure depends on which ceiling answered.
     """
     if ctx.allowed_hosts:
         raise ValueError("the uber map is a loopback-only development tool")
@@ -268,12 +292,29 @@ def _uber_map(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     chunks = [chunk_id for chunk_id in info.sections if chunk_id not in held]
     if not chunks:
         raise ValueError(f"{base!r} already holds every chunk")
+    # Every section this chunk has at all, forced reachable - see the
+    # docstring above. Replaces the base map's own `manualSections`
+    # wholesale rather than merging: this is a stronger claim than any
+    # `true`/`false` entry a player set, so nothing in it should survive.
+    sections_override = {
+        chunk_id: {section_id: True for section_id in chunk_sections}
+        for chunk_id, chunk_sections in info.sections.items()
+        if isinstance(chunk_sections, dict)
+    }
+    base_chunkinfo = envelope["data"].get("chunkinfo")
+    payload_data = {
+        **envelope["data"],
+        "chunkinfo": {
+            **(base_chunkinfo if isinstance(base_chunkinfo, dict) else {}),
+            "manualSections": sections_override,
+        },
+    }
 
     def work(progress: Progress, _stop: StopCheck) -> dict[str, Any]:
         progress(f"unlocking {len(chunks)} chunks")
         saved = save_edit(
             name=f"{base.replace('/', '-')}-uber",
-            payload=envelope["data"],
+            payload=payload_data,
             ticked={},
             unlocked=chunks,
             base_map=base,
