@@ -1803,15 +1803,15 @@ ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
 .knob.mine { border-color: var(--amber); }
 
 /* A corner ribbon in the bottom-right, ascending left-to-right through the
- * corner, with the card's `overflow: hidden` cutting the overhang on both
- * sides. `left`/`right` set to the same negative percentage - rather than a
- * fixed `width` anchored to one side - is what makes it reach edge to edge
- * regardless of the card's own width: a horizontal band spanning exactly the
- * card's width would, once rotated 45°, project to only `cos(45°)` (~71%) of
- * that width and stop short of both corners: -40% either side gives a
- * pre-rotation band 1.8x the card's width, comfortably over the ~1.41x a full
- * edge-to-edge diagonal needs, so it clears both edges on every card size
- * this dialog draws rather than needing to be hand-tuned per label.
+ * corner, with the card's `overflow: hidden` cutting the overhang past the
+ * right edge. **Anchored off `right` alone, not `left`/`right` together** -
+ * a symmetric offset centres the band on the *card*, which put it crossing
+ * the middle rather than sitting in the corner; anchoring off one side is
+ * what keeps it biased toward that corner the way the old top-right version
+ * was. `width: max-content` replaces a fixed `ch` guess - the band hugs
+ * "OVERRIDDEN" with just this padding around it rather than carrying a
+ * wide, mostly-empty amber field, and stays correct if the label ever
+ * changes length.
  *
  * **Behind the card's own text, and faint.** The border already carries
  * "yours" at a glance (see `.knob.mine` above), so the ribbon is a second,
@@ -1832,10 +1832,10 @@ ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
 .knob-flag {
   position: absolute;
   bottom: calc(var(--s6) * 2 + var(--s3));
-  left: -40%;
-  right: -40%;
+  right: calc(var(--s6) * -1);
+  width: max-content;
   transform: rotate(-45deg);
-  padding: 1px 0;
+  padding: 1px var(--s3);
   background: var(--amber);
   opacity: 0.55;
   z-index: -1;
