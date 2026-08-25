@@ -178,6 +178,50 @@ def test_a_non_boss_provider_lands_in_activities() -> None:
     assert result.items[0].hours == pytest.approx(10 / 100)
 
 
+def test_a_raid_named_provider_prices_by_its_run_not_default_kph() -> None:
+    """**A `skillItems` table can be keyed by the raid itself, not a monster
+    inside it.** Theatre of Blood's own `Sanguine dust`/`Sanguine ornament
+    kit` sit in a `skillItems.Nonskill` table named "Theatre of Blood" - the
+    same string as the *object* you click in Ver Sinhaza to start the raid,
+    which the walk correctly treats as reachable (you really can walk up to
+    it). Asking `kills_per_hour("Theatre of Blood")` for the table's own
+    items then read as `DEFAULT_KPH`'s 150 an hour, because nothing scrapes
+    a kills-per-hour for a raid's own name - the same bug
+    `raids.item_seconds` already keeps out of the items it covers,
+    reappearing for the ones it does not. `_provider_kills_per_hour`
+    recognises a `RUN_ONLY_PLACES` member and substitutes the run's own
+    published duration (1200s, 3/hr) instead; `_provider_knob` points the
+    correction at `runs/<place>`, not `monsters/<place>`, to match."""
+    from chunksim.costing.estimate import _provider_kills_per_hour, _provider_knob
+
+    walk = _walk_for(ChunkInfo({}))
+
+    rate = _provider_kills_per_hour(walk, "Theatre of Blood")
+
+    assert rate.value == pytest.approx(3.0)
+    assert rate.source == "runs:Theatre of Blood"
+    assert _provider_knob("Theatre of Blood") == "runs/Theatre of Blood"
+    # An ordinary monster is untouched - this only substitutes for a place.
+    assert _provider_knob("Goblin") == "monsters/Goblin"
+    goblin_rate = _provider_kills_per_hour(walk, "Goblin")
+    assert goblin_rate.value == pytest.approx(150.0)
+    assert goblin_rate.source == "default:regular"
+
+
+def test_a_hand_override_still_beats_the_run_duration() -> None:
+    """A `monsters/<place>` correction is still the top of the stack - this
+    only substitutes for the *absence* of one, never overrides a real
+    number somebody set."""
+    from chunksim.costing.estimate import _provider_kills_per_hour
+
+    walk = _walk_for(ChunkInfo({}), Heuristics(monsters={"Theatre of Blood": Rate(5.0, "hand", "exact")}))
+
+    rate = _provider_kills_per_hour(walk, "Theatre of Blood")
+
+    assert rate.value == pytest.approx(5.0)
+    assert rate.source == "hand"
+
+
 def test_a_monster_only_reachable_inside_a_raid_is_not_priced_as_a_kill() -> None:
     """**The kill route had the same "reachable is not farmable" gap
     `combat_xp.farmable_providers` already exists to close.** `Skeletal

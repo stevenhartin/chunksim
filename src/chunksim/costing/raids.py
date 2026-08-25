@@ -187,6 +187,70 @@ def toa_pet_chance(points: float, raid_level: int) -> float:
     return min(1.0, points / (per * 100.0))
 
 
+def _by_raid() -> dict[str, dict[str, float]]:
+    """`item_seconds()`'s contributions, kept apart by which raid earns them.
+
+    Split out so `activity_for` can name the raid behind an item without
+    re-deriving the same chances a second time - `item_seconds` merges these
+    three back into the one flat dict the item walk actually reads. The
+    three inner dicts are built in exactly the order `item_seconds` used to
+    build one flat one, so a key both an earlier and a later step could
+    write (`tombs.item_seconds()`'s own items, applied last within `TOMBS`)
+    still wins the same way.
+    """
+    cox_run = PUBLISHED_RAID_SECONDS[CHAMBERS]
+    cox_chances = xeric.item_chances(xeric.NORMAL)
+    chambers: dict[str, float] = {
+        item: cox_run / chance for item, chance in cox_chances.items() if chance > 0
+    }
+    # The two Challenge Mode exclusives, at the slower Challenge Mode raid.
+    cm_run = PUBLISHED_RAID_SECONDS[f"{CHAMBERS} (challenge)"]
+    chambers.update(
+        {item: cm_run / chance for item, chance in xeric.CHALLENGE_ONLY.items()}
+    )
+    # **The pets, which are tertiary rolls and not table entries.** Without
+    # them the walk read an olmlet at 0.4 hours and a Lil' Zik at 4.3, off the
+    # same 150-raids-an-hour drop route everything else here replaces.
+    cox_unique = sum(cox_chances.values())
+    if cox_unique > 0:
+        chambers["Olmlet"] = cox_run / (cox_unique * OLMLET_GIVEN_UNIQUE)
+    chambers.update(
+        {cape: cm_run * completions for cape, completions in CAPE_TIERS[CHAMBERS].items()}
+    )
+
+    tob_run = PUBLISHED_RAID_SECONDS[THEATRE]
+    theatre_items: dict[str, float] = {
+        item: tob_run / chance
+        for item, chance in theatre.item_chances(theatre.NORMAL).items()
+        if chance > 0
+    }
+    theatre_items["Lil' Zik"] = tob_run / LIL_ZIK_CHANCE
+    theatre_items.update(
+        {cape: tob_run * completions for cape, completions in CAPE_TIERS[THEATRE].items()}
+    )
+
+    toa_run = PUBLISHED_RAID_SECONDS[TOMBS]
+    # **The guide's implied points, not this module's derived ones** - see
+    # `tombs.guide_implied_points`, which measures the gap at 41%.
+    toa_chance = tombs.unique_chance(
+        tombs.guide_implied_points(), tombs.GUIDE_RAID_LEVEL
+    )
+    tombs_items: dict[str, float] = {
+        item: toa_run / (toa_chance * weight)
+        for item, weight in tombs.weights_at(tombs.GUIDE_RAID_LEVEL).items()
+        if toa_chance * weight > 0
+    }
+    pet = toa_pet_chance(tombs.guide_implied_points(), tombs.GUIDE_RAID_LEVEL)
+    if pet > 0:
+        tombs_items["Tumeken's guardian"] = toa_run / pet
+    tombs_items.update(
+        {cape: toa_run * completions for cape, completions in CAPE_TIERS[TOMBS].items()}
+    )
+    tombs_items.update(tombs.item_seconds())
+
+    return {CHAMBERS: chambers, THEATRE: theatre_items, TOMBS: tombs_items}
+
+
 def item_seconds() -> dict[str, float]:
     """`{item: seconds}` for every raid reward, to merge into the item walk.
 
@@ -219,52 +283,38 @@ def item_seconds() -> dict[str, float]:
     after the enrichment rather than to fudge a multiplier here.
     """
     found: dict[str, float] = {}
-
-    cox_run = PUBLISHED_RAID_SECONDS[CHAMBERS]
-    cox_chances = xeric.item_chances(xeric.NORMAL)
-    for item, chance in cox_chances.items():
-        if chance > 0:
-            found[item] = cox_run / chance
-    # The two Challenge Mode exclusives, at the slower Challenge Mode raid.
-    cm_run = PUBLISHED_RAID_SECONDS[f"{CHAMBERS} (challenge)"]
-    for item, chance in xeric.CHALLENGE_ONLY.items():
-        found[item] = cm_run / chance
-
-    tob_run = PUBLISHED_RAID_SECONDS[THEATRE]
-    for item, chance in theatre.item_chances(theatre.NORMAL).items():
-        if chance > 0:
-            found[item] = tob_run / chance
-
-    toa_run = PUBLISHED_RAID_SECONDS[TOMBS]
-    # **The guide's implied points, not this module's derived ones** - see
-    # `tombs.guide_implied_points`, which measures the gap at 41%.
-    toa_chance = tombs.unique_chance(
-        tombs.guide_implied_points(), tombs.GUIDE_RAID_LEVEL
-    )
-    for item, weight in tombs.weights_at(tombs.GUIDE_RAID_LEVEL).items():
-        if toa_chance * weight > 0:
-            found[item] = toa_run / (toa_chance * weight)
-
-    # **The pets, which are tertiary rolls and not table entries.** Without
-    # them the walk read an olmlet at 0.4 hours and a Lil' Zik at 4.3, off the
-    # same 150-raids-an-hour drop route everything else here replaces.
-    cox_unique = sum(cox_chances.values())
-    if cox_unique > 0:
-        found["Olmlet"] = cox_run / (cox_unique * OLMLET_GIVEN_UNIQUE)
-    found["Lil' Zik"] = tob_run / LIL_ZIK_CHANCE
-    pet = toa_pet_chance(tombs.guide_implied_points(), tombs.GUIDE_RAID_LEVEL)
-    if pet > 0:
-        found["Tumeken's guardian"] = toa_run / pet
-
-    for raid, tiers in CAPE_TIERS.items():
-        run = PUBLISHED_RAID_SECONDS[
-            f"{CHAMBERS} (challenge)" if raid == CHAMBERS else raid
-        ]
-        for cape, completions in tiers.items():
-            found[cape] = run * completions
-
-    found.update(tombs.item_seconds())
+    for items in _by_raid().values():
+        found.update(items)
     return found
+
+
+def activity_for(item: str) -> str | None:
+    """Which raid `item_seconds()` priced `item` from, or `None`.
+
+    **Named by the raid that earns it, not by "raid".** `_best_route`'s own
+    raid-drop branch already makes this argument for the *other* instanced
+    activities - `costing/tzhaar.py` and `costing/colosseum.py` each carry
+    an `activity_for` so a fire cape reads `fight caves: 1 fire cape` rather
+    than `raid: 1 fire cape` - but never got one of its own for the three
+    real raids, so every uniquely, cape and pet `item_seconds` prices read
+    `source="raids"` with no knob at all: the same "which module actually
+    knows this number" problem those two modules exist to answer, left
+    unanswered for the content the whole rest of this module is about.
+
+    **Matched case-insensitively**, for `_Walk.raid_seconds`' reason - the
+    same one every sibling `activity_for` already carries: `_item_hours`
+    resolves `item` to the *export's* spelling before this is ever called
+    (`Scythe of vitur (uncharged)`, `Lil' zik`), not the wiki's
+    (`Scythe of Vitur (uncharged)`, `Lil' Zik`) that `_by_raid()`'s own
+    tables are keyed by. An exact match here missed every Theatre unique and
+    pet outright - confirmed against the real `fray` map, where they kept
+    reading `source="raids"` after the case-sensitive version shipped.
+    """
+    wanted = item.lower()
+    for raid, items in _by_raid().items():
+        if wanted in {name.lower() for name in items}:
+            return raid
+    return None
 
 
 def best_for(comparison: Comparison) -> RaidAnswer | None:

@@ -36,7 +36,18 @@ The modules, and what each owns:
   Mystic and Muttadile under its own name), and left reachable a scrape-free
   boss like that priced its drops at `DEFAULT_KPH`'s 150 kills an hour, the
   same bug the raid/wave-minigame item tables already exist to keep out of
-  the *drop* route reappearing through the *kill* route instead. A leaf item priced by a one-off
+  the *drop* route reappearing through the *kill* route instead. **A
+  `skillItems.Nonskill` table keyed by a raid's own place name is the same
+  bug a third way**: Theatre of Blood's Sanguine dust/ornament kit/staff
+  table is keyed `"Theatre of Blood"`, which coincides with the literal
+  `Object` name of the raid's own entrance portal - a real, reachable
+  provider - so `_kill_facts`/`_kill_hours` called generic
+  `Heuristics.kills_per_hour("Theatre of Blood")` on it and hit the same
+  150/hr default. `_provider_kills_per_hour`/`_provider_knob` catch this:
+  a `default`-sourced rate for a name in `instanced.RUN_ONLY_PLACES` is
+  replaced by `3600 / instanced.run_seconds(...)`, knobbed through
+  `instanced.knob_for` rather than `monsters/{name}`, and a real hand
+  override still wins first. A leaf item priced by a one-off
   `make:`/`shop:`/`spawn:`/`recipe:`/`currency:` route (no real repeatable
   source of its own) displays under the Diary/CA task that wants it instead of
   under its own recipe name (`ItemEstimate.group`, off `_leaf_task_groups`'
@@ -596,6 +607,16 @@ The modules, and what each owns:
   very nearly "six thousand raids" and **where a cape binds the best drop rate
   is the wrong thing to optimise** - the Theatre's hard mode is better per raid
   and loses. `best_for` picks, and is only meaningful for a named unique.
+  **`activity_for(item)` names which raid earns `item`** - `tzhaar.py`'s and
+  `colosseum.py`'s own shape, missing here until every unique/cape/pet
+  `item_seconds()` prices read a bare `source="raids"` with no knob at all.
+  `_by_raid()` is `item_seconds()`'s three contributions kept apart so
+  `activity_for` need not re-derive the drop chances; both match
+  **case-insensitively**, because `_item_hours` resolves an item to the
+  export's own spelling (`Scythe of vitur (uncharged)`, `Lil' zik`) before
+  either function ever sees it, not the wiki's (`Scythe of Vitur
+  (uncharged)`, `Lil' Zik`) that these tables are keyed by - an exact-match
+  first cut missed every Theatre unique and pet outright.
 - `barrows.py` - the Barrows: six brothers, any order, one chest -
   `Chest (Barrows)` is absent from `drops` entirely, the same gap
   `raids.py` closes for the three raids. No `FightScript` needed - the six

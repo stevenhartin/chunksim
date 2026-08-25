@@ -186,6 +186,36 @@ class TestTheGoalWalkSeam:
         source = pathlib.Path(estimate.__file__).read_text(encoding="utf-8")
         assert "walk.raid_seconds.get(item.lower())" in source
 
+    def test_activity_for_names_the_earning_raid(self) -> None:
+        """Every item `item_seconds()` prices traces back to one of the
+        three raids, matching `xeric.py`/`theatre.py`/`colosseum.py`'s own
+        `activity_for` shape - see the module's docstring for why this was
+        missing entirely until now, leaving every raid reward's `source`
+        reading a bare `"raids"` with no knob."""
+        assert raids.activity_for("Twisted bow") == raids.CHAMBERS
+        assert raids.activity_for("Scythe of Vitur (uncharged)") == raids.THEATRE
+        assert raids.activity_for("Lil' Zik") == raids.THEATRE
+        assert raids.activity_for("Tumeken's guardian") == raids.TOMBS
+        assert raids.activity_for("Xeric's champion") == raids.CHAMBERS
+        assert raids.activity_for("Not a real reward") is None
+
+    def test_activity_for_folds_case(self) -> None:
+        """`_item_hours` resolves an item to the export's own spelling
+        before `activity_for` ever sees it - `Scythe of vitur (uncharged)`,
+        `Lil' zik` - not the wiki's, which is what `_by_raid()`'s tables are
+        keyed by. An exact-match version of this function missed both."""
+        assert raids.activity_for("Scythe of vitur (uncharged)") == raids.THEATRE
+        assert raids.activity_for("Lil' zik") == raids.THEATRE
+
+    def test_by_raid_still_sums_to_item_seconds(self) -> None:
+        """The refactor into three dicts must not change the merged answer -
+        a key both `tombs.item_seconds()` and this module's own Tombs table
+        could write still resolves the same way it did as one flat dict."""
+        merged: dict[str, float] = {}
+        for items in raids._by_raid().values():
+            merged.update(items)
+        assert merged == raids.item_seconds()
+
 
 class TestItIsListed:
     def test_the_module_is_listed_where_a_module_is_listed(self) -> None:

@@ -246,6 +246,7 @@ from chunksim.costing.training import (
 from chunksim.costing.heuristics import (
     TITHE_SOURCE,
     Heuristics,
+    Rate,
     Superior,
     activity_name,
 )
@@ -1268,15 +1269,17 @@ def _best_route(
         # **Named by the run that earns it, not by "raid".** A fire cape is
         # sixty-three waves of the Fight Caves and nobody calls that a raid;
         # reading `raid: 1 Jal-nib-rek` on the Inferno's pet sent a reader
-        # looking in `costing/raids.py`, which has never heard of it.
-        # `tzhaar` and `colosseum` are checked before `barrows`/`moons`
-        # because only their activities are wired into `instanced.py`'s
-        # `run_seconds`/knob machinery - a Barrows or Perilous Moons row
-        # still gets the *label* right, just no editable knob, since
-        # neither is a `RUN_ONLY_PLACES` entry (see `instanced.py`: both are
-        # ordinarily-reachable content, not a lobby-gated instance).
+        # looking in `costing/raids.py`, which has never heard of it - and
+        # `raids.activity_for` used to be the one missing entirely, so every
+        # unique, cape and pet the three real raids actually price through
+        # `raids.item_seconds` read the same way: `source="raids"`, no knob,
+        # the identical problem this branch already existed to fix for
+        # everything *except* the raids themselves. Checked first since it is
+        # the common case; order does not otherwise matter; the five never
+        # share an item.
         activity = (
-            tzhaar.activity_for(item)
+            raids.activity_for(item)
+            or tzhaar.activity_for(item)
             or colosseum.activity_for(item)
             or barrows.activity_for(item)
             or moons.activity_for(item)
@@ -1287,8 +1290,12 @@ def _best_route(
         # this up as - but the knob path needs the *place* key
         # (`"Gauntlet Lobby"`), and the two Hunllefs' durations differ, so
         # `instanced.knob_for(activity)` would resolve to nothing useful
-        # here the way it does for the others below.
-        knobbed = activity in (tzhaar.FIGHT_CAVES, tzhaar.INFERNO, colosseum.FORTIS_COLOSSEUM)
+        # here. `RUN_ONLY_PLACES` membership is the general test - true for
+        # the three raids and for `tzhaar`/`colosseum`'s own activities,
+        # false for Barrows and Perilous Moons (ordinarily-reachable content,
+        # not a lobby-gated instance) and for the Gauntlet by exactly the
+        # name mismatch above.
+        knobbed = activity in instanced.RUN_ONLY_PLACES
         label = activity.lower() if activity else "raid"
         return _Priced(
             quantity * raided / 3600.0,
@@ -1954,6 +1961,48 @@ class _KillFact:
         self.masters = masters
 
 
+def _provider_kills_per_hour(walk: _Walk, provider: str) -> Rate:
+    """`Heuristics.kills_per_hour(provider)`, unless `provider` names a whole
+    raid or instance rather than a monster within one.
+
+    **A `skillItems` table can be keyed by the run itself.** `Theatre of
+    Blood`'s own `Sanguine dust`/`Sanguine ornament kit` sit in a
+    `skillItems.Nonskill` table named "Theatre of Blood" - the same string as
+    the *object* you walk up to and click in Ver Sinhaza to start a raid, so
+    `walk.available` correctly allows it (you genuinely can reach that
+    object) and this project's generic "provider" machinery then asked
+    `kills_per_hour("Theatre of Blood")` as if the raid itself were a monster
+    to farm. Nothing scrapes a kills-per-hour for a raid's own name, so that
+    read as `DEFAULT_KPH`'s 150 an hour - the exact bug `raids.item_seconds`
+    already exists to keep out of `Long bone`/`Sanguine dust`'s siblings that
+    *are* covered by it, reappearing for the ones that are not.
+
+    **A hand override still wins.** Only substituted when
+    `Heuristics.kills_per_hour` would otherwise answer from `DEFAULT_KPH` -
+    an explicit `monsters/<place>` correction (or a real future scrape under
+    that exact name) is not this function's to second-guess.
+    """
+    rate = walk.heuristics.kills_per_hour(provider)
+    if not rate.source.startswith("default") or provider not in instanced.RUN_ONLY_PLACES:
+        return rate
+    run = instanced.run_seconds(provider, walk.heuristics.run_seconds)
+    if not run:
+        return rate
+    return Rate(3600.0 / run, source=f"runs:{provider}", match="modelled")
+
+
+def _provider_knob(provider: str) -> str:
+    """The knob path a provider's rate is corrected through.
+
+    **`runs/<place>`, not `monsters/<place>`, for a `RUN_ONLY_PLACES`
+    member** - matching `instanced.knob_for` and the raid-drop branch in
+    `_best_route`. A hand correction belongs on the number this project
+    actually spent, and for a raid/instance that is its own run duration,
+    not a kills-per-hour nothing here computes from it any more.
+    """
+    return instanced.knob_for(provider) if provider in instanced.RUN_ONLY_PLACES else f"monsters/{provider}"
+
+
 def _kill_facts(
     walk: _Walk, item: str, sources: Sequence[Any]
 ) -> tuple[tuple[_KillFact, ...], tuple[tuple[int, str, str], ...]]:
@@ -1982,7 +2031,7 @@ def _kill_facts(
         rates = _drop_rates(walk, provider, item)
         if rates is None or rates[0] <= 0 or rates[1] <= 0:
             continue
-        rate = walk.heuristics.kills_per_hour(provider)
+        rate = _provider_kills_per_hour(walk, provider)
         if rate.value <= 0:
             continue
         gate = walk.task_gates.get(provider)
@@ -2056,7 +2105,7 @@ def _fact_priced(fact: _KillFact, quantity: float, master: str) -> _Priced:
         detail = f"{fact.provider} x{kills:,.0f} kills, {fact.kph:g}/hr"
     if fact.task is None:
         return _Priced(
-            kills / fact.kph, detail, fact.provider, (f"monsters/{fact.provider}",)
+            kills / fact.kph, detail, fact.provider, (_provider_knob(fact.provider),)
         )
     hours, _, key = _fact_hours(fact, quantity)
     # **The winning master's own key, not the gate's name** - see
@@ -2067,7 +2116,7 @@ def _fact_priced(fact: _KillFact, quantity: float, master: str) -> _Priced:
         hours,
         f"{detail} on {key} task",
         fact.provider,
-        (f"monsters/{fact.provider}", f"wait/{master}/{key}"),
+        (_provider_knob(fact.provider), f"wait/{master}/{key}"),
     )
 
 
@@ -2091,7 +2140,7 @@ def _kill_hours(
     if rates is None or rates[0] <= 0 or rates[1] <= 0:
         return None
     chance, per_kill = rates
-    rate = walk.heuristics.kills_per_hour(provider)
+    rate = _provider_kills_per_hour(walk, provider)
     if rate.value <= 0:
         return None
 
@@ -2116,9 +2165,9 @@ def _kill_hours(
             hours,
             f"{detail} on {task} task",
             provider,
-            (f"monsters/{provider}", f"wait/{master}/{task}"),
+            (_provider_knob(provider), f"wait/{master}/{task}"),
         )
-    return _Priced(kills / rate.value, detail, provider, (f"monsters/{provider}",))
+    return _Priced(kills / rate.value, detail, provider, (_provider_knob(provider),))
 
 
 def _task_hours(
