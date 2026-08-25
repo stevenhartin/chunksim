@@ -324,6 +324,27 @@ _FREE_ROUTES = frozenset({"shop", "spawn"})
 #: entry costs nothing and stops a 13,034-hour fiction.
 UNRATED_SKILLS = frozenset({"Sailing"})
 
+#: A group boss, mapped to the soloable variant that shares its drop table -
+#: so the item walk can price the drop off the encounter a player can
+#: actually do alone, instead of off a wiki rate that describes a team.
+#: `dps_bridge.GROUP_BOSSES` already refuses to *simulate* a kill time for
+#: these ("the wiki's rates for these describe a team, so comparing against
+#: them is meaningless too" - its own docstring), but that refusal only ever
+#: stopped `dps_bridge.price_monsters`/`kills_by_style` from running; nothing
+#: kept the wiki money-making-guide rate `Heuristics.kills_per_hour` still
+#: has for these names out of the *kill route* this module builds - so
+#: `Nightmare staff` priced off "The Nightmare" at a guide's 12/hr rather
+#: than off the real, DPS-modelled `Phosani's Nightmare` at 5.8/hr, despite
+#: both carrying the item on the export's own drop tables (`chunk_info.drops`
+#: - Phosani's is the harder, faster-percentage version: `Nightmare staff` is
+#: 1/533 there against 1/300 for the team fight, `Inquisitor's mace` 1/1250
+#: against 1/750). **Curated, not derived** - nothing in the export marks
+#: which pairs of monsters are the same encounter at two party sizes, and the
+#: other ten `GROUP_BOSSES` entries (Nex, Corporeal Beast, the five ordinary
+#: Theatre/Chambers/Tombs bosses) have no such solo sibling to redirect to,
+#: so they stay refused rather than guessed at.
+_GROUP_BOSS_SOLO_ALTERNATIVE: Mapping[str, str] = {"The Nightmare": "Phosani's Nightmare"}
+
 #: Seconds to reach a shop and get back to where the work happens. **A rough
 #: fixed figure, not a measurement** - the export has no geography to compute
 #: one from, and a bank-to-shop-to-bank run is thirty seconds either side of
@@ -2701,10 +2722,26 @@ def _setup(
     reachable chunk is inside `instanced.run_only` - reusing it here rather
     than re-deriving the same test is what closes this for every raid at
     once instead of one export snapshot's two named items.
+
+    **And a `_GROUP_BOSS_SOLO_ALTERNATIVE` entry is dropped from `providers`
+    when its solo sibling is also reachable**, for the reason that constant's
+    own docstring gives: "The Nightmare" is real content with a real drop
+    table, so nothing upstream marks it unreachable the way an instanced
+    raid boss is - it just has no honest kill rate a solo player can use, and
+    leaving it in `providers` let the walk keep pricing off a team's wiki
+    figure while its own soloable twin sat right next to it unused. Only
+    dropped when the twin is *also* reachable, so a map that somehow reaches
+    the team fight without the solo one still gets the (bad) guide number
+    rather than nothing.
     """
     levels = _levels(state, level_overrides or {})
     reachable = frozenset(derived.source_index.monsters)
     providers = farmable_providers(derived, state.chunk_info)
+    providers -= {
+        boss
+        for boss, solo in _GROUP_BOSS_SOLO_ALTERNATIVE.items()
+        if solo in providers
+    }
     valid = derived.challenges.valid
     # `derive`'s *settled* expansion, not a fresh one-shot call: areas keep
     # opening as challenges become valid, and expanding once leaves 60 named

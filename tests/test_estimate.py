@@ -263,6 +263,84 @@ def test_a_monster_only_reachable_inside_a_raid_is_not_priced_as_a_kill() -> Non
     assert result.unpriced == ("Long bone",)
 
 
+def test_a_group_boss_yields_to_its_soloable_alternative() -> None:
+    """`The Nightmare` is `dps_bridge.GROUP_BOSSES` - "the wiki's rates for
+    these describe a team, so comparing against them is meaningless too" -
+    but before `_GROUP_BOSS_SOLO_ALTERNATIVE`, nothing kept that team-only
+    guide rate out of the *kill route* the way `dps_bridge` already kept it
+    out of the DPS simulation. `Phosani's Nightmare` shares the drop table
+    and is a real, DPS-modelled solo fight, so once both are reachable the
+    walk should price off her rather than off a number that describes a
+    party."""
+    info = ChunkInfo(
+        {
+            "drops": {
+                "The Nightmare": {"Nightmare staff": {"1": "1/300"}},
+                "Phosani's Nightmare": {"Nightmare staff": {"1": "1/533"}},
+            },
+            "challenges": {
+                "Extra": {"Obtain a ~|nightmare staff|~": {"Items": ["Nightmare staff"]}}
+            },
+        }
+    )
+    derived = _derived(
+        monsters=("The Nightmare", "Phosani's Nightmare"),
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra",
+                    groups=(TaskGroup(name="X", active=("Obtain a ~|nightmare staff|~",)),),
+                )
+            }
+        ),
+    )
+    heuristics = Heuristics(
+        monsters={
+            "The Nightmare": Rate(12.0, "mmg:Money making guide/Killing The Nightmare", "exact"),
+            "Phosani's Nightmare": Rate(5.8, "dps", "scripted"),
+        }
+    )
+
+    result = _run(info, derived, heuristics)
+
+    assert result.items[0].source == "Phosani's Nightmare"
+    assert result.items[0].hours == pytest.approx(533.0 / 5.8, rel=1e-3)
+
+
+def test_the_group_boss_is_still_priced_without_its_alternative() -> None:
+    """The exclusion only fires when the solo sibling is also reachable - a
+    map somehow reaching the team fight without Phosani's still gets the
+    (bad) guide number rather than nothing at all."""
+    info = ChunkInfo(
+        {
+            "drops": {"The Nightmare": {"Nightmare staff": {"1": "1/300"}}},
+            "challenges": {
+                "Extra": {"Obtain a ~|nightmare staff|~": {"Items": ["Nightmare staff"]}}
+            },
+        }
+    )
+    derived = _derived(
+        monsters=("The Nightmare",),
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra",
+                    groups=(TaskGroup(name="X", active=("Obtain a ~|nightmare staff|~",)),),
+                )
+            }
+        ),
+    )
+    heuristics = Heuristics(
+        monsters={
+            "The Nightmare": Rate(12.0, "mmg:Money making guide/Killing The Nightmare", "exact"),
+        }
+    )
+
+    result = _run(info, derived, heuristics)
+
+    assert result.items[0].source == "The Nightmare"
+
+
 def test_a_worded_rate_is_priced_through_the_config() -> None:
     # `Always` and friends are 1,197 of the export's rate entries and parse
     # to `nan`; the config is what turns them into a number.

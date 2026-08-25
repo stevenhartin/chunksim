@@ -47,7 +47,21 @@ The modules, and what each owns:
   a `default`-sourced rate for a name in `instanced.RUN_ONLY_PLACES` is
   replaced by `3600 / instanced.run_seconds(...)`, knobbed through
   `instanced.knob_for` rather than `monsters/{name}`, and a real hand
-  override still wins first. A leaf item priced by a one-off
+  override still wins first. **A fourth way, and this one is not instanced
+  at all**: `dps_bridge.GROUP_BOSSES` already refuses to *simulate* a kill
+  time for a boss that is not soloable ("the wiki's rates for these describe
+  a team, so comparing against them is meaningless too" - its own
+  docstring), but nothing kept that same team-describing wiki rate out of
+  the *kill route* `providers`/`walk.available` still offered it through.
+  `_GROUP_BOSS_SOLO_ALTERNATIVE` closes the one pair that has a real fix:
+  `The Nightmare` yields to `Phosani's Nightmare` in `providers` whenever
+  both are reachable, since she shares the drop table, is genuinely
+  soloable, and already carries a real DPS-modelled rate - `Nightmare
+  staff` moved from a guide's 12/hr team figure to her own 5.8/hr. The other
+  ten `GROUP_BOSSES` entries have no such solo sibling and stay as they
+  were: refused for DPS, still wiki-rated for the kill route, because
+  excluding them outright would leave items only they carry unpriced rather
+  than merely mispriced. A leaf item priced by a one-off
   `make:`/`shop:`/`spawn:`/`recipe:`/`currency:` route (no real repeatable
   source of its own) displays under the Diary/CA task that wants it instead of
   under its own recipe name (`ItemEstimate.group`, off `_leaf_task_groups`'
