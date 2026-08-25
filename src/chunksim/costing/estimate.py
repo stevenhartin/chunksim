@@ -211,7 +211,6 @@ from chunksim.costing.levels import (
     TaskGate,
     goal_levels,
     infer_levels,
-    reachable_providers,
     task_gated_monsters,
     _levels,
 )
@@ -222,7 +221,12 @@ from chunksim.model.experience import (
     xp_between,
     xp_for_level,
 )
-from chunksim.costing.combat_xp import COMBAT_SKILLS, hitpoints_credit, slayer_credit
+from chunksim.costing.combat_xp import (
+    COMBAT_SKILLS,
+    farmable_providers,
+    hitpoints_credit,
+    slayer_credit,
+)
 from chunksim.costing import gathering, herbs, lootsack, recipe_rates, valeoffering, yields
 from chunksim.costing import barrows, colosseum, gauntlet, instanced, moons, raids, tempoross, tzhaar, wintertodt
 from chunksim.remote.recipes import Recipe
@@ -2632,10 +2636,26 @@ def _setup(
     `Jal-nib-rek` - a 1/100 off a Zuk kill that costs a whole Inferno - at
     5.0 hours against this project's own 45. See `_run_priced_items`,
     `costing/raids.item_seconds` and `costing/tzhaar.item_seconds`.
+
+    **`providers` is `farmable_providers`, not `reachable_providers`, for the
+    same reason `combat_xp.best_target` already needed the distinction.** Some
+    raids place their own bosses in a chunk after all - the Chambers files
+    `Skeletal Mystic` and `Muttadile` under the `Chambers of Xeric` chunk
+    itself, unlike the Theatre, whose five bosses carry no `Monster` branch
+    anywhere (`costing/instanced.py`'s own docstring measures the gap). Left
+    as `reachable_providers`, those two read as ordinary farmable monsters:
+    `Heuristics.kills_per_hour` has no scrape for either, so `Long bone` and
+    `Curved bone` - both real `Extra` tasks on the real map - priced at
+    `DEFAULT_KPH`'s **150 kills an hour**, the exact bug `_run_priced_items`
+    exists to keep out of the *drop* route, reappearing through the *kill*
+    route instead. `farmable_providers` already excludes anything whose every
+    reachable chunk is inside `instanced.run_only` - reusing it here rather
+    than re-deriving the same test is what closes this for every raid at
+    once instead of one export snapshot's two named items.
     """
     levels = _levels(state, level_overrides or {})
     reachable = frozenset(derived.source_index.monsters)
-    providers = reachable_providers(derived)
+    providers = farmable_providers(derived, state.chunk_info)
     valid = derived.challenges.valid
     # `derive`'s *settled* expansion, not a fresh one-shot call: areas keep
     # opening as challenges become valid, and expanding once leaves 60 named

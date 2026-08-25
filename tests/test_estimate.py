@@ -178,6 +178,47 @@ def test_a_non_boss_provider_lands_in_activities() -> None:
     assert result.items[0].hours == pytest.approx(10 / 100)
 
 
+def test_a_monster_only_reachable_inside_a_raid_is_not_priced_as_a_kill() -> None:
+    """**The kill route had the same "reachable is not farmable" gap
+    `combat_xp.farmable_providers` already exists to close.** `Skeletal
+    Mystic` is a real, chunk-placed Chambers of Xeric monster with no scraped
+    `kills_per_hour` of its own - priced through the ordinary route it read
+    as `DEFAULT_KPH`'s 150 kills an hour, the exact figure `_setup`'s own
+    docstring already names as the bug this module exists to keep out of the
+    *drop* route, reappearing through the *kill* route instead (`Long bone`
+    and `Curved bone` are real `Extra` tasks on the real map). `providers`
+    now excludes anything whose every chunk is `instanced.run_only`, so this
+    reads as unpriced rather than as a plausible-looking wrong number."""
+    info = ChunkInfo(
+        {
+            "drops": {"Skeletal Mystic": {"Long bone": {"1": "1/10"}}},
+            "challenges": {"Extra": {"Obtain a ~|long bone|~": {"Items": ["Long bone"]}}},
+        }
+    )
+    derived = _derived(
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra", groups=(TaskGroup(name="X", active=("Obtain a ~|long bone|~",)),)
+                )
+            }
+        ),
+        source_index=SourceIndex(
+            items={},
+            objects={},
+            npcs={},
+            shops={},
+            drop_rates={},
+            monsters={"Skeletal Mystic": {"Chambers of Xeric": True}},
+        ),
+    )
+
+    result = _run(info, derived, Heuristics())
+
+    assert result.items == ()
+    assert result.unpriced == ("Long bone",)
+
+
 def test_a_worded_rate_is_priced_through_the_config() -> None:
     # `Always` and friends are 1,197 of the export's rate entries and parse
     # to `nan`; the config is what turns them into a number.

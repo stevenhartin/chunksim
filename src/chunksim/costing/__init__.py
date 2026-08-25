@@ -30,7 +30,13 @@ The modules, and what each owns:
   `WorldIndex` rather than by the shape of `source`). **Costs the unique
   *item*, not the task**, and **clamps per source**. Owns the item walk and the
   gates on it, and records the `Heuristics` entries each number was read off -
-  where they are read, never reconstructed. A leaf item priced by a one-off
+  where they are read, never reconstructed. **The kill route's `providers` is
+  `combat_xp.farmable_providers`, not `levels.reachable_providers`** - some
+  raids place their own bosses in a chunk (Chambers of Xeric files Skeletal
+  Mystic and Muttadile under its own name), and left reachable a scrape-free
+  boss like that priced its drops at `DEFAULT_KPH`'s 150 kills an hour, the
+  same bug the raid/wave-minigame item tables already exist to keep out of
+  the *drop* route reappearing through the *kill* route instead. A leaf item priced by a one-off
   `make:`/`shop:`/`spawn:`/`recipe:`/`currency:` route (no real repeatable
   source of its own) displays under the Diary/CA task that wants it instead of
   under its own recipe name (`ItemEstimate.group`, off `_leaf_task_groups`'
