@@ -6112,9 +6112,12 @@ function formatKnobNumber(value, branch) {
   return value.toFixed(1);
 }
 
-/* One knob's stack, weakest layer first. A layer holding nothing is drawn as
- * a dash rather than omitted: "the scrape has no opinion here" is an answer,
- * and a row that vanished would read as a rendering fault.
+/* One knob's stack, weakest layer first. **An empty layer is omitted, not
+ * dashed.** This used to draw a dash instead, deliberately, on the theory
+ * that "the scrape has no opinion here" is itself an answer worth a row -
+ * but three dashes beside one real number reads as noise, not as an
+ * answer, and the row that actually carries the estimate's own figure
+ * (`Computed`, below) already says what nothing else here does.
  *
  * **The bottom line is the number, not the word "default".** A knob nobody
  * has set still has an answer and it is the one the estimate spent, so
@@ -6136,8 +6139,11 @@ function knobLayers(knob) {
     && knob.effective !== knob.number;
   let out = Object.keys(named).map((key) => {
     const held = seen[key] || {};
+    const empty = (held.number === null || held.number === undefined)
+      && (held.value === null || held.value === undefined);
+    if (empty) return "";
     const shown = held.number === null || held.number === undefined
-      ? (held.value === null || held.value === undefined ? "—" : "set")
+      ? "set"
       : formatKnobNumber(held.number, knob.branch);
     return tmpl`<div class="knob-layer ${knob.layer === key && !computed ? "on" : ""}">
       <span class="knob-layer-name">${named[key]}</span>
