@@ -12,6 +12,7 @@ from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.derive.sections import (
     ChunkSections,
     area_connections,
+    connected_sections,
     describe_sections,
     expand_chunk_areas,
     unlockable_areas,
@@ -348,6 +349,136 @@ def test_unlockable_areas_requires_the_linking_section_reachable() -> None:
     assert unlockable_areas(valid, {"100": True}, {"100": {"1": True}}, info) == {
         "Guardians' Lair": True
     }
+
+
+def _connector_info(**challenge: Any) -> ChunkInfo:
+    return ChunkInfo(
+        {
+            "challenges": {
+                "Nonskill": {
+                    "A-1 to A-2": {
+                        "Sections": ["A-1", "A-2"],
+                        "ConnectsSections": True,
+                        **challenge,
+                    }
+                }
+            }
+        }
+    )
+
+
+def test_connected_sections_opens_the_unreached_side() -> None:
+    info = _connector_info()
+    valid = {"Nonskill": {"A-1 to A-2": True}}
+
+    assert connected_sections(valid, {"A": True}, {"A": {"1": True}}, info) == {
+        "A": {"2": True}
+    }
+
+
+def test_connected_sections_needs_the_challenge_to_be_valid() -> None:
+    info = _connector_info()
+
+    assert connected_sections({}, {"A": True}, {"A": {"1": True}}, info) == {}
+
+
+def test_connected_sections_needs_the_flag() -> None:
+    info = ChunkInfo(
+        {"challenges": {"Nonskill": {"A-1 to A-2": {"Sections": ["A-1", "A-2"]}}}}
+    )
+    valid = {"Nonskill": {"A-1 to A-2": True}}
+
+    assert connected_sections(valid, {"A": True}, {"A": {"1": True}}, info) == {}
+
+
+def test_connected_sections_needs_every_named_chunk_unlocked() -> None:
+    info = ChunkInfo(
+        {
+            "challenges": {
+                "Nonskill": {
+                    "A-1 to B-1": {
+                        "Sections": ["A-1", "B-1"],
+                        "ConnectsSections": True,
+                    }
+                }
+            }
+        }
+    )
+    valid = {"Nonskill": {"A-1 to B-1": True}}
+
+    assert connected_sections(valid, {"A": True}, {"A": {"1": True}}, info) == {}
+    assert connected_sections(valid, {"A": True, "B": True}, {"A": {"1": True}}, info) == {
+        "B": {"1": True}
+    }
+
+
+def test_connected_sections_needs_one_side_already_reachable() -> None:
+    """Two dashed entries, neither reachable yet - the challenge may be
+    valid, but nothing here says which side a player would walk in from."""
+    info = _connector_info()
+    valid = {"Nonskill": {"A-1 to A-2": True}}
+
+    assert connected_sections(valid, {"A": True}, {}, info) == {}
+
+
+def test_connected_sections_a_single_entry_needs_nothing_already_open() -> None:
+    """A lone `Sections` entry - the "10038-1 via Fishing cape" shape - opens
+    outright once its own chunk is unlocked and the challenge is valid."""
+    info = ChunkInfo(
+        {
+            "challenges": {
+                "Nonskill": {
+                    "A-1 via something": {
+                        "Sections": ["A-1"],
+                        "ConnectsSections": True,
+                    }
+                }
+            }
+        }
+    )
+    valid = {"Nonskill": {"A-1 via something": True}}
+
+    assert connected_sections(valid, {"A": True}, {}, info) == {"A": {"1": True}}
+
+
+def test_connected_sections_a_bare_chunk_ref_counts_as_already_open_but_is_never_added() -> None:
+    """`"12334 to 12333-W1"` - a bare, dash-less entry means "this chunk is
+    already unlocked", the same meaning a bare `Connect` ref has - and is
+    never itself a section to open."""
+    info = ChunkInfo(
+        {
+            "challenges": {
+                "Nonskill": {
+                    "A to B-1": {
+                        "Sections": ["A", "B-1"],
+                        "ConnectsSections": True,
+                    }
+                }
+            }
+        }
+    )
+    valid = {"Nonskill": {"A to B-1": True}}
+
+    assert connected_sections(valid, {"A": True, "B": True}, {}, info) == {"B": {"1": True}}
+
+
+def test_connected_sections_skips_an_already_reachable_target() -> None:
+    info = _connector_info()
+    valid = {"Nonskill": {"A-1 to A-2": True}}
+
+    assert connected_sections(
+        valid, {"A": True}, {"A": {"1": True, "2": True}}, info
+    ) == {}
+
+
+def test_connected_sections_respects_a_sealed_manual_section() -> None:
+    info = _connector_info()
+    valid = {"Nonskill": {"A-1 to A-2": True}}
+
+    assert connected_sections(
+        valid, {"A": True}, {"A": {"1": True}}, info,
+        manual_sections={"A": {"2": False}},
+    ) == {}
 
 
 _UNRESOLVED_WORLD = {

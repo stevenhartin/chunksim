@@ -163,6 +163,62 @@ def test_derive_unlocks_an_area_and_gathers_its_contents() -> None:
     assert "Granite gloves" in result.source_index.items
 
 
+def test_derive_reaches_a_section_only_open_via_connects_sections() -> None:
+    """`sections.connected_sections` threaded through `derive`'s own loop -
+    section `2` has no ordinary `Connect` path at all and only opens once
+    the `ConnectsSections` challenge naming it is valid, the real shape
+    `11317-1`/`11317-2` (an Agility shortcut pair) turned out to be."""
+    info = _chunk_info(
+        chunks={
+            "100": {
+                "Sections": {
+                    "1": {"Monster": {"Goblin": True}},
+                    "2": {"Monster": {"Imp": True}},
+                }
+            }
+        },
+        sections={"100": {"1": ["???"], "2": []}},
+        challenges={
+            "Nonskill": {
+                "100-1 to 100-2": {"Sections": ["100-1", "100-2"], "ConnectsSections": True}
+            }
+        },
+    )
+
+    result = derive(_state(chunk_info=info), {"100": True})
+
+    assert "Goblin" in result.source_index.monsters
+    assert "Imp" in result.source_index.monsters
+
+
+def test_derive_does_not_reach_a_connects_sections_target_whose_gate_fails() -> None:
+    info = _chunk_info(
+        chunks={
+            "100": {
+                "Sections": {
+                    "1": {"Monster": {"Goblin": True}},
+                    "2": {"Monster": {"Imp": True}},
+                }
+            }
+        },
+        sections={"100": {"1": ["???"], "2": []}},
+        challenges={
+            "Nonskill": {
+                "100-1 to 100-2": {
+                    "Sections": ["100-1", "100-2"],
+                    "ConnectsSections": True,
+                    "Chunks": ["999"],
+                }
+            }
+        },
+    )
+
+    result = derive(_state(chunk_info=info), {"100": True})
+
+    assert "Goblin" in result.source_index.monsters
+    assert "Imp" not in result.source_index.monsters
+
+
 def test_derive_does_not_unlock_an_area_whose_challenge_is_invalid() -> None:
     info = _chunk_info(
         chunks={

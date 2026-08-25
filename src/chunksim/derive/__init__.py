@@ -22,6 +22,11 @@ The modules, and what each owns:
 
 - `sections.py` - which sections of the unlocked chunks are reachable, plus
   named-area unlocking and the one place this project overrules the export.
+  `connected_sections` is the ordinary `Connect` graph's second door: a
+  valid `ConnectsSections` challenge (an Agility shortcut, a minigame
+  crossing) opens sections nothing in `chunkinfo['sections']` itself
+  connects - entirely unported until this was found stranding real
+  content (`11317-2`, confirmed against the `verf` oracle).
 - `sources.py` - what the unlocked chunks make available (`SourceIndex`),
   including `taskUnlocks` over items *and* entities, and `isSlayerValid` over
   a slayer monster's `skillItems.Slayer` table.

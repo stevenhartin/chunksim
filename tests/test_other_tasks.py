@@ -406,7 +406,31 @@ _KNOWN_ORACLE_DELTA: dict[tuple[str, str], frozenset[str]] = {
     # Bloodveld|~` - Level 50, which clears the floor on the +5 this map's
     # `Wild pie` gives, by upstream's own boost term. Why upstream drops it
     # anyway is not known.
-    ("verf", "Diary"): frozenset({"~|Combat Achievements#Easy|~ The Demonic Punching Bag"}),
+    # **Three more, and they are a real reachability improvement, not a
+    # regression.** `sections.connected_sections` (port of worker.js:2110-
+    # 2124's `ConnectsSections` handling, previously entirely unported)
+    # opened `11317-1`/`11317-2` via two chained Agility shortcuts -
+    # "escape the Water Obelisk Island" (`11317-6`, already reachable
+    # through the `"???"` workaround, to `11317-1`) then "scale Catherby
+    # cliffside" (`11317-1` to `11317-2`), both of which this map's own
+    # Agility genuinely clears. `~|Kandarin Diary#Easy|~ Task 1`/`Task 8`
+    # and `#Medium|~ Task 5` all need `11317-1`'s fishing spot. Traced by
+    # hand: `_tasks_requirement_met`/`_level_gates_met` (unchanged by this
+    # fix) already say both shortcuts are valid; `connected_sections` only
+    # propagates that into section reachability, which nothing did before.
+    # Upstream's own live snapshot not showing these as active is the
+    # residual - possibly staleness (the oracle is a snapshot; the export
+    # is live), possibly a real account never having walked the route
+    # despite meeting the requirements. Either way, refusing to open a
+    # section a real Agility level and a real shortcut both hand to a
+    # player is the wrong side of this project's own "computed beats
+    # scraped" rule to be wrong on.
+    ("verf", "Diary"): frozenset({
+        "~|Combat Achievements#Easy|~ The Demonic Punching Bag",
+        "~|Kandarin Diary#Easy|~ Task 1",
+        "~|Kandarin Diary#Easy|~ Task 8",
+        "~|Kandarin Diary#Medium|~ Task 5",
+    }),
     # **Eight, down from twenty-three.** The fifteen that went were the
     # `skillItems.Slayer` leak: a map that cannot train Slayer past its
     # passive floor was still offered abyssal whips. See

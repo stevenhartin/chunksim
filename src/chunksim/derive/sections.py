@@ -217,6 +217,92 @@ def unlockable_areas(
     return unlocked
 
 
+def connected_sections(
+    valid: Mapping[str, Mapping[str, Any]],
+    chunk_ids: Mapping[str, bool],
+    reachable_sections: Mapping[str, Mapping[str, bool]],
+    chunk_info: ChunkInfo,
+    *,
+    manual_sections: Mapping[str, Mapping[str, bool]] | None = None,
+) -> dict[str, dict[str, bool]]:
+    """Sections a valid `ConnectsSections` challenge opens, not already
+    reachable - port of worker.js:2110-2124, `calcChallenges`'s own
+    handling right beside the `UnlocksArea` block `unlockable_areas` above
+    already ports.
+
+    **A second way in, beside the ordinary `Connect` graph.** A `Nonskill`
+    challenge carrying `ConnectsSections: true` and a `Sections` list is the
+    export's own way of saying a pair of sections - or, once, a lone one -
+    are joined by something `chunkinfo['sections']` cannot express: an
+    Agility shortcut (`"10018-1 to 10018-3"`, gated on the shortcut task
+    itself), a minigame crossing (`"Access stormy seas"`, `"Access
+    crystal-flecked waters"`), a quest-built passage (Pandemonium's cargo
+    hold). 260 such challenges exist on the real export and 61 of them
+    name a section this project's own `Connect`-only graph could not
+    otherwise reach at all - the `sections`/`graph.py` fixed point has no
+    way to see any of them, because none of it is `Connect` data.
+
+    **The gate is the challenge itself, already judged.** Once `name` is
+    valid (its own `Tasks`/`Items`/`Skills`/whatever `calc_challenges`
+    already checked), every chunk its `Sections` list names must already
+    be in `chunk_ids` (`chunksValid`), and at least one of those sections
+    must already be reachable - or the list holds exactly one entry, which
+    needs nothing (`oneSectionValid`; a bare, dash-less chunk id in the
+    list counts as always-open, matching a bare `Connect` ref's own
+    meaning). Once both hold, every other named section opens, unless a
+    `manualSections` entry seals it `False` - a player's own closed door
+    still wins over a shortcut nothing here disputes they *could* use.
+
+    **Why this is not folded into `unlocked_sections` itself**: that
+    function's own fixed point runs over `chunk_info.sections` alone and
+    has no `valid` to test a challenge's gates against - a section this
+    unlocks can, in turn, make more `Nonskill` challenges valid, which is
+    exactly the circularity `pipeline.derive`'s outer loop already exists
+    to settle for `unlockable_areas`'s own result. Same shape, same loop,
+    separate function for the same reason that one is.
+    """
+    manual = manual_sections or {}
+    nonskill_valid = valid.get("Nonskill") or {}
+    nonskill_challenges = chunk_info.challenges.get("Nonskill") or {}
+
+    opened: dict[str, dict[str, bool]] = {}
+    for name in nonskill_valid:
+        challenge = nonskill_challenges.get(name)
+        if not isinstance(challenge, dict) or challenge.get("ConnectsSections") is not True:
+            continue
+        sections = challenge.get("Sections")
+        if not isinstance(sections, list) or not sections:
+            continue
+        parts: list[tuple[str, str, bool]] = []
+        chunks_ok = True
+        for entry in sections:
+            if not isinstance(entry, str):
+                chunks_ok = False
+                break
+            chunk_id, sep, section_id = entry.partition("-")
+            if chunk_id not in chunk_ids:
+                chunks_ok = False
+                break
+            parts.append((chunk_id, section_id, bool(sep)))
+        if not chunks_ok:
+            continue
+        one_open = len(parts) == 1 or any(
+            not has_section or reachable_sections.get(chunk_id, {}).get(section_id)
+            for chunk_id, section_id, has_section in parts
+        )
+        if not one_open:
+            continue
+        for chunk_id, section_id, has_section in parts:
+            if not has_section:
+                continue
+            if reachable_sections.get(chunk_id, {}).get(section_id):
+                continue
+            if manual.get(chunk_id, {}).get(section_id) is False:
+                continue
+            opened.setdefault(chunk_id, {})[section_id] = True
+    return opened
+
+
 def unlocked_sections(
     chunk_ids: Mapping[str, bool],
     chunk_info: ChunkInfo,

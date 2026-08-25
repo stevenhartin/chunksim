@@ -18,6 +18,22 @@ reason). Keeping the loop here is what lets `sections.py`, `sources.py` and
 loop feeds each pass's challenge validity back into `gather_chunks_info` as
 `valid_tasks`, which `sources.py`'s `taskUnlocks` gating needs.
 
+**`ConnectsSections` is the same circularity a section down.** A
+`Nonskill` challenge can carry `ConnectsSections: true` - an Agility
+shortcut, a minigame crossing, a quest-built passage - and once it is
+valid, `sections.connected_sections` opens the section(s) it names, which
+can validate further challenges, which can open further sections. This
+was entirely unported until now: `sections.unlocked_sections`'s own fixed
+point only ever reads `chunkinfo['sections']`'s ordinary `Connect` data,
+which is not where a `ConnectsSections` shortcut lives, so a section
+whose *only* real path in was one of these read as permanently
+unreachable - `11317-2` (a Catherby fishing spot two Agility shortcuts
+deep) among them, confirmed against the real `verf` oracle. `connected`
+accumulates pass over pass exactly as `expanded` does, folded into
+`manual_sections` (never mutated - `_merge_sections` layers it on top)
+for the next pass's `unlocked_sections` call, since that function has no
+memory of its own between calls.
+
 `load_map_state` decodes a raw cached-map payload into a `MapState` once,
 including `passive_skill` for `bis.py`'s skill-requirement gate and
 `completed_challenges`/`manual_tasks`/`backlog`/`active_tasks` for
@@ -77,7 +93,12 @@ from chunksim.derive.injected import (
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.derive.other_tasks import OtherTasks, classify_other_tasks
 from chunksim.model.firebase import decode_challenge_keyed, decode_payload
-from chunksim.derive.sections import expand_chunk_areas, unlockable_areas, unlocked_sections
+from chunksim.derive.sections import (
+    connected_sections,
+    expand_chunk_areas,
+    unlockable_areas,
+    unlocked_sections,
+)
 from chunksim.derive.sources import (
     SourceIndex,
     gather_chunks_info,
@@ -368,6 +389,20 @@ def _merge_by_category(
     }
 
 
+def _merge_sections(
+    first: Mapping[str, Mapping[str, bool]], second: Mapping[str, Mapping[str, bool]]
+) -> dict[str, dict[str, bool]]:
+    """Two `{chunk: {section: bool}}` tables as one, `second` winning a
+    clash - `_merge_by_category`'s own shape, one level down. Used to fold
+    `connected_sections`' accumulated openings on top of a map's own
+    `manualSections` without a chunk holding both losing its other entries
+    to a shallow `{**first, **second}`."""
+    return {
+        chunk: {**first.get(chunk, {}), **second.get(chunk, {})}
+        for chunk in first.keys() | second.keys()
+    }
+
+
 def derive(
     state: MapState,
     unlocked: Mapping[str, bool],
@@ -481,6 +516,14 @@ def derive(
         manual_areas=state.manual_areas,
     )
     reachable: dict[str, dict[str, bool]] = {}
+    # Sections a valid `ConnectsSections` challenge has opened so far -
+    # accumulated the same way `expanded` is, since a section this unlocks
+    # can make more challenges valid, which can unlock more sections. Folded
+    # into `manual_sections` rather than into `reachable` directly, so a
+    # later pass's fresh `unlocked_sections` call still sees it - that
+    # function has no memory of its own between calls. See
+    # `sections.connected_sections`.
+    connected: dict[str, dict[str, bool]] = {}
     index: SourceIndex | None = None
     challenges: ChallengeResult | None = None
     valid_tasks: dict[str, dict[str, int | str | bool]] = {}
@@ -508,7 +551,7 @@ def derive(
         reachable = unlocked_sections(
             expanded,
             chunk_info,
-            manual_sections=state.manual_sections,
+            manual_sections=_merge_sections(state.manual_sections, connected),
             opt_out_sections=state.settings.get("optOutSections") is True,
             opt_out_sections_water=state.settings.get("optOutSectionsWater") is True,
             unresolved_sections_open=state.unresolved_sections_open,
@@ -552,6 +595,17 @@ def derive(
             manual_areas=state.manual_areas,
             max_skill=max_skill,
             passive_skill=state.passive_skill,
+        )
+        # `reachable` already carries every pass this loop has settled so
+        # far (it was built from `connected` above), so this reports only
+        # what is genuinely new this pass - the same "already-known" filter
+        # `new_areas` gets for free from `chunk_ids`.
+        new_connected = connected_sections(
+            challenges.valid,
+            expanded,
+            reachable,
+            chunk_info,
+            manual_sections=state.manual_sections,
         )
         # Upstream asks `checkPrimaryMethod('Slayer', …)` inside the `Kill X`
         # filter, once per monster, against this pass's own answer; asking it
@@ -608,6 +662,7 @@ def derive(
         )
         if (
             not new_areas
+            and not new_connected
             and settled
             and (not slayer_gate_reads_trainable or trainable_now == slayer_trainable)
             and _gates_agree(gate_pairs | slayer_pairs, challenges.valid, valid_tasks)
@@ -625,6 +680,7 @@ def derive(
             )
         valid_tasks = challenges.valid
         slayer_trainable = trainable_now
+        connected = _merge_sections(connected, new_connected)
         expanded = {**expanded, **new_areas}
 
     assert index is not None and challenges is not None  # loop always runs at least once
