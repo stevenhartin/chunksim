@@ -11,11 +11,15 @@ from typing import Any
 
 import pytest
 
+from chunksim.costing.levels import TaskGate
+from chunksim.costing.slayer import MasterRate, TaskRate
+
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.costing.heuristics import (
     DEFAULT_SLAYER_XP_PER_HOUR,
     streak_factor,
     Heuristics,
+    Rate,
     SlayerTask,
     Superior,
 )
@@ -29,6 +33,7 @@ from chunksim.costing.slayer import (
     superior_rolls_per_hour,
     superior_spawns_per_hour,
     superior_table_items,
+    task_kills_per_hour,
     task_monsters,
 )
 
@@ -824,6 +829,166 @@ def test_superior_spawns_and_table_rolls_are_different_rates() -> None:
     assert rolls == pytest.approx(spawns / 2)
 
 
+class TestHoursToBeAssignedExcludesTheTaskItself:
+    """`MasterRate.hours_to_be_assigned` - see its own docstring for the
+    double-count this replaced. Worked by hand, the same way the module's
+    first test is."""
+
+    @staticmethod
+    def _rate(task: str, weight: float, mean_count: float, kills_per_hour: float) -> TaskRate:
+        return TaskRate(
+            task=task, weight=weight, mean_count=mean_count, xp_per_kill=1.0,
+            kills_per_hour=kills_per_hour,
+        )
+
+    def test_the_wait_is_downtime_alone_not_wait_plus_the_task(self) -> None:
+        # Vannaka: Gargoyles weight 1, Bats weight 9 - P(Gargoyles) = 0.1.
+        # Gargoyles' own hours (100/20 = 5h) must not enter the average an
+        # old version blended across every task including the one being
+        # waited for; only Bats (100/100 = 1h) is "other" here.
+        # downtime = (1 - 0.1) / 0.1 * 1h = 9h.
+        master = MasterRate(
+            master="Vannaka",
+            xp_per_hour=1.0,
+            tasks=(
+                self._rate("Gargoyles", weight=1.0, mean_count=100.0, kills_per_hour=20.0),
+                self._rate("Bats", weight=9.0, mean_count=100.0, kills_per_hour=100.0),
+            ),
+        )
+
+        assert master.hours_to_be_assigned("Gargoyles") == pytest.approx(9.0)
+
+    def test_a_certain_task_has_no_downtime(self) -> None:
+        """`P(task) = 1` (nothing else is ever assigned) has no *other* task
+        to average, so there is nothing to wait through - `0.0`, not a
+        division by an empty weight."""
+        master = MasterRate(
+            master="M",
+            xp_per_hour=1.0,
+            tasks=(self._rate("Gargoyles", weight=1.0, mean_count=100.0, kills_per_hour=20.0),),
+        )
+
+        assert master.hours_to_be_assigned("Gargoyles") == pytest.approx(0.0)
+
+    def test_an_unassignable_task_has_no_answer(self) -> None:
+        master = MasterRate(
+            master="M",
+            xp_per_hour=1.0,
+            tasks=(self._rate("Bats", weight=1.0, mean_count=100.0, kills_per_hour=100.0),),
+        )
+
+        assert master.hours_to_be_assigned("Gargoyles") is None
+
+    def test_average_hours_itself_is_unchanged(self) -> None:
+        """The blend across *every* task, `Gargoyles` included, is still what
+        `xp_per_hour` wants - only the task-specific wait excludes it now."""
+        master = MasterRate(
+            master="Vannaka",
+            xp_per_hour=1.0,
+            tasks=(
+                self._rate("Gargoyles", weight=1.0, mean_count=100.0, kills_per_hour=20.0),
+                self._rate("Bats", weight=9.0, mean_count=100.0, kills_per_hour=100.0),
+            ),
+        )
+
+        assert master.average_hours == pytest.approx((1 * 5.0 + 9 * 1.0) / 10)
+
+
+class TestTaskKillsPerHourPrefersAModel:
+    """`task_kills_per_hour` - see the module docstring for why a modelled
+    rate outranks the spreadsheet's once one exists."""
+
+    _INFO = _info(
+        codeItems={"slayerTasks": {"Hydras": {"Hydra": True, "Alchemical Hydra": True}}}
+    )
+
+    def test_a_reachable_dps_rate_wins_over_the_scrape(self) -> None:
+        heuristics = Heuristics(monsters={"Alchemical Hydra": Rate(35.4, source="dps")})
+
+        got = task_kills_per_hour(
+            self._INFO, heuristics, "Hydras", frozenset({"Alchemical Hydra"}), 100.0
+        )
+
+        assert got == pytest.approx(35.4)
+
+    def test_the_fastest_reachable_candidate_wins(self) -> None:
+        """`Hydras` covers both variants; a player clearing the task for real
+        kills whichever is quicker, so the model does too."""
+        heuristics = Heuristics(
+            monsters={
+                "Hydra": Rate(200.0, source="dps"),
+                "Alchemical Hydra": Rate(35.4, source="dps"),
+            }
+        )
+
+        got = task_kills_per_hour(
+            self._INFO,
+            heuristics,
+            "Hydras",
+            frozenset({"Hydra", "Alchemical Hydra"}),
+            100.0,
+        )
+
+        assert got == pytest.approx(200.0)
+
+    def test_an_unreachable_candidate_is_not_offered(self) -> None:
+        heuristics = Heuristics(monsters={"Alchemical Hydra": Rate(35.4, source="dps")})
+
+        got = task_kills_per_hour(self._INFO, heuristics, "Hydras", frozenset(), 100.0)
+
+        assert got == pytest.approx(100.0)
+
+    def test_a_non_dps_rate_does_not_count_as_modelled(self) -> None:
+        """An MMG-scraped or defaulted monster rate is exactly the kind of
+        number this exists to stop deferring to - only a real simulation,
+        which takes this map's own gear into account, outranks the
+        spreadsheet's task-level figure."""
+        heuristics = Heuristics(monsters={"Alchemical Hydra": Rate(35.4, source="mmg:x")})
+
+        got = task_kills_per_hour(
+            self._INFO, heuristics, "Hydras", frozenset({"Alchemical Hydra"}), 100.0
+        )
+
+        assert got == pytest.approx(100.0)
+
+    def test_no_candidate_falls_back_to_the_scrape(self) -> None:
+        got = task_kills_per_hour(
+            self._INFO, Heuristics(), "Hydras", frozenset({"Alchemical Hydra"}), 100.0
+        )
+
+        assert got == pytest.approx(100.0)
+
+
+def test_master_rates_spends_the_modelled_task_rate() -> None:
+    """The same substitution, exercised through `master_rates` end to end -
+    a task's `xp_per_hour`/`hours` (and so `average_hours`, the wait-time
+    input) move with the modelled rate rather than staying pinned to the
+    scrape."""
+    info = _info(
+        slayerMasterTasks={"M": {"Hydras": {"Weight": 1}}},
+        codeItems={"slayerTasks": {"Hydras": {"Alchemical Hydra": True}}},
+    )
+    heuristics = Heuristics(
+        slayer=_everywhere(
+            {"Hydras": SlayerTask(mean_count=100, xp_per_kill=10, kills_per_hour=100)}
+        ),
+        monsters={"Alchemical Hydra": Rate(200.0, source="dps")},
+    )
+
+    rate = master_rates(
+        info,
+        heuristics,
+        reachable_masters=_FIXTURE_MASTERS,
+        reachable_monsters=frozenset({"Alchemical Hydra"}),
+        valid={},
+        levels={},
+    )[0]
+
+    # 100 kills at 200/hr is 0.5h, not the scrape's 1h - `xp_per_hour` moves
+    # from 1,000 to 2,000 with it.
+    assert rate.xp_per_hour == pytest.approx(2000.0)
+
+
 def test_task_monsters_reads_the_exports_own_list() -> None:
     """`codeItems.slayerTasks` is the authoritative task-to-monster mapping."""
     info = _info(
@@ -1093,3 +1258,71 @@ class TestTheMastersReachTheReport:
 
         source = pathlib.Path(inputs.__file__).read_text(encoding="utf-8")
         assert "slayer_model.methods(" in source
+
+
+class TestTheGateJoinsToTheMastersOwnKey:
+    """**`Konar quo Maten` keys his 93 tasks by location**, so a gate naming
+    the bare `Hydras` matched none of them: on a map where he is the only
+    master, every task-gated monster's drops went unpriced and any item with a
+    second route was priced by the worse one.
+    """
+
+    @staticmethod
+    def _rate(task: str, weight: float = 10.0) -> TaskRate:
+        return TaskRate(
+            task=task,
+            weight=weight,
+            mean_count=100.0,
+            xp_per_kill=1.0,
+            kills_per_hour=100.0,
+        )
+
+    def _master(self, *tasks: str) -> MasterRate:
+        return MasterRate(
+            master="Konar quo Maten",
+            xp_per_hour=1.0,
+            tasks=tuple(self._rate(task) for task in tasks),
+        )
+
+    def test_a_location_keyed_master_is_matched_on_the_place(self) -> None:
+        master = self._master(
+            "Hydras - Karuulm Slayer Dungeon", "Drakes - Karuulm Slayer Dungeon"
+        )
+        gate = TaskGate(task="Hydras", place="Karuulm Slayer Dungeon")
+        assert master.key_for(gate) == "Hydras - Karuulm Slayer Dungeon"
+
+    def test_the_wrong_location_is_not_a_match(self) -> None:
+        """**The half a prefix match would get wrong.** Being sent to the God
+        Wars Dungeon is no help against a Meiyerditch bloodveld, and 23 of
+        Konar's families span up to six places - so a prefix join would
+        shorten the wait for an assignment that mostly does not qualify."""
+        master = self._master("Bloodvelds - God Wars Dungeon")
+        gate = TaskGate(task="Bloodvelds", place="Meiyerditch Laboratories")
+        assert master.key_for(gate) is None
+
+    def test_a_plain_master_still_matches_exactly(self) -> None:
+        master = MasterRate(
+            master="Duradel", xp_per_hour=1.0, tasks=(self._rate("Hydras"),)
+        )
+        gate = TaskGate(task="Hydras", place="Karuulm Slayer Dungeon")
+        assert master.key_for(gate) == "Hydras"
+
+    def test_a_sub_area_in_the_gate_still_matches(self) -> None:
+        """`taskUnlocks` writes `Slayer Tower#Basement` where a master's key
+        writes `Slayer Tower`."""
+        master = self._master("Abyssal demons - Slayer Tower")
+        gate = TaskGate(task="Abyssal demons", place="Slayer Tower#Basement")
+        assert master.key_for(gate) == "Abyssal demons - Slayer Tower"
+
+    def test_probability_is_asked_of_the_masters_key(self) -> None:
+        """The other half of the miss: `probability` matches `entry.task`
+        exactly, so the bare gate name scored zero weight and
+        `hours_to_be_assigned` returned `None`."""
+        master = self._master(
+            "Hydras - Karuulm Slayer Dungeon", "Drakes - Karuulm Slayer Dungeon"
+        )
+        gate = TaskGate(task="Hydras", place="Karuulm Slayer Dungeon")
+        key = master.key_for(gate)
+        assert key is not None
+        assert master.probability(key) == pytest.approx(0.5)
+        assert master.probability(gate.task) == 0.0

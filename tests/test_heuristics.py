@@ -1306,3 +1306,49 @@ class TestACurrencyIsNamedByWhoeverTypedIt:
 
         assert rates.currency_rate("Points", "Shop") == 1_200.0
         assert rates.currency_rate("Points") == 10.0
+
+
+class TestASlayerMonstersGuideIsJoined:
+    """**A monster's loot table is not always in the `drops` branch.** Every
+    slayer monster's lives in `skillItems.Slayer` with no `drops` entry at
+    all, so a loop over `chunk_info.drops` skipped all of them - and the guide
+    for `Killing the Alchemical Hydra`, which publishes `kph = 25`, was never
+    joined to anything. The boss kept `DEFAULT_KPH['boss']` at 20.
+    """
+
+    @staticmethod
+    def _info() -> ChunkInfo:
+        return ChunkInfo(
+            {
+                "drops": {"Goblin": {"Bones": {"1": "Always"}}},
+                "skillItems": {
+                    "Slayer": {
+                        "Alchemical Hydra": {"Hydra's claw": {"1": "1/1001"}},
+                    }
+                },
+            }
+        )
+
+    def _built(self) -> dict[str, Any]:
+        guides = {
+            "Killing the Alchemical Hydra": MmgRates(
+                activity="Killing the Alchemical Hydra", kph=25.0
+            ),
+            "Killing goblins": MmgRates(activity="Killing goblins", kph=300.0),
+        }
+        config = build_config(
+            self._info(),
+            quest_pages={},
+            mmg_pages=guides,
+            assignments={},
+            mob_data={},
+        )
+        found: dict[str, Any] = config.get("monsters") or {}
+        return found
+
+    def test_the_slayer_tables_monster_gets_its_published_rate(self) -> None:
+        assert self._built()["Alchemical Hydra"]["value"] == 25.0
+
+    def test_the_drops_branch_still_joins(self) -> None:
+        """The widening adds; it does not replace."""
+        assert self._built()["Goblin"]["value"] == 300.0

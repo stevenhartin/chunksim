@@ -36,11 +36,14 @@ worker.js:2155).
 
 A monster with no `drops` entry falls back to its `skillItems.Slayer` entry
 (e.g. `Abyssal demon` has no `drops` table - `Abyssal whip` only exists via
-`skillItems.Slayer.'Abyssal demon'`), gated by a simplified Slayer-level
-check rather than upstream's full `isSlayerValid` - see
-`_slayer_skill_items_for`'s docstring for why the full version (which needs
-challenge-validity state) can't be expressed in this one-directional
-pipeline. Non-Slayer `skillItems` categories (Mining, Fishing, Thieving, ...)
+`skillItems.Slayer.'Abyssal demon'`), gated by upstream's full `isSlayerValid`
+(`_SlayerGate`). **This used to be the level test alone**, on the argument
+that the rest needs challenge-validity state a one-directional pipeline
+cannot express; that was wrong in the same way and for the same reason the
+`taskUnlocks` gating above would have been, and it is resolved the same way -
+`pipeline.derive` hands each pass the previous pass's answer.
+
+Non-Slayer `skillItems` categories (Mining, Fishing, Thieving, ...)
 are not ported: upstream resolves those the same lazy, per-queried-item way
 inside `calcChallengesWork` rather than in `gatherChunksInfo` itself, and
 only Slayer's is needed for `Items` requirements and `bis.py`'s equipment
@@ -494,36 +497,118 @@ def _resolve_monster_drop(
         )
 
 
+def slayer_output_tasks(chunk_info: ChunkInfo) -> dict[str, str]:
+    """`monster -> the Slayer challenge that yields it`, for `_SlayerGate`.
+
+    Upstream builds this inline and takes `slayerTasks[0]` - the **first**
+    `Slayer` challenge whose `Output` names the monster, in the export's own
+    key order - and checks only that one, however many match
+    (worker.js:989-993). Reproduced rather than tightened: on this export
+    every slayer monster has exactly one such challenge, so "first" and "the
+    one" coincide today, and a second one appearing should change this
+    project's answer exactly when it changes upstream's.
+    """
+    found: dict[str, str] = {}
+    for name, body in (chunk_info.challenges.get("Slayer") or {}).items():
+        if not isinstance(body, dict):
+            continue
+        output = body.get("Output")
+        if isinstance(output, str) and output not in found:
+            found[output] = name
+    return found
+
+
+def slayer_gate_can_bite(chunk_info: ChunkInfo) -> bool:
+    """Whether `_SlayerGate.trainable` can change this export's answer at all.
+
+    It is consulted only for a monster that is **both** levelled in
+    `slayerMonsters` and has a `skillItems.Slayer` table to open, so an export
+    with no such monster builds the same index whatever the flag says.
+    `pipeline.derive`'s exit test asks this before making trainability a
+    reason to run another pass - the same over-approximate-but-only-where-it-
+    is-read reasoning `task_unlock_pairs` uses, and what keeps a fixture with
+    no slayer monsters converging in the one pass it needs.
+    """
+    slayer_monsters = chunk_info.slayer_monsters
+    tables = _mapping(chunk_info.skill_items, "Slayer")
+    return any(monster in slayer_monsters for monster in tables)
+
+
+@dataclass(frozen=True)
+class _SlayerGate:
+    """Upstream's `isSlayerValid` (worker.js:987-994, and again at :2557),
+    bundled so the three `_resolve_monster` call sites pass one argument.
+
+    Frozen and built per `gather_chunks_info` call, so it travels as data -
+    see this package's no-module-state rule.
+    """
+
+    monsters: Mapping[str, Any]
+    max_skill: Mapping[str, int]
+    passive_skill: Mapping[str, int]
+    trainable: bool
+    outputs: Mapping[str, str]
+    valid_tasks: Mapping[str, Mapping[str, Any]]
+
+    def opens(self, monster: str) -> bool:
+        """Whether this monster's `skillItems.Slayer` table may be read."""
+        required = self.monsters.get(monster)
+        if isinstance(required, (int, float)) and not isinstance(required, bool):
+            # `!slayerMonsters.hasOwnProperty(monster)` is the arm that skips
+            # every level test; a monster *with* a level has to earn it from
+            # one of the other two.
+            capped = self.max_skill.get("Slayer")
+            by_training = self.trainable and (
+                not isinstance(capped, (int, float)) or required <= capped
+            )
+            passive = self.passive_skill.get("Slayer")
+            by_passive = (
+                isinstance(passive, (int, float))
+                and not isinstance(passive, bool)
+                and required <= passive
+            )
+            if not (by_training or by_passive):
+                return False
+        # **Asked of every monster, not only levelled ones** - upstream runs
+        # this second test inside `if (isSlayerValid)` whichever arm set it,
+        # so a monster absent from `slayerMonsters` is subject to it too.
+        own_task = self.outputs.get(monster)
+        if own_task is not None and own_task not in self.valid_tasks.get("Slayer", {}):
+            return False
+        return True
+
+
 def _slayer_skill_items_for(
     monster: str,
     skill_items_slayer: Mapping[str, Any],
-    slayer_monsters: Mapping[str, Any],
-    max_skill: Mapping[str, int],
+    gate: _SlayerGate,
 ) -> Mapping[str, Any] | None:
     """Port of the `skillItems['Slayer']` fallback used when a monster has no
     `drops` entry (e.g. worker.js:986-999: `Abyssal demon` has no `drops`
     table, only `skillItems.Slayer.'Abyssal demon'`, which is where
-    `Abyssal whip` comes from).
+    `Abyssal whip` comes from), gated by upstream's full `isSlayerValid`.
 
-    Simplified vs. upstream's `isSlayerValid`: gated only on the monster's
-    required Slayer level (`slayerMonsters`) against `max_skill['Slayer']`,
-    when both are present. `slayerLocked` is in that cap already
-    (`pipeline.slayer_capped_max_skill`), which is the whole of upstream's
-    `(!slayerLocked || slayerMonsters[monster] <= slayerLocked['level'])`
-    clause at worker.js:987. What is still missing is `checkPrimaryMethod`
-    ("is Slayer trainable at all") and that monster's own Slayer task already
-    being valid - a genuine circularity (item availability depending on
-    challenge validity) that this project's one-directional
-    sources -> challenges pipeline can't express, so it isn't modelled here.
+    **The gate used to be the level test alone, and that was a real defect
+    rather than a simplification.** `slayerLocked` folds into the cap
+    (`pipeline.slayer_capped_max_skill`), so a map with no lock and no
+    `maxSkill` entry passed every monster - which on a map that cannot train
+    Slayer at all opened the Abyssal demon, Dust devil and Deviant spectre
+    tables and handed it an abyssal whip. The two missing terms were
+    `checkPrimaryMethod('Slayer')` and the monster's own `Slay a ...`
+    challenge being valid; `_SlayerGate` carries both.
+
+    **The circularity that argument was resting on is the one
+    `pipeline.derive` already resolves.** Item availability depending on
+    challenge validity is exactly what the `taskUnlocks` gating does, and it
+    is answered the same way: the first pass runs ungated and each later pass
+    is handed the previous pass's answer, so the gate can only ever *remove*
+    a source. `pipeline.derive`'s exit test covers the two new reads - see
+    `slayer_output_tasks` and that loop's `slayer_trainable` term.
     """
     table = skill_items_slayer.get(monster)
     if not isinstance(table, dict):
         return None
-    required_level = slayer_monsters.get(monster)
-    if isinstance(required_level, (int, float)) and "Slayer" in max_skill:
-        if required_level > max_skill["Slayer"]:
-            return None
-    return table
+    return table if gate.opens(monster) else None
 
 
 def loot_table_tables(
@@ -632,8 +717,7 @@ def _resolve_monster(
     boss_monsters: Mapping[str, Any],
     backlogged: Mapping[str, Any],
     skill_items_slayer: Mapping[str, Any],
-    slayer_monsters: Mapping[str, Any],
-    max_skill: Mapping[str, int],
+    slayer_gate: _SlayerGate,
 ) -> None:
     """Record `monster` as present at `source`, and (unless `Skiller` is on,
     it's backlogged, or it has no known drops) resolve every drop it can
@@ -645,9 +729,7 @@ def _resolve_monster(
 
     monster_drops = drops.get(monster)
     if not isinstance(monster_drops, dict):
-        monster_drops = _slayer_skill_items_for(
-            monster, skill_items_slayer, slayer_monsters, max_skill
-        )
+        monster_drops = _slayer_skill_items_for(monster, skill_items_slayer, slayer_gate)
     if (
         rules.get("Skiller") is True
         or not isinstance(monster_drops, dict)
@@ -864,11 +946,21 @@ def gather_chunks_info(
     manual_equipment: Mapping[str, Any] | None = None,
     max_skill: Mapping[str, int] | None = None,
     valid_tasks: Mapping[str, Mapping[str, Any]] | None = None,
+    passive_skill: Mapping[str, int] | None = None,
+    slayer_trainable: bool = True,
 ) -> SourceIndex:
     """Port of `gatherChunksInfo`: what the unlocked chunks make available.
 
     `chunk_ids` should already be expanded via `sections.expand_chunk_areas`;
     `reachable_sections` is `sections.unlocked_sections`'s output.
+
+    **`slayer_trainable` defaults to the permissive answer, deliberately.** It
+    is `checkPrimaryMethod('Slayer', ...)` computed from the *previous* pass's
+    validity, and only `pipeline.derive` is in a position to know it; a caller
+    building an index on its own has no validity to compute it from, and
+    guessing `False` there would silently delete every slayer monster's drops.
+    So an uninformed caller gets the ungated answer - the same posture
+    `valid_tasks` takes, where an empty map opens every `taskUnlocks` gate.
     """
     if rules.get("KeyItem Bosses") is True:
         raise NotImplementedError(
@@ -886,9 +978,16 @@ def gather_chunks_info(
     drop_tables = _mapping(chunk_info.code_items, "dropTables")
     drops = _apply_drop_rate_overrides(chunk_info.drops, chunk_info, chunk_ids, reachable_sections)
     skill_items_slayer = _mapping(chunk_info.skill_items, "Slayer")
-    slayer_monsters = chunk_info.slayer_monsters
     task_unlocks = _mapping(chunk_info.data, "taskUnlocks")
     valid_tasks = valid_tasks or {}
+    slayer_gate = _SlayerGate(
+        monsters=chunk_info.slayer_monsters,
+        max_skill=max_skill,
+        passive_skill=passive_skill or {},
+        trainable=slayer_trainable,
+        outputs=slayer_output_tasks(chunk_info),
+        valid_tasks=valid_tasks,
+    )
 
     items: dict[str, dict[str, str]] = {}
     objects: dict[str, dict[str, bool]] = {}
@@ -930,8 +1029,7 @@ def gather_chunks_info(
                         boss_monsters=boss_monsters,
                         backlogged=backlogged,
                         skill_items_slayer=skill_items_slayer,
-                        slayer_monsters=slayer_monsters,
-                        max_skill=max_skill,
+                        slayer_gate=slayer_gate,
                     )
                 for shop in _mapping(section_entry, "Shop"):
                     if not _task_unlocked(task_unlocks, "Shops", shop, source, valid_tasks):
@@ -980,8 +1078,7 @@ def gather_chunks_info(
                 boss_monsters=boss_monsters,
                 backlogged=backlogged,
                 skill_items_slayer=skill_items_slayer,
-                slayer_monsters=slayer_monsters,
-                max_skill=max_skill,
+                slayer_gate=slayer_gate,
             )
         for shop in _mapping(entry, "Shop"):
             if not _task_unlocked(task_unlocks, "Shops", shop, chunk_id, valid_tasks):
@@ -1037,8 +1134,7 @@ def gather_chunks_info(
                 boss_monsters=boss_monsters,
                 backlogged=backlogged,
                 skill_items_slayer=skill_items_slayer,
-                slayer_monsters=slayer_monsters,
-                max_skill=max_skill,
+                slayer_gate=slayer_gate,
             )
 
     manual_npcs = manual_monsters.get("NPCs")

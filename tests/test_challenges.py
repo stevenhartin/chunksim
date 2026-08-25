@@ -2247,3 +2247,170 @@ def test_clues_at_the_default_amount_admit_nothing_on_the_oracle_map(
 
     assert extra_valid(**{"Collection Log Clues": True}) == off
     assert extra_valid(**{"Collection Log Clues": True, "Collection Log Clues Amount": "0"}) > off
+
+
+def _map_state(**overrides: Any) -> MapState:
+    """A minimal `MapState`. Duplicated from `test_pipeline.py` rather than
+    shared: `tests/` is not a package, so a test file cannot import from
+    another, and `conftest.py` holds only what more than one file needs.
+    """
+    defaults: dict[str, Any] = {
+        "chunk_info": _chunk_info(),
+        "rules": {},
+        "settings": {},
+        "manual_sections": {},
+        "manual_areas": {},
+        "manual_monsters": {},
+        "manual_equipment": {},
+        "backlogged_sources": {},
+        "max_skill": {},
+        "passive_skill": {},
+        "completed_challenges": {},
+        "checked_challenges": {},
+        "manual_tasks": {},
+        "backlog": {},
+        "active_tasks": {},
+    }
+    defaults.update(overrides)
+    return MapState(**defaults)
+
+
+def _untrainable_skill_world() -> ChunkInfo:
+    """A Slayer with no way to train it: the only `Primary` route is a slayer
+    master this map has no NPC for, so every valid challenge is a
+    `Primary: false` kill.
+    """
+    return _chunk_info(
+        chunks={"100": {"Monster": {"Cave crawler": True, "Abyssal demon": True}}},
+        slayerMonsters={"Cave crawler": 10, "Abyssal demon": 85},
+        skillItems={"Slayer": {"Abyssal demon": {"Abyssal whip": {"1": "1/512"}}}},
+        challenges={
+            "Slayer": {
+                "Slay a cave crawler": {
+                    "Level": 10,
+                    "Monsters": ["Cave crawler"],
+                    "Primary": False,
+                    "Output": "Cave crawler",
+                },
+                "Slay an abyssal demon": {
+                    "Level": 85,
+                    "Monsters": ["Abyssal demon"],
+                    "Primary": False,
+                    "Output": "Abyssal demon",
+                },
+                "Get a task from Duradel": {
+                    "Level": 50,
+                    "NPCs": ["Duradel"],
+                    "Primary": True,
+                },
+            }
+        },
+    )
+
+
+def test_a_passive_floor_keeps_what_it_covers_and_drops_what_it_does_not() -> None:
+    """worker.js:1235. `_prune_untrainable_skills` exempts the whole skill
+    once the floor is above 1; this is the per-challenge half that still
+    removes what the floor cannot reach.
+    """
+    state = _map_state(chunk_info=_untrainable_skill_world(), passive_skill={"Slayer": 48})
+
+    valid = derive(state, {"100": True}).challenges.valid
+
+    assert "Slay a cave crawler" in valid["Slayer"]
+    assert "Slay an abyssal demon" not in valid["Slayer"]
+
+
+def test_the_dropped_challenge_stops_seeding_its_activitys_items() -> None:
+    """Why the gate matters beyond the task list: a valid `Slay a ...` is an
+    *activity key* into `skillItems.Slayer`, so leaving it valid put an
+    abyssal whip on a map that cannot train Slayer past 48.
+    """
+    state = _map_state(chunk_info=_untrainable_skill_world(), passive_skill={"Slayer": 48})
+
+    result = derive(state, {"100": True}).challenges
+
+    assert "Abyssal whip" not in result.available_items
+
+
+def test_a_floor_above_the_level_keeps_the_challenge_and_its_items() -> None:
+    state = _map_state(chunk_info=_untrainable_skill_world(), passive_skill={"Slayer": 90})
+
+    result = derive(state, {"100": True}).challenges
+
+    assert "Slay an abyssal demon" in result.valid["Slayer"]
+    assert "Abyssal whip" in result.available_items
+
+
+def test_a_completed_challenge_at_that_level_keeps_it() -> None:
+    """Upstream's `highestCompletedLevel` escape: recorded progress is not
+    un-completed by a skill later becoming untrainable.
+    """
+    state = _map_state(
+        chunk_info=_untrainable_skill_world(),
+        passive_skill={"Slayer": 48},
+        completed_challenges={"Slayer": {"Slay an abyssal demon": 85}},
+    )
+
+    valid = derive(state, {"100": True}).challenges.valid
+
+    assert "Slay an abyssal demon" in valid["Slayer"]
+
+
+def _dependent_world() -> ChunkInfo:
+    """The Combat Achievement shape: a `Diary` challenge whose `Tasks`
+    requirement names a Slayer challenge the map cannot reach.
+    """
+    return _chunk_info(
+        chunks={"100": {"Monster": {"Cave crawler": True, "Brutal black dragon": True}}},
+        slayerMonsters={"Cave crawler": 10, "Brutal black dragon": 77},
+        challenges={
+            "Slayer": {
+                "Slay a cave crawler": {
+                    "Level": 10,
+                    "Monsters": ["Cave crawler"],
+                    "Primary": False,
+                    "Output": "Cave crawler",
+                },
+                "Slay a brutal black dragon": {
+                    "Level": 77,
+                    "Monsters": ["Brutal black dragon"],
+                    "Primary": False,
+                    "Output": "Brutal black dragon",
+                },
+            },
+            "Diary": {
+                "Brutal, Big, Black and Firey": {
+                    "Monsters": ["Brutal black dragon"],
+                    "Tasks": {"Slay a brutal black dragon": "Slayer"},
+                }
+            },
+        },
+    )
+
+
+def test_a_dependent_goes_with_the_challenge_its_tasks_requirement_names() -> None:
+    """**The gate has to run inside the walk, not after it.** As a post-pass
+    sweep it removed `Slay a brutal black dragon` but left the achievement
+    requiring it valid, because the Slayer challenge was rebuilt as valid at
+    the top of every pass and only removed at the bottom - a stable, and
+    wrong, fixed point.
+    """
+    state = _map_state(chunk_info=_dependent_world(), passive_skill={"Slayer": 48})
+
+    valid = derive(state, {"100": True}).challenges.valid
+
+    assert "Slay a brutal black dragon" not in valid.get("Slayer", {})
+    assert "Brutal, Big, Black and Firey" not in valid.get("Diary", {})
+    # The reachable one, and its dependent, are untouched.
+    assert "Slay a cave crawler" in valid["Slayer"]
+
+
+def test_the_monster_stays_present_even_though_its_task_went() -> None:
+    """`isSlayerValid` gates the drop table, not the monster: upstream keeps
+    the monster in the index and only refuses what it yields."""
+    state = _map_state(chunk_info=_dependent_world(), passive_skill={"Slayer": 48})
+
+    index = derive(state, {"100": True}).source_index
+
+    assert "Brutal black dragon" in index.monsters

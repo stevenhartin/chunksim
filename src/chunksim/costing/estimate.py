@@ -1,7 +1,8 @@
 """How long the outstanding work would take, in the roughest useful terms.
 
-Four buckets - quests, boss drops, activity unlocks and skilling, the set
-`BUCKETS` names. Every number spent here comes from `heuristics.py` and is a guess;
+Five buckets - quests, boss drops, monster drops, activity unlocks and
+skilling, the set `BUCKETS` names. Every number spent here comes from
+`heuristics.py` and is a guess;
 the only exact arithmetic is `experience.py`'s XP curve. Read both before
 quoting a total.
 
@@ -30,6 +31,26 @@ actually killing. This was the estimate's largest single overstatement:
 correcting it took the real map from 10,673 hours to 3,849. The per-item hours
 are untouched and still printed, because "how long for this one thing" and
 "how long for all of it" are different questions.
+
+**A leaf item's display groups under the task that wants it, not under its
+own recipe.** `source` is "what you kill or do for it", and for a real drop
+that is a monster or a minigame - a fine display heading. For a made or
+bought item it is `make:Craft a coif` or `shop:General Store`: true, but a
+one-off name that never groups with anything, so a Diary/CA task needing
+several such items showed as that many disconnected headings instead of one.
+`ItemEstimate.group` (set by `_leaf_group`, off `_leaf_task_groups`'
+task-name -> `other_tasks` group-name index) is the fix: a leaf item's
+display key becomes its Diary/CA/Extra group when it has a real task behind
+it, so `Coif` reads as a line under `Varrock Diary - Medium` rather than as
+its own heading. `EstimateResult.buckets`/`by_source` clamp on the same key
+(`_group_key`), so the displayed grouping and the totalled hours can never
+disagree about what counts as one thing. A group's heading is `_group_total`'s
+**max within a source, summed across sources**: items sharing one real
+`source` are earned in parallel and max (unchanged from before `group`
+existed - `test_items_from_different_sources_still_add_up` already pins that
+distinct sources add, and a shared `group` must not silently turn that into
+a clamp), and a Diary/CA cluster can hold both at once if two of its leaf
+items happen to route through the same shop or recipe.
 
 **The item walk.** A task needs items; an item has routes (`search.py`'s
 `WorldIndex`, the whole-world index of all five); a route has a rate. The
@@ -187,6 +208,7 @@ from functools import cached_property
 from typing import Any, Callable, Sequence
 
 from chunksim.costing.levels import (
+    TaskGate,
     goal_levels,
     infer_levels,
     reachable_providers,
@@ -202,7 +224,7 @@ from chunksim.model.experience import (
 )
 from chunksim.costing.combat_xp import COMBAT_SKILLS, hitpoints_credit, slayer_credit
 from chunksim.costing import gathering, herbs, lootsack, recipe_rates, valeoffering, yields
-from chunksim.costing import raids
+from chunksim.costing import barrows, colosseum, gauntlet, instanced, moons, raids, tempoross, tzhaar, wintertodt
 from chunksim.remote.recipes import Recipe
 from chunksim.costing.farming import (
     DEFAULT_HARVESTS_PER_DAY,
@@ -237,7 +259,7 @@ from chunksim.costing.slayer import (
 from chunksim.model.summary import _mapping
 
 #: The buckets, in the order `chunksim estimate` reports them.
-BUCKETS = ("quests", "boss drops", "activities", "skilling")
+BUCKETS = ("quests", "boss drops", "monster drops", "activities", "skilling")
 
 #: There is deliberately no depth bound on the item walk any more.
 #:
@@ -382,13 +404,30 @@ class _Priced:
     #: crediting the smelting to a shop purchase would be fabrication. Empty
     #: for every route but `make:`; a kill, a spawn and a shop pay nothing.
     experience: tuple[tuple[str, float], ...] = ()
+    #: This route's own materials, each with its own `_Priced` - empty unless
+    #: the caller asked for `trace=True` (`_item_hours`/`_route_hours`), which
+    #: nothing but `training.trace_option` does. **Opt-in and additive**: the
+    #: `task:` branch of `_route_hours` already builds this list to sum
+    #: `.hours` out of it and discards it afterwards - `trace=True` is the
+    #: only difference between discarding it and keeping it. Every other
+    #: route is already a leaf (`_kill_hours`, shop, spawn, currency, herb,
+    #: yield, raid), so `children` is `()` there regardless of `trace`.
+    children: tuple["_Priced", ...] = ()
+    #: What material this `_Priced` answers the question for, from the
+    #: *parent's* own materials list - `""` at the root of a trace (a caller
+    #: already knows what it asked about) and on every non-traced answer.
+    #: **Not the route's own name** - `.source`/`.detail` already say where
+    #: this came from; `label` says what it *is*, which nothing else on this
+    #: type carries, because a `_Priced` is otherwise only ever read by the
+    #: caller that already knows what item it asked `_item_hours` for.
+    label: str = ""
 
 
 @dataclass(frozen=True)
 class ItemEstimate:
     """One item's cost, and every active task that wants it.
 
-    The unit of the boss-drop and activity buckets. Tasks overlap heavily -
+    The unit of the boss-drop, monster-drop and activity buckets. Tasks overlap heavily -
     an abyssal whip is a BiS pick *and* two separate log entries - and the
     work of getting one is done once, so the cost is counted once.
     """
@@ -400,6 +439,12 @@ class ItemEstimate:
     #: What you kill or do for it. Shared sources are worked in parallel.
     source: str = ""
     tasks: tuple[str, ...] = ()
+    #: The `Diary`/`Extra` root this item's display groups under, when it has
+    #: one - see `_leaf_task_groups` and `EstimateResult.sources_in`. Empty
+    #: for everything priced off a real, repeatable source (a monster, a
+    #: minigame): those already group correctly under `source`, and giving
+    #: them a `group` too would only add a second name for the same thing.
+    group: str = ""
     #: The `Heuristics` entries behind `hours`, as override paths - see
     #: `_Priced.knobs`. This is what makes the number arguable: `detail` says
     #: what was assumed in prose, and this says where to go and change it.
@@ -413,6 +458,7 @@ class ItemEstimate:
             "detail": self.detail,
             "source": self.source,
             "tasks": list(self.tasks),
+            "group": self.group,
             "knobs": list(self.knobs),
         }
 
@@ -511,6 +557,33 @@ class UnpricedSkill:
         }
 
 
+def _group_key(item: ItemEstimate) -> str:
+    """The display/clamping key for one item - `group` if it has one."""
+    return item.group or item.source or item.item
+
+
+def _group_total(items: Sequence[ItemEstimate]) -> float:
+    """A group's hours: **max within a source, summed across sources**.
+
+    Two items off the same `source` are earned in parallel (one Abyssal
+    demon grind pays for both the dagger and the head), so they max. Two
+    items off *different* sources are not - buying rope does not buy a
+    tinderbox even when the same shop sells both and the same Diary task
+    wants both - so distinct sources add. A `group` (an item with no real
+    repeatable source of its own, rolled up under the Diary/CA task that
+    wants it - see `ItemEstimate.group`) can hold both shapes at once: two
+    leaf items sharing one `shop:` source *and* a third from an unrelated
+    `make:` route. Maxing within a source first and summing the per-source
+    maxes after is the one rule that gets every combination right, and it is
+    also just what `source`-only grouping already did before `group`
+    existed - this is that rule, generalised rather than replaced.
+    """
+    per_source: dict[str, float] = {}
+    for item in items:
+        per_source[item.source] = max(per_source.get(item.source, 0.0), item.hours)
+    return sum(per_source.values())
+
+
 @dataclass(frozen=True)
 class EstimateResult:
     """Per-bucket hours, the detail behind them, and what could not be priced."""
@@ -518,7 +591,7 @@ class EstimateResult:
     #: Quest-bucket entries. Quests are the one thing costed per *task*, since
     #: a quest is not an item you can get twice over.
     tasks: tuple[TaskEstimate, ...] = ()
-    #: The boss-drop and activity buckets, one entry per unique item.
+    #: The boss-drop, monster-drop and activity buckets, one entry per unique item.
     items: tuple[ItemEstimate, ...] = ()
     skills: tuple[SkillEstimate, ...] = ()
     #: The master the Slayer estimate used - the fastest reachable one.
@@ -572,23 +645,27 @@ class EstimateResult:
         return totals
 
     def by_source(self) -> dict[tuple[str, str], float]:
-        """`(bucket, source) -> hours`, the longest item that source owes."""
-        longest: dict[tuple[str, str], float] = {}
+        """`(bucket, display key) -> hours` - see `_group_total`."""
+        grouped: dict[tuple[str, str], list[ItemEstimate]] = {}
         for item in self.items:
-            key = (item.bucket, item.source or item.item)
-            longest[key] = max(longest.get(key, 0.0), item.hours)
-        return longest
+            grouped.setdefault((item.bucket, _group_key(item)), []).append(item)
+        return {key: _group_total(items) for key, items in grouped.items()}
 
     def sources_in(self, bucket: str) -> list[tuple[str, float, list[ItemEstimate]]]:
-        """Each source in `bucket`: what it costs, and what it yields."""
+        """Each display group in `bucket`: what it costs, and what it yields.
+
+        Grouped by `ItemEstimate.group` where an item has one, else by its
+        `source` - `_group_key`. `Abyssal dagger` and `Abyssal head` group
+        under `Abyssal demon` either way; `Coif` (`source="make:Craft a
+        coif"`, no real repeatable source of its own) groups under whichever
+        Diary/CA task wants it instead of standing as its own one-off
+        heading. `_group_total` decides max vs sum per group.
+        """
         grouped: dict[str, list[ItemEstimate]] = {}
         for item in self.items_in(bucket):
-            grouped.setdefault(item.source or item.item, []).append(item)
+            grouped.setdefault(_group_key(item), []).append(item)
         return sorted(
-            (
-                (source, max(item.hours for item in items), items)
-                for source, items in grouped.items()
-            ),
+            ((key, _group_total(items), items) for key, items in grouped.items()),
             key=lambda row: (-row[1], row[0]),
         )
 
@@ -645,16 +722,17 @@ class _Fixpoint:
     __slots__ = ("settled", "belief", "active", "reads", "readsets", "pending")
 
     def __init__(self) -> None:
-        #: `(item, quantity, amortise)` -> this round's answer. Authoritative
-        #: once a round completes without reading any belief that then moved.
-        self.settled: dict[tuple[str, float, bool], _Priced | None] = {}
+        #: `(item, quantity, amortise, trace)` -> this round's answer.
+        #: Authoritative once a round completes without reading any belief
+        #: that then moved.
+        self.settled: dict[tuple[str, float, bool, bool], _Priced | None] = {}
         #: Last round's answers, consulted only where evaluation closes on
         #: itself. Empty on the first round, which prices a cycle's back-edge
         #: as "no route" - exactly the path-discard the visited set used to
         #: perform, but paid once per question rather than once per path.
-        self.belief: dict[tuple[str, float, bool], _Priced | None] = {}
+        self.belief: dict[tuple[str, float, bool, bool], _Priced | None] = {}
         #: The keys currently being evaluated on the stack.
-        self.active: set[tuple[str, float, bool]] = set()
+        self.active: set[tuple[str, float, bool, bool]] = set()
         #: Every belief read this round, with the value that was read. **The
         #: whole convergence test**: a round is exact iff every value it read
         #: matches that key's final answer - `settled` where the key settled
@@ -664,7 +742,7 @@ class _Fixpoint:
         #: re-deriving its cone: the first cut retried on any new key, and
         #: the every-rollable-chunk map paid 7.27 million evaluations for
         #: 1,634 questions before this rule replaced it.
-        self.reads: dict[tuple[str, float, bool], _Priced | None] = {}
+        self.reads: dict[tuple[str, float, bool, bool], _Priced | None] = {}
         #: key -> the belief keys its evaluation transitively read, kept only
         #: where that set is non-empty - which is only the keys inside a
         #: cyclic cluster, a few dozen against the uber map's 136,875. **What
@@ -672,11 +750,13 @@ class _Fixpoint:
         #: keys whose readsets touch it are re-derived, and everything else
         #: stays settled. The first cut cleared `settled` wholesale and paid
         #: 4 million evaluations for 137 thousand distinct questions.
-        self.readsets: dict[tuple[str, float, bool], frozenset[tuple[str, float, bool]]] = {}
+        self.readsets: dict[
+            tuple[str, float, bool, bool], frozenset[tuple[str, float, bool, bool]]
+        ] = {}
         #: The evaluation stack's read-accumulators, one per active key.
         #: A child's reads roll up into its parent on pop, which is what
         #: makes `readsets` transitive without a graph walk.
-        self.pending: list[set[tuple[str, float, bool]]] = []
+        self.pending: list[set[tuple[str, float, bool, bool]]] = []
 
 
 @dataclass(frozen=True)
@@ -741,7 +821,10 @@ class _Walk:
     reachable_items: frozenset[str] = frozenset()
     #: Monster -> the slayer task you must be on to fight it, where one is
     #: required. Derived from `taskUnlocks`; see `task_gated_monsters`.
-    task_gates: dict[str, str] = field(default_factory=dict)
+    #: `monster -> TaskGate`. **The gate carries where it applies**, because
+    #: `Konar quo Maten` keys his tasks by location and a bare name matches
+    #: none of his 93 - see `costing/levels.TaskGate`.
+    task_gates: dict[str, TaskGate] = field(default_factory=dict)
     #: `codeItems.itemsPlus`: `Air rune[+]` -> the four runes that satisfy it.
     #: **Upstream's "or anything equivalent" marker**, and the item walk never
     #: read it - so a task wanting `Air rune[+]` found no item by that name and
@@ -939,6 +1022,7 @@ def _item_hours(
     *,
     quantity: float = 1.0,
     amortise: bool = False,
+    trace: bool = False,
 ) -> _Priced | None:
     """Cheapest route to `quantity` of `item`, as `(hours, why)`, or `None`.
 
@@ -950,6 +1034,18 @@ def _item_hours(
     abyssal whip, not forty; the parameter exists for *materials*, where a
     recipe consuming two guam leaves an action is asking a different question
     and a stacked drop amortises across it. See `_drop_rates`.
+
+    **`trace` asks the same question and gets a fuller answer, never a
+    different one.** Off (the default) everywhere but `training.trace_option`,
+    it only tells a recursive route (`_route_hours`'s `task:` branch) to keep
+    the `_Priced` of each material it already prices, on `_Priced.children`,
+    instead of discarding the list once `.hours` is summed out of it - see
+    `costing/training.py`. It widens the fixpoint key to `(item, quantity,
+    amortise, trace)` so a traced and an untraced question never share one
+    settled answer, but it is a `bool`, not the fractional-quantity blow-up
+    the warning below is about - and a trace call always builds its own fresh
+    `_Walk`, so in ordinary use the two questions never even meet in one
+    table.
 
     **The evaluation is a fixpoint, not a path search.** Each `(item,
     quantity, amortise)` question is settled once per round into a table; a
@@ -972,7 +1068,7 @@ def _item_hours(
     """
     item = walk.resolve(item)
     fixpoint = walk.fixpoint
-    key = (item, quantity, amortise)
+    key = (item, quantity, amortise, trace)
     if fixpoint.active:
         return _settle(walk, key)
 
@@ -1010,6 +1106,66 @@ def _item_hours(
     return found
 
 
+def priced_material(
+    walk: _Walk,
+    item: str,
+    quantity: float,
+    *,
+    amortise: bool = True,
+    material_aliases: Mapping[str, str] = {},
+) -> _Priced | None:
+    """`_item_hours` with its recursion kept, for `training.trace_option`.
+
+    The only caller allowed to ask for `trace=True` - everywhere else in this
+    module asks the ordinary question and gets the ordinary, childless
+    answer. Public rather than a second underscored name so
+    `costing/training.py` can reach the walk's own pricing without a second
+    implementation of it, the trade `_route_hours`'s own docstring warns a
+    parallel walker would have to make.
+
+    **Tries `material_aliases` on the same terms `material_seconds`'s own
+    closure does** - a material named in the wiki's vocabulary that
+    `world.item_sources` (built off the export's `Output` strings) does not
+    recognise under that spelling. Only once the literal name has failed, so
+    a material the export does recognise is never routed through the alias
+    table by mistake.
+    """
+    found = _item_hours(walk, item, quantity=quantity, amortise=amortise, trace=True)
+    if found is None:
+        aliased = material_aliases.get(item)
+        if aliased is not None:
+            found = _item_hours(
+                walk, aliased, quantity=quantity, amortise=amortise, trace=True
+            )
+    return found
+
+
+def material_walk(
+    state: MapState,
+    derived: Derived,
+    world: WorldIndex,
+    heuristics: Heuristics,
+    *,
+    level_overrides: dict[str, int] | None = None,
+    made_experience: Mapping[str, tuple[str, float]] | None = None,
+    recipes: Mapping[str, Sequence[Recipe]] | None = None,
+) -> _Walk:
+    """The `_Walk` a caller outside this module can price materials against -
+    `material_seconds` and `training.trace_option` both build theirs from
+    here, so the two can never disagree about reachability. Factored out of
+    `material_seconds`'s own setup rather than duplicated by a second caller.
+    """
+    walk = _setup(state, derived, world, heuristics, level_overrides or {}, recipes).walk
+    if made_experience:
+        # Reset for the reason `material_seconds` resets after this same
+        # replace: the experience credits ride on every `_Priced`, so a memo
+        # filled under one table is wrong under another.
+        walk = dataclasses.replace(
+            walk, made_experience=made_experience, fixpoint=_Fixpoint(), leaf_routes={}
+        )
+    return walk
+
+
 #: How many keys may be mid-evaluation at once. **A work bound, not a
 #: semantic one**: it caps the recursion depth of a single derivation chain,
 #: and a chain of sixty-four distinct recipes is beyond anything the corpus
@@ -1024,7 +1180,7 @@ _MAX_ACTIVE = 64
 _MAX_ROUNDS = 8
 
 
-def _settle(walk: _Walk, key: tuple[str, float, bool]) -> _Priced | None:
+def _settle(walk: _Walk, key: tuple[str, float, bool, bool]) -> _Priced | None:
     """One key's answer this round: settled, believed, or evaluated now."""
     fixpoint = walk.fixpoint
     settled = fixpoint.settled
@@ -1039,7 +1195,9 @@ def _settle(walk: _Walk, key: tuple[str, float, bool]) -> _Priced | None:
     fixpoint.active.add(key)
     fixpoint.pending.append(set())
     try:
-        found = _best_route(walk, key[0], quantity=key[1], amortise=key[2])
+        found = _best_route(
+            walk, key[0], quantity=key[1], amortise=key[2], trace=key[3]
+        )
     finally:
         fixpoint.active.discard(key)
         read_keys = fixpoint.pending.pop()
@@ -1057,6 +1215,7 @@ def _best_route(
     *,
     quantity: float,
     amortise: bool,
+    trace: bool = False,
 ) -> _Priced | None:
     """`_item_hours` past the fixpoint table: try every route, keep the best.
 
@@ -1074,7 +1233,9 @@ def _best_route(
         for member in members:
             if not isinstance(member, str):
                 continue
-            priced = _item_hours(walk, member, quantity=quantity, amortise=amortise)
+            priced = _item_hours(
+                walk, member, quantity=quantity, amortise=amortise, trace=trace
+            )
             if priced is not None and (cheapest is None or priced.hours < cheapest.hours):
                 cheapest = priced
         return cheapest
@@ -1100,11 +1261,44 @@ def _best_route(
     # a raid as a monster killed 150 times an hour.
     raided = walk.raid_seconds.get(item.lower())
     if raided:
+        # **Named by the run that earns it, not by "raid".** A fire cape is
+        # sixty-three waves of the Fight Caves and nobody calls that a raid;
+        # reading `raid: 1 Jal-nib-rek` on the Inferno's pet sent a reader
+        # looking in `costing/raids.py`, which has never heard of it.
+        # `tzhaar` and `colosseum` are checked before `barrows`/`moons`
+        # because only their activities are wired into `instanced.py`'s
+        # `run_seconds`/knob machinery - a Barrows or Perilous Moons row
+        # still gets the *label* right, just no editable knob, since
+        # neither is a `RUN_ONLY_PLACES` entry (see `instanced.py`: both are
+        # ordinarily-reachable content, not a lobby-gated instance).
+        activity = (
+            tzhaar.activity_for(item)
+            or colosseum.activity_for(item)
+            or barrows.activity_for(item)
+            or moons.activity_for(item)
+            or gauntlet.activity_for(item)
+        )
+        # **Gauntlet items get the label but no knob.** `gauntlet.activity_for`
+        # answers `"The Gauntlet"`, the activity name a reader would look
+        # this up as - but the knob path needs the *place* key
+        # (`"Gauntlet Lobby"`), and the two Hunllefs' durations differ, so
+        # `instanced.knob_for(activity)` would resolve to nothing useful
+        # here the way it does for the others below.
+        knobbed = activity in (tzhaar.FIGHT_CAVES, tzhaar.INFERNO, colosseum.FORTIS_COLOSSEUM)
+        label = activity.lower() if activity else "raid"
         return _Priced(
             quantity * raided / 3600.0,
-            f"raid: {quantity:,.0f} {item}",
-            "raids",
-            ("actions/raids",),
+            f"{label}: {quantity:,.0f} {item}",
+            activity or "raids",
+            # **The knob is the run's own duration**, which is the number
+            # actually behind this row. It briefly rode `actions/{name}` and
+            # that was a lie in the panel - nothing named `Inferno` is in
+            # `action_seconds`, so the stack resolved to the bare
+            # `DEFAULT_ACTION_SECONDS` and offered an editable "2.4", the
+            # generic four-tick seconds-per-action, beside a forty-minute run.
+            # `runs/{place}` resolves, displays the model's own figure as its
+            # default, and moves this row when edited.
+            (instanced.knob_for(activity),) if activity and knobbed else (),
         )
 
     # **A herb is priced by its supply, not by a route.** See
@@ -1168,7 +1362,7 @@ def _best_route(
         won_fact: _KillFact | None = None
         won_master = ""
         for fact in facts:
-            hours, master = _fact_hours(fact, quantity)
+            hours, master, _key = _fact_hours(fact, quantity)
             if hours < best_hours:
                 best_hours, best_at = hours, fact.at
                 won_fact, won_master = fact, master
@@ -1191,7 +1385,8 @@ def _best_route(
         best, best_at = None, -1
     for at, route, provider, challenge in tasks:
         priced = _route_hours(
-            walk, item, route, provider, quantity, amortise, challenge=challenge
+            walk, item, route, provider, quantity, amortise,
+            challenge=challenge, trace=trace,
         )
         if priced is not None and (
             best is None
@@ -1437,6 +1632,7 @@ def _route_hours(
     quantity: float = 1.0,
     amortise: bool = False,
     challenge: dict[str, Any] | None = None,
+    trace: bool = False,
 ) -> _Priced | None:
     if route in _FREE_ROUTES:
         # **A shop is only free if you can walk into it.** `WorldIndex` spans
@@ -1558,15 +1754,46 @@ def _route_hours(
         #
         # **`item not in monsters` is what keeps the slayer tokens**, where the
         # output *is* the monster (`Slay a ~|bloodveld|~` -> `Bloodveld`).
-        # Measured over the whole export, this refuses 17 routes and 12 of them
-        # were already priced above 250 seconds by their inputs; what actually
-        # moves is the five ent challenges, which fall back to chopping.
+        #
+        # **Unless a `*`-marked `Items` entry names the real cost.** `*` is
+        # upstream's own consumed-secondary marker (`challenges._is_secondary`'s
+        # docstring: "An unmarked entry - a tool, an `Axe[+]` - can never set
+        # it"), so an ent's `Axe[+]` is a tool this gate is still right to
+        # distrust, but `Chest (Bryophyta's lair)*`'s `Mossy key*` is not: it is
+        # consumed once per opening, and the item walk already knows the
+        # cheapest way to get one (Bryophyta at 1/16, a Moss giant at 1/150).
+        #
+        # **Two different wrongs, fixed by the same exception.** Yama's five
+        # sigil offerings (`Contract of <X>*`) and two Nightmare/vampyre loot
+        # tables have no other route in the export at all, so refusing them
+        # left them honestly `unpriced` - this reclaims a real price for
+        # them. `Chest (Bryophyta's lair)*` and `Chest (Obor's lair)*`
+        # (`Giant key*`) are the sharper case: refusing *this* route did not
+        # leave them unpriced, because both chests are also `skillItems`
+        # activities read as an ordinary monster elsewhere in the walk, and
+        # `Heuristics.kills_per_hour` had never heard of either - so they
+        # priced anyway, at `DEFAULT_KPH["regular"]`, 150 an hour, which is
+        # the wrong number this exception was written to stop being the only
+        # one available. `keyed_chests.py` is the other half of that fix: it
+        # corrects the *skillItems* route's rate for both chests, which this
+        # gate does not reach.
+        #
+        # Measured over the whole export, the plain form refuses 17 routes and
+        # 12 of them were already priced above 250 seconds by their inputs;
+        # what moves there is the five ent challenges, which fall back to
+        # chopping. This exception reclaims 11 further routes that the plain
+        # form refused *despite* naming a real consumed ingredient - the two
+        # chests, Yama's five sigils, and two Nightmare/vampyre loot tables.
         monsters = challenge.get("Monsters") or ()
+        consumed = any(
+            isinstance(ref, str) and "*" in ref for ref in challenge.get("Items") or ()
+        )
         if (
             isinstance(made, str)
             and made == item
             and monsters
             and item not in monsters
+            and not consumed
             and provider not in walk.heuristics.action_seconds
         ):
             return None
@@ -1624,11 +1851,17 @@ def _route_hours(
             if not isinstance(required, str):
                 continue
             wanted = required.replace("*", "")
-            priced = _item_hours(walk, wanted, quantity=quantity, amortise=amortise)
+            priced = _item_hours(
+                walk, wanted, quantity=quantity, amortise=amortise, trace=trace
+            )
             if priced is None:
                 return None
             total += priced.hours
-            inputs.append(priced)
+            # **Labelled here, not on the way out.** `wanted` is this loop's
+            # own variable - the one place that knows which material a given
+            # `_Priced` answers for - so a trace's child is stamped with it
+            # before it joins `inputs`, the list `children` becomes below.
+            inputs.append(dataclasses.replace(priced, label=wanted) if trace else priced)
             # **A made thing is its inputs, so it is their knobs too.** The
             # whip in a recipe is the whip's kill rate; correcting that is
             # what moves this number, and pointing only at the recipe would
@@ -1673,7 +1906,17 @@ def _route_hours(
         for priced in inputs:
             earned.extend(priced.experience)
         return _Priced(
-            total, f"make: {provider}", f"make:{provider}", _unique(knobs), tuple(earned)
+            total,
+            # **No "make: " prefix.** `provider` is already a full sentence
+            # ("Imbue a granite ring at Dom Onion's Reward shop"), unlike the
+            # bare noun phrases the other routes' `detail` strings prefix
+            # with their own verb ("earn: 500,000 Coins") - prepending one
+            # here only restated what the sentence already said.
+            provider,
+            f"make:{provider}",
+            _unique(knobs),
+            tuple(earned),
+            tuple(inputs) if trace else (),
         )
 
     return _kill_hours(walk, provider, item, quantity)
@@ -1692,7 +1935,7 @@ class _KillFact:
         per_kill: float,
         kph: float,
         task: str | None,
-        masters: tuple[tuple[float, float, str], ...],
+        masters: tuple[tuple[float, float, str, str], ...],
     ) -> None:
         self.at = at
         self.provider = provider
@@ -1719,7 +1962,7 @@ def _kill_facts(
     """
     facts: list[_KillFact] = []
     live: list[tuple[int, str, str]] = []
-    waits: dict[str, tuple[tuple[float, float, str], ...]] = {}
+    waits: dict[TaskGate, tuple[tuple[float, float, str, str], ...]] = {}
     for at, source in enumerate(sources):
         route, provider = source.route, source.name
         if route.startswith("task:"):
@@ -1738,19 +1981,37 @@ def _kill_facts(
         rate = walk.heuristics.kills_per_hour(provider)
         if rate.value <= 0:
             continue
-        task = walk.task_gates.get(provider)
-        masters: tuple[tuple[float, float, str], ...] = ()
-        if task is not None:
-            if task not in waits:
-                found: list[tuple[float, float, str]] = []
+        gate = walk.task_gates.get(provider)
+        masters: tuple[tuple[float, float, str, str], ...] = ()
+        task = None if gate is None else gate.task
+        if gate is not None:
+            # **Memoised on the gate, place included.** Two monsters gated on
+            # the same task at different places are different waits at a
+            # master who assigns by location, so keying on the bare task would
+            # hand one of them the other's answer.
+            if gate not in waits:
+                found: list[tuple[float, float, str, str]] = []
                 for master in walk.masters:
-                    wait = master.hours_to_be_assigned(task)
-                    sized = (walk.heuristics.slayer.get(master.master) or {}).get(task)
+                    key = master.key_for(gate)
+                    if key is None:
+                        continue
+                    # Same override `_task_hours` reads - see its own
+                    # comment. Duplicated here rather than shared because
+                    # this is the hoisted, hot-path twin of that function,
+                    # and the two must keep computing the same answer.
+                    override = (walk.heuristics.wait_hours.get(master.master) or {}).get(key)
+                    wait = override if override is not None else master.hours_to_be_assigned(key)
+                    sized = (walk.heuristics.slayer.get(master.master) or {}).get(key)
                     if wait is None or sized is None or sized.count <= 0:
                         continue
-                    found.append((wait, sized.count, master.master))
-                waits[task] = tuple(found)
-            masters = waits[task]
+                    # **The master's own key travels with it.** It is what
+                    # the `wait/<master>/<task>` knob has to name, and the
+                    # gate's bare `Hydras` resolves to nothing in a
+                    # location-keyed master's config - a dead dial in the
+                    # panel, which is the bug this whole join started as.
+                    found.append((wait, sized.count, master.master, key))
+                waits[gate] = tuple(found)
+            masters = waits[gate]
             if not masters:
                 # `_task_hours` would answer `None` at every quantity.
                 continue
@@ -1760,7 +2021,7 @@ def _kill_facts(
     return tuple(facts), tuple(live)
 
 
-def _fact_hours(fact: _KillFact, quantity: float) -> tuple[float, str]:
+def _fact_hours(fact: _KillFact, quantity: float) -> tuple[float, str, str]:
     """A fact's hours at `quantity`, and the winning master where gated.
 
     **The hot half**: pure arithmetic, no strings, no allocation - it runs
@@ -1770,15 +2031,16 @@ def _fact_hours(fact: _KillFact, quantity: float) -> tuple[float, str]:
     """
     kills = max(1 / fact.chance, quantity / fact.per_kill)
     if fact.task is None:
-        return kills / fact.kph, ""
+        return kills / fact.kph, "", ""
     hours = math.inf
     won = ""
-    for wait, count, master in fact.masters:
+    key = ""
+    for wait, count, master, task in fact.masters:
         assignments = max(1.0, kills / count)
         candidate = assignments * (wait + count / fact.kph)
         if candidate < hours:
-            hours, won = candidate, master
-    return hours, won
+            hours, won, key = candidate, master, task
+    return hours, won, key
 
 
 def _fact_priced(fact: _KillFact, quantity: float, master: str) -> _Priced:
@@ -1792,12 +2054,16 @@ def _fact_priced(fact: _KillFact, quantity: float, master: str) -> _Priced:
         return _Priced(
             kills / fact.kph, detail, fact.provider, (f"monsters/{fact.provider}",)
         )
-    hours, _ = _fact_hours(fact, quantity)
+    hours, _, key = _fact_hours(fact, quantity)
+    # **The winning master's own key, not the gate's name** - see
+    # `slayer.MasterRate.key_for`. `Konar quo Maten` keys by location, so
+    # `wait/Konar quo Maten/Hydras` names nothing and the dialog it opens
+    # would have no value to show.
     return _Priced(
         hours,
-        f"{detail} on {fact.task} task",
+        f"{detail} on {key} task",
         fact.provider,
-        (f"monsters/{fact.provider}", f"slayer/{master}/{fact.task}"),
+        (f"monsters/{fact.provider}", f"wait/{master}/{key}"),
     )
 
 
@@ -1846,7 +2112,7 @@ def _kill_hours(
             hours,
             f"{detail} on {task} task",
             provider,
-            (f"monsters/{provider}", f"slayer/{master}/{task}"),
+            (f"monsters/{provider}", f"wait/{master}/{task}"),
         )
     return _Priced(kills / rate.value, detail, provider, (f"monsters/{provider}",))
 
@@ -1862,9 +2128,31 @@ def _task_hours(
     that task to come up plus the killing itself. Ignoring the wait is what
     made these look cheap: a gargoyle task once every several hours dwarfs the
     twenty minutes of actual fighting.
+
+    **`wait` is downtime alone, not "wait plus this fight" - read
+    `MasterRate.hours_to_be_assigned`'s own docstring for why that split
+    matters.** `wait + rate.count / kills_per_hour` below is the two
+    halves added exactly once each: hours spent on *other* tasks before
+    `Gargoyles` comes up, plus the real time to clear it once it does -
+    `kills_per_hour` here being the caller's own rate for whatever is
+    actually gated (`Grotesque Guardians`'s scripted kill time, not the
+    ordinary Gargoyle `slayer.task_kills_per_hour` prefers for the task's
+    *other* purpose, training XP). Folding the boss's own completion time
+    into `wait` too, as an earlier version of `hours_to_be_assigned` did,
+    counted it twice.
+
+    **Every layer that wants the cost of a gated kill comes through here** -
+    the drop route, the superior route and, since it turned out to want the
+    same thing, the kill-goal route. That last one used to price `1 /
+    kills_per_hour` flat, so a Combat Achievement naming a monster you have to
+    be *assigned* read as three minutes.
+
+    **The master's own key for the task is `MasterRate.key_for`**, not the
+    gate's name: `Konar quo Maten` keys by location and a bare name matched
+    none of his, which left every gated monster on a Konar-only map unpriced.
     """
-    task = walk.task_gates.get(provider)
-    if task is None:
+    gate = walk.task_gates.get(provider)
+    if gate is None:
         return None
 
     # Cheapest over the masters that can assign it: the size is theirs too,
@@ -1872,17 +2160,26 @@ def _task_hours(
     # master won is part of the answer**, not a detail of finding it - the
     # entry a caller would correct is that master's, and every other master's
     # is irrelevant to this number.
-    best: tuple[float, str] | None = None
+    best: tuple[float, str, str] | None = None
     for master in walk.masters:
-        wait = master.hours_to_be_assigned(task)
-        rate = (walk.heuristics.slayer.get(master.master) or {}).get(task)
+        key = master.key_for(gate)
+        if key is None:
+            continue
+        # **A direct override of the wait itself outranks the computed
+        # figure.** `wait/{master}/{key}` is a real knob a player can set -
+        # see `knobs.BRANCH_NOTES["wait"]` - because `hours_to_be_assigned`
+        # is a blend over the master's *whole* task list and nothing else
+        # here names one leaf a correction could land on.
+        override = (walk.heuristics.wait_hours.get(master.master) or {}).get(key)
+        wait = override if override is not None else master.hours_to_be_assigned(key)
+        rate = (walk.heuristics.slayer.get(master.master) or {}).get(key)
         if wait is None or rate is None or rate.count <= 0:
             continue
         assignments = max(1.0, kills / rate.count)
         hours = assignments * (wait + rate.count / kills_per_hour)
         if best is None or hours < best[0]:
-            best = (hours, master.master)
-    return (best[0], task, best[1]) if best is not None else None
+            best = (hours, key, master.master)
+    return best
 
 
 def _superior_hours(
@@ -1920,7 +2217,7 @@ def _superior_hours(
         if gated is None:
             return None
         hours, task, master = gated
-        knobs: tuple[str, ...] = (f"monsters/{superior.base}", f"slayer/{master}/{task}")
+        knobs: tuple[str, ...] = (f"monsters/{superior.base}", f"wait/{master}/{task}")
     else:
         hours = kills / rate.value
         knobs = (f"monsters/{superior.base}",)
@@ -1951,8 +2248,74 @@ def _unique(paths: Iterable[str]) -> tuple[str, ...]:
 
 
 def _bucket_for(walk: _Walk, source: str) -> str:
-    """Boss drops and activity unlocks differ only in what you are killing."""
-    return "boss drops" if source in walk.world.boss_monsters else "activities"
+    """Boss drops, ordinary monster drops and activity unlocks, told apart by
+    what `source` names.
+
+    **A colon-prefixed leaf route is never a monster**, so `_is_leaf_source`'s
+    own test - a colon in the string - is what keeps a `make:`/`shop:`/
+    `spawn:`/`currency:`/`recipe:` route out of `monster drops` without a
+    second lookup: none of those names is ever a key in
+    `world.locations["Monster"]`. What is left after the boss check is a bare
+    provider name, and asking the world index whether it is a monster at all
+    is what used to be missing - every non-boss kill and every non-boss drop
+    (`Wyrm`, say) fell into `activities` alongside real activity unlocks and
+    shop/recipe routes, with nothing on screen telling them apart.
+    """
+    if source in walk.world.boss_monsters:
+        return "boss drops"
+    if source in walk.world.locations.get("Monster", {}):
+        return "monster drops"
+    return "activities"
+
+
+def _is_leaf_source(source: str) -> bool:
+    """A one-off recipe/shop/spawn/currency route rather than a repeatable
+    activity - see `ItemEstimate.group`.
+
+    Every route `_item_hours` can return is either a bare provider name (a
+    monster, a raid/instanced label, the literal `"herbs"` or `"yield"`) or
+    one of four colon-prefixed leaf routes this module builds: `currency:`,
+    `spawn:`/`shop:` (`_route_hours`'s own `route`), `recipe:` and `make:`.
+    A colon is therefore the whole test, and it is exhaustive over every
+    `_Priced` this module constructs - a real, repeatable source is never
+    given one.
+    """
+    return ":" in source
+
+
+def _leaf_task_groups(derived: Derived) -> dict[str, str]:
+    """Diary/CA/Extra task name -> its display group's root name.
+
+    `other_tasks.py` already computed the group each task belongs to
+    (`~|Combat Achievements#Grandmaster|~ Wasn't Event Close` ->
+    `Combat Achievements - Grandmaster`; a plain diary task the same way; an
+    `Extra` task by its `Label`) - this is only the reverse index, task name
+    to that group's `name`. `Quest` is excluded: quest steps are costed per
+    task already (`_quest_tasks`), never routed through the item walk that
+    calls this.
+    """
+    groups: dict[str, str] = {}
+    for category, tasks in derived.other_tasks.categories.items():
+        if category == "Quest":
+            continue
+        for group in tasks.groups:
+            for name in (*group.active, *group.completed):
+                groups[name] = group.name
+    return groups
+
+
+def _leaf_group(
+    task_groups: Mapping[str, str], source: str, wanted_by: Iterable[str]
+) -> str:
+    """Which Diary/CA/Extra group a leaf item's display should roll up
+    under, or `""` when none of its tasks belong to one - a BiS pick with no
+    challenge behind it, say, which stays under its own recipe heading."""
+    if not _is_leaf_source(source):
+        return ""
+    found = {task_groups[task] for task in wanted_by if task in task_groups}
+    # Deterministic rather than "first found": `wanted_by` is a `set`, whose
+    # iteration order is not something a display should depend on.
+    return min(found) if found else ""
 
 
 def _quest_tasks(derived: Derived, heuristics: Heuristics) -> list[TaskEstimate]:
@@ -2210,6 +2573,41 @@ _PARTIAL_PRODUCTS = "Partial Products"
 
 
 
+def _run_priced_items(overrides: Mapping[str, float] = {}) -> dict[str, float]:
+    """Every reward whose cost is a **completion count**, not a drop rate.
+
+    Eight families, one shape. `costing/raids.py` answers for the three
+    raids, `costing/tzhaar.py` for the Fight Caves and the Inferno,
+    `costing/barrows.py` for the Barrows chest, `costing/colosseum.py` for
+    the Fortis Colosseum, `costing/moons.py` for Perilous Moons,
+    `costing/gauntlet.py` for the Gauntlet and the Corrupted Gauntlet, and
+    `costing/wintertodt.py`/`costing/tempoross.py` for the phoenix and Tiny
+    tempor pets; all eight exist because the export files a run as a
+    monster (or names a reward it has no table for at all) and a walk that
+    believes it prices a forty-minute Inferno at three minutes, or a
+    Barrows chest's uniques at whatever `DEFAULT_KPH` implies for a monster
+    with no drop table.
+
+    **Merged in one place so the two call sites cannot drift.** The goal walk
+    and the post-enrichment walk both spend this, and `costing/inputs.py`
+    exists because two consumers of one layer had already drifted once.
+
+    A key collision between any two of the eight would be a real problem
+    rather than a tie-break, so it is not silently resolved: nothing is in
+    more than one, and `tests/test_costing_tzhaar.py` pins that.
+    """
+    return {
+        **raids.item_seconds(),
+        **tzhaar.item_seconds(overrides),
+        **barrows.item_seconds(),
+        **colosseum.item_seconds(),
+        **moons.item_seconds(),
+        **gauntlet.item_seconds(),
+        **wintertodt.item_seconds(),
+        **tempoross.item_seconds(),
+    }
+
+
 def _setup(
     state: MapState,
     derived: Derived,
@@ -2227,11 +2625,13 @@ def _setup(
     walk is the one pricing goals; they are assembled in `material_seconds`
     where the recipe layer reads them.
 
-    The raids are here because without them a goal walk prices a raid as a
-    monster. The export models each raid as a drop table, so
-    `Heuristics.kills_per_hour` fell back to `DEFAULT_KPH` and the walk read
-    150 completions an hour: `Xeric's champion`, which wants two thousand
-    raids, came out at **24 seconds**. See `costing/raids.item_seconds`.
+    The raids and the wave minigames are here because without them a goal walk
+    prices a *run* as a monster. The export models each as a drop table, so
+    `Heuristics.kills_per_hour` fell back to `DEFAULT_KPH`: `Xeric's champion`,
+    which wants two thousand raids, came out at **24 seconds**, and
+    `Jal-nib-rek` - a 1/100 off a Zuk kill that costs a whole Inferno - at
+    5.0 hours against this project's own 45. See `_run_priced_items`,
+    `costing/raids.item_seconds` and `costing/tzhaar.item_seconds`.
     """
     levels = _levels(state, level_overrides or {})
     reachable = frozenset(derived.source_index.monsters)
@@ -2327,7 +2727,7 @@ def _setup(
         # does not carry the item at all - see `_Walk.raid_seconds`.
         raid_seconds={
             item.lower(): seconds
-            for item, seconds in raids.item_seconds().items()
+            for item, seconds in _run_priced_items(heuristics.run_seconds).items()
         },
     )
     # **What a herb costs, which is a supply rather than a route.** The
@@ -2398,7 +2798,8 @@ def _setup(
         # cannot disagree about what a raid drop costs - `costing/inputs.py`
         # exists because two apps drifted on exactly this kind of split.
         raid_seconds={
-            item.lower(): seconds for item, seconds in raids.item_seconds().items()
+            item.lower(): seconds
+            for item, seconds in _run_priced_items(walk.heuristics.run_seconds).items()
         },
         yield_seconds={
             **yields.costs(
@@ -2496,14 +2897,15 @@ def material_seconds(
     provides. See `recipe_rates.MATERIAL_ALIASES` for what it holds and why
     it is one hand-verified entry rather than a general rule.
     """
-    walk = _setup(state, derived, world, heuristics, level_overrides or {}, recipes).walk
-    if made_experience:
-        # Reset for the reason the `recipes` replace above resets: the
-        # experience credits ride on every `_Priced`, so a memo filled under
-        # one table is wrong under another.
-        walk = dataclasses.replace(
-            walk, made_experience=made_experience, fixpoint=_Fixpoint(), leaf_routes={}
-        )
+    walk = material_walk(
+        state,
+        derived,
+        world,
+        heuristics,
+        level_overrides=level_overrides,
+        made_experience=made_experience,
+        recipes=recipes,
+    )
     memo: dict[tuple[str, float], _Priced | None] = {}
 
     def priced_for(item: str, quantity: float) -> _Priced | None:
@@ -2569,6 +2971,7 @@ def estimate(
     # whip answers a BiS pick, a Slayer log entry and a monster-drop log
     # entry; charging for it three times inflated the total by however much
     # the active set happens to overlap, which on the real map is a lot.
+    task_groups = _leaf_task_groups(derived)
     items: list[ItemEstimate] = []
     for item, wanted_by in sorted(_required_items(walk, derived).items()):
         priced = _item_hours(walk, item)
@@ -2583,6 +2986,7 @@ def estimate(
                 detail=priced.detail,
                 source=priced.source,
                 tasks=tuple(sorted(wanted_by)),
+                group=_leaf_group(task_groups, priced.source, wanted_by),
                 knobs=priced.knobs,
             )
         )
@@ -2591,8 +2995,58 @@ def estimate(
     # rate, attributed to it so the clamp folds it into any grind already
     # happening there.
     for monster, wanted_by in sorted(_required_kills(walk, derived).items()):
+        # **Unless the kill *is* a run.** `1 / kills_per_hour` is right for
+        # something you can walk up to and wrong by three orders of magnitude
+        # for something sixty-eight waves in: four Combat Achievements naming
+        # `TzKal-Zuk` shared 0.05 hours between them, when each needs a whole
+        # Inferno. Asked of `costing/instanced.py` rather than of any one
+        # activity, so the raids' final bosses answer here too and a later
+        # layer cannot reach a different number - which is exactly how this
+        # branch came to disagree with the item walk in the first place.
+        run = instanced.kill_seconds(monster, heuristics.run_seconds)
+        if run is not None:
+            activity = instanced.place_of_boss(monster) or monster
+            items.append(
+                ItemEstimate(
+                    item=f"kill {monster}",
+                    bucket=_bucket_for(walk, activity),
+                    hours=run / 3600.0,
+                    detail=f"{activity.lower()}: one completion",
+                    source=activity,
+                    tasks=tuple(sorted(wanted_by)),
+                    knobs=(instanced.knob_for(activity),),
+                )
+            )
+            continue
         kph = heuristics.kills_per_hour(monster).value
         if kph <= 0:
+            continue
+        # **And unless the kill has to be *assigned*.** The third layer to
+        # learn this: a monster behind a slayer task cannot be walked up to
+        # any more than a run's boss can, so one kill is one wait plus the
+        # killing. Priced flat, `Alchemical Hydra` - which you may only fight
+        # on a Hydras task - read as three minutes. `_task_hours` is the same
+        # function the drop and superior routes use, so all three now agree
+        # about what being sent costs.
+        gated = _task_hours(walk, monster, 1.0, kph)
+        if gated is not None:
+            hours, task, master = gated
+            items.append(
+                ItemEstimate(
+                    item=f"kill {monster}",
+                    bucket=_bucket_for(walk, monster),
+                    hours=hours,
+                    detail=f"one kill at {kph:g}/hr on {task} task",
+                    source=monster,
+                    tasks=tuple(sorted(wanted_by)),
+                    knobs=(f"monsters/{monster}", f"wait/{master}/{task}"),
+                )
+            )
+            continue
+        if monster in walk.task_gates:
+            # Gated, and no master can be costed for it - the same refusal the
+            # drop route makes rather than quoting an ungated figure.
+            unpriced.append(f"kill {monster}")
             continue
         items.append(
             ItemEstimate(

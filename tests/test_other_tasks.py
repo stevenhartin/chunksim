@@ -399,29 +399,38 @@ def test_a_cyclic_chain_terminates() -> None:
 _KNOWN_ORACLE_DELTA: dict[tuple[str, str], frozenset[str]] = {
     ("fray", "Diary"): frozenset(),
     ("fray", "Extra"): frozenset(),
-    ("verf", "Diary"): frozenset(
-        {
-            "~|Combat Achievements#Easy|~ The Demonic Punching Bag",
-            "~|Combat Achievements#Medium|~ Brutal, Big, Black and Firey",
-        }
-    ),
+    # `Brutal, Big, Black and Firey` needs `Slay a ~|brutal black dragon|~`
+    # (Level 77 against a passive floor of 48); it went when the level gate
+    # moved into the walk - see `challenges._level_attainable`. The Punching
+    # Bag needs `SlayBloodveld[+]`, satisfied by `Slay a ~|Mutated
+    # Bloodveld|~` - Level 50, which clears the floor on the +5 this map's
+    # `Wild pie` gives, by upstream's own boost term. Why upstream drops it
+    # anyway is not known.
+    ("verf", "Diary"): frozenset({"~|Combat Achievements#Easy|~ The Demonic Punching Bag"}),
+    # **Eight, down from twenty-three.** The fifteen that went were the
+    # `skillItems.Slayer` leak: a map that cannot train Slayer past its
+    # passive floor was still offered abyssal whips. See
+    # `challenges._level_attainable` and `sources._SlayerGate`.
+    #
+    # **The eight left are two different things, and only two of them are a
+    # disagreement.** This oracle records what the panel last rendered, and
+    # across both cached maps its `Extra` branch carries `Collection Log` and
+    # nothing else bar a single `Fill Stashes` - no `Untracked Uniques`, no
+    # `BIS Skilling`, no `Stuffables`, ever. So an entry this project makes
+    # active in one of *those* groups is outside what the oracle can speak to:
+    #
+    # - the five `Untracked Uniques` contracts (**confirmed correct** - they
+    #   drop from lesser/greater/black demons, not from Yama, and this map
+    #   satisfies the `taskUnlocks` gate through `Chasm of fire demons`, the
+    #   published alternative to completing `~|A Kingdom Divided|~`), and
+    # - `Obtain a ~|herb sack|~`, the `BIS Skilling` half of an item this map
+    #   buys from the Tithe Farm shop.
+    #
+    # The remaining two *are* `Collection Log`, the group the oracle does
+    # record, so they are the real residue and the place to start next:
+    # `(Tithe Farm) Obtain a ~|herb sack|~` and `Obtain a ~|Golden Gnome|~`.
     ("verf", "Extra"): frozenset(
         {
-            "(Abyssal Sire) Obtain an ~|abyssal dagger|~",
-            "(Abyssal Sire) Obtain an ~|abyssal head|~",
-            "(Abyssal Sire) Obtain an ~|abyssal whip|~",
-            "(Kalphite Queen) Obtain a ~|dragon chainbody|~",
-            "(Miscellaneous) Obtain a ~|dragon spear|~",
-            "(Slayer) Obtain a ~|dragon chainbody|~",
-            "(Slayer) Obtain a ~|dust battlestaff|~",
-            "(Slayer) Obtain a ~|mystic robe bottom (dark)|~",
-            "(Slayer) Obtain an ~|abyssal dagger|~",
-            "(Slayer) Obtain an ~|abyssal head|~",
-            "(Slayer) Obtain an ~|abyssal whip|~",
-            "(Slayer) Obtain ~|granite legs|~",
-            "(Slayer) Obtain ~|mystic gloves (light)|~",
-            "(Slayer) Obtain ~|rune boots|~",
-            "(Thermonuclear smoke devil) Obtain a ~|dragon chainbody|~",
             "(Tithe Farm) Obtain a ~|herb sack|~",
             "Obtain a ~|Golden Gnome|~",
             "Obtain a ~|contract of bloodied blows|~",
@@ -430,7 +439,6 @@ _KNOWN_ORACLE_DELTA: dict[tuple[str, str], frozenset[str]] = {
             "Obtain a ~|contract of glyphic attenuation|~",
             "Obtain a ~|contract of sensory clouding|~",
             "Obtain a ~|herb sack|~",
-            "Obtain an ~|abyssal head|~",
         }
     ),
 }

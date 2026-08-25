@@ -20,11 +20,12 @@ change the *labels* either.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from chunksim.costing.heuristics import DEFAULT_XP_PER_HOUR
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.model.experience import MAX_LEVEL, level_for_xp, xp_for_level
-from chunksim.derive.pipeline import Derived
+from chunksim.derive.pipeline import Derived, MapState
+from chunksim.derive.search import WorldIndex
 from chunksim.costing.heuristics import (
     GOTR_SOURCE,
     TITHE_SOURCE,
@@ -32,13 +33,24 @@ from chunksim.costing.heuristics import (
     Heuristics,
     Rate,
 )
-from chunksim.costing.recipe_rates import RECIPE_SOURCE
+from chunksim.costing.recipe_rates import RECIPE_SOURCE, recipe_for_task
 from chunksim.costing.spells import SPELL_SOURCE
 from chunksim.model.summary import _mapping
 from chunksim.costing.heuristics import activity_name
+from chunksim.remote.recipes import Recipe
 import re
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
+
+#: `costing/estimate.py` imports several names from this module at its own
+#: top level (`TrainingOption`, `training_bands`, ...), so a module-level
+#: `import estimate` here is circular - Python fails loading whichever
+#: module the interpreter reaches second. `trace_option`/`_from_priced` need
+#: it only at call time, well after both modules have finished loading, so
+#: they import it locally instead; `TYPE_CHECKING` keeps mypy able to check
+#: `_Priced` without the runtime import ever executing.
+if TYPE_CHECKING:
+    from chunksim.costing.estimate import _Priced
 
 
 @dataclass(frozen=True)
@@ -65,8 +77,9 @@ class TrainingOption:
     #: Which rate source won this option, as `Rate.source` spells it. Carried
     #: so a caller can prefer a *particular* method over a faster one -
     #: `estimate.py` does exactly that for Tithe Farm, which loses on hours
-    #: and wins on calendar. Not serialised: it is a routing detail, where
-    #: `match` is the thing a reader is being asked to judge.
+    #: and wins on calendar - and serialised so the GUI can tell a
+    #: `recipe_rates.RECIPE_SOURCE` row from every other kind: only those have
+    #: a real `Recipe` behind them for `training.trace_option` to walk.
     source: str = ""
     #: The override path behind `xp_per_hour`, or `""` where the file
     #: describes nothing that would move it. **Set here rather than worked
@@ -74,6 +87,15 @@ class TrainingOption:
     #: the config key is the challenge's own name - so the one thing a reader
     #: needs cannot be recovered from what is carried alongside it.
     knob: str = ""
+    #: The raw, markup-bearing challenge key (`"Cut a ~|ruby|~"`), where this
+    #: option came from one - `""` for a computed method with no challenge to
+    #: join (combat, Prayer's bury rate, GOTR). **The same `name` `knob` is
+    #: built from** (`f"training/{name}/{skill}"`), carried separately because
+    #: `option.method` is `activity_name(name)`, a display string with markup
+    #: stripped - not guaranteed to round-trip back to the key
+    #: `recipe_rates.recipe_for_task` needs. Exists for `trace_option`'s
+    #: caller to identify a method unambiguously; nothing here reads it back.
+    task: str = ""
 
     @property
     def effective_xp_per_hour(self) -> float:
@@ -127,6 +149,7 @@ class TrainingOption:
             # row clickable in the GUI rather than a line of text.
             "source": self.source,
             "knob": self.knob,
+            "task": self.task,
         }
 
 
@@ -210,6 +233,7 @@ def training_options(
                 # `name`, not `activity_name(name)`: the file is keyed by the
                 # challenge, and the display string is not a key anywhere.
                 knob=f"training/{name}/{skill}",
+                task=name,
             )
         )
     return tuple(sorted(found, key=lambda option: -option.effective_xp_per_hour))
@@ -558,3 +582,201 @@ def quest_xp_grants(
                         LampGrant(quest=group.name, skills=skills, xp=int(value), count=count)
                     )
     return grants, tuple(sorted(lamps, key=lambda lamp: (lamp.quest, -lamp.xp)))
+
+
+@dataclass(frozen=True)
+class MaterialNode:
+    """One node of a training method's material tree - see `trace_option`.
+
+    Built from a `_Priced` (`costing/estimate.py`'s own costed route), which
+    already carries every field here - `hours`, `detail`, `source`, `label`,
+    `children` - but under a private type this module's own callers (the GUI,
+    two layers away) should not have to import to read a rate back.
+    """
+
+    label: str
+    quantity: float
+    hours: float
+    detail: str
+    source: str
+    #: How many of `label` an hour at the option's own rate implies -
+    #: `0.0` until `rate_material_tree` fills it in, which is a separate pass
+    #: because it needs the option's `effective_xp_per_hour`, not anything a
+    #: `_Priced` carries.
+    per_hour: float = 0.0
+    children: tuple["MaterialNode", ...] = ()
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "label": self.label,
+            "quantity": self.quantity,
+            "hours": round(self.hours, 6),
+            "detail": self.detail,
+            "source": self.source,
+            "per_hour": round(self.per_hour, 2),
+            "children": [child.as_dict() for child in self.children],
+        }
+
+
+def _from_priced(priced: _Priced, label: str, quantity: float) -> MaterialNode:
+    """One `_Priced` (with its own `trace=True` children) as a `MaterialNode`.
+
+    Recursive, and the only place this module reads a child's own `.label` -
+    `estimate._route_hours` stamps it there, off the same material name this
+    function was handed for the node one level up.
+    """
+    return MaterialNode(
+        label=label,
+        quantity=quantity,
+        hours=priced.hours,
+        detail=priced.detail,
+        source=priced.source,
+        children=tuple(
+            _from_priced(child, child.label, quantity)
+            for child in priced.children
+        ),
+    )
+
+
+def trace_option(
+    state: MapState,
+    derived: Derived,
+    world: WorldIndex,
+    heuristics: Heuristics,
+    skill: str,
+    task: str,
+    *,
+    level_overrides: dict[str, int] | None = None,
+    recipes: Mapping[str, Sequence[Recipe]] | None = None,
+    aliases: Mapping[str, str] = {},
+    material_aliases: Mapping[str, str] = {},
+    stated_ticks: Mapping[str, float] = {},
+    made_experience: Mapping[str, tuple[str, float]] | None = None,
+) -> MaterialNode | None:
+    """`task`'s own material chain, as a tree - or `None` where it has none.
+
+    **Only for a method actually priced off a real wiki `Recipe`** -
+    `heuristics.xp_per_hour(task, skill).source == recipe_rates.RECIPE_SOURCE`,
+    the same check `training_options` makes before it ever looks at a recipe,
+    and the same `_modelled_tasks` exclusion (a computed method's rate can
+    supersede a recipe that still technically joins). Every other source -
+    a scraped guide, GOTR, a spell, a `ComputedMethod` from `gathering.py` or
+    `combat_xp.py` - has no `Recipe.materials` to walk; each prices its own
+    activity its own way, and building a tree across all of them is a
+    different, much larger effort than this function's job. See
+    `costing/__init__.py`'s `training.py` entry.
+
+    **Re-derives the winning `Recipe`, never guesses it.** `ActionRate`
+    deliberately does not keep the `Recipe` it came from (see its own
+    docstring), so `recipe_rates.recipe_for_task` re-runs the same join and
+    the same `rate_for` selection `computed_rates` already ran for every task
+    in `skill` at once - not a second implementation, the same two functions
+    called for one. The root's own `hours` is reconstructed from that
+    selection's own arithmetic (`recipe.experience * 3600 / rate`), not by a
+    second walk of the recipe's action time, so it can never drift from the
+    rate that selection implies.
+
+    Every keyword here is `estimate.material_walk`'s own, plus `aliases` and
+    `stated_ticks` for `recipe_for_task`'s join - a caller building this from
+    `ReferenceBlobs` passes `blobs.aliases`/`recipe_rates.stated_ticks(...)`,
+    the same two `costing/inputs.py`'s `recipe_priced` already builds, so the
+    recipe this finds is never a different one from the rate already on
+    screen.
+    """
+    from chunksim.costing import estimate
+
+    rate = heuristics.xp_per_hour(task, skill)
+    if rate.source != RECIPE_SOURCE or task in _modelled_tasks(heuristics, skill):
+        return None
+    recipe_table = recipes or {}
+    walk = estimate.material_walk(
+        state,
+        derived,
+        world,
+        heuristics,
+        level_overrides=level_overrides,
+        made_experience=made_experience,
+        recipes=recipe_table,
+    )
+
+    def input_seconds(item: str, quantity: float) -> float | None:
+        found = estimate.priced_material(
+            walk, item, quantity, material_aliases=material_aliases
+        )
+        return None if found is None else found.hours * 3600.0
+
+    chosen = recipe_for_task(
+        state.chunk_info,
+        derived.challenges.valid,
+        recipe_table,
+        task,
+        skill,
+        input_seconds,
+        aliases,
+        stated_ticks,
+    )
+    if chosen is None:
+        return None
+    recipe, action_rate, materials_seconds = chosen
+    if action_rate <= 0:
+        return None
+
+    children: list[MaterialNode] = []
+    for material in recipe.materials:
+        priced = estimate.priced_material(
+            walk, material.name, material.quantity, material_aliases=material_aliases
+        )
+        if priced is None:
+            return None
+        children.append(_from_priced(priced, material.name, material.quantity))
+
+    total_seconds = recipe.experience * 3600.0 / action_rate
+    return MaterialNode(
+        label=activity_name(task),
+        quantity=1.0,
+        hours=total_seconds / 3600.0,
+        detail=(
+            f"{recipe.experience:g} xp in {total_seconds:.1f}s "
+            f"({materials_seconds:.1f}s of it materials)"
+        ),
+        source=RECIPE_SOURCE,
+        children=tuple(children),
+    )
+
+
+def rate_material_tree(root: MaterialNode, option: TrainingOption) -> MaterialNode:
+    """`root` with `per_hour` filled at every node, from `option`'s own rate.
+
+    **Pure arithmetic over the tree, not a new pricing question.** `root.hours`
+    is `trace_option`'s own reconstruction of one action's real duration
+    (materials included), so `option.xp_per_hour * root.hours` recovers the
+    xp one action pays - the same accounting basis `xp_per_hour` was built
+    on - without `MaterialNode` having to carry it separately. Actions an
+    hour is then `option.effective_xp_per_hour` (what the climb is actually
+    priced on - the time to obtain materials counted, see
+    `TrainingOption.effective_xp_per_hour`) divided by that.
+
+    Every node's `per_hour` is `actions_per_hour` times its own `quantity`,
+    **multiplied down the path from the root rather than read alone** - a
+    child's `quantity` is per one *parent* action, so a grandchild's rate
+    depends on its parent's own rate, not on the root's directly. This is the
+    "~1,000 uncut rubies an hour" arithmetic the feature exists for: one
+    level down, `quantity` and `per_hour` coincide only because one cut
+    consumes exactly one uncut gem.
+    """
+    xp_per_action = option.xp_per_hour * root.hours
+    if xp_per_action <= 0:
+        return root
+    actions_per_hour = option.effective_xp_per_hour / xp_per_action
+    return _rated(root, actions_per_hour, actions_per_hour * root.quantity)
+
+
+def _rated(node: MaterialNode, actions_per_hour: float, per_hour: float) -> MaterialNode:
+    return replace(
+        node,
+        per_hour=per_hour,
+        children=tuple(
+            _rated(child, actions_per_hour, per_hour * child.quantity)
+            for child in node.children
+        ),
+    )

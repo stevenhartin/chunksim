@@ -266,3 +266,25 @@ class TestTheRepairsAreAGuessAroundPublishedTerms:
     def test_nothing_where_the_challenge_is_unreachable(self) -> None:
         """Upstream's own challenge carries the house the wiki requires."""
         assert tp.construction_methods({}) == {}
+
+
+class TestTinyTemporLoot:
+    """The Tiny Tempor pet - see the module docstring's own "Tiny tempor"
+    section for the citations behind each figure."""
+
+    def test_the_per_roll_chance_is_published(self) -> None:
+        assert tp.TINY_TEMPOR_CHANCE_PER_ROLL == pytest.approx(1.0 / 8000.0)
+
+    def test_permits_per_game_matches_the_pages_own_figure(self) -> None:
+        assert tp.PERMITS_PER_GAME == pytest.approx(15.5)
+
+    def test_item_seconds_reuses_the_max_permits_games_per_hour(self) -> None:
+        priced = tp.item_seconds()
+        assert set(priced) == {"Tiny tempor"}
+        expected_chance = tp.PERMITS_PER_GAME * tp.TINY_TEMPOR_CHANCE_PER_ROLL
+        expected_seconds = 3600.0 / (tp.GAMES_PER_HOUR * expected_chance)
+        assert priced["Tiny tempor"] == pytest.approx(expected_seconds)
+
+    def test_the_wait_is_tens_to_hundreds_of_hours(self) -> None:
+        hours = tp.item_seconds()["Tiny tempor"] / 3600.0
+        assert 10.0 < hours < 1000.0, hours

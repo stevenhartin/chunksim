@@ -76,7 +76,9 @@ def test_estimate_export_json_to_stdout_replaces_the_summary(
     assert main(["estimate", "--export-json", "-"]) == 0
 
     result = json.loads(capsys.readouterr().out)
-    assert set(result["buckets"]) == {"quests", "boss drops", "activities", "skilling"}
+    assert set(result["buckets"]) == {
+        "quests", "boss drops", "monster drops", "activities", "skilling",
+    }
     assert "unpriced" in result
 
 

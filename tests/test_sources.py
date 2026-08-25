@@ -483,3 +483,106 @@ def test_an_unconditional_drop_table_rate_stays_unrepresentable() -> None:
     index = gather_chunks_info({"100": True}, {}, info, rules={"Rare Drop Amount": "100"})
 
     assert index.drop_rates["Goblin"]["Grimy guam leaf"] == "NaN"
+
+
+def _slayer_info() -> ChunkInfo:
+    """A map holding one slayer monster with a `skillItems.Slayer` table and
+    no `drops` entry - the `Abyssal demon`/`Abyssal whip` shape."""
+    return _chunk_info(
+        chunks={"100": {"Monster": {"Abyssal demon": True}}},
+        slayerMonsters={"Abyssal demon": 85},
+        skillItems={"Slayer": {"Abyssal demon": {"Abyssal whip": {"1": "1/512"}}}},
+        challenges={"Slayer": {"Slay an abyssal demon": {"Level": 85, "Output": "Abyssal demon"}}},
+    )
+
+
+def test_a_slayer_monsters_table_opens_when_the_skill_is_trainable() -> None:
+    index = gather_chunks_info(
+        {"100": True},
+        {},
+        _slayer_info(),
+        rules={},
+        slayer_trainable=True,
+        valid_tasks={"Slayer": {"Slay an abyssal demon": 85}},
+    )
+
+    assert index.items["Abyssal whip"] == {"Abyssal demon": "secondary-drop"}
+
+
+def test_an_untrainable_slayer_closes_the_table_however_high_max_skill_is() -> None:
+    """The defect this gate was added for: with no `slayerLocked` and no
+    `maxSkill` entry the level test passes every monster, so a map that
+    cannot train Slayer at all was handed an abyssal whip."""
+    index = gather_chunks_info(
+        {"100": True},
+        {},
+        _slayer_info(),
+        rules={},
+        max_skill={"Slayer": 99},
+        slayer_trainable=False,
+        valid_tasks={"Slayer": {"Slay an abyssal demon": 85}},
+    )
+
+    assert "Abyssal whip" not in index.items
+    # The monster is still *present* - it is the drops that are out of reach.
+    assert index.monsters == {"Abyssal demon": {"100": True}}
+
+
+def test_a_passive_slayer_floor_opens_the_table_without_a_training_method() -> None:
+    """Upstream's third arm: a passive level at or above the requirement is
+    enough on its own, `checkPrimaryMethod` notwithstanding."""
+    index = gather_chunks_info(
+        {"100": True},
+        {},
+        _slayer_info(),
+        rules={},
+        slayer_trainable=False,
+        passive_skill={"Slayer": 85},
+        valid_tasks={"Slayer": {"Slay an abyssal demon": 85}},
+    )
+
+    assert index.items["Abyssal whip"] == {"Abyssal demon": "secondary-drop"}
+
+
+def test_a_passive_floor_below_the_requirement_does_not_open_it() -> None:
+    index = gather_chunks_info(
+        {"100": True},
+        {},
+        _slayer_info(),
+        rules={},
+        slayer_trainable=False,
+        passive_skill={"Slayer": 48},
+        valid_tasks={"Slayer": {"Slay an abyssal demon": 85}},
+    )
+
+    assert "Abyssal whip" not in index.items
+
+
+def test_the_monsters_own_slayer_task_going_invalid_closes_the_table() -> None:
+    """Upstream's second gate, applied whichever arm passed: a monster whose
+    `Slay a ...` challenge is not valid yields nothing."""
+    index = gather_chunks_info(
+        {"100": True},
+        {},
+        _slayer_info(),
+        rules={},
+        slayer_trainable=True,
+        valid_tasks={"Slayer": {}},
+    )
+
+    assert "Abyssal whip" not in index.items
+
+
+def test_an_uninformed_caller_gets_the_ungated_answer() -> None:
+    """`slayer_trainable` defaults permissive: only `pipeline.derive` has the
+    validity to compute it, and a caller without one must not have every
+    slayer drop silently deleted."""
+    index = gather_chunks_info(
+        {"100": True},
+        {},
+        _slayer_info(),
+        rules={},
+        valid_tasks={"Slayer": {"Slay an abyssal demon": 85}},
+    )
+
+    assert index.items["Abyssal whip"] == {"Abyssal demon": "secondary-drop"}

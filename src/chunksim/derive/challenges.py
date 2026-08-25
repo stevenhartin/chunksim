@@ -35,11 +35,18 @@ Implemented:
   worker.js:4306) - treating it as an ordinary family made `Cast ~|wind
   strike|~`, Magic's only Level 1 `Primary` route, permanently invalid.
 - **Untrainable skills are pruned to their `Level 1` challenges**
-  (`_prune_untrainable_skills`, worker.js:1521): if `checkPrimaryMethod` says
+  (`_prune_untrainable_skills`, worker.js:1544): if `checkPrimaryMethod` says
   a skill can't be trained here and no `passiveSkill` floor covers it, every
   challenge above Level 1 is discarded. This is how upstream locks a skill
   behind a quest - `Herblore` needs `Unlock ~|Herblore|~ after Druidic
   Ritual`, and while that quest is out of reach the skill keeps nothing.
+  **A `passiveSkill` floor exempts the skill from that sweep but not its
+  challenges** (`_drop_unattainable_levels`, worker.js:1235): each one whose
+  boosted `Level` is above the floor still goes, unless the player has
+  already completed one at least that high. Porting only the skill-wide half
+  left a map that cannot train Slayer holding every Slayer challenge its
+  floor did not cover - and, through `_seed_items_with_outputs` reading a
+  valid `Slay a ...` as an activity key, their drops too.
 - `Items` requirements: presence checking, including `[+]`/`[+]xN` family
   matching via `codeItems.itemsPlus`, and `AllowedSources`/`NonShop`
   filtering. The `*` secondary marker does **not** gate validity directly -
@@ -2149,6 +2156,219 @@ def _inject_manual_tasks(
 _NON_SKILL_CATEGORIES = frozenset({"Extra", "Quest", "Diary", "BiS"})
 
 
+def _highest_completed_levels(
+    challenges: Mapping[str, Mapping[str, Any]],
+    completed_challenges: Mapping[str, Mapping[str, Any]],
+) -> dict[str, float]:
+    """`skill -> the highest `Level` the player has already completed in it`.
+
+    Upstream recomputes this inside the walk (worker.js:1236-1241); it reads
+    only `completedChallenges` and the export, both fixed for the life of a
+    `calc_challenges` call, so it is decided once here instead.
+    """
+    highest: dict[str, float] = {}
+    for skill, done in completed_challenges.items():
+        skill_challenges = challenges.get(skill)
+        if not isinstance(skill_challenges, dict) or not isinstance(done, Mapping):
+            continue
+        best = 0.0
+        for task in done:
+            body = skill_challenges.get(task)
+            if not isinstance(body, dict):
+                continue
+            level = body.get("Level")
+            if isinstance(level, (int, float)) and not isinstance(level, bool):
+                best = max(best, float(level))
+        highest[skill] = best
+    return highest
+
+
+def _level_attainable(
+    skill: str,
+    name: str,
+    challenge: Mapping[str, Any],
+    *,
+    trainable: Mapping[str, bool],
+    passive_skill: Mapping[str, int],
+    highest_completed: Mapping[str, float],
+    rules: Mapping[str, Any],
+    chunk_info: ChunkInfo,
+    items: Mapping[str, Mapping[str, str]],
+    source_index: SourceIndex,
+) -> bool:
+    """worker.js:1235, asked **during** the walk rather than after it.
+
+    **Placement is the whole point.** A `Tasks` requirement naming a Slayer
+    challenge is checked against the validity this pass is building, and the
+    export iterates `Slayer` before `Diary` - so upstream has already deleted
+    an unreachable `Slay a ...` by the time the Combat Achievement that needs
+    it is judged. Running the same test as a post-pass sweep instead left
+    every such dependent latched: `~|Combat Achievements#Medium|~ Brutal,
+    Big, Black and Firey` stayed valid on a map where `Slay a ~|brutal black
+    dragon|~` (Level 77, against a passive floor of 48) had just been
+    removed, and the fixed point was stable *because* the challenge was valid
+    again for the first half of every pass.
+
+    `_drop_unattainable_levels` keeps the same test as a sweep, for the first
+    outer pass - where `pruning` is off and this gate is not yet asked.
+    """
+    if trainable.get(skill, True):
+        return True
+    level = challenge.get("Level")
+    if not isinstance(level, (int, float)) or isinstance(level, bool) or level <= 1:
+        return True
+    if challenge.get("ManualValid") is True:
+        return True
+    floor = passive_skill.get(skill)
+    best, saw = boosts.best_boost(
+        skill,
+        name,
+        challenge,
+        float(level),
+        rules=rules,
+        chunk_info=chunk_info,
+        items=items,
+        source_index=source_index,
+    )
+    if (
+        isinstance(floor, (int, float))
+        and not isinstance(floor, bool)
+        and floor > 1
+        and float(level) - (best + saw) <= float(floor)
+    ):
+        return True
+    done = highest_completed.get(skill, 0.0)
+    return not (done <= 1 or done < float(level))
+
+
+def _drop_unattainable_levels(
+    new_valid: dict[str, dict[str, int | str | bool]],
+    chunk_info: ChunkInfo,
+    source_index: SourceIndex,
+    *,
+    rules: Mapping[str, Any],
+    passive_skill: Mapping[str, int],
+    backlog: Mapping[str, Mapping[str, Any]],
+    manual_tasks: Mapping[str, Mapping[str, Any]],
+    completed_challenges: Mapping[str, Mapping[str, Any]],
+    items: Mapping[str, Mapping[str, str]],
+    objects: Mapping[str, Mapping[str, Any]],
+) -> None:
+    """Drop a challenge whose *own* `Level` an untrainable skill cannot reach -
+    port of worker.js:1235-1250, in place.
+
+    **This is the per-challenge half of the untrainable-skill rule, and it is
+    the half a `passiveSkill` floor does not switch off.** Its sibling
+    `_prune_untrainable_skills` (worker.js:1544) is skill-wide and exempts a
+    skill outright once `passiveSkill[skill] > 1`; upstream then still walks
+    each surviving challenge here and removes the ones whose boosted `Level`
+    is above that floor. Porting only the skill-wide half left every
+    high-level challenge of a passively-floored, untrainable skill valid.
+
+    Slayer on the second cached map is the worked case: no slayer master is
+    reachable, so `checkPrimaryMethod('Slayer')` is false, but a passive floor
+    of 48 exempted the skill and left `Slay an ~|abyssal demon|~` (Level 85)
+    valid - which `_seed_items_with_outputs` then read as an activity key into
+    `skillItems.Slayer`, putting an abyssal whip on a map that cannot train
+    Slayer past 48. Fifteen Slayer challenges survived there and six are above
+    the floor; three of those six (`Abyssal demon`, `Dust devil`, `Deviant
+    spectre`) carry `skillItems.Slayer` tables, and they are what the map's
+    own `activeTasks` oracle says should not be there - fifteen entries of
+    `tests/test_other_tasks._KNOWN_ORACLE_DELTA`, now gone.
+
+    `skillQuestXp` is upstream's third escape and is **not** modelled - no
+    quest-XP state exists anywhere in this codebase, exactly as
+    `_has_primary_task` already notes. An absent table makes upstream's term
+    vacuously true, which is the reading taken here; a map earning quest XP in
+    an otherwise untrainable skill would have a challenge dropped that
+    upstream keeps.
+
+    The `highestCompletedLevel` escape **is** ported: a skill the player has
+    already ticked a challenge in keeps everything up to that level, which is
+    upstream's way of not un-completing recorded progress.
+
+    **The sweep is the first outer pass only; `_level_attainable` is the real
+    gate.** Both run the same test, but a sweep runs *after* the walk that
+    judged every dependent, so a Combat Achievement requiring a `Slay a ...`
+    this removes stays valid - the fixed point is stable because the Slayer
+    challenge is valid again for the first half of the next pass. Once
+    `pruning` is on, the walk asks `_level_attainable` per candidate, in
+    export category order, which is where upstream asks it. This sweep still
+    runs at the end of every outer pass to catch the first one, and anything
+    `forced_valid`/`_inject_manual_tasks` added after the walk.
+
+    Scheduled beside `_prune_untrainable_skills` and for its reason: it reads
+    `_check_primary_method`, so deciding it from a half-seeded item index
+    prunes a skill whose own `Output` chain would have justified it.
+    """
+    for skill in sorted(set(new_valid) - UNSUPPORTED_CATEGORIES):
+        challenges = chunk_info.challenges.get(skill)
+        if not isinstance(challenges, dict):
+            continue
+        # A category absent from `_UNIVERSAL_PRIMARY` reports trainable, so
+        # `Quest`/`Diary`/`Extra`/`Nonskill` fall out here rather than needing
+        # a category test - the same way `_prune_untrainable_skills` relies on
+        # it.
+        if _check_primary_method(
+            skill,
+            new_valid,
+            source_index,
+            chunk_info,
+            passive_skill=passive_skill,
+            backlog=backlog,
+            manual_tasks=manual_tasks,
+            rules=rules,
+            items=items,
+            objects=objects,
+        ):
+            continue
+        highest_completed = 0.0
+        for task in completed_challenges.get(skill) or {}:
+            body = challenges.get(task)
+            if not isinstance(body, dict):
+                continue
+            done = body.get("Level")
+            if isinstance(done, (int, float)) and not isinstance(done, bool):
+                highest_completed = max(highest_completed, float(done))
+        raw_floor = passive_skill.get(skill)
+        # `passiveSkill[skill] <= 1` is upstream's "no floor at all", so a 1 is
+        # folded into `None` here rather than compared later.
+        floor = (
+            float(raw_floor)
+            if isinstance(raw_floor, (int, float))
+            and not isinstance(raw_floor, bool)
+            and raw_floor > 1
+            else None
+        )
+        for name in list(new_valid[skill]):
+            challenge = challenges.get(name)
+            if not isinstance(challenge, dict) or challenge.get("ManualValid") is True:
+                continue
+            level = challenge.get("Level")
+            if not isinstance(level, (int, float)) or isinstance(level, bool) or level <= 1:
+                continue
+            best, saw = boosts.best_boost(
+                skill,
+                name,
+                challenge,
+                float(level),
+                rules=rules,
+                chunk_info=chunk_info,
+                items=items,
+                source_index=source_index,
+            )
+            if floor is not None and float(level) - (best + saw) <= floor:
+                continue
+            # `highestCompletedLevel <= 1 || highestCompletedLevel < Level` is
+            # upstream's condition to *remove*; anything at or below what the
+            # player has already completed stays.
+            if not (highest_completed <= 1 or highest_completed < float(level)):
+                continue
+            del new_valid[skill][name]
+        if not new_valid[skill]:
+            del new_valid[skill]
+
+
 def _drop_unreachable_subskills(
     new_valid: dict[str, dict[str, int | str | bool]],
     chunk_info: ChunkInfo,
@@ -2517,6 +2737,7 @@ def calc_challenges(
     passive_skill: Mapping[str, int] | None = None,
     backlog: Mapping[str, Mapping[str, Any]] | None = None,
     manual_tasks: Mapping[str, Mapping[str, Any]] | None = None,
+    completed_challenges: Mapping[str, Mapping[str, Any]] | None = None,
     construction_locked: bool = False,
     locked_equipment: frozenset[str] = frozenset(),
     forced_valid: Mapping[str, Mapping[str, int | str | bool]] | None = None,
@@ -2595,6 +2816,7 @@ def calc_challenges(
     challenges = chunk_info.challenges
     max_skill = max_skill or {}
     passive_skill = passive_skill or {}
+    completed_challenges = completed_challenges or {}
     backlog = backlog or {}
     manual_tasks = manual_tasks or {}
     secondary_primary_amount = str(rules.get("Secondary Primary Amount", "1"))
@@ -2620,6 +2842,9 @@ def calc_challenges(
     #: whose own `Output` chain would have made it trainable, which broke
     #: `Magic` and with it the BiS oracle's `Master wand`.
     pruning = False
+    #: `skill -> highest completed Level`, for `_level_attainable`. Fixed for
+    #: the life of the call, so decided once rather than per pass.
+    highest_completed = _highest_completed_levels(challenges, completed_challenges)
 
     # Decide the invariant half of every challenge's requirements once, here,
     # rather than on each of the nine-to-twelve sweeps below: nothing they read
@@ -2728,6 +2953,23 @@ def calc_challenges(
             }
             new_valid: dict[str, dict[str, int | str | bool]] = {}
             for skill, name, challenge, plan, deferred, value in candidates:
+                # Before the gates, and before anything downstream can read
+                # this challenge as valid - see `_level_attainable`. Held off
+                # until `pruning`, on the same schedule and for the same
+                # reason as every other trainability-dependent prune.
+                if pruning and not _level_attainable(
+                    skill,
+                    name,
+                    challenge,
+                    trainable=trainable,
+                    passive_skill=passive_skill,
+                    highest_completed=highest_completed,
+                    rules=rules,
+                    chunk_info=chunk_info,
+                    items=items,
+                    source_index=source_index,
+                ):
+                    continue
                 if _dynamic_gates_met(
                     skill,
                     name,
@@ -2823,6 +3065,18 @@ def calc_challenges(
             passive_skill=passive_skill,
             backlog=backlog,
             manual_tasks=manual_tasks,
+            items=items,
+            objects=objects,
+        )
+        _drop_unattainable_levels(
+            valid,
+            chunk_info,
+            source_index,
+            rules=rules,
+            passive_skill=passive_skill,
+            backlog=backlog,
+            manual_tasks=manual_tasks,
+            completed_challenges=completed_challenges,
             items=items,
             objects=objects,
         )

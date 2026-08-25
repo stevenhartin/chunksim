@@ -137,7 +137,7 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace, field, replace
-from typing import Any
+from typing import Any, Callable
 
 from chunksim.derive.boosts import combat_boost
 from chunksim.model.chunkinfo import ChunkInfo
@@ -146,6 +146,26 @@ from chunksim.costing.heuristics import Heuristics, Rate, SlayerTask
 from chunksim.derive.pipeline import Derived
 from chunksim.costing.slayer import task_monsters
 from chunksim.model.summary import _mapping
+from chunksim.costing import duke_sucellus as _duke_sucellus
+from chunksim.costing import giant_mole as _giant_mole
+from chunksim.costing import grotesque_guardians as _grotesque_guardians
+from chunksim.costing import hespori as _hespori
+from chunksim.costing import hueycoatl as _hueycoatl
+from chunksim.costing import hydra as _hydra
+from chunksim.costing import kalphite_queen as _kalphite_queen
+from chunksim.costing import keyed_chests as _keyed_chests
+from chunksim.costing import moons as _moons
+from chunksim.costing import nex as _nex
+from chunksim.costing import nightmare as _nightmare
+from chunksim.costing import phantom_muspah as _phantom_muspah
+from chunksim.costing import royal_titans as _royal_titans
+from chunksim.costing import sire as _sire
+from chunksim.costing import skotizo as _skotizo
+from chunksim.costing import vetion as _vetion
+from chunksim.costing import vorkath as _vorkath
+from chunksim.costing import zalcano as _zalcano
+from chunksim.costing import zulrah as _zulrah
+from chunksim.costing.fightscripts import FightScript, Phase
 
 try:  # pragma: no cover - exercised by whether the extra is installed
     from osrs_dps import (
@@ -230,10 +250,40 @@ MAGIC_DAMAGE_SCALE = 10
 #: Prayer and Weight Reducing winners, which are not ways of dealing damage.
 OFFENSIVE_STYLES = ("Melee", "Ranged", "Magic")
 
+#: **A melee weapon ranked by one damage type rather than the best of the
+#: three.** `bis.py` already computes `Stab-weapon`/`Slash-weapon`/
+#: `Crush-weapon` winners alongside its plain `Melee-weapon` one - upstream's
+#: own BiS pages report all four - and `derived.bis.picks` (every real
+#: caller's `picks`) has always carried them. `build_loadouts` simply never
+#: read them, because nothing needed to: an ordinary monster's melee defence
+#: is close enough across the three that the generic `Melee` winner is a fine
+#: proxy.
+#:
+#: **`costing/moons.py` is the one place that gap is not a rounding error.**
+#: Blue Moon, Blood Moon and the Eclipse Moon each carry a genuine `0`
+#: defence against exactly one melee damage type and `100` against the other
+#: two - not a preference, an exclusion the size of Zulrah's magma form
+#: taking nothing from melee. A `Melee` loadout built from one weapon can
+#: only be right for one of the three; the other two would price a
+#: resisted attack type as if it were the map's best.
+#:
+#: `build_loadouts` builds one of these whenever `picks` carries a
+#: `{style}-weapon`/`{style}-2h` entry for it, which happens today only when
+#: a caller asks - every other consumer's `picks` already contains the keys
+#: and has always ignored them, so this is additive and nothing already
+#: working changes shape.
+MELEE_SUBSTYLES = ("Stab", "Slash", "Crush")
+
 #: The damage-maximising stance for each style, which is what someone killing
 #: for a drop would use. Stance buys invisible level boosts that differ
 #: between accuracy and max hit, so it cannot be inferred from the style.
-_STANCES = {"Melee": "Aggressive", "Ranged": "Rapid", "Magic": "Accurate"}
+#: The three substyles are still ordinary melee, so they share `Melee`'s.
+_STANCES = {
+    "Melee": "Aggressive",
+    "Ranged": "Rapid",
+    "Magic": "Accurate",
+    **{style: "Aggressive" for style in MELEE_SUBSTYLES},
+}
 
 #: Ticks a stance adds to the weapon's own attack speed.
 #:
@@ -395,6 +445,45 @@ GROUP_BOSSES = frozenset(
         "Maiden of Sugadinti",
     }
 )
+
+#: Every boss `costing/fightscripts.py` prices as phases rather than as one
+#: damage race, keyed by the bare name `best_kill` is asked about. Composed
+#: here rather than in `fightscripts.py` itself: that module is a pure leaf
+#: like `encounter.py`, and a leaf importing every boss module it describes
+#: would be `raids.py`'s job done in the wrong file. One entry per scripted
+#: boss - `costing/hydra.py`, `costing/nightmare.py`, `costing/zulrah.py`,
+#: `costing/sire.py` and `costing/grotesque_guardians.py` today, plus the
+#: three `costing/moons.py` composes itself (one per Moon, keyed by name -
+#: see that module for why it owns three rather than exporting one `SCRIPT`
+#: like every other entry here) and the two `costing/vetion.py` composes for
+#: the same reason `costing/royal_titans.py` does - `Vet'ion`/`Calvar'ion`
+#: are each their own boss with their own drop table, not variants of one.
+#: Araxxor and Cerberus were both considered
+#: and refused a script: Araxxor's real enrage mechanic (25% health, +35
+#: defence) has no separate `osrs_dps` key to price it against - the library
+#: carries only one bare `Araxxor` entry despite the wiki's own infobox
+#: declaring an enraged version - and fabricating one by hand-adjusting
+#: defence would invent exactly what this project has no authority to
+#: reproduce; Cerberus's Summoned Souls costs prayer and damage but never
+#: stops the player attacking her directly, so it is a resource cost rather
+#: than the downtime shape a `Phase` prices. Neither omission is a
+#: `costing/` module - there is nothing here to write a docstring next to.
+SCRIPTS: Mapping[str, FightScript] = {
+    _duke_sucellus.SCRIPT.name: _duke_sucellus.SCRIPT,
+    _grotesque_guardians.SCRIPT.name: _grotesque_guardians.SCRIPT,
+    _hueycoatl.SCRIPT.name: _hueycoatl.SCRIPT,
+    _hydra.SCRIPT.name: _hydra.SCRIPT,
+    _kalphite_queen.SCRIPT.name: _kalphite_queen.SCRIPT,
+    _nex.SCRIPT.name: _nex.SCRIPT,
+    _nightmare.SCRIPT.name: _nightmare.SCRIPT,
+    _phantom_muspah.SCRIPT.name: _phantom_muspah.SCRIPT,
+    _sire.SCRIPT.name: _sire.SCRIPT,
+    _vorkath.SCRIPT.name: _vorkath.SCRIPT,
+    _zulrah.SCRIPT.name: _zulrah.SCRIPT,
+    **_moons.SCRIPTS,
+    **_royal_titans.SCRIPTS,
+    **_vetion.SCRIPTS,
+}
 
 #: Which melee damage type each export attack bonus corresponds to. Ordered,
 #: because a weapon with equal bonuses resolves to the first.
@@ -771,13 +860,19 @@ def build_loadouts(
     `kit` adds the prayers, potion boosts and spell the map can reach. Without
     one the loadouts are bare gear, which is a *far* slower fight than anyone
     actually has - see `Kit`.
+
+    **Also builds `MELEE_SUBSTYLES`' three loadouts, when `picks` carries
+    them** - `Stab`/`Slash`/`Crush`, each ranked on its own attack bonus
+    rather than the best of the three. `derived.bis.picks` always has the
+    keys; every caller before `costing/moons.py` simply had nothing that
+    needed them, so this is silent for everyone else.
     """
     _require()
     equipment = chunk_info.equipment
     kit = kit or Kit()
     loadouts: dict[str, Loadout] = {}
 
-    for style in OFFENSIVE_STYLES:
+    for style in OFFENSIVE_STYLES + MELEE_SUBSTYLES:
         prefix = f"{style}-"
         worn = {
             key[len(prefix) :]: name for key, name in picks.items() if key.startswith(prefix)
@@ -807,7 +902,11 @@ def build_loadouts(
         attack_speed = max(1, base_speed + _STANCE_SPEED_TICKS.get(_STANCES[style], 0))
         two_handed = weapon.get("slot") == "2h"
 
-        if style == "Melee":
+        if style == "Melee" or style in MELEE_SUBSTYLES:
+            # `_melee_style` reads the weapon's own bonuses, not the pick
+            # key's name - a `Crush-weapon` winner that happens to be a
+            # stabbing weapon (a thin BiS table, or a caller asking anyway)
+            # still resolves to whatever it actually rolls as.
             combat_style = _melee_style(weapon)
         elif style == "Ranged":
             combat_style = CombatStyle.RANGED
@@ -1022,11 +1121,149 @@ def _score(kill: KillEstimate, prefer: str) -> float:
     return -kill.ttk
 
 
+def _phase_seconds(phase: Phase, target: Target, kill: KillEstimate) -> float | None:
+    """One `Phase`'s own contribution to a scripted kill's total time.
+
+    `kill` is `phase.target` priced as a whole fight from full health, so
+    `target.hitpoints / kill.ttk` is this phase's own damage-per-second - the
+    figure `Phase.hp_share` divides. `None` only when the phase genuinely
+    cannot be damaged, which `kills_by_style` would already have refused
+    upstream by returning no kill at all.
+    """
+    if kill.ttk <= 0 or target.hitpoints <= 0:
+        return None
+    base_dps = target.hitpoints / kill.ttk
+    phase_hp = target.hitpoints * phase.hp_share
+    if phase.reduced_seconds <= 0:
+        return phase_hp / base_dps + phase.idle_seconds
+    reduced_rate = base_dps * phase.reduced_dps_fraction
+    reduced_damage = reduced_rate * phase.reduced_seconds
+    if reduced_damage >= phase_hp:
+        # Dies inside its own reduction window - a small `hp_share` against a
+        # long `reduced_seconds`. Still priced rather than refused: the
+        # reduced rate is real damage, just slower than the phase's normal
+        # one.
+        if reduced_rate <= 0:
+            return None
+        return phase_hp / reduced_rate + phase.idle_seconds
+    remaining = phase_hp - reduced_damage
+    return phase.reduced_seconds + remaining / base_dps + phase.idle_seconds
+
+
+def _scripted_kill(
+    script: FightScript,
+    loadouts: Mapping[str, Loadout],
+    candidates: Iterable[tuple[str, Target]],
+    *,
+    index: MonsterIndex | None = None,
+    reductions: DefenceReductions | None,
+    boss: bool,
+) -> KillEstimate | None:
+    """`script` priced against `candidates` - the same `(key, Target)` pairs
+    `best_kill` was already handed for this boss's bare name - falling back
+    to `index` for a phase `candidates` was never going to hold.
+
+    **Usually reuses `candidates` rather than re-resolving the index**,
+    because `candidate_targets(index, "Alchemical Hydra", versions)` already
+    returns all four `#Serpentine`/`#Electric`/`#Fire`/`#Extinguished`
+    entries - every key a `Phase.target` could name, since every phase's
+    target shares the boss's own name prefix. **`costing/sire.py` is the
+    exception**: its lung phase is fought against `Respiratory system`, a
+    genuinely different monster with its own drop table, not an
+    `Abyssal Sire#...` key - `candidate_targets(index, "Abyssal Sire", ...)`
+    was never going to include it, because it is scoped to `"Abyssal
+    Sire"`'s own name and versions by design. `index`, when given, is
+    checked for exactly that case: a phase target absent from `candidates`
+    but present in the library under its own bare name. A phase missing from
+    *both* is refused rather than silently skipped, the same all-or-nothing
+    rule `encounter.build` states for a raid room.
+
+    Each phase gets its own style choice via `kills_by_style` on a
+    single-entry candidate list - forcing the search onto exactly that
+    phase's stats, which is what makes a form-swapping boss like Zulrah
+    priceable per form rather than once for the whole fight.
+
+    **Calls `kills_by_style` directly, never `best_kill`.** A phase whose
+    `target` happens to equal the script's own `name` is not a hypothetical -
+    `costing/nightmare.py`'s one phase is priced against `"Phosani's
+    Nightmare"`, exactly the string `SCRIPTS` is keyed on - and `best_kill`
+    checks `SCRIPTS` before anything else. Calling back into it here would
+    recurse into this same function forever the day such a boss existed;
+    calling the style search underneath it instead is both the fix and the
+    right layer, since all this loop ever wanted from `best_kill` was "try
+    every style, keep the fastest."
+    """
+    by_key = dict(candidates)
+    total_seconds = 0.0
+    total_hp = 0.0
+    weighted_damage_taken = 0.0
+    style = ""
+    attack_speed = 4
+    for phase in script.phases:
+        target = by_key.get(phase.target)
+        if target is None and index is not None:
+            target = index.get(phase.target)
+        if target is None:
+            return None
+        # `phase.styles` narrows which loadouts are even offered, rather than
+        # letting a style that deals zero real damage in-game win a search
+        # that has no way to know that on its own - see `Phase.styles`.
+        phase_loadouts = (
+            loadouts
+            if phase.styles is None
+            else {style: l for style, l in loadouts.items() if style in phase.styles}
+        )
+        if not phase_loadouts:
+            return None
+        styled = kills_by_style(
+            phase_loadouts,
+            phase.target,
+            ((phase.target, target),),
+            reductions=reductions,
+            boss=boss,
+        )
+        kill = min(styled.values(), key=lambda k: k.ttk, default=None)
+        if kill is None:
+            return None
+        priced = _phase_seconds(phase, target, kill)
+        if priced is None or priced <= 0:
+            return None
+        total_seconds += priced
+        phase_hp = target.hitpoints * phase.hp_share
+        total_hp += phase_hp
+        weighted_damage_taken += kill.damage_taken * phase_hp
+        style, attack_speed = kill.style, kill.attack_speed
+    if total_seconds <= 0 or total_hp <= 0:
+        return None
+    return KillEstimate(
+        monster=script.name,
+        # **The last phase's style, not a blend.** `style` exists so a
+        # trainer knows which hand to credit XP to; a multi-phase fight
+        # genuinely trains several, and picking one is already an
+        # approximation `combat_xp.py` does not currently read for scripted
+        # bosses - see the module docstring on that gap.
+        style=style,
+        ttk=total_seconds,
+        dps=total_hp / total_seconds,
+        # Neither is meaningful for a fight that changes style and target
+        # every phase - `max_hit`/`accuracy` are read nowhere downstream of
+        # `KillEstimate` beyond their own construction.
+        max_hit=0,
+        accuracy=0.0,
+        match="scripted",
+        damage_taken=weighted_damage_taken / total_hp,
+        is_boss=boss,
+        attack_speed=attack_speed,
+        hitpoints=total_hp,
+    )
+
+
 def best_kill(
     loadouts: Mapping[str, Loadout],
     name: str,
     candidates: Iterable[tuple[str, Target]],
     *,
+    index: MonsterIndex | None = None,
     on_slayer_task: bool = False,
     reductions: DefenceReductions | None = None,
     wilderness: bool = False,
@@ -1041,6 +1278,23 @@ def best_kill(
     form takes **nothing** from melee while answering ranged normally. Picking
     a style up front would price a fight nobody would choose to have.
 
+    **A scripted boss is priced by its script first.** `SCRIPTS` names every
+    boss `costing/fightscripts.py` knows is not one damage race - the
+    Alchemical Hydra swaps its whole stat block four times in a kill, and
+    "which version resolves fastest" is the wrong question to ask about it.
+    `_scripted_kill` reuses this same function per phase, on that phase's own
+    single-key candidate list, so the ordinary style search still runs - just
+    once per phase instead of once for the whole fight. `candidates` still has
+    to be passed for a scripted boss: it is where each phase's own `Target` is
+    read from, and an empty or stale one is refused exactly as it is below.
+    **`index`, when given, is `_scripted_kill`'s fallback** for a phase whose
+    target is not merely a version of `name` - `costing/sire.py`'s lung
+    phase fights `Respiratory system`, a wholly different monster, so
+    `candidates` (scoped to `"Abyssal Sire"`'s own versions) never carries
+    it. Every real caller in this module already has a `MonsterIndex` in
+    scope and passes it through; `None` is only for a caller (or a test) that
+    knows every phase it will ever ask about shares the boss's own prefix.
+
     `reductions` drains the target's defence before any of that, which is the
     difference between a plausible boss time and a nonsensical one - defence
     drives accuracy, and accuracy drives everything.
@@ -1050,6 +1304,11 @@ def best_kill(
     reports with `expected_ttk == 0`), or every pairing refused as
     `Unsupported`. All three are "do not price this", not "price it at zero".
     """
+    script = SCRIPTS.get(name)
+    if script is not None:
+        return _scripted_kill(
+            script, loadouts, candidates, index=index, reductions=reductions, boss=boss
+        )
     found = kills_by_style(
         loadouts,
         name,
@@ -1224,6 +1483,7 @@ def price_monsters(
             loadouts,
             name,
             candidate_targets(monster_index, name, versions),
+            index=monster_index,
             on_slayer_task=name in slayer_monsters,
             reductions=reductions,
             wilderness=name in kit.wilderness if kit is not None else False,
@@ -1336,6 +1596,7 @@ def price_slayer_tasks(
             loadouts,
             bare,
             candidates,
+            index=monster_index,
             on_slayer_task=True,
             reductions=reductions,
             wilderness=bare in wild,
@@ -1491,6 +1752,126 @@ class DpsCoverage:
         }
 
 
+#: `{monster: a pure "own kill seconds -> real seconds" correction}` - every
+#: gated boss whose fix is a straightforward function of its own time-to
+#: -kill and nothing else. `Skotizo` is not here: its correction also needs
+#: *other* monsters' rates (the totem candidates), which none of these do.
+#: See each module's own docstring for what the correction represents.
+_SIMPLE_GATED_CORRECTIONS: Mapping[str, Callable[[float], float]] = {
+    _hespori.HESPORI: _hespori.effective_seconds,
+    _giant_mole.GIANT_MOLE: _giant_mole.effective_seconds,
+    _duke_sucellus.DUKE_SUCELLUS: _duke_sucellus.effective_seconds,
+    _vorkath.VORKATH: _vorkath.effective_seconds,
+    _nex.NEX: _nex.effective_seconds,
+    _zalcano.ZALCANO: _zalcano.effective_seconds,
+}
+
+
+def _apply_gated_bosses(
+    monsters: Mapping[str, Rate], freshly_priced: Mapping[str, Rate]
+) -> dict[str, Rate]:
+    """`monsters`, with every entry in `_SIMPLE_GATED_CORRECTIONS` and
+    `Skotizo` corrected for what gates a real kill beyond the fight itself,
+    plus a `Rate` synthesised for each of `keyed_chests`' two chests - see
+    each correction's own module for what it represents.
+
+    **Only *corrects* an entry `freshly_priced` just computed.** Every
+    correction reads `Rate.value` back into a time-to-kill and changes it;
+    applying that twice - once here, once on a later call reusing the same
+    corrected `Rate` - would silently compound the change every roll
+    `enrich_incremental` reuses it for. `freshly_priced` is exactly what
+    `price_monsters` returned *this call*, so a `Rate` already corrected on
+    a previous call (and merely carried forward, unchanged, because the
+    fight signature has not moved) is never corrected again. `enrich` has
+    no reuse to guard against, so it passes the same dict for both
+    parameters.
+
+    `monsters` (as opposed to `freshly_priced`) is what `Skotizo`'s totem
+    search and the chest synthesis below read a candidate's own kill time
+    from - a candidate can be genuinely reachable and unchanged (reused, not
+    fresh) on the very roll the thing depending on it first becomes
+    reachable, and its rate is exactly as valid as a fresh one for the
+    current signature.
+
+    **The chests are a synthesis, not a correction, and the `freshly_priced`
+    guard does not apply to them.** Neither chest is ever combat-simulated -
+    it has no stat block - so neither ever appears in `freshly_priced` for
+    the simple loop above to key off. Their rate is a pure function of
+    *other* monsters' already-resolved rates, recomputed fresh every call;
+    there is nothing self-referential to double-apply, so it always runs.
+    """
+    for name, correction in _SIMPLE_GATED_CORRECTIONS.items():
+        if name not in freshly_priced:
+            continue
+        rate = freshly_priced[name]
+        if rate.value <= 0:
+            continue
+        total = correction(3600.0 / rate.value)
+        monsters = {
+            **monsters,
+            name: Rate(
+                value=3600.0 / total if total > 0 else 0.0,
+                source=rate.source,
+                match=rate.match,
+            ),
+        }
+
+    if _skotizo.SKOTIZO in freshly_priced:
+        skotizo_rate = freshly_priced[_skotizo.SKOTIZO]
+
+        def kill_seconds_for(name: str) -> float | None:
+            rate = monsters.get(name)
+            return 3600.0 / rate.value if rate is not None and rate.value > 0 else None
+
+        totem = _skotizo.totem_seconds(kill_seconds_for)
+        if totem is not None and skotizo_rate.value > 0:
+            total = totem + 3600.0 / skotizo_rate.value
+            monsters = {
+                **monsters,
+                _skotizo.SKOTIZO: Rate(
+                    value=3600.0 / total if total > 0 else 0.0,
+                    source=skotizo_rate.source,
+                    match=skotizo_rate.match,
+                ),
+            }
+        else:
+            # No candidate reachable, or the fight itself could not be
+            # priced - an uncorrected, too-fast combat-only rate is a wrong
+            # number, not a missing one, so this refuses rather than
+            # keeping it. See the module docstring.
+            monsters = {k: v for k, v in monsters.items() if k != _skotizo.SKOTIZO}
+
+    # **Bryophyta's and Obor's lair chests are never combat-simulated - they
+    # have no stat block - so they never reach `monsters` on their own and
+    # this is a synthesis rather than a correction.** Skotizo's `freshly_
+    # priced` guard has nothing to protect against here: a chest's rate is a
+    # pure function of *other* monsters' rates, recomputed the same way every
+    # call, so re-deriving it on a roll where nothing about it changed costs
+    # nothing and risks nothing. See `keyed_chests`'s module docstring for
+    # the mechanic and where its numbers come from.
+    def chest_kill_seconds(name: str) -> float | None:
+        rate = monsters.get(name)
+        return 3600.0 / rate.value if rate is not None and rate.value > 0 else None
+
+    for chest in _keyed_chests.CANDIDATE_CHANCE:
+        chest_total = _keyed_chests.effective_seconds(chest, chest_kill_seconds)
+        # **Written explicitly either way, never left absent.** An absent
+        # entry is exactly what let this bug happen -
+        # `Heuristics.kills_per_hour` falls through to `DEFAULT_KPH` for
+        # anything it has not heard of, and a chest has no stat block to be
+        # heard of *from*. No priceable candidate is a real "no route", not
+        # nothing said, so it is written as `Rate(0.0, ...)` - `kills_per_
+        # hour` returns that value as-is rather than defaulting, and every
+        # reader downstream already treats a non-positive rate as unpriced.
+        value = 3600.0 / chest_total if chest_total is not None and chest_total > 0 else 0.0
+        monsters = {
+            **monsters,
+            chest: Rate(value=value, source=f"derived:{chest}", match="keyed"),
+        }
+
+    return dict(monsters)
+
+
 def enrich(
     heuristics: Heuristics,
     chunk_info: ChunkInfo,
@@ -1545,7 +1926,18 @@ def enrich(
     # makes this call ~3.8x faster. `estimate.reachable_providers` is
     # imported rather than reproduced so the gate cannot drift from the
     # thing it is gating.
-    priceable = sorted(reachable_providers(derived) & frozenset(chunk_info.drops))
+    #
+    # **`drop_rates`, not `chunk_info.drops`** - and that was a real defect,
+    # not a tidier spelling. A monster with no `drops` entry can still have a
+    # loot table: every slayer monster's lives in `skillItems.Slayer`, which
+    # is `sources._slayer_skill_items_for`'s whole job. Gating on the export
+    # branch excluded all of them from the calculator, so `Abyssal demon`
+    # kept `DEFAULT_KPH['slayer']` at a flat 60/hr against the 24.3 it
+    # simulates, and `Alchemical Hydra` the boss default of 20 against 2.9 -
+    # 20 monsters on one cached map, 27 on the other. `SourceIndex.drop_rates`
+    # is keyed by whatever the index actually recorded a rate for, whichever
+    # branch supplied it, so it cannot drift from what the walk can ask.
+    priceable = sorted(reachable_providers(derived) & frozenset(derived.source_index.drop_rates))
     monsters = price_monsters(
         chunk_info,
         derived.bis.picks,
@@ -1556,6 +1948,9 @@ def enrich(
         boss_monsters=bosses,
         kit=kit,
     )
+    # Every call here is a fresh simulation - no reuse to guard against, so
+    # the whole result is "freshly priced". See `_apply_gated_bosses`.
+    monsters = _apply_gated_bosses(monsters, monsters)
     tasks = price_slayer_tasks(
         chunk_info,
         derived.bis.picks,
@@ -1704,7 +2099,9 @@ def enrich_incremental(
             signature, {}, {}, kit.wilderness, _master_candidates(chunk_info, masters, reachable)
         )
 
-    priceable = sorted(reachable_providers(derived) & frozenset(chunk_info.drops))
+    # The same set `enrich` offers, and for the same reason - see its comment
+    # on why this is `drop_rates` rather than the export's `drops` branch.
+    priceable = sorted(reachable_providers(derived) & frozenset(derived.source_index.drop_rates))
     # Built once: the membership test below is inside a comprehension over a
     # thousand-odd monsters, so rebuilding it per item was quadratic.
     priced_set = frozenset(priceable)
@@ -1731,18 +2128,21 @@ def enrich_incremental(
         }
 
     if stale:
-        monsters.update(
-            price_monsters(
-                chunk_info,
-                derived.bis.picks,
-                levels,
-                sorted(stale),
-                index=monster_index,
-                slayer_monsters=frozenset(chunk_info.slayer_monsters),
-                boss_monsters=bosses,
-                kit=kit,
-            )
+        fresh = price_monsters(
+            chunk_info,
+            derived.bis.picks,
+            levels,
+            sorted(stale),
+            index=monster_index,
+            slayer_monsters=frozenset(chunk_info.slayer_monsters),
+            boss_monsters=bosses,
+            kit=kit,
         )
+        monsters.update(fresh)
+        # `fresh` (not `monsters`) is "priced this call" - see
+        # `_apply_gated_bosses` on why a reused, already-corrected `Rate`
+        # must never be corrected a second time.
+        monsters = _apply_gated_bosses(monsters, fresh)
 
     # **The slayer half is reusable per master, not per task.** A master's
     # table is decided by which of *its own* assignable monsters are reachable
@@ -1848,6 +2248,7 @@ __all__ = [
     "RETARGET_TICKS",
     "SECONDS_PER_TICK",
     "OFFENSIVE_STYLES",
+    "MELEE_SUBSTYLES",
     "DpsCoverage",
     "DpsUnavailableError",
     "KillEstimate",

@@ -69,6 +69,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
+from chunksim.costing import instanced
 from chunksim.costing.heuristics import Heuristics, Rate
 from chunksim.costing.levels import reachable_providers
 from chunksim.derive.pipeline import Derived
@@ -105,34 +106,14 @@ CAST_SECONDS = CAST_TICKS * 0.6
 #: and the number is unchanged.
 RESPAWN_SECONDS = 30.0
 
-#: Named areas whose monsters cannot be *farmed*, and so are not training
-#: targets however reachable they are. A raid room is fought once per raid and
-#: a wave minigame gives you each monster a fixed number of times per run, so
-#: pricing either as "kill it, kill it again" describes nothing anyone can do.
-#:
-#: **Only combat training is affected.** These monsters stay in
-#: `reachable_providers` and keep their drops priced, because you really can
-#: get a twisted bow by doing the raid - what you cannot do is train Strength
-#: on Muttadile. Excluding them globally would change item pricing, which is a
-#: different and correct answer.
-#:
-#: Names are the export's own, checked against it: 21 monsters sit in
-#: `Chambers of Xeric` on the benchmark map, 9 in `Inferno` and 7 in
-#: `Fight Caves`. `dps_bridge.GROUP_BOSSES` already refuses a handful of these
-#: by name for a related reason - a solo kill time for team content is not a
-#: number worth having - and this is the same argument applied by *place*,
-#: which catches the twenty-one rank-and-file monsters that list misses.
-INSTANCED_AREAS: frozenset[str] = frozenset(
-    {
-        "Chambers of Xeric",
-        "Theatre of Blood",
-        "Tombs of Amascut",
-        "Tombs of Amascut Lobby",
-        "Inferno",
-        "Fight Caves",
-        "Gauntlet Lobby",
-    }
-)
+#: **Moved to `costing/instanced.py`**, which is now the one place that knows
+#: which places are runs and what killing one's boss costs. It was a frozenset
+#: of seven *names* here, and the export files the same place under a numbered
+#: square too - fourteen of them - so a map holding `9551` rather than
+#: `Fight Caves` trained on Tz-Kih. Re-exported under the old name because
+#: `costing/prayer.py`'s docstring cites it and a reader following that
+#: reference should land somewhere.
+INSTANCED_AREAS = instanced.RUN_ONLY_PLACES
 
 #: Which BiS style trains which skill. Melee trains three, and which of the
 #: three is a matter of the stance rather than the weapon.
@@ -145,18 +126,26 @@ STYLE_FOR_SKILL: dict[str, str] = {
 }
 
 
-def farmable_providers(derived: Derived) -> frozenset[str]:
+def farmable_providers(derived: Derived, chunk_info: ChunkInfo) -> frozenset[str]:
     """Reachable monsters you could actually grind, for experience.
 
-    A monster is dropped when **every** chunk it is reachable in is an
-    instance - see `INSTANCED_AREAS`. "Every" rather than "any" on purpose:
-    a lizardman shaman is in the Chambers of Xeric *and* in the Lizardman
-    Temple, and the temple is a place you can stand.
+    A monster is dropped when **every** chunk it is reachable in is part of a
+    run - `costing/instanced.run_only`, which is now the one place that test
+    lives. "Every" rather than "any" on purpose: a lizardman shaman is in the
+    Chambers of Xeric *and* in the Lizardman Temple, and the temple is a place
+    you can stand.
+
+    **`chunk_info` is why this takes an argument it used to do without.** The
+    membership test was against a frozenset of seven *names*, and the export
+    files the same place under a numbered square too - fourteen of them - so a
+    map holding `9551` rather than `Fight Caves` trained on Tz-Kih. See
+    `instanced.place_ids`.
     """
+    places = instanced.place_ids(chunk_info)
     farmable: set[str] = set()
     for monster in reachable_providers(derived):
         where = derived.source_index.monsters.get(monster)
-        if where and all(chunk in INSTANCED_AREAS for chunk in where):
+        if where and instanced.run_only(where, places):
             continue
         farmable.add(monster)
     return frozenset(farmable)
@@ -212,8 +201,17 @@ def best_target(
     heuristics: Heuristics,
     stats: Mapping[str, MonsterStats],
     caps: Mapping[str, float] | None = None,
+    chunk_info: ChunkInfo | None = None,
 ) -> CombatTarget | None:
     """The reachable monster paying the most damage per hour, or `None`.
+
+    **`chunk_info` is optional and should not be**, which is the honest state
+    of this seam: without it `farmable_providers` resolves no numbered squares
+    and a map holding `9551` rather than `Fight Caves` reads Tz-Kih as
+    farmable. Every production caller passes one - `costing/inputs.py` does -
+    and the default exists so the hand-built fixtures in
+    `tests/test_combat_xp.py` need not carry an export to ask about two
+    monsters. See `instanced.place_ids`.
 
     Reachability is `reachable_providers`, the same gate every other bucket is
     held to, and a monster whose kill rate is only a default is passed over -
@@ -221,7 +219,7 @@ def best_target(
     real hitpoints.
     """
     best: CombatTarget | None = None
-    for monster in sorted(farmable_providers(derived)):
+    for monster in sorted(farmable_providers(derived, chunk_info or ChunkInfo({}))):
         entry = stats.get(monster)
         if entry is None or entry.hitpoints <= 0:
             continue
@@ -264,6 +262,7 @@ def combat_rates(
     *,
     by_style: Mapping[str, Any] | None = None,
     caps: Mapping[str, float] | None = None,
+    chunk_info: ChunkInfo | None = None,
 ) -> tuple[dict[str, Rate], dict[str, float]]:
     """An XP rate for each combat skill, or an empty dict if nothing is priced.
 
@@ -283,7 +282,7 @@ def combat_rates(
     mostly casting experience, so dividing it back by 2 would overstate the
     damage by a factor of three.
     """
-    fallback = best_target(derived, heuristics, stats, caps)
+    fallback = best_target(derived, heuristics, stats, caps, chunk_info)
     styled = dict(by_style or {})
     if not styled and fallback is None:
         return {}, {}

@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import ast
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 #: Every money-making guide is a subpage of this, which is how they are
@@ -103,6 +104,11 @@ _WEIGHT_RE = re.compile(r"\{\{\s*\+=\s*\|\s*weight\s*\|\s*(\d+)")
 #: `130-200`, `35-45`. Hyphen or en-dash, either spaced or not.
 _RANGE_RE = re.compile(r"(\d[\d,]*)\s*[-–]\s*(\d[\d,]*)")
 
+#: `{{SCP|Ranged|75+}}` -> `("Ranged", "75+")`. `SCP` is the wiki's
+#: skill-clickpic template, and a guide's `|Skill =` bullets are built from
+#: nothing else - see `skill_levels_from`.
+_SCP_RE = re.compile(r"\{\{\s*SCP\s*\|\s*([A-Za-z]+)\s*\|\s*(\d+)\+?")
+
 
 @dataclass(frozen=True)
 class MmgRates:
@@ -131,6 +137,29 @@ class MmgRates:
     #: states 62,000 Fishing xp per hour, which multiplied by its 60 permits
     #: an hour came out as 3,720,000.
     per_hour: frozenset[str] = frozenset()
+    #: `{skill: level}` from the guide's own `|Skill = * {{SCP|Ranged|75+}}
+    #: recommended` bullets - both `required` and `recommended` rows, since a
+    #: guide's `kph` describes the gear the whole list implies, not only the
+    #: hard floor. Read by `costing/oracle.py`'s gear harness, which prices
+    #: this guide's own `kph` claim at the levels it states rather than at a
+    #: map's.
+    skill_levels: Mapping[str, int] = field(default_factory=dict)
+    #: Every `[[wiki link]]` inside the guide's `|Item =` bullets, in the
+    #: order the page lists them. **Not filtered to real equipment here** -
+    #: the field mixes gear (`[[Twisted bow]]`), vague prose
+    #: (`[[Ranged armour]]`) and things that are not equipment at all
+    #: (`[[Rada's blessing|Rada's blessing 3 or 4]]`, a teleport), and sorting
+    #: that out needs the equipment table this module does not have. A reader
+    #: keeps whichever names resolve against `ChunkInfo.equipment` and drops
+    #: the rest - see `costing/oracle.gear_from_guide`.
+    gear_links: tuple[str, ...] = ()
+    #: `Input{N}` names, unindexed - the consumables one kill spends, exactly
+    #: as the guide spells them (`Divine ranging potion(4)`, dose and all).
+    #: **The spelling matters and is preserved rather than normalised**:
+    #: `codeItems.boostItems` keys its potions the same dosed way, so a guide
+    #: naming `Divine ranging potion(4)` is already the string `combat_boost`
+    #: needs, with nothing to translate.
+    inputs: tuple[str, ...] = ()
 
     @property
     def counts_kills(self) -> bool:
@@ -405,6 +434,48 @@ def monster_slayer_xp(text: str) -> float | None:
     return parse_number(params["slayxp"]) if "slayxp" in params else None
 
 
+def skill_levels_from(text: str) -> dict[str, int]:
+    """`{skill: level}` from a guide's `|Skill =` field.
+
+    **The highest level named per skill wins**, on the rare guide that states
+    a skill twice at different tiers - a `required` row and a higher
+    `recommended` one both name Slayer, say, and the recommended figure is
+    what the guide's own `kph` actually assumes.
+    """
+    found: dict[str, int] = {}
+    for skill, level in _SCP_RE.findall(text):
+        value = int(level)
+        if value > found.get(skill, 0):
+            found[skill] = value
+    return found
+
+
+def gear_links_from(text: str) -> tuple[str, ...]:
+    """Every `[[wiki link]]`'s display text inside a guide's `|Item =` field,
+    in the order the page lists them, deduplicated.
+
+    Unfiltered - see `MmgRates.gear_links`. `_LINK_RE` already returns the
+    display half of `[[target|display]]`, which is the name a chunk map's own
+    `ChunkInfo.equipment` would use.
+    """
+    seen: dict[str, None] = {}
+    for match in _LINK_RE.finditer(text):
+        name = match.group(1).strip()
+        if name and not name.lower().startswith("file:"):
+            seen[name] = None
+    return tuple(seen)
+
+
+def inputs_from(params: Mapping[str, str]) -> tuple[str, ...]:
+    """`Input{N}` names, in index order, name only - no `{N}num` quantity."""
+    found: list[str] = []
+    for index in range(1, 21):
+        name = strip_links(params.get(f"input{index}", "")).strip()
+        if name:
+            found.append(name)
+    return tuple(found)
+
+
 def mmg_rates(text: str) -> MmgRates | None:
     """One money-making guide's `kph` and per-unit XP, or `None` if absent.
 
@@ -436,6 +507,9 @@ def mmg_rates(text: str) -> MmgRates | None:
         # `template_params` lowercases but does not otherwise normalise keys.
         kph_name=params.get("kph name", ""),
         per_hour=frozenset(per_hour),
+        skill_levels=skill_levels_from(params.get("skill", "")),
+        gear_links=gear_links_from(params.get("item", "")),
+        inputs=inputs_from(params),
     )
 
 

@@ -394,6 +394,7 @@ def test_every_derivation_route_takes_the_same_step(ctx: Context) -> None:
         ("/api/tasks", {}),
         ("/api/estimate", {}),
         ("/api/training", {}),
+        ("/api/training-method", {"skill": "Crafting", "task": "Cut a ~|ruby|~"}),
         ("/api/sections", {}),
         ("/api/chunk", {"chunk": LUMBRIDGE}),
         ("/api/unlock", {"chunk": NORTH}),
@@ -579,3 +580,91 @@ def test_a_chunk_you_would_have_to_roll_is_still_greyed_out() -> None:
 
     assert detail["unlocked"] is False and detail["walk_in"] is False
     assert not any(section["reachable"] for section in detail["sections"])
+
+
+def test_training_method_needs_skill_and_task(ctx: Context) -> None:
+    """No fallback shape here, unlike `/api/training`'s own optional `skill` -
+    a caller asking for one method has to name it."""
+    response = _get("/api/training-method", ctx, map="fray")
+
+    assert response.status == HTTPStatus.BAD_REQUEST
+
+
+def _cache_minimal_chunkinfo(root: Path | None, challenges: dict[str, Any]) -> None:
+    """A `chunkinfo`/`tasks_map` pair just real enough for `/api/training-method`
+    to run against, without needing the real export. Both blobs, for the
+    reason `cached_map`'s own docstring gives about two readers - the route
+    reads `cache.read_chunkinfo` directly, and an empty `tasks_map` is a
+    legitimate answer `reverse_tasks_map` handles."""
+    cache.write_blob(cache.CHUNKINFO_BLOB_NAME, {"challenges": challenges}, "test", root=root)
+    cache.write_blob(cache.TASKS_MAP_BLOB_NAME, {}, "test", root=root)
+
+
+def test_an_unpriced_task_answers_no_tree_not_an_error(ctx: Context) -> None:
+    """A task that is not a recipe-sourced method - here, one nothing has
+    ever priced at all - is `training.trace_option`'s own scope refusal, not
+    a lookup failure. The route must say so plainly rather than raising."""
+    _cache_minimal_chunkinfo(
+        ctx.root,
+        {
+            "Crafting": {
+                "Cut a ~|ruby|~": {
+                    "Primary": True,
+                    "Output": "Ruby",
+                    "Items": ["Chisel", "Uncut ruby*"],
+                    "Level": 34,
+                }
+            }
+        },
+    )
+
+    response = _get(
+        "/api/training-method", ctx, map="fray", skill="Crafting", task="Cut a ~|ruby|~"
+    )
+
+    assert response.status == HTTPStatus.OK
+    body = _body(response)
+    assert body["tree"] is None
+    assert body["skill"] == "Crafting"
+    assert body["task"] == "Cut a ~|ruby|~"
+
+
+def test_an_unknown_task_answers_no_tree_not_an_error(ctx: Context) -> None:
+    _cache_minimal_chunkinfo(ctx.root, {})
+
+    response = _get(
+        "/api/training-method", ctx, map="fray", skill="Crafting", task="Cut a ~|sapphire|~"
+    )
+
+    assert response.status == HTTPStatus.OK
+    assert _body(response)["tree"] is None
+
+
+@pytest.mark.real_cache
+def test_ruby_traces_to_the_gem_it_is_cut_from() -> None:
+    """The feature's own worked example, against the real export: Ruby tops
+    Crafting on `verf` (`chunksim training Crafting --map verf`), priced off
+    a real wiki recipe, so it must have exactly one child - the uncut gem -
+    and no more."""
+    from chunksim.gui.server import _state_at
+    from chunksim.store.cache import data_root
+
+    ctx = Context(root=data_root(), check_origin=False)
+    state = _state_at({"map": ["verf"]}, ctx, "verf")
+    assert not isinstance(state, Response)
+
+    response = _get(
+        "/api/training-method", ctx, map="verf", skill="Crafting", task="Cut a ~|ruby|~"
+    )
+
+    assert response.status == HTTPStatus.OK
+    tree = _body(response)["tree"]
+    assert tree is not None
+    assert tree["source"] == "recipe"
+    assert len(tree["children"]) == 1
+    assert tree["children"][0]["label"] == "Uncut ruby"
+    assert tree["children"][0]["hours"] > 0
+    # ~1,000 an hour, per the feature's own worked example - see
+    # `training.rate_material_tree`.
+    assert tree["per_hour"] == pytest.approx(tree["children"][0]["per_hour"])
+    assert tree["per_hour"] > 500

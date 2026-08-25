@@ -1,6 +1,6 @@
 {
   "name": "wiki_recipes",
-  "fetched_at": "2026-08-23T00:46:26.243224+00:00",
+  "fetched_at": "2026-08-23T17:14:29.701181+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "Cooking": [
@@ -41943,6 +41943,50 @@
         "materials": [
           {
             "name": "Narwhal horn",
+            "quantity": 1.0
+          }
+        ],
+        "variant": ""
+      },
+      {
+        "page": "Medallion of the Deep",
+        "output": "Medallion of the Deep",
+        "output_quantity": 1.0,
+        "skill": "Crafting",
+        "level": 1,
+        "experience": 500.0,
+        "ticks": null,
+        "materials": [
+          {
+            "name": "Medallion fragment (1)",
+            "quantity": 1.0
+          },
+          {
+            "name": "Medallion fragment (2)",
+            "quantity": 1.0
+          },
+          {
+            "name": "Medallion fragment (3)",
+            "quantity": 1.0
+          },
+          {
+            "name": "Medallion fragment (4)",
+            "quantity": 1.0
+          },
+          {
+            "name": "Medallion fragment (5)",
+            "quantity": 1.0
+          },
+          {
+            "name": "Medallion fragment (6)",
+            "quantity": 1.0
+          },
+          {
+            "name": "Medallion fragment (7)",
+            "quantity": 1.0
+          },
+          {
+            "name": "Medallion fragment (8)",
             "quantity": 1.0
           }
         ],

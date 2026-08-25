@@ -263,7 +263,7 @@ def test_a_monster_you_can_only_meet_inside_a_raid_is_not_a_training_target() ->
         },
     )
 
-    farmable = farmable_providers(derived)
+    farmable = farmable_providers(derived, ChunkInfo({}))
 
     assert "Muttadile#Small" not in farmable
     # Reachable in a raid *and* somewhere you can stand: still farmable.

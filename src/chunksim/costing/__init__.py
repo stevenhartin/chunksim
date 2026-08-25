@@ -24,13 +24,52 @@ The modules, and what each owns:
 - `heuristics.py` - every hand-correctable number, and the
   `defaults < scraped < overrides` merge. Owns the joins and their
   `exact`/`contained` provenance; **no fuzzy tier, by measurement.**
-- `estimate.py` - the four buckets over the **active** set. **Costs the unique
+- `estimate.py` - the five buckets over the **active** set (`BUCKETS`: quests,
+  boss drops, monster drops, activities, skilling - `_bucket_for` tells a boss
+  from an ordinary monster from a real activity/shop/recipe route by asking
+  `WorldIndex` rather than by the shape of `source`). **Costs the unique
   *item*, not the task**, and **clamps per source**. Owns the item walk and the
   gates on it, and records the `Heuristics` entries each number was read off -
-  where they are read, never reconstructed.
+  where they are read, never reconstructed. A leaf item priced by a one-off
+  `make:`/`shop:`/`spawn:`/`recipe:`/`currency:` route (no real repeatable
+  source of its own) displays under the Diary/CA task that wants it instead of
+  under its own recipe name (`ItemEstimate.group`, off `_leaf_task_groups`'
+  index into `other_tasks`); `_group_total`'s **max within a source, sum
+  across sources** is what keeps that clustering and the clamp agreeing with
+  each other and with the un-clustered case. `_route_hours`' certainty gate
+  (a `Monsters`-named `task:` route with no stated pace refuses, since a
+  monster is not a four-tick action) now makes one exception: a `*`-marked
+  `Items` entry is upstream's own consumed-secondary marker
+  (`derive.challenges._is_secondary`'s docstring), not a tool like an ent's
+  bare `Axe[+]`, and the walk already knows the real cost of a consumed
+  ingredient. Yama's five `Contract of <X>*` sigil offerings and two
+  Nightmare/vampyre loot tables had no other route at all and reclaim one
+  here, going from `unpriced` to priced off the contract's own cost. `Chest
+  (Bryophyta's lair)*`'s `Mossy key*` is the same shape but was never
+  `unpriced` - see `keyed_chests.py` for the wrong number it *was* getting,
+  through a different route this gate does not touch. `_Priced` carries an
+  opt-in `children` field (each material's own `_Priced`, and the item name
+  it answers for on `.label`) and a `trace` parameter threaded through
+  `_item_hours`/`_settle`/`_best_route`/`_route_hours` to fill it - `False`
+  everywhere but `training.trace_option`, the only caller that needs the
+  tree rather than the flat total the rest of this module has always read
+  off `.hours` alone.
 - `training.py` - how fast a skill goes. **A climb is priced band by band as
   methods unlock**, so the floor can only ever be the first band. Each band
   carries the override path behind its rate, set where the rate is chosen.
+  `trace_option` is a further drill-down for one method - its material chain
+  as a tree, `MaterialNode` by `MaterialNode` - built by re-deriving the
+  winning `recipe_rates.Recipe` (`ActionRate` deliberately does not keep it)
+  and walking its materials with `estimate.priced_material`'s `trace=True`.
+  **Refuses rather than approximates**: only a method whose rate came off a
+  real recipe (`recipe_rates.RECIPE_SOURCE`) has one - gathering, combat,
+  GOTR, spells and every other computed source prices its own materials its
+  own way with nothing here to walk, and `trace_option` returns `None` for
+  the rest rather than guess. `rate_material_tree` is pure arithmetic on top:
+  `option.effective_xp_per_hour` divided by the root's own xp-per-action
+  gives actions an hour, and every node's `per_hour` is that figure times
+  its own `quantity` multiplied down the path from the root, not read off in
+  isolation - a child's `quantity` is per one *parent* action.
 - `recipe_rates.py` - a recipe turned into an XP rate, joined exactly on
   `Output` **and on the wiki's own variant label**, so the two ways of smelting
   a bar are two answers rather than one given twice. Owns
@@ -38,7 +77,12 @@ The modules, and what each owns:
   the floor but may not replace the scrape** - one recipe reaching several
   tasks is the guard the flip needed, and it is keyed on the recipe chosen, not
   on the item made. Also `trip_seconds`: a bank trip's share, scaled by what an
-  action consumes.
+  action consumes. `_skill_join_tables` is the per-skill setup
+  `computed_rates`'s own loop builds once for every task in a skill;
+  `recipe_for_task` rebuilds it for one task alone, re-running the identical
+  join and `rate_for` selection so `training.trace_option` can get the real
+  `Recipe` back - never a second implementation of the choice, only a
+  narrower call to the same two functions.
 - `barbarian.py` - barbarian fishing's **Strength and Agility**, off the same
   cascade the Fishing node walk already rolls. Nothing new is modelled: the
   rolls are read a second time with the ancillary experience column, so the two
@@ -335,6 +379,10 @@ The modules, and what each owns:
   that was one number for a method linear in the level. Solo pays less
   Firemaking and is the only way the boss pays **Construction**, whose whole
   published table is one constant per skill times the *Firemaking* level.
+  **Also owns the phoenix pet** - `Wintertodt` is absent from `drops`
+  entirely, the same chest gap `costing/raids.py` closes for the raids, and
+  `item_seconds` reuses the world-hopped regime's own `GAMES_PER_HOUR`
+  since its 500-point game is exactly the reward cart's own milestone.
 - `tempoross.py` - the wiki's rate for four harpoons at five levels each,
   which **replaced three invented tier figures in `stated.py`**. Best harpoon
   by *rate* rather than by tier, since the tiers are not ordered. Also the
@@ -342,6 +390,10 @@ The modules, and what each owns:
   because every part of it is fixed: the `max permits` walkthrough counts out
   55 fish a game, a game is 12 minutes including the wait, and a harpoonfish
   pays 10. The two challenges are two choices rather than halves of one method.
+  **Also owns the Tiny Tempor pet**, the same chest-absent-from-`drops` gap
+  `wintertodt.py`'s phoenix closes, reusing the max-permits regime's own
+  `GAMES_PER_HOUR` and its own published permits-per-game figure - earning
+  permits, not redeeming them, is the real bottleneck.
 - `artefacts.py` - stealing artefacts for Captain Khaled, and **the one
   activity here that derives completely**: both halves of what an artefact pays
   are stated in prose, the run count is the mean of six tabulated house times,
@@ -490,6 +542,47 @@ The modules, and what each owns:
   `Reinvigorate` cadence, and a page is stackable so the plinth trip
   amortises. `costing/dps_bridge.py` puts the same figure at 258-303, inside
   the boss bias it documents on itself.
+- `levels.py` also owns `TaskGate`: the slayer assignment a monster demands
+  **and where it demands it**. The place is load-bearing - `Konar quo Maten`
+  keys all 93 of his tasks by location, so a bare `Hydras` matched none and a
+  Konar-only map left every gated monster unpriced. `slayer.MasterRate.key_for`
+  is the join, matched on the place because 23 of his families span up to six
+  of them and a prefix match would shorten the wait for an assignment most of
+  its weight does not satisfy.
+- `instanced.py` - **the one answer to "what does killing this boss cost".**
+  Three layers had decided that for themselves and two were wrong, which is
+  how four Grandmaster Combat Achievements naming `TzKal-Zuk` came to share
+  0.05 hours. Also owns which places *are* runs, resolved against the export
+  rather than listed: the same place is filed under a name **and** a numbered
+  square, and the name-only set this replaced missed fourteen of them -
+  `9551` is the Fight Caves, `9043` the Inferno. Prices a run's **final boss
+  only**; the rank-and-file need a room ordering no module here carries, and
+  are refused rather than guessed. Owns the `runs` knob branch, which is the
+  one duration in this subpackage that no scrape reaches - so it is the one
+  most worth correcting, and one correction moves every answer spending a run.
+  `Sol Heredit` is the one boss `costing/colosseum.py` adds here - the
+  eleven-wave roster has no chunk of its own, matching the Theatre's own
+  absence, so `Fortis Colosseum Underground` (the lobby) is the only chunk
+  there is to gate on. **Barrows and Perilous Moons are deliberately absent**:
+  their monsters stand in ordinary, ungated chunks (`Barrows Crypts`,
+  `Neypotzli`), so a kill-goal for one of them is a plain kill, not a run -
+  only their *chest* needs a module, which is what `costing/barrows.py` and
+  `costing/moons.py` are for. **Both Hunllefs share the one `Gauntlet
+  Lobby` chunk but need different durations**, which every other entry
+  here answers by place alone - so `FINAL_BOSS` still points both at
+  `Gauntlet Lobby` (for the `run_only`/`RUN_ONLY_PLACES` contract) but
+  `kill_seconds` special-cases them to `gauntlet.kill_seconds`, dispatched
+  by monster rather than by place, before `DEFAULT_RUN_SECONDS` is ever
+  consulted.
+- `tzhaar.py` - the Fight Caves and the Inferno, as the *runs* they are
+  rather than the monsters the export files them as. **One wave schedule, two
+  rosters**: both minigames field the same 48/40/36/34/33 rank-and-file across
+  their waves, and the roles filling those tiers swap between them. Fixes the
+  same defect `raids.py` does, one activity over - `Jal-nib-rek` read 5.0
+  hours as a 1/100 off a monster killed twenty times an hour, against a
+  hundred Infernos - and **the kill-goal path had it too**, four Grandmaster
+  Combat Achievements naming `TzKal-Zuk` sharing 0.05 hours between them. `PER_WAVE_SECONDS` is invented and `RUN_SECONDS` is a
+  maintainer's figure rather than a publication; both say so.
 - `raids.py` - all three raids at once, and the only place that **adds**
   rather than picks: the export carries each raid's rewards as its own
   collection log entries, so a player needs all three logs and the total is
@@ -497,6 +590,56 @@ The modules, and what each owns:
   very nearly "six thousand raids" and **where a cape binds the best drop rate
   is the wrong thing to optimise** - the Theatre's hard mode is better per raid
   and loses. `best_for` picks, and is only meaningful for a named unique.
+- `barrows.py` - the Barrows: six brothers, any order, one chest -
+  `Chest (Barrows)` is absent from `drops` entirely, the same gap
+  `raids.py` closes for the three raids. No `FightScript` needed - the six
+  brothers' melee defences are close enough together that the ordinary
+  style search already picks correctly. `UNIQUE_CHANCE` is the money-making
+  guide's own `7/2448` for each of the twenty-four pieces, cross-checked
+  against `[[Chest (Barrows)]]`'s separately-stated "approximately
+  1/350.14". **`_full_log_runs` is a closed-form reduction of
+  `encounter.runs_for_all`**, not a call to it - twenty-five items is
+  `2**25` inclusion-exclusion terms, over a minute for one answer, where
+  twenty-four sharing one chance collapses to twenty-four terms by
+  symmetry; verified against the wiki's own "All 6 sets is 1319.26 chests"
+  and against the brute-force formula on a small fixture.
+- `colosseum.py` - the Fortis Colosseum: eleven waves of a fixed roster then
+  Sol Heredit, `costing/tzhaar.py`'s shape with a real published `kph`
+  (`2.5`, a 1,440-second run) in place of that module's maintainer's band.
+  Sol Heredit needs no script - one bare `osrs_dps` key at `hitpoints=1500`,
+  and his published mechanics punish a slow kill rather than forcing a real
+  zero-damage window, the same considered refusal `dps_bridge.SCRIPTS`
+  already states for Araxxor and Cerberus. The roster is the wave
+  breakdown's *guaranteed* composition only - the 40-second reinforcement
+  timer is excluded for `costing/tzhaar.py`'s own "ceiling on the speed, not
+  an expectation" reason. `Rewards Chest (Fortis Colosseum)` is absent from
+  `drops`; every chance here is transcribed from the guide's own summed
+  wave-by-wave arithmetic rather than re-derived.
+- `moons.py` - Perilous Moons: three solo bosses, each weak to a melee
+  substyle the other two resist, feeding one `Lunar Chest` (also absent
+  from `drops`). **The first module needing `dps_bridge.MELEE_SUBSTYLES`**:
+  Blue Moon, Blood Moon and the Eclipse Moon each carry `defence_crush`/
+  `defence_slash`/`defence_stab=0` against `100` on the other two - Zulrah's
+  magma-form shape repeated on a melee-substyle axis nothing before this
+  resolved - so each Moon is registered as its own one-phase `FightScript`,
+  `styles` restricted to the one substyle that actually damages it.
+  `UNIQUE_CHANCE` is the guide's own uniform `1/224` across all twelve
+  pieces; `kph = 10` is "kills all 3 bosses", one full clear.
+- `gauntlet.py` - The Gauntlet and the Corrupted Gauntlet: a preparation
+  phase that dwarfs the boss fight, and `Reward Chest (The Gauntlet)`
+  (absent from `drops`, one collection-log category for both variants).
+  Neither Hunllef needs a `FightScript` - both carry uniform defence across
+  every damage type in `osrs_dps`, so no generic loadout is ever wrong the
+  way a Moons one is. **`PREP_SECONDS` is this project's own estimate, not
+  the wiki's** - the 10-minute/7:30 figures on `[[The Gauntlet]]` are the
+  timer's cap, not a typical efficient player's spend, so this module states
+  its own midpoints (150s regular, 330s corrupted) explicitly as a `GUESS`.
+  `item_seconds` offers **the better of the two variants per item** -
+  `raids.best_for`'s "offer the best available" choice - since the export
+  gates all four shared uniques under one category regardless of which
+  Hunllef gave them; the Corrupted Gauntlet's own entries carry a regular
+  completion on top, its published unlock prerequisite, matching
+  `costing/tzhaar.py`'s Inferno-entry-fee shape exactly.
 - `encounter.py` - the generic sequencer: a run of fights and puzzles priced as
   one unit, because a raid's duration belongs to the *run* and its chance
   belongs to the run's end. Knows no raid. Carries `Mechanic` (uptime and idle
@@ -603,6 +746,30 @@ Thieving at 84,560 flat against 1,005 at level 1. See `_modelled_tasks`.
   three gates and the two credits that each removed a wrong answer.
 - `slayer.py` - Slayer's rate, which is a *distribution* rather than a chosen
   method, and the points economy that decides where you train.
+  `task_kills_per_hour`/`best_modelled_candidate` prefer a reachable
+  candidate's real `dps_bridge` simulation over the spreadsheet's own
+  task-level clear speed - `defaults < scraped < computed < modelled` applied
+  to the one number in this module that still deferred to the wiki once a
+  model existed.
+  **`MasterRate.hours_to_be_assigned` excludes the task itself from the
+  average it waits on** - the wait is downtime on *other* tasks alone, and
+  `estimate._task_hours` adds the gated monster's own kill time back
+  separately, so folding it into both halves (an earlier version did, via
+  `average_hours`'s blend) counted one fight twice. Caught on `Grotesque
+  Guardians`: `Vannaka`'s `Gargoyles` task fed a wait computed from the
+  ordinary Gargoyle's own rate - real, but not what gates the boss, and
+  wrong to add on top of the boss's own kill time regardless of whose rate
+  it used. **The exclusion also means `slayer/<master>/<task>`'s own
+  `kills_per_hour` is never read by a gated item's price at all** - a
+  correction there could never move the number it sat beside, which is a
+  worse confusion than an unexplained one. `heuristics.wait_hours` (the
+  `wait` branch, `Heuristics`' own docstring) is the fix: a leaf that *is*
+  the wait, read first in both `_task_hours` and its hoisted twin
+  `_kill_facts`, and named by the item's own `knobs` tuple instead of
+  `slayer/...`. `gui/knobs.BRANCH_NOTES["wait"]` and `routes_view.
+  resolve_knob`'s special case (the computed fallback needs the whole
+  master's task list, which a bare `Heuristics` cannot supply) are the
+  other two pieces.
 - `prayer.py`, `farming.py` - the two skills whose limit is not a rate: bone
   supply, and a **schedule** measured in calendar days beside its active hours.
 - `levels.py` - `infer_levels`/`goal_levels`/`reachable_providers` and the
@@ -621,7 +788,245 @@ Thieving at 84,560 flat against 1,005 at level 1. See `_modelled_tasks`.
   the wiki's redirects for the item names upstream has not renamed yet.
 - `dps_bridge.py` - the seam to `osrs-dps`. **Optional import** - check
   `DPS_AVAILABLE`, never assume it. Prices only `reachable_providers`, which it
-  imports rather than copying.
+  imports rather than copying. **`best_kill` checks `fightscripts.SCRIPTS`
+  first** - a phased boss is priced by its script, not by which of its
+  ambiguous library versions dies quickest. `MELEE_SUBSTYLES` builds three
+  more loadouts (`Stab`/`Slash`/`Crush`) from BiS picks `derived.bis.picks`
+  has always carried but `build_loadouts` never read - additive for every
+  caller before `costing/moons.py`, which is the one boss where a generic
+  `Melee` loadout is wrong for two-thirds of the fight. `_apply_gated_bosses`
+  corrects `Hespori`, `Skotizo`, `Giant Mole`, `Duke Sucellus`, `Vorkath`,
+  `Nex` and `Zalcano`'s already-computed `Rate`s for what gates a real
+  kill beyond the fight - see each one's own module.
+  `_SIMPLE_GATED_CORRECTIONS` is the table for the five that are a pure
+  function of their own kill time (`Zalcano`'s ignores that input
+  entirely rather than correcting it - see its own module);
+  `Skotizo`'s totem search also needs other monsters' rates, so it stays a
+  named special case. Applied to `enrich`'s whole result every call, but to
+  only the *freshly priced* slice of `enrich_incremental`'s, so a `Rate`
+  already corrected on an earlier roll and merely carried forward by the
+  reuse path is never corrected a second time. `keyed_chests`' two chests
+  are a **synthesis**, not a correction - neither is ever combat-simulated,
+  so neither reaches `monsters` for the `freshly_priced` guard to key off,
+  and the guard does not apply: their rate is a pure function of *other*
+  monsters' already-resolved rates, so re-deriving it costs nothing and
+  always runs.
+- `hespori.py` - Hespori's own drop table is already in the export (unlike a
+  raid's chest), so the fix here is not a missing table but a missing
+  overhead: `GROW_SECONDS` is the hespori seed's own published farming time,
+  "1,920 minutes (3x640 min = 32 hours)" - not a guess, unlike almost every
+  other overhead constant in this subpackage. `effective_seconds` adds it to
+  whatever the fight itself takes, which `dps_bridge._apply_gated_bosses`
+  applies directly to the `Rate` `price_monsters` already computed.
+- `skotizo.py` - Skotizo needs a dark totem to fight at all, one consumed
+  per attempt and assembled from three pieces dropped elsewhere in the
+  Catacombs of Kourend, strictly in sequence ("dropped in that order...
+  duplicates drop after all three are obtained"). `piece_chance` is the
+  totem's own published `1/(500-H)`; `totem_seconds` **optimises** over
+  `CANDIDATE_HITPOINTS` - six low-hitpoint monsters curated because the rest
+  of the dungeon's `1/(500-H)` improvement "is very small" against their far
+  slower kill times - rather than hardcoding the wiki's own named example
+  (hill giants) as the answer for every map.
+- `keyed_chests.py` - Bryophyta's and Obor's lair chests, `skillItems`
+  activities with no stat block and so no scraped or simulated rate:
+  `Heuristics.kills_per_hour` fell to `DEFAULT_KPH["regular"]` (150/hr),
+  pricing everything inside the chest as though it opened on demand. It
+  does not - each opening consumes a `Mossy key`/`Giant key`, a rare drop
+  off the boss **or** off the ordinary giants sharing its name, whichever
+  is cheaper. `CANDIDATE_CHANCE` is read straight off the export's own
+  `drops` tables rather than guessed, and `effective_seconds` **optimises**
+  over every candidate the same way `skotizo.totem_seconds` does, plus one
+  default action to open the chest with the key in hand.
+- `giant_mole.py` - her own drop table is already in the export; the fix is
+  the published burrow mechanic ("every attack... has a 25% chance of
+  causing her to burrow", between 50% and 5% health). Two guessed
+  constants, stated as such: an assumed four-tick attack speed (the
+  correction has no access to the map's real one, only an already-computed
+  `Rate`) and a chase-time-per-burrow figure nothing publishes.
+- `duke_sucellus.py` - two fixes in one module. `SCRIPT` pins the
+  repeatable `Post-quest, Awake` version explicitly - unscripted, the
+  330-hitpoint one-time Desert Treasure II quest fight (fought exactly
+  once ever) is the fastest of three ambiguous `osrs_dps` versions and
+  would have been priced as the whole activity, the same softest-form
+  defect the Hydra's and Zulrah's own scripts fix. `effective_seconds`
+  doubles the fight's own time for the preparation phase - `PREP_FRACTION
+  = 1.0` is this project's own accepted estimate, not a wiki figure.
+- `kalphite_queen.py` - two full-health forms (`osrs_dps`'s own "one shared
+  pool" shape), `Crawling` weak to crush and `Airborne` weak to
+  ranged/magic, matched exactly to the published "Protect from Magic and
+  Missiles" / "Protect from Melee" mechanic. The one published, exact
+  transition constant in this pairing: twelve seconds, stated on the
+  boss's own page.
+- `vorkath.py` - the same version-pin `duke_sucellus.py` needs
+  (`Post-quest`, not the 460-hitpoint quest-only version), plus a
+  correction shaped differently from every other boss module here: the
+  published freeze/acid cycle repeats every six of *Vorkath's own*
+  attacks throughout one continuous fight rather than at a health
+  threshold, so it cannot be expressed as a `Phase.reduced_seconds`
+  window and is instead a closed-form steady-state multiplier over
+  `effective_seconds`.
+- `phantom_muspah.py` - a ranged/melee alternation sized in *damage dealt*
+  ("roughly every 100 damage in ranged form and 80 damage in melee form"),
+  converted to `hp_share`s by that ratio rather than assumed equal, then a
+  shield phase against a wholly separate `hitpoints=75` pool - "a shield
+  which won't appear as actual damage on the boss," the third `Phase`
+  shape, the same one `costing/sire.py`'s lung phase and this pairing's
+  own `royal_titans.py` both are.
+- `hueycoatl.py` - four targets, one published total (`5 x 250 + 2,500 +
+  300 = 4,050`, matched exactly): five 250-hitpoint body segments, her own
+  2,500 split in half by a published 50% shield threshold, and a separate
+  300-hitpoint tail pool in between. **The tail phase is a stated
+  ceiling**, not an accurate estimate - the published damage cap (4, or 9
+  with crush as the highest attack bonus, missed hits rounded up to 1) has
+  no path into `osrs_dps`'s ordinary combat formula, so a real tail phase
+  runs longer than this prices it, especially for a small team.
+- `nex.py` - one stat block throughout (`osrs_dps` carries no
+  phase-specific version of her, unlike every other multi-phase boss in
+  this subpackage), four bodyguards gating 20%-health thresholds, and a
+  published 500-hitpoint heal on the final phase folded into her own
+  `hp_share` rather than a separate phase. **Priced as the duo the wiki
+  states fighting her effectively requires** - `PARTY_SIZE = 2`,
+  `effective_seconds` halving the scripted total, the real semantic
+  `costing/encounter.build`'s own `attackers` parameter states, applied
+  separately because Nex's phase structure needs
+  `costing/fightscripts.py` rather than `costing/encounter.py`.
+- `royal_titans.py` - two identical bosses (`osrs_dps` gives `Eldric the
+  Ice King` and `Branda the Fire Queen` the same `hitpoints=600` and the
+  same `StatBlock`) fought together for one shared encounter - killing
+  either requires killing both, so `hp_share=2.0` prices the whole
+  1,200-hitpoint encounter against either one's own key, the third
+  `Phase` shape with two different monsters standing in for "the same
+  target killed twice."
+- `vetion.py` - Vet'ion and Calvar'ion, another two-bosses-one-module pair,
+  but for the opposite reason to `royal_titans.py`: `osrs_dps` carries each
+  only as `#Normal`/`#Enraged`, which `dps_bridge.candidate_targets`
+  correctly refuses as version-ambiguous (an `Enraged` suffix matches the
+  sequential-phase marker), so the bare boss name had no route to a `dps`
+  rate at all until this script gave it one. Six independent full-health
+  targets per kill - each form to 50%, a fresh-pool pair of hellhounds mid-
+  form, the form's remaining half - matched to the wiki's own published
+  split. `HELLHOUND_DELAY_SECONDS` is this project's own guess (only
+  Vet'ion's page states the resistance window; charged on both since the
+  fight is otherwise identical). No `Phase.styles` restriction, the same
+  reasoning `royal_titans.py` gives: `dcrush=-10` against defence in the
+  hundreds is a weakness the ordinary style search already finds unaided.
+  **Its own oracle test cannot assert a `kph` ratio**: both guides describe
+  "High melee stats" in prose rather than a `{{SCP|Attack|...}}` template,
+  so `oracle.py`'s unstated-level floor (never assumed maxed) prices a
+  level-1 weapon and lands two orders of magnitude short - the harness
+  being conservative, not the script being wrong, per `oracle_ttk`'s own
+  docstring. `tests/test_costing_vetion.py` substitutes maxed levels for
+  the guide's unstated ones instead, following `grotesque_guardians.py`'s
+  and `zulrah.py`'s precedent for the same gap.
+- `zalcano.py` - the one gated boss where the simulated kill time is not
+  real at all rather than merely incomplete: she is "immune to
+  traditional combat damage," fought with Mining/Smithing/Runecraft
+  actions no combat style represents, and `osrs_dps` carries her with
+  every defence bonus at zero because the library has no notion of that
+  immunity. `effective_seconds` therefore **ignores its own argument** and
+  returns `Money making guide/Killing Zalcano`'s own published group
+  throughput (48 kills/hour on a themed world) rather than correcting a
+  number that was never a real answer. Her own `drops` table already
+  carries `Smolcano` at the correct published `1/2,250`, so - unlike
+  every chest-shaped fix in this subpackage - nothing else needed adding
+  once the rate itself was right.
+- `fightscripts.py` - the primitive a phased boss needs and
+  `costing/encounter.py`'s raid shape does not fit: a `Phase` is a *slice* of
+  one kill (`hp_share`), not a whole kill multiplied (`FightPlan.count`), and
+  carries its own reduced-output window (`reduced_seconds`/
+  `reduced_dps_fraction`) for a vent, a totem, anything that costs real but
+  diminished time rather than none at all. `hp_share` takes three different
+  shapes depending on the boss - one shared pool (Hydra, Zulrah), several
+  independent targets each fully depleted (Grotesque Guardians), or one
+  small target killed several times over (Abyssal Sire's respiratory
+  systems) - see the `Phase` docstring. `Phase.styles` restricts which
+  combat styles a phase will even try, for the rare case (Grotesque
+  Guardians' Dawn and Dusk) where the *rest* of the fight, not the numbers,
+  rules a style out entirely and `osrs_dps`'s own stat block does not
+  encode that. Pure - no `osrs_dps` import; `costing/dps_bridge._scripted_kill` is what prices one.
+- `hydra.py` - the Alchemical Hydra's script: four phases, each an exact
+  `osrs_dps` key, `hp_share=0.25` apiece straight off the wiki's own
+  825/550/275/0 thresholds. **Fixed the softest-form pick**: before this
+  existed, `best_kill`'s ordinary version resolution priced a quarter of the
+  boss's health bar as if it were the whole fight. `VENT_SECONDS` is this
+  project's own figure - nothing publishes how long finding a vent takes -
+  and every rate this module produces is a `GUESS` because of it, however
+  published the 75% reduction and the phase thresholds are.
+- `oracle.py` - prices a money-making guide's own stated gear and levels, so
+  a scripted boss's `kph` can be checked against the guide's **without** the
+  guide's near-max assumptions inflating a chunk map's own gear-restricted
+  answer. Single-boss guides only - a raid's or a wave minigame's `kph`
+  describes a *run*, not one monster, and comparing against it would not be
+  the same question. Two known gaps, both measured rather than guessed at: a
+  guide's prose often never names a body, legs or ammo slot at all
+  (`"Ranged armour"` - `tests/test_costing_hydra.py` measures the cost), and
+  ranking a magic weapon on `magic_damage` alone ties a powered staff against
+  a melee weapon at zero, since a staff's real damage comes through
+  `attack_magic` instead - found by Phosani's Nightmare's own guide handing
+  a magic loadout a crush mace, fixed in `_RANK_FIELDS`, pinned in
+  `tests/test_costing_oracle.py`.
+- `nightmare.py` - Phosani's Nightmare, priced as **one continuous fight**
+  rather than the page's four sub-phases: the totem mechanic triggers "a
+  powerful hit" against her own health, and nothing publishes how that burst
+  divides across the library's 3200 hitpoints, so splitting `hp_share` the
+  way `costing/hydra.py` does would need a number this project does not
+  have. What *is* modelled is the two mechanics asked for by name - the
+  totem ("pillar") phase and the sleepwalker phase - as zero-rate downtime
+  (`reduced_dps_fraction=0.0`) on top of the plain damage race, both guessed
+  constants grounded in the wiki's own published counts (4 totems needing
+  200 charge each; 2/3/4 sleepwalkers at the ends of phases 1-3). Its own
+  oracle comparison found and fixed two real bugs in `costing/oracle.py`
+  itself - see that entry.
+- `zulrah.py` - one health bar, three forms, priced as a **time-weighted
+  blend** rather than an HP split: unlike the Hydra's published phase
+  thresholds, nothing states what fraction of a kill each form takes, so the
+  three `hp_share`s are read off `Zulrah/Strategies`' own phase-by-phase
+  rotation tables - 173 attacks summed across all four published rotations,
+  95/16/62 by form. **Fixed the same softest-form bug Hydra's script did**,
+  worse here: the easiest form (Serpentine, where `defence_magic` is a
+  *bonus*) was priced for the whole 500 HP, when two much tankier forms are
+  not optional in a real fight. No oracle test - her own guide recommends a
+  hybrid loadout switched per form, which `costing/oracle.py` cannot build.
+- `sire.py` - the Abyssal Sire: a lung phase killing four `Respiratory
+  system` targets (50 hp each, none of it the Sire's own bar) followed by
+  three combat phases split at the wiki's own published 210/140-hitpoint
+  thresholds (215/70/140 of 425). **Found and fixed a real gap in
+  `dps_bridge._scripted_kill` itself**: the lung phase's target is a
+  genuinely different monster, not an `Abyssal Sire#...` key, so the
+  candidate list `best_kill`'s ordinary callers already build (scoped to the
+  boss's own name) never carries it - `_scripted_kill` now falls back to a
+  passed-through `MonsterIndex` for exactly this case, and every real caller
+  in `dps_bridge.py` threads one through. `TRANSITION_SECONDS` is this
+  project's own figure for the published-but-undurationed 50% transition
+  reduction, applied to all three combat phases (unlike the Hydra's one
+  excepted phase). No oracle test: the guide's own `Item=` field points at a
+  separate phase-by-phase equipment page rather than naming gear itself, so
+  `gear_from_guide` correctly resolves to nothing - see
+  `tests/test_costing_sire.py::TestAgainstTheGuide` for what that test
+  checks instead.
+- `grotesque_guardians.py` - Dawn and Dusk, each fought to ~50% and finished
+  later - the "several independent targets, each fully depleted" shape
+  `fightscripts.Phase` names this boss as the worked example of, `hp_share`s
+  summing to `2.0` across the script rather than `1.0`. **The first script
+  needing `Phase.styles`**: both monsters carry ordinary all-zero defence in
+  `osrs_dps`, so nothing there marks that Dawn "cannot be targeted by
+  non-halberd melee weapons" or Dusk is "completely immune to magic and
+  ranged damage" - an unrestricted search would happily price a style that
+  deals zero damage in-game. `TRANSITION_SECONDS` is the one guessed number,
+  for the one flight-transition the changelog confirms still happens. No
+  formal oracle test, matching `zulrah.py`'s precedent: the guide
+  recommends a hybrid Ranged/Melee loadout `oracle.py`'s one-style builder
+  cannot construct, so `tests/test_costing_grotesque_guardians.py` checks a
+  hand-built mixed loadout against the guide's `kph=24` for order of
+  magnitude instead. **Araxxor and Cerberus were both considered for this
+  round and refused**: Araxxor's real enrage mechanic has no separate
+  `osrs_dps` key to price against (one bare `Araxxor` entry despite the
+  wiki's own infobox naming an enraged version), and fabricating defence
+  numbers by hand would invent exactly what this project has no authority
+  to reproduce; Cerberus's Summoned Souls costs prayer and damage but never
+  stops the player attacking her directly, so it is a resource cost, not
+  the downtime shape a `Phase` prices. Neither got a module - there was
+  nothing to write one about.
 - `dps_overhead.py`, `recipe_overhead.py`, `gathering_overhead.py` - the
   harnesses that fitted the overhead constants. **No caller in `src/`**; they
   exist to be re-run when someone doubts them.

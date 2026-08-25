@@ -527,6 +527,17 @@ class Heuristics:
     #: `slayer[master][task]` - sizes differ by master, so the master is
     #: part of the key. See `SlayerTask`.
     slayer: dict[str, dict[str, SlayerTask]] = field(default_factory=dict)
+    #: `wait[master][task]` - hours until a gated monster's task is next
+    #: assigned, direct and in force over `slayer.MasterRate.
+    #: hours_to_be_assigned`'s own computation when set. **Never scraped -
+    #: this branch has no wiki source at all**, unlike every numbered
+    #: neighbour it sits beside: the computed figure is a blend over the
+    #: master's *whole* task list, which is not a thing any single
+    #: spreadsheet row could correct, so a real lever for it had to be a
+    #: leaf of its own. See `costing/estimate.py`'s `_task_hours` for where
+    #: it is read and `gui/knobs.BRANCH_NOTES["wait"]` for how the dialog
+    #: explains it.
+    wait_hours: dict[str, dict[str, float]] = field(default_factory=dict)
     rarities: dict[str, float] = field(default_factory=lambda: dict(RARITY_PROBABILITY))
     #: Per-master point values, overriding `SLAYER_POINTS`.
     master_points: dict[str, float] = field(default_factory=dict)
@@ -570,6 +581,17 @@ class Heuristics:
     #: (actions an hour) or a recipe's tick cost; absent means unknown, and
     #: `estimate.DEFAULT_ACTION_SECONDS` stands in.
     action_seconds: dict[str, float] = field(default_factory=dict)
+    #: `{place: seconds for one completion}` - the `runs` branch. **Seconds,
+    #: like `action_seconds` and unlike `quests`' hours**, because everything
+    #: downstream of it is in seconds and a unit change at the edge is a unit
+    #: bug waiting in the middle.
+    #:
+    #: A run is the one activity whose duration no scrape reaches: the wiki
+    #: publishes no Inferno time at all, so `costing/instanced.py` spends a
+    #: figure this project chose. That makes it exactly the kind of number
+    #: `heuristics/overrides.json` exists to let somebody correct, which is
+    #: why it is a branch rather than a constant.
+    run_seconds: dict[str, float] = field(default_factory=dict)
     #: Challenge name -> how many of its `Output` one performance yields.
     #:
     #: **One action is not one item, and assuming it was made every herb cost
@@ -1640,7 +1662,16 @@ def build_config(
     }
 
     monsters: dict[str, Any] = {}
-    for monster in sorted(chunk_info.drops):
+    # **Every monster with a loot table, not just the `drops` branch.** A
+    # slayer monster's table lives in `skillItems.Slayer` and it has no
+    # `drops` entry at all, so looping the branch skipped all of them: the
+    # guide for `Killing the Alchemical Hydra` publishes `kph = 25` and was
+    # never joined to anything, leaving the boss on `DEFAULT_KPH`. The same
+    # blind spot cost `costing/dps_bridge.enrich` 20 monsters on one cached
+    # map - see the comment there. Two layers gated on one branch and both
+    # silently dropped the same set.
+    with_loot = set(chunk_info.drops) | set(_mapping(chunk_info.skill_items, "Slayer"))
+    for monster in sorted(with_loot):
         found = _best_match(monster, kill_guides)
         if found is None:
             continue
@@ -1976,11 +2007,13 @@ CONFIG_BRANCHES: frozenset[str] = frozenset(
         "pickpockets",
         "quests",
         "rarities",
+        "runs",
         "shops",
         "slayer",
         "spell_costs",
         "superiors",
         "training",
+        "wait",
     }
 )
 
@@ -2053,6 +2086,15 @@ def load(
                 if isinstance(entry, dict)
             }
             for master, tasks in _entries(config, "slayer")
+            if isinstance(tasks, dict)
+        },
+        wait_hours={
+            master: {
+                name: _float(value, 0.0)
+                for name, value in tasks.items()
+                if isinstance(value, (int, float)) and not isinstance(value, bool)
+            }
+            for master, tasks in _entries(config, "wait")
             if isinstance(tasks, dict)
         },
         master_points={
@@ -2150,6 +2192,11 @@ def load(
         action_seconds={
             task: _float(value, 0.0)
             for task, value in _mapping(config, "actions").items()
+            if isinstance(value, (int, float)) and not isinstance(value, bool)
+        },
+        run_seconds={
+            place: _float(value, 0.0)
+            for place, value in _mapping(config, "runs").items()
             if isinstance(value, (int, float)) and not isinstance(value, bool)
         },
         conversion_fees={

@@ -365,6 +365,37 @@ def _training_payload(
     ).as_dict(state.map_id)
 
 
+def _training_method_payload(
+    state: DerivedState, ctx: Context, skill: str, task: str
+) -> dict[str, Any]:
+    """One training method's material tree, from the same recipe layer
+    `_training_payload`'s own rows are ranked on - see
+    `inputs.training_method_answer`.
+
+    `tree` is `None` for a method with nothing to show (see
+    `training.trace_option`'s own docstring on scope) - a real, distinct
+    answer from "no map"/"bad task", which is why this never raises for it;
+    the panel is expected to render that as "nothing to drill into" rather
+    than an error.
+    """
+    tree = inputs.training_method_answer(
+        state.state,
+        state.unlocked,
+        state.derived,
+        ctx.derivations.digests(),
+        skill,
+        task,
+        root=ctx.root,
+        reference=ctx.derivations.reference(state.map_id),
+    )
+    return {
+        "map_id": state.map_id,
+        "skill": skill,
+        "task": task,
+        "tree": tree.as_dict() if tree is not None else None,
+    }
+
+
 def _estimate_payload(state: DerivedState, ctx: Context) -> dict[str, Any]:
     """`chunksim estimate`, plus whether the DPS bridge contributed.
 

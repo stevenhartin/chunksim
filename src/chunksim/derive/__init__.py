@@ -23,7 +23,8 @@ The modules, and what each owns:
 - `sections.py` - which sections of the unlocked chunks are reachable, plus
   named-area unlocking and the one place this project overrules the export.
 - `sources.py` - what the unlocked chunks make available (`SourceIndex`),
-  including `taskUnlocks` over items *and* entities.
+  including `taskUnlocks` over items *and* entities, and `isSlayerValid` over
+  a slayer monster's `skillItems.Slayer` table.
 - `task_names.py` - `strip_task_markup`, the one place the raw task-name markup
   is undone. **Display-only**, and over challenge and task names alone. Split
   out of `challenges.py` so its thirteen callers need not import a convergence

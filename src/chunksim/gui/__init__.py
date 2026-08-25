@@ -54,9 +54,11 @@ The modules, and what each owns:
 - `http.py` - the vocabulary every route speaks. **Must stay directly in
   `gui/`**: `RESOURCE_DIR` is `__file__`-relative, which is why this split is
   flat rather than a `routes/` package.
-- `routes_view.py` - the **cheap path**, every route answerable without parsing
-  the export. Nothing here may call `ctx.derivations.load` (one documented
-  exception, with a test).
+- `routes_view.py` - the **cheap path**: the map's redraw routes - view,
+  revision, timeline, roll - answer without parsing the export, which is what
+  lets a dragged slider keep up. Three routes here do parse, each named in the
+  module docstring and none on that path; the test pins the property that
+  matters, that the map view triggers no parse.
 - `routes_derived.py` - the **expensive path**. `walked_into` owns the name join
   for a square you can reach without rolling, and **both callers share it**: the
   map outlines them and the chunk panel stops greying their contents. Those two

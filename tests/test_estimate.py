@@ -6,6 +6,8 @@ from typing import Any
 
 from chunksim.model.experience import xp_for_level
 
+import pathlib
+
 import pytest
 
 from chunksim.derive.active_tasks import SkillClassification, TaskClassification
@@ -20,7 +22,13 @@ from chunksim.costing.estimate import (
 )
 from chunksim.costing import recipe_rates
 from chunksim.costing.training import training_options
-from chunksim.costing.levels import goal_levels, infer_levels, reachable_providers, task_gated_monsters
+from chunksim.costing.levels import (
+    TaskGate,
+    goal_levels,
+    infer_levels,
+    reachable_providers,
+    task_gated_monsters,
+)
 from chunksim.remote.stores import ShopPrice
 from chunksim.costing.heuristics import (
     DEFAULT_XP_PER_HOUR,
@@ -248,7 +256,9 @@ def test_a_made_item_costs_its_inputs() -> None:
     # ingredient, plus one default action to combine them. Performing a
     # conversion used to be free, which made every gathering chain free.
     assert result.items[0].hours == pytest.approx(10 / 100 + DEFAULT_ACTION_SECONDS / 3600)
-    assert result.items[0].detail.startswith("make:")
+    # No "make: " prefix - the challenge name is already a full sentence.
+    assert result.items[0].detail == "Carve a ~|bone ring|~"
+    assert result.items[0].source == "make:Carve a ~|bone ring|~"
 
 
 def test_a_cycle_of_made_items_is_unpriced_rather_than_recursing() -> None:
@@ -546,7 +556,11 @@ def test_task_gated_monsters_are_read_out_of_task_unlocks() -> None:
     info = _gated_info()
     gates = task_gated_monsters(info, build_world_index(info), frozenset({"100"}))
 
-    assert gates == {"Grotesque Guardians": "Gargoyles"}
+    assert gates == {
+        "Grotesque Guardians": TaskGate(
+            task="Gargoyles", place="Grotesque Guardians' Lair"
+        )
+    }
 
 
 def test_a_monster_reachable_somewhere_ungated_is_not_gated() -> None:
@@ -575,18 +589,24 @@ def test_a_monster_reachable_somewhere_ungated_is_not_gated() -> None:
     assert task_gated_monsters(info, world, frozenset({"13623"})) == {}
     # With only the gated cave reachable, the task is unavoidable again.
     assert task_gated_monsters(info, world, frozenset({"Stronghold Slayer Cave"})) == {
-        "Aberrant spectre": "Aberrant spectres"
+        "Aberrant spectre": TaskGate(
+            task="Aberrant spectres", place="Stronghold Slayer Cave"
+        )
     }
 
 
 def test_a_task_gated_kill_includes_the_wait_for_the_task() -> None:
-    # Vannaka: P(Gargoyles) = 1/10 and an average task of
-    # (1*100/20 + 9*100/100)/10 = (5 + 9)/10 = 1.4h, so the wait is 14h.
+    # Vannaka: P(Gargoyles) = 1/10, and the only *other* task is Bats at
+    # 100/100 = 1h - Gargoyles' own hours must not enter that average, or
+    # its fight gets counted once inside the wait and once again where its
+    # own kill time is added (`MasterRate.hours_to_be_assigned`'s docstring
+    # on the double-count this replaced). Downtime = (1-0.1)/0.1 * 1h = 9h.
     # One assignment of 100 covers the 100 kills needed, and killing them
-    # takes 100/20 = 5h. Total 19h - against 5h if the task were ignored.
+    # takes 100/20 = 5h. Total 9 + 5 = 14h - against 5h if the task were
+    # ignored.
     result = _run(_gated_info(), _gated_derived(), _gated_heuristics())
 
-    assert result.items[0].hours == pytest.approx(19.0)
+    assert result.items[0].hours == pytest.approx(14.0)
     assert "on Gargoyles task" in result.items[0].detail
 
 
@@ -595,7 +615,36 @@ def test_an_unreachable_master_cannot_supply_the_task() -> None:
     # unlocked chunk - picking him would price a task you can never be given.
     result = _run(_gated_info(), _gated_derived(), _gated_heuristics())
 
-    assert result.items[0].hours == pytest.approx(19.0)  # Vannaka's 14h wait, not Duradel's
+    assert result.items[0].hours == pytest.approx(14.0)  # Vannaka's 9h wait, not Duradel's
+
+
+def test_the_knob_list_names_wait_not_slayer() -> None:
+    """`wait/{master}/{task}` is what the item's own knob list carries -
+    not `slayer/{master}/{task}`, whose `kills_per_hour` this item's price
+    no longer reads at all. See `gui.knobs.BRANCH_NOTES["wait"]` for why
+    the split exists."""
+    result = _run(_gated_info(), _gated_derived(), _gated_heuristics())
+
+    assert "wait/Vannaka/Gargoyles" in result.items[0].knobs
+    assert not any(knob.startswith("slayer/") for knob in result.items[0].knobs)
+
+
+def test_a_wait_override_replaces_the_computed_downtime() -> None:
+    """The one real lever for the figure `hours_to_be_assigned` computes -
+    see `Heuristics.wait_hours`'s own docstring for why it has to be a
+    knob of its own rather than reusing `slayer`'s."""
+    from dataclasses import replace
+
+    heuristics = replace(
+        _gated_heuristics(), wait_hours={"Vannaka": {"Gargoyles": 2.0}}
+    )
+
+    result = _run(_gated_info(), _gated_derived(), heuristics)
+
+    # The computed 9h downtime is gone; 2h (override) + 5h (the kill itself,
+    # unchanged) = 7h, against the 14h `test_a_task_gated_kill_includes_
+    # the_wait_for_the_task` pins without the override.
+    assert result.items[0].hours == pytest.approx(7.0)
 
 
 def test_a_task_gated_kill_with_no_reachable_master_is_unpriced() -> None:
@@ -834,6 +883,196 @@ def test_sources_in_groups_items_under_what_earns_them() -> None:
     assert source == "Abyssal demon"
     assert hours == pytest.approx(10.0)
     assert len(items) == 2
+
+
+def test_a_leaf_item_groups_under_its_diary_task() -> None:
+    """`Coif` has no real repeatable source of its own - it is *made* - so
+    its display should roll up under the Diary task that wants it rather
+    than stand as its own `make:...` heading."""
+    info = ChunkInfo(
+        {
+            "drops": {"Goblin": {"Wool": {"1": "1/10"}}},
+            "challenges": {
+                "Crafting": {"Weave a ~|coif|~": {"Items": ["Wool"], "Output": "Coif"}},
+                "Diary": {"~|Varrock Diary#Medium|~ Task 10": {"Items": ["Coif"]}},
+            },
+        }
+    )
+    derived = _derived(
+        monsters=("Goblin",),
+        other_tasks=OtherTasks(
+            categories={
+                "Diary": CategoryTasks(
+                    category="Diary",
+                    groups=(
+                        TaskGroup(
+                            name="Varrock Diary - Medium",
+                            active=("~|Varrock Diary#Medium|~ Task 10",),
+                        ),
+                    ),
+                )
+            }
+        ),
+    )
+
+    result = _run(info, derived, Heuristics(monsters={"Goblin": Rate(100.0)}))
+
+    (coif,) = [item for item in result.items if item.item == "Coif"]
+    assert coif.source.startswith("make:")
+    assert coif.group == "Varrock Diary - Medium"
+    groups = result.sources_in("activities")
+    assert len(groups) == 1
+    assert groups[0][0] == "Varrock Diary - Medium"
+
+
+def test_two_unrelated_leaf_items_cluster_under_one_task_and_add_up() -> None:
+    """Craft a coif *and* buy a raw thing, both wanted by the same Diary
+    task: neither is earned by doing the other, so the group's heading is
+    their sum and not the longer of the two - the same rule
+    `test_items_from_different_sources_still_add_up` pins for unrelated
+    monster sources, now applied inside one Diary/CA cluster."""
+    info = ChunkInfo(
+        {
+            "drops": {"Goblin": {"Wool": {"1": "1/10"}}},
+            "shopItems": {"Fish Shop": {"Raw thing": True}},
+            "challenges": {
+                "Crafting": {"Weave a ~|coif|~": {"Items": ["Wool"], "Output": "Coif"}},
+                "Diary": {
+                    "~|Varrock Diary#Medium|~ Task 10": {"Items": ["Coif", "Raw thing"]}
+                },
+            },
+        }
+    )
+    derived = _derived(
+        monsters=("Goblin",),
+        challenges=ChallengeResult(
+            valid={}, unsupported=frozenset(), available_items={"Raw thing": {}}
+        ),
+        other_tasks=OtherTasks(
+            categories={
+                "Diary": CategoryTasks(
+                    category="Diary",
+                    groups=(
+                        TaskGroup(
+                            name="Varrock Diary - Medium",
+                            active=("~|Varrock Diary#Medium|~ Task 10",),
+                        ),
+                    ),
+                )
+            }
+        ),
+    )
+    heuristics = Heuristics(
+        monsters={"Goblin": Rate(100.0)},
+        currency_per_hour={"Coins": 500_000.0},
+        shop_prices={"Fish Shop": {"Raw thing": ShopPrice(price=100.0, currency="Coins")}},
+    )
+
+    result = _run(info, derived, heuristics)
+
+    coif = next(item for item in result.items if item.item == "Coif")
+    raw_thing = next(item for item in result.items if item.item == "Raw thing")
+    assert coif.group == raw_thing.group == "Varrock Diary - Medium"
+    assert coif.source != raw_thing.source
+
+    groups = result.sources_in("activities")
+    assert len(groups) == 1
+    source, hours, entries = groups[0]
+    assert source == "Varrock Diary - Medium"
+    assert len(entries) == 2
+    assert hours == pytest.approx(coif.hours + raw_thing.hours)
+    assert result.buckets["activities"] == pytest.approx(coif.hours + raw_thing.hours)
+
+
+def test_a_leaf_group_maxes_within_a_shared_source_and_sums_across_sources() -> None:
+    """Two items bought on the same shop trip, plus a third that is made:
+    the two shop items max together (one trip buys both), and the made item
+    adds on top - `_group_total`'s "max within a source, sum across
+    sources" rule, exercised inside one Diary/CA cluster."""
+    info = ChunkInfo(
+        {
+            "drops": {"Goblin": {"Wool": {"1": "1/10"}}},
+            "shopItems": {"Fish Shop": {"Raw thing": True, "Raw other thing": True}},
+            "challenges": {
+                "Crafting": {"Weave a ~|coif|~": {"Items": ["Wool"], "Output": "Coif"}},
+                "Diary": {
+                    "~|Varrock Diary#Medium|~ Task 10": {
+                        "Items": ["Coif", "Raw thing", "Raw other thing"]
+                    }
+                },
+            },
+        }
+    )
+    derived = _derived(
+        monsters=("Goblin",),
+        challenges=ChallengeResult(
+            valid={},
+            unsupported=frozenset(),
+            available_items={"Raw thing": {}, "Raw other thing": {}},
+        ),
+        other_tasks=OtherTasks(
+            categories={
+                "Diary": CategoryTasks(
+                    category="Diary",
+                    groups=(
+                        TaskGroup(
+                            name="Varrock Diary - Medium",
+                            active=("~|Varrock Diary#Medium|~ Task 10",),
+                        ),
+                    ),
+                )
+            }
+        ),
+    )
+    heuristics = Heuristics(
+        monsters={"Goblin": Rate(100.0)},
+        currency_per_hour={"Coins": 500_000.0},
+        shop_prices={
+            "Fish Shop": {
+                "Raw thing": ShopPrice(price=100.0, currency="Coins"),
+                "Raw other thing": ShopPrice(price=1_000_000.0, currency="Coins"),
+            }
+        },
+    )
+
+    result = _run(info, derived, heuristics)
+
+    coif = next(item for item in result.items if item.item == "Coif")
+    raw_thing = next(item for item in result.items if item.item == "Raw thing")
+    raw_other = next(item for item in result.items if item.item == "Raw other thing")
+    assert raw_thing.source == raw_other.source
+    assert coif.source != raw_thing.source
+
+    groups = result.sources_in("activities")
+    assert len(groups) == 1
+    _, hours, entries = groups[0]
+    assert len(entries) == 3
+    assert hours == pytest.approx(coif.hours + max(raw_thing.hours, raw_other.hours))
+
+
+def test_a_leaf_item_with_no_challenge_task_keeps_its_own_heading() -> None:
+    """A BiS pick has no challenge behind it (`bis.py` synthesises the
+    name), so there is no Diary/CA group to roll a made item up under - it
+    keeps standing as its own `make:...` heading, same as before `group`
+    existed."""
+    info = ChunkInfo(
+        {
+            "drops": {"Goblin": {"Wool": {"1": "1/10"}}},
+            "challenges": {
+                "Crafting": {"Weave a ~|coif|~": {"Items": ["Wool"], "Output": "Coif"}},
+            },
+        }
+    )
+    derived = _derived(
+        monsters=("Goblin",),
+        bis=BisResult(picks={}, active={"Obtain a ~|coif|~": "melee"}),
+    )
+
+    result = _run(info, derived, Heuristics(monsters={"Goblin": Rate(100.0)}))
+
+    (coif,) = [item for item in result.items if item.item == "Coif"]
+    assert coif.group == ""
+    assert coif.source.startswith("make:")
 
 
 def test_a_superior_shares_its_base_monsters_source() -> None:
@@ -2207,6 +2446,87 @@ def test_a_monster_named_beside_a_different_output_is_a_kill_not_an_action() -> 
     assert "ent" not in priced.detail
 
 
+def test_a_consumed_secondary_beside_monsters_is_priced_off_it() -> None:
+    """**The exception to the ent rule.** `Chest (Bryophyta's lair)*` also
+    names `Monsters: ["Bryophyta"]` beside its `Output`, but unlike the ent
+    it carries a real `Items: ["Mossy key*"]` - `*` marks a consumed
+    secondary ingredient (`challenges._is_secondary`'s docstring), not a
+    tool like the ent's unmarked `Axe[+]`. The certainty gate must let this
+    one through and price the chest off the key's own cheapest source
+    (Bryophyta here) plus one default action, rather than falling to
+    `DEFAULT_KPH["regular"]` for something that is not a walk-up monster.
+    """
+    from chunksim.costing.estimate import _Walk
+
+    info = ChunkInfo(
+        {
+            "chunks": {"1": {"Monsters": {"Bryophyta": True}}},
+            "drops": {"Bryophyta": {"Mossy key": {"1": "1/16"}}},
+            "challenges": {
+                "Nonskill": {
+                    "Chest (Bryophyta's lair)*": {
+                        "Items": ["Mossy key*"],
+                        "Monsters": ["Bryophyta"],
+                        "Output": "Chest (Bryophyta's lair)",
+                    },
+                }
+            },
+        }
+    )
+    world = build_world_index(info)
+    # `_walk_for` leaves `available` empty, which is fine for routes that
+    # never take a kill fact - this one needs "Bryophyta" reachable so the
+    # key itself can price, so the walk is built by hand instead.
+    walk = _Walk(
+        chunk_info=info,
+        world=world,
+        heuristics=Heuristics(monsters={"Bryophyta": Rate(3600.0 / 100.0)}),
+        by_lower={item.lower(): item for item in world.item_sources},
+        reachable_items=frozenset(world.item_sources),
+        available=frozenset({"Bryophyta"}),
+    )
+
+    priced = _item_hours(walk, "Chest (Bryophyta's lair)", quantity=1.0)
+
+    assert priced is not None
+    # 16 kills at 100s each for the key, plus one default action to open it.
+    assert priced.hours * 3600 == pytest.approx(16 * 100.0 + DEFAULT_ACTION_SECONDS)
+    assert priced.source == "make:Chest (Bryophyta's lair)*"
+
+
+def test_a_tool_beside_monsters_does_not_open_the_gate() -> None:
+    """An unmarked `Items` entry is a tool (`Axe[+]`, never consumed) and
+    must not be read as the ent rule's exception - only a `*`-marked entry
+    says the item walk actually knows the real cost."""
+    info = ChunkInfo(
+        {
+            "chunks": {"1": {"Monsters": {"Ent": True}, "Objects": {"Magic tree": True}}},
+            "challenges": {
+                "Woodcutting": {
+                    "Cut magic logs from an ~|ent|~": {
+                        "Items": ["Axe[+]"],
+                        "Monsters": ["Ent"],
+                        "Output": "Magic logs",
+                        "Primary": False,
+                    },
+                    "Chop ~|magic logs|~": {
+                        "Objects": ["Magic tree"],
+                        "Output": "Magic logs",
+                        "Primary": True,
+                    },
+                }
+            },
+        }
+    )
+    walk = _walk_for(info, Heuristics(action_seconds={"Chop ~|magic logs|~": 25.6}))
+
+    priced = _item_hours(walk, "Magic logs", quantity=1.0)
+
+    assert priced is not None
+    assert priced.hours * 3600 == pytest.approx(25.6)
+    assert "ent" not in priced.detail
+
+
 def test_an_output_that_is_the_monster_is_left_alone() -> None:
     """**What `item not in monsters` keeps.** `Slay a ~|bloodveld|~` outputs
     `Bloodveld` - a slayer token rather than a drop to price - and refusing it
@@ -2457,7 +2777,7 @@ class TestTheFixpointWalk:
 
         assert _item_hours(walk, "Deep 0") is not None
         assert not walk.fixpoint.reads, "an acyclic chain reads no beliefs"
-        assert ("Deep 0", 1.0, False) in walk.fixpoint.settled
+        assert ("Deep 0", 1.0, False, False) in walk.fixpoint.settled
 
     def test_settled_answers_are_shared_across_questions(self) -> None:
         """The table is the memo: the second question reads what the first
@@ -2468,7 +2788,7 @@ class TestTheFixpointWalk:
         before = dict(walk.fixpoint.settled)
         again = _item_hours(walk, "Deep 3")
 
-        assert again == before[("Deep 3", 1.0, False)]
+        assert again == before[("Deep 3", 1.0, False, False)]
 
     def test_replacing_walk_fields_that_move_answers_resets_the_caches(self) -> None:
         """`dataclasses.replace` shares field references, so the two sites
@@ -2485,6 +2805,88 @@ class TestTheFixpointWalk:
             window = source[at : at + 200]
             assert "fixpoint=_Fixpoint()" in window, site
             assert "leaf_routes={}" in window, site
+
+
+class TestTheTraceFlag:
+    """`trace=True` keeps `_route_hours`' own `inputs` list on `_Priced.children`
+    instead of discarding it - see `training.trace_option`. Pinned here, not
+    in `test_training.py`, because the flag is `estimate.py`'s own surgery and
+    `training.py` never touches `_item_hours` directly."""
+
+    def _chain_info(self) -> ChunkInfo:
+        """`Deep 0` is made from `Deep 1` is made from `Deep 2`, which spawns -
+        the shortest chain with a real two-hop `children` tree to check."""
+        chunks = {"1111": {"Spawn": {"Deep 2": 1}}}
+        challenges: dict[str, Any] = {}
+        for step in range(2):
+            challenges[f"Make deep {step}"] = {
+                "Items": [f"Deep {step + 1}"],
+                "Output": f"Deep {step}",
+                "Primary": True,
+            }
+        return ChunkInfo({"challenges": {"Crafting": challenges}, "chunks": chunks})
+
+    def test_untraced_is_a_leaf_regardless_of_depth(self) -> None:
+        """The default - every existing call site in the project - must keep
+        seeing a flat answer, not a tree nobody asked for."""
+        walk = _walk_for(self._chain_info())
+
+        priced = _item_hours(walk, "Deep 0")
+
+        assert priced is not None
+        assert priced.children == ()
+
+    def test_traced_keeps_the_whole_chain(self) -> None:
+        walk = _walk_for(self._chain_info())
+
+        priced = _item_hours(walk, "Deep 0", trace=True)
+
+        assert priced is not None
+        assert len(priced.children) == 1
+        middle = priced.children[0]
+        assert middle.source == "make:Make deep 1"
+        assert middle.label == "Deep 1"
+        assert len(middle.children) == 1
+        leaf = middle.children[0]
+        assert leaf.source.startswith("spawn:")
+        assert leaf.label == "Deep 2"
+        assert leaf.children == ()
+        assert priced.label == "", "the root has nothing to label itself with"
+
+    def test_children_sum_back_to_the_parents_own_hours(self) -> None:
+        """Not an independent number: the parent's `.hours` is its own action
+        overhead (`DEFAULT_ACTION_SECONDS`, unstated here) plus its children's
+        `.hours`, which is what makes the tree an honest breakdown of the flat
+        figure rather than a second answer beside it."""
+        walk = _walk_for(self._chain_info())
+
+        priced = _item_hours(walk, "Deep 0", trace=True)
+
+        assert priced is not None
+        overhead = DEFAULT_ACTION_SECONDS / 3600.0
+        middle = priced.children[0]
+        assert middle.hours == pytest.approx(
+            sum(child.hours for child in middle.children) + overhead
+        )
+        assert priced.hours == pytest.approx(middle.hours + overhead)
+
+    def test_tracing_does_not_move_the_untraced_answer(self) -> None:
+        """The regression this flag must never cause: asking the traced
+        question first must not change what the untraced question - the one
+        every existing caller asks - settles to. The two are different
+        fixpoint keys (`(item, quantity, amortise, trace)`), so they must
+        never collide."""
+        walk = _walk_for(self._chain_info())
+
+        traced = _item_hours(walk, "Deep 0", trace=True)
+        untraced = _item_hours(walk, "Deep 0")
+
+        assert traced is not None and untraced is not None
+        assert traced.hours == untraced.hours
+        assert traced.detail == untraced.detail
+        assert traced.source == untraced.source
+        assert untraced.children == ()
+        assert traced.children != ()
 
 
 class TestKillFactsMatchKillHours:
@@ -2521,7 +2923,7 @@ class TestKillFactsMatchKillHours:
                 walk, "Goblin mail", walk.world.item_sources.get("Goblin mail", ())
             )
             assert live is not None and len(facts) == 1
-            hours, _ = _fact_hours(facts[0], quantity)
+            hours, _, _key = _fact_hours(facts[0], quantity)
             assert hours == live.hours, "not approx - the tie-break needs the bits"
             assert _fact_priced(facts[0], quantity, "") == live
 
@@ -2693,3 +3095,28 @@ def test_every_item_pack_upstream_carries_is_the_same_shape(
 
     assert len(set(units)) == len(units) == 23, sorted(units)
     assert len(loot) == 6, sorted(loot)
+
+
+class TestAGatedKillIsPricedAsOne:
+    """**The third layer to learn that a kill can need sending for.** The
+    drop route and the superior route both paid the wait; the kill-goal route
+    priced `1 / kills_per_hour` flat, so `Alchemical Hydra` - which you may
+    only fight on a Hydras task - read as three minutes for four Combat
+    Achievements.
+    """
+
+    def test_all_three_routes_go_through_one_function(self) -> None:
+        """`_task_hours` is the single answer, so the drop, superior and
+        kill-goal routes cannot disagree about what being assigned costs."""
+        import chunksim.costing.estimate as module
+
+        source = pathlib.Path(module.__file__).read_text()
+        # The kill-goal branch, the drop branch and the superior branch.
+        assert source.count("_task_hours(walk,") >= 3
+
+    def test_the_gate_carries_its_place(self) -> None:
+        """Without it the join to a location-keyed master is a prefix match,
+        which shortens the wait for an assignment that may not qualify."""
+        gate = TaskGate(task="Hydras", place="Karuulm Slayer Dungeon")
+        assert gate.task == "Hydras"
+        assert gate.place == "Karuulm Slayer Dungeon"

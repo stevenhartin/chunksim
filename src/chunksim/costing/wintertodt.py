@@ -105,6 +105,28 @@ the wiki's table or the count of actions in the regime.
 The reachability gate is upstream's: each skill's own challenge has to be
 valid, so a map that cannot reach the boss is never offered any of the three.
 
+### The phoenix, and why it is a rate the export cannot answer
+
+`Wintertodt` is absent from `chunk_info.drops` entirely - the export has no
+per-kill table for it at all, the same shape `costing/raids.py` and
+`costing/barrows.py` each close for their own chests. `[[Phoenix]]`: "a pet
+that can be received from looting the [[Reward Cart]], from which rewards
+are obtained by subduing the Wintertodt with at least 500 points" -
+`[[Reward Cart]]`'s own table states the mechanic precisely: "500 points =
+2 rolls," and the reward cascade tries the phoenix **first** ("a player
+searches the cart and rolls for a phoenix pet. If that roll is successful,
+they will receive the phoenix and the drop rolls end there"), so its own
+published `1/5,000` per roll is already the effective one - no cascade
+arithmetic to unwind. `item_seconds` reuses `GAMES_PER_HOUR` directly: the
+world-hopped regime is defined as exactly 500 points a game, which is
+exactly the reward cart's own milestone, so the same loop that prices the
+three skills also prices the pet.
+
+**The 200-million-Firemaking-experience bonus (fifteen times the rate) is
+not modelled** - a player at that milestone is so far past 99 that pricing
+a climb to it is not this project's question, and the base rate is the
+honest one for every level this module's own bands cover.
+
 Pure: the levels come in as arguments.
 """
 
@@ -262,3 +284,23 @@ def solo_methods(
             ),
         )
     return found
+
+
+#: Published on `[[Reward Cart]]`'s own drop table - the phoenix is the
+#: first roll in the cascade, so its own rarity is the effective one. See
+#: the module docstring.
+PHOENIX_CHANCE_PER_ROLL = 1.0 / 5000.0
+
+#: Published: "500 points = 2 rolls" - the world-hopped regime's own
+#: 500-point game earns exactly this many.
+ROLLS_PER_GAME = 2.0
+
+
+def item_seconds() -> dict[str, float]:
+    """`{"Phoenix": seconds}`, at the world-hopped regime's own
+    `GAMES_PER_HOUR` - see the module docstring on why that regime's own
+    500-point milestone is exactly the reward cart's own."""
+    chance = ROLLS_PER_GAME * PHOENIX_CHANCE_PER_ROLL
+    if chance <= 0 or GAMES_PER_HOUR <= 0:
+        return {}
+    return {"Phoenix": 3600.0 / (GAMES_PER_HOUR * chance)}

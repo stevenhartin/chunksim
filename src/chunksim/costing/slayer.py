@@ -28,7 +28,19 @@ sizes come from KodakKid3's Task Lengths tab where it has the master (it is
 also the only source for the *extended* sizes) and the wiki's
 `<Master>/Slayer assignments` tables for the six masters that tab omits. XP
 per kill and kills per hour come from the same spreadsheet's Mob Data tab, the
-only source found for slayer kill rates.
+only source found for slayer kill rates - **kills per hour only until a
+better one exists.** `task_kills_per_hour` prefers a real `dps_bridge`
+simulation (`Rate.source == "dps"`, so this map's own gear and levels) over
+the spreadsheet's figure whenever `task_monsters` names a reachable candidate
+one was computed for, taking the fastest where a task covers several (`Hydras`
+answers to both `Hydra` and `Alchemical Hydra`, and a player clearing the task
+kills whichever is quicker). The spreadsheet's number is a *ceiling on
+plausibility* for the model to be checked against, not the figure spent once a
+model exists - the ordering `estimate.py`'s own docstring states for the item
+walk (`defaults < scraped < computed < modelled`) applies here too, and this
+is the one place in this module it had not yet been applied. `xp_per_kill` is
+untouched: it is a fixed game constant no amount of gear moves, so there is
+nothing for a model to supersede it with.
 
 **Sizes are per master, and flattening them is a trap.** Duradel assigns
 130-200 abyssal demons where Krystilia assigns 75-125, and the sheet even
@@ -119,6 +131,8 @@ from typing import Any, Sequence
 from chunksim.derive.challenges import chunks_requirement_met
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.costing.gathering import CONFIRMED, INFERRED
+from chunksim.costing.levels import TaskGate
+from chunksim.derive.search import normalise
 from chunksim.costing.heuristics import (
     ComputedMethod,
     DEFAULT_SLAYER_XP_PER_HOUR,
@@ -184,6 +198,16 @@ class TaskRate:
             "xp": self.xp,
             "hours": self.hours,
         }
+
+
+def _normalise_place(place: str) -> str:
+    """A location name as both vocabularies agree on it.
+
+    `taskUnlocks` writes `Slayer Tower#Basement` where a master's key writes
+    `Slayer Tower`, so the sub-area is dropped; case and spacing are folded
+    for the reason every other join in this project folds them.
+    """
+    return normalise(str(place).split("#")[0].strip())
 
 
 @dataclass(frozen=True)
@@ -253,22 +277,88 @@ class MasterRate:
             sum(task.weight * task.hours for task in self.tasks) / total if total else 0.0
         )
 
+    def key_for(self, gate: "TaskGate") -> str | None:
+        """This master's own name for the assignment `gate` demands.
+
+        **The join that Konar broke.** Most masters key a task by its bare
+        name (`Hydras`) and match `gate.task` outright. Konar assigns by
+        location and keys all 93 of his by `<task> - <place>`, so the bare
+        name matched nothing and every gated monster on a Konar-only map went
+        unpriced.
+
+        **Matched on the place too, not just the prefix.** 23 of his families
+        span up to six locations, and only the one the monster actually lives
+        in lets you fight it - being sent to `Bloodvelds - God Wars Dungeon`
+        is no help against a Meiyerditch bloodveld. Taking the prefix and
+        summing would shorten the wait for an assignment most of whose weight
+        does not qualify, which reads as a *faster* boss than it is.
+
+        Returns `None` where the master cannot send you there at all, which is
+        an honest "no route" rather than a slower one.
+        """
+        for entry in self.tasks:
+            if entry.task == gate.task:
+                return entry.task
+        wanted = _normalise_place(gate.place)
+        for entry in self.tasks:
+            base, sep, place = entry.task.partition(" - ")
+            if sep and base == gate.task and _normalise_place(place) == wanted:
+                return entry.task
+        return None
+
     def probability(self, task: str) -> float:
-        """The chance a fresh assignment is `task`, over what is reachable."""
+        """The chance a fresh assignment is `task`, over what is reachable.
+
+        `task` is **this master's own key** - see `key_for`, which is what
+        turns a gate's bare name into one.
+        """
         total = sum(entry.weight for entry in self.tasks)
         weight = next((entry.weight for entry in self.tasks if entry.task == task), 0)
         return weight / total if total else 0.0
 
     def hours_to_be_assigned(self, task: str) -> float | None:
-        """Expected hours of slaying before `task` comes up, `None` if it can't.
+        """Expected hours spent on *other* tasks before `task` comes up,
+        `None` if it can't. **Not `task`'s own completion time** - the
+        caller (`estimate._task_hours`) adds that separately, off the real
+        kill rate for whatever `task` actually gates, and counting it here
+        too would double it.
 
-        One assignment in `1 / P(task)` is the one you want, and each costs
-        `average_hours` whatever it is, so the wait is the two multiplied.
-        This is what makes a task-gated boss expensive: you cannot simply go
-        and kill it, you have to be sent.
+        **The bug this replaced used `average_hours`**, a blend over *every*
+        task including `task` itself, on the reasoning that `1 / P(task)`
+        assignments occur and "each costs `average_hours`, so the wait is
+        the two multiplied." That reasoning is a well-known identity - for
+        i.i.d. trials, `E[time to first success, trial included] = E[time
+        per trial, blended] / P(success)` - and it is *exactly* the total
+        `_task_hours` wants, inclusive of the successful assignment. Adding
+        the real kill rate on top of an already-inclusive wait then counted
+        the boss's own fight twice: once inside `average_hours` (at
+        whichever rate fed `task`'s own `TaskRate`, wrong regardless of
+        which one - a fast proxy monster's or the boss's own scripted
+        speed), once again in the addition. `Grotesque Guardians` behind
+        `Vannaka`'s `Gargoyles` task caught it: the ordinary Gargoyle's own
+        modelled rate (`slayer.task_kills_per_hour`) fed a plausible-looking
+        wait that was nonetheless the wrong question, since it is not what
+        gates the boss.
+
+        **The fix excludes `task` from both the weight and the average.**
+        With P = P(task), the expected number of *other* assignments before
+        `task` comes up is `(1 - P) / P`, each costing the weighted mean of
+        every task's `hours` *except* `task`'s own. `task` never occurring
+        (`chance` is 0) is unanswerable; `task` being the only thing ever
+        assigned (no other weight to average) has no downtime to speak of,
+        and is `0.0` rather than a division by nothing.
         """
         chance = self.probability(task)
-        return self.average_hours / chance if chance > 0 else None
+        if chance <= 0:
+            return None
+        other_weight = sum(entry.weight for entry in self.tasks if entry.task != task)
+        if other_weight <= 0:
+            return 0.0
+        other_hours = (
+            sum(entry.weight * entry.hours for entry in self.tasks if entry.task != task)
+            / other_weight
+        )
+        return (1.0 - chance) / chance * other_hours
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -461,6 +551,52 @@ def task_monsters(chunk_info: ChunkInfo, task: str) -> set[str]:
     }
 
 
+def best_modelled_candidate(
+    chunk_info: ChunkInfo,
+    heuristics: Heuristics,
+    task: str,
+    reachable_monsters: frozenset[str],
+) -> tuple[str, float] | None:
+    """The fastest monster `task` covers with a real `dps_bridge` simulation,
+    or `None` if none qualifies - see `task_kills_per_hour`.
+
+    `(name, kills_per_hour)` rather than the bare rate, because a caller
+    explaining *why* the number moved (the knob dialog) needs to say which
+    monster it moved for.
+    """
+    best: tuple[str, float] | None = None
+    for monster in task_monsters(chunk_info, task) & reachable_monsters:
+        rate = heuristics.kills_per_hour(monster)
+        if rate.source != "dps" or rate.value <= 0:
+            continue
+        if best is None or rate.value > best[1]:
+            best = (monster, rate.value)
+    return best
+
+
+def task_kills_per_hour(
+    chunk_info: ChunkInfo,
+    heuristics: Heuristics,
+    task: str,
+    reachable_monsters: frozenset[str],
+    scraped: float,
+) -> float:
+    """How fast an assignment of `task` really clears, preferring a modelled
+    rate over the spreadsheet's - see the module docstring.
+
+    The fastest **modelled** candidate wins, not merely the fastest of any
+    kind: `task_monsters` names every monster the task covers, and only those
+    with a real `dps_bridge` simulation (`Rate.source == "dps"`) count - an
+    MMG-scraped or defaulted rate is exactly the kind of number this is meant
+    to stop deferring to, so it must not win here either. `scraped` (the
+    spreadsheet's own figure) is the answer where nothing qualifies - no
+    candidate is reachable, or none has been simulated - which is the ordinary
+    case for a task this project's `dps` extra does not cover at all.
+    """
+    found = best_modelled_candidate(chunk_info, heuristics, task, reachable_monsters)
+    return scraped if found is None else found[1]
+
+
 def _words_match(left: str, right: str) -> bool:
     """Do two names mean the same monster, allowing for plurals?
 
@@ -647,7 +783,9 @@ def master_rates(
                     weight=weight,
                     mean_count=rate.count,
                     xp_per_kill=rate.xp_per_kill,
-                    kills_per_hour=rate.kills_per_hour,
+                    kills_per_hour=task_kills_per_hour(
+                        chunk_info, heuristics, task, reachable_monsters, rate.kills_per_hour
+                    ),
                 )
             )
 

@@ -79,6 +79,21 @@ one, and a climb takes the best of what it is offered - so Fishing keeps the
 not-cooking table and Cooking gets this. Pricing the cooking regime's *Fishing*
 as well would offer a strictly worse number for the skill that already has one.
 
+### Tiny tempor, and why redemption is not the bottleneck
+
+`Tempoross` is absent from `chunk_info.drops` entirely, the same gap
+`costing/wintertodt.py`'s own phoenix closes. `[[Reward pool]]`: "players
+need to earn at least 2,000 points during a successful encounter to
+receive reward permits, starting at 1 and adding 1 per 700 point
+threshold" - permits are earned by *fighting* Tempoross and spent later by
+*fishing* the pool, "at a rate of 1 reward for every 3 ticks (1.8
+seconds)," which is fast enough that redemption itself is never the limit
+- earning the permits is. `Tiny Tempor` is `1/8,000` per redeemed permit
+(`[[Tiny_tempor]]`'s own item-sources table), and `GAMES_PER_HOUR`'s own
+docstring already states the permit yield this reuses: "an average game
+yields 15-16 permits," `PERMITS_PER_GAME` taking the same 15.5 the
+existing `GAMES_PER_HOUR` derivation is checked against.
+
 Pure: the level and the reachable set come in as arguments.
 """
 
@@ -328,3 +343,23 @@ def methods(
         if rate_at(level, held) > 0
     )
     return {SKILL: bands} if bands else {}
+
+
+#: Published on `[[Tiny tempor]]`'s own item-sources table: `1/8,000` per
+#: redeemed reward permit.
+TINY_TEMPOR_CHANCE_PER_ROLL = 1.0 / 8000.0
+
+#: `[[Reward pool]]`: "an average game yields 15-16 permits" - the same
+#: figure `GAMES_PER_HOUR`'s own docstring checks itself against ("15.5
+#: into 77.5 is exactly five").
+PERMITS_PER_GAME = 15.5
+
+
+def item_seconds() -> dict[str, float]:
+    """`{"Tiny tempor": seconds}`, at the max-permits regime's own
+    `GAMES_PER_HOUR` - see the module docstring on why redemption itself is
+    never the bottleneck."""
+    chance = PERMITS_PER_GAME * TINY_TEMPOR_CHANCE_PER_ROLL
+    if chance <= 0 or GAMES_PER_HOUR <= 0:
+        return {}
+    return {"Tiny tempor": 3600.0 / (GAMES_PER_HOUR * chance)}

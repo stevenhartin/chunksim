@@ -66,10 +66,25 @@ def _reference_state(ctx: Context) -> list[dict[str, Any]]:
     payload - because the page asks on boot to decide whether anything is
     missing. Reading the 10MB chunk export to find out whether it exists
     would be a poor way to answer the question.
+
+    **`WIKI_RATES_BLOB_NAME`/`RECIPES_BLOB_NAME` are `SHIPPED_BLOB_NAMES`, so
+    the file a *reader* opens is `blob_source`'s answer, not `blob_path`'s.**
+    Checking `blob_path` alone - `cache/reference/<name>.json` - reported
+    "not cached" for every checkout and packaged install that has never run
+    `chunksim heuristics`/`chunksim recipes` itself, even though `estimate()`
+    was pricing off the real shipped blob the whole time via `blob_source`;
+    the page not only showed the wrong provenance but `warmReference` then
+    re-triggered the ~30-request wiki scrape on every single boot, believing
+    the data missing. Same bug `cache.read_blob`'s own docstring already
+    warns about, one door down.
     """
     out: list[dict[str, Any]] = []
     for name, label, refresh in _REFERENCE_BLOBS:
-        path = cache.blob_path(name, ctx.root)
+        path = (
+            cache.blob_source(name, ctx.root)
+            if name in cache.SHIPPED_BLOB_NAMES
+            else cache.blob_path(name, ctx.root)
+        )
         fetched_at = None
         if path.is_file():
             try:

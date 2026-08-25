@@ -115,7 +115,13 @@ from chunksim.store.derived_cache import (
     pricing_digests,
 )
 from chunksim.costing.estimate import EstimateResult, estimate
-from chunksim.costing.training import TrainingOption
+from chunksim.costing.training import (
+    MaterialNode,
+    TrainingOption,
+    rate_material_tree,
+    trace_option,
+    training_options,
+)
 from chunksim.derive.search import WorldIndex
 from chunksim.remote.recipes import Material as RecipeMaterial, Recipe
 from chunksim.costing.levels import (
@@ -452,6 +458,86 @@ def training_answer(
         ),
         levels={name: at.get(name, 1) for name in skills},
     )
+
+
+def training_method_answer(
+    state: MapState,
+    unlocked: Mapping[str, bool],
+    derived: Derived,
+    digests: Digests,
+    skill: str,
+    task: str,
+    *,
+    root: Path | None = None,
+    reference: ReferenceBlobs | None = None,
+    map_id: str | None = None,
+) -> MaterialNode | None:
+    """One training method's material chain, as `training.trace_option` builds
+    it - `None` where `task` has none (see that function's own docstring on
+    scope).
+
+    **Prices with the same layers `training_answer` prices with**, for the
+    reason every sibling assembly in this module gives: a tree that walked a
+    different `heuristics`/`levels` than the rate already on screen could
+    show a chain the estimate never actually spent.
+
+    `level_overrides=blobs.levels`, not `effective_levels(state, blobs)` -
+    `priced_heuristics` prices the recipe layer at the map's own hand-set
+    levels (see its own docstring: "recipes first, then fights", at
+    `levels`, with `goal_levels` reserved for the DPS/combat half) - so this
+    passes the walk the same figure `recipe_priced` already primed the
+    served rate with, rather than the *display* levels `training_answer`
+    otherwise reports `best`/`methods` against.
+    """
+    blobs = load_reference(root, map_id) if reference is None else reference
+    heuristics, _ = load_heuristics(state.chunk_info, root, blobs)
+    world = build_world_index(state.chunk_info)
+    heuristics, _ = priced_heuristics(
+        state,
+        unlocked,
+        derived,
+        heuristics,
+        blobs.levels,
+        digests,
+        world=world,
+        root=root,
+        reference=blobs,
+    )
+    tree = trace_option(
+        state,
+        derived,
+        world,
+        heuristics,
+        skill,
+        task,
+        level_overrides=blobs.levels,
+        recipes=blobs.recipes,
+        aliases=blobs.aliases,
+        material_aliases=recipe_rates.MATERIAL_ALIASES,
+        stated_ticks=recipe_rates.stated_ticks(state.chunk_info, blobs.recipes),
+        made_experience=recipe_rates.challenge_experience(
+            state.chunk_info,
+            blobs.recipes,
+            blobs.aliases,
+            recipe_rates.stated_ticks(state.chunk_info, blobs.recipes),
+            derived.challenges.valid,
+        ),
+    )
+    if tree is None:
+        return None
+    # **The per-hour figure belongs to the option, not the tree alone** -
+    # `rate_material_tree` needs `effective_xp_per_hour`, which is
+    # `TrainingOption`'s own property over `material_seconds_per_xp`/
+    # `material_xp_per_xp`. Re-derived from `training_options` rather than
+    # duplicated here: recomputing the skill's whole list costs nothing new
+    # (`heuristics.training`/`.computed` are already priced; this is a filter
+    # and a sort over them, not another item walk) and is the one place that
+    # arithmetic already lives.
+    option = next(
+        (o for o in training_options(derived, state.chunk_info, heuristics, skill) if o.task == task),
+        None,
+    )
+    return rate_material_tree(tree, option) if option is not None else tree
 
 
 def training_statuses(
@@ -1714,7 +1800,7 @@ def priced_heuristics(
                 state.chunk_info,
                 derived.bis.picks,
                 goals,
-                sorted(combat_xp.farmable_providers(derived)),
+                sorted(combat_xp.farmable_providers(derived, state.chunk_info)),
                 kit=dps_bridge.assemble_kit(
                     state.chunk_info,
                     goals,
@@ -1737,6 +1823,7 @@ def priced_heuristics(
             goals,
             by_style=by_style,
             caps=caps,
+            chunk_info=state.chunk_info,
         )
         # **Merged, not replaced - and this used to say so while replacing.**
         # `recipe_priced` has already put Prayer's methods in `computed`, and
@@ -1796,6 +1883,75 @@ def priced_heuristics(
     )
 
 
+@dataclass(frozen=True)
+class PricedLayers:
+    """Every rate layer for one map, assembled once.
+
+    **The whole point is that there is one assembly.** `costing/inputs.py`
+    exists because `chunksim estimate` and the Estimate tab had drifted about
+    which layers they applied; a third consumer - the GUI's knob dialog, which
+    wants to report the rate a knob actually resolves to - is the same hazard
+    again. It asks for this rather than rebuilding the stack, so it cannot
+    answer from a shallower `Heuristics` than the estimate spent, which is the
+    bug it was written to fix.
+    """
+
+    heuristics: Heuristics
+    blobs: ReferenceBlobs
+    scraped_rates: bool
+    world: WorldIndex
+    levels: dict[str, int]
+    coverage: dps_bridge.DpsCoverage | None
+
+
+def priced_layers(
+    state: MapState,
+    unlocked: Mapping[str, bool],
+    derived: Derived,
+    digests: Digests,
+    *,
+    root: Path | None = None,
+    refresh: bool = False,
+    reference: ReferenceBlobs | None = None,
+    map_id: str | None = None,
+) -> PricedLayers:
+    """Load the layers, read the level overrides, and price.
+
+    The order is load-bearing and is `priced_heuristics`' - recipes before
+    fights - which is why this is one function rather than a sequence each
+    caller repeats.
+
+    **Cached where it is expensive.** `priced_heuristics` stores its ~1.3s of
+    item walking and fight simulation behind a content key, so a second caller
+    for the same map pays a read. That is what makes it reasonable for a
+    per-click dialog to ask for the whole stack.
+    """
+    blobs = load_reference(root, map_id) if reference is None else reference
+    heuristics, scraped_rates = load_heuristics(state.chunk_info, root, blobs)
+    levels = blobs.levels
+    world = build_world_index(state.chunk_info)
+    heuristics, coverage = priced_heuristics(
+        state,
+        unlocked,
+        derived,
+        heuristics,
+        levels,
+        digests,
+        world=world,
+        root=root,
+        refresh=refresh,
+        reference=blobs,
+    )
+    return PricedLayers(
+        heuristics=heuristics,
+        blobs=blobs,
+        scraped_rates=scraped_rates,
+        world=world,
+        levels=levels,
+        coverage=coverage,
+    )
+
+
 def estimate_answer(
     state: MapState,
     unlocked: Mapping[str, bool],
@@ -1825,23 +1981,26 @@ def estimate_answer(
     whichever map they were assembled for - `ReferenceBlobs.map_id` says
     which.
     """
-    blobs = load_reference(root, map_id) if reference is None else reference
-    heuristics, scraped_rates = load_heuristics(state.chunk_info, root, blobs)
-    levels = blobs.levels
-    world = build_world_index(state.chunk_info)
-    heuristics, coverage = priced_heuristics(
+    layers = priced_layers(
         state,
         unlocked,
         derived,
-        heuristics,
-        levels,
         digests,
-        world=world,
         root=root,
         refresh=refresh,
-        reference=blobs,
+        reference=reference,
+        map_id=map_id,
     )
     result = estimate(
-        state, derived, world, heuristics, level_overrides=levels, recipes=blobs.recipes
+        state,
+        derived,
+        layers.world,
+        layers.heuristics,
+        level_overrides=layers.levels,
+        recipes=layers.blobs.recipes,
     )
-    return EstimateAnswer(result=result, scraped_rates=scraped_rates, coverage=coverage)
+    return EstimateAnswer(
+        result=result,
+        scraped_rates=layers.scraped_rates,
+        coverage=layers.coverage,
+    )

@@ -182,3 +182,25 @@ class TestTheSoloRegime:
         assert wintertodt.solo_rate_at("Firemaking", 99) < wintertodt.rate_at(
             "Firemaking", 99
         )
+
+
+class TestPhoenixLoot:
+    """The phoenix pet - see the module docstring's own "The phoenix"
+    section for the citations behind each figure."""
+
+    def test_the_per_roll_chance_is_published(self) -> None:
+        assert wintertodt.PHOENIX_CHANCE_PER_ROLL == pytest.approx(1.0 / 5000.0)
+
+    def test_two_rolls_per_five_hundred_point_game(self) -> None:
+        assert wintertodt.ROLLS_PER_GAME == pytest.approx(2.0)
+
+    def test_item_seconds_reuses_the_world_hopped_games_per_hour(self) -> None:
+        priced = wintertodt.item_seconds()
+        assert set(priced) == {"Phoenix"}
+        expected_chance = wintertodt.ROLLS_PER_GAME * wintertodt.PHOENIX_CHANCE_PER_ROLL
+        expected_seconds = 3600.0 / (wintertodt.GAMES_PER_HOUR * expected_chance)
+        assert priced["Phoenix"] == pytest.approx(expected_seconds)
+
+    def test_the_wait_is_tens_to_hundreds_of_hours(self) -> None:
+        hours = wintertodt.item_seconds()["Phoenix"] / 3600.0
+        assert 10.0 < hours < 1000.0, hours

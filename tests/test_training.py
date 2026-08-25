@@ -8,20 +8,26 @@ from typing import Any
 import pytest
 
 from chunksim.costing.heuristics import ComputedMethod, Heuristics, Rate
+from chunksim.costing.recipe_rates import RECIPE_SOURCE
 from chunksim.costing.training import (
+    MaterialNode,
     TrainingOption,
     quest_xp_grants,
+    rate_material_tree,
+    trace_option,
     training_bands,
     training_options,
 )
 from chunksim.derive.challenges import ChallengeResult
-from chunksim.derive.pipeline import Derived
+from chunksim.derive.pipeline import Derived, MapState
 from chunksim.derive.active_tasks import TaskClassification
 from chunksim.derive.bis import BisResult
 from chunksim.derive.other_tasks import CategoryTasks, OtherTasks, TaskGroup
+from chunksim.derive.search import build_world_index
 from chunksim.derive.sources import SourceIndex
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.model.experience import MAX_LEVEL, level_for_xp, xp_between, xp_for_level
+from chunksim.remote.recipes import Material, Recipe
 
 
 
@@ -623,3 +629,241 @@ def test_both_halves_of_the_combined_activity_are_counted() -> None:
     credited_only = replace(option, material_seconds_per_xp=0.0)
     assert charged_only.effective_xp_per_hour == pytest.approx(600_000.0)
     assert credited_only.effective_xp_per_hour == pytest.approx(1_800_000.0)
+
+
+class TestTraceOption:
+    """`trace_option` re-derives a recipe-sourced method's material chain -
+    the `costing/estimate.py` surgery underneath is pinned in
+    `tests/test_estimate.py::TestTheTraceFlag`; these are about the training
+    layer's own assembly on top of it, using the Ruby example the feature was
+    asked for by name."""
+
+    _TASK = "Cut a ~|ruby|~"
+    _SKILL = "Crafting"
+    #: Ticks and experience are round numbers chosen for easy arithmetic, not
+    #: the real published figures - `test_recipe_rates.py::TestRecipeForTask`
+    #: is where a number closer to the real ruby lives.
+    _EXPERIENCE = 100.0
+    _TICKS = 2.0
+
+    def _info(self) -> ChunkInfo:
+        return ChunkInfo(
+            {
+                "chunks": {"1111": {"Spawn": {"Uncut ruby": 1}}},
+                "challenges": {
+                    self._SKILL: {
+                        self._TASK: {
+                            "Primary": True,
+                            "Output": "Ruby",
+                            "Items": ["Chisel", "Uncut ruby*"],
+                            "Level": 34,
+                        }
+                    }
+                },
+            }
+        )
+
+    def _recipes(self) -> dict[str, tuple[Recipe, ...]]:
+        return {
+            self._SKILL: (
+                Recipe(
+                    page="Ruby",
+                    output="Ruby",
+                    output_quantity=1.0,
+                    skill=self._SKILL,
+                    level=34,
+                    experience=self._EXPERIENCE,
+                    ticks=self._TICKS,
+                    materials=(Material("Uncut ruby", 1.0),),
+                ),
+            )
+        }
+
+    def _state(self) -> MapState:
+        return MapState(
+            chunk_info=self._info(),
+            rules={},
+            settings={},
+            manual_sections={},
+            manual_areas={},
+            manual_monsters={},
+            manual_equipment={},
+            backlogged_sources={},
+            max_skill={},
+            passive_skill={},
+            completed_challenges={},
+            checked_challenges={},
+            manual_tasks={},
+            backlog={},
+            active_tasks={},
+        )
+
+    def _derived(self) -> Derived:
+        return Derived(
+            reachable_sections={},
+            expanded_chunks={},
+            source_index=SourceIndex(
+                items={}, objects={}, monsters={}, npcs={}, shops={}, drop_rates={}
+            ),
+            challenges=ChallengeResult(
+                valid={self._SKILL: {self._TASK: True}},
+                unsupported=frozenset(),
+                available_items={"Uncut ruby": {}},
+            ),
+            bis=BisResult(picks={}),
+            task_classification=TaskClassification(),
+            other_tasks=OtherTasks(),
+        )
+
+    def _heuristics(self) -> Heuristics:
+        # **The value here is a dummy.** `trace_option` never reads
+        # `Rate.value` - it re-derives the root's own hours from the recipe
+        # it finds - only `.source`, to gate on `RECIPE_SOURCE`.
+        return Heuristics(
+            training={self._TASK: {self._SKILL: Rate(value=1.0, source=RECIPE_SOURCE)}}
+        )
+
+    def _trace(self) -> MaterialNode | None:
+        state = self._state()
+        derived = self._derived()
+        world = build_world_index(state.chunk_info)
+        return trace_option(
+            state, derived, world, self._heuristics(), self._SKILL, self._TASK,
+            recipes=self._recipes(),
+        )
+
+    def test_the_root_is_the_action_itself(self) -> None:
+        found = self._trace()
+
+        assert found is not None
+        assert found.source == RECIPE_SOURCE
+        assert len(found.children) == 1
+
+    def test_the_one_material_is_the_only_child(self) -> None:
+        found = self._trace()
+
+        assert found is not None
+        child = found.children[0]
+        assert child.label == "Uncut ruby"
+        assert child.quantity == 1.0
+        assert child.children == ()
+
+    def test_the_roots_hours_is_the_ticks_plus_the_materials(self) -> None:
+        """Reconstructed from `recipe.experience * 3600 / rate`, not from a
+        second walk of the action's own time - so it is pinned against the
+        same arithmetic `recipe_rates.rate_for` uses, not against a duration
+        this test derives independently."""
+        found = self._trace()
+
+        assert found is not None
+        implied_rate = self._EXPERIENCE * 3600.0 / found.hours
+        # `recipe_for_task` found the same `Recipe` `rate_for` would have,
+        # over the same `input_seconds` - the child's own hours are what
+        # `material_seconds` would have summed for this one material.
+        materials_seconds = found.children[0].hours * 3600.0
+        # `recipe_rates.TICK_SECONDS` (0.6) and `recipe_rates.trip_seconds`
+        # for one material at `TRIP_SECONDS=10.8`/`CARRY_SLOTS=27.0`.
+        own_seconds = self._TICKS * 0.6 + 10.8 * 1.0 / 27.0
+        assert found.hours * 3600.0 == pytest.approx(own_seconds + materials_seconds)
+        assert implied_rate > 0
+
+    def test_a_task_with_no_recipe_source_traces_to_nothing(self) -> None:
+        """The scope decision: only a method actually priced off a real wiki
+        `Recipe` gets a tree - a scraped or computed rate has none to walk."""
+        state = self._state()
+        derived = self._derived()
+        world = build_world_index(state.chunk_info)
+        heuristics = Heuristics(
+            training={self._TASK: {self._SKILL: Rate(value=1000.0, source="mmg")}}
+        )
+
+        found = trace_option(
+            state, derived, world, heuristics, self._SKILL, self._TASK,
+            recipes=self._recipes(),
+        )
+
+        assert found is None
+
+    def test_an_unmodelled_task_traces_to_nothing(self) -> None:
+        """`task not in valid` refuses before ever reaching a recipe."""
+        state = self._state()
+        derived = replace(
+            self._derived(),
+            challenges=ChallengeResult(valid={}, unsupported=frozenset()),
+        )
+        world = build_world_index(state.chunk_info)
+
+        found = trace_option(
+            state, derived, world, self._heuristics(), self._SKILL, self._TASK,
+            recipes=self._recipes(),
+        )
+
+        assert found is None
+
+
+class TestRateMaterialTree:
+    """`rate_material_tree`'s own arithmetic, over a hand-built tree - so
+    these do not also have to build a `MapState`/`Derived`/`WorldIndex` to
+    check a division."""
+
+    def _tree(self) -> MaterialNode:
+        return MaterialNode(
+            label="Cut a ruby",
+            quantity=1.0,
+            hours=100.0 / 89_184.0,  # one action's own duration, in hours
+            detail="",
+            source=RECIPE_SOURCE,
+            children=(
+                MaterialNode(
+                    label="Uncut ruby", quantity=1.0, hours=0.0005, detail="", source="spawn:1111"
+                ),
+            ),
+        )
+
+    def test_the_root_fires_once_per_action(self) -> None:
+        option = TrainingOption(
+            method="Ruby", level=34, xp_per_hour=89_184.0, match="modelled",
+        )
+
+        rated = rate_material_tree(self._tree(), option)
+
+        # xp_per_action = 89,184 * (100/89,184) = 100; actions/hr = 89,184/100.
+        assert rated.per_hour == pytest.approx(89_184.0 / 100.0)
+
+    def test_a_child_consumed_once_per_action_matches_the_roots_rate(self) -> None:
+        """The user's own worked example: a rate of ~90k/hr on a ~100xp
+        action is ~1,000 actions an hour, and one uncut gem an action is
+        ~1,000 uncut gems an hour."""
+        option = TrainingOption(
+            method="Ruby", level=34, xp_per_hour=89_184.0, match="modelled",
+        )
+
+        rated = rate_material_tree(self._tree(), option)
+
+        assert rated.children[0].per_hour == pytest.approx(rated.per_hour)
+        assert rated.per_hour == pytest.approx(891.84, rel=1e-3)
+
+    def test_a_child_consumed_twice_an_action_is_twice_the_roots_rate(self) -> None:
+        tree = replace(
+            self._tree(),
+            children=(replace(self._tree().children[0], quantity=2.0),),
+        )
+        option = TrainingOption(method="Ruby", level=34, xp_per_hour=89_184.0, match="modelled")
+
+        rated = rate_material_tree(tree, option)
+
+        assert rated.children[0].per_hour == pytest.approx(rated.per_hour * 2.0)
+
+    def test_effective_rate_drives_the_hourly_figure_not_the_headline(self) -> None:
+        """`effective_xp_per_hour`, not `xp_per_hour`, is what the estimate
+        actually spends - a method whose materials cost real time should
+        show fewer actions an hour than its published rate implies."""
+        slow = TrainingOption(
+            method="Ruby", level=34, xp_per_hour=89_184.0, match="modelled",
+            material_seconds_per_xp=0.01,
+        )
+
+        rated = rate_material_tree(self._tree(), slow)
+
+        headline_actions = 89_184.0 / 100.0
+        assert rated.per_hour < headline_actions

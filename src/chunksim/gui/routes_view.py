@@ -8,9 +8,27 @@ terminal shows up in the browser two seconds later with no invalidation
 machinery at all.
 
 Keeping these in one module makes that property checkable rather than
-remembered: **nothing in this file may call `ctx.derivations.load`.** The one
-exception is `_areas_for`, which parses the export only when the unlocked set
-holds a non-numeric id, and a test pins that the map view does not trigger it.
+remembered: **no route on the map's own redraw path may call
+`ctx.derivations.load`** - the view, the revision poll, the timeline and the
+roll panel, which are the ones a dragging slider hits.
+
+That rule used to be written as "nothing in this file", and that is no longer
+what the file does. Three routes here do parse, each because the *question*
+needs the derivation rather than because the route was careless, and each is
+off the redraw path:
+
+- `_areas_for`, which parses only when the unlocked set holds a non-numeric id.
+- `_skill_tooltips`, which needs the rates a roll was priced against.
+- `resolve_knob`'s effective figure, which needs the priced layers - see
+  `_knob_heuristics` for why nothing cheaper is honest. A `slayer` knob pays
+  further still: it reruns `slayer.master_rates` (the same call `estimate()`
+  made, on the same goal levels) to show `hours_to_be_assigned` in hours -
+  the actual downtime before a gated boss's task comes up, which no single
+  config leaf holds on its own.
+
+`tests/test_gui_view.py` pins the property that matters, which was always the
+real one: the map view does not trigger a parse. Restating it as "nothing in
+this file" made the *file* the unit when the **redraw path** is.
 
 The timeline is here for the same reason. A run is self-contained - the state
 before roll k is `final - rolls[k:]` - so replaying one needs no base map, no
@@ -21,7 +39,8 @@ from __future__ import annotations
 
 from chunksim.costing.estimate import EstimateResult
 from chunksim.costing.training import TrainingOption, training_options
-from chunksim.costing.inputs import load_heuristics
+from chunksim.costing.heuristics import Heuristics
+from chunksim.costing.inputs import ReferenceBlobs, load_heuristics, priced_layers
 from chunksim.derive import boosts
 from chunksim.gui import knobs
 from chunksim.derive.active_tasks import _level_proven_elsewhere
@@ -41,6 +60,8 @@ from chunksim.gui.worldmap import build_view
 from chunksim.store import cache
 from chunksim.derive.delta import diff_names
 from chunksim.costing import dps_bridge
+from chunksim.costing import slayer as slayer_model
+from chunksim.costing.levels import goal_levels, infer_levels
 from chunksim.runs.timeline import replay
 from chunksim.runs.timeline import rolled_chunks
 from chunksim.runs.timeline import series
@@ -348,11 +369,22 @@ def _completed_levels(map_id: str, ctx: Context) -> dict[str, float]:
 def resolve_knob(path: str, map_id: str, ctx: Context) -> dict[str, Any]:
     """One override path, at every layer, for the panel that edits it.
 
-    **On the cheap path deliberately.** It reads the three config files and
-    nothing else - `ReferenceBlobs` needs no export, which is what lets a
-    long-running server build one before it has parsed 10MB - so opening the
-    dialog on a row costs a few stats, not a derivation. The row already had
-    the number; what this adds is where the number came from.
+    **The three layers are cheap; the effective figure is not, and it is worth
+    it.** Reading `scraped`/`site`/`map` needs no export at all, which is what
+    lets a long-running server answer before it has parsed 10MB. The bottom
+    line - what the number actually resolves to - is a different question, and
+    answering it from the config alone was **wrong for almost every training
+    method**: the rate the estimate spends comes from `Heuristics.computed`,
+    which only `inputs.priced_layers` fills, so a config-only `Heuristics`
+    reported `Burn wood at ~|Wintertodt|~` as `DEFAULT_XP_PER_HOUR` - a flat
+    1,000/hr against a modelled curve running to 418,176.
+
+    So with a map in hand this pays for the real stack. It is affordable
+    because `priced_heuristics` is content-cached: the Estimate tab has
+    almost always built it already, and a second asker pays a read. Without a
+    map there is nothing to derive, so it falls back to the config-only
+    figure - which is right for the branches that genuinely have defaults and
+    silent for `training`, where `knobs._pinned_xp` refuses to guess.
 
     `map_id` may be empty, for a page not looking at a map. The map layer is
     then absent, which is the honest answer rather than a guess at which map
@@ -376,11 +408,72 @@ def resolve_knob(path: str, map_id: str, ctx: Context) -> dict[str, Any]:
     # still gets a working dialog rather than a 400, which is the same trade
     # `_skill_tooltips` makes one screen away.
     try:
-        heuristics, _ = load_heuristics(ctx.derivations.chunk_info(), ctx.root, blobs)
+        heuristics = _knob_heuristics(map_id, ctx, blobs)
         resolved["effective"] = knobs.effective(path, heuristics)
+        # **A `wait` knob's "effective" figure needs more than a
+        # `Heuristics` to be honest.** The branch holds only what has been
+        # *overridden* (`knobs.effective` already read that back, correctly,
+        # off `Heuristics.wait_hours`) - the number a player actually cares
+        # about when nothing is set is `MasterRate.hours_to_be_assigned`'s
+        # own computation, which needs the whole master's task list and so
+        # cannot be answered by a generic `(Heuristics, parts)` lambda. This
+        # is the same trade `training`'s `_training_rate` already makes for
+        # the same reason.
+        if map_id and resolved["branch"] == "wait" and resolved["effective"] is None:
+            loaded = ctx.derivations.load(map_id)
+            master_name, task = str(resolved["parts"][1]), str(resolved["parts"][2])
+            # **Goal levels, not today's - the same substitution `_setup`
+            # makes.** `Gargoyles` needs Slayer 75; a config-only floor
+            # (`infer_levels` alone) put the account below that gate and
+            # `master_rates` dropped the task from Vannaka's list entirely,
+            # which read as "no answer" for a task the estimate prices every
+            # day, on the reasoning `_setup`'s own comment states: the
+            # skilling bucket is already costing the climb to get there.
+            goals = goal_levels(loaded.state, loaded.derived, infer_levels(loaded.state))
+            masters = slayer_model.master_rates(
+                loaded.state.chunk_info,
+                heuristics,
+                reachable_monsters=frozenset(loaded.derived.source_index.monsters),
+                valid=loaded.derived.challenges.valid,
+                levels=goals,
+                unlocked=dict(loaded.derived.expanded_chunks),
+                reachable_sections=loaded.derived.reachable_sections,
+                reachable_masters=frozenset(loaded.derived.source_index.npcs),
+                combat_level=goals.get("Combat", 126),
+            )
+            master = next((m for m in masters if m.master == master_name), None)
+            if master is not None:
+                resolved["effective"] = master.hours_to_be_assigned(task)
     except (CacheMissError, OSError, ValueError):
         resolved["effective"] = None
     return resolved
+
+
+def _knob_heuristics(map_id: str, ctx: Context, blobs: ReferenceBlobs) -> Heuristics:
+    """The deepest `Heuristics` this request can afford.
+
+    With a map, the priced stack - every computed and simulated layer, which
+    is what the estimate spent and therefore the only honest answer to "what
+    is this knob worth". Without one, the merged config, which is all there is
+    to have.
+
+    **Assembled by `inputs.priced_layers` rather than here**, for the reason
+    that module exists: a second way to build the layers is a second answer to
+    the same question, and the dialog quoting a different number from the row
+    that opened it is exactly the drift being fixed.
+    """
+    if not map_id:
+        heuristics, _ = load_heuristics(ctx.derivations.chunk_info(), ctx.root, blobs)
+        return heuristics
+    loaded = ctx.derivations.load(map_id)
+    return priced_layers(
+        loaded.state,
+        loaded.unlocked,
+        loaded.derived,
+        ctx.derivations.digests(),
+        root=ctx.root,
+        reference=blobs,
+    ).heuristics
 
 
 def _step_view(map_id: str, step: int, ctx: Context) -> MapView:

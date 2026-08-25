@@ -14,6 +14,9 @@ import textwrap
 from types import SimpleNamespace
 from typing import Any, cast
 
+import pathlib
+from typing import Any
+
 import pytest
 
 from chunksim.costing import dps_bridge
@@ -1157,7 +1160,10 @@ def test_enrich_prices_only_what_the_estimate_could_ask_about(
             monsters={"Abyssal demon": {"100": True}},
             npcs={},
             shops={},
-            drop_rates={},
+            # **The gate reads the index, not the export branch** - a slayer
+            # monster's table arrives here from `skillItems.Slayer` and never
+            # appears in `chunk_info.drops`. See `enrich`.
+            drop_rates={"Abyssal demon": {"Abyssal whip": "1/512"}},
         ),
         bis=SimpleNamespace(picks={}),
         challenges=SimpleNamespace(available_items={}),
@@ -1350,3 +1356,327 @@ def test_calling_without_the_extra_still_refuses() -> None:
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
 
     assert result.stdout.strip() == "ok", result.stderr
+
+
+class TestTheOfferSetReachesSlayerMonsters:
+    """**`SourceIndex.drop_rates`, not `chunk_info.drops`.** A slayer
+    monster's loot table lives in `skillItems.Slayer` and it has no `drops`
+    entry, so gating the calculator on the export branch excluded every one of
+    them: `Abyssal demon` kept a flat 60/hr against the 24.3 it simulates,
+    `Alchemical Hydra` the boss default of 20 against 2.9 - 20 monsters on one
+    cached map and 27 on the other.
+    """
+
+    def test_the_gate_names_the_index_not_the_export_branch(self) -> None:
+        """Pinned as source, because the two spellings look interchangeable
+        and only one of them sees a slayer monster."""
+        source = pathlib.Path(dps_bridge.__file__).read_text()
+        assert "frozenset(derived.source_index.drop_rates)" in source
+        assert "frozenset(chunk_info.drops)" not in source
+
+    @pytest.mark.real_cache
+    def test_the_real_map_offers_its_slayer_monsters(
+        self, real_state: Any, real_derived: Any
+    ) -> None:
+        from chunksim.costing.levels import reachable_providers
+
+        state, _unlocked = real_state
+        providers = reachable_providers(real_derived)
+        offered = providers & frozenset(real_derived.source_index.drop_rates)
+        by_branch = providers & frozenset(state.chunk_info.drops)
+        # The widening is real on this export, not a theoretical case.
+        assert offered - by_branch, "no slayer-table monster is reachable to test"
+
+
+class TestScriptedBossesDoNotDisturbOrdinaryOnes:
+    """`best_kill` checks `SCRIPTS` before anything else - this is the other
+    half of that branch: a name absent from the registry must fall through to
+    the ordinary version search exactly as before scripting existed."""
+
+    def test_an_unscripted_name_is_untouched(self) -> None:
+        loadouts = dps_bridge.build_loadouts(
+            _chunk_info(), {"Melee-weapon": "Abyssal whip"}, LEVELS
+        )
+        kill = dps_bridge.best_kill(
+            loadouts, "Rat", [("Rat", _target(name="Rat", hitpoints=8))]
+        )
+        assert kill is not None
+        assert kill.match != "scripted"
+
+    def test_scripts_is_keyed_by_the_real_boss_modules(self) -> None:
+        from chunksim.costing import (
+            duke_sucellus,
+            grotesque_guardians,
+            hueycoatl,
+            hydra,
+            kalphite_queen,
+            moons,
+            nex,
+            nightmare,
+            phantom_muspah,
+            royal_titans,
+            sire,
+            vetion,
+            vorkath,
+            zulrah,
+        )
+
+        assert dps_bridge.SCRIPTS == {
+            "Alchemical Hydra": hydra.SCRIPT,
+            "Phosani's Nightmare": nightmare.SCRIPT,
+            "Zulrah": zulrah.SCRIPT,
+            "Abyssal Sire": sire.SCRIPT,
+            "Grotesque Guardians": grotesque_guardians.SCRIPT,
+            "Duke Sucellus": duke_sucellus.SCRIPT,
+            "The Hueycoatl": hueycoatl.SCRIPT,
+            "Kalphite Queen": kalphite_queen.SCRIPT,
+            "Nex": nex.SCRIPT,
+            "Phantom Muspah": phantom_muspah.SCRIPT,
+            "Vorkath": vorkath.SCRIPT,
+            **moons.SCRIPTS,
+            **royal_titans.SCRIPTS,
+            **vetion.SCRIPTS,
+        }
+
+
+class TestGatedBossCorrection:
+    """`_apply_gated_bosses` - Hespori's grow time and Skotizo's totem, both
+    applied to a `Rate` `price_monsters` already computed rather than a
+    fresh simulation. See `costing/hespori.py` and `costing/skotizo.py`."""
+
+    @staticmethod
+    def _rate(kph: float) -> Rate:
+        return Rate(value=kph, source="dps", match="exact")
+
+    def test_hespori_is_corrected_for_the_grow_time(self) -> None:
+        from chunksim.costing import hespori
+
+        monsters = {hespori.HESPORI: self._rate(3600.0 / 60.0)}
+        got = dps_bridge._apply_gated_bosses(monsters, monsters)
+        seconds = 3600.0 / got[hespori.HESPORI].value
+        assert seconds == pytest.approx(hespori.GROW_SECONDS + 60.0)
+
+    def test_hespori_keeps_its_source_and_match(self) -> None:
+        from chunksim.costing import hespori
+
+        monsters = {hespori.HESPORI: self._rate(3600.0 / 60.0)}
+        got = dps_bridge._apply_gated_bosses(monsters, monsters)
+        assert got[hespori.HESPORI].source == "dps"
+        assert got[hespori.HESPORI].match == "exact"
+
+    def test_skotizo_is_corrected_for_the_fastest_totem_candidate(self) -> None:
+        from chunksim.costing import skotizo
+
+        monsters = {
+            skotizo.SKOTIZO: self._rate(3600.0 / 60.0),
+            "Hill Giant": self._rate(3600.0 / 5.0),
+        }
+        got = dps_bridge._apply_gated_bosses(monsters, monsters)
+        expected_totem = 3.0 * (5.0 / skotizo.piece_chance(skotizo.CANDIDATE_HITPOINTS["Hill Giant"]))
+        seconds = 3600.0 / got[skotizo.SKOTIZO].value
+        assert seconds == pytest.approx(expected_totem + 60.0)
+
+    def test_skotizo_is_dropped_when_no_candidate_is_reachable(self) -> None:
+        """An uncorrected combat-only rate is a wrong number, not a
+        missing one - refused rather than kept."""
+        from chunksim.costing import skotizo
+
+        monsters = {skotizo.SKOTIZO: self._rate(3600.0 / 60.0)}
+        got = dps_bridge._apply_gated_bosses(monsters, monsters)
+        assert skotizo.SKOTIZO not in got
+
+    def test_a_reused_rate_is_never_corrected_twice(self) -> None:
+        """**The defect this split guards against.** `enrich_incremental`
+        can hand the same already-corrected `Rate` back on a later roll;
+        `freshly_priced` empty means nothing here was computed this call,
+        so the correction must not run again."""
+        from chunksim.costing import hespori
+
+        monsters = {hespori.HESPORI: self._rate(3600.0 / 60.0)}
+        once = dps_bridge._apply_gated_bosses(monsters, monsters)
+        again = dps_bridge._apply_gated_bosses(once, {})
+        assert again == once
+
+    def test_an_untouched_monster_passes_through_unchanged(self) -> None:
+        monsters = {"Abyssal demon": self._rate(30.0)}
+        got = dps_bridge._apply_gated_bosses(monsters, monsters)
+        assert got["Abyssal demon"] == monsters["Abyssal demon"]
+
+    def test_a_chest_is_synthesised_at_zero_with_no_candidate_present(self) -> None:
+        """Neither chest is ever combat-simulated, so with none of their key
+        monsters in `monsters` either, both are written explicitly at zero -
+        never left absent for `Heuristics.kills_per_hour` to default."""
+        from chunksim.costing import keyed_chests
+
+        got = dps_bridge._apply_gated_bosses({}, {})
+        assert got[keyed_chests.BRYOPHYTAS_LAIR].value == 0.0
+        assert got[keyed_chests.OBORS_LAIR].value == 0.0
+
+    def test_a_chest_is_priced_off_its_cheapest_key_candidate(self) -> None:
+        from chunksim.costing import keyed_chests
+
+        monsters = {
+            "Bryophyta": self._rate(3600.0 / 100.0),  # 100s a kill
+            "Moss giant": self._rate(3600.0 / 10.0),  # 10s a kill, worse odds
+        }
+        got = dps_bridge._apply_gated_bosses(monsters, monsters)
+        # Bryophyta: 100s / (1/16) = 1,600s a key. Moss giant: 10s / (1/150)
+        # = 1,500s a key, cheaper despite the worse per-kill odds.
+        expected = 10.0 / (1.0 / 150.0) + keyed_chests.OPEN_SECONDS
+        seconds = 3600.0 / got[keyed_chests.BRYOPHYTAS_LAIR].value
+        assert seconds == pytest.approx(expected)
+
+    def test_every_simple_correction_is_applied_and_not_doubled(self) -> None:
+        """`_SIMPLE_GATED_CORRECTIONS` covers Giant Mole, Duke Sucellus,
+        Vorkath and Nex alongside Hespori - each is a pure function of its
+        own kill time, and each must move the rate and never move it
+        twice on a reused, already-corrected entry."""
+        from chunksim.costing import duke_sucellus, giant_mole, nex, vorkath
+
+        for name, module in (
+            (giant_mole.GIANT_MOLE, giant_mole),
+            (duke_sucellus.DUKE_SUCELLUS, duke_sucellus),
+            (vorkath.VORKATH, vorkath),
+            (nex.NEX, nex),
+        ):
+            monsters = {name: self._rate(3600.0 / 60.0)}
+            once = dps_bridge._apply_gated_bosses(monsters, monsters)
+            seconds = 3600.0 / once[name].value
+            assert seconds == pytest.approx(module.effective_seconds(60.0)), name
+            again = dps_bridge._apply_gated_bosses(once, {})
+            assert again == once, name
+
+
+class TestPhaseStylesRestriction:
+    """`Phase.styles` - added for `costing/grotesque_guardians.py`, where
+    Dusk is immune to two of the three styles the ordinary search would
+    otherwise happily price. Uses a synthetic single-phase `FightScript`
+    rather than the real boss, so this pins `_scripted_kill`'s own filtering
+    in isolation from any of that module's real numbers."""
+
+    @staticmethod
+    def _script(styles: frozenset[str] | None) -> Any:
+        from chunksim.costing.fightscripts import FightScript, Phase
+
+        return FightScript(
+            name="Fixture boss",
+            phases=(Phase(name="only", target="Rat", hp_share=1.0, styles=styles),),
+        )
+
+    def test_an_unrestricted_phase_lets_the_best_style_win(self) -> None:
+        loadouts = dps_bridge.build_loadouts(
+            _chunk_info(), {"Melee-weapon": "Abyssal whip", "Magic-weapon": "Master wand"}, LEVELS
+        )
+        candidates = (("Rat", _target(name="Rat", hitpoints=8)),)
+        kill = dps_bridge._scripted_kill(
+            self._script(None), loadouts, candidates, reductions=None, boss=False
+        )
+        assert kill is not None
+
+    def test_a_style_excluded_from_the_phase_is_never_offered(self) -> None:
+        """Magic is the only style with a weapon in this loadout, and the
+        phase excludes it - so there is nothing left to kill with, and the
+        script must refuse rather than silently falling back to it."""
+        loadouts = dps_bridge.build_loadouts(_chunk_info(), {"Magic-weapon": "Master wand"}, LEVELS)
+        candidates = (("Rat", _target(name="Rat", hitpoints=8)),)
+        kill = dps_bridge._scripted_kill(
+            self._script(frozenset({"Melee", "Ranged"})),
+            loadouts,
+            candidates,
+            reductions=None,
+            boss=False,
+        )
+        assert kill is None
+
+    def test_restricting_to_a_worse_style_costs_real_time(self) -> None:
+        """Both Melee and Magic can kill the fixture target, but Magic is
+        the stronger loadout here - restricting the phase to Melee only
+        must produce a slower kill than leaving it unrestricted, proving the
+        filter actually narrows `kills_by_style`'s search rather than being
+        ignored."""
+        loadouts = dps_bridge.build_loadouts(
+            _chunk_info(), {"Melee-weapon": "Dragon dagger", "Magic-weapon": "Master wand"}, LEVELS
+        )
+        candidates = (("Rat", _target(name="Rat", hitpoints=8)),)
+        unrestricted = dps_bridge._scripted_kill(
+            self._script(None), loadouts, candidates, reductions=None, boss=False
+        )
+        melee_only = dps_bridge._scripted_kill(
+            self._script(frozenset({"Melee"})), loadouts, candidates, reductions=None, boss=False
+        )
+        assert unrestricted is not None and melee_only is not None
+        assert melee_only.ttk >= unrestricted.ttk
+
+
+class TestPhaseSecondsArithmetic:
+    """`_phase_seconds` in isolation - the formula `_scripted_kill` sums over
+    every phase in a script."""
+
+    @staticmethod
+    def _kill(ttk: float) -> "dps_bridge.KillEstimate":
+        return dps_bridge.KillEstimate(
+            monster="X#form", style="Ranged", ttk=ttk, dps=0.0, max_hit=0, accuracy=0.0
+        )
+
+    def test_no_reduction_window_is_hp_share_of_the_solo_ttk(self) -> None:
+        """`(hp * hp_share) / (hp / ttk)` reduces to `hp_share * ttk` -
+        exactly the module docstring's claim: a quarter of one phase's own
+        kill time is what a quarter of its health bar costs."""
+        from chunksim.costing.fightscripts import Phase
+
+        target = SimpleNamespace(hitpoints=100.0)
+        phase = Phase(name="p", target="X#form", hp_share=0.5)
+        got = dps_bridge._phase_seconds(phase, cast(Any, target), self._kill(40.0))
+        assert got == pytest.approx(20.0)
+
+    def test_idle_seconds_add_on_top(self) -> None:
+        from chunksim.costing.fightscripts import Phase
+
+        target = SimpleNamespace(hitpoints=100.0)
+        phase = Phase(name="p", target="X#form", hp_share=0.5, idle_seconds=3.0)
+        got = dps_bridge._phase_seconds(phase, cast(Any, target), self._kill(40.0))
+        assert got == pytest.approx(23.0)
+
+    def test_a_reduction_window_that_outlasts_the_phase_still_prices(self) -> None:
+        """A phase small enough, or a reduction long enough, that the phase
+        dies *during* the window - priced at the reduced rate throughout
+        rather than refused."""
+        from chunksim.costing.fightscripts import Phase
+
+        target = SimpleNamespace(hitpoints=100.0)
+        # solo dps 2.5/s; a 5-hp phase at a quarter rate (0.625/s) needs 8s,
+        # well inside a 20s window - so the whole phase is reduced-rate.
+        phase = Phase(
+            name="p",
+            target="X#form",
+            hp_share=0.05,
+            reduced_seconds=20.0,
+            reduced_dps_fraction=0.25,
+        )
+        got = dps_bridge._phase_seconds(phase, cast(Any, target), self._kill(40.0))
+        assert got == pytest.approx(8.0)
+
+    def test_a_reduction_window_shorter_than_the_phase_costs_the_gap(self) -> None:
+        """The Hydra's own shape: the window ends before the phase's health
+        is gone, so the rest is priced at the full rate."""
+        from chunksim.costing.fightscripts import Phase
+
+        target = SimpleNamespace(hitpoints=1100.0)
+        phase = Phase(
+            name="p",
+            target="X#form",
+            hp_share=0.25,
+            reduced_seconds=5.0,
+            reduced_dps_fraction=0.25,
+        )
+        kill = self._kill(1100.0 / 4.0)  # solo dps = 4 hp/s
+        got = dps_bridge._phase_seconds(phase, cast(Any, target), kill)
+        # 275 hp at 0.25*4=1 hp/s for 5s removes 5hp; 270 remain at 4hp/s.
+        assert got == pytest.approx(5.0 + 270.0 / 4.0)
+
+    def test_a_zero_ttk_kill_refuses_rather_than_dividing_by_zero(self) -> None:
+        from chunksim.costing.fightscripts import Phase
+
+        target = SimpleNamespace(hitpoints=100.0)
+        phase = Phase(name="p", target="X#form", hp_share=1.0)
+        assert dps_bridge._phase_seconds(phase, cast(Any, target), self._kill(0.0)) is None

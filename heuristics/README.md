@@ -102,6 +102,18 @@ here, then edit the value.
 | `materials` | the full task name | `{"experience": 23000, "items": {"Runite bar": 28}}` — what one action pays and consumes |
 | `slayer` | **master**, then task | `{"mean_count": 165, "xp_per_kill": 106, "kills_per_hour": 340, "extended": false}` |
 | `rarities` | a rate word | a probability, e.g. `{"varies": 0.02}` |
+| `runs` | a raid or wave minigame | `{"Inferno": 3150}` — **seconds** for one completion |
+
+**`runs` is the section most worth an opinion**, because it is the only one where nothing was
+scraped. The wiki publishes no Inferno time and no Fight Caves time, so `costing/instanced.py`
+spends a figure this project chose: 52.5 minutes for the Inferno, 37.5 for the caves, and each
+raid's own money-making guide for the other three. Correct it and *everything* that spends a run
+moves at once — the pet, the cape, the boss kill — because they all come through one function.
+
+The keys are the places as `costing/instanced.RUN_ONLY_PLACES` spells them: `Inferno`,
+`Fight Caves`, `Chambers of Xeric`, `Theatre of Blood`, `Tombs of Amascut`. Seconds, not minutes,
+to match `actions`; a zero or a negative is ignored rather than believed, since a run taking no time
+would divide a pet's expectation to nothing.
 
 A `training` pin outranks the gathering model too — it is the top layer for every source.
 

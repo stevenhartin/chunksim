@@ -17,6 +17,8 @@ reimplemented, so the gate cannot drift from the thing it gates.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from typing import Any, NamedTuple
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.model.experience import MAX_SKILL_LEVEL, level_for_xp
@@ -28,11 +30,35 @@ from chunksim.model.summary import _mapping
 from chunksim.derive.search import normalise
 
 
+@dataclass(frozen=True)
+class TaskGate:
+    """The assignment a monster demands, **and where it demands it**.
+
+    **The place is not decoration.** `Konar quo Maten` assigns by location and
+    every one of his 93 task keys carries a ` - <place>` suffix, so a gate
+    naming the bare `Hydras` matched none of them: on a map where he is the
+    only master, every task-gated monster's drops went unpriced and any item
+    with a second route was silently priced by the worse one.
+
+    Carrying the place is what lets `slayer.MasterRate` join the two exactly
+    rather than by prefix. Prefix alone would have been worse than the miss it
+    fixes: 23 of Konar's task families span up to six locations, and summing
+    their weights would shorten the wait for an assignment that only one of
+    them satisfies - a boss reading *faster* than it is, which is this
+    project's most productive bug shape.
+    """
+
+    task: str
+    #: The `taskUnlocks` location that demanded it, as the export spells it -
+    #: `Karuulm Slayer Dungeon`, `Slayer Tower#Basement`.
+    place: str
+
+
 def task_gated_monsters(
     chunk_info: ChunkInfo,
     world: WorldIndex,
     reachable_places: frozenset[str],
-) -> dict[str, str]:
+) -> dict[str, TaskGate]:
     """Monsters you must be *on a slayer task* to fight, and which task.
 
     Read out of `taskUnlocks['Monsters']`, whose entries are **per location**::
@@ -61,22 +87,25 @@ def task_gated_monsters(
     by_normalised = {normalise(name): name for name in assignments}
     placements = _mapping(world.locations, "Monster")
 
-    gates: dict[str, str] = {}
+    gates: dict[str, TaskGate] = {}
     for monster, locations in _mapping(chunk_info.data, "taskUnlocks").get("Monsters", {}).items():
         if not isinstance(locations, dict):
             continue
-        task = _gating_task(locations, by_normalised)
-        if task is None:
+        gate = _gating_task(locations, by_normalised)
+        if gate is None:
             continue
         if _has_open_door(monster, locations, placements, reachable_places):
             continue
-        gates[monster] = task
+        gates[monster] = gate
     return gates
 
 
-def _gating_task(locations: dict[str, Any], by_normalised: dict[str, str]) -> str | None:
-    """The slayer task a location's `<X> task` requirement names, if any."""
-    for requirements in locations.values():
+def _gating_task(
+    locations: dict[str, Any], by_normalised: dict[str, str]
+) -> TaskGate | None:
+    """The slayer task a location's `<X> task` requirement names, and the
+    location that named it."""
+    for place, requirements in locations.items():
         for requirement in requirements if isinstance(requirements, list) else ():
             if not isinstance(requirement, dict):
                 continue
@@ -86,7 +115,7 @@ def _gating_task(locations: dict[str, Any], by_normalised: dict[str, str]) -> st
                 subject = normalise(name.removesuffix(" task"))
                 for candidate in (subject, f"{subject}s", f"{subject}es"):
                     if candidate in by_normalised:
-                        return by_normalised[candidate]
+                        return TaskGate(task=by_normalised[candidate], place=str(place))
     return None
 
 

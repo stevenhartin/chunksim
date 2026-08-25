@@ -14,6 +14,7 @@ command could print.
 
 from __future__ import annotations
 import argparse
+import re
 
 from pathlib import Path
 
@@ -21,6 +22,20 @@ from chunksim.cli.common import derive_cached, digests, emit_json, error, load_s
 from chunksim.costing import dps_bridge, inputs
 from chunksim.costing.estimate import BUCKETS, EstimateResult
 from chunksim.derive.task_names import strip_task_markup
+
+#: `ItemEstimate.source`'s own route prefixes - the same vocabulary
+#: `estimate._is_leaf_source`'s docstring names (`currency:`, `spawn:`,
+#: `shop:`, `recipe:`, `make:`) - stripped for display only. `source` is a
+#: machine key first: `_group_key` uses it exactly as `_bucket_for` and
+#: `_group_total` do, colon and all, so grouping/clamping never change here.
+#: Printed as a group heading unstripped it read as an implementation detail
+#: nobody asked about - `make:Imbue a granite ring at Dom Onion's Reward
+#: Shop` names the route, not what a player would call the row.
+_SOURCE_ROUTE_PREFIX = re.compile(r"^(?:currency|spawn|shop|recipe|make):")
+
+
+def _display_source(source: str) -> str:
+    return _SOURCE_ROUTE_PREFIX.sub("", source)
 def _cmd_estimate(args: argparse.Namespace) -> int:
     if args.bucket is not None and args.bucket not in BUCKETS:
         return error(f"unknown bucket {args.bucket!r} (expected one of {', '.join(BUCKETS)})")
@@ -151,13 +166,29 @@ def _print_estimate(
             print(f"  ... and {len(rows) - limit} more (--limit {len(rows)} to see all)")
         return
 
-    # Grouped by source, because that is how the time is actually spent: the
-    # items under one heading are earned together, so the heading carries
-    # what the source costs and each item still shows its own expected time.
+    # Grouped by source (or, for a leaf recipe/shop item with no repeatable
+    # source of its own, by the Diary/CA task that wants it - see
+    # `EstimateResult.sources_in`). A shared *source* group is earned in
+    # parallel and the heading is its longest item; a Diary/CA cluster of
+    # otherwise-unrelated leaf actions is not, and the heading sums them.
+    #
+    # **A group of one collapses to a single line.** A heading over one
+    # child said the same number twice for no reason - the source line
+    # still names what earned it, so the nested item line beneath added
+    # nothing but a repeat of the same hours.
     groups = result.sources_in(bucket)
     for source, hours, entries in groups if limit is None else groups[:limit]:
-        together = f"  ({len(entries)} items, earned together)" if len(entries) > 1 else ""
-        print(f"  {hours:>8,.1f}h {source}{together}")
+        if len(entries) == 1:
+            covers = f" x{len(entries[0].tasks)}" if len(entries[0].tasks) > 1 else ""
+            print(f"  {hours:>8,.1f}h {_display_source(source)}{covers}")
+            continue
+        parallel = len({entry.source for entry in entries}) <= 1
+        together = (
+            f"  ({len(entries)} items, earned together)"
+            if parallel
+            else f"  ({len(entries)} items, priced separately)"
+        )
+        print(f"  {hours:>8,.1f}h {_display_source(source)}{together}")
         for entry in entries:
             covers = f" x{len(entry.tasks)}" if len(entry.tasks) > 1 else ""
             print(f"      {entry.hours:>8,.1f}h {entry.item}{covers}")

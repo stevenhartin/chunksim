@@ -128,7 +128,7 @@ Each of the first three has already caused a real bug.
 
 `chunksim estimate` turns the derivation into hours. **The export carries no durations, rates or XP
 figures at all**, so every number spent comes from a scrape, a wiki recipe, a model in `costing/`, or
-a default in `costing/heuristics.py`. That subpackage is 85 modules, most of them one activity or
+a default in `costing/heuristics.py`. That subpackage is 98 modules, most of them one activity or
 one mechanic each; **their docstrings carry the measurements, the checks and the refusals, and this
 file deliberately does not repeat them.** What follows is only what holds across all of them.
 
@@ -178,10 +178,13 @@ neither** — charging without crediting and crediting without charging are both
 one.** `chunksim heuristics`, `chunksim recipes` and `chunksim gather-tables` write checked-in blobs
 under `src/chunksim/heuristics/`; `chunksim estimate` reads them and makes no network call.
 `cache.SHIPPED_BLOB_NAMES` is the list, `blob_write_path` is where a developer command writes and
-`blob_source` what a reader opens. **A checkout is a closed world in `blob_source`** — reaching past
-an empty test fixture tree to the packaged file made three simulate tests derive against rates they
-were never given. `tests/test_packaging.py` pins that a cache holding no wiki data at all still
-prices every method identically.
+`blob_source` what a reader opens — but **it names five of the seven shipped files**: `gathering.json`
+and `overrides.json` predate it and keep their own `PACKAGED_GATHERING`/`PACKAGED_OVERRIDES` pair, so
+grepping that tuple for either finds nothing and concludes wrongly that it does not ship.
+**A checkout is a closed world in `blob_source`** — reaching past an empty test fixture tree to the
+packaged file made three simulate tests derive against rates they were never given.
+`tests/test_packaging.py` pins that a cache holding no wiki data at all still prices every method
+identically.
 
 ### Reading the coverage report
 
@@ -276,7 +279,7 @@ rationale lives.
 
 ## Toolchain
 
-Python 3.14.6, mypy, pip (no uv). Run `mypy` and `.venv/bin/pytest` before each commit.
+Python 3.14.7, mypy, pip (no uv). Run `mypy` and `.venv/bin/pytest` before each commit.
 
 **Zero *required* runtime dependencies, deliberately** — `pyproject.toml` has an empty
 `dependencies`, so a new module gets the stdlib and nothing else. `store/derived_cache.py` is the
@@ -394,8 +397,9 @@ the checkout rather than `/tmp` or stdout. A stray `tasks.json` there is that, n
 `wiki_aliases.json`, `courier_tasks.json`, `bounty_tasks.json` and `gathering.json` — beside `overrides.json`, the hand
 corrections, so a correction is diffable and survives a re-scrape. Corrections belonging to *one map*
 go in `cache/overrides/<map_id>.json`, which is gitignored with the rest. `cache.SHIPPED_BLOB_NAMES`
-is the list a developer command writes and a reader opens. `heuristics/README.md` is the
-guide to which numbers are worth correcting.
+is the list a developer command writes and a reader opens. **The guide to which numbers are worth
+correcting is `heuristics/README.md` at the *repo root*, not beside the blobs** — that directory holds
+nothing else, and `src/chunksim/heuristics/` holds no README.
 
 The merge is `defaults < scraped < overrides < map overrides`, and it happens **once**, in
 `load_reference` — so `ReferenceBlobs.overrides` is the *effective* set and every downstream reader
@@ -495,6 +499,30 @@ the only reason to prefer this layout to the one file it replaced. Tests are pyt
 `tests/test_gui_view.py` for `gui/routes_view.py`, `tests/test_gui_contract.py` for `app.js` and
 `style.css`. Flat rather than mirroring the package tree, because pytest's default import mode
 collides on duplicate basenames across directories without `__init__.py`.
+
+**`costing/` is the one place the name is not enough, so look for two.** Most of its modules take a
+`test_costing_` prefix (`tests/test_costing_wintertodt.py`), but ten carry the bare name because
+the module name alone was already unambiguous or the file predates the prefix —
+`costing/estimate.py` is `tests/test_estimate.py`, and so are `training`, `farming`, `slayer`,
+`prayer`, `heuristics`, `recipe_rates`, `combat_xp`, `dps_bridge` and `dps_overhead`. Four modules
+have no file of their own and are exercised through their callers: `coverage.py` through
+`test_cli_training.py`, `levels.py` through `test_costing_player_levels.py`, and the two
+`*_overhead.py` helpers through the models that spend them.
+
+**Running one file is the point of the layout, so run one:**
+
+```
+.venv/bin/pytest tests/test_estimate.py                 # one module's tests
+.venv/bin/pytest tests/test_estimate.py::test_name      # one test
+.venv/bin/pytest -k wintertodt                          # by name, across files
+.venv/bin/pytest -m real_export                         # just the oracles (needs the env vars below)
+.venv/bin/pytest -x -q tests/test_cli_estimate.py       # stop at the first failure
+mypy src/chunksim/costing/estimate.py                   # one file; still from the repo root
+```
+
+A bare path argument overrides `files` in `[tool.mypy]`, so a single-file `mypy` checks that file and
+its imports rather than the whole tree — quick while iterating, but **the commit gate is the bare
+`mypy`**, which is what sees a signature change's other callers.
 
 **The ordinary suite is not the real correctness signal.** The oracles are, and they are opt-in:
 

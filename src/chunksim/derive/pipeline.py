@@ -78,7 +78,13 @@ from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.derive.other_tasks import OtherTasks, classify_other_tasks
 from chunksim.model.firebase import decode_challenge_keyed, decode_payload
 from chunksim.derive.sections import expand_chunk_areas, unlockable_areas, unlocked_sections
-from chunksim.derive.sources import SourceIndex, gather_chunks_info, task_unlock_pairs
+from chunksim.derive.sources import (
+    SourceIndex,
+    gather_chunks_info,
+    slayer_gate_can_bite,
+    slayer_output_tasks,
+    task_unlock_pairs,
+)
 from chunksim.model.summary import _mapping
 
 
@@ -395,16 +401,28 @@ def derive(
     equality**, which is worth one whole pass in eight. `valid == valid_tasks`
     is sufficient but far stronger than needed: `calc_challenges` does not
     take `valid_tasks` at all, so last pass's validity reaches this one only
-    through the two gates above, and both ask *membership* of a
-    `(skill, task)` pair - never a value. So with the areas settled, the four
-    steps chain: no new areas means `expanded` is unchanged, so
-    `unlocked_sections` returns the same `reachable`; agreeing on every pair
-    `sources.task_unlock_pairs` names means `gather_chunks_info` is handed
-    identical inputs and builds an identical index; `calc_challenges` is a
-    deterministic function of those; so the next pass would reproduce this one
-    exactly, including the strict condition. Measured on the real map, the
-    loop leaves at pass 7 where it used to run a pass 8 that was a
-    byte-identical repeat - **0.10s of 0.87s.**
+    through the gates below. So with the areas settled, the four steps chain:
+    no new areas means `expanded` is unchanged, so `unlocked_sections` returns
+    the same `reachable`; agreeing on everything the gates read means
+    `gather_chunks_info` is handed identical inputs and builds an identical
+    index; `calc_challenges` is a deterministic function of those; so the next
+    pass would reproduce this one exactly, including the strict condition.
+    Measured on the real map, the loop leaves at pass 7 where it used to run a
+    pass 8 that was a byte-identical repeat - **0.10s of 0.87s.**
+
+    **Three channels, not one, and only two are membership tests.**
+    `taskUnlocks` asks whether a `(skill, task)` pair is in `valid`
+    (`sources.task_unlock_pairs`), and the `skillItems.Slayer` gate asks the
+    same of each slayer monster's own `Slay a ...` challenge
+    (`sources.slayer_output_tasks`) - both membership, never a value, so a set
+    of pairs covers them. The gate's third input is not: `slayer_trainable` is
+    `checkPrimaryMethod('Slayer', ...)` over the *whole* validity map, so it is
+    compared across passes directly. It is asked only where
+    `sources.slayer_gate_can_bite` says the export could consult it, which is
+    what keeps a map with no slayer monsters converging in one pass. In steady
+    state it costs nothing: the flag settles alongside everything else, so by
+    the pass that would exit, the previous pass already computed the same
+    value.
 
     **This says nothing about warm-starting `valid` itself**, which
     `challenges.py` refuses and still should: this argument turns on the
@@ -466,6 +484,13 @@ def derive(
     index: SourceIndex | None = None
     challenges: ChallengeResult | None = None
     valid_tasks: dict[str, dict[str, int | str | bool]] = {}
+    # `checkPrimaryMethod('Slayer', ...)` from the previous pass, feeding the
+    # `skillItems.Slayer` gate in `sources._SlayerGate`. **Starts permissive
+    # for the same reason `valid_tasks` starts empty**: the first pass has no
+    # previous answer, and running it ungated is what keeps the gate
+    # subtractive - it can remove a source a later pass no longer justifies,
+    # never invent one.
+    slayer_trainable = True
     converged = False
     # Compiled `Items` plans, shared by every pass. They depend on the export,
     # the rules, the skill and `locked_equipment` - all fixed above this loop -
@@ -475,6 +500,9 @@ def derive(
     # The only pairs whose validity the next pass could read back; see the
     # exit test below and `sources.task_unlock_pairs`.
     gate_pairs = task_unlock_pairs(chunk_info)
+    # Whether the `skillItems.Slayer` gate's trainability flag is readable at
+    # all here; if it is not, it is not a reason to run another pass.
+    slayer_gate_reads_trainable = slayer_gate_can_bite(chunk_info)
 
     for _ in range(_MAX_AREA_PASSES):
         reachable = unlocked_sections(
@@ -495,6 +523,8 @@ def derive(
             manual_equipment=state.manual_equipment,
             max_skill=max_skill,
             valid_tasks=valid_tasks,
+            passive_skill=state.passive_skill,
+            slayer_trainable=slayer_trainable,
         )
         challenges = calc_challenges(
             expanded,
@@ -507,6 +537,7 @@ def derive(
             passive_skill=state.passive_skill,
             backlog=state.backlog,
             manual_tasks=state.manual_tasks,
+            completed_challenges=state.completed_challenges,
             construction_locked=state.construction_locked,
             locked_equipment=locked_equipment,
             forced_valid=forced_valid_from(synthesised),
@@ -521,6 +552,23 @@ def derive(
             max_skill=max_skill,
             passive_skill=state.passive_skill,
         )
+        # Upstream asks `checkPrimaryMethod('Slayer', …)` inside the `Kill X`
+        # filter, once per monster, against this pass's own answer; asking it
+        # here is the same question hoisted. **It has a second reader now** -
+        # the next pass's `skillItems.Slayer` gate (worker.js:987), which is
+        # why the exit test below compares it across passes.
+        trainable_now = _check_primary_method(
+            "Slayer",
+            challenges.valid,
+            index,
+            chunk_info,
+            passive_skill=state.passive_skill,
+            backlog=state.backlog,
+            manual_tasks=state.manual_tasks,
+            rules=state.rules,
+            items=challenges.available_items,
+            objects=challenges.available_objects,
+        )
         rebuilt = synthesised_challenges(
             chunk_info,
             SynthesisInputs(
@@ -531,21 +579,7 @@ def derive(
                 completed_extra=state.completed_challenges.get("Extra") or {},
                 backlogged_sources=state.backlogged_sources or {},
                 backlog=state.backlog.get("Extra") or {},
-                # Upstream asks `checkPrimaryMethod('Slayer', …)` inside the
-                # `Kill X` filter, once per monster, against this pass's own
-                # answer; asking it here is the same question hoisted.
-                slayer_trainable=_check_primary_method(
-                    "Slayer",
-                    challenges.valid,
-                    index,
-                    chunk_info,
-                    passive_skill=state.passive_skill,
-                    backlog=state.backlog,
-                    manual_tasks=state.manual_tasks,
-                    rules=state.rules,
-                    items=challenges.available_items,
-                    objects=challenges.available_objects,
-                ),
+                slayer_trainable=trainable_now,
                 slayer_has_tasks=bool(challenges.valid.get("Slayer")),
                 slayer_cap=state.slayer_locked.level if state.slayer_locked else None,
                 passive_slayer=_slayer_floor(state),
@@ -563,7 +597,20 @@ def derive(
             state.rules,
         )
         settled = rebuilt == synthesised
-        if not new_areas and settled and _gates_agree(gate_pairs, challenges.valid, valid_tasks):
+        # The `skillItems.Slayer` gate reads the previous pass through two
+        # more channels than `taskUnlocks` does, and both join the exit test
+        # or it would fire a pass early on a map where the gate is still
+        # moving: the trainability flag itself, and membership of each
+        # monster's own `Slay a ...` challenge.
+        slayer_pairs = frozenset(
+            ("Slayer", task) for task in slayer_output_tasks(chunk_info).values()
+        )
+        if (
+            not new_areas
+            and settled
+            and (not slayer_gate_reads_trainable or trainable_now == slayer_trainable)
+            and _gates_agree(gate_pairs | slayer_pairs, challenges.valid, valid_tasks)
+        ):
             converged = True
             break
         if not settled:
@@ -576,6 +623,7 @@ def derive(
                 _merge_by_category(injected_definitions, rebuilt)
             )
         valid_tasks = challenges.valid
+        slayer_trainable = trainable_now
         expanded = {**expanded, **new_areas}
 
     assert index is not None and challenges is not None  # loop always runs at least once

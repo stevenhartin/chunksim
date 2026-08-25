@@ -1344,3 +1344,76 @@ class TestTheCraftingHandAliases:
         merged = recipe_rates.with_aliases(recipes, {"cape": "Blue cape"})
 
         assert merged["cape"][0].output == "Cape"
+
+
+class TestRecipeForTask:
+    """`recipe_for_task` re-runs `computed_rates`' own join and selection for
+    one task, so `training.trace_option` can get the `Recipe` back -
+    `ActionRate` deliberately does not keep it. Pinned against
+    `computed_rates`' own answer: the two must never disagree."""
+
+    _INFO = ChunkInfo(
+        {
+            "challenges": {
+                "Crafting": {
+                    "Cut a ~|ruby|~": {
+                        "Primary": True,
+                        "Output": "Ruby",
+                        "Items": ["Chisel", "Uncut ruby*"],
+                    }
+                }
+            }
+        }
+    )
+    _RECIPES = {
+        "Crafting": (
+            _recipe(
+                "Ruby",
+                skill="Crafting",
+                experience=85.0,
+                ticks=2,
+                materials=(Material("Uncut ruby", 1.0),),
+            ),
+        )
+    }
+    _VALID = {"Crafting": {"Cut a ~|ruby|~": True}}
+
+    def test_it_finds_the_same_recipe_computed_rates_picked(self) -> None:
+        priced, _ = computed_rates(self._INFO, self._VALID, self._RECIPES, _free)
+        wanted = priced["Cut a ~|ruby|~", "Crafting"]
+
+        found = recipe_rates.recipe_for_task(
+            self._INFO, self._VALID, self._RECIPES, "Cut a ~|ruby|~", "Crafting", _free
+        )
+
+        assert found is not None
+        recipe, rate, materials = found
+        assert recipe.experience == wanted.experience
+        assert rate == pytest.approx(wanted.xp_per_hour)
+        assert materials == pytest.approx(wanted.input_seconds)
+
+    def test_the_real_materials_survive_with_their_quantities(self) -> None:
+        """The one thing `ActionRate.materials` cannot answer - see its own
+        docstring - and the whole reason this function exists rather than
+        reading the rate that already won."""
+        found = recipe_rates.recipe_for_task(
+            self._INFO, self._VALID, self._RECIPES, "Cut a ~|ruby|~", "Crafting", _free
+        )
+
+        assert found is not None
+        recipe, _rate, _materials = found
+        assert recipe.materials == (Material("Uncut ruby", 1.0),)
+
+    def test_an_unknown_task_finds_nothing(self) -> None:
+        found = recipe_rates.recipe_for_task(
+            self._INFO, self._VALID, self._RECIPES, "Cut a ~|sapphire|~", "Crafting", _free
+        )
+
+        assert found is None
+
+    def test_a_task_not_valid_on_this_map_finds_nothing(self) -> None:
+        found = recipe_rates.recipe_for_task(
+            self._INFO, {"Crafting": {}}, self._RECIPES, "Cut a ~|ruby|~", "Crafting", _free
+        )
+
+        assert found is None

@@ -62,6 +62,7 @@ from chunksim.gui.routes_derived import (
     _chunk_detail,
     _estimate_payload,
     _training_payload,
+    _training_method_payload,
     _full_diff,
     _section_states,
     _unlock_preview,
@@ -466,6 +467,24 @@ def handle_request(
             if isinstance(at, Response):
                 return at
             return _json(_training_payload(at, ctx, _first(query, "skill")))
+
+        if path == "/api/training-method":
+            # **One method's material chain**, the level below `/api/training`
+            # - see `routes_derived._training_method_payload`. `skill` and
+            # `task` are both required: unlike the summary route, there is no
+            # "everything" shape for this one to fall back to.
+            map_id = _first(query, "map")
+            wanted_skill = _first(query, "skill")
+            wanted_task = _first(query, "task")
+            if map_id is None or wanted_skill is None or wanted_task is None:
+                return _error(
+                    "missing required parameter: 'map', 'skill' and 'task' are all required",
+                    HTTPStatus.BAD_REQUEST,
+                )
+            at = _state_at(query, ctx, map_id)
+            if isinstance(at, Response):
+                return at
+            return _json(_training_method_payload(at, ctx, wanted_skill, wanted_task))
 
         if path == "/api/tasks":
             map_id = _first(query, "map")

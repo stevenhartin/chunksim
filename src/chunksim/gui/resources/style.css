@@ -825,6 +825,61 @@ ul.list .num {
    real, the export lists it, and you cannot get to it yet. */
 .unreached { opacity: .45; }
 
+/* **A group heading holds a nested list, not a row of its own inline
+   content**, so it opts out of `ul.list li`'s flex-row layout - packed into
+   one line, a heading and the list under it read as nothing at all. */
+ul.list li.group {
+  display: block;
+  cursor: default;
+}
+
+.group-head {
+  display: flex;
+  gap: var(--s3);
+  align-items: baseline;
+  padding-bottom: var(--s1);
+}
+
+/* Indented under its heading and marked with a rule, the one visual cue this
+   pane has for "these belong to the row above". */
+ul.list li.group ul.list {
+  padding-left: var(--s4);
+  border-left: 1px solid var(--line);
+}
+
+ul.list li.group ul.list li { margin: 0; }
+
+/* **A method-tree node holding children is a heading over a nested list,
+   same as `.group` above** - block layout so the row does not try to
+   squeeze a whole `<ul>` onto one flex line, the same indent-and-rule for
+   what nests under what. A leaf keeps the ordinary flex row: it has nothing
+   to make room for. */
+ul.list li[data-tree-toggle="1"] {
+  display: block;
+  cursor: pointer;
+}
+
+/* **`ul.list.tree-children`, not `.tree-children` alone.** `ul.list`'s own
+   reset (`margin: 0; padding: 0;`) is a tag+class selector - specificity
+   (0,1,1) - which beats a bare class selector's (0,1,0) on the same
+   element, so `padding-left` here was silently losing to the reset while
+   `border-left` (which the reset never touches) applied fine - a tree with
+   a visible rule down the side but no actual indent under it. */
+ul.list.tree-children {
+  padding-left: var(--s4);
+  border-left: 1px solid var(--line);
+}
+
+/* A closed branch's own children take no layout space at all, rather than
+   being present-but-hidden - a tree a real chain makes nine hops deep must
+   not cost the height of nine rows before anything is opened. */
+.tree-children.collapsed { display: none; }
+
+.tree-caret {
+  color: var(--dim);
+  font-size: var(--t-note);
+}
+
 /* **A truncated list is a control, not a caption.** It says how much it is
    hiding and reveals it when pressed, in the same column as the names it
    stands for. Collapsing is a second press rather than something that happens
@@ -1429,6 +1484,18 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   font-size: var(--t-note);
 }
 
+/* **A training method's own climb, staircase from unlock to 99** - see
+   `methodCurveChart`. Lives inside a tooltip, so it inherits `.tip`'s own
+   `max-width` rather than setting one of its own. */
+.method-curve { display: block; margin-top: var(--s2); }
+.method-curve-axis { stroke: var(--line); stroke-width: 1; }
+.method-curve-line { fill: none; stroke: var(--reachable); stroke-width: 2; stroke-linejoin: round; }
+.method-curve-pt { fill: var(--reachable); }
+/* Where you are now - a second colour because "the line" and "you" are two
+   different facts, not the same mark drawn twice. */
+.method-curve-at { fill: var(--amber); stroke: #0c0e12; stroke-width: 1.5; }
+.method-curve-label { fill: var(--dim); font-size: var(--t-micro); }
+
 /* --- tile attribution ---------------------------------------------------- */
 
 /* Bottom-right, opposite the legend, quiet but never hidden: CC BY-NC-SA asks
@@ -1714,6 +1781,12 @@ ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
 
 .knob {
   position: relative;
+  /* **A stacking context of its own**, so `.knob-flag`'s negative `z-index`
+   * below sinks it under this card's own text and no further - without an
+   * explicit `z-index` here, `position: relative` alone does not open a new
+   * stacking context, and the ribbon would compare against the *dialog's*
+   * stray positioned elements instead of just its own siblings. */
+  z-index: 0;
   display: grid;
   gap: var(--s1);
   padding: var(--s2);
@@ -1730,21 +1803,39 @@ ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
 .knob.mine { border-color: var(--amber); }
 
 /* A corner ribbon: a band wider than the corner it crosses, rotated through
- * it, with the card's `overflow: hidden` cutting the overhang. Sized in `ch`
- * so it stays wider than its own word - a band measured in pixels clips the
- * text the first time the label changes. */
+ * it, with the card's `overflow: hidden` cutting the overhang on the right.
+ * Sized in `ch` so it stays wider than its own word - a band measured in
+ * pixels clips the text the first time the label changes.
+ *
+ * **Behind the card's own text, and faint.** The border already carries
+ * "yours" at a glance (see `.knob.mine` above), so the ribbon is a second,
+ * quieter echo of the same fact rather than a second claim competing with
+ * the number underneath it - `z-index: -1` paints it under every
+ * non-positioned sibling in this card (`.knob-path`, `.knob-note`, the
+ * layer rows, the input), which is exactly what a negative `z-index`
+ * descendant does in the painting order the CSS spec defines. `opacity`
+ * fades the band itself for the same reason, not just to dim it against
+ * the text on top.
+ *
+ * **`top` clears the *rotated* box, not the un-rotated one.** Rotating
+ * around the element's own center (the default) swings its bounding box
+ * past all four sides of the un-rotated rectangle - the width fix above
+ * already covers the overhang on the right, which `overflow: hidden` is
+ * meant to cut, but a `top` that only cleared the un-rotated box let the
+ * rotated one clip into its own word from above, "OVERRIDDEN" losing its
+ * O. The value here clears a band this wide with room to spare; a future
+ * label change wider than this one needs `top` to grow with it, the same
+ * warning the width comment above already gives. */
 .knob-flag {
   position: absolute;
-  top: var(--s4);
+  top: calc(var(--s6) * 2 + var(--s3));
   right: calc(var(--s6) * -1);
-  /* **Wider than the word, measured rather than guessed.** At 14ch the band
-   * was narrower than its own text and clipped it to "OVERRID"; the text is
-   * ~72px at this size, so the band has to clear that before the card's
-   * `overflow: hidden` gets to do the part it is meant to. */
   width: 20ch;
   transform: rotate(45deg);
   padding: 1px 0;
   background: var(--amber);
+  opacity: 0.55;
+  z-index: -1;
   color: var(--bg);
   font-size: var(--t-micro);
   font-weight: var(--w-emphasis);
@@ -1755,6 +1846,7 @@ ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
 
 .knob-path { color: var(--dim); font-size: var(--t-note); overflow-wrap: anywhere; }
 .knob-sep { color: var(--line-strong); padding: 0 var(--s1); }
+.knob-note { margin: 0; color: var(--dim); font-size: var(--t-note); font-style: italic; }
 
 /* What the wiki has a page for, and what Find can frame. */
 /* One row per run of a batch, counted by band. A table because it is one -

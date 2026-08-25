@@ -1228,6 +1228,44 @@ def _siblings(
     return {output: tuple(tasks) for output, tasks in joined.items()}
 
 
+def _skill_join_tables(
+    chunk_info: ChunkInfo,
+    valid: Mapping[str, Mapping[str, Any]],
+    rows: Sequence[Recipe],
+    skill: str,
+    aliases: Mapping[str, str],
+) -> tuple[
+    dict[str, tuple[Recipe, ...]],
+    Mapping[str, tuple[str, ...]],
+    Mapping[str, tuple[Recipe, ...]],
+    Mapping[str, tuple[Recipe, ...]],
+    Mapping[str, Any],
+]:
+    """`(by_output, siblings, cuts, tablets, challenges)` - the join tables
+    `_joined` reads for every task in `skill` at once.
+
+    Built once per skill by `computed_rates`'s own loop, and rebuilt here for
+    `recipe_for_task`'s single task - one place this setup lives, so a second
+    version of it is not a second thing to keep in step with `_joined` itself.
+    """
+    by_output = index_recipes(list(rows))
+    # Matched case-insensitively: upstream writes `Build a ~|mahogany
+    # table|~` where the wiki page is `Mahogany table`, and the case is
+    # the only thing between them.
+    by_output = {**{name.lower(): found for name, found in by_output.items()}}
+    # **After the lowercasing, so an alias competes with the real names on
+    # the same terms** - see `with_aliases` for why it never displaces one.
+    by_output = with_aliases(by_output, aliases)
+    challenges = _mapping(chunk_info.challenges, skill)
+    siblings = _siblings(challenges, by_output, skill)
+    cuts = fishcutting.cut_recipes(challenges, list(rows))
+    # **A teleport is only castable twice at a lectern**, so its tablet is
+    # what the challenge describes - see `costing/lectern.py`, which is
+    # also where the two gates live.
+    tablets = lectern.tablet_recipes(challenges, list(rows), valid)
+    return by_output, siblings, cuts, tablets, challenges
+
+
 def computed_rates(
     chunk_info: ChunkInfo,
     valid: Mapping[str, Mapping[str, Any]],
@@ -1265,21 +1303,9 @@ def computed_rates(
     dropped: dict[str, str] = {}
 
     for skill, rows in sorted(recipes.items()):
-        by_output = index_recipes(list(rows))
-        # Matched case-insensitively: upstream writes `Build a ~|mahogany
-        # table|~` where the wiki page is `Mahogany table`, and the case is
-        # the only thing between them.
-        by_output = {**{name.lower(): found for name, found in by_output.items()}}
-        # **After the lowercasing, so an alias competes with the real names on
-        # the same terms** - see `with_aliases` for why it never displaces one.
-        by_output = with_aliases(by_output, aliases)
-        challenges = _mapping(chunk_info.challenges, skill)
-        siblings = _siblings(challenges, by_output, skill)
-        cuts = fishcutting.cut_recipes(challenges, list(rows))
-        # **A teleport is only castable twice at a lectern**, so its tablet is
-        # what the challenge describes - see `costing/lectern.py`, which is
-        # also where the two gates live.
-        tablets = lectern.tablet_recipes(challenges, list(rows), valid)
+        by_output, siblings, cuts, tablets, challenges = _skill_join_tables(
+            chunk_info, valid, list(rows), skill, aliases
+        )
         offered = found = 0
         for task in sorted(valid.get(skill) or {}):
             challenge = challenges.get(task)
@@ -1315,6 +1341,47 @@ def computed_rates(
             coverage[skill] = (found, offered)
 
     return priced, RecipeCoverage(skills=coverage, dropped=dict(sorted(dropped.items())))
+
+
+def recipe_for_task(
+    chunk_info: ChunkInfo,
+    valid: Mapping[str, Mapping[str, Any]],
+    recipes: Mapping[str, Sequence[Recipe]],
+    task: str,
+    skill: str,
+    input_seconds: Callable[[str, float], float | None],
+    aliases: Mapping[str, str] = {},
+    stated_ticks: Mapping[str, float] = {},
+) -> tuple[Recipe, float, float] | None:
+    """The winning recipe behind one task's `ActionRate`, re-run rather than
+    recovered.
+
+    **`ActionRate` deliberately does not keep the `Recipe` it came from** (see
+    its own docstring) - `training.trace_option` needs the real one back,
+    materials and quantities included, to walk what a training method's own
+    action actually consumes. This runs the same join (`_joined`, off the
+    same `_skill_join_tables`) and the same selection (`rate_for`)
+    `computed_rates` runs for every task in `skill` at once, for just the one
+    a caller asked about - not a second implementation, the same two
+    functions called with a narrower `task`.
+
+    `None` where `task` is not a valid, primary, recipe-joinable method for
+    `skill` - the same gate `computed_rates` applies before ever reaching
+    `rate_for`.
+    """
+    if task not in (valid.get(skill) or {}):
+        return None
+    challenge = _mapping(chunk_info.challenges, skill).get(task)
+    if not isinstance(challenge, dict) or challenge.get("Primary") is not True:
+        return None
+    by_output, siblings, cuts, tablets, challenges = _skill_join_tables(
+        chunk_info, valid, recipes.get(skill, ()), skill, aliases
+    )
+    joined = _joined(task, challenge, by_output, siblings, cuts, challenges, tablets, skill)
+    if joined is None:
+        return None
+    _output, candidates = joined
+    return rate_for(candidates, input_seconds, stated_ticks)
 
 
 #: The `Rate.match` tiers a dropped method loses - the scrape's two, and the

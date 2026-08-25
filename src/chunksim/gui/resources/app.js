@@ -1326,6 +1326,17 @@ function zoomAt(sx, sy, direction) {
 
 let dragging = null;
 let movedWhileDown = 0;
+/* **Whether the gesture in progress actually began on the canvas.** A mouse's
+ * `pointerId` does not change between separate press-drag-release cycles, so
+ * it cannot tell a canvas-originated drag from an unrelated one - and without
+ * `setPointerCapture` (never called for a press that started elsewhere),
+ * `pointerup` still fires wherever the cursor physically is. Dragging to
+ * select text in a Simulate input and releasing over the map used to land
+ * that `pointerup` on the canvas, which read it as an ordinary click and
+ * called `selectChunk` - switching to the Chunk tab and stealing focus from
+ * the input mid-edit. Gating the whole handler on this flag, set only by the
+ * canvas's own `pointerdown`, is what makes a foreign release a no-op. */
+let canvasOwnsGesture = false;
 
 CANVAS.addEventListener("pointerdown", (e) => {
   /* DEVIATION from upstream: Pointer Events plus capture, so trackpads and
@@ -1333,6 +1344,7 @@ CANVAS.addEventListener("pointerdown", (e) => {
   stopGlide();
   dragging = { id: e.pointerId, x: e.clientX, y: e.clientY };
   movedWhileDown = 0;
+  canvasOwnsGesture = true;
   capture(true, e.pointerId);
   CANVAS.classList.add("dragging");
 });
@@ -1375,6 +1387,9 @@ function endDrag(e) {
 }
 
 CANVAS.addEventListener("pointerup", (e) => {
+  /* **Only a gesture the canvas itself started.** See `canvasOwnsGesture`. */
+  if (!canvasOwnsGesture) return;
+  canvasOwnsGesture = false;
   /* A click is a press that did not travel. Without this a drag that ends over
    * a chunk selects it, which is maddening. */
   const wasDrag = movedWhileDown > 4;
@@ -1387,7 +1402,10 @@ CANVAS.addEventListener("pointerup", (e) => {
   if (state.heatmap) { if (clicked) showHeatChunk(clicked); return; }
   selectChunk(clicked);
 });
-CANVAS.addEventListener("pointercancel", endDrag);
+CANVAS.addEventListener("pointercancel", (e) => {
+  canvasOwnsGesture = false;
+  endDrag(e);
+});
 
 CANVAS.addEventListener("wheel", (e) => {
   e.preventDefault();
@@ -1617,6 +1635,33 @@ function marked(text) {
     const body = lead ? shown.replace(/^\s+/, "") : shown;
     return tmpl`${lead}` + (part.marked ? tmpl`<b>${body}</b>` : tmpl`${body}`);
   }).join("");
+}
+
+/* **A training method's name is always a short label, never a sentence** -
+ * `activity_name` (`heuristics.py`) hands back either a `~|...|~` span or a
+ * bare item/resource name, and the export stores some of those lower-case
+ * (`iron ore`, `limestone`, `shooting star`) where everything else on screen
+ * reads Title Case. Safe to head-case every word here for exactly that
+ * reason - it would not be, applied to `plain()`'s other callers, which
+ * include whole challenge sentences ("Imbue a granite ring at Dom Onion's
+ * Reward shop") that head-casing would mangle. */
+function titleCase(text) {
+  return text.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/* **`ItemEstimate.source`'s own route prefixes**, the vocabulary
+ * `estimate._is_leaf_source`'s docstring names (`currency:`, `spawn:`,
+ * `shop:`, `recipe:`, `make:`) - stripped for display only. `source` is a
+ * machine key first: the estimate groups and clamps on it exactly as
+ * written, colon and all (`estimateGroupKey`/`_group_key`), so this never
+ * touches the value used for that. It only formats what a group heading
+ * shows, which - absent this - was the raw key: `make:Imbue a granite ring
+ * at Dom Onion's Reward Shop` names the route this project took, not
+ * something a player would call the row. */
+const SOURCE_ROUTE_PREFIX = /^(?:currency|spawn|shop|recipe|make):/;
+
+function sourceLabel(text) {
+  return text.replace(SOURCE_ROUTE_PREFIX, "");
 }
 
 function icon(name) { return raw(`<svg class="icon" viewBox="0 0 24 24"><use href="#i-${name}"/></svg>`); }
@@ -3815,6 +3860,7 @@ el["show-done"].addEventListener("click", () => {
 const BUCKET_COLOURS = {
   "quests": "#5abeff",
   "boss drops": "#dc3c3c",
+  "monster drops": "#e8853c",
   "activities": "#ffbe00",
   "skilling": "#3cc85a",
 };
@@ -3867,10 +3913,19 @@ function renderEstimate(payload) {
    * spelling. Biggest first is the order the chart is read in, and it makes
    * the headings below say the same thing as the wedges above. Empty buckets
    * are dropped rather than drawn at zero: a swatch with no arc beside it is
-   * a legend entry you go looking for and never find. */
+   * a legend entry you go looking for and never find.
+   *
+   * **Skilling is the one exception, pinned first regardless of size.** It is
+   * usually the smallest slice - a handful of levels beside a hundred boss
+   * drops - so "biggest first" reliably pushed it to the very bottom, where
+   * it read as though it had been forgotten rather than as though it were
+   * small. Everything else still sorts by hours, so the rule stays "biggest
+   * first" with one named exception rather than becoming a second order to
+   * remember. */
   const ordered = Object.entries(payload.buckets)
     .filter(([, value]) => value > 0)
-    .sort((a, b) => b[1] - a[1]);
+    .sort((a, b) =>
+      a[0] === "skilling" ? -1 : b[0] === "skilling" ? 1 : b[1] - a[1]);
 
   let out = '<div class="pie-row">' + donut(ordered, total || 1) + '<div class="pie-key">';
   for (const [name, value] of ordered) {
@@ -3895,7 +3950,7 @@ function renderEstimate(payload) {
     byBucket.get(bucket).push(row);
   };
   /* Two shapes, one list. `items` are the unique things you go and get, which
-   * is boss drops and activities; `tasks` is the quest bucket, costed per
+   * is boss drops, monster drops and activities; `tasks` is the quest bucket, costed per
    * quest rather than per item. `estimate.py`'s docstring is the authority on
    * why those are different units - here they are both "a thing and its
    * hours". */
@@ -3938,23 +3993,77 @@ function renderEstimate(payload) {
     const rows = (byBucket.get(bucket) || []).slice().sort((a, b) => b.hours - a.hours);
     if (!rows.length) continue;
     out += tmpl`<h3>${raw(swatch)}${label(bucket)} <span class="num">${rows.length}</span></h3><ul class="list">`;
-    out += withMore(rows, "estimate:" + bucket, 12, (row) => {
+    const renderItemRow = (row, displayName) => {
       /* **A row with knobs is a control; one without is a line of text.**
        * Every route the walk takes records what it read (`_Priced.knobs`),
        * and a ground spawn honestly records nothing - so making every row
        * clickable would offer an editor for numbers that do not exist. The
        * tooltip says which it is, because a thing you can press has to look
-       * like one before you press it. */
+       * like one before you press it.
+       *
+       * `displayName` is the collapsed-group case below: the visible label
+       * is the group's key (a source or a Diary/CA root), but the tooltip
+       * still opens on the item's own name and detail - collapsing a row
+       * must not also erase what it actually prices. */
+      const name = displayName == null ? row.name : sourceLabel(displayName);
       const knobs = row.knobs || [];
       const arguable = knobs.length
         ? tmpl`<span class="hint">Click to see the ${String(knobs.length)} ${knobs.length === 1 ? "number" : "numbers"} behind this</span>`
         : tmpl`<span class="hint">Priced without a rate — nothing here to correct</span>`;
       const tip = tmpl`<b>${raw(marked(row.name))}</b><span class="sub">${raw(marked(row.detail))}</span><span class="sub">${label(row.bucket)}</span>` + arguable;
       if (!knobs.length) {
-        return tmpl`<li data-tip="${tip}"><span class="name">${plain(row.name)}</span><span class="num">${hours(row.hours)}</span></li>`;
+        return tmpl`<li data-tip="${tip}"><span class="name">${raw(marked(name))}</span><span class="num">${hours(row.hours)}</span></li>`;
       }
       return tmpl`<li class="arguable" data-tip="${tip}" data-knobs="${knobs.join("\u241f")}"
-        data-row="${row.name}" role="button" tabindex="0"><span class="name">${raw(marked(row.name))}</span><span class="num">${hours(row.hours)}</span></li>`;
+        data-row="${row.name}" role="button" tabindex="0"><span class="name">${raw(marked(name))}</span><span class="num">${hours(row.hours)}</span></li>`;
+    };
+    /* **Grouped by what earns them, not listed flat.** `Abyssal dagger` and
+     * `Abyssal head` are two rows off one Abyssal demon grind, and a flat
+     * list said so twice, once per row, with nothing joining them - the same
+     * overstatement-by-omission `EstimateResult.buckets` clamps in the
+     * numbers. `estimateGroupKey`/`estimateGroupTotal` are the same rule
+     * `costing/estimate.py`'s `_group_key`/`_group_total` compute: `group` if
+     * the item has one (a leaf recipe/shop item rolled up under the Diary/CA
+     * task that wants it), else `source`, maxed within a source and summed
+     * across sources. */
+    const groups = new Map();
+    for (const row of rows) {
+      const key = row.group || row.source || row.name;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(row);
+    }
+    const groupRows = [...groups.entries()]
+      .map(([key, items]) => {
+        const perSource = new Map();
+        for (const item of items) {
+          perSource.set(item.source, Math.max(perSource.get(item.source) || 0, item.hours));
+        }
+        let total = 0;
+        for (const value of perSource.values()) total += value;
+        return { key, items, total, parallel: perSource.size <= 1 };
+      })
+      .sort((a, b) => b.total - a.total || a.key.localeCompare(b.key));
+    out += withMore(groupRows, "estimate:" + bucket, 12, (group) => {
+      /* **A group of one collapses to a single row.** A heading over one
+       * child said the same number twice - most visibly in the quest
+       * bucket, where the group key and the item's own name are identical,
+       * so the heading and the row beneath it read as a duplicate of each
+       * other. `renderItemRow`'s `displayName` keeps the group's key as the
+       * visible label even collapsed, so a Diary/CA leaf item still shows
+       * the task that wants it rather than reverting to its own recipe
+       * name - only the redundant second line is gone. */
+      if (group.items.length === 1) {
+        return renderItemRow(group.items[0], group.key);
+      }
+      const note = tmpl`<span class="sub">${group.items.length} items${group.parallel ? ", earned together" : ", priced separately"}</span>`;
+      const children = group.items
+        .slice()
+        .sort((a, b) => b.hours - a.hours)
+        .map((row) => renderItemRow(row))
+        .join("");
+      return tmpl`<li class="group"><div class="group-head"><span class="name">${plain(sourceLabel(group.key))}</span>
+        ${raw(note)}<span class="num">${hours(group.total)}</span></div>
+        <ul class="list">${raw(children)}</ul></li>`;
     });
     out += "</ul>";
   }
@@ -4027,6 +4136,105 @@ function methodRate(option) {
   return tmpl`<span class="num">${worth}/hr</span><span class="sub">was ${head}</span>`;
 }
 
+/* **One row per method, not one per level threshold.** A gathering method's
+ * rate is not one number - `training_options` (`costing/training.py`) hands
+ * back a separate `TrainingOption` for every level the success/product curve
+ * crosses (`costing/gathering.py`'s bands), so one resource ("Iron ore")
+ * used to be several rows. Worse, the list is ranked on rate rather than on
+ * level, so an earlier band that has not yet reached 100% success can sit at
+ * a *lower* rate than a later one and land nowhere near it in the list - the
+ * same resource scattered across the page rather than merely repeated in it.
+ *
+ * **The options array is already sorted best-first (`training_options`'s own
+ * contract), so the first occurrence of a method name is already its best
+ * band** - grouping while walking it once therefore costs nothing extra and
+ * needs no second sort: `best` is exactly the row this dialog showed before
+ * grouping existed, and `members` is every band behind it for the curve. */
+function groupMethodOptions(options) {
+  const order = [];
+  const groups = new Map();
+  for (const option of options) {
+    let group = groups.get(option.method);
+    if (!group) {
+      group = { best: option, members: [] };
+      groups.set(option.method, group);
+      order.push(group);
+    }
+    group.members.push(option);
+  }
+  return order;
+}
+
+//: Where a method's own curve stops being drawn. Every skill in this export
+//: caps at 99, so this is the chart's own constant rather than a value read
+//: off the payload.
+const SKILL_MAX_LEVEL = 99;
+
+/* **A method's own climb, staircase from its unlock level to 99.** Held flat
+ * between two known bands rather than interpolated between them, because a
+ * held rate is what `training_bands`' own running maximum actually pays - a
+ * slanted line between two sampled levels would draw a rate this project
+ * never modelled and nobody would ever earn. Returns `""` for a group of one:
+ * a single-band method has no climb to show, and the row's own hover already
+ * says everything there is to say about it. */
+function methodCurveChart(members, at) {
+  const byLevel = new Map();
+  for (const member of members) {
+    const level = Math.max(1, Math.min(SKILL_MAX_LEVEL, member.level || 1));
+    const rate = member.effective_xp_per_hour || 0;
+    if (!byLevel.has(level) || rate > byLevel.get(level)) byLevel.set(level, rate);
+  }
+  const levels = [...byLevel.keys()].sort((a, b) => a - b);
+  if (levels.length < 2) return "";
+
+  const W = 220, H = 64, PAD_L = 2, PAD_R = 2, PAD_T = 6, PAD_B = 14;
+  const minLevel = levels[0];
+  const span = Math.max(1, SKILL_MAX_LEVEL - minLevel);
+  const peak = Math.max(1, ...levels.map((level) => byLevel.get(level)));
+  const x = (level) =>
+    PAD_L + ((Math.min(level, SKILL_MAX_LEVEL) - minLevel) / span) * (W - PAD_L - PAD_R);
+  const y = (rate) =>
+    H - PAD_B - (Math.max(0, rate) / peak) * (H - PAD_T - PAD_B);
+
+  // **The hold, not a slope.** Each band's rate runs flat to the level just
+  // before the next one takes over, then steps - two path segments per band
+  // rather than one, so the line never implies a value between two levels
+  // this project never priced.
+  let path = `M ${x(minLevel).toFixed(1)} ${y(byLevel.get(minLevel)).toFixed(1)}`;
+  levels.forEach((level, index) => {
+    const rate = byLevel.get(level);
+    const next = index + 1 < levels.length ? levels[index + 1] : SKILL_MAX_LEVEL;
+    path += ` L ${x(next).toFixed(1)} ${y(rate).toFixed(1)}`;
+    if (index + 1 < levels.length) {
+      path += ` L ${x(next).toFixed(1)} ${y(byLevel.get(next)).toFixed(1)}`;
+    }
+  });
+
+  let svg = tmpl`<svg class="method-curve" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"
+    role="img" aria-label="Xp an hour by level, ${String(minLevel)} to ${String(SKILL_MAX_LEVEL)}">`;
+  svg += tmpl`<line class="method-curve-axis" x1="${PAD_L}" y1="${(H - PAD_B).toFixed(1)}"
+    x2="${W - PAD_R}" y2="${(H - PAD_B).toFixed(1)}"/>`;
+  svg += tmpl`<path class="method-curve-line" d="${path}"/>`;
+  for (const level of levels) {
+    svg += tmpl`<circle class="method-curve-pt" cx="${x(level).toFixed(1)}"
+      cy="${y(byLevel.get(level)).toFixed(1)}" r="2"/>`;
+  }
+  // **Only where the method is already unlocked.** A level below the first
+  // band has no rate this method has ever paid, and marking one would claim
+  // a number nobody earns yet.
+  const knownLevel = [...levels].reverse().find((level) => level <= at);
+  if (knownLevel !== undefined) {
+    const atX = x(Math.max(minLevel, Math.min(at, SKILL_MAX_LEVEL)));
+    svg += tmpl`<circle class="method-curve-at" cx="${atX.toFixed(1)}"
+      cy="${y(byLevel.get(knownLevel)).toFixed(1)}" r="3.5"/>`;
+  }
+  svg += tmpl`<text class="method-curve-label" x="${PAD_L}" y="${H - 2}">${String(minLevel)}</text>`;
+  svg += tmpl`<text class="method-curve-label" x="${W - PAD_R}" y="${H - 2}"
+    text-anchor="end">${String(SKILL_MAX_LEVEL)}</text>`;
+  svg += "</svg>";
+  return tmpl`<span class="sub">Xp/hr by level — the dot is where you are now</span>` + svg;
+}
+
 async function showMethods(trail) {
   openOverlay(METHODS_TITLE, tmpl`<p class="empty">Ranking what this map can train…</p>`,
     "", { trail });
@@ -4044,10 +4252,10 @@ async function showMethods(trail) {
   for (const skill of named) {
     const option = payload.best[skill];
     const [status, why] = methodStatus(option.match);
-    const tip = tmpl`<b>${plain(option.method)}</b><span class="sub">${status} — ${why}</span><span class="hint">Click for every ${skill} method this map can reach</span>`;
+    const tip = tmpl`<b>${titleCase(plain(option.method))}</b><span class="sub">${status} — ${why}</span><span class="hint">Click for every ${skill} method this map can reach</span>`;
     out += tmpl`<li class="arguable" role="button" tabindex="0" data-skill="${skill}" data-tip="${tip}">
       <img class="skill-icon" src="/assets/skill/${skill}.png" alt="">
-      <span class="name">${plain(option.method)}</span>
+      <span class="name">${titleCase(plain(option.method))}</span>
       <span class="sub">${skill} ${payload.levels[skill]}</span>
       ${raw(methodRate(option))}</li>`;
   }
@@ -4085,25 +4293,68 @@ async function showSkillMethods(skill, trail) {
     return openOverlay(skill, tmpl`<p class="empty">Nothing this map can reach trains
       ${skill} at a rate worth quoting.</p>`, "", { trail });
   }
+  // **Grouped by method, not one row per level threshold** - see
+  // `groupMethodOptions`. `groups.length` is the count worth quoting in the
+  // hint above the list: how many distinct things you could actually go and
+  // do, not how many level bands the export happens to sample them at.
+  const groups = groupMethodOptions(options);
   const render = () => {
-    let out = tmpl`<p class="hint">${String(options.length)} method${options.length === 1 ? "" : "s"}
+    let out = tmpl`<p class="hint">${String(groups.length)} method${groups.length === 1 ? "" : "s"}
       this map can reach, best first, at ${skill} ${String(at)}. A method above that
       level is marked — it is what the climb is working towards rather than
-      what it can do today.</p><ul class="list">`;
-    out += withMore(options, "methods:" + skill, 15, (option) => {
+      what it can do today. One priced off a real recipe opens for its own
+      material chain; one with more than one level opens a curve on hover.</p><ul class="list">`;
+    out += withMore(groups, "methods:" + skill, 15, (group) => {
+      const option = group.best;
       const [status, why] = methodStatus(option.match);
       const locked = option.level && option.level > at;
-      const tip = tmpl`<b>${plain(option.method)}</b><span class="sub">${status} — ${why}</span>`
+      /* **Only a recipe has a chain to open.** Every other source - a
+       * scraped guide, GOTR, a spell, a computed method - prices its own
+       * materials its own way with no `Recipe.materials` behind it; see
+       * `training.trace_option`'s own docstring on why the scope stops
+       * there. `option.task` is the raw challenge key `recipe_for_task`
+       * needs - `option.method` is display-only and not guaranteed to
+       * round-trip back to one. */
+      const traceable = option.source === "recipe" && option.task;
+      const chart = methodCurveChart(group.members, at);
+      const tip = tmpl`<b>${titleCase(plain(option.method))}</b><span class="sub">${status} — ${why}</span>`
         + (option.source ? tmpl`<span class="sub">${option.source}</span>` : "")
-        + (locked ? tmpl`<span class="hint">Needs ${skill} ${String(option.level)}</span>` : "");
-      return tmpl`<li class="${locked ? "dim" : ""}" data-tip="${tip}">
-        <span class="name">${plain(option.method)}</span>
-        <span class="sub">${option.level ? "lvl " + option.level : ""}</span>
+        + (locked ? tmpl`<span class="hint">Needs ${skill} ${String(option.level)}</span>` : "")
+        + (traceable ? tmpl`<span class="hint">Click for its material chain</span>` : "")
+        + chart;
+      /* **Every row carries the same attributes, valued empty where they do
+       * not apply**, rather than a conditionally-spliced attribute list -
+       * `raw()` is for element content, never for an attribute (see its own
+       * comment above), so there is no safe way to interpolate a whole
+       * `role="button" tabindex="0"` fragment here. `wire()` below skips a
+       * row whose `data-task` came back empty, which is what actually makes
+       * a non-traceable row inert. */
+      return tmpl`<li class="${locked ? "dim" : ""} ${traceable ? "arguable" : ""}"
+        role="${traceable ? "button" : ""}" tabindex="${traceable ? "0" : "-1"}"
+        data-task="${traceable ? option.task : ""}" data-tip="${tip}">
+        <span class="name">${titleCase(plain(option.method))}</span>
+        <span class="sub">${option.level ? "lvl " + option.level : ""}${
+          group.members.length > 1 ? ` · ${group.members.length} levels` : ""}</span>
         ${raw(methodRate(option))}</li>`;
     });
     return out + "</ul>";
   };
+  /* **Re-run after every redraw, not just the first.** `ownsMore`'s own
+   * redraw replaces `overlay-body`'s whole `innerHTML` on "load more", which
+   * discards any listener attached to the rows it just destroyed - the same
+   * reason `showMethods`' skill rows are wired once because that dialog
+   * never redraws underneath itself, and this one does. */
+  const wire = () => {
+    for (const row of el["overlay-body"].querySelectorAll("[data-task]")) {
+      if (!row.dataset.task) continue;
+      const open = () => showMethodTrace(skill, row.dataset.task,
+        [...trail, { label: skill, go: () => showSkillMethods(skill, trail) }]);
+      row.onclick = open;
+      row.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } };
+    }
+  };
   openOverlay(skill, render(), "", { trail });
+  wire();
   /* **Registered under the prefix, not the key.** The delegated handler looks
    * its owner up as `key.split(":")[0]`, so `methods:Agility` finds nothing
    * and the control silently ignores you - which is what
@@ -4112,8 +4363,93 @@ async function showSkillMethods(skill, trail) {
    * whole of the bookkeeping needed. */
   ownsMore("methods", () => {
     el["overlay-body"].innerHTML = render();
+    wire();
   });
 }
+
+/* **A method's own material chain.** `showSkillMethods`' rows open here for
+ * whichever ones `trace_option` can actually build a tree for - see that
+ * function's own docstring on scope. The tree is rated already
+ * (`per_hour` filled at every node by `training.rate_material_tree`), so
+ * this only renders what the payload already carries rather than repeating
+ * the arithmetic in a second language. */
+async function showMethodTrace(skill, task, trail) {
+  openOverlay(skill, tmpl`<p class="empty">Reading the chain…</p>`, "", { trail });
+  let payload;
+  try {
+    payload = await getJSON(
+      "/api/training-method?" + panelQuery()
+      + "&skill=" + encodeURIComponent(skill) + "&task=" + encodeURIComponent(task)
+    );
+  } catch (error) {
+    return openOverlay(skill, tmpl`<p class="empty">${error.message}</p>`, "", { trail });
+  }
+  const tree = payload.tree;
+  if (!tree) {
+    return openOverlay(skill, tmpl`<p class="empty">Nothing here to break down - this
+      method is not priced off a recipe this project can walk.</p>`, "", { trail });
+  }
+  const title = titleCase(plain(tree.label)) || skill;
+  const perHour = Math.round(tree.per_hour).toLocaleString();
+  const seconds = (tree.hours * 3600).toLocaleString(undefined, { maximumFractionDigits: 1 });
+  let out = tmpl`<p class="hint"><b>${String(perHour)}</b> an hour, at
+    <b>${seconds}s</b> a time - one action's own chain, not the whole climb.
+    Expand a link deeper than a couple of hops in for its own sourcing.</p>`;
+  out += methodTreeNode(tree, 0);
+  openOverlay(title, out, "", { trail });
+}
+
+/* **A node deeper than this stays collapsed until clicked**, matching the
+ * brief's own worry about a real nine-hop chain rendering as an unreadable
+ * wall on first open - a short chain like Ruby's never reaches it. */
+const METHOD_TREE_OPEN_DEPTH = 2;
+
+function methodTreeNode(node, depth) {
+  const perHour = Math.round(node.per_hour).toLocaleString();
+  const seconds = (node.hours * 3600).toLocaleString(undefined, { maximumFractionDigits: 1 });
+  const has = node.children && node.children.length;
+  const open = depth < METHOD_TREE_OPEN_DEPTH;
+  /* **The children's `<ul>` is inside the `<li>`, not a sibling of it** -
+   * `<li class="group">...<ul class="list">...</ul></li>` is the shape
+   * every other nested list in this file already uses (see `renderItemRow`'s
+   * own group rows). Toggling reads it back as `:scope > ul.tree-children`,
+   * scoped to this node's own direct child so a click never opens or closes
+   * a grandchild's list by accident. */
+  const children = has
+    ? tmpl`<ul class="list tree-children ${open ? "" : "collapsed"}">`
+      + node.children.map((child) => methodTreeNode(child, depth + 1)).join("")
+      + "</ul>"
+    : "";
+  return tmpl`<li class="${has ? "arguable" : ""}"
+      role="${has ? "button" : ""}" tabindex="${has ? "0" : "-1"}"
+      data-tree-toggle="${has ? "1" : ""}" data-tip="${node.detail}">
+    <span class="name">${titleCase(plain(node.label))}${has ? raw(tmpl` <span class="tree-caret">${open ? "▾" : "▸"}</span>`) : ""}</span>
+    <span class="sub">${node.quantity === 1 ? "" : node.quantity + "x"} ${seconds}s</span>
+    <span class="num">${String(perHour)}/hr</span>${raw(children)}</li>`;
+}
+
+/* Delegated once, per the same reasoning `.find-link`'s own handler gives:
+ * a tree redrawn under `showMethodTrace` should not have to re-wire itself,
+ * and toggling one node must not touch any other's open/closed state - so
+ * this flips a class rather than re-rendering. `[data-tree-toggle="1"]`,
+ * not the bare attribute - a leaf carries the attribute too, empty, and
+ * `closest` matches presence alone regardless of value. */
+document.addEventListener("click", (event) => {
+  const toggle = event.target.closest('[data-tree-toggle="1"]');
+  if (!toggle) return;
+  const kids = toggle.querySelector(":scope > ul.tree-children");
+  if (!kids) return;
+  const caret = toggle.querySelector(":scope > span.name > .tree-caret");
+  const opening = kids.classList.contains("collapsed");
+  kids.classList.toggle("collapsed", !opening);
+  if (caret) caret.textContent = opening ? "▾" : "▸";
+});
+document.addEventListener("keydown", (event) => {
+  const toggle = event.target.closest?.('[data-tree-toggle="1"]');
+  if (!toggle || (event.key !== "Enter" && event.key !== " ")) return;
+  event.preventDefault();
+  toggle.click();
+});
 
 el["estimate-methods"].addEventListener("click", () => showMethods([]));
 
@@ -5696,6 +6032,49 @@ function knobScopeLabel() {
     : "this map only";
 }
 
+/* **Which unit a branch's number is in, for display only.** The stored figure
+ * is never touched - `editKnobs`' actual `<input value>` is left exactly as
+ * `String(knob.number)`, because that box is what gets sent back on Save,
+ * and rounding what a reader never typed would silently write a different
+ * override than the one shown. This only formats the read-only figures:
+ * the layer stack and the "Computed"/"Default" line, plus the placeholder,
+ * which is a hint and never submitted.
+ *
+ * `"count"` is a rate or a price - kills an hour, gp, xp an hour - where a
+ * fourteen-decimal float (`118.69894320859824` kills/hr) is precision nobody
+ * asked for and nobody can act on; floored, because a rate is never claimed
+ * to more than the nearest whole one. `"ticks"` is a single action's own
+ * seconds (`actions`, `runs`) - OSRS runs on a 0.6s tick, so a duration that
+ * is not a multiple of one was never really that number, and rounding *up*
+ * to the next tick is what `_route_hours`'s own `DEFAULT_ACTION_SECONDS`
+ * fallback and every recipe's tick cost already assume: partial ticks do not
+ * exist in the client this project is modelling. Branches absent here
+ * (`quests`, `wait`) are real-valued hours rather than either shape and are
+ * left alone. */
+const KNOB_UNIT = {
+  actions: "ticks",
+  runs: "ticks",
+  monsters: "count",
+  slayer: "count",
+  currencies: "count",
+  shops: "count",
+  training: "count",
+};
+
+const TICK_SECONDS = 0.6;
+
+function formatKnobNumber(value, branch) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return String(value);
+  const unit = KNOB_UNIT[branch];
+  if (unit === "ticks") {
+    return (Math.ceil(value / TICK_SECONDS) * TICK_SECONDS).toFixed(1);
+  }
+  if (unit === "count") {
+    return String(Math.floor(value));
+  }
+  return String(value);
+}
+
 /* One knob's stack, weakest layer first. A layer holding nothing is drawn as
  * a dash rather than omitted: "the scrape has no opinion here" is an answer,
  * and a row that vanished would read as a rendering fault.
@@ -5708,23 +6087,35 @@ function knobScopeLabel() {
 function knobLayers(knob) {
   const seen = knob.layers || {};
   const named = { scraped: "Wiki scrape", site: "Site override", map: "This map" };
+  /* **A fourth layer beyond the three config files.** `monsters` and
+   * `slayer` can be priced by simulating the fight, which outranks the
+   * scrape but is never written to a config file - so `knob.layer`/
+   * `knob.number` above can only ever say "scraped", even on a map where
+   * the estimate actually spent a simulated DPS rate instead. Comparing
+   * `effective` against the winning config layer's own number is what
+   * catches that: equal means the config layer really is what was spent,
+   * different means something outside the three files won. */
+  const computed = knob.effective !== null && knob.effective !== undefined
+    && knob.effective !== knob.number;
   let out = Object.keys(named).map((key) => {
     const held = seen[key] || {};
     const shown = held.number === null || held.number === undefined
       ? (held.value === null || held.value === undefined ? "—" : "set")
-      : String(held.number);
-    return tmpl`<div class="knob-layer ${knob.layer === key ? "on" : ""}">
+      : formatKnobNumber(held.number, knob.branch);
+    return tmpl`<div class="knob-layer ${knob.layer === key && !computed ? "on" : ""}">
       <span class="knob-layer-name">${named[key]}</span>
       <span class="knob-layer-value">${shown}</span></div>`;
   }).join("");
-  /* **Only where no layer holds one.** A layer that does is already showing
-   * the number and already bolded, so a second line repeating it is noise -
-   * and the whole reason this line exists is the case where the answer is not
-   * on any of the three. */
-  if (knob.layer === null && knob.effective !== null && knob.effective !== undefined) {
+  /* **Whenever the config stack was outrun, not only when it is empty.**
+   * A layer holding a number is already shown above - but where `computed`
+   * is true that number is not what the estimate spent, so the row this
+   * prints is the only place that says so. `knob.layer === null` still
+   * takes the plain "Default" label; anything else means a real config
+   * value lost to a fresher computation. */
+  if (computed) {
     out += tmpl`<div class="knob-layer on">
-      <span class="knob-layer-name">Default</span>
-      <span class="knob-layer-value">${String(knob.effective)}</span></div>`;
+      <span class="knob-layer-name">${knob.layer === null ? "Default" : "Computed"}</span>
+      <span class="knob-layer-value">${formatKnobNumber(knob.effective, knob.branch)}</span></div>`;
   }
   return out;
 }
@@ -5844,15 +6235,33 @@ async function editKnobs(name, paths) {
       ? tmpl`<button class="knob-revert" type="button" data-index="${String(index)}"
              data-layer="${knob.layer}" title="Remove this override">Revert</button>`
       : "";
+    /* **Pre-filled only from a real override, never from the scrape.**
+     * `knob.number` is the winning *config* layer's own number, and for
+     * `monsters`/`slayer` that can be the scrape even when a simulated DPS
+     * rate is what the estimate actually spent (see `knobLayers`'s
+     * `computed`). Filling the box with the scrape there would let an
+     * unedited Save write it out as an explicit override - silently
+     * replacing a working simulated rate with a worse fixed one. `yours`
+     * is already "a site or map override is what is really in force", so
+     * it is also the right gate for "there is something here worth
+     * showing back". */
     const field = knob.editable
       ? tmpl`<input class="knob-value" data-index="${String(index)}" type="number" min="0"
-             step="any" value="${knob.number === null ? "" : String(knob.number)}"
-             placeholder="${knob.effective === null || knob.effective === undefined ? "default" : String(knob.effective)}"
+             step="any" value="${yours && knob.number !== null ? String(knob.number) : ""}"
+             placeholder="${knob.effective === null || knob.effective === undefined ? "default" : formatKnobNumber(knob.effective, knob.branch)}"
              aria-label="${knob.path}">`
       : tmpl`<span class="knob-fixed">${knob.why || "not editable here"}</span>`;
+    /* **Said once, next to the row it is about.** A branch whose number is
+     * easy to mistake for something else (`wait/<master>/<task>` is a
+     * computed figure with no wiki source at all) gets a line saying so -
+     * see `knobs.BRANCH_NOTES`. Most branches have none, and print nothing. */
+    const note = knob.note
+      ? tmpl`<p class="knob-note">${knob.note}</p>`
+      : "";
     return tmpl`<div class="knob ${yours ? "mine" : ""}">
       ${raw(yours ? tmpl`<span class="knob-flag">Overridden</span>` : "")}
       <code class="knob-path">${raw(knobPath(knob))}</code>
+      ${raw(note)}
       <div class="knob-layers">${raw(knobLayers(knob))}</div>
       <div class="knob-controls">${raw(field)}${raw(revert)}</div>
     </div>`;
