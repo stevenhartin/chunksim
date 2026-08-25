@@ -264,7 +264,10 @@ def test_tasks_export_json_to_stdout_replaces_the_summary(
 
     result = json.loads(capsys.readouterr().out)
     assert result["valid"]["Nonskill"] == {"Use bones": True}
-    assert result["unsupported"] == ["Nonskill/Earn points"]
+    # `QuestPointsNeeded: 5` is a real, evaluated gate now - the seed quest
+    # point total is `1`, so `Earn points` is simply invalid rather than
+    # `unsupported`. See `tests/test_challenges.py::TestQuestPointsNeeded`.
+    assert result["unsupported"] == []
 
 
 def test_unlock_cache_map_saves_a_readable_map(

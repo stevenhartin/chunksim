@@ -8,11 +8,17 @@ import pytest
 
 from chunksim.derive.challenges import (
     UNSUPPORTED_CATEGORIES,
+    _aggregate_gates_met,
+    _combat_level_reachable,
+    _combat_point_total,
     _compile_items,
     _item_plan_met,
     _is_secondary,
     _items_requirement_met,
+    _kudos_total,
     _objects_requirement,
+    _possible_skill_total,
+    _quest_point_total,
     _seedable_objects,
     calc_challenges,
     contains_sections,
@@ -373,7 +379,11 @@ def test_source_quality_gate_allows_wield_crafted_items_rule() -> None:
     assert result.valid == {"Attack": {"Wield it": True}}
 
 
-def test_unsupported_challenges_do_not_block_evaluable_ones() -> None:
+def test_an_unmet_aggregate_gate_does_not_block_an_unrelated_challenge() -> None:
+    """`QuestPointsNeeded` is a real, evaluated gate now (see
+    `test_challenges._aggregate_gates_met` coverage below) rather than an
+    `unsupported` raise - unmet on an empty map (the seed is `1`), so
+    `Points` is simply invalid, and `Simple` is untouched by it."""
     info = _chunk_info(
         challenges={
             "Nonskill": {
@@ -386,7 +396,7 @@ def test_unsupported_challenges_do_not_block_evaluable_ones() -> None:
     result = calc_challenges({}, {}, _EMPTY, info, rules={})
 
     assert result.valid == {"Nonskill": {"Simple": True}}
-    assert result.unsupported == frozenset({"Nonskill/Points"})
+    assert result.unsupported == frozenset()
 
 
 def test_tasks_requirement_needs_the_prerequisite_valid() -> None:
@@ -570,15 +580,188 @@ def test_inside_poh_primary_category_needs_the_rule_above_level_one() -> None:
     assert on.valid == {"Nonskill": {"POH task": 2}}
 
 
-def test_unsupported_level_gates_raise_are_caught_and_reported() -> None:
-    info = _chunk_info(
-        challenges={"Nonskill": {"Points task": {"QuestPointsNeeded": 5}}}
-    )
+class TestQuestPointsNeeded:
+    """Port of upstream's `questPointTotal`/`QuestPointsNeeded` gate - see
+    `_quest_point_total` and `_aggregate_gates_met`'s own docstrings for the
+    worker.js citations."""
 
-    result = calc_challenges({}, {}, _EMPTY, info, rules={})
+    def test_the_seed_is_one_on_an_empty_map(self) -> None:
+        assert _quest_point_total({}, _chunk_info(), {}) == 1
 
-    assert result.valid == {}
-    assert result.unsupported == frozenset({"Nonskill/Points task"})
+    def test_every_valid_quests_points_are_summed(self) -> None:
+        info = _chunk_info(
+            challenges={"Quest": {"A": {"QuestPoints": 2}, "B": {"QuestPoints": 3}}}
+        )
+        valid = {"Quest": {"A": True, "B": True}}
+        assert _quest_point_total(valid, info, {}) == 1 + 2 + 3
+
+    def test_a_backlogged_quest_step_does_not_count(self) -> None:
+        info = _chunk_info(challenges={"Quest": {"A": {"QuestPoints": 2}}})
+        valid = {"Quest": {"A": True}}
+        assert _quest_point_total(valid, info, {"Quest": {"A": True}}) == 1
+
+    def test_the_gate_blocks_below_the_threshold(self) -> None:
+        info = _chunk_info(challenges={"Nonskill": {"Buy cape": {"QuestPointsNeeded": 5}}})
+        result = calc_challenges({}, {}, _EMPTY, info, rules={})
+        assert result.valid == {}
+        assert result.unsupported == frozenset()
+
+    def test_the_gate_opens_once_enough_quests_are_valid(self) -> None:
+        info = _chunk_info(
+            challenges={
+                "Quest": {"Do quest A": {"QuestPoints": 10}},
+                "Nonskill": {"Buy cape": {"QuestPointsNeeded": 5}},
+            }
+        )
+        result = calc_challenges({}, {}, _EMPTY, info, rules={})
+        assert result.valid["Quest"] == {"Do quest A": True}
+        assert result.valid["Nonskill"] == {"Buy cape": True}
+
+
+class TestCombatPointsNeeded:
+    def test_the_seed_is_zero(self) -> None:
+        assert _combat_point_total({}, _chunk_info(), {}) == 0
+
+    def test_a_valid_diary_steps_combat_points_are_summed(self) -> None:
+        info = _chunk_info(challenges={"Diary": {"Task#1": {"CombatPoints": 5}}})
+        valid = {"Diary": {"Task#1": True}}
+        assert _combat_point_total(valid, info, {}) == 5
+
+    def test_zero_blocks_the_gate_whatever_the_threshold(self) -> None:
+        """`!combatPointTotal` is the upstream test, not a comparison - a
+        total of `0` refuses even a `CombatPointsNeeded` of `0`."""
+        info = _chunk_info(challenges={"Nonskill": {"Reward": {"CombatPointsNeeded": 0}}})
+        result = calc_challenges({}, {}, _EMPTY, info, rules={})
+        assert result.valid == {}
+
+    def test_the_gate_opens_once_a_diary_step_is_valid(self) -> None:
+        info = _chunk_info(
+            challenges={
+                "Diary": {"Task#1": {"CombatPoints": 5}},
+                "Nonskill": {"Reward": {"CombatPointsNeeded": 5}},
+            }
+        )
+        result = calc_challenges({}, {}, _EMPTY, info, rules={})
+        assert result.valid["Diary"] == {"Task#1": True}
+        assert result.valid["Nonskill"] == {"Reward": True}
+
+
+class TestKudosNeeded:
+    def test_the_seed_is_zero(self) -> None:
+        assert _kudos_total({}, _chunk_info()) == 0
+
+    def test_every_valid_challenges_kudos_is_summed_across_skills(self) -> None:
+        info = _chunk_info(
+            challenges={
+                "Nonskill": {"A": {"Kudos": 5}},
+                "Attack": {"B": {"Kudos": 3}},
+            }
+        )
+        valid = {"Nonskill": {"A": True}, "Attack": {"B": True}}
+        assert _kudos_total(valid, info) == 8
+
+    def test_kudos_is_not_backlog_gated(self) -> None:
+        """Unlike quest/combat points, upstream's own sum carries no
+        backlog check - a faithful port, not an oversight."""
+        info = _chunk_info(challenges={"Nonskill": {"A": {"Kudos": 5}}})
+        info_challenges = calc_challenges(
+            {}, {}, _EMPTY, info, rules={}, backlog={"Nonskill": {"A": True}}
+        )
+        # `A` carries no gate of its own, so it is still valid despite the
+        # backlog entry - kudos-earning and backlog are independent here.
+        assert info_challenges.valid["Nonskill"] == {"A": True}
+
+    def test_zero_needed_is_no_requirement_at_all(self) -> None:
+        """`!!0` is falsy in JS - `KudosNeeded: 0` never gates, unlike the
+        presence tests the other four gates use."""
+        info = _chunk_info(challenges={"Nonskill": {"Free": {"KudosNeeded": 0}}})
+        result = calc_challenges({}, {}, _EMPTY, info, rules={})
+        assert result.valid == {"Nonskill": {"Free": True}}
+
+    def test_the_gate_blocks_below_the_threshold(self) -> None:
+        info = _chunk_info(challenges={"Nonskill": {"Needs kudos": {"KudosNeeded": 10}}})
+        result = calc_challenges({}, {}, _EMPTY, info, rules={})
+        assert result.valid == {}
+
+    def test_the_gate_opens_once_enough_kudos_is_earned(self) -> None:
+        info = _chunk_info(
+            challenges={
+                "Nonskill": {
+                    "Earn kudos": {"Kudos": 10},
+                    "Needs kudos": {"KudosNeeded": 10},
+                }
+            }
+        )
+        result = calc_challenges({}, {}, _EMPTY, info, rules={})
+        assert result.valid["Nonskill"]["Earn kudos"] is True
+        assert result.valid["Nonskill"]["Needs kudos"] is True
+
+
+class TestTotalLevelNeeded:
+    def test_the_floor_alone_is_thirty_three_on_an_empty_map(self) -> None:
+        """23 skills at the un-trained floor of `1` plus Hitpoints' own
+        minimum of `10` - `Combat` itself is excluded from the sum."""
+        assert _possible_skill_total({}, {}, None) == 23 + 10
+
+    def test_a_trainable_skill_contributes_ninety_nine(self) -> None:
+        assert (
+            _possible_skill_total({"Woodcutting": True}, {}, None)
+            == 22 + 10 + 99
+        )
+
+    def test_a_passive_floor_beats_the_untrained_one(self) -> None:
+        assert _possible_skill_total({}, {"Mining": 40}, None) == 22 + 10 + 40
+
+    def test_a_slayer_lock_is_taken_outright_not_folded(self) -> None:
+        """Upstream reads `slayerLocked['level']` directly rather than the
+        map's own `MaxSkill` cap - see `_possible_skill_total`'s own
+        docstring on why this is a distinct parameter."""
+        assert _possible_skill_total({}, {}, 55) == 22 + 10 + 55
+
+    def test_the_gate_is_met_by_the_floor_alone(self) -> None:
+        info = _chunk_info(challenges={"Nonskill": {"Achievement": {"TotalLevelNeeded": 30}}})
+        result = calc_challenges({}, {}, _EMPTY, info, rules={})
+        assert result.valid == {"Nonskill": {"Achievement": True}}
+
+    def test_the_gate_blocks_above_the_floor(self) -> None:
+        info = _chunk_info(challenges={"Nonskill": {"Achievement": {"TotalLevelNeeded": 100}}})
+        result = calc_challenges({}, {}, _EMPTY, info, rules={})
+        assert result.valid == {}
+
+
+class TestCombatLevelNeeded:
+    def test_no_combat_skill_is_trainable_with_no_monster(self) -> None:
+        assert _combat_level_reachable({}) is False
+
+    def test_any_one_combat_skill_trainable_is_enough(self) -> None:
+        assert _combat_level_reachable({"Magic": True}) is True
+
+    def test_the_value_is_never_read_only_the_keys_presence(self) -> None:
+        """`hasOwnProperty`, not a truthy test - matches
+        `QuestPointsNeeded`/`CombatPointsNeeded`/`TotalLevelNeeded`, not
+        `KudosNeeded`."""
+        assert _aggregate_gates_met(
+            {"CombatLevelNeeded": False},
+            quest_points=1,
+            combat_points=0,
+            kudos=0,
+            possible_skill_total=0,
+            combat_level_reachable=False,
+        ) is False
+
+    def test_the_gate_blocks_with_no_monster_reachable(self) -> None:
+        info = _chunk_info(challenges={"Nonskill": {"Fight club": {"CombatLevelNeeded": True}}})
+        result = calc_challenges({}, {}, _EMPTY, info, rules={})
+        assert result.valid == {}
+
+    def test_the_gate_opens_once_a_monster_is_reachable(self) -> None:
+        idx = SourceIndex(
+            items={}, objects={}, monsters={"Goblin": {"100": True}},
+            npcs={}, shops={}, drop_rates={},
+        )
+        info = _chunk_info(challenges={"Nonskill": {"Fight club": {"CombatLevelNeeded": True}}})
+        result = calc_challenges({}, {}, idx, info, rules={})
+        assert result.valid == {"Nonskill": {"Fight club": True}}
 
 
 def test_a_valid_challenges_output_feeds_the_next_pass_as_a_new_item() -> None:

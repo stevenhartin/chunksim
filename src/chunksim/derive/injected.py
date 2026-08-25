@@ -11,15 +11,19 @@ the export alone and those tasks simply do not exist, with no error to say so.
 with the name as it writes the definition, but the definition lands in
 `chunkInfo['challenges']` *before* the scan at worker.js:3673, so the
 challenge is then checked like any other - and both capes are gated on a
-running total this project does not compute (`QuestPointsNeeded`,
-`TotalLevelNeeded`, two of `challenges._LEVEL_GATES_NOT_SUPPORTED`).
-Forcing them valid here made `Quest point cape (t)` a reachable item and
-`Perform the Quest point cape emote` an active Lumbridge Elite task on a map
-where upstream lists neither - the oracle caught it. So the definitions are
-overlaid and nothing else: the ordinary evaluation refuses the gate, and the
-name lands in `ChallengeResult.unsupported`, which is this project's way of
-saying "upstream has a challenge here and this tool cannot judge it" rather
-than guessing either way.
+running total, `QuestPointsNeeded`/`TotalLevelNeeded`
+(`challenges._aggregate_gates_met`). Forcing them valid *here* made `Quest
+point cape (t)` a reachable item and `Perform the Quest point cape emote` an
+active Lumbridge Elite task on a map where upstream lists neither - the
+oracle caught it, before either gate was implemented for real. **Both gates
+are now genuinely evaluated rather than refused**, and the quest point
+cape's own threshold - `_total_quest_points`, the sum of every `QuestPoints`
+in the whole export - is what keeps the result the same: no real chunk map
+reaches every quest in the game, so `_quest_point_total`'s own sum over just
+the *valid* ones falls short. So the definitions are overlaid and nothing
+else: the ordinary evaluation still refuses the gate on any map that has
+not, in fact, completed every quest, and does so honestly rather than by
+`unsupported` no longer being able to say so.
 
 The definition is what downstream needs regardless, because `other_tasks`'
 grouping, the panel's `Label` and `cli/listing` all look a name back up in

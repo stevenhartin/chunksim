@@ -32,7 +32,8 @@ The modules, and what each owns:
 - `challenges.py` - which challenges are valid, as a two-phase fixed point.
   **`BiS` is never evaluated here.** Also **where every derivation command
   spends its time**: read the static/dynamic gate split before touching the
-  loop.
+  loop. The five aggregate level gates (`QuestPointsNeeded`, kudos, …) are
+  real now, not a raise - see `_aggregate_gates_met`.
 - `bis.py` - best-in-slot per (combat style, slot). Inherently
   **non-monotonic**: recomputed fresh per state, never accumulated.
 - `active_tasks.py` - per-skill active/obsolete/completed classification. A

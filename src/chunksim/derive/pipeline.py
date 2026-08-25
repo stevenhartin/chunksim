@@ -542,6 +542,7 @@ def derive(
             locked_equipment=locked_equipment,
             forced_valid=forced_valid_from(synthesised),
             item_plans=item_plans,
+            slayer_locked_level=state.slayer_locked.level if state.slayer_locked else None,
         )
         new_areas = unlockable_areas(
             challenges.valid,

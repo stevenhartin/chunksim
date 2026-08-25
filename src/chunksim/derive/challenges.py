@@ -84,6 +84,21 @@ Implemented:
   gate (a `Category` naming a rule that's off invalidates the challenge,
   unless the category is in `maybePrimary` or is the `Secondary Primary`
   special case) plus the `InsidePOH Primary` category's hard block.
+- `QuestPointsNeeded`/`CombatPointsNeeded`/`KudosNeeded`/`TotalLevelNeeded`/
+  `CombatLevelNeeded` (`_aggregate_gates_met`, worker.js:3725-3763): five
+  gates over running totals - quest points, Achievement Diary combat
+  points, kudos, an achievable total skill level, and whether any combat
+  skill is trainable at all - each computed once per inner pass from the
+  *previous* pass's `valid` (`_quest_point_total`/`_combat_point_total`/
+  `_kudos_total`/`_possible_skill_total`, worker.js:3355-3372/3411-3413/
+  3436-3450), the same self-referential shape `trainable` already is.
+  **Dynamic, not static**: a challenge these gate is re-checked every
+  inner pass, since completing one quest can unlock a later one the same
+  way a `Tasks`/`Skills` dependency already does. `KudosNeeded` is a
+  truthy-value test (`!!...['KudosNeeded']`, so `0` means "no
+  requirement"); the other four are presence tests, matching upstream's
+  own `hasOwnProperty` exactly - `CombatLevelNeeded`'s own value is never
+  read at all, only whether the key exists.
 - The `processingSkill` categories' (Runecraft, Magic, Herblore, Cooking,
   Firemaking, Fletching, Smithing, Crafting, Construction) "Highest Level"
   grouping (`_group_processing_skill_challenges`, worker.js:4413-4680):
@@ -98,11 +113,6 @@ Implemented:
 
 Not implemented - each raises `NotImplementedError` naming the mechanic,
 except where noted as a silent, documented approximation instead:
-- `QuestPointsNeeded`/`CombatPointsNeeded`/`KudosNeeded`/`TotalLevelNeeded`/
-  `CombatLevelNeeded` gates: correctly computing those aggregates needs
-  state (quest points earned, kudos, etc.) this module does not derive.
-  Rare in the export (single digits to low tens of challenges; 42 on the
-  map this was built against, all of them one of these five gates).
 - **Silent approximation, not a raise**: the "Highest Level" grouping above
   doesn't model upstream's `tools`/`ManualNonProcessing`/Quest-Diary-sub-task
   direct-add escapes, its `Boosting` level-shift, its multi-pass re-pick
@@ -442,13 +452,166 @@ _MAHOGANY_HOMES_CONTRACT = "contract for ~|Mahogany Homes|~"
 #: unsatisfiable requirement. Only `Monster[+]` gets this in worker.js.
 _ANY_MEMBER_FAMILIES = frozenset({"Monster[+]"})
 
-_LEVEL_GATES_NOT_SUPPORTED = (
-    "QuestPointsNeeded",
-    "CombatPointsNeeded",
-    "KudosNeeded",
-    "TotalLevelNeeded",
-    "CombatLevelNeeded",
-)
+def _quest_point_total(
+    valid: Mapping[str, Mapping[str, Any]],
+    chunk_info: ChunkInfo,
+    backlog: Mapping[str, Mapping[str, Any]],
+) -> int:
+    """Port of `questPointTotal` (worker.js:3355-3363): every valid `Quest`
+    step's own `QuestPoints`, plus the seed `1` upstream starts the counter
+    at. Backlog-gated like upstream's own sum - a backlogged quest step (or
+    its `#`-for-`/` alias) does not count, matching every other backlog
+    check in this module.
+
+    Computed from `valid` as it stood at the *start* of the current inner
+    pass - the same self-referential shape `trainable` already is, so a
+    quest that only becomes valid this pass is not double-counted and one
+    finished last pass is picked up the moment its `Output` seeds forward.
+    """
+    total: float = 1
+    backlogged = backlog.get("Quest") or {}
+    quest_challenges = _mapping(chunk_info.challenges, "Quest")
+    for name in valid.get("Quest", {}):
+        if name in backlogged or name.replace("#", "/") in backlogged:
+            continue
+        challenge = quest_challenges.get(name)
+        if isinstance(challenge, dict):
+            points = challenge.get("QuestPoints")
+            if isinstance(points, (int, float)) and not isinstance(points, bool):
+                total += points
+    return int(total)
+
+
+def _combat_point_total(
+    valid: Mapping[str, Mapping[str, Any]],
+    chunk_info: ChunkInfo,
+    backlog: Mapping[str, Mapping[str, Any]],
+) -> int:
+    """Port of `combatPointTotal` (worker.js:3357/3411-3413): every valid
+    `Diary` step's own `CombatPoints` (Combat Achievement points, despite
+    the export filing them under the `Diary` category), backlog-gated the
+    same way `_quest_point_total` is. Starts at `0`, not `1` - upstream's
+    own seed."""
+    total: float = 0
+    backlogged = backlog.get("Diary") or {}
+    diary_challenges = _mapping(chunk_info.challenges, "Diary")
+    for name in valid.get("Diary", {}):
+        if name in backlogged or name.replace("#", "/") in backlogged:
+            continue
+        challenge = diary_challenges.get(name)
+        if isinstance(challenge, dict):
+            points = challenge.get("CombatPoints")
+            if isinstance(points, (int, float)) and not isinstance(points, bool):
+                total += points
+    return int(total)
+
+
+def _kudos_total(valid: Mapping[str, Mapping[str, Any]], chunk_info: ChunkInfo) -> int:
+    """Port of `kudosTotal` (worker.js:3436-3442): every valid challenge's
+    own `Kudos`, across every skill - **not backlog-gated**, unlike the two
+    totals above. Upstream's own sum carries no backlog check here, and
+    this is a faithful port rather than an oversight."""
+    total: float = 0
+    for skill, names in valid.items():
+        skill_challenges = _mapping(chunk_info.challenges, skill)
+        for name in names:
+            challenge = skill_challenges.get(name)
+            if isinstance(challenge, dict):
+                points = challenge.get("Kudos")
+                if isinstance(points, (int, float)) and not isinstance(points, bool):
+                    total += points
+    return int(total)
+
+
+def _possible_skill_total(
+    trainable: Mapping[str, bool],
+    passive_skill: Mapping[str, int],
+    slayer_locked_level: int | None,
+) -> int:
+    """Port of `possibleSkillTotal` (worker.js:3356/3358-3372): the total
+    level this map could ever *prove*, one term per skill in `_SKILL_NAMES`
+    bar `Combat` itself - `99` where `trainable` already says the skill can
+    be trained to any level, the map's own floor where it cannot, `10` for
+    Hitpoints' own minimum, `1` otherwise. **Slayer takes its lock's own
+    level outright when one is set**, not the floor or `99` - upstream reads
+    `slayerLocked['level']` directly rather than folding it against an
+    ordinary `MaxSkill` cap the way `pipeline.slayer_capped_max_skill`
+    does elsewhere, so this takes the lock level as its own parameter
+    instead of reading the folded `max_skill`.
+    """
+    total = 0
+    for skill in _SKILL_NAMES:
+        if skill == "Combat":
+            continue
+        if skill == "Slayer" and slayer_locked_level is not None:
+            total += slayer_locked_level
+        elif trainable.get(skill):
+            total += 99
+        elif skill in passive_skill and passive_skill[skill]:
+            total += max(1, passive_skill[skill])
+        elif skill == "Hitpoints":
+            total += 10
+        else:
+            total += 1
+    return total
+
+
+def _combat_level_reachable(trainable: Mapping[str, bool]) -> bool:
+    """Port of the `CombatLevelNeeded` gate's own condition (worker.js:3758-
+    3763): not an actual combat level, just whether *any* of the seven
+    combat skills is currently trainable at all."""
+    return any(trainable.get(skill) for skill in _COMBAT_SKILLS)
+
+
+def _aggregate_gates_met(
+    challenge: Mapping[str, Any],
+    *,
+    quest_points: int,
+    combat_points: int,
+    kudos: int,
+    possible_skill_total: int,
+    combat_level_reachable: bool,
+) -> bool:
+    """Port of worker.js:3725-3763's five aggregate gates.
+
+    **Dynamic, not static**: unlike `_level_gates_met`'s three, none of
+    these five totals is fixed for the life of a `calc_challenges` call - a
+    chunk unlocked mid-derivation can raise `kudos`/`quest_points` and open
+    a challenge gated on them, exactly as a `Tasks`/`Skills` dependency
+    already can. Called from `_dynamic_gates_met`, once per candidate per
+    inner pass, against totals computed once per pass (see
+    `_quest_point_total` and its three siblings above).
+
+    `QuestPointsNeeded`/`CombatPointsNeeded`/`TotalLevelNeeded` are
+    presence tests (`hasOwnProperty`), matching upstream exactly - a
+    `QuestPointsNeeded: 0` still gates. `KudosNeeded` is a **truthy-value**
+    test (`!!...['KudosNeeded']`), so `0` there means "no requirement", the
+    one gate here that differs in shape from its siblings.
+    `CombatLevelNeeded` is a presence test whose own *value* is never read
+    at all - only whether the key exists.
+    """
+    if "QuestPointsNeeded" in challenge:
+        needed = challenge["QuestPointsNeeded"]
+        if quest_points <= 0 or (
+            isinstance(needed, (int, float)) and quest_points < needed
+        ):
+            return False
+    if "CombatPointsNeeded" in challenge:
+        needed = challenge["CombatPointsNeeded"]
+        if combat_points <= 0 or (
+            isinstance(needed, (int, float)) and combat_points < needed
+        ):
+            return False
+    kudos_needed = challenge.get("KudosNeeded")
+    if kudos_needed and isinstance(kudos_needed, (int, float)) and kudos < kudos_needed:
+        return False
+    if "TotalLevelNeeded" in challenge:
+        needed = challenge["TotalLevelNeeded"]
+        if isinstance(needed, (int, float)) and possible_skill_total < needed:
+            return False
+    if "CombatLevelNeeded" in challenge and not combat_level_reachable:
+        return False
+    return True
 
 
 @dataclass(frozen=True)
@@ -458,11 +621,17 @@ class ChallengeResult:
     exists - `True` always for `Quest`/`Diary`, matching upstream exactly.
 
     `unsupported` lists every `skill/name` challenge that could not be
-    evaluated at all (it uses a mechanic this module doesn't implement, e.g.
-    an item family or the `*` secondary marker) - such a challenge is never
-    valid here, which is a real gap, not a probably-harmless one: report
-    `unsupported` alongside `valid` rather than silently treating an absence
-    from `valid` as "checked and invalid".
+    evaluated at all - it uses a mechanic this module doesn't implement, and
+    `_static_gates_met`'s own `except NotImplementedError` is the one place
+    that fills it, from whatever a static gate raises. **Empty on any real
+    map today**: the five `QuestPointsNeeded`/`CombatPointsNeeded`/
+    `KudosNeeded`/`TotalLevelNeeded`/`CombatLevelNeeded` gates were the last
+    mechanic that raised here, and `_aggregate_gates_met` now evaluates all
+    five for real (see the module docstring). The field and the catch stay
+    rather than being deleted - `unsupported` is a real gap, not a
+    probably-harmless one, and this is the mechanism a future one would need.
+    Report `unsupported` alongside `valid` rather than silently treating an
+    absence from `valid` as "checked and invalid".
 
     `available_items` is `SourceIndex.items` plus every valid challenge's
     `Output` (the fixed point's own `_seed_items_with_outputs` result, at
@@ -1458,9 +1627,12 @@ def _category_gate_met(
 
 
 def _level_gates_met(challenge: Mapping[str, Any], skill: str, max_skill: Mapping[str, int], rules: Mapping[str, Any]) -> bool:
-    for gate in _LEVEL_GATES_NOT_SUPPORTED:
-        if gate in challenge:
-            raise NotImplementedError(f"the {gate!r} gate is not supported")
+    """`MaxSkill`/`Not F2P`/`Not Skiller` - the three level-shaped gates that
+    are genuinely static (fixed for the life of one `calc_challenges` call).
+    The five aggregate gates (`QuestPointsNeeded` and friends) read a
+    running total that moves as `valid` grows, so they live in
+    `_aggregate_gates_met` instead, called from the dynamic loop - see the
+    module docstring."""
     level = challenge.get("Level")
     if isinstance(level, (int, float)) and skill in max_skill and level > max_skill[skill]:
         return False
@@ -1511,8 +1683,12 @@ def _static_gates_met(
 
     On the real export this rejects **8,757 of 14,692** challenges, and the
     loops used to re-derive every one of those rejections nine to twelve times
-    per call. Raises `NotImplementedError` for the unsupported level gates,
-    exactly where `_evaluate_challenge` used to.
+    per call. Nothing raises `NotImplementedError` here today - the five
+    aggregate level gates were the last mechanic that did, and they moved to
+    `_dynamic_gates_met` (see the module docstring) since none of them is
+    genuinely static. `calc_challenges`'s own `except NotImplementedError`
+    around this call is the mechanism a future unsupported mechanic would
+    still use.
     """
     if construction_locked and _MAHOGANY_HOMES_CONTRACT in name:
         return False
@@ -1676,6 +1852,11 @@ def _dynamic_gates_met(
     trainable: Mapping[str, bool],
     prev_valid: Mapping[str, Mapping[str, Any]],
     clue_possible: Mapping[str, float],
+    quest_points: int,
+    combat_points: int,
+    kudos: int,
+    possible_skill_total: int,
+    combat_level_reachable: bool,
 ) -> bool:
     """The half that has to stay in the loop: `Items` and the buildable half
     of `Objects` read indexes the fixed point keeps re-seeding, and
@@ -1690,6 +1871,12 @@ def _dynamic_gates_met(
     same reason: it is a test on the settled `Secondary` flag, which reads the
     item index. Nothing in the export sets `forcedPrimary` - `Secondary MTA`
     does, on one named challenge, at worker.js:3605. See `_FORCED_PRIMARY`.
+
+    `quest_points`/`combat_points`/`kudos`/`possible_skill_total`/
+    `combat_level_reachable` are `_aggregate_gates_met`'s own five running
+    totals - dynamic for the same reason `Skills`/`Tasks` are: each moves as
+    `valid` grows. See that function and `_quest_point_total`'s three
+    siblings, above.
     """
     if deferred_objects and not _objects_met(deferred_objects, objects):
         return False
@@ -1700,6 +1887,15 @@ def _dynamic_gates_met(
     if not _clue_reward_gate_met(challenge, rules, clue_possible):
         return False
     if not _skills_requirement_met(challenge, max_skill, valid, trainable=trainable):
+        return False
+    if not _aggregate_gates_met(
+        challenge,
+        quest_points=quest_points,
+        combat_points=combat_points,
+        kudos=kudos,
+        possible_skill_total=possible_skill_total,
+        combat_level_reachable=combat_level_reachable,
+    ):
         return False
     if (skill, name) == _FORCED_PRIMARY and rules.get("Secondary MTA") is not True:
         # `forcedPrimary && Secondary -> invalid`. With `Secondary MTA` on,
@@ -1736,6 +1932,11 @@ def _evaluate_challenge(
     #: refuses every clue *reward* task. Single-challenge callers have no
     #: fixed point to measure it from; the loop passes the real one.
     clue_possible: Mapping[str, float] = {},
+    #: Defaults to upstream's own starting state, same reason as
+    #: `clue_possible` above - no backlog to gate `_quest_point_total`/
+    #: `_combat_point_total` against, and no Slayer lock.
+    backlog: Mapping[str, Mapping[str, Any]] = {},
+    slayer_locked_level: int | None = None,
 ) -> int | str | bool | None:
     """Both halves, in upstream's order. `calc_challenges` runs the halves
     separately (static once, dynamic per pass); this stays as the composed
@@ -1782,6 +1983,11 @@ def _evaluate_challenge(
         max_skill=max_skill,
         trainable=trainable,
         prev_valid=prev_valid,
+        quest_points=_quest_point_total(valid, chunk_info, backlog),
+        combat_points=_combat_point_total(valid, chunk_info, backlog),
+        kudos=_kudos_total(valid, chunk_info),
+        possible_skill_total=_possible_skill_total(trainable, {}, slayer_locked_level),
+        combat_level_reachable=_combat_level_reachable(trainable),
     ):
         return None
     return _challenge_value(challenge, skill)
@@ -2743,6 +2949,12 @@ def calc_challenges(
     forced_valid: Mapping[str, Mapping[str, int | str | bool]] | None = None,
     max_iterations: int = 15,
     item_plans: MutableMapping[tuple[str, str], _ItemPlan | None] | None = None,
+    #: `state.slayer_locked.level`, for `_possible_skill_total`'s own
+    #: Slayer special case - upstream reads `slayerLocked['level']` outright
+    #: there rather than folding it against an ordinary `MaxSkill` cap the
+    #: way `pipeline.slayer_capped_max_skill` does for every other gate, so
+    #: this is the raw lock level rather than the already-folded `max_skill`.
+    slayer_locked_level: int | None = None,
 ) -> ChallengeResult:
     """Port of `calcChallenges`/`calcChallengesWork`'s core fixed point - see
     the module docstring for exactly what is and is not implemented.
@@ -2886,12 +3098,13 @@ def calc_challenges(
                     construction_locked=construction_locked,
                 )
             except NotImplementedError:
-                # A challenge using a mechanic this module doesn't implement -
-                # always one of `_LEVEL_GATES_NOT_SUPPORTED`, the only raise on
-                # this path - must not abort every other, evaluable challenge.
-                # Recording it once here is the same answer the per-pass
-                # `unsupported.add` reached, since the gate is a static property
-                # of the challenge. See `ChallengeResult.unsupported`.
+                # A challenge using a static mechanic this module doesn't
+                # implement - nothing on this path raises today (the five
+                # aggregate level gates were the last thing that did, and
+                # they moved to the dynamic loop since none of them is
+                # genuinely static - see `ChallengeResult.unsupported`), but
+                # a static gate that must not abort every other, evaluable
+                # challenge still has somewhere to report through.
                 unsupported.add(f"{skill}/{name}")
                 continue
             if not survives:
@@ -2951,6 +3164,16 @@ def calc_challenges(
                 )
                 for skill in _UNIVERSAL_PRIMARY
             }
+            # The five `_aggregate_gates_met` totals, the same
+            # previous-pass-validity shape `trainable` above already is -
+            # see `_quest_point_total` and its siblings.
+            quest_points = _quest_point_total(valid, chunk_info, backlog)
+            combat_points = _combat_point_total(valid, chunk_info, backlog)
+            kudos = _kudos_total(valid, chunk_info)
+            possible_skill_total = _possible_skill_total(
+                trainable, passive_skill, slayer_locked_level
+            )
+            combat_level_reachable = _combat_level_reachable(trainable)
             new_valid: dict[str, dict[str, int | str | bool]] = {}
             for skill, name, challenge, plan, deferred, value in candidates:
                 # Before the gates, and before anything downstream can read
@@ -2985,6 +3208,11 @@ def calc_challenges(
                     max_skill=max_skill,
                     trainable=trainable,
                     prev_valid=valid,
+                    quest_points=quest_points,
+                    combat_points=combat_points,
+                    kudos=kudos,
+                    possible_skill_total=possible_skill_total,
+                    combat_level_reachable=combat_level_reachable,
                 ):
                     new_valid.setdefault(skill, {})[name] = value
             _inject_manual_tasks(new_valid, challenges, manual_tasks)

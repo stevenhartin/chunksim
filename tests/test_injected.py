@@ -101,7 +101,7 @@ def test_derived_carries_no_injections_by_default() -> None:
 
 
 @pytest.mark.real_cache
-def test_the_quest_cape_is_reported_unjudgeable_rather_than_valid(
+def test_the_quest_cape_stays_invalid_now_the_gate_is_real(
     real_derived: Derived,
 ) -> None:
     """The oracle regression this shape exists to prevent.
@@ -110,13 +110,20 @@ def test_the_quest_cape_is_reported_unjudgeable_rather_than_valid(
     seeding looks like in isolation - made `Quest point cape (t)` a reachable
     item, and that made `Perform the Quest point cape emote` an active
     Lumbridge Elite diary task on a map where upstream lists neither. The
-    definition is overlaid so the challenge exists; its `QuestPointsNeeded`
-    gate is unported, so it lands in `unsupported` and seeds nothing.
+    definition is overlaid so the challenge exists.
+
+    **`QuestPointsNeeded` is a real, evaluated gate now** (see
+    `challenges._aggregate_gates_met`), not a refusal - so this no longer
+    lands in `unsupported`. The result is the same for the reason
+    `derive/injected.py`'s own docstring gives: `_total_quest_points` sums
+    every `QuestPoints` in the whole export, and no real chunk map has
+    valid quests summing to that - this map's own real total is well short
+    of the export's `340`.
     """
     assert real_derived.injected == {
         "Nonskill": {_QUEST_CAPE: real_derived.injected["Nonskill"][_QUEST_CAPE]}
     }
-    assert f"Nonskill/{_QUEST_CAPE}" in real_derived.challenges.unsupported
+    assert real_derived.challenges.unsupported == frozenset()
     assert _QUEST_CAPE not in real_derived.challenges.valid.get("Nonskill", {})
     assert "Quest point cape (t)" not in real_derived.challenges.available_items
 

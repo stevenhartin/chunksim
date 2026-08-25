@@ -297,18 +297,21 @@ you first look at them rather than all 1,558 up front.
 **This is a genuine, but deliberately partial, reimplementation of source-chunk's own validity logic**
 — not a wrapper around it. `tasks`/`unlock`/`simulate` cover 28 of the 29 challenge categories, plus
 `BiS`, which upstream synthesises at runtime rather than storing and which is computed here separately.
-What's left out is left out explicitly rather than silently approximated. The three gaps you're most
+What's left out is left out explicitly rather than silently approximated. The two gaps you're most
 likely to notice:
 
-- **Five level gates** — `QuestPointsNeeded`, `CombatPointsNeeded`, `KudosNeeded`, `TotalLevelNeeded`
-  and `CombatLevelNeeded`. Computing these needs state (quest points earned, kudos, …) that nothing
-  in the export provides, so a task carrying one is reported as *unsupported* instead of guessed at.
-  That's the only thing that ever lands in that bucket — 42 tasks on the map this was built against.
-  Run `chunksim tasks` and read the `unsupported` line for the count on *your* map.
 - **Best-in-slot set effects** — the Void/Obsidian/Inquisitor/Verac's/Crystal/Karil's DPS overrides
   aren't modelled, so a set-bonus item can be under-rated against a raw-stats rival.
 - **Manual choices during simulation** — chunk selection and blacklisting, and the `roll2`/`roll5`
   bonus rerolls. `chunksim simulate` rolls the way an untouched map would.
+
+The five level gates — `QuestPointsNeeded`, `CombatPointsNeeded`, `KudosNeeded`, `TotalLevelNeeded`
+and `CombatLevelNeeded` — used to be exactly this shape (unsupported for want of a running total the
+export doesn't publish), and were the *only* thing that ever landed in `chunksim tasks`' `unsupported`
+line. They're implemented now: quest points, Combat Achievement points and kudos are each summed from
+whatever this map's own derivation says is valid, recomputed every pass the same way a `Tasks`
+dependency already is, so a challenge gated on one opens the moment this map earns enough. Run
+`chunksim tasks` and read the `unsupported` line on *your* map — it should read zero.
 
 **`chunksim estimate` is a rough guide, not a projection.** The chunk-info export contains no durations,
 no kill rates and no XP figures of any kind, so every number it spends comes from the OSRS wiki, a
