@@ -1802,10 +1802,16 @@ ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
  * on the map, where an edited chunk wears it. */
 .knob.mine { border-color: var(--amber); }
 
-/* A corner ribbon: a band wider than the corner it crosses, rotated through
- * it, with the card's `overflow: hidden` cutting the overhang on the right.
- * Sized in `ch` so it stays wider than its own word - a band measured in
- * pixels clips the text the first time the label changes.
+/* A corner ribbon in the bottom-right, ascending left-to-right through the
+ * corner, with the card's `overflow: hidden` cutting the overhang on both
+ * sides. `left`/`right` set to the same negative percentage - rather than a
+ * fixed `width` anchored to one side - is what makes it reach edge to edge
+ * regardless of the card's own width: a horizontal band spanning exactly the
+ * card's width would, once rotated 45°, project to only `cos(45°)` (~71%) of
+ * that width and stop short of both corners: -40% either side gives a
+ * pre-rotation band 1.8x the card's width, comfortably over the ~1.41x a full
+ * edge-to-edge diagonal needs, so it clears both edges on every card size
+ * this dialog draws rather than needing to be hand-tuned per label.
  *
  * **Behind the card's own text, and faint.** The border already carries
  * "yours" at a glance (see `.knob.mine` above), so the ribbon is a second,
@@ -1817,21 +1823,18 @@ ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
  * fades the band itself for the same reason, not just to dim it against
  * the text on top.
  *
- * **`top` clears the *rotated* box, not the un-rotated one.** Rotating
+ * **`bottom` clears the *rotated* box, not the un-rotated one.** Rotating
  * around the element's own center (the default) swings its bounding box
- * past all four sides of the un-rotated rectangle - the width fix above
- * already covers the overhang on the right, which `overflow: hidden` is
- * meant to cut, but a `top` that only cleared the un-rotated box let the
- * rotated one clip into its own word from above, "OVERRIDDEN" losing its
- * O. The value here clears a band this wide with room to spare; a future
- * label change wider than this one needs `top` to grow with it, the same
- * warning the width comment above already gives. */
+ * past all four sides of the un-rotated rectangle, so a `bottom` that only
+ * cleared the un-rotated box would let the rotated one clip into its own
+ * word from below. The value here clears a band this tall with room to
+ * spare, mirroring the same offset the old top-right version used. */
 .knob-flag {
   position: absolute;
-  top: calc(var(--s6) * 2 + var(--s3));
-  right: calc(var(--s6) * -1);
-  width: 20ch;
-  transform: rotate(45deg);
+  bottom: calc(var(--s6) * 2 + var(--s3));
+  left: -40%;
+  right: -40%;
+  transform: rotate(-45deg);
   padding: 1px 0;
   background: var(--amber);
   opacity: 0.55;

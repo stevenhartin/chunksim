@@ -6072,7 +6072,13 @@ function formatKnobNumber(value, branch) {
   if (unit === "count") {
     return String(Math.floor(value));
   }
-  return String(value);
+  // **`quests`/`wait` are hours, not a count and not one action's own
+  // seconds** - a 0.6s tick is imperceptible at the scale a wait or a quest
+  // is measured on, so aligning to one would still print a many-decimal
+  // number of hours rather than a clean one. One decimal instead, the same
+  // precision `hours()` shows everywhere else a figure like this appears on
+  // the page (`78.9h`) - `7.0712128302254` reads as `7.1`.
+  return value.toFixed(1);
 }
 
 /* One knob's stack, weakest layer first. A layer holding nothing is drawn as
