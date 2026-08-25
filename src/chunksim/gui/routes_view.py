@@ -44,7 +44,6 @@ from chunksim.costing.inputs import ReferenceBlobs, load_heuristics, priced_laye
 from chunksim.derive import boosts
 from chunksim.gui import knobs
 from chunksim.derive.active_tasks import _level_proven_elsewhere
-from chunksim.derive.task_names import strip_task_markup
 from chunksim.runs.batch import PriceSpec, _Prepared, price_detail
 from chunksim.store.cache import CacheMissError
 from chunksim.runs.timeline import matches as timeline_matches
@@ -676,23 +675,18 @@ def roll_detail(map_id: str, index: int, ctx: Context) -> dict[str, Any] | None:
     return {
         "total_hours": round(sum(result.buckets.values()), 2),
         "buckets": {name: round(value, 2) for name, value in result.buckets.items()},
-        # The rows behind the slices: what this roll actually put in front of
-        # you, longest first, with the tasks each one answers.
-        "items": [
-            {
-                "item": item.item,
-                "hours": round(item.hours, 4),
-                "bucket": item.bucket,
-                "source": item.source,
-                "tasks": [strip_task_markup(name) for name in item.tasks],
-            }
-            for item in sorted(result.items, key=lambda i: -i.hours)
-        ],
-        "quests": [
-            {"task": strip_task_markup(task.task), "hours": round(task.hours, 4),
-             "detail": task.detail}
-            for task in sorted(result.tasks, key=lambda t: -t.hours)
-        ],
+        # **The same shape `EstimateResult.as_dict()` sends** - `.as_dict()`
+        # itself, raw markup and all, rather than a hand-built subset that
+        # pre-stripped names here and dropped `group`/`knobs`. That
+        # divergence is exactly what let this panel drift from the Estimate
+        # tab's own rendering: without `group` the frontend cannot merge
+        # these into the same source-grouped list `renderBucketSections`
+        # draws there, and without `knobs` a row here could never open the
+        # numbers behind it the way an Estimate row can. `strip_task_markup`
+        # is gone with it - `app.js`'s `marked()`/`plain()` do that from the
+        # raw form on display, the same as every other panel.
+        "items": [item.as_dict() for item in sorted(result.items, key=lambda i: -i.hours)],
+        "tasks": [task.as_dict() for task in sorted(result.tasks, key=lambda t: -t.hours)],
         # **The whole skilling row, not just its hours.** "Herblore 13,034h" is
         # a number you have to take on trust; the rate, the method it came from
         # and the levels either side are the reasoning behind it, and `options`

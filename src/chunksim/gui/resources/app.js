@@ -3904,9 +3904,20 @@ function donut(ordered, total) {
   return `<svg class="pie" width="140" height="140" viewBox="0 0 140 140">${arcs}</svg>`;
 }
 
-function renderEstimate(payload) {
+/* **The pie, the legend and the bucket-headed lists - shared by the Estimate
+ * pane and a roll's own breakdown.** Both ask the same question ("what did
+ * this cost and why") over a `total_hours`/`buckets`/`items`/`tasks`/`skills`
+ * payload of the same shape (`EstimateResult.as_dict()`, or `roll_detail`'s
+ * own copy of it) - a roll used to answer it with a flat "Longest to obtain"
+ * list and no grouping at all, which is what let it drift from the Estimate
+ * pane's own rendering. One function now answers it for both.
+ *
+ * `idPrefix` scopes the `withMore`/`ownsMore` keys ("estimate" or "roll") so
+ * a roll overlay's "show more" and the Estimate pane's do not collide when
+ * both happen to be open - the roll overlay floats over the pane, not
+ * instead of it. */
+function renderBucketSections(payload, idPrefix) {
   const total = payload.total_hours || 0;
-  el["estimate-total"].textContent = hours(total) + " remaining";
 
   /* **One order for the chart, the key and the lists.** `_json` sorts its
    * keys, so the payload arrives alphabetical - which is an order about
@@ -3922,10 +3933,11 @@ function renderEstimate(payload) {
    * small. Everything else still sorts by hours, so the rule stays "biggest
    * first" with one named exception rather than becoming a second order to
    * remember. */
-  const ordered = Object.entries(payload.buckets)
+  const ordered = Object.entries(payload.buckets || {})
     .filter(([, value]) => value > 0)
     .sort((a, b) =>
       a[0] === "skilling" ? -1 : b[0] === "skilling" ? 1 : b[1] - a[1]);
+  if (!ordered.length) return "";
 
   let out = '<div class="pie-row">' + donut(ordered, total || 1) + '<div class="pie-key">';
   for (const [name, value] of ordered) {
@@ -3970,9 +3982,7 @@ function renderEstimate(payload) {
       const skills = (payload.skills || []).slice().sort((a, b) => b.hours - a.hours);
       if (!skills.length) continue;
       out += tmpl`<h3>${raw(swatch)}${label(bucket)} <span class="num">${skills.length}</span></h3><ul class="list">`;
-      out += withMore(skills, "estimate:skilling", 14, (skill) => {
-        /* The same renderer the roll overlay uses - one tooltip system, and
-         * this one was three lines that said much less. */
+      out += withMore(skills, idPrefix + ":skilling", 14, (skill) => {
         const tip = skillTip(skill);
         /* A climb's knobs are one per band that has one, so a skill trained
          * two ways opens two. A band whose rate was computed rather than read
@@ -4015,17 +4025,17 @@ function renderEstimate(payload) {
         return tmpl`<li data-tip="${tip}"><span class="name">${raw(marked(name))}</span><span class="num">${hours(row.hours)}</span></li>`;
       }
       return tmpl`<li class="arguable" data-tip="${tip}" data-knobs="${knobs.join("\u241f")}"
-        data-row="${row.name}" role="button" tabindex="0"><span class="name">${raw(marked(name))}</span><span class="num">${hours(row.hours)}</span></li>`;
+        data-row="${row.name}" data-tasks="${(row.tasks || []).join("\u241f")}"
+        role="button" tabindex="0"><span class="name">${raw(marked(name))}</span><span class="num">${hours(row.hours)}</span></li>`;
     };
     /* **Grouped by what earns them, not listed flat.** `Abyssal dagger` and
      * `Abyssal head` are two rows off one Abyssal demon grind, and a flat
      * list said so twice, once per row, with nothing joining them - the same
      * overstatement-by-omission `EstimateResult.buckets` clamps in the
-     * numbers. `estimateGroupKey`/`estimateGroupTotal` are the same rule
-     * `costing/estimate.py`'s `_group_key`/`_group_total` compute: `group` if
-     * the item has one (a leaf recipe/shop item rolled up under the Diary/CA
-     * task that wants it), else `source`, maxed within a source and summed
-     * across sources. */
+     * numbers. This is the same rule `costing/estimate.py`'s `_group_key`/
+     * `_group_total` compute: `group` if the item has one (a leaf recipe/shop
+     * item rolled up under the Diary/CA task that wants it), else `source`,
+     * maxed within a source and summed across sources. */
     const groups = new Map();
     for (const row of rows) {
       const key = row.group || row.source || row.name;
@@ -4043,7 +4053,7 @@ function renderEstimate(payload) {
         return { key, items, total, parallel: perSource.size <= 1 };
       })
       .sort((a, b) => b.total - a.total || a.key.localeCompare(b.key));
-    out += withMore(groupRows, "estimate:" + bucket, 12, (group) => {
+    out += withMore(groupRows, idPrefix + ":" + bucket, 12, (group) => {
       /* **A group of one collapses to a single row.** A heading over one
        * child said the same number twice - most visibly in the quest
        * bucket, where the group key and the item's own name are identical,
@@ -4067,6 +4077,33 @@ function renderEstimate(payload) {
     });
     out += "</ul>";
   }
+  return out;
+}
+
+/* **`data-knobs` is delegated, not wired per render**, per the same
+ * reasoning `.find-link`'s own handler gives: a row rendered by
+ * `renderBucketSections` now shows up in two different overlays (the
+ * Estimate pane and a roll's own breakdown), and a per-render wiring loop
+ * scoped to one container would silently do nothing in the other. */
+document.addEventListener("click", (event) => {
+  const row = event.target.closest("[data-knobs]");
+  if (!row) return;
+  editKnobs(row.dataset.row, row.dataset.knobs.split("\u241f"),
+    row.dataset.tasks ? row.dataset.tasks.split("\u241f") : []);
+});
+document.addEventListener("keydown", (event) => {
+  const row = event.target.closest?.("[data-knobs]");
+  if (!row || (event.key !== "Enter" && event.key !== " ")) return;
+  event.preventDefault();
+  editKnobs(row.dataset.row, row.dataset.knobs.split("\u241f"),
+    row.dataset.tasks ? row.dataset.tasks.split("\u241f") : []);
+});
+
+function renderEstimate(payload) {
+  const total = payload.total_hours || 0;
+  el["estimate-total"].textContent = hours(total) + " remaining";
+
+  let out = renderBucketSections(payload, "estimate");
 
   const unpriced = payload.unpriced || [];
   if (unpriced.length) {
@@ -4076,12 +4113,6 @@ function renderEstimate(payload) {
     out += "</ul>";
   }
   el["estimate-body"].innerHTML = out;
-  for (const row of el["estimate-body"].querySelectorAll("[data-knobs]")) {
-    const open = () => editKnobs(row.dataset.row, row.dataset.knobs.split("\u241f"));
-
-    row.onclick = open;
-    row.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } };
-  }
   ownsMore("estimate", () => renderEstimate(estimatePayload));
 }
 
@@ -6205,18 +6236,25 @@ async function findTerm(term) {
  *
  * Linked, so the thing a task names is one press from the row that prices it -
  * which is the other half of the tie: Tasks says what to do, Estimate says
- * what it costs, and until now neither pointed at the other. */
-function wantedBy(key) {
-  const row = ((estimatePayload || {}).items || []).find((item) => item.item === key);
-  const tasks = (row && row.tasks) || [];
-  if (!tasks.length) return "";
+ * what it costs, and until now neither pointed at the other.
+ *
+ * **Takes the tasks directly, not a key to look one up with.** This used to
+ * search `estimatePayload.items` by name - fine while the Estimate pane was
+ * the only place a row could open this dialog from, wrong the moment a
+ * roll's own breakdown could too: a roll's items are not in `estimatePayload`
+ * at all, so a row opened from there silently showed nobody wanted it. The
+ * row already carries its own `tasks` (`data-tasks`, the same
+ * `␟`-joined convention `data-knobs` uses) precisely so this never has to
+ * guess which payload it came from. */
+function wantedBy(tasks) {
+  if (!tasks || !tasks.length) return "";
   return tmpl`<p class="hint">Wanted by ${String(tasks.length)} ${
     tasks.length === 1 ? "task" : "tasks"}</p>`
     + `<ul class="list wanted">` + tasks.map((task) =>
       tmpl`<li><span class="name">${raw(linked(task))}</span></li>`).join("") + "</ul>";
 }
 
-async function editKnobs(name, paths) {
+async function editKnobs(name, paths, tasks = []) {
   openOverlay(plain(name), tmpl`<p class="empty">Reading what priced this…</p>`);
   let knobs;
   try {
@@ -6276,7 +6314,7 @@ async function editKnobs(name, paths) {
   /* **Both halves of "why is this row here".** What wants it, then what it was
    * priced off - in that order, because the first is the question you arrive
    * with and the second is the one you stay for. */
-  openOverlay(plain(name), wantedBy(name) + tmpl`<p class="hint">These are the numbers this
+  openOverlay(plain(name), wantedBy(tasks) + tmpl`<p class="hint">These are the numbers this
     estimate was read off. Blank means no override — the estimator falls back to the scrape or its
     own default. Saving writes to ${knobScopeLabel()}.</p>` + `<div class="knob-edit">${rows}</div>`,
     tmpl`<button id="knob-cancel" type="button">Cancel</button>
@@ -6286,7 +6324,7 @@ async function editKnobs(name, paths) {
   document.getElementById("knob-save").onclick = () => applyKnobs(knobs);
   for (const button of document.querySelectorAll(".knob-revert")) {
     button.onclick = () => revertKnob(name, paths, knobs[Number(button.dataset.index)],
-                                      button.dataset.layer);
+                                      button.dataset.layer, tasks);
   }
 }
 
@@ -6295,7 +6333,7 @@ async function editKnobs(name, paths) {
  * path and the same repricing as an edit. The dialog is reopened rather than
  * closed: reverting one of three knobs is a step in reading the row, not the
  * end of it. */
-async function revertKnob(name, paths, knob, layer) {
+async function revertKnob(name, paths, knob, layer, tasks = []) {
   try {
     await postJSON("/api/heuristic",
       { path: knob.path, value: null, scope: layer, map: state.map });
@@ -6305,7 +6343,7 @@ async function revertKnob(name, paths, knob, layer) {
   }
   estimatePayload = null;
   loadEstimate();
-  editKnobs(name, paths);
+  editKnobs(name, paths, tasks);
 }
 
 /* **Only what moved is sent.** Posting every knob would rewrite entries the
@@ -6495,16 +6533,15 @@ async function showRoll(step, trail = []) {
   ownsMore("roll", () => showRoll(step, trail));
 }
 
-/* **What this roll cost, drawn the way the Estimate tab draws the total.**
- * Same `donut`, same bucket colours, same "biggest first" ordering, because it
- * is the same estimator answering a narrower question - the buckets here are
- * `timeline.added_estimate`, this roll's own additions rather than everything
- * outstanding.
- *
- * The per-item rows are what the bar chart cannot show: a roll worth 3,050h is
- * a number until you see that 343h of it is one harpoon. Items carry the tasks
- * they answer, because the same drop usually satisfies several and charging it
- * once is the estimator's own rule.
+/* **What this roll cost, drawn exactly the way the Estimate tab draws the
+ * total - `renderBucketSections`, the same function, not a parallel copy of
+ * it.** This used to be its own rendering: a flat "Longest to obtain" list
+ * with no grouping, and separate hand-rolled Quests/Skilling sections - three
+ * places that could (and did) drift from how the Estimate pane drew the same
+ * shape of data. The buckets here are `timeline.added_estimate`, this roll's
+ * own additions rather than everything outstanding, but the payload
+ * `roll_detail` sends is the same `EstimateResult.as_dict()` shape, so one
+ * renderer answers both.
  *
  * Absent when the server could not price it - no export, no scraped rates, or
  * step 0, which is a baseline and not a roll. The overlay then reads exactly as
@@ -6568,55 +6605,9 @@ function skillTip(row) {
 
 function rollHours(priced) {
   if (!hours || !priced.total_hours) return "";
-  const ordered = Object.entries(priced.buckets)
-    .filter(([, value]) => value > 0)
-    .sort((a, b) => b[1] - a[1]);
-  if (!ordered.length) return "";
-
-  let out = tmpl`<h3>Hours this roll added <span class="num">${hours(priced.total_hours)}</span></h3>`;
-  out += '<div class="pie-row">' + donut(ordered, priced.total_hours) + '<div class="pie-key">';
-  for (const [name, value] of ordered) {
-    const tip = tmpl`<b>${label(name)}</b><span class="sub">${hours(value)} · ${Math.round((value / priced.total_hours) * 100)}% of this roll</span>`;
-    out += tmpl`<span data-tip="${tip}"><i class="sw" style="background:${BUCKET_COLOURS[name] || "#858d9c"}"></i>${label(name)}</span>`;
-  }
-  out += "</div></div>";
-
-  /* **Per item, not per task**, and the difference is the estimator's: one
-   * whip answers three tasks and you obtain one whip, so charging per task
-   * would triple it. The tasks ride along in the tooltip, which is where "why
-   * am I doing this" belongs. */
-  const rows = (priced.items || []).filter((row) => row.hours > 0);
-  if (rows.length) {
-    out += tmpl`<h3>Longest to obtain <span class="num">${rows.length}</span></h3><ul class="list">`;
-    out += withMore(rows, "roll:hours", 10, (row) => {
-      /* Through `marked`, like every other name: these are raw keys and this
-       * tooltip printed them with their `~|...|~` still on. It only renders
-       * for a *priced* roll, which is how it survived the sweep that cleaned
-       * up the panels. */
-      const wants = row.tasks.map((task) => marked(task)).join(", ");
-      const tip = tmpl`<b>${raw(marked(row.item))}</b><span class="sub">${label(row.bucket)}${
-        row.source ? " · from " + plain(row.source) : ""}</span><span class="hint">${raw(wants)}</span>`;
-      return tmpl`<li data-tip="${tip}"><span class="name">${raw(marked(row.item))}</span><span class="num">${hours(row.hours)}</span></li>`;
-    });
-    out += "</ul>";
-  }
-
-  const quests = (priced.quests || []).filter((row) => row.hours > 0);
-  if (quests.length) {
-    out += tmpl`<h3>Quests <span class="num">${quests.length}</span></h3><ul class="list">`;
-    out += withMore(quests, "roll:quests", 10, (row) =>
-      tmpl`<li data-tip="${tmpl`<b>${row.task}</b><span class="sub">${row.detail || ""}</span>`}"><span class="name">${row.task}</span><span class="num">${hours(row.hours)}</span></li>`);
-    out += "</ul>";
-  }
-
-  const skills = priced.skills || [];
-  if (skills.length) {
-    out += tmpl`<h3>Skilling <span class="num">${skills.length}</span></h3><ul class="list">`;
-    out += withMore(skills, "roll:skills", 10, (row) =>
-      tmpl`<li data-tip="${skillTip(row)}"><span class="name">${row.skill}</span><span class="num">${hours(row.hours)}</span></li>`);
-    out += "</ul>";
-  }
-  return out;
+  const sections = renderBucketSections(priced, "roll");
+  if (!sections) return "";
+  return tmpl`<h3>Hours this roll added <span class="num">${hours(priced.total_hours)}</span></h3>` + sections;
 }
 
 async function setStep(step) {
