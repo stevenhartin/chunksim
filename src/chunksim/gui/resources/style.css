@@ -1803,15 +1803,23 @@ ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
 .knob.mine { border-color: var(--amber); }
 
 /* A corner ribbon in the bottom-right, ascending left-to-right through the
- * corner, with the card's `overflow: hidden` cutting the overhang past the
- * right edge. **Anchored off `right` alone, not `left`/`right` together** -
- * a symmetric offset centres the band on the *card*, which put it crossing
- * the middle rather than sitting in the corner; anchoring off one side is
- * what keeps it biased toward that corner the way the old top-right version
- * was. `width: max-content` replaces a fixed `ch` guess - the band hugs
- * "OVERRIDDEN" with just this padding around it rather than carrying a
- * wide, mostly-empty amber field, and stays correct if the label ever
- * changes length.
+ * corner - the mirror image of the top-right ribbon this replaced (which
+ * descended left-to-right: `top`/`right`/`rotate(45deg)`), not a redesign of
+ * it. `right` alone anchors it toward that corner; a *symmetric* `left`/
+ * `right` offset was tried first and centred the band on the whole card
+ * instead, crossing the middle rather than sitting in the corner - the bug
+ * behind the first two attempts at this.
+ *
+ * **`bottom` is small, and deliberately not a mirror of the old `top`
+ * value.** The old ribbon's `top: 56px` gave the *descending* band room to
+ * clear the card's own top edge before its word started - flipping to
+ * ascending moves that same clearance requirement to the *bottom* edge, but
+ * the corner it now has to clear is shallower (measured against `--s3`
+ * rather than `--s6*2+s3`), because ascending toward the right foreshortens
+ * against a wide, short card differently than descending from the top did.
+ * Verified by rendering both the old and new ribbon against the real markup
+ * in a headless browser and comparing pixel for pixel, not by eye against
+ * this comment's own arithmetic.
  *
  * **Behind the card's own text, and faint.** The border already carries
  * "yours" at a glance (see `.knob.mine` above), so the ribbon is a second,
@@ -1823,19 +1831,17 @@ ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
  * fades the band itself for the same reason, not just to dim it against
  * the text on top.
  *
- * **`bottom` clears the *rotated* box, not the un-rotated one.** Rotating
- * around the element's own center (the default) swings its bounding box
- * past all four sides of the un-rotated rectangle, so a `bottom` that only
- * cleared the un-rotated box would let the rotated one clip into its own
- * word from below. The value here clears a band this tall with room to
- * spare, mirroring the same offset the old top-right version used. */
+ * **Sized in `ch`, snug against the word rather than padded around it** -
+ * `padding: 1px 0` leaves no horizontal breathing room at all, so the band
+ * is exactly as wide as "OVERRIDDEN" needs and no wider. A future label
+ * longer than 20ch needs this width raised with it, same as before. */
 .knob-flag {
   position: absolute;
-  bottom: calc(var(--s6) * 2 + var(--s3));
+  bottom: var(--s3);
   right: calc(var(--s6) * -1);
-  width: max-content;
+  width: 20ch;
   transform: rotate(-45deg);
-  padding: 1px var(--s3);
+  padding: 1px 0;
   background: var(--amber);
   opacity: 0.55;
   z-index: -1;
