@@ -1980,6 +1980,22 @@ def estimate_answer(
     ignored when `reference` is given, since those blobs already carry
     whichever map they were assembled for - `ReferenceBlobs.map_id` says
     which.
+
+    **`estimate()` gets `effective_levels`, not `layers.levels`.**
+    `PricedLayers.levels` is `blobs.levels` alone - deliberately, since
+    `priced_heuristics` needs the map's own hand-set floor to price the
+    recipe layer at (see `training_method_answer`'s docstring: "recipes
+    first, then fights"). But that floor is exactly what `a3cd719` ("Let a
+    map say who is playing it") stopped being the whole answer for
+    everything else: a linked account's real XP can prove a skill far above
+    what the map has ticked off - the reference account reads 99 Attack
+    against a floor of 75 - and `estimate()`'s own `_setup` merges
+    `level_overrides` straight onto `infer_levels(state)` with no linked-XP
+    layer of its own. Feeding it the hand-only floor reproduced the exact bug
+    that commit fixed everywhere else: the Skilling section's `current_level`
+    read the floor, and the hours to a target already passed read as
+    outstanding. Seven call sites became one `effective_levels` that day;
+    this was the eighth, missed because it lives one module over.
     """
     layers = priced_layers(
         state,
@@ -1996,7 +2012,7 @@ def estimate_answer(
         derived,
         layers.world,
         layers.heuristics,
-        level_overrides=layers.levels,
+        level_overrides=effective_levels(state, layers.blobs),
         recipes=layers.blobs.recipes,
     )
     return EstimateAnswer(

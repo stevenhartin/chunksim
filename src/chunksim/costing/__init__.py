@@ -813,6 +813,19 @@ Thieving at 84,560 flat against 1,005 at level 1. See `_modelled_tasks`.
   four times by four callers - and the one place the four override layers are
   merged, so no reader can apply three of them. `aliases` is the fifth blob:
   the wiki's redirects for the item names upstream has not renamed yet.
+  **`PricedLayers.levels` is `blobs.levels` alone, deliberately** -
+  `priced_heuristics` needs the map's own hand-set floor to price the recipe
+  layer at ("recipes first, then fights"), not a linked account's XP. But
+  `estimate_answer` used to hand that same hand-only figure to `estimate()`
+  as its `level_overrides`, which is what the Skilling section's
+  `current_level` and its xp-still-needed are computed from - the eighth
+  `{**infer_levels(state), **blobs.levels}` write `levels.py`'s own docstring
+  above already names seven of, missed because it lives one module over. A
+  skill with no hand override at all read the map's own ticked-off floor,
+  never a linked account's real XP - Attack 75 shown against a real 99, and
+  the hours to a target already passed off read as outstanding.
+  `estimate_answer` now passes `effective_levels(state, layers.blobs)` to
+  `estimate()` instead.
 - `dps_bridge.py` - the seam to `osrs-dps`. **Optional import** - check
   `DPS_AVAILABLE`, never assume it. Prices only `reachable_providers`, which it
   imports rather than copying. **`best_kill` checks `fightscripts.SCRIPTS`

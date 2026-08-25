@@ -110,6 +110,42 @@ def test_both_apps_price_one_map_identically(
     assert from_cli == from_gui
 
 
+def test_estimate_answer_prices_a_skill_at_the_linked_account_not_the_floor(
+    both_apps: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**The eighth call site `a3cd719` missed.** That commit turned seven
+    `{**infer_levels(state), **blobs.levels}` writes into one
+    `effective_levels`, because a dict merge *replaces* a floor where a
+    linked account has to `max` it - the reference account it measured
+    against read Attack 99 against a floor of 75. `estimate_answer` still
+    handed `estimate()` `layers.levels`, which is `blobs.levels` alone: no
+    `infer_levels` floor and no linked-account layer either, so a skill with
+    no hand override at all read `current_level=1` regardless of what the
+    account behind the map had actually done.
+    """
+    from chunksim.costing.estimate import estimate as real
+    from chunksim.model.experience import xp_for_level
+    from chunksim.store import cache
+
+    cache.write_player(
+        "fray", linked_experience={"Attack": xp_for_level(99)}, root=both_apps
+    )
+
+    calls: list[dict[str, Any]] = []
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        calls.append(kwargs)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr("chunksim.costing.inputs.estimate", spy)
+    monkeypatch.setenv("CHUNKSIM_NO_WATERMARK", "1")
+
+    assert main(["estimate", "--export-json", "-"]) == 0
+
+    assert len(calls) == 1
+    assert calls[0]["level_overrides"]["Attack"] == 99
+
+
 def test_both_apps_hand_the_pricer_the_same_pins(
     both_apps: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
