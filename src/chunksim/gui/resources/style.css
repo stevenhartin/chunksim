@@ -1833,13 +1833,17 @@ ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
  *
  * **Sized in `ch`, snug against the word rather than padded around it** -
  * `padding: 1px 0` leaves no horizontal breathing room at all, so the band
- * is exactly as wide as "OVERRIDDEN" needs and no wider. A future label
- * longer than 20ch needs this width raised with it, same as before. */
+ * is exactly as wide as "EDITED" needs and no wider - the word was
+ * "Overridden" and 20ch, sized the same way for it; verified against a
+ * headless render for both that "EDITED" fits **and** that going narrower
+ * still (9ch, tried first) clips it against the card's own right edge
+ * instead of centering it. A future label longer than this needs the width
+ * raised with it, same as before. */
 .knob-flag {
   position: absolute;
   bottom: var(--s3);
   right: calc(var(--s6) * -1);
-  width: 20ch;
+  width: 11ch;
   transform: rotate(-45deg);
   padding: 1px 0;
   background: var(--amber);

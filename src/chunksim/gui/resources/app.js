@@ -6265,7 +6265,7 @@ async function editKnobs(name, paths) {
       ? tmpl`<p class="knob-note">${knob.note}</p>`
       : "";
     return tmpl`<div class="knob ${yours ? "mine" : ""}">
-      ${raw(yours ? tmpl`<span class="knob-flag">Overridden</span>` : "")}
+      ${raw(yours ? tmpl`<span class="knob-flag">Edited</span>` : "")}
       <code class="knob-path">${raw(knobPath(knob))}</code>
       ${raw(note)}
       <div class="knob-layers">${raw(knobLayers(knob))}</div>
