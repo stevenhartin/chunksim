@@ -482,6 +482,178 @@ KNOWN_QUEST_JUMPS: tuple[QuestJump, ...] = (
         landing_section=None,
         anchor=("14129", "0"),
     ),
+    # Regicide, step 2 ("Climb down the Well of Voyage"), to North Isafdar
+    # (chunk 9010) - a second, deeper layer behind the Elf-lands pocket the
+    # Underground Pass entry above already opens. Once that entry lands,
+    # a static full-connectivity expansion from `chunkman-stuck` reaches
+    # 8753/Tyras Camp and its immediate neighbours, but a further 9-chunk
+    # mesh (Iorwerth Camp, Ithell & Iorwerth, Amlodd & Hefin, North/South
+    # Isafdar, Cadarn & Trahaearn, Crwys & Meilyr, Arandar, Arandar
+    # Mountain) stays unreachable - invisible to the original 39-chunk scan
+    # because the outer pocket was still closed when that scan ran.
+    #
+    # Step 2's own requirement is `Chunks: ["Underground Pass"]` - the
+    # dungeon area, not a numbered chunk, granted by a real `UnlocksArea`
+    # challenge keyed `"Underground Pass"` and gated on this same step 2
+    # (`Tasks: {"~|Underground Pass|~ 2": "Quest"}`) - already valid at
+    # chunkman's own stuck point. But that area grant does not itself open
+    # `9010`: the "Well of Voyage" is the export's own real object,
+    # confirmed present at chunk `9366` (`Connect` to `9010` among others),
+    # but `9366` is a `Name`-only container never itself in
+    # `chunkinfo['sections']` - the dungeon interior isn't modelled as
+    # walkable chunks at all, so nothing here can ever project the area's
+    # own connectivity onto a real chunk automatically.
+    #
+    # Step 3 (`Chunks: ["9010-1"]`) is the first real, numbered target -
+    # non-circular (step 2 has nothing to do with it) and the step
+    # immediately before. `anchor=("10291", "0")` - the same Ardougne
+    # Castle departure point the Underground Pass entry above uses,
+    # matching the same real narrative (Regicide is Underground Pass's own
+    # direct sequel, opened by the same King Lathas questline).
+    # `landing_section="1"`: `9010` declares only `"1"`/`"2"`, no `"0"`,
+    # and was never independently rollable. Confirmed to cascade the
+    # entire rest of the 9-chunk mesh via ordinary rolling with no further
+    # jump entries: a full expansion from `chunkman-stuck` with only this
+    # entry (plus the Underground Pass one) added reaches every one of the
+    # nine.
+    QuestJump(
+        trigger_category="Quest",
+        trigger_name="~|Regicide|~ 2",
+        target_chunk="9010",
+        landing_section="1",
+        anchor=("10291", "0"),
+    ),
+    # Ghosts Ahoy, step 8 ("Talk to the Ghost captain"), to Dragontooth
+    # Island (chunk 15159) - step 9's own requirement (`Chunks: ["15159"]`,
+    # "Dig up the book of Haricanto") is otherwise unreachable: 15159's
+    # only declared section is the unresolved `"???"` placeholder, the
+    # same shape as Zemouregal's Fortress and Lucien's camp above. The
+    # Ghost captain - the real quest's own boat crossing to the island -
+    # is present at `14646-1` (Port Phasmatys, already independently
+    # reachable), matching the export's own `NPC` data. Step 8 is
+    # non-circular (nothing to do with 15159) and the step immediately
+    # before. `landing_section=None`: `15159`'s sole section is the bare
+    # `"0"`, free once granted. Confirmed end to end: `15159` becomes a
+    # candidate once step 8 is valid; unlocking it resolves every
+    # remaining Ghosts Ahoy step through `Complete the quest`.
+    #
+    # This and the Bone Voyage entry below were found chasing a *second*
+    # layer behind the 8 originally-scoped clusters: both are prerequisite
+    # quests Dragon Slayer II's own step 1 needs complete, and both had
+    # the same "closed pocket" shape, discovered only once a static
+    # full-connectivity expansion from `chunkman-stuck` was run after the
+    # first 8 entries landed.
+    QuestJump(
+        trigger_category="Quest",
+        trigger_name="~|Ghosts Ahoy|~ 8",
+        target_chunk="15159",
+        landing_section=None,
+        anchor=("14646", "1"),
+    ),
+    # Bone Voyage, step 10 ("Return to the barge and give out the items"),
+    # to Museum Camp (chunk 14907) - step 11's own description is literally
+    # "Sail the boat to Fossil Island" (`Chunks: ["14907-1"]`), the same
+    # "get taken somewhere" shape as Lucien's camp and Weiss above. `14907`
+    # was never independently rollable: its own declared section refs
+    # (`14651`, `14906-1`, `14908-1`/`14908-2`) are all themselves inside
+    # the same closed Fossil Island pocket this quest exists to open, and
+    # nothing outside it references `14907` at all.
+    #
+    # Step 10 (`Chunks: ["13365"]`, the Digsite, already independently
+    # reachable) is non-circular and the step immediately before. `anchor
+    # =("13365", "0")` - the Digsite declares no `Sections` map at all, so
+    # its `"0"` is the bare-chunk-membership case. `landing_section="1"`:
+    # `14907` has no `"0"` of its own and was never independently
+    # rollable, so both halves are needed. Confirmed to cascade the entire
+    # Fossil Island pocket (all of `14637`-`15407` above) via ordinary
+    # rolling with no further jump entries once unlocked, and resolves
+    # every remaining Bone Voyage step through `Complete the quest`.
+    QuestJump(
+        trigger_category="Quest",
+        trigger_name="~|Bone Voyage|~ 10",
+        target_chunk="14907",
+        landing_section="1",
+        anchor=("13365", "0"),
+    ),
+    # Cabin Fever, step 2 ("Talk to Bill Teach on his boat"), to Pirate Base
+    # (chunk 14638) - step 3's own description is literally "Complete the
+    # tasks on the boat and sail to Mos Le'Harmless" (`Chunks:
+    # ["14638-1"]`). Mos Le'Harmless is a separate landmass from Fossil
+    # Island (the Bone Voyage entry above only opens the latter), reached
+    # by this different quest's own boat crossing. Step 2 (`Chunks:
+    # ["14902"]`, the School Boat, already independently reachable) is
+    # non-circular and the step immediately before. `anchor=("14902",
+    # "0")` - the School Boat declares no `Sections` map, so its `"0"` is
+    # the bare-chunk-membership case. `landing_section="1"`: `14638` has
+    # no `"0"` of its own and was never independently rollable (its own
+    # declared refs are all inside the same closed pocket).
+    #
+    # Confirmed to cascade nearly the entire remaining Mos Le'Harmless
+    # pocket via ordinary rolling with no further jump entries (14639,
+    # 14894, 14895, 15150, 15151, 15406, 15407 all follow) - only Harmony
+    # Island (15148) stays out, needing its own entry (see below).
+    QuestJump(
+        trigger_category="Quest",
+        trigger_name="~|Cabin Fever|~ 2",
+        target_chunk="14638",
+        landing_section="1",
+        anchor=("14902", "0"),
+    ),
+    # Creature of Fenkenstrain completion, to Harmony Island (chunk 15148) -
+    # The Great Brain Robbery's own step 1 needs *both* `14638-1` and
+    # `15148` at once (`Chunks: ["14638-1", "15148"]`), so unlike every
+    # other entry here it has no earlier same-quest step to trigger from at
+    # all - the whole quest is circular against its own first chunk
+    # requirement. The real, non-circular gate is the *other* half of step
+    # 1's `Tasks`: `~|Creature of Fenkenstrain|~ Complete the quest`,
+    # already valid at chunkman's own stuck point and unrelated to either
+    # target chunk.
+    #
+    # `15148`'s only declared section is the unresolved `"???"` placeholder
+    # (the same shape as Zemouregal's Fortress, Lucien's camp and
+    # Dragontooth Island above) - no export data can ever open it
+    # ordinarily. `anchor=("11057", "1")` - Brimhaven, already
+    # independently reachable - matches the real quest's own diving
+    # crossing from there (step 1's own `Items` name a `Fishbowl helmet`
+    # and `Diving apparatus`). `landing_section=None`: `15148`'s sole
+    # section is the bare `"0"`, free once granted. Confirmed end to end:
+    # `15148` becomes a candidate once Creature of Fenkenstrain is
+    # complete; unlocking it alongside `14638` (already open via the Cabin
+    # Fever entry above) resolves every step of The Great Brain Robbery
+    # through `Complete the quest`.
+    QuestJump(
+        trigger_category="Quest",
+        trigger_name="~|Creature of Fenkenstrain|~ Complete the quest",
+        target_chunk="15148",
+        landing_section=None,
+        anchor=("11057", "1"),
+    ),
+    # Dragon Slayer II, step 9 ("Build the rowboat"), to Lithkren (chunk
+    # 14142) - step 10's own description is literally "Row to Lithkren"
+    # (`Chunks: ["14142"]`). `14142` and its neighbour `14398` (East
+    # Lithkren) are a tight, fully isolated circular pair
+    # (`sections['14142'] == {'0': ['14398-1', '14398-2']}`,
+    # `sections['14398'] == {'1': ['14142'], '2': ['14142']}`) with no
+    # other reference anywhere in the export - confirmed by grep. This
+    # entry only became solvable once the Bone Voyage entry above opened
+    # Fossil Island: step 9 itself needs chunk `14652` (Mushroom Forest),
+    # part of that same pocket.
+    #
+    # Step 9 (already valid once Fossil Island is open) is non-circular
+    # and the step immediately before. `anchor=("14652", "0")` - Mushroom
+    # Forest, where the rowboat is built, declares no `Sections` map, so
+    # its `"0"` is the bare-chunk-membership case. `landing_section=None`:
+    # `14142`'s sole section is the bare `"0"`, free once granted.
+    # Confirmed to cascade `14398` via ordinary rolling with no further
+    # jump entries, and resolves every remaining Dragon Slayer II step
+    # through `Complete the quest`.
+    QuestJump(
+        trigger_category="Quest",
+        trigger_name="~|Dragon Slayer II|~ 9",
+        target_chunk="14142",
+        landing_section=None,
+        anchor=("14652", "0"),
+    ),
 )
 
 

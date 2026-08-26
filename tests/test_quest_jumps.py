@@ -500,3 +500,133 @@ def test_sins_of_the_father_jump_offers_icyene_graveyard_as_a_candidate(
     neighbours = {n.chunk_id: n for n in eligible_neighbours(state, chunk_ids, derived)}
     assert "14641" in neighbours
     assert "quest jump" in neighbours["14641"].via_ref
+
+
+#: The six entries below resolve a *second* layer of blocked chunks found
+#: only after the first 8 clusters (and the Cold War prerequisite) landed:
+#: a static full-connectivity expansion from `chunkman-stuck` surfaced 41
+#: further chunks invisible to the original 39-chunk scan because their
+#: own pockets were still closed when that scan ran.
+
+
+@pytest.mark.real_export
+def test_regicide_jump_offers_north_isafdar_as_a_candidate(real_export: ChunkInfo) -> None:
+    """Once Regicide step 2 is valid and Ardougne Castle (10291, bare
+    section "0") is unlocked, chunk 9010 (North Isafdar) - the deeper
+    Elf-lands mesh behind Tyras Camp - appears as a candidate via the
+    jump, and its own `landing_section="1"` is forced open once unlocked.
+    """
+    cluster = _exclusion_cluster(real_export, "9010")
+    chunk_ids = {chunk_id: True for chunk_id in real_export.sections if chunk_id not in cluster}
+    state = _maxed_ceiling_state(real_export)
+    derived = derive(state, chunk_ids)
+
+    assert "~|Regicide|~ 2" in derived.challenges.valid.get("Quest", {})
+    neighbours = {n.chunk_id: n for n in eligible_neighbours(state, chunk_ids, derived)}
+    assert "9010" in neighbours
+    assert "quest jump" in neighbours["9010"].via_ref
+
+    chunk_ids_unlocked = dict(chunk_ids, **{"9010": True})
+    derived_unlocked = derive(state, chunk_ids_unlocked)
+    assert derived_unlocked.reachable_sections.get("9010", {}).get("1") is True
+
+
+@pytest.mark.real_export
+def test_ghosts_ahoy_jump_offers_dragontooth_island_as_a_candidate(
+    real_export: ChunkInfo,
+) -> None:
+    """Once Ghosts Ahoy step 8 is valid and Port Phasmatys (14646-1) is
+    reachable, chunk 15159 (Dragontooth Island) - whose only declared
+    section is the unresolved `"???"` placeholder - appears as a
+    candidate via the jump."""
+    cluster = _exclusion_cluster(real_export, "15159")
+    chunk_ids = {chunk_id: True for chunk_id in real_export.sections if chunk_id not in cluster}
+    state = _maxed_ceiling_state(real_export)
+    derived = derive(state, chunk_ids)
+
+    assert "~|Ghosts Ahoy|~ 8" in derived.challenges.valid.get("Quest", {})
+    assert derived.reachable_sections.get("14646", {}).get("1") is True
+    neighbours = {n.chunk_id: n for n in eligible_neighbours(state, chunk_ids, derived)}
+    assert "15159" in neighbours
+    assert "quest jump" in neighbours["15159"].via_ref
+
+
+@pytest.mark.real_export
+def test_bone_voyage_jump_offers_museum_camp_as_a_candidate(real_export: ChunkInfo) -> None:
+    """Once Bone Voyage step 10 is valid and the Digsite (13365, bare
+    section "0") is unlocked, chunk 14907 (Museum Camp) - the entry point
+    to the Fossil Island pocket - appears as a candidate via the jump, and
+    its own `landing_section="1"` is forced open once unlocked."""
+    cluster = _exclusion_cluster(real_export, "14907")
+    chunk_ids = {chunk_id: True for chunk_id in real_export.sections if chunk_id not in cluster}
+    state = _maxed_ceiling_state(real_export)
+    derived = derive(state, chunk_ids)
+
+    assert "~|Bone Voyage|~ 10" in derived.challenges.valid.get("Quest", {})
+    neighbours = {n.chunk_id: n for n in eligible_neighbours(state, chunk_ids, derived)}
+    assert "14907" in neighbours
+    assert "quest jump" in neighbours["14907"].via_ref
+
+    chunk_ids_unlocked = dict(chunk_ids, **{"14907": True})
+    derived_unlocked = derive(state, chunk_ids_unlocked)
+    assert derived_unlocked.reachable_sections.get("14907", {}).get("1") is True
+
+
+@pytest.mark.real_export
+def test_cabin_fever_jump_offers_pirate_base_as_a_candidate(real_export: ChunkInfo) -> None:
+    """Once Cabin Fever step 2 is valid and the School Boat (14902, bare
+    section "0") is unlocked, chunk 14638 (Pirate Base) - the entry point
+    to the Mos Le'Harmless pocket - appears as a candidate via the jump,
+    and its own `landing_section="1"` is forced open once unlocked."""
+    cluster = _exclusion_cluster(real_export, "14638")
+    chunk_ids = {chunk_id: True for chunk_id in real_export.sections if chunk_id not in cluster}
+    state = _maxed_ceiling_state(real_export)
+    derived = derive(state, chunk_ids)
+
+    assert "~|Cabin Fever|~ 2" in derived.challenges.valid.get("Quest", {})
+    neighbours = {n.chunk_id: n for n in eligible_neighbours(state, chunk_ids, derived)}
+    assert "14638" in neighbours
+    assert "quest jump" in neighbours["14638"].via_ref
+
+    chunk_ids_unlocked = dict(chunk_ids, **{"14638": True})
+    derived_unlocked = derive(state, chunk_ids_unlocked)
+    assert derived_unlocked.reachable_sections.get("14638", {}).get("1") is True
+
+
+@pytest.mark.real_export
+def test_creature_of_fenkenstrain_jump_offers_harmony_island_as_a_candidate(
+    real_export: ChunkInfo,
+) -> None:
+    """Once Creature of Fenkenstrain is complete and Brimhaven (11057-1)
+    is reachable, chunk 15148 (Harmony Island) - whose only declared
+    section is the unresolved `"???"` placeholder - appears as a
+    candidate via the jump."""
+    cluster = _exclusion_cluster(real_export, "15148")
+    chunk_ids = {chunk_id: True for chunk_id in real_export.sections if chunk_id not in cluster}
+    state = _maxed_ceiling_state(real_export)
+    derived = derive(state, chunk_ids)
+
+    assert "~|Creature of Fenkenstrain|~ Complete the quest" in derived.challenges.valid.get(
+        "Quest", {}
+    )
+    assert derived.reachable_sections.get("11057", {}).get("1") is True
+    neighbours = {n.chunk_id: n for n in eligible_neighbours(state, chunk_ids, derived)}
+    assert "15148" in neighbours
+    assert "quest jump" in neighbours["15148"].via_ref
+
+
+@pytest.mark.real_export
+def test_dragon_slayer_two_jump_offers_lithkren_as_a_candidate(real_export: ChunkInfo) -> None:
+    """Once Dragon Slayer II step 9 is valid and Mushroom Forest (14652,
+    bare section "0") is unlocked, chunk 14142 (Lithkren) - one half of a
+    fully isolated circular pair with 14398 - appears as a candidate via
+    the jump."""
+    cluster = _exclusion_cluster(real_export, "14142")
+    chunk_ids = {chunk_id: True for chunk_id in real_export.sections if chunk_id not in cluster}
+    state = _maxed_ceiling_state(real_export)
+    derived = derive(state, chunk_ids)
+
+    assert "~|Dragon Slayer II|~ 9" in derived.challenges.valid.get("Quest", {})
+    neighbours = {n.chunk_id: n for n in eligible_neighbours(state, chunk_ids, derived)}
+    assert "14142" in neighbours
+    assert "quest jump" in neighbours["14142"].via_ref
