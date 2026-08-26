@@ -41,6 +41,25 @@ at all. **Before reporting any of these upstream, check whether it needs
 only account progress this synthetic ceiling cannot supply, or a genuine
 missing edge** - the two look identical from this test alone.
 
+**A second, stricter ceiling: pure connectivity.** The 79 above still conflate two
+different questions - "is there a path at all" and "has this account done enough to
+walk it" - because a blank account cannot clear ordinary `Tasks`/`Skills`/`Items`
+gates either, and most of the 79 are that, not a missing edge (the module docstring
+above calls this out explicitly for the water pocket). `pure_connectivity_orphans`
+answers the first question alone: every challenge in every category is assumed
+already completed (`calc_challenges` itself is bypassed - patched out in
+`chunksim.derive.pipeline`, per this project's own patch-target convention - rather
+than gated normally) and every skill is capped at 99, so only the two genuinely
+structural mechanisms remain able to say no: the `Connect` graph `unlocked_sections`
+walks, and the `UnlocksArea`/`ConnectsSections` structural checks
+(`_area_is_connected`, `connected_sections`'s `chunksValid`/`oneSectionValid`).
+**The answer, over the whole 2026-08-25 export, is zero** - no section in the game
+is unreachable by connectivity alone once every account gate is assumed cleared, so
+`_KNOWN_PURE_CONNECTIVITY_ORPHANS` is pinned empty rather than to a number, and a
+single name appearing there is worth investigating as a genuine missing edge, not
+filed away as "another account-progress case" the way an addition to the 79 usually
+is.
+
 **Pinned rather than asserted to zero**, for the reason `test_other_tasks.py`'s
 own `_KNOWN_ORACLE_DELTA` already gives: upstream is live, and an exact-zero
 assertion would fail the moment any new content shipped with a temporary gap,
@@ -54,11 +73,25 @@ shrink the pinned set and go tell someone this worked).
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
+from chunksim.derive.challenges import ChallengeResult
 from chunksim.derive.pipeline import MapState, derive
 from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.model.experience import MAX_SKILL_LEVEL
 from chunksim.model.rules import default_rules
+
+#: The 23 real skills, for `_maxed_ceiling_state` - `max_skill`/`passive_skill`
+#: are read by name (`sections._skills_needed_met`), not enumerated from the
+#: export, so a played-with-every-skill-known ceiling has to name them itself.
+_ALL_SKILLS: tuple[str, ...] = (
+    "Attack", "Strength", "Defence", "Ranged", "Prayer", "Magic", "Runecraft",
+    "Construction", "Hitpoints", "Agility", "Herblore", "Thieving", "Crafting",
+    "Fletching", "Slayer", "Hunter", "Mining", "Smithing", "Fishing", "Cooking",
+    "Firemaking", "Woodcutting", "Farming",
+)
 
 
 def _blank_ceiling_state(chunk_info: ChunkInfo) -> MapState:
@@ -91,6 +124,65 @@ def orphaned_sections(chunk_info: ChunkInfo) -> frozenset[str]:
     """
     chunk_ids = {chunk_id: True for chunk_id in chunk_info.sections}
     derived = derive(_blank_ceiling_state(chunk_info), chunk_ids)
+    reachable = derived.reachable_sections
+    orphans: set[str] = set()
+    for chunk_id, chunk_sections in chunk_info.sections.items():
+        if not isinstance(chunk_sections, dict):
+            continue
+        for section_id in chunk_sections:
+            if section_id == "0":
+                continue
+            if not reachable.get(chunk_id, {}).get(section_id):
+                orphans.add(f"{chunk_id}-{section_id}")
+    return frozenset(orphans)
+
+
+def _maxed_ceiling_state(chunk_info: ChunkInfo) -> MapState:
+    """A synthetic account with every skill at 99 - the skill-gate half of
+    `pure_connectivity_orphans`'s "assume everything cleared". `calc_challenges`
+    itself is bypassed by `pure_connectivity_orphans`, so `completed_challenges`
+    here is inert; carried anyway for a `MapState` that reads honestly on its
+    own terms."""
+    maxed = {skill: MAX_SKILL_LEVEL for skill in _ALL_SKILLS}
+    return MapState(
+        chunk_info=chunk_info,
+        rules=default_rules(),
+        settings={},
+        manual_sections={},
+        manual_areas={},
+        manual_monsters={},
+        manual_equipment={},
+        backlogged_sources={},
+        max_skill=maxed,
+        passive_skill=maxed,
+        completed_challenges={},
+        checked_challenges={},
+        manual_tasks={},
+        backlog={},
+        active_tasks={},
+    )
+
+
+def pure_connectivity_orphans(chunk_info: ChunkInfo) -> frozenset[str]:
+    """Every non-`0` section unreachable by connectivity **alone** - every
+    rollable chunk unlocked, every skill at 99, and every challenge in every
+    category assumed already completed. See the module docstring for why
+    this bypasses `calc_challenges` rather than feeding it a permissive
+    account, and why the answer is pinned empty rather than to a count.
+    """
+    chunk_ids = {chunk_id: True for chunk_id in chunk_info.sections}
+
+    def _assume_everything_valid(*args: object, **kwargs: object) -> ChallengeResult:
+        valid: dict[str, dict[str, int | str | bool]] = {
+            category: {str(name): True for name in names}
+            for category, names in chunk_info.challenges.items()
+            if isinstance(names, dict)
+        }
+        return ChallengeResult(valid=valid, unsupported=frozenset())
+
+    with patch("chunksim.derive.pipeline.calc_challenges", side_effect=_assume_everything_valid):
+        derived = derive(_maxed_ceiling_state(chunk_info), chunk_ids)
+
     reachable = derived.reachable_sections
     orphans: set[str] = set()
     for chunk_id, chunk_sections in chunk_info.sections.items():
@@ -184,6 +276,42 @@ class TestOrphanedSections:
         assert orphaned_sections(info) == frozenset({"A-2"})
 
 
+class TestPureConnectivityOrphans:
+    """`pure_connectivity_orphans` against small, hand-built graphs - the
+    real export's own answer (zero, over the whole 2026-08-25 export) is
+    covered by the pinned regression test below."""
+
+    def test_a_skill_gate_a_blank_account_fails_is_cleared(self) -> None:
+        """The exact differentiator from `orphaned_sections`: a `Skills`
+        gate on a `ConnectsSections` challenge blanks out `orphaned_sections`
+        (see `test_a_gated_connects_sections_challenge_leaves_the_pocket_orphaned`
+        above) but not this - `calc_challenges` is bypassed entirely, so the
+        gate is never even asked."""
+        info = ChunkInfo(
+            {
+                "sections": {"A": {"1": ["???"], "2": []}},
+                "chunks": {"A": {"Sections": {"1": {}, "2": {}}}},
+                "challenges": {
+                    "Nonskill": {
+                        "A-1 to A-2": {
+                            "Sections": ["A-1", "A-2"],
+                            "ConnectsSections": True,
+                            "Skills": {"Agility": 70},
+                        }
+                    }
+                },
+            }
+        )
+        assert orphaned_sections(info) == frozenset({"A-2"})
+        assert pure_connectivity_orphans(info) == frozenset()
+
+    def test_no_edge_at_all_is_still_orphaned(self) -> None:
+        """Assuming every gate cleared cannot invent a `Connect` edge that
+        was never in the export - a genuinely missing edge stays missing."""
+        info = ChunkInfo({"sections": {"A": {"1": []}, "B": {"1": []}}})
+        assert pure_connectivity_orphans(info) == frozenset({"A-1", "B-1"})
+
+
 #: See the module docstring for what this is, why 79 rather than the first
 #: version's 209, and why it is pinned rather than asserted empty. Before
 #: adding a name here, confirm it needs a genuine missing edge rather than
@@ -235,4 +363,34 @@ def test_no_undocumented_change_in_orphaned_sections(real_export: ChunkInfo) -> 
         f"{len(fixed)} section(s) are reachable now and should come off "
         f"the pinned list: {sorted(fixed)} - update "
         "_KNOWN_ORPHANED_SECTIONS in this file"
+    )
+
+
+#: See the module docstring's "pure connectivity" section - empty over the
+#: whole 2026-08-25 export. A name appearing here is a genuine missing
+#: `Connect`/`ConnectsSections` edge, not another account-progress case.
+_KNOWN_PURE_CONNECTIVITY_ORPHANS: frozenset[str] = frozenset()
+
+
+@pytest.mark.real_export
+def test_no_undocumented_change_in_pure_connectivity_orphans(real_export: ChunkInfo) -> None:
+    """The stricter regression guard: see the module docstring's "pure
+    connectivity" section for what this measures and why it is pinned
+    empty rather than to a count, unlike `_KNOWN_ORPHANED_SECTIONS`.
+    """
+    found = pure_connectivity_orphans(real_export)
+
+    added = found - _KNOWN_PURE_CONNECTIVITY_ORPHANS
+    assert not added, (
+        f"{len(added)} section(s) are unreachable by connectivity alone, "
+        f"even assuming every account gate cleared: {sorted(added)} - this "
+        "is a genuine missing Connect/ConnectsSections edge, not account "
+        "progress a ceiling can't supply; confirm before adding it here"
+    )
+
+    fixed = _KNOWN_PURE_CONNECTIVITY_ORPHANS - found
+    assert not fixed, (
+        f"{len(fixed)} section(s) are reachable now and should come off "
+        f"the pinned list: {sorted(fixed)} - update "
+        "_KNOWN_PURE_CONNECTIVITY_ORPHANS in this file"
     )
