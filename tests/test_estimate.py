@@ -421,7 +421,11 @@ def test_a_made_item_costs_its_inputs() -> None:
     assert result.items[0].hours == pytest.approx(10 / 100 + DEFAULT_ACTION_SECONDS / 3600)
     # No "make: " prefix - the challenge name is already a full sentence.
     assert result.items[0].detail == "Carve a ~|bone ring|~"
-    assert result.items[0].source == "make:Carve a ~|bone ring|~"
+    # Bones' own 0.1h clears `_DOMINANT_MATERIAL_SHARE` against the four-tick
+    # action fee, so the source propagates to `Goblin` rather than staying a
+    # one-off `make:...` heading - see
+    # `test_a_recipe_dominated_by_one_material_takes_its_source`.
+    assert result.items[0].source == "Goblin"
 
 
 def test_a_cycle_of_made_items_is_unpriced_rather_than_recursing() -> None:
@@ -1062,10 +1066,86 @@ def test_sources_in_groups_items_under_what_earns_them() -> None:
     assert len(items) == 2
 
 
+def test_a_recipe_dominated_by_one_material_takes_its_source() -> None:
+    """The `fray` map case this rule was written for: `Imbue a granite ring`
+    needs nothing but a `Granite ring` and a shop trip, so its cost *is*
+    Grotesque Guardians' own grind, not a second one. Before
+    `_route_hours` propagated the dominant material's source, the imbue
+    priced under its own `make:...` heading and added its hours - here,
+    `Bandos hilt`'s 14.11h - on top of the boss-drops clamp instead of
+    folding into it, double-charging a grind that was already paid for.
+
+    `Bandos chestplate` at 1/2000 is the longer pole so the clamp's answer
+    (74.07h) does not incidentally equal the imbued item's own hours, which
+    would leave the double-count this test exists to catch invisible."""
+    info = ChunkInfo(
+        {
+            "drops": {
+                "General Graardor": {
+                    "Bandos chestplate": {"1": "1/2000"},
+                    "Bandos hilt": {"1": "1/381"},
+                }
+            },
+            "codeItems": {"bossMonsters": {"General Graardor": True}},
+            "challenges": {
+                "Extra": {
+                    "Obtain a ~|bandos chestplate|~": {"Items": ["Bandos chestplate"]},
+                    "Obtain a ~|bandos hilt|~": {"Items": ["Bandos hilt"]},
+                    "Imbue a ~|bandos hilt|~": {
+                        "Items": ["Bandos hilt"],
+                        "Output": "Bandos hilt (i)",
+                    },
+                    "Obtain a ~|bandos hilt (i)|~": {"Items": ["Bandos hilt (i)"]},
+                }
+            },
+        }
+    )
+    derived = _derived(
+        monsters=("General Graardor",),
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra",
+                    groups=(
+                        TaskGroup(
+                            name="Boss",
+                            active=(
+                                "Obtain a ~|bandos chestplate|~",
+                                "Obtain a ~|bandos hilt|~",
+                                "Obtain a ~|bandos hilt (i)|~",
+                            ),
+                        ),
+                    ),
+                )
+            }
+        ),
+    )
+    heuristics = Heuristics(monsters={"General Graardor": Rate(27.0, "mmg:x", "exact")})
+
+    result = _run(info, derived, heuristics)
+
+    imbued = next(item for item in result.items if item.item == "Bandos hilt (i)")
+    assert imbued.source == "General Graardor"
+    assert imbued.bucket == "boss drops"
+    # The clamp's answer is the longest single item off this source
+    # (`Bandos chestplate`'s 74.07h) - not that plus the imbued hilt's 14.11h
+    # again, which is what the bug this test pins looked like.
+    assert result.buckets["boss drops"] == pytest.approx(2000 / 27)
+
+
 def test_a_leaf_item_groups_under_its_diary_task() -> None:
     """`Coif` has no real repeatable source of its own - it is *made* - so
     its display should roll up under the Diary task that wants it rather
-    than stand as its own `make:...` heading."""
+    than stand as its own `make:...` heading.
+
+    **The weave itself is given a real cost.** Left at the default four
+    ticks, Wool's own 360s would clear `_DOMINANT_MATERIAL_SHARE` and
+    `_route_hours` would propagate `Goblin` as Coif's source instead - the
+    behaviour `test_a_recipe_dominated_by_one_material_takes_its_source`
+    pins - which is a different mechanism from the one this test targets and
+    would take Coif out of the `group` path entirely. A costed weave keeps
+    Wool below the threshold so this test isolates the `group` rollup.
+    """
     info = ChunkInfo(
         {
             "drops": {"Goblin": {"Wool": {"1": "1/10"}}},
@@ -1092,7 +1172,14 @@ def test_a_leaf_item_groups_under_its_diary_task() -> None:
         ),
     )
 
-    result = _run(info, derived, Heuristics(monsters={"Goblin": Rate(100.0)}))
+    result = _run(
+        info,
+        derived,
+        Heuristics(
+            monsters={"Goblin": Rate(100.0)},
+            action_seconds={"Weave a ~|coif|~": 60.0},
+        ),
+    )
 
     (coif,) = [item for item in result.items if item.item == "Coif"]
     assert coif.source.startswith("make:")
@@ -1107,7 +1194,11 @@ def test_two_unrelated_leaf_items_cluster_under_one_task_and_add_up() -> None:
     task: neither is earned by doing the other, so the group's heading is
     their sum and not the longer of the two - the same rule
     `test_items_from_different_sources_still_add_up` pins for unrelated
-    monster sources, now applied inside one Diary/CA cluster."""
+    monster sources, now applied inside one Diary/CA cluster.
+
+    The weave is given a real cost so Wool stays under
+    `_DOMINANT_MATERIAL_SHARE` - see
+    `test_a_leaf_item_groups_under_its_diary_task` for why."""
     info = ChunkInfo(
         {
             "drops": {"Goblin": {"Wool": {"1": "1/10"}}},
@@ -1143,6 +1234,7 @@ def test_two_unrelated_leaf_items_cluster_under_one_task_and_add_up() -> None:
         monsters={"Goblin": Rate(100.0)},
         currency_per_hour={"Coins": 500_000.0},
         shop_prices={"Fish Shop": {"Raw thing": ShopPrice(price=100.0, currency="Coins")}},
+        action_seconds={"Weave a ~|coif|~": 60.0},
     )
 
     result = _run(info, derived, heuristics)
@@ -1165,7 +1257,11 @@ def test_a_leaf_group_maxes_within_a_shared_source_and_sums_across_sources() -> 
     """Two items bought on the same shop trip, plus a third that is made:
     the two shop items max together (one trip buys both), and the made item
     adds on top - `_group_total`'s "max within a source, sum across
-    sources" rule, exercised inside one Diary/CA cluster."""
+    sources" rule, exercised inside one Diary/CA cluster.
+
+    The weave is given a real cost so Wool stays under
+    `_DOMINANT_MATERIAL_SHARE` - see
+    `test_a_leaf_item_groups_under_its_diary_task` for why."""
     info = ChunkInfo(
         {
             "drops": {"Goblin": {"Wool": {"1": "1/10"}}},
@@ -1210,6 +1306,7 @@ def test_a_leaf_group_maxes_within_a_shared_source_and_sums_across_sources() -> 
                 "Raw other thing": ShopPrice(price=1_000_000.0, currency="Coins"),
             }
         },
+        action_seconds={"Weave a ~|coif|~": 60.0},
     )
 
     result = _run(info, derived, heuristics)
@@ -1231,7 +1328,11 @@ def test_a_leaf_item_with_no_challenge_task_keeps_its_own_heading() -> None:
     """A BiS pick has no challenge behind it (`bis.py` synthesises the
     name), so there is no Diary/CA group to roll a made item up under - it
     keeps standing as its own `make:...` heading, same as before `group`
-    existed."""
+    existed.
+
+    The weave is given a real cost so Wool stays under
+    `_DOMINANT_MATERIAL_SHARE` - see
+    `test_a_leaf_item_groups_under_its_diary_task` for why."""
     info = ChunkInfo(
         {
             "drops": {"Goblin": {"Wool": {"1": "1/10"}}},
@@ -1245,7 +1346,14 @@ def test_a_leaf_item_with_no_challenge_task_keeps_its_own_heading() -> None:
         bis=BisResult(picks={}, active={"Obtain a ~|coif|~": "melee"}),
     )
 
-    result = _run(info, derived, Heuristics(monsters={"Goblin": Rate(100.0)}))
+    result = _run(
+        info,
+        derived,
+        Heuristics(
+            monsters={"Goblin": Rate(100.0)},
+            action_seconds={"Weave a ~|coif|~": 60.0},
+        ),
+    )
 
     (coif,) = [item for item in result.items if item.item == "Coif"]
     assert coif.group == ""
@@ -2668,7 +2776,11 @@ def test_a_consumed_secondary_beside_monsters_is_priced_off_it() -> None:
     assert priced is not None
     # 16 kills at 100s each for the key, plus one default action to open it.
     assert priced.hours * 3600 == pytest.approx(16 * 100.0 + DEFAULT_ACTION_SECONDS)
-    assert priced.source == "make:Chest (Bryophyta's lair)*"
+    # The key's own 1,600s clears `_DOMINANT_MATERIAL_SHARE` against the
+    # four-tick action fee, so the chest's source propagates to `Bryophyta`
+    # rather than staying its own one-off `make:...` heading - the chest
+    # really is "kill Bryophyta", same as the key it opens with.
+    assert priced.source == "Bryophyta"
 
 
 def test_a_tool_beside_monsters_does_not_open_the_gate() -> None:

@@ -95,6 +95,23 @@ and nechryaels feeding one pool - and does it **per master**, because you
 serve one at a time and combining two would describe nobody's game. A
 superior's *own* drops stay attributed to its base monster.
 
+**A `make:` route inherits its material's source when that material *is*
+the cost.** `Imbue a ~|granite ring|~ at Dom Onion's Reward Shop` needs
+nothing beyond a `Granite ring` and a shop trip, so pricing it under its own
+`make:Imbue a granite ring...` heading hid it from the same-source clamp
+above: the ring priced once under `Grotesque Guardians` and the imbue priced
+the same hours again under a one-off heading, on `fray` doubling a chunk of
+the estimate that was never two grinds. `_route_hours` now checks whether one
+required material accounts for `_DOMINANT_MATERIAL_SHARE` (99%) of the
+route's own cost and, when it does, stamps the route with that material's
+source instead - so the imbue folds into `Grotesque Guardians`' own group and
+clamps against it like any other drop would. **Deliberately narrow**: a
+recipe drawing from two different real sources stays summed (you cannot
+grind two bosses at once, so that time is genuinely sequential), and a
+`make:` chain - a bar smelted before being smithed - never qualifies as the
+"material," because propagating through an intermediate would misattribute a
+further processing step's own time to whatever fed it.
+
 **Where the time goes, and what was tried.** Pricing every reachable
 method's materials was 60.6s on the reference map and is 0.6s, entirely from three
 caches that live on the `_Walk` or the `material_seconds` closure and die
@@ -371,6 +388,14 @@ SPAWN_HOPS_PER_HOUR = 360.0
 #: Items one trip can carry back. An inventory is 28 slots and one holds what
 #: you are working with, so a purchase run brings 27.
 SHOP_TRIP_ITEMS = 27.0
+
+#: How much of a `make:` route's own cost its dominant material has to
+#: explain before `_route_hours` treats the recipe as *that* material's grind
+#: wearing a recipe, and stamps its source accordingly rather than a one-off
+#: `make:...` heading - see the comment at the `dominant_source` computation
+#: for what this buys (the granite-ring case) and what it deliberately
+#: refuses (a slow crafting action layered on a cheap material).
+_DOMINANT_MATERIAL_SHARE = 0.99
 
 
 @dataclass(frozen=True)
@@ -1925,6 +1950,37 @@ def _route_hours(
         # whole action costs what it costs and hands back `yielded` of the
         # output, so the per-item cost is the total over the yield. Absent
         # means one, which is every other challenge in the export.
+        # **A made item can be a single real grind wearing a recipe**, and
+        # stamping every route `f"make:{provider}"` regardless hid that from
+        # the same-source clamp `EstimateResult.buckets` relies on: `Imbue a
+        # ~|granite ring|~ at Dom Onion's Reward Shop` needs nothing beyond a
+        # `Granite ring` and a shop trip, so its entire cost *is* Grotesque
+        # Guardians' own grind - yet on the real `fray` map the ring priced
+        # once at 78.85 hours under `Grotesque Guardians` and the imbue
+        # priced the same 78.85 hours again under its own one-off heading,
+        # doubling a chunk of the estimate that was never two grinds.
+        #
+        # **Only when one real source explains (effectively) the whole
+        # cost.** A multi-material recipe drawing from two different real
+        # sources is genuinely sequential - you cannot grind two bosses at
+        # once, so summing them stays correct - and a `make:` chain (a bar
+        # smelted before being smithed) is excluded by the `"make:"` prefix
+        # test: propagating through an intermediate would misattribute a
+        # further processing step's own time to whatever fed *it*, the same
+        # failure shape as crediting a slow crafting action to a cheap
+        # material. `_DOMINANT_MATERIAL_SHARE` is what keeps that case out:
+        # it passes a route like the ring's, whose only other cost is a
+        # thirty-second shop trip against 78.85 hours, and refuses one where
+        # the *action* - not the material - is the real cost.
+        dominant_source = ""
+        if inputs and total > 0:
+            heaviest = max(inputs, key=lambda priced: priced.hours)
+            if (
+                heaviest.source
+                and not heaviest.source.startswith("make:")
+                and heaviest.hours / total >= _DOMINANT_MATERIAL_SHARE
+            ):
+                dominant_source = heaviest.source
         yielded = walk.heuristics.harvest_yield.get(provider, 1.0)
         if yielded > 1.0:
             total /= yielded
@@ -1945,7 +2001,7 @@ def _route_hours(
             # with their own verb ("earn: 500,000 Coins") - prepending one
             # here only restated what the sentence already said.
             provider,
-            f"make:{provider}",
+            dominant_source or f"make:{provider}",
             _unique(knobs),
             tuple(earned),
             tuple(inputs) if trace else (),
