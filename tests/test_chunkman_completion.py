@@ -51,7 +51,8 @@ import pytest
 
 from chunksim.derive.pipeline import MapState
 from chunksim.model.chunkinfo import ChunkInfo
-from chunksim.runs.completion import AUTO_COMPLETE_CATEGORIES, run_chunkman
+from chunksim.runs import completion
+from chunksim.runs.completion import AUTO_COMPLETE_CATEGORIES, LocationSummonedBoss, run_chunkman
 
 
 class TestChunkmanLoop:
@@ -145,6 +146,46 @@ class TestChunkmanLoop:
         outcome = run_chunkman(info, {}, start_chunk_id="1", start_section="1", seed=1)
 
         assert outcome.bosses_missing == ("Some Boss",)
+
+    def test_a_location_summoned_boss_is_granted_once_its_chunk_is_reachable(self) -> None:
+        """`_auto_grant_summoned_bosses`'s own shape, exercised through a
+        full run: a boss with no chunk-resident `Monster` entry at all
+        becomes available the moment its registered chunk/section is
+        reachable, via `manual_monsters` - see
+        `KNOWN_LOCATION_SUMMONED_BOSSES`'s own comment for why. Monkeypatch
+        the registry to a synthetic entry rather than relying on the real
+        `The Mimic` one, so this stays a mechanism test."""
+        info = ChunkInfo(
+            {
+                "sections": {"1": {"1": []}, "2": {"1": ["1-1"]}},
+                "chunks": {"1": {"Sections": {"1": {}}}, "2": {"Sections": {"1": {}}}},
+                "challenges": {},
+                "codeItems": {"bossMonsters": {"Cave Beast": True}},
+            }
+        )
+        synthetic = (LocationSummonedBoss(monster="Cave Beast", chunk="1", section="1"),)
+        with pytest.MonkeyPatch.context() as monkeypatch:
+            monkeypatch.setattr(completion, "KNOWN_LOCATION_SUMMONED_BOSSES", synthetic)
+            outcome = run_chunkman(info, {}, start_chunk_id="1", start_section="1", seed=1)
+
+        assert outcome.bosses_missing == ()
+        assert outcome.final_state.manual_monsters.get("Monsters") == {"Cave Beast": True}
+
+    def test_a_summoned_boss_never_reached_stays_missing(self) -> None:
+        """The registry itself, unpatched: a chunk the run's own pool never
+        includes leaves the boss ungranted, same as an ordinary
+        chunk-resident one."""
+        info = ChunkInfo(
+            {
+                "sections": {"1": {"1": []}, "2": {"1": ["1-1"]}},
+                "chunks": {"1": {"Sections": {"1": {}}}, "2": {"Sections": {"1": {}}}},
+                "challenges": {},
+                "codeItems": {"bossMonsters": {"The Mimic": True}},
+            }
+        )
+        outcome = run_chunkman(info, {}, start_chunk_id="1", start_section="1", seed=1)
+
+        assert outcome.bosses_missing == ("The Mimic",)
 
     def test_auto_complete_categories_include_sailing_and_combat_not_nonskill(self) -> None:
         """The two scope decisions actually discussed with the user, not

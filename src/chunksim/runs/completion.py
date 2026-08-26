@@ -46,6 +46,16 @@ completing one has no derivation effect anyway (see the correction above:
 only a Skill category's own untrainable-skill escape hatch reads
 `completed_challenges` at all).
 
+**A second, narrower auto-completion runs alongside it: location-summoned
+bosses.** `_auto_grant_summoned_bosses` grants `manual_monsters['Monsters']`
+entries the moment `KNOWN_LOCATION_SUMMONED_BOSSES`' chunk/section is
+reachable - a boss like The Mimic has no chunk-resident `Monster` entry at
+all (it's summoned by an item, not standing in the world), so nothing
+`sources.gather_chunks_info` reads can ever grant it, and `manual_monsters`
+is upstream's own real escape hatch for exactly this. See that registry's
+own comment for why this stays scoped to chunkman's ceiling account rather
+than joining `quest_jumps`/`object_links` in core derivation.
+
 Terminates two ways: the neighbour pool comes up empty (**stuck** - the
 failure case this project wants recorded, not just noticed) or every one of
 the export's rollable chunks (`len(chunk_info.sections)`) is unlocked
@@ -172,6 +182,74 @@ def _auto_complete_targets(
         if new:
             targets[category] = new
     return targets
+
+
+@dataclass(frozen=True)
+class LocationSummonedBoss:
+    """A boss whose only real gate is standing in the right chunk, not
+    chunk-resident data `sources.gather_chunks_info` can read - see
+    `KNOWN_LOCATION_SUMMONED_BOSSES`'s own comment for why this needs
+    `manual_monsters` rather than an export fix, and why it belongs here
+    rather than in `derive/`."""
+
+    monster: str
+    chunk: str
+    section: str
+
+
+#: `manual_monsters` (`MapState.manual_monsters['Monsters']`) is a *real*,
+#: already-ported upstream feature (`manualMonsters` in the payload) - the
+#: player's own declaration "I have access to this monster", for exactly
+#: the case a chunk's `Monster` list can't express: something summoned by
+#: an item or event rather than standing in the world. It is never
+#: auto-populated by ordinary derivation, because upstream requires the
+#: real player to toggle it themselves once they have earned it - correct
+#: for a real map, where "the chunk is reachable" says nothing about
+#: whether the account has actually done so.
+#:
+#: `run_chunkman` is different: it already treats every other RNG-gated
+#: mechanic as "assume the ceiling" (no drop-luck simulation anywhere,
+#: every quest auto-completed the moment it is valid) rather than sampling
+#: it, so auto-granting a location-summoned boss the same way - the moment
+#: its chunk is reachable, without simulating the actual clue/task luck
+#: behind it - matches the abstraction level the rest of this module
+#: already commits to. This is deliberately **not** wired into core
+#: derivation (unlike `quest_jumps`/`object_links`): a chunk being
+#: reachable is a much weaker signal than a quest step being valid - it
+#: says nothing about whether a *real* account has actually earned the
+#: monster - so applying it to every consumer (`chunksim estimate`, a real
+#: cached map) would silently overstate what a real player's own map
+#: shows. Scoped to chunkman's own idealised ceiling account only.
+#:
+#: The Mimic (chunk `6455`, Watson's House) is summoned by handing in
+#: enough Elite/Master clue scroll cases (1/35 and 1/15 chance per casket
+#: respectively - not modelled, matching every other unmodelled drop-rate
+#: in this project). Confirmed against the real export: `drops['The
+#: Mimic']` and `codeItems['bossMonsters']` both carry it in full - only
+#: the "where do you fight it" fact was missing, which nothing in the
+#: export states directly (unlike, say, a `Chunks` field on a Combat
+#: Achievement task). `section="1"` is where Watson himself stands
+#: (`chunkinfo['chunks']['6455']['Sections']['1']['NPC']['Watson']`),
+#: confirmed already independently reachable at `chunkman-stuck`.
+KNOWN_LOCATION_SUMMONED_BOSSES: tuple[LocationSummonedBoss, ...] = (
+    LocationSummonedBoss(monster="The Mimic", chunk="6455", section="1"),
+)
+
+
+def _auto_grant_summoned_bosses(
+    derived: Derived, manual_monsters: Mapping[str, Any]
+) -> dict[str, bool]:
+    """Every `KNOWN_LOCATION_SUMMONED_BOSSES` entry whose chunk/section is
+    now reachable and not already granted - the `manual_monsters` analogue
+    of `_auto_complete_targets`, folded into the same step."""
+    already = manual_monsters.get("Monsters")
+    already = already if isinstance(already, Mapping) else {}
+    return {
+        boss.monster: True
+        for boss in KNOWN_LOCATION_SUMMONED_BOSSES
+        if boss.monster not in already
+        and derived.reachable_sections.get(boss.chunk, {}).get(boss.section)
+    }
 
 
 @dataclass(frozen=True)
@@ -434,13 +512,22 @@ def run_chunkman(
     while True:
         order += 1
         targets = _auto_complete_targets(before, state.completed_challenges)
-        if targets:
+        granted_bosses = _auto_grant_summoned_bosses(before, state.manual_monsters)
+        if targets or granted_bosses:
             merged = {
                 category: {**state.completed_challenges.get(category, {}), **names}
                 for category, names in targets.items()
             }
+            manual_monsters = dict(state.manual_monsters)
+            if granted_bosses:
+                manual_monsters["Monsters"] = {
+                    **manual_monsters.get("Monsters", {}),
+                    **granted_bosses,
+                }
             state = dataclasses.replace(
-                state, completed_challenges={**state.completed_challenges, **merged}
+                state,
+                completed_challenges={**state.completed_challenges, **merged},
+                manual_monsters=manual_monsters,
             )
             carry = dict(before.expanded_chunks) if carry_areas else None
             before = derive(state, current_ids, carry_areas=carry)
