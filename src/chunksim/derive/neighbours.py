@@ -114,6 +114,7 @@ from chunksim.derive.graph import (
     grid_neighbours,
 )
 from chunksim.derive.pipeline import Derived, MapState
+from chunksim.derive.quest_jumps import quest_jump_candidates
 
 
 @dataclass(frozen=True)
@@ -230,6 +231,18 @@ def eligible_neighbours(
             )
             if edge is not None:
                 qualifying[candidate] = edge
+
+    # A quest jump is a fallback, tried only for a candidate ordinary
+    # connectivity does not already qualify - see `quest_jumps.py`'s own
+    # docstring for what this is and why upstream has nothing like it.
+    for candidate, edge in quest_jump_candidates(
+        unlocked, current.reachable_sections, current.challenges.valid
+    ).items():
+        if candidate in qualifying:
+            continue
+        if f2p and candidate not in walkable_f2p:
+            continue
+        qualifying[candidate] = edge
 
     numbers = assign_numbers(qualifying)
     return sorted(

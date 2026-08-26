@@ -87,6 +87,23 @@ by every subcommand through it. **This is a deliberately partial reimplementatio
 logic**, and it **refuses rather than approximates** — unported behaviour raises rather than
 returning a plausible number.
 
+### Quest jumps: the one deliberate departure from upstream
+
+`derive/quest_jumps.py`'s `KNOWN_QUEST_JUMPS` is a small, hand-authored registry of
+quest-narrative shortcuts — a step in a quest's own chain making a chunk reachable that no export
+data (`Connect`, `sections`, `ConnectsSections`) can express, confirmed by reading upstream's own
+`worker.js`/`index.js` source for the relevant mechanisms and finding nothing that could. This is
+the one place this project models something the real game does narratively (a quest physically
+transports you) rather than porting a mechanism upstream's own live tool has. It exists because a
+maxed account played through the real chunk-roll mechanism from a fixed start
+(`runs/completion.py`) genuinely cannot complete the export without it — not a convenience, a fix
+for a real dead end (chunk `8234`, the Pandemonium quest's own Shipyard, has no other path in at
+all: every chunk grid-adjacent to it is part of the same closed ocean loop, and every Sailing task
+in the export requires already owning a boat, which only the Shipyard can grant). Every entry
+carries its own justifying comment citing the measurement behind it, matching
+`heuristics/overrides.json`'s own convention; keep that discipline for any new entry rather than
+adding one bare.
+
 ### Rules that cut across modules
 
 Each of the first three has already caused a real bug.

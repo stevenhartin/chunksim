@@ -9,11 +9,17 @@ reachable by unlocking `Crandor and Karamja Dungeon#North` - a `Nonskill`
 `11314-2`; `11314-2` needed North; North needed step 7. No account, however
 progressed, could ever complete it - this was pinned in
 `tests/test_section_connectivity.py`'s `_KNOWN_ORPHANED_SECTIONS` before
-being understood, then root-caused and fixed (`Crandor and Karamja
-Dungeon#North`'s `Tasks` retargeted from step 7 to step 6 - see that
-module's own history). `quest_chunk_cycle_targets`, below, is the general
-form of the check that found it: run *every* quest through the same
-question, not just the one a user happened to notice by hand.
+being understood, then root-caused. **Resolved not by an upstream data
+edit but by `derive/quest_jumps.py`'s `KNOWN_QUEST_JUMPS`** - a deliberate,
+documented departure from "port only" this project now carries for exactly
+this shape of dead end (see CLAUDE.md's "Quest jumps" section). Since
+`quest_chunk_cycle_targets` below calls the real `pipeline.derive`
+directly, it inherits that mechanism automatically; `_KNOWN_QUEST_CHUNK_CYCLES`
+is empty as of the mechanism landing - see its own comment for what a name
+reappearing there would and would not mean. `quest_chunk_cycle_targets`,
+below, is the general form of the check that first found this: run *every*
+quest through the same question, not just the one a user happened to
+notice by hand.
 
 **The question, per quest**: with every rollable chunk unlocked, every
 skill at 99, and every *other* quest's own steps assumed already
@@ -355,15 +361,29 @@ class TestQuestChunkCycleTargets:
         assert quest_chunk_cycle_targets(info, "Q") == {}
 
 
-#: The single finding on the 2026-08-25 export - see the module docstring
-#: for the full Dragon Slayer I story and the recommended fix
-#: (`Crandor and Karamja Dungeon#North`'s `Tasks` retargeted from step 7 to
-#: step 6). This local cache fixture still carries the *unfixed* data, so
-#: this is pinned non-empty; once a re-fetch picks up the fix, this should
-#: come back empty and `_KNOWN_QUEST_CHUNK_CYCLES` should shrink to match.
-_KNOWN_QUEST_CHUNK_CYCLES: dict[str, frozenset[str]] = {
-    "Dragon Slayer I": frozenset({"~|Dragon Slayer I|~ 7", "~|Dragon Slayer I|~ 9"}),
-}
+#: Empty on the 2026-08-25 export. Dragon Slayer I was the one finding here
+#: - see the module docstring for the full story - and it is resolved now
+#: not by an upstream data edit but by `derive/quest_jumps.py`'s
+#: `KNOWN_QUEST_JUMPS`: `quest_chunk_cycle_targets` calls the real
+#: `pipeline.derive` directly, so it inherits that mechanism automatically,
+#: with no change to this scanner's own logic. Confirmed directly: once
+#: Dragon Slayer I step 6 is valid, quest_jumps opens chunk 11314's section
+#: 3, which lets 11314-2 open via the already-ported "11314-3 to 11314-2"
+#: Agility-shortcut `ConnectsSections` challenge, which lets step 7's own
+#: unedited `Chunks: ['11314-2']` resolve naturally - both step 7 and
+#: step 9 (the two names previously pinned here) validate.
+#:
+#: **This scanner still cannot see the *other* class of gap
+#: `quest_jumps.py` exists for.** Its own ablation unlocks every rollable
+#: chunk from the start (`chunk_ids = {chunk_id: True for chunk_id in
+#: stripped.sections}`), so a chunk that can never become a roll
+#: *candidate* at all - the Pandemonium/Shipyard shape, chunk `8234` -
+#: is invisible to it; only `runs/completion.py`'s own end-to-end
+#: simulation, which walks the real `neighbours.py` eligibility mechanism
+#: rather than assuming every chunk already unlocked, can find that shape.
+#: A name appearing here again would mean a *new* same-quest cycle, not a
+#: regression in `quest_jumps.py` - the two are different failure modes.
+_KNOWN_QUEST_CHUNK_CYCLES: dict[str, frozenset[str]] = {}
 
 
 @pytest.mark.real_export

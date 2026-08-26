@@ -5,7 +5,7 @@ active_tasks/other_tasks`, wired by `pipeline.derive`, plus everything that
 walks or diffs the result: `boosts`, `graph`, `neighbours`, `unlock`, `delta`,
 `search`.
 
-**The rule this directory carries, once, for all fifteen modules: no
+**The rule this directory carries, once, for all sixteen modules: no
 module-level mutable state.** No `lru_cache`, no memo dicts, no globals. Not
 tidiness - `chunksim simulate --jobs N` and `batch.price_steps` run this code in
 worker processes, and a cache in a "pure" module breaks that silently, in the
@@ -54,7 +54,9 @@ The modules, and what each owns:
   **dependency** of `challenges` and `bis` rather than a feature.
 - `pipeline.py` - `MapState` and `derive`. Owns the **loop** where upstream's
   area-unlock circularity lives, and the `slayerLocked` fold. Raises
-  `ConvergenceError` rather than returning a truncated derivation.
+  `ConvergenceError` rather than returning a truncated derivation. Also folds
+  `quest_jumps.quest_jump_sections` into the same accumulator as
+  `connected_sections`, once per pass.
 - `unlock.py` - what one candidate unlock adds, by diffing two `derive` calls.
   **Owns the project's attribution rule.** Additions-only. Records *eligibility*
   and the two boost clamps as well as validity - a diff of `valid` alone cannot
@@ -64,10 +66,19 @@ The modules, and what each owns:
   projects its primitives down to a one-directional view, and the two must
   agree.
 - `neighbours.py` - which chunks are eligible to roll next, upstream's canvas
-  numbering, and the `sectionsLimits` gate.
+  numbering, and the `sectionsLimits` gate. Also offers `quest_jumps`'s
+  chunk-level candidates as a fallback, tried only where ordinary connectivity
+  does not already qualify a chunk.
 - `graph.py` - the export's `sections` branch as a **directed** graph: the
   shared substrate `sections.py`, `neighbours.py` and `runs/simulate.py` all
   build on, and shaped for the not-yet-written pathfinding search besides.
+- `quest_jumps.py` - the one place this project departs from "port only": a
+  small, hand-authored registry of quest-narrative shortcuts upstream's own
+  connectivity data cannot express (`KNOWN_QUEST_JUMPS`). Consulted by
+  `pipeline.py`'s loop (a landing section forced open, same as
+  `connected_sections`' own) and by `neighbours.py` (a not-yet-unlocked target
+  made a roll candidate). See CLAUDE.md's "Quest jumps" section for why this
+  exists at all.
 - `search.py` - world-wide fuzzy search over the *raw* export, a strict superset
   of what `chunksim sources` can list.
 """

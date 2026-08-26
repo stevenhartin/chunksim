@@ -92,6 +92,7 @@ from chunksim.derive.injected import (
 )
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.derive.other_tasks import OtherTasks, classify_other_tasks
+from chunksim.derive.quest_jumps import quest_jump_sections
 from chunksim.model.firebase import decode_challenge_keyed, decode_payload
 from chunksim.derive.sections import (
     connected_sections,
@@ -600,12 +601,23 @@ def derive(
         # far (it was built from `connected` above), so this reports only
         # what is genuinely new this pass - the same "already-known" filter
         # `new_areas` gets for free from `chunk_ids`.
-        new_connected = connected_sections(
-            challenges.valid,
-            expanded,
-            reachable,
-            chunk_info,
-            manual_sections=state.manual_sections,
+        #
+        # `quest_jump_sections` folds into this same accumulator rather than
+        # a parallel one - see `derive/quest_jumps.py`'s own docstring for
+        # what it is and why. It is consumed identically to
+        # `connected_sections`' own contribution (folded into
+        # `manual_sections` for the next pass), so a second accumulator
+        # would only duplicate the exit-condition and merge machinery this
+        # one already has.
+        new_connected = _merge_sections(
+            connected_sections(
+                challenges.valid,
+                expanded,
+                reachable,
+                chunk_info,
+                manual_sections=state.manual_sections,
+            ),
+            quest_jump_sections(challenges.valid, expanded, reachable),
         )
         # Upstream asks `checkPrimaryMethod('Slayer', …)` inside the `Kill X`
         # filter, once per monster, against this pass's own answer; asking it
