@@ -158,6 +158,330 @@ KNOWN_QUEST_JUMPS: tuple[QuestJump, ...] = (
         landing_section=None,
         anchor=("12078", "1"),
     ),
+    # Underground Pass's own completion, to Tyras Camp (chunk 8753) - the
+    # entry point to the whole Elf-lands pocket (Lletya, Tyras Camp,
+    # Iorwerth Camp, Arandar and more - Roving Elves, Mourning's End I/II
+    # and Song of the Elves all run through it). Confirmed circular from
+    # every direction: Roving Elves' own step 1 ("Talk to Islwyn and
+    # Eluned") already requires `ElunedChunks[+]` (`codeItems.itemsPlus`
+    # resolves to `['9009-1', '8753-1']`), so even the *first* quest in
+    # this chain cannot start without the pocket already open - there is
+    # no quest-internal step to trigger from. `~|Underground Pass|~
+    # Complete the quest` is independently already valid at chunkman's own
+    # stuck point (confirmed directly) and needs chunk `10291` (Ardougne
+    # Castle, King Lathas) reachable - the real quest's own narrative
+    # justification: Underground Pass is how a player first reaches past
+    # West Ardougne toward the elf border, before Roving Elves exists as
+    # an option at all.
+    #
+    # `anchor=("10291", "0")` is `10291`'s *only* declared section -
+    # finding this needed a fix to `quest_jump_candidates` itself
+    # (`reachable_sections` never records section "0" explicitly, the same
+    # "free the moment its chunk is unlocked" convention every other
+    # reader of it already follows - the anchor check now special-cases it
+    # the same way rather than silently never matching a chunk with only
+    # a "0" section).
+    #
+    # `target_chunk="8753"`, `landing_section="1"` (its own raw
+    # `Sections` has no `"0"` at all - nothing opens for free on unlock,
+    # unlike Pandemonium's `8234`) - confirmed to cascade the *entire*
+    # rest of the pocket via ordinary rolling once opened, with no further
+    # jump entries needed: `neighbour_pool` offers `9009` and `8752` the
+    # moment `8753`/`1` is reachable (both grid-adjacent to `8753`, each
+    # with a real `Connect` edge into it), and `9009` itself is `8753`'s
+    # own declared neighbour into `9265` (Lletya) in turn.
+    QuestJump(
+        trigger_category="Quest",
+        trigger_name="~|Underground Pass|~ Complete the quest",
+        target_chunk="8753",
+        landing_section="1",
+        anchor=("10291", "0"),
+    ),
+    # Troll Romance, step 4 ("Wax your sled"), to the Trollweiss pocket - a
+    # closed 3-chunk loop (11066 Mountain Slope South, 11067 Mountain Slope
+    # North, 11068 Trollweiss Mountain) whose only edges, per the real
+    # export's own `sections` grid, are to each other:
+    # `sections['11066'] == {'0': ['11067']}`,
+    # `sections['11067'] == {'0': ['11066', '11068-1']}`,
+    # `sections['11068'] == {'1': ['11067'], 'W1': [...]}` (that `W1` leads
+    # only into the separately-unexamined Ocean Chunk chain, not out of this
+    # pocket). None of the three has any other reference anywhere in
+    # chunkinfo['sections'] - confirmed by grep - so nothing outside this
+    # loop can ever unlock any member of it, matching its "no qualifying
+    # section connection yet" classification for all three in the real
+    # chunkman-stuck state.
+    #
+    # The blocking step is step 5 ("Pick a Trollweiss flower",
+    # `Chunks: ['11067', '11068-1']`) - circular, since both chunks are
+    # inside the loop it needs open. Steps 1-4 carry no `Chunks` requirement
+    # at all (NPCs/Items only) and are confirmed already valid at
+    # chunkman's own stuck point; step 4 ("Wax your sled") is the step
+    # immediately before the block, so this is acyclic the same way Dragon
+    # Slayer I's step 6 is.
+    #
+    # `anchor=("11575", "1")` - Burthorpe, specifically the section where
+    # `Dunstan` (step 3's own NPC, "Get Dunstan to make you a sled") stands
+    # - models departing for the mountain from where the sled was made and
+    # waxed; already independently reachable at chunkman's own stuck point.
+    #
+    # `target_chunk="11067"` (Mountain Slope North) rather than either
+    # neighbour: it is the loop's hub - its own `sections` entry is the only
+    # one of the three with edges to *both* others - so landing here lets
+    # ordinary rolling reach the rest with no further jump entries.
+    # `landing_section=None`: `11067` declares no explicit `Sections` map at
+    # all (a bare-chunk entry), so section "0" is free the moment the chunk
+    # itself is unlocked, the same convention as every other bare chunk.
+    # Confirmed end to end via direct `derive()`/`eligible_neighbours()`
+    # calls against the real chunkman-stuck state: with only this entry
+    # added, `11067` appears as a candidate with
+    # `via_ref == "quest jump: Troll Romance 4"`; unlocking it alone makes
+    # both `11066` and `11068` appear as ordinary neighbours (via `11067`)
+    # on the next call; unlocking all three together resolves
+    # `reachable_sections["11068"] == {"1": True}` and every remaining
+    # Troll Romance step, including `Complete the quest`.
+    QuestJump(
+        trigger_category="Quest",
+        trigger_name="~|Troll Romance|~ 4",
+        target_chunk="11067",
+        landing_section=None,
+        anchor=("11575", "1"),
+    ),
+    # The Curse of Arrav, step 7 ("Mine through the puzzles and reach the
+    # end of the cave"), to Zemouregal's Fortress (chunk 11324). Step 6
+    # ("Enter the cave on Trollweiss Mountain", `Chunks: ["11068-1"]`) and
+    # step 7 itself (`Chunks: ["Zemouregal's Fortress#Basement"]`) both
+    # resolve for free once the Trollweiss jump above fires - the export
+    # carries a real `Nonskill` challenge keyed exactly
+    # "Zemouregal's Fortress#Basement" with `UnlocksArea: true`, gated on
+    # step 6, and `11068`'s own `Sections["1"]["Connect"]` names `11168`
+    # (the area's underlying chunk, `Name: "Zemouregal's Fortress#Basement"`)
+    # - so `unlockable_areas`' ordinary connectivity check grants the area
+    # the moment `11068`/`1` is reachable, no jump code involved. Confirmed
+    # directly: unlocking only `11066`/`11067`/`11068` (the Trollweiss trio)
+    # already makes both step 6 and step 7 valid.
+    #
+    # What does *not* resolve for free is step 8 ("Talk to Arrav and obtain
+    # the base plans and key", `Chunks: ["11324"]`) - 11324 is a genuine
+    # walkable chunk (`chunkinfo['sections']['11324'] == {'0': ['???']}`),
+    # not a named area, and its only declared section connection is the
+    # unresolved placeholder - confirmed via `graph.py`'s own accounting
+    # that every `"???"`-only section has no connection-based way in at
+    # all. Grid-adjacency alone cannot save it either: `eligible_neighbours`
+    # requires *both* grid-adjacency *and* a resolved own-section
+    # connection, and 11324 is grid-adjacent to 11068 (delta 256) but still
+    # fails the second half. So the chunk stays unreachable forever without
+    # a jump, despite sitting one step past content the jump above already
+    # opens.
+    #
+    # `anchor=("11068", "1")` - the same Trollweiss cave entrance the
+    # Basement area itself connects from, and the real quest's own route
+    # (cave -> basement -> fortress). `landing_section=None`: 11324's
+    # `"0"` is its only declared section and is free the moment the chunk
+    # is unlocked, same convention as every other bare chunk. Trigger is
+    # step 7, not step 6 or step 8 - non-circular (step 7 depends only on
+    # the Basement area, never on 11324) and the step immediately before
+    # the block, matching the pattern established for Dragon Slayer I and
+    # Troll Romance. Confirmed end to end: with this entry added, 11324
+    # appears as a candidate (`via_ref == "quest jump: The Curse of Arrav
+    # 7"`) once the Trollweiss trio is unlocked, and unlocking it resolves
+    # every remaining Curse of Arrav step through `Complete the quest`.
+    QuestJump(
+        trigger_category="Quest",
+        trigger_name="~|The Curse of Arrav|~ 7",
+        target_chunk="11324",
+        landing_section=None,
+        anchor=("11068", "1"),
+    ),
+    # While Guthix Sleeps, step 20 ("Return to the castle, then swap places
+    # with Surok"), to Lucien's camp (chunk 11579) - step 21's own
+    # description is literally "Teleport to Lucien's camp", the clearest
+    # narrative-transport case of any entry here. 11579 has no other path
+    # in at all: grepped every `chunkinfo['sections']` entry for a "11579"
+    # ref and found none, and its own entry is the unresolved-only
+    # `{'0': ['???']}` - no `Connect` field either, so not even an area
+    # grant is possible, unlike Zemouregal's Fortress#Basement above.
+    #
+    # Step 20 requires `Chunks: ["11828-1", "Black Knights' Catacombs"]` -
+    # nothing to do with 11579, so non-circular - and is the step
+    # immediately before the block. `anchor=("11828", "1")` (Falador West)
+    # is exactly where step 20 itself leaves the player - "swap places with
+    # Surok" happens at the castle, 11828-1, the same chunk-section step
+    # 20's own requirement names - modelling "you are teleported from where
+    # the swap happens". `landing_section=None`: 11579 declares no
+    # `Sections` map, so its `"0"` is free on unlock like every other bare
+    # chunk. Confirmed end to end: with this entry added, 11579 appears as
+    # a candidate once step 20 is valid; unlocking it resolves step 21
+    # ("Teleport to Lucien's camp") and step 22 ("Jump to the roof of the
+    # church", needing `11835`, already independently reachable).
+    QuestJump(
+        trigger_category="Quest",
+        trigger_name="~|While Guthix Sleeps|~ 20",
+        target_chunk="11579",
+        landing_section=None,
+        anchor=("11828", "1"),
+    ),
+    # Cold War, step 2 ("Talk to Larry again at Rellekka Dock"), to the
+    # South Iceberg (chunk 10558) - not one of the 8 clusters originally
+    # scoped from the rejected-neighbour scan, discovered as a genuine
+    # prerequisite while chasing Ghorrock/Making Friends with My Arm below:
+    # that quest's own step 1 needs Cold War complete, and Cold War's own
+    # step 3 ("Travel to the Iceberg... talk to Larry", `Chunks:
+    # ["10558-1"]`) turns out to be exactly the same shape as every other
+    # entry here.
+    #
+    # `10558`'s only paths in, grepped exhaustively across every
+    # `chunkinfo['sections']` entry: its own section `1` pairs with
+    # `10559-1` (a tight two-chunk loop, each declaring the other as its
+    # *only* land-section requirement), and both chunks' remaining sections
+    # (`W1`-`W6`) resolve only into the same disconnected ocean network
+    # `runs/completion.py` already found permanently unreachable elsewhere
+    # (10557, 10814, 10302, 10303, 10560, 10815 among them) - not a new
+    # kind of gap, the same one, reached from a different quest.
+    #
+    # Step 2 ("Talk to Larry again at Rellekka Dock", `Chunks:
+    # ["10810-1"]`) is non-circular and the step immediately before the
+    # block; its own description already reads as a departure point.
+    # `anchor=("10810", "1")` - Rellekka Dock, already independently
+    # reachable - models Larry's boat trip to the iceberg. `10558` was
+    # never independently rollable (chunk-level, `anchor` required, same
+    # shape as Pandemonium/Lucien's camp above) and its land section is
+    # non-`"0"`, so `landing_section="1"` is also required, same as Dragon
+    # Slayer I - the first entry here needing both halves at once, and nothing
+    # about the mechanism needed to change to support it: candidacy (this
+    # entry's `anchor`) gets the chunk into `chunk_ids`, and
+    # `quest_jump_sections` picks it up from there exactly like a
+    # section-level entry would. Confirmed end to end: `10558` becomes a
+    # candidate once step 2 is valid; unlocking it forces `10558-1`
+    # reachable, which makes `10559` an *ordinary* neighbour (via its own
+    # `10558-1` ref - no jump needed for it); unlocking both resolves every
+    # remaining Cold War step through `Complete the quest`.
+    QuestJump(
+        trigger_category="Quest",
+        trigger_name="~|Cold War|~ 2",
+        target_chunk="10558",
+        landing_section="1",
+        anchor=("10810", "1"),
+    ),
+    # Making Friends with My Arm, step 3 ("Talk to Larry"), to Weiss (chunk
+    # 11325) - step 4's own description is literally "Talk to Larry to get
+    # taken to Weiss" (`Chunks: ["11325-1"]`), the same "get taken"
+    # narrative-transport shape as Lucien's camp above. Depends on the Cold
+    # War entry above (step 1's own `Tasks` gate needs Cold War complete) -
+    # confirmed this quest line stays blocked until that one resolves
+    # first, not a separate coincidence.
+    #
+    # `11325`'s only paths in: its own `Sections['1']` pairs with
+    # `11326-1`/`11581-1`, both themselves inside the same closed
+    # ice/ocean pocket (11326, 11581, 11582, 11837, 11838...) nothing here
+    # can otherwise reach; its `W1`/`W2` resolve only into the same
+    # disconnected ocean network as the Cold War entry's iceberg. Step 3
+    # (`Chunks: ["10810-1"]`, Rellekka Dock) has nothing to do with Weiss,
+    # so non-circular, and is the step immediately before the block.
+    # `anchor=("10810", "1")` - the same Rellekka Dock departure point as
+    # the Cold War entry, matching the real geography (Larry ships you
+    # north from the same dock for both quests). `landing_section="1"` -
+    # 11325 has no `"0"` and was never independently rollable, so both
+    # halves are needed, same shape as Cold War's own entry.
+    #
+    # Confirmed to cascade the *entire* rest of this icy pocket via
+    # ordinary rolling with no further jump entries: unlocking only 11325
+    # makes `11581` (Ghorrock Fortress) an ordinary neighbour (via its own
+    # `11325-1` ref), and unlocking both resolves every remaining step of
+    # both Making Friends with My Arm *and* Secrets of the North (which
+    # shares chunk `11581` and was blocked on the same pocket) through
+    # their own `Complete the quest`.
+    QuestJump(
+        trigger_category="Quest",
+        trigger_name="~|Making Friends with My Arm|~ 3",
+        target_chunk="11325",
+        landing_section="1",
+        anchor=("10810", "1"),
+    ),
+    # Desert Treasure II - The Fallen Empire, step 5a3 ("Search the desk and
+    # drink the potion"), to Stranglewood Temple (chunk 4661). This whole
+    # branch was actually blocked twice over: step 1 itself needs Secrets
+    # of the North complete, which the Making Friends with My Arm entry
+    # above already resolves - confirmed this quest's steps 1-4 all become
+    # valid once that jump is in place, with no further help needed to get
+    # this far.
+    #
+    # `4661`'s only paths in, grepped exhaustively: its own section pairs
+    # with `4405-1`/`4405-2`/`4660-1`/`4917-3`; `4660` needs `4404`,
+    # `4659` or `4916-2`; `4659` needs `4660-2`/`4660-3`; `4916`'s
+    # relevant section needs `4660-2`; `4917`'s relevant section (`3`)
+    # needs `4661` or `4916-1` (itself needing `4917-3` back) - a closed
+    # pocket (4403/4404/4405/4659/4660/4661, plus the blocked halves of
+    # 4916/4917) with nothing outside it as an entry.
+    #
+    # Step 5a4's own description is "Board the rowboat, then talk to and
+    # defend Kasonde" - both `4661` and the anchor chunk `4917` (Custodia
+    # Mountains Lake) declare a `Rowboat` object, the real quest's own
+    # crossing. Step 5a3 (`Chunks: ["6968-1"]`, already independently
+    # reachable) is non-circular and the step immediately before. `anchor
+    # =("4917", "1")` is `4917`'s own section carrying that `Rowboat`
+    # object, already reachable once step 1's Secrets of the North gate
+    # clears. `landing_section=None`: `4661` declares no `"0"` at all but
+    # was never independently rollable either - the same
+    # "anchor-only, section free once granted" shape as Zemouregal's
+    # Fortress and Lucien's camp above, since its sole declared section is
+    # the bare `"0"`.
+    #
+    # Confirmed to cascade the entire rest of the pocket via ordinary
+    # rolling with no further jump entries: unlocking only `4661` makes
+    # both `4660` and `4405` (Vardorvis' own arena) ordinary neighbours;
+    # from there `4404`, then `4659`, then `4403` each become ordinary
+    # neighbours in turn - and steps 5a4 through 5a5b (and the sibling
+    # 5b/5c/5d branches for the other three Vardorvis-order paths) all
+    # resolve once `4405`/`4661` are unlocked.
+    QuestJump(
+        trigger_category="Quest",
+        trigger_name="~|Desert Treasure II - The Fallen Empire|~ 5a3",
+        target_chunk="4661",
+        landing_section=None,
+        anchor=("4917", "1"),
+    ),
+    # Sins of the Father, step 9 ("Talk to Ivan or Veliaf on the dock"), to
+    # the Icyene Graveyard (chunk 14641) - one entry resolves both of the
+    # two remaining original clusters at once, because they turn out to be
+    # the same circular pair: `chunkinfo['sections']['14641'] ==
+    # {'0': ['14642-2']}` and `['14898'] == {'0': ['14642-2']}` (Ver
+    # Sinhaza Shore, the other original cluster), while `14642`'s own
+    # section `2` needs `14641` *or* `14898` back
+    # (`sections['14642']['2'] == ['14641', '14898']`) - so neither side
+    # can ever open the other, and nothing outside the pair references
+    # either chunk (confirmed by exhaustive grep). `14641` is also the very
+    # first chunk both this quest (step 10) and The Blood Moon Rises (step
+    # 1, gated on this quest's completion) need, so both quest lines were
+    # blocked on this one pair.
+    #
+    # Step 9 (`Chunks: ["14129"]`) is non-circular - 14129 (Burgh de Rott
+    # Pier, already independently reachable) has nothing to do with the
+    # graveyard - and is the step immediately before step 10's own first
+    # reference to `14641`. `anchor=("14129", "0")` - 14129's own Nickname
+    # ("...Pier") already reads as a departure point, and its own
+    # `Sections` declares no explicit map (bare `"0"` only), the same
+    # `anchor_section == "0"` case the Underground Pass entry established.
+    # `landing_section=None`: `14641`'s only declared section is likewise
+    # the bare `"0"`, free the moment the chunk is unlocked.
+    #
+    # Confirmed end to end: with only this entry added, `14641` becomes a
+    # candidate once step 9 is valid; unlocking it makes `14642`'s section
+    # `2` reachable via the export's own *unmodified* `connected_sections`
+    # (a bare ref in a `sections` list means chunk-set membership, not a
+    # specific section - see `graph.py`'s own note on bare refs - so
+    # `14641` alone satisfies `14642-2`'s `['14641', '14898']`
+    # requirement with no jump needed for the pair's other half); `14898`
+    # then appears as an *ordinary* neighbour (via `14642-2`) with no
+    # second jump entry; and unlocking both resolves every remaining step
+    # of Sins of the Father and The Blood Moon Rises through their own
+    # `Complete the quest`.
+    QuestJump(
+        trigger_category="Quest",
+        trigger_name="~|Sins of the Father|~ 9",
+        target_chunk="14641",
+        landing_section=None,
+        anchor=("14129", "0"),
+    ),
 )
 
 
@@ -220,7 +544,20 @@ def quest_jump_candidates(
         if jump.trigger_name not in valid.get(jump.trigger_category, {}):
             continue
         anchor_chunk, anchor_section = jump.anchor
-        if not reachable_sections.get(anchor_chunk, {}).get(anchor_section):
+        # Section "0" is never itself recorded in `reachable_sections` - it
+        # is free the moment its chunk is unlocked, the same convention
+        # `sections.unlocked_sections` and every other reader of
+        # `reachable_sections` already follows (see e.g.
+        # `sections._section_is_reachable`'s own `section_id == "0"` check).
+        # An anchor naming it needs the same exception, or a perfectly
+        # ordinary anchor chunk with no other sections declared - like
+        # Ardougne Castle, `10291` - could never satisfy this at all.
+        anchor_open = (
+            anchor_chunk in unlocked
+            if anchor_section == "0"
+            else bool(reachable_sections.get(anchor_chunk, {}).get(anchor_section))
+        )
+        if not anchor_open:
             continue
         candidates[jump.target_chunk] = Edge(
             source=Node(jump.target_chunk, jump.landing_section or "0"),

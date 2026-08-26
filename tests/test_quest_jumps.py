@@ -275,3 +275,228 @@ def test_pandemonium_jump_offers_the_shipyard_as_a_candidate(real_export: ChunkI
     neighbours = {n.chunk_id: n for n in eligible_neighbours(state, chunk_ids, derived)}
     assert "8234" in neighbours
     assert "quest jump" in neighbours["8234"].via_ref
+
+
+def _exclusion_cluster(
+    chunk_info: ChunkInfo, target: str, *, keep: frozenset[str] = frozenset()
+) -> frozenset[str]:
+    """The precise set of chunks ordinary connectivity could use to qualify
+    `target` on its own - `target` plus every base chunk id its own
+    declared `sections` refs name (skipping `"???"`), minus `keep`.
+    Computed rather than hand-listed, for the same reason `_SHIPYARD_CLUSTER`
+    had to be the whole cluster and not just the target: `_qualifying_edge`
+    checks the *candidate's own* refs against whatever else is unlocked, and
+    the "every rollable chunk" ceiling fixture below unlocks all of them
+    unless excluded, which would let ordinary connectivity qualify the
+    target for a reason that has nothing to do with the jump under test.
+
+    `keep` is for a chunk that is one of `target`'s own declared refs *and*
+    something the test needs left unlocked (typically the jump's own
+    anchor) - safe only when the specific section naming `target` is
+    itself structurally unreachable for an unrelated reason, confirmed at
+    each call site rather than assumed."""
+    cluster = {target}
+    for refs in chunk_info.sections.get(target, {}).values():
+        for ref in refs:
+            base = ref.split("-", 1)[0]
+            if base != "???":
+                cluster.add(base)
+    return frozenset(cluster - keep)
+
+
+@pytest.mark.real_export
+def test_underground_pass_jump_offers_tyras_camp_as_a_candidate(
+    real_export: ChunkInfo,
+) -> None:
+    """Once Underground Pass is complete and chunk 10291's (bare, section
+    "0") chunk membership holds, chunk 8753 (Tyras Camp) - the entry point
+    to the whole Elf-lands pocket - appears as a candidate via the jump,
+    and its own `landing_section="1"` is forced open once unlocked."""
+    cluster = _exclusion_cluster(real_export, "8753")
+    chunk_ids = {chunk_id: True for chunk_id in real_export.sections if chunk_id not in cluster}
+    state = _maxed_ceiling_state(real_export)
+    derived = derive(state, chunk_ids)
+
+    assert "~|Underground Pass|~ Complete the quest" in derived.challenges.valid.get("Quest", {})
+    neighbours = {n.chunk_id: n for n in eligible_neighbours(state, chunk_ids, derived)}
+    assert "8753" in neighbours
+    assert "quest jump" in neighbours["8753"].via_ref
+
+    chunk_ids_unlocked = dict(chunk_ids, **{"8753": True})
+    derived_unlocked = derive(state, chunk_ids_unlocked)
+    assert derived_unlocked.reachable_sections.get("8753", {}).get("1") is True
+
+
+@pytest.mark.real_export
+def test_troll_romance_jump_offers_mountain_slope_north_as_a_candidate(
+    real_export: ChunkInfo,
+) -> None:
+    """Once Troll Romance step 4 is valid and Burthorpe (11575-1) is
+    reachable, chunk 11067 - the hub of the closed Trollweiss loop -
+    appears as a candidate via the jump."""
+    cluster = _exclusion_cluster(real_export, "11067")
+    chunk_ids = {chunk_id: True for chunk_id in real_export.sections if chunk_id not in cluster}
+    state = _maxed_ceiling_state(real_export)
+    derived = derive(state, chunk_ids)
+
+    assert "~|Troll Romance|~ 4" in derived.challenges.valid.get("Quest", {})
+    assert derived.reachable_sections.get("11575", {}).get("1") is True
+    neighbours = {n.chunk_id: n for n in eligible_neighbours(state, chunk_ids, derived)}
+    assert "11067" in neighbours
+    assert "quest jump" in neighbours["11067"].via_ref
+
+
+@pytest.mark.real_export
+def test_curse_of_arrav_jump_offers_zemouregals_fortress_as_a_candidate(
+    real_export: ChunkInfo,
+) -> None:
+    """Once The Curse of Arrav step 7 is valid and the Trollweiss cave
+    entrance (11068-1) is reachable, chunk 11324 (Zemouregal's Fortress) -
+    whose only declared section connection is the unresolved `"???"`
+    placeholder - appears as a candidate via the jump."""
+    cluster = _exclusion_cluster(real_export, "11324")
+    chunk_ids = {chunk_id: True for chunk_id in real_export.sections if chunk_id not in cluster}
+    state = _maxed_ceiling_state(real_export)
+    derived = derive(state, chunk_ids)
+
+    assert "~|The Curse of Arrav|~ 7" in derived.challenges.valid.get("Quest", {})
+    assert derived.reachable_sections.get("11068", {}).get("1") is True
+    neighbours = {n.chunk_id: n for n in eligible_neighbours(state, chunk_ids, derived)}
+    assert "11324" in neighbours
+    assert "quest jump" in neighbours["11324"].via_ref
+
+
+@pytest.mark.real_export
+def test_while_guthix_sleeps_jump_offers_luciens_camp_as_a_candidate(
+    real_export: ChunkInfo,
+) -> None:
+    """Once While Guthix Sleeps step 20 is valid and Falador West
+    (11828-1) is reachable, chunk 11579 (Lucien's camp) - step 21's own
+    description is literally "Teleport to Lucien's camp" - appears as a
+    candidate via the jump."""
+    cluster = _exclusion_cluster(real_export, "11579")
+    chunk_ids = {chunk_id: True for chunk_id in real_export.sections if chunk_id not in cluster}
+    state = _maxed_ceiling_state(real_export)
+    derived = derive(state, chunk_ids)
+
+    assert "~|While Guthix Sleeps|~ 20" in derived.challenges.valid.get("Quest", {})
+    assert derived.reachable_sections.get("11828", {}).get("1") is True
+    neighbours = {n.chunk_id: n for n in eligible_neighbours(state, chunk_ids, derived)}
+    assert "11579" in neighbours
+    assert "quest jump" in neighbours["11579"].via_ref
+
+
+@pytest.mark.real_export
+def test_cold_war_jump_offers_south_iceberg_as_a_candidate(real_export: ChunkInfo) -> None:
+    """Once Cold War step 2 is valid and Rellekka Dock (10810-1) is
+    reachable, chunk 10558 (South Iceberg) - part of a closed two-chunk
+    loop with 10559 plus the permanently-unreachable ocean network -
+    appears as a candidate via the jump, and its own `landing_section="1"`
+    is forced open once unlocked."""
+    cluster = _exclusion_cluster(real_export, "10558")
+    chunk_ids = {chunk_id: True for chunk_id in real_export.sections if chunk_id not in cluster}
+    state = _maxed_ceiling_state(real_export)
+    derived = derive(state, chunk_ids)
+
+    assert "~|Cold War|~ 2" in derived.challenges.valid.get("Quest", {})
+    assert derived.reachable_sections.get("10810", {}).get("1") is True
+    neighbours = {n.chunk_id: n for n in eligible_neighbours(state, chunk_ids, derived)}
+    assert "10558" in neighbours
+    assert "quest jump" in neighbours["10558"].via_ref
+
+    chunk_ids_unlocked = dict(chunk_ids, **{"10558": True})
+    derived_unlocked = derive(state, chunk_ids_unlocked)
+    assert derived_unlocked.reachable_sections.get("10558", {}).get("1") is True
+
+
+@pytest.mark.real_export
+def test_making_friends_with_my_arm_jump_offers_weiss_as_a_candidate(
+    real_export: ChunkInfo,
+) -> None:
+    """Once Making Friends with My Arm step 3 is valid and Rellekka Dock
+    (10810-1) is reachable, chunk 11325 (Weiss) - step 4's own description
+    is literally "Talk to Larry to get taken to Weiss" - appears as a
+    candidate via the jump, and its own `landing_section="1"` is forced
+    open once unlocked. Depends on the Cold War entry above (step 1's own
+    gate needs that quest complete), so both jumps must be active."""
+    cluster = _exclusion_cluster(real_export, "11325")
+    chunk_ids = {chunk_id: True for chunk_id in real_export.sections if chunk_id not in cluster}
+    state = _maxed_ceiling_state(real_export)
+    derived = derive(state, chunk_ids)
+
+    assert "~|Making Friends with My Arm|~ 3" in derived.challenges.valid.get("Quest", {})
+    assert derived.reachable_sections.get("10810", {}).get("1") is True
+    neighbours = {n.chunk_id: n for n in eligible_neighbours(state, chunk_ids, derived)}
+    assert "11325" in neighbours
+    assert "quest jump" in neighbours["11325"].via_ref
+
+    chunk_ids_unlocked = dict(chunk_ids, **{"11325": True})
+    derived_unlocked = derive(state, chunk_ids_unlocked)
+    assert derived_unlocked.reachable_sections.get("11325", {}).get("1") is True
+
+
+@pytest.mark.real_export
+def test_desert_treasure_two_jump_offers_stranglewood_temple_as_a_candidate(
+    real_export: ChunkInfo,
+) -> None:
+    """Once Desert Treasure II step 5a3 is valid and Custodia Mountains
+    Lake (4917-1, carrying the quest's own `Rowboat` object) is reachable,
+    chunk 4661 (Stranglewood Temple) - the entry point to a closed pocket
+    with no other path in - appears as a candidate via the jump.
+
+    `4917` is kept unlocked despite being one of `4661`'s own declared
+    refs (it is also the jump's anchor): the dangerous section is
+    specifically `4917-3` (`4661`'s own ref), and that section's own
+    requirement (`sections['4917']['3'] == ['4661', '4916-1']`) can never
+    resolve without `4661` itself or `4916-1` (which needs `4917-3` right
+    back - a self-contained pair) - so leaving `4917` unlocked cannot
+    ordinarily qualify `4661` for a reason unrelated to the jump; only
+    `4917`'s own section `1` (the anchor) becomes reachable."""
+    cluster = _exclusion_cluster(real_export, "4661", keep=frozenset({"4917"}))
+    chunk_ids = {chunk_id: True for chunk_id in real_export.sections if chunk_id not in cluster}
+    state = _maxed_ceiling_state(real_export)
+    derived = derive(state, chunk_ids)
+
+    assert "~|Desert Treasure II - The Fallen Empire|~ 5a3" in derived.challenges.valid.get(
+        "Quest", {}
+    )
+    assert derived.reachable_sections.get("4917", {}).get("1") is True
+    neighbours = {n.chunk_id: n for n in eligible_neighbours(state, chunk_ids, derived)}
+    assert "4661" in neighbours
+    assert "quest jump" in neighbours["4661"].via_ref
+
+
+@pytest.mark.real_export
+def test_sins_of_the_father_jump_offers_icyene_graveyard_as_a_candidate(
+    real_export: ChunkInfo,
+) -> None:
+    """Once Sins of the Father step 9 is valid and Burgh de Rott Pier
+    (14129, bare section "0") is unlocked, chunk 14641 (Icyene Graveyard) -
+    one half of a closed circular pair with 14898 (Ver Sinhaza Shore) -
+    appears as a candidate via the jump.
+
+    `14898` must also be excluded even though it is not one of `14641`'s
+    own declared refs: `sections['14642']['2'] == ['14641', '14898']` is a
+    *bare* ref, which upstream (and this port, see `graph.py`'s own note)
+    reads as "that chunk is a `chunk_ids` member", not "its own section is
+    reachable" - so leaving `14898` unlocked in the "every rollable chunk"
+    ceiling fixture would satisfy `14642-2` all by itself, regardless of
+    `14641`, and defeat the isolation this test exists for (confirmed by
+    hand: an earlier version of this test excluding only `14641` passed
+    with `via_ref == "14642-2"`, not the jump).
+    `14642` itself is kept unlocked despite being one of `14641`'s own
+    declared refs: with both `14641` and `14898` excluded, its section `2`
+    cannot resolve ordinarily either way, and keeping `14642` unlocked
+    matters for an unrelated reason - it carries the `A Taste of
+    Hope`/`A Night at the Theatre` `"first"` challenges this quest's own
+    step 1 needs complete; excluding it would report step 9 invalid for a
+    reason that has nothing to do with the jump under test."""
+    cluster = _exclusion_cluster(real_export, "14641", keep=frozenset({"14642"})) | {"14898"}
+    chunk_ids = {chunk_id: True for chunk_id in real_export.sections if chunk_id not in cluster}
+    state = _maxed_ceiling_state(real_export)
+    derived = derive(state, chunk_ids)
+
+    assert "~|Sins of the Father|~ 9" in derived.challenges.valid.get("Quest", {})
+    neighbours = {n.chunk_id: n for n in eligible_neighbours(state, chunk_ids, derived)}
+    assert "14641" in neighbours
+    assert "quest jump" in neighbours["14641"].via_ref
