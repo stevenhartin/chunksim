@@ -1,7 +1,7 @@
-"""The one place this project departs from "port only": a small,
-hand-authored registry of quest-narrative shortcuts upstream's own
-connectivity data cannot express, and the two functions that fold each
-entry into the ordinary derivation.
+"""One of two places this project departs from "port only" (the other is
+`object_links.py`): a small, hand-authored registry of quest-narrative
+shortcuts upstream's own connectivity data cannot express, and the two
+functions that fold each entry into the ordinary derivation.
 
 **Why this exists at all.** Building `runs/completion.py` (an end-to-end
 simulation of a maxed account playing the real random chunk-roll mechanism

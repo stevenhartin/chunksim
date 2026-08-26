@@ -356,7 +356,19 @@ def test_the_real_maps_neighbours_satisfy_the_numbering_invariants(
     assert all(n.chunk_id not in unlocked for n in result)
     ids = {int(n.chunk_id) for n in result}
     held = {int(chunk) for chunk in unlocked if chunk.isdigit()}
-    assert all(any(side in held for side in grid_neighbours(chunk_id)) for chunk_id in ids)
+    # Grid-adjacency is only a property of *ordinary* candidacy - a
+    # quest-jump or object-link candidate is offered precisely because it
+    # is *not* grid-adjacent to anything held (see quest_jumps.py's and
+    # object_links.py's own docstrings), so those are excluded here rather
+    # than the invariant weakened for every candidate.
+    grid_neighbour_ids = {
+        int(n.chunk_id)
+        for n in result
+        if not (n.via_ref.startswith("quest jump:") or n.via_ref.startswith("object link:"))
+    }
+    assert all(
+        any(side in held for side in grid_neighbours(chunk_id)) for chunk_id in grid_neighbour_ids
+    )
     # Descending id order is the whole of `sortSelectedChunks`.
     assert [int(n.chunk_id) for n in result] == sorted(ids, reverse=True)
 

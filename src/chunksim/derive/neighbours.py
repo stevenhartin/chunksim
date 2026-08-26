@@ -14,7 +14,10 @@ A chunk is eligible if it is orthogonally grid-adjacent to *any* unlocked chunk
 test when that rule is on, has a `chunkinfo['sections']` entry at all (only the
 1,172 walkable chunks do), and has **one of its own sections declaring a
 connection to something already reachable**, subject to that connection's
-`sectionsLimits` gate.
+`sectionsLimits` gate - or qualifies through one of the two fallbacks this
+project adds on top, tried only where that ordinary test fails:
+`quest_jumps.py`'s narrative shortcuts and `object_links.py`'s portal-object
+pairs.
 
 **Numbering is by descending numeric chunk id, 1-based: number 1 is the
 *highest* id.** `sortSelectedChunks` re-sorts the whole selected array on every
@@ -113,6 +116,7 @@ from chunksim.derive.graph import (
     chunk_sort_key,
     grid_neighbours,
 )
+from chunksim.derive.object_links import object_link_candidates
 from chunksim.derive.pipeline import Derived, MapState
 from chunksim.derive.quest_jumps import quest_jump_candidates
 
@@ -238,6 +242,17 @@ def eligible_neighbours(
     for candidate, edge in quest_jump_candidates(
         unlocked, current.reachable_sections, current.challenges.valid
     ).items():
+        if candidate in qualifying:
+            continue
+        if f2p and candidate not in walkable_f2p:
+            continue
+        qualifying[candidate] = edge
+
+    # An object link is the same kind of fallback, for a chunk pair sharing
+    # a physical portal object rather than a quest gate - see
+    # `object_links.py`'s own docstring for what this is and why it needs
+    # no quest trigger at all.
+    for candidate, edge in object_link_candidates(unlocked, state.chunk_info).items():
         if candidate in qualifying:
             continue
         if f2p and candidate not in walkable_f2p:

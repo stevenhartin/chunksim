@@ -66,19 +66,26 @@ The modules, and what each owns:
   projects its primitives down to a one-directional view, and the two must
   agree.
 - `neighbours.py` - which chunks are eligible to roll next, upstream's canvas
-  numbering, and the `sectionsLimits` gate. Also offers `quest_jumps`'s
-  chunk-level candidates as a fallback, tried only where ordinary connectivity
-  does not already qualify a chunk.
+  numbering, and the `sectionsLimits` gate. Also offers `quest_jumps`'s and
+  `object_links`' chunk-level candidates as fallbacks, tried only where
+  ordinary connectivity does not already qualify a chunk.
 - `graph.py` - the export's `sections` branch as a **directed** graph: the
   shared substrate `sections.py`, `neighbours.py` and `runs/simulate.py` all
   build on, and shaped for the not-yet-written pathfinding search besides.
-- `quest_jumps.py` - the one place this project departs from "port only": a
-  small, hand-authored registry of quest-narrative shortcuts upstream's own
-  connectivity data cannot express (`KNOWN_QUEST_JUMPS`). Consulted by
-  `pipeline.py`'s loop (a landing section forced open, same as
+- `quest_jumps.py` - one of two places this project departs from "port
+  only": a small, hand-authored registry of quest-narrative shortcuts
+  upstream's own connectivity data cannot express (`KNOWN_QUEST_JUMPS`).
+  Consulted by `pipeline.py`'s loop (a landing section forced open, same as
   `connected_sections`' own) and by `neighbours.py` (a not-yet-unlocked target
   made a roll candidate). See CLAUDE.md's "Quest jumps" section for why this
   exists at all.
+- `object_links.py` - the other departure: chunks linked by a shared physical
+  `Object` (a portal) rather than a quest gate - narrower than `quest_jumps.py`
+  in every way that matters (symmetric, no trigger, the linked set is scanned
+  from the live export rather than named). Consulted by `neighbours.py` only;
+  no known entry needs a landing section forced open. See its own module
+  docstring for why this is a second registry rather than folded into
+  `quest_jumps.py`.
 - `search.py` - world-wide fuzzy search over the *raw* export, a strict superset
   of what `chunksim sources` can list.
 """

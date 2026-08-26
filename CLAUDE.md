@@ -87,14 +87,14 @@ by every subcommand through it. **This is a deliberately partial reimplementatio
 logic**, and it **refuses rather than approximates** — unported behaviour raises rather than
 returning a plausible number.
 
-### Quest jumps: the one deliberate departure from upstream
+### Quest jumps and object links: the two deliberate departures from upstream
 
 `derive/quest_jumps.py`'s `KNOWN_QUEST_JUMPS` is a small, hand-authored registry of
 quest-narrative shortcuts — a step in a quest's own chain making a chunk reachable that no export
 data (`Connect`, `sections`, `ConnectsSections`) can express, confirmed by reading upstream's own
 `worker.js`/`index.js` source for the relevant mechanisms and finding nothing that could. This is
-the one place this project models something the real game does narratively (a quest physically
-transports you) rather than porting a mechanism upstream's own live tool has. It exists because a
+one of two places this project models something the real game does rather than porting a
+mechanism upstream's own live tool has — a quest physically transports you. It exists because a
 maxed account played through the real chunk-roll mechanism from a fixed start
 (`runs/completion.py`) genuinely cannot complete the export without it — not a convenience, a fix
 for a real dead end (chunk `8234`, the Pandemonium quest's own Shipyard, has no other path in at
@@ -103,6 +103,19 @@ in the export requires already owning a boat, which only the Shipyard can grant)
 carries its own justifying comment citing the measurement behind it, matching
 `heuristics/overrides.json`'s own convention; keep that discipline for any new entry rather than
 adding one bare.
+
+`derive/object_links.py`'s `KNOWN_OBJECT_LINKS` is the other: chunks joined by a shared physical
+`Object` — a portal — rather than a quest step, confirmed the same way (grepped exhaustively for
+every chunk carrying the object). It is deliberately **not** folded into `quest_jumps.py`: an
+object link has no quest trigger at all and is symmetric (either linked chunk unlocks the other),
+where every quest jump is a one-directional `anchor` → `target` gated on a step becoming valid.
+Its linked chunk set is scanned from the live export by `Object` name rather than hand-listed by
+chunk id, so a re-fetch that adds or renames a carrier cannot go stale silently the way a hard-coded
+pair would. `13631` (Daimon's Crater Center, home to the Bounty Hunter arena) was the case that
+found this: no quest gates it and no ordinary connectivity data reaches it, but `12600` (East Ferox
+Enclave) shares its `Bounty Hunter portal` object, and a real player walks through either end once
+they can reach the other — a mechanism, not a narrative, so it earns its own registry rather than
+a `quest_jumps.py` entry with an invented trigger.
 
 ### Rules that cut across modules
 
