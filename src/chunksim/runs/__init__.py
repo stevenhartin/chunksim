@@ -27,4 +27,13 @@ The modules, and what each owns:
   read back.
 - `timeline.py` - replaying a run one roll at a time, and `added_hours`: what a
   roll *cost*, as a diff of what is being costed rather than of the totals.
+- `completion.py` - runs one seeded chunk-unlock sequence to the account's own
+  completion state (fixed start, no bootstrap roll), auto-completing every
+  valid Skills/Sailing/Combat/Quest/Diary/Extra task as it goes, and reports
+  why it stopped. Reuses `simulate.py`'s `roll_pool`; owns nothing about *how*
+  a chunk is picked, only when to stop and what to check at the end. A stuck
+  run's final state is the one exception to "nothing here touches disk mid-run"
+  - `persist_stuck_state` writes it as a real cached map, via `batch.save_edit`,
+  precisely because a broken state is worth loading with this project's own
+  tools and a finished one has nothing left to investigate.
 """

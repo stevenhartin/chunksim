@@ -170,6 +170,12 @@ PLAYERS_DIR_NAME = "players"
 #: launches with. Neither is data about the game.
 GUI_DIR_NAME = "gui"
 
+#: Where a diagnostic run writes its own output - `runs/completion.py`'s
+#: chunkman report today, and wherever a future one lands. Distinct from
+#: `cache/maps/`: a report is not a map, and `list_maps` globbing `maps/`
+#: alone is what keeps that directory holding maps and nothing else.
+REPORTS_DIR_NAME = "reports"
+
 CHUNKINFO_BLOB_NAME = "chunkinfo"
 TASKS_MAP_BLOB_NAME = "tasks_map"
 #: The scraped half of the estimator's numbers - see `heuristics.py` for why
@@ -510,6 +516,13 @@ def gui_root(root: Path | None = None) -> Path:
     """The GUI's own state - window geometry, browser profile."""
     migrate_layout(root)
     return cache_root(root) / GUI_DIR_NAME
+
+
+def reports_root(root: Path | None = None) -> Path:
+    """`cache/reports/`, where a diagnostic run writes its own output -
+    distinct from `cache/maps/`, since a report is not a map."""
+    migrate_layout(root)
+    return cache_root(root) / REPORTS_DIR_NAME
 
 
 #: Where each thing used to live, and where it lives now. Read top to bottom;
