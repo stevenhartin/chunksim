@@ -375,6 +375,15 @@ SHOP_TRIP_SECONDS = 30.0
 #: is what stands in until a guide's `kph` or a recipe's tick cost says better.
 DEFAULT_ACTION_SECONDS = 4 * 0.6
 
+#: `costing/gathering.py`'s five skills - Fishing, Mining, Woodcutting, Hunter,
+#: Thieving - the ones a success-chance model and a money-making-guide scrape
+#: both exist to cover. See `_route_hours`'s `made == item` gate: a *byproduct*
+#: task in one of these five (`Primary` is not `True`) is a fish, ore or drop a
+#: guide never quotes a pace for and `gathering.priced_methods` never prices,
+#: because both were written for the skill's *training* methods - so "four
+#: ticks is a fair stand-in" is a claim about those, not about this.
+_UNGUIDED_GATHERING_SKILLS = frozenset(gathering.PROFILES)
+
 #: Seconds to pick one item off the ground. One tick, which caps collection
 #: at 6,000 an hour before anything else is considered.
 SPAWN_PICKUP_SECONDS = 0.6
@@ -1851,6 +1860,37 @@ def _route_hours(
             and monsters
             and item not in monsters
             and not consumed
+            and provider not in walk.heuristics.action_seconds
+        ):
+            return None
+        # **A minigame's byproduct fish is not a fishing spot's fish.** `Catch
+        # a ~|raw manta ray|~` (`Category: Minigame`, `Objects: ["Trawler
+        # boat"]`, `Primary: False`) names no monster, so the gate above never
+        # saw it, and `made == item` here is `Always`-certain the way an
+        # ordinary catch is - so it fell to `DEFAULT_ACTION_SECONDS` and read
+        # as a plain four-tick fishing action. It is not one: the actual
+        # mechanic is a shared-table minigame roll nothing in
+        # `heuristics/wiki_rates.json` or `costing/gathering.py` states a pace
+        # for, because both were built to answer for the skill's *training*
+        # methods and this is not one (`Primary` is `False`). Priced anyway,
+        # `Cook a ~|manta ray|~` read 229,024/hr - the whole climb's best
+        # Cooking method - on a "catch" costing 2.4s, the same pace as
+        # standing at an ordinary spot with a rod.
+        #
+        # **Scoped to the five skills the claim was ever made for.** A
+        # Construction or Firemaking byproduct with no stated pace still gets
+        # the plain default below; this gate only pulls back the one sentence
+        # ("four ticks for a fishing action is a fair stand-in") that was
+        # never a claim about Mining, Woodcutting, Hunter or Thieving byproduct
+        # tasks either - the Sorceress's Garden sq'irk juices and the Forestry
+        # `~|clothes pouch|~`/`~|secateurs attachment|~` alts are the same
+        # shape again, caught by the same skill set.
+        skill = route.removeprefix("task:")
+        if (
+            isinstance(made, str)
+            and made == item
+            and skill in _UNGUIDED_GATHERING_SKILLS
+            and challenge.get("Primary") is not True
             and provider not in walk.heuristics.action_seconds
         ):
             return None

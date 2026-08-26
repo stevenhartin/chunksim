@@ -1981,7 +1981,18 @@ def test_performing_an_action_costs_time_even_with_no_inputs() -> None:
     info = ChunkInfo(
         {
             "challenges": {
-                "Woodcutting": {"Cut ~|logs|~": {"Output": "Logs", "Items": []}}
+                "Woodcutting": {
+                    "Cut ~|logs|~": {
+                        "Output": "Logs",
+                        "Items": [],
+                        # A real ordinary Woodcutting action states this
+                        # explicitly (every one of the export's 122 does) -
+                        # unlike a minigame byproduct, which is exactly what
+                        # `DEFAULT_ACTION_SECONDS` is a fair stand-in for. See
+                        # `_UNGUIDED_GATHERING_SKILLS`.
+                        "Primary": True,
+                    }
+                }
             },
             "chunks": {},
         }
@@ -1992,6 +2003,60 @@ def test_performing_an_action_costs_time_even_with_no_inputs() -> None:
 
     assert priced is not None
     assert priced.hours == pytest.approx(10 * DEFAULT_ACTION_SECONDS / 3600)
+
+
+def test_a_gathering_skills_unstated_byproduct_is_refused_not_defaulted() -> None:
+    """`Catch a ~|raw manta ray|~` names no monster and is `Always`-certain,
+    so the gate above (a monster beside a matching `Output`) never saw it -
+    and it fell through to `DEFAULT_ACTION_SECONDS`, a 4-tick "fair stand-in"
+    that was never a claim about a Fishing Trawler minigame byproduct.
+    Priced anyway, `Cook a ~|manta ray|~` read as the whole climb's best
+    Cooking method on a "catch" costing 2.4s - see `_UNGUIDED_GATHERING_SKILLS`.
+    """
+    info = ChunkInfo(
+        {
+            "challenges": {
+                "Fishing": {
+                    "Catch a ~|raw manta ray|~": {
+                        "Category": ["Minigame"],
+                        "Objects": ["Trawler boat"],
+                        "Output": "Raw manta ray",
+                        "Primary": False,
+                    }
+                }
+            },
+            "chunks": {},
+        }
+    )
+    walk = _walk_for(info)
+
+    assert _item_hours(walk, "Raw manta ray", quantity=1.0) is None
+
+
+def test_an_ordinary_primary_gathering_task_still_gets_the_default() -> None:
+    """The gate above is about *byproducts*, not about the five skills
+    themselves - an ordinary `Primary` Fishing method with no stated pace
+    still reads the plain `DEFAULT_ACTION_SECONDS`, the same as any other
+    skill's."""
+    info = ChunkInfo(
+        {
+            "challenges": {
+                "Fishing": {
+                    "Catch a ~|raw shrimps|~": {
+                        "Output": "Raw shrimps",
+                        "Primary": True,
+                    }
+                }
+            },
+            "chunks": {},
+        }
+    )
+    walk = _walk_for(info)
+
+    priced = _item_hours(walk, "Raw shrimps", quantity=1.0)
+
+    assert priced is not None
+    assert priced.hours == pytest.approx(DEFAULT_ACTION_SECONDS / 3600)
 
 
 def test_a_known_action_time_beats_the_default() -> None:
