@@ -1519,6 +1519,11 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .method-guide-wrap { margin-bottom: var(--s4); }
 .method-guide { display: block; width: 100%; height: auto; }
 
+/* The hover target - see `levelingGuideChart`'s own comment on why it is
+   painted rather than `fill: none`, which SVG never delivers a pointer
+   event to at all. */
+.method-guide-hit { cursor: crosshair; }
+
 /* One stroke colour per stretch - `style="stroke:…"` sets which, chosen at
    render time from `METHOD_GUIDE_COLOURS` rather than fixed in this file,
    the same split `BUCKET_COLOURS` already draws for the Estimate pie. */

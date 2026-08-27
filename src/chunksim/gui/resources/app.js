@@ -4314,18 +4314,25 @@ function methodGuideColours() {
   };
 }
 
-/* **The whole 1-99 climb, not one method's own.** `methodCurveChart` above
- * draws a single method's bands; this draws the *envelope* over every method
- * the skill can reach at once - whichever pays the most at each level, the
- * same running-maximum rule `training_bands` already applies within one
- * method, just carried across all of them. A climb through four methods
- * reads as four coloured stretches with a hand-off dot between each, rather
- * than one line nobody could attribute to anything.
+//: The guide chart's own viewBox geometry - shared between drawing it
+//: (`levelingGuideChart`) and reading a pointer position back off it
+//: (`methodGuideLevelFromEvent`), so the two can never disagree about where
+//: a level sits on screen.
+const METHOD_GUIDE_W = 640, METHOD_GUIDE_H = 220;
+const METHOD_GUIDE_PAD_L = 10, METHOD_GUIDE_PAD_R = 10;
+const METHOD_GUIDE_PAD_T = 10, METHOD_GUIDE_PAD_B = 26;
+
+/* **The running maximum across every method at once**, one entry per level -
+ * a slower method already running is never displaced by a faster one that
+ * has not unlocked yet, and the faster one wins the moment it does. Shared by
+ * the chart itself and the hover lookup, so a tooltip can never quote a
+ * number the line does not actually draw.
  *
  * `options` is every `TrainingOption` for the skill, in whatever order the
  * payload sent them - this makes no assumption about sort order beyond what
- * `methodEntryLevel`/`methodRateRange` already do not either. */
-function levelingGuideChart(options, at) {
+ * `methodEntryLevel`/`methodRateRange` already do not either. `null` where
+ * nothing here has a real enough rate to build an envelope from at all. */
+function levelingGuideEnvelope(options) {
   const bands = options
     .map((option) => ({
       level: Math.max(1, Math.min(SKILL_MAX_LEVEL, option.level || 1)),
@@ -4333,9 +4340,7 @@ function levelingGuideChart(options, at) {
       method: option.method,
     }))
     .filter((band) => band.rate > 0);
-  if (!bands.length) {
-    return tmpl`<p class="empty">Nothing here has a real enough rate to chart.</p>`;
-  }
+  if (!bands.length) return null;
 
   // The best band *opening* at each level - several methods can start a band
   // on the same level, so this is a max, not a last-write-wins.
@@ -4346,9 +4351,6 @@ function levelingGuideChart(options, at) {
   }
   const minLevel = Math.min(...openingAt.keys());
 
-  // The running maximum across every method at once, one entry per level -
-  // a slower method already running is never displaced by a faster one that
-  // has not unlocked yet, and the faster one wins the moment it does.
   const rate = new Array(SKILL_MAX_LEVEL + 1).fill(0);
   const method = new Array(SKILL_MAX_LEVEL + 1).fill(null);
   let bestRate = 0;
@@ -4362,8 +4364,42 @@ function levelingGuideChart(options, at) {
     rate[level] = bestRate;
     method[level] = bestMethod;
   }
+  return { minLevel, rate, method };
+}
 
-  const W = 640, H = 220, PAD_L = 10, PAD_R = 10, PAD_T = 10, PAD_B = 26;
+/* **The level a pointer is over, read back through the same geometry the
+ * chart drew with.** "The closest point on the line" is unambiguous here -
+ * level maps to x affinely, so the nearest level by x is the nearest point
+ * the staircase actually draws, staircase risers included. Clamped to the
+ * envelope's own range, so hovering the padding on either side still answers
+ * with the nearest real level rather than an out-of-range one. */
+function methodGuideLevelFromEvent(envelope, svg, event) {
+  const rect = svg.getBoundingClientRect();
+  const fx = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0;
+  const plotX = fx * METHOD_GUIDE_W;
+  const span = Math.max(1, SKILL_MAX_LEVEL - envelope.minLevel);
+  const plotWidth = METHOD_GUIDE_W - METHOD_GUIDE_PAD_L - METHOD_GUIDE_PAD_R;
+  const raw = envelope.minLevel + ((plotX - METHOD_GUIDE_PAD_L) / plotWidth) * span;
+  return Math.max(envelope.minLevel, Math.min(SKILL_MAX_LEVEL, Math.round(raw)));
+}
+
+/* **The whole 1-99 climb, not one method's own.** `methodCurveChart` above
+ * draws a single method's bands; this draws the *envelope* over every method
+ * the skill can reach at once - whichever pays the most at each level, the
+ * same running-maximum rule `training_bands` already applies within one
+ * method, just carried across all of them. A climb through four methods
+ * reads as four coloured stretches with a hand-off dot between each, rather
+ * than one line nobody could attribute to anything. */
+function levelingGuideChart(options, at) {
+  const envelope = levelingGuideEnvelope(options);
+  if (!envelope) {
+    return tmpl`<p class="empty">Nothing here has a real enough rate to chart.</p>`;
+  }
+  const { minLevel, rate, method } = envelope;
+
+  const W = METHOD_GUIDE_W, H = METHOD_GUIDE_H;
+  const PAD_L = METHOD_GUIDE_PAD_L, PAD_R = METHOD_GUIDE_PAD_R;
+  const PAD_T = METHOD_GUIDE_PAD_T, PAD_B = METHOD_GUIDE_PAD_B;
   const span = Math.max(1, SKILL_MAX_LEVEL - minLevel);
   const peak = Math.max(1, ...rate.slice(minLevel));
   const x = (level) => PAD_L + ((level - minLevel) / span) * (W - PAD_L - PAD_R);
@@ -4372,6 +4408,12 @@ function levelingGuideChart(options, at) {
 
   let svg = tmpl`<svg class="method-guide" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"
     role="img" aria-label="Optimised xp an hour, level ${String(minLevel)} to ${String(SKILL_MAX_LEVEL)}">`;
+  // **The hover target, covering the whole plot even where nothing is
+  // drawn.** Painted transparent rather than `fill="none"`, which SVG does
+  // not consider "painted" and so never delivers a pointer event to at all -
+  // drawn first so every visible line and dot still sits on top of it and
+  // both reach this element's listener the same way, by bubbling.
+  svg += tmpl`<rect class="method-guide-hit" x="0" y="0" width="${W}" height="${H}" fill="transparent"/>`;
   svg += tmpl`<line class="method-curve-axis" x1="${PAD_L}" y1="${(H - PAD_B).toFixed(1)}"
     x2="${W - PAD_R}" y2="${(H - PAD_B).toFixed(1)}"/>`;
 
@@ -4566,6 +4608,26 @@ async function showSkillMethods(skill, trail) {
         el["overlay-body"].innerHTML = render();
         wire();
       };
+    }
+    /* **A hand-built tooltip, not `data-tip`.** That system reads a fixed
+     * string off the hovered element once, on entry - this one has to
+     * recompute its text on every move, since the level under the pointer
+     * changes continuously across the chart rather than at element
+     * boundaries. It still reuses `el.tip` and `moveTip` for the box itself,
+     * so it looks and follows the same as every other tooltip on the page. */
+    const guideSvg = el["overlay-body"].querySelector(".method-guide");
+    if (guideSvg) {
+      const envelope = levelingGuideEnvelope(options);
+      if (envelope) {
+        guideSvg.addEventListener("mousemove", (e) => {
+          const level = methodGuideLevelFromEvent(envelope, guideSvg, e);
+          const xp = Math.round(envelope.rate[level]).toLocaleString();
+          el.tip.innerHTML = tmpl`Level ${String(level)}, XP: ${xp}/hour`;
+          el.tip.hidden = false;
+          moveTip(e);
+        });
+        guideSvg.addEventListener("mouseleave", () => { el.tip.hidden = true; });
+      }
     }
     for (const row of el["overlay-body"].querySelectorAll("[data-task]")) {
       if (!row.dataset.task) continue;
