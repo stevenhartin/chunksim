@@ -220,39 +220,81 @@ class TestRaidRunSeconds:
             chunk_info, {"Melee-weapon": "Abyssal whip"}, levels, index=index,
         )
 
-        # **A subset, not all three.** `encounter.build` refuses a raid
+        # **A subset, not all four.** `encounter.build` refuses a raid
         # outright if bare melee at level 60 cannot kill even one of its
         # rooms - Chambers' Vanguards want a style switch this fixture's
         # single weapon cannot make - so what a weak loadout actually prices
-        # is not every raid, only the ones its gear can clear.
+        # is not every key, only the ones its gear can clear.
         assert found
-        assert set(found) <= {raids.CHAMBERS, raids.THEATRE, raids.TOMBS}
-        for raid_name, seconds in found.items():
-            assert seconds >= raids.PUBLISHED_RAID_SECONDS[raid_name]
+        assert set(found) <= {
+            raids.CHAMBERS, f"{raids.CHAMBERS} (challenge)", raids.THEATRE, raids.TOMBS,
+        }
+        for key, seconds in found.items():
+            assert seconds >= raids.PUBLISHED_RAID_SECONDS[key]
+
+    def test_chambers_normal_and_challenge_are_kept_apart(self) -> None:
+        """**The bug this pins.** An earlier version asked `raids.compare`
+        for "whichever Chambers mode is fastest overall" and used that one
+        number for both the Normal-mode uniques and the Challenge-mode cape
+        - on a real map that picked Challenge Mode and priced `Sinhaza
+        shroud tier 5` off the Theatre's own figure reused wholesale, and
+        separately would have priced Chambers' own uniques off a Challenge
+        Mode pace paired with Normal Mode drop chances. The two keys must be
+        free to disagree, and on real gear they do: Challenge Mode fights
+        every room at 1.5x health, so it is never faster."""
+        if not dps_bridge.DPS_AVAILABLE:
+            pytest.skip("the dps extra is not installed")
+        from chunksim.costing import raids
+        from chunksim.model.chunkinfo import ChunkInfo
+
+        chunk_info = ChunkInfo({"equipment": {
+            "Abyssal whip": {"attack_slash": 82, "melee_strength": 82, "attack_speed": 4, "slot": "weapon"},
+            "Rune crossbow": {"attack_ranged": 90, "ranged_strength": 90, "attack_speed": 5, "slot": "2h"},
+            "Rune arrow": {"ranged_strength": 0, "slot": "ammo"},
+        }})
+        picks = {"Melee-weapon": "Abyssal whip", "Ranged-weapon": "Rune crossbow", "Ranged-ammo": "Rune arrow"}
+        levels = {"Attack": 80, "Strength": 80, "Ranged": 80, "Magic": 80, "Hitpoints": 90}
+        index = dps_bridge.load_monster_index()
+
+        found = inputs._raid_run_seconds(chunk_info, picks, levels, index=index)
+
+        challenge_key = f"{raids.CHAMBERS} (challenge)"
+        if raids.CHAMBERS in found and challenge_key in found:
+            assert found[challenge_key] > found[raids.CHAMBERS]
 
     def test_never_faster_than_the_published_guide(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """An unrealistically fast computed answer - the shape a generous
         `UPTIME` guess could produce - never beats the guide's own published
-        pace once this has floored it. `raids.compare` is stubbed so this
-        isolates the floor arithmetic from the DPS model that feeds it."""
+        pace once this has floored it, at every one of the four keys."""
         if not dps_bridge.DPS_AVAILABLE:
             pytest.skip("the dps extra is not installed")
         from chunksim.costing import raids
         from chunksim.model.chunkinfo import ChunkInfo
 
-        fast = raids.RaidAnswer(raids.THEATRE, "normal", 1.0, 2000.0, "cape")
         monkeypatch.setattr(
-            "chunksim.costing.inputs.raids.compare",
-            lambda *a, **k: raids.Comparison((fast,)),
+            "chunksim.costing.inputs.dps_bridge.theatre_kill_seconds",
+            lambda *a, **k: (lambda name: 1.0),
+        )
+        monkeypatch.setattr(
+            "chunksim.costing.inputs.dps_bridge.chambers_kill_seconds_for",
+            lambda *a, **k: (lambda mode: (lambda name: 1.0)),
+        )
+        monkeypatch.setattr(
+            "chunksim.costing.inputs.dps_bridge.tombs_stats_for",
+            lambda *a, **k: (lambda level: (lambda name: (1.0, 1.0))),
         )
 
         found = inputs._raid_run_seconds(
             ChunkInfo({}), {}, {}, index=dps_bridge.load_monster_index(),
         )
 
-        assert found == {raids.THEATRE: raids.PUBLISHED_RAID_SECONDS[raids.THEATRE]}
+        assert set(found) == {
+            raids.THEATRE, raids.CHAMBERS, f"{raids.CHAMBERS} (challenge)", raids.TOMBS,
+        }
+        for key, seconds in found.items():
+            assert seconds == raids.PUBLISHED_RAID_SECONDS[key]
 
 
 class TestTzhaarRunSeconds:

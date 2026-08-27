@@ -33,7 +33,7 @@ Pure: three callables in, one comparison out.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Sequence
+from typing import Callable, Mapping, Sequence
 
 from chunksim.costing import encounter, theatre, tombs, xeric
 from chunksim.costing.encounter import KillSeconds, Objective
@@ -187,7 +187,7 @@ def toa_pet_chance(points: float, raid_level: int) -> float:
     return min(1.0, points / (per * 100.0))
 
 
-def _by_raid() -> dict[str, dict[str, float]]:
+def _by_raid(overrides: Mapping[str, float] = {}) -> dict[str, dict[str, float]]:
     """`item_seconds()`'s contributions, kept apart by which raid earns them.
 
     Split out so `activity_for` can name the raid behind an item without
@@ -197,14 +197,28 @@ def _by_raid() -> dict[str, dict[str, float]]:
     build one flat one, so a key both an earlier and a later step could
     write (`tombs.item_seconds()`'s own items, applied last within `TOMBS`)
     still wins the same way.
+
+    **`overrides` is `Heuristics.run_seconds`, keyed exactly as
+    `PUBLISHED_RAID_SECONDS`** - `costing/inputs.py`'s `_raid_run_seconds`
+    populates it at the same four modes/levels this function already reads
+    a published figure for (Chambers Normal, Chambers Challenge, Theatre
+    Normal, Tombs at `GUIDE_RAID_LEVEL`), so a real per-map figure lands in
+    exactly the slot its matching published fallback would have. Getting a
+    caller to hand over "whichever mode is fastest overall" instead - a
+    single number per raid - would have been the same "unjoined method
+    outranks its own charged twin" shape from a different angle: readable
+    as a correction while actually mixing a Challenge Mode pace into a
+    Normal Mode drop chance, or vice versa. See `_raid_run_seconds`'s own
+    docstring for the real case that found it.
     """
-    cox_run = PUBLISHED_RAID_SECONDS[CHAMBERS]
+    cox_run = overrides.get(CHAMBERS, PUBLISHED_RAID_SECONDS[CHAMBERS])
     cox_chances = xeric.item_chances(xeric.NORMAL)
     chambers: dict[str, float] = {
         item: cox_run / chance for item, chance in cox_chances.items() if chance > 0
     }
     # The two Challenge Mode exclusives, at the slower Challenge Mode raid.
-    cm_run = PUBLISHED_RAID_SECONDS[f"{CHAMBERS} (challenge)"]
+    cm_key = f"{CHAMBERS} (challenge)"
+    cm_run = overrides.get(cm_key, PUBLISHED_RAID_SECONDS[cm_key])
     chambers.update(
         {item: cm_run / chance for item, chance in xeric.CHALLENGE_ONLY.items()}
     )
@@ -218,7 +232,7 @@ def _by_raid() -> dict[str, dict[str, float]]:
         {cape: cm_run * completions for cape, completions in CAPE_TIERS[CHAMBERS].items()}
     )
 
-    tob_run = PUBLISHED_RAID_SECONDS[THEATRE]
+    tob_run = overrides.get(THEATRE, PUBLISHED_RAID_SECONDS[THEATRE])
     theatre_items: dict[str, float] = {
         item: tob_run / chance
         for item, chance in theatre.item_chances(theatre.NORMAL).items()
@@ -229,7 +243,7 @@ def _by_raid() -> dict[str, dict[str, float]]:
         {cape: tob_run * completions for cape, completions in CAPE_TIERS[THEATRE].items()}
     )
 
-    toa_run = PUBLISHED_RAID_SECONDS[TOMBS]
+    toa_run = overrides.get(TOMBS, PUBLISHED_RAID_SECONDS[TOMBS])
     # **The guide's implied points, not this module's derived ones** - see
     # `tombs.guide_implied_points`, which measures the gap at 41%.
     toa_chance = tombs.unique_chance(
@@ -251,7 +265,7 @@ def _by_raid() -> dict[str, dict[str, float]]:
     return {CHAMBERS: chambers, THEATRE: theatre_items, TOMBS: tombs_items}
 
 
-def item_seconds() -> dict[str, float]:
+def item_seconds(overrides: Mapping[str, float] = {}) -> dict[str, float]:
     """`{item: seconds}` for every raid reward, to merge into the item walk.
 
     **This replaces a number that was wrong by two orders of magnitude.** The
@@ -269,21 +283,20 @@ def item_seconds() -> dict[str, float]:
     - **Common chest items**, which `costing/tombs.py` answers for directly
       from its guide's own stated yield.
 
-    Everything is one raid's published duration - see
-    `PUBLISHED_RAID_SECONDS` - because the goal walk is built before any
-    DPS-derived rate exists.
+    **`overrides` reaches the same real per-map figure `_by_raid` reads** -
+    empty (published duration only) for the goal walk, built before any
+    DPS-derived rate exists; `costing/inputs.py`'s `_raid_run_seconds` once
+    the post-enrichment walk asks, exactly `Heuristics.run_seconds`. See
+    `PUBLISHED_RAID_SECONDS` for the fallback and `_by_raid`'s own
+    docstring for why the keys have to match its four exactly rather than
+    one blended figure per raid.
 
-    **That direction is optimistic and the docstring should say so rather
-    than claim otherwise.** A guide's raid is an established raider's, and a
-    chunk map's party is slower: the Theatre's trio is twenty published
-    minutes against the forty-six `costing/theatre.py` computes for the
-    every-rollable-chunk map's gear, so these figures are roughly twice as
-    fast there. They are still two orders of magnitude better than the
-    twenty-four seconds they replace, and the honest fix is to price goals
-    after the enrichment rather than to fudge a multiplier here.
+    **A guide's raid describes an established raider, and an unfixed chunk
+    map's party is slower** - the honest fix, and the reason `overrides`
+    exists at all rather than a fudge factor here.
     """
     found: dict[str, float] = {}
-    for items in _by_raid().values():
+    for items in _by_raid(overrides).values():
         found.update(items)
     return found
 

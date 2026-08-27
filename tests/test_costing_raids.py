@@ -186,6 +186,31 @@ class TestTheGoalWalkSeam:
         source = pathlib.Path(estimate.__file__).read_text(encoding="utf-8")
         assert "walk.raid_seconds.get(item.lower())" in source
 
+    def test_overrides_apply_to_the_matching_mode_only(self) -> None:
+        """**The bug this pins.** `Sinhaza shroud tier 5` once read 667 hours
+        where 2,000 raids at a real per-raid pace is 1,345, because a
+        Chambers-of-Xeric-shaped bug (fixed here for both raids) reused one
+        blended figure for two modes. `overrides[CHAMBERS]` (Normal, paired
+        with `xeric.item_chances(NORMAL)`'s uniques) and
+        `overrides[f"{CHAMBERS} (challenge)"]` (the cape) must be free to
+        disagree - a single number covering both could not have caught the
+        Theatre-mismatch shape of this bug specifically."""
+        overrides = {
+            raids.CHAMBERS: 111.0,
+            f"{raids.CHAMBERS} (challenge)": 222.0,
+        }
+        found = raids.item_seconds(overrides)
+
+        normal_item, normal_chance = next(iter(xeric.item_chances(xeric.NORMAL).items()))
+        assert found[normal_item] == pytest.approx(111.0 / normal_chance)
+        assert found["Xeric's champion"] == pytest.approx(222.0 * 2_000)
+
+    def test_overrides_default_to_the_published_figure(self) -> None:
+        """No override at all reproduces the pre-existing, purely-published
+        answer exactly - the goal walk's own case, built before any
+        DPS-derived rate exists."""
+        assert raids.item_seconds() == raids.item_seconds({})
+
     def test_activity_for_names_the_earning_raid(self) -> None:
         """Every item `item_seconds()` prices traces back to one of the
         three raids, matching `xeric.py`/`theatre.py`/`colosseum.py`'s own

@@ -103,8 +103,12 @@ from chunksim.costing import (
 )
 from chunksim.costing import gathering as gathering_model
 from chunksim.costing import shortcuts as shortcut_model
+from chunksim.costing import encounter
 from chunksim.costing import raids
+from chunksim.costing import theatre
+from chunksim.costing import tombs
 from chunksim.costing import tzhaar
+from chunksim.costing import xeric
 from chunksim.costing.estimate import material_seconds
 from chunksim.costing import prayer as prayer_costing
 from chunksim.costing.heuristics import ComputedMethod, MaterialCost
@@ -1835,25 +1839,40 @@ def _raid_run_seconds(
     kit: dps_bridge.Kit | None = None,
 ) -> dict[str, float]:
     """Every raid's own run duration, modelled from this map's own picks and
-    levels - `costing/raids.py`'s `compare`, fed the three `dps_bridge`
-    builders shaped for it, rather than the flat money-making-guide figure
-    `instanced.DEFAULT_RUN_SECONDS` falls back to absent this.
+    levels, at the exact same modes/level `raids.PUBLISHED_RAID_SECONDS`
+    names - `costing/theatre.py`/`costing/xeric.py`/`costing/tombs.py`'s
+    own `answer`, fed the `dps_bridge` builders shaped for them, rather than
+    the flat money-making-guide figure `instanced.DEFAULT_RUN_SECONDS` and
+    `raids.item_seconds` fall back to absent this.
 
-    **Never faster than the guide, for all three raids.** Every one of the
-    three models spends an invented uptime/overhead constant (`theatre.
-    UPTIME`, `xeric.UPTIME`, `tombs.UPTIME` are each a `GUESS`), so a
-    computed answer is a ceiling on how well the mechanic could go, not a
-    promise - and `theatre.py`'s own docstring names the reason a modelled
-    team should never beat a published one anyway: the guide describes an
-    *established* raider already carrying that raid's own best gear, a
-    stronger assumption than any chunk map offers. `max()` against
-    `raids.PUBLISHED_RAID_SECONDS` applies that floor uniformly rather than
-    only where the Theatre's own docstring happens to say it, since the
-    Chambers and the Tombs carry the identical invented-uptime shape.
-    Measured against a real map (`fray-11826`), the floor is not merely
-    theoretical: the Theatre and Chambers both computed *slower* than their
-    guides there, but the Tombs computed faster, and the floor is what
-    keeps that one from reporting an unearned raid level 300 sub-guide pace.
+    **Four keys, matching `PUBLISHED_RAID_SECONDS` exactly - not "whichever
+    mode is fastest overall".** An earlier version of this called
+    `raids.compare`, which optimises *closing the collection log*: for
+    Chambers of Xeric specifically that picked Challenge Mode on a real map
+    (`fray-11826`), and `raids.item_seconds` priced `Sinhaza shroud tier 5`
+    right off `Heuristics.run_seconds[THEATRE]` at 2421s per raid - correct
+    for Theatre, which is single-mode - but reused the *same* Chambers
+    figure for both the Chambers' own ordinary uniques (paired with
+    `xeric.item_chances(NORMAL)`, a Normal-mode drop table) and its cape
+    (which really does want Challenge Mode, its own separate
+    `PUBLISHED_RAID_SECONDS` key). Optimising the *wrong* question and
+    reusing its answer for a Normal-mode calculation is the "unjoined
+    method outranks its own charged twin" shape from a different angle: not
+    a slower method winning, a mismatched one landing in the right-looking
+    dict slot. Tombs carries the analogous risk - `tombs.best`'s own search
+    need not settle on `GUIDE_RAID_LEVEL` - even though it happened not to
+    on that same map. Asking each mode/level `answer()` directly for its
+    own `.run.seconds` removes the mismatch instead of patching around the
+    one case a single test happened to catch.
+
+    **Never faster than the guide, for every key.** Every one of the three
+    models spends an invented uptime/overhead constant (`theatre.UPTIME`,
+    `xeric.UPTIME`, `tombs.UPTIME` are each a `GUESS`), so a computed answer
+    is a ceiling on how well the mechanic could go, not a promise - and
+    `theatre.py`'s own docstring names the reason a modelled team should
+    never beat a published one anyway: the guide describes an *established*
+    raider already carrying that raid's own best gear, a stronger
+    assumption than any chunk map offers.
     """
     theatre_seconds = dps_bridge.theatre_kill_seconds(
         chunk_info, picks, levels, index=index, kit=kit
@@ -1862,11 +1881,24 @@ def _raid_run_seconds(
         chunk_info, picks, levels, index=index, kit=kit
     )
     tombs_for = dps_bridge.tombs_stats_for(chunk_info, picks, levels, index=index, kit=kit)
-    comparison = raids.compare(chambers_for, theatre_seconds, tombs_for)
-    return {
-        answer.raid: max(answer.run_seconds, raids.PUBLISHED_RAID_SECONDS[answer.raid])
-        for answer in comparison.answers
-    }
+
+    def floored(key: str, run: encounter.Encounter | None) -> None:
+        if run is not None:
+            found[key] = max(run.seconds, raids.PUBLISHED_RAID_SECONDS[key])
+
+    found: dict[str, float] = {}
+    theatre_answer = theatre.answer(theatre.NORMAL, theatre_seconds, party_size=theatre.PARTY_SIZE)
+    floored(raids.THEATRE, theatre_answer.run if theatre_answer is not None else None)
+    normal_answer = xeric.answer(xeric.NORMAL, chambers_for)
+    floored(raids.CHAMBERS, normal_answer.run if normal_answer is not None else None)
+    challenge_answer = xeric.answer(xeric.CHALLENGE, chambers_for)
+    floored(
+        f"{raids.CHAMBERS} (challenge)",
+        challenge_answer.run if challenge_answer is not None else None,
+    )
+    tombs_answer = tombs.answer(tombs.GUIDE_RAID_LEVEL, tombs_for(tombs.GUIDE_RAID_LEVEL))
+    floored(raids.TOMBS, tombs_answer.run if tombs_answer is not None else None)
+    return found
 
 
 def _tzhaar_run_seconds(

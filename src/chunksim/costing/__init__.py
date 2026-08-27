@@ -615,14 +615,15 @@ The modules, and what each owns:
   Combat Achievements naming `TzKal-Zuk` sharing 0.05 hours between them. `PER_WAVE_SECONDS` is invented and `RUN_SECONDS` is a
   maintainer's figure rather than a publication; both say so. **`run`/
   `answer` - the sequencer - had no production caller either**, the same
-  gap `raids.compare` had: `instanced.kill_seconds` reached only the flat
+  gap the three raids had: `instanced.kill_seconds` reached only the flat
   `run_seconds` function (the band's midpoint plus a hand override), never
   the gear-sensitive sequencer, despite this docstring once claiming a test
   compared the two. `costing/inputs.py`'s `_tzhaar_run_seconds` closes it
   the same way `_raid_run_seconds` does, floored at `RUN_SECONDS` - and
-  because `item_seconds`/`kill_seconds` here already took `overrides`
-  (unlike `raids.item_seconds`, which does not), the fix reaches the item
-  walk too, with no mode-matching complication to work around.
+  because `item_seconds`/`kill_seconds` here already took `overrides`, the
+  fix reached the item walk too with no further change, unlike
+  `raids.item_seconds`, which needed its own fix once a mode mismatch
+  turned up in production (see `raids.py`'s own entry).
 - `raids.py` - all three raids at once, and the only place that **adds**
   rather than picks: the export carries each raid's rewards as its own
   collection log entries, so a player needs all three logs and the total is
@@ -639,14 +640,24 @@ The modules, and what each owns:
   export's own spelling (`Scythe of vitur (uncharged)`, `Lil' zik`) before
   either function ever sees it, not the wiki's (`Scythe of Vitur
   (uncharged)`, `Lil' Zik`) that these tables are keyed by - an exact-match
-  first cut missed every Theatre unique and pet outright. **`compare` had no
-  caller at all until `costing/inputs.py`'s `_raid_run_seconds`** - every
-  raid was priced off `PUBLISHED_RAID_SECONDS` regardless of the map's own
-  gear, `theatre.py`'s own "kept as a floor" docstring notwithstanding,
-  because nothing had ever computed the ceiling the floor was meant to sit
-  under. `item_seconds()`'s own flat figure is unchanged by this - it prices
-  a raid unique reached only through the goal walk, built before any
-  DPS-derived rate exists, and stays a known, separate gap.
+  first cut missed every Theatre unique and pet outright. **`compare`,
+  `theatre.best`, `xeric.best` and `tombs.best` had no caller at all until
+  `costing/inputs.py`'s `_raid_run_seconds`** - every raid was priced off
+  `PUBLISHED_RAID_SECONDS` regardless of the map's own gear, `theatre.py`'s
+  own "kept as a floor" docstring notwithstanding, because nothing had ever
+  computed the ceiling the floor was meant to sit under. **`_raid_run_seconds`
+  does not actually call `compare`/`best`, in the end** - a first version
+  did, and it broke `item_seconds()` in production: `compare` optimises
+  *closing the collection log*, which picked Challenge Mode for the
+  Chambers on a real map, and reusing that one number for `_by_raid`'s
+  Normal-mode uniques priced `Sinhaza shroud tier 5` off the *cape's own*
+  rate instead of the raid's - `Sinhaza shroud tier 5` read 667 hours
+  where 2,000 raids at the real per-raid pace is 1,345. `_raid_run_seconds`
+  now asks `theatre.answer`/`xeric.answer`/`tombs.answer` directly at the
+  four exact modes/levels `PUBLISHED_RAID_SECONDS` itself names, and
+  `item_seconds`/`_by_raid` take the matching `overrides` dict - the same
+  shape `tzhaar.item_seconds` already had - so no mode can be mismatched
+  again.
 - `barrows.py` - the Barrows: six brothers, any order, one chest -
   `Chest (Barrows)` is absent from `drops` entirely, the same gap
   `raids.py` closes for the three raids. No `FightScript` needed - the six
@@ -892,14 +903,17 @@ Thieving at 84,560 flat against 1,005 at level 1. See `_modelled_tasks`.
   and the guard does not apply: their rate is a pure function of *other*
   monsters' already-resolved rates, so re-deriving it costs nothing and
   always runs. `theatre_kill_seconds`, `chambers_kill_seconds_for` and
-  `tombs_stats_for` are `costing/raids.py`'s three raid models' own missing
-  half - each builds loadouts once and returns the shape its raid needs
-  (a bare lookup, a mode factory, a raid-level factory) so
-  `costing/inputs.py`'s `_raid_run_seconds` can feed `raids.compare` a real
-  account instead of nothing ever having called it. **`kills_by_style`
-  reports `fight`'s hitpoints, not `target`'s** - the raid-scaled `Target`
-  `dps()` actually fought, not the library's unscaled row - which mattered
-  to nothing before a caller finally passed `raid=`.
+  `tombs_stats_for` are `costing/theatre.py`/`costing/xeric.py`/
+  `costing/tombs.py`'s three raid models' own missing half - each builds
+  loadouts once and returns the shape its raid needs (a bare lookup, a mode
+  factory, a raid-level factory) so `costing/inputs.py`'s
+  `_raid_run_seconds` can ask each `answer()` directly for a real account's
+  pace instead of nothing ever having called any of them. `tzhaar_kill_seconds`
+  is the Fight Caves/Inferno twin, one lookup for both variants since
+  neither is raid-scaled at all. **`kills_by_style` reports `fight`'s
+  hitpoints, not `target`'s** - the raid-scaled `Target` `dps()` actually
+  fought, not the library's unscaled row - which mattered to nothing before
+  a caller finally passed `raid=`.
 - `hespori.py` - Hespori's own drop table is already in the export (unlike a
   raid's chest), so the fix here is not a missing table but a missing
   overhead: `GROW_SECONDS` is the hespori seed's own published farming time,

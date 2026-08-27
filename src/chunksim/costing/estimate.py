@@ -3260,7 +3260,7 @@ def _run_priced_items(overrides: Mapping[str, float] = {}) -> dict[str, float]:
     more than one, and `tests/test_costing_tzhaar.py` pins that.
     """
     return {
-        **raids.item_seconds(),
+        **raids.item_seconds(overrides),
         **tzhaar.item_seconds(overrides),
         **barrows.item_seconds(),
         **colosseum.item_seconds(),
