@@ -164,6 +164,7 @@ from chunksim.costing import sire as _sire
 from chunksim.costing import skotizo as _skotizo
 from chunksim.costing import vetion as _vetion
 from chunksim.costing import vorkath as _vorkath
+from chunksim.costing import xeric as _xeric
 from chunksim.costing import yama as _yama
 from chunksim.costing import zalcano as _zalcano
 from chunksim.costing import zulrah as _zulrah
@@ -1110,7 +1111,17 @@ def kills_by_style(
                 damage_taken=damage_taken_per_second(armed, fight),
                 is_boss=boss,
                 attack_speed=armed.attack_speed,
-                hitpoints=float(getattr(target, "hitpoints", 0) or 0),
+                # **`fight`, not `target`.** `fight` is what `dps()` just
+                # fought - the slayer/raid-scaled `Target` - and `target` is
+                # the library's own unscaled entry. They read identically
+                # everywhere `raid`/slayer scaling never applies (`ttk`/`dps`
+                # already come from `fight` two lines up), but a raid
+                # monster's real health is nothing like its base row: Akkha
+                # is 400 unscaled and 1,040 at raid level 400. A caller
+                # multiplying this by a per-damage reward (`tombs.points_for`)
+                # would have scored a raid-level-400 Tombs run on its
+                # level-zero health.
+                hitpoints=float(getattr(fight, "hitpoints", 0) or 0),
             )
             standing = best.get(style)
             if standing is None or _score(found, prefer) > _score(standing, prefer):
@@ -1520,6 +1531,142 @@ def combat_curve(
             continue
         found[level] = rate * kill.hitpoints * multiplier
     return found
+
+
+def _raid_kill_lookup(
+    loadouts: Mapping[str, Loadout],
+    monster_index: MonsterIndex,
+    versions: Mapping[str, tuple[str, ...]],
+    reductions: DefenceReductions | None,
+    raid: RaidInputs,
+) -> Callable[[str], KillEstimate | None]:
+    """One raid setting's fastest kill, by name - the shared half of the
+    three raid-model builders below, which differ only in which `RaidInputs`
+    they hold and which field of the result they read back."""
+
+    def lookup(name: str) -> KillEstimate | None:
+        if not loadouts:
+            return None
+        candidates = candidate_targets(monster_index, name, versions)
+        if not candidates:
+            return None
+        return best_kill(
+            loadouts, name, candidates, index=monster_index,
+            reductions=reductions, boss=True, raid=raid,
+        )
+
+    return lookup
+
+
+def theatre_kill_seconds(
+    chunk_info: ChunkInfo,
+    picks: Mapping[str, str],
+    levels: Mapping[str, int],
+    *,
+    index: MonsterIndex | None = None,
+    kit: Kit | None = None,
+    party_size: int = 3,
+) -> Callable[[str], float | None]:
+    """A `KillSeconds` lookup for every Theatre of Blood room, at
+    `party_size` - `costing/theatre.py`'s own shape, since its six rooms are
+    separate library monsters rather than one scaled by a mode flag.
+
+    One `RaidInputs` serves all six: the Theatre scales only by party size,
+    unlike the Chambers' per-mode flag or the Tombs' per-level dial.
+    """
+    _require()
+    monster_index = load_monster_index() if index is None else index
+    versions = version_index(monster_index)
+    loadouts = build_loadouts(chunk_info, picks, levels, kit)
+    reductions = kit.reductions if kit is not None else None
+    raid = RaidInputs(
+        party_size=party_size, defence_reductions=reductions or DefenceReductions()
+    )
+    lookup = _raid_kill_lookup(loadouts, monster_index, versions, reductions, raid)
+
+    def kill_seconds(name: str) -> float | None:
+        kill = lookup(name)
+        return kill.ttk if kill is not None else None
+
+    return kill_seconds
+
+
+def chambers_kill_seconds_for(
+    chunk_info: ChunkInfo,
+    picks: Mapping[str, str],
+    levels: Mapping[str, int],
+    *,
+    index: MonsterIndex | None = None,
+    kit: Kit | None = None,
+) -> Callable[[str], Callable[[str], float | None]]:
+    """`mode -> KillSeconds`, `costing/xeric.py`'s own factory shape.
+
+    Challenge Mode is the *same* monsters under `RaidInputs.challenge_mode`
+    rather than separate library entries - so the raid input varies per
+    mode and the lookup underneath it does not, matching `xeric.answer`'s
+    own docstring on why this is a factory rather than a lookup.
+    """
+    _require()
+    monster_index = load_monster_index() if index is None else index
+    versions = version_index(monster_index)
+    loadouts = build_loadouts(chunk_info, picks, levels, kit)
+    reductions = kit.reductions if kit is not None else None
+
+    def kill_seconds_for(mode: str) -> Callable[[str], float | None]:
+        raid = RaidInputs(
+            challenge_mode=(mode == _xeric.CHALLENGE),
+            defence_reductions=reductions or DefenceReductions(),
+        )
+        lookup = _raid_kill_lookup(loadouts, monster_index, versions, reductions, raid)
+
+        def kill_seconds(name: str) -> float | None:
+            kill = lookup(name)
+            return kill.ttk if kill is not None else None
+
+        return kill_seconds
+
+    return kill_seconds_for
+
+
+def tombs_stats_for(
+    chunk_info: ChunkInfo,
+    picks: Mapping[str, str],
+    levels: Mapping[str, int],
+    *,
+    index: MonsterIndex | None = None,
+    kit: Kit | None = None,
+) -> Callable[[int], Callable[[str], tuple[float, float] | None]]:
+    """`raid_level -> StatsFor`, `costing/tombs.py`'s own factory shape:
+    a room's seconds *and* its raid-scaled hitpoints, since the Tombs derives
+    its own reward points from damage dealt rather than from a published
+    total the way the Chambers does.
+
+    **`toa_path_level` is left at zero.** `tombs.py`'s own model treats the
+    raid level as the one dial the wiki tabulates rather than splitting it
+    into the real game's separate invocation and path components - see its
+    module docstring. Reading the whole level as `toa_invocation_level` is
+    that same simplification carried one level down, not a new one.
+    """
+    _require()
+    monster_index = load_monster_index() if index is None else index
+    versions = version_index(monster_index)
+    loadouts = build_loadouts(chunk_info, picks, levels, kit)
+    reductions = kit.reductions if kit is not None else None
+
+    def stats_for(raid_level: int) -> Callable[[str], tuple[float, float] | None]:
+        raid = RaidInputs(
+            toa_invocation_level=raid_level,
+            defence_reductions=reductions or DefenceReductions(),
+        )
+        lookup = _raid_kill_lookup(loadouts, monster_index, versions, reductions, raid)
+
+        def stats(name: str) -> tuple[float, float] | None:
+            kill = lookup(name)
+            return (kill.ttk, kill.hitpoints) if kill is not None else None
+
+        return stats
+
+    return stats_for
 
 
 def price_monsters(
@@ -2339,6 +2486,7 @@ __all__ = [
     "in_wilderness",
     "build_loadouts",
     "candidate_targets",
+    "chambers_kill_seconds_for",
     "combat_curve",
     "enrich",
     "library_version",
@@ -2346,6 +2494,8 @@ __all__ = [
     "measure_overhead",
     "price_monsters",
     "price_slayer_tasks",
+    "theatre_kill_seconds",
+    "tombs_stats_for",
     "wilderness_monsters",
     "with_monster_rates",
     "with_slayer_rates",

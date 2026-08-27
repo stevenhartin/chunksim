@@ -103,6 +103,7 @@ from chunksim.costing import (
 )
 from chunksim.costing import gathering as gathering_model
 from chunksim.costing import shortcuts as shortcut_model
+from chunksim.costing import raids
 from chunksim.costing.estimate import material_seconds
 from chunksim.costing import prayer as prayer_costing
 from chunksim.costing.heuristics import ComputedMethod, MaterialCost
@@ -1824,6 +1825,49 @@ def _pinned_from(raw: Mapping[str, Any]) -> tuple[frozenset[str], dict[str, froz
     return monsters, slayer
 
 
+def _raid_run_seconds(
+    chunk_info: ChunkInfo,
+    picks: Mapping[str, str],
+    levels: Mapping[str, int],
+    *,
+    index: dps_bridge.MonsterIndex,
+    kit: dps_bridge.Kit | None = None,
+) -> dict[str, float]:
+    """Every raid's own run duration, modelled from this map's own picks and
+    levels - `costing/raids.py`'s `compare`, fed the three `dps_bridge`
+    builders shaped for it, rather than the flat money-making-guide figure
+    `instanced.DEFAULT_RUN_SECONDS` falls back to absent this.
+
+    **Never faster than the guide, for all three raids.** Every one of the
+    three models spends an invented uptime/overhead constant (`theatre.
+    UPTIME`, `xeric.UPTIME`, `tombs.UPTIME` are each a `GUESS`), so a
+    computed answer is a ceiling on how well the mechanic could go, not a
+    promise - and `theatre.py`'s own docstring names the reason a modelled
+    team should never beat a published one anyway: the guide describes an
+    *established* raider already carrying that raid's own best gear, a
+    stronger assumption than any chunk map offers. `max()` against
+    `raids.PUBLISHED_RAID_SECONDS` applies that floor uniformly rather than
+    only where the Theatre's own docstring happens to say it, since the
+    Chambers and the Tombs carry the identical invented-uptime shape.
+    Measured against a real map (`fray-11826`), the floor is not merely
+    theoretical: the Theatre and Chambers both computed *slower* than their
+    guides there, but the Tombs computed faster, and the floor is what
+    keeps that one from reporting an unearned raid level 300 sub-guide pace.
+    """
+    theatre_seconds = dps_bridge.theatre_kill_seconds(
+        chunk_info, picks, levels, index=index, kit=kit
+    )
+    chambers_for = dps_bridge.chambers_kill_seconds_for(
+        chunk_info, picks, levels, index=index, kit=kit
+    )
+    tombs_for = dps_bridge.tombs_stats_for(chunk_info, picks, levels, index=index, kit=kit)
+    comparison = raids.compare(chambers_for, theatre_seconds, tombs_for)
+    return {
+        answer.raid: max(answer.run_seconds, raids.PUBLISHED_RAID_SECONDS[answer.raid])
+        for answer in comparison.answers
+    }
+
+
 def priced_heuristics(
     state: MapState,
     unlocked: Mapping[str, bool],
@@ -1887,6 +1931,7 @@ def priced_heuristics(
         caps = combat_xp.spawn_caps(state.chunk_info, derived)
         by_style: dict[str, dps_bridge.CombatRate] = {}
         curves: dict[str, tuple[ComputedMethod, ...]] = {}
+        raid_seconds: dict[str, float] = {}
         if dps_bridge.DPS_AVAILABLE:
             # **The kit is not optional here.** Without it the Magic loadout
             # has no runes and never lands a hit, so `price_combat` returned
@@ -1941,6 +1986,9 @@ def priced_heuristics(
                 )
 
             curves = combat_xp.combat_curves(by_style, _combat_curve, priced.spells)
+            raid_seconds = _raid_run_seconds(
+                state.chunk_info, derived.bis.picks, goals, index=monster_index, kit=kit
+            )
         rates, damage = combat_xp.combat_rates(
             derived,
             priced,
@@ -2004,8 +2052,18 @@ def priced_heuristics(
                     knob=f"monster_stats/{rate.source.removeprefix('combat:')}",
                 ),
             )
+        # **Computed, then overrides on top - `heuristics.run_seconds`'s own
+        # merge order.** `priced.run_seconds` at this point already *is* the
+        # override layer (`load_reference`'s merge only ever reads override
+        # files into this field, nothing here computes into it), so a real
+        # `runs/<place>` correction a reader set by hand still wins over the
+        # modelled figure rather than being silently replaced by it.
+        run_seconds = {**raid_seconds, **priced.run_seconds}
         return (
-            replace(priced, combat=rates, combat_damage=damage, computed=merged),
+            replace(
+                priced, combat=rates, combat_damage=damage, computed=merged,
+                run_seconds=run_seconds,
+            ),
             coverage,
         )
 

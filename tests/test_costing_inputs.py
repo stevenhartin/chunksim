@@ -197,6 +197,64 @@ def test_both_apps_hand_the_pricer_the_same_pins(
     assert calls[0]["pinned_monsters"] == calls[1]["pinned_monsters"]
 
 
+class TestRaidRunSeconds:
+    """`_raid_run_seconds` is what wires `costing/raids.py`'s own per-account
+    models into `Heuristics.run_seconds` - see the function's own docstring
+    on why a computed answer is a ceiling rather than a promise, and
+    `costing/theatre.py`'s on why the guide it floors against describes an
+    established raider rather than a chunk map."""
+
+    def test_prices_all_three_raids(self) -> None:
+        if not dps_bridge.DPS_AVAILABLE:
+            pytest.skip("the dps extra is not installed")
+        from chunksim.costing import raids
+        from chunksim.model.chunkinfo import ChunkInfo
+
+        chunk_info = ChunkInfo({"equipment": {"Abyssal whip": {
+            "attack_slash": 82, "melee_strength": 82, "attack_speed": 4, "slot": "weapon",
+        }}})
+        levels = {"Attack": 60, "Strength": 60, "Hitpoints": 60}
+        index = dps_bridge.load_monster_index()
+
+        found = inputs._raid_run_seconds(
+            chunk_info, {"Melee-weapon": "Abyssal whip"}, levels, index=index,
+        )
+
+        # **A subset, not all three.** `encounter.build` refuses a raid
+        # outright if bare melee at level 60 cannot kill even one of its
+        # rooms - Chambers' Vanguards want a style switch this fixture's
+        # single weapon cannot make - so what a weak loadout actually prices
+        # is not every raid, only the ones its gear can clear.
+        assert found
+        assert set(found) <= {raids.CHAMBERS, raids.THEATRE, raids.TOMBS}
+        for raid_name, seconds in found.items():
+            assert seconds >= raids.PUBLISHED_RAID_SECONDS[raid_name]
+
+    def test_never_faster_than_the_published_guide(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An unrealistically fast computed answer - the shape a generous
+        `UPTIME` guess could produce - never beats the guide's own published
+        pace once this has floored it. `raids.compare` is stubbed so this
+        isolates the floor arithmetic from the DPS model that feeds it."""
+        if not dps_bridge.DPS_AVAILABLE:
+            pytest.skip("the dps extra is not installed")
+        from chunksim.costing import raids
+        from chunksim.model.chunkinfo import ChunkInfo
+
+        fast = raids.RaidAnswer(raids.THEATRE, "normal", 1.0, 2000.0, "cape")
+        monkeypatch.setattr(
+            "chunksim.costing.inputs.raids.compare",
+            lambda *a, **k: raids.Comparison((fast,)),
+        )
+
+        found = inputs._raid_run_seconds(
+            ChunkInfo({}), {}, {}, index=dps_bridge.load_monster_index(),
+        )
+
+        assert found == {raids.THEATRE: raids.PUBLISHED_RAID_SECONDS[raids.THEATRE]}
+
+
 def test_neither_app_reaches_past_the_shared_module() -> None:
     """A structural guard, in the spirit of the one asserting no tile route
     exists: the way this drifted was two call sites, so there is now one.

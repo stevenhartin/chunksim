@@ -267,6 +267,117 @@ def test_no_candidates_means_no_price() -> None:
     assert dps_bridge.best_kill(loadouts, "Nothing", []) is None
 
 
+def test_kills_by_style_reports_the_raid_scaled_hitpoints() -> None:
+    """**`fight`, not `target`.** A raid-scaled monster's real health is
+    nothing like its library row - Akkha is 400 unscaled and 1,040 at raid
+    level 400 - and a caller pricing points off health
+    (`tombs.points_for`) needs the health that was actually fought, not the
+    library's own unscaled entry `hitpoints` used to read back."""
+    from osrs_dps import DefenceReductions, RaidInputs
+
+    index = dps_bridge.load_monster_index()
+    loadouts = dps_bridge.build_loadouts(
+        _chunk_info(), {"Melee-weapon": "Abyssal whip"}, LEVELS
+    )
+    candidates = dps_bridge.candidate_targets(index, "Akkha")
+    assert candidates
+    base_hp = candidates[0][1].hitpoints
+    raid = RaidInputs(toa_invocation_level=400, defence_reductions=DefenceReductions())
+
+    found = dps_bridge.kills_by_style(loadouts, "Akkha", candidates, raid=raid, boss=True)
+
+    assert found
+    kill = next(iter(found.values()))
+    assert kill.hitpoints > base_hp * 2  # measured: 400 unscaled -> 1,040
+
+
+class TestRaidModels:
+    """`theatre_kill_seconds`, `chambers_kill_seconds_for` and
+    `tombs_stats_for` are the three builders `costing/raids.py`'s own
+    per-account raid models were written for but, until now, never received
+    - see `costing/inputs.py`'s `_raid_run_seconds`. Real monster data
+    throughout: duplicating the library's own raid-scaling arithmetic here
+    would only be a second copy to keep in sync with `osrs_dps.core.scaling`.
+    """
+
+    def test_theatre_prices_every_room(self) -> None:
+        from chunksim.costing import theatre
+
+        index = dps_bridge.load_monster_index()
+        lookup = dps_bridge.theatre_kill_seconds(
+            _chunk_info(), {"Melee-weapon": "Abyssal whip"}, LEVELS, index=index,
+        )
+        for _room, modes in theatre.ROOMS:
+            for name in modes[theatre.NORMAL]:
+                seconds = lookup(name)
+                assert seconds is not None and seconds > 0, name
+
+    def test_theatre_has_no_price_for_an_unknown_room(self) -> None:
+        index = dps_bridge.load_monster_index()
+        lookup = dps_bridge.theatre_kill_seconds(
+            _chunk_info(), {"Melee-weapon": "Abyssal whip"}, LEVELS, index=index,
+        )
+        assert lookup("Nothing at all") is None
+
+    def test_theatre_scales_verzik_by_party_size(self) -> None:
+        """`RaidInputs.party_size` is what `apply_tob` reads - `theatre.py`'s
+        own docstring on why `attackers` dividing the kill time is only half
+        the story: a five-player team also fights a *harder* Verzik than a
+        trio would. **Normal mode floors party size at three** (`apply_tob`:
+        `min(5, max(3, party_size))`), which is why this compares 3 against
+        5 rather than 1 against 3 - a solo and a trio scale identically."""
+        index = dps_bridge.load_monster_index()
+        trio = dps_bridge.theatre_kill_seconds(
+            _chunk_info(), {"Melee-weapon": "Abyssal whip"}, LEVELS,
+            index=index, party_size=3,
+        )
+        five = dps_bridge.theatre_kill_seconds(
+            _chunk_info(), {"Melee-weapon": "Abyssal whip"}, LEVELS,
+            index=index, party_size=5,
+        )
+        name = "Verzik Vitur#Normal mode, Phase 1"
+        trio_seconds, five_seconds = trio(name), five(name)
+        assert trio_seconds is not None and five_seconds is not None
+        assert five_seconds > trio_seconds
+
+    def test_chambers_challenge_mode_is_the_same_monster_scaled_harder(self) -> None:
+        """"Every enemy but Olm has its stats and health raised" - `xeric.py`'s
+        own docstring, measured at exactly 1.5x health for Tekton - so
+        Challenge Mode must come from `RaidInputs.challenge_mode` on one
+        lookup, not a second library entry."""
+        from chunksim.costing import xeric
+
+        index = dps_bridge.load_monster_index()
+        kill_seconds_for = dps_bridge.chambers_kill_seconds_for(
+            _chunk_info(), {"Melee-weapon": "Abyssal whip"}, LEVELS, index=index,
+        )
+        name = "Tekton#Normal"
+        normal = kill_seconds_for(xeric.NORMAL)(name)
+        challenge = kill_seconds_for(xeric.CHALLENGE)(name)
+        assert normal is not None and challenge is not None
+        assert challenge > normal
+
+    def test_tombs_hitpoints_grow_with_raid_level(self) -> None:
+        """The Tombs' own reward points are damage dealt, so a level that
+        under-reports a room's raid-scaled health under-reports the raid's
+        whole reward - see `tombs.points_for`."""
+        index = dps_bridge.load_monster_index()
+        stats_for = dps_bridge.tombs_stats_for(
+            _chunk_info(), {"Melee-weapon": "Abyssal whip"}, LEVELS, index=index,
+        )
+        low = stats_for(150)("Akkha")
+        high = stats_for(500)("Akkha")
+        assert low is not None and high is not None
+        assert high[1] > low[1]
+
+    def test_tombs_has_no_stats_for_an_unknown_room(self) -> None:
+        index = dps_bridge.load_monster_index()
+        stats_for = dps_bridge.tombs_stats_for(
+            _chunk_info(), {"Melee-weapon": "Abyssal whip"}, LEVELS, index=index,
+        )
+        assert stats_for(300)("Nothing at all") is None
+
+
 def _defended_rat() -> Any:
     """A `Rat` with enough defence that accuracy is not already saturated at
     a middling Attack level - the shape a curve needs to have anything to

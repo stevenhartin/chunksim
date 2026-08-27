@@ -630,7 +630,14 @@ The modules, and what each owns:
   export's own spelling (`Scythe of vitur (uncharged)`, `Lil' zik`) before
   either function ever sees it, not the wiki's (`Scythe of Vitur
   (uncharged)`, `Lil' Zik`) that these tables are keyed by - an exact-match
-  first cut missed every Theatre unique and pet outright.
+  first cut missed every Theatre unique and pet outright. **`compare` had no
+  caller at all until `costing/inputs.py`'s `_raid_run_seconds`** - every
+  raid was priced off `PUBLISHED_RAID_SECONDS` regardless of the map's own
+  gear, `theatre.py`'s own "kept as a floor" docstring notwithstanding,
+  because nothing had ever computed the ceiling the floor was meant to sit
+  under. `item_seconds()`'s own flat figure is unchanged by this - it prices
+  a raid unique reached only through the goal walk, built before any
+  DPS-derived rate exists, and stays a known, separate gap.
 - `barrows.py` - the Barrows: six brothers, any order, one chest -
   `Chest (Barrows)` is absent from `drops` entirely, the same gap
   `raids.py` closes for the three raids. No `FightScript` needed - the six
@@ -875,7 +882,15 @@ Thieving at 84,560 flat against 1,005 at level 1. See `_modelled_tasks`.
   so neither reaches `monsters` for the `freshly_priced` guard to key off,
   and the guard does not apply: their rate is a pure function of *other*
   monsters' already-resolved rates, so re-deriving it costs nothing and
-  always runs.
+  always runs. `theatre_kill_seconds`, `chambers_kill_seconds_for` and
+  `tombs_stats_for` are `costing/raids.py`'s three raid models' own missing
+  half - each builds loadouts once and returns the shape its raid needs
+  (a bare lookup, a mode factory, a raid-level factory) so
+  `costing/inputs.py`'s `_raid_run_seconds` can feed `raids.compare` a real
+  account instead of nothing ever having called it. **`kills_by_style`
+  reports `fight`'s hitpoints, not `target`'s** - the raid-scaled `Target`
+  `dps()` actually fought, not the library's unscaled row - which mattered
+  to nothing before a caller finally passed `raid=`.
 - `hespori.py` - Hespori's own drop table is already in the export (unlike a
   raid's chest), so the fix here is not a missing table but a missing
   overhead: `GROW_SECONDS` is the hespori seed's own published farming time,
