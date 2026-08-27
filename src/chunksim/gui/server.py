@@ -61,6 +61,7 @@ from chunksim.gui.routes_derived import (
     reachable_by_area,
     _chunk_detail,
     _estimate_payload,
+    _item_sources_payload,
     _training_payload,
     _training_method_payload,
     _full_diff,
@@ -485,6 +486,21 @@ def handle_request(
             if isinstance(at, Response):
                 return at
             return _json(_training_method_payload(at, ctx, wanted_skill, wanted_task))
+
+        if path == "/api/item-sources":
+            # **Every route to one item, not just the cheapest** - the Find
+            # pane's "Show sources" button. See `routes_derived._item_sources_payload`.
+            map_id = _first(query, "map")
+            wanted_item = _first(query, "item")
+            if map_id is None or wanted_item is None:
+                return _error(
+                    "missing required parameter: 'map' and 'item' are both required",
+                    HTTPStatus.BAD_REQUEST,
+                )
+            at = _state_at(query, ctx, map_id)
+            if isinstance(at, Response):
+                return at
+            return _json(_item_sources_payload(at, ctx, wanted_item))
 
         if path == "/api/tasks":
             map_id = _first(query, "map")

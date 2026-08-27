@@ -114,7 +114,7 @@ from chunksim.store.derived_cache import (
     cached_enrich,
     pricing_digests,
 )
-from chunksim.costing.estimate import EstimateResult, estimate
+from chunksim.costing.estimate import EstimateResult, ItemRoute, estimate, item_routes, material_walk
 from chunksim.costing.training import (
     MaterialNode,
     TrainingOption,
@@ -538,6 +538,53 @@ def training_method_answer(
         None,
     )
     return rate_material_tree(tree, option) if option is not None else tree
+
+
+def item_sources_answer(
+    state: MapState,
+    unlocked: Mapping[str, bool],
+    derived: Derived,
+    digests: Digests,
+    item: str,
+    *,
+    root: Path | None = None,
+    reference: ReferenceBlobs | None = None,
+    map_id: str | None = None,
+) -> tuple[ItemRoute, ...]:
+    """Every way this map can obtain `item`, sorted fastest first - the Find
+    panel's "Show sources" button.
+
+    **The same walk `estimate_answer`'s own item pricing spends**, for the
+    reason every sibling assembly in this module gives: a list built from a
+    different `heuristics` than the total on screen could show an option the
+    estimate never actually had. `material_walk` is the public seam
+    `training_method_answer` and `costing/recipe_rates.py` already use for
+    exactly this - a `_Walk` a caller outside `estimate.py` can price
+    against - so this is the third caller rather than a second way in.
+    """
+    blobs = load_reference(root, map_id) if reference is None else reference
+    heuristics, _ = load_heuristics(state.chunk_info, root, blobs)
+    world = build_world_index(state.chunk_info)
+    heuristics, _ = priced_heuristics(
+        state,
+        unlocked,
+        derived,
+        heuristics,
+        blobs.levels,
+        digests,
+        world=world,
+        root=root,
+        reference=blobs,
+    )
+    walk = material_walk(
+        state,
+        derived,
+        world,
+        heuristics,
+        level_overrides=blobs.levels,
+        recipes=blobs.recipes,
+    )
+    return item_routes(walk, item)
 
 
 def training_statuses(

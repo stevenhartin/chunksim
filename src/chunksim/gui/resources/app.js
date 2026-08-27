@@ -5011,6 +5011,75 @@ function highlight(result) {
   toast(name + ": " + state.found.size + (state.found.size === 1 ? " chunk" : " chunks"));
 }
 
+/* One glyph per route kind `costing/estimate.py`'s `item_routes` names -
+ * the ones common enough to earn their own; the rarer kinds (a currency, a
+ * herb supply, a raid reward, a different dose, a last-resort recipe or
+ * byproduct) fall back to `"dot"`, the same rule `TYPE_ICONS` follows for a
+ * type this page has not drawn one for. */
+const ROUTE_ICONS = {
+  kill: "monster", shop: "shop", spawn: "spawn", make: "task", family: "item",
+};
+
+/* What a route kind is called on screen - `route.route` is a machine word
+ * and never shown raw. */
+const ROUTE_LABELS = {
+  kill: "Kill", shop: "Shop", spawn: "Ground spawn", make: "Make",
+  family: "Equivalent item", currency: "Earn", herb: "Herb patch",
+  raid: "Raid reward", superior: "Superior drop table", dose: "Different dose",
+  recipe: "Recipe", yield: "Byproduct",
+};
+
+/* **A route's own time, in whatever unit still reads as a number.**
+ * `hours()` rounds to one decimal place, which is honest for a training
+ * climb and silence for a single ground spawn - "0.0h" said nothing about
+ * the two seconds it actually takes. Seconds under a minute, minutes under
+ * an hour, `hours()`'s own rounding above that. */
+function shortDuration(hoursValue) {
+  const seconds = Math.max(0, hoursValue) * 3600;
+  if (seconds < 60) return seconds.toFixed(1) + "s";
+  if (seconds < 3600) return (seconds / 60).toFixed(1) + "m";
+  return hours(hoursValue);
+}
+
+/* **Every way this map can get one item, sorted fastest first.** The Find
+ * pane's "Show sources" button - `costing/estimate.py`'s `item_routes`,
+ * kept as a list rather than reduced to the single route the estimate would
+ * actually spend, which is the question `highlight` already answers by
+ * lighting up the map instead. */
+async function showItemSources(name, trail) {
+  const title = plain(name);
+  openOverlay(title, tmpl`<p class="empty">Finding sources…</p>`, "", { trail });
+  let payload;
+  try {
+    payload = await getJSON(
+      "/api/item-sources?" + panelQuery() + "&item=" + encodeURIComponent(name)
+    );
+  } catch (error) {
+    return openOverlay(title, tmpl`<p class="empty">${error.message}</p>`, "", { trail });
+  }
+  const routes = payload.routes || [];
+  if (!routes.length) {
+    return openOverlay(
+      title,
+      tmpl`<p class="empty">Nothing on this map can obtain ${title} yet.</p>`,
+      "",
+      { trail },
+    );
+  }
+  let out = tmpl`<p class="hint">${String(routes.length)} way${routes.length === 1 ? "" : "s"}
+    this map can get ${title}, fastest first.</p><ul class="list">`;
+  for (const route of routes) {
+    const tip = tmpl`<b>${plain(route.provider)}</b><span class="sub">${
+      ROUTE_LABELS[route.route] || route.route}</span><span class="hint">${plain(route.detail)}</span>`;
+    out += tmpl`<li data-tip="${tip}">
+      <span class="type-icon">${icon(ROUTE_ICONS[route.route] || "dot")}</span>
+      <span class="name">${plain(route.provider)}</span>
+      <span class="sub">${ROUTE_LABELS[route.route] || route.route}</span>
+      <span class="num">${shortDuration(route.hours)}</span></li>`;
+  }
+  openOverlay(title, out + "</ul>", "", { trail });
+}
+
 let findTimer = null;
 let findRun = 0;
 
@@ -5058,14 +5127,26 @@ async function runFind() {
       const tip = tmpl`<b>${raw(marked(result.name))}</b><span class="sub">${typeLabel(result.type)} · ${
         HOLD_WORDS[hold]
       }</span><span class="hint">${chunks.length ? "Click to light up its " + note + " on the map" : "Nowhere on the surface map"}</span>`;
+      /* **Only an item has "sources" worth asking about.** A monster, an NPC,
+       * a shop or a task is a place, not a thing obtained - "the best way to
+       * get a Goblin" is not a question this project answers. */
+      const sourcesButton = result.type === "item"
+        ? tmpl`<button class="icon-btn" type="button" data-sources="${index}"
+            data-tip="<b>Show Sources</b><span class='sub'>Every way this map can obtain it, sorted by time.</span>"
+            aria-label="Show sources">${icon("sources")}</button>`
+        : "";
       out += tmpl`<li data-tip="${tip}">
         <span class="type-icon" data-hold="${hold}">${icon(TYPE_ICONS[result.type] || "dot")}</span>
         <button class="link name" data-result="${index}">${plain(result.name)}</button>
-        <span class="num">${note}</span></li>`;
+        <span class="num">${note}</span>${raw(sourcesButton)}</li>`;
     });
     body.innerHTML = out + "</ul>";
     for (const button of body.querySelectorAll("button[data-result]")) {
       button.onclick = () => highlight(results[Number(button.dataset.result)]);
+    }
+    for (const button of body.querySelectorAll("button[data-sources]")) {
+      const result = results[Number(button.dataset.sources)];
+      button.onclick = () => showItemSources(result.name, [{ label: "Find", go: () => runFind() }]);
     }
   } catch (error) {
     if (run === findRun) body.innerHTML = tmpl`<p class="empty">${error.message}</p>`;

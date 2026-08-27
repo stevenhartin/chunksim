@@ -22,6 +22,7 @@ from chunksim.costing.estimate import (
     WORLD_HOP_SECONDS,
     _item_hours,
     estimate,
+    item_routes,
     material_seconds,
 )
 from chunksim.costing import recipe_rates
@@ -2513,6 +2514,117 @@ def test_a_family_whose_members_are_all_unreachable_stays_unpriced() -> None:
     object.__setattr__(walk, "item_families", {"Nothing[+]": ["Nowhere"]})
 
     assert _item_hours(walk, "Nothing[+]") is None
+
+
+class TestItemRoutes:
+    """`item_routes` is the Find panel's "Show sources" button: every way
+    `_best_route` would consider for one item, kept rather than reduced to
+    the single winner - see its own docstring for why a `[+]` family and a
+    recipe/yield fallback are each handled differently from an ordinary
+    kill/shop/spawn/task candidate."""
+
+    def test_a_family_expands_into_one_row_per_member(self) -> None:
+        info = ChunkInfo(
+            {
+                "codeItems": {
+                    "itemsPlus": {"Air rune[+]": ["Air rune", "Dust rune", "Mist rune"]}
+                },
+                "chunks": {"1": {"Spawn": {"Air rune": 1, "Dust rune": 6}}},
+            }
+        )
+        walk = _walk_for(info)
+        object.__setattr__(
+            walk, "item_families", {"Air rune[+]": ["Air rune", "Dust rune", "Mist rune"]}
+        )
+
+        routes = item_routes(walk, "Air rune[+]", quantity=6.0)
+
+        assert [r.route for r in routes] == ["family", "family"]
+        # Six dust runes a hop beats one air rune a hop - see the sibling
+        # test this mirrors, `test_an_or_equivalent_item_is_priced_by_its_
+        # cheapest_member`.
+        assert routes[0].provider == "Dust rune"
+        assert [r.priced.hours for r in routes] == sorted(r.priced.hours for r in routes)
+
+    def test_every_kill_shop_and_spawn_candidate_is_kept(self) -> None:
+        import dataclasses
+
+        info = ChunkInfo(
+            {
+                "drops": {"Goblin": {"Widget": {"1": "1/10"}}},
+                "shopItems": {"Bob's Shop": {"Widget": True}},
+                "chunks": {"1": {"Spawn": {"Widget": 4}}},
+            }
+        )
+        heuristics = Heuristics(
+            monsters={"Goblin": Rate(100.0, "test", "exact")},
+            shop_prices={"Bob's Shop": {"Widget": ShopPrice(price=1.0, currency="Coins")}},
+            currency_per_hour={"Coins": 500_000.0},
+        )
+        walk = dataclasses.replace(
+            _walk_for(info, heuristics), available=frozenset({"Goblin"})
+        )
+
+        routes = item_routes(walk, "Widget")
+
+        assert {r.route for r in routes} == {"kill", "shop", "spawn"}
+        assert [r.priced.hours for r in routes] == sorted(r.priced.hours for r in routes)
+
+    def test_a_recipe_is_hidden_behind_a_real_route(self) -> None:
+        """**`Mahogany plank`'s own bug.** The export's `Process mahogany
+        logs` challenge and the wiki's `{{Recipe}}` for the same page
+        describe the identical sawmill trip - showing both as though a
+        reader could choose between them is exactly the "unjoined method
+        outranks its own charged twin" shape this project has been burned by
+        before. Only the real route may appear once one exists."""
+        import dataclasses
+
+        from chunksim.remote.recipes import Recipe
+
+        info = ChunkInfo(
+            {
+                "challenges": {
+                    "Extra": {
+                        "Make a ~|widget|~": {
+                            "Objects": ["Bench"],
+                            "Output": "Widget",
+                        }
+                    }
+                },
+            }
+        )
+        walk = _walk_for(info)
+        recipe = Recipe(
+            page="Widget", output="Widget", output_quantity=1.0, skill="Crafting",
+            level=1, experience=0.0, ticks=1.0, materials=(),
+        )
+        walk = dataclasses.replace(walk, recipes={"widget": (recipe,)})
+
+        routes = item_routes(walk, "Widget")
+
+        assert [r.route for r in routes] == ["make"]
+
+    def test_a_recipe_still_prices_when_nothing_else_does(self) -> None:
+        import dataclasses
+
+        from chunksim.remote.recipes import Recipe
+
+        info = ChunkInfo({"chunks": {}, "challenges": {}})
+        walk = _walk_for(info)
+        recipe = Recipe(
+            page="Widget", output="Widget", output_quantity=1.0, skill="Crafting",
+            level=1, experience=0.0, ticks=1.0, materials=(),
+        )
+        walk = dataclasses.replace(walk, recipes={"widget": (recipe,)})
+
+        routes = item_routes(walk, "Widget")
+
+        assert [r.route for r in routes] == ["recipe"]
+
+    def test_nothing_the_world_provides_is_an_empty_tuple(self) -> None:
+        walk = _walk_for(ChunkInfo({"chunks": {}, "challenges": {}}))
+
+        assert item_routes(walk, "Nothing at all") == ()
 
 
 def test_a_currency_can_be_qualified_by_the_shop_that_charges_it() -> None:

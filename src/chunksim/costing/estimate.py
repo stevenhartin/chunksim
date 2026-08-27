@@ -1605,6 +1605,186 @@ def _best_route(
     return best
 
 
+@dataclass(frozen=True)
+class ItemRoute:
+    """One way to obtain an item, priced on its own - what `_best_route`
+    takes the minimum of, kept rather than thrown away.
+
+    `route` says which *kind* of thing `provider` is - `"kill"` (a monster,
+    object or NPC's drop table), `"shop"`, `"spawn"`, `"make"` (a challenge
+    that produces it), `"family"` (one member of a `[+]` "or anything
+    equivalent" group), `"currency"`, `"herb"`, `"raid"`, `"superior"`,
+    `"dose"` or `"recipe"`/`"yield"` (the two last-resort fallbacks) - so a
+    caller can label a row without re-parsing `priced.source`, which was
+    never written to be machine-read back apart.
+    """
+
+    route: str
+    provider: str
+    priced: _Priced
+
+
+def item_routes(
+    walk: _Walk, item: str, quantity: float = 1.0, amortise: bool = False
+) -> tuple[ItemRoute, ...]:
+    """Every way this map can obtain `item`, sorted fastest first.
+
+    **The same candidates `_best_route` considers, none of them discarded.**
+    That function exists to answer "what does the walk actually spend", and
+    picks one; this exists to answer "what are my options", which is a
+    different question asked by a person rather than by the estimate - the
+    GUI's Find panel is the one caller. Deliberately *not* built by
+    threading a collector through `_best_route` itself: that function's own
+    per-walk caches (`leaf_routes`, `kill_facts`) are keyed and shaped for
+    "the winner, remembered", and bending them to also remember every loser
+    would slow down the one path that runs on every item in an estimate to
+    speed up the one that runs once, on a click.
+
+    A `[+]` family is expanded into one row per member rather than collapsed
+    to the family's own cheapest, since "Bronze axe" and "Iron axe" are
+    genuinely different things a reader might already own one of - the one
+    place this deliberately answers a different question than `_best_route`
+    would for the same item.
+
+    **`_recipe_hours`/`yield_seconds` keep `_best_route`'s own gate: tried
+    only where nothing else priced at all.** They are not a second real
+    option so much as a less specific description of one already found -
+    `Mahogany plank`'s wiki recipe and the export's own `Process mahogany
+    logs` challenge are the same sawmill trip, and showing both as though a
+    reader could choose between them would be exactly the "unjoined method
+    outranks its own charged twin" shape `costing/production.py`'s docstring
+    warns about.
+    """
+    found: list[ItemRoute] = []
+
+    members = walk.item_families.get(item)
+    if members:
+        for member in members:
+            if not isinstance(member, str):
+                continue
+            priced = _item_hours(walk, member, quantity=quantity, amortise=amortise)
+            if priced is not None:
+                found.append(ItemRoute("family", member, priced))
+        found.sort(key=lambda entry: entry.priced.hours)
+        return tuple(found)
+
+    earned = walk.heuristics.currency_per_hour.get(item)
+    if earned is not None and earned > 0:
+        found.append(
+            ItemRoute(
+                "currency",
+                item,
+                _Priced(
+                    quantity / earned,
+                    f"earn {quantity:,.0f} {item}",
+                    f"currency:{item}",
+                    (f"currencies/{item}",),
+                ),
+            )
+        )
+
+    raided = walk.raid_seconds.get(item.lower())
+    if raided:
+        activity = (
+            raids.activity_for(item)
+            or tzhaar.activity_for(item)
+            or colosseum.activity_for(item)
+            or barrows.activity_for(item)
+            or moons.activity_for(item)
+            or gauntlet.activity_for(item)
+        )
+        knobbed = activity in instanced.RUN_ONLY_PLACES
+        label = activity.lower() if activity else "raid"
+        found.append(
+            ItemRoute(
+                "raid",
+                activity or "raids",
+                _Priced(
+                    quantity * raided / 3600.0,
+                    f"{label}: {quantity:,.0f} {item}",
+                    activity or "raids",
+                    (instanced.knob_for(activity),) if activity and knobbed else (),
+                ),
+            )
+        )
+
+    steeped = walk.herb_seconds.get(item)
+    if steeped:
+        found.append(
+            ItemRoute(
+                "herb",
+                "Herb patches",
+                _Priced(
+                    quantity * steeped / 3600.0,
+                    f"herb supply: {quantity:,.0f} {item}",
+                    "herbs",
+                    ("actions/herbs",),
+                ),
+            )
+        )
+
+    shared = _superior_table_hours(walk, item, quantity)
+    if shared is not None:
+        found.append(ItemRoute("superior", shared.source, shared))
+
+    for source in walk.world.item_sources.get(item, ()):
+        route, provider = source.route, source.name
+        if route in _FREE_ROUTES:
+            priced = _route_hours(walk, item, route, provider, quantity, amortise)
+            if priced is not None:
+                found.append(ItemRoute(route, provider, priced))
+        elif route.startswith("task:"):
+            challenge = _mapping(
+                walk.chunk_info.challenges, route.removeprefix("task:")
+            ).get(provider)
+            if isinstance(challenge, dict):
+                priced = _route_hours(
+                    walk, item, route, provider, quantity, amortise, challenge=challenge
+                )
+                if priced is not None:
+                    found.append(ItemRoute("make", provider, priced))
+        else:
+            priced = _kill_hours(walk, provider, item, quantity)
+            if priced is not None:
+                found.append(ItemRoute("kill", provider, priced))
+
+    decanted = _dose_hours(walk, item, quantity, amortise)
+    if decanted is not None:
+        found.append(ItemRoute("dose", item, decanted))
+
+    # **Last resort, and only where nothing above priced at all** - the same
+    # gate `_best_route` puts on both: a recipe or a flat yield describing
+    # the same mechanic a real route already priced is not a second option,
+    # it is the same mechanic from a less specific source. `Mahogany plank`
+    # is the case that found this: the export's own `Process mahogany logs`
+    # challenge already prices the sawmill, and the wiki's `{{Recipe}}` for
+    # the same page describes the identical trip - showing both would read
+    # as a choice between two actions where the game only has one.
+    if not found:
+        recipe = _recipe_hours(walk, item, quantity, amortise)
+        if recipe is not None:
+            found.append(ItemRoute("recipe", item, recipe))
+
+    if not found:
+        yielded = walk.yield_seconds.get(item)
+        if yielded:
+            found.append(
+                ItemRoute(
+                    "yield",
+                    item,
+                    _Priced(
+                        quantity * yielded / 3600.0,
+                        f"yield: {quantity:,.0f} {item}",
+                        "yield",
+                        ("actions/yields",),
+                    ),
+                )
+            )
+
+    found.sort(key=lambda entry: entry.priced.hours)
+    return tuple(found)
+
+
 def _recipe_hours(
     walk: _Walk,
     item: str,

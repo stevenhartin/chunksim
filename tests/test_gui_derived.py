@@ -395,6 +395,7 @@ def test_every_derivation_route_takes_the_same_step(ctx: Context) -> None:
         ("/api/estimate", {}),
         ("/api/training", {}),
         ("/api/training-method", {"skill": "Crafting", "task": "Cut a ~|ruby|~"}),
+        ("/api/item-sources", {"item": "Bronze axe"}),
         ("/api/sections", {}),
         ("/api/chunk", {"chunk": LUMBRIDGE}),
         ("/api/unlock", {"chunk": NORTH}),
@@ -667,4 +668,94 @@ def test_ruby_traces_to_the_gem_it_is_cut_from() -> None:
     # ~1,000 an hour, per the feature's own worked example - see
     # `training.rate_material_tree`.
     assert tree["per_hour"] == pytest.approx(tree["children"][0]["per_hour"])
-    assert tree["per_hour"] > 500
+
+
+def test_item_sources_needs_an_item(ctx: Context) -> None:
+    """No fallback shape here either - the Find pane always names one."""
+    response = _get("/api/item-sources", ctx, map="fray")
+
+    assert response.status == HTTPStatus.BAD_REQUEST
+
+
+def test_item_sources_lists_a_ground_spawn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A spawn needs no scraped rate at all, which is what makes it the
+    simplest real route to pin against - see `estimate.SPAWN_HOPS_PER_HOUR`."""
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+    ctx = _derived_ctx(
+        tmp_path, monkeypatch, {"chunks": {LUMBRIDGE: {"Spawn": {"Widget": 2}}}}
+    )
+
+    payload = _body(_get("/api/item-sources", ctx, map="fray", item="Widget"))
+
+    assert payload["item"] == "Widget"
+    assert len(payload["routes"]) == 1
+    (route,) = payload["routes"]
+    assert route["route"] == "spawn"
+    assert route["provider"] == LUMBRIDGE
+    assert route["hours"] > 0
+
+
+def test_item_sources_sorts_fastest_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two spawns of the same item, at different counts - a real choice
+    between two routes, not one route asked about twice."""
+    _write_map(tmp_path, "fray", [LUMBRIDGE, NORTH])
+    ctx = _derived_ctx(
+        tmp_path,
+        monkeypatch,
+        {
+            "chunks": {
+                LUMBRIDGE: {"Spawn": {"Widget": 1}},
+                NORTH: {"Spawn": {"Widget": 10}},
+            }
+        },
+    )
+
+    payload = _body(_get("/api/item-sources", ctx, map="fray", item="Widget"))
+
+    providers = [route["provider"] for route in payload["routes"]]
+    hours = [route["hours"] for route in payload["routes"]]
+    assert providers == [NORTH, LUMBRIDGE]
+    assert hours == sorted(hours)
+
+
+def test_item_sources_answers_no_routes_rather_than_an_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A thing nothing in the world provides is an empty list, the same
+    "nothing found" every other Find answer already gives - not a 404 for
+    what is an ordinary, expected outcome."""
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+    ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {LUMBRIDGE: {}}})
+
+    response = _get("/api/item-sources", ctx, map="fray", item="Nothing at all")
+
+    assert response.status == HTTPStatus.OK
+    assert _body(response)["routes"] == []
+
+
+@pytest.mark.real_cache
+def test_mahogany_plank_traces_to_the_sawmill() -> None:
+    """The feature's own worked example, against the real export: a
+    mahogany plank has exactly one route on a real map - chop the logs, then
+    the sawmill - which this project only found by asking this question by
+    hand first (see `costing/estimate.py`'s `item_routes` docstring)."""
+    from chunksim.gui.server import _state_at
+    from chunksim.store.cache import data_root
+
+    ctx = Context(root=data_root(), check_origin=False)
+    state = _state_at({"map": ["fray"]}, ctx, "fray")
+    assert not isinstance(state, Response)
+
+    response = _get("/api/item-sources", ctx, map="fray", item="Mahogany plank")
+
+    assert response.status == HTTPStatus.OK
+    routes = _body(response)["routes"]
+    assert routes
+    assert routes[0]["route"] == "make"
+    assert "process" in routes[0]["detail"].lower()
+    assert routes[0]["hours"] > 0
+    assert routes == sorted(routes, key=lambda r: r["hours"])

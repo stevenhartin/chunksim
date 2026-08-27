@@ -396,6 +396,34 @@ def _training_method_payload(
     }
 
 
+def _item_sources_payload(state: DerivedState, ctx: Context, item: str) -> dict[str, Any]:
+    """Every way this map can obtain `item`, sorted fastest first - the
+    Find pane's "Show sources" button, from `inputs.item_sources_answer`.
+    """
+    routes = inputs.item_sources_answer(
+        state.state,
+        state.unlocked,
+        state.derived,
+        ctx.derivations.digests(),
+        item,
+        root=ctx.root,
+        reference=ctx.derivations.reference(state.map_id),
+    )
+    return {
+        "map_id": state.map_id,
+        "item": item,
+        "routes": [
+            {
+                "route": entry.route,
+                "provider": entry.provider,
+                "hours": entry.priced.hours,
+                "detail": entry.priced.detail,
+            }
+            for entry in routes
+        ],
+    }
+
+
 def _estimate_payload(state: DerivedState, ctx: Context) -> dict[str, Any]:
     """`chunksim estimate`, plus whether the DPS bridge contributed.
 
