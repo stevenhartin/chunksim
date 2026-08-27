@@ -346,6 +346,24 @@
     <div id="overlay-body"></div>
     <footer id="overlay-actions" hidden></footer>
   </div>
+  <!-- **A sibling `.sheet`, not a second dialog.** The Find panel's "Show
+       Sources" list stays open and answers "what are my options"; this
+       answers "what does the one I clicked need", a different question a
+       reader can want beside the first rather than instead of it. `hidden`
+       independently of `#overlay`'s own `.sheet` - see `closeDrillPanel` and
+       `openOverlay`'s own reset of it - and never dismissed by the backdrop
+       or Escape on its own, only alongside whatever it was opened from. -->
+  <div class="sheet sheet-side" id="drill-sheet" hidden role="dialog" aria-modal="true" aria-labelledby="drill-title">
+    <header>
+      <nav id="drill-trail" class="trail" hidden></nav>
+      <h2 id="drill-title"></h2>
+      <span class="spacer"></span>
+      <button id="drill-close" class="icon-btn" type="button" aria-label="Close">
+        <svg class="icon" viewBox="0 0 24 24"><use href="#i-close"/></svg>
+      </button>
+    </header>
+    <div id="drill-body"></div>
+  </div>
 </div>
 
 <!-- **Setup, and deliberately not the overlay above.** That one is dismissible

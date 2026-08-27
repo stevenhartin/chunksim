@@ -27,6 +27,7 @@ from chunksim.derive.delta import compare_maps
 from chunksim.derive.sections import area_connections
 from chunksim.gui.worldmap import grid_position, hull_edges
 from chunksim.costing import inputs
+from chunksim.costing.estimate import MaterialStep
 from chunksim.gui.http import Context
 
 
@@ -399,6 +400,15 @@ def _training_method_payload(
 def _item_sources_payload(state: DerivedState, ctx: Context, item: str) -> dict[str, Any]:
     """Every way this map can obtain `item`, sorted fastest first - the
     Find pane's "Show sources" button, from `inputs.item_sources_answer`.
+
+    **`provider`/`detail` stay the raw challenge name for a `"make"` row.**
+    `item_routes` builds it straight off `chunk_info.challenges`' own key,
+    which carries `~|...|~` around the item it names - `Enchant a
+    ~|diamond amulet|~`. Left alone rather than stripped here: `app.js`'s
+    `plain()` already formats it for display (`showItemSources`), and the
+    drill-down side panel sends `provider` straight back as
+    `/api/item-route-materials`' lookup key - stripping it here would make
+    that round trip miss the challenge it names.
     """
     routes = inputs.item_sources_answer(
         state.state,
@@ -421,6 +431,58 @@ def _item_sources_payload(state: DerivedState, ctx: Context, item: str) -> dict[
             }
             for entry in routes
         ],
+    }
+
+
+def _material_step_dict(step: MaterialStep) -> dict[str, Any]:
+    """One `MaterialStep` node, JSON-shaped - the Find panel's drill-down
+    side panel walks this recursively, one `children` list per click.
+
+    **`label`/`detail` stay raw**, same reason as `_item_sources_payload`:
+    a node's `detail` is a raw challenge name whenever its own route was a
+    real export challenge, and `app.js` formats that for display the same
+    way it already does for the sources list - see `plain()`. `.source`
+    itself never leaves this function; it exists on `MaterialStep` only so a
+    future caller could tell which nodes are challenge-backed, which nothing
+    here currently needs to.
+    """
+    return {
+        "label": step.label,
+        "hours": step.hours,
+        "detail": step.detail,
+        "children": [_material_step_dict(child) for child in step.children],
+    }
+
+
+def _material_step_payload(
+    state: DerivedState, ctx: Context, item: str, route: str, provider: str
+) -> dict[str, Any]:
+    """One `item_sources_answer` candidate's own materials, recursively -
+    from `inputs.material_step_answer`.
+
+    `step` is `None` for a route `priced_candidate` refuses (not a
+    production chain, or it no longer prices) - a real, distinct answer from
+    "no map"/"bad item", so the panel renders it as "nothing to drill into"
+    rather than an error, the same contract `_training_method_payload`'s
+    `tree` already keeps.
+    """
+    step = inputs.material_step_answer(
+        state.state,
+        state.unlocked,
+        state.derived,
+        ctx.derivations.digests(),
+        item,
+        route,
+        provider,
+        root=ctx.root,
+        reference=ctx.derivations.reference(state.map_id),
+    )
+    return {
+        "map_id": state.map_id,
+        "item": item,
+        "route": route,
+        "provider": provider,
+        "step": _material_step_dict(step) if step is not None else None,
     }
 
 

@@ -396,6 +396,7 @@ def test_every_derivation_route_takes_the_same_step(ctx: Context) -> None:
         ("/api/training", {}),
         ("/api/training-method", {"skill": "Crafting", "task": "Cut a ~|ruby|~"}),
         ("/api/item-sources", {"item": "Bronze axe"}),
+        ("/api/item-route-materials", {"item": "Bronze axe", "route": "make", "provider": "x"}),
         ("/api/sections", {}),
         ("/api/chunk", {"chunk": LUMBRIDGE}),
         ("/api/unlock", {"chunk": NORTH}),
@@ -735,6 +736,106 @@ def test_item_sources_answers_no_routes_rather_than_an_error(
 
     assert response.status == HTTPStatus.OK
     assert _body(response)["routes"] == []
+
+
+def test_item_route_materials_needs_all_four_params(ctx: Context) -> None:
+    """The drill-down panel always names the exact row it is opening -
+    no fallback shape, same contract `/api/item-sources` keeps for `item`."""
+    response = _get(
+        "/api/item-route-materials", ctx, map="fray", item="Widget", route="make"
+    )
+
+    assert response.status == HTTPStatus.BAD_REQUEST
+
+
+def test_item_route_materials_lists_the_production_chain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A "make" row's own materials, kept - the click `item_routes`' docstring
+    describes: `Amulet of power`'s `Enchant a diamond amulet` naming
+    `Diamond amulet` and its runes."""
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+    ctx = _derived_ctx(
+        tmp_path,
+        monkeypatch,
+        {
+            "challenges": {
+                "Extra": {
+                    "Make a ~|widget|~": {
+                        "Objects": ["Bench"],
+                        "Items": ["Cog", "Widget metal"],
+                        "Output": "Widget",
+                    }
+                }
+            },
+            "chunks": {LUMBRIDGE: {"Spawn": {"Cog": 1, "Widget metal": 1}}},
+        },
+    )
+
+    payload = _body(
+        _get(
+            "/api/item-route-materials", ctx, map="fray",
+            item="Widget", route="make", provider="Make a ~|widget|~",
+        )
+    )
+
+    assert payload["item"] == "Widget"
+    step = payload["step"]
+    assert step is not None
+    assert step["label"] == "Widget"
+    assert {child["label"] for child in step["children"]} == {"Cog", "Widget metal"}
+
+
+def test_item_route_materials_answers_none_for_a_non_drillable_route(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A kill, a shop trip, a ground spawn are *obtained*, not made from
+    other items - the panel renders "nothing to drill into" rather than an
+    error, the same `None` contract `/api/training-method`'s `tree` keeps."""
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+    ctx = _derived_ctx(
+        tmp_path, monkeypatch, {"chunks": {LUMBRIDGE: {"Spawn": {"Widget": 2}}}}
+    )
+
+    payload = _body(
+        _get(
+            "/api/item-route-materials", ctx, map="fray",
+            item="Widget", route="spawn", provider=LUMBRIDGE,
+        )
+    )
+
+    assert payload["step"] is None
+
+
+@pytest.mark.real_cache
+def test_amulet_of_power_traces_through_its_enchant() -> None:
+    """The feature's own worked example: `Enchant a diamond amulet` names
+    `Diamond amulet` among its materials, and `Diamond amulet` itself has a
+    real production chain underneath it (`String a ~|diamond amulet|~`) -
+    the recursion the side panel exists for, in one response."""
+    from chunksim.gui.server import _state_at
+    from chunksim.store.cache import data_root
+
+    ctx = Context(root=data_root(), check_origin=False)
+    state = _state_at({"map": ["fray"]}, ctx, "fray")
+    assert not isinstance(state, Response)
+
+    sources = _body(_get("/api/item-sources", ctx, map="fray", item="Amulet of power"))
+    make_row = next(r for r in sources["routes"] if r["route"] == "make")
+
+    payload = _body(
+        _get(
+            "/api/item-route-materials", ctx, map="fray",
+            item="Amulet of power", route="make", provider=make_row["provider"],
+        )
+    )
+
+    step = payload["step"]
+    assert step is not None
+    diamond_amulet = next(
+        child for child in step["children"] if child["label"] == "Diamond amulet"
+    )
+    assert diamond_amulet["children"]
 
 
 @pytest.mark.real_cache

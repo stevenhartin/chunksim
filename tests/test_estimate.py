@@ -17,6 +17,7 @@ from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.model.summary import _mapping
 from chunksim.costing.estimate import (
     DEFAULT_ACTION_SECONDS,
+    DRILLABLE_ROUTES,
     SHOP_RESTOCK_CUTOFF_SECONDS,
     SHOP_TRIP_SECONDS,
     WORLD_HOP_SECONDS,
@@ -24,6 +25,7 @@ from chunksim.costing.estimate import (
     estimate,
     item_routes,
     material_seconds,
+    priced_candidate,
 )
 from chunksim.costing import recipe_rates
 from chunksim.costing.training import training_options
@@ -2648,6 +2650,108 @@ class TestItemRoutes:
         walk = _walk_for(ChunkInfo({"chunks": {}, "challenges": {}}))
 
         assert item_routes(walk, "Nothing at all") == ()
+
+
+class TestPricedCandidate:
+    """`priced_candidate` is the Find panel's drill-down side panel: one
+    `item_routes` "make"/"recipe" row, re-priced with its own materials kept
+    - see `costing/estimate.py`'s own docstring for why only those two route
+    kinds are a production chain to drill into."""
+
+    def test_a_make_route_keeps_its_own_materials(self) -> None:
+        info = ChunkInfo(
+            {
+                "challenges": {
+                    "Extra": {
+                        "Make a ~|widget|~": {
+                            "Objects": ["Bench"],
+                            "Items": ["Cog", "Widget metal"],
+                            "Output": "Widget",
+                        }
+                    }
+                },
+                "chunks": {"1": {"Spawn": {"Cog": 1, "Widget metal": 1}}},
+            }
+        )
+        walk = _walk_for(info)
+
+        step = priced_candidate(walk, "Widget", "make", "Make a ~|widget|~")
+
+        assert step is not None
+        assert step.label == "Widget"
+        assert step.hours > 0
+        assert {child.label for child in step.children} == {"Cog", "Widget metal"}
+
+    def test_a_recipe_route_keeps_its_own_materials(self) -> None:
+        import dataclasses
+
+        from chunksim.remote.recipes import Material, Recipe
+
+        info = ChunkInfo({"chunks": {"1": {"Spawn": {"Bar": 1}}}, "challenges": {}})
+        walk = _walk_for(info)
+        recipe = Recipe(
+            page="Widget", output="Widget", output_quantity=1.0, skill="Crafting",
+            level=1, experience=0.0, ticks=1.0,
+            materials=(Material(name="Bar", quantity=2.0),),
+        )
+        walk = dataclasses.replace(walk, recipes={"widget": (recipe,)})
+
+        step = priced_candidate(walk, "Widget", "recipe", "Widget")
+
+        assert step is not None
+        assert step.label == "Widget"
+        assert [child.label for child in step.children] == ["Bar"]
+
+    def test_a_nested_material_s_own_make_route_recurses(self) -> None:
+        """`priced_candidate` calls `_item_hours(..., trace=True)` for each
+        material, so a material whose own cheapest route is itself another
+        real challenge keeps *its* materials too, without a second request -
+        `Amulet of power`'s own worked example on the real map."""
+        info = ChunkInfo(
+            {
+                "challenges": {
+                    "Extra": {
+                        "Make a ~|widget|~": {
+                            "Objects": ["Bench"],
+                            "Items": ["Cog"],
+                            "Output": "Widget",
+                        },
+                        "Make a ~|cog|~": {
+                            "Objects": ["Lathe"],
+                            "Items": ["Metal bar"],
+                            "Output": "Cog",
+                        },
+                    }
+                },
+                "chunks": {"1": {"Spawn": {"Metal bar": 1}}},
+            }
+        )
+        walk = _walk_for(info)
+
+        step = priced_candidate(walk, "Widget", "make", "Make a ~|widget|~")
+
+        assert step is not None
+        cog = next(child for child in step.children if child.label == "Cog")
+        assert [grandchild.label for grandchild in cog.children] == ["Metal bar"]
+
+    def test_only_make_and_recipe_are_drillable(self) -> None:
+        assert DRILLABLE_ROUTES == frozenset({"make", "recipe"})
+
+    def test_a_kill_route_has_nothing_to_drill_into(self) -> None:
+        import dataclasses
+
+        info = ChunkInfo({"drops": {"Goblin": {"Widget": {"1": "1/10"}}}})
+        heuristics = Heuristics(monsters={"Goblin": Rate(100.0, "test", "exact")})
+        walk = dataclasses.replace(
+            _walk_for(info, heuristics), available=frozenset({"Goblin"})
+        )
+
+        assert priced_candidate(walk, "Widget", "kill", "Goblin") is None
+
+    def test_a_make_route_no_longer_priceable_refuses(self) -> None:
+        walk = _walk_for(ChunkInfo({"chunks": {}, "challenges": {}}))
+
+        assert priced_candidate(walk, "Widget", "make", "Make a ~|widget|~") is None
 
 
 def test_a_currency_can_be_qualified_by_the_shop_that_charges_it() -> None:

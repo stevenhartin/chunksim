@@ -2028,7 +2028,7 @@ def test_every_dialog_that_opened_before_still_opens_the_same_one() -> None:
     assert "function openOverlay(title, html, actions, opts) {" in js
     assert 'const { trail = [], tools = "" } = opts || {};' in js
     assert 'el["overlay-tools"].innerHTML = tools;' in js
-    assert "renderTrail(trail);" in js
+    assert 'renderTrail(el["overlay-trail"], trail);' in js
 
 
 def test_the_methods_list_ranks_on_what_a_method_is_worth_here() -> None:

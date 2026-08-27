@@ -62,6 +62,7 @@ from chunksim.gui.routes_derived import (
     _chunk_detail,
     _estimate_payload,
     _item_sources_payload,
+    _material_step_payload,
     _training_payload,
     _training_method_payload,
     _full_diff,
@@ -501,6 +502,32 @@ def handle_request(
             if isinstance(at, Response):
                 return at
             return _json(_item_sources_payload(at, ctx, wanted_item))
+
+        if path == "/api/item-route-materials":
+            # **One `/api/item-sources` row's own materials, recursively** -
+            # the Find pane's drill-down side panel. `route` and `provider`
+            # name the exact row the reader clicked, from that same
+            # response, not a re-derived "best" choice - see
+            # `routes_derived._material_step_payload`.
+            map_id = _first(query, "map")
+            wanted_item = _first(query, "item")
+            wanted_route = _first(query, "route")
+            wanted_provider = _first(query, "provider")
+            if (
+                map_id is None or wanted_item is None
+                or wanted_route is None or wanted_provider is None
+            ):
+                return _error(
+                    "missing required parameter: 'map', 'item', 'route' and"
+                    " 'provider' are all required",
+                    HTTPStatus.BAD_REQUEST,
+                )
+            at = _state_at(query, ctx, map_id)
+            if isinstance(at, Response):
+                return at
+            return _json(
+                _material_step_payload(at, ctx, wanted_item, wanted_route, wanted_provider)
+            )
 
         if path == "/api/tasks":
             map_id = _first(query, "map")

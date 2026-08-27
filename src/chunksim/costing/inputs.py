@@ -114,7 +114,10 @@ from chunksim.store.derived_cache import (
     cached_enrich,
     pricing_digests,
 )
-from chunksim.costing.estimate import EstimateResult, ItemRoute, estimate, item_routes, material_walk
+from chunksim.costing.estimate import (
+    EstimateResult, ItemRoute, MaterialStep, estimate, item_routes, material_walk,
+    priced_candidate,
+)
 from chunksim.costing.training import (
     MaterialNode,
     TrainingOption,
@@ -585,6 +588,52 @@ def item_sources_answer(
         recipes=blobs.recipes,
     )
     return item_routes(walk, item)
+
+
+def material_step_answer(
+    state: MapState,
+    unlocked: Mapping[str, bool],
+    derived: Derived,
+    digests: Digests,
+    item: str,
+    route: str,
+    provider: str,
+    *,
+    root: Path | None = None,
+    reference: ReferenceBlobs | None = None,
+    map_id: str | None = None,
+) -> MaterialStep | None:
+    """One `item_sources_answer` candidate's own materials, recursively - the
+    Find panel's drill-down side panel, from `estimate.priced_candidate`.
+
+    Built off the same walk as `item_sources_answer` for the reason every
+    sibling assembly in this module gives: re-deriving with a different
+    `heuristics` could re-price a step the reader is drilling *into* as a
+    different route from the one they clicked in the list beside it.
+    """
+    blobs = load_reference(root, map_id) if reference is None else reference
+    heuristics, _ = load_heuristics(state.chunk_info, root, blobs)
+    world = build_world_index(state.chunk_info)
+    heuristics, _ = priced_heuristics(
+        state,
+        unlocked,
+        derived,
+        heuristics,
+        blobs.levels,
+        digests,
+        world=world,
+        root=root,
+        reference=blobs,
+    )
+    walk = material_walk(
+        state,
+        derived,
+        world,
+        heuristics,
+        level_overrides=blobs.levels,
+        recipes=blobs.recipes,
+    )
+    return priced_candidate(walk, item, route, provider)
 
 
 def training_statuses(

@@ -194,6 +194,7 @@ for (const id of [
   "progress-track", "progress-fill", "progress-cancel",
   "overlay", "overlay-title", "overlay-body", "overlay-close", "overlay-actions",
   "overlay-trail", "overlay-tools",
+  "drill-sheet", "drill-title", "drill-body", "drill-close", "drill-trail",
   "setup", "setup-lead", "setup-steps", "setup-fill", "setup-detail",
   "chunk-head", "chunk-chips", "chunk-body", "task-chips", "tasks-body",
   "show-done", "estimate-total", "estimate-why", "estimate-methods", "estimate-body",
@@ -1769,14 +1770,20 @@ function openOverlay(title, html, actions, opts) {
   el["overlay-actions"].innerHTML = actions || "";
   el["overlay-actions"].hidden = !actions;
   el["overlay-tools"].innerHTML = tools;
-  renderTrail(trail);
+  renderTrail(el["overlay-trail"], trail);
   el.overlay.hidden = false;
+  /* **Whatever is showing just changed, so any drill-down panel beside it
+   * answered a question about the *previous* content.** Closing it here
+   * rather than leaving it to whoever navigates is what keeps every caller
+   * of `openOverlay` - and there are dozens - from having to remember to. */
+  closeDrillPanel();
 }
 
-/* The crumbs, drawn and wired. Each is a button rather than a link: it runs a
- * function that reopens a dialog, and nothing about it is a URL. */
-function renderTrail(trail) {
-  const nav = el["overlay-trail"];
+/* The crumbs, drawn and wired, into whichever `nav` they belong to - the main
+ * overlay's own or the drill-down side panel's, which keeps its own stack.
+ * Each is a button rather than a link: it runs a function that reopens a
+ * dialog, and nothing about it is a URL. */
+function renderTrail(nav, trail) {
   nav.hidden = !trail.length;
   if (!trail.length) return (nav.innerHTML = "");
   nav.innerHTML = trail.map((crumb, index) =>
@@ -1789,6 +1796,7 @@ function renderTrail(trail) {
 
 function closeOverlay() {
   el.overlay.hidden = true;
+  closeDrillPanel();
   /* A dialog that was asking a question and is dismissed has been answered
    * "no". Anything awaiting it has to hear that rather than wait forever. */
   if (closeOverlay.pending) { const answer = closeOverlay.pending; closeOverlay.pending = null; answer(false); }
@@ -5041,6 +5049,13 @@ function shortDuration(hoursValue) {
   return hours(hoursValue);
 }
 
+/* **Which `item_routes` rows are a production chain, not just a source.**
+ * Mirrors `costing/estimate.py`'s `DRILLABLE_ROUTES` exactly - a kill, a
+ * shop trip, a ground spawn and the rest are *obtained*, so there is nothing
+ * beneath one to drill into; only a real export challenge or the wiki's
+ * last-resort recipe consumes other items. */
+const DRILL_ROUTES = new Set(["make", "recipe"]);
+
 /* **Every way this map can get one item, sorted fastest first.** The Find
  * pane's "Show sources" button - `costing/estimate.py`'s `item_routes`,
  * kept as a list rather than reduced to the single route the estimate would
@@ -5068,17 +5083,114 @@ async function showItemSources(name, trail) {
   }
   let out = tmpl`<p class="hint">${String(routes.length)} way${routes.length === 1 ? "" : "s"}
     this map can get ${title}, fastest first.</p><ul class="list">`;
-  for (const route of routes) {
+  routes.forEach((route, index) => {
     const tip = tmpl`<b>${plain(route.provider)}</b><span class="sub">${
       ROUTE_LABELS[route.route] || route.route}</span><span class="hint">${plain(route.detail)}</span>`;
+    const drillButton = DRILL_ROUTES.has(route.route)
+      ? tmpl`<button class="icon-btn" type="button" data-drill="${String(index)}"
+          data-tip="<b>Production chain</b><span class='sub'>What this needs to make it, drilled as
+            deep as this map can trace.</span>" aria-label="Show production chain">${icon("layers")}</button>`
+      : "";
     out += tmpl`<li data-tip="${tip}">
       <span class="type-icon">${icon(ROUTE_ICONS[route.route] || "dot")}</span>
       <span class="name">${plain(route.provider)}</span>
       <span class="sub">${ROUTE_LABELS[route.route] || route.route}</span>
-      <span class="num">${shortDuration(route.hours)}</span></li>`;
-  }
+      <span class="num">${shortDuration(route.hours)}</span>${raw(drillButton)}</li>`;
+  });
   openOverlay(title, out + "</ul>", "", { trail });
+  for (const button of el["overlay-body"].querySelectorAll("button[data-drill]")) {
+    const route = routes[Number(button.dataset.drill)];
+    button.onclick = (e) => {
+      e.stopPropagation();
+      openDrillPanel(name, route.route, route.provider);
+    };
+  }
 }
+
+/* **The Find panel's drill-down side panel** - `_material_step_payload`'s
+ * whole production-chain tree for one clicked "make"/"recipe" row, fetched
+ * once and navigated locally: descending into a material re-renders from
+ * `drillStack`'s already-fetched tree rather than asking the server again,
+ * since every level of the chain came back in the one response.
+ *
+ * **A sibling of `#overlay`, not a replacement.** The reader chose one
+ * candidate out of `showItemSources`' list to drill into; the list itself
+ * is still the answer to "what are my options" and stays open beside this. */
+let drillStack = [];
+
+async function openDrillPanel(item, route, provider) {
+  el["drill-sheet"].hidden = false;
+  el["drill-title"].textContent = "Finding materials…";
+  el["drill-body"].innerHTML = tmpl`<p class="empty">Tracing the production chain…</p>`;
+  el["drill-trail"].hidden = true;
+  let payload;
+  try {
+    payload = await getJSON(
+      "/api/item-route-materials?" + panelQuery()
+      + "&item=" + encodeURIComponent(item)
+      + "&route=" + encodeURIComponent(route)
+      + "&provider=" + encodeURIComponent(provider)
+    );
+  } catch (error) {
+    el["drill-title"].textContent = plain(item);
+    el["drill-body"].innerHTML = tmpl`<p class="empty">${error.message}</p>`;
+    return;
+  }
+  if (!payload.step) {
+    el["drill-title"].textContent = plain(item);
+    el["drill-body"].innerHTML = tmpl`<p class="empty">Nothing to drill into.</p>`;
+    return;
+  }
+  drillStack = [payload.step];
+  renderDrillLevel();
+}
+
+/* One level of `drillStack`, the current node's materials as a list - each
+ * one that itself has materials becomes another level to open, and the
+ * breadcrumb above it is every node passed through to get here. */
+function renderDrillLevel() {
+  const node = drillStack[drillStack.length - 1];
+  el["drill-title"].textContent = plain(node.label);
+  renderTrail(
+    el["drill-trail"],
+    drillStack.slice(0, -1).map((ancestor, index) => ({
+      label: plain(ancestor.label),
+      go: () => { drillStack = drillStack.slice(0, index + 1); renderDrillLevel(); },
+    })),
+  );
+  if (!node.children.length) {
+    el["drill-body"].innerHTML = tmpl`<p class="empty">${plain(node.label)}
+      has nothing further this map traces materials for.</p>`;
+    return;
+  }
+  let out = tmpl`<p class="hint">${plain(node.detail)}, ${shortDuration(node.hours)}</p><ul class="list">`;
+  node.children.forEach((child, index) => {
+    const drillable = child.children.length > 0;
+    const hook = drillable ? tmpl` data-child="${String(index)}"` : "";
+    /* **The full detail sentence is a tooltip, not a third flex column** -
+     * `showItemSources`' own rows make the same choice, for the same reason:
+     * "spawn: Varrock West Bank (Basement (1 per hop, 360/hr))" beside a name
+     * and a duration in a 380px panel leaves `.name` nothing to shrink into
+     * but zero, which wraps it one character per line instead of the
+     * sentence next to it. */
+    const tip = tmpl`<b>${plain(child.label)}</b><span class="hint">${plain(child.detail)}</span>`;
+    out += tmpl`<li${raw(hook)} data-tip="${tip}">
+      <span class="name">${plain(child.label)}</span>
+      <span class="num">${shortDuration(child.hours)}</span></li>`;
+  });
+  el["drill-body"].innerHTML = out + "</ul>";
+  for (const row of el["drill-body"].querySelectorAll("[data-child]")) {
+    const child = node.children[Number(row.dataset.child)];
+    row.onclick = () => { drillStack = [...drillStack, child]; renderDrillLevel(); };
+  }
+}
+
+function closeDrillPanel() {
+  el["drill-sheet"].hidden = true;
+  drillStack = [];
+}
+
+el["drill-close"].addEventListener("click", closeDrillPanel);
 
 let findTimer = null;
 let findRun = 0;

@@ -1583,7 +1583,7 @@ def _best_route(
     if decanted is not None and (best is None or decanted.hours < best.hours):
         best = decanted
     if best is None:
-        best = _recipe_hours(walk, item, quantity, amortise)
+        best = _recipe_hours(walk, item, quantity, amortise, trace=trace)
     if best is None:
         # **A weight tier is priced by its yield** - see `costing/yields.py`,
         # and `_route_hours`' certainty gate for what this stands in for.
@@ -1801,13 +1801,108 @@ def item_routes(
     return tuple(found)
 
 
+@dataclass(frozen=True)
+class MaterialStep:
+    """One node of a production chain, recursively - a `_Priced` reshaped for
+    a caller outside this module to read, since `_Priced` itself is private
+    and its `label`/`children` are opt-in fields nothing but `trace=True`
+    populates.
+
+    `priced_candidate` is the only place these are built: the root's `label`
+    is the item the reader asked about, and every `children` entry's `label`
+    is the material name `_route_hours`/`_recipe_hours` stamped on it while
+    building that step, one level up.
+    """
+
+    label: str
+    hours: float
+    detail: str
+    source: str
+    children: tuple["MaterialStep", ...] = ()
+
+
+def _step_from_priced(priced: _Priced, label: str) -> MaterialStep:
+    return MaterialStep(
+        label=label,
+        hours=priced.hours,
+        detail=priced.detail,
+        source=priced.source,
+        children=tuple(
+            _step_from_priced(child, child.label) for child in priced.children
+        ),
+    )
+
+
+#: Which `ItemRoute.route` values are a production chain a drill-down can
+#: walk into. A kill, a shop trip, a ground spawn, a herb supply, a raid
+#: reward, a currency earn, a dose conversion and an `[+]` equivalent item are
+#: all *obtained*, not *made from other items* - `item_routes` prices every
+#: one of them as a leaf (`_Priced.children` is always `()`), so there is
+#: nothing beneath one to drill into. Only `"make"` (a real export challenge)
+#: and `"recipe"` (the wiki last resort) genuinely consume other items.
+DRILLABLE_ROUTES = frozenset({"make", "recipe"})
+
+
+def priced_candidate(
+    walk: _Walk, item: str, route: str, provider: str, quantity: float = 1.0,
+    amortise: bool = True,
+) -> MaterialStep | None:
+    """One `item_routes` candidate, re-priced with its own materials kept -
+    the Find panel's drill-down side panel asks for exactly the production
+    step a reader clicked, not `item_routes`' whole list of alternatives for
+    `item`. `None` for a `route` not in `DRILLABLE_ROUTES`, or where the
+    candidate no longer prices at all (the two are indistinguishable to a
+    caller, which is fine: both mean "nothing to show").
+
+    **Re-finds the candidate rather than being handed its challenge.** The
+    Find panel only ever holds what `item_routes` returned - `route` and
+    `provider`, not upstream's own category key, which `item_routes` already
+    discarded when it relabelled every `task:*` source `"make"` for display.
+    Searching `walk.world.item_sources` by `provider` recovers it, the same
+    index `item_routes` itself built its list from.
+
+    **Recurses through `children` for free.** Each material's own `_Priced`
+    comes from the ordinary `_item_hours(..., trace=True)` call `_route_hours`
+    and `_recipe_hours` already make - at whatever route *that* item's own
+    walk judges cheapest, not by a second call back into this function. That
+    is a deliberate difference from the root: a reader chose which of
+    `item_routes`' rows to open, but a material three levels down is priced
+    the way the estimator would price it, not re-offered as another choice.
+    """
+    if route == "make":
+        for source in walk.world.item_sources.get(item, ()):
+            if source.route.startswith("task:") and source.name == provider:
+                challenge = _mapping(
+                    walk.chunk_info.challenges, source.route.removeprefix("task:")
+                ).get(provider)
+                if isinstance(challenge, dict):
+                    priced = _route_hours(
+                        walk, item, source.route, provider, quantity, amortise,
+                        challenge=challenge, trace=True,
+                    )
+                    return _step_from_priced(priced, item) if priced is not None else None
+        return None
+    if route == "recipe":
+        priced = _recipe_hours(walk, item, quantity, amortise, trace=True)
+        return _step_from_priced(priced, item) if priced is not None else None
+    return None
+
+
 def _recipe_hours(
     walk: _Walk,
     item: str,
     quantity: float,
     amortise: bool,
+    trace: bool = False,
 ) -> _Priced | None:
     """Make `item` from a wiki recipe, when nothing else can provide it.
+
+    **`trace` keeps this recipe's own materials, mirroring `_route_hours`'
+    `task:` branch exactly** - the only other place a made item's `_Priced`
+    carries `children`. Without it, a material whose cheapest route happens
+    to be a last-resort recipe rather than a real export challenge would show
+    up in a drill-down as a leaf despite genuinely having ingredients
+    underneath it.
 
     **The last resort, and deliberately so.** The walk routes through the
     *export's* challenges, which is right: they carry this map's gates. But an
@@ -1839,6 +1934,7 @@ def _recipe_hours(
         total = 0.0
         knobs: list[str] = []
         earned: list[tuple[str, float]] = []
+        inputs: list[_Priced] = []
         failed = False
         for material in recipe.materials:
             priced = _item_hours(
@@ -1846,6 +1942,7 @@ def _recipe_hours(
                 material.name,
                 quantity=quantity * material.quantity / made,
                 amortise=amortise,
+                trace=trace,
             )
             if priced is None:
                 failed = True
@@ -1853,6 +1950,9 @@ def _recipe_hours(
             total += priced.hours
             knobs.extend(priced.knobs)
             earned.extend(priced.experience)
+            inputs.append(
+                dataclasses.replace(priced, label=material.name) if trace else priced
+            )
         if failed:
             continue
         ticks = recipe.ticks if recipe.ticks is not None else None
@@ -1867,6 +1967,7 @@ def _recipe_hours(
                 f"recipe:{recipe.output}",
                 _unique(knobs),
                 tuple(earned),
+                tuple(inputs) if trace else (),
             )
     return best
 
