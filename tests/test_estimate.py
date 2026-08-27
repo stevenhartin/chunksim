@@ -16,6 +16,9 @@ from chunksim.derive.challenges import ChallengeResult
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.costing.estimate import (
     DEFAULT_ACTION_SECONDS,
+    SHOP_RESTOCK_CUTOFF_SECONDS,
+    SHOP_TRIP_SECONDS,
+    WORLD_HOP_SECONDS,
     _item_hours,
     estimate,
     material_seconds,
@@ -1936,6 +1939,126 @@ def test_an_unpriced_shop_item_is_not_free() -> None:
     """"The wiki does not list it" and "it costs nothing" are the distinction
     this whole layer exists to preserve."""
     assert Heuristics().shop_seconds("Nowhere", "Anything") is None
+
+
+def test_a_low_stock_shop_line_costs_a_hop_per_extra_world() -> None:
+    """Lumbridge General Store's tinderbox: stock 2, 60s restock - real wiki
+    figures, nowhere near `SHOP_RESTOCK_CUTOFF_SECONDS`. Filling a 27-item
+    trip needs 13 more worlds once the first one's two are gone, and each of
+    those is a `WORLD_HOP_SECONDS` hop the old model never charged."""
+    info = ChunkInfo(
+        {
+            "shopItems": {"Lumbridge General Store": {"Tinderbox": True}},
+            "challenges": {
+                "Extra": {"Obtain a ~|tinderbox|~": {"Items": ["Tinderbox"]}}
+            },
+        }
+    )
+    heuristics = Heuristics(
+        shop_prices={
+            "Lumbridge General Store": {
+                "Tinderbox": ShopPrice(
+                    price=1.0, currency="Coins", stock=2, restock_seconds=60.0
+                )
+            }
+        },
+        currency_per_hour={"Coins": 3_600_000.0},
+    )
+    walk = _walk_for(info, heuristics)
+
+    priced = _item_hours(walk, "Tinderbox", quantity=27.0)
+
+    assert priced is not None
+    earning = 1.0 * 27.0 * 3600.0 / 3_600_000.0
+    travel = SHOP_TRIP_SECONDS
+    hops = 13.0 * WORLD_HOP_SECONDS
+    assert priced.hours == pytest.approx((earning + travel + hops) / 3600.0)
+
+
+def test_a_generous_stock_costs_no_hops_at_all() -> None:
+    """A trip that never exhausts the shop's own stock is the old behaviour -
+    the hop model must not tax a route it does not apply to."""
+    info = ChunkInfo(
+        {
+            "shopItems": {"Sawmill": {"Oak plank": True}},
+            "challenges": {
+                "Extra": {"Obtain an ~|oak plank|~": {"Items": ["Oak plank"]}}
+            },
+        }
+    )
+    heuristics = Heuristics(
+        shop_prices={
+            "Sawmill": {
+                "Oak plank": ShopPrice(
+                    price=500.0, currency="Coins", stock=1000, restock_seconds=60.0
+                )
+            }
+        },
+        currency_per_hour={"Coins": 500_000.0},
+    )
+    walk = _walk_for(info, heuristics)
+
+    priced = _item_hours(walk, "Oak plank", quantity=1.0)
+
+    assert priced is not None
+    assert "hops" not in priced.detail
+    assert priced.hours == pytest.approx((3.6 + SHOP_TRIP_SECONDS) / 3600.0)
+
+
+def test_a_restock_over_an_hour_refuses_the_shop_route() -> None:
+    """Toci's Gem Store's uncut ruby: 1 in stock, six hours to refill - split
+    across roughly two hundred worlds, all competing for the same shelf. "No
+    good way to estimate" that contention, so past
+    `SHOP_RESTOCK_CUTOFF_SECONDS` this is refused outright rather than priced
+    as though a private shop restocked for one player."""
+    info = ChunkInfo(
+        {
+            "shopItems": {"Toci's Gem Store": {"Uncut ruby": True}},
+            "challenges": {
+                "Extra": {"Obtain an ~|uncut ruby|~": {"Items": ["Uncut ruby"]}}
+            },
+        }
+    )
+    heuristics = Heuristics(
+        shop_prices={
+            "Toci's Gem Store": {
+                "Uncut ruby": ShopPrice(
+                    price=100.0, currency="Coins", stock=1, restock_seconds=21_600.0
+                )
+            }
+        },
+        currency_per_hour={"Coins": 500_000.0},
+    )
+    walk = _walk_for(info, heuristics)
+
+    assert _item_hours(walk, "Uncut ruby", quantity=1.0) is None
+
+
+def test_a_zero_stock_shop_line_has_no_route_either() -> None:
+    """`store_stock` of zero is the wiki stating outright that the shop does
+    not proactively stock the line at all - a shelf a shop only refills from
+    players selling it in is not a route to the first one."""
+    info = ChunkInfo(
+        {
+            "shopItems": {"Toci's Gem Store": {"Uncut diamond": True}},
+            "challenges": {
+                "Extra": {"Obtain an ~|uncut diamond|~": {"Items": ["Uncut diamond"]}}
+            },
+        }
+    )
+    heuristics = Heuristics(
+        shop_prices={
+            "Toci's Gem Store": {
+                "Uncut diamond": ShopPrice(
+                    price=200.0, currency="Coins", stock=0, restock_seconds=7_200.0
+                )
+            }
+        },
+        currency_per_hour={"Coins": 500_000.0},
+    )
+    walk = _walk_for(info, heuristics)
+
+    assert _item_hours(walk, "Uncut diamond", quantity=1.0) is None
 
 
 def test_a_ground_spawn_is_cheap_but_not_free() -> None:

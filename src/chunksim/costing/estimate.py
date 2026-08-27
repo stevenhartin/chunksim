@@ -384,19 +384,61 @@ DEFAULT_ACTION_SECONDS = 4 * 0.6
 #: ticks is a fair stand-in" is a claim about those, not about this.
 _UNGUIDED_GATHERING_SKILLS = frozenset(gathering.PROFILES)
 
+#: Seconds to close whatever interface is open, hop to another world and get
+#: back to work - **measured, not guessed**: a stopwatch run of "close a shop
+#: interface, hop, reopen it" read ten seconds on the dot. `SPAWN_HOPS_PER_HOUR`
+#: below had already assumed this figure for a ground spawn with no
+#: measurement behind it at all, so one constant now backs both.
+WORLD_HOP_SECONDS = 10.0
+
 #: Seconds to pick one item off the ground. One tick, which caps collection
 #: at 6,000 an hour before anything else is considered.
 SPAWN_PICKUP_SECONDS = 0.6
 
 #: How often you can be standing at a fresh spawn, per hour. **A ground item
 #: does not respawn while you wait for it** - the cheap way to collect is to
-#: hop worlds, which costs roughly ten seconds, so six hops a minute is the
-#: realistic ceiling. Multiplied by how many of the item sit at that spawn.
-SPAWN_HOPS_PER_HOUR = 360.0
+#: hop worlds, so `WORLD_HOP_SECONDS` a hop is the realistic ceiling.
+#: Multiplied by how many of the item sit at that spawn.
+SPAWN_HOPS_PER_HOUR = 3600.0 / WORLD_HOP_SECONDS
 
 #: Items one trip can carry back. An inventory is 28 slots and one holds what
 #: you are working with, so a purchase run brings 27.
 SHOP_TRIP_ITEMS = 27.0
+
+#: A shop's own stock is the controlling cost once it is below a trip's worth,
+#: and `WORLD_HOP_SECONDS` is what a fresh one costs. **Rough, like
+#: `SHOP_TRIP_SECONDS` above it**: this project has no way to say how many of
+#: the ~200 worlds still hold a world nobody has hit recently, so the model
+#: assumes every hop finds one - which is exactly why `SHOP_RESTOCK_CUTOFF_SECONDS`
+#: exists to cut this model off before that assumption stops being reasonable.
+#:
+#: Where this is decisive even *inside* the cutoff: Lumbridge General Store's
+#: tinderbox (stock 2, 60s restock - nowhere near
+#: `SHOP_RESTOCK_CUTOFF_SECONDS`) still needs 13 extra worlds to fill the rest
+#: of a 27-item trip, 130 seconds a trip the earning cost alone (1 coin) never
+#: charged. Left unmodelled, a low-stock general-store line read exactly as
+#: fast as a high-stock one, which is the same shape of join-miss
+#: `production.py`'s docstring calls out.
+def _shop_hop_seconds(quantity: float, stock: int | None, amortise: bool) -> float:
+    if stock is None or stock <= 0:
+        return 0.0
+    visits = quantity / stock
+    if not amortise:
+        visits = max(0.0, math.ceil(visits) - 1.0)
+    return visits * WORLD_HOP_SECONDS
+
+
+#: "There's no good way to estimate" how contested a shop's own restock is
+#: against the rest of the game running on the same ~200 worlds - so rather
+#: than guess at it, a restock slower than this is refused as a route at all,
+#: never merely slowed down. Toci's Gem Store clears it at 6h for a ruby, 4h
+#: for an emerald and 2h for a sapphire (all measured, `remote/stores.py`);
+#: an ordinary general store's tools clear in under two minutes and are
+#: untouched. **A flat one hour, chosen rather than derived**: this project
+#: refuses a genuinely uncharted mechanic elsewhere (`costing/trawler.py`'s net
+#: repair) rather than approximate it, and a contested-restock rate is the same
+#: shape of unknown.
+SHOP_RESTOCK_CUTOFF_SECONDS = 3600.0
 
 #: How much of a `make:` route's own cost its dominant material has to
 #: explain before `_route_hours` treats the recipe as *that* material's grind
@@ -1720,7 +1762,7 @@ def _route_hours(
             # which alone caps collection at 6,000 an hour - and the item does
             # not come back while you stand there, so the real limit is how
             # fast you can reach a fresh one. Hopping worlds is the usual
-            # answer at roughly ten seconds a hop, and each hop yields however
+            # answer at `WORLD_HOP_SECONDS` a hop, and each hop yields however
             # many of the item lie at that spawn.
             #
             # Left free, a `Spawn` of two planks priced a ten-plank wooden
@@ -1750,23 +1792,51 @@ def _route_hours(
         seconds = walk.heuristics.shop_seconds(provider, item)
         if seconds is None:
             return None
-        # **The money is not the only cost; the walk there is.** A shop run
-        # brings back one inventory, so buying is priced per *trip* as well as
-        # per coin. `amortise` is the difference between the two questions the
-        # walk is asked: a goal wants one item and pays for the whole trip,
-        # while a recipe wants two planks *per action* and pays its share of a
-        # trip that also supplied the next dozen actions. Charging a full trip
-        # per action put thirty seconds on every cast of every spell.
+        stock, restock_seconds = walk.heuristics.shop_limits(provider, item)
+        # **A restock this slow is a contested resource, not a rate.** Six
+        # hours split across roughly two hundred worlds, competing with
+        # everyone else on them, is not something this project can turn into
+        # a number it would stand behind - so past `SHOP_RESTOCK_CUTOFF_SECONDS`
+        # this is refused outright, the same call `costing/trawler.py` makes
+        # for the net repair's uncharted success chance. Toci's Gem Store's
+        # uncut ruby (6h) and emerald (4h) both fall here; its sapphire (2h)
+        # does too - a gem store is exactly the "extremely competitive" shape
+        # this exists for, not a loophole around it.
+        if restock_seconds is not None and restock_seconds > SHOP_RESTOCK_CUTOFF_SECONDS:
+            return None
+        # **Zero in stock is not "the wiki forgot to say"; the module states
+        # it explicitly** - a line a shop only ever refills from players
+        # selling in, so there is no route to buying the first one.
+        if stock is not None and stock <= 0:
+            return None
+        # **The money is not the only cost; the walk there is, and so is the
+        # shelf running out.** A shop run brings back one inventory, so buying
+        # is priced per *trip* as well as per coin - and where the shop's own
+        # stock is below what a trip wants, filling it costs a world hop per
+        # extra visit on top of that, at `WORLD_HOP_SECONDS` each
+        # (`_shop_hop_seconds`). `amortise` is the difference between the two
+        # questions the walk is asked: a goal wants one item and pays for the
+        # whole trip, while a recipe wants two planks *per action* and pays
+        # its share of a trip that also supplied the next dozen actions.
+        # Charging a full trip per action put thirty seconds on every cast of
+        # every spell - `_shop_hop_seconds` follows the same amortise split so
+        # a scarce material does not do the same thing to hops.
         trips = quantity / SHOP_TRIP_ITEMS
         if not amortise:
             trips = max(1.0, math.ceil(trips))
         travel = trips * SHOP_TRIP_SECONDS
-        hours = (seconds * quantity + travel) / 3600.0
-        return _Priced(
-            hours,
+        hops = _shop_hop_seconds(quantity, stock, amortise)
+        hours = (seconds * quantity + travel + hops) / 3600.0
+        detail = (
             f"{route}: {provider}"
             + (f", {quantity:,.0f}x" if quantity > 1 else "")
-            + f" ({seconds * quantity:,.0f}s earning + {travel:,.0f}s travel)",
+            + f" ({seconds * quantity:,.0f}s earning + {travel:,.0f}s travel"
+            + (f" + {hops:,.0f}s hops" if hops > 0 else "")
+            + ")"
+        )
+        return _Priced(
+            hours,
+            detail,
             f"{route}:{provider}",
             (f"shops/{provider}/{item}",),
         )

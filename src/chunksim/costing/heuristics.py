@@ -692,6 +692,18 @@ class Heuristics:
             return None
         return entry.price * 3600.0 / rate
 
+    def shop_limits(self, shop: str, item: str) -> tuple[int | None, float | None]:
+        """`(stock, restock_seconds)` for one shop line, `(None, None)` unknown.
+
+        `None` in either slot means *unknown*, and a caller must treat that as
+        unconstrained rather than zero - the same rule `shop_seconds` follows
+        for a missing price. See `remote.stores.ShopPrice`.
+        """
+        entry = self.shop_prices.get(shop, {}).get(item)
+        if entry is None:
+            return (None, None)
+        return (entry.stock, entry.restock_seconds)
+
     def currency_rate(self, currency: str, shop: str = "") -> float | None:
         """What `currency` is worth an hour, or `None` where nothing says.
 
@@ -2034,6 +2046,8 @@ def load(
                 price=_float(entry.get("price"), 0.0)
                 / SHOP_BUNDLES.get((shop, item), 1.0),
                 currency=str(entry.get("currency") or ""),
+                stock=_optional_int(entry.get("stock")),
+                restock_seconds=_optional_float(entry.get("restock_seconds")),
             )
             for item, entry in items.items()
             if isinstance(entry, dict)
@@ -2269,3 +2283,11 @@ def _rate(entry: dict[str, Any]) -> Rate:
 
 def _float(value: Any, fallback: float) -> float:
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else fallback
+
+
+def _optional_float(value: Any) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _optional_int(value: Any) -> int | None:
+    return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None

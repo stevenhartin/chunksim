@@ -32,11 +32,29 @@ Store`) and stock the wiki does not list.
 it, not a factor still to apply. Checked against Toktz-xil-ul, which reads
 `sell=375 buy=37` and costs 375 Tokkul in game.
 
+**`store_stock` and `restock_time` are the same row, and pricing without them
+was the next thing this was free about.** A price alone says what one unit
+costs; it says nothing about how many a world has at once or how long the
+shelf takes to refill, and a chunk account cannot assume a private shop the
+way an ordinary money-making guide can. Confirmed live against the two shapes
+that matter: Toci's Gem Store's uncut ruby reads `store_stock: "1"`,
+`restock_time: "36000"` - the wiki's own page states "1 in stock" and "6h
+restock", and `36000 * 0.6 = 21600` seconds is exactly six hours. Lumbridge
+General Store's knife reads `stock: "5"`, `restock_time: "100"` - sixty
+seconds, the ordinary general-store restock everyone remembers. `restock_time`
+is ticks, like every other duration this project reads off the wiki; **it is
+never coins-per-hour or any other rate**, so it converts with a flat `* 0.6`
+and nothing else. A stock string Bucket does not hand back as a plain integer
+("inf", "∞", or missing) means the module cannot say - `costing/estimate.py`'s
+`_route_hours` treats that as unconstrained, the same as a shop the scrape
+never reached at all.
+
 Pure parsing; `remote/api.py` fetches.
 """
 
 from __future__ import annotations
 
+import math
 import re
 from collections import Counter
 from dataclasses import dataclass
@@ -62,20 +80,36 @@ SAWMILL_PAGE = "Sawmill operator"
 
 @dataclass(frozen=True)
 class ShopPrice:
-    """What one shop charges for one item, in whatever it charges."""
+    """What one shop charges for one item, in whatever it charges.
+
+    `stock` and `restock_seconds` are `None` for every hand-curated entry
+    (`heuristics.DEFAULT_SHOP_PRICES`, `conversion_fees`) and for anything
+    `parse_storelines` could not read a plain figure for - meaning *unknown*,
+    not *unlimited*, but `costing/estimate.py` treats the two the same way:
+    with nothing to gate on, a route stays ungated rather than refused on a
+    guess.
+    """
 
     price: float
     currency: str
+    stock: int | None = None
+    restock_seconds: float | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {"price": self.price, "currency": self.currency}
+        result: dict[str, Any] = {"price": self.price, "currency": self.currency}
+        if self.stock is not None:
+            result["stock"] = self.stock
+        if self.restock_seconds is not None:
+            result["restock_seconds"] = self.restock_seconds
+        return result
 
 
 def store_query(limit: int = PAGE_SIZE, offset: int = 0) -> str:
     """One page of the storeline table."""
     return (
         "bucket('storeline')"
-        ".select('sold_by','sold_item','store_sell_price','store_currency')"
+        ".select('sold_by','sold_item','store_stock','restock_time',"
+        "'store_sell_price','store_currency')"
         f".limit({limit}).offset({offset}).run()"
     )
 
@@ -124,6 +158,34 @@ def _number(value: Any) -> float | None:
         return None
 
 
+#: `Module:StoreLine` writes a tick count for a real restock timer and the
+#: literal string `"N/A"` for an unlimited-stock item (`if stock=='inf' then
+#: restock='N/A' end`) - so anything that does not parse as a plain number is
+#: "the module has no timer to give", read as unknown rather than instant.
+TICK_SECONDS = 0.6
+
+
+def _stock(value: Any) -> int | None:
+    """`store_stock` as a plain count, or `None` for `"inf"`/`"∞"`/junk.
+
+    `_number` reads `"inf"` as a real `float('inf')` - Python's own parser,
+    not the wiki's - so it has to be caught before `int()` sees it and raises
+    `OverflowError` rather than the "unknown" this is supposed to mean.
+    """
+    found = _number(value)
+    if found is None or not math.isfinite(found) or found != int(found):
+        return None
+    return int(found)
+
+
+def _restock_seconds(value: Any) -> float | None:
+    """`restock_time` ticks to seconds, or `None` where it names no timer."""
+    found = _number(value)
+    if found is None or not math.isfinite(found):
+        return None
+    return found * TICK_SECONDS
+
+
 def parse_storelines(
     rows: Sequence[Mapping[str, Any]],
 ) -> dict[str, dict[str, ShopPrice]]:
@@ -149,6 +211,8 @@ def parse_storelines(
         entry = ShopPrice(
             price=price,
             currency=str(currency).strip() if isinstance(currency, str) else "",
+            stock=_stock(row.get("store_stock")),
+            restock_seconds=_restock_seconds(row.get("restock_time")),
         )
         standing = found.setdefault(shop, {}).get(item)
         if standing is None or entry.price < standing.price:

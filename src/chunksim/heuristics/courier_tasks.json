@@ -1,6 +1,6 @@
 {
   "name": "courier_tasks",
-  "fetched_at": "2026-08-23T10:06:16.838459+00:00",
+  "fetched_at": "2026-08-27T10:48:41.202473+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "tasks": [
@@ -2050,6 +2050,14 @@
         "notice_board": "Red Rock",
         "cargo": "Red Rock",
         "destination": "Port Roberts",
+        "crates": 4
+      },
+      {
+        "level": 56,
+        "experience": 7026,
+        "notice_board": "Red Rock",
+        "cargo": "Port Roberts",
+        "destination": "Red Rock",
         "crates": 4
       },
       {

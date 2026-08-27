@@ -1222,6 +1222,36 @@ def test_a_shop_bundle_is_divided_out_of_the_scraped_price() -> None:
     assert prices["Scroll of imbuing"].price == 200.0
 
 
+def test_stock_and_restock_round_trip_through_the_written_config() -> None:
+    """`ShopPrice.as_dict()` is what `chunksim heuristics` writes to
+    `wiki_rates.json` and `load()` is what reads it back - a figure that
+    survives the price but not the trip through disk quietly ungates every
+    shop route the day a checkout re-scrapes."""
+    from chunksim.costing.heuristics import load
+    from chunksim.remote.stores import ShopPrice
+
+    entry = ShopPrice(price=100.0, currency="Coins", stock=1, restock_seconds=21_600.0)
+
+    heuristics = load({"shops": {"Toci's Gem Store": {"Uncut ruby": entry.as_dict()}}})
+
+    assert heuristics.shop_limits("Toci's Gem Store", "Uncut ruby") == (1, 21_600.0)
+
+
+def test_a_shop_line_with_no_scraped_limits_is_unknown_not_unlimited() -> None:
+    """The hand-curated `DEFAULT_SHOP_PRICES` table and any pre-existing
+    scrape predate `stock`/`restock_seconds` entirely, so `shop_limits` must
+    hand back `(None, None)` rather than inventing a number."""
+    from chunksim.costing.heuristics import Heuristics
+    from chunksim.remote.stores import ShopPrice
+
+    heuristics = Heuristics(
+        shop_prices={"Shop": {"Thing": ShopPrice(price=1.0, currency="Coins")}}
+    )
+
+    assert heuristics.shop_limits("Shop", "Thing") == (None, None)
+    assert heuristics.shop_limits("Nowhere", "Anything") == (None, None)
+
+
 def test_emirs_arena_pays_for_losing() -> None:
     """"Losing a battle awards 12 Reward Points", and a queue-and-forfeit
     cycle is about two minutes - so 360 an hour, and a sack costs 2 seconds.

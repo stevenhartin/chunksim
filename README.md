@@ -335,6 +335,14 @@ before believing a total:
   by how fast you can hop worlds to a fresh one, and performing an action costs its own time. What
   cannot be priced is *said* rather than skipped: `chunksim estimate` lists what it could not cost, and
   items sold for currencies with no agreed rate stay on that list.
+- **A shop's own stock and restock timer are part of the price, not just its coin cost.** Toci's Gem
+  Store sells an uncut ruby for 100 coins, but it only ever has one in stock and takes six hours to
+  get another — buying in bulk means hopping to a fresh world every time, at ten seconds a hop, and a
+  restock slower than an hour is refused outright rather than modelled, the same as any other mechanic
+  this project cannot bound (a gem-store shelf split across two hundred worlds and the rest of the
+  playerbase is exactly that). Where a better-stocked shop sells the same item — TzHaar-Hur-Rin's Ore
+  and Gem Store keeps sixteen uncut sapphires on a one-minute timer — the item walk finds it instead,
+  which is what a real player training on gems bought there would do too.
 - **Your skill levels aren't in the map.** source-chunk records a level *cap* and a passively
   reachable level, neither of which is where you actually are, so the estimate counts from the
   passive floor unless you set `levels` in the overrides file. Every skill row prints the level it
