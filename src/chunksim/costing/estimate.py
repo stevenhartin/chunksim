@@ -244,7 +244,16 @@ from chunksim.costing.combat_xp import (
     hitpoints_credit,
     slayer_credit,
 )
-from chunksim.costing import gathering, herbs, larran, lootsack, recipe_rates, valeoffering, yields
+from chunksim.costing import (
+    brimstone,
+    gathering,
+    herbs,
+    larran,
+    lootsack,
+    recipe_rates,
+    valeoffering,
+    yields,
+)
 from chunksim.costing import barrows, colosseum, gauntlet, instanced, moons, raids, tempoross, tzhaar, wintertodt
 from chunksim.remote.recipes import Recipe
 from chunksim.costing.farming import (
@@ -3367,6 +3376,12 @@ def _setup(
     # be reached at all (`krystilia is None`).
     krystilia = next((rate for rate in reachable_rates if rate.master == "Krystilia"), None)
     heuristics = larran.priced(heuristics, krystilia, state.chunk_info, reachable)
+    # **The brimstone chest, Konar's own twin of the above.** Same gap, same
+    # fix: no stat block, so `DEFAULT_KPH` priced it at 150 opens an hour. A
+    # brimstone key's only source is Konar quo Maten's own slayer tasks - see
+    # `costing/brimstone.py`. A no-op wherever she cannot be reached at all.
+    konar = next((rate for rate in reachable_rates if rate.master == "Konar quo Maten"), None)
+    heuristics = brimstone.priced(heuristics, konar, state.chunk_info, reachable)
     # The same end-of-chunk levels for task-gated drops. Grotesque Guardians
     # need a gargoyle task, which needs Slayer 75; at today's level that task
     # is unassignable and the drop would read as unobtainable forever. It
@@ -3552,6 +3567,16 @@ class _MaterialWalk:
     seconds: Callable[[str, float], float | None]
     #: `(item, quantity, skill) -> experience in that skill along the route`.
     experience: Callable[[str, float, str], float]
+    #: **What `_setup` actually priced, chests included.** `_setup` derives
+    #: Larran's and the brimstone chest's own opens-per-hour and folds them
+    #: into a *local* `Heuristics` that only the walk's closures ever saw -
+    #: `recipe_priced`'s own returned `Heuristics` (what `priced_layers` and
+    #: therefore every GUI knob reads) kept the pre-`_setup` copy, so a
+    #: correctly-derived chest rate priced every reward inside it right while
+    #: reading `monsters/Brimstone chest` in the knob dialog still showed the
+    #: bare `DEFAULT_KPH` 150/hr underneath it. `recipe_priced` merges this
+    #: back in rather than leaving it walk-only.
+    heuristics: Heuristics
 
 
 def _log_seconds(walk: _Walk, item: str, quantity: float) -> float | None:
@@ -3654,7 +3679,7 @@ def material_seconds(
         found = priced_for(item, quantity)
         return None if found is None else found.hours * 3600.0
 
-    return _MaterialWalk(seconds=seconds, experience=experience)
+    return _MaterialWalk(seconds=seconds, experience=experience, heuristics=walk.heuristics)
 
 
 def estimate(

@@ -844,6 +844,16 @@ def recipe_priced(
         # documents it - see `estimate._recipe_hours`.
         recipes=recipes,
     )
+    # **Fold the walk's own chest rates back in.** `_setup` derives Larran's
+    # and the brimstone chest's own opens-per-hour and hands them to the walk
+    # through a *local* `Heuristics` the walk's closures capture directly -
+    # this function's own `heuristics` never saw them, so a chest correctly
+    # priced every reward inside it while `monsters/Brimstone chest` (what
+    # `priced_layers` and every GUI knob reads) still read the bare
+    # `DEFAULT_KPH` 150/hr underneath. `walked.heuristics.monsters` is this
+    # same dict plus exactly those additions - see `_MaterialWalk`'s own
+    # docstring - so replacing wholesale cannot lose anything else in it.
+    heuristics = replace(heuristics, monsters=walked.heuristics.monsters)
     seconds = walked.seconds
     # **Prayer is priced here because this is where the item walk is.** Its
     # rate is a bone's experience over the time to collect one, so it needs

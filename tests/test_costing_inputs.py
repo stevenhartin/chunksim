@@ -197,6 +197,75 @@ def test_both_apps_hand_the_pricer_the_same_pins(
     assert calls[0]["pinned_monsters"] == calls[1]["pinned_monsters"]
 
 
+class TestRecipePricedFoldsWalkHeuristicsBack:
+    """**The bug this pins.** `_setup` (`costing/estimate.py`) derives
+    Larran's and the brimstone chest's own opens-per-hour into a *local*
+    `heuristics` its own `_Walk` closure captured directly - `recipe_priced`
+    kept its own, pre-`_setup` copy for its return value, so a chest was
+    correctly priced for every reward *inside* it (the item walk saw the
+    derived rate) while `Heuristics.monsters` itself - what `priced_layers`
+    and therefore every GUI knob reads - still carried the bare
+    `DEFAULT_KPH` 150/hr underneath. Fixed by `_MaterialWalk.heuristics`
+    (`estimate.py`) and the merge right after `material_seconds` here."""
+
+    def test_both_chests_rates_reach_the_returned_heuristics(
+        self, tmp_path: Path
+    ) -> None:
+        from chunksim.derive.pipeline import Derived, MapState
+        from chunksim.derive.sources import SourceIndex
+        from chunksim.derive.challenges import ChallengeResult
+        from chunksim.derive.bis import BisResult
+        from chunksim.derive.active_tasks import TaskClassification
+        from chunksim.derive.other_tasks import OtherTasks
+        from chunksim.costing.heuristics import Heuristics, SlayerTask
+        from chunksim.remote.combat import MonsterStats
+        from chunksim.derive.search import build_world_index
+        from chunksim.model.chunkinfo import ChunkInfo
+
+        info = ChunkInfo({
+            "slayerMasterTasks": {
+                "Krystilia": {"Cows": {"Weight": 1}},
+                "Konar quo Maten": {"Cows": {"Weight": 1}},
+            },
+            "codeItems": {"slayerTasks": {"Cows": {"Cow": True}}},
+        })
+        state = MapState(
+            chunk_info=info, rules={}, settings={}, manual_sections={},
+            manual_areas={}, manual_monsters={}, manual_equipment={},
+            backlogged_sources={}, max_skill={}, passive_skill={},
+            completed_challenges={}, checked_challenges={}, manual_tasks={},
+            backlog={}, active_tasks={},
+        )
+        derived = Derived(
+            reachable_sections={}, expanded_chunks={"100": True},
+            source_index=SourceIndex(
+                items={}, objects={}, monsters={"Cow": {"100": True}},
+                npcs={"Krystilia": {"100": True}, "Konar quo Maten": {"100": True}},
+                shops={}, drop_rates={},
+            ),
+            challenges=ChallengeResult(valid={}, unsupported=frozenset()),
+            bis=BisResult(picks={}), task_classification=TaskClassification(),
+            other_tasks=OtherTasks(),
+        )
+        heuristics = Heuristics(
+            slayer={
+                "Krystilia": {"Cows": SlayerTask(mean_count=10.0, xp_per_kill=1.0, kills_per_hour=100.0)},
+                "Konar quo Maten": {"Cows": SlayerTask(mean_count=10.0, xp_per_kill=1.0, kills_per_hour=100.0)},
+            },
+            monster_stats={"Cow": MonsterStats(name="Cow", hitpoints=8, combat_level=2)},
+        )
+        world = build_world_index(info)
+
+        result, _coverage = inputs.recipe_priced(
+            state, derived, world, heuristics, {}, root=tmp_path
+        )
+
+        small = result.kills_per_hour("Larran's small chest")
+        chest = result.kills_per_hour("Brimstone chest")
+        assert small.value > 0 and not small.source.startswith("default")
+        assert chest.value > 0 and not chest.source.startswith("default")
+
+
 class TestRaidRunSeconds:
     """`_raid_run_seconds` is what wires `costing/raids.py`'s own per-account
     models into `Heuristics.run_seconds` - see the function's own docstring

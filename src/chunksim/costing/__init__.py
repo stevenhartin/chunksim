@@ -952,6 +952,18 @@ Thieving at 84,560 flat against 1,005 at level 1. See `_modelled_tasks`.
   stated underestimate rather than a guess. Wired in `estimate.py` directly
   rather than through `dps_bridge._apply_gated_bosses`, because Krystilia's
   economy needs no DPS simulation to exist at all.
+- `brimstone.py` - Konar quo Maten's own twin of `larran.py`, for the
+  brimstone chest: the export's own `drops` table carries a real
+  combat-level-dependent fraction per monster for `Brimstone key`, but a
+  fixed per-monster fraction cannot say how often *that* monster is the one
+  Konar actually assigns, so `keys_per_hour` runs her whole `slayer.
+  MasterRate` through the wiki's own published formula instead - checked
+  against the export's own fractions across 74 real monsters (66 within 3%,
+  the residual traced to combat-level scrape noise rather than a formula
+  defect). Same +20% Slayer-monster bonus and superior's guaranteed key as
+  `larran.py`; no location bonus is published for this key at all, so there
+  is nothing left deliberately unmodelled the way Larran's Wilderness Slayer
+  Cave bonus is.
 - `giant_mole.py` - her own drop table is already in the export; the fix is
   the published burrow mechanic ("every attack... has a 25% chance of
   causing her to burrow", between 50% and 5% health). Two guessed

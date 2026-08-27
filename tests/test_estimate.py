@@ -1736,6 +1736,49 @@ def test_larrans_chest_prices_off_krystilias_key_rate_not_the_default() -> None:
     assert ruby.hours != pytest.approx(default_hours)
 
 
+def test_material_seconds_exposes_the_walks_own_enriched_heuristics() -> None:
+    """**The bug this pins.** `_setup` derives Larran's and the brimstone
+    chest's own opens-per-hour into a *local* `heuristics` only its own
+    `_Walk` closure ever saw - `material_seconds`'s caller (`costing/inputs.
+    py`'s `recipe_priced`) kept its own, pre-`_setup` copy, so a correctly
+    priced chest still read `DEFAULT_KPH`'s bare 150/hr through anything
+    reading `Heuristics.monsters` directly rather than through the walk -
+    the GUI's `monsters/Brimstone chest` knob among them. `_MaterialWalk.
+    heuristics` is what `recipe_priced` now folds back in; this pins that it
+    is the walk's own enriched copy and not the one passed in."""
+    info = ChunkInfo(
+        {
+            "slayerMasterTasks": {
+                "Krystilia": {"Cows": {"Weight": 1}},
+                "Konar quo Maten": {"Cows": {"Weight": 1}},
+            },
+            "codeItems": {"slayerTasks": {"Cows": {"Cow": True}}},
+        }
+    )
+    derived = _derived(
+        monsters=("Cow",),
+        source_index=SourceIndex(
+            items={}, objects={}, monsters={"Cow": {"100": True}},
+            npcs={"Krystilia": {"100": True}, "Konar quo Maten": {"100": True}},
+            shops={}, drop_rates={},
+        ),
+    )
+    heuristics = Heuristics(
+        slayer={
+            "Krystilia": {"Cows": SlayerTask(mean_count=10.0, xp_per_kill=1.0, kills_per_hour=100.0)},
+            "Konar quo Maten": {"Cows": SlayerTask(mean_count=10.0, xp_per_kill=1.0, kills_per_hour=100.0)},
+        },
+        monster_stats={"Cow": MonsterStats(name="Cow", hitpoints=8, combat_level=2)},
+    )
+
+    walked = material_seconds(_state(info), derived, build_world_index(info), heuristics)
+
+    small = walked.heuristics.kills_per_hour("Larran's small chest")
+    chest = walked.heuristics.kills_per_hour("Brimstone chest")
+    assert small.value > 0 and not small.source.startswith("default")
+    assert chest.value > 0 and not chest.source.startswith("default")
+
+
 def test_a_task_wanting_a_kill_rather_than_an_item_is_priced_as_one_kill() -> None:
     # "Kill an abyssal demon in the Slayer Tower" has Monsters and no Items.
     # Taking its `~|...|~` span produced a request for an item called
