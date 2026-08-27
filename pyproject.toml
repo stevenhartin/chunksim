@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chunksim"
-version = "0.1.0"
+version = "1.0.0"
 description = "Offline tooling for source-chunk map state"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]

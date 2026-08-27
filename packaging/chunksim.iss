@@ -16,7 +16,7 @@
 ;   ask about it separately - see the [Code] section at the end.
 
 #define AppName "chunksim"
-#define AppVersion "0.1.0"
+#define AppVersion "1.0.0"
 #define AppPublisher "Steven Hartin"
 #define AppURL "https://github.com/stevenhartin/chunksim"
 #define Payload "build\payload"
