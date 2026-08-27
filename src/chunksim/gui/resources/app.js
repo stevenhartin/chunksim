@@ -5146,17 +5146,22 @@ async function openDrillPanel(item, route, provider) {
 }
 
 /* One level of `drillStack`, the current node's materials as a list - each
- * one that itself has materials becomes another level to open, and the
- * breadcrumb above it is every node passed through to get here. */
+ * one that itself has materials becomes another level to open. **The
+ * breadcrumb names only the direct parent, not the whole chain back to the
+ * root** - a real production chain runs deep (`Amulet of power` is already
+ * five levels down to a chisel), and a crumb per level ran out of room and
+ * wrapped over itself before it said anything useful. One step back at a
+ * time is the same "drill down, then climb back the way you came" shape a
+ * long chain actually has to navigate. */
 function renderDrillLevel() {
   const node = drillStack[drillStack.length - 1];
+  const parent = drillStack.length > 1 ? drillStack[drillStack.length - 2] : null;
   el["drill-title"].textContent = plain(node.label);
   renderTrail(
     el["drill-trail"],
-    drillStack.slice(0, -1).map((ancestor, index) => ({
-      label: plain(ancestor.label),
-      go: () => { drillStack = drillStack.slice(0, index + 1); renderDrillLevel(); },
-    })),
+    parent
+      ? [{ label: plain(parent.label), go: () => { drillStack = drillStack.slice(0, -1); renderDrillLevel(); } }]
+      : [],
   );
   if (!node.children.length) {
     el["drill-body"].innerHTML = tmpl`<p class="empty">${plain(node.label)}
