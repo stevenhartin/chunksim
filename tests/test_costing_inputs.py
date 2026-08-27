@@ -255,6 +255,63 @@ class TestRaidRunSeconds:
         assert found == {raids.THEATRE: raids.PUBLISHED_RAID_SECONDS[raids.THEATRE]}
 
 
+class TestTzhaarRunSeconds:
+    """`_tzhaar_run_seconds` is `_raid_run_seconds`'s own twin for the wave
+    minigames - see `costing/tzhaar.py`'s corrected module docstring on the
+    claim about this wiring that stood unchecked until now."""
+
+    def test_prices_what_bare_melee_can_clear(self) -> None:
+        """**Fight Caves only, not the Inferno, with this fixture's gear.**
+        `Jal-MejJak` (Zuk's own healer, level-100 defence with no defensive
+        bonuses) refuses a bare-melee kill entirely - see
+        `TestTzhaarKillSeconds`'s own note on it - and `encounter.build`'s
+        "all or nothing" rule drops the whole Inferno run rather than a
+        raid-shaped subset of it. This is what a chunk map missing a ranged
+        or magic weapon should see: one variant priced, the other silent
+        rather than guessed."""
+        if not dps_bridge.DPS_AVAILABLE:
+            pytest.skip("the dps extra is not installed")
+        from chunksim.costing import tzhaar
+        from chunksim.model.chunkinfo import ChunkInfo
+
+        chunk_info = ChunkInfo({"equipment": {"Abyssal whip": {
+            "attack_slash": 82, "melee_strength": 82, "attack_speed": 4, "slot": "weapon",
+        }}})
+        levels = {"Attack": 75, "Strength": 70, "Hitpoints": 99}
+        index = dps_bridge.load_monster_index()
+
+        found = inputs._tzhaar_run_seconds(
+            chunk_info, {"Melee-weapon": "Abyssal whip"}, levels, index=index,
+        )
+
+        assert set(found) == {tzhaar.FIGHT_CAVES}
+        assert found[tzhaar.FIGHT_CAVES] >= tzhaar.RUN_SECONDS[tzhaar.FIGHT_CAVES]
+
+    def test_never_faster_than_the_maintainers_own_figure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The same floor `TestRaidRunSeconds` pins, one module over: an
+        unrealistically fast sequencer answer never beats `RUN_SECONDS`."""
+        if not dps_bridge.DPS_AVAILABLE:
+            pytest.skip("the dps extra is not installed")
+        from chunksim.costing import encounter, tzhaar
+        from chunksim.model.chunkinfo import ChunkInfo
+
+        fast = encounter.Encounter(
+            "Fight Caves", (encounter.Stage("fast", 1.0, 0.0),)
+        )
+        monkeypatch.setattr(
+            "chunksim.costing.inputs.tzhaar.run",
+            lambda variant, kill_seconds: fast if variant == tzhaar.FIGHT_CAVES else None,
+        )
+
+        found = inputs._tzhaar_run_seconds(
+            ChunkInfo({}), {}, {}, index=dps_bridge.load_monster_index(),
+        )
+
+        assert found == {tzhaar.FIGHT_CAVES: tzhaar.RUN_SECONDS[tzhaar.FIGHT_CAVES]}
+
+
 def test_neither_app_reaches_past_the_shared_module() -> None:
     """A structural guard, in the spirit of the one asserting no tile route
     exists: the way this drifted was two call sites, so there is now one.

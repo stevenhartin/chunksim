@@ -613,7 +613,16 @@ The modules, and what each owns:
   hours as a 1/100 off a monster killed twenty times an hour, against a
   hundred Infernos - and **the kill-goal path had it too**, four Grandmaster
   Combat Achievements naming `TzKal-Zuk` sharing 0.05 hours between them. `PER_WAVE_SECONDS` is invented and `RUN_SECONDS` is a
-  maintainer's figure rather than a publication; both say so.
+  maintainer's figure rather than a publication; both say so. **`run`/
+  `answer` - the sequencer - had no production caller either**, the same
+  gap `raids.compare` had: `instanced.kill_seconds` reached only the flat
+  `run_seconds` function (the band's midpoint plus a hand override), never
+  the gear-sensitive sequencer, despite this docstring once claiming a test
+  compared the two. `costing/inputs.py`'s `_tzhaar_run_seconds` closes it
+  the same way `_raid_run_seconds` does, floored at `RUN_SECONDS` - and
+  because `item_seconds`/`kill_seconds` here already took `overrides`
+  (unlike `raids.item_seconds`, which does not), the fix reaches the item
+  walk too, with no mode-matching complication to work around.
 - `raids.py` - all three raids at once, and the only place that **adds**
   rather than picks: the export carries each raid's rewards as its own
   collection log entries, so a player needs all three logs and the total is

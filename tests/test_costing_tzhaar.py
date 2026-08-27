@@ -213,9 +213,18 @@ class TestTheSequencer:
 
 
 class TestTheBandsAgree:
-    """**The two paths must not drift.** `RUN_SECONDS` is the flat band the
-    item walk spends and the sequencer is the gear-sensitive answer; if they
-    stop describing the same activity the suite should say so.
+    """`RUN_SECONDS` is the flat band the item walk spends - these four only
+    check its own internal shape (ordering, midpoint, the stated figures).
+
+    **The comparison against the sequencer's own gear-sensitive answer lives
+    elsewhere**, not here: `tests/test_dps_bridge.py`'s
+    `TestTzhaarKillSeconds` exercises `tzhaar_kill_seconds` against real
+    monster data, and `tests/test_costing_inputs.py`'s
+    `TestTzhaarRunSeconds` exercises the wiring
+    (`costing/inputs.py`'s `_tzhaar_run_seconds`) that feeds `run`'s answer
+    into `Heuristics.run_seconds`. This class's own docstring used to
+    promise that comparison without making it - see this module's own
+    docstring on the claim that stood unchecked until now.
     """
 
     def test_the_band_is_ordered_best_typical_poor(self) -> None:

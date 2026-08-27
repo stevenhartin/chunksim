@@ -1669,6 +1669,45 @@ def tombs_stats_for(
     return stats_for
 
 
+def tzhaar_kill_seconds(
+    chunk_info: ChunkInfo,
+    picks: Mapping[str, str],
+    levels: Mapping[str, int],
+    *,
+    index: MonsterIndex | None = None,
+    kit: Kit | None = None,
+) -> Callable[[str], float | None]:
+    """A `KillSeconds` lookup for every Fight Caves/Inferno monster,
+    `costing/tzhaar.py`'s own shape - one lookup serves both variants'
+    rosters, unlike the three raids' own builders above.
+
+    **Not raid-scaled, deliberately.** `osrs_dps.core.scaling` has no
+    `apply_fight_caves`/`apply_inferno` - neither wave minigame has a party
+    size or a difficulty dial the library models, so the rank-and-file (and
+    the two final bosses) are ordinary monsters at ordinary stats, priced
+    exactly as `price_combat` prices any other target.
+    """
+    _require()
+    monster_index = load_monster_index() if index is None else index
+    versions = version_index(monster_index)
+    loadouts = build_loadouts(chunk_info, picks, levels, kit)
+    reductions = kit.reductions if kit is not None else None
+
+    def kill_seconds(name: str) -> float | None:
+        if not loadouts:
+            return None
+        candidates = candidate_targets(monster_index, name, versions)
+        if not candidates:
+            return None
+        kill = best_kill(
+            loadouts, name, candidates, index=monster_index,
+            reductions=reductions, boss=True,
+        )
+        return kill.ttk if kill is not None else None
+
+    return kill_seconds
+
+
 def price_monsters(
     chunk_info: ChunkInfo,
     picks: Mapping[str, str],
@@ -2496,6 +2535,7 @@ __all__ = [
     "price_slayer_tasks",
     "theatre_kill_seconds",
     "tombs_stats_for",
+    "tzhaar_kill_seconds",
     "wilderness_monsters",
     "with_monster_rates",
     "with_slayer_rates",

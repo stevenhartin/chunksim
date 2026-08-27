@@ -378,6 +378,39 @@ class TestRaidModels:
         assert stats_for(300)("Nothing at all") is None
 
 
+class TestTzhaarKillSeconds:
+    """`tzhaar_kill_seconds` is `costing/tzhaar.py`'s own missing half -
+    see `costing/inputs.py`'s `_tzhaar_run_seconds` and `tzhaar.py`'s own
+    corrected docstring on the claim that stood unchecked until now. Real
+    monster data throughout, same reason as `TestRaidModels`."""
+
+    def test_prices_every_target_in_both_rosters(self) -> None:
+        """**One real exception, not a bug in this lookup.** `Jal-MejJak`
+        (Zuk's own healer) is level-100 defence with no defensive bonuses at
+        all - real-game knowledge says melee genuinely struggles against it
+        - so bare melee gear failing to land a hit is the fixture's own
+        limitation, not this function's. `_chunk_info`/`LEVELS` carries no
+        ranged or magic loadout for it to fall back to."""
+        from chunksim.costing import tzhaar
+
+        index = dps_bridge.load_monster_index()
+        lookup = dps_bridge.tzhaar_kill_seconds(
+            _chunk_info(), {"Melee-weapon": "Abyssal whip"}, LEVELS, index=index,
+        )
+        for variant in (tzhaar.FIGHT_CAVES, tzhaar.INFERNO):
+            for target in tzhaar.roster(variant):
+                if target == "Jal-MejJak":
+                    continue
+                seconds = lookup(target)
+                assert seconds is not None and seconds > 0, target
+
+    def test_has_no_price_for_an_unknown_monster(self) -> None:
+        index = dps_bridge.load_monster_index()
+        lookup = dps_bridge.tzhaar_kill_seconds(
+            _chunk_info(), {"Melee-weapon": "Abyssal whip"}, LEVELS, index=index,
+        )
+        assert lookup("Nothing at all") is None
+
 def _defended_rat() -> Any:
     """A `Rat` with enough defence that accuracy is not already saturated at
     a middling Attack level - the shape a curve needs to have anything to

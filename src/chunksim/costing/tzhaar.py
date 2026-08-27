@@ -94,11 +94,21 @@ because the goal walk runs before any DPS-derived rate exists - the same
 compromise `raids.item_seconds` documents, and the same honest fix: price
 goals after the enrichment rather than fudge a multiplier here.
 
-**The two paths are kept apart on purpose.** `run_seconds` is the sequencer's
-answer and moves with the map; `RUN_SECONDS` is the flat band the item walk
-spends. `tests/test_costing_tzhaar.py` asserts the first lands near the second
-on a real map, so the day they disagree the suite says so instead of the two
-drifting quietly.
+**`run`/`answer` are the sequencer - a real per-map figure - and until
+`costing/inputs.py`'s `_tzhaar_run_seconds` they had no caller at all.**
+`instanced.kill_seconds` reached only the *function* `run_seconds` below,
+whose own name this paragraph used to conflate with the sequencer's: it is
+the flat band plus a hand override, nothing gear-sensitive, and every map
+read the identical 45-60 minutes regardless of what it could actually kill
+with. `_tzhaar_run_seconds` closes that: it calls `run` with a real
+`dps_bridge.tzhaar_kill_seconds`, floors the result at `RUN_SECONDS` (an
+invented `UPTIME` makes the sequencer's own answer a ceiling, not a
+promise), and writes it into `Heuristics.run_seconds` - the very dict
+`overrides` below reads - so a real map's pace reaches `run_seconds`
+without needing a hand-set correction to get there. `tests/test_dps_bridge.py`
+and `tests/test_costing_inputs.py` cover the sequencer and the wiring
+respectively; nothing in this file's own suite ever compared the two,
+which is what let the claim above stand unchecked as long as it did.
 
 Pure: a kill-time lookup handed in, like every other encounter module.
 """
@@ -261,10 +271,14 @@ def run_seconds(variant: str, overrides: Mapping[str, float] = {}) -> float:
 
     **`RUN_SECONDS` is this project's own figure and nothing publishes a
     better one**, which is precisely why it is overridable: `overrides` is
-    `Heuristics.run_seconds`, fed from the `runs` branch of
-    `heuristics/overrides.json` or a map's own file. A correction here moves
-    every answer that spends a run - the pet, the cape, the boss kill - at
-    once, because they all come through here.
+    `Heuristics.run_seconds` - populated two ways now, not one.
+    `costing/inputs.py`'s `_tzhaar_run_seconds` writes a real per-map figure
+    from the sequencer (`run`) here first; the `runs` branch of
+    `heuristics/overrides.json` or a map's own file, a hand correction,
+    still wins over it (`priced_heuristics`' own merge order). A correction
+    here - hand-set or computed - moves every answer that spends a run - the
+    pet, the cape, the boss kill - at once, because they all come through
+    here.
     """
     got = overrides.get(variant)
     if isinstance(got, (int, float)) and not isinstance(got, bool) and got > 0:

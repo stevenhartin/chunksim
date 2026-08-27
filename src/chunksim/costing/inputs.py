@@ -104,6 +104,7 @@ from chunksim.costing import (
 from chunksim.costing import gathering as gathering_model
 from chunksim.costing import shortcuts as shortcut_model
 from chunksim.costing import raids
+from chunksim.costing import tzhaar
 from chunksim.costing.estimate import material_seconds
 from chunksim.costing import prayer as prayer_costing
 from chunksim.costing.heuristics import ComputedMethod, MaterialCost
@@ -1868,6 +1869,44 @@ def _raid_run_seconds(
     }
 
 
+def _tzhaar_run_seconds(
+    chunk_info: ChunkInfo,
+    picks: Mapping[str, str],
+    levels: Mapping[str, int],
+    *,
+    index: dps_bridge.MonsterIndex,
+    kit: dps_bridge.Kit | None = None,
+) -> dict[str, float]:
+    """Fight Caves and Inferno's own run duration, modelled from this map's
+    own picks and levels - `costing/tzhaar.py`'s `run`, fed the
+    `dps_bridge` builder shaped for it.
+
+    **The same gap `_raid_run_seconds` closes, one module over.**
+    `tzhaar.run`/`tzhaar.answer` had no production caller either, despite
+    the module's own docstring claiming otherwise ("`run_seconds` is the
+    sequencer's answer and moves with the map") - `instanced.kill_seconds`
+    reached only the flat `tzhaar.run_seconds` (the band's midpoint plus a
+    hand override), never the sequencer, and no test actually compared the
+    two on real gear. See that docstring's own correction.
+
+    **Floored at `RUN_SECONDS`, the same maintainer's figure the flat path
+    already spent** - not `RUN_BAND`'s faster world-record entry, matching
+    `_raid_run_seconds`'s own choice to floor at the guide's *established*
+    pace rather than at some looser bound below it. `tzhaar.UPTIME` is an
+    invented constant exactly like the three raids', so a computed answer
+    faster than a maintainer's own best-in-slot estimate says more about
+    the model's guesses than about the map's account.
+    """
+    kill_seconds = dps_bridge.tzhaar_kill_seconds(chunk_info, picks, levels, index=index, kit=kit)
+    found: dict[str, float] = {}
+    for variant in (tzhaar.FIGHT_CAVES, tzhaar.INFERNO):
+        built = tzhaar.run(variant, kill_seconds)
+        if built is None:
+            continue
+        found[variant] = max(built.seconds, tzhaar.RUN_SECONDS[variant])
+    return found
+
+
 def priced_heuristics(
     state: MapState,
     unlocked: Mapping[str, bool],
@@ -1931,7 +1970,7 @@ def priced_heuristics(
         caps = combat_xp.spawn_caps(state.chunk_info, derived)
         by_style: dict[str, dps_bridge.CombatRate] = {}
         curves: dict[str, tuple[ComputedMethod, ...]] = {}
-        raid_seconds: dict[str, float] = {}
+        computed_run_seconds: dict[str, float] = {}
         if dps_bridge.DPS_AVAILABLE:
             # **The kit is not optional here.** Without it the Magic loadout
             # has no runes and never lands a hit, so `price_combat` returned
@@ -1986,8 +2025,14 @@ def priced_heuristics(
                 )
 
             curves = combat_xp.combat_curves(by_style, _combat_curve, priced.spells)
-            raid_seconds = _raid_run_seconds(
+            computed_run_seconds = _raid_run_seconds(
                 state.chunk_info, derived.bis.picks, goals, index=monster_index, kit=kit
+            )
+            computed_run_seconds.update(
+                _tzhaar_run_seconds(
+                    state.chunk_info, derived.bis.picks, goals,
+                    index=monster_index, kit=kit,
+                )
             )
         rates, damage = combat_xp.combat_rates(
             derived,
@@ -2058,7 +2103,7 @@ def priced_heuristics(
         # files into this field, nothing here computes into it), so a real
         # `runs/<place>` correction a reader set by hand still wins over the
         # modelled figure rather than being silently replaced by it.
-        run_seconds = {**raid_seconds, **priced.run_seconds}
+        run_seconds = {**computed_run_seconds, **priced.run_seconds}
         return (
             replace(
                 priced, combat=rates, combat_damage=damage, computed=merged,
