@@ -266,8 +266,12 @@ class TestRaidRunSeconds:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """An unrealistically fast computed answer - the shape a generous
-        `UPTIME` guess could produce - never beats the guide's own published
-        pace once this has floored it, at every one of the four keys."""
+        `UPTIME` guess could produce - never beats the reference figure this
+        floors it against, at every one of the four keys. Three float against
+        `raids.PUBLISHED_RAID_SECONDS`; the Chambers-challenge key floats
+        against `xeric.CHALLENGE_WORLD_RECORD_SECONDS` instead, since its own
+        `PUBLISHED_RAID_SECONDS` entry is a 70-minute loot deadline rather
+        than a pace - see that constant's own docstring."""
         if not dps_bridge.DPS_AVAILABLE:
             pytest.skip("the dps extra is not installed")
         from chunksim.costing import raids
@@ -293,8 +297,14 @@ class TestRaidRunSeconds:
         assert set(found) == {
             raids.THEATRE, raids.CHAMBERS, f"{raids.CHAMBERS} (challenge)", raids.TOMBS,
         }
+        from chunksim.costing import xeric
+
+        challenge_key = f"{raids.CHAMBERS} (challenge)"
         for key, seconds in found.items():
-            assert seconds == raids.PUBLISHED_RAID_SECONDS[key]
+            if key == challenge_key:
+                assert seconds == xeric.CHALLENGE_WORLD_RECORD_SECONDS
+            else:
+                assert seconds == raids.PUBLISHED_RAID_SECONDS[key]
 
 
 class TestTzhaarRunSeconds:

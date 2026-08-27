@@ -130,16 +130,40 @@ OLM: tuple[str, ...] = (
     "Great Olm#Head (Normal)",
 )
 
-#: "Two or three combat and/or skilling rooms" on each of two floors.
-NORMAL_ROOMS_LOW, NORMAL_ROOMS_HIGH = 4, 6
+#: **Not "two or three combat and/or skilling rooms" on each of two floors.**
+#: That wiki quote names only the *fights* the model's own `COMBAT_ROOMS`/
+#: `PUZZLE_ROOMS` track and misses the resource and scavenger rooms every
+#: floor also carries - real, walked, timed rooms this model has no separate
+#: entry for at all. A real raider's own account of it puts the *effective*
+#: total nearer eight of the twelve tracked rooms (a bare fights-only 4-6
+#: read as `expected_normal_rooms() / 12` came out at 5/12, and a raid timed
+#: against that share came out implausibly fast against real completion
+#: times - see `OLM_UPTIME`'s own note for the other half of that fix).
+NORMAL_ROOMS_LOW, NORMAL_ROOMS_HIGH = 7, 9
 
 #: Seconds of walking, banking and scavenging a raid carries whatever it
-#: fights. **Invented.**
-OVERHEAD_SECONDS = 240.0
+#: fights. **Invented**, and deliberately the same figure `tombs.py` spends
+#: on the identical kind of time rather than a second invented number for
+#: the same thing.
+OVERHEAD_SECONDS = 300.0
 
 #: Share of a raid spent dealing damage, as `costing/theatre.py` uses it and
-#: for the same reason. **Invented.**
+#: for the same reason. **Invented**, and deliberately *not* Great Olm's own
+#: figure - see `OLM_UPTIME`.
 UPTIME = 0.66
+
+#: **Great Olm's own uptime, far below the other six bosses'.** A real
+#: raider's account: Olm alone is "almost 50%" of a whole raid, both modes -
+#: which the shared `UPTIME` above could not reproduce without also making
+#: every other boss room implausibly slow, or the shared `OVERHEAD_SECONDS`
+#: implausibly large (mechanically, over half the raid spent walking rather
+#: than fighting). Olm's own fight is unusually mechanic-heavy even by raid-
+#: boss standards - the hand phase's own downtime, dodging the crystals,
+#: prayer-flicking the head phase, healing-pool detours - none of which a
+#: plain time-to-reduce-health-to-zero figure prices at all. **Invented**,
+#: like `UPTIME` itself, and lower for exactly the reason `UPTIME` is a
+#: mean across six far less mechanically demanding rooms.
+OLM_UPTIME = 0.15
 
 #: `Money making guide/Chambers of Xeric`, normal mode: `kph = 3`.
 PUBLISHED_RAIDS_PER_HOUR = 3.0
@@ -221,12 +245,30 @@ CAPE_COMPLETIONS = 2_000
 
 #: The solo time a Challenge Mode raid must beat for the kit, the dust and the
 #: 5,000 points. **Published**, and a bound this model's own duration is
-#: checked against rather than fitted to.
+#: checked against rather than fitted to. **Not a pace, and not
+#: `_raid_run_seconds`'s floor** - a loot deadline is a different kind of
+#: number from an established raider's typical time, and is far looser than
+#: one: at 70 minutes it never actually bounds a properly calibrated
+#: Challenge Mode model, which is what `CHALLENGE_WORLD_RECORD_SECONDS`
+#: below is for instead.
 CM_SOLO_TIME_LIMIT_SECONDS = 70.0 * 60.0
+
+#: The fastest a Challenge Mode raid has ever been completed - a real
+#: raider's own figure, 22 minutes 37 seconds. **The actual floor
+#: `_raid_run_seconds` checks a computed answer against**, since no
+#: "established raider's typical pace" is published for Challenge Mode the
+#: way Normal Mode's `kph = 3` is (see `CM_SOLO_TIME_LIMIT_SECONDS`'s own
+#: docstring on why that deadline cannot serve the same role): a
+#: world-record time is at least a real, verified lower bound no simulated
+#: account should be allowed to beat, even one better-geared than this
+#: project can otherwise imagine.
+CHALLENGE_WORLD_RECORD_SECONDS = 22.0 * 60.0 + 37.0
 
 
 def expected_normal_rooms() -> float:
-    """How many of the twelve a normal raid draws, on average."""
+    """The effective share of the twelve tracked rooms one normal raid
+    costs, on average - see `NORMAL_ROOMS_LOW`/`HIGH`'s own docstring on why
+    this is not simply "how many fights the wiki says a floor draws"."""
     return (NORMAL_ROOMS_LOW + NORMAL_ROOMS_HIGH) / 2
 
 
@@ -257,10 +299,18 @@ def plans(mode: str) -> tuple[FightPlan | PuzzlePlan, ...]:
 
 
 def mechanics() -> dict[str, Mechanic]:
-    """`UPTIME` against every fight - one number, as the Theatre does it."""
+    """`UPTIME` against the six ordinary boss rooms, `OLM_UPTIME` against
+    Great Olm - see `OLM_UPTIME`'s own docstring for why Olm is not "one
+    number across every fight" the way the Theatre and the Tombs each are.
+    """
     note = "share of a Chambers raid spent attacking"
-    targets = [t for ts in COMBAT_ROOMS.values() for t in ts] + list(OLM)
-    return {target: Mechanic(uptime=UPTIME, note=note) for target in targets}
+    olm_note = "share of Olm's own fight spent attacking, not dodging or resetting"
+    found = {
+        target: Mechanic(uptime=UPTIME, note=note)
+        for ts in COMBAT_ROOMS.values() for target in ts
+    }
+    found.update({target: Mechanic(uptime=OLM_UPTIME, note=olm_note) for target in OLM})
+    return found
 
 
 def points_for(mode: str, fast: bool = True) -> float:

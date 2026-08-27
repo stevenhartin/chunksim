@@ -1865,14 +1865,25 @@ def _raid_run_seconds(
     own `.run.seconds` removes the mismatch instead of patching around the
     one case a single test happened to catch.
 
-    **Never faster than the guide, for every key.** Every one of the three
-    models spends an invented uptime/overhead constant (`theatre.UPTIME`,
-    `xeric.UPTIME`, `tombs.UPTIME` are each a `GUESS`), so a computed answer
-    is a ceiling on how well the mechanic could go, not a promise - and
-    `theatre.py`'s own docstring names the reason a modelled team should
-    never beat a published one anyway: the guide describes an *established*
-    raider already carrying that raid's own best gear, a stronger
-    assumption than any chunk map offers.
+    **Never faster than the guide - except Chambers Challenge, which has no
+    guide.** Every model spends an invented uptime/overhead constant
+    (`theatre.UPTIME`, `xeric.UPTIME`, `xeric.OLM_UPTIME`, `tombs.UPTIME`
+    are each a `GUESS`), so a computed answer is a ceiling on how well the
+    mechanic could go, not a promise - and `theatre.py`'s own docstring
+    names the reason a modelled team should never beat a published one
+    anyway: the guide describes an *established* raider already carrying
+    that raid's own best gear, a stronger assumption than any chunk map
+    offers. Three of the four keys have exactly that guide to float
+    against. The fourth does not: `raids.PUBLISHED_RAID_SECONDS[f"{CHAMBERS}
+    (challenge)"]` is `xeric.CM_SOLO_TIME_LIMIT_SECONDS`, a loot-bonus
+    deadline rather than an established pace, and at 70 minutes it is
+    looser than this project's own calibrated Challenge Mode model ever
+    computes - flooring against it silently discarded the whole
+    Olm-uptime/room-share calibration for this one key, always reading a
+    flat 70 minutes. `xeric.CHALLENGE_WORLD_RECORD_SECONDS` (the real,
+    verified fastest completion ever recorded) is what this floors against
+    instead - looser than a guide's typical pace would be, but still a
+    genuine "no simulated account should claim to beat this" bound.
     """
     theatre_seconds = dps_bridge.theatre_kill_seconds(
         chunk_info, picks, levels, index=index, kit=kit
@@ -1882,9 +1893,9 @@ def _raid_run_seconds(
     )
     tombs_for = dps_bridge.tombs_stats_for(chunk_info, picks, levels, index=index, kit=kit)
 
-    def floored(key: str, run: encounter.Encounter | None) -> None:
+    def floored(key: str, run: encounter.Encounter | None, floor: float | None = None) -> None:
         if run is not None:
-            found[key] = max(run.seconds, raids.PUBLISHED_RAID_SECONDS[key])
+            found[key] = max(run.seconds, raids.PUBLISHED_RAID_SECONDS[key] if floor is None else floor)
 
     found: dict[str, float] = {}
     theatre_answer = theatre.answer(theatre.NORMAL, theatre_seconds, party_size=theatre.PARTY_SIZE)
@@ -1892,9 +1903,18 @@ def _raid_run_seconds(
     normal_answer = xeric.answer(xeric.NORMAL, chambers_for)
     floored(raids.CHAMBERS, normal_answer.run if normal_answer is not None else None)
     challenge_answer = xeric.answer(xeric.CHALLENGE, chambers_for)
+    # **The world record, not `PUBLISHED_RAID_SECONDS`'s own Challenge Mode
+    # entry.** That entry is `xeric.CM_SOLO_TIME_LIMIT_SECONDS`, a loot
+    # deadline rather than a pace - at 70 minutes it never actually bounds a
+    # properly calibrated model, which is exactly what happened here before
+    # this line existed: a real per-account Challenge time floored against
+    # it always read a flat 70 minutes, silently discarding the whole
+    # Olm-uptime/room-share calibration for this one key. See
+    # `xeric.CHALLENGE_WORLD_RECORD_SECONDS`'s own docstring.
     floored(
         f"{raids.CHAMBERS} (challenge)",
         challenge_answer.run if challenge_answer is not None else None,
+        floor=xeric.CHALLENGE_WORLD_RECORD_SECONDS,
     )
     tombs_answer = tombs.answer(tombs.GUIDE_RAID_LEVEL, tombs_for(tombs.GUIDE_RAID_LEVEL))
     floored(raids.TOMBS, tombs_answer.run if tombs_answer is not None else None)

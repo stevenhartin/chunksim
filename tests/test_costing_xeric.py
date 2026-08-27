@@ -23,11 +23,17 @@ def _factory(seconds: float = 60.0) -> xeric.KillSecondsFor:
 
 class TestTheLayout:
     def test_a_normal_raid_draws_a_fraction_of_the_rooms(self) -> None:
-        """"Two or three combat and/or skilling rooms" on each of two floors,
-        so four to six of the twelve."""
-        assert xeric.expected_normal_rooms() == 5.0
+        """**Eight of twelve, not the wiki-quote's bare four to six.** A
+        real raider's own account: the wiki's "two or three combat and/or
+        skilling rooms" per floor names only the *fights* this model
+        tracks and misses the resource/scavenger rooms every floor also
+        carries - real, walked, timed rooms with no entry of their own
+        here. `NORMAL_ROOMS_LOW`/`HIGH`'s own docstring has the full case;
+        a raid timed against the bare fights-only reading came out
+        implausibly fast against real completion times."""
+        assert xeric.expected_normal_rooms() == 8.0
         assert len(xeric.COMBAT_ROOMS) + len(xeric.PUZZLE_ROOMS) == 12
-        assert xeric.room_share(xeric.NORMAL) == pytest.approx(5 / 12)
+        assert xeric.room_share(xeric.NORMAL) == pytest.approx(2 / 3)
 
     def test_challenge_mode_has_every_room(self) -> None:
         assert xeric.room_share(xeric.CHALLENGE) == 1.0
@@ -45,6 +51,36 @@ class TestTheLayout:
         fights = [p for p in rooms if isinstance(p, encounter.FightPlan)]
         assert fights[-1].target in xeric.OLM
         assert all(f.count == 1.0 for f in fights if f.target in xeric.OLM)
+
+
+class TestOlmsOwnUptime:
+    """**A real raider's account: Olm alone is "almost 50%" of a whole
+    raid, both modes.** A single shared `UPTIME` could not reproduce that
+    without making the six ordinary bosses implausibly slow or
+    `OVERHEAD_SECONDS` implausibly large - see `OLM_UPTIME`'s own
+    docstring. Olm gets its own, much lower uptime instead."""
+
+    def test_olm_gets_its_own_lower_uptime(self) -> None:
+        found = xeric.mechanics()
+        for target in xeric.OLM:
+            assert found[target].uptime == xeric.OLM_UPTIME
+        for targets in xeric.COMBAT_ROOMS.values():
+            for target in targets:
+                assert found[target].uptime == xeric.UPTIME
+        assert xeric.OLM_UPTIME < xeric.UPTIME
+
+    def test_olm_dominates_the_raid_at_equal_kill_speed(self) -> None:
+        """Even asking every room the *same* flat kill time (so nothing
+        about relative boss difficulty can explain it), Olm's own three
+        targets and lower uptime alone should make it the largest single
+        contributor to the raid - the shape "almost 50%" describes."""
+        run = encounter.build(
+            "Chambers of Xeric (test)", xeric.plans(xeric.NORMAL),
+            lambda target: 30.0, xeric.mechanics(),
+        )
+        assert run is not None
+        olm_seconds = sum(s.seconds for s in run.stages if s.target in xeric.OLM)
+        assert olm_seconds / run.seconds > 0.3
 
 
 class TestPointsAreNotDamage:
