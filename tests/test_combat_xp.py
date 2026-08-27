@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import json
 
+from types import SimpleNamespace
+from typing import Any
+
 import pytest
 
 from chunksim.costing.combat_xp import (
@@ -22,6 +25,7 @@ from chunksim.costing.combat_xp import (
     XP_PER_DAMAGE,
     best_spell,
     best_target,
+    combat_curves,
     combat_rates,
     farmable_providers,
     hitpoints_credit,
@@ -146,6 +150,82 @@ def test_the_best_spell_is_the_one_that_pays_most_not_the_highest_level() -> Non
     assert best_spell(spells, 99).name == "Ice Barrage"  # type: ignore[union-attr]
     assert best_spell(spells, 94).name == "Ice Barrage"  # type: ignore[union-attr]
     assert best_spell(spells, 50) is None
+
+
+def _target_rate(monster: str, style: str = "Melee") -> Any:
+    """Enough of `dps_bridge.CombatRate` for `combat_curves` to read - it
+    only ever asks for `.monster`, so `styled`'s own typing (`Mapping[str,
+    Any]`, matching `combat_rates`) is exactly as loose here."""
+    return SimpleNamespace(monster=monster, style=style)
+
+
+class TestCombatCurves:
+    """`combat_curves` is what stopped Attack reading 95,361/hr flat on
+    Angry Bear from level 1 to 99 - see its own docstring for the mechanics
+    argument (`CURVED_SKILLS`) and `dps_bridge.combat_curve` for where the
+    real numbers come from. `curve` is faked here throughout: this module's
+    own arithmetic (the `per_damage` multiplier, the spell bonus) is what is
+    under test, not `osrs_dps` - that is `TestCombatCurve` in
+    `test_dps_bridge.py`."""
+
+    def test_one_band_per_level_the_curve_returns(self) -> None:
+        styled = {"Melee": _target_rate("Wolf")}
+
+        def curve(monster: str, style: str, skill: str) -> dict[int, float]:
+            assert (monster, style) == ("Wolf", "Melee")
+            return {1: 100.0, 50: 500.0, 99: 1000.0} if skill == "Attack" else {}
+
+        found = combat_curves(styled, curve, ())
+
+        bands = {band.level: band.xp_per_hour for band in found["Attack"]}
+        assert bands == {
+            1: pytest.approx(100.0 * XP_PER_DAMAGE),
+            50: pytest.approx(500.0 * XP_PER_DAMAGE),
+            99: pytest.approx(1000.0 * XP_PER_DAMAGE),
+        }
+        assert all(band.method == "Wolf" for band in found["Attack"])
+
+    def test_defence_and_hitpoints_never_get_a_curve(self) -> None:
+        """Neither skill's own level touches outgoing damage - see
+        `CURVED_SKILLS`'s own docstring - so even a `curve` that would
+        happily answer for them must never be asked."""
+        styled = {"Melee": _target_rate("Wolf"), "Ranged": _target_rate("Wolf")}
+        found = combat_curves(styled, lambda m, s, k: {1: 100.0}, ())
+
+        assert "Defence" not in found
+        assert "Hitpoints" not in found
+        assert set(found) <= {"Attack", "Strength", "Ranged", "Magic"}
+
+    def test_a_skill_with_no_styled_target_is_skipped(self) -> None:
+        assert combat_curves({}, lambda m, s, k: {1: 100.0}, ()) == {}
+
+    def test_an_empty_curve_leaves_the_skill_out_entirely(self) -> None:
+        styled = {"Melee": _target_rate("Wolf")}
+        found = combat_curves(styled, lambda m, s, k: {}, ())
+
+        assert "Attack" not in found
+        assert "Strength" not in found
+
+    def test_magic_bands_name_the_spell_that_actually_wins_at_that_level(self) -> None:
+        """A climb through Fire Bolt, then Fire Wave is two different
+        actions, not one method sampled twice - `method` carries the spell
+        the way `combat_rates`'s own flat `source` already does."""
+        styled = {"Magic": _target_rate("Ice troll king", style="Magic")}
+        spells = (
+            AttackSpell(name="Fire Bolt", level=35, experience=22.5),
+            AttackSpell(name="Fire Wave", level=75, experience=36.0),
+        )
+
+        found = combat_curves(
+            styled, lambda m, s, k: {50: 1000.0, 90: 1000.0}, spells
+        )
+
+        by_level = {band.level: band for band in found["Magic"]}
+        assert "Fire Bolt" in by_level[50].method
+        assert "Fire Wave" in by_level[90].method
+        assert by_level[90].xp_per_hour > by_level[50].xp_per_hour
+        expected_50 = 1000.0 * MAGIC_XP_PER_DAMAGE + 22.5 * 3600.0 / CAST_SECONDS
+        assert by_level[50].xp_per_hour == pytest.approx(expected_50)
 
 
 def test_a_monster_with_no_hitpoints_is_dropped_rather_than_zeroed() -> None:

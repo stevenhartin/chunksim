@@ -785,6 +785,11 @@ Thieving at 84,560 flat against 1,005 at level 1. See `_modelled_tasks`.
   pace, so every band it produces is marked `guess`. The one number to set.
 - `combat_xp.py` - combat XP, which is damage and almost nothing else. Owns the
   three gates and the two credits that each removed a wrong answer.
+  `combat_curves` is the fourth: Attack/Strength/Ranged/Magic each get a real
+  band per level (`CURVED_SKILLS`), re-asking `dps_bridge.combat_curve` for
+  the same fight at every level 1-99 rather than pricing the whole climb off
+  one snapshot at `goals` - Defence and Hitpoints stay flat on purpose, since
+  neither skill's own level touches accuracy or max hit.
 - `slayer.py` - Slayer's rate, which is a *distribution* rather than a chosen
   method, and the points economy that decides where you train.
   `task_kills_per_hour`/`best_modelled_candidate` prefer a reachable
@@ -842,7 +847,13 @@ Thieving at 84,560 flat against 1,005 at level 1. See `_modelled_tasks`.
   `estimate()` instead.
 - `dps_bridge.py` - the seam to `osrs-dps`. **Optional import** - check
   `DPS_AVAILABLE`, never assume it. Prices only `reachable_providers`, which it
-  imports rather than copying. **`best_kill` checks `fightscripts.SCRIPTS`
+  imports rather than copying. `combat_curve` re-asks one already-chosen
+  fight's kill rate at every level 1-99 of one skill, holding everything else
+  fixed - cheap (`build_loadouts`/`kills_by_style` are pure arithmetic once
+  the monster index is loaded, not a heavier kind of simulation) and what
+  `combat_xp.combat_curves` calls up to four times per map to build a real
+  climb instead of the flat rate `combat_rates` alone would give. **`best_kill`
+  checks `fightscripts.SCRIPTS`
   first** - a phased boss is priced by its script, not by which of its
   ambiguous library versions dies quickest. `MELEE_SUBSTYLES` builds three
   more loadouts (`Stab`/`Slash`/`Crush`) from BiS picks `derived.bis.picks`

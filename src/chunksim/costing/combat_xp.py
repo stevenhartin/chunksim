@@ -29,6 +29,22 @@ with the `dps` extra** - `dps_bridge.enrich` replaces the kill rates with ones
 simulated from the map's own BiS gear, and these rates follow without knowing
 the extra exists.
 
+**One rate for the whole climb was the next thing wrong with it.** `combat_
+rates` prices at `goals` - the levels the chunk *ends* at - so Attack on Angry
+Bear read 95,361/hr flat from level 1 to 99, when the accuracy behind that
+number is plainly a function of the Attack level being trained: real
+combat gets faster as it goes, and the estimate said otherwise.
+`combat_curves` is the fix, **for the skills whose own level actually moves
+the number** (`CURVED_SKILLS` - Attack, Strength, Ranged, Magic): it re-asks
+`dps_bridge.combat_curve` for the same already-chosen fight at every level
+1-99 of the skill in question, holding everything else at `goals`, and hands
+back a real band per level rather than one snapshot. Defence and Hitpoints
+are deliberately left flat - neither skill's own level touches accuracy or
+max hit, so a curve for either would be a slope invented rather than found.
+Needs the `dps` extra the same as everything else here: without it
+`combat_curves` is simply never called and every combat skill reads exactly
+as flat as it always has.
+
 **Every error this model has had was in what the constant was multiplied by,
 never in the constant.** So the four things worth knowing are all about the
 fight rather than the arithmetic:
@@ -67,10 +83,10 @@ Nothing upstream records what a shared climb ought to cost, so
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from chunksim.costing import instanced
-from chunksim.costing.heuristics import Heuristics, Rate
+from chunksim.costing.heuristics import ComputedMethod, Heuristics, Rate
 from chunksim.costing.levels import reachable_providers
 from chunksim.derive.pipeline import Derived
 from chunksim.model.chunkinfo import ChunkInfo
@@ -314,6 +330,82 @@ def combat_rates(
             rated[skill] = Rate(value=value, source=source, match="computed")
             damages[skill] = damage
     return rated, damages
+
+
+#: Skills whose own level measurably changes outgoing damage. Defence and
+#: Hitpoints affect only what a monster does to *you*, or how much health you
+#: have - neither touches your accuracy or your max hit, so a curve for
+#: either would be inventing a slope nothing in the combat formulas produces.
+#: A flat rate for those two is the honest shape, not a gap this project has
+#: not gotten to yet - see `combat_curves`, which builds one for everything
+#: else.
+CURVED_SKILLS = frozenset({"Attack", "Strength", "Ranged", "Magic"})
+
+
+def combat_curves(
+    styled: Mapping[str, Any],
+    curve: Callable[[str, str, str], Mapping[int, float]],
+    spells: Sequence[AttackSpell],
+) -> dict[str, tuple[ComputedMethod, ...]]:
+    """A real climb for `CURVED_SKILLS`, off the target `styled` already
+    chose - a flat `Attack` rate on Angry Bear was the whole reason this
+    exists: accuracy genuinely improves as Attack rises, and the estimate
+    said otherwise.
+
+    **One already-chosen target scaling with level, not a search for a
+    better one at each level.** `curve` is `dps_bridge.combat_curve` bound to
+    the rest of its arguments by the caller - see that function's own
+    docstring for what asking it means and what it does not attempt (a
+    different monster taking over partway up the climb).
+
+    `styled` is `dps_bridge.price_combat`'s own `{style: CombatRate}` -
+    typed loosely, like `combat_rates`'s own `by_style`, so this module still
+    does not import `dps_bridge` and stays exactly as usable without the
+    `dps` extra as it always has: an empty `styled` (no extra installed)
+    finds nothing for any skill and returns `{}`, and `combat_rates`'s flat
+    figure is all `costing/inputs.py` has to merge in, unchanged.
+
+    Every band spends the same mechanics `combat_rates` uses for its own flat
+    figure - the same `per_damage` multiplier, the same Magic spell bonus -
+    so a reader comparing the two never finds them disagreeing about what a
+    skill's rate is made of, only about whether it is one number or several.
+    A band's `method` carries the spell name for Magic, exactly as
+    `combat_rates`'s own `source` already does - a climb through Fire Bolt,
+    then Fire Wave, then Ice Barrage is genuinely three different actions,
+    not one method sampled three times.
+    """
+    found: dict[str, tuple[ComputedMethod, ...]] = {}
+    for skill in CURVED_SKILLS:
+        rate = styled.get(STYLE_FOR_SKILL[skill])
+        if rate is None:
+            continue
+        damage_by_level = curve(rate.monster, STYLE_FOR_SKILL[skill], skill)
+        if not damage_by_level:
+            continue
+        per_damage = COMBAT_SKILLS[skill]
+        bands: list[ComputedMethod] = []
+        for level in sorted(damage_by_level):
+            value = damage_by_level[level] * per_damage
+            method = rate.monster
+            if skill == "Magic":
+                spell = best_spell(spells, level)
+                if spell is not None:
+                    value += spell.experience * 3600.0 / CAST_SECONDS
+                    method = f"{rate.monster} casting {spell.name}"
+            if value <= 0:
+                continue
+            bands.append(
+                ComputedMethod(
+                    method=method,
+                    xp_per_hour=value,
+                    level=level,
+                    match="computed",
+                    knob=f"monster_stats/{rate.monster}",
+                )
+            )
+        if bands:
+            found[skill] = tuple(bands)
+    return found
 
 
 def slayer_credit(damage: float, needs: Mapping[str, float]) -> dict[str, float]:

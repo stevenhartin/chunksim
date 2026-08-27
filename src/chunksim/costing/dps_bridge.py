@@ -1448,6 +1448,80 @@ def price_combat(
     return best
 
 
+def combat_curve(
+    chunk_info: ChunkInfo,
+    picks: Mapping[str, str],
+    levels: Mapping[str, int],
+    monster: str,
+    style: str,
+    skill: str,
+    *,
+    index: MonsterIndex | None = None,
+    kit: Kit | None = None,
+    slayer_monsters: frozenset[str] = frozenset(),
+    boss_monsters: frozenset[str] = frozenset(),
+    caps: Mapping[str, float] | None = None,
+    multiplier: float = 1.0,
+) -> dict[int, float]:
+    """`{level: damage_per_hour}` against `monster` in `style`, at every level
+    1-99 of `skill` - everything else held at `levels`' own value.
+
+    **One already-chosen target, not a search for a better one at each
+    level.** `price_combat` has already picked the best monster for `style`;
+    this asks how *that* fight scales as one stat rises, which is a cheap
+    re-ask of `build_loadouts`/`kills_by_style` per level rather than a new
+    kind of computation - `price_monsters` already prices ~750 monsters in
+    under a second, and this is one monster asked up to 99 times. Whether a
+    *different* target overtakes it partway up the climb is a harder question
+    (which monster is reachable, at what level, for every combat skill) this
+    does not attempt - see `combat_xp.CURVED_SKILLS` on which skills even
+    have a real curve to ask for at all.
+
+    A level with no supported kill (accuracy or damage too low for the
+    library to land one at all) is simply absent from the result, the same
+    "no route" the rest of this project gives rather than a zero it would
+    have to explain.
+    """
+    _require()
+    monster_index = load_monster_index() if index is None else index
+    versions = version_index(monster_index)
+    candidates = candidate_targets(monster_index, monster, versions)
+    if not candidates:
+        return {}
+    reductions = kit.reductions if kit is not None else None
+    wilderness = monster in kit.wilderness if kit is not None else False
+    on_slayer_task = monster in slayer_monsters
+    boss = monster in boss_monsters
+    cap = None if caps is None else caps.get(monster)
+
+    found: dict[int, float] = {}
+    for level in range(1, 100):
+        sample_levels = dict(levels)
+        sample_levels[skill] = level
+        loadout = build_loadouts(chunk_info, picks, sample_levels, kit).get(style)
+        if loadout is None:
+            continue
+        kill = kills_by_style(
+            {style: loadout},
+            monster,
+            candidates,
+            on_slayer_task=on_slayer_task,
+            reductions=reductions,
+            wilderness=wilderness,
+            boss=boss,
+            prefer="damage",
+        ).get(style)
+        if kill is None or kill.hitpoints <= 0:
+            continue
+        rate = kill.kills_per_hour()
+        if cap is not None and cap > 0:
+            rate = min(rate, cap)
+        if rate <= 0:
+            continue
+        found[level] = rate * kill.hitpoints * multiplier
+    return found
+
+
 def price_monsters(
     chunk_info: ChunkInfo,
     picks: Mapping[str, str],
@@ -2265,6 +2339,7 @@ __all__ = [
     "in_wilderness",
     "build_loadouts",
     "candidate_targets",
+    "combat_curve",
     "enrich",
     "library_version",
     "load_monster_index",

@@ -267,6 +267,71 @@ def test_no_candidates_means_no_price() -> None:
     assert dps_bridge.best_kill(loadouts, "Nothing", []) is None
 
 
+def _defended_rat() -> Any:
+    """A `Rat` with enough defence that accuracy is not already saturated at
+    a middling Attack level - the shape a curve needs to have anything to
+    show."""
+    from osrs_dps import Levels, StatBlock
+
+    return _target(
+        name="Rat", hitpoints=8,
+        levels=Levels(defence=50), bonuses=StatBlock(defence_slash=50),
+    )
+
+
+class TestCombatCurve:
+    """`combat_curve` is `costing/combat_xp.py`'s whole fix for a flat Attack
+    rate on Angry Bear: accuracy and max hit genuinely improve with level,
+    and the estimate said otherwise. Real `osrs_dps` arithmetic throughout -
+    the numbers are not asserted, since duplicating the library's formula
+    here would only be a second copy to keep in sync; what is asserted is
+    that raising the level in question never lowers the rate and generally
+    raises it, which is the one property this project actually depends on.
+    """
+
+    def test_grows_with_attack_level(self) -> None:
+        index = _FakeIndex({"Rat": _defended_rat()})
+
+        curve = dps_bridge.combat_curve(
+            _chunk_info(), {"Melee-weapon": "Abyssal whip"}, LEVELS,
+            "Rat", "Melee", "Attack", index=index,  # type: ignore[arg-type]
+        )
+
+        assert curve
+        seen = sorted(curve)
+        assert curve[seen[-1]] > curve[seen[0]]
+        assert all(curve[b] >= curve[a] - 1e-6 for a, b in zip(seen, seen[1:]))
+
+    def test_grows_with_strength_level(self) -> None:
+        """Max hit, holding Attack (and so accuracy) fixed at `LEVELS`."""
+        index = _FakeIndex({"Rat": _defended_rat()})
+
+        curve = dps_bridge.combat_curve(
+            _chunk_info(), {"Melee-weapon": "Abyssal whip"}, LEVELS,
+            "Rat", "Melee", "Strength", index=index,  # type: ignore[arg-type]
+        )
+
+        assert curve
+        seen = sorted(curve)
+        assert curve[seen[-1]] > curve[seen[0]]
+        assert all(curve[b] >= curve[a] - 1e-6 for a, b in zip(seen, seen[1:]))
+
+    def test_an_unknown_monster_has_no_curve(self) -> None:
+        index = _FakeIndex({"Rat": _defended_rat()})
+        assert dps_bridge.combat_curve(
+            _chunk_info(), {"Melee-weapon": "Abyssal whip"}, LEVELS,
+            "Nothing", "Melee", "Attack", index=index,  # type: ignore[arg-type]
+        ) == {}
+
+    def test_no_loadout_for_the_style_has_no_curve(self) -> None:
+        """The map has no gear for the style being asked about - a missing
+        loadout, not an empty one to crash on."""
+        index = _FakeIndex({"Rat": _defended_rat()})
+        assert dps_bridge.combat_curve(
+            _chunk_info(), {}, LEVELS, "Rat", "Melee", "Attack", index=index,  # type: ignore[arg-type]
+        ) == {}
+
+
 def _kill(**kwargs: Any) -> dps_bridge.KillEstimate:
     base: dict[str, Any] = {
         "monster": "Test",

@@ -1790,31 +1790,61 @@ def priced_heuristics(
         # the maps where the extra had most to say.
         caps = combat_xp.spawn_caps(state.chunk_info, derived)
         by_style: dict[str, dps_bridge.CombatRate] = {}
+        curves: dict[str, tuple[ComputedMethod, ...]] = {}
         if dps_bridge.DPS_AVAILABLE:
             # **The kit is not optional here.** Without it the Magic loadout
             # has no runes and never lands a hit, so `price_combat` returned
             # melee and ranged only - and Magic fell through to the rough
             # fallback, which is the inconsistent model this call exists to
             # replace.
+            kit = dps_bridge.assemble_kit(
+                state.chunk_info,
+                goals,
+                items=derived.challenges.available_items,
+                source_index=derived.source_index,
+            )
+            slayer_monsters = frozenset(state.chunk_info.slayer_monsters)
+            boss_monsters = frozenset(_mapping(state.chunk_info.code_items, "bossMonsters"))
+            # **Loaded once, passed to every call below.** `load_monster_index`
+            # parses the library's own data; `combat_curve` alone asks up to
+            # four skills' worth of up to 99 levels each, and reloading it
+            # per call would be the very anti-pattern its own docstring warns
+            # against.
+            monster_index = dps_bridge.load_monster_index()
             by_style = dps_bridge.price_combat(
                 state.chunk_info,
                 derived.bis.picks,
                 goals,
                 sorted(combat_xp.farmable_providers(derived, state.chunk_info)),
-                kit=dps_bridge.assemble_kit(
-                    state.chunk_info,
-                    goals,
-                    items=derived.challenges.available_items,
-                    source_index=derived.source_index,
-                ),
-                slayer_monsters=frozenset(state.chunk_info.slayer_monsters),
-                boss_monsters=frozenset(_mapping(state.chunk_info.code_items, "bossMonsters")),
+                index=monster_index,
+                kit=kit,
+                slayer_monsters=slayer_monsters,
+                boss_monsters=boss_monsters,
                 multipliers={
                     name: entry.xp_multiplier
                     for name, entry in priced.monster_stats.items()
                 },
                 caps=caps,
             )
+
+            def _combat_curve(monster: str, style: str, skill: str) -> dict[int, float]:
+                stats = priced.monster_stats.get(monster)
+                return dps_bridge.combat_curve(
+                    state.chunk_info,
+                    derived.bis.picks,
+                    goals,
+                    monster,
+                    style,
+                    skill,
+                    index=monster_index,
+                    kit=kit,
+                    slayer_monsters=slayer_monsters,
+                    boss_monsters=boss_monsters,
+                    caps=caps,
+                    multiplier=stats.xp_multiplier if stats is not None else 1.0,
+                )
+
+            curves = combat_xp.combat_curves(by_style, _combat_curve, priced.spells)
         rates, damage = combat_xp.combat_rates(
             derived,
             priced,
@@ -1852,7 +1882,18 @@ def priced_heuristics(
             },
         ).items():
             merged[skill] = (*merged.get(skill, ()), *found)
+        # **A real climb wins outright, not alongside the flat figure.**
+        # `rates[skill]` is computed at `goals` - the levels the chunk *ends*
+        # at, so it sits near the top of a curved skill's own range. Adding
+        # it beside the curve as a `level=None` ("open from the start") band
+        # would let that end-of-climb rate win every level from 1 upward,
+        # exactly the flat number this was built to replace - so a skill
+        # `combat_curves` actually priced skips the flat merge entirely.
+        for skill, bands in curves.items():
+            merged[skill] = (*merged.get(skill, ()), *bands)
         for skill, rate in rates.items():
+            if skill in curves:
+                continue
             if rate.value <= 0:
                 continue
             merged[skill] = (
