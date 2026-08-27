@@ -1496,6 +1496,51 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .method-curve-at { fill: var(--amber); stroke: #0c0e12; stroke-width: 1.5; }
 .method-curve-label { fill: var(--dim); font-size: var(--t-micro); }
 
+/* **The 1-99 envelope over every method a skill can reach** - see
+   `levelingGuideChart`. Sits in the overlay body itself rather than a
+   tooltip, so it gets a real width instead of `.tip`'s `max-width` and the
+   toggle above it a full-width row of its own. */
+.method-guide-toggle {
+  display: block;
+  width: 100%;
+  padding: var(--s3) var(--s4);
+  margin-bottom: var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r2);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+
+.method-guide-toggle:hover { border-color: var(--amber); }
+
+.method-guide-wrap { margin-bottom: var(--s4); }
+.method-guide { display: block; width: 100%; height: auto; }
+
+/* One stroke colour per stretch - `style="stroke:…"` sets which, chosen at
+   render time from `METHOD_GUIDE_COLOURS` rather than fixed in this file,
+   the same split `BUCKET_COLOURS` already draws for the Estimate pie. */
+.method-guide-line { fill: none; stroke-width: 2.5; stroke-linejoin: round; }
+.method-guide-pt { stroke: #0c0e12; stroke-width: 1; }
+
+/* Where you are now, drawn over every coloured stretch rather than in one of
+   their colours - the same reason `.method-curve-at` is its own hue. */
+.method-guide-now { stroke: var(--amber); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.method-guide-now-pt { fill: var(--amber); stroke: #0c0e12; stroke-width: 1.5; }
+
+.method-guide-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+  margin-top: var(--s2);
+  color: var(--dim);
+  font-size: var(--t-note);
+}
+
+.method-guide-legend span { display: flex; gap: var(--s2); align-items: center; }
+
 /* --- tile attribution ---------------------------------------------------- */
 
 /* Bottom-right, opposite the legend, quiet but never hidden: CC BY-NC-SA asks

@@ -2033,15 +2033,16 @@ def test_every_dialog_that_opened_before_still_opens_the_same_one() -> None:
 
 def test_the_methods_list_ranks_on_what_a_method_is_worth_here() -> None:
     """**Not on its headline.** A guide quotes a method with its materials to
-    hand; on a chunk map obtaining them is often most of the cost, and showing
-    only the headline is how a familiar figure comes to look wrong."""
+    hand; on a chunk map obtaining them is often most of the cost, so the row
+    shows `effective_xp_per_hour` rather than the headline `xp_per_hour` a
+    guide would print - just the one number, not both."""
     _, js, _ = _resources()
 
     body = js[js.index("function methodRate(option)"):]
     body = body[: body.index("\n}")]
 
     assert "effective_xp_per_hour" in body
-    assert "was " in body
+    assert "xp_per_hour" not in body.replace("effective_xp_per_hour", "")
 
 
 def test_the_status_vocabulary_is_the_pure_layers() -> None:

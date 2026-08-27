@@ -4153,18 +4153,14 @@ function methodStatus(match) {
   return METHOD_STATUS[match] || METHOD_STATUS.default;
 }
 
-/* The rate a method is *worth here*, which is what the estimate ranks on, and
- * the headline beside it where the two differ. A guide quotes a method with
- * its materials to hand; on a chunk map obtaining them is often most of the
- * cost, and showing only the headline is how a familiar figure comes to look
- * wrong. */
+/* The rate a method is *worth here*, which is what the estimate ranks on. A
+ * guide quotes a method with its materials to hand; on a chunk map obtaining
+ * them is often most of the cost, so this is `effective_xp_per_hour` rather
+ * than the headline `xp_per_hour` a guide would print - the two can differ
+ * sharply, and the row shows only the one the estimate actually spends. */
 function methodRate(option) {
   const worth = Math.round(option.effective_xp_per_hour || 0).toLocaleString();
-  const head = Math.round(option.xp_per_hour || 0).toLocaleString();
-  if (Math.abs((option.xp_per_hour || 0) - (option.effective_xp_per_hour || 0)) < 1) {
-    return tmpl`<span class="num">${worth}/hr</span>`;
-  }
-  return tmpl`<span class="num">${worth}/hr</span><span class="sub">was ${head}</span>`;
+  return tmpl`<span class="num">${worth}/hr</span>`;
 }
 
 /* **One row per method, not one per level threshold.** A gathering method's
@@ -4200,6 +4196,37 @@ function groupMethodOptions(options) {
 //: caps at 99, so this is the chart's own constant rather than a value read
 //: off the payload.
 const SKILL_MAX_LEVEL = 99;
+
+/* **The level a method becomes available, not the level its best band
+ * happens to sit at.** `group.best` (`options` is sorted fastest-first) is
+ * whichever band pays the most, and for a curve that only rises - the
+ * "running maximum" `training_bands` builds - that is its *last* band, not
+ * its first: a reader asking "when do I unlock Iron Ore" was answered with
+ * the level its rate peaks at instead. */
+function methodEntryLevel(members) {
+  return Math.min(...members.map((member) => member.level || 1));
+}
+
+/* The rate this method pays across its whole climb, lowest and highest band -
+ * what a single number never showed: an unstated range read as one flat
+ * rate, when a gathering method's may run 15,000 to 54,830 xp/hr from its
+ * first band to its last. */
+function methodRateRange(members) {
+  const rates = members.map((member) => member.effective_xp_per_hour || 0);
+  return { low: Math.min(...rates), high: Math.max(...rates) };
+}
+
+/* `[54,830 xp/hour]` for a method with one band's worth of rate to show,
+ * `[15,000 – 54,830 xp/hour]` for a climb - collapsed to one figure rather
+ * than a zero-width range, since "15,000 – 15,000" repeats itself for no
+ * reader's benefit. */
+function methodRangeLabel(low, high) {
+  const lowText = Math.round(low).toLocaleString();
+  const highText = Math.round(high).toLocaleString();
+  return low >= high
+    ? tmpl`[${highText} xp/hour]`
+    : tmpl`[${lowText} – ${highText} xp/hour]`;
+}
 
 /* **A method's own climb, staircase from its unlock level to 99.** Held flat
  * between two known bands rather than interpolated between them, because a
@@ -4266,6 +4293,153 @@ function methodCurveChart(members, at) {
   return tmpl`<span class="sub">Xp/hr by level — the dot is where you are now</span>` + svg;
 }
 
+/* **Fixed, and reused in the order a method first takes the lead** - not
+ * assigned by hash, which would give two adjacent climbs the same colour on
+ * one skill and a different one on the next for no reason a reader could
+ * ever predict. Eight hues: past that this cycles, which for one skill's
+ * climb has never yet been reached (`test_gui_contract.py`'s reference map
+ * check is the guard if a skill ever needs a ninth). */
+const METHOD_GUIDE_COLOURS = [
+  "#5abeff", "#ffbe00", "#3cc85a", "#dc3c3c",
+  "#b98af0", "#e8853c", "#39c7c7", "#e0574f",
+];
+
+function methodGuideColours() {
+  const assigned = new Map();
+  return (method) => {
+    if (!assigned.has(method)) {
+      assigned.set(method, METHOD_GUIDE_COLOURS[assigned.size % METHOD_GUIDE_COLOURS.length]);
+    }
+    return assigned.get(method);
+  };
+}
+
+/* **The whole 1-99 climb, not one method's own.** `methodCurveChart` above
+ * draws a single method's bands; this draws the *envelope* over every method
+ * the skill can reach at once - whichever pays the most at each level, the
+ * same running-maximum rule `training_bands` already applies within one
+ * method, just carried across all of them. A climb through four methods
+ * reads as four coloured stretches with a hand-off dot between each, rather
+ * than one line nobody could attribute to anything.
+ *
+ * `options` is every `TrainingOption` for the skill, in whatever order the
+ * payload sent them - this makes no assumption about sort order beyond what
+ * `methodEntryLevel`/`methodRateRange` already do not either. */
+function levelingGuideChart(options, at) {
+  const bands = options
+    .map((option) => ({
+      level: Math.max(1, Math.min(SKILL_MAX_LEVEL, option.level || 1)),
+      rate: option.effective_xp_per_hour || 0,
+      method: option.method,
+    }))
+    .filter((band) => band.rate > 0);
+  if (!bands.length) {
+    return tmpl`<p class="empty">Nothing here has a real enough rate to chart.</p>`;
+  }
+
+  // The best band *opening* at each level - several methods can start a band
+  // on the same level, so this is a max, not a last-write-wins.
+  const openingAt = new Map();
+  for (const band of bands) {
+    const current = openingAt.get(band.level);
+    if (!current || band.rate > current.rate) openingAt.set(band.level, band);
+  }
+  const minLevel = Math.min(...openingAt.keys());
+
+  // The running maximum across every method at once, one entry per level -
+  // a slower method already running is never displaced by a faster one that
+  // has not unlocked yet, and the faster one wins the moment it does.
+  const rate = new Array(SKILL_MAX_LEVEL + 1).fill(0);
+  const method = new Array(SKILL_MAX_LEVEL + 1).fill(null);
+  let bestRate = 0;
+  let bestMethod = null;
+  for (let level = minLevel; level <= SKILL_MAX_LEVEL; level++) {
+    const opening = openingAt.get(level);
+    if (opening && opening.rate > bestRate) {
+      bestRate = opening.rate;
+      bestMethod = opening.method;
+    }
+    rate[level] = bestRate;
+    method[level] = bestMethod;
+  }
+
+  const W = 640, H = 220, PAD_L = 10, PAD_R = 10, PAD_T = 10, PAD_B = 26;
+  const span = Math.max(1, SKILL_MAX_LEVEL - minLevel);
+  const peak = Math.max(1, ...rate.slice(minLevel));
+  const x = (level) => PAD_L + ((level - minLevel) / span) * (W - PAD_L - PAD_R);
+  const y = (value) => H - PAD_B - (Math.max(0, value) / peak) * (H - PAD_T - PAD_B);
+  const colourOf = methodGuideColours();
+
+  let svg = tmpl`<svg class="method-guide" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"
+    role="img" aria-label="Optimised xp an hour, level ${String(minLevel)} to ${String(SKILL_MAX_LEVEL)}">`;
+  svg += tmpl`<line class="method-curve-axis" x1="${PAD_L}" y1="${(H - PAD_B).toFixed(1)}"
+    x2="${W - PAD_R}" y2="${(H - PAD_B).toFixed(1)}"/>`;
+
+  // **One `<path>` per coloured stretch**, since a single path cannot be
+  // stroked in more than one colour. Held flat within a method's own bands
+  // (the same staircase `methodCurveChart` draws) and cut wherever the
+  // leading method changes, which is also where a hand-off dot goes.
+  let segStart = minLevel;
+  let path = `M ${x(minLevel).toFixed(1)} ${y(rate[minLevel]).toFixed(1)}`;
+  const flush = () => {
+    svg += tmpl`<path class="method-guide-line" style="stroke:${colourOf(method[segStart])}" d="${path}"/>`;
+  };
+  for (let level = minLevel + 1; level <= SKILL_MAX_LEVEL; level++) {
+    if (method[level] !== method[level - 1]) {
+      path += ` L ${x(level).toFixed(1)} ${y(rate[level - 1]).toFixed(1)}`;
+      flush();
+      path = `M ${x(level).toFixed(1)} ${y(rate[level - 1]).toFixed(1)}`;
+      segStart = level;
+    }
+    path += ` L ${x(level).toFixed(1)} ${y(rate[level]).toFixed(1)}`;
+  }
+  flush();
+
+  // **A datum at every hand-off**, not at every one of the (often many)
+  // bands underneath the envelope - "a point at each method" reads as where
+  // the climb actually switches what it is doing, not a dot for a band a
+  // slower method already buried.
+  for (let level = minLevel; level <= SKILL_MAX_LEVEL; level++) {
+    if (level === minLevel || method[level] !== method[level - 1]) {
+      svg += tmpl`<circle class="method-guide-pt" style="fill:${colourOf(method[level])}"
+        cx="${x(level).toFixed(1)}" cy="${y(rate[level]).toFixed(1)}" r="3.5"/>`;
+    }
+  }
+
+  // Labelled every ten levels plus both ends, deduplicated against whichever
+  // of those the start already lands on or near.
+  const marks = new Set([minLevel, SKILL_MAX_LEVEL]);
+  for (let level = 10; level < SKILL_MAX_LEVEL; level += 10) {
+    if (level > minLevel) marks.add(level);
+  }
+  for (const level of marks) {
+    svg += tmpl`<text class="method-curve-label" x="${x(level).toFixed(1)}" y="${H - 6}"
+      text-anchor="middle">${String(level)}</text>`;
+  }
+
+  // **The one level the reader actually came to find.** A vertical guide the
+  // full height of the plot, plus a bigger marker on the line itself, so
+  // "where am I on this" does not need hunting along the axis for the number.
+  if (at >= minLevel && at <= SKILL_MAX_LEVEL) {
+    const atX = x(at).toFixed(1);
+    svg += tmpl`<line class="method-guide-now" x1="${atX}" y1="${PAD_T}" x2="${atX}" y2="${(H - PAD_B).toFixed(1)}"/>`;
+    svg += tmpl`<circle class="method-guide-now-pt" cx="${atX}" cy="${y(rate[at]).toFixed(1)}" r="5"/>`;
+  }
+  svg += "</svg>";
+
+  // A legend names what colour alone cannot - one swatch per method that
+  // actually leads at some level, in the order it first takes over.
+  const seen = [];
+  for (let level = minLevel; level <= SKILL_MAX_LEVEL; level++) {
+    if (method[level] && !seen.includes(method[level])) seen.push(method[level]);
+  }
+  const legend = seen.map((name) => tmpl`<span><i class="sw" style="background:${colourOf(name)}"></i>
+    ${titleCase(plain(name))}</span>`).join("");
+
+  return tmpl`<div class="method-guide-wrap">${raw(svg)}
+    <div class="method-guide-legend">${raw(legend)}</div></div>`;
+}
+
 async function showMethods(trail) {
   openOverlay(METHODS_TITLE, tmpl`<p class="empty">Ranking what this map can train…</p>`,
     "", { trail });
@@ -4329,8 +4503,16 @@ async function showSkillMethods(skill, trail) {
   // hint above the list: how many distinct things you could actually go and
   // do, not how many level bands the export happens to sample them at.
   const groups = groupMethodOptions(options);
+  // **A toggle, not a second dialog** - the guide answers the same question
+  // ("how does this skill actually climb") as the list below it, just drawn
+  // rather than read, so it opens in place instead of costing a fresh trip
+  // through the trail.
+  let guideOpen = false;
   const render = () => {
-    let out = tmpl`<p class="hint">${String(groups.length)} method${groups.length === 1 ? "" : "s"}
+    let out = tmpl`<button class="method-guide-toggle" type="button">${
+      guideOpen ? "Hide levelling guide" : "Show levelling guide"}</button>`;
+    if (guideOpen) out += levelingGuideChart(options, at);
+    out += tmpl`<p class="hint">${String(groups.length)} method${groups.length === 1 ? "" : "s"}
       this map can reach, best first, at ${skill} ${String(at)}. A method above that
       level is marked — it is what the climb is working towards rather than
       what it can do today. One priced off a real recipe opens for its own
@@ -4338,7 +4520,8 @@ async function showSkillMethods(skill, trail) {
     out += withMore(groups, "methods:" + skill, 15, (group) => {
       const option = group.best;
       const [status, why] = methodStatus(option.match);
-      const locked = option.level && option.level > at;
+      const entryLevel = methodEntryLevel(group.members);
+      const locked = entryLevel > at;
       /* **Only a recipe has a chain to open.** Every other source - a
        * scraped guide, GOTR, a spell, a computed method - prices its own
        * materials its own way with no `Recipe.materials` behind it; see
@@ -4348,9 +4531,10 @@ async function showSkillMethods(skill, trail) {
        * round-trip back to one. */
       const traceable = option.source === "recipe" && option.task;
       const chart = methodCurveChart(group.members, at);
+      const { low, high } = methodRateRange(group.members);
       const tip = tmpl`<b>${titleCase(plain(option.method))}</b><span class="sub">${status} — ${why}</span>`
         + (option.source ? tmpl`<span class="sub">${option.source}</span>` : "")
-        + (locked ? tmpl`<span class="hint">Needs ${skill} ${String(option.level)}</span>` : "")
+        + (locked ? tmpl`<span class="hint">Needs ${skill} ${String(entryLevel)}</span>` : "")
         + (traceable ? tmpl`<span class="hint">Click for its material chain</span>` : "")
         + chart;
       /* **Every row carries the same attributes, valued empty where they do
@@ -4364,9 +4548,8 @@ async function showSkillMethods(skill, trail) {
         role="${traceable ? "button" : ""}" tabindex="${traceable ? "0" : "-1"}"
         data-task="${traceable ? option.task : ""}" data-tip="${tip}">
         <span class="name">${titleCase(plain(option.method))}</span>
-        <span class="sub">${option.level ? "lvl " + option.level : ""}${
-          group.members.length > 1 ? ` · ${group.members.length} levels` : ""}</span>
-        ${raw(methodRate(option))}</li>`;
+        <span class="sub">Level ${String(entryLevel)}</span>
+        <span class="num">${raw(methodRangeLabel(low, high))}</span></li>`;
     });
     return out + "</ul>";
   };
@@ -4376,6 +4559,14 @@ async function showSkillMethods(skill, trail) {
    * reason `showMethods`' skill rows are wired once because that dialog
    * never redraws underneath itself, and this one does. */
   const wire = () => {
+    const toggle = el["overlay-body"].querySelector(".method-guide-toggle");
+    if (toggle) {
+      toggle.onclick = () => {
+        guideOpen = !guideOpen;
+        el["overlay-body"].innerHTML = render();
+        wire();
+      };
+    }
     for (const row of el["overlay-body"].querySelectorAll("[data-task]")) {
       if (!row.dataset.task) continue;
       const open = () => showMethodTrace(skill, row.dataset.task,
