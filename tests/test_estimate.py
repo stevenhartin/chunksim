@@ -128,16 +128,18 @@ def _walk_with_chunks(
     info: ChunkInfo,
     unlocked_chunks: frozenset[str],
     reachable_sections: dict[str, dict[str, bool]] | None = None,
+    heuristics: Heuristics | None = None,
 ) -> Any:
-    """A `_Walk` with a *specific* unlocked-chunk/reachable-section set,
-    for exercising `_location_reachable` itself rather than bypassing it."""
+    """A `_Walk` with a *specific* unlocked-chunk/reachable-section set, for
+    exercising `_location_reachable`/`_shop_reachable` rather than bypassing
+    them."""
     from chunksim.costing.estimate import _Walk
 
     world = build_world_index(info)
     return _Walk(
         chunk_info=info,
         world=world,
-        heuristics=Heuristics(),
+        heuristics=heuristics or Heuristics(),
         by_lower={item.lower(): item for item in world.item_sources},
         reachable_items=frozenset(world.item_sources),
         unlocked_chunks=unlocked_chunks,
@@ -2090,6 +2092,106 @@ def test_a_zero_stock_shop_line_has_no_route_either() -> None:
     walk = _walk_for(info, heuristics)
 
     assert _item_hours(walk, "Uncut diamond", quantity=1.0) is None
+
+
+def _tzhaar_gem_store_info() -> ChunkInfo:
+    return ChunkInfo(
+        {
+            "chunks": {
+                "9834": {
+                    "Sections": {
+                        "1": {"Shop": {"TzHaar-Hur-Rin's Ore and Gem Store": True}}
+                    }
+                },
+            },
+            "shopItems": {
+                "TzHaar-Hur-Rin's Ore and Gem Store": {"Uncut ruby": True}
+            },
+            "challenges": {
+                "Extra": {"Obtain an ~|uncut ruby|~": {"Items": ["Uncut ruby"]}}
+            },
+        }
+    )
+
+
+def _tzhaar_gem_store_heuristics() -> Heuristics:
+    return Heuristics(
+        shop_prices={
+            "TzHaar-Hur-Rin's Ore and Gem Store": {
+                "Uncut ruby": ShopPrice(
+                    price=130.0, currency="Tokkul", stock=8, restock_seconds=300.0
+                )
+            }
+        }
+    )
+
+
+def test_a_shop_in_a_chunk_this_map_never_opened_is_refused() -> None:
+    """**The follow-up bug to the spawn one**: TzHaar-Hur-Rin's Ore and Gem
+    Store priced an uncut ruby as cheap and plentiful once the spawn fix
+    stopped masking it, on a map that had never opened the chunk the shop
+    itself stands in - the same item-level-only gap `_location_reachable`
+    closed for spawns, just not yet for shops."""
+    info = _tzhaar_gem_store_info()
+    walk = _walk_with_chunks(
+        info, unlocked_chunks=frozenset(), heuristics=_tzhaar_gem_store_heuristics()
+    )
+
+    assert _item_hours(walk, "Uncut ruby", quantity=1.0) is None
+
+
+def test_a_shop_in_an_unopened_section_of_an_unlocked_chunk_is_refused() -> None:
+    """The chunk alone is not enough - the shop sits in section `1`, and
+    unlocking the chunk only opens section `0` for free."""
+    info = _tzhaar_gem_store_info()
+    walk = _walk_with_chunks(
+        info,
+        unlocked_chunks=frozenset({"9834"}),
+        heuristics=_tzhaar_gem_store_heuristics(),
+    )
+
+    assert _item_hours(walk, "Uncut ruby", quantity=1.0) is None
+
+
+def test_a_shop_in_a_reachable_section_is_priced() -> None:
+    """The positive case: once the section the shop stands in is reachable,
+    the route prices exactly as it would with no chunk gate at all."""
+    info = _tzhaar_gem_store_info()
+    walk = _walk_with_chunks(
+        info,
+        unlocked_chunks=frozenset({"9834"}),
+        reachable_sections={"9834": {"1": True}},
+        heuristics=_tzhaar_gem_store_heuristics(),
+    )
+
+    assert _item_hours(walk, "Uncut ruby", quantity=1.0) is not None
+
+
+def test_a_shop_with_no_stated_chunk_at_all_is_not_gated() -> None:
+    """`derive.search.HAND_SHOP_SOURCES` exists for a shop the export never
+    places in any chunk at all (Malignius Mortifer) - an empty location set
+    means "nothing to check", not "unreachable", so this must stay priced."""
+    info = ChunkInfo(
+        {
+            "shopItems": {"Malignius Mortifer": {"Magic secateurs": True}},
+            "challenges": {
+                "Extra": {
+                    "Obtain a ~|magic secateurs|~": {"Items": ["Magic secateurs"]}
+                }
+            },
+        }
+    )
+    heuristics = Heuristics(
+        shop_prices={
+            "Malignius Mortifer": {
+                "Magic secateurs": ShopPrice(price=40_000.0, currency="Coins")
+            }
+        },
+        currency_per_hour={"Coins": 500_000.0},
+    )
+    walk = _walk_with_chunks(info, unlocked_chunks=frozenset(), heuristics=heuristics)
+
+    assert _item_hours(walk, "Magic secateurs", quantity=1.0) is not None
 
 
 def test_a_ground_spawn_is_cheap_but_not_free() -> None:

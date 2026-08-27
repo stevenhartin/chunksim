@@ -470,6 +470,23 @@ def _location_reachable(walk: _Walk, location: str) -> bool:
     return bool(walk.reachable_sections.get(chunk, {}).get(section))
 
 
+def _shop_reachable(walk: _Walk, shop: str) -> bool:
+    """Whether `shop` stands in a chunk-or-chunk-section this map has opened.
+
+    `WorldIndex.locations["Shop"]` is built off the same per-chunk `Shop`
+    blocks `_location_reachable` reads for `Spawn`, so a shop is reachable
+    the same way a spawn is: at least one of its locations open. **A shop
+    with no location at all is not gated** - `derive.search.HAND_SHOP_SOURCES`
+    exists precisely for a shop the export never states exists in any chunk
+    (Malignius Mortifer, for the one hand-added Magic secateurs route), so an
+    empty location set means "nothing to check against", not "unreachable".
+    """
+    locations = walk.world.locations.get("Shop", {}).get(shop)
+    if not locations:
+        return True
+    return any(_location_reachable(walk, location) for location in locations)
+
+
 def _spawn_block(chunk_info: ChunkInfo, location: str) -> Mapping[str, Any]:
     """The `Spawn` table at a chunk-or-chunk-section location.
 
@@ -1856,6 +1873,15 @@ def _route_hours(
         # than a free one.
         seconds = walk.heuristics.shop_seconds(provider, item)
         if seconds is None:
+            return None
+        # **The item-level gate above is not enough for a shop either** - the
+        # same gap `_location_reachable` closed for spawns. TzHaar-Hur-Rin's
+        # Ore and Gem Store priced an uncut ruby as cheap and plentiful on a
+        # map that had never opened the chunk it actually stands in, because
+        # `reachable_lower` only asks whether an uncut ruby exists reachable
+        # *somewhere* - true regardless, once the spawn fix above stopped
+        # masking it. See `_shop_reachable`.
+        if not _shop_reachable(walk, provider):
             return None
         stock, restock_seconds = walk.heuristics.shop_limits(provider, item)
         # **A restock this slow is a contested resource, not a rate.** Six
