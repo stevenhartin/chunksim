@@ -806,10 +806,11 @@ ul.list li:last-child { border-bottom: 0; }
 ul.list li[data-tip]:hover,
 ul.list li:has(button:hover) { background: rgba(255, 255, 255, .04); }
 
-/* The drill-down side panel's own rows: a material with nothing further to
-   trace is inert text, one with its own materials opens the next level. */
-ul.list li[data-child] { cursor: pointer; }
-ul.list li[data-child]:hover { background: rgba(255, 255, 255, .04); }
+/* The drill-down side panel's own rows: every material opens the centre
+   panel's "Show sources" for it, so every row is a door, not just the ones
+   this map happens to make from something else. */
+#drill-body ul.list li { cursor: pointer; }
+#drill-body ul.list li:hover { background: rgba(255, 255, 255, .04); }
 
 ul.list .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 

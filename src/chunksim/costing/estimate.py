@@ -1547,7 +1547,7 @@ def _best_route(
         won_fact: _KillFact | None = None
         won_master = ""
         for fact in facts:
-            hours, master, _key = _fact_hours(fact, quantity)
+            hours, master, _key = _fact_hours(fact, quantity, amortise)
             if hours < best_hours:
                 best_hours, best_at = hours, fact.at
                 won_fact, won_master = fact, master
@@ -1561,7 +1561,7 @@ def _best_route(
                 won_fact = None
                 held = (priced, at)
         if won_fact is not None:
-            held = (_fact_priced(won_fact, quantity, won_master), best_at)
+            held = (_fact_priced(won_fact, quantity, won_master, amortise), best_at)
         walk.leaf_routes[key] = held
     best: _Priced | None
     if held is not None:
@@ -2505,7 +2505,7 @@ def _route_hours(
             tuple(inputs) if trace else (),
         )
 
-    return _kill_hours(walk, provider, item, quantity)
+    return _kill_hours(walk, provider, item, quantity, amortise)
 
 
 class _KillFact:
@@ -2649,15 +2649,24 @@ def _kill_facts(
     return tuple(facts), tuple(live)
 
 
-def _fact_hours(fact: _KillFact, quantity: float) -> tuple[float, str, str]:
+def _fact_hours(
+    fact: _KillFact, quantity: float, amortise: bool = False
+) -> tuple[float, str, str]:
     """A fact's hours at `quantity`, and the winning master where gated.
 
     **The hot half**: pure arithmetic, no strings, no allocation - it runs
     once per fact per question and almost every result loses the min. The
     operations reproduce `_kill_hours`' exactly, floats and all, so a tie
-    against a live route resolves the same way it always did.
+    against a live route resolves the same way it always did - `amortise`
+    included, since a fact this misses is a fact `_best_route` would then
+    lose to whatever `_route_hours`' own, correctly-amortised call to
+    `_kill_hours` computed for a *live* route, the same shape of bug the
+    Find panel's drill-down surfaced: `Diamond amulet`'s cheapest real route
+    is a Magpie impling at 1/21 with a 3-drop stack, amortised to 168s, but
+    an unamortised fact read 504s and lost to a 395s recipe chain that was
+    never actually the fastest thing on the map.
     """
-    kills = max(1 / fact.chance, quantity / fact.per_kill)
+    kills = quantity / fact.per_kill if amortise else max(1 / fact.chance, quantity / fact.per_kill)
     if fact.task is None:
         return kills / fact.kph, "", ""
     hours = math.inf
@@ -2671,18 +2680,22 @@ def _fact_hours(fact: _KillFact, quantity: float) -> tuple[float, str, str]:
     return hours, won, key
 
 
-def _fact_priced(fact: _KillFact, quantity: float, master: str) -> _Priced:
+def _fact_priced(
+    fact: _KillFact, quantity: float, master: str, amortise: bool = False
+) -> _Priced:
     """The winner's `_Priced`, strings and knobs exactly as `_kill_hours`
     builds them - only ever called for the route that won the min."""
-    kills = max(1 / fact.chance, quantity / fact.per_kill)
+    kills = quantity / fact.per_kill if amortise else max(1 / fact.chance, quantity / fact.per_kill)
     detail = f"{fact.provider} at 1/{1 / fact.chance:,.0f}, {fact.kph:g}/hr"
-    if kills > 1 / fact.chance:
+    if amortise and fact.per_kill > fact.chance:
+        detail = f"{fact.provider}: {fact.per_kill / fact.chance:,.1f}/drop at 1/{1 / fact.chance:,.0f}, {fact.kph:g}/hr"
+    elif kills > 1 / fact.chance:
         detail = f"{fact.provider} x{kills:,.0f} kills, {fact.kph:g}/hr"
     if fact.task is None:
         return _Priced(
             kills / fact.kph, detail, fact.provider, (_provider_knob(fact.provider),)
         )
-    hours, _, key = _fact_hours(fact, quantity)
+    hours, _, key = _fact_hours(fact, quantity, amortise)
     # **The winning master's own key, not the gate's name** - see
     # `slayer.MasterRate.key_for`. `Konar quo Maten` keys by location, so
     # `wait/Konar quo Maten/Hydras` names nothing and the dialog it opens

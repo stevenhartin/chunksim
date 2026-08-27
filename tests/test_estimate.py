@@ -2652,6 +2652,35 @@ class TestItemRoutes:
         assert item_routes(walk, "Nothing at all") == ()
 
 
+def test_best_route_amortises_a_stacked_kill_drop_through_the_fact_cache() -> None:
+    """**`_kill_facts`/`_fact_hours` is a hot-path duplicate of `_kill_hours`,
+    and it had drifted.** `item_routes` prices a "kill" row by calling
+    `_kill_hours` directly and got the amortise fix; `_best_route` - what
+    `chunksim estimate` and every nested production-chain material actually
+    spend - prices the *same* kill route through `_fact_hours` instead,
+    which kept flooring every kill at `1/chance` regardless of `amortise`.
+    A stacked drop then priced far slower than it really supplies the item,
+    and a "make" chain built from slower, unstacked ingredients could look
+    cheaper than a kill route that was actually faster - exactly what the
+    Find panel's drill-down surfaced for `Diamond amulet`: `_best_route`
+    picked a 395s sawmill-style chain over a genuine 168s Magpie impling
+    kill because the impling's own stacked drop was never amortised in this
+    path, only in `item_routes`' independent one."""
+    import dataclasses
+
+    info = ChunkInfo({"drops": {"Goblin": {"Widget": {"3": "1/10"}}}})
+    heuristics = Heuristics(monsters={"Goblin": Rate(100.0, "test", "exact")})
+    walk = dataclasses.replace(_walk_for(info, heuristics), available=frozenset({"Goblin"}))
+
+    priced = _item_hours(walk, "Widget", quantity=1.0, amortise=True)
+
+    assert priced is not None
+    # 1/10 chance, stack of 3: expected yield 0.3/kill, so 1/0.3 kills per
+    # widget at 100/hr - not the 10-kill `1/chance` floor.
+    assert priced.hours == pytest.approx((1 / 0.3) / 100.0)
+    assert priced.hours < (10 / 100.0)
+
+
 class TestPricedCandidate:
     """`priced_candidate` is the Find panel's drill-down side panel: one
     `item_routes` "make"/"recipe" row, re-priced with its own materials kept

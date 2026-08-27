@@ -351,11 +351,13 @@
        answers "what does the one I clicked need", a different question a
        reader can want beside the first rather than instead of it. `hidden`
        independently of `#overlay`'s own `.sheet` - see `closeDrillPanel` and
-       `openOverlay`'s own reset of it - and never dismissed by the backdrop
-       or Escape on its own, only alongside whatever it was opened from. -->
+       `openOverlay`'s own `keepDrill` - and never dismissed by the backdrop
+       or Escape on its own, only alongside whatever it was opened from.
+       No breadcrumb of its own: clicking a material here reopens the centre
+       panel for it instead of drilling deeper in place, so *that* panel's
+       own trail is where "how did I get here" lives. -->
   <div class="sheet sheet-side" id="drill-sheet" hidden role="dialog" aria-modal="true" aria-labelledby="drill-title">
     <header>
-      <nav id="drill-trail" class="trail" hidden></nav>
       <h2 id="drill-title"></h2>
       <span class="spacer"></span>
       <button id="drill-close" class="icon-btn" type="button" aria-label="Close">
