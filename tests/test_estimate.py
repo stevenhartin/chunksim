@@ -34,6 +34,7 @@ from chunksim.costing.levels import (
     task_gated_monsters,
 )
 from chunksim.remote.stores import ShopPrice
+from chunksim.remote.combat import MonsterStats
 from chunksim.costing.heuristics import (
     DEFAULT_XP_PER_HOUR,
     Heuristics,
@@ -1672,6 +1673,64 @@ def test_an_object_can_provide_an_item() -> None:
 
     assert result.unpriced == ()
     assert result.items[0].source == "Larran's big chest"
+
+
+def test_larrans_chest_prices_off_krystilias_key_rate_not_the_default() -> None:
+    """Neither chest has a stat block, so without `costing/larran.py`'s
+    injection this priced identically to `test_an_object_can_provide_an_item`
+    above - `DEFAULT_KPH["regular"]`, 150/hr, as though the chest opened on
+    demand. With one Krystilia task feeding a real key rate, it must not."""
+    info = ChunkInfo(
+        {
+            "skillItems": {"Nonskill": {"Larran's small chest": {"Uncut ruby": {"1": "1/12"}}}},
+            "challenges": {
+                "Extra": {"Obtain an ~|uncut ruby|~": {"Items": ["Uncut ruby"]}}
+            },
+            "slayerMasterTasks": {"Krystilia": {"Cows": {"Weight": 1}}},
+            "codeItems": {"slayerTasks": {"Cows": {"Cow": True}}},
+        }
+    )
+    derived = Derived(
+        reachable_sections={},
+        expanded_chunks={"100": True},
+        source_index=SourceIndex(
+            items={},
+            objects={"Larran's small chest": {"100": True}},
+            monsters={"Cow": {"100": True}},
+            npcs={"Krystilia": {"100": True}},
+            shops={},
+            drop_rates={},
+        ),
+        challenges=ChallengeResult(valid={}, unsupported=frozenset()),
+        bis=BisResult(picks={}),
+        task_classification=TaskClassification(),
+        other_tasks=OtherTasks(
+            categories={
+                "Extra": CategoryTasks(
+                    category="Extra",
+                    groups=(TaskGroup(name="Extra", active=("Obtain an ~|uncut ruby|~",)),),
+                )
+            }
+        ),
+    )
+    heuristics = Heuristics(
+        slayer={
+            "Krystilia": {
+                "Cows": SlayerTask(mean_count=10.0, xp_per_kill=1.0, kills_per_hour=100.0)
+            }
+        },
+        monster_stats={"Cow": MonsterStats(name="Cow", hitpoints=8, combat_level=2)},
+    )
+
+    result = _run(info, derived, heuristics)
+
+    (ruby,) = [item for item in result.items if item.item == "Uncut ruby"]
+    # `DEFAULT_KPH["regular"]` (150/hr) is what an unpriced chest falls back
+    # to - one open in 1/12 chance of a ruby is 12 opens, so 12/150 hours.
+    # The real number must not land there: this map's one Krystilia task
+    # earns keys far slower than an ordinary "kill" defaults to.
+    default_hours = 12.0 / 150.0
+    assert ruby.hours != pytest.approx(default_hours)
 
 
 def test_a_task_wanting_a_kill_rather_than_an_item_is_priced_as_one_kill() -> None:

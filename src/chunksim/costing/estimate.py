@@ -244,7 +244,7 @@ from chunksim.costing.combat_xp import (
     hitpoints_credit,
     slayer_credit,
 )
-from chunksim.costing import gathering, herbs, lootsack, recipe_rates, valeoffering, yields
+from chunksim.costing import gathering, herbs, larran, lootsack, recipe_rates, valeoffering, yields
 from chunksim.costing import barrows, colosseum, gauntlet, instanced, moons, raids, tempoross, tzhaar, wintertodt
 from chunksim.remote.recipes import Recipe
 from chunksim.costing.farming import (
@@ -3026,6 +3026,15 @@ def _setup(
         )
     )
     slayer_rate = best_master(list(reachable_rates))
+    # **Larran's small and big chests, opens per hour rather than
+    # `DEFAULT_KPH`.** Neither chest has a stat block, so without this
+    # `heuristics.kills_per_hour` fell through to 150/hr and priced an uncut
+    # ruby or a rune platebody as though the chest opened on demand. A key is
+    # the whole cost, and Krystilia's Wilderness Slayer tasks are the only
+    # way to earn one - see `costing/larran.py`. A no-op wherever she cannot
+    # be reached at all (`krystilia is None`).
+    krystilia = next((rate for rate in reachable_rates if rate.master == "Krystilia"), None)
+    heuristics = larran.priced(heuristics, krystilia, state.chunk_info, reachable)
     # The same end-of-chunk levels for task-gated drops. Grotesque Guardians
     # need a gargoyle task, which needs Slayer 75; at today's level that task
     # is unassignable and the drop would read as unobtainable forever. It

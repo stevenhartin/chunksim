@@ -2233,6 +2233,7 @@ def load(
                 name=name,
                 hitpoints=_float(entry.get("hitpoints"), 0.0),
                 experience_bonus=_float(entry.get("experience_bonus"), 0.0),
+                combat_level=_float(entry.get("combat_level"), 0.0),
             )
             for name, entry in _entries(config, "monster_stats")
         },

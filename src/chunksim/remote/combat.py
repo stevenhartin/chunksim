@@ -16,6 +16,11 @@ Two wiki sources, both cheap:
   a non-zero one (Mithril dragon +5%, King Black Dragon +7.5%, Khazard warlord
   **-75%**). Only those are kept: a stored zero for the other thousand would be
   a thousand rows saying nothing.
+- **The same query's `combat_level`**, added for `costing/larran.py`'s own
+  need rather than this module's: Larran's key drop chance is a function of
+  the killed monster's combat level, and this is the one table both this
+  project and `costing/larran.py` already read for the same monster names.
+  Checked live: Abyssal demon reads `124`, matching the wiki's own infobox.
 - **The three spellbook pages**, for Magic. A cast pays base xp *whether or not
   it hits*, and on the numbers that dominates: Fire Surge is 50.5 xp a cast
   against roughly 24 xp of damage, so getting the spell wrong is worse than
@@ -78,23 +83,36 @@ _MAX_HIT_HEADERS: tuple[str, ...] = ("max hit", "maximum magic hit")
 
 @dataclass(frozen=True)
 class MonsterStats:
-    """One monster's hitpoints, and its experience multiplier if it has one.
+    """One monster's hitpoints, its experience multiplier if it has one, and
+    its combat level if the wiki states one.
 
     `experience_bonus` is a percentage as the wiki writes it: `5` means 5%
     more experience per point of damage, `-75` means a quarter of the usual.
     Zero is the overwhelming common case and is not stored.
+
+    `combat_level` is `0.0` for a monster the wiki does not state one for -
+    a fair few `infobox_monster` rows carry hitpoints but not a level - and a
+    reader (`costing/larran.py`) must treat that as *unknown*, not "level
+    zero", the same rule `remote/stores.py`'s `ShopPrice.stock` follows.
     """
 
     name: str
     hitpoints: float
     experience_bonus: float = 0.0
+    combat_level: float = 0.0
 
     @property
     def xp_multiplier(self) -> float:
         return 1.0 + self.experience_bonus / 100.0
 
     def as_dict(self) -> dict[str, Any]:
-        return {"hitpoints": self.hitpoints, "experience_bonus": self.experience_bonus}
+        result: dict[str, Any] = {
+            "hitpoints": self.hitpoints,
+            "experience_bonus": self.experience_bonus,
+        }
+        if self.combat_level > 0:
+            result["combat_level"] = self.combat_level
+        return result
 
 
 @dataclass(frozen=True)
@@ -155,10 +173,10 @@ _COST_ENTRY = re.compile(r"(?:<sup>(\d+)</sup>\s*)?\[\[File:[^\]]*?link=([^\]|]+
 
 
 def monster_query(limit: int = 5000) -> str:
-    """The Bucket query for every monster's hitpoints and xp bonus."""
+    """The Bucket query for every monster's hitpoints, xp bonus and combat level."""
     return (
         "bucket('infobox_monster')"
-        ".select('name','hitpoints','experience_bonus')"
+        ".select('name','hitpoints','experience_bonus','combat_level')"
         f".limit({limit}).run()"
     )
 
@@ -182,12 +200,20 @@ def parse_monster_stats(bucket_rows: Sequence[Mapping[str, Any]]) -> dict[str, M
         if hitpoints <= 0 or name in found:
             continue
         bonus = row.get("experience_bonus")
+        level = row.get("combat_level")
         found[name] = MonsterStats(
             name=name,
             hitpoints=float(hitpoints),
             experience_bonus=(
                 float(bonus)
                 if isinstance(bonus, (int, float)) and not isinstance(bonus, bool)
+                else 0.0
+            ),
+            combat_level=(
+                float(level)
+                if isinstance(level, (int, float))
+                and not isinstance(level, bool)
+                and level > 0
                 else 0.0
             ),
         )

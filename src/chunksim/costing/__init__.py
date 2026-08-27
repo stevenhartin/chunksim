@@ -891,6 +891,18 @@ Thieving at 84,560 flat against 1,005 at level 1. See `_modelled_tasks`.
   `drops` tables rather than guessed, and `effective_seconds` **optimises**
   over every candidate the same way `skotizo.totem_seconds` does, plus one
   default action to open the chest with the key in hand.
+- `larran.py` - the same shape of gap as `keyed_chests.py`, for Larran's
+  small and big chests, except the key's own rate is not a fixed drop
+  fraction: "Wilderness Slayer tasks from Krystilia" is the only source, so
+  `keys_per_hour` runs her whole `slayer.MasterRate` through the wiki's own
+  published combat-level formula, its +20% Slayer-monster bonus
+  (`chunk_info.slayer_monsters`' own list) and a superior's guaranteed key
+  (`slayer.superior_spawns_per_hour`). The Wilderness Slayer Cave's further
+  +15% is the one deliberately unmodelled piece - nothing here can say which
+  of a task's locations counts as that specific sub-area - so the rate is a
+  stated underestimate rather than a guess. Wired in `estimate.py` directly
+  rather than through `dps_bridge._apply_gated_bosses`, because Krystilia's
+  economy needs no DPS simulation to exist at all.
 - `giant_mole.py` - her own drop table is already in the export; the fix is
   the published burrow mechanic ("every attack... has a 25% chance of
   causing her to burrow", between 50% and 5% health). Two guessed

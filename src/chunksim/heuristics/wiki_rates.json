@@ -1,6 +1,6 @@
 {
   "name": "wiki_rates",
-  "fetched_at": "2026-08-27T10:48:41.115070+00:00",
+  "fetched_at": "2026-08-27T12:35:52.081885+00:00",
   "source": "https://oldschool.runescape.wiki/api.php",
   "data": {
     "quests": {
@@ -9387,759 +9387,948 @@
     "monster_stats": {
       "A Doubt": {
         "hitpoints": 59.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 78.0
       },
       "Aberrant spectre": {
         "hitpoints": 90.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 96.0
       },
       "Abhorrent spectre": {
         "hitpoints": 250.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 253.0
       },
       "Abyssal Sire": {
         "hitpoints": 425.0,
-        "experience_bonus": 12.5
+        "experience_bonus": 12.5,
+        "combat_level": 350.0
       },
       "Abyssal demon": {
         "hitpoints": 150.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 124.0
       },
       "Abyssal guardian": {
         "hitpoints": 50.0,
-        "experience_bonus": -75.0
+        "experience_bonus": -75.0,
+        "combat_level": 59.0
       },
       "Abyssal leech": {
         "hitpoints": 10.0,
-        "experience_bonus": -75.0
+        "experience_bonus": -75.0,
+        "combat_level": 41.0
       },
       "Abyssal walker": {
         "hitpoints": 95.0,
-        "experience_bonus": -75.0
+        "experience_bonus": -75.0,
+        "combat_level": 81.0
       },
       "Adamant dragon": {
         "hitpoints": 295.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 338.0
       },
       "Afflicted": {
         "hitpoints": 24.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 30.0
       },
       "Agrith Naar": {
         "hitpoints": 95.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 100.0
       },
       "Agrith-Na-Na": {
         "hitpoints": 200.0,
-        "experience_bonus": 12.5
+        "experience_bonus": 12.5,
+        "combat_level": 146.0
       },
       "Ahrim the Blighted": {
         "hitpoints": 100.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 98.0
       },
       "Air elemental": {
         "hitpoints": 30.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 34.0
       },
       "Air wizard": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 13.0
       },
       "Albatross": {
         "hitpoints": 135.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 110.0
       },
       "Albino bat": {
         "hitpoints": 33.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 52.0
       },
       "Alchemical Hydra": {
         "hitpoints": 1100.0,
-        "experience_bonus": 20.0
+        "experience_bonus": 20.0,
+        "combat_level": 426.0
       },
       "Alexis": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Alomone": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 13.0
       },
       "Ammonite Crab": {
         "hitpoints": 100.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 25.0
       },
       "Amoxliatl": {
         "hitpoints": 400.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 226.0
       },
       "Ancient Wizard": {
         "hitpoints": 80.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 98.0
       },
       "Ancient Wyvern": {
         "hitpoints": 300.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 210.0
       },
       "Ancient Zygomite": {
         "hitpoints": 150.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 109.0
       },
       "Ancient feral vyre": {
         "hitpoints": 81.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 117.0
       },
       "Angry barbarian spirit": {
         "hitpoints": 190.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 166.0
       },
       "Angry giant rat": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 47.0
       },
       "Animated Adamant Armour": {
         "hitpoints": 99.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 113.0
       },
       "Animated Black Armour": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 69.0
       },
       "Animated Bronze Armour": {
         "hitpoints": 10.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 11.0
       },
       "Animated Iron Armour": {
         "hitpoints": 20.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 23.0
       },
       "Animated Mithril Armour": {
         "hitpoints": 80.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 92.0
       },
       "Animated Rune Armour": {
         "hitpoints": 120.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 138.0
       },
       "Animated Steel Armour": {
         "hitpoints": 40.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 46.0
       },
       "Animated spade": {
         "hitpoints": 40.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 50.0
       },
       "Anja": {
         "hitpoints": 7.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 2.0
       },
       "Ankou": {
         "hitpoints": 70.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 86.0
       },
       "Aquanite": {
         "hitpoints": 180.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 145.0
       },
       "Araxxor": {
         "hitpoints": 1020.0,
-        "experience_bonus": 67.5
+        "experience_bonus": 67.5,
+        "combat_level": 890.0
       },
       "Armadylean guard": {
         "hitpoints": 132.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 97.0
       },
       "Armoured kraken": {
         "hitpoints": 231.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 180.0
       },
       "Arrg": {
         "hitpoints": 140.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 113.0
       },
       "Artio": {
         "hitpoints": 450.0,
-        "experience_bonus": 15.0
+        "experience_bonus": 15.0,
+        "combat_level": 320.0
       },
       "Asyn Shade": {
         "hitpoints": 90.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 100.0
       },
       "Aviansie": {
         "hitpoints": 86.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 84.0
       },
       "Baby Roc": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 75.0
       },
       "Baby black dragon": {
         "hitpoints": 80.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 83.0
       },
       "Baby blue dragon": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 48.0
       },
       "Baby green dragon": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 48.0
       },
       "Baby red dragon": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 48.0
       },
       "Baby tanglefoot": {
         "hitpoints": 40.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 45.0
       },
       "Balfrug Kreeyath": {
         "hitpoints": 161.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 151.0
       },
       "Bandit champion": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 70.0
       },
       "Bandosian guard": {
         "hitpoints": 130.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 125.0
       },
       "Banshee": {
         "hitpoints": 22.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 23.0
       },
       "Bark Blamish Snail": {
         "hitpoints": 22.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 15.0
       },
       "Basilisk": {
         "hitpoints": 75.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 61.0
       },
       "Basilisk Knight": {
         "hitpoints": 300.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 204.0
       },
       "Basilisk Sentinel": {
         "hitpoints": 520.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 358.0
       },
       "Basilisk Youngling": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 57.0
       },
       "Bat": {
         "hitpoints": 8.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 6.0
       },
       "Battle mage": {
         "hitpoints": 120.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 54.0
       },
       "Bear Cub": {
         "hitpoints": 20.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 15.0
       },
       "Bedabin Nomad Fighter": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 56.0
       },
       "Berry": {
         "hitpoints": 90.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 71.0
       },
       "Berserk barbarian spirit": {
         "hitpoints": 190.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 166.0
       },
       "Big Snake": {
         "hitpoints": 120.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 84.0
       },
       "Big Wolf": {
         "hitpoints": 74.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 73.0
       },
       "Billy Goat": {
         "hitpoints": 28.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 33.0
       },
       "Bird": {
         "hitpoints": 5.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 5.0
       },
       "Black Guard Berserker": {
         "hitpoints": 50.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 66.0
       },
       "Black Heather": {
         "hitpoints": 37.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 34.0
       },
       "Black Knight": {
         "hitpoints": 42.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 33.0
       },
       "Black Knight Titan": {
         "hitpoints": 142.0,
-        "experience_bonus": -75.0
+        "experience_bonus": -75.0,
+        "combat_level": 120.0
       },
       "Black bear": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 19.0
       },
       "Black demon": {
         "hitpoints": 170.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 184.0
       },
       "Black dragon": {
         "hitpoints": 250.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 247.0
       },
       "Black jaguar": {
         "hitpoints": 80.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 67.0
       },
       "Black unicorn": {
         "hitpoints": 29.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 27.0
       },
       "Black unicorn Foal": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 22.0
       },
       "Blessed giant rat": {
         "hitpoints": 30.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 9.0
       },
       "Blood Reaver": {
         "hitpoints": 125.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 174.0
       },
       "Bloodveld": {
         "hitpoints": 120.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 76.0
       },
       "Bloodworm": {
         "hitpoints": 45.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 52.0
       },
       "Blue dragon": {
         "hitpoints": 105.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 111.0
       },
       "Boar": {
         "hitpoints": 8.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 5.0
       },
       "Body Golem": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 50.0
       },
       "Boris": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Borrokar": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 48.0
       },
       "Bouncer": {
         "hitpoints": 116.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 137.0
       },
       "Branda the Fire Queen": {
         "hitpoints": 600.0,
-        "experience_bonus": 22.5
+        "experience_bonus": 22.5,
+        "combat_level": 350.0
       },
       "Brassican Mage": {
         "hitpoints": 150.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 140.0
       },
       "Bree": {
         "hitpoints": 162.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 146.0
       },
       "Breoca": {
         "hitpoints": 10.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 5.0
       },
       "Brine rat": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 70.0
       },
       "Broddi": {
         "hitpoints": 1.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 2.0
       },
       "Bronze dragon": {
         "hitpoints": 122.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 131.0
       },
       "Broodoo victim": {
         "hitpoints": 100.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 60.0
       },
       "Brutal black dragon": {
         "hitpoints": 315.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 318.0
       },
       "Brutal blue dragon": {
         "hitpoints": 245.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 271.0
       },
       "Brutal green dragon": {
         "hitpoints": 175.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 227.0
       },
       "Brutal red dragon": {
         "hitpoints": 285.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 289.0
       },
       "Brutus": {
         "hitpoints": 58.0,
-        "experience_bonus": 100.0
+        "experience_bonus": 100.0,
+        "combat_level": 30.0
       },
       "Bryophyta": {
         "hitpoints": 115.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 128.0
       },
       "Buffalo": {
         "hitpoints": 20.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 9.0
       },
       "Bull shark": {
         "hitpoints": 81.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 65.0
       },
       "Bunny": {
         "hitpoints": 5.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 2.0
       },
       "Bush snake": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 35.0
       },
       "Butterfly ray": {
         "hitpoints": 83.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 68.0
       },
       "Callisto": {
         "hitpoints": 1000.0,
-        "experience_bonus": 30.0
+        "experience_bonus": 30.0,
+        "combat_level": 470.0
       },
       "Calvar'ion": {
         "hitpoints": 150.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 264.0
       },
       "Camp dweller": {
         "hitpoints": 30.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 31.0
       },
       "Catablepon": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 68.0
       },
       "Cave abomination": {
         "hitpoints": 130.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 206.0
       },
       "Cave crawler": {
         "hitpoints": 22.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 23.0
       },
       "Cave goblin guard": {
         "hitpoints": 26.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 26.0
       },
       "Cave goblin miner": {
         "hitpoints": 10.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 11.0
       },
       "Cave horror": {
         "hitpoints": 55.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 80.0
       },
       "Cave kraken": {
         "hitpoints": 125.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 127.0
       },
       "Cave lizard": {
         "hitpoints": 20.0,
-        "experience_bonus": -100.0
+        "experience_bonus": -100.0,
+        "combat_level": 37.0
       },
       "Cave slime": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 23.0
       },
       "Ceolburg": {
         "hitpoints": 10.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 4.0
       },
       "Cerberus": {
         "hitpoints": 600.0,
-        "experience_bonus": 15.0
+        "experience_bonus": 15.0,
+        "combat_level": 318.0
       },
       "Chaos Elemental": {
         "hitpoints": 250.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 305.0
       },
       "Chaos Fanatic": {
         "hitpoints": 225.0,
-        "experience_bonus": 12.5
+        "experience_bonus": 12.5,
+        "combat_level": 202.0
       },
       "Chaos Golem": {
         "hitpoints": 94.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 70.0
       },
       "Chaos druid": {
         "hitpoints": 20.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 13.0
       },
       "Chaos druid warrior": {
         "hitpoints": 40.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 37.0
       },
       "Chaos dwarf": {
         "hitpoints": 61.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 48.0
       },
       "Chaotic death spawn": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 215.0
       },
       "Chasm Crawler": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 68.0
       },
       "Chicken": {
         "hitpoints": 3.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 1.0
       },
       "Chilled jelly": {
         "hitpoints": 140.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 112.0
       },
       "Choke devil": {
         "hitpoints": 300.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 264.0
       },
       "Chompy bird": {
         "hitpoints": 10.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 6.0
       },
       "Chronozon": {
         "hitpoints": 60.0,
-        "experience_bonus": -97.5
+        "experience_bonus": -97.5,
+        "combat_level": 170.0
       },
       "Clivet": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 13.0
       },
       "Cockathrice": {
         "hitpoints": 95.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 89.0
       },
       "Cockatrice": {
         "hitpoints": 37.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 37.0
       },
       "Colonel Radick": {
         "hitpoints": 65.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 38.0
       },
       "Colossal Hydra": {
         "hitpoints": 750.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 309.0
       },
       "Commander Zilyana": {
         "hitpoints": 255.0,
-        "experience_bonus": 37.5
+        "experience_bonus": 37.5,
+        "combat_level": 596.0
       },
       "Confused barbarian": {
         "hitpoints": 124.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 132.0
       },
       "Corporeal Beast": {
         "hitpoints": 2000.0,
-        "experience_bonus": 55.0
+        "experience_bonus": 55.0,
+        "combat_level": 785.0
       },
       "Corrupt Lizardman": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 46.0
       },
       "Corrupted Bat": {
         "hitpoints": 12.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 48.0
       },
       "Corrupted Bear": {
         "hitpoints": 100.0,
-        "experience_bonus": 12.5
+        "experience_bonus": 12.5,
+        "combat_level": 258.0
       },
       "Corrupted Dark Beast": {
         "hitpoints": 100.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 258.0
       },
       "Corrupted Dragon": {
         "hitpoints": 100.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 258.0
       },
       "Corrupted Rat": {
         "hitpoints": 12.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 33.0
       },
       "Corrupted Scorpion": {
         "hitpoints": 38.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 89.0
       },
       "Corrupted Spider": {
         "hitpoints": 12.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 32.0
       },
       "Corrupted Unicorn": {
         "hitpoints": 38.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 61.0
       },
       "Corrupted Wolf": {
         "hitpoints": 38.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 97.0
       },
       "Cow": {
         "hitpoints": 8.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 2.0
       },
       "Cow calf": {
         "hitpoints": 6.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 2.0
       },
       "Crawling Hand": {
         "hitpoints": 16.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 8.0
       },
       "Crazy archaeologist": {
         "hitpoints": 225.0,
-        "experience_bonus": 25.0
+        "experience_bonus": 25.0,
+        "combat_level": 204.0
       },
       "Crocodile": {
         "hitpoints": 62.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 63.0
       },
       "Cruor": {
         "hitpoints": 500.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 285.0
       },
       "Crushing hand": {
         "hitpoints": 55.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 45.0
       },
       "Crypt rat": {
         "hitpoints": 35.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 43.0
       },
       "Crystalline Bat": {
         "hitpoints": 12.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 33.0
       },
       "Crystalline Bear": {
         "hitpoints": 100.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 172.0
       },
       "Crystalline Dark Beast": {
         "hitpoints": 100.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 172.0
       },
       "Crystalline Dragon": {
         "hitpoints": 100.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 172.0
       },
       "Crystalline Rat": {
         "hitpoints": 12.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 23.0
       },
       "Crystalline Scorpion": {
         "hitpoints": 38.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 64.0
       },
       "Crystalline Spider": {
         "hitpoints": 12.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 22.0
       },
       "Crystalline Unicorn": {
         "hitpoints": 38.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 45.0
       },
       "Crystalline Wolf": {
         "hitpoints": 38.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 69.0
       },
       "Cuffs": {
         "hitpoints": 7.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 3.0
       },
       "Culinaromancer": {
         "hitpoints": 150.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 75.0
       },
       "Cyclops": {
         "hitpoints": 150.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 106.0
       },
       "Dad": {
         "hitpoints": 120.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 101.0
       },
       "Dagannoth": {
         "hitpoints": 70.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 74.0
       },
       "Dagannoth Prime": {
         "hitpoints": 255.0,
-        "experience_bonus": 30.0
+        "experience_bonus": 30.0,
+        "combat_level": 303.0
       },
       "Dagannoth Rex": {
         "hitpoints": 255.0,
-        "experience_bonus": 30.0
+        "experience_bonus": 30.0,
+        "combat_level": 303.0
       },
       "Dagannoth Supreme": {
         "hitpoints": 255.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 303.0
       },
       "Dagannoth fledgeling": {
         "hitpoints": 100.0,
-        "experience_bonus": -100.0
+        "experience_bonus": -100.0,
+        "combat_level": 70.0
       },
       "Dagannoth mother": {
         "hitpoints": 120.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 100.0
       },
       "Dagannoth spawn": {
         "hitpoints": 35.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 42.0
       },
       "Damis": {
         "hitpoints": 200.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 174.0
       },
       "Dark beast": {
         "hitpoints": 220.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 182.0
       },
       "Dark energy core": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 75.0
       },
       "Deadly red spider": {
         "hitpoints": 35.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 34.0
       },
       "Death spawn": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 46.0
       },
       "Death wing": {
         "hitpoints": 80.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 83.0
       },
       "Deathly mage": {
         "hitpoints": 120.0,
@@ -10151,627 +10340,783 @@
       },
       "Demon of Balance": {
         "hitpoints": 320.0,
-        "experience_bonus": 17.5
+        "experience_bonus": 17.5,
+        "combat_level": 202.0
       },
       "Demon of Darkness": {
         "hitpoints": 320.0,
-        "experience_bonus": 17.5
+        "experience_bonus": 17.5,
+        "combat_level": 202.0
       },
       "Demon of Light": {
         "hitpoints": 320.0,
-        "experience_bonus": 17.5
+        "experience_bonus": 17.5,
+        "combat_level": 202.0
       },
       "Demonic Brutus": {
         "hitpoints": 750.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 1224.0
       },
       "Demonic gorilla": {
         "hitpoints": 380.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 275.0
       },
       "Deranged archaeologist": {
         "hitpoints": 200.0,
-        "experience_bonus": 37.5
+        "experience_bonus": 37.5,
+        "combat_level": 276.0
       },
       "Derwen": {
         "hitpoints": 320.0,
-        "experience_bonus": 20.0
+        "experience_bonus": 20.0,
+        "combat_level": 235.0
       },
       "Desert Lizard": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Desert Wolf": {
         "hitpoints": 34.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 27.0
       },
       "Dessourt": {
         "hitpoints": 130.0,
-        "experience_bonus": 10.0
+        "experience_bonus": 10.0,
+        "combat_level": 121.0
       },
       "Dessous": {
         "hitpoints": 200.0,
-        "experience_bonus": 10.0
+        "experience_bonus": 10.0,
+        "combat_level": 139.0
       },
       "Deviant spectre": {
         "hitpoints": 190.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 169.0
       },
       "Dharok the Wretched": {
         "hitpoints": 100.0,
-        "experience_bonus": 15.0
+        "experience_bonus": 15.0,
+        "combat_level": 115.0
       },
       "Dire Wolf": {
         "hitpoints": 10.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 72.0
       },
       "Dire bat": {
         "hitpoints": 90.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 142.0
       },
       "Disciple of Iban": {
         "hitpoints": 20.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 13.0
       },
       "Dolphin": {
         "hitpoints": 45.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 22.0
       },
       "Donny the lad": {
         "hitpoints": 37.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 34.0
       },
       "Doom of Mokhaiotl": {
         "hitpoints": 550.0,
-        "experience_bonus": 62.5
+        "experience_bonus": 62.5,
+        "combat_level": 608.0
       },
       "Doomion": {
         "hitpoints": 87.0,
-        "experience_bonus": -75.0
+        "experience_bonus": -75.0,
+        "combat_level": 91.0
       },
       "Double agent": {
         "hitpoints": 160.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 141.0
       },
       "Drake": {
         "hitpoints": 225.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 192.0
       },
       "Druid": {
         "hitpoints": 30.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 33.0
       },
       "Drunken man": {
         "hitpoints": 7.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 3.0
       },
       "Duke": {
         "hitpoints": 130.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 149.0
       },
       "Duke Sucellus": {
         "hitpoints": 485.0,
-        "experience_bonus": 52.5
+        "experience_bonus": 52.5,
+        "combat_level": 758.0
       },
       "Durial321": {
         "hitpoints": 9500.0,
-        "experience_bonus": 300.0
+        "experience_bonus": 300.0,
+        "combat_level": 115.0
       },
       "Dust devil": {
         "hitpoints": 130.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 110.0
       },
       "Dwarf": {
         "hitpoints": 12.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 10.0
       },
       "Dwarf gang member": {
         "hitpoints": 40.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 44.0
       },
       "Eadburg": {
         "hitpoints": 10.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 4.0
       },
       "Eagle ray": {
         "hitpoints": 55.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 44.0
       },
       "Earth warrior": {
         "hitpoints": 54.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 51.0
       },
       "Earth wizard": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 13.0
       },
       "Earthen Nagua": {
         "hitpoints": 160.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 128.0
       },
       "Eduard": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Einar": {
         "hitpoints": 1.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 1.0
       },
       "Elder Chaos druid": {
         "hitpoints": 150.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 129.0
       },
       "Elder custodian stalker": {
         "hitpoints": 250.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 142.0
       },
       "Eldric the Ice King": {
         "hitpoints": 600.0,
-        "experience_bonus": 22.5
+        "experience_bonus": 22.5,
+        "combat_level": 350.0
       },
       "Elf Archer": {
         "hitpoints": 105.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 90.0
       },
       "Elf Warrior": {
         "hitpoints": 105.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 108.0
       },
       "Elite Black Knight": {
         "hitpoints": 90.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 138.0
       },
       "Elite Dark Mage": {
         "hitpoints": 80.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 96.0
       },
       "Elite Dark Ranger": {
         "hitpoints": 80.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 96.0
       },
       "Elite Dark Warrior": {
         "hitpoints": 80.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 96.0
       },
       "Elvarg": {
         "hitpoints": 80.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 83.0
       },
       "Emissary Acolyte": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 34.0
       },
       "Emissary Chosen": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 76.0
       },
       "Enclave guard": {
         "hitpoints": 80.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 83.0
       },
       "Enraged Boar": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 12.0
       },
       "Enraged barbarian spirit": {
         "hitpoints": 190.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 166.0
       },
       "Ent": {
         "hitpoints": 75.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 86.0
       },
       "Entrana firebird": {
         "hitpoints": 5.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 2.0
       },
       "Evil Chicken": {
         "hitpoints": 120.0,
-        "experience_bonus": -97.5
+        "experience_bonus": -97.5,
+        "combat_level": 159.0
       },
       "Evil spirit": {
         "hitpoints": 90.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 150.0
       },
       "Experiment": {
         "hitpoints": 100.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 25.0
       },
       "Experiment No.2": {
         "hitpoints": 95.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 109.0
       },
       "Fareed": {
         "hitpoints": 130.0,
-        "experience_bonus": 15.0
+        "experience_bonus": 15.0,
+        "combat_level": 167.0
       },
       "Farmer": {
         "hitpoints": 12.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 7.0
       },
       "Feral Vampyre": {
         "hitpoints": 40.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 61.0
       },
       "Ferocious barbarian spirit": {
         "hitpoints": 190.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 166.0
       },
       "Fever spider": {
         "hitpoints": 40.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 49.0
       },
       "Fire elemental": {
         "hitpoints": 30.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 35.0
       },
       "Fire giant": {
         "hitpoints": 130.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 104.0
       },
       "Fire wizard": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 13.0
       },
       "Fiyr Shade": {
         "hitpoints": 110.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 120.0
       },
       "Flaming pyrelord": {
         "hitpoints": 125.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 97.0
       },
       "Flawed Golem": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 13.0
       },
       "Flesh Crawler": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 41.0
       },
       "Flight Kilisa": {
         "hitpoints": 133.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 159.0
       },
       "Flockleader Geerin": {
         "hitpoints": 132.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 149.0
       },
       "Foreman": {
         "hitpoints": 20.0,
-        "experience_bonus": -97.5
+        "experience_bonus": -97.5,
+        "combat_level": 23.0
       },
       "Forester": {
         "hitpoints": 17.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 15.0
       },
       "Forgotten Soul": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 20.0
       },
       "Fortress Guard": {
         "hitpoints": 22.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 20.0
       },
       "Fox": {
         "hitpoints": 30.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 19.0
       },
       "Freidir": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 48.0
       },
       "Frigatebird": {
         "hitpoints": 79.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 78.0
       },
       "Frog": {
         "hitpoints": 8.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 5.0
       },
       "Frogeel": {
         "hitpoints": 90.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 103.0
       },
       "Frost Nagua": {
         "hitpoints": 120.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 104.0
       },
       "Frost dragon": {
         "hitpoints": 230.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 202.0
       },
       "Fumus": {
         "hitpoints": 500.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 285.0
       },
       "Galina": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Gang boss": {
         "hitpoints": 80.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 76.0
       },
       "Gangster": {
         "hitpoints": 45.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 50.0
       },
       "Gardener": {
         "hitpoints": 7.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 4.0
       },
       "Gargoyle": {
         "hitpoints": 105.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 111.0
       },
       "General Graardor": {
         "hitpoints": 255.0,
-        "experience_bonus": 32.5
+        "experience_bonus": 32.5,
+        "combat_level": 624.0
       },
       "Georgy": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Ghast": {
         "hitpoints": 45.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 30.0
       },
       "Ghost": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 19.0
       },
       "Ghoul": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 42.0
       },
       "Giant Champion": {
         "hitpoints": 70.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 56.0
       },
       "Giant Mole": {
         "hitpoints": 200.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 230.0
       },
       "Giant Roc": {
         "hitpoints": 250.0,
-        "experience_bonus": -90.0
+        "experience_bonus": -90.0,
+        "combat_level": 172.0
       },
       "Giant Rock Crab": {
         "hitpoints": 180.0,
-        "experience_bonus": 10.0
+        "experience_bonus": 10.0,
+        "combat_level": 137.0
       },
       "Giant Sea Snake": {
         "hitpoints": 100.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 149.0
       },
       "Giant bat": {
         "hitpoints": 32.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 27.0
       },
       "Giant crypt rat": {
         "hitpoints": 70.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 76.0
       },
       "Giant lobster": {
         "hitpoints": 32.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 32.0
       },
       "Giant rat": {
         "hitpoints": 10.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 6.0
       },
       "Giant rockslug": {
         "hitpoints": 77.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 86.0
       },
       "Giant snail": {
         "hitpoints": 125.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 80.0
       },
       "Giant spider": {
         "hitpoints": 5.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 2.0
       },
       "Glacies": {
         "hitpoints": 500.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 285.0
       },
       "Glod": {
         "hitpoints": 160.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 138.0
       },
       "Gnome": {
         "hitpoints": 3.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 1.0
       },
       "Gnome Archer": {
         "hitpoints": 10.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 5.0
       },
       "Gnome Driver": {
         "hitpoints": 10.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 5.0
       },
       "Gnome Mage": {
         "hitpoints": 10.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 5.0
       },
       "Gnome child": {
         "hitpoints": 2.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 1.0
       },
       "Gnome guard": {
         "hitpoints": 31.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 23.0
       },
       "Gnome troop": {
         "hitpoints": 3.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 1.0
       },
       "Gnome woman": {
         "hitpoints": 2.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 1.0
       },
       "Goat": {
         "hitpoints": 21.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 23.0
       },
       "Goblin guard": {
         "hitpoints": 43.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 42.0
       },
       "Golem": {
         "hitpoints": 14.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 64.0
       },
       "Gorad": {
         "hitpoints": 80.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 68.0
       },
       "Gorak": {
         "hitpoints": 128.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 149.0
       },
       "Grave scorpion": {
         "hitpoints": 7.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 12.0
       },
       "Great white shark": {
         "hitpoints": 243.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 175.0
       },
       "Greater Nechryael": {
         "hitpoints": 205.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 200.0
       },
       "Greater abyssal demon": {
         "hitpoints": 400.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 342.0
       },
       "Greater demon": {
         "hitpoints": 115.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 100.0
       },
       "Green dragon": {
         "hitpoints": 75.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 79.0
       },
       "Grimy Lizard": {
         "hitpoints": 75.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 50.0
       },
       "Grizzly bear": {
         "hitpoints": 35.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 42.0
       },
       "Grizzly bear cub": {
         "hitpoints": 35.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 33.0
       },
       "Growler": {
         "hitpoints": 146.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 139.0
       },
       "Gryphon": {
         "hitpoints": 110.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 95.0
       },
       "Guard": {
         "hitpoints": 22.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 21.0
       },
       "Guard Bandit": {
         "hitpoints": 27.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 22.0
       },
       "Guard dog": {
         "hitpoints": 49.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 44.0
       },
       "Guardian Drake": {
         "hitpoints": 590.0,
-        "experience_bonus": 15.0
+        "experience_bonus": 15.0,
+        "combat_level": 376.0
       },
       "Guardian of Armadyl": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 45.0
       },
       "Gunthor the brave": {
         "hitpoints": 35.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 29.0
       },
       "Guthan the Infested": {
         "hitpoints": 100.0,
-        "experience_bonus": 15.0
+        "experience_bonus": 15.0,
+        "combat_level": 115.0
       },
       "H.A.M. Guard": {
         "hitpoints": 30.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 22.0
       },
       "Hammerhead shark": {
         "hitpoints": 125.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 90.0
       },
       "Harpie Bug Swarm": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 46.0
       },
       "Head Guard": {
         "hitpoints": 86.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 84.0
       },
       "Head Thief": {
         "hitpoints": 37.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 26.0
       },
       "Headless Beast": {
         "hitpoints": 100.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 82.0
       },
       "Hellhound": {
         "hitpoints": 116.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 127.0
       },
       "Hengel": {
         "hitpoints": 7.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 2.0
       },
       "Hermit crab": {
         "hitpoints": 75.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 19.0
       },
       "Hero": {
         "hitpoints": 82.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 69.0
       },
       "Hespori": {
         "hitpoints": 300.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 284.0
       },
       "Hill Giant": {
         "hitpoints": 35.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 28.0
       },
       "Holthion": {
         "hitpoints": 87.0,
-        "experience_bonus": -75.0
+        "experience_bonus": -75.0,
+        "combat_level": 91.0
       },
       "Hoop Snake": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 19.0
       },
       "Hydra": {
         "hitpoints": 300.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 194.0
       },
       "Hygd": {
         "hitpoints": 10.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 4.0
       },
       "Ice Queen": {
         "hitpoints": 104.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 111.0
       },
       "Ice demon": {
         "hitpoints": 140.0,
@@ -10779,491 +11124,613 @@
       },
       "Ice giant": {
         "hitpoints": 70.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 53.0
       },
       "Ice spider": {
         "hitpoints": 65.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 61.0
       },
       "Ice troll": {
         "hitpoints": 80.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 124.0
       },
       "Ice troll grunt": {
         "hitpoints": 80.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 100.0
       },
       "Ice warrior": {
         "hitpoints": 59.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 57.0
       },
       "Ice wolf": {
         "hitpoints": 70.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 132.0
       },
       "Icefiend": {
         "hitpoints": 20.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 18.0
       },
       "Icelord": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 51.0
       },
       "Imp": {
         "hitpoints": 8.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 2.0
       },
       "Impaler deer": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 119.0
       },
       "Imre": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Infernal Mage": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 66.0
       },
       "Infernal pyrelord": {
         "hitpoints": 184.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 134.0
       },
       "Insatiable Bloodveld": {
         "hitpoints": 290.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 202.0
       },
       "Insatiable mutated Bloodveld": {
         "hitpoints": 410.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 278.0
       },
       "Invrigar the Necromancer": {
         "hitpoints": 24.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 20.0
       },
       "Iorwerth Archer": {
         "hitpoints": 105.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 90.0
       },
       "Irina": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Iron dragon": {
         "hitpoints": 165.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 189.0
       },
       "Jackal": {
         "hitpoints": 27.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 21.0
       },
       "Jaguar": {
         "hitpoints": 80.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 67.0
       },
       "Jaguar cub": {
         "hitpoints": 40.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 31.0
       },
       "Jail guard": {
         "hitpoints": 32.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 26.0
       },
       "Jailer": {
         "hitpoints": 47.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 47.0
       },
       "Jake": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 37.0
       },
       "Jeff": {
         "hitpoints": 7.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 2.0
       },
       "Jelly": {
         "hitpoints": 75.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 78.0
       },
       "Jennella": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 48.0
       },
       "Jogre": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 53.0
       },
       "Joseph": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Jubbly bird": {
         "hitpoints": 20.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 9.0
       },
       "Jubster": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 87.0
       },
       "Jungle Demon": {
         "hitpoints": 170.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 195.0
       },
       "Jungle Wolf": {
         "hitpoints": 69.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 64.0
       },
       "Jungle horror": {
         "hitpoints": 45.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 70.0
       },
       "Jungle spider": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 44.0
       },
       "Justiciar Zachariah": {
         "hitpoints": 320.0,
-        "experience_bonus": 55.0
+        "experience_bonus": 55.0,
+        "combat_level": 348.0
       },
       "Juvenile custodian stalker": {
         "hitpoints": 135.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 93.0
       },
       "K'ril Tsutsaroth": {
         "hitpoints": 255.0,
-        "experience_bonus": 37.5
+        "experience_bonus": 37.5,
+        "combat_level": 650.0
       },
       "Kalphite Guardian": {
         "hitpoints": 170.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 141.0
       },
       "Kalphite Queen": {
         "hitpoints": 255.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 333.0
       },
       "Kalphite Soldier": {
         "hitpoints": 90.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 85.0
       },
       "Kalphite Worker": {
         "hitpoints": 40.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 28.0
       },
       "Kamil": {
         "hitpoints": 130.0,
-        "experience_bonus": 12.5
+        "experience_bonus": 12.5,
+        "combat_level": 154.0
       },
       "Karamel": {
         "hitpoints": 250.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 136.0
       },
       "Karil the Tainted": {
         "hitpoints": 100.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 98.0
       },
       "Kebbit": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 13.0
       },
       "Khazard Guard": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 23.0
       },
       "Khazard commander": {
         "hitpoints": 22.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 48.0
       },
       "Khazard trooper": {
         "hitpoints": 22.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 19.0
       },
       "Khazard warlord": {
         "hitpoints": 170.0,
-        "experience_bonus": -75.0
+        "experience_bonus": -75.0,
+        "combat_level": 112.0
       },
       "Killerwatt": {
         "hitpoints": 51.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 55.0
       },
       "King Black Dragon": {
         "hitpoints": 240.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 276.0
       },
       "King Roald": {
         "hitpoints": 75.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 47.0
       },
       "King Sand Crab": {
         "hitpoints": 200.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 107.0
       },
       "King Scorpion": {
         "hitpoints": 30.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 32.0
       },
       "King kurask": {
         "hitpoints": 270.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 295.0
       },
       "Knight of Ardougne": {
         "hitpoints": 52.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 46.0
       },
       "Knight of Saradomin": {
         "hitpoints": 135.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 103.0
       },
       "Knight of Varlamore": {
         "hitpoints": 52.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 46.0
       },
       "Kraka": {
         "hitpoints": 120.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 91.0
       },
       "Kraken": {
         "hitpoints": 255.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 291.0
       },
       "Kree'arra": {
         "hitpoints": 255.0,
-        "experience_bonus": 40.0
+        "experience_bonus": 40.0,
+        "combat_level": 580.0
       },
       "Ksenia": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Kurask": {
         "hitpoints": 97.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 106.0
       },
       "Lanzig": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 48.0
       },
       "Large mosquito": {
         "hitpoints": 3.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 13.0
       },
       "Lava Strykewyrm": {
         "hitpoints": 150.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 116.0
       },
       "Lava dragon": {
         "hitpoints": 230.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 252.0
       },
       "Lensa": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 48.0
       },
       "Lesser demon": {
         "hitpoints": 87.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 87.0
       },
       "Lev": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Liliya": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Lizard": {
         "hitpoints": 40.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 42.0
       },
       "Lizardman brute": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 75.0
       },
       "Lizardman shaman": {
         "hitpoints": 150.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 150.0
       },
       "Loar Shade": {
         "hitpoints": 38.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 40.0
       },
       "Lobstrosity": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 68.0
       },
       "Locust": {
         "hitpoints": 27.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 18.0
       },
       "Locust rider": {
         "hitpoints": 90.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 106.0
       },
       "Long-tailed Wyvern": {
         "hitpoints": 200.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 152.0
       },
       "Lost barbarian": {
         "hitpoints": 124.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 132.0
       },
       "Lynx": {
         "hitpoints": 30.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Lynx Tamer": {
         "hitpoints": 22.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 21.0
       },
       "Mad Angel": {
         "hitpoints": 565.0,
-        "experience_bonus": 42.5
+        "experience_bonus": 42.5,
+        "combat_level": 270.0
       },
       "Maggot King": {
         "hitpoints": 1500.0,
-        "experience_bonus": 145.0
+        "experience_bonus": 145.0,
+        "combat_level": 741.0
       },
       "Magic axe": {
         "hitpoints": 44.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 42.0
       },
       "Malevolent Mage": {
         "hitpoints": 175.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 162.0
       },
       "Mammoth": {
         "hitpoints": 130.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 80.0
       },
       "Man": {
         "hitpoints": 7.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 2.0
       },
       "Maniacal Monkey Archer": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 132.0
       },
       "Maniacal monkey": {
         "hitpoints": 65.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 140.0
       },
       "Marble gargoyle": {
         "hitpoints": 270.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 349.0
       },
       "Market Guard": {
         "hitpoints": 50.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 48.0
       },
       "Mature custodian stalker": {
         "hitpoints": 190.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 117.0
       },
       "Me": {
         "hitpoints": 45.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 79.0
       },
       "Menaphite Thug": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 55.0
       },
       "Mercenary Captain": {
         "hitpoints": 80.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 47.0
       },
       "Milla": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Mind Golem": {
         "hitpoints": 40.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 30.0
       },
       "Minotaur": {
         "hitpoints": 13.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 19.0
       },
       "Mithril dragon": {
         "hitpoints": 254.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 304.0
       },
       "Mogre": {
         "hitpoints": 48.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 60.0
       },
       "Molanisk": {
         "hitpoints": 52.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 51.0
       },
       "Monk": {
         "hitpoints": 15.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 5.0
       },
       "Monk of Zamorak": {
         "hitpoints": 20.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 22.0
       },
       "Monkey Archer": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 86.0
       },
       "Monkey Guard": {
         "hitpoints": 130.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 167.0
       },
       "Monkey Zombie": {
         "hitpoints": 90.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 129.0
       },
       "Monstrous basilisk": {
         "hitpoints": 170.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 135.0
       },
       "Moonlight Cockatrice": {
         "hitpoints": 52.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 49.0
       },
       "Mosquito swarm": {
         "hitpoints": 15.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 20.0
       },
       "Moss Guardian": {
         "hitpoints": 120.0,
-        "experience_bonus": -97.5
+        "experience_bonus": -97.5,
+        "combat_level": 84.0
       },
       "Moss giant": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 42.0
       },
       "Mountain troll": {
         "hitpoints": 90.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 71.0
       },
       "Mounted terrorbird gnome": {
         "hitpoints": 36.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 31.0
       },
       "Mouse": {
         "hitpoints": 70.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 95.0
       },
       "Mudskipper": {
         "hitpoints": 20.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 30.0
       },
       "Mugger": {
         "hitpoints": 8.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 6.0
       },
       "Mutated Bloodveld": {
         "hitpoints": 170.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 123.0
       },
       "Mutated Terrorbird": {
         "hitpoints": 320.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 178.0
       },
       "Mutated Tortoise": {
         "hitpoints": 440.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 247.0
       },
       "Muttadile": {
         "hitpoints": 250.0,
@@ -11271,147 +11738,183 @@
       },
       "Nail beast": {
         "hitpoints": 75.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 141.0
       },
       "Narf": {
         "hitpoints": 7.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 2.0
       },
       "Narwhal": {
         "hitpoints": 187.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 111.0
       },
       "Nazastarool": {
         "hitpoints": 80.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 93.0
       },
       "Nechryael": {
         "hitpoints": 105.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 115.0
       },
       "Nechryarch": {
         "hitpoints": 320.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 300.0
       },
       "Necromancer": {
         "hitpoints": 40.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 26.0
       },
       "Newtroost": {
         "hitpoints": 18.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 19.0
       },
       "Nex": {
         "hitpoints": 3400.0,
-        "experience_bonus": 100.0
+        "experience_bonus": 100.0,
+        "combat_level": 1001.0
       },
       "Night beast": {
         "hitpoints": 550.0,
-        "experience_bonus": 17.5
+        "experience_bonus": 17.5,
+        "combat_level": 374.0
       },
       "Nikita": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Nikolai": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Nuclear smoke devil": {
         "hitpoints": 240.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 280.0
       },
       "Nylocas Vasilias": {
         "hitpoints": 2500.0,
-        "experience_bonus": 20.0
+        "experience_bonus": 20.0,
+        "combat_level": 800.0
       },
       "Obor": {
         "hitpoints": 120.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 106.0
       },
       "Ocelot": {
         "hitpoints": 40.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 35.0
       },
       "Ocga": {
         "hitpoints": 10.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 5.0
       },
       "Ogre": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 53.0
       },
       "Ogre chieftain": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 81.0
       },
       "Ogress Shaman": {
         "hitpoints": 82.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 82.0
       },
       "Ogress Warrior": {
         "hitpoints": 82.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 82.0
       },
       "Oipuis": {
         "hitpoints": 130.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 149.0
       },
       "Oomlie bird": {
         "hitpoints": 40.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 46.0
       },
       "Orca": {
         "hitpoints": 370.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 205.0
       },
       "Ork": {
         "hitpoints": 110.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 107.0
       },
       "Oryx": {
         "hitpoints": 19.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 15.0
       },
       "Osprey": {
         "hitpoints": 72.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 63.0
       },
       "Othainian": {
         "hitpoints": 87.0,
-        "experience_bonus": -75.0
+        "experience_bonus": -75.0,
+        "combat_level": 91.0
       },
       "Otherworldly being": {
         "hitpoints": 66.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 64.0
       },
       "Ouhai": {
         "hitpoints": 130.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 149.0
       },
       "Outlaw": {
         "hitpoints": 20.0,
-        "experience_bonus": -97.5
+        "experience_bonus": -97.5,
+        "combat_level": 32.0
       },
       "Padulah": {
         "hitpoints": 130.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 149.0
       },
       "Paladin": {
         "hitpoints": 57.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 62.0
       },
       "Palmer": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 37.0
       },
       "Pee Hat": {
         "hitpoints": 120.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 91.0
       },
       "Penance Fighter": {
         "hitpoints": 29.0,
-        "experience_bonus": -100.0
+        "experience_bonus": -100.0,
+        "combat_level": 32.0
       },
       "Penance Healer": {
         "hitpoints": 32.0,
@@ -11419,7 +11922,8 @@
       },
       "Penance Ranger": {
         "hitpoints": 28.0,
-        "experience_bonus": -100.0
+        "experience_bonus": -100.0,
+        "combat_level": 25.0
       },
       "Penance Runner": {
         "hitpoints": 5.0,
@@ -11427,211 +11931,263 @@
       },
       "Penda": {
         "hitpoints": 10.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 5.0
       },
       "Pestilent Bloat": {
         "hitpoints": 2000.0,
-        "experience_bonus": 85.0
+        "experience_bonus": 85.0,
+        "combat_level": 870.0
       },
       "Phantom Muspah": {
         "hitpoints": 850.0,
-        "experience_bonus": 107.5
+        "experience_bonus": 107.5,
+        "combat_level": 741.0
       },
       "Pheasant": {
         "hitpoints": 5.0,
-        "experience_bonus": -100.0
+        "experience_bonus": -100.0,
+        "combat_level": 3.0
       },
       "Phosani's Nightmare": {
         "hitpoints": 3200.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 1024.0
       },
       "Phrin Shade": {
         "hitpoints": 56.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 60.0
       },
       "Pirate": {
         "hitpoints": 20.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 23.0
       },
       "Pirate Guard": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 19.0
       },
       "Pit Scorpion": {
         "hitpoints": 32.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 28.0
       },
       "Poison Scorpion": {
         "hitpoints": 23.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 20.0
       },
       "Poison spider": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 31.0
       },
       "Poltenip": {
         "hitpoints": 22.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 21.0
       },
       "Porazdir": {
         "hitpoints": 320.0,
-        "experience_bonus": 20.0
+        "experience_bonus": 20.0,
+        "combat_level": 235.0
       },
       "Porcupine": {
         "hitpoints": 5.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 4.0
       },
       "Pygmy kraken": {
         "hitpoints": 150.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 93.0
       },
       "Pyrefiend": {
         "hitpoints": 45.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 43.0
       },
       "Pyrelord": {
         "hitpoints": 80.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 60.0
       },
       "Rabbit": {
         "hitpoints": 1.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 1.0
       },
       "Radat": {
         "hitpoints": 22.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 21.0
       },
       "Ragnvald": {
         "hitpoints": 1.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 2.0
       },
       "Ram": {
         "hitpoints": 8.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 2.0
       },
       "Rannveig": {
         "hitpoints": 1.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 2.0
       },
       "Rat": {
         "hitpoints": 2.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 1.0
       },
       "Red dragon": {
         "hitpoints": 140.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 152.0
       },
       "Renegade knight": {
         "hitpoints": 48.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 37.0
       },
       "Repugnant spectre": {
         "hitpoints": 380.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 335.0
       },
       "Revenant cyclops": {
         "hitpoints": 110.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 82.0
       },
       "Revenant dark beast": {
         "hitpoints": 140.0,
-        "experience_bonus": 12.5
+        "experience_bonus": 12.5,
+        "combat_level": 120.0
       },
       "Revenant demon": {
         "hitpoints": 80.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 98.0
       },
       "Revenant dragon": {
         "hitpoints": 155.0,
-        "experience_bonus": 20.0
+        "experience_bonus": 20.0,
+        "combat_level": 135.0
       },
       "Revenant goblin": {
         "hitpoints": 14.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 15.0
       },
       "Revenant hellhound": {
         "hitpoints": 80.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 90.0
       },
       "Revenant hobgoblin": {
         "hitpoints": 72.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 60.0
       },
       "Revenant imp": {
         "hitpoints": 10.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 7.0
       },
       "Revenant knight": {
         "hitpoints": 143.0,
-        "experience_bonus": 17.5
+        "experience_bonus": 17.5,
+        "combat_level": 126.0
       },
       "Revenant maledictus": {
         "hitpoints": 1250.0,
-        "experience_bonus": 65.0
+        "experience_bonus": 65.0,
+        "combat_level": 397.0
       },
       "Revenant ork": {
         "hitpoints": 105.0,
-        "experience_bonus": 10.0
+        "experience_bonus": 10.0,
+        "combat_level": 105.0
       },
       "Revenant pyrefiend": {
         "hitpoints": 48.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 52.0
       },
       "River troll": {
         "hitpoints": 85.0,
-        "experience_bonus": -97.5
+        "experience_bonus": -97.5,
+        "combat_level": 79.0
       },
       "Riyl Shade": {
         "hitpoints": 76.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 80.0
       },
       "Rock Crab": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 13.0
       },
       "Rock lobster": {
         "hitpoints": 150.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 127.0
       },
       "Rockslug": {
         "hitpoints": 27.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 29.0
       },
       "Rooster": {
         "hitpoints": 7.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 3.0
       },
       "Rowdy slave": {
         "hitpoints": 16.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 10.0
       },
       "Rune dragon": {
         "hitpoints": 330.0,
-        "experience_bonus": 10.0
+        "experience_bonus": 10.0,
+        "combat_level": 380.0
       },
       "Rusty": {
         "hitpoints": 7.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 2.0
       },
       "Salarin the twisted": {
         "hitpoints": 70.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 70.0
       },
       "Sand Crab": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 15.0
       },
       "Sarachnis": {
         "hitpoints": 400.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 318.0
       },
       "Saradomin priest": {
         "hitpoints": 89.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 113.0
       },
       "Saradomin wizard": {
         "hitpoints": 120.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 108.0
       },
       "Scavenger beast": {
         "hitpoints": 30.0,
@@ -11639,111 +12195,138 @@
       },
       "Scion": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 93.0
       },
       "Scorpia": {
         "hitpoints": 200.0,
-        "experience_bonus": 30.0
+        "experience_bonus": 30.0,
+        "combat_level": 225.0
       },
       "Scorpia's guardian": {
         "hitpoints": 70.0,
-        "experience_bonus": -97.5
+        "experience_bonus": -97.5,
+        "combat_level": 47.0
       },
       "Scorpion": {
         "hitpoints": 37.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 37.0
       },
       "Screaming banshee": {
         "hitpoints": 61.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 70.0
       },
       "Screaming twisted banshee": {
         "hitpoints": 220.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 144.0
       },
       "Scurrius": {
         "hitpoints": 500.0,
-        "experience_bonus": 20.0
+        "experience_bonus": 20.0,
+        "combat_level": 200.0
       },
       "Sea Snake Hatchling": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 62.0
       },
       "Sea Snake Young": {
         "hitpoints": 85.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 90.0
       },
       "Sea troll": {
         "hitpoints": 80.0,
-        "experience_bonus": -90.0
+        "experience_bonus": -90.0,
+        "combat_level": 87.0
       },
       "Seagull": {
         "hitpoints": 10.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 3.0
       },
       "Sergeant Grimspike": {
         "hitpoints": 146.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 142.0
       },
       "Sergeant Steelwill": {
         "hitpoints": 127.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 142.0
       },
       "Sergeant Strongstack": {
         "hitpoints": 128.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 141.0
       },
       "Shade": {
         "hitpoints": 170.0,
-        "experience_bonus": -97.5
+        "experience_bonus": -97.5,
+        "combat_level": 159.0
       },
       "Shadow Hound": {
         "hitpoints": 62.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 63.0
       },
       "Shadow Wyrm": {
         "hitpoints": 290.0,
-        "experience_bonus": 10.0
+        "experience_bonus": 10.0,
+        "combat_level": 259.0
       },
       "Shadow spider": {
         "hitpoints": 55.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 52.0
       },
       "Shadow warrior": {
         "hitpoints": 67.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 48.0
       },
       "Shaeded Beast": {
         "hitpoints": 210.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 186.0
       },
       "Shantay Guard": {
         "hitpoints": 32.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 22.0
       },
       "Shellbane gryphon": {
         "hitpoints": 400.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 235.0
       },
       "Shipyard worker": {
         "hitpoints": 10.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 11.0
       },
       "Sir Carl": {
         "hitpoints": 57.0,
-        "experience_bonus": -75.0
+        "experience_bonus": -75.0,
+        "combat_level": 62.0
       },
       "Sir Harry": {
         "hitpoints": 57.0,
-        "experience_bonus": -75.0
+        "experience_bonus": -75.0,
+        "combat_level": 62.0
       },
       "Sir Jerro": {
         "hitpoints": 57.0,
-        "experience_bonus": -75.0
+        "experience_bonus": -75.0,
+        "combat_level": 62.0
       },
       "Sir Mordred": {
         "hitpoints": 38.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 39.0
       },
       "Skeletal Mystic": {
         "hitpoints": 160.0,
@@ -11751,215 +12334,268 @@
       },
       "Skeletal Wyvern": {
         "hitpoints": 200.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 140.0
       },
       "Skeletal miner": {
         "hitpoints": 39.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 42.0
       },
       "Skeleton brute": {
         "hitpoints": 124.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 132.0
       },
       "Skeleton fremennik": {
         "hitpoints": 40.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 60.0
       },
       "Skeleton heavy": {
         "hitpoints": 114.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 130.0
       },
       "Skeleton hero": {
         "hitpoints": 114.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 146.0
       },
       "Skeleton thug": {
         "hitpoints": 114.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 130.0
       },
       "Skeleton warlord": {
         "hitpoints": 124.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 132.0
       },
       "Skogre": {
         "hitpoints": 71.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 44.0
       },
       "Skotizo": {
         "hitpoints": 450.0,
-        "experience_bonus": 37.5
+        "experience_bonus": 37.5,
+        "combat_level": 321.0
       },
       "Slagilith": {
         "hitpoints": 60.0,
-        "experience_bonus": 3.0
+        "experience_bonus": 3.0,
+        "combat_level": 92.0
       },
       "Slash Bash": {
         "hitpoints": 100.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 111.0
       },
       "Small Lizard": {
         "hitpoints": 15.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 12.0
       },
       "Smoke devil": {
         "hitpoints": 185.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 160.0
       },
       "Snake": {
         "hitpoints": 6.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 5.0
       },
       "Sofiya": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Soldier (tier 1)": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 39.0
       },
       "Soldier (tier 2)": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 48.0
       },
       "Soldier (tier 3)": {
         "hitpoints": 55.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 58.0
       },
       "Soldier (tier 4)": {
         "hitpoints": 65.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 70.0
       },
       "Soldier (tier 5)": {
         "hitpoints": 90.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 99.0
       },
       "Sorebones": {
         "hitpoints": 52.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 57.0
       },
       "Sotetseg": {
         "hitpoints": 4000.0,
-        "experience_bonus": 37.5
+        "experience_bonus": 37.5,
+        "combat_level": 995.0
       },
       "Soulless": {
         "hitpoints": 24.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 18.0
       },
       "Sourhog": {
         "hitpoints": 40.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 37.0
       },
       "Spawn": {
         "hitpoints": 15.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 55.0
       },
       "Speedy Keith": {
         "hitpoints": 37.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 34.0
       },
       "Spider": {
         "hitpoints": 22.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Spidine": {
         "hitpoints": 35.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 42.0
       },
       "Spiked Turoth": {
         "hitpoints": 195.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 244.0
       },
       "Spindel": {
         "hitpoints": 515.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 302.0
       },
       "Spined kraken": {
         "hitpoints": 177.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 128.0
       },
       "Spinolyp": {
         "hitpoints": 100.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 76.0
       },
       "Spiritual mage": {
         "hitpoints": 75.0,
-        "experience_bonus": 10.0
+        "experience_bonus": 10.0,
+        "combat_level": 121.0
       },
       "Spiritual ranger": {
         "hitpoints": 120.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 118.0
       },
       "Spiritual warrior": {
         "hitpoints": 100.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 115.0
       },
       "Spitting Wyvern": {
         "hitpoints": 200.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 139.0
       },
       "Stag": {
         "hitpoints": 19.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 15.0
       },
       "Starlight": {
         "hitpoints": 160.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 149.0
       },
       "Steel dragon": {
         "hitpoints": 210.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 246.0
       },
       "Stick": {
         "hitpoints": 135.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 104.0
       },
       "Stingray": {
         "hitpoints": 106.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 92.0
       },
       "Sulphur Lizard": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 50.0
       },
       "Sulphur Nagua": {
         "hitpoints": 100.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 98.0
       },
       "Summoned Zombie": {
         "hitpoints": 22.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 13.0
       },
       "Suqah": {
         "hitpoints": 105.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 111.0
       },
       "Svetlana": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Swamp Crab": {
         "hitpoints": 75.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 55.0
       },
       "Swamp snake": {
         "hitpoints": 120.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 80.0
       },
       "Swordchick": {
         "hitpoints": 35.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 46.0
       },
       "Taloned Wyvern": {
         "hitpoints": 200.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 147.0
       },
       "Tanglefoot": {
         "hitpoints": 102.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 111.0
       },
       "Tar Monster": {
         "hitpoints": 200.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 132.0
       },
       "Tekton": {
         "hitpoints": 450.0,
@@ -11967,235 +12603,293 @@
       },
       "Temple Spider": {
         "hitpoints": 70.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 75.0
       },
       "Tern": {
         "hitpoints": 22.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 20.0
       },
       "Terrorbird": {
         "hitpoints": 34.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 28.0
       },
       "The Hueycoatl": {
         "hitpoints": 2500.0,
-        "experience_bonus": 60.0
+        "experience_bonus": 60.0,
+        "combat_level": 642.0
       },
       "The Kendal": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 70.0
       },
       "The Leviathan": {
         "hitpoints": 720.0,
-        "experience_bonus": 62.5
+        "experience_bonus": 62.5,
+        "combat_level": 593.0
       },
       "The Maiden of Sugadinti": {
         "hitpoints": 3500.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 940.0
       },
       "The Mimic": {
         "hitpoints": 230.0,
-        "experience_bonus": 25.0
+        "experience_bonus": 25.0,
+        "combat_level": 186.0
       },
       "The Nightmare": {
         "hitpoints": 2400.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 814.0
       },
       "The Shaikahan": {
         "hitpoints": 100.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 83.0
       },
       "The Whisperer": {
         "hitpoints": 660.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 587.0
       },
       "Thermonuclear smoke devil": {
         "hitpoints": 240.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 301.0
       },
       "Thief": {
         "hitpoints": 17.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 14.0
       },
       "Thorhild": {
         "hitpoints": 1.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 1.0
       },
       "Thrower Troll": {
         "hitpoints": 95.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 67.0
       },
       "Thug": {
         "hitpoints": 18.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 10.0
       },
       "Tiger shark": {
         "hitpoints": 174.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 125.0
       },
       "Torag the Corrupted": {
         "hitpoints": 100.0,
-        "experience_bonus": 12.5
+        "experience_bonus": 12.5,
+        "combat_level": 115.0
       },
       "Tormented Demon": {
         "hitpoints": 600.0,
-        "experience_bonus": 77.5
+        "experience_bonus": 77.5,
+        "combat_level": 450.0
       },
       "Tormented Warrior": {
         "hitpoints": 90.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 90.0
       },
       "Tortured gorilla": {
         "hitpoints": 210.0,
-        "experience_bonus": 12.5
+        "experience_bonus": 12.5,
+        "combat_level": 141.0
       },
       "Tortured soul": {
         "hitpoints": 51.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 59.0
       },
       "Tough Guy": {
         "hitpoints": 75.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 75.0
       },
       "Tower guard": {
         "hitpoints": 22.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 28.0
       },
       "Tree spirit": {
         "hitpoints": 85.0,
-        "experience_bonus": -97.5
+        "experience_bonus": -97.5,
+        "combat_level": 79.0
       },
       "Treus Dayth": {
         "hitpoints": 100.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 95.0
       },
       "Tribesman": {
         "hitpoints": 39.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 32.0
       },
       "Tribeswoman": {
         "hitpoints": 39.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 32.0
       },
       "Troll general": {
         "hitpoints": 140.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 113.0
       },
       "Troll spectator": {
         "hitpoints": 90.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 71.0
       },
       "Tstanon Karlak": {
         "hitpoints": 142.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 145.0
       },
       "Turoth": {
         "hitpoints": 77.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 85.0
       },
       "Twig": {
         "hitpoints": 90.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 71.0
       },
       "Twisted Banshee": {
         "hitpoints": 100.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 89.0
       },
       "Tyras guard": {
         "hitpoints": 110.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 110.0
       },
       "TzHaar-Hur": {
         "hitpoints": 80.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 74.0
       },
       "TzHaar-Mej": {
         "hitpoints": 100.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 103.0
       },
       "TzHaar-Xil": {
         "hitpoints": 120.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 133.0
       },
       "TzKal-Zuk": {
         "hitpoints": 1200.0,
-        "experience_bonus": 57.5
+        "experience_bonus": 57.5,
+        "combat_level": 1400.0
       },
       "TzTok-Jad": {
         "hitpoints": 250.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 702.0
       },
       "Ugthanki": {
         "hitpoints": 45.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 42.0
       },
       "Ulfric": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 100.0
       },
       "Umbra": {
         "hitpoints": 500.0,
-        "experience_bonus": 7.5
+        "experience_bonus": 7.5,
+        "combat_level": 285.0
       },
       "Undead Druid": {
         "hitpoints": 140.0,
-        "experience_bonus": 5.0
+        "experience_bonus": 5.0,
+        "combat_level": 105.0
       },
       "Undead Lumberjack": {
         "hitpoints": 10.0,
-        "experience_bonus": -100.0
+        "experience_bonus": -100.0,
+        "combat_level": 30.0
       },
       "Undead Zealot": {
         "hitpoints": 28.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 34.0
       },
       "Undead chicken": {
         "hitpoints": 3.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 1.0
       },
       "Undead cow": {
         "hitpoints": 8.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 2.0
       },
       "Unicorn": {
         "hitpoints": 19.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 15.0
       },
       "Unicorn Foal": {
         "hitpoints": 15.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 12.0
       },
       "Unicow": {
         "hitpoints": 24.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 25.0
       },
       "Uodai": {
         "hitpoints": 130.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 149.0
       },
       "Urium Shade": {
         "hitpoints": 130.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 140.0
       },
       "Uyoro": {
         "hitpoints": 130.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 149.0
       },
       "Valgerd": {
         "hitpoints": 1.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 2.0
       },
       "Vampyre Juvenile": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 45.0
       },
       "Vampyre Snail": {
         "hitpoints": 500.0,
-        "experience_bonus": 115.0
+        "experience_bonus": 115.0,
+        "combat_level": 346.0
       },
       "Vampyre kraken": {
         "hitpoints": 311.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 211.0
       },
       "Vanguard": {
         "hitpoints": 180.0,
@@ -12203,7 +12897,8 @@
       },
       "Vardorvis": {
         "hitpoints": 500.0,
-        "experience_bonus": 35.0
+        "experience_bonus": 35.0,
+        "combat_level": 572.0
       },
       "Vasa Nistirio": {
         "hitpoints": 300.0,
@@ -12211,27 +12906,33 @@
       },
       "Veiled kraken": {
         "hitpoints": 225.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 210.0
       },
       "Venator": {
         "hitpoints": 345.0,
-        "experience_bonus": 17.5
+        "experience_bonus": 17.5,
+        "combat_level": 246.0
       },
       "Venenatis": {
         "hitpoints": 850.0,
-        "experience_bonus": 12.5
+        "experience_bonus": 12.5,
+        "combat_level": 464.0
       },
       "Vera": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Verac the Defiled": {
         "hitpoints": 100.0,
-        "experience_bonus": 12.5
+        "experience_bonus": 12.5,
+        "combat_level": 115.0
       },
       "Verzik Vitur": {
         "hitpoints": 2400.0,
-        "experience_bonus": 30.0
+        "experience_bonus": 30.0,
+        "combat_level": 512.0
       },
       "Vespula": {
         "hitpoints": 200.0,
@@ -12239,191 +12940,238 @@
       },
       "Vet'ion": {
         "hitpoints": 255.0,
-        "experience_bonus": 22.5
+        "experience_bonus": 22.5,
+        "combat_level": 454.0
       },
       "Vitreous Jelly": {
         "hitpoints": 190.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 206.0
       },
       "Vitreous warped Jelly": {
         "hitpoints": 3000.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 908.0
       },
       "Vorkath": {
         "hitpoints": 460.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 392.0
       },
       "Vulture": {
         "hitpoints": 10.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 31.0
       },
       "Vyrewatch": {
         "hitpoints": 75.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 87.0
       },
       "Vyrewatch Sentinel": {
         "hitpoints": 150.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 151.0
       },
       "Wall beast": {
         "hitpoints": 105.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 49.0
       },
       "Wallasalki": {
         "hitpoints": 120.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 98.0
       },
       "Warped Jelly": {
         "hitpoints": 140.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 112.0
       },
       "Warped Terrorbird": {
         "hitpoints": 200.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 138.0
       },
       "Warped Tortoise": {
         "hitpoints": 200.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 121.0
       },
       "Watchman": {
         "hitpoints": 22.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 33.0
       },
       "Water elemental": {
         "hitpoints": 30.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 34.0
       },
       "Water wizard": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 13.0
       },
       "Waterfiend": {
         "hitpoints": 128.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 115.0
       },
       "Weaponsmaster": {
         "hitpoints": 20.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 23.0
       },
       "Werewolf": {
         "hitpoints": 100.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 88.0
       },
       "White jaguar": {
         "hitpoints": 80.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 67.0
       },
       "White wolf": {
         "hitpoints": 34.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 25.0
       },
       "Wild dog": {
         "hitpoints": 62.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 63.0
       },
       "Wilson": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 37.0
       },
       "Wingman Skree": {
         "hitpoints": 121.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 143.0
       },
       "Wizard": {
         "hitpoints": 14.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 9.0
       },
       "Wolf": {
         "hitpoints": 69.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 64.0
       },
       "Woman": {
         "hitpoints": 7.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 2.0
       },
       "Wormbrain": {
         "hitpoints": 5.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 2.0
       },
       "Wyrm": {
         "hitpoints": 120.0,
-        "experience_bonus": 2.5
+        "experience_bonus": 2.5,
+        "combat_level": 97.0
       },
       "Wyrmling": {
         "hitpoints": 65.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 55.0
       },
       "Xarpus": {
         "hitpoints": 3400.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 331.0
       },
       "Yadviga": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Yak": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 22.0
       },
       "Yama": {
         "hitpoints": 2500.0,
-        "experience_bonus": 82.5
+        "experience_bonus": 82.5,
+        "combat_level": 1238.0
       },
       "Yuri": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Zakl'n Gritch": {
         "hitpoints": 150.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 142.0
       },
       "Zalcano": {
         "hitpoints": 1000.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 336.0
       },
       "Zamorak crafter": {
         "hitpoints": 25.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 19.0
       },
       "Zamorak mage": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 84.0
       },
       "Zamorak ranger": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 82.0
       },
       "Zamorak warrior": {
         "hitpoints": 45.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 84.0
       },
       "Zamorak wizard": {
         "hitpoints": 76.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 65.0
       },
       "Zogre": {
         "hitpoints": 71.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 44.0
       },
       "Zoja": {
         "hitpoints": 60.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 24.0
       },
       "Zombie pirate": {
         "hitpoints": 52.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 57.0
       },
       "Zombie rat": {
         "hitpoints": 5.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 3.0
       },
       "Zombie swab": {
         "hitpoints": 50.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 55.0
       },
       "Zulrah": {
         "hitpoints": 500.0,
-        "experience_bonus": 0.0
+        "experience_bonus": 0.0,
+        "combat_level": 725.0
       }
     },
     "spells": [
