@@ -14,6 +14,7 @@ from chunksim.derive.active_tasks import SkillClassification, TaskClassification
 from chunksim.derive.bis import BisResult
 from chunksim.derive.challenges import ChallengeResult
 from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.model.summary import _mapping
 from chunksim.costing.estimate import (
     DEFAULT_ACTION_SECONDS,
     SHOP_RESTOCK_CUTOFF_SECONDS,
@@ -97,10 +98,13 @@ def _derived(*, monsters: tuple[str, ...] = (), **overrides: Any) -> Derived:
 
 
 def _walk_for(info: ChunkInfo, heuristics: Heuristics | None = None) -> Any:
-    """A `_Walk` over `info` with everything it stocks reachable.
+    """A `_Walk` over `info` with everything it stocks reachable, **every**
+    chunk and section included.
 
     The walk's gates are exercised elsewhere; these tests are about what a
-    route *costs* once it is reachable.
+    route *costs* once it is reachable. `_location_reachable`'s own gate is
+    the one exception - see `test_a_spawn_in_a_chunk_this_map_never_opened_is_refused`,
+    which passes its own `unlocked_chunks`/`reachable_sections` to exercise it.
     """
     from chunksim.costing.estimate import _Walk
 
@@ -111,6 +115,33 @@ def _walk_for(info: ChunkInfo, heuristics: Heuristics | None = None) -> Any:
         heuristics=heuristics or Heuristics(),
         by_lower={item.lower(): item for item in world.item_sources},
         reachable_items=frozenset(world.item_sources),
+        unlocked_chunks=frozenset(info.chunks),
+        reachable_sections={
+            chunk_id: {section_id: True for section_id in _mapping(entry, "Sections")}
+            for chunk_id, entry in info.chunks.items()
+            if isinstance(entry, dict)
+        },
+    )
+
+
+def _walk_with_chunks(
+    info: ChunkInfo,
+    unlocked_chunks: frozenset[str],
+    reachable_sections: dict[str, dict[str, bool]] | None = None,
+) -> Any:
+    """A `_Walk` with a *specific* unlocked-chunk/reachable-section set,
+    for exercising `_location_reachable` itself rather than bypassing it."""
+    from chunksim.costing.estimate import _Walk
+
+    world = build_world_index(info)
+    return _Walk(
+        chunk_info=info,
+        world=world,
+        heuristics=Heuristics(),
+        by_lower={item.lower(): item for item in world.item_sources},
+        reachable_items=frozenset(world.item_sources),
+        unlocked_chunks=unlocked_chunks,
+        reachable_sections=reachable_sections or {},
     )
 
 
@@ -2079,6 +2110,93 @@ def test_a_ground_spawn_is_cheap_but_not_free() -> None:
     assert priced is not None
     # Two per hop at 360 hops an hour is 720 an hour, so 720 takes an hour.
     assert priced.hours == pytest.approx(1.0)
+
+
+def test_a_spawn_in_a_chunk_this_map_never_opened_is_refused() -> None:
+    """**The bug this was written for**: chunk `12581` section `1` (The
+    Summer Shore) holds an uncut ruby spawn, but `reachable_lower`'s
+    item-level check only asks "does an uncut ruby exist reachable
+    *somewhere*" - true the moment any other route to it is - so the spawn
+    priced as though this map had opened that chunk when it never had."""
+    info = ChunkInfo(
+        {
+            "chunks": {
+                "12581": {"Sections": {"1": {"Spawn": {"Uncut ruby": 1}}}},
+            },
+            "challenges": {
+                "Extra": {"Obtain an ~|uncut ruby|~": {"Items": ["Uncut ruby"]}}
+            },
+        }
+    )
+    walk = _walk_with_chunks(info, unlocked_chunks=frozenset())
+
+    assert _item_hours(walk, "Uncut ruby", quantity=1.0) is None
+
+
+def test_a_spawn_in_an_unopened_section_of_an_unlocked_chunk_is_refused() -> None:
+    """Unlocking chunk `12581` only opens section `0` for free - section `1`
+    needs its own connectivity, which `derive/sections.py` computes into
+    `reachable_sections` and this map's is empty."""
+    info = ChunkInfo(
+        {
+            "chunks": {
+                "12581": {"Sections": {"1": {"Spawn": {"Uncut ruby": 1}}}},
+            },
+            "challenges": {
+                "Extra": {"Obtain an ~|uncut ruby|~": {"Items": ["Uncut ruby"]}}
+            },
+        }
+    )
+    walk = _walk_with_chunks(info, unlocked_chunks=frozenset({"12581"}))
+
+    assert _item_hours(walk, "Uncut ruby", quantity=1.0) is None
+
+
+def test_a_spawn_in_a_reachable_section_is_priced() -> None:
+    """The positive case: once `reachable_sections` says section `1` is open,
+    the same spawn prices exactly as an unsectioned one would."""
+    info = ChunkInfo(
+        {
+            "chunks": {
+                "12581": {"Sections": {"1": {"Spawn": {"Uncut ruby": 1}}}},
+            },
+            "challenges": {
+                "Extra": {"Obtain an ~|uncut ruby|~": {"Items": ["Uncut ruby"]}}
+            },
+        }
+    )
+    walk = _walk_with_chunks(
+        info,
+        unlocked_chunks=frozenset({"12581"}),
+        reachable_sections={"12581": {"1": True}},
+    )
+
+    priced = _item_hours(walk, "Uncut ruby", quantity=360.0)
+
+    assert priced is not None
+    # One per hop at 360 hops an hour is 360 an hour, so 360 takes an hour -
+    # and reading the real per-section count is `_spawn_block`'s own fix:
+    # the old lookup never found this chunk-and-section key at all.
+    assert priced.hours == pytest.approx(1.0)
+
+
+def test_a_spawn_in_section_zero_needs_no_reachable_sections_entry() -> None:
+    """Section `"0"` is never a key in `reachable_sections` -
+    `derive/sections.py` treats it as free the moment the chunk itself is
+    unlocked, and this must not read the absence as *unreachable*."""
+    info = ChunkInfo(
+        {
+            "chunks": {
+                "12581": {"Sections": {"0": {"Spawn": {"Uncut ruby": 1}}}},
+            },
+            "challenges": {
+                "Extra": {"Obtain an ~|uncut ruby|~": {"Items": ["Uncut ruby"]}}
+            },
+        }
+    )
+    walk = _walk_with_chunks(info, unlocked_chunks=frozenset({"12581"}))
+
+    assert _item_hours(walk, "Uncut ruby", quantity=1.0) is not None
 
 
 def test_the_pickup_tick_caps_a_generous_spawn() -> None:

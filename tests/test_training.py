@@ -701,7 +701,11 @@ class TestTraceOption:
     def _derived(self) -> Derived:
         return Derived(
             reachable_sections={},
-            expanded_chunks={},
+            # Chunk `1111` is where the ruby's own `Spawn` route lives
+            # (`_info`) - `estimate._Walk.unlocked_chunks` needs it marked
+            # open, or `_location_reachable` refuses the spawn this trace is
+            # named for, the same gate a real locked chunk gets.
+            expanded_chunks={"1111": True},
             source_index=SourceIndex(
                 items={}, objects={}, monsters={}, npcs={}, shops={}, drop_rates={}
             ),

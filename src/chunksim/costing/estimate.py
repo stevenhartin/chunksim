@@ -440,6 +440,54 @@ def _shop_hop_seconds(quantity: float, stock: int | None, amortise: bool) -> flo
 #: shape of unknown.
 SHOP_RESTOCK_CUTOFF_SECONDS = 3600.0
 
+
+def _location_reachable(walk: _Walk, location: str) -> bool:
+    """Whether a `spawn` route's own chunk-or-chunk-section is one this map
+    has actually opened.
+
+    **The same shape of miss `costing/herbs.py`'s docstring already found for
+    herb patches**: the export writes a location as a plain chunk id
+    (`"13141"`) or as a chunk *and* a section (`"11321-2"`), and comparing the
+    second against the unlocked-chunk keys silently matches nothing - which
+    undercounted herb patches at 5 of 12 on the every-rollable-chunk map
+    before `herbs.patch_count` split the two apart. This module never made
+    that split at all: a spawn's chunk was never checked against the map's
+    own unlocked set, only the *item* was checked against
+    `reachable_items` - so an uncut ruby lying in chunk 12581 section 1 (The
+    Summer Shore) priced as reachable on a map that had never unlocked it,
+    because the same item also has a real, reachable route (a TzHaar gem
+    shop) elsewhere.
+
+    Section `"0"` is deliberately not looked up in `reachable_sections`:
+    `derive/sections.py`'s own fixed point never inserts it there because
+    unlocking a chunk makes it reachable for free.
+    """
+    chunk, _, section = location.partition("-")
+    if chunk not in walk.unlocked_chunks:
+        return False
+    if not section or section == "0":
+        return True
+    return bool(walk.reachable_sections.get(chunk, {}).get(section))
+
+
+def _spawn_block(chunk_info: ChunkInfo, location: str) -> Mapping[str, Any]:
+    """The `Spawn` table at a chunk-or-chunk-section location.
+
+    `search.build_world_index` names a sectioned spawn `f"{chunk_id}-{section_id}"`
+    and an unsectioned one the bare chunk id - the same split
+    `_location_reachable` reads, and for the same reason: reading `provider`
+    straight off `chunks[provider]` (as this function replaces) never matches
+    a sectioned location at all, so its quantity silently fell back to the
+    "unknown, assume one" default instead of the real figure.
+    """
+    chunk, _, section = location.partition("-")
+    entry = chunk_info.chunks.get(chunk, {})
+    if not isinstance(entry, dict):
+        return {}
+    if not section:
+        return _mapping(entry, "Spawn")
+    return _mapping(_mapping(entry, "Sections").get(section, {}), "Spawn")
+
 #: How much of a `make:` route's own cost its dominant material has to
 #: explain before `_route_hours` treats the recipe as *that* material's grind
 #: wearing a recipe, and stamps its source accordingly rather than a one-off
@@ -921,6 +969,18 @@ class _Walk:
     #: already gated on `taskUnlocks['Shops']`, the minigame rule and the
     #: backlog. A shop or spawn route is only free if it is *here*.
     reachable_items: frozenset[str] = frozenset()
+    #: `derived.expanded_chunks`' key set: chunk ids (and named areas) this
+    #: map has actually unlocked. **A spawn needs its own chunk checked, not
+    #: just its item** - `reachable_items` says "Uncut ruby exists somewhere
+    #: reachable", which stayed true through a real TzHaar shop route even
+    #: while a *specific* ground spawn (`12581-1`, The Summer Shore) sat in a
+    #: chunk nobody had unlocked. See `_location_reachable`.
+    unlocked_chunks: frozenset[str] = frozenset()
+    #: `derived.reachable_sections`: `{chunk: {section: True}}` for every
+    #: section beyond the implicit `"0"` - `derive/sections.py`'s own fixed
+    #: point. A spawn keyed by a chunk-and-section location needs this, not
+    #: `unlocked_chunks` alone: unlocking a chunk only opens section `0`.
+    reachable_sections: Mapping[str, Mapping[str, bool]] = field(default_factory=dict)
     #: Monster -> the slayer task you must be on to fight it, where one is
     #: required. Derived from `taskUnlocks`; see `task_gated_monsters`.
     #: `monster -> TaskGate`. **The gate carries where it applies**, because
@@ -1767,9 +1827,14 @@ def _route_hours(
             #
             # Left free, a `Spawn` of two planks priced a ten-plank wooden
             # fence at nothing and made it 296,471 Construction xp/hr.
-            at_spawn = _mapping(
-                _mapping(walk.chunk_info.data, "chunks").get(provider, {}), "Spawn"
-            ).get(item)
+            #
+            # **The item-level gate above is not enough for a spawn.**
+            # `reachable_lower` only says the item exists somewhere reachable
+            # on this map - true the moment *any* route to it is, which said
+            # nothing about *this* spawn's own chunk. See `_location_reachable`.
+            if not _location_reachable(walk, provider):
+                return None
+            at_spawn = _spawn_block(walk.chunk_info, provider).get(item)
             count = float(at_spawn) if isinstance(at_spawn, (int, float)) else 1.0
             per_hour = min(
                 3600.0 / SPAWN_PICKUP_SECONDS, SPAWN_HOPS_PER_HOUR * max(1.0, count)
@@ -2975,6 +3040,8 @@ def _setup(
         # reachable items were refused a shop or spawn route on the grounds
         # that the map could not reach them, when it plainly could.
         reachable_items=frozenset(derived.challenges.available_items),
+        unlocked_chunks=frozenset(expanded),
+        reachable_sections=derived.reachable_sections,
         task_gates=task_gated_monsters(
             state.chunk_info, world, frozenset(expanded)
         ),
