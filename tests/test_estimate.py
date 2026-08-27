@@ -2570,6 +2570,29 @@ class TestItemRoutes:
         assert {r.route for r in routes} == {"kill", "shop", "spawn"}
         assert [r.priced.hours for r in routes] == sorted(r.priced.hours for r in routes)
 
+    def test_a_stacked_drop_is_priced_by_its_average_yield(self) -> None:
+        """**The user's own bug report.** Revenant demons drop 8-16 Mahogany
+        planks (mean 12) at 1/58, 230 kills/hr. The goal question - how long
+        until the *first* plank - is a real 15.2 minutes, but that reads as
+        the source's speed on a panel titled "sorted by time to obtain", and
+        makes a high-stack drop look sixty times slower than it really
+        supplies the material. The amortised answer divides the drop's own
+        kills by its mean stack: `58 kills / 12 = 4.83` kills per plank, at
+        230/hr that is 75.6 seconds - not the 15.2-minute floor."""
+        import dataclasses
+
+        info = ChunkInfo({"drops": {"Revenant demon": {"Mahogany plank": {"8-16": "1/58"}}}})
+        heuristics = Heuristics(monsters={"Revenant demon": Rate(230.0, "test", "exact")})
+        walk = dataclasses.replace(
+            _walk_for(info, heuristics), available=frozenset({"Revenant demon"})
+        )
+
+        routes = item_routes(walk, "Mahogany plank")
+
+        assert len(routes) == 1
+        assert routes[0].priced.hours == pytest.approx((58 / 12) / 230.0)
+        assert routes[0].priced.hours < (58 / 230.0)
+
     def test_a_recipe_is_hidden_behind_a_real_route(self) -> None:
         """**`Mahogany plank`'s own bug.** The export's `Process mahogany
         logs` challenge and the wiki's `{{Recipe}}` for the same page

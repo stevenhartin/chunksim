@@ -1625,7 +1625,7 @@ class ItemRoute:
 
 
 def item_routes(
-    walk: _Walk, item: str, quantity: float = 1.0, amortise: bool = False
+    walk: _Walk, item: str, quantity: float = 1.0, amortise: bool = True
 ) -> tuple[ItemRoute, ...]:
     """Every way this map can obtain `item`, sorted fastest first.
 
@@ -1645,6 +1645,22 @@ def item_routes(
     genuinely different things a reader might already own one of - the one
     place this deliberately answers a different question than `_best_route`
     would for the same item.
+
+    **`amortise` defaults `True`, unlike every other caller of these
+    routes.** A reader clicking "Show Sources" is asking how fast this map
+    can *supply* the material, not how long until they see one for the
+    first time - and those are different numbers whenever a drop hands over
+    more than one at once. Revenant demons drop 8-16 Mahogany planks at
+    1/58: the goal question (`amortise=False`, what `_best_route` asks for
+    a task needing exactly one) answers "15.2 minutes", correctly, because
+    that is the wait to see the *first* plank regardless of stack size - but
+    it reads as the *source's speed*, and a reader comparing it against
+    "Process mahogany logs" at 25.9s would conclude the Revenant route is
+    sixty times slower than it is. The real long-run rate is one drop's
+    kills divided by its mean stack, 4.8 kills per plank, ~75 seconds -
+    still the make route's loser, just not by two orders of magnitude it
+    never actually loses by. `quantity` stays `1.0`: a single unit is what
+    the panel is pricing, `amortise` decides which question that unit asks.
 
     **`_recipe_hours`/`yield_seconds` keep `_best_route`'s own gate: tried
     only where nothing else priced at all.** They are not a second real
@@ -1744,7 +1760,7 @@ def item_routes(
                 if priced is not None:
                     found.append(ItemRoute("make", provider, priced))
         else:
-            priced = _kill_hours(walk, provider, item, quantity)
+            priced = _kill_hours(walk, provider, item, quantity, amortise)
             if priced is not None:
                 found.append(ItemRoute("kill", provider, priced))
 
@@ -2579,7 +2595,8 @@ def _fact_priced(fact: _KillFact, quantity: float, master: str) -> _Priced:
 
 
 def _kill_hours(
-    walk: _Walk, provider: str, item: str, quantity: float = 1.0
+    walk: _Walk, provider: str, item: str, quantity: float = 1.0,
+    amortise: bool = False,
 ) -> _Priced | None:
     """Hours of killing `provider` for `quantity` of `item`, gates included.
 
@@ -2589,10 +2606,24 @@ def _kill_hours(
     `Colossal Hydra` is a `skillItems.Slayer` activity with 43 drops and no
     chunk anywhere (it is a superior, spawned from Alchemical Hydra), and it
     was being costed as though you could go and fight one.
+
+    **`amortise` picks which of two questions `quantity` is answering.** A
+    goal (`amortise=False`, the default) wants to know when the drop will
+    first appear at all - `1/chance` kills, whatever the stack turns out to
+    be, since a whip is a whip whether the table hands over one or three.
+    `amortise=True` wants the long-run *rate*, which a stacked drop changes:
+    Revenant demons hand over 8-16 Mahogany planks at once, so the real
+    average is one drop's worth of kills divided by its mean stack, not the
+    time to merely see the first one. Skipping the `1/chance` floor is what
+    does that - see `item_routes`, the caller this exists for, whose reader
+    is comparing *sources* of a material rather than asking for exactly one.
     """
     if provider not in walk.available:
         superior = walk.heuristics.superiors.get(provider)
-        return _superior_hours(walk, superior, item, quantity) if superior else None
+        return (
+            _superior_hours(walk, superior, item, quantity, amortise)
+            if superior else None
+        )
 
     rates = _drop_rates(walk, provider, item)
     if rates is None or rates[0] <= 0 or rates[1] <= 0:
@@ -2602,13 +2633,17 @@ def _kill_hours(
     if rate.value <= 0:
         return None
 
-    # **Both bounds, and the binding one wins.** You cannot see the drop in
-    # fewer than `1/chance` kills however large the stack, and once you want
-    # more than one stack it is `quantity/yield`. At `quantity == 1` the first
-    # always binds, which is what keeps a goal priced on the rate alone.
-    kills = max(1 / chance, quantity / per_kill)
+    # **Both bounds, and the binding one wins - unless `amortise` says there
+    # is only one.** You cannot see the drop in fewer than `1/chance` kills
+    # however large the stack, and once you want more than one stack it is
+    # `quantity/yield`. At `quantity == 1` the first always binds, which is
+    # what keeps a goal priced on the rate alone; `amortise` drops that floor
+    # because the question it answers has no "at least one" to floor at.
+    kills = quantity / per_kill if amortise else max(1 / chance, quantity / per_kill)
     detail = f"{provider} at 1/{1 / chance:,.0f}, {rate.value:g}/hr"
-    if kills > 1 / chance:
+    if amortise and per_kill > chance:
+        detail = f"{provider}: {per_kill / chance:,.1f}/drop at 1/{1 / chance:,.0f}, {rate.value:g}/hr"
+    elif kills > 1 / chance:
         detail = f"{provider} x{kills:,.0f} kills, {rate.value:g}/hr"
 
     if provider in walk.task_gates:
@@ -2694,7 +2729,8 @@ def _task_hours(
 
 
 def _superior_hours(
-    walk: _Walk, superior: Superior, item: str, quantity: float = 1.0
+    walk: _Walk, superior: Superior, item: str, quantity: float = 1.0,
+    amortise: bool = False,
 ) -> _Priced | None:
     """Hours to obtain `quantity` of `item` from a superior slayer monster.
 
@@ -2702,7 +2738,8 @@ def _superior_hours(
     counterparts on death, only while on task, at roughly 1/200. So its cost
     is its base monster's cost multiplied by how many base kills a superior
     takes - and the base is usually task-gated itself, which the recursion
-    picks up.
+    picks up. `amortise` means the same thing it does in `_kill_hours`: drop
+    the "has to happen at all" floor and answer the long-run per-item rate.
     """
     if superior.spawn_rate <= 0 or superior.base not in walk.available:
         return None
@@ -2716,8 +2753,9 @@ def _superior_hours(
 
     # Base kills needed: one superior per `1 / spawn_rate`, and the same two
     # bounds `_kill_hours` takes - the drop has to happen at all, and a stack
-    # amortises once you want more than one.
-    supers = max(1 / chance, quantity / per_kill)
+    # amortises once you want more than one, unless `amortise` says to skip
+    # straight to the rate.
+    supers = quantity / per_kill if amortise else max(1 / chance, quantity / per_kill)
     kills = (1 / superior.spawn_rate) * supers
     if superior.base in walk.task_gates:
         # Same rule as a direct kill: if the base's task cannot be costed,
