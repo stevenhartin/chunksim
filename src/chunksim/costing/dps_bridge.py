@@ -1708,6 +1708,45 @@ def tzhaar_kill_seconds(
     return kill_seconds
 
 
+def colosseum_kill_seconds(
+    chunk_info: ChunkInfo,
+    picks: Mapping[str, str],
+    levels: Mapping[str, int],
+    *,
+    index: MonsterIndex | None = None,
+    kit: Kit | None = None,
+) -> Callable[[str], float | None]:
+    """A `KillSeconds` lookup for the Fortis Colosseum's wave roster and Sol
+    Heredit - `tzhaar_kill_seconds`'s own shape, one module over.
+
+    **Not raid-scaled, for the same reason.** `osrs_dps.core.scaling` has no
+    Colosseum wave modifier the way it has `RaidInputs.challenge_mode` or
+    `party_size` - `costing/colosseum.py`'s own docstring on Sol Heredit
+    needing no script gives the reason: nothing published states a duration
+    a player is locked out of attacking for, so every target here is priced
+    exactly as `price_combat` prices any other boss.
+    """
+    _require()
+    monster_index = load_monster_index() if index is None else index
+    versions = version_index(monster_index)
+    loadouts = build_loadouts(chunk_info, picks, levels, kit)
+    reductions = kit.reductions if kit is not None else None
+
+    def kill_seconds(name: str) -> float | None:
+        if not loadouts:
+            return None
+        candidates = candidate_targets(monster_index, name, versions)
+        if not candidates:
+            return None
+        kill = best_kill(
+            loadouts, name, candidates, index=monster_index,
+            reductions=reductions, boss=True,
+        )
+        return kill.ttk if kill is not None else None
+
+    return kill_seconds
+
+
 def price_monsters(
     chunk_info: ChunkInfo,
     picks: Mapping[str, str],

@@ -3272,7 +3272,7 @@ def _run_priced_items(overrides: Mapping[str, float] = {}) -> dict[str, float]:
         **raids.item_seconds(overrides),
         **tzhaar.item_seconds(overrides),
         **barrows.item_seconds(),
-        **colosseum.item_seconds(),
+        **colosseum.item_seconds(overrides),
         **moons.item_seconds(),
         **gauntlet.item_seconds(),
         **wintertodt.item_seconds(),

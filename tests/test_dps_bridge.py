@@ -411,6 +411,36 @@ class TestTzhaarKillSeconds:
         )
         assert lookup("Nothing at all") is None
 
+
+class TestColosseumKillSeconds:
+    """`colosseum_kill_seconds` is `costing/colosseum.py`'s own missing half -
+    see `costing/inputs.py`'s `_colosseum_run_seconds` and
+    `TestTzhaarKillSeconds`'s own twin, one module over."""
+
+    def test_prices_the_whole_roster_and_sol_heredit(self) -> None:
+        from chunksim.costing import colosseum
+
+        index = dps_bridge.load_monster_index()
+        lookup = dps_bridge.colosseum_kill_seconds(
+            _chunk_info(), {"Melee-weapon": "Abyssal whip"}, LEVELS, index=index,
+        )
+        for target in (*colosseum.WAVE_ROSTER, colosseum.FINAL_BOSS):
+            seconds = lookup(target)
+            assert seconds is not None and seconds > 0, target
+
+    def test_has_no_price_for_an_unknown_monster(self) -> None:
+        index = dps_bridge.load_monster_index()
+        lookup = dps_bridge.colosseum_kill_seconds(
+            _chunk_info(), {"Melee-weapon": "Abyssal whip"}, LEVELS, index=index,
+        )
+        assert lookup("Nothing at all") is None
+
+    def test_no_loadout_prices_nothing(self) -> None:
+        index = dps_bridge.load_monster_index()
+        lookup = dps_bridge.colosseum_kill_seconds(_chunk_info(), {}, {}, index=index)
+        assert lookup("Sol Heredit") is None
+
+
 def _defended_rat() -> Any:
     """A `Rat` with enough defence that accuracy is not already saturated at
     a middling Attack level - the shape a curve needs to have anything to

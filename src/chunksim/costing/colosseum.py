@@ -43,8 +43,23 @@ published downtime to spend a `Phase.reduced_seconds` on.
 A real run can bank loot and stop after any wave; this module only answers
 for reaching wave 12; matching `costing/theatre.py`'s and
 `costing/xeric.py`'s own convention of pricing the guide's own assumed
-scenario rather than a strategy choice. `Money making guide/Completing the
-Fortis Colosseum (Wave 12)` states `kph = 2.5` - a 1,440-second run - and
+scenario rather than a strategy choice.
+
+**`item_seconds` takes `overrides`, the same seam `raids.item_seconds` and
+`tzhaar.item_seconds` use.** `run(kill_seconds)` above builds a real
+DPS-modelled `Encounter` from this map's own gear and levels, but nothing
+in this module ever spent it before this - `PUBLISHED_SECONDS` alone priced
+every chest reward regardless of account, the exact "150/hour default"
+shape `costing/brimstone.py`'s own docstring names, just with a guide
+figure standing in for the missing model instead of `DEFAULT_KPH`.
+`costing/inputs.py`'s `_colosseum_run_seconds` is `_tzhaar_run_seconds`'s
+own twin: it feeds the sequencer's answer in as `overrides[FORTIS_COLOSSEUM]`
+and floors it at `RUN_SECONDS` - a real published pace, not a looser
+deadline the way Chambers Challenge's own guide entry is, so a computed run
+should never be trusted over it, matching `_tzhaar_run_seconds`'s own
+choice rather than `_raid_run_seconds`'s world-record exception.
+
+`Money making guide/Completing the Fortis Colosseum (Wave 12)` states `kph = 2.5` - a 1,440-second run - and
 its own `Output` fields already sum the wave-by-wave unique odds from
 `[[Rewards Chest (Fortis Colosseum)]]` for a full clear, so
 the chances below are transcribed from that arithmetic rather than
@@ -235,12 +250,29 @@ def answer(kill_seconds: KillSeconds, objective: Objective = encounter.FULL_LOG)
     return Answer(run=built, runs=runs)
 
 
-def item_seconds() -> dict[str, float]:
-    """`{item: seconds}` for the item walk, at `PUBLISHED_SECONDS` - see
-    `costing/raids.item_seconds` for the shape and the reason it is
-    published rather than modelled at this point in the pipeline."""
+def run_seconds(overrides: Mapping[str, float] = {}) -> float:
+    """How long one completed run takes, correction applied -
+    `costing/tzhaar.run_seconds`'s own shape, minus its `variant` key since
+    the Colosseum has only the one.
+
+    `overrides` is `Heuristics.run_seconds`: empty (published pace only) for
+    the goal walk, built before any DPS-derived rate exists;
+    `costing/inputs.py`'s `_colosseum_run_seconds` once the post-enrichment
+    walk asks. A hand correction in `runs` still wins over either, by the
+    same merge order `tzhaar.run_seconds`'s own docstring describes.
+    """
+    got = overrides.get(FORTIS_COLOSSEUM)
+    if isinstance(got, (int, float)) and not isinstance(got, bool) and got > 0:
+        return float(got)
+    return RUN_SECONDS
+
+
+def item_seconds(overrides: Mapping[str, float] = {}) -> dict[str, float]:
+    """`{item: seconds}` for the item walk, at `run_seconds(overrides)` - see
+    `costing/raids.item_seconds` for the shape this mirrors."""
+    run = run_seconds(overrides)
     return {
-        item: PUBLISHED_SECONDS / chance
+        item: run / chance
         for item, chance in item_chances().items()
         if chance > 0
     }
