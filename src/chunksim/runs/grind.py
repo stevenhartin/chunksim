@@ -121,7 +121,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from chunksim.costing.heuristics import Heuristics
-from chunksim.costing.inputs import priced_heuristics_reusing
+from chunksim.costing.inputs import _Reuse, priced_heuristics_reusing, recipe_priced
 from chunksim.derive.pipeline import Derived, MapState, load_map_state
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.model.firebase import reverse_tasks_map
@@ -146,7 +146,13 @@ from chunksim.store.cache import (
     read_chunkinfo,
     write_sim_run,
 )
-from chunksim.store.derived_cache import Digests, RollCache, decode, encode
+from chunksim.store.derived_cache import (
+    Digests,
+    RollCache,
+    cached_derive,
+    decode,
+    encode,
+)
 
 #: Why a grind stopped. `OVER` is the answer one was run to get; the other two
 #: are the ways it can fail to find one, and they are kept apart because they
@@ -242,11 +248,13 @@ class _StepPricer:
     #: The derivation `on_state` was handed, waiting for `on_roll` to say which
     #: chunk reached it. See `on_state`.
     _pending: Derived | None = None
-    #: `dps_bridge.PricedFights` from the previous step, so the next one
-    #: reprices only what a roll actually moved. Never crosses a leg boundary:
-    #: a resumed leg starts from scratch and is merely slower, which beats
-    #: putting a derived object in a `Frontier` that has to pickle.
-    fights: Any = None
+    #: What the previous step priced, offered to the next - `inputs._Reuse`,
+    #: holding `dps_bridge`'s fights and the item walk's fixpoint table.
+    #: Never crosses a leg boundary: a resumed leg starts cold and is merely
+    #: slower, which beats putting derived objects in a `Frontier` that has to
+    #: pickle. Reset to an empty `_Reuse` rather than `None` so the first step
+    #: needs no special case.
+    reuse: Any = field(default_factory=_Reuse)
 
     @property
     def levels(self) -> dict[str, int]:
@@ -262,7 +270,7 @@ class _StepPricer:
         set, so no two steps of one grind collide and re-walking the same
         chunks is a file read rather than another ~1.7s.
         """
-        priced, _, fights = priced_heuristics_reusing(
+        priced, _, reuse = priced_heuristics_reusing(
             self.state,
             self.held[order],
             derived,
@@ -277,9 +285,12 @@ class _StepPricer:
             # moved. Held on this pricer, which lives on one leg's stack and
             # is never shared - the sanctioned "passed in and returned, never
             # stored" shape.
-            previous=self.fights,
+            previous=self.reuse.fights,
+            # The previous roll's item table. Measured at 0% churn over 14
+            # rolls; verified per leg rather than trusted - see `advance`.
+            inherited=self.reuse.settled,
         )
-        self.fights = fights
+        self.reuse = reuse
         return priced
 
     def price(self, order: int, derived: Derived, chunk_id: str | None = None) -> None:
@@ -610,6 +621,7 @@ def advance(
         should_stop=stop,
     )
     cancelled = should_stop is not None and should_stop()
+    _verify_carried_prices(spec, setup, pricer)
     rolls = (frontier.rolled if frontier is not None else ()) + tuple(
         record.chunk_id for record in leg_ledger
     )
@@ -816,6 +828,51 @@ def settle(
         outcome=outcome,
         stamp=stamp,
     )
+
+
+
+class PriceCarryDivergedError(RuntimeError):
+    """Adopting the previous roll's item table changed an answer.
+
+    `simulate.CarryDivergedError`'s twin one layer up, and it exists for the
+    same reason: the carry is an unproven optimisation, so it is checked
+    rather than believed.
+    """
+
+
+def _verify_carried_prices(spec: RunSpec, setup: _Setup, pricer: _StepPricer) -> None:
+    """Re-price the state this leg ended on from cold, and refuse a mismatch.
+
+    **One check at the end covers every step, for `simulate_rolls`' own
+    reason.** A seeded answer is *sticky*: the table is inherited forward, so
+    a value that was wrong at step 3 is still wrong at the last step. Agreement
+    at the end therefore implies agreement throughout, and one cold walk buys
+    what checking every step would have cost a walk each.
+
+    Measured at 0% churn over 14 consecutive rolls of the real map - which is
+    evidence, not proof, and is exactly why this is here. `pipeline.derive`'s
+    area carry is guarded the same way and says the same thing about itself.
+
+    Compares what the caller can actually observe - the computed rates - and
+    not the internal table, so a difference that reaches nothing is not an
+    error and a difference that reaches something cannot hide.
+    """
+    if pricer.previous is None or pricer.reuse.computed is None:
+        return
+    cold, _ = recipe_priced(
+        setup.state,
+        pricer.previous,
+        setup.base.world,
+        setup.base.heuristics,
+        pricer.levels,
+        root=spec.root,
+        reference=setup.base.reference,
+    )
+    if cold.computed != pricer.reuse.computed:
+        raise PriceCarryDivergedError(
+            "carrying the item table forward changed a computed rate after "
+            f"{len(pricer.added) - 1} rolls; see grind._verify_carried_prices"
+        )
 
 
 def write_leg(spec: RunSpec, leg: Leg) -> RunResult:
