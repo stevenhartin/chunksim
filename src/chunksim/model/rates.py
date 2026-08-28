@@ -206,7 +206,10 @@ def find_fraction(value: float, rounded_denominator: bool = False) -> str:
         return "NaN"
     ratio = _round_half_up(1 / value, 2)
     if rounded_denominator:
-        ratio = math.floor(ratio)
+        # `float(...)` because `ratio` is typed `float` and `math.floor`
+        # narrows to `int`: harmless to the interpreter, but a compiled build
+        # boxes the two differently and refuses the assignment.
+        ratio = float(math.floor(ratio))
     return f"1/{_format_js_number(ratio)}"
 
 

@@ -468,7 +468,7 @@ def _quest_point_total(
     quest that only becomes valid this pass is not double-counted and one
     finished last pass is picked up the moment its `Output` seeds forward.
     """
-    total: float = 1
+    total: float = 1.0
     backlogged = backlog.get("Quest") or {}
     quest_challenges = _mapping(chunk_info.challenges, "Quest")
     for name in valid.get("Quest", {}):
@@ -492,7 +492,7 @@ def _combat_point_total(
     the export filing them under the `Diary` category), backlog-gated the
     same way `_quest_point_total` is. Starts at `0`, not `1` - upstream's
     own seed."""
-    total: float = 0
+    total: float = 0.0
     backlogged = backlog.get("Diary") or {}
     diary_challenges = _mapping(chunk_info.challenges, "Diary")
     for name in valid.get("Diary", {}):
@@ -511,7 +511,7 @@ def _kudos_total(valid: Mapping[str, Mapping[str, Any]], chunk_info: ChunkInfo) 
     own `Kudos`, across every skill - **not backlog-gated**, unlike the two
     totals above. Upstream's own sum carries no backlog check here, and
     this is a faithful port rather than an oversight."""
-    total: float = 0
+    total: float = 0.0
     for skill, names in valid.items():
         skill_challenges = _mapping(chunk_info.challenges, skill)
         for name in names:
