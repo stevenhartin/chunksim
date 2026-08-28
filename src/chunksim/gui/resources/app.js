@@ -40,20 +40,20 @@ const FOCUS_ZOOM = 0.5;
 
 /* Upstream's own wash, so a screenshot of either is recognisably the same map. */
 const LOCKED_WASH = "rgba(150, 150, 150, 0.6)";
-const ADDED_FILL = "rgba(60, 200, 90, 0.45)";
-const REMOVED_FILL = "rgba(220, 60, 60, 0.45)";
-const CANDIDATE_FILL = "rgba(90, 190, 255, 0.34)";
+const ADDED_FILL = "rgba(0, 192, 0, 0.45)";
+const REMOVED_FILL = "rgba(224, 32, 32, 0.45)";
+const CANDIDATE_FILL = "rgba(0, 136, 255, 0.34)";
 /* A pending unlock: amber, because it is neither a gain the map has made nor
    a candidate it could make - it is a claim waiting to be committed. */
-const PENDING_FILL = "rgba(255, 190, 0, 0.42)";
-const PENDING_STROKE = "#ffbe00";
-const CANDIDATE_STROKE = "#5abeff";
-const HULL_STROKE = "#ffbe00";
+const PENDING_FILL = "rgba(230, 165, 25, 0.42)";
+const PENDING_STROKE = "#e6a519";
+const CANDIDATE_STROKE = "#0088ff";
+const HULL_STROKE = "#e6a519";
 /* Reachable-but-not-rolled. The candidate blue rather than the hull's amber:
  * amber means "this is yours" everywhere else on this map, and these are not.
  * Matches `--candidate`, which already means "a square you could have". */
-const REACHABLE_STROKE = "#5abeff";
-const FOUND_FILL = "rgba(255, 190, 0, 0.30)";
+const REACHABLE_STROKE = "#0088ff";
+const FOUND_FILL = "rgba(230, 165, 25, 0.30)";
 
 /* **The five time bands, named by token and never by colour.**
  *
@@ -74,16 +74,16 @@ function bandColour(index) {
   const token = BAND_TOKENS[Math.max(0, Math.min(BAND_TOKENS.length - 1, index))];
   return getComputedStyle(document.documentElement).getPropertyValue(token).trim();
 }
-const GRID_STROKE = "rgba(255, 255, 255, 0.14)";
-const HOVER_FILL = "rgba(255, 255, 255, 0.10)";
+const GRID_STROKE = "rgba(236, 220, 184, 0.14)";
+const HOVER_FILL = "rgba(236, 220, 184, 0.10)";
 
 /* Section shading. Strong enough to read at a glance rather than to be looked
  * for: this is a mode you turn on to answer one question, and the first pass
  * at 0.30 alpha over a busy map answered it only if you already knew where to
  * look. The edge carries no alpha at all, because it is the thing that
  * separates two adjacent sections that happen to shade the same colour. */
-const SECTION_REACHED = { fill: "rgba(50, 210, 90, 0.52)", edge: "#8dffae" };
-const SECTION_LOCKED = { fill: "rgba(225, 55, 55, 0.50)", edge: "#ff9090" };
+const SECTION_REACHED = { fill: "rgba(0, 192, 0, 0.52)", edge: "#8dffae" };
+const SECTION_LOCKED = { fill: "rgba(224, 32, 32, 0.50)", edge: "#ff9090" };
 
 /* The section id meaning "the whole square". Must match `server.py`'s
  * WHOLE_CHUNK_SECTION: an unsplit chunk has no mask to composite, so its one
@@ -900,7 +900,7 @@ function drawHeatLabels() {
     const text = hours(entry.mean);
     /* Stroked underneath, so the number reads over the death band's near-black
      * and the free band's green alike. */
-    CTX.strokeStyle = "rgba(4, 8, 12, .85)";
+    CTX.strokeStyle = "rgba(18, 13, 8, .85)";
     CTX.strokeText(text, x + size / 2, y + size / 2);
     CTX.fillStyle = "#f2f6fb";
     CTX.fillText(text, x + size / 2, y + size / 2);
@@ -1028,7 +1028,7 @@ function drawCandidates() {
     CTX.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
     /* Below about 26px the glyph is unreadable and only muddies the square. */
     if (size >= 26) {
-      CTX.fillStyle = "#04121c";
+      CTX.fillStyle = "#120d08";
       CTX.fillText(info.number, x + size / 2 + 1, y + size / 2 + 1);
       CTX.fillStyle = "#eaf6ff";
       CTX.fillText(info.number, x + size / 2, y + size / 2);
@@ -1079,7 +1079,7 @@ function drawAreas() {
     const [x, y] = toScreen(at[0], at[1]);
     /* Stroked underneath, so a name stays readable over both the bright side
      * of an unlocked square and the wash over a locked one. */
-    CTX.strokeStyle = "rgba(4, 8, 12, .85)";
+    CTX.strokeStyle = "rgba(18, 13, 8, .85)";
     CTX.strokeText(area, x + 4, y + 3);
     CTX.fillStyle = "#e8eef6";
     CTX.fillText(area, x + 4, y + 3);
@@ -1183,7 +1183,7 @@ function drawHovered() {
   const [x, y] = toScreen(at[0], at[1]);
   CTX.fillStyle = HOVER_FILL;
   CTX.fillRect(x, y, size, size);
-  CTX.strokeStyle = "rgba(255,255,255,.45)";
+  CTX.strokeStyle = "rgba(236,220,184,.45)";
   CTX.lineWidth = 1;
   CTX.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
 }
@@ -1194,7 +1194,7 @@ function drawSelected() {
   if (!at) return;
   const size = cellSize();
   const [x, y] = toScreen(at[0], at[1]);
-  CTX.strokeStyle = "#ffffff";
+  CTX.strokeStyle = "#ecdcb8";
   CTX.lineWidth = Math.max(2, 2 * state.zoom);
   CTX.setLineDash([Math.max(4, size / 12), Math.max(3, size / 16)]);
   CTX.strokeRect(x, y, size, size);
@@ -3057,8 +3057,8 @@ function renderLegend() {
    * green squares and no compared map, so gating on the map left eight
    * chunks on screen in a colour the legend never explained. */
   const counts = (state.view && state.view.counts) || {};
-  if (counts.added) items.push(["rgba(60,200,90,.75)", chunkStateLabel("added")]);
-  if (counts.removed) items.push(["rgba(220,60,60,.75)", chunkStateLabel("removed")]);
+  if (counts.added) items.push(["rgba(0,192,0,.75)", chunkStateLabel("added")]);
+  if (counts.removed) items.push(["rgba(224,32,32,.75)", chunkStateLabel("removed")]);
   if (state.showCandidates && state.candidates.size) items.push([CANDIDATE_STROKE, "Candidate"]);
   /* A colour on screen the legend does not explain is a colour nobody trusts,
    * and a pending unlock is the one square that means neither gained nor
@@ -3067,7 +3067,7 @@ function renderLegend() {
   if (state.showMasks) {
     items.push([SECTION_REACHED.edge, "Section reached"], [SECTION_LOCKED.edge, "Section locked"]);
   }
-  if (state.found.size) items.push(["rgba(255,190,0,.6)", "Found"]);
+  if (state.found.size) items.push(["rgba(230,165,25,.6)", "Found"]);
   /* Same rule as every entry above it: a colour on screen the legend does not
    * explain is a colour nobody trusts. */
   if (state.reachable.length) items.push([REACHABLE_STROKE, "Reachable area"]);
@@ -3870,11 +3870,11 @@ el["show-done"].addEventListener("click", () => {
 /* ---- estimate pane ----------------------------------------------------- */
 
 const BUCKET_COLOURS = {
-  "quests": "#5abeff",
-  "boss drops": "#dc3c3c",
-  "monster drops": "#e8853c",
-  "activities": "#ffbe00",
-  "skilling": "#3cc85a",
+  "quests": "#0088ff",
+  "boss drops": "#e02020",
+  "monster drops": "#d9822e",
+  "activities": "#e6a519",
+  "skilling": "#00c000",
 };
 
 let estimatePayload = null;
@@ -3905,11 +3905,11 @@ async function loadEstimate() {
 function donut(ordered, total) {
   const R = 54, C = 2 * Math.PI * R;
   let offset = 0;
-  let arcs = `<circle cx="70" cy="70" r="${R}" stroke="#22262f"/>`;
+  let arcs = `<circle cx="70" cy="70" r="${R}" stroke="#3a2e1c"/>`;
   for (const [name, value] of ordered) {
     const length = (value / total) * C;
     const tip = tmpl`<b>${label(name)}</b><span class="sub">${hours(value)} · ${Math.round((value / total) * 100)}% of the total</span>`;
-    arcs += tmpl`<circle class="slice" cx="70" cy="70" r="${R}" stroke="${BUCKET_COLOURS[name] || "#858d9c"}"
+    arcs += tmpl`<circle class="slice" cx="70" cy="70" r="${R}" stroke="${BUCKET_COLOURS[name] || "#a8916a"}"
       stroke-dasharray="${length} ${C - length}" stroke-dashoffset="${-offset}" data-tip="${tip}"/>`;
     offset += length;
   }
@@ -3957,7 +3957,7 @@ function renderBucketSections(payload, idPrefix) {
      * arc it stands for gives the same figure, so the number is one gesture
      * away from wherever you happen to be pointing. */
     const tip = tmpl`<b>${label(name)}</b><span class="sub">${hours(value)} · ${Math.round((value / (total || 1)) * 100)}% of the total</span>`;
-    out += tmpl`<span data-tip="${tip}"><i class="sw" style="background:${BUCKET_COLOURS[name] || "#858d9c"}"></i>${label(name)}</span>`;
+    out += tmpl`<span data-tip="${tip}"><i class="sw" style="background:${BUCKET_COLOURS[name] || "#a8916a"}"></i>${label(name)}</span>`;
   }
   out += "</div></div>";
 
@@ -3987,7 +3987,7 @@ function renderBucketSections(payload, idPrefix) {
   /* Ordered as the pie is, so the third heading down is the third wedge
    * round and the swatch beside it is the one you just hovered. */
   for (const [bucket] of ordered) {
-    const swatch = tmpl`<i class="sw" style="background:${BUCKET_COLOURS[bucket] || "#858d9c"}"></i>`;
+    const swatch = tmpl`<i class="sw" style="background:${BUCKET_COLOURS[bucket] || "#a8916a"}"></i>`;
     if (bucket === "skilling") {
       /* The one bucket whose rows are not things but levels, so it keeps its
        * own shape: a skill, where it is going, and what that costs. */
@@ -4312,8 +4312,8 @@ function methodCurveChart(members, at) {
  * climb has never yet been reached (`test_gui_contract.py`'s reference map
  * check is the guard if a skill ever needs a ninth). */
 const METHOD_GUIDE_COLOURS = [
-  "#5abeff", "#ffbe00", "#3cc85a", "#dc3c3c",
-  "#b98af0", "#e8853c", "#39c7c7", "#e0574f",
+  "#0088ff", "#e6a519", "#00c000", "#e02020",
+  "#9d6fd6", "#d9822e", "#2fa8a8", "#c2402c",
 ];
 
 function methodGuideColours() {

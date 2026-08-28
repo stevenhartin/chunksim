@@ -104,44 +104,52 @@
 <header class="bar">
   <span class="brand">chunksim</span>
 
-  <!-- **Not a `<select>`.** Two things it cannot do: colour a row, and nest a
-       batch's runs beside it rather than inside it. `<optgroup>` puts ten runs
-       in the same scroll as every other map, which is the list the batch entry
-       exists to collapse. -->
-  <div class="picker" id="map-picker">
-    <button class="pick-button" type="button"
-            aria-haspopup="listbox" aria-expanded="false" aria-label="Map">
-      <span class="dot"></span>
-      <span class="pick-name">…</span>
-      <svg class="icon" viewBox="0 0 24 24"><use href="#i-down"/></svg>
-    </button>
-    <div class="menu" role="listbox" hidden></div>
+  <!-- Grouped rather than run together in one flat row - a carved-groove
+       separator between groups (`.bar-group`) in place of the single
+       `.rule` hairline, the osrs.design Menu Bar pattern's own convention
+       for a strip that holds several unrelated clusters of controls. Purely
+       a grouping wrapper: no ids move, so every `el.*`/`getElementById`
+       lookup keeps resolving unchanged. -->
+  <div class="bar-group">
+    <!-- **Not a `<select>`.** Two things it cannot do: colour a row, and nest
+         a batch's runs beside it rather than inside it. `<optgroup>` puts ten
+         runs in the same scroll as every other map, which is the list the
+         batch entry exists to collapse. -->
+    <div class="picker" id="map-picker">
+      <button class="pick-button" type="button"
+              aria-haspopup="listbox" aria-expanded="false" aria-label="Map">
+        <span class="dot"></span>
+        <span class="pick-name">…</span>
+        <svg class="icon" viewBox="0 0 24 24"><use href="#i-down"/></svg>
+      </button>
+      <div class="menu" role="listbox" hidden></div>
+    </div>
+    <!-- Comparing is a mode, not a second dropdown sitting permanently beside
+         the first. The pair it needs lives in the ribbon, where the mode is
+         announced; this is the door. -->
+    <button id="compare-start" type="button"
+            data-tip="&lt;b&gt;Compare with another map&lt;/b&gt;&lt;span class='sub'&gt;Enters diff view: gains green, losses red, both selectors on the ribbon.&lt;/span&gt;">Compare</button>
   </div>
-  <!-- Comparing is a mode, not a second dropdown sitting permanently beside
-       the first. The pair it needs lives in the ribbon, where the mode is
-       announced; this is the door. -->
-  <button id="compare-start" type="button"
-          data-tip="&lt;b&gt;Compare with another map&lt;/b&gt;&lt;span class='sub'&gt;Enters diff view: gains green, losses red, both selectors on the ribbon.&lt;/span&gt;">Compare</button>
 
-  <span class="rule"></span>
-
-  <button id="candidates" class="toggle" type="button" aria-pressed="false"
-          data-tip="&lt;b&gt;Candidates&lt;/b&gt;&lt;span class='sub'&gt;The chunks you could roll next, numbered as source-chunk numbers them.&lt;/span&gt;&lt;span class='hint'&gt;C&lt;/span&gt;">Candidates</button>
-  <button id="masks" class="toggle" type="button" aria-pressed="false"
-          data-tip="&lt;b&gt;Sections&lt;/b&gt;&lt;span class='sub'&gt;Shade inside each chunk: green where you can reach, red where you cannot.&lt;/span&gt;&lt;span class='hint'&gt;S&lt;/span&gt;">Sections</button>
-  <button id="fit" type="button" data-tip="&lt;b&gt;Fit&lt;/b&gt;&lt;span class='sub'&gt;Frame everything this map holds.&lt;/span&gt;&lt;span class='hint'&gt;Home&lt;/span&gt;">Fit</button>
-  <!-- **The third thing that decides what the map draws**, beside the other
-       two. It floated over the map's top-right on the argument that it is
-       read once when a dungeon looks empty and then left alone - true, and an
-       argument about weight rather than about where it belongs. The bar is
-       where this page changes what it is showing; the overlays on the map are
-       where it reads back. -->
-  <select id="plane" class="plane-pick" aria-label="Plane" data-tip="&lt;b&gt;Floor to draw&lt;/b&gt;&lt;span class='sub'&gt;Above ground level the floor below is sunk so this one stands out.&lt;/span&gt;">
-    <option value="0">Plane 0</option>
-    <option value="1">Plane 1</option>
-    <option value="2">Plane 2</option>
-    <option value="3">Plane 3</option>
-  </select>
+  <div class="bar-group">
+    <button id="candidates" class="toggle" type="button" aria-pressed="false"
+            data-tip="&lt;b&gt;Candidates&lt;/b&gt;&lt;span class='sub'&gt;The chunks you could roll next, numbered as source-chunk numbers them.&lt;/span&gt;&lt;span class='hint'&gt;C&lt;/span&gt;">Candidates</button>
+    <button id="masks" class="toggle" type="button" aria-pressed="false"
+            data-tip="&lt;b&gt;Sections&lt;/b&gt;&lt;span class='sub'&gt;Shade inside each chunk: green where you can reach, red where you cannot.&lt;/span&gt;&lt;span class='hint'&gt;S&lt;/span&gt;">Sections</button>
+    <button id="fit" type="button" data-tip="&lt;b&gt;Fit&lt;/b&gt;&lt;span class='sub'&gt;Frame everything this map holds.&lt;/span&gt;&lt;span class='hint'&gt;Home&lt;/span&gt;">Fit</button>
+    <!-- **The third thing that decides what the map draws**, beside the other
+         two. It floated over the map's top-right on the argument that it is
+         read once when a dungeon looks empty and then left alone - true, and
+         an argument about weight rather than about where it belongs. The bar
+         is where this page changes what it is showing; the overlays on the
+         map are where it reads back. -->
+    <select id="plane" class="plane-pick" aria-label="Plane" data-tip="&lt;b&gt;Floor to draw&lt;/b&gt;&lt;span class='sub'&gt;Above ground level the floor below is sunk so this one stands out.&lt;/span&gt;">
+      <option value="0">Plane 0</option>
+      <option value="1">Plane 1</option>
+      <option value="2">Plane 2</option>
+      <option value="3">Plane 3</option>
+    </select>
+  </div>
 
   <span class="counts" id="counts"></span>
   <button id="skipped" class="warn" type="button" hidden></button>
@@ -161,14 +169,32 @@
           data-tip="&lt;b&gt;Hide the panel&lt;/b&gt;&lt;span class='sub'&gt;Gives the map the whole window; a sliver stays to bring it back.&lt;/span&gt;&lt;span class='hint'&gt;P&lt;/span&gt;">
     <svg class="icon" viewBox="0 0 24 24"><use id="panel-pin-icon" href="#i-rr"/></svg>
   </button>
+  <!-- A vertical rail of icon slots, OSRS-sidebar-style, in place of a row
+       of text labels - `showTab`/the delegated click listener on `#tabs`
+       read `data-tab`/`data-pane` rather than a position, so the label can
+       move into `data-tip`/`aria-label` (the same mechanism every other
+       icon-only control on this page already uses) without touching any
+       JS. -->
   <nav class="tabs" id="tabs">
-    <button data-tab="tasks" class="on" type="button">Tasks</button>
-    <button data-tab="chunk" type="button">Chunk</button>
-    <button data-tab="find" type="button">Find</button>
-    <button data-tab="estimate" type="button">Estimate</button>
-    <button data-tab="maps" type="button">Maps</button>
+    <button data-tab="tasks" class="on" type="button" aria-label="Tasks"
+            data-tip="Tasks">
+      <svg class="icon" viewBox="0 0 24 24"><use href="#i-task"/></svg>
+    </button>
+    <button data-tab="chunk" type="button" aria-label="Chunk" data-tip="Chunk">
+      <svg class="icon" viewBox="0 0 24 24"><use href="#i-focus"/></svg>
+    </button>
+    <button data-tab="find" type="button" aria-label="Find" data-tip="Find">
+      <svg class="icon" viewBox="0 0 24 24"><use href="#i-clue"/></svg>
+    </button>
+    <button data-tab="estimate" type="button" aria-label="Estimate" data-tip="Estimate">
+      <svg class="icon" viewBox="0 0 24 24"><use href="#i-clock"/></svg>
+    </button>
+    <button data-tab="maps" type="button" aria-label="Maps" data-tip="Maps">
+      <svg class="icon" viewBox="0 0 24 24"><use href="#i-layers"/></svg>
+    </button>
   </nav>
 
+  <div class="panel-body">
   <section class="pane on" data-pane="tasks">
     <div class="pane-head">
       <div class="chips" id="task-chips"></div>
@@ -236,6 +262,7 @@
     </div>
     <div id="maps-body" class="empty">Loading…</div>
   </section>
+  </div>
 </aside>
 
 <!-- Work that takes time gets a card in the top right of the map, not a
