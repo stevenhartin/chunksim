@@ -158,7 +158,7 @@ Each of the first three has already caused a real bug.
 
 `chunksim estimate` turns the derivation into hours. **The export carries no durations, rates or XP
 figures at all**, so every number spent comes from a scrape, a wiki recipe, a model in `costing/`, or
-a default in `costing/heuristics.py`. That subpackage is 98 modules, most of them one activity or
+a default in `costing/heuristics.py`. That subpackage is 128 modules, most of them one activity or
 one mechanic each; **their docstrings carry the measurements, the checks and the refusals, and this
 file deliberately does not repeat them.** What follows is only what holds across all of them.
 
