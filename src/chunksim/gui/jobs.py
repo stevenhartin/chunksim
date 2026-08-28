@@ -31,7 +31,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Protocol
 
 
 class JobState(StrEnum):
@@ -59,6 +59,15 @@ class Job:
     action: str
     state: JobState = JobState.RUNNING
     progress: str = ""
+    #: Structured progress, for work whose shape a sentence cannot carry - a
+    #: grind batch reports one entry per simulation, so the page can show which
+    #: worker is on which and for how long.
+    #:
+    #: **Replaced wholesale, never mutated in place.** That is what keeps this
+    #: field under the same reasoning as every other one above: a reader either
+    #: sees the old dict or the new one, both of them internally consistent,
+    #: and never a half-updated dict being walked while it changes.
+    detail: dict[str, Any] = field(default_factory=dict)
     result: dict[str, Any] | None = None
     error: str | None = None
     started_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
@@ -75,6 +84,7 @@ class Job:
             "action": self.action,
             "state": str(self.state),
             "progress": self.progress,
+            "detail": self.detail,
             "result": self.result,
             "error": self.error,
             "started_at": self.started_at,
@@ -83,10 +93,22 @@ class Job:
         }
 
 
-#: What a job's work function is handed to report progress with. A plain
-#: callable rather than a queue: the browser polls, so there is nothing to
-#: deliver to and nowhere for a backlog to build up.
-Progress = Callable[[str], None]
+class Progress(Protocol):
+    """What a job's work function is handed to report progress with.
+
+    A plain callable rather than a queue: the browser polls, so there is
+    nothing to deliver to and nowhere for a backlog to build up.
+
+    **A protocol rather than a `Callable` alias, so `detail` could be added
+    without touching a single existing caller.** Every action here reports a
+    sentence and nothing else; a grind batch reports a sentence *and* a row per
+    simulation, because "8/50 simulations" cannot say which eight or how long
+    each has been going - which is exactly the question a long parallel job
+    provokes. See `Job.detail`.
+    """
+
+    def __call__(self, message: str, detail: dict[str, Any] | None = None) -> None: ...
+
 
 #: Asked, once in a while, whether to stop. Work that has nowhere sensible to
 #: stop simply never calls it.
@@ -132,11 +154,20 @@ class JobRegistry:
             self._jobs[job.id] = job
             self._trim()
 
+        def report(message: str, detail: dict[str, Any] | None = None) -> None:
+            """The `Progress` a work function is handed.
+
+            `detail` is replaced rather than merged, so a reporter that stops
+            sending one is saying "there is nothing structured here now" rather
+            than leaving the last set on screen forever.
+            """
+            job.progress = message
+            if detail is not None:
+                job.detail = detail
+
         def run() -> None:
             try:
-                job.result = work(
-                    lambda message: setattr(job, "progress", message), job.stopping.is_set
-                )
+                job.result = work(report, job.stopping.is_set)
                 # **Cancelled, not done.** The work returned normally because
                 # it stopped where it was asked to, and a page that coloured
                 # that green would be claiming the batch finished.

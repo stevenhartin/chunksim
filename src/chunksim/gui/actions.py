@@ -59,7 +59,9 @@ from chunksim.runs.batch import save_edit, save_snapshot, save_unlock
 from chunksim.runs import grind
 from chunksim.runs.timeline import PER_STEP_BASIS
 from chunksim.costing.inputs import load_reference
+from chunksim.model.summary import _mapping
 from chunksim.store.cache import GRIND_ORIGIN
+import time
 from chunksim.remote.scrape import scrape
 from chunksim.gui import knobs, settings
 from chunksim.gui.http import Context
@@ -673,21 +675,65 @@ def _grind_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     def work(progress: Progress, stop: StopCheck) -> dict[str, Any]:
         finished = 0
         rolled = 0
-        where = f" on {min(workers, runs)} workers" if workers > 1 and runs > 1 else ""
+        lanes = min(workers, runs)
+        where = f" on {lanes} workers" if workers > 1 and runs > 1 else ""
+        started = time.monotonic()
+        # **One row per simulation, keyed by the index `on_roll` reports.**
+        # Mutated in place here and *copied* into every published `detail`, so
+        # the page never walks a dict while this thread is writing it - see
+        # `jobs.Job.detail`.
+        state: dict[int, dict[str, Any]] = {}
 
-        def roll(_run: int, _order: int, _chunk_id: str) -> None:
+        def publish() -> None:
+            progress(
+                f"{finished}/{runs} simulations - {rolled} rolls{where}"
+                + (" - stopping" if stop() else ""),
+                {
+                    "kind": "grind",
+                    "workers": lanes,
+                    "simulations": runs,
+                    "elapsed": round(time.monotonic() - started, 1),
+                    "runs": [dict(row) for _, row in sorted(state.items())],
+                },
+            )
+
+        def roll(run_index: int, order: int, _chunk_id: str) -> None:
             nonlocal rolled
             rolled += 1
+            now = time.monotonic()
+            row = state.get(run_index)
+            if row is None:
+                # **First roll seen is the first evidence this run is running
+                # at all.** A spec waiting in the pool's queue and one whose
+                # opening roll has not landed yet look identical from here, so
+                # neither is claimed to have started until one does.
+                row = {"run": run_index + 1, "started": now, "rolls": 0, "done": False}
+                state[run_index] = row
+            row["rolls"] = order
+            row["at"] = now
+            row["seconds"] = round(now - row["started"], 1)
+            publish()
 
         def report(result: RunResult) -> None:
             nonlocal finished
             finished += 1
-            progress(
-                f"{finished}/{runs} simulations - {rolled} rolls{where}"
-                + (" - stopping" if stop() else "")
+            now = time.monotonic()
+            row = state.setdefault(
+                _run_number(result.name) - 1,
+                {"run": _run_number(result.name), "started": now, "rolls": 0},
             )
+            row["done"] = True
+            row["name"] = result.name
+            row["rolls"] = len(result.rolls)
+            row["outcome"] = _mapping(result.extra, "grind").get("reason")
+            # **Kept, not dropped, when a run finishes.** How long one took is
+            # the more useful half of "how long has this been going" - it is
+            # what says whether the batch is waiting on one long straggler,
+            # which is the shape a grind batch actually ends in.
+            row["seconds"] = round(now - float(row["started"]), 1)
+            publish()
 
-        progress(f"0/{runs} simulations{where}")
+        publish()
         batch = run_batch(
             name=name,
             payload=envelope["data"],
@@ -727,6 +773,19 @@ def _grind_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
         }
 
     return {"job": ctx.jobs.submit("grind", work).id}
+
+
+def _run_number(name: str) -> int:
+    """`run-007` -> 7, so a completion can find the row a roll opened.
+
+    The two callbacks identify a run differently and neither can be changed to
+    match the other: `on_roll` carries the spec's index because that is what
+    crosses the progress queue (`batch._roll_reporter`), while `on_complete`
+    carries a `RunResult`, which knows its directory name and not its place in
+    the batch. `run_dir` numbers from 1, so this is the join.
+    """
+    tail = name.rsplit("-", 1)[-1]
+    return int(tail) if tail.isdigit() else 0
 
 
 def _unlock_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:

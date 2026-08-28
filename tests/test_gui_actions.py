@@ -138,9 +138,22 @@ def _derived_ctx(
     return Context(root=tmp_path)
 
 
-def _capture(registry: Any, action: str, work: Any, seen: list[str]) -> Any:
-    """Run a job inline and keep every progress line it emitted."""
-    work(seen.append, lambda: False)
+def _capture(
+    registry: Any, action: str, work: Any, seen: list[str], details: list[Any] | None = None
+) -> Any:
+    """Run a job inline and keep every progress line it emitted.
+
+    **Takes `detail` even where the caller ignores it**, because that is the
+    shape `jobs.Progress` actually has: a work function may report structured
+    rows beside its sentence, and a double that accepted only the sentence
+    would raise on exactly the work most worth testing.
+    """
+    def report(message: str, detail: Any = None) -> None:
+        seen.append(message)
+        if details is not None:
+            details.append(detail)
+
+    work(report, lambda: False)
 
     class _Job:
         id = "inline"
@@ -268,6 +281,72 @@ class TestGrind:
         job = _wait(ctx, _body(response)["job"])
 
         assert job["result"]["outcomes"] == {"over": 1, "stuck": 1, "capped": 0}
+
+    def test_it_reports_one_row_per_simulation_as_they_roll(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """**What `8/50 simulations` cannot say.** A batch of long parallel
+        work is opaque from outside: that line cannot tell you whether sixteen
+        workers are busy or one is, and a grind's completions look serial even
+        when they are not, because runs stop on a random event and their
+        lengths vary enormously. So the job publishes a row per simulation and
+        the page can show which worker is on which, and for how long.
+        """
+        def batch(**kw: Any) -> Any:
+            made = _FakeBatch(kw["name"], 0, None)
+            made.runs = [_FakeRun("run-001", {"reason": "over", "chunk": "1", "hours": 9.0})]
+            # Two runs rolling at once, which is the thing worth being able to
+            # see: rolls interleave because the workers are concurrent.
+            kw["on_roll"](0, 1, "100")
+            kw["on_roll"](1, 1, "101")
+            kw["on_roll"](0, 2, "102")
+            kw["on_complete"](made.runs[0])
+            return made
+
+        monkeypatch.setattr("chunksim.gui.actions.run_batch", batch)
+        ctx = self._ctx(tmp_path)
+
+        response = _post(
+            "/api/grind", ctx, {"map": "fray", "name": "g", "hours": 300, "simulations": 2}
+        )
+        job = _wait(ctx, _body(response)["job"])
+
+        detail = job["detail"]
+        assert detail["kind"] == "grind"
+        assert detail["simulations"] == 2
+        rows = {row["run"]: row for row in detail["runs"]}
+        assert set(rows) == {1, 2}
+        # run-001 rolled twice and then finished; run-002 is still going.
+        assert rows[1]["rolls"] == 1 and rows[1]["done"] is True
+        assert rows[1]["outcome"] == "over"
+        assert rows[2]["rolls"] == 1 and rows[2].get("done") is not True
+        assert isinstance(rows[2]["seconds"], float)
+        # **A finished run keeps its clock**, because how long one *took* is
+        # what says whether the batch is waiting on a single straggler - the
+        # shape a grind batch actually ends in.
+        assert isinstance(rows[1]["seconds"], float)
+
+    def test_a_run_is_not_claimed_to_be_going_before_its_first_roll(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """**Queued and just-started look identical from the parent**, so
+        neither is reported as running. A spec waiting for a free worker has
+        rolled nothing, and so has one whose opening roll is still in flight;
+        inventing a start time for either would make the panel claim more
+        workers were busy than are."""
+        monkeypatch.setattr(
+            "chunksim.gui.actions.run_batch",
+            lambda **kw: _FakeBatch(kw["name"], 0, None),
+        )
+        ctx = self._ctx(tmp_path)
+
+        response = _post(
+            "/api/grind", ctx, {"map": "fray", "name": "g", "hours": 300, "simulations": 4}
+        )
+        job = _wait(ctx, _body(response)["job"])
+
+        assert job["detail"]["runs"] == []
+        assert job["detail"]["simulations"] == 4
 
     @pytest.mark.parametrize("hours", [0, -1, "soon", True, None])
     def test_a_threshold_that_is_not_a_positive_number_is_refused(
@@ -603,6 +682,33 @@ def test_cancelling_an_unknown_job_is_a_404(tmp_path: Path) -> None:
 
     assert _post("/api/cancel", ctx, {"job": "nope"}).status == HTTPStatus.NOT_FOUND
     assert _post("/api/cancel", ctx, {}).status == HTTPStatus.BAD_REQUEST
+
+
+def test_reporting_a_sentence_alone_is_still_the_whole_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**`Progress` grew a second parameter and no existing caller moved.**
+    That was the point of making it a protocol rather than widening a
+    `Callable` alias: every action here reports a sentence, one action reports
+    rows as well, and neither has to know about the other.
+
+    Asserted through a real job rather than by reading the type, since what
+    matters is that the registry's own callable still accepts one argument.
+    """
+    monkeypatch.setattr(
+        "chunksim.gui.actions.run_batch",
+        lambda **kw: _FakeBatch(kw["name"], kw["runs"], kw["on_complete"]),
+    )
+    ctx = Context(root=tmp_path, check_origin=False)
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+
+    response = _post("/api/simulate", ctx, {"map": "fray", "name": "sim", "rolls": 1})
+    job = _wait(ctx, _body(response)["job"])
+
+    assert job["state"] == "done"
+    assert job["progress"], "a one-argument report still lands"
+    # And nothing structured was invented on its behalf.
+    assert job["detail"] == {}
 
 
 def test_simulate_progress_counts_rolls_not_runs(

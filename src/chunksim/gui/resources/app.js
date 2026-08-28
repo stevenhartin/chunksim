@@ -191,7 +191,7 @@ for (const id of [
   "ribbon", "ribbon-mode", "ribbon-map", "ribbon-vs", "compare-start", "exit-mode",
   "ribbon-edits", "do-commit",
   "progress", "progress-title", "progress-count", "progress-detail",
-  "progress-track", "progress-fill", "progress-cancel",
+  "progress-track", "progress-fill", "progress-cancel", "progress-more",
   "overlay", "overlay-title", "overlay-body", "overlay-close", "overlay-actions",
   "overlay-trail", "overlay-tools",
   "drill-sheet", "drill-title", "drill-body", "drill-close",
@@ -1773,6 +1773,11 @@ function toast(message) {
  * dialog it opened before. */
 function openOverlay(title, html, actions, opts) {
   const { trail = [], tools = "", keepDrill = false } = opts || {};
+  /* **Cleared here and set only by `renderJobStats`, which opens through
+   * this.** The stats panel redraws on every job poll, so any *other* dialog
+   * opening while a batch runs has to take the overlay away from it or the
+   * next tick would redraw over whatever the user just opened. */
+  overlayIsStats = false;
   el["overlay-title"].textContent = title;
   el["overlay-body"].innerHTML = html;
   el["overlay-actions"].innerHTML = actions || "";
@@ -1800,6 +1805,9 @@ function renderTrail(nav, trail) {
 
 function closeOverlay() {
   el.overlay.hidden = true;
+  /* The stats panel redraws itself on every poll while it is open, so what
+   * closes it has to say so - otherwise the next tick reopens it. */
+  overlayIsStats = false;
   closeDrillPanel();
   /* A dialog that was asking a question and is dismissed has been answered
    * "no". Anything awaiting it has to hear that rather than wait forever. */
@@ -5978,7 +5986,7 @@ async function askRemoveBatch(name, runs, afterRemoval, kind) {
  *
  * So the shape of the reply decides: a job id means follow it, anything else
  * *is* the answer. */
-function showProgress(title, { detail = "", done = 0, total = 0, state = "", job = "" } = {}) {
+function showProgress(title, { detail = "", done = 0, total = 0, state = "", job = "", stats = null } = {}) {
   el.progress.hidden = false;
   /* **Only while it is running, and only for work that can stop.** A button
    * that does nothing is worse than none, and the reply shape already tells
@@ -5993,7 +6001,78 @@ function showProgress(title, { detail = "", done = 0, total = 0, state = "", job
    * filling. Inventing a percentage would be the only dishonest option. */
   el["progress-track"].classList.toggle("indeterminate", !total);
   el["progress-fill"].style.width = total ? Math.round((done / total) * 100) + "%" : "";
+  /* **Offered only by work that has something structured to show.** Most jobs
+   * report a sentence and nothing else; the link would be a dead end on them.
+   * See `jobs.Job.detail`. */
+  jobStats = stats && stats.runs ? stats : null;
+  el["progress-more"].hidden = !jobStats;
+  if (jobStats && !el.overlay.hidden && overlayIsStats) renderJobStats();
 }
+
+/* The last structured progress seen, and whether the overlay is showing it.
+ * Kept here rather than on `state` because it belongs to a job in flight, not
+ * to the map - closing the overlay or finishing the job ends its life. */
+let jobStats = null;
+let overlayIsStats = false;
+
+/* **One row per simulation: is it running, how far has it got, how long has it
+ * been going.** This exists because a batch of long parallel work is opaque
+ * from the outside: `8/50 simulations` cannot say whether sixteen workers are
+ * busy or one is, and the completion pattern of a grind looks serial even when
+ * it is not - runs stop on a random event, so their lengths vary enormously
+ * and finishes spread out. Measured on a real map: eight simulations dispatched
+ * within 4.7s of each other ran 1, 4, 11, 12, 25, 31, 36 and 43 rolls. */
+function renderJobStats() {
+  const stats = jobStats;
+  if (!stats) return;
+  const rows = stats.runs || [];
+  const running = rows.filter((row) => !row.done);
+  const done = rows.filter((row) => row.done);
+  /* **Idle is inferred, and is the number worth seeing.** A worker with
+   * nothing left to pick up is the tail of a batch: near the end the pool
+   * drains and the wall clock is one long simulation with everything else
+   * finished. */
+  const idle = Math.max(0, stats.workers - running.length);
+
+  /* **Simulations nobody has picked up yet are counted, not listed.** With
+   * more simulations than workers most are queued, and a queued spec has
+   * nothing to show - no rolls, no clock. Saying how many are waiting is the
+   * honest version of a row that would be blank in every column. */
+  const waiting = Math.max(0, stats.simulations - rows.length);
+
+  const body = rows.length
+    ? `<table class="sim-table"><thead><tr><th>Simulation</th><th>Rolls</th>`
+      + `<th>Took</th><th>State</th></tr></thead><tbody>`
+      + rows.map((row) => tmpl`<tr><td class="sim-name">run-${String(row.run).padStart(3, "0")}</td>
+        <td class="sim-total">${String(row.rolls)}</td>
+        <td class="sim-total">${seconds(row.seconds)}</td>
+        <td class="sim-name"><span class="pill" data-hold="${
+          row.done ? "unlocked" : "reachable"}">${
+          row.done ? (GRIND_OUTCOMES[row.outcome] || "finished") : "rolling"}</span></td></tr>`
+      ).join("")
+      + `</tbody></table>`
+    : tmpl`<p class="empty">No simulation has finished its first roll yet.</p>`;
+
+  openOverlay("Worker activity",
+    tmpl`<p class="hint">${String(running.length)} of ${String(stats.workers)}
+      workers rolling, ${String(idle)} idle. ${String(done.length)} of ${
+      String(stats.simulations)} simulations finished${
+      waiting ? tmpl`, ${String(waiting)} not started yet` : ""}; ${
+      seconds(stats.elapsed)} elapsed.
+      Each worker owns a whole simulation and rolls it start to finish; a grind
+      stops on a random event, so their lengths differ and they finish spread
+      out rather than together.</p>` + body);
+  overlayIsStats = true;
+}
+
+/* Seconds as something readable at both ends of a long batch. */
+function seconds(value) {
+  if (value === null || value === undefined) return "—";
+  return value < 60 ? Math.round(value) + "s"
+    : Math.floor(value / 60) + "m " + String(Math.round(value % 60)).padStart(2, "0") + "s";
+}
+
+el["progress-more"].addEventListener("click", renderJobStats);
 
 el["progress-cancel"].addEventListener("click", async () => {
   const id = el["progress-cancel"].dataset.job;
@@ -6121,6 +6200,9 @@ async function followJob(id, label, onDone) {
   const job = await pollJob(id, (tick) => showProgress(label, {
     detail: tick.progress || "Working…",
     job: tick.stopping ? "" : id,
+    /* Structured progress rides along on the same poll, so an open stats
+     * panel redraws itself at the poll interval with nothing extra to fetch. */
+    stats: tick.detail && tick.detail.runs ? tick.detail : null,
     ...countsIn(tick.progress),
   }));
   if (job.state === "failed") {

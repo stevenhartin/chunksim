@@ -1383,6 +1383,23 @@ button.link.danger:hover {
   overflow-wrap: anywhere;
 }
 
+/* **A link, not a button**, and under the bar rather than beside the stop
+   control. What it opens is a reading of the same work, where the control
+   beside it ends that work - putting them together as a pair of buttons would
+   make them read as equals. See `renderJobStats`. */
+.progress-more {
+  margin-top: var(--s2);
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--candidate);
+  font-size: var(--t-note);
+  text-align: left;
+  cursor: pointer;
+}
+.progress-more:hover { color: var(--text); text-decoration: underline; }
+
 .progress-track {
   height: 4px;
   margin-top: var(--s3);

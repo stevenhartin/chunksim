@@ -1629,6 +1629,58 @@ def test_the_grind_drilldown_opens_the_run_at_the_roll_that_ended_it() -> None:
     assert "goToRoll(at.step)" in body
 
 
+def test_the_stats_link_is_offered_only_by_work_that_has_stats() -> None:
+    """A link that opens an empty panel is worse than no link. Most jobs report
+    a sentence and nothing else, so the control appears only when structured
+    progress actually arrived - see `jobs.Job.detail`."""
+    html, js, _ = _resources()
+
+    assert 'id="progress-more"' in html
+    assert "hidden" in _match(r'(<button class="progress-more".*?>)', html)
+    body = _match(r"function showProgress\(title, \{(.*?)\n\}", js)
+    assert "el[\"progress-more\"].hidden = !jobStats" in body
+
+
+def test_the_stats_panel_redraws_itself_while_the_job_runs() -> None:
+    """**It rides the poll rather than fetching.** `followJob` already asks
+    every 400ms, so the rows come with it; a panel of its own would be a second
+    request saying the same thing at a different moment."""
+    _, js, _ = _resources()
+
+    follow = _match(r"async function followJob\(id, label, onDone\) \{(.*?)\n\}", js)
+    assert "stats: tick.detail" in follow
+    assert "getJSON" not in follow, "the rows ride the poll"
+    # And whatever takes the overlay away stops it redrawing over the top.
+    assert "overlayIsStats = false" in _match(r"function openOverlay\((.*?)\n\}", js)
+    assert "overlayIsStats = false" in _match(r"function closeOverlay\(\) \{(.*?)\n\}", js)
+
+
+def test_the_stats_panel_does_not_claim_a_queued_run_is_running() -> None:
+    """Idle workers are counted from what is *rolling*, not from what is left
+    to do - with more simulations than workers most are queued, and calling
+    those running would report a machine busier than it is."""
+    _, js, _ = _resources()
+
+    body = _match(r"function renderJobStats\(\) \{(.*?)\n\}", js)
+    assert "rows.filter((row) => !row.done)" in body
+    assert "stats.workers - running.length" in body
+    # A queued simulation is counted, never drawn as a row of blanks.
+    assert "stats.simulations - rows.length" in body
+    assert "not started yet" in body
+
+
+def test_a_finished_simulation_keeps_its_clock() -> None:
+    """How long a run *took* is the more useful half of "how long has this been
+    going": it is what says whether the batch is down to one straggler, which
+    is how a grind batch actually ends. An earlier version blanked it the
+    moment a run finished."""
+    _, js, _ = _resources()
+
+    body = _match(r"function renderJobStats\(\) \{(.*?)\n\}", js)
+    assert "${seconds(row.seconds)}" in body
+    assert 'row.done ? "—" : seconds(row.seconds)' not in body
+
+
 def test_the_grind_outcomes_are_one_vocabulary() -> None:
     """Named once in `runs/grind.py` and once here, with nothing enforcing
     agreement - which is what this file is for."""

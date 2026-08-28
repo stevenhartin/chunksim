@@ -278,6 +278,11 @@
   </div>
   <div class="progress-detail" id="progress-detail"></div>
   <div class="progress-track" id="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+  <!-- Only for work that reports a shape a sentence cannot carry - a grind
+       batch, whose fifty simulations run on sixteen workers. Hidden otherwise,
+       since most jobs have nothing more to say than their one line. -->
+  <button class="progress-more" id="progress-more" type="button" hidden
+          data-tip="&lt;b&gt;What every worker is doing&lt;/b&gt;&lt;span class='sub'&gt;One row per simulation: how many chunks it has rolled and how long it has been going.&lt;/span&gt;">More Stats</button>
 </div>
 
 <div class="legend" id="legend"></div>
