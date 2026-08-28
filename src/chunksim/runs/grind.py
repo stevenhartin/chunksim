@@ -88,14 +88,13 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from chunksim.costing.heuristics import Heuristics
-from chunksim.costing.inputs import ReferenceBlobs, priced_heuristics
-from chunksim.derive.pipeline import Derived, MapState
-from chunksim.derive.search import WorldIndex
+from chunksim.costing.inputs import priced_heuristics
+from chunksim.derive.pipeline import Derived, MapState, load_map_state
 from chunksim.model.chunkinfo import ChunkInfo
+from chunksim.model.firebase import reverse_tasks_map
 from chunksim.model.summary import _mapping
 from chunksim.runs.batch import (
     RunResult,
@@ -116,8 +115,6 @@ from chunksim.store.cache import (
     read_chunkinfo,
     write_sim_run,
 )
-from chunksim.derive.pipeline import load_map_state
-from chunksim.model.firebase import reverse_tasks_map
 from chunksim.store.derived_cache import Digests, RollCache
 
 #: Why a grind stopped. `OVER` is the answer one was run to get; the other two
@@ -209,11 +206,10 @@ class _StepPricer:
     _pending: Derived | None = None
 
     @property
-    def world(self) -> WorldIndex:
-        return self.base.world
-
-    @property
     def levels(self) -> dict[str, int]:
+        """A fresh copy per read: `priced_heuristics` and `estimate` both take
+        this as a mutable dict, and one shared between steps would be a memo
+        living longer than the call that made it."""
         return dict(self.base.reference.levels)
 
     def _rates(self, order: int, derived: Derived) -> Heuristics:

@@ -43,11 +43,22 @@ class _FakeBatch:
 
 
 class _FakeRun:
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, grind: dict[str, Any] | None = None) -> None:
         self.name = name
         self.unlocked_chunks = 1
         self.rolls = ("100",)
         self.cancelled = False
+        self.extra = {"grind": grind} if grind is not None else {}
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "run": self.name,
+            "seed": 1,
+            "rolls": list(self.rolls),
+            "unlocked_chunks": self.unlocked_chunks,
+            "cancelled": self.cancelled,
+            **self.extra,
+        }
 
 
 def _write_map(root: Path, map_id: str, unlocked: list[str]) -> None:
@@ -193,6 +204,132 @@ def test_a_simulate_without_its_required_fields_is_a_400(
 ) -> None:
     ctx = Context(root=ctx.root, check_origin=False)
     assert _post("/api/simulate", ctx, payload).status == HTTPStatus.BAD_REQUEST
+
+
+class TestGrind:
+    """`POST /api/grind` - see `actions._grind_job`. Every one of these is
+    something refused *before* forty workers start, which is the point: a
+    grind is minutes, so a mistake caught after the job begins is a mistake
+    the user waits out."""
+
+    @staticmethod
+    def _rates(root: Path) -> None:
+        """`_grind_job` checks a scrape exists before starting anything, so a
+        test that wants past that check has to put one there."""
+        cache.write_blob("wiki_rates", {}, "test", root=root)
+
+    def _ctx(self, tmp_path: Path) -> Context:
+        ctx = Context(root=tmp_path, check_origin=False)
+        _write_map(tmp_path, "fray", [LUMBRIDGE])
+        self._rates(tmp_path)
+        return ctx
+
+    def test_a_post_returns_a_job_that_finishes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "chunksim.gui.actions.run_batch",
+            lambda **kw: _FakeBatch(kw["name"], kw["runs"], kw["on_complete"]),
+        )
+        ctx = self._ctx(tmp_path)
+
+        response = _post(
+            "/api/grind", ctx, {"map": "fray", "name": "g", "hours": 300, "simulations": 2}
+        )
+
+        assert response.status == HTTPStatus.ACCEPTED
+        job = _wait(ctx, _body(response)["job"])
+        assert job["state"] == "done"
+        # **`grind`, not `batch`** - the page branches on the key, and a grind
+        # read as a roll simulation is summarised in the wrong words.
+        assert job["result"]["grind"] == "g"
+        assert "batch" not in job["result"]
+        assert job["result"]["simulations"] == 2
+
+    def test_the_outcome_split_is_reported(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """What the summary line says, and the only number in the reply that
+        answers "was this batch worth running"."""
+        def batch(**kw: Any) -> Any:
+            made = _FakeBatch(kw["name"], 0, None)
+            made.runs = [
+                _FakeRun("run-001", {"reason": "over", "chunk": "1111", "hours": 500.0}),
+                _FakeRun("run-002", {"reason": "stuck", "chunk": None, "hours": None}),
+            ]
+            for run in made.runs:
+                kw["on_complete"](run)
+            return made
+
+        monkeypatch.setattr("chunksim.gui.actions.run_batch", batch)
+        ctx = self._ctx(tmp_path)
+
+        response = _post("/api/grind", ctx, {"map": "fray", "name": "g", "hours": 300})
+        job = _wait(ctx, _body(response)["job"])
+
+        assert job["result"]["outcomes"] == {"over": 1, "stuck": 1, "capped": 0}
+
+    @pytest.mark.parametrize("hours", [0, -1, "soon", True, None])
+    def test_a_threshold_that_is_not_a_positive_number_is_refused(
+        self, tmp_path: Path, hours: Any
+    ) -> None:
+        """**Not `as_int`, which coerces.** A grind with a silently defaulted
+        threshold runs for minutes and answers a question nobody asked - and
+        `True` is an `int` in Python, so it would otherwise mean one hour."""
+        ctx = self._ctx(tmp_path)
+
+        response = _post("/api/grind", ctx, {"map": "fray", "name": "g", "hours": hours})
+
+        assert response.status == HTTPStatus.BAD_REQUEST
+
+    def test_a_cache_that_cannot_price_is_refused_before_the_job(
+        self, tmp_path: Path
+    ) -> None:
+        """Without a rate scrape every worker raises the same `CacheMissError`.
+        One message beats forty tracebacks, and unlike a roll simulation there
+        is no useful degraded answer - the threshold is the whole run."""
+        ctx = Context(root=tmp_path, check_origin=False)
+        _write_map(tmp_path, "fray", [LUMBRIDGE])
+
+        response = _post("/api/grind", ctx, {"map": "fray", "name": "g", "hours": 300})
+
+        assert response.status == HTTPStatus.BAD_REQUEST
+        assert "wiki rates" in _body(response)["error"]
+
+    def test_a_bad_base_map_fails_the_post(self, tmp_path: Path) -> None:
+        ctx = Context(root=tmp_path, check_origin=False)
+        self._rates(tmp_path)
+
+        response = _post("/api/grind", ctx, {"map": "nope", "name": "g", "hours": 300})
+
+        assert response.status == HTTPStatus.NOT_FOUND
+
+
+def test_repricing_refuses_to_cross_a_rate_basis(tmp_path: Path) -> None:
+    """**The most important refusal in the grind change.**
+
+    `price_steps` can only produce the final-state basis. A grind's series is
+    priced roll by roll, and the two read *identical* inputs - same export,
+    same rates, same overrides - so nothing in the stamp's digests would notice
+    the substitution. Repricing one would overwrite a real answer with a
+    different quantity, under a stamp that looked correct: the "two
+    computations, one key, last writer wins" shape `costing/inputs.py` exists
+    to prevent. See `timeline.FINAL_BASIS`.
+    """
+    from chunksim.runs.timeline import PER_STEP_BASIS
+
+    ctx = Context(root=tmp_path, check_origin=False)
+    _write_map(tmp_path, "fray", [LUMBRIDGE])
+    cache.write_timeline(
+        "fray",
+        {"stamp": {"basis": PER_STEP_BASIS}, "added": [0.0, 1.0], "totals": [1.0, 2.0]},
+        tmp_path,
+    )
+
+    response = _post("/api/timeline", ctx, {"map": "fray"})
+
+    assert response.status == HTTPStatus.BAD_REQUEST
+    assert "priced per roll" in _body(response)["error"]
 
 
 def test_a_malformed_body_is_a_400(ctx: Context) -> None:

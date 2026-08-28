@@ -132,6 +132,82 @@ def _write_run(root: Path, batch: str, unlocked: list[str], rolls: list[str]) ->
     return f"{directory.name}/{run.name}"
 
 
+class TestGrindSummary:
+    """`GET /api/grind` - see `routes_view.grind_payload`. What N grinds agreed
+    about is a property of the batch, not of any run in it, so this is the one
+    read route keyed on a batch name."""
+
+    @staticmethod
+    def _batch(root: Path, name: str, runs: list[dict[str, Any]]) -> None:
+        directory = cache.claim_batch(name, root, kind=cache.SIMULATED)
+        cache.write_sim_batch(
+            directory,
+            {
+                "name": directory.name,
+                "kind": cache.SIMULATED,
+                "origin": cache.GRIND_ORIGIN,
+                "grind": {"hours": 300.0, "simulations": len(runs)},
+                "runs": runs,
+            },
+        )
+
+    def test_it_collates_the_runs_into_walls(self, tmp_path: Path) -> None:
+        ctx = Context(root=tmp_path, check_origin=False)
+        self._batch(tmp_path, "g", [
+            {"run": "run-001", "rolls": ["1", "2"],
+             "grind": {"reason": "over", "chunk": "1111", "step": 2, "hours": 600.0}},
+            {"run": "run-002", "rolls": ["1", "2", "3"],
+             "grind": {"reason": "over", "chunk": "1111", "step": 3, "hours": 700.0}},
+        ])
+
+        payload = _body(_get("/api/grind", ctx, batch="g"))
+
+        assert payload["hours"] == 300.0
+        assert [wall["chunk"] for wall in payload["chunks"]] == ["1111"]
+        assert payload["chunks"][0]["mean_hours"] == 650.0
+        assert payload["distribution"] == [
+            {"chunks": 2, "runs": 1}, {"chunks": 3, "runs": 1},
+        ]
+
+    def test_it_answers_without_parsing_the_export(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The property this module's own split exists to keep checkable: a
+        summary is `batch.json` plus each small `run.json`, and nothing here
+        needs the 10MB export."""
+        ctx = Context(root=tmp_path, check_origin=False)
+        self._batch(tmp_path, "g", [
+            {"run": "run-001", "rolls": ["1"],
+             "grind": {"reason": "stuck", "chunk": None, "step": None, "hours": None}},
+        ])
+
+        def refuse(*args: Any, **kwargs: Any) -> Any:
+            raise AssertionError("the summary parsed the export")
+
+        monkeypatch.setattr("chunksim.gui.derivation.cache.read_chunkinfo", refuse)
+
+        assert _body(_get("/api/grind", ctx, batch="g"))["unwalled"] == {"stuck": 1}
+        assert not ctx.derivations.loaded
+
+    def test_a_missing_batch_name_is_a_400(self, tmp_path: Path) -> None:
+        ctx = Context(root=tmp_path, check_origin=False)
+
+        assert _get("/api/grind", ctx).status == HTTPStatus.BAD_REQUEST
+
+    def test_a_roll_simulation_is_not_a_grind(self, tmp_path: Path) -> None:
+        """A batch with no `grind` branch was rolled to answer something else,
+        and saying so beats collating zeroes."""
+        ctx = Context(root=tmp_path, check_origin=False)
+        _write_run(tmp_path, "plain", [LUMBRIDGE, NORTH], [NORTH])
+
+        assert _get("/api/grind", ctx, batch="plain").status == HTTPStatus.BAD_REQUEST
+
+    def test_an_unknown_batch_is_a_404(self, tmp_path: Path) -> None:
+        ctx = Context(root=tmp_path, check_origin=False)
+
+        assert _get("/api/grind", ctx, batch="nope").status == HTTPStatus.NOT_FOUND
+
+
 def _capture(registry: Any, action: str, work: Any, seen: list[str]) -> Any:
     """Run a job inline and keep every progress line it emitted."""
     work(seen.append, lambda: False)
@@ -448,6 +524,67 @@ def test_enriched_hours_leave_nothing_to_upgrade(
     payload = _body(_get("/api/timeline", ctx, map=map_id))
 
     assert payload["enriched"] is True and payload["can_enrich"] is False
+
+
+def test_the_stamp_digests_the_rates_file_a_reader_would_open(tmp_path: Path) -> None:
+    """**A bug that hid behind its own workaround.**
+
+    `wiki_rates.json` ships in `src/chunksim/heuristics/`; `cache/reference/`
+    is only its migration path. `_timeline_stamp` digested `blob_path` - the
+    *write* location - so on any ordinary checkout it digested a file that was
+    not there and got `""`, while `batch._Pricer` recorded `load_reference`'s
+    real digest. A freshly rolled run's timeline therefore read as stale the
+    instant it was written, and the page offered to recompute numbers that
+    were already current; the recompute then wrote `""` itself, so the second
+    reading matched and nothing looked wrong.
+
+    `cache.blob_source` is the one answer to "which file is this".
+    """
+    from chunksim.gui.routes_view import _timeline_stamp
+
+    ctx = Context(root=tmp_path, check_origin=False)
+    (tmp_path / "src" / "chunksim" / "heuristics").mkdir(parents=True)
+    (tmp_path / "src" / "chunksim" / "heuristics" / "wiki_rates.json").write_text("{}")
+
+    assert _timeline_stamp(ctx, enriched=False)["rates"] == cache.file_digest(
+        cache.blob_source(cache.WIKI_RATES_BLOB_NAME, tmp_path)
+    )
+    assert _timeline_stamp(ctx, enriched=False)["rates"] != ""
+
+
+def test_a_series_priced_roll_by_roll_is_drawn_but_never_offered_an_upgrade(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**Two claims that look alike and are not.**
+
+    A grind's hours are perfectly good and must draw - the whole feature is
+    those numbers. But they can never be *repriced*, whatever is installed:
+    `price_steps` produces only the final-state basis, so the offer would be to
+    replace a real answer with a different quantity. Without this, installing
+    the `dps` extra after a grind batch would light the button up over numbers
+    it must not touch.
+    """
+    from chunksim.gui.routes_view import _timeline_stamp
+    from chunksim.runs.timeline import PER_STEP_BASIS
+
+    ctx = _derived_ctx(tmp_path, monkeypatch, {"chunks": {}, "sections": {}})
+    map_id = _write_run(tmp_path, "sim", [LUMBRIDGE, NORTH], [NORTH])
+    cache.write_timeline(
+        map_id,
+        {
+            "stamp": _timeline_stamp(ctx, enriched=False, basis=PER_STEP_BASIS),
+            "added": [0.0, 2.5],
+            "totals": [10.0, 12.5],
+        },
+        tmp_path,
+    )
+    monkeypatch.setattr("chunksim.gui.routes_view.dps_bridge.DPS_AVAILABLE", True)
+
+    payload = _body(_get("/api/timeline", ctx, map=map_id))
+
+    assert payload["has_hours"] is True, "a grind's hours are the whole point"
+    assert payload["basis"] == PER_STEP_BASIS
+    assert payload["can_enrich"] is False
 
 
 def test_without_the_extra_there_is_nothing_better_to_offer(

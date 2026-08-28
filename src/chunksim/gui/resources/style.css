@@ -2187,6 +2187,28 @@ ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
 .grind .sub { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .sim-total .tl-sw { margin-right: var(--s2); vertical-align: baseline; }
 
+/* **How many simulations got how many chunks**, in the grind dialog. `gd-`
+   rather than `grind-`, because `.grind` right above is an *item* row in the
+   heat dialog and one prefix for two unrelated things is how a stylesheet
+   starts lying.
+
+   Unlike `.tl-graph` this scales uniformly, so its axis labels are ordinary
+   `<text>` inside the SVG rather than an HTML overlay - a dialog has a settled
+   width and pays nothing for that, where the strip fills a resizable panel and
+   would stretch every glyph. See `grindHistogram`. */
+.gd-hist {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-bottom: var(--s4);
+}
+/* No band here: bands are the *hours* vocabulary, and this axis counts
+   simulations. One accent, so the shape is what is read. */
+.gd-bar { fill: var(--candidate); }
+.gd-slot { fill: transparent; }
+.gd-slot:hover { fill: rgba(255, 255, 255, .04); }
+.gd-axis { fill: var(--dim); font-size: var(--t-micro); font-variant-numeric: tabular-nums; }
+
 /* The chunks a thing is in, as the squares they are. Four across is what fits
    the overlay at the tile's own 256px halved twice - wider makes a wall of
    map, narrower makes a column. */

@@ -71,13 +71,23 @@ The modules, and what each owns:
   `reachable_by_area`, the squares a map can walk
   into without having rolled them, joined to `expanded_chunks` **by name** - the
   `sections` graph does not model dungeon entrances at all.
+  `grind_payload` is here rather than on the expensive path for the same
+  reason the timeline is: a batch summary is `batch.json` plus each run's own
+  metadata, so a hundred simulations cost one file read and no export. It is
+  the one read route keyed on a **batch** rather than a map, because what N
+  grinds agreed about is not a property of any one of them.
 - `routes_reference.py` - bytes belonging to no map: the static allowlist, blob
   freshness, the tile *template*, and the lazy asset proxy.
 - `actions.py` - the POST handlers. **An action's reply shape decides whether
   the page polls it** - a job id, or the result. `/api/blank` makes a map out of
   nothing, for a first run with nothing to open. `/api/update` is silent on
   every failure by design; `/api/update/install` **verifies a checksum before
-  executing anything** and refuses an asset that published none.
+  executing anything** and refuses an asset that published none. `/api/grind`
+  is `/api/simulate` through the same `run_batch` with a different body
+  (`runs/grind.py`); it refuses a cache that cannot price **before** starting
+  forty workers that would each fail identically, and `/api/timeline` refuses
+  to reprice what `/api/grind` produced - the two price on different bases and
+  neither is a refresh of the other.
 - `jobs.py` - the background job registry. **The only mutable state in the
   GUI**, kept out of the pure layer deliberately. Also `claim_once`, which is
   what stops the page's boot warm-up re-scraping the wiki on every reload.

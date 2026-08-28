@@ -1528,11 +1528,17 @@ def test_a_batch_row_asks_about_its_runs_rather_than_pinning_a_strip() -> None:
     The press used to pin the submenu open, which existed to make the runs
     reachable without a steady hand. The dialog does that better and carries
     the answer as well, so the pin is gone rather than duplicated.
+
+    **Which dialog is now a question the row has to ask**, since a grind batch
+    is `simulated` like any other and answers something else entirely - so the
+    press goes through `openBatch` and both dialogs stay reachable.
     """
     _, js, css = _resources()
 
     assert "spec.onBatch(nest.dataset.batch)" in js
-    assert "onBatch: showSimulations" in js
+    assert "onBatch: openBatch" in js
+    dispatch = _match(r"function openBatch\(id\) \{(.*?)\n\}", js)
+    assert "showGrind(id)" in dispatch and "showSimulations(id)" in dispatch
     # Replaced, not kept alongside - the word survives in unrelated prose
     # ("pinned at either end" of a zoom), so this looks for the state itself.
     assert "let pinned" not in js and "pinned = nest" not in js
@@ -1544,6 +1550,95 @@ def test_a_batch_row_asks_about_its_runs_rather_than_pinning_a_strip() -> None:
 
     styles = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
     assert ".sim-table" in styles
+
+
+def test_the_maps_pane_offers_two_simulations_and_names_them_apart() -> None:
+    """**Two kinds of run need two names.** "Simulate" was unambiguous while
+    there was one; beside a second it names neither, and the two ask genuinely
+    different questions - a roll count in, against a roll count out."""
+    _, js, _ = _resources()
+
+    assert "<h3>Roll Simulation</h3>" in js
+    assert "<h3>Next Grind Simulation</h3>" in js
+    for element in ("do-sim", "sim-rolls", "sim-runs", "do-grind", "grind-hours", "grind-runs"):
+        assert f'id="{element}"' in js, element
+        assert f'getElementById("{element}")' in js, element
+
+
+def test_grinding_opens_its_summary_rather_than_the_map() -> None:
+    """**The deliberate difference from the Roll button**, which opens its
+    result as the map because a roll makes one future and that future is the
+    answer. A grind makes forty and the answer is what they agree about, so
+    opening one of them would be picking a sample and calling it the result.
+    """
+    _, js, _ = _resources()
+
+    handler = _match(r'runAction\(`Grind past \$\{hours\}h`(.*?)\n    \};', js)
+    assert "showGrind(result.grind)" in handler
+    assert "openMap(" not in handler, "a grind result is not the map"
+
+
+def test_the_distribution_scales_uniformly_so_its_labels_are_not_stretched() -> None:
+    """**The inverse of the timeline strip's rule, for the same reason.**
+    `tlBars` stretches to fill a resizable panel, so every glyph in it has to
+    live in an HTML overlay. A dialog has a settled width and pays nothing for
+    uniform scaling, so its axis labels are ordinary `<text>`. Setting
+    `preserveAspectRatio="none"` here would put stretched letters back.
+    """
+    _, js, _ = _resources()
+
+    body = _match(r"function grindHistogram\(distribution\) \{(.*?)\n\}", js)
+    assert "<text" in body
+    assert 'preserveAspectRatio="none"' not in body
+
+
+def test_the_distribution_counts_simulations_and_so_carries_no_band() -> None:
+    """The five bands are the *hours* vocabulary. This axis counts
+    simulations, so borrowing their colours would say a 12-chunk column was
+    somehow more brutal than a 3-chunk one."""
+    _, js, css = _resources()
+
+    body = _match(r"function grindHistogram\(distribution\) \{(.*?)\n\}", js)
+    assert "data-band" not in body
+    # And the bars still name no colour of their own - CSS picks, as ever.
+    assert "fill=" not in body
+    styles = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    assert ".gd-bar" in styles
+
+
+def test_the_grind_drilldown_gets_back_by_a_breadcrumb() -> None:
+    """`renderTrail` already draws one and every other drill-down uses it, so
+    a Back button here would be a second vocabulary for one gesture. It
+    re-renders held data rather than re-fetching, which is what makes the
+    crumb a fold rather than navigation."""
+    _, js, _ = _resources()
+
+    body = _match(r"function showGrindChunk\(chunkId\) \{(.*?)\n\}", js)
+    assert "trail: [{ label: data.batch, go: renderGrind }]" in body
+    assert "getJSON(" not in body, "the way back is a re-render, not a fetch"
+
+
+def test_the_grind_drilldown_opens_the_run_at_the_roll_that_ended_it() -> None:
+    """The one thing the dialog cannot show is the chain that got there, and
+    the run's own timeline is where that lives - `showHeatChunk`'s gesture,
+    reused rather than reinvented."""
+    _, js, _ = _resources()
+
+    body = _match(r"function showGrindChunk\(chunkId\) \{(.*?)\n\}", js)
+    assert "chooseMap(at.run)" in body
+    assert "goToRoll(at.step)" in body
+
+
+def test_the_grind_outcomes_are_one_vocabulary() -> None:
+    """Named once in `runs/grind.py` and once here, with nothing enforcing
+    agreement - which is what this file is for."""
+    from chunksim.runs import grind
+
+    _, js, _ = _resources()
+
+    labels = _match(r"const GRIND_OUTCOMES = \{(.*?)\n\};", js)
+    named = set(re.findall(r"^\s*(\w+):", labels, re.MULTILINE))
+    assert named == set(grind.OUTCOMES)
 
 
 def test_costing_a_batch_runs_one_at_a_time() -> None:

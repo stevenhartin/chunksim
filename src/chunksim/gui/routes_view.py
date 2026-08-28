@@ -518,7 +518,16 @@ def _timeline_stamp(
     return timeline_stamp(
         chunkinfo=digests.chunkinfo,
         tasks_map=digests.tasks_map,
-        rates=cache.file_digest(cache.blob_path(cache.WIKI_RATES_BLOB_NAME, ctx.root)),
+        # **`blob_source`, not `blob_path`** - the file a reader opens, not the
+        # one a developer command writes. `wiki_rates.json` ships in
+        # `src/chunksim/heuristics/` and `cache/reference/` is only its
+        # migration path, so on any ordinary checkout `blob_path` names a file
+        # that is not there and digests to `""`. That disagreed with
+        # `batch._Pricer`, which reads `load_reference`'s own digest: a freshly
+        # rolled run's timeline read as stale the moment it was written, and
+        # the page offered to recompute numbers that were already current.
+        # `cache.blob_source` is the one answer to "which file is this".
+        rates=cache.file_digest(cache.blob_source(cache.WIKI_RATES_BLOB_NAME, ctx.root)),
         overrides=_overrides_digest(ctx),
         enriched=enriched,
         basis=basis,

@@ -2596,6 +2596,173 @@ async function showSimulations(batch) {
   renderSimulations(batch, runs, timelines);
 }
 
+/* **What N grinds agreed about, and the one thing they are opened for.**
+ *
+ * Held rather than re-fetched between the two screens, the way `state.heatmap`
+ * is: the drill-down and the way back out of it are re-renders of the same
+ * answer, and a fetch per crumb would make the breadcrumb feel like navigation
+ * when it is a fold. `/api/grind` is one file read on the server, so this is
+ * one request for a hundred simulations - see `routes_view.grind_payload`. */
+let grindData = null;
+
+async function showGrind(batch) {
+  openOverlay(batch, tmpl`<p class="empty">Reading ${batch}…</p>`);
+  try {
+    grindData = await getJSON("/api/grind?batch=" + encodeURIComponent(batch));
+  } catch (err) {
+    return openOverlay(batch, tmpl`<p class="empty">${String(err.message || err)}</p>`);
+  }
+  renderGrind();
+}
+
+/* The landing screen: how far the grinds got, and what stopped them. */
+function renderGrind() {
+  const data = grindData;
+  if (!data) return;
+  const walls = data.chunks || [];
+  const unwalled = data.unwalled || {};
+  /* **Say what did not find a wall, rather than leaving it to arithmetic.**
+   * A batch where most grinds simply ran out of chunks is a different finding
+   * from one where they all hit something, and the shares below are of every
+   * simulation - so without this line they would not appear to add up. */
+  const rest = Object.keys(unwalled).sort().map((reason) =>
+    tmpl`${String(unwalled[reason])} ${GRIND_OUTCOMES[reason] || reason}`).join(", ");
+  /* Counted off the walls rather than by testing each run's outcome against
+   * the name of one: the same number, without a second place that has to know
+   * what `over` is spelled like. */
+  const walled = walls.reduce((total, wall) => total + wall.runs, 0);
+
+  let out = tmpl`<p class="hint">${String(walled)} of ${String(data.runs.length)}
+    simulations hit a roll costing more than ${hours(data.hours)}${
+      rest ? tmpl` — the rest ${raw(rest)}` : ""}. What a roll costs depends on
+    what was already unlocked when it landed, which is why the same chunk
+    differs between runs.</p>`;
+  out += grindHistogram(data.distribution || []);
+  out += walls.length
+    ? `<table class="sim-table"><thead><tr><th>Chunk</th><th>Share</th>`
+      + `<th>Runs</th><th>Mean cost</th></tr></thead><tbody>`
+      + walls.map((wall) => tmpl`<tr><td class="sim-name"><button class="link" type="button"
+          data-chunk="${wall.chunk}">${chunkLabel(wall.chunk)}</button></td>
+        <td>${Math.round(wall.share * 100) + "%"}</td>
+        <td>${String(wall.runs)}</td>
+        <td class="sim-total"><i class="tl-sw" data-band="${grindBand(wall.mean_hours)}"></i>${
+          hours(wall.mean_hours)}</td></tr>`).join("")
+      + `</tbody></table>`
+    : tmpl`<p class="empty">No simulation found a roll that expensive.</p>`;
+
+  openOverlay(data.batch, out);
+  /* **Scoped to the overlay's own body, not the document.** `data-chunk` is
+   * also what a chunk *card* carries (`showChunks`), and the drill-down side
+   * panel keeps its own stack - so a document-wide query could wire a card in
+   * one dialog to this one's handler. */
+  for (const button of el["overlay-body"].querySelectorAll("[data-chunk]")) {
+    button.onclick = () => showGrindChunk(button.dataset.chunk);
+  }
+}
+
+/* One wall, drilled into: every grind that ended there, longest first. The
+ * server sorted them - see `grind.collate` - so this only draws. */
+function showGrindChunk(chunkId) {
+  const data = grindData;
+  const wall = (data && (data.chunks || []).find((c) => c.chunk === chunkId)) || null;
+  if (!wall) return;
+  const rows = wall.at.map((at, index) => tmpl`<tr><td class="sim-name"><button class="link"
+      type="button" data-at="${String(index)}">${at.run.split("/")[1] || at.run}</button></td>
+    <td>${String(at.step)}</td>
+    <td>${String(at.chunks)}</td>
+    <td class="sim-total"><i class="tl-sw" data-band="${grindBand(at.hours)}"></i>${
+      hours(at.hours)}</td>
+    <td class="sim-total">${hours(at.total_hours)}</td></tr>`).join("");
+
+  openOverlay(chunkLabel(chunkId),
+    tmpl`<p class="hint">${hours(wall.mean_hours)} mean over ${String(wall.runs)}
+      ${wall.runs === 1 ? "simulation" : "simulations"} that stopped here.</p>`
+    + `<table class="sim-table"><thead><tr><th>Run</th><th>Roll</th><th>Chunks</th>`
+    + `<th>Cost</th><th>Outstanding</th></tr></thead><tbody>${rows}</tbody></table>`,
+    undefined,
+    /* **The way back is a crumb, not a button.** `renderTrail` already draws
+     * one and every other drill-down in the page uses it, so inventing a Back
+     * control here would be a second vocabulary for one gesture. */
+    { trail: [{ label: data.batch, go: renderGrind }] });
+
+  /* A run's name is the way into that run at the roll that ended it - the
+   * same gesture `showHeatChunk` uses, and the only place this dialog cannot
+   * answer for itself: the chain that got there. */
+  for (const button of el["overlay-body"].querySelectorAll("[data-at]")) {
+    const at = wall.at[Number(button.dataset.at)];
+    button.onclick = async () => {
+      closeOverlay();
+      await chooseMap(at.run);
+      await goToRoll(at.step);
+    };
+  }
+}
+
+/* Which hour band a cost falls in, as a `data-band` index - or `""` where the
+ * strip's own thresholds are not loaded, since a swatch with no band is drawn
+ * blank rather than guessing at a colour. */
+function grindBand(value) {
+  const bands = tlBands();
+  return bands && value !== null && value !== undefined ? String(bandOf(value, bands)) : "";
+}
+
+/* How many simulations got how many chunks: x is chunks, y is simulations.
+ *
+ * **Uniformly scaled, unlike `tlBars`.** That one stretches to fill a resizable
+ * panel and pays for it by exiling every glyph to an HTML overlay; a dialog has
+ * a settled width, so this pays nothing and its axis labels can be ordinary
+ * `<text>` inside the SVG. Do not "fix" this to `preserveAspectRatio="none"` -
+ * that is what puts stretched letters back.
+ *
+ * The bars name no colour and carry no `data-band`: bands are the *hours*
+ * vocabulary and this axis counts simulations. */
+function grindHistogram(distribution) {
+  if (!distribution.length) return "";
+  const W = 640, H = 180, PAD_L = 34, PAD_R = 8, PAD_T = 10, PAD_B = 26;
+  const top = Math.max(1, ...distribution.map((d) => d.runs));
+  const plot = W - PAD_L - PAD_R;
+  const width = plot / distribution.length;
+  let bars = "";
+  let slots = "";
+  distribution.forEach((entry, index) => {
+    const x = PAD_L + index * width;
+    const height = (entry.runs / top) * (H - PAD_T - PAD_B);
+    if (entry.runs) {
+      bars += tmpl`<rect class="gd-bar" x="${(x + width * 0.15).toFixed(1)}"
+        y="${(H - PAD_B - height).toFixed(1)}" width="${(width * 0.7).toFixed(1)}"
+        height="${height.toFixed(1)}"/>`;
+    }
+    /* Full height and transparent, drawn after the bars so it stays on top -
+     * `tlBars`' own arrangement. A zero column still gets one, so a gap reads
+     * as "no simulation did this" rather than as the chart having ended. */
+    slots += tmpl`<rect class="gd-slot" x="${x.toFixed(1)}" y="${String(PAD_T)}"
+      width="${width.toFixed(1)}" height="${String(H - PAD_T - PAD_B)}"
+      data-tip="${tmpl`<b>${String(entry.chunks)} ${
+        entry.chunks === 1 ? "chunk" : "chunks"}</b><span class='sub'>${
+        String(entry.runs)} ${entry.runs === 1 ? "simulation" : "simulations"}</span>`}"/>`;
+  });
+  /* Every few columns, so a long distribution does not print a smear. */
+  const every = Math.ceil(distribution.length / 12);
+  const ticks = distribution.map((entry, index) =>
+    index % every ? "" : tmpl`<text class="gd-axis" x="${
+      (PAD_L + index * width + width / 2).toFixed(1)}" y="${String(H - 8)}"
+      text-anchor="middle">${String(entry.chunks)}</text>`).join("");
+  return tmpl`<svg class="gd-hist" viewBox="${"0 0 " + W + " " + H}" role="img"
+      aria-label="Simulations by how many chunks they rolled">
+    <text class="gd-axis" x="4" y="${String(PAD_T + 8)}">${String(top)}</text>
+    <text class="gd-axis" x="4" y="${String(H - PAD_B)}">0</text>
+    ${raw(bars)}${raw(slots)}${raw(ticks)}
+  </svg>`;
+}
+
+/* One vocabulary for why a grind stopped, named once here and once in
+ * `runs/grind.py`'s `OUTCOMES`; a contract test asserts the two agree. */
+const GRIND_OUTCOMES = {
+  over: "hit a grind",
+  stuck: "ran out of chunks",
+  capped: "gave up",
+};
+
 /* One run's rolls, counted into the bands they fall in. `null` where the run
  * was never priced - which is a different thing from a run of nothing, and
  * has to read differently. */
@@ -2881,6 +3048,17 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closeAllPickers();
 });
 
+/* Which dialog a batch row opens. **The `kind` cannot answer this**: a grind
+ * batch really is `simulated` - its runs are simulations, which is what the
+ * picker's tag says - but the two were rolled to answer different questions
+ * and a grind read as a roll batch would be a band table over a distribution.
+ * `origin` is the finer fact and is what the metadata carries; see
+ * `cache.GRIND_ORIGIN`. */
+function openBatch(id) {
+  const entry = state.maps.find((m) => m.map_id === id);
+  return entry && entry.origin === "grind" ? showGrind(id) : showSimulations(id);
+}
+
 /* The base map. **A batch row asks about its runs rather than choosing one**,
  * which is what `showSimulations` is for - see there. */
 initPicker(el["map-picker"], {
@@ -2888,7 +3066,7 @@ initPicker(el["map-picker"], {
   maps: () => state.maps,
   selected: () => state.map,
   onChoose: chooseMap,
-  onBatch: showSimulations,
+  onBatch: openBatch,
 });
 
 async function loadMaps() {
@@ -5422,13 +5600,21 @@ async function loadMapsPane() {
         data-tip="<b>Fetch a named map</b><span class='sub'>Read it from source-chunk and write it to cache/maps/fetched/. About a second.</span>">Fetch Named Map</button>
     </div>
     <h3>Chunk data</h3><ul class="list" id="reference"></ul>
-    <h3>Simulate</h3><div class="row">
+    <h3>Roll Simulation</h3><div class="row">
       <input id="sim-rolls" type="number" min="1" value="5" style="width:7ch" aria-label="Rolls"
         data-tip="Chunks to roll in each run.">
       <input id="sim-runs" type="number" min="1" value="1" style="width:7ch" aria-label="Runs"
         data-tip="How many times to repeat the whole roll, each with its own seed.">
       <button id="do-sim" type="button"
         data-tip="Roll from this map and save the result as a new simulated map, opened as the map with its timeline.">Roll</button>
+    </div>
+    <h3>Next Grind Simulation</h3><div class="row">
+      <input id="grind-hours" type="number" min="1" value="300" style="width:7ch" aria-label="Hours"
+        data-tip="<b>Hours you would not spend</b><span class='sub'>Each simulation stops the first time a roll puts more than this many hours in front of you.</span>">
+      <input id="grind-runs" type="number" min="1" value="10" style="width:7ch" aria-label="Simulations"
+        data-tip="How many independent simulations to run, each with its own seed. More is a better distribution and a longer wait.">
+      <button id="do-grind" type="button"
+        data-tip="<b>How far do you get before the wall</b><span class='sub'>Rolls until a chunk is too big, or until there is nothing left to roll.</span><span class='hint'>Every roll is priced as it lands - about two seconds each, against two seconds for a whole roll simulation</span>">Grind</button>
     </div>`;
     /* **A batch is one entry, not one per run.** `<batch>/run-001` through
      * `run-040` is forty rows saying one thing, and the thing they say - "I
@@ -5522,6 +5708,24 @@ async function loadMapsPane() {
           await loadReachable();
           loadMapsPane();
           if (base !== result.open) toast("Rolled from " + base + " — drag the slider to replay it");
+        });
+    };
+    document.getElementById("do-grind").onclick = () => {
+      const hours = Number(document.getElementById("grind-hours").value) || 0;
+      const simulations = Number(document.getElementById("grind-runs").value) || 1;
+      if (hours <= 0) { document.getElementById("grind-hours").focus(); return; }
+      /* **The result does not become the map, unlike a roll.** A roll makes
+       * one future and that future is the answer, so opening it is the whole
+       * point. A grind makes forty and the answer is what they *agree* about -
+       * opening one of them at random would be picking a sample and calling it
+       * the result. The way into any single run is the drill-down, which lands
+       * you on the roll that ended it. */
+      runAction(`Grind past ${hours}h`, "/api/grind",
+        { map: state.map, name: state.map + "-grind", hours, simulations },
+        async (result) => {
+          await loadMaps();
+          loadMapsPane();
+          if (result.grind) showGrind(result.grind);
         });
     };
     /* Whatever was removed, the list on screen is now wrong until it is read
@@ -5826,6 +6030,16 @@ function summariseReply(reply) {
   if (reply.chunk && reply.name) {
     return "Saved " + reply.name + " — +" + reply.tasks
       + (reply.tasks === 1 ? " task" : " tasks");
+  }
+  /* **Before `reply.batch`, and it does not carry that key at all.** A grind
+   * writes a batch too, but summarised in a roll simulation's words it would
+   * report a roll count as though that had been the target - and the roll
+   * count is the *answer* here. */
+  if (reply.grind) {
+    const walled = (reply.outcomes || {}).over || 0;
+    const of = reply.simulations + (reply.simulations === 1 ? " simulation" : " simulations");
+    if (reply.cancelled) return "Stopped — " + of + " kept as " + reply.grind;
+    return walled + " of " + of + " hit a grind over " + hours(reply.hours);
   }
   if (reply.batch) {
     if (reply.cancelled) {

@@ -642,7 +642,13 @@ def handle_request(
             batch = _first(query, "batch")
             if batch is None:
                 return _error("missing required parameter 'batch'", HTTPStatus.BAD_REQUEST)
-            return _json(grind_payload(batch, ctx))
+            try:
+                return _json(grind_payload(batch, ctx))
+            except ValueError as exc:
+                # A batch that exists and was rolled to answer something else -
+                # saying so beats collating a page of zeroes. `CacheMissError`
+                # is a 404 and is handled with every other route's, below.
+                return _error(str(exc), HTTPStatus.BAD_REQUEST)
 
         if path == "/api/revision":
             # **The map is optional here, and that is the point of the route.**

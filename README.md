@@ -240,10 +240,32 @@ in the browser a couple of seconds later. You can also drive both from the page 
 Named Map** takes an id rather than the map on screen — every source-chunk map is a public read, so
 you can pull down one you have never cached, or a friend's. The box is required: there is no
 default map, because a fetch names someone's world and guessing whose is not this tool's business.
-**Roll** simulates N chunks, saves each run as a cached map and opens the result as a comparison. The
-progress card counts rolls rather than runs — `47/300` on a three-run job — and carries a stop button:
-stopping keeps every roll already finished, as an ordinary map you can open, derive and step through.
-`chunksim maps` marks it `(stopped)` so a run that ended short is not mistaken for one that finished.
+The Maps tab carries two simulations, and they ask opposite questions.
+
+**Roll Simulation** simulates N chunks, saves each run as a cached map and opens the result as a
+comparison. The progress card counts rolls rather than runs — `47/300` on a three-run job — and
+carries a stop button: stopping keeps every roll already finished, as an ordinary map you can open,
+derive and step through. `chunksim maps` marks it `(stopped)` so a run that ended short is not
+mistaken for one that finished.
+
+**Next Grind Simulation** holds the opposite thing fixed. You give it a number of hours and a number
+of simulations, and each simulation rolls until a chunk puts more than that many hours of new work in
+front of you — so the roll count is the *answer* rather than the input. It stops early if the map runs
+out of chunks to roll instead. The result is a distribution: a histogram of how many chunks the
+simulations got, and under it the chunks that ended them, collated by share and by what each one cost
+on average. Pressing a chunk lists every simulation that hit it, longest first; pressing one of those
+opens that run's timeline at the roll that ended it, and a breadcrumb comes back.
+
+It is the slower of the two by a long way, and for a reason worth knowing: a roll simulation prices
+every roll against the state the run *ends* in, one calculation for the whole run, but a grind cannot
+— it does not know where it will end until it has decided to stop, and it decides by pricing. So every
+roll is derived and priced on its own, at roughly two and a half seconds each rather than two seconds
+for an entire roll simulation. Forty simulations is minutes, not seconds. The runs are spread across
+every core, one simulation per worker.
+
+Those two sets of numbers are not interchangeable, and the tool will not let them be mixed: a grind
+run's timeline is marked as priced roll by roll, and the **Compute hours** button that reprices a roll
+simulation refuses it rather than quietly replacing a real measurement with a different one.
 
 `?map=…&compare=…&candidates=1&sections=1&step=4&tab=estimate` reproduces a view, so a particular question
 is shareable and a screenshot is reproducible.
