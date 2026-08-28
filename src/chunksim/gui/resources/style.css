@@ -122,7 +122,11 @@
      claiming a reading the map is making. */
   --mode-heatmap: #6b3f57;
   --mode-tint: var(--mode-browse);
-  --panel-w: 360px;
+  /* 360px plus the 44px tab rail's own width, plus a little more: the rail
+     now eats into what used to be all content width, and the thicker
+     borders/beveled controls throughout this file want a few more pixels
+     of breathing room than the flatter chrome they replaced did. */
+  --panel-w: 420px;
   /* What is left of the panel when it is put away. Not zero: a panel that
      leaves nothing behind has to be brought back from somewhere else, which is
      the button in the bar this replaced. A sliver is its own handle. */
@@ -350,6 +354,9 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   color: var(--dim);
   background: transparent;
   border-color: transparent;
+  /* An icon button is meant to disappear until hovered - the base `button`
+     rule's bevel doesn't, since a transparent border still casts one. */
+  box-shadow: none;
 }
 
 .icon-btn:hover { color: var(--text); border-color: var(--line); }
@@ -544,10 +551,13 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   overflow-y: auto;
   scrollbar-gutter: stable;
   padding: var(--s1);
-  border: 1px solid var(--line);
+  border: 2px solid var(--line-strong);
   border-radius: var(--r2);
-  background: var(--surface-3);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+  /* The one frame, textured and beveled like every other floating panel -
+     `.menu-row` below is flat text again now its own leaked bevel is gone,
+     so this is the only border/background the dropdown draws. */
+  background: var(--panel-texture);
+  box-shadow: var(--bevel-panel), 0 12px 32px rgba(0, 0, 0, .5);
 }
 
 .menu-row {
@@ -557,6 +567,10 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   width: 100%;
   padding: var(--s2) var(--s3);
   border: 0;
+  /* A row is a line in a list, not a button of its own - the base `button`
+     rule's bevel showing through a 0-width border was a second border on
+     every option, on top of the menu's own. */
+  box-shadow: none;
   border-radius: var(--r1);
   background: none;
   color: var(--text);
@@ -565,7 +579,10 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   cursor: pointer;
 }
 
-.menu-row:hover { background: rgba(255, 255, 255, .06); }
+/* `button.menu-row:hover`, not `.menu-row:hover`: same specificity reasoning
+   as `button.link:hover` - otherwise the base button's raised hover bevel
+   would win and put the border back, just on hover instead of always. */
+button.menu-row:hover { background: rgba(230, 165, 25, .10); box-shadow: none; }
 .menu-row.on { color: var(--amber); }
 .menu-row .name { flex: 1; }
 
@@ -587,10 +604,10 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   display: none;
   position: fixed;
   padding: var(--s1);
-  border: 1px solid var(--line);
+  border: 2px solid var(--line-strong);
   border-radius: var(--r2);
-  background: var(--surface-3);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+  background: var(--panel-texture);
+  box-shadow: var(--bevel-panel), 0 12px 32px rgba(0, 0, 0, .5);
 }
 
 /* **The scrolling is one level in, and that is the point.** A scroll container
@@ -852,10 +869,16 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   color: var(--dim);
   background: var(--surface-2);
   border: 2px solid var(--line-strong);
+  /* Small and many, so the full raised bevel is too heavy here - the same
+     pixel-offset a `.pill` gets, in place of the base `button` rule's. */
+  box-shadow: var(--shadow-pixel);
   transition: opacity .12s ease, border-color .12s ease;
 }
 
-.chip:hover { color: var(--text); }
+/* `button.chip:hover`: the base button's raised-hover bevel outranks a bare
+   `.chip:hover` on specificity, which would replace the pixel shadow with
+   a full bevel on every hover despite the rule above. */
+button.chip:hover { color: var(--text); box-shadow: var(--shadow-pixel); }
 
 /* **A chip is a checkbox, not a radio button**, and the two need telling
    apart at a glance: with several on at once, "on" cannot be the only one
@@ -1034,6 +1057,9 @@ li.more { border-bottom: 0; padding: 0; }
   padding: var(--s2);
   margin: var(--s1) 0 0;
   border: 1px dashed var(--line);
+  /* A dashed border says "not really a button" on its own - the base
+     button rule's solid bevel argued with it. */
+  box-shadow: none;
   border-radius: var(--r1);
   background: transparent;
   color: var(--dim);
@@ -1242,17 +1268,42 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .link {
   border: 0;
   background: none;
-  padding: 0;
-  color: var(--candidate);
+  /* The base `button` rule's bevel is for a control shaped like a button -
+     a `.link` reads as text, and the shadow left showing through a 0-width
+     border read as a stray line above and below it. */
+  box-shadow: none;
+  padding: 2px 5px;
+  margin: -2px -5px;
+  border-radius: var(--r1);
+  color: var(--amber);
   text-align: left;
   cursor: pointer;
 }
 
-.link:hover { text-decoration: underline; }
+/* No underline anywhere - the padded hit area plus the colour change is the
+   affordance, and a ring on hover is the one this page uses everywhere else
+   a control activates, `.link` included now. **`button.link:hover`, not
+   `.link:hover`**: the base `button:hover:not(:disabled)` rule outranks a
+   single class on specificity alone, so a bare `.link:hover` here would be
+   overridden by *its* box-shadow rather than overriding it. */
+button.link:hover {
+  color: var(--text);
+  background: rgba(230, 165, 25, .12);
+  box-shadow: inset 0 0 0 1px var(--amber);
+}
 
 .actions { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s4); }
 .danger { color: var(--loss); border-color: #5a2418; }
 .danger:hover:not(:disabled) { border-color: var(--loss); }
+
+/* `button.link.danger:hover` outranks `button.link:hover` above on class
+   count alone, so "Remove" stays red on hover instead of washing out to
+   the ordinary link's amber. */
+button.link.danger:hover {
+  color: #ff9c9c;
+  background: rgba(224, 32, 32, .14);
+  box-shadow: inset 0 0 0 1px var(--loss);
+}
 
 /* --- estimate ----------------------------------------------------------- */
 
@@ -1484,7 +1535,10 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .crumb {
   background: none;
   border: 0;
-  padding: 0;
+  box-shadow: none;
+  padding: 2px 5px;
+  margin: -2px -5px;
+  border-radius: var(--r1);
   color: var(--dim);
   font-family: var(--sans);
   font-size: var(--t-body);
@@ -1492,7 +1546,12 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   white-space: nowrap;
 }
 
-.crumb:hover { color: var(--text); text-decoration: underline; }
+/* `button.crumb:hover`, same reasoning as `button.link:hover` above. */
+button.crumb:hover {
+  color: var(--text);
+  background: rgba(230, 165, 25, .12);
+  box-shadow: inset 0 0 0 1px var(--amber);
+}
 
 .crumb-sep { color: var(--line-strong); font-size: var(--t-note); }
 
