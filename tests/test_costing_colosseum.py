@@ -100,10 +100,38 @@ class TestTheSequencer:
         assert built.seconds > naive_total
 
 
+class TestRunSeconds:
+    """`run_seconds` is what wires `costing/inputs.py`'s
+    `_colosseum_run_seconds` into the item walk - see its own docstring on
+    why `item_seconds` used to spend `PUBLISHED_SECONDS` flat, regardless of
+    the map's own account, the same 150/hour-default shape
+    `costing/brimstone.py`'s docstring names for a different chest."""
+
+    def test_no_override_is_the_published_figure(self) -> None:
+        assert colosseum.run_seconds() == colosseum.RUN_SECONDS
+
+    def test_a_real_override_wins(self) -> None:
+        assert colosseum.run_seconds({colosseum.FORTIS_COLOSSEUM: 900.0}) == 900.0
+
+    def test_a_non_positive_or_wrong_typed_override_is_ignored(self) -> None:
+        assert colosseum.run_seconds({colosseum.FORTIS_COLOSSEUM: 0.0}) == colosseum.RUN_SECONDS
+        assert colosseum.run_seconds({colosseum.FORTIS_COLOSSEUM: -5.0}) == colosseum.RUN_SECONDS
+        assert colosseum.run_seconds({colosseum.FORTIS_COLOSSEUM: True}) == colosseum.RUN_SECONDS
+
+
 class TestTheItemWalk:
     def test_every_chest_reward_is_priced(self) -> None:
         priced = colosseum.item_seconds()
         assert set(priced) == set(colosseum.item_chances())
+
+    def test_an_override_reprices_every_reward_from_the_same_run(self) -> None:
+        default = colosseum.item_seconds()
+        overridden = colosseum.item_seconds({colosseum.FORTIS_COLOSSEUM: 900.0})
+        assert set(overridden) == set(default)
+        for item in default:
+            assert overridden[item] == pytest.approx(
+                default[item] * (900.0 / colosseum.RUN_SECONDS)
+            )
 
     def test_the_activity_is_named_for_the_run_that_earns_it(self) -> None:
         assert colosseum.activity_for("Sunfire fanatic helm") == colosseum.FORTIS_COLOSSEUM

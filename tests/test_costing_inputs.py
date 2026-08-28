@@ -433,6 +433,65 @@ class TestTzhaarRunSeconds:
         assert found == {tzhaar.FIGHT_CAVES: tzhaar.RUN_SECONDS[tzhaar.FIGHT_CAVES]}
 
 
+class TestColosseumRunSeconds:
+    """`_colosseum_run_seconds` is `_tzhaar_run_seconds`'s own twin for the
+    Fortis Colosseum - see `costing/colosseum.py`'s docstring on the same
+    "150/hour default" shape this closes, one chest over from
+    `costing/brimstone.py`'s own fix."""
+
+    def test_prices_a_real_loadout(self) -> None:
+        if not dps_bridge.DPS_AVAILABLE:
+            pytest.skip("the dps extra is not installed")
+        from chunksim.costing import colosseum
+        from chunksim.model.chunkinfo import ChunkInfo
+
+        chunk_info = ChunkInfo({"equipment": {"Abyssal whip": {
+            "attack_slash": 82, "melee_strength": 82, "attack_speed": 4, "slot": "weapon",
+        }}})
+        levels = {"Attack": 90, "Strength": 90, "Hitpoints": 99}
+        index = dps_bridge.load_monster_index()
+
+        found = inputs._colosseum_run_seconds(
+            chunk_info, {"Melee-weapon": "Abyssal whip"}, levels, index=index,
+        )
+
+        assert set(found) <= {colosseum.FORTIS_COLOSSEUM}
+        if colosseum.FORTIS_COLOSSEUM in found:
+            assert found[colosseum.FORTIS_COLOSSEUM] >= colosseum.RUN_SECONDS
+
+    def test_no_gear_at_all_prices_nothing(self) -> None:
+        if not dps_bridge.DPS_AVAILABLE:
+            pytest.skip("the dps extra is not installed")
+        from chunksim.model.chunkinfo import ChunkInfo
+
+        found = inputs._colosseum_run_seconds(
+            ChunkInfo({}), {}, {}, index=dps_bridge.load_monster_index(),
+        )
+        assert found == {}
+
+    def test_never_faster_than_the_guides_own_pace(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The same floor `TestTzhaarRunSeconds` pins, one module over: an
+        unrealistically fast sequencer answer never beats `RUN_SECONDS`,
+        the Colosseum's real published `kph`."""
+        if not dps_bridge.DPS_AVAILABLE:
+            pytest.skip("the dps extra is not installed")
+        from chunksim.costing import colosseum, encounter
+        from chunksim.model.chunkinfo import ChunkInfo
+
+        fast = encounter.Encounter(
+            colosseum.FORTIS_COLOSSEUM, (encounter.Stage("fast", 1.0, 0.0),)
+        )
+        monkeypatch.setattr("chunksim.costing.inputs.colosseum.run", lambda kill_seconds: fast)
+
+        found = inputs._colosseum_run_seconds(
+            ChunkInfo({}), {}, {}, index=dps_bridge.load_monster_index(),
+        )
+
+        assert found == {colosseum.FORTIS_COLOSSEUM: colosseum.RUN_SECONDS}
+
+
 def test_neither_app_reaches_past_the_shared_module() -> None:
     """A structural guard, in the spirit of the one asserting no tile route
     exists: the way this drifted was two call sites, so there is now one.

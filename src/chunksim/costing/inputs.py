@@ -54,6 +54,7 @@ from chunksim.costing import (
     library,
     artefacts,
     chambers,
+    colosseum,
     combat_xp,
     courier,
     cox,
@@ -1969,6 +1970,45 @@ def _tzhaar_run_seconds(
     return found
 
 
+def _colosseum_run_seconds(
+    chunk_info: ChunkInfo,
+    picks: Mapping[str, str],
+    levels: Mapping[str, int],
+    *,
+    index: dps_bridge.MonsterIndex,
+    kit: dps_bridge.Kit | None = None,
+) -> dict[str, float]:
+    """The Fortis Colosseum's own run duration, modelled from this map's own
+    picks and levels - `costing/colosseum.py`'s `run`, fed the `dps_bridge`
+    builder shaped for it.
+
+    **The same gap `_tzhaar_run_seconds` closes, one module over.**
+    `colosseum.run`/`colosseum.answer` had no production caller either -
+    `_run_priced_items` reached only the flat `colosseum.item_seconds()`,
+    which spent `PUBLISHED_SECONDS` regardless of the map's own gear, the
+    same "150/hour default" shape a stat-block-less chest falls into when
+    nothing prices it, just with a guide figure standing in for the missing
+    model instead of `DEFAULT_KPH`.
+
+    **Floored at `colosseum.RUN_SECONDS`, matching `_tzhaar_run_seconds`'s
+    choice rather than `_raid_run_seconds`'s world-record exception.**
+    `colosseum.py`'s own docstring already distinguishes this from
+    `tzhaar.RUN_SECONDS`'s maintainer's-band guess: the Colosseum publishes
+    a real money-making guide `kph`, an *established* pace the way the three
+    raids' own guides are, not a looser deadline the way Chambers
+    Challenge's `PUBLISHED_RAID_SECONDS` entry is - so a computed answer
+    faster than it says more about `colosseum.UPTIME`'s own guess than about
+    the map's account.
+    """
+    kill_seconds = dps_bridge.colosseum_kill_seconds(
+        chunk_info, picks, levels, index=index, kit=kit
+    )
+    built = colosseum.run(kill_seconds)
+    if built is None:
+        return {}
+    return {colosseum.FORTIS_COLOSSEUM: max(built.seconds, colosseum.RUN_SECONDS)}
+
+
 def priced_heuristics(
     state: MapState,
     unlocked: Mapping[str, bool],
@@ -2092,6 +2132,12 @@ def priced_heuristics(
             )
             computed_run_seconds.update(
                 _tzhaar_run_seconds(
+                    state.chunk_info, derived.bis.picks, goals,
+                    index=monster_index, kit=kit,
+                )
+            )
+            computed_run_seconds.update(
+                _colosseum_run_seconds(
                     state.chunk_info, derived.bis.picks, goals,
                     index=monster_index, kit=kit,
                 )
