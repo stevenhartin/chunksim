@@ -1,46 +1,64 @@
-/* The map is the subject; everything here gets out of its way.
- *
- * Sixty million pixels of hand-drawn world are already on screen, so the
- * chrome is deliberately unornamented: near-black surfaces, hairline rules,
- * one accent. That accent is the same amber the hull is stroked in, so the
- * interface and the map speak one colour language rather than two.
+/* The map is the subject; the chrome around it is Old School RuneScape's own
+ * interface, ported rather than invented - carved wood and beaten gold in
+ * place of a generic dark theme. That accent is the same gold the hull is
+ * stroked in, so the interface and the map speak one colour language rather
+ * than two.
  *
  * Everything in this app is an id, a count or an hour, so data is set in the
  * platform's monospace and labels in its UI face. That split is the type
  * system; there is no third role.
  *
- * **No `text-transform` anywhere.** The export's names are Title Case and
- * nothing here can change that, so the chrome is Title Case too and what is
- * written in the markup is what appears on screen. Uppercasing headings in
- * CSS made three casings visible at once and hid which one the source used.
+ * **Uppercase is reserved for chrome, not for data.** `h3`, `.tabs button`,
+ * `.sheet h2`, `.tip b`, `.ribbon-mode`, `.tl-title`, `.brand` and
+ * `.knob-flag` are the interface talking about itself, so they take the
+ * OSRS convention of uppercase, letter-spacing and a carved text-shadow.
+ * Anything that echoes the export's own Title Case - names, ids, prose, list
+ * rows - is left alone: a name in two casings on the same screen is the
+ * exact bug this rule exists to prevent, whichever direction it runs.
  *
  * **Every length comes from the scale below.** This file used to carry nine
  * different paddings and six radii, all within a few pixels of each other and
  * none of them meaning anything; a row was 4px from its neighbour here and 5px
  * there for no reason either could state. Reach for a token. If none fits, the
- * scale is wrong and gains a step - it does not gain an exception. */
+ * scale is wrong and gains a step - it does not gain an exception.
+ *
+ * **Chrome, not just colour.** A beaten-metal bevel (`--bevel-*`, layered
+ * `box-shadow`) and a grained wood texture (`--panel-texture`, layered CSS
+ * gradients, no image assets) sit under the palette - the bevel on nearly
+ * everything with a border, the texture reserved for surfaces that sit
+ * opaque over the map (`.sheet`, `.setup-card`, `.tip`, `.progress`,
+ * `.toast`) so the chrome the map shows through (`.bar`, `.panel`,
+ * `.legend`, `.timeline`) stays flat rather than fighting a pattern at its
+ * own edge. The panel's own tabs are a vertical rail of icon slots at its
+ * edge - the game's own tab-column layout - rather than a row of text
+ * labels; the label moved into `data-tip`/`aria-label`, the same mechanism
+ * every other icon-only control here already used. */
 
 :root {
-  --bg: #101216;
-  --surface: #171a20;
-  --surface-2: #1e222a;
+  /* **OSRS palette, ported from osrs.design's Foundations/Colours.** Warm
+     near-black stone/wood in place of the old blue-grey near-black, so the
+     chrome reads as an interface window rather than a generic dark theme. */
+  --bg: #120d08;
+  --surface: #241c12;
+  --surface-2: #3a2e1c;
   /* Raised above the panel: the tooltip, the progress card, the dialog. */
-  --surface-3: #232833;
-  --line: #2a2f39;
-  --line-strong: #3d4450;
-  --text: #dfe3ea;
-  --dim: #858d9c;
+  --surface-3: #463726;
+  --line: #1a130b;
+  --line-strong: #6b5636;
+  --text: #ecdcb8;
+  --dim: #a8916a;
 
-  /* The hull's colour, reused as the interface accent. */
-  --amber: #ffbe00;
+  /* The hull's colour, reused as the interface accent - OSRS gold. */
+  --amber: #e6a519;
   /* Candidates. Deliberately not green or red - those already mean gained and
-     lost - and blue sits apart from the map's greens and tans. */
-  --candidate: #5abeff;
+     lost - and blue sits apart from the map's greens and tans. OSRS's own
+     status blue. */
+  --candidate: #0088ff;
   /* Squares you can walk into without rolling them. The same blue the canvas
      outlines them with - `REACHABLE_STROKE` in `app.js`, kept equal by a
      contract test, because a dialog calling one thing two colours is worse
      than either colour. */
-  --reachable: #5abeff;
+  --reachable: #0088ff;
   /* **Provenance, not quality**, for the Skills panel - so they are aliases of
      colours this page already uses rather than four more hues: the level came
      from the map (blue, as `reachable` is), from the linked account (amber),
@@ -49,8 +67,10 @@
   --level-linked: var(--amber);
   --level-set: var(--gain);
   --level-error: var(--loss);
-  --gain: #3cc85a;
-  --loss: #dc3c3c;
+  /* OSRS's status green/red, pulled in a touch from the design system's pure
+     #00FF00/#FF0000 - full neon vibrates against the new warm surfaces. */
+  --gain: #00c000;
+  --loss: #e02020;
 
   /* **The time bands, and why they are their own family.** `--gain` and
      `--loss` already mean *gained* and *lost*, so a bar coloured `--gain`
@@ -61,15 +81,15 @@
 
      Death is not `#000`: on `--bg` a black bar is a bar-shaped hole. It is the
      darkest thing here that still has an edge, and it is given one. */
-  --band-free: #4cc38a;
-  --band-quick: #d8c341;
-  --band-grind: #e08c3c;
-  --band-brutal: #d6453f;
-  --band-death: #16181d;
+  --band-free: #4fae64;
+  --band-quick: #dcbf3c;
+  --band-grind: #d9822e;
+  --band-brutal: #c2402c;
+  --band-death: #120d08;
   /* The death bar is near-black against a near-black strip, so its mark is
      drawn in the outline colour the bar already wears rather than in the
      fill, which would be invisible on it. */
-  --band-death-mark: #d6453f;
+  --band-death-mark: #c2402c;
 
   /* Spacing. Four-based, because every border here is a hairline and the
      smallest gap that reads as a gap at 13px type is 4. */
@@ -94,15 +114,19 @@
      legend's swatches are already two copies of this project's palette with
      nothing asserting they agree; the modes are not going to be a third. JS
      sets `data-mode` and the rules below pick the tint. */
-  --mode-browse: #4a5262;
-  --mode-edit: #b8860b;
-  --mode-diff: #6b4ea8;
-  --mode-timeline: #1f6f9c;
+  --mode-browse: #5c5346;
+  --mode-edit: #8a6d1f;
+  --mode-diff: #5b3e78;
+  --mode-timeline: #1c5f82;
   /* Deliberately not one of the five band colours: the ribbon would then be
      claiming a reading the map is making. */
-  --mode-heatmap: #7a4a6b;
+  --mode-heatmap: #6b3f57;
   --mode-tint: var(--mode-browse);
-  --panel-w: 360px;
+  /* 360px plus the 44px tab rail's own width, plus a little more: the rail
+     now eats into what used to be all content width, and the thicker
+     borders/beveled controls throughout this file want a few more pixels
+     of breathing room than the flatter chrome they replaced did. */
+  --panel-w: 420px;
   /* What is left of the panel when it is put away. Not zero: a panel that
      leaves nothing behind has to be brought back from somewhere else, which is
      the button in the bar this replaced. A sliver is its own handle. */
@@ -153,6 +177,53 @@
 
   --w-body: 400;
   --w-emphasis: 600;
+
+  /* **Chrome, not colour.** OSRS's own interface is carved wood and beaten
+     metal, not a flat fill - so beside the palette above this is the second
+     half of the reskin: a raised/inset edge and a grained surface, both pure
+     CSS, both used sparingly per osrs.design's own shadow guidance rather
+     than under everything. */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, .5);
+  --shadow-md: 0 2px 4px 0 rgba(0, 0, 0, .5);
+  --shadow-lg: 0 4px 6px -1px rgba(0, 0, 0, .5);
+  --shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, .3);
+  --shadow-text: 1px 1px 1px rgba(0, 0, 0, .7);
+  --shadow-pixel: 1px 1px 0 rgba(0, 0, 0, .8);
+
+  /* The bevel pair: a warm highlight on the edge catching the light, a dark
+     one on the edge in shadow. Composed below into full `box-shadow` values
+     rather than left as a mixin, since a custom property can hold the whole
+     comma-separated list. */
+  --bevel-light: rgba(255, 224, 150, .45);
+  --bevel-dark: rgba(0, 0, 0, .7);
+  --bevel-raised: inset 1px 1px 0 0 var(--bevel-light),
+    inset -1px -1px 0 0 var(--bevel-dark), var(--shadow-sm);
+  --bevel-raised-hover: inset 1px 1px 0 0 var(--bevel-light),
+    inset -1px -1px 0 0 var(--bevel-dark), var(--shadow-md);
+  --bevel-inset: inset -1px -1px 0 0 var(--bevel-light),
+    inset 1px 1px 0 0 var(--bevel-dark), var(--shadow-inner);
+  --bevel-panel: inset 0 0 0 1px var(--bevel-dark),
+    inset 0 1px 0 0 var(--bevel-light), var(--shadow-md);
+  --bevel-dialog: inset 0 0 0 1px var(--bevel-dark),
+    inset 0 1px 0 0 var(--bevel-light), var(--shadow-lg);
+
+  /* A wood grain out of gradients rather than an image: two repeating bands
+     at opposing angles too thin to read individually, broken up by two
+     radial gradients so the regularity does not read as a printed pattern -
+     the flat surface colour is its own last layer. Reserved for surfaces
+     that sit opaque over the map (`.sheet`, `.setup-card`, `.tip`, `.menu`,
+     `.progress`, `.toast`) - the translucent chrome the map shows through
+     (`.bar`, `.panel`, `.legend`, `.timeline`) stays flat so the map is not
+     fighting a texture at its own edge. */
+  --panel-texture: repeating-linear-gradient(115deg,
+      rgba(255, 255, 255, .025) 0px, rgba(255, 255, 255, .025) 1px,
+      transparent 1px, transparent 3px),
+    repeating-linear-gradient(25deg,
+      rgba(0, 0, 0, .05) 0px, rgba(0, 0, 0, .05) 1px,
+      transparent 1px, transparent 4px),
+    radial-gradient(circle at 18% 25%, rgba(255, 255, 255, .03), transparent 42%),
+    radial-gradient(circle at 82% 75%, rgba(0, 0, 0, .10), transparent 46%),
+    linear-gradient(180deg, var(--surface-3), var(--surface));
 }
 
 * { box-sizing: border-box; }
@@ -205,13 +276,18 @@ button, select, input {
   font: inherit;
   color: var(--text);
   background: var(--surface-2);
-  border: 1px solid var(--line);
+  border: 2px solid var(--line-strong);
   border-radius: var(--r1);
   padding: var(--s1) 9px;
+  /* The 3px "OSRS standard" is reserved for the two full windows (`.sheet`,
+     `.setup-card`); a control this small reads as armour-plated at 3px, so
+     it takes the raised bevel at 2px instead - still visibly carved, not
+     flat. */
+  box-shadow: var(--bevel-raised);
 }
 
 button { cursor: pointer; }
-button:hover:not(:disabled) { border-color: var(--line-strong); }
+button:hover:not(:disabled) { border-color: var(--amber); box-shadow: var(--bevel-raised-hover); }
 button:disabled { opacity: .4; cursor: default; }
 
 button:focus-visible, select:focus-visible, input:focus-visible,
@@ -251,7 +327,7 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #4d5666;
+  background: #8a7550;
   background-clip: content-box;
 }
 
@@ -278,6 +354,9 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   color: var(--dim);
   background: transparent;
   border-color: transparent;
+  /* An icon button is meant to disappear until hovered - the base `button`
+     rule's bevel doesn't, since a transparent border still casts one. */
+  box-shadow: none;
 }
 
 .icon-btn:hover { color: var(--text); border-color: var(--line); }
@@ -299,7 +378,7 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   z-index: 1;
   display: block;
   cursor: grab;
-  background: #0a0c0f;
+  background: var(--bg);
 }
 
 #canvas.dragging { cursor: grabbing; }
@@ -322,7 +401,7 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   height: var(--ribbon-h);
   padding: 0 var(--s4);
   background: var(--mode-tint);
-  border-bottom: 1px solid rgba(0, 0, 0, .35);
+  box-shadow: inset 0 1px 0 0 var(--bevel-light), 0 2px 4px rgba(0, 0, 0, .5);
   font-size: var(--t-note);
   color: var(--text);
 }
@@ -333,7 +412,12 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 .ribbon[data-mode="timeline"] { --mode-tint: var(--mode-timeline); }
 .ribbon[data-mode="heatmap"] { --mode-tint: var(--mode-heatmap); }
 
-.ribbon-mode { font-weight: var(--w-emphasis); }
+.ribbon-mode {
+  font-weight: var(--w-emphasis);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  text-shadow: var(--shadow-text);
+}
 .ribbon-edits { opacity: .9; }
 .ribbon-map { opacity: .85; }
 
@@ -342,7 +426,7 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 .ribbon .pick-thin, .ribbon .thin {
   height: 18px;
   padding: 0 var(--s2);
-  border: 1px solid rgba(255, 255, 255, .28);
+  border: 1px solid rgba(255, 224, 150, .3);
   border-radius: var(--r1);
   background: rgba(0, 0, 0, .22);
   color: var(--text);
@@ -390,8 +474,8 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   align-items: center;
   height: var(--bar-h);
   padding: 0 var(--s4);
-  background: rgba(23, 26, 32, .94);
-  border-bottom: 1px solid var(--line);
+  background: rgba(18, 13, 8, .94);
+  box-shadow: 0 2px 0 0 var(--bevel-dark), var(--shadow-md);
 }
 
 /* The one deliberate exception to the no-transform rule: a wordmark is not
@@ -402,6 +486,7 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   letter-spacing: .14em;
   text-transform: uppercase;
   color: var(--amber);
+  text-shadow: var(--shadow-text);
 }
 
 /* --- the pickers -------------------------------------------------------- */
@@ -466,10 +551,13 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   overflow-y: auto;
   scrollbar-gutter: stable;
   padding: var(--s1);
-  border: 1px solid var(--line);
+  border: 2px solid var(--line-strong);
   border-radius: var(--r2);
-  background: var(--surface-3);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+  /* The one frame, textured and beveled like every other floating panel -
+     `.menu-row` below is flat text again now its own leaked bevel is gone,
+     so this is the only border/background the dropdown draws. */
+  background: var(--panel-texture);
+  box-shadow: var(--bevel-panel), 0 12px 32px rgba(0, 0, 0, .5);
 }
 
 .menu-row {
@@ -479,6 +567,10 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   width: 100%;
   padding: var(--s2) var(--s3);
   border: 0;
+  /* A row is a line in a list, not a button of its own - the base `button`
+     rule's bevel showing through a 0-width border was a second border on
+     every option, on top of the menu's own. */
+  box-shadow: none;
   border-radius: var(--r1);
   background: none;
   color: var(--text);
@@ -487,7 +579,10 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   cursor: pointer;
 }
 
-.menu-row:hover { background: rgba(255, 255, 255, .06); }
+/* `button.menu-row:hover`, not `.menu-row:hover`: same specificity reasoning
+   as `button.link:hover` - otherwise the base button's raised hover bevel
+   would win and put the border back, just on hover instead of always. */
+button.menu-row:hover { background: rgba(230, 165, 25, .10); box-shadow: none; }
 .menu-row.on { color: var(--amber); }
 .menu-row .name { flex: 1; }
 
@@ -509,10 +604,10 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   display: none;
   position: fixed;
   padding: var(--s1);
-  border: 1px solid var(--line);
+  border: 2px solid var(--line-strong);
   border-radius: var(--r2);
-  background: var(--surface-3);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+  background: var(--panel-texture);
+  box-shadow: var(--bevel-panel), 0 12px 32px rgba(0, 0, 0, .5);
 }
 
 /* **The scrolling is one level in, and that is the point.** A scroll container
@@ -546,7 +641,20 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 .submenu[data-side="right"]::before { right: 100%; }
 .submenu[data-side="left"]::before { left: 100%; }
 .vs { color: var(--dim); }
-.rule { width: 1px; height: 20px; background: var(--line); flex: none; }
+/* A cluster of related bar controls, carved apart from its neighbours by a
+   groove rather than the single `.rule` hairline this replaced - the
+   osrs.design Menu Bar pattern's own way of grouping unrelated controls on
+   one strip. Every child keeps the bar's own `gap`, so the swap changes
+   nothing about the spacing within a cluster, only what separates one
+   cluster from the next. */
+.bar-group {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding-right: var(--s3);
+  box-shadow: inset -1px 0 0 0 var(--bevel-dark), inset -2px 0 0 0 var(--bevel-light);
+}
+
 .spacer { flex: 1; }
 
 .counts, .hover {
@@ -564,6 +672,9 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   background: var(--amber);
   border-color: var(--amber);
   font-weight: var(--w-emphasis);
+  /* Pressed reads as pushed in, not merely recoloured - the game's own
+     buttons visibly recess when held down. */
+  box-shadow: var(--bevel-inset);
 }
 
 #candidates[aria-pressed="true"] {
@@ -588,9 +699,13 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   bottom: 0;
   width: var(--panel-w);
   display: flex;
-  flex-direction: column;
-  background: rgba(23, 26, 32, .96);
-  border-left: 1px solid var(--line);
+  /* Row, not column: the tab rail is now a vertical strip of icon slots at
+     the panel's own edge - the OSRS interface's own tab-column layout,
+     see `.tabs` below - with the pane content beside it rather than under
+     it. */
+  flex-direction: row;
+  background: rgba(18, 13, 8, .96);
+  box-shadow: inset 1px 0 0 0 var(--bevel-light), -2px 0 6px rgba(0, 0, 0, .4);
   transition: transform .18s ease;
 }
 
@@ -610,15 +725,15 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   width: var(--s6);
   height: var(--s6);
   padding: 0;
-  border: 1px solid var(--line);
+  border: 2px solid var(--line-strong);
   border-right: 0;
   border-radius: var(--r2) 0 0 var(--r2);
-  background: rgba(23, 26, 32, .96);
+  background: rgba(18, 13, 8, .96);
   color: var(--dim);
   cursor: pointer;
 }
 
-.panel-pin:hover { color: var(--text); border-color: var(--line-strong); }
+.panel-pin:hover { color: var(--text); border-color: var(--amber); }
 
 /* The floor picker, against the map's top-right. It tracks `--rail` like
    everything else anchored there, so it slides out with the panel - plus the
@@ -628,27 +743,59 @@ button:focus-visible, select:focus-visible, input:focus-visible,
    ordinary control in a row of them rather than a thing pinned to the map. */
 .plane-pick { flex: none; }
 
+/* **A column of icon slots at the panel's own edge**, in place of a row of
+   text labels - the actual OSRS interface's own tab strip (inventory,
+   skills, quests, ...) is a vertical column of square icon buttons at the
+   edge of the window, and `showTab`/the click listener on `#tabs` read
+   `data-tab`/`data-pane` rather than a position, so the strip is free to
+   move. The label moves into `data-tip` and `aria-label`, the same
+   mechanism every other icon-only control on this page already uses. */
 .tabs {
   display: flex;
-  border-bottom: 1px solid var(--line);
+  flex-direction: column;
   flex: none;
+  width: 44px;
+  background: var(--panel-texture);
+  border-right: 2px solid var(--line-strong);
+  box-shadow: var(--bevel-raised);
 }
 
 .tabs button {
-  flex: 1;
+  flex: none;
+  height: 44px;
   border: 0;
   border-radius: 0;
-  padding: 9px var(--s1);
+  padding: 0;
   background: transparent;
   color: var(--dim);
-  border-bottom: 2px solid transparent;
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.tabs button:hover { color: var(--text); background: rgba(255, 255, 255, .03); }
+.tabs button:hover { color: var(--text); background: rgba(255, 255, 255, .04); box-shadow: none; }
 
 .tabs button.on {
-  color: var(--text);
-  border-bottom-color: var(--amber);
+  color: var(--amber);
+  background: rgba(230, 165, 25, .12);
+  /* The marker moves from a bottom underline to the edge facing the
+     content it governs, now that the strip runs vertically. */
+  box-shadow: inset -2px 0 0 0 var(--amber);
+}
+
+.tabs button .icon { width: 18px; height: 18px; }
+
+/* The pane content's own column, beside the tab rail rather than under it -
+   `.tabs` used to be this flex parent's second child directly; now it is
+   the rail's sibling, and every `.pane`/`.pane.on` rule below is unchanged,
+   since both only ever toggled their own `display`. */
+.panel-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
 }
 
 .pane {
@@ -721,11 +868,17 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   border-radius: var(--pill);
   color: var(--dim);
   background: var(--surface-2);
-  border: 1px solid var(--line);
+  border: 2px solid var(--line-strong);
+  /* Small and many, so the full raised bevel is too heavy here - the same
+     pixel-offset a `.pill` gets, in place of the base `button` rule's. */
+  box-shadow: var(--shadow-pixel);
   transition: opacity .12s ease, border-color .12s ease;
 }
 
-.chip:hover { color: var(--text); }
+/* `button.chip:hover`: the base button's raised-hover bevel outranks a bare
+   `.chip:hover` on specificity, which would replace the pixel shadow with
+   a full bevel on every hover despite the rule above. */
+button.chip:hover { color: var(--text); box-shadow: var(--shadow-pixel); }
 
 /* **A chip is a checkbox, not a radio button**, and the two need telling
    apart at a glance: with several on at once, "on" cannot be the only one
@@ -734,7 +887,7 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 .chip.on {
   color: var(--text);
   border-color: var(--amber);
-  background: rgba(255, 190, 0, .12);
+  background: rgba(230, 165, 25, .14);
 }
 
 .chip[aria-checked="false"] { opacity: .45; }
@@ -746,9 +899,11 @@ button:focus-visible, select:focus-visible, input:focus-visible,
 
 .chip.on .count { color: var(--amber); }
 
-/* A heading in the panel is a label, not a title: small, spaced, quiet -
-   but written as it is displayed. It may carry a swatch or an icon, so it
-   lays out as a row with the count pushed to the far edge. */
+/* A heading in the panel is a label, not a title: small, spaced, quiet - the
+   interface talking about itself rather than the export's own Title Case
+   names, which is what earns it the one casing this file otherwise reserves
+   for chrome. It may carry a swatch or an icon, so it lays out as a row
+   with the count pushed to the far edge. */
 h3 {
   display: flex;
   align-items: center;
@@ -756,7 +911,8 @@ h3 {
   margin: var(--s5) 0 var(--s2);
   font-size: var(--t-note);
   font-weight: var(--w-emphasis);
-  letter-spacing: .06em;
+  letter-spacing: .08em;
+  text-transform: uppercase;
   color: var(--dim);
   flex: none;
 }
@@ -901,6 +1057,9 @@ li.more { border-bottom: 0; padding: 0; }
   padding: var(--s2);
   margin: var(--s1) 0 0;
   border: 1px dashed var(--line);
+  /* A dashed border says "not really a button" on its own - the base
+     button rule's solid bevel argued with it. */
+  box-shadow: none;
   border-radius: var(--r1);
   background: transparent;
   color: var(--dim);
@@ -960,13 +1119,15 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   gap: var(--s2);
   padding: var(--s2) var(--s3);
   background: var(--surface-2);
-  border: 1px solid var(--line);
+  border: 2px solid var(--line-strong);
+  /* The provenance stripe - untouched, only the frame around it thickened. */
   border-left: 3px solid var(--level-floor);
   border-radius: var(--r1);
   color: var(--text);
   font-size: var(--t-body);
   cursor: pointer;
   text-align: left;
+  box-shadow: var(--bevel-raised);
 }
 
 .skill-cell:hover { background: var(--surface-3); }
@@ -1022,6 +1183,9 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   padding: 3px var(--s2);
   border-radius: var(--pill);
   border: 1px solid var(--line);
+  /* Too small to bevel legibly at this type size - a retro pixel-offset
+     shadow instead, the same trick a small badge gets in §3 of the plan. */
+  box-shadow: var(--shadow-pixel);
   font-size: var(--t-note);
   color: var(--dim);
   white-space: nowrap;
@@ -1104,17 +1268,42 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .link {
   border: 0;
   background: none;
-  padding: 0;
-  color: var(--candidate);
+  /* The base `button` rule's bevel is for a control shaped like a button -
+     a `.link` reads as text, and the shadow left showing through a 0-width
+     border read as a stray line above and below it. */
+  box-shadow: none;
+  padding: 2px 5px;
+  margin: -2px -5px;
+  border-radius: var(--r1);
+  color: var(--amber);
   text-align: left;
   cursor: pointer;
 }
 
-.link:hover { text-decoration: underline; }
+/* No underline anywhere - the padded hit area plus the colour change is the
+   affordance, and a ring on hover is the one this page uses everywhere else
+   a control activates, `.link` included now. **`button.link:hover`, not
+   `.link:hover`**: the base `button:hover:not(:disabled)` rule outranks a
+   single class on specificity alone, so a bare `.link:hover` here would be
+   overridden by *its* box-shadow rather than overriding it. */
+button.link:hover {
+  color: var(--text);
+  background: rgba(230, 165, 25, .12);
+  box-shadow: inset 0 0 0 1px var(--amber);
+}
 
 .actions { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s4); }
-.danger { color: var(--loss); border-color: #4a2a2a; }
+.danger { color: var(--loss); border-color: #5a2418; }
 .danger:hover:not(:disabled) { border-color: var(--loss); }
+
+/* `button.link.danger:hover` outranks `button.link:hover` above on class
+   count alone, so "Remove" stays red on hover instead of washing out to
+   the ordinary link's amber. */
+button.link.danger:hover {
+  color: #ff9c9c;
+  background: rgba(224, 32, 32, .14);
+  box-shadow: inset 0 0 0 1px var(--loss);
+}
 
 /* --- estimate ----------------------------------------------------------- */
 
@@ -1166,10 +1355,10 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   right: calc(var(--rail) + var(--s4));
   width: 268px;
   padding: var(--s4);
-  border: 1px solid var(--line);
+  border: 2px solid var(--line-strong);
   border-radius: var(--r3);
-  background: var(--surface-3);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+  background: var(--panel-texture);
+  box-shadow: var(--bevel-panel), 0 12px 32px rgba(0, 0, 0, .5);
   transition: right .18s ease;
 }
 
@@ -1244,9 +1433,9 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   gap: var(--s2) var(--s4);
   max-width: 40vw;
   padding: 7px 11px;
-  border: 1px solid var(--line);
+  border: 2px solid var(--line-strong);
   border-radius: var(--r2);
-  background: rgba(23, 26, 32, .93);
+  background: rgba(18, 13, 8, .93);
   color: var(--dim);
   font-size: var(--t-note);
 }
@@ -1270,9 +1459,9 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   max-width: 70vw;
   padding: var(--s3) 14px;
   border-radius: var(--r2);
-  background: var(--surface-3);
-  border: 1px solid var(--line);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+  background: var(--panel-texture);
+  border: 2px solid var(--line-strong);
+  box-shadow: var(--bevel-panel), 0 8px 24px rgba(0, 0, 0, .45);
 }
 
 .overlay {
@@ -1293,10 +1482,16 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   max-height: 80vh;
   display: flex;
   flex-direction: column;
-  background: var(--surface);
-  border: 1px solid var(--line);
+  /* A dialog is the one thing on screen with nothing behind it but the
+     backdrop, so it is where the full carved-wood treatment goes: an
+     opaque grained surface, a thick gold frame - osrs.design calls dialogs
+     out by name as the one component that gets a 3px gold border - and the
+     bevel dialogs get on top of, not instead of, the drop shadow that
+     already says this is floating above the map. */
+  background: var(--panel-texture);
+  border: 3px solid var(--amber);
   border-radius: var(--r3);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, .55);
+  box-shadow: var(--bevel-dialog), 0 18px 50px rgba(0, 0, 0, .55);
 }
 
 /* **The drill-down side panel: narrower, and beside `.sheet` rather than
@@ -1315,7 +1510,14 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   border-bottom: 1px solid var(--line);
 }
 
-.sheet h2 { margin: 0; font-size: var(--t-title); font-weight: var(--w-emphasis); }
+.sheet h2 {
+  margin: 0;
+  font-size: var(--t-title);
+  font-weight: var(--w-emphasis);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  text-shadow: var(--shadow-text);
+}
 
 /* **Where a dialog can go, not only what it is showing.** The crumbs sit
    after the title because the title *is* the last crumb - reading left to
@@ -1333,7 +1535,10 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 .crumb {
   background: none;
   border: 0;
-  padding: 0;
+  box-shadow: none;
+  padding: 2px 5px;
+  margin: -2px -5px;
+  border-radius: var(--r1);
   color: var(--dim);
   font-family: var(--sans);
   font-size: var(--t-body);
@@ -1341,7 +1546,12 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   white-space: nowrap;
 }
 
-.crumb:hover { color: var(--text); text-decoration: underline; }
+/* `button.crumb:hover`, same reasoning as `button.link:hover` above. */
+button.crumb:hover {
+  color: var(--text);
+  background: rgba(230, 165, 25, .12);
+  box-shadow: inset 0 0 0 1px var(--amber);
+}
 
 .crumb-sep { color: var(--line-strong); font-size: var(--t-note); }
 
@@ -1369,12 +1579,12 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 }
 
 .sheet footer .danger {
-  background: rgba(220, 60, 60, .14);
+  background: rgba(224, 32, 32, .14);
   border-color: var(--loss);
   color: #ff9c9c;
 }
 
-.sheet footer .danger:hover { background: rgba(220, 60, 60, .24); }
+.sheet footer .danger:hover { background: rgba(224, 32, 32, .24); }
 
 /* **The setup screen, which is what a cold cache sees instead of a black map.**
    Above the dialog because it is not one: nothing behind it is usable until
@@ -1394,10 +1604,12 @@ li .icon { width: 14px; height: 14px; align-self: center; }
 
 .setup-card {
   width: min(420px, 100%);
-  background: var(--surface);
-  border: 1px solid var(--line);
+  /* The one other full-screen "window" moment, so it gets `.sheet`'s own
+     treatment: opaque grain, 3px gold frame, bevel under the drop shadow. */
+  background: var(--panel-texture);
+  border: 3px solid var(--amber);
   border-radius: var(--r3);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, .55);
+  box-shadow: var(--bevel-dialog), 0 18px 50px rgba(0, 0, 0, .55);
   padding: var(--s6);
 }
 
@@ -1478,15 +1690,23 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   max-width: 320px;
   padding: var(--s2) 9px;
   border-radius: var(--r2);
-  background: #0c0e12;
-  border: 1px solid var(--line);
+  /* Darker than `--surface-3` on purpose, so it still reads as floating
+     above the panel it usually sits over. osrs.design's own tooltip guidance
+     is explicit: gold border, dark background. */
+  background: #0f0a06;
+  border: 2px solid var(--amber);
   color: var(--text);
   font-size: var(--t-note);
   line-height: 1.4;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, .5);
+  box-shadow: var(--bevel-dialog), 0 6px 20px rgba(0, 0, 0, .5);
 }
 
-.tip b { display: block; }
+.tip b {
+  display: block;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  text-shadow: var(--shadow-text);
+}
 .tip .sub { display: block; }
 
 /* A tooltip's last line is often "shift to add, ctrl to remove" - a rule
@@ -1581,7 +1801,7 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   padding: var(--s1) 9px;
   border: 1px solid var(--line);
   border-radius: var(--r2);
-  background: rgba(23, 26, 32, .93);
+  background: rgba(18, 13, 8, .93);
   color: var(--dim);
   font-size: var(--t-note);
   opacity: .62;
@@ -1607,7 +1827,7 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   padding: var(--s1) 9px;
   border: 1px solid var(--line);
   border-radius: var(--r2);
-  background: rgba(23, 26, 32, .93);
+  background: rgba(18, 13, 8, .93);
   color: var(--dim);
   font-size: var(--t-note);
   transition: right .18s ease;
@@ -1634,8 +1854,8 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   right: var(--rail);
   bottom: 0;
   padding: var(--s3) var(--s4);
-  background: rgba(23, 26, 32, .96);
-  border-top: 1px solid var(--line);
+  background: rgba(18, 13, 8, .96);
+  box-shadow: inset 0 1px 0 0 var(--bevel-light), 0 -2px 6px rgba(0, 0, 0, .4);
   transition: right .18s ease;
 }
 
@@ -1646,7 +1866,11 @@ li .icon { width: 14px; height: 14px; align-self: center; }
   margin-bottom: var(--s2);
 }
 
-.tl-title { font-weight: var(--w-emphasis); }
+.tl-title {
+  font-weight: var(--w-emphasis);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
 .tl-title .sub { color: var(--dim); font-weight: var(--w-body); margin-left: var(--s2); }
 
 .timeline.shut .tl-graph { display: none; }
@@ -1977,11 +2201,12 @@ ul.list.wanted .name { color: var(--dim); font-size: var(--t-note); }
   gap: 2px;
   padding: var(--s2);
   text-align: center;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
+  background: var(--panel-texture);
+  border: 2px solid var(--line-strong);
   border-radius: var(--r2);
   cursor: pointer;
   transition: transform .12s ease, background .12s ease;
+  box-shadow: var(--bevel-raised);
 }
 /* **Hover must not touch the border**, and that is not a preference: the
    border already says how near the chunk is - green held, blue reachable - so
