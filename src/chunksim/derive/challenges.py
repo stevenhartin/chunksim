@@ -398,6 +398,7 @@ from chunksim.derive import boosts
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.model.rates import build_clue_complete_num
 from chunksim.derive.sources import SourceIndex, apply_item_task_unlocks
+from chunksim.model.pickling import by_fields
 from chunksim.model.summary import _mapping
 
 #: index.js:1017's `maybePrimary`, verbatim: "methods that are only primary
@@ -655,6 +656,11 @@ class ChallengeResult:
     unsupported: frozenset[str]
     available_items: dict[str, dict[str, str]] = field(default_factory=dict)
     available_objects: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
+        """Rebuilt through the constructor, so a compiled build can unpickle
+        one - see `model/pickling.py` for why the default path cannot."""
+        return by_fields(self)
 
     def as_dict(self) -> dict[str, Any]:
         return {"valid": self.valid, "unsupported": sorted(self.unsupported)}

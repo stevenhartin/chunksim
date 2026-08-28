@@ -22,7 +22,9 @@ about; there is no `packaging.py` to sit beside.
 from __future__ import annotations
 
 import importlib.metadata as metadata
+import os
 import re
+import sys
 import tomllib
 from pathlib import Path
 
@@ -30,6 +32,12 @@ import pytest
 
 SRC = Path(__file__).resolve().parent.parent / "src"
 PACKAGE = SRC / "chunksim"
+PROJECT = SRC.parent
+# `setup.py` lives at the project root, which is not on the path for a
+# test run from anywhere else - and it is the only module here that is
+# imported for what it *declares* rather than for what it does.
+if str(PROJECT) not in sys.path:
+    sys.path.insert(0, str(PROJECT))
 
 
 def _source_dirs() -> list[Path]:
@@ -203,3 +211,117 @@ def test_a_shipped_blob_is_read_from_the_package_not_the_cache(tmp_path: Path) -
         assert cache.blob_source(name).is_file()
         # ...but an explicit root never reaches the developer's real config.
         assert not cache.blob_source(name, tmp_path).is_file()
+
+
+def _setup_declares() -> tuple[str, tuple[str, ...], str]:
+    """`(COMPILE_ENV, COMPILED, source)` read out of `setup.py` without running it.
+
+    **Parsed rather than imported**, for the same reason `test_gui_contract.py`
+    reads `app.js` as text: the file declares a contract, and importing it here
+    would need `setuptools` in the test venv - which this project deliberately
+    does not put there. `ast` reads the declaration without executing a line.
+    """
+    import ast
+
+    source = (PROJECT / "setup.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    found: dict[str, object] = {}
+    for node in tree.body:
+        # Annotated and bare assignments alike - `COMPILED` carries a type and
+        # `COMPILE_ENV` does not, and which is which is not this test's point.
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            if node.value is not None:
+                found[node.target.id] = ast.literal_eval(node.value)
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    found[target.id] = ast.literal_eval(node.value)
+    return str(found["COMPILE_ENV"]), tuple(found["COMPILED"]), source  # type: ignore[arg-type]
+
+
+def test_compiling_is_off_unless_asked_for() -> None:
+    """**The development loop depends on this default.**
+
+    An editable install's whole value is that a Python edit is live
+    immediately (CLAUDE.md). A compiled module is a `.so` that shadows the
+    `.py` beside it, so a build-on-install would turn "edit, reload the tab"
+    into "edit, rebuild, reload the tab" - and would do it *silently*, because
+    the stale extension still imports and still answers.
+    """
+    env, _, source = _setup_declares()
+
+    assert env == "CHUNKSIM_COMPILE"
+    # The gate is a positive opt-in, not a negative opt-out: anything but an
+    # explicit `1` has to leave the build pure.
+    assert 'os.environ.get(COMPILE_ENV) != "1"' in source
+    assert "return []" in source
+    # And the import that needs a type checker lives behind that gate, so an
+    # ordinary `pip install` never requires mypy to be present.
+    gate = source.index('!= "1"')
+    assert source.index("from mypyc.build import mypycify") > gate
+
+
+def test_the_item_walk_is_never_compiled() -> None:
+    """**Measured, and the opposite of what was expected.**
+
+    `costing/estimate.py` compiled runs at **10.26s a roll against 2.71s** -
+    3.8x *slower* - and on its own accounted for the whole of a 3.5x
+    regression when a first attempt compiled it alongside the rest. The item
+    walk is a fixpoint over tuple-keyed dicts of small frozen objects, and
+    CPython 3.14's specialising interpreter handles that shape better than
+    mypyc does.
+
+    Pinned rather than left as a comment because the module is the hottest
+    thing in the project by call count, which makes it the obvious candidate
+    for exactly the change that makes everything four times slower.
+    """
+    _, compiled, _ = _setup_declares()
+
+    assert "src/chunksim/costing/estimate.py" not in compiled
+    # `pipeline.py` is excluded for an unrelated reason worth keeping apart:
+    # three tests monkeypatch `_MAX_AREA_PASSES`, and a compiled module's
+    # attributes are read-only.
+    assert "src/chunksim/derive/pipeline.py" not in compiled
+
+
+def test_every_compiled_module_exists() -> None:
+    """A path that has moved would not fail the build - `mypycify` would
+    simply compile nothing under that name, and the wheel would be quietly
+    slower than it claims to be."""
+    _, compiled, _ = _setup_declares()
+
+    assert compiled
+    for path in compiled:
+        assert (PROJECT / path).is_file(), path
+
+
+def test_a_compiled_frozen_dataclass_can_still_be_unpickled() -> None:
+    """**The trap `model/pickling.py` exists for**, asserted on the classes
+    that actually cross a pickle.
+
+    A compiled `@dataclass(frozen=True)` has no `__dict__`, so pickle restores
+    state with `setattr` and the frozen guard raises - on the *load*, long
+    after the dump. Here that meant `derived_cache.decode` returning `None`
+    for every entry it had just written, with nothing else complaining.
+
+    Asserted through a real round trip rather than by checking `__reduce__`
+    exists, since the point is that the object comes back whole.
+    """
+    import pickle
+
+    from chunksim.derive.challenges import ChallengeResult
+    from chunksim.derive.sources import SourceIndex
+
+    result = ChallengeResult(valid={"Slayer": {"a": True}}, unsupported=frozenset({"x"}))
+    index = SourceIndex(
+        items={"Bones": {"Cow": "primary-drop"}}, objects={}, monsters={},
+        npcs={}, shops={}, drop_rates={},
+    )
+    for original in (result, index):
+        assert pickle.loads(pickle.dumps(original)) == original
+        # Constructor order, not field order by luck: a reduce built from a
+        # hand-written tuple would pass the equality above and still drop a
+        # field added later.
+        assert original.__reduce__()[1] == tuple(
+            getattr(original, name) for name in original.__dataclass_fields__
+        )

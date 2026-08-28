@@ -272,7 +272,7 @@ anywhere in the directory; this file names only the eight.
 
 | Subpackage | What it is, and the rule it carries |
 |---|---|
-| `model/` | Upstream's data as typed, tolerant accessors, the Firebase wire codec, and the two exact vocabularies — drop-rate strings and the XP curve. **Imports from no other subpackage**, so it is the one to read first and then stop thinking about. |
+| `model/` | Upstream's data as typed, tolerant accessors, the Firebase wire codec, and the two exact vocabularies — drop-rate strings and the XP curve. **Imports from no other subpackage**, so it is the one to read first and then stop thinking about. `pickling.py` is the odd one out: it is what lets a *compiled* frozen dataclass survive a pickle, which `cache/derived/` and the process pool both need. |
 | `remote/` | Every outbound call, and every wikitext parser reading what comes back. **`api.py` is the only module in the project that opens an outbound connection** — one directory to grep for `urlopen` rather than an honour system. |
 | `store/` | Every disk touch: `cache/`'s layout and envelope, the content-keyed derived cache, and this install's own metadata. Holds the one **upward** edge in the layering, because a store of results has to know their shape. |
 | `derive/` | The derivation chain and everything that walks or diffs it. **No module-level mutable state** — `--jobs N` runs them in worker processes, and a cache here breaks that as runs that disagree. |
@@ -465,6 +465,45 @@ what `pytest`/`mypy` see, pipx's own venv is what the `chunksim` on `PATH` sees.
 survives `pipx install --force` (both measured), but `inject` *copies* a wheel — so a change to
 `osrs-dps` needs a rebuild and a re-inject, and `--force` is required because the version does not
 move between builds, which makes a plain `inject` a silent no-op.
+
+### The optional compiled build
+
+`setup.py` exists for one thing: `CHUNKSIM_COMPILE=1` builds six hot modules with **mypyc**, and
+nothing else turns it on.
+
+```
+CHUNKSIM_COMPILE=1 python3 -m pip wheel --no-build-isolation --no-deps -w dist .
+```
+
+`--no-build-isolation` and the *system* `python3` are both required, and for the reason this project
+already installs mypy system-wide: an isolated build backend has no mypy, and mypyc reads
+`[tool.mypy]`'s `python_executable = ".venv/bin/python"`, so it must run from the checkout root where
+that relative path resolves. A plain build stays `py3-none-any`; a compiled one is
+`cp314-cp314-linux_x86_64`.
+
+**Measured: 2.72s → 2.13s a roll of a grind simulation, 22%.** Three things about it are not
+negotiable and are pinned by `tests/test_packaging.py`:
+
+- **`costing/estimate.py` must never be compiled.** It is **3.8x slower** that way — 10.26s a roll
+  against 2.71s — and on its own accounted for the whole of a 3.5x regression the first time all
+  four candidates were compiled together. The item walk is a fixpoint over tuple-keyed dicts of
+  small frozen objects, and CPython 3.14's specialising interpreter beats mypyc at that shape. It is
+  the hottest module by call count, which makes it the obvious thing to add and the wrong one.
+- **A compiled `@dataclass(frozen=True)` cannot be unpickled** by the default machinery — it has no
+  `__dict__`, so pickle restores state with `setattr` and the frozen guard raises, on the *load*.
+  Here that meant `derived_cache.decode` returning `None` for everything it had just written, with
+  nothing else complaining. `model/pickling.py` is the fix and the explanation; any class added to a
+  compiled module that crosses a pickle needs its `__reduce__`.
+- **It is off by default because the development loop depends on that.** A `.so` shadows the `.py`
+  beside it, so a build-on-install would turn "edit, reload the tab" into "edit, rebuild, reload the
+  tab" — silently, since the stale extension still imports and still answers.
+
+`derive/pipeline.py` is excluded for an unrelated reason worth keeping apart: three tests
+monkeypatch `_MAX_AREA_PASSES`, and a compiled module's attributes are read-only.
+
+**The Windows payload is pure Python and that is correct, not a gap.** `packaging/build_windows.py`
+builds on Linux, and a Linux toolchain cannot produce Windows extension modules; compiling it would
+need a Windows build host. The same source, without the speed-up.
 
 `pyproject-build` is **not part of the development loop.** Three reasons left to build a wheel:
 shipping to another machine, proving the packaged `gui/resources` shipped

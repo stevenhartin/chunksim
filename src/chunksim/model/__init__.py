@@ -22,6 +22,11 @@ The modules, and what each owns:
 - `firebase.py` - the Firebase-safe codec, both ways, including mixed
   `t_N`/literal keys and the encoder the GUI's edit mode writes through.
 - `summary.py` - pure reductions over a raw payload; extend this, not the CLI.
+- `pickling.py` - `__reduce__` for a frozen dataclass that has been compiled.
+  **Not a data type and not a convenience**: a `mypyc`-built frozen dataclass
+  cannot be unpickled by the default machinery, and this project pickles into
+  `cache/derived/` and across the process pool. See its own docstring for the
+  mechanism, and `setup.py` for what is compiled.
   Also `format_age`, and `_mapping`, the tolerant dict accessor eight modules
   import despite the leading underscore.
 - `rates.py` - drop-rate string parsing and formatting matching JS's rounding,

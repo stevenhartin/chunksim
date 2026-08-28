@@ -83,6 +83,7 @@ from chunksim.model.rates import (
     parse_ratio,
     secondary_primary_denominator,
 )
+from chunksim.model.pickling import by_fields
 from chunksim.model.summary import _mapping
 
 _RDT_FAMILY = frozenset({"RareDropTable+", "GemDropTable+", "GemDropTableLegends+"})
@@ -112,6 +113,11 @@ class SourceIndex:
     #: rate}}}`. Read by the `All Droptables` rule alone, whose task titles
     #: carry a quantity; see this module's header and `derive/injected.py`.
     drop_quantities: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)
+
+    def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
+        """Rebuilt through the constructor, so a compiled build can unpickle
+        one - see `model/pickling.py` for why the default path cannot."""
+        return by_fields(self)
 
     def as_dict(self) -> dict[str, Any]:
         return {
