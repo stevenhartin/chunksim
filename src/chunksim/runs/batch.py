@@ -92,7 +92,7 @@ from chunksim.derive.pipeline import Derived, MapState, load_map_state
 from chunksim.derive.search import WorldIndex, build_world_index
 from chunksim.runs.simulate import UnlockRecord, simulate_rolls, simulated_payload
 from chunksim.model.summary import _mapping
-from chunksim.runs.timeline import added_estimate, added_hours
+from chunksim.runs.timeline import FINAL_BASIS, added_estimate, added_hours
 from chunksim.runs.timeline import stamp as timeline_stamp
 from chunksim.derive.unlock import UnlockDelta
 
@@ -134,6 +134,16 @@ class RunSpec:
     #: `simulate_rolls` re-derives the finished state cold and compares before
     #: anything is saved. See `pipeline.derive`.
     carry_areas: bool = True
+    #: For a grind run (`runs/grind.py`): stop at the first roll adding more
+    #: than this many hours. `None` for an ordinary roll simulation.
+    #:
+    #: **Data rather than a `should_stop` callable, and that is forced.** A
+    #: callable cannot cross into a pooled worker - `run_one`'s own docstring
+    #: says why `on_roll` and `should_stop` are keyword arguments here and not
+    #: spec fields - and a grind's whole point is that the stopping decision is
+    #: made inside the worker doing the rolling, from something it priced. So
+    #: the *threshold* travels and the decision is rebuilt on arrival.
+    stop_over_hours: float | None = None
 
 
 @dataclass(frozen=True)
@@ -150,6 +160,12 @@ class RunResult:
     #: for. `written` is false only when it was stopped before rolling at all.
     cancelled: bool = False
     written: bool = True
+    #: What this *kind* of run knows and a run in general does not - a grind's
+    #: outcome and the chunk it stopped on. Travels back through the pool and
+    #: into `batch.json`, which is what lets a summary be read in one file
+    #: rather than one `run.json` per run. Small by construction, so the
+    #: "the payload stayed on the worker's disk" property is unaffected.
+    extra: Mapping[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -158,6 +174,8 @@ class RunResult:
             "rolls": list(self.rolls),
             "unlocked_chunks": self.unlocked_chunks,
             "cancelled": self.cancelled,
+            # Last, so a run kind cannot displace a field every run has.
+            **self.extra,
         }
 
 
@@ -275,6 +293,7 @@ class _Pricer:
         digests: Digests,
         reference: ReferenceBlobs | None = None,
         map_id: str | None = None,
+        basis: str = FINAL_BASIS,
     ) -> _Pricer | None:
         """A pricer, or `None` when this machine cannot price anything.
 
@@ -282,6 +301,14 @@ class _Pricer:
         default and the total is thousands of hours light - which is a worse
         answer than no timeline at all, because a graph does not carry the
         caveat that `chunksim show` prints beside the figure.
+
+        **`runs/grind.py` builds one of these too, for the four fields it
+        needs and cannot assemble more cheaply** - the base rates, the world
+        index, the reference blobs and the stamp - and then prices through its
+        own two-step walk rather than through `price` below. `basis` is what it
+        overrides: this class's own `price` is the final-state basis by
+        construction, a grind's is not, and the stamp has to say which. See
+        `timeline.FINAL_BASIS`.
         """
         blobs = load_reference(root, map_id) if reference is None else reference
         if not blobs.scraped_found:
@@ -302,6 +329,7 @@ class _Pricer:
                 # excluded from the freshness comparison - see
                 # `timeline.matches` - and is a claim about quality, not age.
                 enriched=dps_bridge.DPS_AVAILABLE,
+                basis=basis,
             ),
             digests=digests,
             reference=blobs,
@@ -398,6 +426,16 @@ def _priced_series(
     `level_overrides` reaches the estimator here, exactly as
     `inputs.estimate_answer` passes it - a rate priced at one level and spent
     at another is the kind of disagreement this function exists to remove.
+
+    **`runs/grind.py` is the one thing that prices outside this and is not the
+    second loop this warns about.** It cannot use this one: a grind decides to
+    stop *by* pricing, so its states arrive one at a time through a callback
+    rather than as a sequence something can iterate, and no amount of laziness
+    inverts a push into a pull. What made two loops a bug was that they layered
+    different inputs and shared one cache key; the grind layers these same
+    inputs through the same `priced_heuristics`, spends the same
+    `timeline.added_estimate`, and is kept off this one's key by the `basis` in
+    its stamp. See `timeline.FINAL_BASIS`.
     """
     out: list[tuple[int, EstimateResult, float]] = []
     before: EstimateResult | None = None
@@ -853,6 +891,50 @@ def price_steps(
     return [priced[step][0] for step in order], [priced[step][1] for step in order]
 
 
+def run_metadata(
+    spec: RunSpec,
+    *,
+    rolled: Sequence[str],
+    held: Mapping[str, Any],
+    cancelled: bool,
+    extra: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """One run's `run.json`, which is the shape both apps read back.
+
+    Extracted because there are now two run bodies - `run_one` and
+    `grind.run_grind` - and `runs/__init__.py` claims this module is "the
+    single writer of the run metadata both apps read back". Two spellings of
+    this dict would make that claim false in the quiet way: not a crash, a
+    field one kind of run has and the other silently does not.
+
+    `extra` is what a kind of run knows and this one does not - a grind's
+    outcome and the chunk it stopped on. Merged last so a caller cannot
+    displace the fields every run has.
+    """
+    return {
+        "run": spec.name,
+        "seed": spec.seed,
+        "rolls": list(rolled),
+        "rolls_requested": spec.rolls,
+        # **Only `run.json` records this.** The envelope stays an ordinary
+        # map, because a partial run *is* one - fewer chunks, nothing else
+        # different - and `maps list` is where "you stopped this" belongs.
+        "cancelled": cancelled,
+        "base_map": spec.base_map,
+        "base_fetched_at": spec.base_fetched_at,
+        "created_at": datetime.now(UTC).isoformat(),
+        "unlocked_chunks": len(held),
+        # **What makes these runs one job.** Written into every run, not just
+        # the batch summary, so a run answers it alone - the directory name
+        # cannot, because a clash renames the batch and a rename severs the
+        # link. See `cache.MapEntry.batch_id`.
+        "batch": spec.directory.parent.name,
+        "batch_id": spec.batch_id,
+        "runs_in_batch": spec.runs_in_batch,
+        **(extra or {}),
+    }
+
+
 def run_one(
     spec: RunSpec,
     *,
@@ -916,28 +998,7 @@ def run_one(
     if pricer is not None:
         pricer.price(state, _step_ids(unlocked, rolled))
 
-    simulation = {
-        "run": spec.name,
-        "seed": spec.seed,
-        "rolls": list(rolled),
-        "rolls_requested": spec.rolls,
-        # **Only `run.json` records this.** The envelope stays an ordinary
-        # map, because a partial run *is* one - fewer chunks, nothing else
-        # different - and `maps list` is where "you stopped this" belongs.
-        "cancelled": stopped,
-        "base_map": spec.base_map,
-        "base_fetched_at": spec.base_fetched_at,
-        "created_at": datetime.now(UTC).isoformat(),
-        "unlocked_chunks": len(held),
-        # **What makes these runs one job.** Written into every run, not just
-        # the batch summary, so a run answers it alone - the directory name
-        # cannot, because a clash renames the batch and a rename severs the
-        # link. See `cache.MapEntry.batch_id`.
-        "batch": spec.directory.parent.name,
-        "batch_id": spec.batch_id,
-        "run": spec.name,
-        "runs_in_batch": spec.runs_in_batch,
-    }
+    simulation = run_metadata(spec, rolled=rolled, held=held, cancelled=stopped)
     # A run stopped before its first roll has nothing to say: writing it
     # would put a copy of the base map in the batch under a run's name.
     if ledger:
@@ -987,6 +1048,7 @@ def _specs(
     root: Path | None,
     cache_behaviour: CacheBehaviour,
     carry_areas: bool = True,
+    stop_over_hours: float | None = None,
     batch_id: str,
 ) -> list[RunSpec]:
     specs: list[RunSpec] = []
@@ -1007,9 +1069,21 @@ def _specs(
                 runs_in_batch=len(seeds),
                 cache_behaviour=cache_behaviour,
                 carry_areas=carry_areas,
+                stop_over_hours=stop_over_hours,
             )
         )
     return specs
+
+
+#: What executes one run. `run_one` rolls a fixed number of chunks;
+#: `grind.run_grind` rolls until one is too expensive. **This is the whole of
+#: what `run_batch` needs to know about a kind of run** - everything else about
+#: driving N of them across cores is the same either way, which is why there is
+#: a seam here rather than a second batch runner and a third pool.
+#:
+#: It must be a **module-level function**, because the pooled arm pickles it by
+#: qualified name. See `_run_one_reporting`.
+RunBody = Callable[..., RunResult] | None
 
 
 def _roll_reporter(
@@ -1024,13 +1098,20 @@ def _roll_reporter(
     return report
 
 
-def _run_one_reporting(spec: RunSpec, queue: Any, run_index: int) -> RunResult:
-    """`run_one` in a worker, reporting each roll back down `queue`.
+def _run_one_reporting(
+    spec: RunSpec, queue: Any, run_index: int, body: RunBody = None
+) -> RunResult:
+    """One run in a worker, reporting each roll back down `queue`.
 
     **Module level because it has to pickle.** A closure over the queue would
     not survive the trip to a worker, which is the reason `run_one`'s
     `on_roll` is a keyword argument rather than a `RunSpec` field in the first
     place - a spec pickles, a callback does not.
+
+    `body` pickles for the same reason and by the same rule: it is a
+    module-level function, so it crosses as a qualified name rather than as
+    code. `None` means `run_one`, resolved here rather than defaulted in the
+    signature so that the common case pickles nothing at all.
 
     `should_stop` still does not cross: a submitted future is already inside a
     worker and there is nothing to interrupt it with. Progress travels *out*,
@@ -1040,7 +1121,7 @@ def _run_one_reporting(spec: RunSpec, queue: Any, run_index: int) -> RunResult:
     def report(order: int, chunk_id: str) -> None:
         queue.put((run_index, order, chunk_id))
 
-    return run_one(spec, on_roll=report)
+    return (body or run_one)(spec, on_roll=report)
 
 
 def run_batch(
@@ -1060,8 +1141,20 @@ def run_batch(
     on_complete: Callable[[RunResult], None] | None = None,
     on_roll: Callable[[int, int, str], None] | None = None,
     should_stop: Callable[[], bool] | None = None,
+    body: RunBody = None,
+    stop_over_hours: float | None = None,
+    extra: Mapping[str, Any] | None = None,
 ) -> BatchResult:
     """Claim a batch directory, run `runs` simulations into it, and summarise.
+
+    **`body` is what a run *is*; everything else here is how N of them are
+    driven.** Keeping those apart is what let a second kind of run -
+    `grind.run_grind`, which rolls until a chunk is too expensive rather than a
+    fixed number of times - reuse the directory claim, the seed derivation, the
+    player copy, the pool and the one-way progress queue without this project
+    growing a third `ProcessPoolExecutor`. `stop_over_hours` and `extra` are
+    that run kind's own data riding along: onto every `RunSpec`, and into
+    `batch.json` respectively.
 
     `jobs` of 1 runs inline - no pool, no worker processes - which keeps the
     common single-run case (and the test suite) in one process. Above 1, runs
@@ -1138,14 +1231,16 @@ def run_batch(
         root=root,
         cache_behaviour=cache_behaviour,
         carry_areas=carry_areas,
+        stop_over_hours=stop_over_hours,
     )
 
+    execute = body or run_one
     results: list[RunResult] = []
     if workers == 1 or len(specs) == 1:
         for index, spec in enumerate(specs):
             if should_stop is not None and should_stop():
                 break
-            result = run_one(
+            result = execute(
                 spec,
                 on_roll=None if on_roll is None else _roll_reporter(on_roll, index),
                 should_stop=should_stop,
@@ -1188,8 +1283,8 @@ def run_batch(
 
         with ProcessPoolExecutor(max_workers=min(workers, len(specs))) as pool:
             futures = [
-                pool.submit(run_one, spec) if reports is None
-                else pool.submit(_run_one_reporting, spec, reports, index)
+                pool.submit(execute, spec) if reports is None
+                else pool.submit(_run_one_reporting, spec, reports, index, body)
                 for index, spec in enumerate(specs)
             ]
             for future in as_completed(futures):
@@ -1250,6 +1345,9 @@ def run_batch(
             "seed": seed,
             "cancelled": bool(should_stop is not None and should_stop()),
             "runs": [result.as_dict() for result in results],
+            # Last, so a run kind's own data can add to this and never displace
+            # a field every batch has. See `body`.
+            **(extra or {}),
         },
     )
     return batch

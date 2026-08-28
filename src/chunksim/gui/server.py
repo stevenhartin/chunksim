@@ -80,6 +80,7 @@ from chunksim.gui.routes_view import (
     roll_panels,
     _run_steps,
     _timeline_payload,
+    grind_payload,
     build_map_view,
     resolve_knob,
     roll_detail,
@@ -634,6 +635,14 @@ def handle_request(
             if map_id is None:
                 return _error("missing required parameter 'map'", HTTPStatus.BAD_REQUEST)
             return _json(_timeline_payload(map_id, ctx))
+
+        if path == "/api/grind":
+            # A batch rather than a map: what N grinds agreed about is not a
+            # property of any one of their runs. See `routes_view.grind_payload`.
+            batch = _first(query, "batch")
+            if batch is None:
+                return _error("missing required parameter 'batch'", HTTPStatus.BAD_REQUEST)
+            return _json(grind_payload(batch, ctx))
 
         if path == "/api/revision":
             # **The map is optional here, and that is the point of the route.**

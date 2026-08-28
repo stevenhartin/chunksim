@@ -214,9 +214,33 @@ def _tasks_of(entry: Mapping[str, Any]) -> dict[str, tuple[str, ...]]:
 #: number exists for.
 PRICING_MODEL = 3
 
+#: The rate basis a stored series was computed on, and the reason `stamp`
+#: carries it at all: it is the one thing about these numbers that is **not**
+#: an input.
+#:
+#: `FINAL_BASIS` is what a roll simulation and `batch.price_steps` produce -
+#: one `priced_heuristics` computed on the state the run *ends* in, spent on
+#: every step (`batch._walk`'s own docstring states that approximation and why
+#: it is kept). `PER_STEP_BASIS` is what a grind simulation produces, because
+#: it cannot know its final state until it has decided to stop: every step is
+#: priced against its own rates.
+#:
+#: Two series computed the two ways read the same inputs and disagree about
+#: what the number *means*, so a stamp that recorded only inputs would let a
+#: reprice silently overwrite one with the other - the "two loops, one cache
+#: key, last writer wins" shape `costing/inputs.py` was extracted to prevent.
+FINAL_BASIS = "final"
+PER_STEP_BASIS = "per-step"
+
 
 def stamp(
-    *, chunkinfo: str, tasks_map: str, rates: str, overrides: str, enriched: bool
+    *,
+    chunkinfo: str,
+    tasks_map: str,
+    rates: str,
+    overrides: str,
+    enriched: bool,
+    basis: str = FINAL_BASIS,
 ) -> dict[str, Any]:
     """What a stored hours series was computed against.
 
@@ -228,6 +252,10 @@ def stamp(
 
     `enriched` records whether `dps_bridge` priced these numbers, and is
     deliberately **not** part of the freshness comparison - see `matches`.
+
+    `basis` records *how* they were computed rather than from what, and **is**
+    compared - see `FINAL_BASIS`. It defaults, so every existing caller writing
+    a final-basis series says so without being changed.
     """
     return {
         "model": PRICING_MODEL,
@@ -236,6 +264,7 @@ def stamp(
         "rates": rates,
         "overrides": overrides,
         "enriched": enriched,
+        "basis": basis,
     }
 
 
@@ -253,10 +282,28 @@ def matches(stored: Any, current: Mapping[str, Any]) -> bool:
     stay out of the comparison. Including it would make a perfectly current
     series read as *stale* the moment the extra was installed, and a run made
     without the extra is not out of date - it is a supported way to run.
+
+    **`basis` is the opposite case and is compared**, because it says what the
+    numbers *are* rather than how good they are - see `FINAL_BASIS`. A per-step
+    series and a final-basis one are different quantities, and letting them
+    match would let a reprice overwrite one with the other.
+
+    **A stamp with no `basis` at all reads as `FINAL_BASIS`, which is the one
+    place this deliberately does not treat an absent field as a mismatch.**
+    Every stamp written before that field existed was a final-basis series -
+    there was no other kind - so defaulting is what those bytes actually say.
+    Refusing them instead would discard every stored timeline in every existing
+    cache to record something already true of all of them.
     """
     if not isinstance(stored, Mapping):
         return False
-    return all(stored.get(key) == value for key, value in current.items() if key != "enriched")
+    for key, value in current.items():
+        if key == "enriched":
+            continue
+        found = stored.get("basis", FINAL_BASIS) if key == "basis" else stored.get(key)
+        if found != value:
+            return False
+    return True
 
 
 def added_hours(previous: "EstimateResult | None", current: "EstimateResult") -> float:

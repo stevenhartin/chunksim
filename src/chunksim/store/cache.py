@@ -392,6 +392,13 @@ BATCH_META_FILE_NAME = "batch.json"
 TIMELINE_FILE_NAME = "timeline.json"
 RUN_PREFIX = "run-"
 
+#: A batch's `origin`: which *kind* of computed batch it is, within one `kind`.
+#: A grind batch is `SIMULATED` like any other - the runs in it really are
+#: simulations, which is what `kind` is for and what the picker says - but it
+#: answers a different question and opens a different dialog. That is a finer
+#: fact than the kind, so it rides in the metadata rather than splitting one.
+GRIND_ORIGIN = "grind"
+
 #: A batch name: no separators, no `..`, nothing the shell or `Path` would
 #: reinterpret. A map id is one of these, optionally followed by `/run-<n>`.
 _NAME_RE = re.compile(r"[A-Za-z0-9_.-]+")
@@ -1481,6 +1488,10 @@ class MapEntry:
     #: is where "you stopped this" has to be said, or the only clue is a
     #: rolls count quietly short of the batch's.
     cancelled: bool = False
+    #: Which kind of computed batch this is, within its `kind` - see
+    #: `GRIND_ORIGIN`. `None` for an ordinary roll simulation and for every
+    #: batch written before the field existed, which is the same thing.
+    origin: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -1495,6 +1506,7 @@ class MapEntry:
             "base_map": self.base_map,
             "batch_id": self.batch_id,
             "batch": self.batch,
+            "origin": self.origin,
         }
 
 
@@ -1564,6 +1576,7 @@ def _batch_entries(kind: str, root: Path | None, *, expand_runs: bool) -> list[M
                 seed=_int_or_none(summary.get("seed")),
                 base_map=_str_or_none(summary.get("base_map")),
                 batch_id=_str_or_none(summary.get("batch_id")),
+                origin=_str_or_none(summary.get("origin")),
             )
         )
         if not expand_runs:
@@ -1582,6 +1595,10 @@ def _batch_entries(kind: str, root: Path | None, *, expand_runs: bool) -> list[M
                     base_map=_str_or_none(run.get("base_map")),
                     batch_id=_str_or_none(run.get("batch_id")),
                     batch=_str_or_none(run.get("batch")) or directory.name,
+                    # From the batch, not the run: a run does not record it,
+                    # and every run of one batch is the same kind by
+                    # construction.
+                    origin=_str_or_none(summary.get("origin")),
                 )
             )
     return entries

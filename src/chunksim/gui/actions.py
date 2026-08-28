@@ -56,10 +56,14 @@ from pathlib import Path
 from chunksim.runs.batch import price_steps
 from chunksim.runs.batch import run_batch
 from chunksim.runs.batch import save_edit, save_snapshot, save_unlock
+from chunksim.runs import grind
+from chunksim.runs.timeline import PER_STEP_BASIS
+from chunksim.costing.inputs import load_reference
+from chunksim.store.cache import GRIND_ORIGIN
 from chunksim.remote.scrape import scrape
 from chunksim.gui import knobs, settings
 from chunksim.gui.http import Context
-from chunksim.gui.routes_view import _run_steps
+from chunksim.gui.routes_view import _run_steps, _stored_basis
 from chunksim.gui.routes_view import _timeline_stamp
 from chunksim.gui.routes_view import resolve_knob
 
@@ -621,6 +625,110 @@ def _simulate_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     return {"job": ctx.jobs.submit("simulate", work).id}
 
 
+def _grind_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
+    """Roll N simulations, each until a chunk costs more than `hours`.
+
+    `_simulate_job`'s sibling, through the same `run_batch` with a different
+    body - see `runs/grind.py` for what a grind is and why it is a second kind
+    of run rather than a flag on the first.
+
+    **The progress counts simulations, not rolls**, which is the one place this
+    deliberately differs from `_simulate_job`. A grind has no roll target: the
+    roll count is the *answer*, so `k/N rolls` would be a bar against a
+    denominator nobody asked for and that most runs never reach.
+
+    **Two things are refused up front rather than forty times over.** A bad map
+    id fails the POST, as it does for a roll simulation; and so does a cache
+    with no wiki rates, because without them `_Pricer.build` returns `None`,
+    every worker raises the same `CacheMissError`, and a grind cannot fall back
+    to rolling blindly the way a roll simulation falls back to no timeline -
+    there would be no threshold left to test.
+    """
+    map_id = str(payload.get("map") or "").strip()
+    name = str(payload.get("name") or "").strip()
+    if not map_id:
+        raise ValueError("missing 'map'")
+    if not name:
+        raise ValueError("missing 'name' for the simulated map")
+    # **Not `as_int`**: a threshold may be fractional, and `as_int` coerces
+    # where this has to refuse - a grind with a silently defaulted threshold
+    # would run for minutes and answer a question nobody asked.
+    raw = payload.get("hours")
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)) or raw <= 0:
+        raise ValueError("hours must be a positive number")
+    hours = float(raw)
+    runs = as_int(payload, "simulations", 1)
+    jobs = as_int(payload, "jobs", 0)
+    workers = jobs if jobs > 0 else (os.process_cpu_count() or 1)
+    seed_raw = payload.get("seed")
+    seed = None if seed_raw in (None, "") else as_int({"s": seed_raw}, "s", 0) or None
+
+    envelope = cache.read_cache(map_id, ctx.root)
+    if not load_reference(ctx.root, map_id).scraped_found:
+        raise ValueError(
+            "no cached wiki rates, so nothing can be priced - press Refresh "
+            "under Chunk data first"
+        )
+
+    def work(progress: Progress, stop: StopCheck) -> dict[str, Any]:
+        finished = 0
+        rolled = 0
+        where = f" on {min(workers, runs)} workers" if workers > 1 and runs > 1 else ""
+
+        def roll(_run: int, _order: int, _chunk_id: str) -> None:
+            nonlocal rolled
+            rolled += 1
+
+        def report(result: RunResult) -> None:
+            nonlocal finished
+            finished += 1
+            progress(
+                f"{finished}/{runs} simulations - {rolled} rolls{where}"
+                + (" - stopping" if stop() else "")
+            )
+
+        progress(f"0/{runs} simulations{where}")
+        batch = run_batch(
+            name=name,
+            payload=envelope["data"],
+            base_map=map_id,
+            base_fetched_at=envelope.get("fetched_at"),
+            # The safety rail, not a target - see `grind.MAX_ROLLS`. A grind
+            # that reaches it reports `capped` rather than a wall.
+            rolls=grind.MAX_ROLLS,
+            runs=runs,
+            jobs=jobs,
+            seed=seed,
+            root=ctx.root,
+            on_complete=report,
+            on_roll=roll,
+            should_stop=stop,
+            body=grind.run_grind,
+            stop_over_hours=hours,
+            extra={
+                "origin": GRIND_ORIGIN,
+                "grind": {"hours": hours, "simulations": runs, "roll_cap": grind.MAX_ROLLS},
+            },
+        )
+        found = grind.collate([result.as_dict() for result in batch.runs])
+        return {
+            # **`grind`, not `batch`.** `summariseReply` branches on the key,
+            # and a grind read as a roll simulation would be summarised in the
+            # wrong words entirely.
+            "grind": batch.name,
+            "simulations": len(batch.runs),
+            "hours": hours,
+            "rolls": rolled,
+            "cancelled": stop(),
+            "outcomes": {
+                outcome: sum(1 for row in found["runs"] if row["outcome"] == outcome)
+                for outcome in grind.OUTCOMES
+            },
+        }
+
+    return {"job": ctx.jobs.submit("grind", work).id}
+
+
 def _unlock_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     """`chunksim unlock --chunk X --cache-map NAME`: add one chunk by hand.
 
@@ -832,11 +940,24 @@ def _timeline_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
     `--cache-behaviour all` every step is already on disk and the derive cost
     is zero. Under `extremities` or `none` they are recomputed at ~0.9s each -
     slower, but not an error, and the progress line says which is happening.
+
+    **A grind run is refused rather than repriced.** `price_steps` can only
+    produce the final-state basis, and a grind's stored series is priced per
+    step (`timeline.FINAL_BASIS` says what the difference means). Running this
+    over one would overwrite a real answer with a different quantity under a
+    stamp that looked correct - the "two loops, one key, last writer wins"
+    shape this project has already been bitten by once. Refusing costs nothing:
+    a grind run priced itself as it went, so there is no upgrade to offer.
     """
     map_id = str(payload.get("map") or "").strip()
     if not map_id:
         raise ValueError("missing 'map'")
     jobs = as_int(payload, "jobs", 0)
+    if _stored_basis(map_id, ctx) == PER_STEP_BASIS:
+        raise ValueError(
+            f"{map_id} is a grind run: its hours are priced per roll, which "
+            "this cannot recompute"
+        )
     steps = _run_steps(map_id, ctx)
 
     def work(progress: Progress, _stop: StopCheck) -> dict[str, Any]:
@@ -1019,6 +1140,7 @@ _ACTIONS: dict[str, Callable[[Mapping[str, Any], Context], dict[str, Any]]] = {
     "/api/update": _update_state,
     "/api/update/install": _update_install_job,
     "/api/simulate": _simulate_job,
+    "/api/grind": _grind_job,
     "/api/unlock": _unlock_job,
     "/api/commit": _commit_job,
     "/api/snapshot": _snapshot_job,

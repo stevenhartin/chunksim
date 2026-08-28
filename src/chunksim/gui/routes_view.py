@@ -46,6 +46,8 @@ from chunksim.gui import knobs
 from chunksim.derive.active_tasks import _level_proven_elsewhere
 from chunksim.runs.batch import PriceSpec, _Prepared, price_detail
 from chunksim.store.cache import CacheMissError
+from chunksim.runs import grind
+from chunksim.runs.timeline import FINAL_BASIS, PER_STEP_BASIS
 from chunksim.runs.timeline import matches as timeline_matches
 from chunksim.runs.timeline import stamp as timeline_stamp
 
@@ -497,14 +499,20 @@ def _step_view(map_id: str, step: int, ctx: Context) -> MapView:
     )
 
 
-def _timeline_stamp(ctx: Context, *, enriched: bool) -> dict[str, Any]:
+def _timeline_stamp(
+    ctx: Context, *, enriched: bool, basis: str = FINAL_BASIS
+) -> dict[str, Any]:
     """What a stored hours series was computed against. See `timeline.stamp`.
 
     `enriched` says whether `dps_bridge` priced these numbers. It is recorded
-    but **not compared**, because a simulation prices its own rolls with the
-    estimator alone - free, since the derivation is already done - and paying
-    `enrich`'s ~1.3s a roll would have tripled every batch. So the cheap
-    answer is what a run is born with, and this is the upgrade.
+    but **not compared**, because it is a claim about quality rather than age -
+    see `timeline.matches`, which owns that reasoning.
+
+    `basis` says *how* they were computed, and **is** compared. It defaults to
+    `FINAL_BASIS` because that is what every reader on this path is asking
+    about: a roll simulation's series, and the reprice that refreshes one. A
+    grind simulation's is the other basis and is read by passing it here - see
+    `timeline.FINAL_BASIS` for why the two must not match each other.
     """
     digests = ctx.derivations.digests()
     return timeline_stamp(
@@ -513,6 +521,7 @@ def _timeline_stamp(ctx: Context, *, enriched: bool) -> dict[str, Any]:
         rates=cache.file_digest(cache.blob_path(cache.WIKI_RATES_BLOB_NAME, ctx.root)),
         overrides=_overrides_digest(ctx),
         enriched=enriched,
+        basis=basis,
     )
 
 
@@ -534,6 +543,22 @@ def _floats(value: Any) -> list[float] | None:
     return [float(v) for v in value]
 
 
+def _stored_basis(map_id: str, ctx: Context) -> str:
+    """Which rate basis a run's stored hours were computed on.
+
+    `FINAL_BASIS` when there is no file, no stamp, or no `basis` in it, for
+    `timeline.matches`' own reason: nothing wrote a per-step series before that
+    field existed, so the absence of one is an answer rather than a gap. Read
+    by `actions._timeline_job` to refuse a reprice that would cross the two.
+    """
+    try:
+        stored = cache.read_timeline(map_id, ctx.root)
+    except cache.CacheMissError:
+        return FINAL_BASIS
+    basis = _mapping(stored, "stamp").get("basis", FINAL_BASIS)
+    return basis if isinstance(basis, str) else FINAL_BASIS
+
+
 def _cached_hours(
     map_id: str, ctx: Context
 ) -> tuple[list[float] | None, list[float] | None, bool]:
@@ -545,12 +570,26 @@ def _cached_hours(
     to draw anything. **A file without `added` is one written under the old
     delta-of-totals meaning**, and is refused for the same reason - the bars
     would be drawn under a meaning they were never computed for.
+
+    **Both rate bases are readable here, which is not the same as being
+    interchangeable.** A grind run's series is priced per step and a roll
+    simulation's on its final state (`timeline.FINAL_BASIS`), and either is a
+    real answer worth drawing - so the stamp is checked against the basis the
+    file itself claims rather than against one this route picked. Where the two
+    must not cross is a *re*price, and `batch.price_steps` is what refuses
+    there: it can only produce the final basis, so overwriting a per-step
+    series with its output would silently change what the bars mean.
     """
     try:
         stored = cache.read_timeline(map_id, ctx.root)
     except cache.CacheMissError:
         return None, None, False
-    if not timeline_matches(stored.get("stamp"), _timeline_stamp(ctx, enriched=False)):
+    basis = _mapping(stored, "stamp").get("basis", FINAL_BASIS)
+    if not isinstance(basis, str):
+        return None, None, False
+    if not timeline_matches(
+        stored.get("stamp"), _timeline_stamp(ctx, enriched=False, basis=basis)
+    ):
         return None, None, False
     added = _floats(stored.get("added"))
     if added is None:
@@ -595,15 +634,55 @@ def _timeline_payload(map_id: str, ctx: Context) -> dict[str, Any]:
     # one name has a different number of steps - so asking the store instead
     # would let the flag promise hours the graph never got.
     has_hours = any(row["hours"] is not None for row in rows)
+    basis = _stored_basis(map_id, ctx)
     return {
         "map_id": map_id,
         "steps": rows,
         "has_hours": has_hours,
         "enriched": enriched and has_hours,
+        # How these hours were made, so the page can say - and so it can stop
+        # offering an upgrade that is not one. See `timeline.FINAL_BASIS`.
+        "basis": basis,
         # Whether there is a better answer available than the one on screen.
-        # Without the extra there is not, however the numbers were computed.
-        "can_enrich": dps_bridge.DPS_AVAILABLE and not (enriched and has_hours),
+        # Without the extra there is not, however the numbers were computed -
+        # and **a per-step series is never repriceable**, whatever is
+        # installed: `price_steps` can only produce the other basis, so the
+        # offer would be to replace a real answer with a different quantity.
+        # Without this, installing the `dps` extra after a grind batch would
+        # light the button up over numbers it must not touch.
+        "can_enrich": (
+            dps_bridge.DPS_AVAILABLE
+            and not (enriched and has_hours)
+            and basis != PER_STEP_BASIS
+        ),
         "dps": dps_bridge.DPS_AVAILABLE,
+    }
+
+
+def grind_payload(batch: str, ctx: Context) -> dict[str, Any]:
+    """What N grinds said together - the results overlay's whole input.
+
+    **One file read, not one request per run.** `read_batch` opens `batch.json`
+    plus each small `run.json`; no payload, no export, no derivation - which is
+    what puts this route on the cheap side of the split this module is, and
+    means a hundred simulations cost the browser one fetch rather than a
+    hundred.
+
+    **The aggregate is computed here rather than stored**, which is the same
+    call `cache/derived/` embodies: a statistic kept beside its inputs goes
+    stale silently, and adding one later would mean re-running the batch. An
+    interrupted grind still collates from whatever finished, exactly as an
+    interrupted roll batch still lists.
+    """
+    summary = cache.read_batch(batch, ctx.root, kind=cache.SIMULATED)
+    request = _mapping(summary, "grind")
+    if not request:
+        raise ValueError(f"{batch!r} is not a grind simulation")
+    runs = summary.get("runs")
+    return {
+        "batch": batch,
+        **request,
+        **grind.collate(runs if isinstance(runs, list) else []),
     }
 
 

@@ -24,9 +24,24 @@ The modules, and what each owns:
   result** - nor may watching one: `on_roll` fires pooled as well as inline, over
   a manager queue that is **one-way**, so nothing a worker reports can reach
   what a worker computes. Also the single writer of the run metadata both apps
-  read back.
+  read back (`run_metadata`), and the `body` seam a second kind of run is
+  dispatched through - which is what says *how* runs are driven while leaving
+  *what a run is* to the body.
+- `grind.py` - one run that rolls until a chunk puts more than a given number
+  of hours in front of you, or until the pool runs dry. **Owns the stopping
+  rule and nothing else about rolling**: it prices each roll as it lands -
+  `timeline.added_hours` against a basis computed on that roll's *own* state,
+  not on the one the run ends in - and hands `simulate_rolls` a `should_stop`,
+  exactly as `completion.py` owns when to stop and not how a chunk is picked.
+  **Spawns nothing**: the run body is a plain function `batch.run_batch`
+  dispatches, so there are still two pools in this project. Also `collate`, the
+  pure aggregation over a batch of them; it names no chunk, because nothing
+  here parses the export.
 - `timeline.py` - replaying a run one roll at a time, and `added_hours`: what a
   roll *cost*, as a diff of what is being costed rather than of the totals.
+  Also `basis`, which says *how* a stored series was priced beside
+  `PRICING_MODEL`'s *when* - the one field in the stamp that is not an input,
+  and the only thing keeping the two kinds of run from overwriting each other.
 - `completion.py` - runs one seeded chunk-unlock sequence to the account's own
   completion state (fixed start, no bootstrap roll), auto-completing every
   valid Skills/Sailing/Combat/Quest/Diary/Extra task as it goes, and reports

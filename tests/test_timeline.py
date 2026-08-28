@@ -328,3 +328,50 @@ def test_a_series_priced_by_an_older_model_reads_as_absent() -> None:
     # Written before the field existed, and by the model before this one.
     assert not timeline_matches({k: v for k, v in current.items() if k != "model"}, current)
     assert not timeline_matches({**current, "model": PRICING_MODEL - 1}, current)
+
+
+def test_the_stamp_records_how_the_numbers_were_made_not_only_what_from() -> None:
+    """**The bug this exists to prevent, and it is not hypothetical.**
+
+    A grind simulation prices each roll on its own state; a roll simulation and
+    `batch.price_steps` price every roll on the state the run ends in. Those
+    read *identical* inputs - same export, same rates, same overrides, same
+    model - so a stamp of digests alone matches across them, and a reprice
+    would overwrite one quantity with the other under a stamp that looked
+    correct. That is the "two computations, one key, last writer wins" shape
+    `costing/inputs.py` was extracted to prevent, which `derived_cache` warns a
+    digest can never fix: a key separates inputs, never computations.
+    """
+    from chunksim.runs.timeline import FINAL_BASIS, PER_STEP_BASIS
+
+    digests = {"chunkinfo": "a", "tasks_map": "b", "rates": "c", "overrides": "d"}
+    final = timeline_stamp(**digests, enriched=False, basis=FINAL_BASIS)
+    per_step = timeline_stamp(**digests, enriched=False, basis=PER_STEP_BASIS)
+
+    assert final["basis"] == FINAL_BASIS and per_step["basis"] == PER_STEP_BASIS
+    assert timeline_matches(final, final) and timeline_matches(per_step, per_step)
+    # Every digest agrees and they still must not be read for each other.
+    assert not timeline_matches(final, per_step)
+    assert not timeline_matches(per_step, final)
+
+
+def test_a_series_written_before_the_basis_existed_reads_as_the_final_one() -> None:
+    """**The one place an absent field is not a mismatch**, and the reason is
+    that it is not absent information.
+
+    Every stamp written before `basis` existed was a final-state series -
+    nothing else could produce one - so defaulting is what those bytes actually
+    say. Refusing them instead would discard every stored timeline in every
+    existing cache in order to record something already true of all of them.
+    """
+    from chunksim.runs.timeline import FINAL_BASIS, PER_STEP_BASIS
+
+    digests = {"chunkinfo": "a", "tasks_map": "b", "rates": "c", "overrides": "d"}
+    final = timeline_stamp(**digests, enriched=False, basis=FINAL_BASIS)
+    old = {k: v for k, v in final.items() if k != "basis"}
+
+    assert timeline_matches(old, final)
+    # But it is not a wildcard - it reads as `final`, not as "whatever asked".
+    assert not timeline_matches(
+        old, timeline_stamp(**digests, enriched=False, basis=PER_STEP_BASIS)
+    )
