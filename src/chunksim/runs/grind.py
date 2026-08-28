@@ -64,9 +64,6 @@ different worlds.
 
 ### Stopping, and the three ways it happens
 
-`simulate_rolls` needs no change: both seams already exist and its docstring
-says `on_state` is there for exactly this.
-
 `on_state` fires before `on_roll` for the same order, and only `on_roll` knows
 which chunk was taken - so a state is stashed in the first and priced in the
 second, once the id that reached it is known. That is the same callback split
@@ -82,6 +79,38 @@ second, once the id that reached it is known. That is the same callback split
 All three leave a short ledger, "the same shape an exhausted pool already
 leaves", so `simulated_payload` needs no special case and a grind run is an
 ordinary cached map with an ordinary timeline.
+
+### Legs and waves: how a straggler gets the workers a drained pool is wasting
+
+**A grind measures at 68.7% utilisation on 50 simulations across 16 workers,
+and 84% of the idle time is in the final third** - ending with one simulation
+running alone while fifteen workers sit out. Nothing can be given to that
+run while it is inside a single pool task, so it is built from pieces instead:
+
+- `advance` runs a bounded sequential stretch and hands back a `Frontier`.
+  This is the whole of a grind while the pool is busy, and a `Frontier` is
+  what makes one resumable somewhere else later.
+- `roll_ahead` rolls and derives **without pricing**, which is only possible
+  because the roll sequence is a pure function of the seed - pricing decides
+  where to cut, never where to go.
+- `price_wave` prices one of those steps, and is the piece that runs many at
+  once for a single run. Independent per step, so a wave of eight is eight
+  tasks rather than a chain.
+- `settle` cuts the wave back to the first step over the threshold, discarding
+  what was speculated past it.
+
+`batch._schedule` decides between them, and `leg_plan` is how it is handed all
+five without this module and that one importing each other.
+
+**`simulate_rolls` gained one thing for this: `rng`.** An earlier version of
+this docstring said it needed no change, and that was wrong rather than merely
+incomplete - a resumed leg has to draw from where the last one stopped, or a
+run the scheduler happened to split would diverge from one it did not, and
+`--jobs` would decide an answer. The generator position travels in the
+frontier. See `Frontier.rng_state`.
+
+Measured end to end: 484.5s to 426.8s on that same batch, with the 69-second
+single-straggler tail collapsing to three seconds.
 """
 
 from __future__ import annotations
@@ -98,6 +127,7 @@ from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.model.firebase import reverse_tasks_map
 from chunksim.model.summary import _mapping
 from chunksim.runs.batch import (
+    LegPlan,
     RunResult,
     RunSpec,
     _Pricer,
@@ -116,7 +146,7 @@ from chunksim.store.cache import (
     read_chunkinfo,
     write_sim_run,
 )
-from chunksim.store.derived_cache import Digests, RollCache, encode
+from chunksim.store.derived_cache import Digests, RollCache, decode, encode
 
 #: Why a grind stopped. `OVER` is the answer one was run to get; the other two
 #: are the ways it can fail to find one, and they are kept apart because they
@@ -207,7 +237,7 @@ class _StepPricer:
     resumed: bool = False
     added: list[float] = field(default_factory=list)
     totals: list[float] = field(default_factory=list)
-    _previous: Derived | None = None
+    previous: Derived | None = None
     _outcome: GrindOutcome | None = None
     #: The derivation `on_state` was handed, waiting for `on_roll` to say which
     #: chunk reached it. See `on_state`.
@@ -253,8 +283,8 @@ class _StepPricer:
         # second pricing loop. Step 0 has no predecessor and is walked alone.
         pair = (
             [(order, derived)]
-            if self._previous is None
-            else [(order - 1, self._previous), (order, derived)]
+            if self.previous is None
+            else [(order - 1, self.previous), (order, derived)]
         )
         walked = _priced_series(
             self.state,
@@ -262,13 +292,13 @@ class _StepPricer:
             rates,
             self.base.world,
             self.levels,
-            baseline=self._previous is not None,
+            baseline=self.previous is not None,
         )
         _, fresh, total = walked[-1]
         cost = 0.0 if order == 0 else round(sum(fresh.buckets.values()), 4)
         self.added.append(cost)
         self.totals.append(total)
-        self._previous = derived
+        self.previous = derived
         if order == 0 or self._outcome is not None:
             return
         step = order + self.offset
@@ -298,7 +328,7 @@ class _StepPricer:
         """
         if order == 0:
             if self.resumed:
-                self._previous = derived
+                self.previous = derived
                 return
             self.price(0, derived)
             return
@@ -311,7 +341,7 @@ class _StepPricer:
         because this crosses a process boundary. Empty when the leg derived
         nothing at all, which is a grind that rolled zero times.
         """
-        return b"" if self._previous is None else encode(self._previous)
+        return b"" if self.previous is None else encode(self.previous)
 
     def outcome_if_ended(
         self, *, rolled: int, asked: int, total: int, cap: int
@@ -449,6 +479,45 @@ def run_grind(
     return write_leg(spec, leg)
 
 
+@dataclass(frozen=True)
+class _Setup:
+    """What every task in this module builds before it can do anything.
+
+    Assembled per task rather than once per worker, deliberately: a pool
+    worker that cached this in a module global would be the first
+    module-level mutable state in the project, which is the thing keeping
+    `--jobs` honest. `batch.py`'s `_Prepared` records the same refusal and the
+    same ~0.1s price for it.
+    """
+
+    state: MapState
+    unlocked: dict[str, bool]
+    digests: Digests
+    base: _Pricer
+
+    @classmethod
+    def of(cls, spec: RunSpec) -> _Setup:
+        info = ChunkInfo(read_chunkinfo(override=spec.chunkinfo_path, root=spec.root))
+        try:
+            tasks_map = reverse_tasks_map(read_blob(TASKS_MAP_BLOB_NAME, spec.root)["data"])
+        except CacheMissError:
+            tasks_map = {}
+        state, unlocked = load_map_state(spec.payload, info, tasks_map)
+        digests = Digests(
+            chunkinfo=file_digest(chunkinfo_source(spec.chunkinfo_path, spec.root)),
+            tasks_map=file_digest(blob_path(TASKS_MAP_BLOB_NAME, spec.root)),
+        )
+        # Named with the batch, so this run prices against the account
+        # `run_batch` copied off the base map - see `batch.run_one`.
+        base = _Pricer.build(
+            info, spec.root, digests,
+            map_id=spec.directory.parent.name, basis=PER_STEP_BASIS,
+        )
+        if base is None:
+            raise CacheMissError("no cached wiki rates; run: chunksim heuristics")
+        return cls(state=state, unlocked=dict(unlocked), digests=digests, base=base)
+
+
 def advance(
     spec: RunSpec,
     frontier: Frontier | None = None,
@@ -477,25 +546,8 @@ def advance(
     area carry restarts from there rather than continuing. Both are why budgets
     are large when the pool is busy.
     """
-    info = ChunkInfo(read_chunkinfo(override=spec.chunkinfo_path, root=spec.root))
-    try:
-        tasks_map = reverse_tasks_map(read_blob(TASKS_MAP_BLOB_NAME, spec.root)["data"])
-    except CacheMissError:
-        tasks_map = {}
-
-    state, unlocked = load_map_state(spec.payload, info, tasks_map)
-    digests = Digests(
-        chunkinfo=file_digest(chunkinfo_source(spec.chunkinfo_path, spec.root)),
-        tasks_map=file_digest(blob_path(TASKS_MAP_BLOB_NAME, spec.root)),
-    )
-    # Named with the batch, so this run prices against the account
-    # `run_batch` copied off the base map - see `batch.run_one`.
-    base = _Pricer.build(
-        info, spec.root, digests,
-        map_id=spec.directory.parent.name, basis=PER_STEP_BASIS,
-    )
-    if base is None:
-        raise CacheMissError("no cached wiki rates; run: chunksim heuristics")
+    setup = _Setup.of(spec)
+    state, unlocked, digests, base = setup.state, setup.unlocked, setup.digests, setup.base
 
     cap = min(spec.rolls, MAX_ROLLS)
     done = frontier.steps if frontier is not None else 0
@@ -565,6 +617,192 @@ def advance(
         outcome=None if cancelled and ended is None else ended,
         stamp=base.stamp,
         cancelled=cancelled,
+    )
+
+
+@dataclass(frozen=True)
+class Scouted:
+    """One roll, derived but not yet priced. See `roll_ahead`."""
+
+    chunk_id: str
+    record: UnlockRecord
+    derived: bytes
+
+
+@dataclass(frozen=True)
+class Wave:
+    """A stretch rolled blind, ready to be priced in parallel.
+
+    **The point of rolling without pricing.** A grind's rolls are a pure
+    function of the seed - pricing decides only where to *cut* - so the next
+    few can be derived before anyone knows whether the first of them already
+    ended the run. Deriving is the cheap half (~0.9s against ~2.8s), so
+    speculating on it costs little, and it turns the expensive half into
+    `len(steps)` independent tasks where there was a sequential chain.
+
+    That is only worth doing when workers would otherwise be idle: every step
+    past the wall is priced for nothing. See `batch`'s scheduler for when it
+    decides that is true.
+    """
+
+    steps: tuple[Scouted, ...]
+    rng_state: Any
+    #: The pool came up empty inside this wave, so there is nothing after it.
+    exhausted: bool
+
+
+def roll_ahead(spec: RunSpec, frontier: Frontier | None, depth: int) -> Wave:
+    """Roll and derive up to `depth` steps without pricing any of them.
+
+    Runs in a worker process, and is the sequential half of a wavefront: the
+    chain cannot be parallelised, because each roll's candidate pool comes from
+    the previous roll's derivation. What it produces *can* be, which is the
+    whole trade.
+    """
+    setup = _Setup.of(spec)
+    cap = min(spec.rolls, MAX_ROLLS)
+    done = frontier.steps if frontier is not None else 0
+    start_ids = dict(setup.unlocked)
+    for chunk_id in frontier.rolled if frontier is not None else ():
+        start_ids[chunk_id] = True
+
+    rng = random.Random(spec.seed)
+    if frontier is not None:
+        rng.setstate(frontier.rng_state)
+
+    derived: list[bytes] = []
+
+    def keep(order: int, state: Derived) -> None:
+        # Step 0 is the state this wave starts from, which the caller already
+        # holds - only what the wave *adds* travels back.
+        if order > 0:
+            derived.append(encode(state))
+
+    wanted = max(0, min(depth, cap - done))
+    ledger = simulate_rolls(
+        setup.state,
+        start_ids,
+        rolls=wanted,
+        rng=rng,
+        cache=RollCache(setup.digests, spec.cache_behaviour, spec.root, spec.carry_areas),
+        carry_areas=spec.carry_areas,
+        on_state=keep,
+    )
+    return Wave(
+        steps=tuple(
+            Scouted(chunk_id=record.chunk_id, record=record, derived=blob)
+            for record, blob in zip(ledger, derived)
+        ),
+        rng_state=rng.getstate(),
+        exhausted=len(ledger) < wanted,
+    )
+
+
+def price_wave(
+    spec: RunSpec, held: Mapping[str, bool], previous: bytes, current: bytes
+) -> tuple[float, float]:
+    """One step of a wave, priced: `(what it added, what is outstanding)`.
+
+    Runs in a worker process, one per step, and **this is the parallel half**.
+    A step is independent of every other because `added_estimate` needs only
+    the two derivations either side of it and the rates at `held` - the same
+    property `batch.price_detail` relies on, and the reason a wave is worth
+    rolling blind for.
+
+    Both derivations arrive `derived_cache.encode`'d because the wave already
+    paid for them; re-deriving here would cost more than the parallelism buys.
+
+    **Priced as step 1 of a two-step walk, not as step 0.** `_StepPricer`
+    treats step 0 as a baseline and reports it as costing nothing, which is
+    right for a run's opening state and would silently zero every figure here.
+    """
+    setup = _Setup.of(spec)
+    pricer = _StepPricer(
+        state=setup.state,
+        base=setup.base,
+        # Index 1 is the step being priced; index 0 is never read, the
+        # predecessor arriving as a derivation rather than as an id set.
+        held=[{}, dict(held)],
+        # Neither gate may fire: this prices one step for a caller that judges
+        # it, and an outcome invented here would be about nothing.
+        limit=float("inf"),
+        cap=2**31,
+        resumed=True,
+        previous=decode(previous),
+    )
+    step = decode(current)
+    assert step is not None, "a wave only encodes states it derived"
+    pricer.price(1, step)
+    return pricer.added[-1], pricer.totals[-1]
+
+
+def settle(
+    spec: RunSpec,
+    frontier: Frontier,
+    wave: Wave,
+    prices: Sequence[tuple[float, float]],
+    stamp: Mapping[str, Any],
+) -> Leg:
+    """A blind wave plus its prices, cut at the first step over the threshold.
+
+    **Runs in the parent, and is where speculation is paid back.** The wave
+    rolled past the wall without knowing where it was; this walks the priced
+    steps in order and keeps only up to the first one that ends the grind, so
+    a run that stopped on step 2 of an eight-step wave records two rolls and
+    not eight. What was computed for the other six is discarded, which is the
+    cost the scheduler accepted when it chose to speculate.
+
+    Pure and parent-side, so nothing here touches a worker or the disk.
+
+    **Only ever resumes.** A run's opening state has to be priced as a
+    baseline before anything can be diffed against it, which is `advance`'s
+    job; by the time the pool has drained enough for waves to be worth
+    anything, every run has long since had one.
+    """
+    limit = spec.stop_over_hours if spec.stop_over_hours is not None else 0.0
+    cap = min(spec.rolls, MAX_ROLLS)
+    rolled = list(frontier.rolled)
+    added = list(frontier.added)
+    totals = list(frontier.totals)
+    ledger = list(frontier.ledger)
+    outcome: GrindOutcome | None = None
+
+    for index, step in enumerate(wave.steps):
+        cost, total = prices[index]
+        rolled.append(step.chunk_id)
+        added.append(cost)
+        totals.append(total)
+        ledger.append(step.record)
+        if cost > limit:
+            outcome = GrindOutcome(
+                OVER, chunk=step.chunk_id, step=len(rolled),
+                hours=cost, total_hours=round(total, 4),
+            )
+            break
+        if len(rolled) >= cap:
+            outcome = GrindOutcome(CAPPED, step=len(rolled))
+            break
+    else:
+        # Nothing in the wave ended it, so only an empty pool can have.
+        if wave.exhausted:
+            outcome = GrindOutcome(STUCK)
+
+    kept = len(rolled) - frontier.steps
+    return Leg(
+        frontier=Frontier(
+            rolled=tuple(rolled),
+            # **Past the cut when the run ended here, and that is harmless**:
+            # a finished grind is never resumed, and an unfinished one kept
+            # every step the wave rolled, so the position matches what it
+            # drew. Nothing reads this on the branch where it is stale.
+            rng_state=wave.rng_state,
+            derived=wave.steps[kept - 1].derived if kept else frontier.derived,
+            added=tuple(added),
+            totals=tuple(totals),
+            ledger=tuple(ledger),
+        ),
+        outcome=outcome,
+        stamp=stamp,
     )
 
 
@@ -727,3 +965,20 @@ def _number(value: Any) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     return float(value)
+
+
+def leg_plan() -> LegPlan:
+    """The five functions `batch._schedule` drives a grind with.
+
+    Built here rather than imported there, which is what keeps the dependency
+    one-way: `grind` knows about `batch`, `batch` knows only that a plan has
+    these five names. Every one is module level, because all five pickle by
+    qualified name into a pool worker.
+    """
+    return LegPlan(
+        advance=advance,
+        roll_ahead=roll_ahead,
+        price=price_wave,
+        settle=settle,
+        write=write_leg,
+    )

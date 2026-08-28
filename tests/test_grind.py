@@ -292,6 +292,157 @@ class TestResuming:
         assert direct.frontier.added == through.frontier.added
 
 
+class TestTheWavefront:
+    """Rolling blind, then pricing the result in parallel.
+
+    The trade is that a step past the wall is priced for nothing - which is
+    only acceptable when the workers doing it would otherwise be idle. What
+    must never differ is the *answer*: whichever steps get priced, the grind
+    ends on the first one over the threshold.
+    """
+
+    @staticmethod
+    def _spec(root: Path, name: str, hours: float) -> Any:
+        from chunksim.runs.batch import RunSpec
+        from chunksim.store.cache import claim_sim_batch, run_dir
+
+        directory = claim_sim_batch(name, root)
+        return RunSpec(
+            directory=run_dir(directory, 1), name="run-001", seed=7,
+            rolls=grind.MAX_ROLLS, payload=_PAYLOAD, base_map="fray",
+            base_fetched_at=None, chunkinfo_path=None, root=root,
+            stop_over_hours=hours,
+        )
+
+    def test_it_rolls_the_same_chunks_the_sequential_run_does(self, root: Path) -> None:
+        """Rolling is a pure function of the seed - pricing only decides where
+        to cut - which is the property the whole wavefront rests on."""
+        straight = grind.advance(self._spec(root, "Straight", 1.0))
+        wave = grind.roll_ahead(self._spec(root, "Wave", 1.0), None, depth=6)
+
+        assert tuple(step.chunk_id for step in wave.steps) == straight.frontier.rolled
+
+    def test_a_wave_step_prices_the_same_as_the_sequential_one(
+        self, root: Path
+    ) -> None:
+        """The parallel half has to agree with the serial half figure for
+        figure, or the wavefront would answer a different question fast."""
+        spec = self._spec(root, "Agree", 1.0)
+        straight = grind.advance(self._spec(root, "Serial", 1.0))
+        wave = grind.roll_ahead(spec, None, depth=4)
+
+        # Step 2, priced out of band: its predecessor is step 1's derivation,
+        # and `held` is the base set plus both rolls.
+        held = {"100": True, wave.steps[0].chunk_id: True, wave.steps[1].chunk_id: True}
+        added, total = grind.price_wave(
+            spec, held, wave.steps[0].derived, wave.steps[1].derived
+        )
+
+        assert added == pytest.approx(straight.frontier.added[2])
+        assert total == pytest.approx(straight.frontier.totals[2])
+
+    def test_a_wave_stops_at_the_pool_rather_than_inventing_rolls(
+        self, root: Path
+    ) -> None:
+        """Asked for more depth than the map has left, it reports that it ran
+        out - so the scheduler knows there is nothing after this wave."""
+        wave = grind.roll_ahead(self._spec(root, "Short", 1.0), None, depth=50)
+
+        assert len(wave.steps) == 6, "six reachable chunks besides the start"
+        assert wave.exhausted is True
+
+    def test_a_wave_resumes_from_a_frontier_like_a_leg_does(self, root: Path) -> None:
+        """The scheduler alternates between the two, so they have to agree
+        about where a run has got to."""
+        leg = grind.advance(self._spec(root, "Part", 1.0), budget=2)
+        wave = grind.roll_ahead(self._spec(root, "Rest", 1.0), leg.frontier, depth=4)
+        straight = grind.advance(self._spec(root, "Whole2", 1.0))
+
+        rolled = leg.frontier.rolled + tuple(s.chunk_id for s in wave.steps)
+        assert rolled == straight.frontier.rolled
+
+
+class TestTheScheduler:
+    """`batch._schedule` driving grinds as legs, speculating on the drain.
+
+    Inline pools would not exercise it - it needs more than one worker and more
+    than one run - so these use a real `ProcessPoolExecutor` and stay tiny.
+    """
+
+    @staticmethod
+    def _batch(root: Path, name: str, hours: float, runs: int, jobs: int, **kw: Any) -> Any:
+        return run_batch(
+            name=name, payload=_PAYLOAD, base_map="fray", rolls=grind.MAX_ROLLS,
+            runs=runs, seed=7, jobs=jobs, root=root, body=grind.run_grind,
+            stop_over_hours=hours,
+            extra={"origin": "grind", "grind": {"hours": hours, "simulations": runs}},
+            **kw,
+        )
+
+    def test_scheduling_reaches_the_same_answer_as_not(self, root: Path) -> None:
+        """**The invariant the whole feature turns on.** The scheduler splits
+        some runs and not others, depending on how busy the pool happened to
+        be - so if a split changed a single roll, the answer would depend on
+        the machine. It must not, and this is where that is checked
+        end-to-end rather than at the level of one leg."""
+        plain = self._batch(root, "Plain", 1.0, runs=4, jobs=2)
+        scheduled = self._batch(root, "Sched", 1.0, runs=4, jobs=2, legs=grind.leg_plan())
+
+        assert [(r.seed, r.rolls) for r in plain.runs] == [
+            (r.seed, r.rolls) for r in scheduled.runs
+        ]
+        assert [run["grind"] for run in _runs(root, "Plain")] == [
+            run["grind"] for run in _runs(root, "Sched")
+        ]
+
+    def test_a_scheduled_run_writes_what_an_unscheduled_one_writes(
+        self, root: Path
+    ) -> None:
+        """Only the leg that ends a run writes it, so a run built from several
+        must land the same directory as one built from a single leg."""
+        from chunksim.store.cache import read_cache, read_timeline
+
+        self._batch(root, "Plain2", 1.0, runs=2, jobs=2)
+        self._batch(root, "Sched2", 1.0, runs=2, jobs=2, legs=grind.leg_plan())
+
+        for run in ("run-001", "run-002"):
+            plain = read_cache(f"Plain2/{run}", root)["data"]
+            sched = read_cache(f"Sched2/{run}", root)["data"]
+            assert plain["chunks"] == sched["chunks"]
+            assert plain["chunkinfo"] == sched["chunkinfo"]
+            # **`chunkOrder` is compared by its values, not its keys.** Its
+            # keys are wall-clock milliseconds from when the payload was
+            # built, so two batches always disagree there and it says nothing
+            # about how the work was scheduled. The order is the claim.
+            assert list(plain["chunkOrder"].values()) == list(
+                sched["chunkOrder"].values()
+            )
+            assert read_timeline(f"Plain2/{run}", root) == read_timeline(
+                f"Sched2/{run}", root
+            )
+
+    def test_the_wall_is_found_the_same_way_through_a_wave(self, root: Path) -> None:
+        """A wave rolls past the wall and `settle` cuts back to it, so a
+        speculated run must not record the extra rolls it took."""
+        plain = self._batch(root, "P3", -1.0, runs=3, jobs=2)
+        sched = self._batch(root, "S3", -1.0, runs=3, jobs=2, legs=grind.leg_plan())
+
+        for a, b in zip(_runs(root, "P3"), _runs(root, "S3")):
+            assert a["grind"]["reason"] == b["grind"]["reason"] == grind.OVER
+            assert a["grind"]["step"] == b["grind"]["step"]
+            assert a["grind"]["chunk"] == b["grind"]["chunk"]
+            assert len(a["rolls"]) == len(b["rolls"])
+
+    def test_one_worker_or_one_run_never_schedules(self, root: Path) -> None:
+        """Neither can drain into an idle stretch, so a leg boundary would be
+        pure overhead - the ordinary path has to stay exactly what it was."""
+        alone = self._batch(root, "Alone", 1.0, runs=1, jobs=4, legs=grind.leg_plan())
+        serial = self._batch(root, "Serial2", 1.0, runs=3, jobs=1, legs=grind.leg_plan())
+
+        assert len(alone.runs) == 1
+        assert len(serial.runs) == 3
+
+
 class TestCollate:
     """`collate` is pure and names no chunk - see its docstring. Fed hand-built
     run entries rather than a real batch, which is what keeps these instant."""

@@ -891,6 +891,183 @@ def price_steps(
     return [priced[step][0] for step in order], [priced[step][1] for step in order]
 
 
+#: How deep a wave rolls per spare worker, and the one number the speculation
+#: is tuned by. Every step past the wall is priced for nothing, so this is a
+#: bet that a straggler has at least this many rolls left - safe late in a
+#: batch, where the runs still going are the long ones by definition.
+_WAVE_PER_WORKER = 1
+#: Never speculate less than this: a wave of one is a sequential step with a
+#: round trip bolted on.
+_MIN_WAVE = 2
+
+#: How far a leg runs before handing a frontier back while the pool is busy.
+#:
+#: **Without a bound here the scheduler cannot work at all**, and that is worth
+#: stating because it is not obvious and it was measured the hard way: an
+#: unbounded first leg runs its whole simulation, so no run ever yields a
+#: frontier, so the wave branch below never fires and the scheduler is an
+#: elaborate way of doing exactly what `run_one` does. That version came in at
+#: 2.8% - noise - against its own baseline.
+#:
+#: A run shorter than this still finishes in one leg and pays nothing. A longer
+#: one pays a re-derivation per seam and becomes *resumable*, which is the only
+#: thing that lets spare workers reach it later - and long runs are precisely
+#: the stragglers the drain phase is waiting on.
+#:
+#: **Tuned rather than derived**, on one map at one threshold, where the median
+#: grind was 15 rolls and the longest 55. Sitting just under the median means
+#: about half the runs are untouched and every straggler is resumable well
+#: before the pool drains.
+_LEG_BUDGET = 12
+
+
+def _schedule(
+    pool: Any,
+    specs: Sequence[RunSpec],
+    *,
+    workers: int,
+    plan: LegPlan,
+    on_complete: Callable[[RunResult], None] | None,
+    on_roll: Callable[[int, int, str], None] | None,
+    should_stop: Callable[[], bool] | None,
+) -> list[RunResult]:
+    """Drive `specs` as resumable legs, speculating once the pool drains.
+
+    **Two regimes, and the switch between them is the whole idea.** While there
+    are at least as many unfinished runs as workers, every worker has a run of
+    its own and the best thing to do is exactly what `run_one` does: one
+    uninterrupted leg, no seams, no speculation, full throughput. Once fewer
+    runs remain than there are workers, the spare capacity has nowhere to go -
+    it cannot be given to a run already inside a task, and there are no queued
+    runs left to start. That is when a straggler is broken into a wave: rolled
+    blind a few steps, then those steps priced all at once.
+
+    Measured on a real map at 50 simulations and 16 workers, that second regime
+    is where the waste is: 68.7% utilisation overall, with **84% of all idle
+    worker-time in the final third** and the last stretch a single simulation
+    running alone.
+
+    **The parent is the only stateful thing here and it is single-threaded.**
+    Workers are pure functions; nothing they produce reaches another worker.
+    The one thing shared between them is `cache/derived/`, which two processes
+    may already write concurrently because it is content-keyed. So this adds no
+    synchronisation, and would stay correct if the pool became threads.
+
+    **`--jobs` still cannot change a result.** A leg resumes from the
+    frontier's own generator position, so a run split here lands exactly where
+    an unsplit one would; `tests/test_grind.py` pins that directly.
+    """
+    from concurrent.futures import FIRST_COMPLETED, wait
+
+    live = {spec.name: _Live(spec=spec, index=index) for index, spec in enumerate(specs)}
+    waiting = [spec.name for spec in specs]
+    results: list[RunResult] = []
+    futures: dict[Any, tuple[str, str, int]] = {}
+
+    def report(name: str, rolls: int) -> None:
+        """Rolls are counted in the parent here, not reported from inside a
+        worker: a leg returns its whole stretch at once, so there is nothing
+        for the manager queue `run_one`'s path needs to carry."""
+        row = live[name]
+        for order in range(row.rolls + 1, rolls + 1):
+            if on_roll is not None:
+                on_roll(row.index, order, "")
+        row.rolls = max(row.rolls, rolls)
+
+    def submit(name: str) -> None:
+        row = live[name]
+        alive = len(waiting) + sum(1 for other in live.values() if other.pending)
+        spare = workers - alive
+        if row.frontier is None or spare < 1:
+            # Busy pool, or a run that has never been priced: a sequential
+            # leg. An opening state has to be priced as a baseline before any
+            # wave can diff against it, which is `advance`'s job (see
+            # `settle`) - and the bound is what makes a long run resumable at
+            # all. See `_LEG_BUDGET`.
+            futures[pool.submit(plan.advance, row.spec, row.frontier, budget=_LEG_BUDGET)] = (
+                name, "leg", 0,
+            )
+            row.pending += 1
+            return
+        depth = max(_MIN_WAVE, spare * _WAVE_PER_WORKER)
+        futures[pool.submit(plan.roll_ahead, row.spec, row.frontier, depth)] = (name, "wave", 0)
+        row.pending += 1
+
+    def finish(row: _Live, leg: Any) -> None:
+        results.append(plan.write(row.spec, leg))
+        if on_complete is not None:
+            on_complete(results[-1])
+
+    while waiting or futures:
+        while waiting and len(futures) < workers and not (should_stop and should_stop()):
+            submit(waiting.pop(0))
+        if not futures:
+            break
+        done, _ = wait(list(futures), return_when=FIRST_COMPLETED)
+        for future in done:
+            name, kind, at = futures.pop(future)
+            row = live[name]
+            row.pending -= 1
+            if kind == "leg":
+                leg = future.result()
+                row.frontier, row.stamp = leg.frontier, leg.stamp
+                report(name, len(leg.frontier.rolled))
+                if leg.finished:
+                    finish(row, leg)
+                else:
+                    waiting.append(name)
+            elif kind == "wave":
+                row.wave = future.result()
+                row.prices = {}
+                if not row.wave.steps:
+                    # Nothing left to roll: settle it as it stands.
+                    leg = plan.settle(row.spec, row.frontier, row.wave, [], row.stamp)
+                    finish(row, leg)
+                    continue
+                base = _wave_held(row.spec, row.frontier)
+                for index, step in enumerate(row.wave.steps):
+                    base = {**base, step.chunk_id: True}
+                    previous = (
+                        row.frontier.derived if index == 0
+                        else row.wave.steps[index - 1].derived
+                    )
+                    futures[pool.submit(
+                        plan.price, row.spec, base, previous, step.derived
+                    )] = (name, "price", index)
+                    row.pending += 1
+            else:
+                row.prices[at] = future.result()
+                if row.pending:
+                    continue
+                leg = plan.settle(
+                    row.spec, row.frontier, row.wave,
+                    [row.prices[i] for i in range(len(row.wave.steps))], row.stamp,
+                )
+                row.frontier, row.wave = leg.frontier, None
+                report(name, len(leg.frontier.rolled))
+                if leg.finished:
+                    finish(row, leg)
+                else:
+                    waiting.append(name)
+        if should_stop is not None and should_stop() and not futures:
+            break
+    return results
+
+
+def _wave_held(spec: RunSpec, frontier: Any) -> dict[str, bool]:
+    """The unlocked ids a wave starts from: the base map plus what is rolled.
+
+    Rebuilt in the parent from the payload rather than carried on the frontier,
+    because it is derivable and a frontier crosses a process boundary every
+    leg. See `grind.price_wave`, which needs one per step.
+    """
+    unlocked = spec.payload.get("chunks", {}).get("unlocked", {})
+    held = {str(chunk): True for chunk in unlocked}
+    for chunk_id in frontier.rolled:
+        held[chunk_id] = True
+    return held
+
+
 def run_metadata(
     spec: RunSpec,
     *,
@@ -1124,6 +1301,56 @@ def _run_one_reporting(
     return (body or run_one)(spec, on_roll=report)
 
 
+@dataclass(frozen=True)
+class LegPlan:
+    """How to run one kind of run in resumable pieces, so a straggler can be
+    given the workers a drained pool is no longer using.
+
+    **Five module-level functions, because all five have to pickle.** They are
+    supplied by `runs/grind.py` rather than imported here: `batch.py` owns
+    *when* work runs and this owns *what* the work is, which is the same
+    division `body` already draws and the reason there is no import cycle
+    between the two.
+
+    Nothing in here is stateful and nothing is shared. Each call is a pure
+    function of its arguments - `(spec, frontier, budget)` in, a leg out - and
+    the only thing two workers ever touch in common is `cache/derived/`, which
+    is content-keyed and therefore safe by construction rather than by lock.
+    """
+
+    #: `(spec, frontier, budget) -> Leg`. Rolls and prices in one sequential
+    #: stretch; the whole of a run when the pool is busy.
+    advance: Callable[..., Any]
+    #: `(spec, frontier, depth) -> Wave`. Rolls and derives without pricing.
+    roll_ahead: Callable[..., Any]
+    #: `(spec, held, previous, current) -> (added, total)`. One step of a wave,
+    #: and the only piece here that runs many-at-once for a single run.
+    price: Callable[..., Any]
+    #: `(spec, frontier, wave, prices, stamp) -> Leg`. Parent-side, pure.
+    settle: Callable[..., Any]
+    #: `(spec, leg) -> RunResult`. Called once, for the leg that ends a run.
+    write: Callable[..., RunResult]
+
+
+@dataclass
+class _Live:
+    """One simulation's place in the scheduler. Parent-side and single-
+    threaded, so its mutability needs no protecting - the wave loop submits,
+    waits, and only then reads what came back."""
+
+    spec: RunSpec
+    index: int
+    frontier: Any = None
+    stamp: Mapping[str, Any] = field(default_factory=dict)
+    rolls: int = 0
+    #: The wave being priced, and the prices in so far, keyed by its own step
+    #: index. A wave settles only once every one of them is back.
+    wave: Any = None
+    prices: dict[int, tuple[float, float]] = field(default_factory=dict)
+    #: Futures outstanding for this run. A run is "busy" while any are.
+    pending: int = 0
+
+
 def run_batch(
     *,
     name: str,
@@ -1144,6 +1371,7 @@ def run_batch(
     body: RunBody = None,
     stop_over_hours: float | None = None,
     extra: Mapping[str, Any] | None = None,
+    legs: LegPlan | None = None,
 ) -> BatchResult:
     """Claim a batch directory, run `runs` simulations into it, and summarise.
 
@@ -1236,7 +1464,20 @@ def run_batch(
 
     execute = body or run_one
     results: list[RunResult] = []
-    if workers == 1 or len(specs) == 1:
+    # **Scheduling only pays where there is spare capacity to reclaim.** With
+    # one worker, or one run, the pool never drains into an idle stretch and
+    # every leg boundary would be pure overhead - so the ordinary path stays
+    # exactly what it was and this is not a mode anyone opts into by accident.
+    if legs is not None and workers > 1 and len(specs) > 1:
+        from concurrent.futures import ProcessPoolExecutor
+
+        with ProcessPoolExecutor(max_workers=min(workers, len(specs))) as pool:
+            results = _schedule(
+                pool, specs, workers=min(workers, len(specs)), plan=legs,
+                on_complete=on_complete, on_roll=on_roll, should_stop=should_stop,
+            )
+        results.sort(key=lambda found: found.name)
+    elif workers == 1 or len(specs) == 1:
         for index, spec in enumerate(specs):
             if should_stop is not None and should_stop():
                 break

@@ -13,7 +13,12 @@ run with its base map deleted. Change the on-disk shape of a run and every file
 that has to agree is in this directory.
 
 `--jobs` never changes a result, in either pool. That property belongs to
-`derive/` (see its `__init__`) and is spent here.
+`derive/` (see its `__init__`) and is spent here. **A grind makes it harder to
+keep and worth restating**: its scheduler splits some runs into legs and not
+others, depending only on how busy the machine happened to be - so a split run
+has to land exactly where an unsplit one would, which is why the random
+generator's *position* travels with a `grind.Frontier` rather than the seed
+being replayed.
 
 The modules, and what each owns:
 
@@ -26,17 +31,23 @@ The modules, and what each owns:
   what a worker computes. Also the single writer of the run metadata both apps
   read back (`run_metadata`), and the `body` seam a second kind of run is
   dispatched through - which is what says *how* runs are driven while leaving
-  *what a run is* to the body.
+  *what a run is* to the body. `_schedule` is the second way it drives one:
+  whole legs while every worker has a run of its own, speculative waves once
+  the pool drains and the spare capacity has nowhere else to go. **The parent
+  is the only stateful thing in it and it is single-threaded**; workers stay
+  pure functions and nothing one produces reaches another, so this added no
+  synchronisation to the project.
 - `grind.py` - one run that rolls until a chunk puts more than a given number
   of hours in front of you, or until the pool runs dry. **Owns the stopping
   rule and nothing else about rolling**: it prices each roll as it lands -
   `timeline.added_hours` against a basis computed on that roll's *own* state,
   not on the one the run ends in - and hands `simulate_rolls` a `should_stop`,
   exactly as `completion.py` owns when to stop and not how a chunk is picked.
-  **Spawns nothing**: the run body is a plain function `batch.run_batch`
-  dispatches, so there are still two pools in this project. Also `collate`, the
-  pure aggregation over a batch of them; it names no chunk, because nothing
-  here parses the export.
+  **Spawns nothing**: the five pieces `batch._schedule` drives it with
+  (`advance`, `roll_ahead`, `price_wave`, `settle`, `write_leg`, bound by
+  `leg_plan`) are plain functions, so there are still two pools in this
+  project. Also `collate`, the pure aggregation over a batch of them; it names
+  no chunk, because nothing here parses the export.
 - `timeline.py` - replaying a run one roll at a time, and `added_hours`: what a
   roll *cost*, as a diff of what is being costed rather than of the totals.
   Also `basis`, which says *how* a stored series was priced beside

@@ -750,6 +750,12 @@ def _grind_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
             on_roll=roll,
             should_stop=stop,
             body=grind.run_grind,
+            # **Resumable legs, so the drain phase is not fifteen idle
+            # workers.** Measured at 50 simulations on 16 workers: 68.7%
+            # utilisation, 84% of all idle time in the final third. See
+            # `batch._schedule`. It declines to engage below two workers or
+            # two simulations, where there is no drain to reclaim.
+            legs=grind.leg_plan(),
             stop_over_hours=hours,
             extra={
                 "origin": GRIND_ORIGIN,
