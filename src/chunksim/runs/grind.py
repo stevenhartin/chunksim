@@ -121,7 +121,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from chunksim.costing.heuristics import Heuristics
-from chunksim.costing.inputs import priced_heuristics
+from chunksim.costing.inputs import priced_heuristics_reusing
 from chunksim.derive.pipeline import Derived, MapState, load_map_state
 from chunksim.model.chunkinfo import ChunkInfo
 from chunksim.model.firebase import reverse_tasks_map
@@ -242,6 +242,11 @@ class _StepPricer:
     #: The derivation `on_state` was handed, waiting for `on_roll` to say which
     #: chunk reached it. See `on_state`.
     _pending: Derived | None = None
+    #: `dps_bridge.PricedFights` from the previous step, so the next one
+    #: reprices only what a roll actually moved. Never crosses a leg boundary:
+    #: a resumed leg starts from scratch and is merely slower, which beats
+    #: putting a derived object in a `Frontier` that has to pickle.
+    fights: Any = None
 
     @property
     def levels(self) -> dict[str, int]:
@@ -257,7 +262,7 @@ class _StepPricer:
         set, so no two steps of one grind collide and re-walking the same
         chunks is a file read rather than another ~1.7s.
         """
-        priced, _ = priced_heuristics(
+        priced, _, fights = priced_heuristics_reusing(
             self.state,
             self.held[order],
             derived,
@@ -267,7 +272,14 @@ class _StepPricer:
             world=self.base.world,
             root=self.base.root,
             reference=self.base.reference,
+            # **What the roll before priced.** A roll only adds, so most kill
+            # rates are unchanged and `enrich_incremental` reprices only what
+            # moved. Held on this pricer, which lives on one leg's stack and
+            # is never shared - the sanctioned "passed in and returned, never
+            # stored" shape.
+            previous=self.fights,
         )
+        self.fights = fights
         return priced
 
     def price(self, order: int, derived: Derived, chunk_id: str | None = None) -> None:

@@ -2021,6 +2021,8 @@ def priced_heuristics(
     root: Path | None = None,
     refresh: bool = False,
     reference: ReferenceBlobs | None = None,
+    previous: Any = None,
+    _carry: list[Any] | None = None,
 ) -> tuple[Heuristics, dps_bridge.DpsCoverage | None]:
     """Every rate this machine can compute, layered on and cached as one.
 
@@ -2051,20 +2053,37 @@ def priced_heuristics(
     pinned_monsters, pinned_slayer = blobs.pinned
     goals = goal_levels(state, derived, effective_levels(state, blobs))
 
+    # **A list rather than a return value, because `compute` is handed to
+    # `cached_enrich` and must keep its two-tuple shape.** What comes out is a
+    # *reuse hint*, not an answer: it is deliberately never stored, so a cache
+    # hit simply leaves this empty and the next step prices from scratch. That
+    # is the right trade - a hit is already fast, and storing it would put a
+    # derived object in a cache keyed on inputs.
+    carried: list[Any] = [] if _carry is None else _carry
+
     def compute() -> tuple[Heuristics, dps_bridge.DpsCoverage | None]:
         priced, _ = recipe_priced(
             state, derived, index, heuristics, levels, root=root, reference=blobs
         )
         coverage: dps_bridge.DpsCoverage | None = None
         if dps_bridge.DPS_AVAILABLE:
-            priced, coverage = dps_bridge.enrich(
+            # **Incremental when the caller has a previous roll, from
+            # scratch otherwise**, and the two are asserted equal by
+            # `tests/test_dps_bridge.py` against a real run rather than
+            # trusted. A roll only ever adds, so 94% of monster rates come out
+            # byte-identical to the roll before - see `enrich_incremental`,
+            # which was written for exactly this and had no production caller
+            # until a grind gave it one.
+            priced, coverage, fights = dps_bridge.enrich_incremental(
                 priced,
                 state.chunk_info,
                 derived,
                 goals,
+                previous=previous,
                 pinned_monsters=pinned_monsters,
                 pinned_slayer=pinned_slayer,
             )
+            carried.append(fights)
         # **Last, because it multiplies the kill rates.** Running this before
         # `enrich` would price combat off the scraped rates and then throw the
         # simulated ones away - the numbers would be quietly worse on exactly
@@ -2229,6 +2248,32 @@ def priced_heuristics(
         root=root,
         refresh=refresh,
     )
+
+
+def priced_heuristics_reusing(
+    *args: Any, **kwargs: Any
+) -> tuple[Heuristics, dps_bridge.DpsCoverage | None, Any]:  # noqa: ANN401
+    """`priced_heuristics`, also handing back what the next roll can reuse.
+
+    **One implementation, two shapes.** Eight of the nine callers price a
+    single state and have no next roll to hand anything to; only a grind walks
+    a chain, so only a grind pays the third element any attention. Widening the
+    common signature to serve the rare caller would have edited eight call
+    sites to write `_` in a new place.
+
+    The hint is `dps_bridge.PricedFights`, and it is one of the four caching
+    shapes CLAUDE.md sanctions: *passed in and returned, never stored*. It dies
+    with the call chain that made it, so no worker can inherit one and
+    `--jobs` stays unable to change a result.
+
+    `None` comes back whenever there was nothing to carry - the extra is not
+    installed, or the enrichment was served from cache - and the next call
+    then prices from scratch, which is correct rather than merely safe.
+    """
+    carried: list[Any] = []
+    kwargs["_carry"] = carried
+    heuristics, coverage = priced_heuristics(*args, **kwargs)
+    return heuristics, coverage, (carried[0] if carried else None)
 
 
 @dataclass(frozen=True)

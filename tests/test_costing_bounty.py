@@ -221,7 +221,9 @@ class TestItIsWiredIn:
 
         source = pathlib.Path(inputs.__file__).read_text(encoding="utf-8")
         assert "bounty.methods(" in source
-        assert source.index("dps_bridge.enrich(") < source.index("bounty.methods(")
+        assert source.index("dps_bridge.enrich_incremental(") < source.index(
+            "bounty.methods("
+        )
 
     def test_the_module_is_listed_where_a_module_is_listed(self) -> None:
         listing = (

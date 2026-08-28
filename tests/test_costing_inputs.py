@@ -174,13 +174,13 @@ def test_both_apps_hand_the_pricer_the_same_pins(
     )
 
     calls: list[dict[str, Any]] = []
-    real = dps_bridge.enrich
+    real = dps_bridge.enrich_incremental
 
     def spy(*args: Any, **kwargs: Any) -> Any:
         calls.append(kwargs)
         return real(*args, **kwargs)
 
-    monkeypatch.setattr("chunksim.costing.dps_bridge.enrich", spy)
+    monkeypatch.setattr("chunksim.costing.dps_bridge.enrich_incremental", spy)
     monkeypatch.setattr(
         "chunksim.costing.inputs.cached_enrich",
         lambda compute, *a, **k: compute(),
@@ -652,3 +652,52 @@ class TestLoadAliasesMergesTheHandTable:
         assert merged["Wooden dining table"] == recipe_rates.HAND_ALIASES[
             "Wooden dining table"
         ]
+
+
+@pytest.mark.real_export
+@pytest.mark.slow
+def test_reusing_the_previous_roll_prices_the_same_as_from_scratch(
+    real_state: Any, real_export: Any
+) -> None:
+    """**The correctness of item 1, and it is silently wrong if it fails.**
+
+    `priced_heuristics_reusing` reprices only what a roll moved, on the
+    argument that a roll only ever adds and 94% of kill rates come out
+    identical. `enrich_incremental` is already pinned against a real run one
+    level down (`tests/test_dps_bridge.py`), but this is the level a grind
+    actually calls, and a wrong reuse predicate here would not crash - it would
+    return entirely plausible numbers that drift from the from-scratch answer
+    as a run goes on, which is the worst failure this code has available.
+
+    So: walk a chain of states the way a grind does, and assert the reused
+    answer equals the cold one at every step.
+    """
+    from chunksim.costing.inputs import priced_heuristics, priced_heuristics_reusing
+    from chunksim.costing.heuristics import Heuristics
+    from chunksim.derive.search import build_world_index
+    from chunksim.store.derived_cache import Digests, cached_derive
+
+    state, unlocked = real_state
+    held = sorted(unlocked)
+    world = build_world_index(real_export)
+    digests = Digests(chunkinfo="test", tasks_map="test")
+
+    previous = None
+    for drop in (3, 2, 1, 0):
+        ids = dict.fromkeys(held[: len(held) - drop], True)
+        derived = cached_derive(state, ids, digests, store=False)
+        # **`refresh=True` on both, or this asserts nothing.** `cached_enrich`
+        # is content-keyed, so the second call of a pair would read back the
+        # first one's answer and the two would agree by construction.
+        cold, _ = priced_heuristics(
+            state, ids, derived, Heuristics(), {}, digests,
+            world=world, refresh=True,
+        )
+        warm, _, previous = priced_heuristics_reusing(
+            state, ids, derived, Heuristics(), {}, digests,
+            world=world, refresh=True, previous=previous,
+        )
+
+        assert warm.monsters == cold.monsters, f"diverged at {len(ids)} chunks"
+        assert warm.slayer == cold.slayer
+        assert warm.computed == cold.computed
