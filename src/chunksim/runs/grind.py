@@ -86,6 +86,7 @@ ordinary cached map with an ordinary timeline.
 
 from __future__ import annotations
 
+import random
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -103,7 +104,7 @@ from chunksim.runs.batch import (
     _priced_series,
     run_metadata,
 )
-from chunksim.runs.simulate import simulate_rolls, simulated_payload
+from chunksim.runs.simulate import UnlockRecord, simulate_rolls, simulated_payload
 from chunksim.runs.timeline import PER_STEP_BASIS
 from chunksim.store.cache import (
     CacheMissError,
@@ -115,7 +116,7 @@ from chunksim.store.cache import (
     read_chunkinfo,
     write_sim_run,
 )
-from chunksim.store.derived_cache import Digests, RollCache
+from chunksim.store.derived_cache import Digests, RollCache, encode
 
 #: Why a grind stopped. `OVER` is the answer one was run to get; the other two
 #: are the ways it can fail to find one, and they are kept apart because they
@@ -197,6 +198,13 @@ class _StepPricer:
     held: list[dict[str, bool]]
     limit: float
     cap: int
+    #: How many rolls landed before this leg. Every step this reports is
+    #: numbered against the whole grind, so a run split into legs names the
+    #: same terminating step as one that was not - see `advance`.
+    offset: int = 0
+    #: True when this leg continues an earlier one, in which case its step 0
+    #: is a step the previous leg already priced and must not price again.
+    resumed: bool = False
     added: list[float] = field(default_factory=list)
     totals: list[float] = field(default_factory=list)
     _previous: Derived | None = None
@@ -263,13 +271,14 @@ class _StepPricer:
         self._previous = derived
         if order == 0 or self._outcome is not None:
             return
+        step = order + self.offset
         if cost > self.limit:
             self._outcome = GrindOutcome(
-                OVER, chunk=chunk_id, step=order,
+                OVER, chunk=chunk_id, step=step,
                 hours=cost, total_hours=round(total, 4),
             )
-        elif order >= self.cap:
-            self._outcome = GrindOutcome(CAPPED, step=order)
+        elif step >= self.cap:
+            self._outcome = GrindOutcome(CAPPED, step=step)
 
     def on_state(self, order: int, derived: Derived) -> None:
         """Step 0 is priced now; every later one waits for its chunk id.
@@ -281,11 +290,46 @@ class _StepPricer:
 
         Step 0 is the exception because it is not a roll: `held` was built with
         the run's starting set, so nothing is waiting to be learned.
+
+        **A resumed leg's step 0 is somebody else's step**, already priced and
+        already in `added`. It is kept as the diff baseline and nothing else -
+        pricing it again would put a duplicate in the series and shift every
+        bar after it.
         """
         if order == 0:
+            if self.resumed:
+                self._previous = derived
+                return
             self.price(0, derived)
             return
         self._pending = derived
+
+    def frozen(self) -> bytes:
+        """The state this leg ended on, encoded for the next one.
+
+        `derived_cache.encode`'s ~118KiB rather than a raw pickle's ~0.53MB,
+        because this crosses a process boundary. Empty when the leg derived
+        nothing at all, which is a grind that rolled zero times.
+        """
+        return b"" if self._previous is None else encode(self._previous)
+
+    def outcome_if_ended(
+        self, *, rolled: int, asked: int, total: int, cap: int
+    ) -> GrindOutcome | None:
+        """What ended the grind, or `None` if it is merely out of budget.
+
+        The distinction a leg exists for, and it is not visible from inside
+        `simulate_rolls`: a loop that stops having rolled everything it was
+        asked for has either finished the grind or run out of *this leg's*
+        allowance, and only the caller knows which. Rolling fewer than asked
+        means the pool came up empty, which is the one ending this cannot
+        confuse with a budget.
+        """
+        if self._outcome is not None:
+            return self._outcome
+        if rolled < asked:
+            return GrindOutcome(STUCK)
+        return GrindOutcome(CAPPED, step=total) if total >= cap else None
 
     def on_roll(self, order: int, chunk_id: str) -> None:
         self.held.append({**self.held[order - 1], chunk_id: True})
@@ -312,17 +356,70 @@ class _StepPricer:
         """
         return self._outcome if self._outcome is not None else GrindOutcome(STUCK)
 
-    def stored(self) -> dict[str, Any] | None:
-        """What to write to `timeline.json`, or `None` if there is no series.
 
-        The shape `_Pricer.stored` writes, read by the same
-        `routes_view._cached_hours`, differing only in the `basis` its stamp
-        carries. A grind that rolled nothing has one step and no bars, which is
-        not a timeline.
-        """
-        if len(self.totals) < 2:
-            return None
-        return {"stamp": self.base.stamp, "added": self.added, "totals": self.totals}
+
+@dataclass(frozen=True)
+class Frontier:
+    """Where a paused grind got to - everything needed to continue it in
+    another process, and nothing else.
+
+    **It exists so a long grind can be taken apart and rescheduled**, which is
+    the only way spare workers can be pointed at a straggler: once a whole
+    simulation is inside one pool task there is no way to reclaim it. A leg
+    ends, hands this back, and the next leg picks it up wherever the scheduler
+    decides to run it.
+
+    **`rng_state` is the load-bearing field and the reason this is not
+    simply `(rolled, derived)`.** `--jobs must never change a result`, so a
+    resumed run has to draw from exactly where it stopped: a fresh
+    `Random(seed)` would replay the draws already spent and a differently
+    seeded one would take another path, and either way the answer would depend
+    on whether the scheduler happened to split this run. `random.Random`
+    carries its own position and `getstate()` pickles, so the position travels
+    with the frontier. See `simulate.simulate_rolls`.
+
+    `derived` is `derived_cache.encode`'s ~118KiB rather than a raw `Derived`'s
+    ~0.53MB, because it crosses a process boundary once per leg. It is the
+    state at the *last rolled step*, which is exactly what pricing the next one
+    needs to diff against - and carrying it is what lets a resumed leg keep the
+    area carry going instead of restarting it cold.
+    """
+
+    rolled: tuple[str, ...]
+    rng_state: Any
+    derived: bytes
+    added: tuple[float, ...]
+    totals: tuple[float, ...]
+    #: `UnlockRecord`s rather than their dicts: `simulated_payload` reads
+    #: the records and `write_sim_run` wants the dicts, so keeping the
+    #: richer form means no leg has to guess which the next one needs.
+    ledger: tuple[UnlockRecord, ...]
+
+    @property
+    def steps(self) -> int:
+        """Rolls landed so far. `added`/`totals` hold one more, the baseline."""
+        return len(self.rolled)
+
+
+@dataclass(frozen=True)
+class Leg:
+    """What one stretch of a grind produced.
+
+    `outcome` is `None` when the leg ran out of budget with the grind still
+    going - the frontier is then the thing worth keeping. Anything else means
+    the grind is over and the frontier is its final state.
+    """
+
+    frontier: Frontier
+    outcome: GrindOutcome | None
+    #: What the priced series was computed against - see `timeline.stamp`.
+    #: Carried so `write_leg` need not rebuild a `_Pricer` to learn it.
+    stamp: Mapping[str, Any] = field(default_factory=dict)
+    cancelled: bool = False
+
+    @property
+    def finished(self) -> bool:
+        return self.outcome is not None
 
 
 def run_grind(
@@ -344,6 +441,41 @@ def run_grind(
     run. That raises rather than rolling blindly - a grind with no prices is
     not a cheaper answer, it is no answer, and `gui/actions` refuses the job
     before starting forty of these for the same reason.
+
+    **One unbounded leg**, which is what makes this and the scheduled path the
+    same code rather than two implementations of one rule. See `advance`.
+    """
+    leg = advance(spec, budget=None, on_roll=on_roll, should_stop=should_stop)
+    return write_leg(spec, leg)
+
+
+def advance(
+    spec: RunSpec,
+    frontier: Frontier | None = None,
+    *,
+    budget: int | None = None,
+    on_roll: Callable[[int, str], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
+) -> Leg:
+    """Roll and price one stretch of a grind. Runs in a worker process.
+
+    `budget` is a maximum, not a target: the leg ends early the moment the
+    grind does, so a generous budget costs nothing and a small one only buys
+    the scheduler a chance to re-plan. `None` means "until the grind ends",
+    which is what `run_grind` asks for and what a saturated pool wants - a leg
+    boundary is pure overhead when there is no spare worker to hand the next
+    one to.
+
+    **A resumed leg is the same run, not a similar one.** The chunks come from
+    the frontier's own generator position, so splitting a grind into legs
+    cannot move a single roll - which is what keeps `--jobs must never change a
+    result` true of a scheduler that splits some runs and not others. The
+    determinism is pinned directly by `tests/test_grind.py`.
+
+    **What a leg boundary costs**: `simulate_rolls` derives the state it starts
+    from, so resuming pays one derivation the unbroken run would not, and the
+    area carry restarts from there rather than continuing. Both are why budgets
+    are large when the pool is busy.
     """
     info = ChunkInfo(read_chunkinfo(override=spec.chunkinfo_path, root=spec.root))
     try:
@@ -365,38 +497,90 @@ def run_grind(
     if base is None:
         raise CacheMissError("no cached wiki rates; run: chunksim heuristics")
 
+    cap = min(spec.rolls, MAX_ROLLS)
+    done = frontier.steps if frontier is not None else 0
+    # The ids this leg starts from: the base set plus everything already rolled.
+    start_ids = dict(unlocked)
+    for chunk_id in frontier.rolled if frontier is not None else ():
+        start_ids[chunk_id] = True
+
+    rng = random.Random(spec.seed)
+    if frontier is not None:
+        rng.setstate(frontier.rng_state)
+
     pricer = _StepPricer(
         state=state,
         base=base,
-        held=[dict(unlocked)],
+        held=[start_ids],
         limit=spec.stop_over_hours if spec.stop_over_hours is not None else 0.0,
-        cap=min(spec.rolls, MAX_ROLLS),
+        cap=cap,
+        # **Numbered against the whole grind, not this leg.** The cap and the
+        # reported step are properties of the run; a leg is a scheduling
+        # detail and must not be able to shift either.
+        offset=done,
+        added=list(frontier.added) if frontier is not None else [],
+        totals=list(frontier.totals) if frontier is not None else [],
+        resumed=frontier is not None,
     )
 
-    def rolled(order: int, chunk_id: str) -> None:
+    def rolled_cb(order: int, chunk_id: str) -> None:
         pricer.on_roll(order, chunk_id)
         if on_roll is not None:
-            on_roll(order, chunk_id)
+            on_roll(order + done, chunk_id)
 
     def stop() -> bool:
         return pricer.should_stop() or (should_stop is not None and should_stop())
 
-    ledger = simulate_rolls(
+    remaining = cap - done
+    if budget is not None:
+        remaining = min(remaining, budget)
+    leg_ledger = simulate_rolls(
         state,
-        unlocked,
-        rolls=min(spec.rolls, MAX_ROLLS),
-        seed=spec.seed,
+        start_ids,
+        rolls=max(0, remaining),
+        rng=rng,
         cache=RollCache(digests, spec.cache_behaviour, spec.root, spec.carry_areas),
         carry_areas=spec.carry_areas,
         on_state=pricer.on_state,
-        on_roll=rolled,
+        on_roll=rolled_cb,
         should_stop=stop,
     )
     cancelled = should_stop is not None and should_stop()
+    rolls = (frontier.rolled if frontier is not None else ()) + tuple(
+        record.chunk_id for record in leg_ledger
+    )
+    ledger = (frontier.ledger if frontier is not None else ()) + tuple(leg_ledger)
+    ended = pricer.outcome_if_ended(
+        rolled=len(leg_ledger), asked=max(0, remaining), total=len(rolls), cap=cap
+    )
+    return Leg(
+        frontier=Frontier(
+            rolled=rolls,
+            rng_state=rng.getstate(),
+            derived=pricer.frozen(),
+            added=tuple(pricer.added),
+            totals=tuple(pricer.totals),
+            ledger=ledger,
+        ),
+        outcome=None if cancelled and ended is None else ended,
+        stamp=base.stamp,
+        cancelled=cancelled,
+    )
+
+
+def write_leg(spec: RunSpec, leg: Leg) -> RunResult:
+    """Turn a finished grind into its run directory.
+
+    Split from `advance` because a scheduled grind is many legs and only one
+    of them writes - and because `advance` then touches no disk beyond the
+    derived cache, which is what lets a leg run anywhere.
+    """
+    frontier, outcome = leg.frontier, leg.outcome or GrindOutcome(STUCK)
+    ledger = list(frontier.ledger)
     payload = simulated_payload(spec.payload, ledger)
-    rolls = tuple(record.chunk_id for record in ledger)
+    rolls = frontier.rolled
     held = payload.get("chunks", {}).get("unlocked", {})
-    outcome = pricer.outcome()
+    cancelled = leg.cancelled
 
     if ledger:
         write_sim_run(
@@ -408,7 +592,15 @@ def run_grind(
                 extra={"grind": outcome.as_dict(), "threshold_hours": spec.stop_over_hours},
             ),
             ledger=[record.as_dict() for record in ledger],
-            timeline=pricer.stored(),
+            timeline=(
+                None
+                if len(frontier.totals) < 2
+                else {
+                    "stamp": dict(leg.stamp),
+                    "added": list(frontier.added),
+                    "totals": list(frontier.totals),
+                }
+            ),
         )
     return RunResult(
         name=spec.name,

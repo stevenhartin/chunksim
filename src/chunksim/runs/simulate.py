@@ -294,6 +294,7 @@ def simulate_rolls(
     *,
     rolls: int,
     seed: int | None = None,
+    rng: random.Random | None = None,
     cache: StateCache | None = None,
     on_state: Callable[[int, Derived], None] | None = None,
     on_roll: Callable[[int, str], None] | None = None,
@@ -328,8 +329,23 @@ def simulate_rolls(
     which is free there because the derivation has already been paid for, and
     would be a second a roll if the timeline were rebuilt afterwards. Nothing
     here knows what an hour is, and nothing it does depends on the callback.
+
+    **`rng` is how a run is *resumed*, and it exists for one reason:
+    `--jobs` must never change a result.** A caller that stops a run part-way
+    and continues it in another process has to carry on drawing from exactly
+    where it left off - a fresh `Random(seed)` would replay the same draws and
+    a differently-seeded one would take a different path, and either way the
+    resumed run would diverge from the unresumed one. Since `random.Random`
+    carries its own position and `getstate()` is picklable, the honest fix is
+    to let the caller own the generator: pass one in, snapshot it, hand the
+    snapshot to whoever continues. `runs/grind.py` is that caller.
+
+    Owning it is the caller's whole responsibility, though: this advances the
+    generator it is given and never resets it, so passing one that has already
+    been drawn from mid-sequence is how you get a run nobody can reproduce.
+    `seed` remains the ordinary way in and builds a fresh one.
     """
-    rng = random.Random(seed)
+    rng = random.Random(seed) if rng is None else rng
     current_ids: dict[str, bool] = dict(unlocked)
     # Roll 0 is always cold: there is no previous roll to carry from, so the
     # chain is anchored on a derivation computed the ordinary way.

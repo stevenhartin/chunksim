@@ -196,6 +196,102 @@ def test_jobs_changes_where_a_grind_executes_and_nothing_else(root: Path) -> Non
     ]
 
 
+class TestResuming:
+    """**A grind split into legs must be the same grind, roll for roll.**
+
+    This is what lets spare workers be pointed at a straggler: a whole
+    simulation inside one pool task cannot be reclaimed, so a long one has to
+    be breakable. But the moment the scheduler can split *some* runs and not
+    others, `--jobs must never change a result` is only true if a split run
+    lands on exactly the answer an unsplit one would - which is why the
+    generator position travels in the frontier rather than the seed being
+    replayed. See `Frontier.rng_state`.
+    """
+
+    @staticmethod
+    def _spec(root: Path, name: str, hours: float) -> Any:
+        from chunksim.runs.batch import RunSpec
+        from chunksim.store.cache import claim_sim_batch, run_dir
+
+        directory = claim_sim_batch(name, root)
+        return RunSpec(
+            directory=run_dir(directory, 1), name="run-001", seed=7,
+            rolls=grind.MAX_ROLLS, payload=_PAYLOAD, base_map="fray",
+            base_fetched_at=None, chunkinfo_path=None, root=root,
+            stop_over_hours=hours,
+        )
+
+    def _legs(self, spec: Any, budget: int) -> Any:
+        """Run a grind `budget` rolls at a time until it ends."""
+        leg = grind.advance(spec, budget=budget)
+        legs = 1
+        while not leg.finished:
+            leg = grind.advance(spec, leg.frontier, budget=budget)
+            legs += 1
+        return leg, legs
+
+    def test_one_leg_and_many_reach_the_same_answer(self, root: Path) -> None:
+        """The property everything else rests on. A threshold nothing reaches
+        makes the run go the distance, so this compares whole sequences rather
+        than two runs that both stopped on roll one."""
+        whole = grind.advance(self._spec(root, "Whole", 1.0))
+        split, legs = self._legs(self._spec(root, "Split", 1.0), budget=2)
+
+        assert legs > 1, "the budget has to actually split it"
+        assert whole.frontier.rolled == split.frontier.rolled
+        assert whole.frontier.added == split.frontier.added
+        assert whole.frontier.totals == split.frontier.totals
+        assert whole.outcome == split.outcome
+
+    def test_a_split_run_names_the_same_terminating_step(self, root: Path) -> None:
+        """Steps are numbered against the whole grind, not the leg - so a
+        wall found on roll 5 says 5 however the work was divided."""
+        whole = grind.advance(self._spec(root, "W2", -1.0))
+        split, _ = self._legs(self._spec(root, "S2", -1.0), budget=1)
+
+        assert whole.outcome is not None and split.outcome is not None
+        assert whole.outcome.reason == split.outcome.reason == grind.OVER
+        assert whole.outcome.step == split.outcome.step
+        assert whole.outcome.chunk == split.outcome.chunk
+
+    def test_the_priced_series_is_not_duplicated_at_a_seam(self, root: Path) -> None:
+        """A resumed leg re-derives the step it starts from, as its own step 0.
+        Kept as the diff baseline and never priced again - otherwise the series
+        would gain an entry per seam and every bar after it would shift."""
+        leg, _ = self._legs(self._spec(root, "Seam", 1.0), budget=2)
+
+        # One baseline plus one per roll, whatever the seams did.
+        assert len(leg.frontier.added) == len(leg.frontier.rolled) + 1
+        assert len(leg.frontier.totals) == len(leg.frontier.rolled) + 1
+
+    @pytest.mark.parametrize("budget", [1, 2, 3, 5])
+    def test_the_answer_does_not_depend_on_where_the_seams_fall(
+        self, root: Path, budget: int
+    ) -> None:
+        """Not just "splitting works" but "any splitting works" - the
+        scheduler chooses budgets from how busy the pool is, so the seams land
+        wherever the machine happened to be."""
+        whole = grind.advance(self._spec(root, f"Base{budget}", 1.0))
+        split, _ = self._legs(self._spec(root, f"At{budget}", 1.0), budget=budget)
+
+        assert split.frontier.rolled == whole.frontier.rolled
+        assert split.frontier.added == whole.frontier.added
+
+    def test_a_frontier_carries_its_state_across_a_pickle(self, root: Path) -> None:
+        """It crosses a process boundary every leg, so it has to survive one -
+        `random.Random().getstate()` in particular, which is a nested tuple
+        rather than a plain scalar."""
+        import pickle
+
+        first = grind.advance(self._spec(root, "Pickled", 1.0), budget=2)
+        revived = pickle.loads(pickle.dumps(first.frontier))
+        direct = grind.advance(self._spec(root, "Direct", 1.0), first.frontier, budget=2)
+        through = grind.advance(self._spec(root, "Through", 1.0), revived, budget=2)
+
+        assert direct.frontier.rolled == through.frontier.rolled
+        assert direct.frontier.added == through.frontier.added
+
+
 class TestCollate:
     """`collate` is pure and names no chunk - see its docstring. Fed hand-built
     run entries rather than a real batch, which is what keeps these instant."""
