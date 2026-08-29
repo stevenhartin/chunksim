@@ -507,11 +507,12 @@ class RollCache:
         *,
         start: bool,
         carry: Mapping[str, bool] | None = None,
+        carry_valid: Mapping[str, Mapping[str, Any]] | None = None,
     ) -> Derived:
         if self.behaviour is CacheBehaviour.NONE:
-            return derive(state, unlocked, carry_areas=carry)
+            return derive(state, unlocked, carry_areas=carry, carry_valid=carry_valid)
         wanted = self.behaviour is CacheBehaviour.ALL or start
-        if carry is None:
+        if carry is None and carry_valid is None:
             return cached_derive(
                 state, unlocked, self.digests, root=self.root, store=wanted
             )
@@ -520,7 +521,8 @@ class RollCache:
         # it waits in memory and `keep_final` releases it. A run that diverges
         # raises before that, and the buffer dies with it.
         derived = cached_derive(
-            state, unlocked, self.digests, root=self.root, store=False, carry_areas=carry
+            state, unlocked, self.digests, root=self.root, store=False,
+            carry_areas=carry, carry_valid=carry_valid,
         )
         if wanted:
             self._pending.append(
@@ -565,6 +567,7 @@ def cached_derive(
     refresh: bool = False,
     store: bool = True,
     carry_areas: Mapping[str, bool] | None = None,
+    carry_valid: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> Derived:
     """`derive`, served from disk when the inputs are unchanged.
 
@@ -588,7 +591,7 @@ def cached_derive(
     the cold answer, so a hit both skips the work and re-anchors the carry
     chain on a verified state.
     """
-    if carry_areas is not None and store:
+    if (carry_areas is not None or carry_valid is not None) and store:
         raise ValueError(
             "a carried derivation is not the computation this key names; "
             "pass store=False, and see pipeline.derive on why it is unproven"
@@ -601,7 +604,7 @@ def cached_derive(
             if hit is not None:
                 return hit
 
-    derived = derive(state, unlocked, carry_areas=carry_areas)
+    derived = derive(state, unlocked, carry_areas=carry_areas, carry_valid=carry_valid)
     if store:
         write_derived(key, encode(derived), root)
     return derived

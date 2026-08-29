@@ -280,6 +280,13 @@ def test_carrying_areas_reaches_the_same_states_as_deriving_cold(
     and compare every state it passes through - not just the ledger, which
     would hide a difference inside a roll that changed no task.
 
+    **It covers both halves of the carry**, because `carry_valid` rides the
+    same flag: seeding the previous roll's settled validity takes a carrying
+    roll from three passes to two. That half is re-validated every pass by the
+    loop's own exit test, so it is the safer one - but it is seeded from the
+    same place and checked here for the same reason, and a second oracle
+    asserting the same equality would only be this one run twice.
+
     Both cached maps, because a rule is a number a player set and a second map
     is a second set of inputs; and `cache=None` on both halves, so neither can
     be served from disk and the comparison is of two real computations.
