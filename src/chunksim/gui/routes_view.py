@@ -607,6 +607,23 @@ def _cached_hours(
     return added, _floats(stored.get("totals")), enriched
 
 
+def _flag_indices(map_id: str, ctx: Context, field: str) -> list[int]:
+    """The step indices a grind recorded under `field`, or none.
+
+    Read straight off the stored timeline rather than recomputed: a roll's
+    cost was guessed, or its total carried, at the moment it was rolled, and
+    nothing later can re-derive which. A run of another kind carries neither.
+    """
+    try:
+        stored = cache.read_timeline(map_id, ctx.root)
+    except cache.CacheMissError:
+        return []
+    found = stored.get(field)
+    if not isinstance(found, list):
+        return []
+    return [value for value in found if isinstance(value, int) and not isinstance(value, bool)]
+
+
 def _timeline_payload(map_id: str, ctx: Context) -> dict[str, Any]:
     """Every step, plus whatever hours are already on disk.
 
@@ -629,7 +646,15 @@ def _timeline_payload(map_id: str, ctx: Context) -> dict[str, Any]:
     """
     steps = _run_steps(map_id, ctx)
     added, totals, enriched = _cached_hours(map_id, ctx)
-    rows = series(steps, totals=totals, added=added)
+    rows = series(
+        steps,
+        totals=totals,
+        added=added,
+        # Which figures a grind did not walk for - a carried total, or a cost
+        # taken from the batch's surrogate table. See `timeline.series`.
+        provisional=_flag_indices(map_id, ctx, "provisional"),
+        provisional_added=_flag_indices(map_id, ctx, "provisional_added"),
+    )
     # **The bars measure what the overlay lists.** `Step.task_count` is the raw
     # ledger; these are the same rolls after the Tasks tab's own rules.
     # `tasks_by_skill` goes rather than sitting beside the new field: it is a

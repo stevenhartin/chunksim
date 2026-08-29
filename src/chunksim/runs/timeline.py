@@ -367,6 +367,8 @@ def series(
     steps: Sequence[Step],
     totals: Sequence[float] | None = None,
     added: Sequence[float] | None = None,
+    provisional: Sequence[int] | None = None,
+    provisional_added: Sequence[int] | None = None,
 ) -> list[dict[str, Any]]:
     """The per-roll rows the graph draws.
 
@@ -386,16 +388,35 @@ def series(
     is pure. A list of the wrong length is refused rather than trusted, so
     `hours` reads `None` - "nobody has computed this" and "this roll added
     nothing" are different answers and a graph that conflates them is lying.
+
+    **`provisional` and `provisional_added` say which figures were not walked
+    for**, and the two are different claims. A step in `provisional` carried
+    its *outstanding total* forward because the roll wanted nothing new, so
+    `hours` is exact and `total_hours` may be a little stale
+    (`grind._StepPricer.price`). A step in `provisional_added` had its *cost*
+    read from the batch's surrogate table rather than priced
+    (`runs/surrogate.py`), so `hours` is a median of what that chunk cost
+    elsewhere. Both ride out per row so the page can mark them rather than
+    drawing a guess as though it were a walk.
     """
     def fits(values: Sequence[float] | None) -> Sequence[float] | None:
         return values if values is not None and len(values) == len(steps) else None
 
     use_added, use_totals = fits(added), fits(totals)
+    # A guessed cost implies a carried total, so the two flags would otherwise
+    # both light on the same row; `estimated_hours` is the stronger claim and
+    # is the one shown there.
+    guessed = frozenset(provisional_added or ())
+    carried = frozenset(provisional or ())
     out: list[dict[str, Any]] = []
     for index, step in enumerate(steps):
         row = step.as_dict()
         # Step 0 is the world the run started in, not something it did.
         row["hours"] = None if use_added is None or index == 0 else round(use_added[index], 2)
         row["total_hours"] = None if use_totals is None else round(use_totals[index], 2)
+        # Step 0 is the baseline and is always walked for, so it is never
+        # marked however the indices read.
+        row["estimated_hours"] = bool(index and index in guessed)
+        row["estimated_total"] = bool(index and index in carried and index not in guessed)
         out.append(row)
     return out

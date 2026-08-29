@@ -375,3 +375,33 @@ def test_a_series_written_before_the_basis_existed_reads_as_the_final_one() -> N
     assert not timeline_matches(
         old, timeline_stamp(**digests, enriched=False, basis=PER_STEP_BASIS)
     )
+
+
+def _step(order: int) -> Step:
+    """One roll's ledger entry, with only the fields `series` reads set."""
+    return Step(order, None if order == 0 else f"chunk-{order}", frozenset({"100"}), {}, 0, 0)
+
+
+def test_a_series_marks_the_figures_nobody_walked_for() -> None:
+    """**Two different claims, and the row says which.** A carried total leaves
+    the cost exact; a surrogate cost does not. Step 0 is the baseline and is
+    never marked, and a guessed cost outranks the carried total it implies."""
+    from chunksim.runs.timeline import series
+
+    steps = [_step(order) for order in range(4)]
+    rows = series(
+        steps,
+        totals=[10.0, 10.0, 10.0, 12.0],
+        added=[0.0, 0.0, 3.0, 2.0],
+        provisional=[0, 1, 2],
+        provisional_added=[2],
+    )
+    marks = [(row["estimated_hours"], row["estimated_total"]) for row in rows]
+    assert marks == [(False, False), (False, True), (True, False), (False, False)]
+
+
+def test_the_marks_are_absent_where_nothing_was_flagged() -> None:
+    from chunksim.runs.timeline import series
+
+    rows = series([_step(order) for order in range(2)], totals=[1.0, 2.0], added=[0.0, 2.0])
+    assert all(not row["estimated_hours"] and not row["estimated_total"] for row in rows)

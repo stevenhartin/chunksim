@@ -346,6 +346,17 @@ button:focus-visible, select:focus-visible, input:focus-visible,
   flex: none;
 }
 
+/* A figure the run did not walk for - see `estimatedMark`. Amber rather than
+   red: an estimated cost is a real answer with a stated provenance, not an
+   error, and the stopping step it fed is exact either way. */
+.estimated {
+  display: inline-flex;
+  align-items: center;
+  margin-left: var(--s2);
+  color: var(--amber);
+  vertical-align: middle;
+}
+
 .icon-btn {
   display: inline-flex;
   align-items: center;

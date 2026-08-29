@@ -7265,7 +7265,7 @@ async function showRoll(step, trail = []) {
     <dt>Sections</dt><dd>${roll.sections}</dd>
     <dt>BiS upgrades</dt><dd>${roll.bis_upgrades}</dd></dl>`;
 
-  out += rollHours(roll.hours);
+  out += rollHours(roll.hours, state.timeline && state.timeline.steps[step]);
 
   /* **The Tasks tab's own renderer, over this roll's additions.** Same
    * envelope from `panels.py`, same `renderTaskGroups` drawing it - so a
@@ -7377,11 +7377,32 @@ function skillTip(row) {
 }
 
 
-function rollHours(priced) {
+/* **A figure nobody walked for is marked, never quietly drawn.** A grind may
+ * skip pricing a roll two ways, and they are different claims: `estimated_total`
+ * means the roll wanted nothing new so its *outstanding* total was carried
+ * forward (the cost is still exact), and `estimated_hours` means the *cost*
+ * itself came from the batch's surrogate table - a median of what that chunk
+ * cost elsewhere in the batch rather than this roll's own walk. See
+ * `runs/surrogate.py` and `grind._StepPricer.price`. The stronger claim wins
+ * where both are set, because a guessed cost implies a carried total. */
+function estimatedMark(step) {
+  if (!step) return "";
+  const guessed = step.estimated_hours;
+  if (!guessed && !step.estimated_total) return "";
+  const tip = guessed
+    ? "<b>Cost estimated</b><span class='sub'>This roll's hours were read from what this chunk cost other simulations in the batch, not walked for. The batch only estimates where every simulation that priced this chunk agreed which side of the wall it lands on, so where the run stopped is unaffected.</span><span class='hint'>Run without an exact percentage to price every roll</span>"
+    : "<b>Outstanding estimated</b><span class='sub'>This roll wanted nothing new, so its cost is exactly zero and the outstanding total was carried from the roll before rather than re-priced. It can be a little stale if a chunk opened a cheaper route to work already in the set.</span>";
+  return tmpl`<i class="estimated" data-tip="${tip}"
+    aria-label="${guessed ? "Cost estimated" : "Outstanding estimated"}"
+    >${raw(icon("estimated").__raw)}</i>`;
+}
+
+function rollHours(priced, step) {
   if (!hours || !priced.total_hours) return "";
   const sections = renderBucketSections(priced, "roll");
   if (!sections) return "";
-  return tmpl`<h3>Hours this roll added <span class="num">${hours(priced.total_hours)}</span></h3>` + sections;
+  return tmpl`<h3>Hours this roll added <span class="num">${hours(priced.total_hours)}</span>`
+    + estimatedMark(step) + `</h3>` + sections;
 }
 
 async function setStep(step) {

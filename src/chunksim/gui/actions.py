@@ -44,7 +44,7 @@ from chunksim.remote.api import FetchError, RELEASES_URL, fetch_latest_release
 from chunksim.store.cache import CacheMissError
 from chunksim.store.build_info import is_newer, read_build
 from chunksim.store import cache
-from chunksim.store.derived_cache import cached_derive
+from chunksim.store.derived_cache import CacheBehaviour, cached_derive
 from chunksim.costing import dps_bridge
 from chunksim.remote.api import fetch_chunkinfo
 from chunksim.remote.api import fetch_map
@@ -768,6 +768,15 @@ def _grind_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
             # `batch._schedule`. It declines to engage below two workers or
             # two simulations, where there is no drain to reclaim.
             legs=grind.leg_plan(),
+            # **A grind wants the state it stopped on, not the ones it passed
+            # through.** The answer a grind gives is where the wall is, and
+            # the map it saves is the state at that wall - so the intermediate
+            # derivations are written once and never asked for again. Under
+            # `ALL` a thousand-run batch is ~2.4GB of them at ~118KiB each;
+            # `EXTREMITIES` keeps the shared opening state and each run's
+            # final one, which is exactly what `chunksim tasks --map <run>`
+            # needs to answer immediately. See `CacheBehaviour`.
+            cache_behaviour=CacheBehaviour.EXTREMITIES,
             stop_over_hours=hours,
             surrogate=surrogate,
             extra={
