@@ -695,6 +695,13 @@ def _grind_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
         # the page never walks a dict while this thread is writing it - see
         # `jobs.Job.detail`.
         state: dict[int, dict[str, Any]] = {}
+        # **One row per OS worker, keyed by its pid.** What a batch is doing is
+        # a fact about the workers, not about the runs: sixteen rows saying
+        # "rolling" tell you nothing, while "worker 3 is pricing run-012's
+        # eighth roll" is the thing being waited on. Lanes are numbered by
+        # first appearance so the table does not reorder itself as pids come
+        # and go. See `batch._schedule`'s `on_phase`.
+        busy: dict[int, dict[str, Any]] = {}
 
         def publish() -> None:
             progress(
@@ -706,6 +713,10 @@ def _grind_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
                     "simulations": runs,
                     "elapsed": round(time.monotonic() - started, 1),
                     "runs": [dict(row) for _, row in sorted(state.items())],
+                    "busy": [
+                        dict(row) for _, row in
+                        sorted(busy.items(), key=lambda kv: kv[1]["lane"])
+                    ],
                 },
             )
 
@@ -726,6 +737,26 @@ def _grind_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
             row["seconds"] = round(now - row["started"], 1)
             publish()
 
+        def phase(
+            worker: int, run_index: int, name: str, order: int, chunk_id: str | None
+        ) -> None:
+            """What one worker just started doing, from inside its own leg.
+
+            Arrives per phase rather than per leg, which is the difference
+            between a ticker that moves and one that jumps twelve rolls at a
+            time - `batch._schedule` says why the future alone cannot carry it.
+            """
+            row = busy.get(worker)
+            if row is None:
+                row = {"worker": worker, "lane": len(busy) + 1}
+                busy[worker] = row
+            row["run"] = run_index + 1
+            row["phase"] = name
+            row["roll"] = order
+            row["chunk"] = chunk_id or row.get("chunk")
+            row["at"] = time.monotonic()
+            publish()
+
         def report(result: RunResult) -> None:
             nonlocal finished
             finished += 1
@@ -743,6 +774,12 @@ def _grind_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
             # what says whether the batch is waiting on one long straggler,
             # which is the shape a grind batch actually ends in.
             row["seconds"] = round(now - float(row["started"]), 1)
+            # The worker that finished it holds nothing until it picks up the
+            # next run, and saying so beats leaving the last roll on screen.
+            for lane in busy.values():
+                if lane.get("run") == _run_number(result.name):
+                    lane["phase"] = "idle"
+                    lane["chunk"] = None
             publish()
 
         publish()
@@ -768,6 +805,7 @@ def _grind_job(payload: Mapping[str, Any], ctx: Context) -> dict[str, Any]:
             # `batch._schedule`. It declines to engage below two workers or
             # two simulations, where there is no drain to reclaim.
             legs=grind.leg_plan(),
+            on_phase=phase,
             # **A grind wants the state it stopped on, not the ones it passed
             # through.** The answer a grind gives is where the wall is, and
             # the map it saves is the state at that wall - so the intermediate

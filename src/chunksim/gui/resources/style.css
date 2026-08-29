@@ -1398,18 +1398,16 @@ button.link.danger:hover {
    control. What it opens is a reading of the same work, where the control
    beside it ends that work - putting them together as a pair of buttons would
    make them read as equals. See `renderJobStats`. */
+/* **A control, drawn like one.** This stripped the button chrome and took a
+   link colour, which made the one interactive thing on the progress card read
+   as a hyperlink in an interface that has none - every other affordance here
+   is a carved button. It keeps only its own layout; the bevel, border and
+   hover come from `button` above. */
 .progress-more {
   margin-top: var(--s2);
-  padding: 0;
-  border: 0;
-  background: none;
-  box-shadow: none;
-  color: var(--candidate);
+  align-self: flex-start;
   font-size: var(--t-note);
-  text-align: left;
-  cursor: pointer;
 }
-.progress-more:hover { color: var(--text); text-decoration: underline; }
 
 .progress-track {
   height: 4px;

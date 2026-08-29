@@ -929,6 +929,12 @@ _MIN_WAVE = 2
 #: before the pool drains.
 _LEG_BUDGET = 12
 
+#: How long the scheduler waits on futures before looking at the progress
+#: queue. Short enough that a phase change reads as immediate, long enough
+#: that an idle parent is not spinning: a roll's two phases are ~0.2s and
+#: ~1.3s, so a quarter of a second never hides one.
+_PHASE_POLL_SECONDS = 0.25
+
 
 def _schedule(
     pool: Any,
@@ -940,6 +946,7 @@ def _schedule(
     on_roll: Callable[[int, int, str], None] | None,
     should_stop: Callable[[], bool] | None,
     learn_after: int | None = None,
+    on_phase: Callable[[int, int, str, int, str | None], None] | None = None,
 ) -> list[RunResult]:
     """Drive `specs` as resumable legs, speculating once the pool drains.
 
@@ -950,6 +957,14 @@ def _schedule(
     coverage grows through the batch. Runs already inside the pool keep the
     table they were handed; only the parent ever builds one, which is why
     this adds no synchronisation either.
+
+    **`on_phase` is how a watcher sees inside a leg.** A leg is up to
+    `_LEG_BUDGET` rolls and returns them all at once, so a parent watching only
+    futures learns nothing until twelve rolls have gone by - which is why a
+    ticker fed from here sat still and then jumped a whole leg. With a watcher,
+    workers report each phase change down a manager queue and the wait below
+    takes a timeout so this loop wakes to drain it whether or not a leg has
+    finished. Without one, no queue is made and the wait blocks as it did.
 
     **Two regimes, and the switch between them is the whole idea.** While there
     are at least as many unfinished runs as workers, every worker has a run of
@@ -975,6 +990,7 @@ def _schedule(
     frontier's own generator position, so a run split here lands exactly where
     an unsplit one would; `tests/test_grind.py` pins that directly.
     """
+    import multiprocessing
     from concurrent.futures import FIRST_COMPLETED, wait
 
     live = {spec.name: _Live(spec=spec, index=index) for index, spec in enumerate(specs)}
@@ -983,6 +999,19 @@ def _schedule(
     futures: dict[Any, tuple[str, str, int]] = {}
     samples: list[surrogate.Sample] = []
     table: dict[str, Any] | None = None
+    manager = multiprocessing.Manager() if on_phase is not None else None
+    phases: Any = manager.Queue() if manager is not None else None
+
+    def drain() -> None:
+        """Everything the workers have said since the last look."""
+        if phases is None or on_phase is None:
+            return
+        while True:
+            try:
+                worker, index, phase, order, chunk = phases.get_nowait()
+            except Exception:
+                return
+            on_phase(worker, index, phase, order, chunk)
 
     def learn(result: RunResult) -> None:
         """Fold a finished run's exact rolls into the table, and rebuild it."""
@@ -1017,9 +1046,10 @@ def _schedule(
             # wave can diff against it, which is `advance`'s job (see
             # `settle`) - and the bound is what makes a long run resumable at
             # all. See `_LEG_BUDGET`.
-            futures[pool.submit(plan.advance, row.spec, row.frontier, budget=_LEG_BUDGET)] = (
-                name, "leg", 0,
-            )
+            futures[pool.submit(
+                plan.advance, row.spec, row.frontier, budget=_LEG_BUDGET,
+                progress=phases, run_index=row.index,
+            )] = (name, "leg", 0)
             row.pending += 1
             return
         depth = max(_MIN_WAVE, spare * _WAVE_PER_WORKER)
@@ -1037,7 +1067,16 @@ def _schedule(
             submit(waiting.pop(0))
         if not futures:
             break
-        done, _ = wait(list(futures), return_when=FIRST_COMPLETED)
+        # **A timeout only where somebody is watching.** Without one this
+        # blocks until a whole leg lands, which is the twelve-roll silence the
+        # queue exists to fill; with one, the loop wakes, drains, and goes
+        # straight back to waiting.
+        done, _ = wait(
+            list(futures),
+            timeout=_PHASE_POLL_SECONDS if phases is not None else None,
+            return_when=FIRST_COMPLETED,
+        )
+        drain()
         for future in done:
             name, kind, at = futures.pop(future)
             row = live[name]
@@ -1085,6 +1124,9 @@ def _schedule(
                     waiting.append(name)
         if should_stop is not None and should_stop() and not futures:
             break
+    drain()
+    if manager is not None:
+        manager.shutdown()
     return results
 
 
@@ -1426,6 +1468,7 @@ def run_batch(
     extra: Mapping[str, Any] | None = None,
     legs: LegPlan | None = None,
     surrogate: float | None = None,
+    on_phase: Callable[[int, int, str, int, str | None], None] | None = None,
 ) -> BatchResult:
     """Claim a batch directory, run `runs` simulations into it, and summarise.
 
@@ -1539,7 +1582,7 @@ def run_batch(
             results = _schedule(
                 pool, specs, workers=min(workers, len(specs)), plan=legs,
                 on_complete=on_complete, on_roll=on_roll, should_stop=should_stop,
-                learn_after=learn_after,
+                learn_after=learn_after, on_phase=on_phase,
             )
         results.sort(key=lambda found: found.name)
     elif workers == 1 or len(specs) == 1:

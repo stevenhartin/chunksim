@@ -115,6 +115,7 @@ single-straggler tail collapsing to three seconds.
 
 from __future__ import annotations
 
+import os
 import random
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -260,6 +261,10 @@ class _StepPricer:
     provisional_added: list[int] = field(default_factory=list)
     #: `runs/surrogate.py`'s table, or `None` to price every roll exactly.
     surrogate: Any = None
+    #: `(phase, order, chunk_id) -> None`, or `None` for a caller that is not
+    #: watching. Called as a roll changes phase, from inside the worker doing
+    #: it - see `advance` on why the parent cannot see this for itself.
+    note: Any = None
 
     @property
     def levels(self) -> dict[str, int]:
@@ -325,6 +330,10 @@ class _StepPricer:
         # the predicate reads - the wave path's own, and every test that
         # constructs one by hand. Pricing every step is the right answer
         # there: the skip is an optimisation and never a requirement.
+        if self.note is not None:
+            # Deriving this state is done - `simulate_rolls` has handed it
+            # over - so whatever happens below, this roll is now being priced.
+            self.note("pricing", order + self.offset, chunk_id)
         if order > 0 and self.wanted is not None and self.naming is not None:
             wanted = wanted_names(self.naming, derived, self.base.heuristics)
             if wanted == self.wanted:
@@ -388,6 +397,10 @@ class _StepPricer:
         self.added.append(cost)
         self.totals.append(total)
         self.previous = derived
+        if self.note is not None:
+            # Priced. The next thing this worker does is derive the next
+            # state, which is the longer half and the one worth naming.
+            self.note("rolling", order + self.offset + 1, None)
         if order == 0 or self._outcome is not None:
             return
         step = order + self.offset
@@ -622,8 +635,19 @@ def advance(
     budget: int | None = None,
     on_roll: Callable[[int, str], None] | None = None,
     should_stop: Callable[[], bool] | None = None,
+    progress: Any = None,
+    run_index: int = 0,
 ) -> Leg:
     """Roll and price one stretch of a grind. Runs in a worker process.
+
+    **`progress` is how a watcher sees inside a leg, and it has to be a queue.**
+    A leg returns its whole stretch at once - up to `batch._LEG_BUDGET` rolls -
+    so a parent that learns only from the future's result learns nothing for
+    twelve rolls at a time, which is why the ticker used to sit still and then
+    jump. What goes down it is `(pid, run_index, phase, order, chunk)` as each
+    roll changes phase, so the parent can say which worker is on which run and
+    whether it is deriving or pricing. `None` means nobody is watching and
+    nothing is sent.
 
     `budget` is a maximum, not a target: the leg ends early the moment the
     grind does, so a generous budget costs nothing and a small one only buys
@@ -657,6 +681,23 @@ def advance(
     if frontier is not None:
         rng.setstate(frontier.rng_state)
 
+    note = None
+    if progress is not None:
+        worker = os.getpid()
+
+        def note(phase: str, order: int, chunk_id: str | None) -> None:
+            """One phase change, straight down the queue.
+
+            Never blocks and never raises: a watcher falling behind, or going
+            away entirely, must not be able to stop a simulation. The parent
+            drains what it can and drops the rest - a progress report that
+            arrives late is worth nothing anyway.
+            """
+            try:
+                progress.put_nowait((worker, run_index, phase, order, chunk_id))
+            except Exception:
+                pass
+
     pricer = _StepPricer(
         state=state,
         base=base,
@@ -676,6 +717,7 @@ def advance(
         # and the lowercase item index, both fixed for a grind.
         naming=naming_walk(state.chunk_info, base.world, base.heuristics),
         resumed=frontier is not None,
+        note=note,
     )
 
     def rolled_cb(order: int, chunk_id: str) -> None:

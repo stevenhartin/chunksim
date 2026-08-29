@@ -6011,7 +6011,7 @@ function showProgress(title, { detail = "", done = 0, total = 0, state = "", job
   /* **Offered only by work that has something structured to show.** Most jobs
    * report a sentence and nothing else; the link would be a dead end on them.
    * See `jobs.Job.detail`. */
-  jobStats = stats && stats.runs ? stats : null;
+  jobStats = stats && (stats.busy || stats.runs) ? stats : null;
   el["progress-more"].hidden = !jobStats;
   if (jobStats && !el.overlay.hidden && overlayIsStats) renderJobStats();
 }
@@ -6019,6 +6019,9 @@ function showProgress(title, { detail = "", done = 0, total = 0, state = "", job
 /* The last structured progress seen, and whether the overlay is showing it.
  * Kept here rather than on `state` because it belongs to a job in flight, not
  * to the map - closing the overlay or finishing the job ends its life. */
+/* What a worker is doing, in the vocabulary `grind._StepPricer` reports. */
+const PHASES = { rolling: "rolling", pricing: "pricing", idle: "idle" };
+
 let jobStats = null;
 let overlayIsStats = false;
 
@@ -6047,18 +6050,45 @@ function renderJobStats() {
    * honest version of a row that would be blank in every column. */
   const waiting = Math.max(0, stats.simulations - rows.length);
 
-  const body = rows.length
-    ? `<table class="sim-table"><thead><tr><th>Simulation</th><th>Rolls</th>`
-      + `<th>Took</th><th>State</th></tr></thead><tbody>`
-      + rows.map((row) => tmpl`<tr><td class="sim-name">run-${String(row.run).padStart(3, "0")}</td>
-        <td class="sim-total">${String(row.rolls)}</td>
-        <td class="sim-total">${seconds(row.seconds)}</td>
+  /* **What each worker is holding right now**, which is the question this
+   * overlay is opened to answer. A row per worker rather than per simulation:
+   * with more simulations than workers most rows would be queued specs with
+   * nothing to say, and "which of my sixteen cores is busy, and on what" is
+   * not answerable from a list of runs. `phase` comes from inside the leg -
+   * see `batch._schedule` - so it changes as a roll moves from being rolled
+   * to being priced rather than once every twelve rolls. */
+  const lanes = stats.busy || [];
+  const body = lanes.length
+    ? `<table class="sim-table"><thead><tr><th>Worker</th><th>Simulation</th>`
+      + `<th>Roll</th><th>Chunk</th><th>Doing</th></tr></thead><tbody>`
+      + lanes.map((lane) => tmpl`<tr>
+        <td class="sim-name">#${String(lane.lane)}</td>
+        <td class="sim-name">run-${String(lane.run).padStart(3, "0")}</td>
+        <td class="sim-total">${String(lane.roll)}</td>
+        <td class="sim-name">${lane.chunk ? chunkLabel(lane.chunk) : "—"}</td>
         <td class="sim-name"><span class="pill" data-hold="${
-          row.done ? "unlocked" : "reachable"}">${
-          row.done ? (GRIND_OUTCOMES[row.outcome] || "finished") : "rolling"}</span></td></tr>`
+          lane.phase === "idle" ? "locked" : (lane.phase === "pricing" ? "unlocked" : "reachable")
+        }">${PHASES[lane.phase] || lane.phase || "—"}</span></td></tr>`
       ).join("")
       + `</tbody></table>`
-    : tmpl`<p class="empty">No simulation has finished its first roll yet.</p>`;
+    : tmpl`<p class="empty">No worker has started a roll yet.</p>`;
+
+  /* **And what the finished ones took**, which the worker table cannot say: a
+   * lane holds one run at a time and forgets it at the handover, while the
+   * shape a grind batch actually ends in is one long straggler with everything
+   * else done. Both questions are live at once, so both tables are here. */
+  const finished = done.length
+    ? `<h3>Finished simulations</h3>`
+      + `<table class="sim-table"><thead><tr><th>Simulation</th><th>Rolls</th>`
+      + `<th>Took</th><th>Outcome</th></tr></thead><tbody>`
+      + done.map((row) => tmpl`<tr><td class="sim-name">run-${String(row.run).padStart(3, "0")}</td>
+        <td class="sim-total">${String(row.rolls)}</td>
+        <td class="sim-total">${seconds(row.seconds)}</td>
+        <td class="sim-name"><span class="pill" data-hold="unlocked">${
+          GRIND_OUTCOMES[row.outcome] || "finished"}</span></td></tr>`
+      ).join("")
+      + `</tbody></table>`
+    : "";
 
   openOverlay("Worker activity",
     tmpl`<p class="hint">${String(running.length)} of ${String(stats.workers)}
@@ -6066,9 +6096,11 @@ function renderJobStats() {
       String(stats.simulations)} simulations finished${
       waiting ? tmpl`, ${String(waiting)} not started yet` : ""}; ${
       seconds(stats.elapsed)} elapsed.
-      Each worker owns a whole simulation and rolls it start to finish; a grind
-      stops on a random event, so their lengths differ and they finish spread
-      out rather than together.</p>` + body);
+      A worker rolls a simulation in stretches and may hand it back to pick up
+      another, so a row is what that core holds now rather than for the whole
+      batch. <b>Rolling</b> is deriving the state a chunk left behind;
+      <b>pricing</b> is costing it, which is the longer half.</p>`
+    + body + finished);
   overlayIsStats = true;
 }
 
@@ -6209,7 +6241,10 @@ async function followJob(id, label, onDone) {
     job: tick.stopping ? "" : id,
     /* Structured progress rides along on the same poll, so an open stats
      * panel redraws itself at the poll interval with nothing extra to fetch. */
-    stats: tick.detail && tick.detail.runs ? tick.detail : null,
+    /* Structured enough to open the overlay on: either the per-run summary or
+     * the per-worker rows. A grind publishes `busy` before any run has
+     * finished, which is exactly when somebody wants to look. */
+    stats: tick.detail && (tick.detail.busy || tick.detail.runs) ? tick.detail : null,
     ...countsIn(tick.progress),
   }));
   if (job.state === "failed") {
